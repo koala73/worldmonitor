@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 
 import {
   buildDefenseIndustrialResponse,
-  hasCompleteDefenseIndustrialHydration,
   toDefenseIndustrialMetric,
 } from '../shared/defense-industrial-response.ts';
 import { validateGeneratedRequest } from '../server/request-validator.ts';
@@ -20,6 +19,8 @@ describe('get-defense-industrial-base response mapping', () => {
     assert.equal(response.expenditurePctGdp.value, 34.5);
     assert.deepEqual(response.suppliers, []);
     assert.equal(response.supplierSource, '');
+    assert.equal(response.industrialFetchedAt, '2026-08-12T00:00:00.000Z');
+    assert.equal(response.supplierFetchedAt, '');
   });
 
   it('keeps supplier-only data available and bounds corrupted shares', () => {
@@ -33,12 +34,19 @@ describe('get-defense-industrial-base response mapping', () => {
         supplierHhi: 1.4,
         window: { startYear: 2021, endYear: 2025 },
         source: 'SIPRI Arms Transfers Database',
+        mappingCoverage: 0.72,
+        fetchedAt: '2026-07-01T00:00:00.000Z',
+        retained: true,
       } },
+      fetchedAt: '2026-08-12T00:00:00.000Z',
     });
 
     assert.equal(response.available, true);
     assert.deepEqual(response.suppliers, [{ supplierIso2: 'US', tivShare: 0.8 }]);
     assert.equal(response.supplierHhi, 1);
+    assert.equal(response.supplierMappingCoverage, 0.72);
+    assert.equal(response.supplierFetchedAt, '2026-07-01T00:00:00.000Z');
+    assert.equal(response.supplierRetained, true);
   });
 
   it('returns an explicit unavailable response for a missing country', () => {
@@ -76,10 +84,14 @@ describe('get-defense-industrial-base response mapping', () => {
     assert.equal(isPublicSharedRpcRequest(`${path}?country_code=UA&public=1&extra=1`), false);
   });
 
-  it('does not accept a one-key hydration result as complete', () => {
-    assert.equal(hasCompleteDefenseIndustrialHydration({ countries: {} }, { importers: {} }), true);
-    assert.equal(hasCompleteDefenseIndustrialHydration({ countries: {} }, undefined), false);
-    assert.equal(hasCompleteDefenseIndustrialHydration(undefined, { importers: {} }), false);
-    assert.equal(hasCompleteDefenseIndustrialHydration({}, {}), false);
+  it('uses the oldest source clock for the compatibility timestamp', () => {
+    const response = buildDefenseIndustrialResponse('UA', {
+      fetchedAt: '2026-08-12T00:00:00.000Z',
+      countries: { UA: { expenditurePctGdp: { value: 1, year: 2025 } } },
+    }, {
+      fetchedAt: '2026-08-13T00:00:00.000Z',
+      importers: { UA: { suppliers: [{ supplierIso2: 'US', tivShare: 1 }] } },
+    });
+    assert.equal(response.fetchedAt, '2026-08-12T00:00:00.000Z');
   });
 });

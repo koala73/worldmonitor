@@ -23,6 +23,10 @@ function response(overrides: Partial<GetDefenseIndustrialBaseResponse> = {}): Ge
     windowEndYear: 0,
     supplierSource: '',
     fetchedAt: '',
+    industrialFetchedAt: '',
+    supplierFetchedAt: '',
+    supplierRetained: false,
+    supplierMappingCoverage: 0,
     ...overrides,
   };
 }

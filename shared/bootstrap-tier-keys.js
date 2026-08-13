@@ -74,8 +74,6 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   gdeltIntel: 'intelligence:gdelt-intel:v1',
   correlationCards: 'correlation:cards-bootstrap:v1',
   crossStraitActivity: 'military:cross-strait-activity-bootstrap:v1',
-  defenseIndustrialBase: 'military:industrial-base:v1',
-  armsSuppliers: 'military:arms-suppliers:v1',
   forecasts: 'forecast:predictions-bootstrap:v1',
   securityAdvisories: 'intelligence:advisories-bootstrap:v1',
   customsRevenue: 'trade:customs-revenue:v1',
@@ -179,7 +177,6 @@ const FAST_KEY_NAMES = new Set([
 
 const ON_DEMAND_KEY_NAMES = new Set([
   'cyberThreats',
-  'defenseIndustrialBase', 'armsSuppliers',
   'chinaPolicyEvents', 'chinaDecisionSignals',
   'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
   // One row of this feeds the Central Banks tab's policy-rate list, which BIS

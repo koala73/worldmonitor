@@ -18,30 +18,15 @@ type StoredSupplier = { supplierIso2?: string; tivShare?: number };
 type StoredDependency = {
   suppliers?: StoredSupplier[];
   supplierHhi?: number;
+  mappingCoverage?: number;
   window?: { startYear?: number; endYear?: number };
   source?: string;
+  fetchedAt?: string;
+  retained?: boolean;
 };
 
 export type StoredIndustrialSnapshot = { countries?: Record<string, StoredCountry>; fetchedAt?: string };
 export type StoredSupplierSnapshot = { importers?: Record<string, StoredDependency>; fetchedAt?: string };
-
-export function hasCompleteDefenseIndustrialHydration(
-  industrial: unknown,
-  suppliers: unknown,
-): boolean {
-  return Boolean(
-    industrial
-    && typeof industrial === 'object'
-    && !Array.isArray(industrial)
-    && (industrial as StoredIndustrialSnapshot).countries
-    && typeof (industrial as StoredIndustrialSnapshot).countries === 'object'
-    && suppliers
-    && typeof suppliers === 'object'
-    && !Array.isArray(suppliers)
-    && (suppliers as StoredSupplierSnapshot).importers
-    && typeof (suppliers as StoredSupplierSnapshot).importers === 'object',
-  );
-}
 
 export type DefenseIndustrialMetricValue = {
   available: boolean;
@@ -66,6 +51,10 @@ export type DefenseIndustrialResponseValue = {
   windowEndYear: number;
   supplierSource: string;
   fetchedAt: string;
+  industrialFetchedAt: string;
+  supplierFetchedAt: string;
+  supplierRetained: boolean;
+  supplierMappingCoverage: number;
 };
 
 export function toDefenseIndustrialMetric(metric?: StoredMetric): DefenseIndustrialMetricValue {
@@ -96,7 +85,22 @@ function emptyResponse(countryCode: string): DefenseIndustrialResponseValue {
     windowEndYear: 0,
     supplierSource: '',
     fetchedAt: '',
+    industrialFetchedAt: '',
+    supplierFetchedAt: '',
+    supplierRetained: false,
+    supplierMappingCoverage: 0,
   };
+}
+
+function validTimestamp(value: unknown): string {
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return '';
+  return value;
+}
+
+function oldestTimestamp(...values: string[]): string {
+  return values
+    .filter(Boolean)
+    .sort((left, right) => Date.parse(left) - Date.parse(right))[0] || '';
 }
 
 export function buildDefenseIndustrialResponse(
@@ -116,6 +120,11 @@ export function buildDefenseIndustrialResponse(
     ))
     .map((entry) => ({ supplierIso2: String(entry.supplierIso2), tivShare: Number(entry.tivShare) }));
   const rawHhi = Number(dependency?.supplierHhi);
+  const rawMappingCoverage = Number(dependency?.mappingCoverage);
+  const industrialFetchedAt = country ? validTimestamp(industrial?.fetchedAt) : '';
+  const supplierFetchedAt = dependency
+    ? validTimestamp(dependency.fetchedAt) || validTimestamp(dependencies?.fetchedAt)
+    : '';
   return {
     countryCode,
     available: true,
@@ -129,6 +138,14 @@ export function buildDefenseIndustrialResponse(
     windowStartYear: Number.isInteger(dependency?.window?.startYear) ? Number(dependency?.window?.startYear) : 0,
     windowEndYear: Number.isInteger(dependency?.window?.endYear) ? Number(dependency?.window?.endYear) : 0,
     supplierSource: String(dependency?.source || ''),
-    fetchedAt: String(dependencies?.fetchedAt || industrial?.fetchedAt || ''),
+    // Backward-compatible aggregate freshness means "oldest source served".
+    // The additive clocks below are the authoritative source-specific values.
+    fetchedAt: oldestTimestamp(industrialFetchedAt, supplierFetchedAt),
+    industrialFetchedAt,
+    supplierFetchedAt,
+    supplierRetained: Boolean(dependency?.retained),
+    supplierMappingCoverage: Number.isFinite(rawMappingCoverage)
+      ? Math.max(0, Math.min(1, rawMappingCoverage))
+      : 0,
   };
 }

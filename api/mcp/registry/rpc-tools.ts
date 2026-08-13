@@ -11,7 +11,11 @@ import { argStr } from '../filters';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk, BillingDenialError, throwIfBillingDenial } from '../billing-denial';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
-import { assertMcpToolFetchOk, BothSourcesFailedError } from '../downstream';
+import {
+  assertMcpToolFetchOk,
+  BothSourcesFailedError,
+  buildMcpDownstreamHeaders,
+} from '../downstream';
 import { evaluateFreshness } from '../freshness';
 import { McpSourceUnavailableError } from '../source-unavailable';
 import {
@@ -553,7 +557,7 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     outputSchema: {
       type: 'object',
-      required: ['countryCode', 'available', 'expenditurePctGdp', 'expenditureUsd', 'personnel', 'armsExportsTiv', 'armsImportsTiv', 'suppliers', 'supplierHhi', 'windowStartYear', 'windowEndYear', 'supplierSource', 'fetchedAt'],
+      required: ['countryCode', 'available', 'expenditurePctGdp', 'expenditureUsd', 'personnel', 'armsExportsTiv', 'armsImportsTiv', 'suppliers', 'supplierHhi', 'windowStartYear', 'windowEndYear', 'supplierSource', 'fetchedAt', 'industrialFetchedAt', 'supplierFetchedAt', 'supplierRetained', 'supplierMappingCoverage'],
       properties: {
         countryCode: { type: 'string' },
         available: { type: 'boolean' },
@@ -567,7 +571,11 @@ export const RPC_TOOLS: ToolDef[] = [
         windowStartYear: { type: 'integer' },
         windowEndYear: { type: 'integer' },
         supplierSource: { type: 'string' },
-        fetchedAt: { type: 'string' },
+        fetchedAt: { type: 'string', description: 'Oldest source timestamp among values served.' },
+        industrialFetchedAt: { type: 'string', description: 'World Bank snapshot timestamp for the country metrics served.' },
+        supplierFetchedAt: { type: 'string', description: 'SIPRI timestamp for this importer row, including its original timestamp when retained.' },
+        supplierRetained: { type: 'boolean', description: 'True when the importer row was retained after its current SIPRI request failed.' },
+        supplierMappingCoverage: { type: 'number', minimum: 0, maximum: 1, description: 'Share of positive supplier TIV mapped to ISO2 suppliers; HHI uses the full denominator.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -578,7 +586,9 @@ export const RPC_TOOLS: ToolDef[] = [
       // so MCP traffic does not parse both global Redis snapshots per request.
       const url = `${base}/api/military/v1/get-defense-industrial-base?country_code=${encodeURIComponent(countryCode)}&public=1`;
       const response = await fetch(url, {
-        headers: { 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        headers: buildMcpDownstreamHeaders(base, execution, {
+          'User-Agent': 'worldmonitor-mcp-edge/1.0',
+        }),
         signal: AbortSignal.timeout(8_000),
       });
       await assertMcpToolFetchOk(response, {

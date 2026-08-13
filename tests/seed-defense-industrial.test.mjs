@@ -5,7 +5,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  buildDefenseIndustrialSnapshot,
+  buildArmsSupplierCompletion,
+  buildSipriSupplierSnapshot,
+  buildWorldBankIndustrialSnapshot,
   fetchSipriSupplierDependencies,
   mapSipriEntityToIso2,
   parseSipriSupplierCsv,
@@ -69,38 +71,58 @@ describe('defense-industrial source parsing', () => {
     );
   });
 
-  it('keeps WB data publishable when the SIPRI stage fails', async () => {
-    const snapshot = await buildDefenseIndustrialSnapshot({
+  it('builds the World Bank snapshot without waiting on SIPRI', async () => {
+    const snapshot = await buildWorldBankIndustrialSnapshot({
       fetchWorldBank: async () => ({
         expenditurePctGdp: { UA: { value: 34.5, year: 2024, source: 'World Bank' } },
       }),
-      fetchSipri: async () => { throw new Error('portal unavailable'); },
-      logger: { log() {}, warn() {} },
+      now: () => new Date('2026-08-13T00:00:00.000Z'),
     });
 
     assert.equal(snapshot.countries.UA.expenditurePctGdp.value, 34.5);
-    assert.deepEqual(snapshot.suppliers, {});
-    assert.equal(snapshot.stages.worldBank.status, 'ok');
-    assert.equal(snapshot.stages.sipri.status, 'error');
+    assert.equal(snapshot.stage.status, 'ok');
+    assert.equal(snapshot.fetchedAt, '2026-08-13T00:00:00.000Z');
   });
 
-  it('keeps last-good importer rows when another importer request fails', async () => {
-    const previous = { CL: { suppliers: [{ supplierIso2: 'US', tivShare: 1 }] } };
-    const snapshot = await buildDefenseIndustrialSnapshot({
-      fetchWorldBank: async () => ({ expenditurePctGdp: { UA: { value: 34.5, year: 2024, source: 'World Bank' } } }),
+  it('keeps the original timestamp when a failed importer uses its last-good row', async () => {
+    const previousSnapshot = {
+      fetchedAt: '2026-07-01T00:00:00.000Z',
+      importers: { CL: { suppliers: [{ supplierIso2: 'US', tivShare: 1 }] } },
+    };
+    const snapshot = await buildSipriSupplierSnapshot({
       fetchSipri: async () => ({
         importers: { UA: { suppliers: [{ supplierIso2: 'US', tivShare: 0.8 }] } },
         failedImporters: [{ iso2: 'CL', message: 'timeout' }],
         windowEndYear: 2025,
       }),
-      previousSuppliers: previous,
-      logger: { log() {}, warn() {} },
+      previousSnapshot,
+      minimumCompleteImporterCount: 1,
+      now: () => new Date('2026-08-13T00:00:00.000Z'),
     });
 
-    assert.deepEqual(snapshot.suppliers.CL, previous.CL);
-    assert.equal(snapshot.stages.sipri.status, 'partial');
-    assert.equal(snapshot.stages.sipri.failedImporterCount, 1);
-    assert.equal(snapshot.stages.sipri.preservedImporterCount, 1);
+    assert.equal(snapshot.importers.UA.fetchedAt, '2026-08-13T00:00:00.000Z');
+    assert.equal(snapshot.importers.UA.retained, false);
+    assert.equal(snapshot.importers.CL.fetchedAt, '2026-07-01T00:00:00.000Z');
+    assert.equal(snapshot.importers.CL.retained, true);
+    assert.equal(snapshot.stage.status, 'partial');
+    assert.equal(snapshot.stage.failedImporterCount, 1);
+    assert.equal(snapshot.stage.preservedImporterCount, 1);
+    assert.deepEqual(buildArmsSupplierCompletion(snapshot), {});
+  });
+
+  it('rejects an all-empty complete SIPRI cohort and does not create a completion marker', async () => {
+    await assert.rejects(
+      () => buildSipriSupplierSnapshot({
+        fetchSipri: async () => ({ importers: {}, failedImporters: [], windowEndYear: 2025 }),
+        minimumCompleteImporterCount: 1,
+      }),
+      /returned only 0 positive importer rows/,
+    );
+
+    assert.deepEqual(buildArmsSupplierCompletion({
+      fetchedAt: '2026-08-13T00:00:00.000Z',
+      stage: { status: 'error', windowEndYear: 2025 },
+    }), {});
   });
 });
 
@@ -111,18 +133,22 @@ describe('defense-industrial deployment wiring', () => {
     const registry = JSON.parse(readFileSync(join(root, 'scripts/railway-services.json'), 'utf8'));
     const service = registry.find((entry) => entry.service === 'seed-bundle-static-ref');
 
+    assert.match(bundle, /label:\s*'Arms-Suppliers'/);
+    assert.match(bundle, /script:\s*'seed-defense-industrial-suppliers\.mjs'/);
+    assert.match(bundle, /timeoutMs:\s*450_000/);
     assert.match(bundle, /label:\s*'Defense-Industrial'/);
     assert.match(bundle, /script:\s*'seed-defense-industrial\.mjs'/);
     assert.match(bundle, /seedMetaKey:\s*'military:arms-suppliers-complete'/);
     assert.match(bundle, /canonicalKey:\s*'military:arms-suppliers:complete:v1'/);
     assert.match(bundle, /intervalMs:\s*10 \* DAY/);
-    assert.match(bundle, /timeoutMs:\s*1_200_000/);
+    assert.match(bundle, /maxBundleMs:\s*570_000/);
     assert.ok(service.watchPatterns.includes('scripts/_defense-industrial-source.mjs'));
     assert.ok(service.watchPatterns.includes('scripts/seed-defense-industrial.mjs'));
-    const seeder = readFileSync(join(root, 'scripts/seed-defense-industrial.mjs'), 'utf8');
-    assert.match(seeder, /WB_DEFENSE_INDICATORS\.map/);
-    assert.match(seeder, /metaExtra:\s*supplierContentMeta/);
-    assert.match(seeder, /sourceState:\s*data\.stage\?\.status/);
-    assert.match(seeder, /maxContentAgeMin:\s*800 \* 24 \* 60/);
+    assert.ok(service.watchPatterns.includes('scripts/seed-defense-industrial-suppliers.mjs'));
+    assert.equal(service.cronSchedule, '0 3 * * *');
+    const supplierSeeder = readFileSync(join(root, 'scripts/seed-defense-industrial-suppliers.mjs'), 'utf8');
+    assert.match(supplierSeeder, /contentMeta:\s*supplierContentMeta/);
+    assert.match(supplierSeeder, /transform:\s*buildArmsSupplierCompletion/);
+    assert.match(supplierSeeder, /maxContentAgeMin:\s*800 \* 24 \* 60/);
   });
 });

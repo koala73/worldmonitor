@@ -41,5 +41,10 @@ message GetDefenseIndustrialBaseResponse {
   int32 window_start_year = 10;
   int32 window_end_year = 11;
   string supplier_source = 12;
+  // Oldest timestamp among the source values served. Kept for compatibility.
   string fetched_at = 13;
+  string industrial_fetched_at = 14;
+  string supplier_fetched_at = 15;
+  bool supplier_retained = 16;
+  double supplier_mapping_coverage = 17;
 }

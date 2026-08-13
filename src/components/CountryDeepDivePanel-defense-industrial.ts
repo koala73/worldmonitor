@@ -30,6 +30,9 @@ export function renderDefenseIndustrialSection(
   const concentration = data.suppliers.length > 0
     ? data.supplierHhi.toFixed(2)
     : t('countryBrief.defenseIndustrial.unavailable');
+  const coverage = data.suppliers.length > 0
+    ? `${(data.supplierMappingCoverage * 100).toFixed(1)}%`
+    : t('countryBrief.defenseIndustrial.unavailable');
   metrics.append(
     makeMetric(t('countryBrief.defenseIndustrial.expenditure'), expenditure, 'cdp-chip-neutral'),
     makeMetric(t('countryBrief.defenseIndustrial.personnel'), personnel, 'cdp-chip-neutral'),
@@ -39,6 +42,7 @@ export function renderDefenseIndustrialSection(
       concentration,
       data.supplierHhi >= 0.5 ? 'cdp-chip-danger' : 'cdp-chip-neutral',
     ),
+    makeMetric(t('countryBrief.defenseIndustrial.coverage'), coverage, 'cdp-chip-neutral'),
   );
   section.append(metrics);
 
@@ -57,6 +61,9 @@ export function renderDefenseIndustrialSection(
       list.append(row);
     }
     section.append(list);
+    if (data.supplierRetained) {
+      section.append(el('div', 'cdp-economic-source', t('countryBrief.defenseIndustrial.supplierRetained')));
+    }
   }
 
   section.append(el('div', 'cdp-economic-source', t(defenseIndustrialSourceKey(data))));

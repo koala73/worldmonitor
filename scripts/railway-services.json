@@ -769,12 +769,14 @@
       "scripts/seed-chokepoint-baselines.mjs",
       "scripts/seed-defense-patents.mjs",
       "scripts/seed-defense-industrial.mjs",
+      "scripts/seed-defense-industrial-suppliers.mjs",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/seed-military-bases.mjs",
       "scripts/seed-submarine-cables.mjs"
     ],
+    "cronSchedule": "0 3 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-3-seed-bundle-static-ref"
   },
   {

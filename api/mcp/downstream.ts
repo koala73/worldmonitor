@@ -117,6 +117,30 @@ export function createMcpToolExecutionContext(requestUrl: string): McpToolExecut
   };
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+export function buildMcpDownstreamHeaders(
+  targetOrigin: string,
+  execution: McpToolExecutionContext | undefined,
+  headers: Record<string, string>,
+): Record<string, string> {
+  if (execution?.inboundHostClass !== 'local') return headers;
+  let target: URL;
+  let expected: URL;
+  try {
+    target = new URL(targetOrigin);
+    expected = new URL(execution.downstreamOrigin);
+  } catch {
+    return headers;
+  }
+  if (target.origin !== expected.origin || !isLoopbackHostname(target.hostname)) return headers;
+  const token = process.env.LOCAL_API_TOKEN?.trim();
+  if (!token) return headers;
+  return { ...headers, 'X-WorldMonitor-Local-Token': token };
+}
+
 function contentType(response: ToolFetchResponse): string {
   return (response.headers?.get('Content-Type') ?? '').toLowerCase();
 }

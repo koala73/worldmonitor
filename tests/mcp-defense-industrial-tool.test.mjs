@@ -35,6 +35,10 @@ const canonicalResponse = {
   windowEndYear: 2025,
   supplierSource: 'SIPRI Arms Transfers Database',
   fetchedAt: '2026-08-12T00:00:00.000Z',
+  industrialFetchedAt: '2026-08-12T00:00:00.000Z',
+  supplierFetchedAt: '2026-08-12T00:00:00.000Z',
+  supplierRetained: false,
+  supplierMappingCoverage: 0.97,
 };
 
 describe('get_defense_industrial_base MCP tool', () => {
@@ -78,6 +82,7 @@ describe('get_defense_industrial_base MCP tool', () => {
     assert.equal(tool.outputSchema.properties.expenditurePctGdp.properties.year.type, 'integer');
     assert.equal(tool.outputSchema.properties.suppliers.items.properties.tivShare.maximum, 1);
     assert.equal(tool.outputSchema.properties.supplierHhi.maximum, 1);
+    assert.equal(tool.outputSchema.properties.supplierMappingCoverage.maximum, 1);
 
     const { deps } = makeProDeps();
     const response = await mcpHandler(
@@ -93,5 +98,22 @@ describe('get_defense_industrial_base MCP tool', () => {
     assert.equal(requestUrl.searchParams.get('public'), '1');
     assert.equal(requests[0].init.headers['X-WM-MCP-Internal'], undefined);
     assert.deepEqual(JSON.parse(body.result.content[0].text), canonicalResponse);
+  });
+
+  it('authenticates only a local loopback self-fetch with the sidecar token', async () => {
+    process.env.LOCAL_API_TOKEN = 'local-sidecar-token';
+    const { deps } = makeProDeps();
+    const response = await mcpHandler(new Request('http://127.0.0.1:43123/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer pro-bearer-uuid',
+      },
+      body: JSON.stringify(callBody('get_defense_industrial_base', { country_code: 'UA' })),
+    }), deps);
+
+    assert.equal(response.status, 200);
+    assert.equal(new URL(requests[0].url).origin, 'http://127.0.0.1:43123');
+    assert.equal(requests[0].init.headers['X-WorldMonitor-Local-Token'], 'local-sidecar-token');
   });
 });

@@ -16,6 +16,8 @@ export const WB_DEFENSE_INDICATORS = Object.freeze([
 
 const DEFAULT_SIPRI_BASE_URL = 'https://atbackend.sipri.org/api/p';
 const SOURCE = 'SIPRI Arms Transfers Database';
+export const DEFENSE_INDUSTRIAL_TTL_SECONDS = 30 * 24 * 3600;
+export const MIN_COMPLETE_SIPRI_IMPORTER_COUNT = 25;
 
 function round4(value) {
   return Math.round(value * 10_000) / 10_000;
@@ -270,55 +272,70 @@ export async function fetchSipriSupplierDependencies({
   return { importers: output, failedImporters, windowEndYear: maxYear };
 }
 
-export async function buildDefenseIndustrialSnapshot({
+export async function buildWorldBankIndustrialSnapshot({
   fetchWorldBank = fetchWorldBankDefense,
-  fetchSipri = fetchSipriSupplierDependencies,
-  previousSuppliers = {},
-  logger = console,
+  now = () => new Date(),
 } = {}) {
-  const supplierPromise = fetchSipri()
-    .then((result) => {
-      // Preserve backward compatibility for injected test fetchers that return
-      // the importer map directly.
-      const fetched = result?.importers || result || {};
-      const failures = Array.isArray(result?.failedImporters) ? result.failedImporters : [];
-      const suppliers = { ...fetched };
-      let preservedImporterCount = 0;
-      for (const failure of failures) {
-        if (previousSuppliers?.[failure.iso2]) {
-          suppliers[failure.iso2] = previousSuppliers[failure.iso2];
-          preservedImporterCount += 1;
-        }
-      }
-      return {
-        suppliers,
-        stage: {
-          status: failures.length > 0 ? 'partial' : 'ok',
-          importerCount: Object.keys(fetched).length,
-          failedImporterCount: failures.length,
-          preservedImporterCount,
-          windowEndYear: Number(result?.windowEndYear) || 0,
-        },
-      };
-    })
-    .catch((error) => {
-      logger.warn(`  SIPRI stage failed; WB data remains publishable: ${error?.message || error}`);
-      return {
-        suppliers: {},
-        stage: { status: 'error', importerCount: 0, error: String(error?.message || error).slice(0, 200) },
-      };
-    });
   const indicatorData = await fetchWorldBank();
   const countries = mergeWorldBankIndicators(indicatorData);
-  const { suppliers, stage: sipri } = await supplierPromise;
-  const stages = {
-    worldBank: { status: 'ok', countryCount: Object.keys(countries).length },
-    sipri,
-  };
   return {
     countries,
-    suppliers,
-    stages,
-    fetchedAt: new Date().toISOString(),
+    stage: { status: 'ok', countryCount: Object.keys(countries).length },
+    fetchedAt: now().toISOString(),
   };
+}
+
+export async function buildSipriSupplierSnapshot({
+  fetchSipri = fetchSipriSupplierDependencies,
+  previousSnapshot = {},
+  minimumCompleteImporterCount = MIN_COMPLETE_SIPRI_IMPORTER_COUNT,
+  now = () => new Date(),
+} = {}) {
+  const result = await fetchSipri();
+  // Preserve compatibility for injected test fetchers that return the importer
+  // map directly, while production returns stage diagnostics alongside it.
+  const fetched = result?.importers || result || {};
+  const failures = Array.isArray(result?.failedImporters) ? result.failedImporters : [];
+  const fetchedAt = now().toISOString();
+  const fetchedImporterCount = Object.keys(fetched).length;
+  if (failures.length === 0 && fetchedImporterCount < minimumCompleteImporterCount) {
+    throw new Error(
+      `SIPRI complete refresh returned only ${fetchedImporterCount} positive importer rows; `
+      + `minimum is ${minimumCompleteImporterCount}`,
+    );
+  }
+
+  const importers = Object.fromEntries(Object.entries(fetched).map(([iso2, dependency]) => [
+    iso2,
+    { ...dependency, fetchedAt, retained: false },
+  ]));
+  let preservedImporterCount = 0;
+  for (const failure of failures) {
+    const previous = previousSnapshot?.importers?.[failure.iso2];
+    if (!previous) continue;
+    importers[failure.iso2] = {
+      ...previous,
+      fetchedAt: previous.fetchedAt || previousSnapshot.fetchedAt || '',
+      retained: true,
+    };
+    preservedImporterCount += 1;
+  }
+
+  return {
+    importers,
+    stage: {
+      status: failures.length > 0 ? 'partial' : 'ok',
+      importerCount: fetchedImporterCount,
+      failedImporterCount: failures.length,
+      preservedImporterCount,
+      windowEndYear: Number(result?.windowEndYear) || 0,
+    },
+    fetchedAt,
+  };
+}
+
+export function buildArmsSupplierCompletion(data) {
+  return data?.stage?.status === 'ok'
+    ? { completedAt: data.fetchedAt, windowEndYear: data.stage.windowEndYear }
+    : {};
 }

@@ -2590,6 +2590,16 @@ components:
                     type: string
                 fetchedAt:
                     type: string
+                    description: Oldest timestamp among the source values served. Kept for compatibility.
+                industrialFetchedAt:
+                    type: string
+                supplierFetchedAt:
+                    type: string
+                supplierRetained:
+                    type: boolean
+                supplierMappingCoverage:
+                    type: number
+                    format: double
         DefenseIndustrialMetric:
             type: object
             properties:

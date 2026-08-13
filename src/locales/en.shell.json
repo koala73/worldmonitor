@@ -389,7 +389,9 @@
       "personnel": "Personnel",
       "armsImports": "Arms imports",
       "concentration": "Supplier HHI",
+      "coverage": "Mapped coverage",
       "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh.",
       "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
       "sourceWorldBank": "Source: World Bank.",
       "unavailable": "Not available"

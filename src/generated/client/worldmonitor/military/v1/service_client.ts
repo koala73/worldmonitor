@@ -314,6 +314,10 @@ export interface GetDefenseIndustrialBaseResponse {
   windowEndYear: number;
   supplierSource: string;
   fetchedAt: string;
+  industrialFetchedAt: string;
+  supplierFetchedAt: string;
+  supplierRetained: boolean;
+  supplierMappingCoverage: number;
 }
 
 export interface DefenseIndustrialMetric {

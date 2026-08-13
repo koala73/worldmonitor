@@ -686,7 +686,8 @@ dependency?” TIV is a transfer-volume indicator, not a financial value.
 
 - **API endpoint:** `GET /api/military/v1/get-defense-industrial-base`
 - **Kind:** live RPC backed by two annual Redis snapshots.
-- **Freshness:** seeder liveness alarms after 28 days; the source observation year is checked separately against the annual content-age budget.
+- **Freshness:** `industrialFetchedAt` and `supplierFetchedAt` report the two source clocks separately. `supplierRetained` identifies an importer row preserved after a partial SIPRI failure; `fetchedAt` is the older clock among the values served. Seeder liveness alarms after 28 days, and source observation years are checked separately against the annual content-age budget.
+- **Mapping:** `supplierMappingCoverage` reports the share of positive supplier TIV mapped to ISO2 suppliers. Supplier shares and HHI keep unmapped positive TIV in the denominator.
 - **Licensing:** the response contains derived SIPRI aggregates only and identifies SIPRI as the source. It does not reproduce the full database.
 
 ```bash curl
