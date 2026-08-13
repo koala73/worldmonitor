@@ -36,6 +36,10 @@ const SNAPSHOT_DIR = path.join(REPO_ROOT, 'docs', 'snapshots');
 
 loadEnvFile(import.meta.url);
 
+function round2(value) {
+  return Math.round(value * 100) / 100;
+}
+
 // Scoring and acceptance gates run over the FULL scorable universe
 // (listScorableCountries() from _shared.ts) — no curated SAMPLE is
 // used. Earlier revisions computed drift / Spearman / cohort / pair
