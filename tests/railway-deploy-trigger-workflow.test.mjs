@@ -95,11 +95,9 @@ describe('Railway deploy trigger lease-aware workflow', () => {
     assert.match(stepNamed('mutation', 'Trigger lease-fenced deploys for the exact green head').run, /--recovery-attempt-id/);
   });
 
-  it('preserves event-driven reconciliation with only an hourly offset backstop', () => {
-    assert.deepEqual(workflow.on?.workflow_run?.workflows, ['Deploy Gate']);
-    assert.deepEqual(workflow.on?.workflow_run?.types, ['completed']);
-    assert.deepEqual(workflow.on?.workflow_run?.branches, ['main']);
-    assert.deepEqual(workflow.on?.schedule, [{ cron: '37 * * * *' }]);
+  it('uses one bounded offset schedule without repository-wide workflow fan-out', () => {
+    assert.equal(Object.hasOwn(workflow.on, 'workflow_run'), false);
+    assert.deepEqual(workflow.on?.schedule, [{ cron: '7,17,27,37,47,57 * * * *' }]);
     const freshness = YAML.parse(readFileSync(
       resolve(repoRoot, '.github/workflows/seed-freshness-monitor.yml'),
       'utf8',
@@ -110,7 +108,9 @@ describe('Railway deploy trigger lease-aware workflow', () => {
       if (step) return Array.from({ length: 60 / Number(step[1]) }, (_, index) => index * Number(step[1]));
       return minute.split(',').map(Number);
     }));
-    assert.equal(freshnessMinutes.has(37), false);
+    const reconcileMinutes = workflow.on.schedule[0].cron.split(' ')[0].split(',').map(Number);
+    assert.equal(reconcileMinutes.length, 6);
+    assert.deepEqual(reconcileMinutes.filter((minute) => freshnessMinutes.has(minute)), []);
   });
 
   it('keeps dry-run isolated, explicit, read-only, and lease-free', () => {

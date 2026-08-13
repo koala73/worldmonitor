@@ -50,22 +50,18 @@ export const RECONCILE_STEP_NAMES = Object.freeze([
 
 export const DEFAULT_WORKFLOW_FILE = 'railway-deploy-trigger.yml';
 
-// Sized against the workflow's own backstop, not against a fixture. The cron
-// there is hourly and is deliberately the SLOW path — the event trigger is
-// what normally reconciles. One missed hour is ordinary (a young head commit
-// whose gate has not resolved defers the run on purpose); three consecutive
-// hours with nothing reconciling means neither the event nor the backstop is
-// working, which is exactly the state that stranded the fleet for 19.5h.
+// Sized against the workflow's bounded ten-minute schedule, not against a
+// fixture. A young head whose gate has not resolved can defer several ticks on
+// purpose; three hours still gives the scheduler 18 chances to produce one
+// strict acceptance before liveness alarms.
 export const DEFAULT_MAX_RECONCILE_AGE_MS = 3 * 60 * 60 * 1000;
 
 // The listing is bounded by TIME, never by a run count.
 //
-// A count was the original design and it was unusable: this workflow is woken
-// by every Deploy Gate evaluation in the repository — measured at ~33/hour —
-// so the newest 30 runs span under an hour and can never reach back past a
-// three-hour threshold. STALE became unreachable and the alarm degraded to a
-// permanent shrug. A count cannot be raised out of the problem either, because
-// the API caps per_page at 100 and 100 runs is still only ~3h at that rate.
+// A count was the original design and it was unusable while every Deploy Gate
+// evaluation woke this workflow — measured at ~33/hour. Keep the time contract
+// even after moving to a bounded cadence: it makes the liveness decision
+// independent of delayed or dropped scheduler ticks.
 //
 // With a `created:>=` filter the window spans the threshold BY CONSTRUCTION,
 // which also collapses the old three-state result into two: if no run inside
@@ -159,7 +155,7 @@ export function describeReconcileSummary(summary) {
       : `Fleet last reconciled ${hours(summary.ageMs)}h ago (run ${summary.runId}).`;
   }
   return summary.inspected === 0
-    ? `The fleet has not been reconciled in ${hours(summary.maxAgeMs)}h: this workflow produced NO completed run in that window at all. Neither the Deploy Gate event nor the hourly backstop is firing.`
+    ? `The fleet has not been reconciled in ${hours(summary.maxAgeMs)}h: this workflow produced NO completed run in that window at all. The bounded reconciliation schedule is not firing.`
     : `The fleet has not been reconciled in ${hours(summary.maxAgeMs)}h. ${summary.inspected} run(s) completed in that window and none of them deployed.`;
 }
 
