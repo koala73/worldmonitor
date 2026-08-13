@@ -1,6 +1,6 @@
 ---
 title: "Cmd+K: Search Everything on the Planet in Under a Second"
-description: "Fuzzy-search 195 countries, 56 map layers, and 150+ commands with World Monitor's Cmd+K palette. Multilingual, keyboard-driven intelligence access."
+description: "Fuzzy-search 195 countries, 57 map layers, and 150+ commands with World Monitor's Cmd+K palette. Multilingual, keyboard-driven intelligence access."
 metaTitle: "Cmd+K Intelligence Search Palette | World Monitor"
 keywords: "intelligence dashboard search, command palette dashboard, OSINT search tool, fast country intelligence lookup, keyboard-driven intelligence"
 audience: "Power users, analysts, developers, keyboard-first professionals"

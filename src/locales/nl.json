@@ -186,7 +186,8 @@
         "displacement": "Verplaatsingsstromen in-/uitschakelen",
         "climate": "Klimaatanomalieën in-/uitschakelen",
         "outages": "Internetstoringen in-/uitschakelen",
-        "tradeRoutes": "Handelsroutes in-/uitschakelen"
+        "tradeRoutes": "Handelsroutes in-/uitschakelen",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Naar donkere modus",
@@ -590,7 +591,8 @@
         "speciesRecovery": "Soortenherstel",
         "renewableInstallations": "Schone energie",
         "radiationSpike": "Stralingspiek",
-        "radiationElevated": "Verhoogde straling"
+        "radiationElevated": "Verhoogde straling",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Lagen",
       "layerSearch": "Lagen zoeken...",
@@ -703,7 +705,8 @@
           "techEvents": "Grote techconferenties en evenementen",
           "techFires": "Actieve bosbranden nabij technische infrastructuur",
           "geoBoundaries": "Gedemilitariseerde zones, staakt-het-vuren-lijnen en betwiste grenzen",
-          "ciiChoropleth": "Country Instability Index heatmap — kleurt landen op basis van CII-score (groen=stabiel, rood=kritiek)"
+          "ciiChoropleth": "Country Instability Index heatmap — kleurt landen op basis van CII-score (groen=stabiel, rood=kritiek)",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"

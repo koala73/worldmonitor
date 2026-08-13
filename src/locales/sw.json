@@ -555,7 +555,8 @@
         "displacement": "Geuza mtiririko wa uhamishaji",
         "climate": "Geuza hitilafu za hali ya hewa",
         "outages": "Geuza kukatika kwa mtandao",
-        "tradeRoutes": "Geuza njia za biashara"
+        "tradeRoutes": "Geuza njia za biashara",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Badili hadi hali ya giza",
@@ -1338,7 +1339,8 @@
         "kindness": "Matendo ya Fadhili",
         "happiness": "Furaha ya Dunia",
         "speciesRecovery": "Urejeshaji wa Aina",
-        "renewableInstallations": "Nishati Safi"
+        "renewableInstallations": "Nishati Safi",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Tetemeko la ardhi",
@@ -1444,7 +1446,8 @@
           "tradeRoutes": "Njia kuu za kimataifa za meli zinazounganisha bandari kupitia sehemu za kimkakati za chokepoints",
           "dayNight": "Kidhibiti cha wakati halisi cha jua kinachoonyesha maeneo ya mchana na usiku",
           "geoBoundaries": "Maeneo yasiyoruhusiwa kijeshi, njia za kusitisha mapigano, na mipaka yenye mizozo",
-          "ciiChoropleth": "Ramani ya joto ya Fahirisi ya Nchi Kutoimarika - rangi nchi kwa alama za CII (kijani=imara, nyekundu=muhimu)"
+          "ciiChoropleth": "Ramani ya joto ya Fahirisi ya Nchi Kutoimarika - rangi nchi kwa alama za CII (kijani=imara, nyekundu=muhimu)",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Athari: Matetemeko ya Ardhi, Hali ya Hewa, Maandamano, Kukatika"

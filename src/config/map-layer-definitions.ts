@@ -77,6 +77,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   displacement:             def('displacement',             '&#128101;', 'displacementFlows',        'Displacement Flows'),
   climate:                  def('climate',                  '&#127787;', 'climateAnomalies',         'Climate Anomalies'),
   weather:                  def('weather',                  '&#9928;',   'weatherAlerts',            'US Weather Alerts (NWS)'),
+  canadaAlerts:             def('canadaAlerts',             '&#9888;',   'canadaAlerts',             'Canada Alerts (Alberta Emergency Alert)', ['flat'], undefined, true),
   outages:                  def('outages',                  '&#128225;', 'internetOutages',          'Internet Disruptions'),
   cyberThreats:             def('cyberThreats',             '&#128737;', 'cyberThreats',             'Cyber Threats'),
   natural:                  def('natural',                  '&#127755;', 'naturalEvents',            'Natural Events'),
@@ -129,6 +130,7 @@ export const V1_LAYER_EXPLANATION_KEYS = [
   'ciiChoropleth',
   'natural',
   'weather',
+  'canadaAlerts',
   'flights',
   'ais',
   'waterways',
@@ -212,6 +214,22 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     ],
     related: ['Natural Events layer', 'Weather alert popups', 'Data freshness status'],
     evidence: ['scripts/ais-relay.cjs', 'api/health.js', 'src/services/weather.ts'],
+  },
+  canadaAlerts: {
+    key: 'canadaAlerts',
+    coverage: 'curated',
+    category: 'Emergency Alerts',
+    purpose: 'Shows active Alberta Emergency Alert warnings as map dots so analysts can see provincial public-safety alerts alongside US NWS weather.',
+    source: 'Alberta Emergency Alert full Atom feed (www.alberta.ca/data/aea/rss/feed-full.atom), seeded through seed-alberta-emergency-alert. CAP area polygons become centroids; records without geometry use the Alberta province centroid.',
+    freshness: 'Alberta Emergency Alert is seeded every 15 minutes and monitored against a 45-minute freshness budget. An empty feed (no active alerts) is a valid zero-record success.',
+    confidence: 'Authoritative for alerts published by Alberta Emergency Alert, subject to upstream publication timing and mapped alert geometry.',
+    limitations: [
+      'Alberta Emergency Alert only in this slice; other provinces are a follow-up and must share the canadaAlerts layer key.',
+      'Does not replace US NWS weather alerts or Ontario/Toronto road layers.',
+      'Entries without a mappable severity (CAP severity/category/urgency or Alberta colour/level in the title) are dropped rather than invented.',
+    ],
+    related: ['US Weather Alerts (NWS)', 'Natural Events layer', 'Data freshness status'],
+    evidence: ['scripts/seed-alberta-emergency-alert.mjs', 'api/health.js', 'src/services/canada-alerts.ts'],
   },
   flights: {
     key: 'flights',
@@ -311,7 +329,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'bases', 'nuclear', 'irradiators', 'radiationWatch', 'spaceports',
     'cables', 'pipelines', 'storageFacilities', 'fuelShortages', 'datacenters', 'military',
     'ais', 'tradeRoutes', 'flights', 'protests',
-    'ucdpEvents', 'displacement', 'climate', 'weather',
+    'ucdpEvents', 'displacement', 'climate', 'weather', 'canadaAlerts',
     'outages', 'cyberThreats', 'natural', 'fires',
     'waterways', 'economic', 'minerals', 'gpsJamming',
     'satellites', 'ciiChoropleth', 'resilienceScore', 'sanctions', 'dayNight', 'webcams',
@@ -325,7 +343,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
   finance: [
     'stockExchanges', 'financialCenters', 'centralBanks', 'commodityHubs',
     'gulfInvestments', 'tradeRoutes', 'cables', 'pipelines',
-    'outages', 'weather', 'economic', 'waterways',
+    'outages', 'weather', 'canadaAlerts', 'economic', 'waterways',
     'resilienceScore', 'natural', 'cyberThreats', 'sanctions', 'dayNight',
   ],
   happy: [
@@ -336,14 +354,14 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'miningSites', 'processingPlants', 'commodityPorts', 'commodityHubs',
     'minerals', 'pipelines', 'waterways', 'tradeRoutes',
     'ais', 'economic', 'fires', 'climate',
-    'resilienceScore', 'natural', 'weather', 'outages', 'sanctions', 'dayNight',
+    'resilienceScore', 'natural', 'weather', 'canadaAlerts', 'outages', 'sanctions', 'dayNight',
   ],
   energy: [
     // Core energy infrastructure — mirror of ENERGY_MAP_LAYERS in panels.ts
     'pipelines', 'storageFacilities', 'fuelShortages', 'waterways', 'commodityPorts', 'commodityHubs',
     'ais', 'liveTankers', 'tradeRoutes', 'minerals',
     // Energy-adjacent context
-    'sanctions', 'fires', 'climate', 'weather', 'outages', 'natural',
+    'sanctions', 'fires', 'climate', 'weather', 'canadaAlerts', 'outages', 'natural',
     'resilienceScore', 'dayNight',
   ],
 };
@@ -591,6 +609,8 @@ export const LAYER_SYNONYMS: Record<string, Array<keyof MapLayers>> = {
   typhoon: ['weather', 'natural'],
   cyclone: ['weather', 'natural'],
   flood: ['weather', 'natural'],
+  alberta: ['canadaAlerts'],
+  aea: ['canadaAlerts'],
   wildfire: ['fires'],
   forest: ['fires'],
   refugee: ['displacement'],

@@ -19,6 +19,7 @@ export const REFRESH_INTERVALS = {
   pizzint: 10 * 60 * 1000,
   natural: 60 * 60 * 1000,
   weather: 10 * 60 * 1000,
+  canadaAlerts: 10 * 60 * 1000,
   fred: 6 * 60 * 60 * 1000,
   oil: 6 * 60 * 60 * 1000,
   spending: 6 * 60 * 60 * 1000,

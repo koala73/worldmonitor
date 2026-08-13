@@ -545,7 +545,8 @@
         "displacement": "स्थानीय निकासी दिखाएं/छुपाएं",
         "climate": "जलवायु असामान्यताएं चालू/बंद करें",
         "outages": "इंटरनेट बंद दिखाएं/छुपाएं",
-        "tradeRoutes": "व्यापार मार्ग चालू/बंद करें"
+        "tradeRoutes": "व्यापार मार्ग चालू/बंद करें",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "डार्क मोड पर जाएं",
@@ -1328,7 +1329,8 @@
         "kindness": "दयालुता के कार्य",
         "happiness": "विश्व खुशी",
         "speciesRecovery": "प्रजाति पुनर्प्राप्ति",
-        "renewableInstallations": "स्वच्छ ऊर्जा"
+        "renewableInstallations": "स्वच्छ ऊर्जा",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "भूकंप",
@@ -1434,7 +1436,8 @@
           "tradeRoutes": "रणनीतिक संकरे बिंदुओं से होते हुए बंदरगाहों को जोड़ने वाले प्रमुख वैश्विक शिपिंग मार्ग",
           "dayNight": "वास्तविक समय सूरज की रोशनी और अंधेरा क्षेत्र",
           "geoBoundaries": "विसैन्यीकृत क्षेत्र, युद्धविराम रेखाएं और विवादित सीमाएं",
-          "ciiChoropleth": "देश अस्थिरता सूचकांक हीटमैप — CII स्कोर के अनुसार देशों को रंगों में दर्शाता है (हरा=स्थिर, लाल=गंभीर)"
+          "ciiChoropleth": "देश अस्थिरता सूचकांक हीटमैप — CII स्कोर के अनुसार देशों को रंगों में दर्शाता है (हरा=स्थिर, लाल=गंभीर)",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "प्रभाव: भूकंप, मौसम, प्रदर्शन, व्यवधान"

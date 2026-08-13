@@ -476,7 +476,8 @@
         "displacement": "Εναλλαγή ροών εκτοπισμένων",
         "climate": "Εναλλαγή κλιματικών ανωμαλιών",
         "outages": "Εναλλαγή διακοπών ίντερνετ",
-        "tradeRoutes": "Εναλλαγή εμπορικών δρόμων"
+        "tradeRoutes": "Εναλλαγή εμπορικών δρόμων",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Μετάβαση σε σκοτεινή λειτουργία",
@@ -1187,7 +1188,8 @@
         "speciesRecovery": "Ανάκαμψη ειδών",
         "renewableInstallations": "Καθαρή ενέργεια",
         "radiationSpike": "Αιχμή ραδιενέργειας",
-        "radiationElevated": "Αυξημένη ραδιενέργεια"
+        "radiationElevated": "Αυξημένη ραδιενέργεια",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Σεισμός",
@@ -1293,7 +1295,8 @@
           "tradeRoutes": "Κύριες παγκόσμιες ναυτιλιακές γραμμές που συνδέουν λιμάνια μέσω στρατηγικών σημείων",
           "dayNight": "Ηλιακός τερματισμός σε πραγματικό χρόνο που δείχνει ζώνες ημέρας και νύχτας",
           "geoBoundaries": "Αποστρατικοποιημένες ζώνες, γραμμές εκεχειρίας και αμφισβητούμενα σύνορα",
-          "ciiChoropleth": "Θερμικός χάρτης αστάθειας χωρών — χρωματισμός κατά CII (πράσινο=σταθερό, κόκκινο=κρίσιμο)"
+          "ciiChoropleth": "Θερμικός χάρτης αστάθειας χωρών — χρωματισμός κατά CII (πράσινο=σταθερό, κόκκινο=κρίσιμο)",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Επηρεάζει: Σεισμούς, Καιρό, Διαμαρτυρίες, Διακοπές"

@@ -478,7 +478,8 @@
         "displacement": "Comutați fluxurile de deplasare",
         "climate": "Comutați anomaliile climatice",
         "outages": "Comutați întreruperile de internet",
-        "tradeRoutes": "Comutați rutele comerciale"
+        "tradeRoutes": "Comutați rutele comerciale",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Comutați în mod întunecat",
@@ -1189,7 +1190,8 @@
         "speciesRecovery": "Recuperarea speciilor",
         "renewableInstallations": "Energie curată",
         "radiationSpike": "Vârf de radiații",
-        "radiationElevated": "Radiații ridicate"
+        "radiationElevated": "Radiații ridicate",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Cutremur",
@@ -1295,7 +1297,8 @@
           "tradeRoutes": "Principalele linii maritime globale care conectează porturile prin puncte strategice de blocare",
           "dayNight": "Terminator solar în timp real care arată zonele de zi și de noapte",
           "geoBoundaries": "Zone demilitarizate, linii de încetare a focului și granițe disputate",
-          "ciiChoropleth": "Harta termică a instabilității — colorează țările după scorul CII (verde=stabil, roșu=critic)"
+          "ciiChoropleth": "Harta termică a instabilității — colorează țările după scorul CII (verde=stabil, roșu=critic)",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Afectează: cutremure, vreme, proteste, întreruperi"

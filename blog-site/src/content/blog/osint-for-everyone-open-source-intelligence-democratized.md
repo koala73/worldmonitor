@@ -1,6 +1,6 @@
 ---
 title: "OSINT for Everyone: Open Source Intelligence with World Monitor"
-description: "World Monitor brings professional-grade OSINT to everyone. 500+ feeds, live tracking, AI threat analysis, and 56 map layers in one free open source dashboard."
+description: "World Monitor brings professional-grade OSINT to everyone. 500+ feeds, live tracking, AI threat analysis, and 57 map layers in one free open source dashboard."
 metaTitle: "OSINT for Everyone: Free Intelligence Dashboard"
 keywords: "OSINT tools free, open source intelligence software, OSINT dashboard, intelligence gathering tools, OSINT for beginners"
 audience: "OSINT researchers, security analysts, journalists, hobbyist investigators"
@@ -137,7 +137,7 @@ Yes. Every feature, data source, and AI capability is available at no cost with 
 No. The interface is designed for analysts of all skill levels. Toggle layers on the sidebar, click data points for details, and use the Command Palette (Cmd+K) to search across all intelligence sources instantly.
 
 **How does World Monitor compare to traditional OSINT tools?**
-World Monitor consolidates 500+ feeds, live tracking, AI analysis, and 56 map layers into one dashboard. Traditional tools require juggling dozens of separate platforms. See our [detailed comparison with traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
+World Monitor consolidates 500+ feeds, live tracking, AI analysis, and 57 map layers into one dashboard. Traditional tools require juggling dozens of separate platforms. See our [detailed comparison with traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
 
 ---
 

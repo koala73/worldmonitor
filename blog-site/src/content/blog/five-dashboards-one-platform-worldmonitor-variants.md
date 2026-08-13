@@ -149,7 +149,7 @@ Regardless of which variant you use, you get the full platform engine:
 
 ### Interactive 3D Globe + Flat Map
 
-Dual map engines ([globe.gl](https://globe.gl/)/[Three.js](https://threejs.org/) for 3D, [deck.gl](https://deck.gl/) for flat WebGL) that switch at runtime. Both support all 56 map layers.
+Dual map engines ([globe.gl](https://globe.gl/)/[Three.js](https://threejs.org/) for 3D, [deck.gl](https://deck.gl/) for flat WebGL) that switch at runtime. Both support all 57 map layers.
 
 ### AI Analysis
 

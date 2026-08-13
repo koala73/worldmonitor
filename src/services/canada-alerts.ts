@@ -1,0 +1,95 @@
+import { createCircuitBreaker } from '@/utils';
+import { getHydratedData } from '@/services/bootstrap';
+import { toApiUrl } from '@/services/runtime';
+
+export interface CanadaAlert {
+  id: string;
+  province: 'AB' | string;
+  event: string;
+  severity: 'Extreme' | 'Severe' | 'Moderate' | 'Minor';
+  headline: string;
+  description: string;
+  areaDesc: string;
+  onset: Date;
+  expires: Date | null;
+  lat: number;
+  lon: number;
+  centroid?: [number, number];
+  source?: 'alberta-aea' | string;
+  updatedAt?: number | null;
+}
+
+interface BootstrapAlert {
+  id: string;
+  province?: string;
+  event?: string;
+  severity: string;
+  headline?: string;
+  description?: string;
+  areaDesc?: string;
+  onset?: string;
+  expires?: string;
+  lat?: number;
+  lon?: number;
+  centroid?: [number, number];
+  source?: string;
+  updatedAt?: number | null;
+}
+
+const breaker = createCircuitBreaker<CanadaAlert[]>({
+  name: 'Canada alerts',
+  cacheTtlMs: 30 * 60 * 1000,
+  persistCache: true,
+});
+
+function mapAlert(a: BootstrapAlert): CanadaAlert {
+  const centroid = Array.isArray(a.centroid) && a.centroid.length === 2
+    ? a.centroid
+    : (Number.isFinite(a.lon) && Number.isFinite(a.lat) ? [a.lon as number, a.lat as number] : undefined);
+  return {
+    id: a.id,
+    province: a.province || 'AB',
+    event: a.event || '',
+    severity: a.severity as CanadaAlert['severity'],
+    headline: a.headline || '',
+    description: a.description || '',
+    areaDesc: a.areaDesc || '',
+    onset: a.onset ? new Date(a.onset) : new Date(a.updatedAt || 0),
+    expires: a.expires ? new Date(a.expires) : null,
+    lat: a.lat ?? (centroid ? centroid[1] : 55),
+    lon: a.lon ?? (centroid ? centroid[0] : -115),
+    centroid,
+    source: a.source || 'alberta-aea',
+    updatedAt: a.updatedAt ?? null,
+  };
+}
+
+function alertsFromPayload(payload: unknown): CanadaAlert[] | null {
+  if (!payload || typeof payload !== 'object') return null;
+  const alerts = (payload as { alerts?: BootstrapAlert[] }).alerts;
+  if (!Array.isArray(alerts)) return null;
+  return alerts.map(mapAlert);
+}
+
+/** Alberta Emergency Alert (and later provincial siblings) on canadaAlerts. */
+export async function fetchCanadaAlerts(): Promise<CanadaAlert[]> {
+  return breaker.execute(async () => {
+    const hydrated = alertsFromPayload(getHydratedData('canadaAlerts'));
+    if (hydrated) return hydrated;
+
+    const resp = await fetch(
+      toApiUrl('/api/bootstrap?keys=canadaAlerts'),
+      { credentials: 'include', signal: AbortSignal.timeout(8000) },
+    );
+    if (!resp.ok) throw new Error(`Bootstrap fetch failed: ${resp.status}`);
+    const json = await resp.json() as { data?: { canadaAlerts?: unknown } };
+    const alerts = alertsFromPayload(json.data?.canadaAlerts);
+    if (alerts) return alerts;
+
+    throw new Error('No Canada alerts data in bootstrap');
+  }, []);
+}
+
+export function getCanadaAlertsStatus(): string {
+  return breaker.getStatus();
+}

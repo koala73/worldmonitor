@@ -44,6 +44,8 @@ describe('LAYER_REGISTRY — deckGLOnly flag', () => {
       'diseaseOutbreaks must be marked deckGLOnly');
     assert.equal(LAYER_REGISTRY.resilienceScore.deckGLOnly, true,
       'resilienceScore must be marked deckGLOnly');
+    assert.equal(LAYER_REGISTRY.canadaAlerts.deckGLOnly, true,
+      'canadaAlerts must be marked deckGLOnly');
   });
 
   test('DeckGL-only layers are flat-only (no globe)', () => {
@@ -53,6 +55,7 @@ describe('LAYER_REGISTRY — deckGLOnly flag', () => {
     assert.deepEqual(LAYER_REGISTRY.storageFacilities.renderers, ['flat']);
     assert.deepEqual(LAYER_REGISTRY.fuelShortages.renderers, ['flat']);
     assert.deepEqual(LAYER_REGISTRY.diseaseOutbreaks.renderers, ['flat']);
+    assert.deepEqual(LAYER_REGISTRY.canadaAlerts.renderers, ['flat']);
     assert.deepEqual(LAYER_REGISTRY.resilienceScore.renderers, ['flat']);
   });
 

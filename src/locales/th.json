@@ -476,7 +476,8 @@
         "displacement": "สลับการเคลื่อนย้ายผู้พลัดถิ่น",
         "climate": "สลับความผิดปกติของสภาพภูมิอากาศ",
         "outages": "สลับการขัดข้องของอินเทอร์เน็ต",
-        "tradeRoutes": "สลับเส้นทางการค้า"
+        "tradeRoutes": "สลับเส้นทางการค้า",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "เปลี่ยนเป็นโหมดมืด",
@@ -1187,7 +1188,8 @@
         "speciesRecovery": "การฟื้นตัวของสายพันธุ์",
         "renewableInstallations": "พลังงานสะอาด",
         "radiationSpike": "การเพิ่มขึ้นของรังสี",
-        "radiationElevated": "รังสีสูงขึ้น"
+        "radiationElevated": "รังสีสูงขึ้น",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "แผ่นดินไหว",
@@ -1293,7 +1295,8 @@
           "tradeRoutes": "เส้นทางเดินเรือหลักของโลกที่เชื่อมต่อท่าเรือผ่านจุดยุทธศาสตร์",
           "dayNight": "เส้นแบ่งเขตแสงอาทิตย์แบบเรียลไทม์แสดงโซนกลางวันและกลางคืน",
           "geoBoundaries": "เขตปลอดทหาร แนวหยุดยิง และพรมแดนที่เป็นข้อพิพาท",
-          "ciiChoropleth": "แผนที่ความร้อนดัชนีความไม่มั่นคงของประเทศ — ระบายสีประเทศตามคะแนน CII (เขียว=มั่นคง, แดง=วิกฤต)"
+          "ciiChoropleth": "แผนที่ความร้อนดัชนีความไม่มั่นคงของประเทศ — ระบายสีประเทศตามคะแนน CII (เขียว=มั่นคง, แดง=วิกฤต)",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "ส่งผลต่อ: แผ่นดินไหว, สภาพอากาศ, การประท้วง, การหยุดชะงัก"

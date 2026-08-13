@@ -1,6 +1,6 @@
 {
   "_generated": "scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`",
-  "layerDefinitions": 56,
+  "layerDefinitions": 57,
   "lockedLayerDefinitions": 1,
   "lockedLayerKeys": [
     "resilienceScore"
@@ -8,16 +8,16 @@
   "tier1Countries": 31,
   "rankableUniverseCountries": 196,
   "variantLayers": {
-    "full": 37,
+    "full": 38,
     "tech": 13,
-    "finance": 17,
+    "finance": 18,
     "happy": 6,
-    "commodity": 18,
-    "energy": 18
+    "commodity": 19,
+    "energy": 19
   },
   "variantCount": 6,
   "componentTopLevelTsFiles": 186,
-  "serviceTopLevelEntries": 233,
+  "serviceTopLevelEntries": 234,
   "apiEndpointEntries": 91,
   "panelClasses": 109,
   "protoFiles": 298,
@@ -96,15 +96,15 @@
   "freshnessRequiredForRisk": 2,
   "feedDefinitions": 632,
   "sourceAttribution": {
-    "activeHosts": 536,
-    "structuredHosts": 296,
+    "activeHosts": 537,
+    "structuredHosts": 297,
     "feedHosts": 268,
     "operationalStatusHosts": 30,
-    "providerCount": 534,
-    "observedHosts": 655,
-    "reviewNeeded": 518
+    "providerCount": 535,
+    "observedHosts": 656,
+    "reviewNeeded": 519
   },
-  "sourceAttributionHosts": 536,
+  "sourceAttributionHosts": 537,
   "airportCount": 115,
   "stockExchangeCount": 29,
   "centralBankInstitutionCount": 14,
@@ -306,8 +306,8 @@
     "nonCacheable": "no-store"
   },
   "healthProbedKeys": {
-    "bootstrap": 109,
+    "bootstrap": 110,
     "standalone": 153,
-    "total": 262
+    "total": 263
   }
 }

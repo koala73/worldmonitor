@@ -56,6 +56,7 @@ import type { ClimateAnomaly } from '@/services/climate';
 import type { RadiationObservation } from '@/services/radiation';
 import { ArcLayer } from '@deck.gl/layers';
 import type { WeatherAlert } from '@/services/weather';
+import type { CanadaAlert } from '@/services/canada-alerts';
 import { escapeHtml } from '@/utils/sanitize';
 import {
   derivePipelinePublicBadge,
@@ -304,6 +305,7 @@ function getOverlayColors() {
     trafficAnomaly: [255, 160, 0, 200] as [number, number, number, number],
     ddosHit: [180, 0, 255, 200] as [number, number, number, number],
     weather: [100, 150, 255, 180] as [number, number, number, number],
+    canadaAlerts: [220, 50, 50, 200] as [number, number, number, number],
     startupHub: isLight
       ? [22, 163, 74, 220] as [number, number, number, number]
       : [0, 255, 150, 200] as [number, number, number, number],
@@ -568,6 +570,7 @@ export class DeckGLMap {
   private hotspots: HotspotWithBreaking[];
   private earthquakes: Earthquake[] = [];
   private weatherAlerts: WeatherAlert[] = [];
+  private canadaAlerts: CanadaAlert[] = [];
   private outages: InternetOutage[] = [];
   private trafficAnomalies: ProtoTrafficAnomaly[] = [];
   private ddosLocations: DdosLocationHit[] = [];
@@ -1828,6 +1831,7 @@ export class DeckGLMap {
     const filteredKindnessPoints = mapLayers.kindness ? this.filterByTimeCached(this.kindnessPoints, (p) => p.timestamp) : [];
     const filteredImageryScenes = mapLayers.satellites ? this.filterByTimeCached(this.imageryScenes, (s) => s.datetime) : [];
     const filteredWeatherAlerts = mapLayers.weather ? this.filterByTimeCached(this.weatherAlerts, (alert) => alert.onset) : [];
+    const canadaAlertItems = mapLayers.canadaAlerts ? this.filterByTimeCached(this.canadaAlerts, (alert) => alert.onset) : [];
     const filteredOutages = mapLayers.outages ? this.filterByTimeCached(this.outages, (outage) => outage.pubDate) : [];
     const filteredCableAdvisories = mapLayers.cables ? this.filterByTimeCached(this.cableAdvisories, (advisory) => advisory.reported) : [];
     const filteredFlightDelays = mapLayers.flights ? this.filterByTimeCached(this.flightDelays, (delay) => delay.updatedAt) : [];
@@ -2000,6 +2004,13 @@ export class DeckGLMap {
     // Weather alerts layer
     if (mapLayers.weather && filteredWeatherAlerts.length > 0) {
       layers.push(this.createWeatherLayer(filteredWeatherAlerts));
+    }
+
+    // canadaAlerts layer (Alberta Emergency Alert; ScatterplotLayer dots)
+    if (mapLayers.canadaAlerts && canadaAlertItems.length > 0) {
+      layers.push(this.createCanadaAlertsLayer(canadaAlertItems));
+    } else {
+      this.layerCache.delete('canada-alerts-layer');
     }
 
     // Internet outages layer
@@ -3303,6 +3314,25 @@ export class DeckGLMap {
       getFillColor: (d: IranEvent) => getIranEventColor(d),
       radiusMinPixels: 4,
       radiusMaxPixels: 16,
+      pickable: true,
+    });
+  }
+
+  private createCanadaAlertsLayer(alerts: CanadaAlert[]): ScatterplotLayer {
+    const alertsWithCoords = alerts.filter(a => a.centroid && a.centroid.length === 2);
+    return new ScatterplotLayer({
+      id: 'canada-alerts-layer',
+      data: alertsWithCoords,
+      getPosition: (d: CanadaAlert) => d.centroid as [number, number],
+      getRadius: 25000,
+      getFillColor: (d: CanadaAlert) => {
+        if (d.severity === 'Extreme') return [255, 0, 0, 200] as [number, number, number, number];
+        if (d.severity === 'Severe') return [255, 100, 0, 180] as [number, number, number, number];
+        if (d.severity === 'Moderate') return [255, 170, 0, 160] as [number, number, number, number];
+        return COLORS.canadaAlerts;
+      },
+      radiusMinPixels: 8,
+      radiusMaxPixels: 20,
       pickable: true,
     });
   }
@@ -4893,6 +4923,12 @@ export class DeckGLMap {
         const area = areaDesc ? `<br/><small>${text(areaDesc.slice(0, 50))}${areaDesc.length > 50 ? '...' : ''}</small>` : '';
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.event || t('components.deckgl.layers.weatherAlerts'))}</strong><br/>${text(obj.severity)}${area}</div>` };
       }
+      case 'canada-alerts-layer': {
+        const areaDesc = typeof obj.areaDesc === 'string' ? obj.areaDesc : '';
+        const area = areaDesc ? `<br/><small>${text(areaDesc.slice(0, 50))}${areaDesc.length > 50 ? '...' : ''}</small>` : '';
+        const province = obj.province || 'AB';
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.headline || obj.event || t('components.deckgl.layers.canadaAlerts'))}</strong><br/>${text(province)} · ${text(obj.severity)}${area}</div>` };
+      }
       case 'outages-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title || t('components.deckgl.tooltip.internetOutage'))}</strong><br/>${text(obj.country)}</div>` };
       case 'traffic-anomalies-layer':
@@ -5745,6 +5781,7 @@ export class DeckGLMap {
       helpItem(label('economicCenters'), 'economicCenters'),
       helpItem(label('strategicWaterways'), 'macroWaterways'),
       helpItem(label('weatherAlerts'), 'weatherAlertsMarket'),
+      helpItem(label('canadaAlerts'), 'canadaAlerts'),
       helpItem(label('naturalEvents'), 'naturalEventsMacro'),
       helpItem(label('dayNight'), 'dayNight'),
     ])}
@@ -5790,6 +5827,7 @@ export class DeckGLMap {
       helpItem(label('naturalEvents'), 'naturalEventsFull'),
       helpItem(label('fires'), 'firesFull'),
       helpItem(label('weatherAlerts'), 'weatherAlerts'),
+      helpItem(label('canadaAlerts'), 'canadaAlerts'),
       helpItem(label('climateAnomalies'), 'climateAnomalies'),
       helpItem(label('economicCenters'), 'economicCenters'),
       helpItem(label('criticalMinerals'), 'mineralsFull'),
@@ -6711,6 +6749,11 @@ export class DeckGLMap {
 
   public setWeatherAlerts(alerts: WeatherAlert[]): void {
     this.weatherAlerts = alerts;
+    this.render();
+  }
+
+  public setCanadaAlerts(alerts: CanadaAlert[]): void {
+    this.canadaAlerts = alerts;
     this.render();
   }
 

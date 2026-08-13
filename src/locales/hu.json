@@ -545,7 +545,8 @@
         "displacement": "Menekülési folyamatok be/ki",
         "climate": "Klímabeli anomáliák be/ki",
         "outages": "Internetkiesések be/ki",
-        "tradeRoutes": "Kereskedelmi útvonalak be/ki"
+        "tradeRoutes": "Kereskedelmi útvonalak be/ki",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Váltás sötét módra",
@@ -1328,7 +1329,8 @@
         "kindness": "Kedvességi cselekmények",
         "happiness": "Világboldogság",
         "speciesRecovery": "Fajmegmentés",
-        "renewableInstallations": "Tiszta energia"
+        "renewableInstallations": "Tiszta energia",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Földrengés",
@@ -1434,7 +1436,8 @@
           "tradeRoutes": "Fő globális szállítási útvonalak portokat stratégiai szűk keresztmetszeteken keresztül összekötve",
           "dayNight": "Valós idejű napenergia terminátor nap és éj zónákat mutatja",
           "geoBoundaries": "Demilitarizált zónák, tűzszünet vonalak és vitatott határok",
-          "ciiChoropleth": "Országinstabilitási Index hőtérkép — országokat CII pontszám szerint színezi (zöld=stabil, piros=kritikus)"
+          "ciiChoropleth": "Országinstabilitási Index hőtérkép — országokat CII pontszám szerint színezi (zöld=stabil, piros=kritikus)",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Érintett: Földrengések, Időjárás, Tüntetések, Leállások"

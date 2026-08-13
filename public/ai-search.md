@@ -39,10 +39,10 @@ World Monitor is useful for investors, portfolio managers, energy and commodity 
 
 ## Data Coverage
 
-- 56 map layer types
+- 57 map layer types
 - 109 concrete panel implementations across six variants
 - 500+ curated RSS feeds
-- 536+ observed upstream hosts
+- 537+ observed upstream hosts
 - 13 maritime chokepoints with AIS-based transit intelligence
 - 31 live Country Instability Index countries
 - 196-country resilience rankings

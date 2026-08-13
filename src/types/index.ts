@@ -659,6 +659,8 @@ export interface MapLayers {
   radiationWatch?: boolean;
   sanctions: boolean;
   weather: boolean;
+  /** Alberta Emergency Alert (and later provincial siblings) (#6610). */
+  canadaAlerts?: boolean;
   economic: boolean;
   waterways: boolean;
   outages: boolean;

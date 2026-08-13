@@ -476,7 +476,8 @@
         "displacement": "Превключи потоци на разселване",
         "climate": "Превключи климатични аномалии",
         "outages": "Превключи интернет прекъсвания",
-        "tradeRoutes": "Превключи търговски маршрути"
+        "tradeRoutes": "Превключи търговски маршрути",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Превключи на тъмна тема",
@@ -1187,7 +1188,8 @@
         "speciesRecovery": "Възстановяване на видове",
         "renewableInstallations": "Чиста енергия",
         "radiationSpike": "Пик на радиация",
-        "radiationElevated": "Повишена радиация"
+        "radiationElevated": "Повишена радиация",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Земетресение",
@@ -1293,7 +1295,8 @@
           "tradeRoutes": "Основни световни корабоплавателни маршрути през стратегически тесни места",
           "dayNight": "Слънчев терминатор в реално време — ден и нощ",
           "geoBoundaries": "Демилитаризирани зони, линии на примирие и спорни граници",
-          "ciiChoropleth": "Топлинна карта на индекса на нестабилност — цветове на държави по CII (зелено=стабилно, червено=критично)"
+          "ciiChoropleth": "Топлинна карта на индекса на нестабилност — цветове на държави по CII (зелено=стабилно, червено=критично)",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Засяга: Земетресения, Метеорология, Протести, Прекъсвания"

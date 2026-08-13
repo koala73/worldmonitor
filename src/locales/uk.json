@@ -545,7 +545,8 @@
         "displacement": "Toggle displacement flows",
         "climate": "Toggle climate anomalies",
         "outages": "Toggle internet outages",
-        "tradeRoutes": "Toggle trade routes"
+        "tradeRoutes": "Toggle trade routes",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Switch to dark mode",
@@ -1328,7 +1329,8 @@
         "kindness": "Acts of Kindness",
         "happiness": "World Happiness",
         "speciesRecovery": "Species Recovery",
-        "renewableInstallations": "Clean Energy"
+        "renewableInstallations": "Clean Energy",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1434,7 +1436,8 @@
           "tradeRoutes": "Major global shipping lanes connecting ports through strategic chokepoints",
           "dayNight": "Real-time solar terminator showing day and night zones",
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
-          "ciiChoropleth": "Country Instability Index heat-map — colors countries by CII score (green=stable, red=critical)"
+          "ciiChoropleth": "Country Instability Index heat-map — colors countries by CII score (green=stable, red=critical)",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"

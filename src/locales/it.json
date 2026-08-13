@@ -478,7 +478,8 @@
         "displacement": "Attiva/disattiva flussi di sfollamento",
         "climate": "Attiva/disattiva anomalie climatiche",
         "outages": "Attiva/disattiva interruzioni internet",
-        "tradeRoutes": "Attiva/disattiva rotte commerciali"
+        "tradeRoutes": "Attiva/disattiva rotte commerciali",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Passa alla modalità scura",
@@ -1036,7 +1037,8 @@
         "speciesRecovery": "Recupero delle specie",
         "renewableInstallations": "Energia pulita",
         "radiationSpike": "Picco di radiazione",
-        "radiationElevated": "Radiazione elevata"
+        "radiationElevated": "Radiazione elevata",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Livelli",
       "layerSearch": "Cerca livelli...",
@@ -1149,7 +1151,8 @@
           "techFires": "Incendi attivi vicino a infrastrutture tecnologiche",
           "financeGulfInvestments": "Investimenti dei fondi sovrani del CCG e investimenti diretti esteri",
           "geoBoundaries": "Zone demilitarizzate, linee di cessate il fuoco e confini contestati",
-          "ciiChoropleth": "Mappa termica dell'indice di instabilità — colora i paesi in base al punteggio CII (verde=stabile, rosso=critico)"
+          "ciiChoropleth": "Mappa termica dell'indice di instabilità — colora i paesi in base al punteggio CII (verde=stabile, rosso=critico)",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Effetti: terremoti, condizioni meteorologiche, proteste, interruzioni"

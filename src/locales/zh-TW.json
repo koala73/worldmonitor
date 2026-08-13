@@ -476,7 +476,8 @@
         "displacement": "切換流離失所流向",
         "climate": "切換氣候異常",
         "outages": "切換網際網路中斷",
-        "tradeRoutes": "切換貿易路線"
+        "tradeRoutes": "切換貿易路線",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "切換到暗色模式",
@@ -1187,7 +1188,8 @@
         "speciesRecovery": "物種恢復",
         "renewableInstallations": "清潔能源",
         "radiationSpike": "輻射峰值",
-        "radiationElevated": "輻射升高"
+        "radiationElevated": "輻射升高",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1293,7 +1295,8 @@
           "tradeRoutes": "連線港口並經過戰略咽喉要道的全球主要航運通道",
           "dayNight": "即時太陽終結線顯示晝夜區域",
           "geoBoundaries": "非軍事區、停火線和爭議邊界",
-          "ciiChoropleth": "國家不穩定指數熱力圖 — 按CII評分為國家著色（綠色=穩定，紅色=危急）"
+          "ciiChoropleth": "國家不穩定指數熱力圖 — 按CII評分為國家著色（綠色=穩定，紅色=危急）",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "影響範圍：地震、天氣、抗議、中斷"

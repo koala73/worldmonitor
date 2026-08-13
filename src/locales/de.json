@@ -476,7 +476,8 @@
         "displacement": "Vertreibungsströme umschalten",
         "climate": "Klimaanomalien umschalten",
         "outages": "Internetausfälle umschalten",
-        "tradeRoutes": "Handelsrouten umschalten"
+        "tradeRoutes": "Handelsrouten umschalten",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Zum Dunkelmodus wechseln",
@@ -1034,7 +1035,8 @@
         "speciesRecovery": "Artenerholung",
         "renewableInstallations": "Saubere Energie",
         "radiationSpike": "Strahlungsspitze",
-        "radiationElevated": "Erhöhte Strahlung"
+        "radiationElevated": "Erhöhte Strahlung",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Ebenen",
       "layerSearch": "Ebenen suchen...",
@@ -1147,7 +1149,8 @@
           "techFires": "Aktive Waldbrände in der Nähe von Technologieinfrastruktur",
           "financeGulfInvestments": "GCC-Staatsfonds-Investitionen und ausländische Direktinvestitionen",
           "geoBoundaries": "Entmilitarisierte Zonen, Waffenstillstandslinien und umstrittene Grenzen",
-          "ciiChoropleth": "Country Instability Index Heatmap — färbt Länder nach CII-Wert ein (grün=stabil, rot=kritisch)"
+          "ciiChoropleth": "Country Instability Index Heatmap — färbt Länder nach CII-Wert ein (grün=stabil, rot=kritisch)",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"

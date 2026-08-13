@@ -476,7 +476,8 @@
         "displacement": "Bật/tắt dòng di tản",
         "climate": "Bật/tắt bất thường khí hậu",
         "outages": "Bật/tắt gián đoạn internet",
-        "tradeRoutes": "Bật/tắt tuyến thương mại"
+        "tradeRoutes": "Bật/tắt tuyến thương mại",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Chuyển sang chế độ tối",
@@ -1187,7 +1188,8 @@
         "speciesRecovery": "Phục hồi loài",
         "renewableInstallations": "Năng lượng sạch",
         "radiationSpike": "Đột tăng bức xạ",
-        "radiationElevated": "Bức xạ tăng cao"
+        "radiationElevated": "Bức xạ tăng cao",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -1293,7 +1295,8 @@
           "tradeRoutes": "Các tuyến vận tải biển chính toàn cầu kết nối các cảng qua các điểm chiến lược",
           "dayNight": "Đường phân chia mặt trời thời gian thực hiển thị vùng ngày và đêm",
           "geoBoundaries": "Khu phi quân sự, đường ngừng bắn và ranh giới tranh chấp",
-          "ciiChoropleth": "Bản đồ nhiệt Chỉ số Bất ổn Quốc gia — tô màu quốc gia theo điểm CII (xanh=ổn định, đỏ=nghiêm trọng)"
+          "ciiChoropleth": "Bản đồ nhiệt Chỉ số Bất ổn Quốc gia — tô màu quốc gia theo điểm CII (xanh=ổn định, đỏ=nghiêm trọng)",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Ảnh hưởng: Động đất, Thời tiết, Biểu tình, Gián đoạn"

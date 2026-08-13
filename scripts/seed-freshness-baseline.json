@@ -33,7 +33,20 @@
       "cutover": {
         "probeKey": "seed-meta:supply-chain:mineral-production",
         "activatedAt": "2026-08-13T06:00:00.000Z",
-        "firstScheduledRunAt": "2026-08-14T03:00:00.000Z"      }
+        "firstScheduledRunAt": "2026-08-14T03:00:00.000Z"
+      }
+    },
+    {
+      "name": "canadaAlerts",
+      "status": "EMPTY",
+      "issue": 6610,
+      "expiresAt": "2026-08-14T20:45:00.000Z",
+      "reason": "New Alberta Emergency Alert probe (alerts:alberta-aea:v1). seed-alberta-emergency-alert cron is */15; EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. If this branch has not merged by 2026-08-14T20:45Z, re-anchor both instants to the next 15-minute UTC tick within the 24h MAX_ROLLOUT_WINDOW_MS cap.",
+      "cutover": {
+        "probeKey": "seed-meta:alerts:alberta-aea",
+        "activatedAt": "2026-08-13T20:45:00.000Z",
+        "firstScheduledRunAt": "2026-08-14T20:45:00.000Z"
+      }
     }
   ]
 }

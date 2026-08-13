@@ -25,6 +25,7 @@ const QUIET_META_ONLY_KEYS = [
   'ddosAttacks',
   'trafficAnomalies',
   'weatherAlerts',
+  'canadaAlerts',
   'newsThreatSummary',
 ];
 
