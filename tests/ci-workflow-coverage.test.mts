@@ -786,13 +786,26 @@ describe('CI workflow coverage', () => {
     const unit = testJobBlock('unit');
     assert.match(
       unit,
-      /^\s+run: node scripts\/openapi-capacity-report\.mjs --out openapi-capacity\.json\s*$/m,
+      /^\s+run: node scripts\/openapi-capacity-report\.mjs --out "\$RUNNER_TEMP\/openapi-capacity\.json"\s*$/m,
       'unit job must publish the OpenAPI capacity report',
+    );
+    // No `--budget`: the step must measure against the real 950,000 guard. The
+    // flag exists for local what-if analysis and to exercise the over-budget
+    // exit in tests, and passing it here would be the one-line way to make the
+    // reported headroom mean nothing.
+    assert.ok(
+      !/openapi-capacity-report\.mjs[^\n]*--budget/.test(unit),
+      'the CI step must not override the scanner budget',
     );
     assert.match(
       unit,
       /name: openapi-capacity-\$\{\{ github\.run_attempt \}\}/,
       'the capacity artifact name must carry run_attempt — upload-artifact v6 rejects a duplicate name within a run, which collides on the re-run started to chase the failure',
+    );
+    assert.match(
+      unit,
+      /path: \$\{\{ runner\.temp \}\}\/openapi-capacity\.json/,
+      'the capacity artifact must be read from the same path the step wrote',
     );
   });
 

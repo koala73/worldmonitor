@@ -14,8 +14,10 @@
  * documents something only through the `$ref` that points at it. A schema with
  * no inbound pointer documents nothing a client, agent or scanner can arrive
  * at. Every operation, request body, response and parameter survives untouched,
- * and `tests/openapi-unreachable-schemas.test.mjs` proves it: no dangling
- * `$ref` remains, every retained schema is byte-identical, and nothing outside
+ * and `tests/openapi-unreachable-schemas.test.mjs` proves it: no schema name
+ * mentioned anywhere in the served document is left unresolvable — checked by
+ * scanning the serialized text, not by re-running this file's own notion of a
+ * reference — every retained schema is byte-identical, and nothing outside
  * `components.schemas` changes.
  *
  * Reachability is transitive and computed from the whole document rather than
@@ -32,12 +34,29 @@
 
 const SCHEMA_REF_PREFIX = '#/components/schemas/';
 
+/** `#/components/schemas/Foo/properties/bar` -> `Foo`; null when it is not one. */
+function schemaNameFromPointer(value) {
+  if (typeof value !== 'string' || !value.startsWith(SCHEMA_REF_PREFIX)) return null;
+  const segment = value.slice(SCHEMA_REF_PREFIX.length).split('/')[0];
+  // RFC 6901 escaping. Component names cannot contain `/` or `~` today, so this
+  // is belt-and-braces — but the failure direction of getting it wrong is
+  // deleting a live schema, which is the one direction that must not happen.
+  return segment.replaceAll('~1', '/').replaceAll('~0', '~') || null;
+}
+
 /**
  * Component-schema names referenced anywhere inside `node`.
  *
- * Takes the first pointer segment after the prefix, so a pointer *into* a
- * schema (`#/components/schemas/Foo/properties/bar`) counts as a reference to
- * `Foo` — dropping `Foo` would strand it.
+ * A pointer *into* a schema (`#/components/schemas/Foo/properties/bar`) counts
+ * as a reference to `Foo` — dropping `Foo` would strand it.
+ *
+ * `$ref` is not the whole vocabulary. OpenAPI 3.1 also lets a document name a
+ * component schema through `discriminator.mapping`, whose values are either a
+ * bare component name or a URI reference and carry NO `$ref` key — a walk that
+ * matches only on the key deletes those targets and strands the mapping. The
+ * bundle carries no discriminator today, which is exactly why this has to be
+ * handled here rather than noticed later: the first proto to add one would
+ * silently lose its subtypes. `$dynamicRef` is covered for the same reason.
  */
 export function collectSchemaRefs(node, into = new Set()) {
   if (Array.isArray(node)) {
@@ -46,9 +65,22 @@ export function collectSchemaRefs(node, into = new Set()) {
   }
   if (!node || typeof node !== 'object') return into;
   for (const [key, value] of Object.entries(node)) {
-    if (key === '$ref' && typeof value === 'string' && value.startsWith(SCHEMA_REF_PREFIX)) {
-      into.add(value.slice(SCHEMA_REF_PREFIX.length).split('/')[0]);
-      continue;
+    if (key === '$ref' || key === '$dynamicRef') {
+      const name = schemaNameFromPointer(value);
+      if (name) {
+        into.add(name);
+        continue;
+      }
+    }
+    if (key === 'discriminator' && value && typeof value === 'object' && value.mapping
+      && typeof value.mapping === 'object') {
+      for (const target of Object.values(value.mapping)) {
+        if (typeof target !== 'string' || target.length === 0) continue;
+        // Either `#/components/schemas/Foo` or the bare name `Foo`. An external
+        // URI resolves to neither and is left alone.
+        const name = schemaNameFromPointer(target) ?? (target.includes('/') ? null : target);
+        if (name) into.add(name);
+      }
     }
     collectSchemaRefs(value, into);
   }

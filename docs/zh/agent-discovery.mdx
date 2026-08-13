@@ -39,7 +39,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 |---|---|---|
 | [`/.well-known/api-catalog`](https://worldmonitor.app/.well-known/api-catalog) | [RFC 9727](https://datatracker.ietf.org/doc/html/rfc9727) | JSON 链接集，打包了所有其他发现 URL——如果你只想要一次请求和一张地图，从这里开始 |
 | [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) | OpenAPI 3.1 | 单一打包规范，覆盖**所有** REST 服务（Conflict、Resilience、Market、Economic、Maritime、Aviation、Climate……）——可喂给任何代码生成器 |
-| [`/openapi.json`](https://www.worldmonitor.app/openapi.json) | OpenAPI 3.1 | 字节一致的压缩 JSON 打包——与 `/openapi.yaml` 同一份规范，面向只解析 JSON 的工具与扫描器 |
+| [`/openapi.json`](https://www.worldmonitor.app/openapi.json) | OpenAPI 3.1 | 压缩 JSON 打包，面向只解析 JSON 的工具与扫描器。操作、参数、请求体与响应与 `/openapi.yaml` 完全一致；为控制在扫描器的响应体大小上限内，共享结构以 `$ref` 合并，并省略任何操作都无法引用到的组件 schema |
 | [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | 传输方式（`streamableHttp`）、端点、OAuth 资源、作用域、流式、能力标志 |
 | [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) | OAuth 2.1 授权服务器元数据（PKCE、DCR、令牌端点） |
 | [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | `https://worldmonitor.app/mcp` 的资源元数据 |

@@ -25,21 +25,24 @@ import { dedupeSharedChinaProvenanceSchemas } from '../scripts/openapi-dedup-sch
 
 const HTTP_METHODS = new Set(['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']);
 
-/** Every `#/components/schemas/...` pointer in a document, as component names. */
-function schemaRefNames(node, into = new Set()) {
-  if (Array.isArray(node)) {
-    for (const child of node) schemaRefNames(child, into);
-    return into;
+/**
+ * Every component-schema name the document mentions ANYWHERE, found without
+ * reusing the transform's own idea of what a reference looks like.
+ *
+ * This is deliberately a regex over the serialized document rather than a
+ * second key-aware walk. A walk that matched on `$ref` the way
+ * `collectSchemaRefs` does would share its blind spot exactly — the safety net
+ * would be woven from the same thread as the thing it is catching, and could
+ * never fail for a vocabulary gap. Scanning raw text finds a schema name
+ * wherever it is written: `$ref`, `$dynamicRef`, a `discriminator.mapping`
+ * value, or a construct nobody has thought of yet.
+ */
+function mentionedSchemaNames(spec) {
+  const names = new Set();
+  for (const [, name] of JSON.stringify(spec).matchAll(/#\/components\/schemas\/([A-Za-z0-9_.\-~]+)/g)) {
+    names.add(name.replaceAll('~1', '/').replaceAll('~0', '~'));
   }
-  if (!node || typeof node !== 'object') return into;
-  for (const [key, value] of Object.entries(node)) {
-    if (key === '$ref' && typeof value === 'string' && value.startsWith('#/components/schemas/')) {
-      into.add(value.slice('#/components/schemas/'.length).split('/')[0]);
-      continue;
-    }
-    schemaRefNames(value, into);
-  }
-  return into;
+  return names;
 }
 
 function servedBundle() {
@@ -121,6 +124,41 @@ describe('unreachableSchemaNames (fixture)', () => {
   it('returns nothing for a spec with no components.schemas', () => {
     assert.deepEqual([...unreachableSchemaNames({ openapi: '3.1.0', paths: {} })], []);
   });
+
+  it('keeps a schema named only by discriminator.mapping — the edge with no $ref key', () => {
+    // The bundle carries no discriminator today, which is exactly why this is a
+    // fixture and not a real-bundle assertion: the first proto to add one would
+    // otherwise silently lose its subtypes, and the served document would ship
+    // a mapping pointing at a schema that is no longer there.
+    for (const target of ['#/components/schemas/Orphan', 'Orphan']) {
+      const spec = fixture();
+      spec.components.schemas.Used = {
+        oneOf: [{ $ref: '#/components/schemas/UsedIndirectly' }],
+        discriminator: { propertyName: 'kind', mapping: { orphan: target } },
+      };
+      assert.ok(
+        !unreachableSchemaNames(spec).has('Orphan'),
+        `discriminator.mapping value ${target} must keep its target alive`,
+      );
+    }
+  });
+
+  it('ignores a discriminator.mapping value that points outside this document', () => {
+    const spec = fixture();
+    spec.components.schemas.Used = {
+      discriminator: { propertyName: 'kind', mapping: { remote: 'https://example.com/schemas/Other' } },
+    };
+    // No crash, no invented component, and the genuine orphans still go.
+    assert.ok(unreachableSchemaNames(spec).has('Orphan'));
+  });
+
+  it('keeps a schema reached only by $dynamicRef', () => {
+    const spec = fixture();
+    spec.components.schemas.Used = { $dynamicRef: '#/components/schemas/Orphan' };
+    const unreachable = unreachableSchemaNames(spec);
+    assert.ok(!unreachable.has('Orphan'));
+    assert.ok(unreachable.has('UsedIndirectly'), 'the schema that lost its referent is now unreachable');
+  });
 });
 
 describe('dropUnreachableSchemas (fixture)', () => {
@@ -173,10 +211,10 @@ describe('unreachable schema drop (real bundle)', () => {
     assert.deepEqual(responseShaped, [], 'a *Response schema no operation reaches means the walk is wrong');
   });
 
-  it('leaves no dangling $ref anywhere in the served document', () => {
+  it('leaves no schema name mentioned anywhere in the served document unresolvable', () => {
     const present = new Set(Object.keys(after.components?.schemas ?? {}));
-    const dangling = [...schemaRefNames(after)].filter((name) => !present.has(name));
-    assert.deepEqual(dangling, [], 'the served JSON must resolve every document-local schema ref');
+    const dangling = [...mentionedSchemaNames(after)].filter((name) => !present.has(name));
+    assert.deepEqual(dangling, [], 'the served JSON must resolve every document-local schema name');
   });
 
   it('is lossless for everything an operation can reach: retained schemas are byte-identical', () => {
@@ -210,7 +248,7 @@ describe('unreachable schema drop (real bundle)', () => {
         if (!HTTP_METHODS.has(method) || !op?.responses) continue;
         for (const [status, response] of Object.entries(op.responses)) {
           if (!/^2/.test(status)) continue;
-          for (const name of schemaRefNames(response)) {
+          for (const name of mentionedSchemaNames(response)) {
             checked += 1;
             assert.ok(present.has(name), `${method.toUpperCase()} ${path} ${status} lost ${name}`);
           }

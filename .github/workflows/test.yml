@@ -210,7 +210,11 @@ jobs:
         # earlier. Placed before the suite on purpose: an over-budget artifact
         # fails test:data anyway, and failing here costs 30s instead of 10min
         # while the upload step below still publishes the breakdown.
-        run: node scripts/openapi-capacity-report.mjs --out openapi-capacity.json
+        #
+        # Written to RUNNER_TEMP, not the workspace: a CI-only artifact dropped
+        # in the repo root is untracked state that a later `git status` gate
+        # would trip over.
+        run: node scripts/openapi-capacity-report.mjs --out "$RUNNER_TEMP/openapi-capacity.json"
       - name: Upload OpenAPI capacity report
         # `!cancelled()` rather than `always()`: an over-budget run is exactly
         # when the breakdown is worth reading, and a cancelled job has nothing
@@ -221,7 +225,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: openapi-capacity-${{ github.run_attempt }}
-          path: openapi-capacity.json
+          path: ${{ runner.temp }}/openapi-capacity.json
           if-no-files-found: warn
           retention-days: 14
       - name: Build dashboard artifacts for built-output tests

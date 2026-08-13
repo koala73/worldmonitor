@@ -43,7 +43,11 @@ import { dedupeSharedChinaProvenanceSchemas } from './openapi-dedup-schemas.mjs'
 import { dropUnreachableSchemas } from './openapi-drop-unreachable-schemas.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-export const yamlPath = resolve(scriptDir, '../docs/api/worldmonitor.openapi.yaml');
+// OPENAPI_YAML_PATH exists so the capacity report's "could not measure" exit can
+// be exercised as a real process against a real missing/invalid source, instead
+// of being asserted from a hand-built report object that never runs the CLI.
+export const yamlPath = process.env.OPENAPI_YAML_PATH
+  ?? resolve(scriptDir, '../docs/api/worldmonitor.openapi.yaml');
 export const jsonPath = resolve(scriptDir, '../public/openapi.json');
 
 /**
@@ -73,9 +77,11 @@ export function buildBundle({ spec: provided } = {}) {
   const stats = dedupeErrorResponses(spec);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);
   const paramStats = dedupeSharedParameters(spec);
-  // Last: the dedup passes hoist responses and parameters into components, and
-  // those hoisted entries carry schema $refs that keep their targets reachable.
-  // Running the drop first would strand them.
+  // Last by convention, not by necessity. The drop seeds reachability from
+  // EVERY non-schema bucket (see openapi-drop-unreachable-schemas.mjs), so the
+  // responses and parameters the passes above hoist into components keep their
+  // schema targets alive wherever it runs — that unconditional seeding, not
+  // this ordering, is the invariant a future edit must preserve.
   const unreachableStats = dropUnreachableSchemas(spec);
 
   // Minified: this artifact is machine-consumed (scanners/agents), and the

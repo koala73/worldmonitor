@@ -75,39 +75,39 @@ Four emit-time transforms run in `scripts/build-openapi-json.mjs`. None of them 
 
 ## Reduction plan
 
-110 repeated subtrees are still inline, worth about **41,891 bytes** if all were collapsed. That total is non-overlapping: a repeated parent and the repeated child inside it can only be spent once, so the report attributes the bytes to whichever is hoisted first and does not promise them twice.
+77 repeated subtrees are still inline, worth about **31,130 bytes** if all were collapsed. Two rules keep that number honest, and both matter because it is what the next capacity decision will be sized from:
+
+- **Non-overlapping.** A repeated parent and the repeated child inside it can only be spent once. The report attributes the bytes to whichever is hoisted first and excludes the other in both directions — the copies that sit inside a selection and the copies that wrap one.
+- **Referenceable positions only.** A subtree is counted only where OpenAPI 3.1 actually permits a Reference Object. `responses.200.headers` is a `Map[string, Header | Reference]`, so its entries can be hoisted while the map cannot; a Media Type Object and an `example` payload cannot be hoisted at all; and a 2xx response is excluded by project rule because scanners credit only the inline one. Counting those positions would offer bytes no edit can take.
 
 Ranked by yield against risk. Take them in order; each is independent.
 
-### 1. Generalise the repeated-schema-subtree hoist — about 26 KB
+### 1. Generalise the repeated-schema-subtree hoist — about 26.8 KB
 
 `dedupeSharedChinaProvenanceSchemas` hoists exactly one hand-named family. The same shape repeats across unrelated services, because every service's generator emits the same optional-timestamp and unavailability unions:
 
 | Repeated subtree | Copies | Unit | Recoverable |
 | --- | --- | --- | --- |
 | China decision-signal timestamp union | 9 | 698 | 5,232 |
-| China decision-signal timestamp property | 4 | 726 | 2,046 |
 | Climate `measuredAt` / `fetchedAt` | 33 | 107 | 2,016 |
-| Timestamp union inner arm | 8 | 324 | 1,960 |
+| Provenance `content_freshness` value | 8 | 324 | 1,960 |
 | Supply-chain war-risk tier enum | 5 | 467 | 1,692 |
 | Provenance claims block | 2 | 1,424 | 1,380 |
 | Economic `unavailable` envelope | 10 | 170 | 1,134 |
+| Provenance confidence arm | 17 | 96 | 832 |
+| Aviation `updatedAt` | 8 | 153 | 763 |
 
 Replace the hand-named pass with a generic one: canonicalise every schema subtree, hoist any that repeats and exceeds a byte floor, keep the byte floor above the `$ref` cost. Safe by the same reasoning the parameter dedup already relies on — Schema Objects reached by `$ref` are not scanner-credited the way an inline 2xx response is, and only byte-identical subtrees group, so a definition whose description legitimately differs never collapses with another.
 
 **Do this first.** It is the largest remaining block and needs no new empirical verification.
 
-### 2. Hoist repeated response `headers` blocks — about 5.4 KB
+### 2. Hoist the repeated idempotency headers — about 4.3 KB
 
-The idempotency header trio (`Idempotency-Key`, `Idempotent-Replayed`, and the wrapper) is stamped verbatim on 16 operations' 200 responses at 402 bytes each. `components.headers` would collapse them.
+`Idempotent-Replayed` (17 copies, 217 bytes) and `Idempotency-Key` (17 copies, 142 bytes) are stamped verbatim onto the 200 responses of every idempotent operation. `components.headers` collapses them.
 
-**Requires scanner re-verification before landing.** The response object stays inline, but a `$ref` would appear inside a 2xx body, and the rule that 2xx responses stay inline was established empirically against orank rather than from the spec. Re-run that check before spending this.
+**Requires scanner re-verification before landing.** The response object stays inline, but a `$ref` would appear inside a 2xx body, and the rule that 2xx responses stay inline was established empirically against orank rather than from the spec. Re-run that check before spending this. Note the unit of work is the individual header entries, not the enclosing `headers` map — the map is not a referenceable position.
 
-### 3. Repeated inline `example` blocks — about 1.1 KB
-
-Four company-monitoring 200 examples repeat the same company object. Small, and examples are worth keeping legible; take it only if the reserve is already breached.
-
-### 4. Per-operation `description` — 32,320 bytes, last resort
+### 3. Per-operation `description` — 32,320 bytes, last resort
 
 The largest single hand-written block. This is documentation, not repetition, and trimming it makes the spec worse for the agents it exists to serve. Only ever trim boilerplate prefixes that repeat verbatim across operations, and only after 1 and 2 are spent.
 
@@ -115,6 +115,7 @@ The largest single hand-written block. This is documentation, not repetition, an
 
 - Raising the 950,000-byte budget.
 - Removing operations, request bodies, or response schemas.
+- Hoisting a 2xx response, or anything inside an `example` payload.
 - `operationId`, `summary`, `tags` (20,755 bytes combined) — scanner-credited metadata.
 
 ## Triggers
