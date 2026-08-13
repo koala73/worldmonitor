@@ -151,6 +151,36 @@ describe('docker self-hosting — no default credentials (#3804)', () => {
     );
   });
 
+  it('docker-compose.yml passes one fail-closed relay secret to both consumers (#6537)', async () => {
+    const compose = await read('docker-compose.yml');
+    const worldmonitor = serviceBlock(compose, 'worldmonitor');
+    const relay = serviceBlock(compose, 'ais-relay');
+    const requiredSecret = /RELAY_SHARED_SECRET:\s*"(\$\{RELAY_SHARED_SECRET:\?[^}\r\n]+\})"/;
+
+    const worldmonitorSecret = worldmonitor.match(requiredSecret)?.[1];
+    const relaySecret = relay.match(requiredSecret)?.[1];
+    const allRelaySecretExpansions = compose.match(/\$\{RELAY_SHARED_SECRET[^}\r\n]*\}/g) ?? [];
+
+    assert.ok(
+      worldmonitorSecret,
+      'worldmonitor must receive RELAY_SHARED_SECRET through a ${RELAY_SHARED_SECRET:?...} guard',
+    );
+    assert.ok(
+      relaySecret,
+      'ais-relay must receive RELAY_SHARED_SECRET through a ${RELAY_SHARED_SECRET:?...} guard',
+    );
+    assert.equal(
+      worldmonitorSecret,
+      relaySecret,
+      'worldmonitor and ais-relay must receive the same required secret expansion',
+    );
+    assert.deepEqual(
+      allRelaySecretExpansions,
+      [worldmonitorSecret, relaySecret],
+      'the two consumer mappings must be the only RELAY_SHARED_SECRET expansions, with no bare or defaulted bypass',
+    );
+  });
+
   it('SELF_HOSTING.md instructions reference $REDIS_TOKEN, not the literal wm-local-token', async () => {
     const md = await read('SELF_HOSTING.md');
     for (const pat of SHIPPED_DEFAULT_PATTERNS) {
