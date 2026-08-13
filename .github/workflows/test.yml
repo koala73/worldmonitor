@@ -47,6 +47,14 @@ jobs:
             # without this rule the guard skips on exactly the PR that commits
             # an artifact and can only ever fire on unrelated changes.
             /^docs\/snapshots\/resilience-.*-acceptance-.*\.json$/ { count++; next }
+            # The generated OpenAPI bundle sits under docs/ but is the INPUT to
+            # the served public/openapi.json. Its <= 950,000-byte scanner guard
+            # (tests/openapi-json-dedup.test.mjs) and the capacity report that
+            # tracks the approach to it both run in `unit`, so without this
+            # carve-out a PR that only regenerates the bundle sets code=false
+            # and skips the one gate that measures the artifact it changed
+            # (#6558).
+            /^docs\/api\/worldmonitor\.openapi\.yaml$/ { count++; next }
             /\.md$/ { next }
             /^docs\// { next }
             /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// && $0 !~ /^src-tauri\/.*\.json$/ { next }
@@ -187,6 +195,35 @@ jobs:
         env:
           HEALTH_PROBE_CUTOVER_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node --import tsx scripts/check-health-probe-cutovers.mts "$HEALTH_PROBE_CUTOVER_BASE"
+      - name: OpenAPI bundle capacity (#6558)
+        # The <= 950,000-byte scanner guard lives in
+        # tests/openapi-json-dedup.test.mjs and stays the gate. This step
+        # publishes what that guard is silent about on the way to the wall:
+        # served bytes, remaining headroom, and how many more operations fit.
+        # The last three crossings were each discovered by a red build on
+        # whichever PR happened to be last in line; the number belongs in front
+        # of a reviewer before that.
+        #
+        # Exits nonzero only when the artifact is over budget or could not be
+        # measured at all — a breached reserve warns, because a second hard
+        # failure at the same wall would just be the same red build one commit
+        # earlier. Placed before the suite on purpose: an over-budget artifact
+        # fails test:data anyway, and failing here costs 30s instead of 10min
+        # while the upload step below still publishes the breakdown.
+        run: node scripts/openapi-capacity-report.mjs --out openapi-capacity.json
+      - name: Upload OpenAPI capacity report
+        # `!cancelled()` rather than `always()`: an over-budget run is exactly
+        # when the breakdown is worth reading, and a cancelled job has nothing
+        # to say. run_attempt in the name because upload-artifact v6 rejects a
+        # duplicate name within a run, which collides on the re-run someone
+        # starts to chase the failure.
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: openapi-capacity-${{ github.run_attempt }}
+          path: openapi-capacity.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Build dashboard artifacts for built-output tests
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
       - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data

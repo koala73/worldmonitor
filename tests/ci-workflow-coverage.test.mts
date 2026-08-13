@@ -763,6 +763,39 @@ describe('CI workflow coverage', () => {
     }
   });
 
+  it('routes the generated OpenAPI bundle into the job that measures it (#6558)', () => {
+    // Executes the real awk rather than matching its source. The bundle lives
+    // under `docs/`, which the blanket `/^docs\// { next }` rule excludes, so
+    // this carve-out is the only thing keeping a bundle-only PR from setting
+    // code=false and skipping `unit` — the job that runs BOTH the
+    // <= 950,000-byte scanner guard and the capacity report, against the very
+    // artifact such a PR changes.
+    const awkBlock = shellAwkAssignmentBlock('CODE');
+    const codeFilterSays = (path: string) => evaluateAwkAssignmentBlock(awkBlock, [path]) > 0;
+
+    assert.ok(
+      codeFilterSays('docs/api/worldmonitor.openapi.yaml'),
+      'a PR that only regenerates the unified OpenAPI bundle must still run the unit job',
+    );
+    // Prose under docs/ stays excluded — the carve-out is for the machine
+    // artifact, not for the directory.
+    for (const path of ['docs/api-reference.mdx', 'docs/perf/openapi-bundle-capacity-2026-08-13.md']) {
+      assert.ok(!codeFilterSays(path), `${path} must not set code=true`);
+    }
+
+    const unit = testJobBlock('unit');
+    assert.match(
+      unit,
+      /^\s+run: node scripts\/openapi-capacity-report\.mjs --out openapi-capacity\.json\s*$/m,
+      'unit job must publish the OpenAPI capacity report',
+    );
+    assert.match(
+      unit,
+      /name: openapi-capacity-\$\{\{ github\.run_attempt \}\}/,
+      'the capacity artifact name must carry run_attempt — upload-artifact v6 rejects a duplicate name within a run, which collides on the re-run started to chase the failure',
+    );
+  });
+
   it('keeps resilience validation bundle inputs in the CI change filter', () => {
     assert.ok(
       testWorkflow.includes('validation: ${{ steps.diff.outputs.validation }}'),
