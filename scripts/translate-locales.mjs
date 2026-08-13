@@ -37,6 +37,7 @@ const LANG_NAMES = {
   ko: 'Korean', nl: 'Dutch', pl: 'Polish', pt: 'Portuguese (Brazil)',
   ro: 'Romanian', ru: 'Russian', sv: 'Swedish', th: 'Thai', tr: 'Turkish',
   uk: 'Ukrainian', vi: 'Vietnamese', zh: 'Simplified Chinese',
+  'zh-TW': 'Traditional Chinese (Taiwan)',
 };
 const BATCH_SIZE = 50;
 const MODEL = 'claude-haiku-4-5-20251001';
