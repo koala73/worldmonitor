@@ -611,8 +611,18 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // An empty name is admitted on the same bound as the bare name — only inside
       // the two chunks whose modules issue no fetch of their own — so it cannot
       // hide a real caller; `fetchContent` and `apiClient.fetch` still surface.
+      // The RUNTIME value of that anonymous hop is '?', not '' (WORLDMONITOR-Z6):
+      // @sentry/core stamps every parsed frame with `function || UNKNOWN_FUNCTION`
+      // — literally '?' — before beforeSend runs (node_modules/@sentry/core/
+      // build/cjs/utils/stacktrace.js:115). Sentry INGEST then displays '?' as
+      // a null function, so a replay or fixture built from API events tests ''
+      // and passes while production tests '?' and fails — which is exactly how
+      // the ''-only tolerance shipped and Z6 kept firing from builds that
+      // contained it. '' stays admitted (other SDK paths/versions may omit the
+      // stamp); both are bounded by the same fetch-free-chunk invariant.
       const isTrampolineFrameFunction = (fn: string) =>
-        /^(?:\w{1,3}\.)?(?:window\.)?fetch$/.test(fn) || /^\w{1,2}$/.test(fn) || fn === '';
+        /^(?:\w{1,3}\.)?(?:window\.)?fetch$/.test(fn) || /^\w{1,2}$/.test(fn)
+        || fn === '' || fn === '?';
       if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
           && frames.some(f => isDebugBearRumScriptFrame(f.filename ?? ''))
           && nonInfraFrames.every(f =>

@@ -1518,6 +1518,50 @@ describe('sentry beforeSend — Y4 anonymous trampoline hop', () => {
     ]);
     assert.ok(beforeSend(event) !== null, 'no collector frame means no trampoline explanation');
   });
+
+  // ── The RUNTIME shape of the anonymous hop: '?', not '' ─────────────────────
+  //
+  // The '' tolerance above was derived from Sentry's INGEST representation
+  // (anonymous frames display as function: null in the API), and the fixture
+  // built from it passed while production kept firing (WORLDMONITOR-Z6,
+  // build_shas at and after the fix's own merge commit). The SDK never hands
+  // beforeSend an empty name: @sentry/core stamps every parsed frame with
+  // `function: frame.function || UNKNOWN_FUNCTION` where UNKNOWN_FUNCTION is
+  // '?' (node_modules/@sentry/core/build/cjs/utils/stacktrace.js:115). So at
+  // runtime the anonymous hop is '?' — not \w, not '' — and the '' branch is
+  // dead code for this SDK version. These fixtures pin the true runtime shape;
+  // the null-shaped fixture above stays as the ingest-replay shape.
+  const y4RuntimeStack = [
+    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: '?' },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: '?' },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: '?' },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: '?' },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 't' },
+    { filename: '/assets/widget-store-CxHYoOTa.js', lineno: 2, function: 'Cn.window.fetch' },
+    { filename: '/assets/panel-storage-Cz30-usJ.js', lineno: 2, function: '?' },
+    { filename: '/assets/panel-storage-Cz30-usJ.js', lineno: 2, function: 'c' },
+  ];
+
+  it("suppresses the runtime shape of the anonymous hop (SDK UNKNOWN_FUNCTION '?')", () => {
+    assert.equal(beforeSend(makeEvent('Failed to fetch', 'TypeError', y4RuntimeStack)), null,
+      "the SDK stamps anonymous frames as '?', which is what beforeSend actually receives");
+  });
+
+  it("does NOT suppress a '?' frame in a NON-allowlisted chunk", () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 't' },
+      { filename: '/assets/runtime-BQi6MP9w.js', lineno: 2, function: '?' },
+    ]);
+    assert.ok(beforeSend(event) !== null,
+      "a '?' frame outside the two fetch-free chunks is a real caller");
+  });
+
+  it("does NOT suppress a '?' trampoline frame without a DebugBear frame", () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panel-storage-Cz30-usJ.js', lineno: 2, function: '?' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'no collector frame means no trampoline explanation');
+  });
 });
 
 // ─── WORLDMONITOR-WK: zero-frame RangeError confined to iOS ───────────────────
