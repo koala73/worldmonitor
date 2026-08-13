@@ -11928,6 +11928,14 @@ a.prediction-link:hover {
   color: var(--green, #69f0ae);
 }
 
+/* Mineral production table: the unallocated "Other countries" remainder and a
+   per-row data vintage are both secondary to the named producers they annotate. */
+.sc-mineral-residual,
+.sc-mineral-vintage {
+  color: var(--text-secondary, #90a4ae);
+  font-size: 0.9em;
+}
+
 .trade-restriction-card.expanded {
   background: var(--overlay-medium);
   border-left-color: var(--accent-primary, #4fc3f7);

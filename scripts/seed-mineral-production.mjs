@@ -6,7 +6,7 @@
  * × stage share/HHI. IEA is skipped (redistribution terms).
  */
 
-import { loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { allSettledWithConcurrency, isAllowedRouteHost, loadEnvFile, runSeed } from './_seed-utils.mjs';
 import {
   CANONICAL_KEY,
   SCHEMA_VERSION,
@@ -31,6 +31,20 @@ const PINNED_MCS_2026_CSV = 'https://www.sciencebase.gov/catalog/file/get/69837e
 const SCIENCEBASE_SEARCH = 'https://www.sciencebase.gov/catalog/items?q=Mineral%20Commodity%20Summaries%20Commodity%20Salient&format=json&max=10&fields=title,files';
 const BGS_ITEMS = 'https://ogcapi.bgs.ac.uk/collections/world-mineral-statistics/items';
 
+// The ScienceBase catalog response is upstream-controlled data, so the CSV URL
+// it hands back is untrusted input: without this allowlist any entry that wins
+// the discovery sort would be fetched from an arbitrary host and its contents
+// published to the canonical key and served by the public RPC/MCP tool.
+const MCS_ALLOWED_HOSTS = ['sciencebase.gov', 'usgs.gov'];
+
+// The BGS loop was sequential, so with a 45s per-request timeout the 16-name
+// worst case was ~720s against the bundle's 180s budget -- only 4 requests
+// could ever complete before the bundle killed the member. 6-wide with a
+// tighter per-request timeout bounds the worst case to ceil(16/6)*30s = 90s,
+// leaving real headroom under 180s while staying polite to one upstream.
+const BGS_FETCH_CONCURRENCY = 6;
+const BGS_FETCH_TIMEOUT_MS = 30_000;
+
 async function fetchUsgsCsv(url) {
   const resp = await fetch(url, {
     headers: { 'User-Agent': USGS_UA, Accept: 'text/csv,*/*' },
@@ -40,10 +54,10 @@ async function fetchUsgsCsv(url) {
   return decodeUsgsCsvText(Buffer.from(await resp.arrayBuffer()));
 }
 
-async function fetchJson(url) {
+async function fetchJson(url, timeoutMs = 45_000) {
   const resp = await fetch(url, {
     headers: { 'User-Agent': USGS_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
   return resp.json();
@@ -69,14 +83,23 @@ export async function discoverUsgsMcsCsv() {
   try {
     const catalog = await fetchJson(SCIENCEBASE_SEARCH);
     const picked = pickUsgsMcsCsvFromCatalog(catalog);
-    if (picked) {
+    if (picked && !isAllowedRouteHost(picked.url, MCS_ALLOWED_HOSTS)) {
+      // ScienceBase "link"-type files can carry an arbitrary `url`, so a
+      // catalog entry could otherwise redirect the seeder off-host.
+      console.warn(`[seed] mineral-production: discovered CSV host not allowlisted (${picked.url}); using pinned MCS 2026 CSV`);
+    } else if (picked) {
       console.log(`[seed] mineral-production: USGS MCS ${picked.year} → ${picked.title}`);
       return { url: picked.url, edition: `mcs-${picked.year}` };
+    } else {
+      // Catalog fetch succeeded but matched nothing (renamed file, changed
+      // shape, query fell out of the top 10). Without this the seeder would
+      // republish the frozen pinned edition every cycle in total silence.
+      console.warn('[seed] mineral-production: ScienceBase returned no matching commodities_data.csv; using pinned MCS 2026 CSV');
     }
   } catch (err) {
     console.warn(`[seed] mineral-production: ScienceBase discovery failed (${err.message}); using pinned MCS 2026 CSV`);
   }
-  return { url: PINNED_MCS_2026_CSV, edition: 'mcs-2026' };
+  return { url: PINNED_MCS_2026_CSV, edition: 'mcs-2026-pinned' };
 }
 
 function bgsFillNames(vocab, usgsRows = []) {
@@ -96,33 +119,65 @@ function bgsFillNames(vocab, usgsRows = []) {
 export async function fetchBgsFill(vocab, usgsRows = []) {
   const names = bgsFillNames(vocab, usgsRows);
   const collected = [];
-  for (const name of names) {
+  let failed = 0;
+  const settled = await allSettledWithConcurrency(names, BGS_FETCH_CONCURRENCY, async (name) => {
     const qs = new URLSearchParams({
       f: 'json',
       limit: '2000',
       filter: `commodity='${name.replace(/'/g, "''")}' AND statistic_type='Production'`,
     });
-    try {
-      const body = await fetchJson(`${BGS_ITEMS}?${qs}`);
-      const features = Array.isArray(body?.features) ? body.features : [];
-      for (const feat of features) {
-        const p = feat.properties || {};
-        collected.push({
-          commodity: p.commodity || p.Commodity || name,
-          sub_commodity: p.sub_commodity || p.subCommodity || '',
-          country: p.country || p.Country || '',
-          year: p.year || p.Year,
-          statistic_type: p.statistic_type || p.statisticType || 'Production',
-          value: p.value ?? p.Value,
-          unit: p.unit || p.Unit || '',
-        });
-      }
-    } catch (err) {
-      console.warn(`[seed] mineral-production: BGS fetch skipped for ${name} (${err.message})`);
+    const body = await fetchJson(`${BGS_ITEMS}?${qs}`, BGS_FETCH_TIMEOUT_MS);
+    const features = Array.isArray(body?.features) ? body.features : [];
+    return features.map((feat) => {
+      const p = feat.properties || {};
+      return {
+        commodity: p.commodity || p.Commodity || name,
+        sub_commodity: p.sub_commodity || p.subCommodity || '',
+        country: p.country || p.Country || '',
+        year: p.year || p.Year,
+        statistic_type: p.statistic_type || p.statisticType || 'Production',
+        value: p.value ?? p.Value,
+        unit: p.unit || p.Unit || '',
+      };
+    });
+  });
+  for (const [i, result] of settled.entries()) {
+    if (result.status === 'fulfilled') {
+      collected.push(...result.value);
+    } else {
+      failed += 1;
+      console.warn(`[seed] mineral-production: BGS fetch skipped for ${names[i]} (${result.reason?.message || result.reason})`);
     }
   }
-  console.log(`[seed] mineral-production: BGS fill rows=${collected.length}`);
+  // A total BGS outage must not look like "BGS had nothing to add": the caller
+  // needs to tell an empty-but-healthy fill from a fill that never ran, so the
+  // 8-commodity floor cannot be cleared by USGS alone while uranium silently
+  // drops out of the published payload.
+  if (names.length > 0 && failed === names.length) {
+    const err = new Error(`BGS fill failed for all ${names.length} commodity names`);
+    // Marked so buildPayload can rethrow this specific case: a partial BGS
+    // failure is tolerable, but a TOTAL outage must not be published as though
+    // BGS simply had nothing to add -- the USGS-only payload still clears the
+    // commodity floor while uranium silently vanishes from the key.
+    err.totalBgsOutage = true;
+    throw err;
+  }
+  console.log(`[seed] mineral-production: BGS fill rows=${collected.length} names=${names.length} failed=${failed}`);
   return collected;
+}
+
+// Fraction of the shipped vocabulary that must carry at least one stage for a
+// payload to be publishable. Deriving the floor from the vocab is the point:
+// a hardcoded 8 against a 14-commodity vocab tolerated losing 6 commodities
+// (43%) with every gate still green, and grew more permissive each time a
+// commodity was added. USGS publishes a world table for 13 of the 14 (uranium
+// is the BGS-only gap), so 70% (10 today) keeps real headroom while still
+// failing closed on a mass parse regression -- e.g. USGS relabelling the
+// Statistics column, which parseUsgsMcsCsv matches case-sensitively.
+export const MIN_STAGED_COMMODITY_RATIO = 0.7;
+
+export function minStagedCommodities(vocab = loadMineralVocab()) {
+  return Math.ceil((vocab.commodities?.length || 0) * MIN_STAGED_COMMODITY_RATIO);
 }
 
 export function validateFn(data) {
@@ -130,7 +185,7 @@ export function validateFn(data) {
   const commodities = data.commodities;
   if (!commodities || typeof commodities !== 'object') return false;
   const withStage = Object.values(commodities).filter((c) => c?.stages?.mine || c?.stages?.refinery);
-  return withStage.length >= 8;
+  return withStage.length >= minStagedCommodities();
 }
 
 export function declareRecords(data) {
@@ -165,6 +220,11 @@ export async function buildPayload() {
       console.warn(`[seed] mineral-production: BGS unmapped=${parsed.unmapped.length}`);
     }
   } catch (err) {
+    // Fail the run rather than publish a BGS-less payload that still passes the
+    // commodity floor: runSeed leaves the previous canonical value in place
+    // under its TTL, which is strictly better than dropping the BGS-only
+    // commodities (uranium) from a payload that looks healthy everywhere.
+    if (err?.totalBgsOutage) throw err;
     console.warn(`[seed] mineral-production: BGS fill failed (${err.message})`);
   }
   const merged = mergeUsgsThenBgs(usgs.rows, bgsRows);

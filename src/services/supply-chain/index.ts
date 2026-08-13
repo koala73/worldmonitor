@@ -156,10 +156,16 @@ export async function fetchCriticalMinerals(): Promise<GetCriticalMineralsRespon
   }
 }
 
+// No bootstrap hydration path here on purpose. The bootstrap serves the RAW seed
+// payload, whose `commodities` is an object keyed by commodity id, while this
+// response type declares an array -- so a `hydrated?.commodities?.length` guard
+// was always `undefined` and every caller fell through to the RPC anyway, after
+// paying for the payload in the slow bootstrap tier. Projecting the raw shape
+// client-side would duplicate the server's mapping (label -> commodity,
+// stages.mine -> mine) and drift from it, so the daily-CDN-cached RPC is the
+// single source. Re-adding the key to BOOTSTRAP_CACHE_KEYS requires a real
+// projection plus a test that feeds the raw seed shape through this function.
 export async function fetchMineralProduction(): Promise<GetMineralProductionResponse> {
-  const hydrated = getHydratedData('mineralProduction') as GetMineralProductionResponse | undefined;
-  if (hydrated?.commodities?.length) return hydrated;
-
   try {
     return await mineralProductionBreaker.execute(async () => {
       return client.getMineralProduction({ commodity: '', iso2: '', stage: '' });

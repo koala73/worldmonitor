@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "USGS Mineral Commodity Summaries names are canonical. BGS aliases fill commodities MCS lacks (notably uranium and germanium world tables).",
+  "note": "USGS Mineral Commodity Summaries names are canonical. BGS aliases fill commodities MCS lacks (notably uranium and germanium world tables). A usgsChapters key must be claimed by at most ONE commodity -- indexVocab throws on a duplicate, because the chapter index is the fallback when the Commodity cell misses usgsNames and a silent last-write-wins would attribute one commodity's rows to another. 'BAUXITE AND ALUMINA' covers two commodities, so it stays on bauxite only; alumina is matched by its usgsNames entry.",
   "commodities": [
     {
       "id": "ree",
@@ -91,7 +91,6 @@
       "id": "alumina",
       "label": "Alumina",
       "usgsNames": ["Alumina"],
-      "usgsChapters": ["BAUXITE AND ALUMINA"],
       "bgsNames": ["Alumina"]
     },
     {

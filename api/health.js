@@ -867,7 +867,12 @@ const SEED_META = {
   chokepointBaselines:  { key: 'seed-meta:energy:chokepoint-baselines', maxStaleMin: 60 * 24 * 400 }, // 400 days
   mineralProduction:    {
     key: 'seed-meta:supply-chain:mineral-production',
-    maxStaleMin: 60 * 24 * 400, // annual MCS; content-age alarms on a skipped edition
+    // 120d = 2x the 60-day bundle interval, matching the repo's 2-3x norm. The
+    // data is annual but the PUBLISHER runs every 60 days, so a 400-day budget
+    // (6.7x cadence) would let a dead seeder read OK until ~2027-09; the 540-day
+    // content-age gate would not have covered it either. Sized to the publisher,
+    // not the source, so a dead seeder surfaces on the second missed cycle.
+    maxStaleMin: 60 * 24 * 120,
     cutover: {
       mode: 'expiring-ack',
       fromKey: null,

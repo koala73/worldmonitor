@@ -7,9 +7,14 @@
  */
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, rmSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
 import { computeStats } from '../scripts/docs-stats.mjs';
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 function trackedApiEndpointEntries(): number {
   const tracked = execFileSync('git', ['ls-files', '-z', '--', 'api'], { encoding: 'utf8' })
@@ -31,5 +36,43 @@ describe('docs-stats api endpoint inventory', () => {
     const expected = trackedApiEndpointEntries();
     assert.ok(expected > 0, 'expected git to list api/ files');
     assert.equal(computeStats().apiEndpointEntries, expected);
+  });
+
+  // The assertion above cannot fail on the bug this file exists to guard:
+  // `expected` comes from `git ls-files`, which can never see an empty
+  // directory, so in a clean checkout the pre-fix readdir count and the
+  // dirHasFiles count agree and the test passes against BOTH. Stage the actual
+  // condition -- an empty `api/[domain]/v1` leftover -- so reverting
+  // dirHasFiles turns this red.
+  it('ignores an empty leftover api/ directory that a readdir-only count would include', () => {
+    const leftover = resolve(REPO_ROOT, 'api/[__docs_stats_probe__]');
+    const baseline = computeStats().apiEndpointEntries;
+    mkdirSync(resolve(leftover, 'v1'), { recursive: true });
+    try {
+      assert.equal(
+        computeStats().apiEndpointEntries,
+        baseline,
+        'an empty leftover directory must not count as an endpoint',
+      );
+    } finally {
+      rmSync(leftover, { recursive: true, force: true });
+    }
+    assert.equal(computeStats().apiEndpointEntries, baseline, 'probe directory must be cleaned up');
+  });
+
+  it('still counts a leftover directory once it contains a real file', () => {
+    const populated = resolve(REPO_ROOT, 'api/[__docs_stats_probe2__]');
+    const baseline = computeStats().apiEndpointEntries;
+    mkdirSync(resolve(populated, 'v1'), { recursive: true });
+    try {
+      execFileSync('touch', [resolve(populated, 'v1/handler.js')]);
+      assert.equal(
+        computeStats().apiEndpointEntries,
+        baseline + 1,
+        'a directory with a real file nested inside is a genuine endpoint entry',
+      );
+    } finally {
+      rmSync(populated, { recursive: true, force: true });
+    }
   });
 });

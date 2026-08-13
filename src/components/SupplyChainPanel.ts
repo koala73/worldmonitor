@@ -726,15 +726,30 @@ export class SupplyChainPanel extends Panel {
             <td colspan="2">${escapeHtml(t('components.supplyChain.stageUnavailable'))}</td>
           </tr>`;
         }
-        const top3 = snap.countries.filter((c) => !c.withheld && c.share != null).slice(0, 3)
+        // `residual` is the USGS "Other countries" bucket -- an aggregate, not a
+        // producer. Without this it outranks real countries and occupies a named
+        // slot (copper mine renders it 3rd at 13%, displacing Peru).
+        const top3 = snap.countries.filter((c) => !c.withheld && !c.residual && c.share != null).slice(0, 3)
           .map((p) => `${escapeHtml(p.country)} ${(p.share ?? 0).toFixed(0)}%`)
           .join(', ');
+        const residual = snap.countries.find((c) => c.residual && c.share != null);
+        // Uses the upstream label ("Other countries") rather than a new i18n key,
+        // matching the untranslated country names already rendered in this table.
+        const residualNote = residual
+          ? ` <span class="sc-mineral-residual">+${(residual.share ?? 0).toFixed(0)}% ${escapeHtml(residual.country || 'other')}</span>`
+          : '';
         const withheld = snap.withheldCount > 0
           ? ` <span class="sc-risk-moderate">${escapeHtml(t('components.supplyChain.withheldNote'))}</span>`
           : '';
+        // Each commodity-stage picks its own year, so a BGS-filled commodity can
+        // be years older than the caption's global max. Label the row when it
+        // differs rather than letting the caption imply one vintage for all.
+        const rowYear = snap.year && snap.year !== production.dataYear
+          ? ` <span class="sc-mineral-vintage">(${escapeHtml(String(snap.year))})</span>`
+          : '';
         return `<tr>
-          <td>${escapeHtml(item.commodity)}</td>
-          <td>${top3 || '—'}${withheld}</td>
+          <td>${escapeHtml(item.commodity)}${rowYear}</td>
+          <td>${top3 || '—'}${residualNote}${withheld}</td>
           <td>${snap.hhi.toFixed(0)}</td>
         </tr>`;
       }).join('');

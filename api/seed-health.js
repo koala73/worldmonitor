@@ -141,7 +141,11 @@ const SEED_DOMAINS = {
   'infra:service-statuses':   { key: 'seed-meta:infra:service-statuses',   intervalMin: 60 },
   'supply_chain:shipping':    { key: 'seed-meta:supply_chain:shipping',    intervalMin: 120 },
   'supply_chain:chokepoints': { key: 'seed-meta:supply_chain:chokepoints', intervalMin: 30 },
-  'supply-chain:mineral-production': { key: 'seed-meta:supply-chain:mineral-production', intervalMin: 86400, minRecordCount: 8 }, // 60d static-ref bundle; 8-commodity floor
+  // 60d static-ref bundle (intervalMin*2 = 120d, matching api/health.js maxStaleMin).
+  // minRecordCount tracks minStagedCommodities() in scripts/seed-mineral-production.mjs
+  // (ceil(14 * 0.7)); api/ cannot import from scripts/, so bump both together when
+  // scripts/shared/mineral-commodities.json gains or loses a commodity.
+  'supply-chain:mineral-production': { key: 'seed-meta:supply-chain:mineral-production', intervalMin: 86400, minRecordCount: 10 },
   'cable-health':             { key: 'seed-meta:cable-health',             intervalMin: 30 },
   'infrastructure:submarine-cables': { key: 'seed-meta:infrastructure:submarine-cables', intervalMin: 12600 },
   'prediction:markets': {

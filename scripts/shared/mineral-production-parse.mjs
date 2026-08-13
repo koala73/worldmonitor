@@ -96,7 +96,20 @@ function indexVocab(vocab) {
   const byBgsName = new Map();
   for (const item of vocab.commodities) {
     for (const n of item.usgsNames || []) byUsgsName.set(n.toLowerCase(), item);
-    for (const n of item.usgsChapters || []) byChapter.set(n.toLowerCase(), item);
+    for (const n of item.usgsChapters || []) {
+      const key = n.toLowerCase();
+      // A chapter claimed by two commodities (e.g. "BAUXITE AND ALUMINA") would
+      // otherwise resolve to whichever entry was registered last, silently
+      // attributing one commodity's rows to the other. Fail loudly instead.
+      const claimed = byChapter.get(key);
+      if (claimed && claimed.id !== item.id) {
+        throw new Error(
+          `mineral-commodities.json: usgsChapters key "${n}" is claimed by both `
+          + `"${claimed.id}" and "${item.id}"; a chapter must map to one commodity`,
+        );
+      }
+      byChapter.set(key, item);
+    }
     for (const n of item.bgsNames || []) byBgsName.set(n.toLowerCase(), item);
   }
   return { byUsgsName, byChapter, byBgsName };
@@ -169,7 +182,7 @@ export function parseUsgsMcsCsv(text, { vocab = loadMineralVocab(), aliases = lo
     if (!/^world\b/i.test(section)) continue;
     const statistics = rec.Statistics || '';
     if (statistics && statistics !== 'Production') continue;
-    const detail = rec.Statistics_detail || rec['Statistics_detail'] || '';
+    const detail = rec.Statistics_detail || '';
     const stage = classifyUsgsStage(section, detail);
     if (!stage) continue;
     const year = Number(rec.Year);
@@ -325,7 +338,14 @@ export function aggregateMineralProduction(rows, { preferredYear = null, vocab =
         if (a.withheld !== b.withheld) return a.withheld ? 1 : -1;
         return (b.output ?? -1) - (a.output ?? -1);
       });
-      const hhi = computeHhiFromShares(countries.filter((c) => c.share != null).map((c) => c.share));
+      // The USGS "Other countries" residual is an aggregate of many small
+      // producers, not a firm. Squaring it as if it were one would bias HHI
+      // upward by exactly residual^2 (copper mine: 170 of 1206 points from a
+      // 13.0% residual). Exclude it so the index is a lower bound over named
+      // producers rather than an inflated value that can cross a 1500/2500 band.
+      const hhi = computeHhiFromShares(
+        countries.filter((c) => c.share != null && !c.residual).map((c) => c.share),
+      );
       stages[stage] = {
         year,
         unit,
@@ -361,7 +381,10 @@ export function buildMineralProductionPayload(rows, opts = {}) {
   const commodities = aggregateMineralProduction(rows, opts);
   const unmapped = [];
   for (const row of rows) {
-    if (row.unmapped || (row.iso2 == null && !row.residual && !row.worldTotal && row.stage !== 'world-total')) {
+    // Rows are only ever built by parseUsgsMcsCsv/parseBgsRecords, which never
+    // set `.unmapped` and only ever emit stage 'mine' | 'refinery' -- the two
+    // extra clauses this condition used to carry could not fire.
+    if (row.iso2 == null && !row.residual && !row.worldTotal) {
       if (row.country) unmapped.push({ country: row.country, commodity: row.commodityId });
     }
   }
