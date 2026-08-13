@@ -286,8 +286,9 @@ does not certify any real-time financial, shipping, news or trade feed.
 
 ## Phase 11 - acceptance matrix and no-false-evidence regression gates
 
-**Implementation commit:** pending isolated-index commit. The next receipt
-commit backfills its immutable SHA.
+**Implementation commit:** `a640cb3c25ac393759b1907b3f6c687b5a57e974`
+(`fix(phase11): harden dashboard reliability and acceptance`). The next receipt
+commit backfills this immutable SHA.
 
 | Check | Result | Evidence |
 |---|---|---|

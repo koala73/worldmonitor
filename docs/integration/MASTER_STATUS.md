@@ -374,8 +374,9 @@ visual goldens 1/1. Exact command logs and exit codes are in
 
 No Provider credential, observation, real-time market bar, AIS message, cargo
 claim, news causal claim or factory fact was created. Unconfigured Provider
-states remain truthful and fail-closed. The Phase 11 implementation commit SHA
-is backfilled by the following receipt commit.
+states remain truthful and fail-closed. The Phase 11 implementation commit is
+`a640cb3c25ac393759b1907b3f6c687b5a57e974`; the following receipt commit
+records that immutable SHA.
 
 ## Next action
 
