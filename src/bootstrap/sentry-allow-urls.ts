@@ -1,25 +1,18 @@
 /**
- * Sentry `allowUrls` — the ingest gate for browser events.
+ * Marketing copy of the Sentry ingest allowlist. `pro-test` builds from its own root
+ * and cannot import `src/`, so this mirrors `src/bootstrap/sentry-allow-urls.ts` the
+ * same way `pro-test/src/debugbear-rum.ts` mirrors its dashboard sibling.
+ * `tests/sentry-allow-urls.test.mts` asserts the two lists stay identical and
+ * exercises both against the served-host population.
  *
- * Sentry drops an event outright when no frame URL matches one of these
- * patterns, BEFORE `beforeSend` runs. A served host missing from the
- * alternation is therefore a total, silent observability blackout for that
- * host, not a filtering nuance: `energy.` was absent while
- * `energy.worldmonitor.app` was live, so every error-level browser event from
- * the energy variant was discarded (#6545).
+ * Kept dependency-free (no `@sentry/react` import) so the guard can import the real
+ * value instead of re-deriving it from source text.
  *
- * The alternation must cover every host the app is served on — the apex,
- * `www.`, and one entry per non-`full` `SITE_VARIANTS` subdomain
- * (`src/config/variant.ts`). `tests/sentry-allow-urls.test.mts` derives that
- * population from `SITE_VARIANTS` and `DEBUGBEAR_RUM_HOSTS` rather than
- * restating it, so the next variant subdomain cannot repeat the drift.
- *
- * Keep in sync with `pro-test/src/sentry-allow-urls.ts` (asserted by the same
- * test). Both bundles run on every variant host: `vercel.json` rewrites `/` on
- * each variant host to the marketing `/pro/welcome.html`, and `/dashboard` to
- * that variant's dashboard entry.
+ * Read the dashboard copy for why a missing host is a total blackout rather than a
+ * filtering nuance, why the population is "hosts that serve the app" rather than the
+ * variant list, and why both patterns are anchored (#6545, WORLDMONITOR-K7 / -Q4).
  */
 export const SENTRY_ALLOW_URLS: RegExp[] = [
-  /https?:\/\/(www\.|tech\.|finance\.|commodity\.|happy\.|energy\.)?worldmonitor\.app/,
-  /https?:\/\/.*\.vercel\.app/,
+  /^https?:\/\/(www\.|app\.|api\.|tech\.|finance\.|commodity\.|happy\.|energy\.)?worldmonitor\.app(?=[:/?#]|$)/,
+  /^https?:\/\/[^/]*\.vercel\.app(?=[:/?#]|$)/,
 ];
