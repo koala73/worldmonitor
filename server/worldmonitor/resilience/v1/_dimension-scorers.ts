@@ -69,9 +69,14 @@ export interface ResilienceDimensionScore {
 
 export type ResilienceSeedReader = (key: string) => Promise<unknown | null>;
 
-interface WeightedMetric {
+export interface WeightedMetric {
   score: number | null;
   weight: number;
+  // A known malformed reading can preserve its design weight with a
+  // conservative fallback instead of letting weightedBlend renormalize the
+  // missing weight onto unrelated survivors. Genuine absence leaves this
+  // unset and keeps the existing coverage-weighted drop behavior.
+  fallbackScore?: number;
   // When a sub-metric is imputed (absence is a typed signal, not a gap), certaintyCoverage
   // expresses how confident we are in the imputation: 1.0 = real data, 0 = fully absent.
   // Omit for real data (auto: 1.0 if score != null, 0 if null).
@@ -803,20 +808,17 @@ export function normalizeBandLowerBetter(value: number): number {
 //     exists to fix. The sibling `normalizeBandLowerBetter` neutralises
 //     malformed input the same way.
 //
-// Capping the band is necessary but not SUFFICIENT to make a `parentCount`
-// parse regression fail closed, and this function cannot make it so. The same
-// missing count also nulls the Component 4 slot, and `weightedBlend`
-// renormalises the freed weight onto the survivors — for a country whose debt
-// and FATF legs read high, that renormalisation RAISES the published score.
-// Measured on the pinned Albania fixture: honest 70 -> 80 with the count
-// unparseable.
+// Capping the band is necessary but not sufficient to make a `parentCount`
+// parse regression fail closed. The reader marks a present-but-invalid count
+// as malformed, and the blend retains that slot with a conservative fallback
+// score of zero. A genuinely absent count remains null without a fallback, so
+// it keeps the existing absence and coverage semantics.
 //
-// That inflation is a property of the blend, not of this conditioning, and it
-// predates it: the same measurement against the raw band is 75 -> 86, so the
-// conditioning strictly REDUCES it (+10 vs +11). Coupling the two BIS slots so
-// a half-parsed row resolves neither was measured too and is worse still
-// (-> 83): it frees even more weight onto the high legs. The real fix is at
-// the blend layer — see issue #6528 — and is deliberately not attempted here.
+// This distinction matters because `weightedBlend` otherwise renormalises a
+// missing Component 4 slot onto the survivors. For a country whose debt and
+// FATF legs read high, that can raise the published score. The generic blend
+// now supports an explicit fallback for this known-corrupt-input case; the
+// conditioning function only supplies the bounded band value and its signal.
 //
 // Known conservative edge: parentCount counts only parents above 1% of GDP,
 // so a country integrated through many sub-threshold parents forfeits a
@@ -872,16 +874,25 @@ const IMPUTATION_CLASS_TIE_BREAK: readonly ImputationClass[] = [
 const MINUTE_MS = 60 * 1000;
 const WGI_INDICATOR_KEYS: readonly string[] = wgiIndicatorKeys;
 
-function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
+export function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   const totalWeight = metrics.reduce((sum, metric) => sum + metric.weight, 0);
   const available = metrics.filter(hasFiniteMetricScore);
   const availableWeight = available.reduce((sum, metric) => sum + metric.weight, 0);
+  const fallback = metrics.filter((metric) => !hasFiniteMetricScore(metric) && Number.isFinite(metric.fallbackScore));
+  const fallbackWeight = fallback.reduce((sum, metric) => sum + metric.weight, 0);
+  const scoringWeight = availableWeight + fallbackWeight;
 
-  if (!availableWeight || !totalWeight) {
+  if (!scoringWeight || !totalWeight) {
     return { score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } };
   }
 
-  const weightedScore = available.reduce((sum, metric) => sum + metric.score * metric.weight, 0) / availableWeight;
+  // A malformed slot with an explicit fallback keeps its weight in the
+  // denominator. This prevents a low leg from disappearing and raising the
+  // published score, while ordinary absence still renormalizes as before.
+  const weightedScore = (
+    available.reduce((sum, metric) => sum + metric.score * metric.weight, 0)
+    + fallback.reduce((sum, metric) => sum + (metric.fallbackScore ?? 0) * metric.weight, 0)
+  ) / scoringWeight;
 
   // Coverage: weighted average of certainty per metric, computed against the
   // NOMINAL design-time weight rather than the runtime weight. Real data → 1.0;
@@ -2211,10 +2222,9 @@ export async function scoreFinancialSystemExposure(
       // proportion to demonstrated parent breadth (see
       // `normalizeDiversityConditionedBand`). Passing `parentCount` from the
       // same BIS row keeps level and breadth reads consistent per country.
-      // A missing count caps the premium here but cannot stop the blend from
-      // renormalising the freed Component 4 weight onto the surviving legs —
-      // pre-existing, measured, and reduced (not caused) by the conditioning:
-      // issue #6528.
+      // A missing count caps the premium here. A malformed claims field is
+      // also retained as a conservative zero fallback by weightedBlend so a
+      // parser regression cannot free this slot's weight onto unrelated legs.
       //
       // This slot now has TWO designed inputs (level and breadth), so it can
       // resolve only half-observed. `certaintyCoverage` says which: a withheld
@@ -2229,6 +2239,7 @@ export async function scoreFinancialSystemExposure(
         ? null
         : normalizeDiversityConditionedBand(bisCountry.totalXborderPctGdp, bisCountry.parentCount),
       weight: FIN_SYS_BAND_WEIGHT,
+      fallbackScore: bisCountry?.totalXborderPctGdpMalformed ? 0 : undefined,
       certaintyCoverage: resolveFinSysBandCertainty(bisCountry),
     },
     {
@@ -2242,6 +2253,7 @@ export async function scoreFinancialSystemExposure(
         ? null
         : normalizeHigherBetter(bisCountry.parentCount, 1, 10),
       weight: FIN_SYS_REDUNDANCY_WEIGHT,
+      fallbackScore: bisCountry?.parentCountMalformed ? 0 : undefined,
       // A count computed over an incomplete reporting-parent set is an
       // undercount, not an observation — same reasoning as the band slot.
       certaintyCoverage: bisCountry != null && !bisCountry.parentSetComplete
@@ -2343,6 +2355,11 @@ function readWbExternalDebtPct(envelope: WbExternalDebtEnvelope, countryCode: st
 interface BisLbsCountry {
   totalXborderPctGdp: number | null;
   parentCount: number | null;
+  // True when the field was present but failed the reader's type/range
+  // contract. A genuinely absent field remains distinguishable and keeps the
+  // scorer's existing coverage-weighted absence behavior.
+  totalXborderPctGdpMalformed: boolean;
+  parentCountMalformed: boolean;
   /**
    * False when the seed envelope reports that the BIS collection ran with an
    * incomplete reporting-parent set (`successfulParents < parentCountries`).
@@ -2460,19 +2477,16 @@ const FIN_SYS_BIS_REPORTING_PARENTS_MAX = 16;
  * `Object.values(parents).filter(...).length` over an enumerated list, so a
  * legitimate value is a non-negative integer no larger than that list.
  *
- * The pre-existing `typeof === 'number'` check rejects the UNREACHABLE cases
- * (`NaN`, `Infinity`, a stringified count) while trusting any finite number,
- * including reachable-by-corruption ones. That asymmetry matters more now that
- * the band premium reads the same field: a payload carrying `parentCount: 500`
- * clamps to redundancy 100 and earns BOTH the full premium (0.30) and a perfect
- * Component 4 (0.15), so a corrupt cache entry buys 0.45 of the dimension where
- * before it bought 0.15.
+ * The type, finiteness, integer, and range checks reject malformed or
+ * impossible values. `readBisLbsCountry` keeps the nullable result for the
+ * conditioning arithmetic, and separately records when a non-null raw field
+ * failed these checks so the blend can retain its design weight with a
+ * conservative fallback.
  *
- * An implausible value is treated exactly like a malformed one — absent — so
- * this adds no new resolution path. The freed Component 4 weight still
- * renormalises onto the survivors (issue #6528); that is unchanged and out of
- * scope here. What changes is that an impossible count no longer reads as
- * demonstrated diversity.
+ * An implausible value is therefore treated as absent for diversity evidence,
+ * but not as an ordinary missing slot when it was present in the payload.
+ * Genuine absence remains distinguishable and keeps the existing
+ * coverage-weighted absence semantics.
  */
 function readPlausibleParentCount(rawParentCount: unknown, maxParents: number): number | null {
   if (typeof rawParentCount !== 'number') return null;
@@ -2504,12 +2518,19 @@ function readBisLbsCountry(raw: unknown, countryCode: string): BisLbsCountry | n
     ? rawSuccessfulParents >= attemptedParents
     : true;
 
+  const totalXborderPctGdp = typeof rawClaims === 'number' && rawClaims >= 0
+    ? safeNum(rawClaims)
+    : null;
+  const parentCount = readPlausibleParentCount(rawParentCount, attemptedParents);
+
   return {
     // `safeNum(null)` and `safeNum('')` are numeric zero by design. These
     // fields use zero as a real financial-isolation signal, so require a raw
     // number rather than manufacturing an observed zero from malformed data.
-    totalXborderPctGdp: typeof rawClaims === 'number' ? safeNum(rawClaims) : null,
-    parentCount: readPlausibleParentCount(rawParentCount, attemptedParents),
+    totalXborderPctGdp,
+    parentCount,
+    totalXborderPctGdpMalformed: rawClaims != null && totalXborderPctGdp == null,
+    parentCountMalformed: rawParentCount != null && parentCount == null,
     parentSetComplete,
   };
 }

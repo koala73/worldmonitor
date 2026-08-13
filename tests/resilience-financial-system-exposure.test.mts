@@ -65,13 +65,15 @@ import {
 const TEST_ISO2 = 'XX';
 
 /**
- * Albania's blend on a given band score, mirroring `weightedBlend`'s
- * drop-and-renormalise semantics. Used only to measure the INHERITED
- * inflation (the unconditioned band) as a baseline the conditioning is
- * compared against — the conditioned side of that comparison always goes
- * through the real `scoreFinancialSystemExposure`.
+ * Albania's blend on a given band score, mirroring the production blend. The
+ * optional preFixRenormalization mode preserves the old drop-and-renormalise
+ * arithmetic for the inherited-baseline counterfactual only.
  */
-function blendFinSys(band: number, parentCount: number | null): number {
+function blendFinSys(
+  band: number | null,
+  parentCount: number | null,
+  options: { preFixRenormalization?: boolean } = {},
+): number {
   // Every leg goes through the PRODUCTION transform at the PRODUCTION weight,
   // imported rather than restated. The earlier version hand-rolled the debt
   // normalization as `100 - value / 15 * 100` and the redundancy leg as
@@ -105,12 +107,13 @@ function blendFinSys(band: number, parentCount: number | null): number {
   ];
   let num = 0;
   let den = 0;
+  const totalWeight = slots.reduce((sum, [, weight]) => sum + weight, 0);
   for (const [score, weight] of slots) {
     if (score == null) continue;
     num += score * weight;
     den += weight;
   }
-  return Math.round(num / den);
+  return Math.round(num / (options.preFixRenormalization ? den : totalWeight));
 }
 const VALID_DEBT_CONTROL_COUNTRY = 'ZZ';
 const VALID_DEBT_SCHEMA_VERSION = 2;
@@ -814,7 +817,7 @@ describe('scoreFinancialSystemExposure — the band slot reports its own certain
     );
   });
 
-  it('an OBSERVED parentCount of 0 is distinguished from an absent one', async () => {
+  it('an OBSERVED parentCount of 0 is distinguished from a malformed one', async () => {
     // 0 means "no parent clears the 1%-of-GDP threshold" — an observation, not
     // an absence. Both withhold the whole premium, so the BAND leg is identical:
     assert.equal(normalizeDiversityConditionedBand(AL_CLAIMS, 0), 75);
@@ -824,32 +827,27 @@ describe('scoreFinancialSystemExposure — the band slot reports its own certain
       'AL',
       createFinSysFixtureReader({ bis: { AL: { totalXborderPctGdp: AL_CLAIMS, parentCount: 0 } } }),
     );
-    const breadthAbsent = await scoreFinancialSystemExposure(
+    const malformedBreadth = await scoreFinancialSystemExposure(
       'AL',
       createFinSysFixtureReader({
-        bis: { AL: { totalXborderPctGdp: AL_CLAIMS, parentCount: null as unknown as number } },
+        bis: { AL: { totalXborderPctGdp: AL_CLAIMS, parentCount: String(FINSYS_BIS_FIXTURE.AL.parentCount) as unknown as number } },
       }),
     );
 
     assert.ok(
-      observedZero.coverage > breadthAbsent.coverage,
-      `an observed 0 must report higher coverage than an absent count `
-        + `(observed ${observedZero.coverage}, absent ${breadthAbsent.coverage})`,
+      observedZero.coverage > malformedBreadth.coverage,
+      `an observed 0 must report higher coverage than a malformed count `
+        + `(observed ${observedZero.coverage}, malformed ${malformedBreadth.coverage})`,
     );
 
-    // ...and the uncomfortable half, pinned deliberately rather than left to be
-    // rediscovered: at the DIMENSION level the absent count scores HIGHER than
-    // the observed 0, because Component 4 scores an observed 0 as a real 0 that
-    // drags the blend down, while a null drops the slot and `weightedBlend`
-    // renormalises its 0.15 onto the high survivors. Measuring worse therefore
-    // scores worse than measuring nothing. That is issue #6528, not this
-    // conditioning — the band leg above is identical in both — and it is pinned
-    // here so a future blend fix shows up as this assertion flipping.
+    // A malformed count must not score higher than an observed zero. The failed
+    // slot retains its design weight in the fixed blend and contributes no
+    // score, while the observed zero contributes an explicit zero at that same
+    // weight. This is the #6528 contract at the real scorer seam.
     assert.ok(
-      breadthAbsent.score > observedZero.score,
-      'expected the #6528 renormalisation to favour the absent count '
-        + `(absent ${breadthAbsent.score}, observed-zero ${observedZero.score}) — if this flipped, `
-        + 'the blend was fixed: delete this assertion and close #6528',
+      malformedBreadth.score <= observedZero.score,
+      'a malformed count must not outrank an observed zero '
+        + `(malformed ${malformedBreadth.score}, observed-zero ${observedZero.score})`,
     );
   });
 
@@ -858,10 +856,10 @@ describe('scoreFinancialSystemExposure — the band slot reports its own certain
     // redundancy 100 and earn BOTH the full premium (0.30) and a perfect
     // Component 4 (0.15) — 0.45 of the dimension bought by a corrupt field.
     const honest = await scoreFinancialSystemExposure('AL', createFinSysFixtureReader());
-    const breadthAbsent = await scoreFinancialSystemExposure(
+    const malformedBreadth = await scoreFinancialSystemExposure(
       'AL',
       createFinSysFixtureReader({
-        bis: { AL: { totalXborderPctGdp: AL_CLAIMS, parentCount: null as unknown as number } },
+        bis: { AL: { totalXborderPctGdp: AL_CLAIMS, parentCount: String(FINSYS_BIS_FIXTURE.AL.parentCount) as unknown as number } },
       }),
     );
     // What a TRUSTED implausible count would have scored: an out-of-range count
@@ -882,7 +880,7 @@ describe('scoreFinancialSystemExposure — the band slot reports its own certain
       );
       assert.equal(
         corrupt.score,
-        breadthAbsent.score,
+        malformedBreadth.score,
         `parentCount=${bogus} must score exactly like an absent count`,
       );
       assert.ok(
@@ -896,14 +894,12 @@ describe('scoreFinancialSystemExposure — the band slot reports its own certain
       );
     }
 
-    // The residual, stated so nobody reads the above as "corruption now fails
-    // closed": the dimension score still rises above the honest reading, because
-    // the freed Component 4 weight renormalises onto the high survivors. This
-    // fix bounds the damage (the premium is no longer bought), it does not
-    // remove it — that is issue #6528.
+    // A corrupt count must not raise the honest dimension score. The fixed
+    // blend keeps the missing slot in the denominator with a zero contribution,
+    // so the data-quality regression cannot buy resilience.
     assert.ok(
-      breadthAbsent.score > honest.score,
-      'residual #6528 inflation expected; if this flipped, the blend was fixed',
+      malformedBreadth.score <= honest.score,
+      `corrupt parentCount must not raise the honest score (honest ${honest.score}, corrupt ${malformedBreadth.score})`,
     );
   });
 
@@ -925,23 +921,54 @@ describe('scoreFinancialSystemExposure — the band slot reports its own certain
   });
 });
 
-describe('scoreFinancialSystemExposure — half-parsed BIS row (pre-existing blend inflation)', () => {
-  it('the conditioning must not widen the renormalisation inflation it inherited', async () => {
-    // A `parentCount` that fails to parse nulls the Component 4 slot, and
-    // `weightedBlend` renormalises its freed 0.15 onto the survivors. When the
-    // surviving legs read high, that RAISES the published score: Albania goes
-    // 70 -> 80 with its count unparseable. `readBisLbsCountry` requires a raw
-    // number, so a seeder publishing the count as a string is exactly this.
+describe('scoreFinancialSystemExposure — half-parsed BIS row', () => {
+  it('does not let a malformed claims field raise the published score', async () => {
+    const real = FINSYS_BIS_FIXTURE.AL;
+    const honest = await scoreFinancialSystemExposure('AL', createFinSysFixtureReader());
+    const malformedClaims = [
+      ['string', String(real.totalXborderPctGdp) as unknown as number],
+      ['negative', -1],
+      ['NaN', Number.NaN],
+      ['Infinity', Number.POSITIVE_INFINITY],
+    ] as const;
+
+    for (const [label, totalXborderPctGdp] of malformedClaims) {
+      const result = await scoreFinancialSystemExposure(
+        'AL',
+        createFinSysFixtureReader({ bis: { AL: { ...real, totalXborderPctGdp } } }),
+      );
+
+      // A present-but-invalid claims field is a retained zero at the 0.30
+      // band weight. The mirror uses a null band to model the parser result
+      // and keeps the fixed denominator, so this checks reader-to-blend wiring
+      // rather than only checking that the score moves in the safe direction.
+      assert.equal(
+        blendFinSys(null, real.parentCount),
+        result.score,
+        `${label} claims must retain the band weight as a zero fallback`,
+      );
+      assert.ok(
+        result.score <= honest.score,
+        `${label} claims must not raise the honest score (honest ${honest.score}, corrupt ${result.score})`,
+      );
+      assert.ok(
+        result.coverage < honest.coverage,
+        `${label} claims must lower coverage (honest ${honest.coverage}, corrupt ${result.coverage})`,
+      );
+    }
+  });
+
+  it('does not let a malformed parentCount raise the published score', async () => {
+    // A `parentCount` that fails to parse nulls the Component 4 slot. Before
+    // #6528, `weightedBlend` renormalised the freed 0.15 onto the survivors and
+    // Albania rose from 70 to 80. `readBisLbsCountry` requires a raw number, so
+    // a seeder publishing the count as a string is exactly this corruption.
     //
     // This is a property of the blend and PREDATES the diversity conditioning
-    // — against the raw band the same measurement is 74 -> 86. The real fix is
-    // at the blend layer (issue #6528); conditioning cannot close it, because
-    // the band slot has no way to hold weight the blend has already freed.
-    //
-    // What this test pins is the part the conditioning DOES own: it must never
-    // make the inherited inflation worse. Coupling the two BIS slots so a
-    // half-parsed row resolves neither was tried and measured at 83 — worse,
-    // because it frees even more weight onto the high legs.
+    // — against the raw band the same measurement is 74 -> 86. The reader now
+    // distinguishes this malformed field from a genuinely absent one, and the
+    // blend retains its weight with a conservative fallback. The conditioning
+    // arithmetic and coverage signal must remain unchanged.
     const real = FINSYS_BIS_FIXTURE.AL;
     const honest = await scoreFinancialSystemExposure('AL', createFinSysFixtureReader());
     const halfParsed = await scoreFinancialSystemExposure(
@@ -953,14 +980,11 @@ describe('scoreFinancialSystemExposure — half-parsed BIS row (pre-existing ble
 
     const conditionedInflation = halfParsed.score - honest.score;
 
-    // MIRROR FIDELITY. `blendFinSys` only means anything as a baseline if it
-    // reproduces production's arithmetic, and the way it silently stopped doing
-    // so was a missing `roundScore` on two legs — worth exactly one point, which
-    // was enough to publish "+12" for what is really +11. Feed the mirror the
-    // CONDITIONED band (the leg the live scorer actually consumes) and it must
-    // land on the real scorer's number, in both the honest and dropped states.
-    // If the weights, the debt transform, or the renormalisation drift apart
-    // again, this fails instead of the baseline quietly going wrong.
+    // MIRROR FIDELITY. Feed the mirror the CONDITIONED band (the leg the live
+    // scorer actually consumes) and it must land on the real scorer's number,
+    // in both the honest and malformed states. If the weights, the debt
+    // transform, or the missing-slot policy drift apart, this fails instead of
+    // the baseline quietly going wrong.
     assert.equal(
       blendFinSys(normalizeDiversityConditionedBand(real.totalXborderPctGdp, real.parentCount), real.parentCount),
       honest.score,
@@ -972,32 +996,32 @@ describe('scoreFinancialSystemExposure — half-parsed BIS row (pre-existing ble
       'blendFinSys no longer reproduces the real scorer on the half-parsed payload',
     );
 
-    // The same country, same corruption, scored on the UNCONDITIONED band —
-    // the inflation this construct inherited rather than introduced.
-    const rawHonest = blendFinSys(normalizeBandLowerBetter(real.totalXborderPctGdp), real.parentCount);
-    const rawHalfParsed = blendFinSys(normalizeBandLowerBetter(real.totalXborderPctGdp), null);
+    // The same country, same corruption, scored on the UNCONDITIONED band with
+    // the pre-fix arithmetic — the inflation this construct inherited rather
+    // than introduced.
+    const rawHonest = blendFinSys(
+      normalizeBandLowerBetter(real.totalXborderPctGdp),
+      real.parentCount,
+      { preFixRenormalization: true },
+    );
+    const rawHalfParsed = blendFinSys(
+      normalizeBandLowerBetter(real.totalXborderPctGdp),
+      null,
+      { preFixRenormalization: true },
+    );
     const inheritedInflation = rawHalfParsed - rawHonest;
 
     assert.ok(
-      conditionedInflation <= inheritedInflation,
-      `conditioning must not widen the inherited inflation `
-        + `(conditioned +${conditionedInflation} vs inherited +${inheritedInflation})`,
+      conditionedInflation <= 0,
+      `the real blend must not inflate on a half-parsed row (honest ${honest.score}, half-parsed ${halfParsed.score})`,
     );
-    // Guard integrity, on the LIVE side. `inheritedInflation` comes entirely
-    // from the local mirror, so it keeps reporting a positive number even after
-    // the blend is fixed — it can only catch the mirror being neutered, never
-    // its own premise dying. This assertion reads the real scorer, so the day
-    // #6528 lands and `weightedBlend` stops inflating, this test goes RED and
-    // says so instead of passing vacuously.
-    assert.ok(
-      conditionedInflation > 0,
-      'the real blend no longer inflates on a half-parsed row — delete this test '
-        + 'and close #6528 rather than letting it pass vacuously',
-    );
+    // Guard integrity: the old counterfactual must still demonstrate the
+    // defect this regression test protects against. If this turns non-positive
+    // the fixture or its pre-fix mirror was neutered.
     assert.ok(
       inheritedInflation > 0,
-      'mirror integrity: the unconditioned baseline stopped inflating, so the '
-        + 'fixture or the mirror no longer models the drop-and-renormalise path',
+      'pre-fix mirror integrity: the unconditioned baseline stopped inflating, '
+        + 'so the fixture or counterfactual no longer models the old path',
     );
   });
 

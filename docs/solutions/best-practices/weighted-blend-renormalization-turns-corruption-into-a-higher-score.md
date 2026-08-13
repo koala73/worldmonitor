@@ -57,9 +57,11 @@ weighted mean of whatever survived. When the surviving legs read **higher** than
 the leg that was lost, **losing data raises the score**. A data-quality
 regression is published as an improvement in national resilience.
 
-This is filed as **issue #6528** and is **not fixed**. What follows is the
-measured mechanism, two remedies that look right and are not, and the diagnostic
-that separated them.
+This was **issue #6528**. The fix keeps the generic blend conservative when a
+reader can prove that a field was present but malformed: the slot keeps its
+design weight and contributes an explicit fallback score. Genuine absence keeps
+the existing coverage-weighted behavior. What follows is the measured mechanism,
+the remedies that were rejected, and the diagnostic that separated them.
 
 ## Symptoms (measured, not reasoned)
 
@@ -205,7 +207,7 @@ When someone asks "what happens if this component goes null?", the answer is a
 number from the real blend, per transform, not an argument about
 renormalisation.
 
-## Candidate remedies (issue #6528 — options, not decisions)
+## Candidate remedies (issue #6528 — decision recorded)
 
 1. **Impute rather than drop.** A missing slot resolves to a conservative score
    at reduced `certaintyCoverage`, keeping its weight in the denominator while
@@ -227,17 +229,22 @@ renormalisation.
    the same `null` (`:2339-2340`), so the information does not exist at the
    blend layer today.
 
-Note that remedy 1 also fixes the coverage/score contradiction: an imputed slot
-keeps the denominator whole, so the score stays put and coverage still falls —
-both signals then point the same way.
+The implementation chooses remedy 3 at the reader boundary and uses the
+generic blend's explicit fallback path. A malformed BIS claims or parent-count
+field contributes zero at its design weight, while coverage still falls. A
+legitimately absent field remains unannotated and keeps the prior absence
+semantics. This preserves existing call-site behavior while making the
+malformed-input path fail closed.
 
 ## Scope
 
 This is a property of `weightedBlend`'s drop-and-renormalise semantics, so it is
 **not specific to `financialSystemExposure`, to BIS data, or to `parentCount`**.
-There are 23 `weightedBlend` call sites in
-`server/worldmonitor/resilience/v1/_dimension-scorers.ts`, and every dimension
-whose slots can read at different levels inherits the behaviour.
+The primitive now supports an explicit fallback for any reader that can prove
+that a null score came from malformed input. There are 23 `weightedBlend` call
+sites in `server/worldmonitor/resilience/v1/_dimension-scorers.ts`; readers that
+only report genuine absence retain the old behavior until they can provide that
+distinction.
 
 **Exposure is proportional to the spread between the dropped slot and the
 survivors.** A dimension whose slots cluster tightly barely moves when one
@@ -248,27 +255,26 @@ risk.
 
 ## What is guarded today — and what is not
 
-`tests/resilience-financial-system-exposure.test.mts:651-694` pins one property:
-the diversity conditioning must never **widen** the inflation it inherited.
+`tests/resilience-dimension-scorers.test.mts` pins the generic contract: an
+explicit fallback keeps a malformed slot in the denominator, while an
+unannotated null still follows the existing absence behavior. The financial
+system exposure tests then exercise that contract through a stringified BIS
+`parentCount` and assert that the published score does not rise.
 
 ```ts
-assert.ok(conditionedInflation <= inheritedInflation, ...);   // :686
-assert.ok(inheritedInflation > 0,                             // :691
-  'guard integrity: if the blend stops inflating, delete this test and close #6528 '
-  + 'rather than letting it pass vacuously');
+assert.ok(conditionedInflation <= 0, ...);  // malformed input must not raise score
+assert.ok(inheritedInflation > 0, ...);     // pre-fix counterfactual stays non-vacuous
 ```
 
-The second assertion is the load-bearing one. A comparison test of the form
-"A ≤ B" passes trivially when both are zero — that is, it would go green the day
-the blend stops inflating *and* the day someone accidentally neuters the
-fixture. The non-vacuity assert forces the guard to fail loudly rather than
-succeed silently once its premise dies. The inherited baseline is computed by a
-local `blendFinSys` helper (`:61`) that mirrors the drop-and-renormalise
-semantics for the *unconditioned* side only; the conditioned side always runs
-the real `scoreFinancialSystemExposure`.
+The second assertion keeps the old counterfactual non-vacuous. The inherited
+baseline is computed by a local `blendFinSys` helper (`:61`) that mirrors the
+pre-fix drop-and-renormalise semantics for the *unconditioned* side only; the
+conditioned side always runs the real `scoreFinancialSystemExposure` and must
+stay at or below the honest score.
 
-That is a regression guard on **one dimension**. It is not a fix, and it does
-not constrain the other 22 call sites.
+The generic test constrains the blend primitive; the reader-level test shows how
+to connect a real parser failure to that path. It does not claim that a reader
+which cannot distinguish absence from corruption is safe by default.
 
 ## Prevention
 
@@ -298,9 +304,9 @@ conclusion.
 
 ## Related
 
-- Issue #6528 — the open blend-layer defect described here.
+- Issue #6528 — fixed by the explicit malformed-slot fallback path.
 - PR #6529 — diversity-conditioned integration premium; carries the one-dimension
-  regression guard and reduces (does not fix) the inflation.
+  regression guard and now benefits from the blend fix.
 - `_dimension-scorers.ts:2139-2143` — the same renormalisation failure caught
   once before on the debt slot (#6459), fixed there by imputing rather than
   dropping.

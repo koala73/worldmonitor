@@ -32,6 +32,7 @@ import {
   scoreStateContinuity,
   scoreInflationStability,
   scoreTradePolicy,
+  weightedBlend,
   roundScore,
   sqrtCount,
   summarizeCyber,
@@ -192,6 +193,27 @@ describe('resilience dimension scorers', () => {
     assert.equal(result.observedWeight, 5);
     assert.equal(result.imputedWeight, 0);
     assert.equal(result.imputationClass, null);
+  });
+
+  it('weightedBlend retains a known malformed slot without renormalizing its weight', () => {
+    const complete = weightedBlend([
+      { score: 100, weight: 0.5 },
+      { score: 0, weight: 0.5 },
+    ]);
+    const malformed = weightedBlend([
+      { score: 100, weight: 0.5 },
+      { score: null, weight: 0.5, fallbackScore: 0 },
+    ]);
+    const genuinelyAbsent = weightedBlend([
+      { score: 100, weight: 0.5 },
+      { score: null, weight: 0.5 },
+    ]);
+
+    assert.equal(complete.score, 50);
+    assert.equal(malformed.score, complete.score, 'a malformed low slot must not free weight onto the high survivor');
+    assert.equal(malformed.coverage, 0.5, 'the retained malformed slot must still reduce coverage');
+    assert.equal(malformed.observedWeight, 0.5, 'the fallback must not masquerade as observed data');
+    assert.equal(genuinelyAbsent.score, 100, 'legitimate absence keeps the existing coverage-weighted behavior');
   });
 
   it('returns all serialized dimensions with bounded scores and coverage', async () => {
