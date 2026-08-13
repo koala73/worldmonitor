@@ -12,8 +12,10 @@ import { describe, it } from 'node:test';
 
 import {
   createRailwayCliEnv,
+  DEPLOYMENT_READ_DEADLINE_ERROR,
   readAllDeployments,
   readDeployments,
+  readDeploymentsForFleet,
   readFleetDeployments,
   runRailway,
 } from '../scripts/railway-cli.mjs';
@@ -214,6 +216,77 @@ describe('fleet paging', () => {
         api: () => ({}), accumulatorFactory: createFleetAccumulator,
       }),
       /no deployments connection/,
+    );
+  });
+
+  it('checks the shared run deadline before every fleet page', async () => {
+    let elapsed = 0;
+    let reads = 0;
+    await assert.rejects(
+      () => readFleetDeployments({
+        projectId: 'p',
+        environmentId: 'e',
+        serviceIds: ['a'],
+        notBefore: HEAD_AT,
+        deadlineAt: 100,
+        monotonicNow: () => elapsed,
+        api: () => {
+          reads += 1;
+          elapsed = 101;
+          return { deployments: page([node('a', 'SUCCESS', '2026-08-04T13:00:00Z', 'aaa')], true) };
+        },
+        accumulatorFactory: createFleetAccumulator,
+      }),
+      new RegExp(DEPLOYMENT_READ_DEADLINE_ERROR),
+    );
+    assert.equal(reads, 1, 'the second fleet page must not start after the deadline');
+  });
+});
+
+describe('fleet read deadline', () => {
+  it('does not start direct fallback reads after the shared run deadline', async () => {
+    let elapsed = 0;
+    const reads = [];
+    const services = [{ id: 'a' }, { id: 'b' }];
+    const result = await readDeploymentsForFleet({
+      services,
+      environment: 'production',
+      window: 50,
+      concurrency: 1,
+      deadlineAt: 100,
+      monotonicNow: () => elapsed,
+      readDirect: async (service) => {
+        reads.push(service.id);
+        elapsed = 101;
+        return [node(service.id, 'SUCCESS', '2026-08-04T11:00:00Z', 'aaa')];
+      },
+    });
+
+    assert.deepEqual(reads, ['a']);
+    assert.equal(result.get('a').error, null);
+    assert.equal(result.get('b').error, DEPLOYMENT_READ_DEADLINE_ERROR);
+  });
+
+  it('defers every read when prerequisites already consumed the budget', async () => {
+    const reads = [];
+    const services = [{ id: 'a' }, { id: 'b' }];
+    const result = await readDeploymentsForFleet({
+      services,
+      environment: 'production',
+      window: 50,
+      concurrency: 2,
+      deadlineAt: 100,
+      monotonicNow: () => 100,
+      readDirect: async (service) => {
+        reads.push(service.id);
+        return [];
+      },
+    });
+
+    assert.deepEqual(reads, []);
+    assert.deepEqual(
+      services.map(({ id }) => result.get(id).error),
+      [DEPLOYMENT_READ_DEADLINE_ERROR, DEPLOYMENT_READ_DEADLINE_ERROR],
     );
   });
 });
