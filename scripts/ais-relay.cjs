@@ -4883,6 +4883,7 @@ async function seedWeatherAlerts() {
       ECCC_HOST,
       ECCC_MAX_BYTES,
       NWS_ALERTS_URL,
+      NWS_HOST,
       WEATHER_ALERTS_SOURCE_VERSION,
       fetchApprovedWeatherJson,
       mergeAlertSources,
@@ -4894,12 +4895,13 @@ async function seedWeatherAlerts() {
     async function fetchNwsFeatures() {
       const weatherUrl = NWS_ALERTS_URL;
       try {
-        const resp = await fetch(weatherUrl, {
-          headers: { Accept: 'application/geo+json', 'User-Agent': CHROME_UA },
-          signal: AbortSignal.timeout(15_000),
+        const data = await fetchApprovedWeatherJson(weatherUrl, {
+          allowedHosts: [NWS_HOST],
+          maxBytes: ECCC_MAX_BYTES,
+          userAgent: CHROME_UA,
+          fetchFn: fetch,
         });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        return requireAlertFeatures(await resp.json());
+        return requireAlertFeatures(data);
       } catch (directErr) {
         if (!PROXY_URL) throw directErr;
         console.warn(`[Weather] NWS direct failed (${directErr.message}) — retrying via proxy`);

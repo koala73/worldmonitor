@@ -115,7 +115,7 @@ The dashboard fetches data from various public APIs and data sources:
 | CoinGecko | Cryptocurrency prices | No |
 | USGS | Earthquake data | No |
 | NASA EONET | Natural events (storms, fires, volcanoes, floods) | No |
-| NWS | Weather alerts | No |
+| NWS + ECCC | US + Canada weather alerts | No |
 | FRED | Economic indicators (Fed data) | No |
 | EIA | Oil analytics (prices, production, inventory) | Yes (free) |
 | USASpending.gov | Federal government contracts & awards | No |
@@ -208,7 +208,7 @@ src/
 │   ├── rss.ts                # RSS parsing with circuit breakers
 │   ├── markets.ts            # Finnhub, Yahoo Finance, CoinGecko
 │   ├── earthquakes.ts        # USGS integration
-│   ├── weather.ts            # NWS alerts
+│   ├── weather.ts            # NWS + ECCC alerts
 │   ├── fred.ts               # Federal Reserve data
 │   ├── oil-analytics.ts      # EIA oil prices, production, inventory
 │   ├── usa-spending.ts       # USASpending.gov contracts & awards
@@ -285,7 +285,7 @@ Data provided by [The OpenSky Network](https://opensky-network.org). If you use 
 
 - **Earthquakes**: [U.S. Geological Survey](https://earthquake.usgs.gov/), ANSS Comprehensive Catalog
 - **Natural Events**: [NASA EONET](https://eonet.gsfc.nasa.gov/) - Earth Observatory Natural Event Tracker (storms, wildfires, volcanoes, floods)
-- **Weather Alerts**: [National Weather Service](https://www.weather.gov/) - Open data, free to use
+- **Weather Alerts**: [National Weather Service](https://www.weather.gov/) and [ECCC](https://weather.gc.ca/) - US + Canada official alerts
 
 ### Infrastructure & Transport
 

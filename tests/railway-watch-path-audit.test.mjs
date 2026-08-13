@@ -779,6 +779,18 @@ describe('planned Railway service lifecycle', () => {
     );
   });
 
+  it('does not attach watchPatterns to planned seed-weather-alerts (no dual-SET of weather:alerts:v1)', () => {
+    const weather = RAILWAY_SERVICE_REGISTRY.find((entry) => entry.service === 'seed-weather-alerts');
+    assert.ok(weather, 'seed-weather-alerts must remain in the Railway registry');
+    assert.equal(weather.lifecycle, 'planned');
+    assert.equal(
+      Object.hasOwn(weather, 'watchPatterns'),
+      false,
+      'watchPatterns on a planned seeder is a dual-SET footgun; live writer is ais-relay only',
+    );
+    assert.equal(Object.hasOwn(weather, 'cronSchedule'), false);
+  });
+
   it('does not report an intentionally absent planned service', () => {
     assert.deepEqual(
       auditRailwayServiceConfig({ services: {} }, new Map(), [planned]),

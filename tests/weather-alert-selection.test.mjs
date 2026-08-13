@@ -343,6 +343,13 @@ describe('ECCC host policy and sourceVersion lockstep', () => {
     assert.match(SEEDER_SOURCE, /zeroIsValid:\s*true/);
   });
 
+  it('allowlists api.weather.gov and api.weather.gc.ca on both live fetches', () => {
+    assert.match(RELAY_SOURCE, /allowedHosts:\s*\[NWS_HOST\]/);
+    assert.match(RELAY_SOURCE, /allowedHosts:\s*\[ECCC_HOST\]/);
+    assert.match(SEEDER_SOURCE, /NWS_HOST/);
+    assert.match(SEEDER_SOURCE, /ECCC_HOST/);
+  });
+
   it('does not import the seeder entrypoint from this test file', () => {
     const testSource = readFileSync(new URL(import.meta.url), 'utf8');
     assert.doesNotMatch(testSource, /from ['\"]\.\.\/scripts\/seed-weather-alerts\.mjs['\"]/);

@@ -172,6 +172,7 @@ const SOURCE_NAME_OVERRIDES = new Map([
   ['api.tzevaadom.co.il', 'Tzeva Adom'],
   ['api.unhcr.org', 'UNHCR'],
   ['api.usaspending.gov', 'USAspending.gov'],
+  ['api.weather.gc.ca', 'Environment and Climate Change Canada (ECCC)'],
   ['api.weather.gov', 'U.S. National Weather Service'],
   ['api.worldbank.org', 'World Bank'],
   ['api.wto.org', 'World Trade Organization (WTO)'],
