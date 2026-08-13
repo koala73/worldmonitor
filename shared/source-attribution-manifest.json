@@ -7477,6 +7477,20 @@
       ]
     },
     {
+      "host": "www.bankofcanada.ca",
+      "provider": "Bank of Canada",
+      "kind": "structured",
+      "observed": true,
+      "license": "Bank of Canada Terms of Use — permission to freely use, copy, distribute and transmit website content with attribution (https://www.bankofcanada.ca/terms/)",
+      "attribution": "Bank of Canada Valet API; link to https://www.bankofcanada.ca/valet/ and the Terms of Use at https://www.bankofcanada.ca/terms/.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/boc-valet.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.barchart.com",
       "provider": "Barchart",
       "kind": "structured",
@@ -10723,6 +10737,20 @@
       "references": [
         {
           "path": "server/worldmonitor/infrastructure/v1/list-service-statuses.ts"
+        }
+      ]
+    },
+    {
+      "host": "www150.statcan.gc.ca",
+      "provider": "Statistics Canada",
+      "kind": "structured",
+      "observed": true,
+      "license": "Statistics Canada Open Licence (Open Government Licence — Canada); use, reproduce, publish, freely distribute or sell with attribution (https://www.statcan.gc.ca/en/terms-conditions/open-licence)",
+      "attribution": "Statistics Canada. Web Data Service. https://www.statcan.gc.ca/en/developers/wds/user-guide",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/statcan-wds.mjs"
         }
       ]
     },

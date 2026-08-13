@@ -325,6 +325,8 @@ const STANDALONE_KEYS = {
   // registering it in a tier would add ~6KB to a payload every client
   // downloads and only the opt-in panel consumes.
   cbrRates:              'economic:cbr-rates:v1',
+  bocValet:              'economic:boc-valet:v1',
+  statcanWds:            'economic:statcan-wds:v1',
   bisPropertyResidential: 'economic:bis:property-residential:v1',
   bisPropertyCommercial:  'economic:bis:property-commercial:v1',
   imfMacro:             'economic:imf:macro:v2',
@@ -826,6 +828,28 @@ const SEED_META = {
   // a truncated cbr.ru body still parses into a handful of well-formed rows, so
   // a shrunken table must surface as COVERAGE_PARTIAL rather than OK.
   cbrRates:          { key: 'seed-meta:economic:cbr-rates',           maxStaleMin: 4320, minRecordCount: 31 },
+  bocValet:          {
+    key: 'seed-meta:economic:boc-valet',
+    maxStaleMin: 4320,
+    minRecordCount: 19,
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6616,
+      status: 'EMPTY',
+    },
+  }, // daily seed-bundle-macro 08:00 UTC; 4320min = 3x interval. minRecordCount = 15 FX pairs + policy rate + 2y/5y/10y yields.
+  statcanWds:        {
+    key: 'seed-meta:economic:statcan-wds',
+    maxStaleMin: 4320,
+    minRecordCount: 2,
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6616,
+      status: 'EMPTY',
+    },
+  }, // daily seed-bundle-macro; floor is the two resilience cubes (CPI YoY + LFS). Empty change-list is valid quiet.
   eurostatCountryData: { key: 'seed-meta:economic:eurostat-country-data', maxStaleMin: 4320 }, // daily seed; 4320min = 3 days = 3x interval
   eurostatHousePrices: { key: 'seed-meta:economic:eurostat-house-prices', maxStaleMin: 60 * 24 * 50 }, // weekly cron, annual data; 50d threshold = 35d TTL + 15d buffer
   eurostatGovDebtQ:    { key: 'seed-meta:economic:eurostat-gov-debt-q',   maxStaleMin: 60 * 24 * 14 }, // 2d cron, quarterly data; 14d threshold matches TTL + quarterly release drift
@@ -1057,6 +1081,11 @@ const ON_DEMAND_KEYS = new Set([
   // unactionable EMPTY/CRIT for up to a day. seed-cbr-rates.mjs SETs the durable
   // marker after its first successful publish; from then on it is strict forever.
   'cbrRates',
+  // Same deploy-before-first-tick bridge as cbrRates for the two Canada
+  // national-statistics seeders (#6616). Softening lifts once the durable
+  // activation marker exists.
+  'bocValet',
+  'statcanWds',
   'riskScoresLive',
   'usniFleetStale', 'positiveEventsLive',
   'bisPolicy', 'bisExchange', 'bisCredit',
@@ -1124,6 +1153,8 @@ const ACTIVATION_MARKERS = {
   // Written by scripts/seed-cbr-rates.mjs (CBR_ACTIVATION_KEY) in runSeed's
   // afterPublish hook, so it exists only once a real table has been published.
   cbrRates: 'seed-activated:economic:cbr-rates',
+  bocValet: 'seed-activated:economic:boc-valet',
+  statcanWds: 'seed-activated:economic:statcan-wds',
   newsFeedHealth: 'seed-activated:news:feed-health',
   newsRecallBenchmark: 'seed-activated:news:recall-benchmark',
   // Written by scripts/_seed-history.mjs on every ingest-health report,

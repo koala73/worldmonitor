@@ -14,6 +14,11 @@ import {
   readStandaloneSourceFailureDimensions,
   STANDALONE_SOURCE_META_MAX_STALE_MIN,
 } from './_source-failure';
+import {
+  applyCanadaNationalOverlay,
+  RESILIENCE_BOC_VALET_KEY,
+  RESILIENCE_STATCAN_WDS_KEY,
+} from './_canada-national-overlay';
 
 export type ResilienceDimensionId =
   | 'macroFiscal'
@@ -1568,15 +1573,23 @@ export async function scoreMacroFiscal(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [debtRaw, imfMacroRaw, imfLaborRaw, bisDsrRaw] = await Promise.all([
+  const [debtRaw, imfMacroRaw, imfLaborRaw, bisDsrRaw, bocRaw, statcanRaw] = await Promise.all([
     reader(RESILIENCE_NATIONAL_DEBT_KEY),
     reader(RESILIENCE_IMF_MACRO_KEY),
     reader(RESILIENCE_IMF_LABOR_KEY),
     reader(RESILIENCE_BIS_DSR_KEY),
+    countryCode === 'CA' ? reader(RESILIENCE_BOC_VALET_KEY) : Promise.resolve(null),
+    countryCode === 'CA' ? reader(RESILIENCE_STATCAN_WDS_KEY) : Promise.resolve(null),
   ]);
   const debtEntry = getLatestDebtEntry(debtRaw, countryCode);
-  const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
-  const laborEntry = getImfLaborEntry(imfLaborRaw, countryCode);
+  const overlay = applyCanadaNationalOverlay(
+    countryCode,
+    getImfMacroEntry(imfMacroRaw, countryCode),
+    getImfLaborEntry(imfLaborRaw, countryCode),
+    { boc: bocRaw as never, statcan: statcanRaw as never },
+  );
+  const imfEntry = overlay.imfEntry;
+  const laborEntry = overlay.laborEntry;
   const dsrEntry = getBisDsrEntry(bisDsrRaw, countryCode);
 
   return weightedBlend([
@@ -1646,12 +1659,20 @@ export async function scoreCurrencyExternal(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [imfMacroRaw, staticRecord] = await Promise.all([
+  const [imfMacroRaw, staticRecord, bocRaw, statcanRaw] = await Promise.all([
     reader(RESILIENCE_IMF_MACRO_KEY),
     readStaticCountry(countryCode, reader),
+    countryCode === 'CA' ? reader(RESILIENCE_BOC_VALET_KEY) : Promise.resolve(null),
+    countryCode === 'CA' ? reader(RESILIENCE_STATCAN_WDS_KEY) : Promise.resolve(null),
   ]);
 
-  const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
+  const overlay = applyCanadaNationalOverlay(
+    countryCode,
+    getImfMacroEntry(imfMacroRaw, countryCode),
+    null,
+    { boc: bocRaw as never, statcan: statcanRaw as never },
+  );
+  const imfEntry = overlay.imfEntry;
   const inflationPct = safeNum(imfEntry?.inflationPct);
   const hasInflation = imfMacroRaw != null && inflationPct != null;
   const inflationScore = hasInflation

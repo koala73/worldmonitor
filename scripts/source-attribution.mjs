@@ -281,6 +281,18 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Barchart; link to the source quote or page.',
     status: 'terms-review',
   },
+  'www.bankofcanada.ca': {
+    provider: 'Bank of Canada',
+    license: 'Bank of Canada Terms of Use — permission to freely use, copy, distribute and transmit website content with attribution (https://www.bankofcanada.ca/terms/)',
+    attribution: 'Bank of Canada Valet API; link to https://www.bankofcanada.ca/valet/ and the Terms of Use at https://www.bankofcanada.ca/terms/.',
+    status: 'reviewed',
+  },
+  'www150.statcan.gc.ca': {
+    provider: 'Statistics Canada',
+    license: 'Statistics Canada Open Licence (Open Government Licence — Canada); use, reproduce, publish, freely distribute or sell with attribution (https://www.statcan.gc.ca/en/terms-conditions/open-licence)',
+    attribution: 'Statistics Canada. Web Data Service. https://www.statcan.gc.ca/en/developers/wds/user-guide',
+    status: 'reviewed',
+  },
   'api.reliefweb.int': {
     provider: 'ReliefWeb (UN OCHA)',
     license: 'UN OCHA/ReliefWeb terms',
