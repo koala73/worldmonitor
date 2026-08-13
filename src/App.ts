@@ -1722,8 +1722,11 @@ export class App {
       ja: 'ja_JP', ko: 'ko_KR', ro: 'ro_RO', tr: 'tr_TR', th: 'th_TH', vi: 'vi_VN',
       hi: 'hi_IN',
     };
-    const baseLang = (document.documentElement.lang || 'en').split('-')[0] || 'en';
-    setMeta('meta[property="og:locale"]', ogLocaleMap[baseLang] || `${baseLang}_${baseLang.toUpperCase()}`);
+    // Look the full tag up first: a region-bearing locale (zh-TW) has its own
+    // entry above that a region-stripped key would never reach.
+    const docLang = document.documentElement.lang || 'en';
+    const baseLang = docLang.split('-')[0] || 'en';
+    setMeta('meta[property="og:locale"]', ogLocaleMap[docLang] || ogLocaleMap[baseLang] || `${baseLang}_${baseLang.toUpperCase()}`);
     const srH1 = document.querySelector('body > h1');
     if (srH1) srH1.textContent = t('shell.documentTitle');
     const aiFlow = getAiFlowSettings();
