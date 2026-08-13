@@ -117,7 +117,7 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 | Live video streams | 8 |
 | Data layers on map | 56 layer types |
 | Countries monitored | 200+ |
-| Languages supported | 26 (including RTL) |
+| Languages supported | 27 (including RTL) |
 | Military bases mapped | 220+ |
 | AI datacenters mapped | 111 |
 | Stock exchanges mapped | 29 |
@@ -212,7 +212,7 @@ The system identifies emerging crises by blending news clustering, geographic co
 - **Desktop**: Native apps for macOS, Windows, and Linux (via Tauri)
 - **PWA**: Installable as a progressive web app with offline map tile caching
 - **Mobile**: Mobile-optimized responsive layout with touch gestures
-- **Languages**: 24 languages including Arabic (RTL), Chinese, Japanese, Korean, Hindi, and major European languages
+- **Languages**: 27 languages including Arabic (RTL), Chinese, Japanese, Korean, Hindi, Persian, Swahili, and major European languages
 
 ---
 

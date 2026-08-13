@@ -748,12 +748,12 @@
         "apiKey": {
           "title": "Leseni / Kitufe cha API",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "API Starter na API Business waliojisajili huunda ufunguo huu kwenye dashibodi ya wavuti chini ya Mipangilio → Vifunguo vya API. Ufunguo kamili ukipotea, ubatilishe na uunde mbadala."
+          "description": "API Starter na API Business waliojisajili huunda ufunguo huu kwenye dashibodi ya wavuti chini ya Settings → API Keys. Ufunguo kamili ukipotea, ubatilishe na uunde mbadala."
         },
         "dividerOr": "AU",
         "register": {
           "title": "Je, unahitaji ufunguo wa API?",
-          "description": "Tazama worldmonitor.app/docs/api-keys kwa usaidizi wa hatua kwa hatua. Vifunguo vya API Mwongozo vinahitaji Kianzisha API au mpango wa Biashara wa API.",
+          "description": "Tazama worldmonitor.app/docs/api-keys kwa usaidizi wa hatua kwa hatua. Vifunguo vya mwongozo vinahitaji API Starter au API Business plan.",
           "submitBtn": "Tazama mipango ya API"
         }
       },
