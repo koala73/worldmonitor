@@ -81,6 +81,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'cascade-mirror: stale fallback of military:surges:v1, which is covered by get_military_surge; this copy is retained for the health freshness probe.'],
   ['intelligence:military-cii:v1',
     'intermediate: per-country military-presence aggregate (own/foreign flights+vessels, AIS disruption buckets) read by server/worldmonitor/intelligence/v1/get-risk-scores.ts to feed the CII Security component; surfaces transitively via the country-risk score returned by get_country_risk. Not a queryable MCP slice on its own.'],
+  ['alerts:alberta-aea:v1',
+    'map-only Alberta Emergency Alert overlay (canadaAlerts). #6610 ships the Atom seeder and DeckGL dots; no MCP tool. Do not fold into weather:alerts:v1 (NWS). A future Canada emergency-alerts tool should cover this key when BC/ON/SK siblings ship.'],
   ['weather:hko-warnings:v1',
     'intermediate: dedicated HKO warning snapshot is independently health-monitored, while its warning events are merged into natural:events:v1 and exposed by get_natural_disasters. The raw side snapshot has no separate MCP schema or filter surface.'],
 
