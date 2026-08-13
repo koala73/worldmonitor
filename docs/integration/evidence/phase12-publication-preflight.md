@@ -1,6 +1,6 @@
 # Phase 12 controlled-publication preflight
 
-**Recorded:** 2026-08-14 Asia/Shanghai  
+**Recorded:** 2026-08-14 Asia/Shanghai
 **Scope:** `integration/pokieticker-maritime-china-factory` only; no `main`
 mutation, no force push, no merge/rebase/reset, no Provider/deployment change.
 

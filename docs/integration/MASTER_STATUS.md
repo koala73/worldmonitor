@@ -400,7 +400,9 @@ The only permitted publication target is the integration branch in the owner
 fork; the required outcome is a Draft PR to that fork's `main`. The local
 GitHub CLI session is unauthenticated, but the connected GitHub integration has
 verified owner-fork administrative/push permissions and will be used for PR
-operations. Its preflight receipt is
+operations. Its preflight implementation commit is
+`77fce4c05805f46b358b6958be5f489796e0d167`; its receipt also removes one
+Markdown hard-break whitespace warning before publication. The evidence is
 `docs/integration/evidence/phase12-publication-preflight.md`.
 
 ## Next action

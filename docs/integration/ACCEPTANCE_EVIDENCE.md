@@ -308,8 +308,9 @@ stock bar, AIS message, cargo inference, news causality or factory fact.
 
 ## Phase 12 - controlled publication preflight
 
-**Implementation commit:** pending controlled-publication record. The next
-receipt commit will backfill its immutable SHA before the branch is published.
+**Implementation commit:** `77fce4c05805f46b358b6958be5f489796e0d167`
+(`docs(integration): record Phase 12 publication preflight`). The following
+receipt commit backfills its immutable SHA before the branch is published.
 
 | Check | Result | Evidence |
 |---|---|---|
@@ -319,6 +320,7 @@ receipt commit will backfill its immutable SHA before the branch is published.
 | Connected GitHub repository verification | PASS | GitHub integration reports push/admin permission for `daking32168-byte/worldmonitor` and read-only access to its upstream `koala73/worldmonitor`; both default to `main`. |
 | Publication mechanism | CONDITIONAL PASS | The connected GitHub integration is authorized; local `gh auth status` is unauthenticated and is not used as an authority to push or create the PR. |
 | Main/force safety | PASS | No merge, rebase, reset, force push, `main` mutation or user-file deletion occurred in the preflight. |
+| Documentation hygiene | PASS after receipt correction | The initial preflight commit had one Markdown hard-break trailing-space warning. The receipt removes it and reruns `git diff --cached --check`; no product/test result was changed. |
 
 **Phase 12 preflight gate: PASSED FOR A BRANCH-ONLY DRAFT-PR PUBLICATION.** It
 does not publish a branch yet, certify remote CI, deploy a service, or change
