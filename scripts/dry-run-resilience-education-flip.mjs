@@ -41,7 +41,10 @@ import {
   penalizedPillarScore,
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
 import { buildPillarList } from '../server/worldmonitor/resilience/v1/_pillar-membership.ts';
-import { MATCHED_PAIRS } from '../tests/helpers/resilience-matched-pairs.mts';
+import {
+  MATCHED_PAIRS,
+  evaluateWholeIndexMatchedPairs,
+} from '../tests/helpers/resilience-matched-pairs.mts';
 import { RESILIENCE_COHORTS } from '../tests/helpers/resilience-cohorts.mts';
 
 loadEnvFile(import.meta.url);
@@ -460,46 +463,33 @@ function evaluateGates(baseline, proposed, formula) {
 
   // Direction AND minGap, evaluated on the PROPOSED scores. A pair that keeps
   // its sign but collapses to a near-tie is a near-flip, and the runbook treats
-  // that as a stop just like an inversion.
-  const pairs = MATCHED_PAIRS.map((pair) => {
-    const hi = p.get(pair.higherExpected);
-    const lo = p.get(pair.lowerExpected);
-    const baseGap = b.has(pair.higherExpected) && b.has(pair.lowerExpected)
-      ? b.get(pair.higherExpected) - b.get(pair.lowerExpected)
-      : null;
-    const minGap = pair.minGap ?? 3;
-    const verdict = (g) => matchedPairStatus(g, minGap);
-    if (hi == null || lo == null) {
-      return {
-        pairId: pair.id,
-        status: 'missing',
-        baselineStatus: baseGap == null ? 'unknown' : verdict(baseGap),
-        regression: false,
-        preExisting: false,
-        gap: null,
-        baselineGap: round2(baseGap),
-        gapDelta: null,
-        minGap,
-      };
-    }
-    const gap = hi - lo;
-    const status = verdict(gap);
+  // that as a stop just like an inversion. The pure evaluator is shared with
+  // the deterministic fixture gate so CI and the credentialed dry run cannot
+  // drift on missing-score or threshold semantics.
+  const proposedPairEvaluations = evaluateWholeIndexMatchedPairs(p, MATCHED_PAIRS);
+  const baselinePairEvaluations = evaluateWholeIndexMatchedPairs(b, MATCHED_PAIRS);
+  const pairs = proposedPairEvaluations.map((evaluation, index) => {
+    const baselineEvaluation = baselinePairEvaluations[index];
+    const baseGap = baselineEvaluation?.gap ?? null;
+    const status = evaluation.status;
     // A pair that ALREADY failed with the flag off was not broken by this
     // change, and the runbook's weight-fallback rule cannot fix it — halving
     // education's weight only walks the gap back toward a baseline that was
     // itself under the threshold. Separating the two is the difference between
     // "this flip is unsafe" and "this pair has a pre-existing problem".
-    const baselineStatus = baseGap == null ? 'unknown' : verdict(baseGap);
+    const baselineStatus = baseGap == null ? 'unknown' : baselineEvaluation.status;
+    const regression = status !== 'pass' && baselineStatus === 'pass';
+    const preExisting = status !== 'pass' && status !== 'missing' && baselineStatus !== 'pass';
     return {
-      pairId: pair.id,
+      pairId: evaluation.pairId,
       status,
       baselineStatus,
-      regression: status !== 'pass' && baselineStatus === 'pass',
-      preExisting: status !== 'pass' && baselineStatus !== 'pass',
-      gap: round2(gap),
+      regression,
+      preExisting,
+      gap: evaluation.gap == null ? null : round2(evaluation.gap),
       baselineGap: round2(baseGap),
-      gapDelta: baseGap == null ? null : round2(gap - baseGap),
-      minGap,
+      gapDelta: evaluation.gap == null || baseGap == null ? null : round2(evaluation.gap - baseGap),
+      minGap: evaluation.minGap,
     };
   });
   const pairFailures = pairs.filter((x) => x.status !== 'pass');

@@ -24,7 +24,10 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RESILIENCE_COHORTS } from '../tests/helpers/resilience-cohorts.mts';
-import { MATCHED_PAIRS } from '../tests/helpers/resilience-matched-pairs.mts';
+import {
+  MATCHED_PAIRS,
+  evaluateWholeIndexMatchedPairs,
+} from '../tests/helpers/resilience-matched-pairs.mts';
 import wgiIndicatorKeys from '../shared/wgi-indicator-keys.json' with { type: 'json' };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1015,34 +1018,39 @@ async function main() {
     };
   });
 
-  const matchedPairSummary = MATCHED_PAIRS.map((pair) => {
-    const higher = rowsByCc.get(pair.higherExpected);
-    const lower = rowsByCc.get(pair.lowerExpected);
-    if (!higher || !lower) {
-      return { pairId: pair.id, skipped: true, reason: `pair member missing from scorable universe: ${!higher ? pair.higherExpected : pair.lowerExpected}` };
-    }
-    const minGap = pair.minGap ?? 3;
-    const currentGap = higher.currentOverallScore - lower.currentOverallScore;
-    const proposedGap = higher.proposedOverallScore - lower.proposedOverallScore;
-    const expectedDirectionHeld = proposedGap > 0;
-    const gapAtLeastMin = proposedGap >= minGap;
+  const currentOverallScores = new Map(
+    [...rowsByCc].map(([countryCode, row]) => [countryCode, row.currentOverallScore]),
+  );
+  const proposedOverallScores = new Map(
+    [...rowsByCc].map(([countryCode, row]) => [countryCode, row.proposedOverallScore]),
+  );
+  const currentPairEvaluations = evaluateWholeIndexMatchedPairs(currentOverallScores, MATCHED_PAIRS);
+  const proposedPairEvaluations = evaluateWholeIndexMatchedPairs(proposedOverallScores, MATCHED_PAIRS);
+  const matchedPairSummary = proposedPairEvaluations.map((evaluation, index) => {
+    const pair = MATCHED_PAIRS[index];
+    const currentEvaluation = currentPairEvaluations[index];
+    const missing = evaluation.status === 'missing' || currentEvaluation?.status === 'missing';
+    const expectedDirectionHeld = evaluation.gap != null && evaluation.gap > 0;
+    const gapAtLeastMin = evaluation.status === 'pass';
     return {
-      pairId: pair.id,
+      pairId: evaluation.pairId,
       axis: pair.axis,
-      higherExpected: pair.higherExpected,
-      lowerExpected: pair.lowerExpected,
-      minGap,
-      currentGap: Math.round(currentGap * 100) / 100,
-      proposedGap: Math.round(proposedGap * 100) / 100,
+      higherExpected: evaluation.higherExpected,
+      lowerExpected: evaluation.lowerExpected,
+      minGap: evaluation.minGap,
+      currentGap: currentEvaluation?.gap == null ? null : round2(currentEvaluation.gap),
+      proposedGap: evaluation.gap == null ? null : round2(evaluation.gap),
       expectedDirectionHeld,
       gapAtLeastMin,
+      status: missing ? 'missing' : evaluation.status,
+      reason: missing ? 'pair endpoint missing from scorable universe' : undefined,
       // Gate: if either flag is false, this pair fails the matched-pair
       // acceptance check and the PR stops.
-      passes: expectedDirectionHeld && gapAtLeastMin,
+      passes: !missing && expectedDirectionHeld && gapAtLeastMin,
     };
   });
 
-  const matchedPairFailures = matchedPairSummary.filter((p) => !p.skipped && !p.passes);
+  const matchedPairFailures = matchedPairSummary.filter((p) => !p.passes);
 
   // Variable-influence baseline (Pearson-derivative approximation of
   // Sobol indices). For every dimension, measures the cross-country
@@ -1238,27 +1246,21 @@ async function main() {
     // baseline so construct changes that reverse a pair can be flagged
     // explicitly (the matched-pair table above is current-vs-proposed;
     // this block is current-vs-baseline).
-    const matchedPairGapChange = MATCHED_PAIRS.map((pair) => {
-      const higherBase = baselineScores[pair.higherExpected];
-      const lowerBase = baselineScores[pair.lowerExpected];
-      const higher = rowsByCc.get(pair.higherExpected);
-      const lower = rowsByCc.get(pair.lowerExpected);
-      if (
-        typeof higherBase !== 'number' ||
-        typeof lowerBase !== 'number' ||
-        !higher ||
-        !lower
-      ) {
-        return { pairId: pair.id, skipped: true };
+    const baselinePairEvaluations = evaluateWholeIndexMatchedPairs(baselineScores, MATCHED_PAIRS);
+    const matchedPairGapChange = currentPairEvaluations.map((currentEvaluation, index) => {
+      const pair = MATCHED_PAIRS[index];
+      const baselineEvaluation = baselinePairEvaluations[index];
+      if (currentEvaluation.status === 'missing' || baselineEvaluation.status === 'missing') {
+        return { pairId: pair.id, skipped: true, reason: 'pair endpoint missing from comparison snapshot' };
       }
-      const baselineGap = higherBase - lowerBase;
-      const currentGap = higher.currentOverallScore - lower.currentOverallScore;
+      const baselineGap = baselineEvaluation.gap;
+      const currentGap = currentEvaluation.gap;
       return {
-        pairId: pair.id,
+        pairId: currentEvaluation.pairId,
         axis: pair.axis,
-        baselineGap: Math.round(baselineGap * 100) / 100,
-        currentGap: Math.round(currentGap * 100) / 100,
-        gapChange: Math.round((currentGap - baselineGap) * 100) / 100,
+        baselineGap: round2(baselineGap),
+        currentGap: round2(currentGap),
+        gapChange: round2(currentGap - baselineGap),
       };
     });
 
@@ -1348,7 +1350,7 @@ async function main() {
   addGate('gate-7-matched-pair', 'Matched-pair within-pair gaps hold expected direction',
     matchedPairFailures.length === 0 ? 'pass' : 'fail',
     matchedPairFailures.length === 0
-      ? `${matchedPairSummary.filter((p) => !p.skipped).length}/${matchedPairSummary.filter((p) => !p.skipped).length} pairs pass`
+      ? `${matchedPairSummary.length}/${matchedPairSummary.length} pairs pass`
       : `${matchedPairFailures.length} pair(s) failed: ${matchedPairFailures.map((p) => p.pairId).join(', ')}`);
 
   // Gate 9: Per-indicator effective-influence baseline present. Sign-

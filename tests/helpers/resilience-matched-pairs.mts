@@ -148,6 +148,76 @@ export const MATCHED_PAIRS: readonly MatchedPair[] = [
   },
 ] as const;
 
+export type WholeIndexMatchedPairStatus = 'pass' | 'near-flip' | 'inverted' | 'missing';
+
+export interface WholeIndexMatchedPairEvaluation {
+  pairId: string;
+  higherExpected: string;
+  lowerExpected: string;
+  higherScore: number | null;
+  lowerScore: number | null;
+  gap: number | null;
+  minGap: number;
+  status: WholeIndexMatchedPairStatus;
+}
+
+type MatchedPairScoreMap =
+  | ReadonlyMap<string, number | null | undefined>
+  | Readonly<Record<string, number | null | undefined>>;
+
+function readMatchedPairScore(scores: MatchedPairScoreMap, countryCode: string): number | null {
+  const value = 'get' in scores && typeof scores.get === 'function'
+    ? scores.get(countryCode)
+    : scores[countryCode];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Apply the whole-index directional and minimum-gap contract to a score map.
+ * Missing and non-finite scores are explicit failures; they never pass by
+ * coercing to zero or by evaluating only the pair's direction.
+ */
+export function evaluateWholeIndexMatchedPairs(
+  scores: MatchedPairScoreMap,
+  pairs: readonly MatchedPair[] = MATCHED_PAIRS,
+): readonly WholeIndexMatchedPairEvaluation[] {
+  return pairs.map((pair) => {
+    const higherScore = readMatchedPairScore(scores, pair.higherExpected);
+    const lowerScore = readMatchedPairScore(scores, pair.lowerExpected);
+    const minGap = pair.minGap ?? 3;
+
+    if (higherScore == null || lowerScore == null) {
+      return {
+        pairId: pair.id,
+        higherExpected: pair.higherExpected,
+        lowerExpected: pair.lowerExpected,
+        higherScore,
+        lowerScore,
+        gap: null,
+        minGap,
+        status: 'missing',
+      };
+    }
+
+    const gap = higherScore - lowerScore;
+    const status: WholeIndexMatchedPairStatus = gap >= minGap
+      ? 'pass'
+      : gap > 0
+        ? 'near-flip'
+        : 'inverted';
+    return {
+      pairId: pair.id,
+      higherExpected: pair.higherExpected,
+      lowerExpected: pair.lowerExpected,
+      higherScore,
+      lowerScore,
+      gap,
+      minGap,
+      status,
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Dimension-scoped matched pairs.
 //
