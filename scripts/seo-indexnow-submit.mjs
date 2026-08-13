@@ -88,11 +88,25 @@ function getBlogUrls() {
   ];
 }
 
-const APEX_URLS = uniqueSorted(getSitemapUrlsForHost('worldmonitor.app'));
+const APEX_HOST = 'worldmonitor.app';
+const WWW_HOST = 'www.worldmonitor.app';
+
+const APEX_URLS = uniqueSorted(getSitemapUrlsForHost(APEX_HOST));
 const WWW_URLS = uniqueSorted([
-  ...getSitemapUrlsForHost('www.worldmonitor.app'),
+  ...getSitemapUrlsForHost(WWW_HOST),
   ...getBlogUrls(),
 ]);
+
+/**
+ * Every remaining host the committed sitemap publishes — today the variant
+ * dashboards. Derived from the sitemap rather than restated so a new variant
+ * cannot be silently omitted from IndexNow the way commodity and energy were
+ * (#6563). The deploy workflow reads this export to submit each one.
+ */
+export const INDEXNOW_VARIANT_HOSTS = Object.freeze(
+  uniqueSorted(ROOT_SITEMAP_URLS.map((url) => new URL(url).hostname))
+    .filter((host) => host !== APEX_HOST && host !== WWW_HOST),
+);
 
 function urlsForHost(host, extraUrls = []) {
   return uniqueSorted([...getSitemapUrlsForHost(host), ...extraUrls]);
@@ -108,11 +122,11 @@ function batch(host, urls, key = INDEXNOW_KEY) {
 }
 
 export const INDEXNOW_BATCHES = Object.freeze([
-  batch('worldmonitor.app', APEX_URLS, APEX_INDEXNOW_KEY),
-  batch('www.worldmonitor.app', WWW_URLS),
-  batch('tech.worldmonitor.app', urlsForHost('tech.worldmonitor.app', ['https://tech.worldmonitor.app/'])),
-  batch('finance.worldmonitor.app', urlsForHost('finance.worldmonitor.app', ['https://finance.worldmonitor.app/'])),
-  batch('happy.worldmonitor.app', urlsForHost('happy.worldmonitor.app', ['https://happy.worldmonitor.app/'])),
+  batch(APEX_HOST, APEX_URLS, APEX_INDEXNOW_KEY),
+  batch(WWW_HOST, WWW_URLS),
+  // The sitemap lists each variant's canonical /dashboard; the bare root is the
+  // AI-crawler stub surface middleware.ts serves, so submit both.
+  ...INDEXNOW_VARIANT_HOSTS.map((host) => batch(host, urlsForHost(host, [`https://${host}/`]))),
 ]);
 
 export const INDEXNOW_ENDPOINTS = Object.freeze([

@@ -63,6 +63,54 @@ describe('IndexNow submission', () => {
     assert.equal(new Set(apexBatch.urls).size, apexBatch.urls.length, 'apex batch must not contain duplicates');
   });
 
+  it('gives every host published in the committed sitemap its own IndexNow batch', () => {
+    const sitemap = readFileSync(new URL('../public/sitemap.xml', import.meta.url), 'utf8');
+    const sitemapHosts = new Set(
+      [...sitemap.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)].map((match) => new URL(match[1].trim()).hostname),
+    );
+    const batchHosts = new Set(indexNow.INDEXNOW_BATCHES.map(({ host }) => host));
+
+    for (const host of sitemapHosts) {
+      assert.ok(
+        batchHosts.has(host),
+        `${host} appears in public/sitemap.xml but has no INDEXNOW_BATCHES entry, so its URLs are never submitted`,
+      );
+    }
+    for (const host of batchHosts) {
+      assert.ok(
+        sitemapHosts.has(host),
+        `${host} has an INDEXNOW_BATCHES entry but publishes no sitemap URL`,
+      );
+    }
+  });
+
+  it('submits every configured batch host from the deploy workflow', () => {
+    const workflow = readFileSync(
+      new URL('../.github/workflows/indexnow-submit.yml', import.meta.url),
+      'utf8',
+    );
+    // Hosts the workflow names outright (`--host worldmonitor.app`); the shell
+    // variable form used for the variant loop deliberately does not match.
+    const literalHosts = [...workflow.matchAll(/--host ((?:[a-z0-9-]+\.)*worldmonitor\.app)\b/g)]
+      .map((match) => match[1]);
+    assert.ok(
+      Array.isArray(indexNow.INDEXNOW_VARIANT_HOSTS),
+      'the script must export the variant host list the workflow iterates',
+    );
+    assert.match(
+      workflow,
+      /INDEXNOW_VARIANT_HOSTS/,
+      'the workflow must derive its variant hosts from the script, not restate them',
+    );
+    assert.match(workflow, /--host "\$host"/, 'the variant step must submit each derived host');
+
+    assert.deepEqual(
+      new Set([...literalHosts, ...indexNow.INDEXNOW_VARIANT_HOSTS]),
+      new Set(indexNow.INDEXNOW_BATCHES.map(({ host }) => host)),
+      'every INDEXNOW_BATCHES host must be reachable from a workflow submission step',
+    );
+  });
+
   it('keeps every submitted URL and key location on the declared host', () => {
     for (const batch of indexNow.INDEXNOW_BATCHES) {
       assert.equal(new URL(batch.keyLocation).hostname, batch.host);
