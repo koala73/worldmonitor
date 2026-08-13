@@ -1512,6 +1512,74 @@ describe('allowlisted GitHub watchdog transport', () => {
     assert.equal(classified.dispatchEligible, false);
   });
 
+  it('hydrates only a recent acceptance proof when the durable run id is unavailable', async () => {
+    const recentSuccess = rawRun({
+      id: 71,
+      createdAt: new Date(NOW - 15 * 60_000).toISOString(),
+      updatedAt: new Date(NOW - 10 * 60_000).toISOString(),
+    });
+    const olderSuccess = rawRun({
+      id: 72,
+      createdAt: new Date(NOW - 125 * 60_000).toISOString(),
+      updatedAt: new Date(NOW - 120 * 60_000).toISOString(),
+    });
+    const hydratedIds = [];
+    const client = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      fetchImpl: async (url) => {
+        const parsed = new URL(url);
+        if (parsed.pathname.endsWith('/git/ref/heads/main')) {
+          return json({ object: { sha: HEAD } });
+        }
+        if (parsed.pathname.endsWith('/statuses')) {
+          return json([{ context: 'gate', state: 'success', updated_at: '2026-08-07T11:59:00Z' }]);
+        }
+        if (parsed.pathname.endsWith('/railway-deploy-trigger.yml/runs')) {
+          if (parsed.searchParams.has('status')) {
+            return json({ total_count: 0, workflow_runs: [] });
+          }
+          return json({ total_count: 2, workflow_runs: [recentSuccess, olderSuccess] });
+        }
+        const match = /\/actions\/runs\/(\d+)\/attempts\/1\/jobs$/.exec(parsed.pathname);
+        if (match) {
+          const runId = Number(match[1]);
+          hydratedIds.push(runId);
+          return json({
+            total_count: 1,
+            jobs: [{
+              id: runId,
+              steps: [{ name: FINAL_ACCEPTANCE_STEP_NAME, conclusion: 'success' }],
+            }],
+          });
+        }
+        throw new Error(`unexpected ${url}`);
+      },
+    });
+    const snapshot = await readWatchdogSnapshot({
+      github: client,
+      control: {
+        status: async () => ({
+          data: eligibleControl({
+            lastAccepted: {
+              attemptId: 'accepted-without-run-id',
+              runId: null,
+              headSha: HEAD,
+              acceptedAt: NOW - 10 * 60_000,
+            },
+          }),
+        }),
+      },
+      clock: () => NOW,
+    });
+
+    assert.deepEqual(hydratedIds, [recentSuccess.id]);
+    const classified = classifyWatchdogSnapshot(snapshot);
+    assert.equal(classified.outcome, 'HEALTHY');
+    assert.equal(classified.dispatchEligible, false);
+  });
+
   it('fails closed on mutable totals, duplicate ids, truncation, and empty counted pages', async () => {
     const cases = [
       ['invalid total', [{ total_count: '1', workflow_runs: [rawRun({ id: 1 })] }]],
