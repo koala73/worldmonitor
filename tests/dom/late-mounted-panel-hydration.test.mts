@@ -116,19 +116,29 @@ function recentCluster(): ClusteredEvent {
 }
 
 /**
- * Let pending promises AND `Panel`'s 150ms content debounce drain, so an
- * assertion reads committed DOM rather than a queued write.
+ * Wait until `text` is committed into the panel's DOM.
+ *
+ * Polls rather than sleeping a fixed span: `Panel` debounces content writes by
+ * 150ms, and a fixed sleep long enough to cover that on a loaded machine adds
+ * seconds of dead wall-clock to a suite whose other files run on a 5s per-test
+ * timeout — the pre-push gate runs them all in parallel, so dead time here
+ * shows up as timeouts elsewhere. Throws on the deadline so a genuine failure
+ * still fails loudly instead of falling through to a confusing assertion.
  */
-async function settle(): Promise<void> {
-  for (let i = 0; i < 3; i++) await new Promise((resolve) => setTimeout(resolve, 200));
+async function waitForText(element: HTMLElement, text: string, timeoutMs = 3000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (element.textContent?.includes(text)) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`timed out after ${timeoutMs}ms waiting for panel content to contain: ${text}`);
 }
 
 describe('threat timeline mounting after the clustering pass', () => {
   it('renders clusters queued while the panel was still a deferred shell', async () => {
     const panel = new ThreatTimelinePanel();
     const element = panel.getElement();
-    await settle();
-    expect(element.textContent).toContain('Waiting for intelligence insight data.');
+    await waitForText(element, 'Waiting for intelligence insight data.');
 
     // data-loader's callPanel() when ctx.panels['threat-timeline'] is undefined.
     enqueuePanelCall('threat-timeline', 'refresh', [[recentCluster()]]);
@@ -138,7 +148,7 @@ describe('threat timeline mounting after the clustering pass', () => {
     await replayPendingCalls('threat-timeline', panel);
     document.body.append(element);
     panel.notifyConnected();
-    await settle();
+    await waitForText(element, 'Naval buildup reported in the Taiwan Strait');
 
     expect(element.textContent).not.toContain('Waiting for intelligence insight data.');
     expect(element.textContent).toContain('Naval buildup reported in the Taiwan Strait');
@@ -154,15 +164,15 @@ describe('strategic posture mounting after its own fetch resolves', () => {
 
     // The fetch resolves here, while the element is still detached — exactly
     // what panel-layout does between `new PanelClass()` and mountPanelElement().
-    await settle();
-    expect(element.textContent).toContain('Scanning Theaters');
+    // Waiting for the loading copy to COMMIT is what proves the fetch had its
+    // chance to land and the panel is still on the skeleton.
+    await waitForText(element, 'Scanning Theaters');
 
     document.body.append(element);
     panel.notifyConnected();
-    await settle();
+    await waitForText(element, 'Taiwan Strait');
 
     expect(element.textContent).not.toContain('Scanning Theaters');
-    expect(element.textContent).toContain('Taiwan Strait');
 
     panel.destroy();
   });
@@ -172,7 +182,7 @@ describe('strategic posture mounting after its own fetch resolves', () => {
     const element = panel.getElement();
     document.body.append(element);
     panel.notifyConnected();
-    await settle();
+    await waitForText(element, 'Taiwan Strait');
 
     expect(element.textContent).toContain('Taiwan Strait');
 
