@@ -40,6 +40,13 @@ jobs:
             --paginate --jq '.[].filename')
           CODE=$(echo "$FILES" | awk '
             /^docs\/research\/seo-ai-visibility\// { count++; next }
+            # Committed resilience acceptance artifacts are docs-path data that
+            # tests/dry-run-resilience-education-flip.test.mts validates —
+            # recomputing gates, checking provenance, and rejecting a
+            # self-declared verdict. That validator lives in the `unit` job, so
+            # without this rule the guard skips on exactly the PR that commits
+            # an artifact and can only ever fire on unrelated changes.
+            /^docs\/snapshots\/resilience-.*-acceptance-.*\.json$/ { count++; next }
             /\.md$/ { next }
             /^docs\// { next }
             /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// && $0 !~ /^src-tauri\/.*\.json$/ { next }
