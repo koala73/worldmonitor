@@ -143,3 +143,16 @@ provider payloads or client-side keys.
 Phase 10 did not add a Provider credential, endpoint impersonation, client-side
 secret or live-data claim. The native window's `加载市场数据失败` result is an
 intentional absence-of-observation display, not a zero-price or no-market fact.
+
+## Phase 11 acceptance effect on Provider states
+
+| Provider-facing area | Phase 11 verified behavior | What it does **not** establish |
+|---|---|---|
+| Finance market workspace | Complete Finance browser and visual paths pass while no-provider display stays fail-closed. Variant boot cannot silently fall through to a generic chart. | A quote, OHLC bar, exchange entitlement, real-time label, symbol observation or display/rebroadcast permission. |
+| AIS / maritime | Sidecar and data suites verify backoff, timeout, stale-health and accepted-frame boundaries. | A current AIS position, vessel identity, cargo, bill of lading, port call, destination or trade fact. |
+| News / correlation | Storage failure, hydration and source-setting paths are exercised without changing attribution language. | A causal claim from event co-occurrence, sentiment or headline relevance. |
+| Map visual fixtures | Local deterministic features are limited to an explicit E2E harness and named seed inputs. | A basemap, conflict observation, Provider response or production-source endorsement. |
+
+Phase 11 adds no key, endpoint, subscription, entitlement or client-side
+secret. Every row needing a source-bearing response remains disabled/unknown
+until its protected Provider action is completed.

@@ -282,3 +282,33 @@ existence of an installer as proof would have hidden a real desktop defect.
 **Consequence:** Desktop build evidence requires an actual installed launch.
 The rejected missing-asset build remains documented; only the final installed
 overview/sidecar proof is accepted for Phase 10.
+
+## D-0024 - Screenshot readiness needs a loaded style and deterministic test-only source
+
+**Decision:** The map E2E harness sets an explicit test marker before startup.
+Only under that marker, DeckGLMap uses a local empty-source MapLibre style.
+Harness readiness requires a loaded style; a canvas-only timeout fallback is
+rejected.
+
+**Reason:** External basemap availability and a WebGL canvas can produce a
+blank image while appearing ready. A screenshot gate must prove deterministic
+expected feature rendering without calling a fixture a production source.
+
+**Consequence:** Production routes cannot enter this path and retain normal
+basemap configuration. The marker/style proves only visual test infrastructure,
+never a map observation, conflict fact, market fact, Provider relationship or
+live-data status.
+
+## D-0025 - Build variants replace the complete pre-paint branch
+
+**Decision:** Build-time variant specialization owns the whole pre-paint
+assignment/removal branch through a tested helper, rather than replacing only
+the `if` arm.
+
+**Reason:** Replacing only the true branch left the original `else` in Finance
+output, yielding invalid JavaScript and preventing hydration before a
+fail-closed panel state could render.
+
+**Consequence:** Full retains runtime hostname selection; each fixed variant
+uses syntactically valid fixed assignment. Seven focused tests parse every
+non-Full emitted pre-paint script and protect unrelated HTML routes.

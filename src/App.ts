@@ -1122,10 +1122,16 @@ export class App {
       // One-time migration: prune removed panel keys from stored settings and order
       const PANEL_PRUNE_KEY = 'worldmonitor-panel-prune-v1';
       if (!localStorage.getItem(PANEL_PRUNE_KEY)) {
+        // User-created widgets and MCP panels are not part of the static
+        // registry. Keep their persisted panel settings and ordering whenever
+        // their id has the owned dynamic prefix; otherwise a reload preserves
+        // the widget spec but silently removes the panel slot that renders it.
         const validKeys = new Set(Object.keys(ALL_PANELS));
+        const isPersistedDynamicPanel = (key: string): boolean =>
+          key === 'runtime-config' || key.startsWith('cw-') || key.startsWith('mcp-');
         let pruned = false;
         for (const key of Object.keys(panelSettings)) {
-          if (!validKeys.has(key) && key !== 'runtime-config') {
+          if (!validKeys.has(key) && !isPersistedDynamicPanel(key)) {
             delete panelSettings[key];
             pruned = true;
           }
@@ -1137,7 +1143,7 @@ export class App {
             if (!raw) continue;
             const arr = JSON.parse(raw);
             if (!Array.isArray(arr)) continue;
-            const filtered = arr.filter((k: string) => validKeys.has(k));
+            const filtered = arr.filter((k: string) => validKeys.has(k) || isPersistedDynamicPanel(k));
             if (filtered.length !== arr.length) localStorage.setItem(orderKey, JSON.stringify(filtered));
           } catch { localStorage.removeItem(orderKey); }
         }
@@ -1749,7 +1755,11 @@ export class App {
     const baseLang = (document.documentElement.lang || 'en').split('-')[0] || 'en';
     setMeta('meta[property="og:locale"]', ogLocaleMap[baseLang] || `${baseLang}_${baseLang.toUpperCase()}`);
     const srH1 = document.querySelector('body > h1');
-    if (srH1) srH1.textContent = shellTitle;
+    // This fork has an explicitly confirmed independent primary brand. Keep
+    // that accessible product identity stable across every dashboard variant;
+    // variant-specific document titles remain available through <title> and
+    // metadata, but must not overwrite the ownership signal after hydration.
+    if (srH1) srH1.textContent = `${PRIMARY_BRAND} - ${PRIMARY_BRAND_EN}`;
     const aiFlow = getAiFlowSettings();
     if (aiFlow.browserModel || isDesktopRuntime()) {
       await mlWorker.init();

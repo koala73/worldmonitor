@@ -472,6 +472,11 @@ function flushPendingUmamiCalls(): void {
 
 function loadUmamiScript(): void {
   if (umamiLoadStarted || typeof document === 'undefined') return;
+  // The upstream tracker reads localStorage during its own bootstrap. In a
+  // sandboxed/private/restricted browser context that read throws outside our
+  // error boundary, turning optional telemetry into an uncaught app error.
+  // Keep analytics intentionally disabled for this page view instead.
+  if (!canUseThirdPartyAnalyticsStorage()) return;
   installCollectorFetchGate();
   const existing = document.querySelector<HTMLScriptElement>(`script[src="${UMAMI_SCRIPT_SRC}"]`);
   if (existing) {
@@ -505,6 +510,26 @@ function loadUmamiScript(): void {
     }
   }, { once: true });
   document.head.appendChild(script);
+}
+
+/**
+ * Umami owns the script loaded above, so its storage access cannot be caught
+ * by this module after injection. Probe the exact API it uses first. The
+ * temporary key is removed immediately; denied storage simply disables
+ * non-essential analytics while the dashboard keeps working.
+ */
+function canUseThirdPartyAnalyticsStorage(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    const storage = window.localStorage;
+    const probeKey = '__wm_analytics_storage_probe__';
+    storage.setItem(probeKey, '1');
+    storage.removeItem(probeKey);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Type-safe Umami wrapper. Safe to call even if the script hasn't loaded. */

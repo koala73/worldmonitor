@@ -8,6 +8,10 @@ async function loadHappyDashboard(page: Page): Promise<void> {
     if (sessionStorage.getItem('__panel_drag_reorder_init_done')) return;
     localStorage.clear();
     localStorage.setItem('worldmonitor-variant', 'happy');
+    // The first-use mission chooser is intentionally interactive. It is not
+    // part of drag-and-drop behavior, so dismiss it in this focused fixture
+    // before it can intercept the pointer sequence.
+    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
     sessionStorage.setItem('__panel_drag_reorder_init_done', '1');
   });
   await page.goto('/', { waitUntil: 'domcontentloaded' });
@@ -146,6 +150,10 @@ async function storedBottomSet(page: Page): Promise<string[]> {
 }
 
 test.describe('panel drag reorder semantics', () => {
+  test.beforeEach(() => {
+    test.skip(process.env.VITE_VARIANT !== 'happy', 'This fixture relies on the Happy build panel registry.');
+  });
+
   test('moves a panel after the indicated same-grid target instead of swapping', async ({ page }) => {
     await loadHappyDashboard(page);
     const before = await panelIds(page);
@@ -197,10 +205,21 @@ test.describe('panel drag reorder semantics', () => {
     expect(sourceId).toBeTruthy();
 
     const bottomGrid = page.locator('#mapBottomGrid');
+    // An empty target intentionally occupies no layout space until a genuine
+    // drag begins. Keep the pointer down while reading its expanded box so
+    // this verifies the same user path as an actual below-map drop.
+    const sourceHeader = page.locator(`${panelSelector(sourceId!)} > .panel-header`).first();
+    const sourceBox = await boundingBoxOrThrow(sourceHeader, `source panel ${sourceId}`);
+    const startX = sourceBox.x + Math.min(48, sourceBox.width / 2);
+    const startY = sourceBox.y + sourceBox.height / 2;
+    await page.mouse.move(startX, startY);
+    await page.mouse.down();
+    await page.mouse.move(startX + 16, startY + 16, { steps: 4 });
+    await expect.poll(() => page.evaluate(() => document.body.classList.contains('panel-drag-active'))).toBe(true);
+    await expect.poll(async () => (await boundingBoxOrThrow(bottomGrid, 'bottom grid')).height).toBeGreaterThanOrEqual(100);
     const bottomBox = await boundingBoxOrThrow(bottomGrid, 'bottom grid');
-    expect(bottomBox.height).toBeGreaterThan(20);
-
-    await dragPanelToPoint(page, sourceId!, bottomBox.x + bottomBox.width / 2, bottomBox.y + bottomBox.height / 2);
+    await page.mouse.move(bottomBox.x + bottomBox.width / 2, bottomBox.y + bottomBox.height / 2, { steps: 12 });
+    await releaseDrag(page);
 
     await expect(page.locator(`#mapBottomGrid > ${panelSelector(sourceId!)}`)).toHaveCount(1);
     await expect(page.locator(`#panelsGrid > ${panelSelector(sourceId!)}`)).toHaveCount(0);

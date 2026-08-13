@@ -276,6 +276,7 @@ export class EventHandlerManager implements AppModule {
   private readonly mobilePrimaryNav: MobilePrimaryNav;
   private boundPanelCloseHandler: ((e: Event) => void) | null = null;
   private boundWidgetModifyHandler: ((e: Event) => void) | null = null;
+  private boundWidgetAccentChangeHandler: ((e: Event) => void) | null = null;
   private boundUndoHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundNotifyForCountryHandler: ((e: Event) => void) | null = null;
   private boundMissionOutsideHandler: ((e: MouseEvent) => void) | null = null;
@@ -503,6 +504,10 @@ export class EventHandlerManager implements AppModule {
       this.ctx.container.removeEventListener('wm:widget-modify', this.boundWidgetModifyHandler);
       this.boundWidgetModifyHandler = null;
     }
+    if (this.boundWidgetAccentChangeHandler) {
+      this.ctx.container.removeEventListener('wm:widget-accent-change', this.boundWidgetAccentChangeHandler);
+      this.boundWidgetAccentChangeHandler = null;
+    }
     if (this.boundUndoHandler) {
       document.removeEventListener('keydown', this.boundUndoHandler);
       this.boundUndoHandler = null;
@@ -674,6 +679,24 @@ export class EventHandlerManager implements AppModule {
       })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     }) as EventListener;
     this.ctx.container.addEventListener('wm:widget-modify', this.boundWidgetModifyHandler);
+
+    this.boundWidgetAccentChangeHandler = ((e: CustomEvent<{ widgetId: string; accentColor: string }>) => {
+      const spec = getWidget(e.detail.widgetId);
+      if (!spec) return;
+      const accentColor = e.detail.accentColor;
+      // The panel emits palette values from a closed local list. Keep this
+      // guard at the persistence boundary as well, since CustomEvents can be
+      // dispatched by any in-page code.
+      if (!/^#[0-9a-f]{6}$/i.test(accentColor)) return;
+      const updated = { ...spec, accentColor, updatedAt: Date.now() };
+      void saveWidget(updated).then(() => {
+        (this.ctx.panels[updated.id] as CustomWidgetPanel | undefined)?.updateSpec(updated);
+      }).catch((error) => {
+        console.error('[widget-accent] failed to save accent color', error);
+        showToast(t('widgets.saveFailed'));
+      });
+    }) as EventListener;
+    this.ctx.container.addEventListener('wm:widget-accent-change', this.boundWidgetAccentChangeHandler);
 
     this.ctx.container.addEventListener('wm:mcp-configure', ((e: CustomEvent<{ panelId: string }>) => {
       const spec = getMcpPanel(e.detail.panelId);

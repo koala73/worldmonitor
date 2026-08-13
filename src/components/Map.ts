@@ -230,6 +230,12 @@ export class MapComponent {
   // written — lets applyTransform() skip same-value setProperty calls that
   // would restyle every marker on every render pass.
   private lastOverlayVarZoom = '';
+  // SVG projection inversion is only meaningful against the dimensions that
+  // produced the current transform. A deep-linked center is authoritative
+  // while the renderer completes its first layout (especially on mobile), so
+  // preserve it rather than deriving a transient, out-of-range value from a
+  // zero/stale viewport and writing that value back into a share URL.
+  private explicitCenter: { lat: number; lon: number } | null = null;
   // Desktop measures label overlap from the start; mobile defers until the first
   // interaction. The effective value is set in the constructor (= !this.isMobile);
   // false here documents the mobile-off default.
@@ -922,6 +928,7 @@ export class MapComponent {
             this.state.zoom = Math.max(1, Math.min(10, this.state.zoom + zoomDelta));
           }
         }
+        this.explicitCenter = null;
         this.applyTransform();
       },
       { passive: false, signal }
@@ -948,6 +955,7 @@ export class MapComponent {
       const panSpeed = 1 / this.state.zoom;
       this.state.pan.x += dx * panSpeed;
       this.state.pan.y += dy * panSpeed;
+      this.explicitCenter = null;
 
       lastPos = { x: e.clientX, y: e.clientY };
       this.applyTransform();
@@ -1019,6 +1027,7 @@ export class MapComponent {
         const panSpeed = 1 / this.state.zoom;
         this.state.pan.x += (center.x - lastTouchCenter.x) * panSpeed;
         this.state.pan.y += (center.y - lastTouchCenter.y) * panSpeed;
+        this.explicitCenter = null;
         lastTouchCenter = center;
 
         this.resumeMobileLabelVisibility();
@@ -1040,6 +1049,7 @@ export class MapComponent {
         const panSpeed = 1 / this.state.zoom;
         this.state.pan.x += dx * panSpeed;
         this.state.pan.y += dy * panSpeed;
+        this.explicitCenter = null;
 
         lastPos = { x: touch1.clientX, y: touch1.clientY };
         const now = performance.now();
@@ -1066,6 +1076,7 @@ export class MapComponent {
             if (Math.abs(vx) < 10 && Math.abs(vy) < 10) return;
             this.state.pan.x += (vx / 60) * panSpeed;
             this.state.pan.y += (vy / 60) * panSpeed;
+            this.explicitCenter = null;
             this.applyTransform();
             inertiaRaf = requestAnimationFrame(animate);
           };
@@ -3693,6 +3704,7 @@ export class MapComponent {
 
   public setView(view: MapView, zoom?: number): void {
     this.state.view = view;
+    this.explicitCenter = null;
 
     // Region-specific zoom and pan settings
     // Pan: +x = west, -x = east, +y = north, -y = south
@@ -4234,6 +4246,7 @@ export class MapComponent {
   }
 
   public getCenter(): { lat: number; lon: number } | null {
+    if (this.explicitCenter) return { ...this.explicitCenter };
     const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     if (!projection.invert) return null;
@@ -4241,8 +4254,12 @@ export class MapComponent {
     const centerX = width / (2 * zoom) - this.state.pan.x;
     const centerY = height / (2 * zoom) - this.state.pan.y;
     const coords = projection.invert([centerX, centerY]);
-    if (!coords) return null;
-    return { lon: coords[0], lat: coords[1] };
+    if (!coords || !Number.isFinite(coords[0]) || !Number.isFinite(coords[1])) return null;
+    const [lon, lat] = coords;
+    // A cropped equirectangular projection can invert a panned edge outside
+    // the physical globe. Do not expose it through the public map contract.
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+    return { lon, lat };
   }
 
   public getTimeRange(): TimeRange {
@@ -4295,6 +4312,7 @@ export class MapComponent {
       x: width / 2 - pos[0],
       y: height / 2 - pos[1],
     };
+    this.explicitCenter = { lat, lon };
     this.applyTransform();
     // Ensure base layer is intact after pan
     this.ensureBaseLayerIntact();

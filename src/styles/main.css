@@ -1791,7 +1791,10 @@ canvas,
 #panelsGrid > .panel[data-panel="live-webcams"].panel-wide:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
   height: min(
     calc(var(--dashboard-panel-row-max) * 2 + var(--dashboard-grid-gap)),
-    max(var(--dashboard-first-grid-reservation), calc(100dvh - 64px))
+    /* Header + dashboard tabs + fixed footer consume about 150px of a short
+       web viewport. The older 64px estimate let the second webcam row fall
+       behind the footer, even though this panel promises a reachable 2×2 wall. */
+    max(var(--dashboard-first-grid-reservation), calc(100dvh - 154px))
   );
 }
 
@@ -2021,6 +2024,14 @@ body.panel-resize-active iframe {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Market workspace routes are user-facing labels, not fixed-size icon
+   chrome. Keep their text in the panel-scale contract so the stock, maritime,
+   China factory, and provider workspaces remain readable at every global or
+   per-panel accessibility scale. */
+.panel[data-panel="markets"] .watchlist-btn {
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
 /* Badges and icon controls have fixed boxes. Keep their glyphs at the tested

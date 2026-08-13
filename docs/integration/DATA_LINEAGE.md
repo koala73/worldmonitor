@@ -240,3 +240,24 @@ Phase 10 adds an executable-delivery lineage, not a data-provider lineage:
 The desktop package never carries a frontend Provider secret. Existing desktop
 keychain injection reported zero secrets during verification; any future
 protected secret remains a configuration prerequisite, not data provenance.
+
+## Phase 11 acceptance and test-fixture lineage
+
+Phase 11 adds no external-data lineage. Its acceptance inputs are code,
+versioned source fixtures, local browser rendering, recorded command output and
+golden-image comparisons:
+
+1. **Fixture branch.** The map harness owns named deterministic features and a
+   tile-free test-only style. These are test inputs, not Provider records, and
+   never cross into production routes or provider-facing labels.
+2. **Runtime-boundary branch.** Valid URL coordinates, user-pan clearing,
+   storage-unavailable analytics handling and syntax-valid pre-paint selection
+   preserve rendering. They do not attach source, timestamp or license to any
+   bar, event, vessel, headline or factory entity.
+3. **Acceptance branch.** E2E, DOM, sidecar, contract, lint, type and build
+   logs prove behavior at their recorded run time. A passing screenshot proves
+   only that a local deterministic render matched its reviewed baseline.
+4. **Provider branch remains closed.** A data-bearing market, AIS, news, cargo,
+   trade or factory assertion still needs a separately licensed source-bearing
+   response with observation/as-of time, delay and provenance. No Phase 11
+   artifact substitutes for that route.

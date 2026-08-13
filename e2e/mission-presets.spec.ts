@@ -140,7 +140,9 @@ test.describe('mission presets', () => {
     await expect(page.locator('#regionSelect')).toHaveValue('global');
     await expect
       .poll(() => readJsonLocalStorage<string[]>(page, 'panel-order').then((order) => order?.[0]))
-      .toBe('live-news');
+      // Full/default is intentionally market-first: it exposes the S&P 500
+      // watchlist before secondary intelligence panels on a clean profile.
+      .toBe('markets');
     await expect
       .poll(() => readJsonLocalStorage<Record<string, boolean>>(page, 'worldmonitor-layers').then((layers) => layers?.tradeRoutes))
       .toBe(false);

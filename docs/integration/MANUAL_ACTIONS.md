@@ -185,3 +185,19 @@ tested. No Provider credential was requested or recorded.
 - [ ] Before enabling real/near-real stock charts, obtain a Provider plan that explicitly permits the intended display/rebroadcast use. Store `MASSIVE_API_KEY` or the approved equivalent only in the protected desktop/server secret path; then capture source, symbol, exchange, currency, delay, as-of time and entitlement evidence for every visible bar.
 - [ ] Configure AIS/news/trade/model Providers only after their own contracts and terms are accepted. Their missing configuration remains a truthful disabled/degraded state.
 - [ ] Do not paste a certificate private key, Provider secret, password, OAuth token, cookie, payment method, invoice or CAPTCHA into chat, screenshots, logs or Git.
+
+## Phase 11 acceptance receipt and remaining owner actions (2026-08-14)
+
+Phase 11 completed its automated acceptance matrix without any new Provider
+authorization, billing action, login, CAPTCHA, deployment ownership transfer or
+irreversible operation.
+
+- [ ] Keep the market-data action above open until an approved Provider plan,
+  protected server/desktop secret and source-bearing bar response have been
+  verified. A screenshot baseline must never stand in for that response.
+- [ ] If CI requires the Playwright-pinned Chromium rather than the documented
+  local Chrome fallback used in the final local visual gate, make the pinned
+  browser cache available to that runner. Do not commit a browser binary or
+  change product behavior to accommodate test infrastructure.
+- [ ] Continue to keep Provider credentials, certificates, sessions, payment
+  data and CAPTCHA challenges out of chat, screenshots, test logs and Git.

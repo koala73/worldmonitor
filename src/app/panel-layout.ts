@@ -639,10 +639,10 @@ export class PanelLayoutManager implements AppModule {
     });
 
     // Handle analyst action chip "Create chart widget →" click
-    this.boundWidgetCreatorHandler = ((e: CustomEvent<{ initialMessage?: string }>) => {
+    this.boundWidgetCreatorHandler = ((e: CustomEvent<{ initialMessage?: string; tier?: 'basic' | 'pro' }>) => {
       void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
         mode: 'create',
-        tier: 'pro',
+        tier: e.detail.tier ?? 'pro',
         initialMessage: e.detail.initialMessage,
         onComplete: (spec) => {
           void this.addCustomWidget(spec).catch((error) => {
@@ -1673,6 +1673,7 @@ export class PanelLayoutManager implements AppModule {
         if (addBlock) grid.insertBefore(el, addBlock);
         else grid.appendChild(el);
       }
+      panel.notifyConnected();
       this.applyPanelSettings();
       this.afterPanelMounted('live-news', panel);
     }).catch((err) => {
@@ -1995,6 +1996,15 @@ export class PanelLayoutManager implements AppModule {
   private afterPanelMounted(key: string, panel: Panel): void {
     const config = this.ctx.panelSettings[key];
     if (config) panel.toggle(config.enabled);
+    // A deferred panel is created after the initial applyPanelSettings() pass.
+    // Re-run the live-media show lifecycle once it is connected so an explicit
+    // always-on preference is honored only when the real panel becomes visible.
+    // Without this handoff, an initially deferred Live News/Webcams panel can
+    // remain at its honest preview state until some unrelated settings change.
+    if (config?.enabled) {
+      const liveMediaPanel = panel as { resumeLiveMediaForShow?: () => void };
+      liveMediaPanel.resumeLiveMediaForShow?.();
+    }
     this.observePanelForHydration(panel);
     if (config?.enabled) {
       this.scheduleHydrationForPanelElement(panel.getElement(), 'near');
@@ -2556,10 +2566,21 @@ export class PanelLayoutManager implements AppModule {
     }
 
     // Always load custom widgets — Pro gating is handled reactively by auth state.
+    let repairedDynamicPanelSettings = false;
     for (const spec of loadWidgets()) {
-      if (!this.ctx.panelSettings[spec.id]) {
-        this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
-      }
+      // Widget specs are device-local. A just-created widget can therefore be
+      // present while the persisted dashboard panel map predates its id (for
+      // example after an HttpOnly-session reload). Register it as enabled
+      // before the initial order is resolved; otherwise it has no shell and
+      // can never trigger its lazy import even though the user owns the spec.
+      const stored = this.ctx.panelSettings[spec.id];
+      if (!stored) repairedDynamicPanelSettings = true;
+      this.ctx.panelSettings[spec.id] = {
+        name: spec.title,
+        enabled: stored?.enabled ?? true,
+        priority: stored?.priority ?? 3,
+        ...(stored?.fontScale !== undefined ? { fontScale: stored.fontScale } : {}),
+      };
       const capturedSpec = spec;
       this.lazyPanel(spec.id, () =>
         this.importPanel(
@@ -2574,6 +2595,7 @@ export class PanelLayoutManager implements AppModule {
     for (const spec of loadMcpPanels()) {
       if (!this.ctx.panelSettings[spec.id]) {
         this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
+        repairedDynamicPanelSettings = true;
       }
       const capturedSpec = spec;
       this.lazyPanel(spec.id, () =>
@@ -2584,6 +2606,13 @@ export class PanelLayoutManager implements AppModule {
           (McpDataPanel) => new McpDataPanel(capturedSpec),
         ),
       );
+    }
+
+    // Persist a dynamic panel recovered from its canonical widget/MCP spec.
+    // This prevents an earlier static-registry migration from removing the
+    // restored slot again on the following boot.
+    if (repairedDynamicPanelSettings) {
+      saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
     }
 
     const variantOrder = (VARIANT_DEFAULTS[SITE_VARIANT] ?? VARIANT_DEFAULTS['full'] ?? []).filter(k => k !== 'map');
@@ -2654,6 +2683,16 @@ export class PanelLayoutManager implements AppModule {
 
     this.resolvedPanelOrder = allOrder;
 
+    // A custom widget is user-created content, not a data-heavy stock panel.
+    // Its saved state must be restored as part of the initial dashboard rather
+    // than waiting for a below-fold IntersectionObserver transition that may
+    // never happen after a reload (the browser restores the same scroll
+    // position and the shell is outside the observer margin). Load it now;
+    // the normal deferred policy remains in place for static panels.
+    const eagerCustomWidgetKeys = new Set(
+      allOrder.filter((key) => key.startsWith('cw-') && this.ctx.panelSettings[key]?.enabled),
+    );
+
     const sidebarOrder = effectiveUltraWide
       ? allOrder.filter(k => !this.bottomSetMemory.has(k))
       : allOrder;
@@ -2663,6 +2702,7 @@ export class PanelLayoutManager implements AppModule {
 
     sidebarOrder.forEach((key: string) => {
       this.insertInitialPanelByKey(panelsGrid, key);
+      if (eagerCustomWidgetKeys.has(key)) this.mountDeferredPanel(key);
     });
 
     // "+" Add Panel block at the end of the grid
@@ -2768,6 +2808,7 @@ export class PanelLayoutManager implements AppModule {
     if (bottomGrid) {
       bottomOrder.forEach(key => {
         this.insertInitialPanelByKey(bottomGrid, key);
+        if (eagerCustomWidgetKeys.has(key)) this.mountDeferredPanel(key);
       });
     }
 

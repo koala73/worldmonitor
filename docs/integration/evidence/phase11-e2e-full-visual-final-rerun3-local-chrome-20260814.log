@@ -1,0 +1,10 @@
+
+> world-monitor@2.10.0 test:e2e:visual:full
+> cross-env VITE_VARIANT=full playwright test -g "matches golden screenshots per layer and zoom"
+
+
+Running 1 test using 1 worker
+
+  ok 1 [chromium] › e2e\map-harness.spec.ts:512:3 › DeckGL map harness › matches golden screenshots per layer and zoom (58.3s)
+
+  1 passed (1.2m)

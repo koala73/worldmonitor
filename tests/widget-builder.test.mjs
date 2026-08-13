@@ -908,11 +908,23 @@ describe('i18n — widgets section completeness', () => {
 describe('CustomWidgetPanel — header buttons and events', () => {
   const panel = src('src/components/CustomWidgetPanel.ts');
   const sanitizer = src('src/utils/widget-sanitizer.ts');
+  const events = src('src/app/event-handlers.ts');
 
   it('dispatches wm:widget-modify event from chat button', () => {
     assert.ok(
       panel.includes('wm:widget-modify'),
       'CustomWidgetPanel must dispatch wm:widget-modify CustomEvent',
+    );
+  });
+
+  it('provides a persisted accent-color control through a typed panel event', () => {
+    assert.ok(
+      panel.includes('widget-color-btn') && panel.includes('wm:widget-accent-change'),
+      'CustomWidgetPanel must expose an accent control that dispatches an owned event',
+    );
+    assert.ok(
+      events.includes('wm:widget-accent-change') && events.includes('saveWidget(updated)'),
+      'Event handlers must persist a widget accent change before updating its panel',
     );
   });
 

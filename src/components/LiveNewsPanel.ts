@@ -412,6 +412,9 @@ export class LiveNewsPanel extends Panel {
   private deferredInit = false;
   private lazyObserver: IntersectionObserver | null = null;
   private idleCallbackId: number | ReturnType<typeof setTimeout> | null = null;
+  private visibilityCheckQueued = false;
+  private scrollVisibilityListenerInstalled = false;
+  private readonly boundScrollVisibilityCheck = () => this.queueAlwaysOnVisibilityCheck();
   // Play-all cascade: start this panel's channel, but never start a disabled or collapsed panel.
   private readonly boundPlayAllStarter = () => {
     if (this.canHostLiveMedia()) this.triggerInit();
@@ -461,12 +464,50 @@ export class LiveNewsPanel extends Panel {
   private isPanelVisible(): boolean {
     if (!this.element.isConnected) return false;
     const rect = this.element.getBoundingClientRect();
-    return rect.width > 0 &&
+    if (!(rect.width > 0 &&
       rect.height > 0 &&
       rect.bottom > 0 &&
       rect.right > 0 &&
       rect.top < window.innerHeight &&
-      rect.left < window.innerWidth;
+      rect.left < window.innerWidth)) return false;
+
+    // The dashboard has nested scrollports (notably .main-content and the
+    // desktop grid). Window geometry alone treats a panel below a clipped
+    // scroll frame as visible, which would violate the "visible before
+    // always-on playback" contract. Intersect every clipping ancestor.
+    let ancestor = this.element.parentElement;
+    while (ancestor) {
+      // The document roots are already represented by the viewport check above.
+      // In the compact finance layout <body> has no independent layout box
+      // (its DOMRect height is 0) even though its computed overflow is `auto`.
+      // Treating that root box as a clipping scrollport would incorrectly reject
+      // a panel that visibly intersects the browser viewport.
+      if (ancestor === document.body || ancestor === document.documentElement) {
+        ancestor = ancestor.parentElement;
+        continue;
+      }
+      const style = getComputedStyle(ancestor);
+      const clipsX = /(?:auto|scroll|hidden|clip)/.test(style.overflowX);
+      const clipsY = /(?:auto|scroll|hidden|clip)/.test(style.overflowY);
+      if (clipsX || clipsY) {
+        const ancestorRect = ancestor.getBoundingClientRect();
+        if (rect.bottom <= ancestorRect.top || rect.top >= ancestorRect.bottom ||
+            rect.right <= ancestorRect.left || rect.left >= ancestorRect.right) {
+          return false;
+        }
+      }
+      ancestor = ancestor.parentElement;
+    }
+    return true;
+  }
+
+  private queueAlwaysOnVisibilityCheck(): void {
+    if (!this.alwaysOn || this.deferredInit || this.visibilityCheckQueued) return;
+    this.visibilityCheckQueued = true;
+    requestAnimationFrame(() => {
+      this.visibilityCheckQueued = false;
+      this.startAlwaysOnPlaybackIfVisible();
+    });
   }
 
   private renderPlaceholder(): void {
@@ -1811,6 +1852,30 @@ export class LiveNewsPanel extends Panel {
     }
   }
 
+  /**
+   * PanelLayout creates this panel while it is detached, then connects it as a
+   * deferred shell is replaced. IntersectionObserver does not reliably emit a
+   * fresh entry for that detached→connected transition in every browser. Start
+   * a new observer only after the real element is attached so the persisted
+   * always-on preference remains visibility-gated instead of being stranded at
+   * the preview state.
+   */
+  public override notifyConnected(): void {
+    super.notifyConnected();
+    if (this.deferredInit) return;
+    this.lazyObserver?.disconnect();
+    this.lazyObserver = null;
+    this.setupLazyInit();
+    if (!this.scrollVisibilityListenerInstalled) {
+      // Capture sees scrolls from nested dashboard panes even though scroll
+      // does not bubble. The handler remains visibility-gated above.
+      document.addEventListener('scroll', this.boundScrollVisibilityCheck, true);
+      window.addEventListener('resize', this.boundScrollVisibilityCheck);
+      this.scrollVisibilityListenerInstalled = true;
+    }
+    this.queueAlwaysOnVisibilityCheck();
+  }
+
   public destroy(): void {
     this.liveMediaSessionToken += 1;
     unregisterLiveMediaStarter('live-news', this.boundPlayAllStarter);
@@ -1820,6 +1885,11 @@ export class LiveNewsPanel extends Panel {
     this.unsubscribeStreamSettings = null;
 
     if (this.lazyObserver) { this.lazyObserver.disconnect(); this.lazyObserver = null; }
+    if (this.scrollVisibilityListenerInstalled) {
+      document.removeEventListener('scroll', this.boundScrollVisibilityCheck, true);
+      window.removeEventListener('resize', this.boundScrollVisibilityCheck);
+      this.scrollVisibilityListenerInstalled = false;
+    }
     if (this.idleCallbackId !== null) {
       if ('cancelIdleCallback' in window) (window as any).cancelIdleCallback(this.idleCallbackId);
       else clearTimeout(this.idleCallbackId as ReturnType<typeof setTimeout>);

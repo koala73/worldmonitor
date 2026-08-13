@@ -67,10 +67,18 @@ test.describe('panel font scaling', () => {
   test('applies every global step, persists it, and keeps fixed map chrome unchanged', async ({ page }) => {
     await bootDashboard(page);
 
-    const panelTitle = '#panelsGrid > .panel:not(.hidden) .panel-title';
-    const panelBodyText = '.panel[data-panel="live-news"] .live-media-shell-title';
+    // The dashboard retains an off-screen template during hydration.  It has
+    // the same panel title markup as the hydrated grid but is intentionally
+    // hidden, so do not let a generic first() target that template after a
+    // reload.  The contract is about the rendered panel title the user can
+    // actually read.
+    const panelTitle = '#panelsGrid > .panel:not(.hidden):visible .panel-title:visible';
+    // Markets is the deliberately first-class default panel. Use a stable
+    // in-panel control rather than assuming Live News is expanded in the
+    // market-first layout.
+    const panelBodyText = '.panel[data-panel="markets"] .watchlist-btn';
     const mapTitle = '#mapSection > .panel-header .panel-title';
-    await expect(page.locator(panelBodyText)).toBeVisible();
+    await expect(page.locator(panelBodyText).first()).toBeVisible();
     const basePanelSize = await fontSize(page, panelTitle);
     const basePanelBodySize = await fontSize(page, panelBodyText);
     const baseMapSize = await fontSize(page, mapTitle);

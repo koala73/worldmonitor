@@ -1,5 +1,11 @@
 import { loadFromStorage, saveToStorage } from '@/utils';
-import { clearPanelColSpanEntry, clearPanelSpanEntry } from '@/utils/panel-storage';
+import {
+  clearPanelColSpanEntry,
+  clearPanelSpanEntry,
+  invalidatePanelStorageCacheForKeys,
+  PANEL_COL_SPANS_KEY,
+  PANEL_SPANS_KEY,
+} from '@/utils/panel-storage';
 import { getAuthState } from '@/services/auth-state';
 import { isEntitled, getEntitlementState } from '@/services/entitlements';
 import {
@@ -136,6 +142,11 @@ export function deleteWidget(id: string): void {
   const updated = loadFromStorage<CustomWidgetSpec[]>(STORAGE_KEY, []).filter(w => w.id !== id);
   saveToStorage(STORAGE_KEY, updated);
   try { localStorage.removeItem(proHtmlKey(id)); } catch { /* ignore */ }
+  // Same-document writers (desktop bridges, extensions, and an embedded
+  // configuration surface) do not emit the browser's `storage` event. Ensure
+  // cleanup observes their most recent aggregate sizing maps instead of an
+  // older in-memory snapshot from before the widget was resized.
+  invalidatePanelStorageCacheForKeys([PANEL_SPANS_KEY, PANEL_COL_SPANS_KEY]);
   clearPanelSpanEntry(id);
   clearPanelColSpanEntry(id);
 }

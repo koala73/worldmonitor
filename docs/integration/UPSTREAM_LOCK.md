@@ -206,3 +206,17 @@ project change was performed for this phase. The source intake lock remains the
 recorded local baseline; the observed remote upstream advance remains a
 separate resynchronization decision. The Windows installer is a local build
 artifact and is not committed as a Git blob.
+
+## Phase 11 acceptance lock
+
+Phase 11 changes first-party runtime, test-harness, accessibility/layout,
+desktop-adjacent and validation code only. It does not pull, copy, iframe,
+scrape, vend, reproduce or relabel a PokieTicker, hosted WorldMonitor,
+Provider, stock exchange, AIS, PortWatch, Comtrade, China Customs, news or
+model UI/payload. The deterministic map style is a local empty-source test
+style behind an E2E-only marker, not an imitation of an upstream map.
+
+No upstream fetch, merge, rebase, branch rewrite, `main` mutation, force push
+or legacy-project deletion occurred while accepting Phase 11. Publication is
+deferred to Phase 12 and targets only the integration branch after remote/SHA
+verification.

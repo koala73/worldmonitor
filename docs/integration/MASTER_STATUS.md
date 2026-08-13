@@ -349,4 +349,36 @@ receipt backfills this immutable SHA after the implementation commit.
 
 ## Next action
 
-Proceed automatically to Phase 11's complete acceptance matrix. Licensed Provider-backed K-line, AIS, news and factory facts remain unavailable until their own contracts, credentials and source-bearing responses exist; their missing state is part of the acceptance record, not a reason to invent evidence.
+Proceed automatically to Phase 11's complete acceptance matrix. Licensed Provider-backed K-line, AIS, news and factory facts remain unavailable until their own contracts and source-bearing responses exist; their missing state is part of the acceptance record, not a reason to invent evidence.
+
+## Phase 11 - final acceptance, variant integrity and deterministic map evidence
+
+Phase 11 is complete. The acceptance matrix fixed and verified map URL state,
+user-map-control clearing, local-storage-unavailable analytics, independent
+branding after hydration, panel/mobile behavior and build-variant pre-paint
+syntax. A non-Full build now replaces the whole pre-paint assignment/removal
+branch, so it cannot leave a dangling `else` and prevent boot.
+
+Map screenshot evidence now uses a tile-free MapLibre style only when the
+explicit E2E harness marker is present. A loaded style is required; a blank
+canvas or lost WebGL context cannot pass readiness. Production routes retain
+their normal basemap configuration. The Finance conflict baseline and every
+Full layer/zoom golden baseline passed without snapshot updates.
+
+Final gates: Finance browser suite 232 pass / 20 declared skips / 0 fail;
+TypeScript exit 0; data/contract 23,022 tests / 3,551 suites / 23,009 pass /
+0 fail / 13 skips; DOM 293/293; sidecar 371/371; lint exit 0 (33 existing
+warnings, 9 infos); Finance, Full and Happy production builds exit 0; Full
+visual goldens 1/1. Exact command logs and exit codes are in
+`docs/integration/evidence/phase11-*20260814*`.
+
+No Provider credential, observation, real-time market bar, AIS message, cargo
+claim, news causal claim or factory fact was created. Unconfigured Provider
+states remain truthful and fail-closed. The Phase 11 implementation commit SHA
+is backfilled by the following receipt commit.
+
+## Next action
+
+Proceed to Phase 12 publication readiness on the integration branch only;
+verify both remotes, publish without touching `main`, and create a Draft PR
+through the connected GitHub integration.

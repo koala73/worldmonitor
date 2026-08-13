@@ -1,0 +1,587 @@
+
+> world-monitor@2.10.0 prebuild:full
+> npm run product:facts
+
+
+> world-monitor@2.10.0 product:facts
+> node --import tsx scripts/generate-product-config.mjs && node --import tsx scripts/generate-public-product-facts.mjs
+
+  ✓ D:\global-intelligence-earth\worldmonitor-upstream-integration-lf\src\config\products.generated.ts
+  ✓ D:\global-intelligence-earth\worldmonitor-upstream-integration-lf\src\config\product-ids.generated.ts
+  ✓ D:\global-intelligence-earth\worldmonitor-upstream-integration-lf\pro-test\src\generated\tiers.json
+
+Done. Remember to rebuild /pro: npm run build:pro
+
+> world-monitor@2.10.0 build:full
+> npm run security:vite-env-secrets -- --strict-local && npm run build:openapi && npm run build:agent-skills && npm run build:blog && npm run build:crawlable-corpus && npm run build:sitemap && cross-env-shell VITE_VARIANT=full "tsc && vite build"
+
+
+> world-monitor@2.10.0 security:vite-env-secrets
+> node scripts/check-vite-env-secrets.mjs --strict-local
+
+
+> world-monitor@2.10.0 build:openapi
+> node -e "require('fs').cpSync('docs/api/worldmonitor.openapi.yaml', 'public/openapi.yaml')" && node scripts/build-openapi-json.mjs
+
+build-openapi-json: wrote D:\global-intelligence-earth\worldmonitor-upstream-integration-lf\public\openapi.json (OpenAPI 3.1.0, 221 paths, 939089 bytes; hoisted 10 shared error responses into 1127 $refs; hoisted 39 fleet-wide parameters into 327 $refs; reused 17/17 shared China provenance schemas; hoisted 30 repeated schema subtrees into 184 $refs)
+
+> world-monitor@2.10.0 build:agent-skills
+> node scripts/build-agent-skills-index.mjs
+
+Wrote D:\global-intelligence-earth\worldmonitor-upstream-integration-lf\public\.well-known\agent-skills\index.json
+
+> world-monitor@2.10.0 prebuild:blog
+> npm run product:facts
+
+
+> world-monitor@2.10.0 product:facts
+> node --import tsx scripts/generate-product-config.mjs && node --import tsx scripts/generate-public-product-facts.mjs
+
+  ✓ D:\global-intelligence-earth\worldmonitor-upstream-integration-lf\src\config\products.generated.ts
+  ✓ D:\global-intelligence-earth\worldmonitor-upstream-integration-lf\src\config\product-ids.generated.ts
+  ✓ D:\global-intelligence-earth\worldmonitor-upstream-integration-lf\pro-test\src\generated\tiers.json
+
+Done. Remember to rebuild /pro: npm run build:pro
+
+> world-monitor@2.10.0 build:blog
+> npm run build --prefix blog-site && node scripts/copy-blog-dist.mjs
+
+
+> blog-site@0.0.1 build
+> npm run generate:og && astro build
+
+
+> blog-site@0.0.1 generate:og
+> node scripts/generate-og-images.mjs
+
+  skip 72-hour-geopolitical-event-retro-template-worldmonitor (committed cover)
+  skip ai-forecast-accuracy-brier-scorecard-worldmonitor (committed cover)
+  skip ai-powered-intelligence-without-the-cloud (committed cover)
+  skip alerts-notification-channels-worldmonitor (committed cover)
+  skip ask-claude-whats-happening-worldmonitor-mcp (committed cover)
+  skip aviation-intelligence-airports-airspace-flight-prices (committed cover)
+  skip build-geopolitical-risk-agent-worldmonitor-mcp (committed cover)
+  skip build-on-worldmonitor-developer-api-open-source (committed cover)
+  skip build-supply-chain-early-warning-system-api (committed cover)
+  skip command-palette-search-everything-instantly (committed cover)
+  skip country-instability-index-methodology-explained (committed cover)
+  skip country-resilience-index-methodology-explained (committed cover)
+  skip country-risk-monitoring-due-diligence-worldmonitor (committed cover)
+  skip country-risk-monitoring-workflow-for-analysts (committed cover)
+  skip critical-minerals-hhi-supply-risk-explained (committed cover)
+  skip cyber-threat-intelligence-for-security-teams (committed cover)
+  skip daily-intelligence-briefing-workflow-15-minutes (committed cover)
+  skip disease-outbreak-air-quality-monitoring-health-signals (committed cover)
+  skip embed-live-global-map-worldmonitor (committed cover)
+  skip energy-security-dashboard-worldmonitor (committed cover)
+  skip energy-shock-monitoring-chokepoints-worldmonitor (committed cover)
+  skip five-dashboards-one-platform-worldmonitor-variants (committed cover)
+  skip free-geopolitical-data-apis-2026 (committed cover)
+  skip free-vs-paid-real-time-intelligence-dashboards (committed cover)
+  skip geopolitical-risk-alerts-slack-teams-worldmonitor-api (committed cover)
+  skip geopolitics-to-markets-pipeline-macro-traders-worldmonitor (committed cover)
+  skip government-tenders-procurement-intelligence-worldmonitor (committed cover)
+  skip ground-truth-inflation-shelf-price-tracking-worldmonitor (committed cover)
+  skip humanitarian-situational-awareness-ngo-security-monitoring-worldmonitor (committed cover)
+  skip live-webcams-from-geopolitical-hotspots (committed cover)
+  skip monitor-global-sanctions-pressure-worldmonitor (committed cover)
+  skip monitor-global-supply-chains-and-commodity-disruptions (committed cover)
+  skip natural-disaster-monitoring-earthquakes-fires-volcanoes (committed cover)
+  skip osint-for-everyone-open-source-intelligence-democratized (committed cover)
+  skip positive-news-dashboard-happy-worldmonitor (committed cover)
+  skip prediction-markets-ai-forecasting-geopolitics (committed cover)
+  skip real-time-market-intelligence-for-traders-and-analysts (committed cover)
+  skip real-time-radiation-monitoring-radnet-safecast (committed cover)
+  skip satellite-imagery-orbital-surveillance (committed cover)
+  skip self-host-worldmonitor-open-source-osint-dashboard (committed cover)
+  skip stress-test-supply-chain-scenario-engine-worldmonitor (committed cover)
+  skip supply-chain-early-warning-dashboard-worldmonitor-api (committed cover)
+  skip tariff-tracker-trade-policy-monitoring-worldmonitor (committed cover)
+  skip track-global-conflicts-in-real-time (committed cover)
+  skip track-refugee-displacement-flows-unhcr-worldmonitor (committed cover)
+  skip tracking-global-trade-routes-chokepoints-freight-costs (committed cover)
+  skip verify-breaking-news-osint-workflow-journalists (committed cover)
+  skip what-is-a-maritime-chokepoint (committed cover)
+  skip what-is-worldmonitor-real-time-global-intelligence (committed cover)
+  skip worldmonitor-in-21-languages-global-intelligence-for-everyone (committed cover)
+  skip worldmonitor-is-not-palantir (committed cover)
+  skip worldmonitor-mcp-server-ai-agents-real-time-intelligence (committed cover)
+  skip worldmonitor-vs-traditional-intelligence-tools (committed cover)
+
+OG images: 0 generated, 53 skipped
+[2m01:26:44[22m [34m[content][39m Syncing content
+[2m01:26:45[22m [34m[content][39m Synced content
+[2m01:26:45[22m [34m[types][39m Generated [2m2.14s[22m
+[2m01:26:45[22m [34m[build][39m output: [34m"static"[39m
+[2m01:26:45[22m [34m[build][39m mode: [34m"static"[39m
+[2m01:26:45[22m [34m[build][39m directory: [34mD:\global-intelligence-earth\worldmonitor-upstream-integration-lf\blog-site\dist\[39m
+[2m01:26:45[22m [34m[build][39m Collecting build info...
+[2m01:26:45[22m [34m[build][39m [32m✓ Completed in 2.16s.[39m
+[2m01:26:45[22m [34m[build][39m Building static entrypoints...
+[2m01:26:47[22m [34m[vite][39m [32m✓ built in 1.20s[39m
+[2m01:26:47[22m [34m[vite][39m [32m✓ built in 138ms[39m
+[2m01:26:47[22m [34m[build][39m Rearranging server assets...
+
+[42m[30m generating static routes [39m[49m
+[2m01:26:47[22m   [34m├─[39m [2m/authors/elie-habib/index.html[22m [2m(+17ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/country-instability-index/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/country-resilience-index/index.html[22m [2m(+2ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/strategic-risk/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/dimension-coverage/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/pentagon-pizza-index/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/focal-point-detection/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/geographic-convergence/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/infrastructure-cascade/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/hotspot/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/threat-classification/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/maritime-chokepoint/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/strait-of-hormuz/index.html[22m [2m(+14ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/strait-of-malacca/index.html[22m [2m(+5ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/suez-canal/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/ais/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/chokepoint-congestion/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/osint/index.html[22m [2m(+25ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/provenance/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/world-brief/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/prediction-market/index.html[22m [2m(+9ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/glossary/index.html[22m [2m(+12ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/llms.txt[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/72-hour-geopolitical-event-retro-template-worldmonitor/index.html[22m [2m(+9ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/ai-forecast-accuracy-brier-scorecard-worldmonitor/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/ai-powered-intelligence-without-the-cloud/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/alerts-notification-channels-worldmonitor/index.html[22m [2m(+12ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/ask-claude-whats-happening-worldmonitor-mcp/index.html[22m [2m(+8ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/aviation-intelligence-airports-airspace-flight-prices/index.html[22m [2m(+5ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/build-geopolitical-risk-agent-worldmonitor-mcp/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/build-on-worldmonitor-developer-api-open-source/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/build-supply-chain-early-warning-system-api/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/command-palette-search-everything-instantly/index.html[22m [2m(+20ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/country-instability-index-methodology-explained/index.html[22m [2m(+7ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/country-resilience-index-methodology-explained/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/country-risk-monitoring-due-diligence-worldmonitor/index.html[22m [2m(+13ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/country-risk-monitoring-workflow-for-analysts/index.html[22m [2m(+5ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/critical-minerals-hhi-supply-risk-explained/index.html[22m [2m(+6ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/cyber-threat-intelligence-for-security-teams/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/daily-intelligence-briefing-workflow-15-minutes/index.html[22m [2m(+18ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/disease-outbreak-air-quality-monitoring-health-signals/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/embed-live-global-map-worldmonitor/index.html[22m [2m(+7ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/energy-security-dashboard-worldmonitor/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/energy-shock-monitoring-chokepoints-worldmonitor/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/five-dashboards-one-platform-worldmonitor-variants/index.html[22m [2m(+5ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/free-geopolitical-data-apis-2026/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/free-vs-paid-real-time-intelligence-dashboards/index.html[22m [2m(+6ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/geopolitics-to-markets-pipeline-macro-traders-worldmonitor/index.html[22m [2m(+17ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/government-tenders-procurement-intelligence-worldmonitor/index.html[22m [2m(+8ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/ground-truth-inflation-shelf-price-tracking-worldmonitor/index.html[22m [2m(+14ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/humanitarian-situational-awareness-ngo-security-monitoring-worldmonitor/index.html[22m [2m(+5ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/live-webcams-from-geopolitical-hotspots/index.html[22m [2m(+6ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/monitor-global-sanctions-pressure-worldmonitor/index.html[22m [2m(+8ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/monitor-global-supply-chains-and-commodity-disruptions/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/natural-disaster-monitoring-earthquakes-fires-volcanoes/index.html[22m [2m(+5ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/osint-for-everyone-open-source-intelligence-democratized/index.html[22m [2m(+6ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/positive-news-dashboard-happy-worldmonitor/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/prediction-markets-ai-forecasting-geopolitics/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/real-time-market-intelligence-for-traders-and-analysts/index.html[22m [2m(+17ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/real-time-radiation-monitoring-radnet-safecast/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/satellite-imagery-orbital-surveillance/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/self-host-worldmonitor-open-source-osint-dashboard/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/stress-test-supply-chain-scenario-engine-worldmonitor/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/supply-chain-early-warning-dashboard-worldmonitor-api/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/tariff-tracker-trade-policy-monitoring-worldmonitor/index.html[22m [2m(+8ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/track-global-conflicts-in-real-time/index.html[22m [2m(+9ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/track-refugee-displacement-flows-unhcr-worldmonitor/index.html[22m [2m(+5ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/tracking-global-trade-routes-chokepoints-freight-costs/index.html[22m [2m(+5ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/verify-breaking-news-osint-workflow-journalists/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/what-is-a-maritime-chokepoint/index.html[22m [2m(+8ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/what-is-worldmonitor-real-time-global-intelligence/index.html[22m [2m(+3ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/index.html[22m [2m(+14ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/worldmonitor-is-not-palantir/index.html[22m [2m(+6ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/index.html[22m [2m(+5ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/posts/worldmonitor-vs-traditional-intelligence-tools/index.html[22m [2m(+4ms)[22m 
+[2m01:26:47[22m   [34m├─[39m [2m/rss.xml[22m [2m(+147ms)[22m 
+[2m01:26:48[22m   [34m├─[39m [2m/index.html[22m [2m(+21ms)[22m 
+[2m01:26:48[22m [32m✓ Completed in 781ms.
+[39m
+[2m01:26:48[22m [34m[build][39m [32m✓ Completed in 2.18s.[39m
+[2m01:26:48[22m [34m[@astrojs/sitemap][39m `sitemap-index.xml` created at `dist`
+[2m01:26:48[22m [34m[build][39m 76 page(s) built in [1m4.42s[22m
+[2m01:26:48[22m [34m[build][39m [1mComplete![22m
+copy-blog-dist: copied D:\global-intelligence-earth\worldmonitor-upstream-integration-lf\blog-site\dist -> D:\global-intelligence-earth\worldmonitor-upstream-integration-lf\public\blog
+
+> world-monitor@2.10.0 build:crawlable-corpus
+> node --import tsx scripts/build-crawlable-corpus.mjs
+
+Wrote crawlable corpus: 196 countries, 13 chokepoints, 4 crisis trackers, 2 live tools, 1 research reports, 14 changelog pages. Glossary manifest references 20 existing blog pages.
+
+> world-monitor@2.10.0 build:sitemap
+> node scripts/build-sitemap.mjs
+
+[sitemap] checked public/sitemap.xml with 254 canonical URL(s)
+[36mvite v6.4.3 [32mbuilding for production...[36m[39m
+transforming...
+[32m✓[39m 2506 modules transformed.
+[33mGenerated an empty chunk: "rpc-client-cyber-v1".[39m
+rendering chunks...
+[33m[plugin vite:reporter] 
+(!) D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/tauri-bridge.ts is dynamically imported by D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/components/LiveNewsPanel.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/runtime.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/runtime.ts but also statically imported by D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/app/desktop-updater.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/components/Panel.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/external-navigation.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/persistent-cache.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/runtime-config.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/settings-main.ts, dynamic import will not move module into another chunk.
+[39m
+[33m[plugin vite:reporter] 
+(!) D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/runtime-config.ts is dynamically imported by D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/premium-fetch.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/runtime.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/runtime.ts but also statically imported by D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/app/data-loader.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/components/EconomicPanel.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/components/MapPopup.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/components/Panel.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/components/ProBanner.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/components/RuntimeConfigPanel.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/components/SupplyChainPanel.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/components/TradePolicyPanel.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/components/provider-readiness-notice.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/config/panels.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/main.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/economic/index.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/gates/export.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/infrastructure/index.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/maritime/index.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/military-flights.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/panel-gating.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/provider-operations.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/settings-manager.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/summarization.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/trade/index.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/wingbits.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/settings-main.ts, dynamic import will not move module into another chunk.
+[39m
+[33m[plugin vite:reporter] 
+(!) D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/stock-analysis.ts is dynamically imported by D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/stock-analysis-history.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/services/stock-backtest.ts but also statically imported by D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/app/data-loader.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/components/StockAnalysisPanel.ts, dynamic import will not move module into another chunk.
+[39m
+[33m[plugin vite:reporter] 
+(!) D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/build/three.module.js is dynamically imported by D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/components/GlobeMap.ts, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/src/components/GlobeMap.ts but also statically imported by D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/globe.gl/dist/globe.gl.mjs, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three-conic-polygon-geometry/dist/three-conic-polygon-geometry.mjs, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three-geojson-geometry/dist/three-geojson-geometry.mjs, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three-globe/dist/three-globe.mjs, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three-render-objects/dist/three-render-objects.mjs, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/controls/FlyControls.js, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/controls/OrbitControls.js, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/controls/TrackballControls.js, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/geometries/TextGeometry.js, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/lines/LineMaterial.js, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/lines/LineSegments2.js, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/lines/LineSegmentsGeometry.js, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/loaders/FontLoader.js, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/postprocessing/EffectComposer.js, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/postprocessing/Pass.js, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/postprocessing/RenderPass.js, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/postprocessing/ShaderPass.js, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/renderers/CSS2DRenderer.js, D:/global-intelligence-earth/worldmonitor-upstream-integration-lf/node_modules/three/examples/jsm/utils/BufferGeometryUtils.js, dynamic import will not move module into another chunk.
+[39m
+computing gzip size...
+[2mdist/[22m[32mbuild-hash.txt                                        [39m[1m[2m    0.00 kB[22m[1m[22m[2m │ gzip:   0.02 kB[22m
+[2mdist/[22m[32mmanifest.webmanifest                                  [39m[1m[2m    0.77 kB[22m[1m[22m
+[2mdist/[22m[32membed.html                                            [39m[1m[2m    1.91 kB[22m[1m[22m[2m │ gzip:   0.65 kB[22m
+[2mdist/[22m[32msettings.html                                         [39m[1m[2m    3.75 kB[22m[1m[22m[2m │ gzip:   1.46 kB[22m
+[2mdist/[22m[32mlive-channels.html                                    [39m[1m[2m    4.86 kB[22m[1m[22m[2m │ gzip:   1.21 kB[22m
+[2mdist/[22m[32mmcp-grant.html                                        [39m[1m[2m    5.50 kB[22m[1m[22m[2m │ gzip:   2.28 kB[22m
+[2mdist/[22m[32massets/nunito-vietnamese-700-normal-Ch8EUCfz.woff2    [39m[1m[2m    5.96 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-400-normal-BHkVbP3T.woff2    [39m[1m[2m    6.12 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-600-normal-BY8O6Cug.woff2    [39m[1m[2m    6.20 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-400-italic-B2PI3A8Y.woff2    [39m[1m[2m    6.58 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-700-normal-C9SQsXvj.woff     [39m[1m[2m    8.07 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-400-normal-DtOtW02z.woff     [39m[1m[2m    8.25 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-600-normal-DO1RqFw5.woff     [39m[1m[2m    8.27 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-400-normal-xAOo5cBP.woff2      [39m[1m[2m    8.47 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-700-normal-DP36NgGt.woff2      [39m[1m[2m    8.52 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-600-normal-DJGQ2h05.woff2      [39m[1m[2m    8.54 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-400-italic-DKD9zHau.woff     [39m[1m[2m    8.82 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-arabic-400-normal-CyCXRvzh.woff2       [39m[1m[2m    8.93 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-arabic-500-normal-BZ8ojJNu.woff2       [39m[1m[2m    8.94 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-400-italic-ZssV-nwQ.woff2      [39m[1m[2m    8.98 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-arabic-700-normal-D2-eand5.woff2       [39m[1m[2m    9.02 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-latin-500-normal-CoYeBiSI.woff2        [39m[1m[2m    9.90 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-latin-700-normal-BypgxfGb.woff2        [39m[1m[2m   10.00 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-latin-400-normal-BVNSOH3d.woff2        [39m[1m[2m   10.26 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-700-normal-DfHRUDv-.woff       [39m[1m[2m   10.40 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-400-normal-D1j0u8EH.woff       [39m[1m[2m   10.46 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-600-normal-BUjmtIuu.woff       [39m[1m[2m   10.54 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-700-normal-BuR0mlCG.woff2  [39m[1m[2m   10.99 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-400-normal-CuPM9foi.woff2  [39m[1m[2m   11.16 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-600-normal-CWPPjBOD.woff2  [39m[1m[2m   11.20 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-400-italic-kLw1qHb7.woff       [39m[1m[2m   11.21 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-400-italic-B76xxBNn.woff2  [39m[1m[2m   11.86 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-arabic-500-normal-CbVEaYEW.woff        [39m[1m[2m   11.88 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-arabic-400-normal-DCQxawbB.woff        [39m[1m[2m   12.01 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-arabic-700-normal-9L7Zusdl.woff        [39m[1m[2m   12.16 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-latin-500-normal-DU9v6xgj.woff         [39m[1m[2m   13.02 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-latin-700-normal-CV3bxpHe.woff         [39m[1m[2m   13.16 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-latin-400-normal-BdYcZznU.woff         [39m[1m[2m   13.46 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-700-normal-DfoqN4Gs.woff   [39m[1m[2m   13.87 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-600-normal-vnfu4DTE.woff   [39m[1m[2m   14.10 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-400-normal-xaE7D4Sw.woff   [39m[1m[2m   14.11 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-400-italic-CEz18L3t.woff   [39m[1m[2m   15.07 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-700-normal-BWeMsAzO.woff2     [39m[1m[2m   15.82 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-400-normal-i-8OOpdj.woff2     [39m[1m[2m   15.89 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-600-normal-Dd9Zuxh1.woff2     [39m[1m[2m   16.09 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-700-normal-Dort48En.woff2         [39m[1m[2m   16.23 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-400-normal-r8SDr6Up.woff2         [39m[1m[2m   16.32 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-600-normal-Br8yIETf.woff2         [39m[1m[2m   16.56 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-400-italic--NHIeDzu.woff2     [39m[1m[2m   16.86 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-400-italic-BnrCcHbg.woff2         [39m[1m[2m   17.14 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-700-normal-OcDqTBcA.woff          [39m[1m[2m   19.99 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-400-normal-DKg4f3fz.woff          [39m[1m[2m   20.33 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-600-normal-Cd0eNu1l.woff          [39m[1m[2m   20.49 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-700-normal-D4woHhbd.woff      [39m[1m[2m   21.01 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-400-normal-CjMJVfGn.woff      [39m[1m[2m   21.29 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-600-normal-BKUpuB78.woff      [39m[1m[2m   21.30 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-400-italic-CDISnx4K.woff          [39m[1m[2m   21.43 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-400-italic-k9EPGpCk.woff      [39m[1m[2m   22.45 kB[22m[1m[22m
+[2mdist/[22m[32mdashboard-happy.html                                  [39m[1m[2m   41.07 kB[22m[1m[22m[2m │ gzip:   9.64 kB[22m
+[2mdist/[22m[32mdashboard-tech.html                                   [39m[1m[2m   41.44 kB[22m[1m[22m[2m │ gzip:   9.74 kB[22m
+[2mdist/[22m[32mdashboard-finance.html                                [39m[1m[2m   41.49 kB[22m[1m[22m[2m │ gzip:   9.73 kB[22m
+[2mdist/[22m[32mdashboard.html                                        [39m[1m[2m   41.52 kB[22m[1m[22m[2m │ gzip:   9.71 kB[22m
+[2mdist/[22m[32mdashboard-commodity.html                              [39m[1m[2m   41.59 kB[22m[1m[22m[2m │ gzip:   9.70 kB[22m
+[2mdist/[22m[32mdashboard-energy.html                                 [39m[1m[2m   41.84 kB[22m[1m[22m[2m │ gzip:   9.93 kB[22m
+[2mdist/[22m[32massets/analysis.worker-wLtzui9u.js                    [39m[1m[2m   81.97 kB[22m[1m[22m
+[2mdist/[22m[32massets/ml.worker-CVf-0kIY.js                          [39m[1m[2m  824.61 kB[22m[1m[22m
+[2mdist/[22m[35massets/400-CLlbYveQ.css                               [39m[1m[2m    1.21 kB[22m[1m[22m[2m │ gzip:   0.52 kB[22m
+[2mdist/[22m[35massets/500-0ssR2RCH.css                               [39m[1m[2m    1.21 kB[22m[1m[22m[2m │ gzip:   0.51 kB[22m
+[2mdist/[22m[35massets/700-j49vq0yq.css                               [39m[1m[2m    1.21 kB[22m[1m[22m[2m │ gzip:   0.51 kB[22m
+[2mdist/[22m[35massets/400-q1oScHLn.css                               [39m[1m[2m    1.80 kB[22m[1m[22m[2m │ gzip:   0.57 kB[22m
+[2mdist/[22m[35massets/600-C6AwBqtE.css                               [39m[1m[2m    1.80 kB[22m[1m[22m[2m │ gzip:   0.57 kB[22m
+[2mdist/[22m[35massets/700-Ckf_Wdne.css                               [39m[1m[2m    1.80 kB[22m[1m[22m[2m │ gzip:   0.57 kB[22m
+[2mdist/[22m[35massets/400-italic-BxiRhXbr.css                        [39m[1m[2m    1.80 kB[22m[1m[22m[2m │ gzip:   0.58 kB[22m
+[2mdist/[22m[35massets/embed-BsNNCdEU.css                             [39m[1m[2m    3.96 kB[22m[1m[22m[2m │ gzip:   1.16 kB[22m
+[2mdist/[22m[35massets/china-factory-C65kuiIc.css                     [39m[1m[2m    4.16 kB[22m[1m[22m[2m │ gzip:   1.53 kB[22m
+[2mdist/[22m[35massets/provider-operations-DvMBEtNT.css               [39m[1m[2m    4.34 kB[22m[1m[22m[2m │ gzip:   1.40 kB[22m
+[2mdist/[22m[35massets/maritime-logistics-BXjwsxUS.css                [39m[1m[2m    6.80 kB[22m[1m[22m[2m │ gzip:   2.05 kB[22m
+[2mdist/[22m[35massets/stock-workspace-ChLN9GQn.css                   [39m[1m[2m   10.33 kB[22m[1m[22m[2m │ gzip:   2.67 kB[22m
+[2mdist/[22m[35massets/settings-oLlP82Gr.css                          [39m[1m[2m   20.75 kB[22m[1m[22m[2m │ gzip:   3.92 kB[22m
+[2mdist/[22m[35massets/happy-theme-mHHp2ayX.css                       [39m[1m[2m   25.43 kB[22m[1m[22m[2m │ gzip:   5.23 kB[22m
+[2mdist/[22m[35massets/maplibre-B46vZ9Yf.css                          [39m[1m[2m   69.94 kB[22m[1m[22m[2m │ gzip:  10.06 kB[22m
+[2mdist/[22m[35massets/main-35QpqP5Z.css                              [39m[1m[2m  545.25 kB[22m[1m[22m[2m │ gzip:  83.16 kB[22m
+[2mdist/[22m[35massets/embed-url-CD4OF9ZL.css                         [39m[1m[2m  583.52 kB[22m[1m[22m[2m │ gzip:  88.83 kB[22m
+[2mdist/[22m[36massets/rpc-client-cyber-v1-l0sNRNKZ.js                [39m[1m[2m    0.00 kB[22m[1m[22m[2m │ gzip:   0.02 kB[22m
+[2mdist/[22m[36massets/ciss-staleness-BF7WkacN.js                     [39m[1m[2m    0.03 kB[22m[1m[22m[2m │ gzip:   0.05 kB[22m
+[2mdist/[22m[36massets/d3-Bq7PrvBt.js                                 [39m[1m[2m    0.04 kB[22m[1m[22m[2m │ gzip:   0.06 kB[22m
+[2mdist/[22m[36massets/ports-DG19qiyh.js                              [39m[1m[2m    0.07 kB[22m[1m[22m[2m │ gzip:   0.09 kB[22m
+[2mdist/[22m[36massets/array-2GBN5xbU.js                              [39m[1m[2m    0.14 kB[22m[1m[22m[2m │ gzip:   0.12 kB[22m
+[2mdist/[22m[36massets/news-context-CqnvrXzz.js                       [39m[1m[2m    0.15 kB[22m[1m[22m[2m │ gzip:   0.15 kB[22m
+[2mdist/[22m[36massets/investments-focus-kn7WiKLY.js                  [39m[1m[2m    0.15 kB[22m[1m[22m[2m │ gzip:   0.13 kB[22m
+[2mdist/[22m[36massets/max-DBeXZoyG.js                                [39m[1m[2m    0.20 kB[22m[1m[22m[2m │ gzip:   0.16 kB[22m
+[2mdist/[22m[36massets/cii-score-changes-Cz8doaSe.js                  [39m[1m[2m    0.23 kB[22m[1m[22m[2m │ gzip:   0.19 kB[22m
+[2mdist/[22m[36massets/extent-Ccx1MofX.js                             [39m[1m[2m    0.25 kB[22m[1m[22m[2m │ gzip:   0.18 kB[22m
+[2mdist/[22m[36massets/hormuz-tracker-AYac9Thw.js                     [39m[1m[2m    0.27 kB[22m[1m[22m[2m │ gzip:   0.22 kB[22m
+[2mdist/[22m[36massets/_cii-panel-partition-Dvh5P0rP.js               [39m[1m[2m    0.32 kB[22m[1m[22m[2m │ gzip:   0.18 kB[22m
+[2mdist/[22m[36massets/contrast-b4cEFhzZ.js                           [39m[1m[2m    0.39 kB[22m[1m[22m[2m │ gzip:   0.28 kB[22m
+[2mdist/[22m[36massets/disruption-timeline-rn1TsGcA.js                [39m[1m[2m    0.41 kB[22m[1m[22m[2m │ gzip:   0.28 kB[22m
+[2mdist/[22m[36massets/_live-webcams-origin-BScNR-MD.js               [39m[1m[2m    0.42 kB[22m[1m[22m[2m │ gzip:   0.29 kB[22m
+[2mdist/[22m[36massets/pointer-Drloq0xg.js                            [39m[1m[2m    0.45 kB[22m[1m[22m[2m │ gzip:   0.29 kB[22m
+[2mdist/[22m[36massets/live-stream-settings-BWdKungb.js               [39m[1m[2m    0.53 kB[22m[1m[22m[2m │ gzip:   0.31 kB[22m
+[2mdist/[22m[36massets/imagery-DdSyNGpT.js                            [39m[1m[2m    0.53 kB[22m[1m[22m[2m │ gzip:   0.34 kB[22m
+[2mdist/[22m[36massets/live-news-DPm4ZOPP.js                          [39m[1m[2m    0.57 kB[22m[1m[22m[2m │ gzip:   0.38 kB[22m
+[2mdist/[22m[36massets/live-media-controller-CORUNGUN.js              [39m[1m[2m    0.57 kB[22m[1m[22m[2m │ gzip:   0.30 kB[22m
+[2mdist/[22m[36massets/insights-loader-B__cV0ZQ.js                    [39m[1m[2m    0.57 kB[22m[1m[22m[2m │ gzip:   0.35 kB[22m
+[2mdist/[22m[36massets/fuel-shortage-registry-store-ZCpNImja.js       [39m[1m[2m    0.59 kB[22m[1m[22m[2m │ gzip:   0.35 kB[22m
+[2mdist/[22m[36massets/storage-facility-registry-store-Cgf7SF6o.js    [39m[1m[2m    0.61 kB[22m[1m[22m[2m │ gzip:   0.35 kB[22m
+[2mdist/[22m[36massets/cross-domain-storage-BTDF4V0h.js               [39m[1m[2m    0.63 kB[22m[1m[22m[2m │ gzip:   0.47 kB[22m
+[2mdist/[22m[36massets/analyst-denial-B6xPFUy1.js                     [39m[1m[2m    0.65 kB[22m[1m[22m[2m │ gzip:   0.39 kB[22m
+[2mdist/[22m[36massets/shortage-evidence-CwhDyV8K.js                  [39m[1m[2m    0.66 kB[22m[1m[22m[2m │ gzip:   0.39 kB[22m
+[2mdist/[22m[36massets/map-interaction-guard-CvL7V2q2.js              [39m[1m[2m    0.67 kB[22m[1m[22m[2m │ gzip:   0.33 kB[22m
+[2mdist/[22m[36massets/storage-evidence-DthMONVc.js                   [39m[1m[2m    0.67 kB[22m[1m[22m[2m │ gzip:   0.39 kB[22m
+[2mdist/[22m[36massets/pipeline-registry-store-CogjbPtd.js            [39m[1m[2m    0.67 kB[22m[1m[22m[2m │ gzip:   0.39 kB[22m
+[2mdist/[22m[36massets/correlation-runtime-mode-BmllAFQK.js           [39m[1m[2m    0.85 kB[22m[1m[22m[2m │ gzip:   0.52 kB[22m
+[2mdist/[22m[36massets/_energy-risk-overview-state-0LaVUMqp.js        [39m[1m[2m    0.85 kB[22m[1m[22m[2m │ gzip:   0.37 kB[22m
+[2mdist/[22m[36massets/sparkline-EyuwviXB.js                          [39m[1m[2m    0.91 kB[22m[1m[22m[2m │ gzip:   0.40 kB[22m
+[2mdist/[22m[36massets/stack-DSObyWpB.js                              [39m[1m[2m    0.97 kB[22m[1m[22m[2m │ gzip:   0.49 kB[22m
+[2mdist/[22m[36massets/api-BgSsc8iN.js                                [39m[1m[2m    1.00 kB[22m[1m[22m[2m │ gzip:   0.51 kB[22m
+[2mdist/[22m[36massets/provider-readiness-notice-CN9PSzJo.js          [39m[1m[2m    1.01 kB[22m[1m[22m[2m │ gzip:   0.75 kB[22m
+[2mdist/[22m[36massets/yielding-work-queue-BFKOdy0o.js                [39m[1m[2m    1.06 kB[22m[1m[22m[2m │ gzip:   0.62 kB[22m
+[2mdist/[22m[36massets/pipeline-evidence-CqE_XO-h.js                  [39m[1m[2m    1.14 kB[22m[1m[22m[2m │ gzip:   0.57 kB[22m
+[2mdist/[22m[36massets/debugbear-rum-CTwHbetR.js                      [39m[1m[2m    1.16 kB[22m[1m[22m[2m │ gzip:   0.61 kB[22m
+[2mdist/[22m[36massets/global-tenders-rRu-lQBY.js                     [39m[1m[2m    1.16 kB[22m[1m[22m[2m │ gzip:   0.68 kB[22m
+[2mdist/[22m[36massets/rpc-client-positive-events-v1-Cz97LCCM.js      [39m[1m[2m    1.30 kB[22m[1m[22m[2m │ gzip:   0.65 kB[22m
+[2mdist/[22m[36massets/humanity-counters-CShr1pZW.js                  [39m[1m[2m    1.30 kB[22m[1m[22m[2m │ gzip:   0.66 kB[22m
+[2mdist/[22m[36massets/basemap-DTliF0vF.js                            [39m[1m[2m    1.32 kB[22m[1m[22m[2m │ gzip:   0.58 kB[22m
+[2mdist/[22m[36massets/premium-denial-BFmIsnMs.js                     [39m[1m[2m    1.33 kB[22m[1m[22m[2m │ gzip:   0.60 kB[22m
+[2mdist/[22m[36massets/deduction-probability-BjdSoRov.js              [39m[1m[2m    1.35 kB[22m[1m[22m[2m │ gzip:   0.63 kB[22m
+[2mdist/[22m[36massets/pinned-store-DOAUPiGA.js                       [39m[1m[2m    1.37 kB[22m[1m[22m[2m │ gzip:   0.68 kB[22m
+[2mdist/[22m[36massets/rpc-client-natural-v1-CmqX9tZ-.js              [39m[1m[2m    1.40 kB[22m[1m[22m[2m │ gzip:   0.71 kB[22m
+[2mdist/[22m[36massets/liveChannels-CE673zj3.js                       [39m[1m[2m    1.42 kB[22m[1m[22m[2m │ gzip:   0.74 kB[22m
+[2mdist/[22m[36massets/referral-mXIE_oRS.js                           [39m[1m[2m    1.42 kB[22m[1m[22m[2m │ gzip:   0.73 kB[22m
+[2mdist/[22m[36massets/rpc-client-thermal-v1-3QpqpyG8.js              [39m[1m[2m    1.43 kB[22m[1m[22m[2m │ gzip:   0.72 kB[22m
+[2mdist/[22m[36massets/format-intel-brief-DSjHQFgT.js                 [39m[1m[2m    1.43 kB[22m[1m[22m[2m │ gzip:   0.78 kB[22m
+[2mdist/[22m[36massets/rpc-client-radiation-v1-Biwoaels.js            [39m[1m[2m    1.44 kB[22m[1m[22m[2m │ gzip:   0.72 kB[22m
+[2mdist/[22m[36massets/font-settings-BRtdvVWs.js                      [39m[1m[2m    1.44 kB[22m[1m[22m[2m │ gzip:   0.62 kB[22m
+[2mdist/[22m[36massets/forecast-D-1_8XV6.js                           [39m[1m[2m    1.45 kB[22m[1m[22m[2m │ gzip:   0.78 kB[22m
+[2mdist/[22m[36massets/index-qqgX5FFe.js                              [39m[1m[2m    1.47 kB[22m[1m[22m[2m │ gzip:   0.86 kB[22m
+[2mdist/[22m[36massets/theme-manager-BhlrYABN.js                      [39m[1m[2m    1.48 kB[22m[1m[22m[2m │ gzip:   0.66 kB[22m
+[2mdist/[22m[36massets/world-happiness-BxMJ6f_1.js                    [39m[1m[2m    1.48 kB[22m[1m[22m[2m │ gzip:   0.84 kB[22m
+[2mdist/[22m[36massets/rpc-client-giving-v1-D1R0d-8x.js               [39m[1m[2m    1.52 kB[22m[1m[22m[2m │ gzip:   0.75 kB[22m
+[2mdist/[22m[36massets/topojson-BwRznoQ3.js                           [39m[1m[2m    1.56 kB[22m[1m[22m[2m │ gzip:   0.72 kB[22m
+[2mdist/[22m[36massets/rpc-client-health-v1-D4iujQ_e.js               [39m[1m[2m    1.59 kB[22m[1m[22m[2m │ gzip:   0.68 kB[22m
+[2mdist/[22m[36massets/realtime-observation-B8tyVs6o.js               [39m[1m[2m    1.59 kB[22m[1m[22m[2m │ gzip:   0.70 kB[22m
+[2mdist/[22m[36massets/live-tankers-E37tP3-N.js                       [39m[1m[2m    1.59 kB[22m[1m[22m[2m │ gzip:   0.84 kB[22m
+[2mdist/[22m[36massets/rpc-client-prediction-v1-CpCOR8GZ.js           [39m[1m[2m    1.63 kB[22m[1m[22m[2m │ gzip:   0.78 kB[22m
+[2mdist/[22m[36massets/rpc-client-seismology-v1-BMJf2N2O.js           [39m[1m[2m    1.68 kB[22m[1m[22m[2m │ gzip:   0.80 kB[22m
+[2mdist/[22m[36massets/settings-persistence-nnGLJPBO.js               [39m[1m[2m    1.76 kB[22m[1m[22m[2m │ gzip:   1.01 kB[22m
+[2mdist/[22m[36massets/rpc-client-wildfire-v1-t_BtnRfS.js             [39m[1m[2m    1.83 kB[22m[1m[22m[2m │ gzip:   0.83 kB[22m
+[2mdist/[22m[36massets/stock-fundamentals-display-BdKFnC_N.js         [39m[1m[2m    1.85 kB[22m[1m[22m[2m │ gzip:   0.72 kB[22m
+[2mdist/[22m[36massets/keyword-spike-core-KbXIG3GT.js                 [39m[1m[2m    1.91 kB[22m[1m[22m[2m │ gzip:   0.95 kB[22m
+[2mdist/[22m[36massets/products-DdvFCqqK.js                           [39m[1m[2m    1.92 kB[22m[1m[22m[2m │ gzip:   0.53 kB[22m
+[2mdist/[22m[36massets/index-Zt4BwSlo.js                              [39m[1m[2m    1.93 kB[22m[1m[22m[2m │ gzip:   0.95 kB[22m
+[2mdist/[22m[36massets/rpc-client-sanctions-v1-DUDkwRop.js            [39m[1m[2m    1.93 kB[22m[1m[22m[2m │ gzip:   0.79 kB[22m
+[2mdist/[22m[36massets/rpc-client-unrest-v1-B1JfjmHO.js               [39m[1m[2m    2.00 kB[22m[1m[22m[2m │ gzip:   0.89 kB[22m
+[2mdist/[22m[36massets/rpc-client-scenario-v1-Dd26pYsa.js             [39m[1m[2m    2.03 kB[22m[1m[22m[2m │ gzip:   0.80 kB[22m
+[2mdist/[22m[36massets/imagery-preview-DxzTV3Kc.js                    [39m[1m[2m    2.04 kB[22m[1m[22m[2m │ gzip:   1.03 kB[22m
+[2mdist/[22m[36massets/rpc-client-resilience-v1-DGpenSyA.js           [39m[1m[2m    2.07 kB[22m[1m[22m[2m │ gzip:   0.79 kB[22m
+[2mdist/[22m[36massets/rpc-client-webcam-v1-CO81zj9I.js               [39m[1m[2m    2.08 kB[22m[1m[22m[2m │ gzip:   0.82 kB[22m
+[2mdist/[22m[36massets/attribution-footer-DXKiPXlq.js                 [39m[1m[2m    2.15 kB[22m[1m[22m[2m │ gzip:   1.05 kB[22m
+[2mdist/[22m[36massets/rpc-client-shipping-v2-DLnowl1T.js             [39m[1m[2m    2.16 kB[22m[1m[22m[2m │ gzip:   0.83 kB[22m
+[2mdist/[22m[36massets/rpc-client-displacement-v1-Bb12B88x.js         [39m[1m[2m    2.19 kB[22m[1m[22m[2m │ gzip:   0.85 kB[22m
+[2mdist/[22m[36massets/fx-rates-C75bePW4.js                           [39m[1m[2m    2.20 kB[22m[1m[22m[2m │ gzip:   0.90 kB[22m
+[2mdist/[22m[36massets/globe-render-settings-BzOdV484.js              [39m[1m[2m    2.20 kB[22m[1m[22m[2m │ gzip:   0.82 kB[22m
+[2mdist/[22m[36massets/rpc-client-news-v1-BFvEhvrC.js                 [39m[1m[2m    2.23 kB[22m[1m[22m[2m │ gzip:   0.84 kB[22m
+[2mdist/[22m[36massets/rpc-client-maritime-v1-BJc6dArx.js             [39m[1m[2m    2.31 kB[22m[1m[22m[2m │ gzip:   0.89 kB[22m
+[2mdist/[22m[36massets/followed-only-chip-B92WJqUe.js                 [39m[1m[2m    2.32 kB[22m[1m[22m[2m │ gzip:   1.15 kB[22m
+[2mdist/[22m[36massets/settings-window-DOLqqce4.js                    [39m[1m[2m    2.40 kB[22m[1m[22m[2m │ gzip:   1.15 kB[22m
+[2mdist/[22m[36massets/index-C6qhq0AV.js                              [39m[1m[2m    2.64 kB[22m[1m[22m[2m │ gzip:   1.13 kB[22m
+[2mdist/[22m[36massets/panel-gating-B2JsF0Qf.js                       [39m[1m[2m    2.86 kB[22m[1m[22m[2m │ gzip:   1.13 kB[22m
+[2mdist/[22m[36massets/panel-support-FehKNelY.js                      [39m[1m[2m    2.92 kB[22m[1m[22m[2m │ gzip:   1.31 kB[22m
+[2mdist/[22m[36massets/rpc-client-forecast-v1-DnNeMFOq.js             [39m[1m[2m    2.99 kB[22m[1m[22m[2m │ gzip:   0.87 kB[22m
+[2mdist/[22m[36massets/monotone-804fPAVO.js                           [39m[1m[2m    3.00 kB[22m[1m[22m[2m │ gzip:   1.16 kB[22m
+[2mdist/[22m[36massets/index-DKHVIMZh.js                              [39m[1m[2m    3.05 kB[22m[1m[22m[2m │ gzip:   1.11 kB[22m
+[2mdist/[22m[36massets/FrameworkSelector-vXQtuV3T.js                  [39m[1m[2m    3.12 kB[22m[1m[22m[2m │ gzip:   1.22 kB[22m
+[2mdist/[22m[36massets/push-notifications-BCpXI3b5.js                 [39m[1m[2m    3.16 kB[22m[1m[22m[2m │ gzip:   1.42 kB[22m
+[2mdist/[22m[36massets/renewable-energy-data-MppHxh-Z.js              [39m[1m[2m    3.21 kB[22m[1m[22m[2m │ gzip:   1.45 kB[22m
+[2mdist/[22m[36massets/happy-share-renderer-CAj_Kna5.js               [39m[1m[2m    3.22 kB[22m[1m[22m[2m │ gzip:   1.50 kB[22m
+[2mdist/[22m[36massets/rpc-client-climate-v1-CPt9u37w.js              [39m[1m[2m    3.33 kB[22m[1m[22m[2m │ gzip:   0.94 kB[22m
+[2mdist/[22m[36massets/rpc-client-research-v1-CHwGWYnp.js             [39m[1m[2m    3.44 kB[22m[1m[22m[2m │ gzip:   0.97 kB[22m
+[2mdist/[22m[36massets/rpc-client-conflict-v1-CG5yfZk-.js             [39m[1m[2m    3.46 kB[22m[1m[22m[2m │ gzip:   0.95 kB[22m
+[2mdist/[22m[36massets/arc-CGlAFq2g.js                                [39m[1m[2m    3.58 kB[22m[1m[22m[2m │ gzip:   1.54 kB[22m
+[2mdist/[22m[36massets/line-DEDRnOn1.js                               [39m[1m[2m    3.61 kB[22m[1m[22m[2m │ gzip:   1.50 kB[22m
+[2mdist/[22m[36massets/chokepoint-registry-DUgEmTBQ.js                [39m[1m[2m    3.62 kB[22m[1m[22m[2m │ gzip:   0.88 kB[22m
+[2mdist/[22m[36massets/ollama-models-Bkp8DQxM.js                      [39m[1m[2m    3.73 kB[22m[1m[22m[2m │ gzip:   1.60 kB[22m
+[2mdist/[22m[36massets/dom-utils-B8MVJOEB.js                          [39m[1m[2m    3.76 kB[22m[1m[22m[2m │ gzip:   1.70 kB[22m
+[2mdist/[22m[36massets/persistent-cache-DF-FaHhr.js                   [39m[1m[2m    3.77 kB[22m[1m[22m[2m │ gzip:   1.40 kB[22m
+[2mdist/[22m[36massets/index-LXOJDjRg.js                              [39m[1m[2m    3.89 kB[22m[1m[22m[2m │ gzip:   1.46 kB[22m
+[2mdist/[22m[36massets/ProActivationChip-ANMdqQ3r.js                  [39m[1m[2m    4.03 kB[22m[1m[22m[2m │ gzip:   1.86 kB[22m
+[2mdist/[22m[36massets/embed-LSlAFWnf.js                              [39m[1m[2m    4.12 kB[22m[1m[22m[2m │ gzip:   1.77 kB[22m
+[2mdist/[22m[36massets/CountryDeepDivePanel-cii-w6fA4D6z.js           [39m[1m[2m    4.19 kB[22m[1m[22m[2m │ gzip:   1.95 kB[22m
+[2mdist/[22m[36massets/follow-button-B9QFwCeZ.js                      [39m[1m[2m    4.28 kB[22m[1m[22m[2m │ gzip:   1.87 kB[22m
+[2mdist/[22m[36massets/threat-timeline-utils-BgwkyzMF.js              [39m[1m[2m    4.30 kB[22m[1m[22m[2m │ gzip:   1.81 kB[22m
+[2mdist/[22m[36massets/rpc-client-trade-v1-BeX7uSKd.js                [39m[1m[2m    4.33 kB[22m[1m[22m[2m │ gzip:   1.07 kB[22m
+[2mdist/[22m[36massets/rpc-client-consumer-prices-v1-K8EM9w0G.js      [39m[1m[2m    4.52 kB[22m[1m[22m[2m │ gzip:   0.94 kB[22m
+[2mdist/[22m[36massets/trade-routes-ZTUcZzz1.js                       [39m[1m[2m    4.66 kB[22m[1m[22m[2m │ gzip:   1.33 kB[22m
+[2mdist/[22m[36massets/tech-activity-CjgGgru4.js                      [39m[1m[2m    4.68 kB[22m[1m[22m[2m │ gzip:   1.93 kB[22m
+[2mdist/[22m[36massets/agent-bus-applier-kJAtq0QZ.js                  [39m[1m[2m    4.69 kB[22m[1m[22m[2m │ gzip:   1.98 kB[22m
+[2mdist/[22m[36massets/cable-activity-DJ5wrrrC.js                     [39m[1m[2m    4.91 kB[22m[1m[22m[2m │ gzip:   2.43 kB[22m
+[2mdist/[22m[36massets/continuous-CZcCkYLj.js                         [39m[1m[2m    4.93 kB[22m[1m[22m[2m │ gzip:   2.08 kB[22m
+[2mdist/[22m[36massets/index-CQg5mZDZ.js                              [39m[1m[2m    5.06 kB[22m[1m[22m[2m │ gzip:   1.75 kB[22m
+[2mdist/[22m[36massets/widget-sanitizer-CMAgMQgV.js                   [39m[1m[2m    5.72 kB[22m[1m[22m[2m │ gzip:   2.60 kB[22m
+[2mdist/[22m[36massets/rpc-client-infrastructure-v1-CiDVoFys.js       [39m[1m[2m    5.76 kB[22m[1m[22m[2m │ gzip:   1.27 kB[22m
+[2mdist/[22m[36massets/rpc-client-military-v1-CEDanz9l.js             [39m[1m[2m    5.80 kB[22m[1m[22m[2m │ gzip:   1.31 kB[22m
+[2mdist/[22m[36massets/source-coverage-vcNWgEOv.js                    [39m[1m[2m    5.94 kB[22m[1m[22m[2m │ gzip:   2.59 kB[22m
+[2mdist/[22m[36massets/provider-operations-C53gNNl9.js                [39m[1m[2m    5.95 kB[22m[1m[22m[2m │ gzip:   3.14 kB[22m
+[2mdist/[22m[36massets/linear-C9cxmx_3.js                             [39m[1m[2m    6.01 kB[22m[1m[22m[2m │ gzip:   2.68 kB[22m
+[2mdist/[22m[36massets/mcpGrant-hgxAj1wB.js                           [39m[1m[2m    6.15 kB[22m[1m[22m[2m │ gzip:   2.36 kB[22m
+[2mdist/[22m[36massets/notification-channels-YgYys6zC.js              [39m[1m[2m    6.27 kB[22m[1m[22m[2m │ gzip:   2.13 kB[22m
+[2mdist/[22m[36massets/giving-renderer-B3vRWUVP.js                    [39m[1m[2m    6.76 kB[22m[1m[22m[2m │ gzip:   2.11 kB[22m
+[2mdist/[22m[36massets/rss-DJCBvEU_.js                                [39m[1m[2m    6.84 kB[22m[1m[22m[2m │ gzip:   3.08 kB[22m
+[2mdist/[22m[36massets/transit-chart-B4250ZM1.js                      [39m[1m[2m    8.43 kB[22m[1m[22m[2m │ gzip:   3.36 kB[22m
+[2mdist/[22m[36massets/trending-keywords-DmA8WwFq.js                  [39m[1m[2m    8.56 kB[22m[1m[22m[2m │ gzip:   3.58 kB[22m
+[2mdist/[22m[36massets/cross-strait-activity-summary-BM1w-uEq.js      [39m[1m[2m    8.67 kB[22m[1m[22m[2m │ gzip:   3.04 kB[22m
+[2mdist/[22m[36massets/market-chart-modal-yaALWFoa.js                 [39m[1m[2m    8.89 kB[22m[1m[22m[2m │ gzip:   3.74 kB[22m
+[2mdist/[22m[36massets/signal-quality-BYEJB2PY.js                     [39m[1m[2m    8.96 kB[22m[1m[22m[2m │ gzip:   3.75 kB[22m
+[2mdist/[22m[36massets/conservation-wins-n0S2OTZQ.js                  [39m[1m[2m    9.03 kB[22m[1m[22m[2m │ gzip:   2.80 kB[22m
+[2mdist/[22m[36massets/irradiators-DPwq6d5a.js                        [39m[1m[2m    9.13 kB[22m[1m[22m[2m │ gzip:   3.07 kB[22m
+[2mdist/[22m[36massets/rpc-client-aviation-v1-C2wAx-yc.js             [39m[1m[2m    9.34 kB[22m[1m[22m[2m │ gzip:   1.85 kB[22m
+[2mdist/[22m[36massets/china-factory-C-_Zrxdu.js                      [39m[1m[2m    9.64 kB[22m[1m[22m[2m │ gzip:   4.55 kB[22m
+[2mdist/[22m[36massets/index-EvvxCX6E.js                              [39m[1m[2m    9.86 kB[22m[1m[22m[2m │ gzip:   3.16 kB[22m
+[2mdist/[22m[36massets/user-location-D-nyJa8O.js                      [39m[1m[2m   10.04 kB[22m[1m[22m[2m │ gzip:   4.04 kB[22m
+[2mdist/[22m[36massets/threat-classifier-5UGmB93Q.js                  [39m[1m[2m   10.07 kB[22m[1m[22m[2m │ gzip:   3.67 kB[22m
+[2mdist/[22m[36massets/daily-market-brief-C-s7ELVP.js                 [39m[1m[2m   10.31 kB[22m[1m[22m[2m │ gzip:   4.34 kB[22m
+[2mdist/[22m[36massets/forecast-case-files-B4j5F6Ly.js                [39m[1m[2m   10.45 kB[22m[1m[22m[2m │ gzip:   4.02 kB[22m
+[2mdist/[22m[36massets/data-freshness-CrQ2dTue.js                     [39m[1m[2m   10.59 kB[22m[1m[22m[2m │ gzip:   3.57 kB[22m
+[2mdist/[22m[36massets/story-renderer-aIqgX8su.js                     [39m[1m[2m   10.67 kB[22m[1m[22m[2m │ gzip:   3.66 kB[22m
+[2mdist/[22m[36massets/confetti.module-C2jkTI5u.js                    [39m[1m[2m   10.70 kB[22m[1m[22m[2m │ gzip:   4.29 kB[22m
+[2mdist/[22m[36massets/signal-aggregator-qujVpo5f.js                  [39m[1m[2m   10.83 kB[22m[1m[22m[2m │ gzip:   3.51 kB[22m
+[2mdist/[22m[36massets/rpc-client-supply-chain-v1-yRFGak63.js         [39m[1m[2m   11.02 kB[22m[1m[22m[2m │ gzip:   1.52 kB[22m
+[2mdist/[22m[36massets/StoryModal-DT3zPNs4.js                         [39m[1m[2m   11.06 kB[22m[1m[22m[2m │ gzip:   4.13 kB[22m
+[2mdist/[22m[36massets/military-vessels-DLEoUzk4.js                   [39m[1m[2m   11.11 kB[22m[1m[22m[2m │ gzip:   4.93 kB[22m
+[2mdist/[22m[36massets/web-vitals.attribution-CgS4vrHl.js             [39m[1m[2m   11.23 kB[22m[1m[22m[2m │ gzip:   4.46 kB[22m
+[2mdist/[22m[36massets/McpConnectModal-BjObMox_.js                    [39m[1m[2m   12.01 kB[22m[1m[22m[2m │ gzip:   3.90 kB[22m
+[2mdist/[22m[36massets/WatchlistTableView-DQcT7H76.js                 [39m[1m[2m   12.03 kB[22m[1m[22m[2m │ gzip:   3.68 kB[22m
+[2mdist/[22m[36massets/resilience-choropleth-utils-Ck1vfSH5.js        [39m[1m[2m   12.12 kB[22m[1m[22m[2m │ gzip:   3.86 kB[22m
+[2mdist/[22m[36massets/WidgetChatModal-D4BzXCdl.js                    [39m[1m[2m   12.46 kB[22m[1m[22m[2m │ gzip:   4.06 kB[22m
+[2mdist/[22m[36massets/ai-regulations-D_33TG-J.js                     [39m[1m[2m   12.51 kB[22m[1m[22m[2m │ gzip:   3.91 kB[22m
+[2mdist/[22m[36massets/rpc-client-economic-v1-ClSZlM4Y.js             [39m[1m[2m   13.32 kB[22m[1m[22m[2m │ gzip:   1.91 kB[22m
+[2mdist/[22m[36massets/watchlist-modal-Crhl-7B4.js                    [39m[1m[2m   13.99 kB[22m[1m[22m[2m │ gzip:   4.76 kB[22m
+[2mdist/[22m[36massets/cross-module-integration-CAPwStDI.js           [39m[1m[2m   14.18 kB[22m[1m[22m[2m │ gzip:   5.08 kB[22m
+[2mdist/[22m[36massets/regional-intelligence-board-utils-BLZskAxp.js  [39m[1m[2m   14.19 kB[22m[1m[22m[2m │ gzip:   3.47 kB[22m
+[2mdist/[22m[36massets/maritime-logistics-COabOJCH.js                 [39m[1m[2m   14.53 kB[22m[1m[22m[2m │ gzip:   6.25 kB[22m
+[2mdist/[22m[36massets/rpc-client-market-v1--4gtz_31.js               [39m[1m[2m   14.57 kB[22m[1m[22m[2m │ gzip:   1.78 kB[22m
+[2mdist/[22m[36massets/airports-data-5e0yM98C.js                      [39m[1m[2m   14.63 kB[22m[1m[22m[2m │ gzip:   4.64 kB[22m
+[2mdist/[22m[36massets/renewable-installations-CuB42DHj.js            [39m[1m[2m   15.01 kB[22m[1m[22m[2m │ gzip:   3.12 kB[22m
+[2mdist/[22m[36massets/finance-geo-DWBqM0zf.js                        [39m[1m[2m   15.20 kB[22m[1m[22m[2m │ gzip:   4.30 kB[22m
+[2mdist/[22m[36massets/country-port-clusters-CisGe5RV.js              [39m[1m[2m   15.48 kB[22m[1m[22m[2m │ gzip:   2.25 kB[22m
+[2mdist/[22m[36massets/live-channels-window-D7fWnjRG.js               [39m[1m[2m   15.69 kB[22m[1m[22m[2m │ gzip:   5.03 kB[22m
+[2mdist/[22m[36massets/rpc-client-intelligence-v1-Cj7_GiIF.js         [39m[1m[2m   15.92 kB[22m[1m[22m[2m │ gzip:   2.10 kB[22m
+[2mdist/[22m[36massets/clerk-DuV6tB5b.js                              [39m[1m[2m   16.06 kB[22m[1m[22m[2m │ gzip:   6.30 kB[22m
+[2mdist/[22m[36massets/index-Dbhp05Gd.js                              [39m[1m[2m   16.64 kB[22m[1m[22m[2m │ gzip:   5.89 kB[22m
+[2mdist/[22m[36massets/IntelligenceGapBadge-EowBE3fa.js               [39m[1m[2m   16.83 kB[22m[1m[22m[2m │ gzip:   5.07 kB[22m
+[2mdist/[22m[36massets/SignalModal-DLcBMgYz.js                        [39m[1m[2m   16.98 kB[22m[1m[22m[2m │ gzip:   4.73 kB[22m
+[2mdist/[22m[36massets/layout-batch-BMbUpC61.js                       [39m[1m[2m   17.36 kB[22m[1m[22m[2m │ gzip:   6.02 kB[22m
+[2mdist/[22m[36massets/AviationCommandBar-D5RLjm15.js                 [39m[1m[2m   17.61 kB[22m[1m[22m[2m │ gzip:   6.05 kB[22m
+[2mdist/[22m[36massets/index-BbaVuhim.js                              [39m[1m[2m   17.89 kB[22m[1m[22m[2m │ gzip:   7.15 kB[22m
+[2mdist/[22m[36massets/sentry-init-ClB5Qsu8.js                        [39m[1m[2m   18.35 kB[22m[1m[22m[2m │ gzip:   6.91 kB[22m
+[2mdist/[22m[36massets/protomaps-DN3fPpEX.js                          [39m[1m[2m   18.57 kB[22m[1m[22m[2m │ gzip:   7.33 kB[22m
+[2mdist/[22m[36massets/macro-tiles-china-4wM0fvRq.js                  [39m[1m[2m   18.59 kB[22m[1m[22m[2m │ gzip:   5.89 kB[22m
+[2mdist/[22m[36massets/correlation-engine-Cpb7IwtG.js                 [39m[1m[2m   18.59 kB[22m[1m[22m[2m │ gzip:   6.94 kB[22m
+[2mdist/[22m[36massets/gulf-fdi-Brj4tDHY.js                           [39m[1m[2m   20.66 kB[22m[1m[22m[2m │ gzip:   5.44 kB[22m
+[2mdist/[22m[36massets/string-zDhfBTx2.js                             [39m[1m[2m   20.83 kB[22m[1m[22m[2m │ gzip:   7.47 kB[22m
+[2mdist/[22m[36massets/startup-ecosystems-CHD9ZmW2.js                 [39m[1m[2m   21.94 kB[22m[1m[22m[2m │ gzip:   6.05 kB[22m
+[2mdist/[22m[36massets/export-BQ0Y7Pbg.js                             [39m[1m[2m   24.09 kB[22m[1m[22m[2m │ gzip:   8.95 kB[22m
+[2mdist/[22m[36massets/cached-risk-scores-zqnjRWF3.js                 [39m[1m[2m   24.58 kB[22m[1m[22m[2m │ gzip:   9.01 kB[22m
+[2mdist/[22m[36massets/satellite.es-DES7etDd.js                       [39m[1m[2m   24.60 kB[22m[1m[22m[2m │ gzip:  11.87 kB[22m
+[2mdist/[22m[36massets/stock-workspace-SQLIRoa1.js                    [39m[1m[2m   24.73 kB[22m[1m[22m[2m │ gzip:   9.28 kB[22m
+[2mdist/[22m[36massets/widget-store-CblEH3Dq.js                       [39m[1m[2m   25.05 kB[22m[1m[22m[2m │ gzip:   9.38 kB[22m
+[2mdist/[22m[36massets/china-activity-nowcast-view-CfDKJWei.js        [39m[1m[2m   25.11 kB[22m[1m[22m[2m │ gzip:   7.75 kB[22m
+[2mdist/[22m[36massets/ProActivationInterstitial-Dfz7TIcN.js          [39m[1m[2m   26.97 kB[22m[1m[22m[2m │ gzip:   8.77 kB[22m
+[2mdist/[22m[36massets/checkout-B1yEf9GF.js                           [39m[1m[2m   28.59 kB[22m[1m[22m[2m │ gzip:  10.04 kB[22m
+[2mdist/[22m[36massets/settings-BC5LNMud.js                           [39m[1m[2m   28.63 kB[22m[1m[22m[2m │ gzip:   8.91 kB[22m
+[2mdist/[22m[36massets/purify.es-bRchjNq8.js                          [39m[1m[2m   28.91 kB[22m[1m[22m[2m │ gzip:  10.89 kB[22m
+[2mdist/[22m[36massets/Panel-laTNauid.js                              [39m[1m[2m   32.25 kB[22m[1m[22m[2m │ gzip:   7.77 kB[22m
+[2mdist/[22m[36massets/MapContainer-DqlFGh36.js                       [39m[1m[2m   41.40 kB[22m[1m[22m[2m │ gzip:   8.80 kB[22m
+[2mdist/[22m[36massets/military-surge-sa6XvrRE.js                     [39m[1m[2m   41.69 kB[22m[1m[22m[2m │ gzip:  13.72 kB[22m
+[2mdist/[22m[36massets/marked.esm-BrAPT9WN.js                         [39m[1m[2m   41.96 kB[22m[1m[22m[2m │ gzip:  12.75 kB[22m
+[2mdist/[22m[36massets/military-bases-data-DMCTREwx.js                [39m[1m[2m   43.48 kB[22m[1m[22m[2m │ gzip:   9.33 kB[22m
+[2mdist/[22m[36massets/oref-locations-EKm8gxKt.js                     [39m[1m[2m   46.76 kB[22m[1m[22m[2m │ gzip:  16.79 kB[22m
+[2mdist/[22m[36massets/index.esm-BiNDwt_v.js                          [39m[1m[2m   48.05 kB[22m[1m[22m[2m │ gzip:  17.27 kB[22m
+[2mdist/[22m[36massets/RouteExplorer-CBlfPEjG.js                      [39m[1m[2m   49.12 kB[22m[1m[22m[2m │ gzip:  12.65 kB[22m
+[2mdist/[22m[36massets/tech-geo-data-JQrgiAY7.js                      [39m[1m[2m   50.93 kB[22m[1m[22m[2m │ gzip:  11.14 kB[22m
+[2mdist/[22m[36massets/i18n-qlunRAMb.js                               [39m[1m[2m   52.46 kB[22m[1m[22m[2m │ gzip:  16.61 kB[22m
+[2mdist/[22m[36massets/embed-url-BMNUTklp.js                          [39m[1m[2m   52.75 kB[22m[1m[22m[2m │ gzip:  17.29 kB[22m
+[2mdist/[22m[36massets/ai-datacenters-data-B8Ka8FcE.js                [39m[1m[2m   63.42 kB[22m[1m[22m[2m │ gzip:  11.19 kB[22m
+[2mdist/[22m[36massets/agent-bus-actions-C17DsPFR.js                  [39m[1m[2m   70.69 kB[22m[1m[22m[2m │ gzip:  19.11 kB[22m
+[2mdist/[22m[36massets/panels-defense-BG3tmEij.js                     [39m[1m[2m   73.37 kB[22m[1m[22m[2m │ gzip:  18.55 kB[22m
+[2mdist/[22m[36massets/apt-groups-BqicQSCc.js                         [39m[1m[2m   78.83 kB[22m[1m[22m[2m │ gzip:  18.02 kB[22m
+[2mdist/[22m[36massets/search-manager-B5jWVjlI.js                     [39m[1m[2m   93.66 kB[22m[1m[22m[2m │ gzip:  25.15 kB[22m
+[2mdist/[22m[36massets/Map-Cjll6Wcr.js                                [39m[1m[2m   94.08 kB[22m[1m[22m[2m │ gzip:  24.05 kB[22m
+[2mdist/[22m[36massets/panels-energy-DN9k6uo-.js                      [39m[1m[2m   98.24 kB[22m[1m[22m[2m │ gzip:  23.52 kB[22m
+[2mdist/[22m[36massets/panels-news-BUx-0zkJ.js                        [39m[1m[2m  107.46 kB[22m[1m[22m[2m │ gzip:  28.91 kB[22m
+[2mdist/[22m[36massets/panels-risk-BtHZcNCJ.js                        [39m[1m[2m  109.40 kB[22m[1m[22m[2m │ gzip:  28.15 kB[22m
+[2mdist/[22m[36massets/panel-storage-BDHsh1g1.js                      [39m[1m[2m  111.80 kB[22m[1m[22m[2m │ gzip:  39.78 kB[22m
+[2mdist/[22m[36massets/locale-zh-6i0he1-5.js                          [39m[1m[2m  117.12 kB[22m[1m[22m[2m │ gzip:  48.21 kB[22m
+[2mdist/[22m[36massets/en-Bc76JkPf.js                                 [39m[1m[2m  122.00 kB[22m[1m[22m[2m │ gzip:  43.56 kB[22m
+[2mdist/[22m[36massets/locale-uk-CUxSxlVy.js                          [39m[1m[2m  122.71 kB[22m[1m[22m[2m │ gzip:  44.29 kB[22m
+[2mdist/[22m[36massets/locale-fa-jFsBNflg.js                          [39m[1m[2m  125.97 kB[22m[1m[22m[2m │ gzip:  45.91 kB[22m
+[2mdist/[22m[36massets/panels-DlNVU_ea.js                             [39m[1m[2m  128.30 kB[22m[1m[22m[2m │ gzip:  28.31 kB[22m
+[2mdist/[22m[36massets/locale-sv-D9OpLNeU.js                          [39m[1m[2m  128.31 kB[22m[1m[22m[2m │ gzip:  48.62 kB[22m
+[2mdist/[22m[36massets/layer-explanation-card-COFWbXYo.js             [39m[1m[2m  130.49 kB[22m[1m[22m[2m │ gzip:  26.12 kB[22m
+[2mdist/[22m[36massets/locale-nl-DM4Uoxj7.js                          [39m[1m[2m  131.04 kB[22m[1m[22m[2m │ gzip:  48.83 kB[22m
+[2mdist/[22m[36massets/locale-tr-B4wo_EKL.js                          [39m[1m[2m  131.35 kB[22m[1m[22m[2m │ gzip:  49.74 kB[22m
+[2mdist/[22m[36massets/locale-ko-DCQyYBXS.js                          [39m[1m[2m  131.64 kB[22m[1m[22m[2m │ gzip:  48.74 kB[22m
+[2mdist/[22m[36massets/locale-de-DORvgFTm.js                          [39m[1m[2m  134.75 kB[22m[1m[22m[2m │ gzip:  49.19 kB[22m
+[2mdist/[22m[36massets/locale-it-D8SfXGKS.js                          [39m[1m[2m  135.65 kB[22m[1m[22m[2m │ gzip:  48.51 kB[22m
+[2mdist/[22m[36massets/locale-cs-D3pYc3IW.js                          [39m[1m[2m  136.52 kB[22m[1m[22m[2m │ gzip:  51.72 kB[22m
+[2mdist/[22m[36massets/locale-pt-BozoPhZW.js                          [39m[1m[2m  136.64 kB[22m[1m[22m[2m │ gzip:  50.04 kB[22m
+[2mdist/[22m[36massets/locale-pl-DAQ2LVAf.js                          [39m[1m[2m  136.80 kB[22m[1m[22m[2m │ gzip:  52.03 kB[22m
+[2mdist/[22m[36massets/locale-ro-3vLgEVhv.js                          [39m[1m[2m  137.04 kB[22m[1m[22m[2m │ gzip:  49.88 kB[22m
+[2mdist/[22m[36massets/locale-es-DzAk-0xT.js                          [39m[1m[2m  138.02 kB[22m[1m[22m[2m │ gzip:  49.49 kB[22m
+[2mdist/[22m[36massets/locale-ja-DHwkTfrW.js                          [39m[1m[2m  141.11 kB[22m[1m[22m[2m │ gzip:  51.62 kB[22m
+[2mdist/[22m[36massets/locale-fr-C_aE8tCX.js                          [39m[1m[2m  141.19 kB[22m[1m[22m[2m │ gzip:  50.24 kB[22m
+[2mdist/[22m[36massets/locale-hu-DWM_TbEC.js                          [39m[1m[2m  142.29 kB[22m[1m[22m[2m │ gzip:  52.56 kB[22m
+[2mdist/[22m[36massets/locale-hr-CmSXzZHo.js                          [39m[1m[2m  142.67 kB[22m[1m[22m[2m │ gzip:  53.37 kB[22m
+[2mdist/[22m[36massets/UnifiedSettings-Cc6dKT1h.js                    [39m[1m[2m  143.58 kB[22m[1m[22m[2m │ gzip:  37.72 kB[22m
+[2mdist/[22m[36massets/panels-economy-BTorJVGm.js                     [39m[1m[2m  151.76 kB[22m[1m[22m[2m │ gzip:  39.34 kB[22m
+[2mdist/[22m[36massets/locale-vi-BSkYCIxA.js                          [39m[1m[2m  151.78 kB[22m[1m[22m[2m │ gzip:  49.65 kB[22m
+[2mdist/[22m[36massets/geo-map-data-By455S2c.js                       [39m[1m[2m  155.54 kB[22m[1m[22m[2m │ gzip:  31.87 kB[22m
+[2mdist/[22m[36massets/panels-markets-BTI8tBx3.js                     [39m[1m[2m  160.01 kB[22m[1m[22m[2m │ gzip:  37.12 kB[22m
+[2mdist/[22m[36massets/locale-ar-BCWoudK1.js                          [39m[1m[2m  169.79 kB[22m[1m[22m[2m │ gzip:  52.44 kB[22m
+[2mdist/[22m[36massets/gdelt-intel-DfOus35d.js                        [39m[1m[2m  174.43 kB[22m[1m[22m[2m │ gzip:  50.47 kB[22m
+[2mdist/[22m[36massets/locale-bg-Dq_2XWO6.js                          [39m[1m[2m  193.31 kB[22m[1m[22m[2m │ gzip:  57.89 kB[22m
+[2mdist/[22m[36massets/locale-ru-CzbMfjyv.js                          [39m[1m[2m  194.38 kB[22m[1m[22m[2m │ gzip:  59.56 kB[22m
+[2mdist/[22m[36massets/h3-js-CJ4YL9qJ.js                              [39m[1m[2m  195.42 kB[22m[1m[22m[2m │ gzip:  58.32 kB[22m
+[2mdist/[22m[36massets/locale-el-C2Gq2DsS.js                          [39m[1m[2m  196.94 kB[22m[1m[22m[2m │ gzip:  59.83 kB[22m
+[2mdist/[22m[36massets/locale-hi-CTxSwjqV.js                          [39m[1m[2m  226.12 kB[22m[1m[22m[2m │ gzip:  55.62 kB[22m
+[2mdist/[22m[36massets/locale-th-C1SCYzhV.js                          [39m[1m[2m  236.90 kB[22m[1m[22m[2m │ gzip:  56.29 kB[22m
+[2mdist/[22m[36massets/panels-intel-DLYpdPYB.js                       [39m[1m[2m  268.47 kB[22m[1m[22m[2m │ gzip:  73.34 kB[22m
+[2mdist/[22m[36massets/conflict-zone-cull-EatRo2k-.js                 [39m[1m[2m  281.99 kB[22m[1m[22m[2m │ gzip:  65.14 kB[22m
+[2mdist/[22m[36massets/sentry-DMxp_zBn.js                             [39m[1m[2m  431.70 kB[22m[1m[22m[2m │ gzip: 142.53 kB[22m
+[2mdist/[22m[36massets/hls-jw_vZdHi.js                                [39m[1m[2m  523.81 kB[22m[1m[22m[2m │ gzip: 162.06 kB[22m
+[2mdist/[22m[36massets/deck-stack-FSWUG1aH.js                         [39m[1m[2m  757.67 kB[22m[1m[22m[2m │ gzip: 212.64 kB[22m
+[2mdist/[22m[36massets/main-BWWP1qpJ.js                               [39m[1m[2m  806.12 kB[22m[1m[22m[2m │ gzip: 244.68 kB[22m
+[2mdist/[22m[36massets/maplibre-CGtQHrnW.js                           [39m[1m[2m1,048.68 kB[22m[1m[22m[2m │ gzip: 283.49 kB[22m
+[2mdist/[22m[36massets/GlobeMap-C3_W3Dur.js                           [39m[1m[33m1,825.23 kB[39m[22m[2m │ gzip: 507.39 kB[22m
+[33m
+(!) Some chunks are larger than 1200 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+[32m✓ built in 25.70s[39m
+
+PWA v1.3.0
+mode      generateSW
+precache  254 entries (11360.46 KiB)
+files generated
+  dist/sw.js
+  dist/workbox-c4ecbb2e.js

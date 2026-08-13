@@ -564,14 +564,6 @@ installWebApiRedirect();
 installStaleBundleCheck();
 loadDesktopSecrets().catch(() => {});
 
-// Apply stored theme preference before app initialization (safety net for inline script)
-applyStoredTheme();
-applyFont();
-applyFontScale();
-window.addEventListener('storage', (event) => {
-  if (event.key === FONT_SCALE_STORAGE_KEY) applyFontScale();
-});
-
 // Set data-variant on <html> so CSS theme overrides activate
 if (SITE_VARIANT && SITE_VARIANT !== 'full') {
   document.documentElement.dataset.variant = SITE_VARIANT;
@@ -583,6 +575,16 @@ if (SITE_VARIANT && SITE_VARIANT !== 'full') {
       .replace(/\/favico\/apple-touch-icon/g, `/favico/${SITE_VARIANT}/apple-touch-icon`);
   });
 }
+
+// Apply the stored theme only after the runtime variant is known. Otherwise a
+// localhost Happy session can be correctly painted light by index.html and
+// then be reset to the full-dashboard dark default while main.ts initializes.
+applyStoredTheme();
+applyFont();
+applyFontScale();
+window.addEventListener('storage', (event) => {
+  if (event.key === FONT_SCALE_STORAGE_KEY) applyFontScale();
+});
 
 // Remove no-transition class after first paint to enable smooth theme transitions
 requestAnimationFrame(() => {

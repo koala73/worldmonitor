@@ -166,12 +166,22 @@ export function buildMapUrl(
   }
   const params = new URLSearchParams();
 
-  if (state.center) {
+  // A renderer may temporarily have no measurable viewport while a mobile map
+  // is collapsed or being mounted. Never serialize that transient state as
+  // `lat=NaN&lon=NaN`: a shared URL must either contain real coordinates or
+  // omit them entirely.
+  if (
+    state.center
+    && Number.isFinite(state.center.lat)
+    && Number.isFinite(state.center.lon)
+  ) {
     params.set('lat', state.center.lat.toFixed(4));
     params.set('lon', state.center.lon.toFixed(4));
   }
 
-  params.set('zoom', state.zoom.toFixed(2));
+  if (Number.isFinite(state.zoom)) {
+    params.set('zoom', state.zoom.toFixed(2));
+  }
   params.set('view', state.view);
   params.set('timeRange', state.timeRange);
 

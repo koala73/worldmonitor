@@ -1,10 +1,56 @@
 import { expect, test, type Page } from '@playwright/test';
 import { IDLE_PAUSE_MS } from '../src/config/idle';
+import { ALL_PANELS } from '../src/config/panels';
 
 const LIVE_MEDIA_REQUEST = /(?:youtube\.com\/embed|youtube\.com\/iframe_api|googlevideo\.com|\/api\/youtube-embed|\/videoplayback(?:[?#/]|$)|\.m3u8(?:[?#]|$))/i;
+const LIVE_MEDIA_PANEL_IDS = new Set(['live-news', 'live-webcams']);
+// `test:e2e:finance` runs this shared lifecycle suite with a finance build.
+// Persist the same variant the bundle is serving; hard-coding "full" makes
+// App's legitimate variant-transition migration replace the test's layout
+// before its visibility assertions run.
+const E2E_VARIANT = process.env.VITE_VARIANT === 'finance' ? 'finance' : 'full';
+
+// This is an actual persisted dashboard layout, not a DOM stub: the suite
+// deliberately exercises the two media panels without unrelated deferred
+// dashboard panels overlaying an otherwise user-clickable control. A user can
+// create this same layout through the panel settings screen.
+const LIVE_MEDIA_ONLY_LAYOUT = Object.fromEntries(
+  Object.entries(ALL_PANELS).map(([panelId, config]) => [
+    panelId,
+    { ...config, enabled: LIVE_MEDIA_PANEL_IDS.has(panelId) },
+  ]),
+);
+const LIVE_MEDIA_VISIBILITY_LAYOUT = {
+  ...LIVE_MEDIA_ONLY_LAYOUT,
+  // This ordinary dashboard panel occupies the initial scroll frame in the
+  // visibility tests. It lets those tests prove that neither media transport
+  // begins while both media panels are truly below the fold.
+  intel: { ...ALL_PANELS.intel, enabled: true },
+};
+const LIVE_MEDIA_ONLY_ORDER = ['live-news', 'live-webcams'];
+const LIVE_MEDIA_VISIBILITY_ORDER = ['intel', ...LIVE_MEDIA_ONLY_ORDER];
+const VISIBILITY_SPACER_ROW_SPANS = { intel: 4 };
+const VISIBILITY_SPACER_COL_SPANS = { intel: 3 };
+const SCROLL_AWAY_ROW_SPANS = { 'live-news': 4 };
+const SCROLL_AWAY_COL_SPANS = { 'live-news': 3 };
 
 async function installCleanLiveMediaPrefs(page: Page, webcamPrefs?: Record<string, unknown>): Promise<void> {
-  await page.addInitScript((prefs) => {
+  await page.addInitScript(({ prefs, panelLayout, panelOrder, variant }) => {
+    // addInitScript runs again for reloads inside a test. Keep the active
+    // preference mutations (for example the always-on toggle) across reload.
+    if (sessionStorage.getItem('__live_media_intent_layout_seeded__')) return;
+    localStorage.clear();
+    localStorage.setItem('worldmonitor-variant', variant);
+    localStorage.setItem('worldmonitor-panel-layout-variant', variant);
+    localStorage.setItem('worldmonitor-panels', JSON.stringify(panelLayout));
+    localStorage.setItem('panel-order', JSON.stringify(panelOrder));
+    // Keep the saved layout user-owned: otherwise the historical v2.5
+    // migration intentionally clears a pre-existing order on first boot.
+    localStorage.setItem('worldmonitor-layout-reset-v2.5', 'done');
+    localStorage.setItem('worldmonitor-panel-order-v1.9', 'done');
+    localStorage.setItem('wm-layer-warning-dismissed', 'true');
+    localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
+    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
     localStorage.removeItem('wm-live-streams-always-on');
     localStorage.removeItem('worldmonitor-active-channel');
     if (prefs) {
@@ -12,11 +58,35 @@ async function installCleanLiveMediaPrefs(page: Page, webcamPrefs?: Record<strin
     } else {
       localStorage.removeItem('worldmonitor-webcam-prefs');
     }
-  }, webcamPrefs ?? null);
+    sessionStorage.setItem('__live_media_intent_layout_seeded__', '1');
+  }, {
+    prefs: webcamPrefs ?? null,
+    panelLayout: LIVE_MEDIA_ONLY_LAYOUT,
+    panelOrder: LIVE_MEDIA_ONLY_ORDER,
+    variant: E2E_VARIANT,
+  });
 }
 
-async function installAlwaysOnLiveMediaPrefs(page: Page, webcamPrefs?: Record<string, unknown>): Promise<void> {
-  await page.addInitScript((prefs) => {
+async function installAlwaysOnLiveMediaPrefs(
+  page: Page,
+  webcamPrefs?: Record<string, unknown>,
+  options: { includeVisibilitySpacer?: boolean } = {},
+): Promise<void> {
+  const includeVisibilitySpacer = options.includeVisibilitySpacer === true;
+  await page.addInitScript(({ prefs, panelLayout, panelOrder, panelSpans, panelColSpans, variant }) => {
+    if (sessionStorage.getItem('__live_media_intent_layout_seeded__')) return;
+    localStorage.clear();
+    localStorage.setItem('worldmonitor-variant', variant);
+    localStorage.setItem('worldmonitor-panel-layout-variant', variant);
+    localStorage.setItem('worldmonitor-panels', JSON.stringify(panelLayout));
+    localStorage.setItem('panel-order', JSON.stringify(panelOrder));
+    localStorage.setItem('worldmonitor-layout-reset-v2.5', 'done');
+    localStorage.setItem('worldmonitor-panel-order-v1.9', 'done');
+    if (panelSpans) localStorage.setItem('worldmonitor-panel-spans', JSON.stringify(panelSpans));
+    if (panelColSpans) localStorage.setItem('worldmonitor-panel-col-spans', JSON.stringify(panelColSpans));
+    localStorage.setItem('wm-layer-warning-dismissed', 'true');
+    localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
+    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
     localStorage.setItem('wm-live-streams-always-on', 'true');
     localStorage.removeItem('worldmonitor-active-channel');
     if (prefs) {
@@ -24,7 +94,23 @@ async function installAlwaysOnLiveMediaPrefs(page: Page, webcamPrefs?: Record<st
     } else {
       localStorage.removeItem('worldmonitor-webcam-prefs');
     }
-  }, webcamPrefs ?? null);
+    sessionStorage.setItem('__live_media_intent_layout_seeded__', '1');
+  }, {
+    prefs: webcamPrefs ?? null,
+    panelLayout: includeVisibilitySpacer ? LIVE_MEDIA_VISIBILITY_LAYOUT : LIVE_MEDIA_ONLY_LAYOUT,
+    panelOrder: includeVisibilitySpacer ? LIVE_MEDIA_VISIBILITY_ORDER : LIVE_MEDIA_ONLY_ORDER,
+    panelSpans: includeVisibilitySpacer ? VISIBILITY_SPACER_ROW_SPANS : null,
+    panelColSpans: includeVisibilitySpacer ? VISIBILITY_SPACER_COL_SPANS : null,
+    variant: E2E_VARIANT,
+  });
+}
+
+async function installScrollAwayLiveMediaPrefs(page: Page): Promise<void> {
+  await installCleanLiveMediaPrefs(page);
+  await page.addInitScript(({ panelSpans, panelColSpans }) => {
+    localStorage.setItem('worldmonitor-panel-spans', JSON.stringify(panelSpans));
+    localStorage.setItem('worldmonitor-panel-col-spans', JSON.stringify(panelColSpans));
+  }, { panelSpans: SCROLL_AWAY_ROW_SPANS, panelColSpans: SCROLL_AWAY_COL_SPANS });
 }
 
 async function liveNewsTransportCount(page: Page): Promise<number> {
@@ -41,6 +127,69 @@ async function webcamTransportCount(page: Page): Promise<number> {
       .filter((iframe) => iframe.src && iframe.src !== 'about:blank')
       .length
   ));
+}
+
+async function waitForMountedPanel(page: Page, panelId: 'live-news' | 'live-webcams'): Promise<void> {
+  // Panels outside the initial boot budget are represented by a shell until
+  // their actual scroll-frame enters the observer margin. The locator helper
+  // scrolls that frame (unlike window/document scrolling) and the following
+  // assertion proves that product code replaced the shell with a real panel.
+  // The one shell→panel replacement can occur while Playwright is stabilising
+  // its first scroll target. Re-resolve exactly that expected replacement; do
+  // not force a click or bypass visibility checks.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await page.locator(`.panel[data-panel="${panelId}"]`).scrollIntoViewIfNeeded();
+      break;
+    } catch (error) {
+      const isExpectedReplacement = error instanceof Error && error.message.includes('not attached to the DOM');
+      if (!isExpectedReplacement || attempt === 2) throw error;
+    }
+  }
+  await page.waitForFunction((id) => {
+    const current = document.querySelector<HTMLElement>(`.panel[data-panel="${id}"]`);
+    return current !== null && current.dataset.deferredPanel !== 'true';
+  }, panelId, { timeout: 60_000 });
+  await bringPanelIntoDashboardViewport(page, panelId);
+}
+
+async function bringPanelIntoDashboardViewport(page: Page, panelId: 'live-news' | 'live-webcams'): Promise<void> {
+  await page.evaluate((id) => {
+    const panel = document.querySelector<HTMLElement>(`.panel[data-panel="${id}"]`);
+    if (!panel) throw new Error(`Missing panel ${id}`);
+
+    let scrollport: HTMLElement | null = panel.parentElement;
+    while (scrollport) {
+      const style = getComputedStyle(scrollport);
+      if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && scrollport.scrollHeight > scrollport.clientHeight) {
+        break;
+      }
+      scrollport = scrollport.parentElement;
+    }
+    scrollport ??= document.querySelector<HTMLElement>('.main-content');
+    if (!scrollport) throw new Error(`Missing dashboard scrollport for ${id}`);
+
+    const panelRect = panel.getBoundingClientRect();
+    const scrollportRect = scrollport.getBoundingClientRect();
+    const targetTop = scrollport.scrollTop + panelRect.top - scrollportRect.top - 8;
+    scrollport.scrollTo({ top: Math.max(0, targetTop) });
+  }, panelId);
+
+  await page.waitForFunction((id) => {
+    const panel = document.querySelector<HTMLElement>(`.panel[data-panel="${id}"]`);
+    if (!panel) return false;
+    let scrollport: HTMLElement | null = panel.parentElement;
+    while (scrollport) {
+      const style = getComputedStyle(scrollport);
+      if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && scrollport.scrollHeight > scrollport.clientHeight) break;
+      scrollport = scrollport.parentElement;
+    }
+    scrollport ??= document.querySelector<HTMLElement>('.main-content');
+    if (!scrollport) return false;
+    const panelRect = panel.getBoundingClientRect();
+    const scrollportRect = scrollport.getBoundingClientRect();
+    return panelRect.bottom > scrollportRect.top && panelRect.top < scrollportRect.bottom;
+  }, panelId, { timeout: 10_000 });
 }
 
 async function disablePanelViaStoredSettings(page: Page, panelId: string): Promise<void> {
@@ -89,7 +238,8 @@ test.describe('live media intent gating', () => {
     const webcams = page.locator('.panel[data-panel="live-webcams"]');
 
     await expect(liveNews).toBeVisible({ timeout: 60_000 });
-    await webcams.scrollIntoViewIfNeeded();
+    await waitForMountedPanel(page, 'live-news');
+    await waitForMountedPanel(page, 'live-webcams');
     await expect(webcams.locator('.webcam-preview-tile').first()).toBeVisible({ timeout: 60_000 });
     await page.waitForTimeout(3000);
 
@@ -113,20 +263,9 @@ test.describe('live media intent gating', () => {
 
     await page.goto('/dashboard?liveWebcamLayout=1', { waitUntil: 'domcontentloaded' });
     const webcams = page.locator('.panel[data-panel="live-webcams"]');
-    // The dashboard replaces deferred shells with real panels while the page
-    // is settling. Scroll the current node directly, then wait for the real
-    // panel before taking geometry measurements so this regression test does
-    // not race that intentional shell→panel replacement.
-    await page.evaluate(() => {
-      document.querySelector('.panel[data-panel="live-webcams"]')?.scrollIntoView({ block: 'center' });
-    });
-    await page.waitForFunction(() => {
-      const panel = document.querySelector<HTMLElement>('.panel[data-panel="live-webcams"]');
-      return panel !== null && panel.dataset.deferredPanel !== 'true';
-    });
-    await page.evaluate(() => {
-      document.querySelector('.panel[data-panel="live-webcams"]')?.scrollIntoView({ block: 'center' });
-    });
+    // The dashboard uses an internal scroll frame. Wait for the real panel
+    // instead of holding a locator across the intentional shell→panel swap.
+    await waitForMountedPanel(page, 'live-webcams');
     await expect(webcams.locator('.webcam-cell')).toHaveCount(4, { timeout: 60_000 });
 
     const layout = await webcams.evaluate((panel) => {
@@ -140,6 +279,7 @@ test.describe('live media intent gating', () => {
         viewportHeight: window.innerHeight,
         panelBottom: panelRect.bottom,
         panelHeight: panelRect.height,
+        scrollportBottom: panel.closest('.main-content')?.getBoundingClientRect().bottom ?? window.innerHeight,
         gridHeight: grid?.getBoundingClientRect().height ?? 0,
         cells,
       };
@@ -149,7 +289,9 @@ test.describe('live media intent gating', () => {
     expect(layout.gridHeight, JSON.stringify(layout)).toBeGreaterThan(0);
     expect(layout.cells.every((cell) => cell.height > 0), JSON.stringify(layout)).toBe(true);
     expect(layout.cells[3]?.bottom, JSON.stringify(layout)).toBeLessThanOrEqual(layout.panelBottom + 2);
-    expect(layout.cells[3]?.bottom, JSON.stringify(layout)).toBeLessThanOrEqual(layout.viewportHeight + 2);
+    // The dashboard footer is intentionally a fixed overlay. The usable panel
+    // scrollport is therefore the exact visual bound, not window.innerHeight.
+    expect(layout.cells[3]?.bottom, JSON.stringify(layout)).toBeLessThanOrEqual(layout.scrollportBottom + 1);
 
     const handle = webcams.locator('.panel-resize-handle');
     await handle.evaluate((element) => element.scrollIntoView({ block: 'center' }));
@@ -173,13 +315,14 @@ test.describe('live media intent gating', () => {
     const liveNews = page.locator('.panel[data-panel="live-news"]');
     const webcams = page.locator('.panel[data-panel="live-webcams"]');
     await expect(liveNews).toBeVisible({ timeout: 60_000 });
+    await waitForMountedPanel(page, 'live-news');
 
     // Collapse Live News (content hidden, but the panel is NOT disabled).
     await liveNews.locator('.panel-collapse-btn').click();
     await expect(liveNews).toHaveClass(/panel-collapsed/);
 
     // Fire the cascade from the webcams panel.
-    await webcams.scrollIntoViewIfNeeded();
+    await waitForMountedPanel(page, 'live-webcams');
     await expect(webcams.locator('.webcam-preview-tile').first()).toBeVisible({ timeout: 60_000 });
     await webcams.locator('.webcam-preview-tile').first().getByRole('button', { name: /^play$/i }).click();
 
@@ -209,7 +352,7 @@ test.describe('live media intent gating', () => {
     await page.goto('/dashboard?liveMediaSinglePreview=1', { waitUntil: 'domcontentloaded' });
     const webcams = page.locator('.panel[data-panel="live-webcams"]');
 
-    await webcams.scrollIntoViewIfNeeded();
+    await waitForMountedPanel(page, 'live-webcams');
     await expect(webcams.locator('.webcam-single .webcam-preview-tile')).toBeVisible({ timeout: 60_000 });
     await page.waitForTimeout(3000);
 
@@ -226,6 +369,7 @@ test.describe('live media intent gating', () => {
     await page.goto('/dashboard?liveMediaTeardown=1', { waitUntil: 'domcontentloaded' });
     const liveNews = page.locator('.panel[data-panel="live-news"]');
     await expect(liveNews).toBeVisible({ timeout: 60_000 });
+    await waitForMountedPanel(page, 'live-news');
 
     await liveNews.getByRole('button', { name: /play live feed/i }).click();
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
@@ -262,11 +406,11 @@ test.describe('live media intent gating', () => {
   });
 
   test('tears down webcam media on scroll-away', async ({ page }) => {
-    await installCleanLiveMediaPrefs(page);
+    await installScrollAwayLiveMediaPrefs(page);
 
     await page.goto('/dashboard?liveMediaScrollAway=1', { waitUntil: 'domcontentloaded' });
     const webcams = page.locator('.panel[data-panel="live-webcams"]');
-    await webcams.scrollIntoViewIfNeeded();
+    await waitForMountedPanel(page, 'live-webcams');
     await expect(webcams.locator('.webcam-preview-tile').first()).toBeVisible({ timeout: 60_000 });
 
     // One click starts the whole wall (cascade); count is the grid size, not 1.
@@ -274,7 +418,10 @@ test.describe('live media intent gating', () => {
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
 
     await page.setViewportSize({ width: 1280, height: 240 });
-    await page.evaluate(() => window.scrollTo(0, 0));
+    // The dashboard scrolls within .main-content, not the document. Exercise
+    // the same scrollport a user moves so the webcam visibility observer gets
+    // a genuine scroll-away transition.
+    await page.locator('.main-content').evaluate((scrollport) => scrollport.scrollTo({ top: 0 }));
     await expect.poll(() => webcamTransportCount(page), { timeout: 10_000 }).toBe(0);
   });
 
@@ -285,6 +432,7 @@ test.describe('live media intent gating', () => {
     const liveNews = page.locator('.panel[data-panel="live-news"]');
     const webcams = page.locator('.panel[data-panel="live-webcams"]');
     await expect(liveNews).toBeVisible({ timeout: 60_000 });
+    await waitForMountedPanel(page, 'live-news');
 
     await liveNews.getByRole('button', { name: /play live feed/i }).click();
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
@@ -293,7 +441,7 @@ test.describe('live media intent gating', () => {
     await expect(liveNews).toHaveClass(/hidden/);
 
     // The Live News play click already cascaded to the webcam wall, so it's live once scrolled in.
-    await webcams.scrollIntoViewIfNeeded();
+    await waitForMountedPanel(page, 'live-webcams');
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
     await disablePanelViaStoredSettings(page, 'live-webcams');
     await expect.poll(() => webcamTransportCount(page), { timeout: 10_000 }).toBe(0);
@@ -302,7 +450,7 @@ test.describe('live media intent gating', () => {
 
   test('always-on mode waits for visibility, then allows both live panels to start', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 220 });
-    await installAlwaysOnLiveMediaPrefs(page);
+    await installAlwaysOnLiveMediaPrefs(page, undefined, { includeVisibilitySpacer: true });
     const mediaRequests: string[] = [];
     page.on('request', (request) => {
       if (LIVE_MEDIA_REQUEST.test(request.url())) mediaRequests.push(request.url());
@@ -319,9 +467,12 @@ test.describe('live media intent gating', () => {
     expect(await webcamTransportCount(page)).toBe(0);
     expect(mediaRequests, `live media request(s) before visibility: ${mediaRequests.join('\n')}`).toEqual([]);
 
-    await liveNews.scrollIntoViewIfNeeded();
+    await waitForMountedPanel(page, 'live-news');
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
-    // Always-on grid auto-starts the whole wall, so more than one webcam can be live.
+    // The webcam wall must not start merely because a different media panel is
+    // visible. Bringing its own panel into the dashboard scrollport is the
+    // user-equivalent permission boundary for its always-on playback.
+    await waitForMountedPanel(page, 'live-webcams');
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
 
     await page.evaluate(() => {
@@ -341,14 +492,15 @@ test.describe('live media intent gating', () => {
 
   test('turning always-on off keeps already-playing feeds running', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 220 });
-    await installAlwaysOnLiveMediaPrefs(page);
+    await installAlwaysOnLiveMediaPrefs(page, undefined, { includeVisibilitySpacer: true });
 
     await page.goto('/dashboard?liveMediaAlwaysOnToggleOff=1', { waitUntil: 'domcontentloaded' });
     const liveNews = page.locator('.panel[data-panel="live-news"]');
     await expect(liveNews).toBeAttached({ timeout: 60_000 });
 
-    await liveNews.scrollIntoViewIfNeeded();
+    await waitForMountedPanel(page, 'live-news');
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
+    await waitForMountedPanel(page, 'live-webcams');
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBeGreaterThanOrEqual(1);
 
     await page.evaluate(() => {
@@ -369,6 +521,7 @@ test.describe('live media intent gating', () => {
     await page.goto('/dashboard?liveMediaAlwaysOnPanelReenable=1', { waitUntil: 'domcontentloaded' });
     const liveNews = page.locator('.panel[data-panel="live-news"]');
     await expect(liveNews).toBeVisible({ timeout: 60_000 });
+    await waitForMountedPanel(page, 'live-news');
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
 
     await disablePanelViaStoredSettings(page, 'live-news');
@@ -389,7 +542,7 @@ test.describe('live media intent gating', () => {
 
     await page.goto('/dashboard?liveMediaAlwaysOnSingleSwitch=1', { waitUntil: 'domcontentloaded' });
     const webcams = page.locator('.panel[data-panel="live-webcams"]');
-    await webcams.scrollIntoViewIfNeeded();
+    await waitForMountedPanel(page, 'live-webcams');
     await expect.poll(() => webcamTransportCount(page), { timeout: 30_000 }).toBe(1);
     await expect(webcams.locator('.webcam-iframe[title="Jerusalem live webcam"]')).toBeVisible();
 

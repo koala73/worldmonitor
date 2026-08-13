@@ -7,6 +7,10 @@
   </head>
   <body>
     <div id="app"></div>
+    <!-- The visual-regression harness intentionally uses DeckGLMap's local,
+         tile-free style. Production routes never set this marker and retain
+         their configured provider plus source/freshness UI. -->
+    <script>window.__WM_E2E_MAP_HARNESS__ = true;</script>
     <script type="module" src="/src/e2e/map-harness.ts"></script>
   </body>
 </html>

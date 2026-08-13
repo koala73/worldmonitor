@@ -12,6 +12,7 @@ import {
   renderVariantDashboardHtml,
   variantDashboardFileName,
 } from './src/config/variant-dashboard-html';
+import { applyBuildVariantToPrepaint } from './src/config/variant-prepaint';
 // Single source of truth for the RSS proxy allowlist — the dev-server proxy
 // below reuses the SAME www-tolerant predicate the Edge handler enforces
 // (api/rss-proxy.js) so dev and prod agree on allow/deny. Previously a
@@ -253,12 +254,7 @@ function htmlVariantPlugin(activeMeta: VariantMeta, activeVariant: string, isDes
 
       // Desktop builds: inject build-time variant into the inline script so data-variant is set
       // before CSS loads. Web builds always use 'full' — runtime hostname detection handles variants.
-      if (activeVariant !== 'full') {
-        result = result.replace(
-          /if\(v\)document\.documentElement\.dataset\.variant=v;/,
-          `v='${activeVariant}';document.documentElement.dataset.variant=v;`
-        );
-      }
+      result = applyBuildVariantToPrepaint(result, activeVariant);
 
       // Desktop CSP: inject localhost wildcard for dynamic sidecar port.
       // Web builds intentionally exclude localhost to avoid exposing attack surface.

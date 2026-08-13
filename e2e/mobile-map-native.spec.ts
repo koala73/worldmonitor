@@ -2,6 +2,12 @@ import { devices, expect, test } from '@playwright/test';
 
 const MOBILE_VIEWPORT = devices['iPhone 14 Pro Max'];
 
+async function preferExpandedMap(page: import('@playwright/test').Page): Promise<void> {
+  await page.addInitScript(() => {
+    localStorage.setItem('mobile-map-collapsed', 'false');
+  });
+}
+
 test.describe('Mobile map native experience', () => {
   const { defaultBrowserType: _bt, ...mobileContext } = MOBILE_VIEWPORT;
 
@@ -65,6 +71,7 @@ test.describe('Mobile map native experience', () => {
     test.use(mobileContext);
 
     test('lat/lon override view center', async ({ page }) => {
+      await preferExpandedMap(page);
       await page.goto('/?view=eu&lat=48.86&lon=2.35&zoom=5');
       await page.waitForTimeout(3000);
       const url = page.url();
@@ -84,6 +91,7 @@ test.describe('Mobile map native experience', () => {
     });
 
     test('zero-degree coordinates center at equator/prime meridian', async ({ page }) => {
+      await preferExpandedMap(page);
       await page.goto('/?lat=0&lon=0&zoom=4');
       await page.waitForTimeout(3000);
       const url = page.url();
@@ -103,6 +111,7 @@ test.describe('Mobile map native experience', () => {
     test.use(mobileContext);
 
     test('single-finger pan does not scroll page', async ({ page }) => {
+      await preferExpandedMap(page);
       await page.goto('/');
       await page.waitForTimeout(3000);
       const mapEl = page.locator('#mapContainer');
@@ -145,12 +154,13 @@ test.describe('Mobile map native experience', () => {
   });
 
   test.describe('mobile map viewport', () => {
-    test('map starts expanded and occupies most of viewport', async ({ browser }) => {
+    test('honours an expanded-map preference and occupies most of viewport', async ({ browser }) => {
       const context = await browser.newContext({
         ...mobileContext,
         locale: 'en-US',
       });
       const page = await context.newPage();
+      await preferExpandedMap(page);
       await page.goto('/');
       const mapSection = page.locator('#mapSection');
       await expect(mapSection).toBeVisible({ timeout: 10000 });

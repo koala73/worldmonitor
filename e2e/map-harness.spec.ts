@@ -29,6 +29,7 @@ type HarnessWindow = Window & {
     ) => void;
     setNewsPulseScenario: (scenario: 'none' | 'recent' | 'stale') => void;
     setHotspotActivityScenario: (scenario: 'none' | 'breaking') => void;
+    clearPulseAmbientSignals: () => void;
     forcePulseStartupElapsed: () => void;
     resetPulseStartupTime: () => void;
     isPulseAnimationRunning: () => boolean;
@@ -179,7 +180,11 @@ const EXPECTED_HAPPY_DECK_LAYERS = [
 const waitForHarnessReady = async (
   page: import('@playwright/test').Page
 ): Promise<void> => {
-  await page.goto('/tests/map-harness.html');
+  // The renderer harness does not bootstrap application i18n. Suppress only
+  // the non-functional layer-count notice so its untranslated chrome cannot
+  // obscure a map visual baseline. Production warning behavior is exercised
+  // separately at the application level.
+  await page.goto('/tests/map-harness.html?alert=false');
   await expect(page.locator('.deckgl-map-wrapper')).toBeVisible();
   await expect
     .poll(async () => {
@@ -189,6 +194,7 @@ const waitForHarnessReady = async (
       });
     }, { timeout: 45000 })
     .toBe(true);
+  await expect(page.locator('.layer-warn-dialog')).toHaveCount(0);
 };
 
 const prepareVisualScenario = async (
@@ -432,6 +438,7 @@ test.describe('DeckGL map harness', () => {
       w.__mapHarness?.setHotspotActivityScenario('none');
       w.__mapHarness?.setPulseProtestsScenario('none');
       w.__mapHarness?.setNewsPulseScenario('none');
+      w.__mapHarness?.clearPulseAmbientSignals();
       w.__mapHarness?.resetPulseStartupTime();
       w.__mapHarness?.setNewsPulseScenario('recent');
     });
@@ -457,6 +464,7 @@ test.describe('DeckGL map harness', () => {
       w.__mapHarness?.setHotspotActivityScenario('none');
       w.__mapHarness?.setPulseProtestsScenario('none');
       w.__mapHarness?.setNewsPulseScenario('none');
+      w.__mapHarness?.clearPulseAmbientSignals();
       w.__mapHarness?.forcePulseStartupElapsed();
       w.__mapHarness?.setPulseProtestsScenario('recent-gdelt-riot');
     });
@@ -531,11 +539,19 @@ test.describe('DeckGL map harness', () => {
     });
 
     expect(scenarios.length).toBeGreaterThan(0);
+    const selectedScenarioId = process.env.E2E_VISUAL_SCENARIO;
+    const scenariosToCapture = selectedScenarioId
+      ? scenarios.filter((scenario) => scenario.id === selectedScenarioId)
+      : scenarios;
+    expect(
+      scenariosToCapture.length,
+      `Unknown or unavailable E2E_VISUAL_SCENARIO: ${selectedScenarioId ?? ''}`,
+    ).toBeGreaterThan(0);
 
     const mapWrapper = page.locator('.deckgl-map-wrapper');
     await expect(mapWrapper).toBeVisible();
 
-    for (const scenario of scenarios) {
+    for (const scenario of scenariosToCapture) {
       await test.step(`visual baseline: ${scenario.id}`, async () => {
         await prepareVisualScenario(page, scenario.id);
         await expect(mapWrapper).toHaveScreenshot(

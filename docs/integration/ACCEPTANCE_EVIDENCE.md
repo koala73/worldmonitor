@@ -283,3 +283,24 @@ authenticated executor reports a source-bearing result.
 **Phase 10 gate: COMPLETED FOR NATIVE DESKTOP DELIVERY, INSTALLATION, LOCAL
 SIDECAR STARTUP, LAUNCHER IDEMPOTENCY AND FAIL-CLOSED NO-PROVIDER DISPLAY.** It
 does not certify any real-time financial, shipping, news or trade feed.
+
+## Phase 11 - acceptance matrix and no-false-evidence regression gates
+
+**Implementation commit:** pending isolated-index commit. The next receipt
+commit backfills its immutable SHA.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Finance complete browser matrix | PASS | `phase11-e2e-finance-full-final-rerun2-20260814.log`: 232 passed, 20 declared variant/configuration skips, 0 failed, `EXIT_CODE=0`. |
+| Variant pre-paint syntax | PASS | `phase11-variant-and-map-static-regressions-final-20260814.log`: 7/7. Every non-Full variant emits syntactically valid pre-paint JavaScript; unrelated HTML routes remain unchanged. |
+| Deterministic map readiness and visual evidence | PASS | `phase11-map-harness-static-style-final-20260814.log`: 1/1 explicit-marker guard; reviewed Finance conflict baseline; `phase11-e2e-full-visual-final-rerun3-local-chrome-20260814.log`: Full layer/zoom goldens 1/1, `EXIT_CODE=0`, no snapshot update. |
+| Type and data contracts | PASS | `phase11-typecheck-final-rerun4-20260814.log`, `EXIT_CODE=0`; `phase11-test-data-final-rerun6-primary-node24-20260814.log`: 23,022 tests / 3,551 suites / 23,009 pass / 0 fail / 0 cancelled / 13 skipped, `EXIT_CODE=0`. |
+| DOM and local sidecar | PASS | `phase11-test-dom-final-rerun2-20260814.log`: 293/293; `phase11-test-sidecar-final-rerun2-20260814.log`: 371/371; both exit 0. |
+| Lint and production variants | PASS | `phase11-lint-final-rerun2-20260814.log`: 0 errors, safe-HTML guard passed, 33 existing warnings/9 infos; Finance, Full and Happy builds all have `EXIT_CODE=0`. |
+| Browser runner provenance | PASS with declared local runner | After standard `npm ci`, Playwright's pinned Chromium was not locally cached. The final visual run explicitly sets `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to installed local Chrome; config retains locked Chromium for CI. This is test infrastructure, not product evidence. |
+| Provider truthfulness | PASS for fail-closed boundary | No fixture, cache, screenshot, sidecar, visual baseline or browser success is called live market, AIS, news, cargo, trade or factory data. No common K-line is accepted. |
+
+**Phase 11 gate: COMPLETED FOR RELIABILITY, VARIANT BOOT INTEGRITY,
+ACCESSIBILITY/MOBILE/PANEL REGRESSION, TEST-HARNESS HONESTY AND FINAL ACCEPTANCE
+EVIDENCE.** It does not certify a licensed Provider observation, real-time
+stock bar, AIS message, cargo inference, news causality or factory fact.

@@ -144,8 +144,14 @@ describe('Makefile generate target — plugin path resolution', () => {
     // GOPATH (GOPATH can be a path-list).
     assert.ok(recipe.includes('go env GOBIN'),
       'generate recipe must consult `go env GOBIN`');
-    assert.ok(recipe.includes('go env GOPATH | cut -d:'),
-      'generate recipe must extract first GOPATH entry via `go env GOPATH | cut -d:`');
+    assert.ok(recipe.includes('go env GOPATH'),
+      'generate recipe must consult GOPATH when GOBIN is unset');
+    assert.ok(recipe.includes('go env GOOS'),
+      'generate recipe must select the GOPATH list delimiter from the Go target OS');
+    assert.ok(recipe.includes('gopath=$${gopath%%:*}'),
+      'generate recipe must extract the first colon-delimited GOPATH entry on Unix');
+    assert.ok(recipe.includes('gopath=$${gopath%%;*}'),
+      'generate recipe must extract the first semicolon-delimited GOPATH entry on Windows');
     assert.ok(recipe.includes(':$$PATH"'),
       'generate recipe must prepend to $$PATH (install-dir:$$PATH, not the other way around)');
   });

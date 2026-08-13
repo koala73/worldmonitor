@@ -17,6 +17,9 @@ const { defaultBrowserType: mobileDefaultBrowserType, ...mobileDevice } = device
 void mobileDefaultBrowserType;
 
 const SHELL_LCP_TEXT = 'Dashboard is loading';
+// Keep the static, no-JS and hydrated shell aligned with the explicit
+// independently branded primary identity in src/config/brand.ts.
+const INDEPENDENT_DASHBOARD_NAME = '全球实时热点追踪·探长版';
 
 declare global {
   interface Window {
@@ -202,10 +205,10 @@ test.describe('pre-hydration dashboard shell', () => {
       expect(preHydration.ariaBusy).toBe('true');
       expect(preHydration.appHeadingTag).toBe('H1');
       expect(preHydration.appHeadingAriaHidden).toBeNull();
-      expect(preHydration.appHeadingText).toContain('World Monitor');
+      expect(preHydration.appHeadingText).toContain(INDEPENDENT_DASHBOARD_NAME);
       expect(preHydration.badgeAriaLabel).toBeNull();
       expect(preHydration.focusableCount).toBe(0);
-      expect(preHydration.shellText).toContain('World Monitor');
+      expect(preHydration.shellText).toContain(INDEPENDENT_DASHBOARD_NAME);
       expect(preHydration.shellText).toContain(SHELL_LCP_TEXT);
       expect(preHydration.shellText).toContain('Primary View');
       expect(preHydration.candidateText).toBe(SHELL_LCP_TEXT);
@@ -227,7 +230,9 @@ test.describe('pre-hydration dashboard shell', () => {
 
       await expect(page.locator('.header')).toBeVisible({ timeout: 30000 });
       await expect(page.locator('.skeleton-shell')).toHaveCount(0);
-      await expect(page.locator('body > h1.app-heading')).toContainText('World Monitor');
+      // This is a full-product ownership contract, not merely an initial HTML
+      // assertion: hydration must not overwrite the confirmed local identity.
+      await expect(page.locator('body > h1.app-heading')).toContainText(INDEPENDENT_DASHBOARD_NAME);
       for (const href of [
         '/countries/',
         '/chokepoints/',
@@ -236,10 +241,12 @@ test.describe('pre-hydration dashboard shell', () => {
         '/pro#pricing',
         'https://www.worldmonitor.app/blog/',
         'https://www.worldmonitor.app/docs',
-        'https://github.com/koala73/worldmonitor',
       ]) {
         await expect(page.locator(`.site-footer nav a[href="${href}"]`)).toHaveCount(1);
       }
+      await expect(
+        page.locator('.site-footer-copy a[href="https://github.com/koala73/worldmonitor"]'),
+      ).toHaveCount(1);
       for (const href of ['/countries/', '/chokepoints/', '/crises/', '/tools/']) {
         await expect(page.locator(`.mobile-menu-footer-links a[href="${href}"]`)).toHaveCount(1);
       }
@@ -265,6 +272,9 @@ test.describe('pre-hydration dashboard shell on mobile', () => {
   });
 
   test('keeps the contentful shell inside the mobile viewport before hydration', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('mobile-map-collapsed', 'false');
+    });
     const delayedMain = await delayDashboardMain(page);
     let released = false;
     const releaseMain = () => {
@@ -397,8 +407,23 @@ test.describe('server-rendered welcome page', () => {
     }
   });
 
-  for (const language of ['fr', 'ar']) {
-    test(`keeps the English prerender for ${language} when welcome copy falls back`, async ({ page }) => {
+  const localizedWelcomeExpectations = {
+    fr: {
+      heading: "Au moment où c'est une nouvelle,",
+      language: 'fr',
+      direction: 'ltr',
+      ogLocale: 'fr_FR',
+    },
+    ar: {
+      heading: 'بحلول الوقت الذي تصبح فيه خبراً،',
+      language: 'ar',
+      direction: 'rtl',
+      ogLocale: 'ar_SA',
+    },
+  } as const;
+
+  for (const [language, expected] of Object.entries(localizedWelcomeExpectations)) {
+    test(`replaces the English prerender with genuine ${language} welcome copy`, async ({ page }) => {
       const pageErrors: string[] = [];
       page.on('pageerror', (error) => pageErrors.push(error.message));
       await page.addInitScript(() => {
@@ -409,55 +434,23 @@ test.describe('server-rendered welcome page', () => {
           }
           return originalReplaceChildren.call(this, ...nodes);
         };
-        window.requestIdleCallback = (callback) => window.setTimeout(() => {
-          callback({
-            didTimeout: false,
-            timeRemaining: () => 50,
-          });
-          window.__wmWelcomeHydrationDispatched = true;
-        }, 0);
       });
-      const delayedMain = await delayWelcomeMain(page);
+      await page.goto(`/pro/welcome.html?lang=${language}`, { waitUntil: 'domcontentloaded' });
 
-      try {
-        await page.goto(`/pro/welcome.html?lang=${language}`, { waitUntil: 'commit' });
-        await delayedMain.requested;
-
-        const root = page.locator('#root[data-wm-prerender-lang="en"]');
-        await expect(root).toContainText("By the time it's news");
-        await expect(root).toBeVisible();
-        await expect.poll(async () => page.evaluate(() => ({
-          direction: getComputedStyle(document.documentElement).direction,
-          language: document.documentElement.lang,
-        }))).toEqual({
-          direction: 'ltr',
-          language: 'en',
-        });
-        expect(await page.evaluate(() => window.__wmWelcomeRootClearCount ?? 0)).toBe(0);
-
-        delayedMain.release();
-
-        await expect.poll(async () => page.evaluate(() => (
-          window.__wmWelcomeHydrationDispatched ?? false
-        ))).toBe(true);
-        await page.evaluate(() => new Promise<void>((resolve) => {
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-        }));
-        await expect(root).toBeVisible();
-        await expect.poll(async () => page.evaluate(() => ({
+      const root = page.locator('#root[data-wm-prerender-lang="en"]');
+      await expect(root).toBeVisible();
+      await expect(root).toContainText(expected.heading, { timeout: 30_000 });
+      const { heading: _heading, ...expectedDocument } = expected;
+      await expect.poll(async () => page.evaluate(() => ({
           direction: getComputedStyle(document.documentElement).direction,
           language: document.documentElement.lang,
           ogLocale: document.querySelector('meta[property="og:locale"]')?.getAttribute('content'),
-        }))).toEqual({
-          direction: 'ltr',
-          language: 'en',
-          ogLocale: 'en_US',
-        });
-        expect(await page.evaluate(() => window.__wmWelcomeRootClearCount ?? 0)).toBe(0);
-        expect(pageErrors).toEqual([]);
-      } finally {
-        delayedMain.release();
-      }
+      }))).toEqual(expectedDocument);
+      // A static English prerender cannot be hydrated as a translated React
+      // tree. The replacement is intentional; assert it completed rather than
+      // incorrectly treating available localized copy as an English fallback.
+      expect(await page.evaluate(() => window.__wmWelcomeRootClearCount ?? 0)).toBeGreaterThan(0);
+      expect(pageErrors).toEqual([]);
     });
   }
 });
@@ -482,7 +475,7 @@ test.describe('dashboard shell without JavaScript', () => {
     await page.goto('/', { waitUntil: 'domcontentloaded' });
 
     await expect(page.locator('.skeleton-shell')).toBeHidden();
-    await expect(page.locator('body > h1.app-heading')).toContainText('World Monitor');
+    await expect(page.locator('body > h1.app-heading')).toContainText(INDEPENDENT_DASHBOARD_NAME);
     await expect(page.locator('body > h1.app-heading')).not.toHaveAttribute('aria-hidden', 'true');
     await expect(page.locator('#seo-prerender')).toHaveCount(0);
     await expect(page.locator('#dashboard-noscript')).toBeVisible();

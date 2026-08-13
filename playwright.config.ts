@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const localChromiumExecutable = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
+
 export default defineConfig({
   testDir: './e2e',
   // CI: the smoke specs are dominated by fixed settle windows (eight 8 s
@@ -38,7 +40,9 @@ export default defineConfig({
     timezoneId: 'UTC',
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    // A locally supplied browser can run the E2E suite without Playwright's
+    // bundled ffmpeg; CI and pinned-browser runs retain failure video.
+    video: localChromiumExecutable ? 'off' : 'retain-on-failure',
   },
   projects: [
     {
@@ -47,13 +51,20 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         launchOptions: {
           args: ['--use-angle=swiftshader', '--use-gl=swiftshader'],
+          // CI keeps Playwright's pinned Chromium. Local verification can
+          // explicitly opt into an installed Chromium-compatible executable
+          // when the pinned test runtime is unavailable.
+          ...(localChromiumExecutable ? { executablePath: localChromiumExecutable } : {}),
         },
       },
     },
   ],
   snapshotPathTemplate: '{testDir}/{testFileName}-snapshots/{arg}{ext}',
   webServer: {
-    command: 'VITE_E2E=1 npm run dev -- --host 127.0.0.1 --port 4173',
+    // Invoke the project's locked Vite binary directly. This keeps the E2E
+    // server independent of an ambient npm executable, while cross-env still
+    // supplies a portable VITE_E2E assignment on Windows and POSIX shells.
+    command: 'node node_modules/cross-env/dist/bin/cross-env.js VITE_E2E=1 node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 4173',
     url: 'http://127.0.0.1:4173/tests/map-harness.html',
     reuseExistingServer: false,
     timeout: 120000,

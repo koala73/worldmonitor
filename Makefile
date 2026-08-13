@@ -81,9 +81,11 @@ generate: clean ## Generate code from proto definitions
 	@# writes binaries only into the first GOPATH entry's bin dir — GOPATH
 	@# can be a path-list (colon-separated on Unix, semicolon on Windows),
 	@# so naïvely appending "/bin" to the whole value produces a bogus
-	@# path. The `cut -d:` fallback works on Linux/macOS shells; Windows
-	@# (MSYS/cmd) is not a supported dev platform for this repo, so the
-	@# Unix assumption is acceptable here.
+	@# path. The recipe below chooses the delimiter from `go env GOOS` and,
+	@# when it is running in an MSYS shell, converts Go's Windows path into
+	@# the POSIX form that Buf uses for plugin lookup. This keeps `make
+	@# generate` reproducible on the Windows workstation used for the native
+	@# desktop build as well as on Unix CI.
 	@#
 	@# .husky/pre-push still prepends $$HOME/go/bin for the outer shell
 	@# discovering `buf` — that's a broader prepend (it affects the shell's
@@ -105,7 +107,7 @@ generate: clean ## Generate code from proto definitions
 	@# others on PATH, recreating the mixed-version failure mode. Keep
 	@# this list in sync with proto/buf.gen.yaml.
 	cd $(PROTO_DIR) && \
-		PLUGIN_DIR=$$(gobin=$$(go env GOBIN); if [ -n "$$gobin" ]; then printf '%s' "$$gobin"; else printf '%s/bin' "$$(go env GOPATH | cut -d: -f1)"; fi) && \
+		PLUGIN_DIR=$$(gobin="$$(go env GOBIN)"; goos="$$(go env GOOS)"; if [ -n "$$gobin" ]; then plugin_dir="$$gobin"; else gopath="$$(go env GOPATH)"; if [ "$$goos" = "windows" ]; then gopath=$${gopath%%;*}; else gopath=$${gopath%%:*}; fi; plugin_dir="$$gopath/bin"; fi; if [ "$$goos" = "windows" ] && command -v cygpath >/dev/null 2>&1; then plugin_dir=$$(cygpath -u "$$plugin_dir"); fi; printf '%s' "$$plugin_dir") && \
 		[ -n "$$PLUGIN_DIR" ] || { echo 'Could not resolve Go install dir from GOBIN/GOPATH — refusing to run buf generate without a pinned plugin location.' >&2; exit 1; } && \
 		for p in protoc-gen-ts-client protoc-gen-ts-server protoc-gen-openapiv3; do \
 			[ -x "$$PLUGIN_DIR/$$p" ] || { echo "$$p not found at $$PLUGIN_DIR/. Run: make install-plugins" >&2; exit 1; }; \

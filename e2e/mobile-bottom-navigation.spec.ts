@@ -247,6 +247,17 @@ test.describe('mobile primary navigation (#5201 P0)', () => {
   });
 
   test('reveals an enabled alert panel and reports when none are enabled', async ({ page }) => {
+    // Finance and other dedicated variants deliberately omit the geopolitical
+    // alert panels. Keep the no-alert state covered there instead of asserting
+    // that every variant renders a strategic-risk panel.
+    const alertPanels = page.locator('#panelsGrid [data-panel="strategic-risk"], #panelsGrid [data-panel="oref-sirens"], #panelsGrid [data-panel="intel"]');
+    const alertPanelCount = await alertPanels.count();
+    if (alertPanelCount === 0) {
+      await page.locator('[data-mobile-tab="alerts"]').click();
+      await expect(page.locator('.toast-notification')).toContainText('No active alerts yet');
+      return;
+    }
+
     const strategicRisk = page.locator('#panelsGrid [data-panel="strategic-risk"]');
     await expect(strategicRisk).toHaveCount(1);
     await page.locator('#panelsGrid [data-panel="oref-sirens"], #panelsGrid [data-panel="intel"]').evaluateAll((panels) => {

@@ -116,6 +116,7 @@ type MapHarness = {
   setPulseProtestsScenario: (scenario: PulseProtestScenario) => void;
   setNewsPulseScenario: (scenario: NewsPulseScenario) => void;
   setHotspotActivityScenario: (scenario: 'none' | 'breaking') => void;
+  clearPulseAmbientSignals: () => void;
   forcePulseStartupElapsed: () => void;
   resetPulseStartupTime: () => void;
   isPulseAnimationRunning: () => boolean;
@@ -869,7 +870,7 @@ const VISUAL_SCENARIOS: VisualScenario[] = [
   {
     id: 'apt-groups-z5',
     variant: 'full',
-    enabledLayers: [],
+    enabledLayers: ['cyberThreats'],
     camera: toCamera(aptLon, aptLat, 5.1),
     expectedDeckLayers: ['apt-groups-layer'],
     expectedSelectors: [],
@@ -1604,18 +1605,15 @@ const getCyberTooltipHtml = (indicator: string): string => {
 seedAllDynamicData();
 
 let ready = false;
-const readyStartedAt = Date.now();
-const STYLE_READY_FALLBACK_MS = 12_000;
 const pollReady = (): void => {
   const hasCanvas = Boolean(document.querySelector('#deckgl-basemap canvas'));
   const maplibreMap = internals.maplibreMap;
   const styleLoaded = Boolean(maplibreMap?.isStyleLoaded());
-  const allowStyleFallback =
-    hasCanvas &&
-    Boolean(maplibreMap) &&
-    Date.now() - readyStartedAt >= STYLE_READY_FALLBACK_MS;
 
-  if ((hasCanvas && styleLoaded) || allowStyleFallback) {
+  // A canvas alone is not evidence that MapLibre has a usable style. Treating
+  // a 12s timeout as ready previously allowed visual screenshots of a lost
+  // WebGL context / blank fallback frame.
+  if (hasCanvas && styleLoaded) {
     if (!deterministicVisualModeEnabled) {
       enableDeterministicVisualMode();
     }
@@ -1642,6 +1640,12 @@ window.__mapHarness = {
   setNewsPulseScenario,
   setHotspotActivityScenario: (scenario: 'none' | 'breaking'): void => {
     map.updateHotspotActivity(buildHotspotActivityNews(scenario));
+  },
+  clearPulseAmbientSignals: (): void => {
+    // Positive and verified-kindness fixtures intentionally exercise the happy
+    // visual layers. They must not contaminate the unrelated riot pulse test.
+    map.setPositiveEvents([]);
+    map.setKindnessData([]);
   },
   forcePulseStartupElapsed: (): void => {
     internals.startupTime = Date.now() - 61_000;

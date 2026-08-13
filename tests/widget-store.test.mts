@@ -8,6 +8,13 @@ import { pathToFileURL } from 'node:url';
 import type { CustomWidgetSpec } from '../src/services/widget-store.ts';
 
 type WidgetStore = typeof import('../src/services/widget-store.ts');
+type WidgetStoreTestGlobals = typeof globalThis & {
+  __invalidatedPanelStorageKeys?: string[];
+  __clearedPanelSpans?: string[];
+  __clearedPanelColSpans?: string[];
+};
+
+const widgetStoreTestGlobals = globalThis as WidgetStoreTestGlobals;
 
 type GlobalSnapshot = { exists: boolean; value: unknown };
 
@@ -63,6 +70,11 @@ async function loadWidgetStore(): Promise<WidgetStore> {
       export function clearPanelColSpanEntry(id) {
         globalThis.__clearedPanelColSpans = globalThis.__clearedPanelColSpans || [];
         globalThis.__clearedPanelColSpans.push(id);
+      }
+      export const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
+      export const PANEL_COL_SPANS_KEY = 'worldmonitor-panel-col-spans';
+      export function invalidatePanelStorageCacheForKeys(keys) {
+        globalThis.__invalidatedPanelStorageKeys = Array.from(keys);
       }
     `],
     ['widget-sanitizer-stub', `export function sanitizeWidgetHtml(html) { return 'sanitized:' + String(html); }`],
@@ -303,5 +315,25 @@ describe('widget-store PRO persistence', () => {
     const widgets = loadWidgets();
 
     assert.equal(widgets.length, 0);
+  });
+
+  it('deleteWidget invalidates aggregate panel-size caches before removing its entries', async () => {
+    const spec = makeProWidget();
+    widgetStoreTestGlobals.__invalidatedPanelStorageKeys = [];
+    widgetStoreTestGlobals.__clearedPanelSpans = [];
+    widgetStoreTestGlobals.__clearedPanelColSpans = [];
+    installLocalStorage({
+      'wm-custom-widgets': JSON.stringify([spec]),
+    });
+    const { deleteWidget } = await loadWidgetStore();
+
+    deleteWidget(spec.id);
+
+    assert.deepEqual(widgetStoreTestGlobals.__invalidatedPanelStorageKeys, [
+      'worldmonitor-panel-spans',
+      'worldmonitor-panel-col-spans',
+    ]);
+    assert.deepEqual(widgetStoreTestGlobals.__clearedPanelSpans, [spec.id]);
+    assert.deepEqual(widgetStoreTestGlobals.__clearedPanelColSpans, [spec.id]);
   });
 });

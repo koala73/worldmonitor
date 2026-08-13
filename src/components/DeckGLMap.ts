@@ -250,6 +250,19 @@ const HAPPY_DARK_STYLE = '/map-styles/happy-dark.json';
 const HAPPY_LIGHT_STYLE = '/map-styles/happy-light.json';
 const isHappyVariant = SITE_VARIANT === 'happy';
 
+// This marker is defined only by tests/map-harness.html. The fixture still
+// drives the real MapLibre + DeckGL integration, but it must not depend on
+// remote basemap tiles: a stalled tile host or a fallback-style swap can turn
+// a deterministic overlay assertion into an empty or changing screenshot.
+// No production route sets this flag.
+const isMapHarnessRuntime = typeof window !== 'undefined'
+  && (window as Window & { __WM_E2E_MAP_HARNESS__?: boolean }).__WM_E2E_MAP_HARNESS__ === true;
+const MAP_HARNESS_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {},
+  layers: [],
+};
+
 // Zoom thresholds for layer visibility and labels (matches old Map.ts)
 // Zoom-dependent layer visibility and labels
 const LAYER_ZOOM_THRESHOLDS: Partial<Record<keyof MapLayers, { minZoom: number; showLabels?: number }>> = {
@@ -1280,6 +1293,10 @@ export class DeckGLMap {
   }
 
   private async resolveInitialBasemapStyle(): Promise<{ mapTheme: string; style: StyleSpecification | string }> {
+    if (isMapHarnessRuntime) {
+      return { mapTheme: 'dark', style: MAP_HARNESS_STYLE };
+    }
+
     if (isHappyVariant) {
       const mapTheme = getCurrentTheme();
       return {
@@ -1960,8 +1977,9 @@ export class DeckGLMap {
     // Disease outbreaks layer
     if (mapLayers.diseaseOutbreaks && filteredDiseaseOutbreaks.length > 0) {
       layers.push(this.createDiseaseOutbreaksLayer(filteredDiseaseOutbreaks));
+    } else {
+      layers.push(this.createEmptyGhost('disease-outbreaks-layer'));
     }
-    layers.push(this.createEmptyGhost('disease-outbreaks-layer'));
 
     // Satellite fires layer (NASA FIRMS)
     if (mapLayers.fires && filteredFirmsFireData.length > 0) {
