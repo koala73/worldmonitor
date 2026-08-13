@@ -755,6 +755,7 @@
     ],
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
+      "scripts/_defense-industrial-source.mjs",
       "scripts/_defense-patents-source.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
@@ -767,6 +768,11 @@
       "scripts/seed-bundle-static-ref.mjs",
       "scripts/seed-chokepoint-baselines.mjs",
       "scripts/seed-defense-patents.mjs",
+      "scripts/seed-defense-industrial.mjs",
+      "scripts/seed-defense-industrial-suppliers.mjs",
+      "scripts/shared/country-name-to-iso2.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/iso3-to-iso2.json",
       "scripts/seed-military-bases.mjs",
       "scripts/seed-mineral-production.mjs",
       "scripts/seed-submarine-cables.mjs",
@@ -776,6 +782,7 @@
       "scripts/shared/mineral-country-aliases.json",
       "scripts/shared/mineral-production-parse.mjs"
     ],
+    "cronSchedule": "0 3 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-3-seed-bundle-static-ref"
   },
   {

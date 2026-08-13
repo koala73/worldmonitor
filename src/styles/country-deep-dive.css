@@ -847,6 +847,15 @@
   gap: 6px;
 }
 
+.cdp-defense-industrial {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
 .cdp-base-item {
   display: flex;
   justify-content: space-between;

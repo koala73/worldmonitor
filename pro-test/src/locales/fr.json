@@ -48,7 +48,7 @@
     "entF10": "Déploiement cloud, on-premises ou air-gapped",
     "entF11": "Onboarding et support dédiés",
     "entCta": "Contacter les ventes",
-    "freeF2": "500+ flux, 533+ sources, 50+ couches cartographiques"
+    "freeF2": "500+ flux, 534+ sources, 50+ couches cartographiques"
   },
   "whyUpgrade": {
     "title": "Pourquoi passer Pro",
@@ -565,7 +565,7 @@
       "s1l": "Couches cartographiques",
       "s2v": "500+",
       "s2l": "Flux sélectionnés",
-      "s3v": "531+",
+      "s3v": "532+",
       "s3l": "Fournisseurs de données",
       "s4v": "13",
       "s4l": "Points d'étranglement · AIS en direct",
@@ -583,7 +583,7 @@
       "s10l": "Points chauds notés",
       "s11v": "92",
       "s11l": "Échanges et actifs",
-      "s12v": "61",
+      "s12v": "62",
       "s12l": "Outils MCP",
       "s13v": "154",
       "s13l": "Commandes ⌘K",
@@ -611,7 +611,7 @@
       "eyebrow": "Pour les créateurs et agents IA",
       "title": "Créez sur l'intelligence du monde en direct — à partir de n'importe quel stack.",
       "sub": "Tout ce qui est sur la carte est aussi une API. Intégrez-la à Claude via MCP, appelez les endpoints REST depuis n'importe où, ou installez un client natif pour Python, Ruby, Go ou JavaScript — votre code recherche avec des données en direct au lieu de souvenirs de données d'entraînement.",
-      "b1": "61 outils MCP — scores de risque, goulets d'étranglement, conflits, marchés, dossiers",
+      "b1": "62 outils MCP — scores de risque, goulets d'étranglement, conflits, marchés, dossiers",
       "b2": "API REST documentée — 193 opérations, une spécification OpenAPI 3.1, une clé",
       "b3": "SDK officiels sur npm, PyPI, RubyGems et Go — zéro dépendance, MCP-first",
       "b4": "Projection JMESPath sur chaque appel — récupérez exactement les champs dont vous avez besoin",
@@ -620,7 +620,7 @@
       "termQuery": "Notre exposition à la mer Rouge s'aggrave-t-elle cette semaine ?",
       "termAnswer": "Comptages de transit en baisse semaine après semaine ; niveau de risque de guerre élevé ; deux anomalies de densité au cours des dernières 48 h.",
       "termDocs": "Voir la référence complète de l'outil →",
-      "promise": "Une clé. 61 outils MCP. Une API REST complète. Des clients natifs pour chaque langage."
+      "promise": "Une clé. 62 outils MCP. Une API REST complète. Des clients natifs pour chaque langage."
     },
     "pricing": {
       "eyebrow": "Accès",
@@ -638,7 +638,7 @@
       "proF1": "WM Analyst — chattez avec 30+ services en direct, avec citations",
       "proF2": "Moteur de scénarios et Route Explorer — simulez les perturbations avant qu'elles ne surviennent",
       "proF3": "Digest IA personnel — quotidien, deux fois par jour ou hebdomadaire, vers Slack, Telegram ou e-mail",
-      "proF4": "MCP, API REST et SDK officiels — 61 outils sous une seule clé",
+      "proF4": "MCP, API REST et SDK officiels — 62 outils sous une seule clé",
       "proF5": "Constructeur de widgets personnalisés pour vos propres tableaux de bord",
       "cta": "Voir les forfaits et tarifs",
       "note": "À partir de 39,99 $/mois · 3 mois gratuits lors de la facturation annuelle"
@@ -651,7 +651,7 @@
       "q2": "Qu'est-ce qu'un tableau de bord d'intelligence mondiale ?",
       "a2": "Une vue en direct unique qui fusionne les signaux que la plupart des outils gardent séparés : événements de conflit, suivi des navires et des aéronefs, points d'étranglement maritime, satellites, câbles sous-marins, pipelines, marchés et menaces cyber — sur une carte mondiale en temps réel, avec notation IA et synthèses. World Monitor en est un gratuit.",
       "q3": "D'où viennent les données ?",
-      "a3": "531+ fournisseurs, nommés : ACLED et UCDP pour les conflits, AISStream pour les navires en direct, OpenSky pour les aéronefs, NASA FIRMS pour les incendies, USGS pour les tremblements de terre, FMI, BRI, FRED et Finnhub pour les marchés et la macroéconomie — plus 500+ flux d'actualités curatés. Chaque panneau cite ses sources et timestamps en ligne.",
+      "a3": "532+ fournisseurs, nommés : ACLED et UCDP pour les conflits, AISStream pour les navires en direct, OpenSky pour les aéronefs, NASA FIRMS pour les incendies, USGS pour les tremblements de terre, FMI, BRI, FRED et Finnhub pour les marchés et la macroéconomie — plus 500+ flux d'actualités curatés. Chaque panneau cite ses sources et timestamps en ligne.",
       "q4": "Puis-je surveiller les points d'étranglement comme Hormuz ou Bab el-Mandeb en temps réel ?",
       "a4": "Oui. 13 points d'étranglement sont suivis avec des compteurs de navires AIS en direct, le changement de transit semaine sur semaine et la notation des perturbations — et les anomalies de densité sont signalées contre la baseline historique de chaque détroit.",
       "q5": "En quoi cela diffère-t-il d'une carte de conflits comme Liveuamap ?",
@@ -659,7 +659,7 @@
       "q6": "Pourquoi devrais-je faire confiance à une alerte ?",
       "a6": "Une bannière en temps réel ne s'affiche que quand des types d'origine indépendants corroborent — classification des actualités, vélocité des mots-clés, escalade des points chauds, augmentations militaires, sirènes officielles — dédupliquées et limitées en débit. Moins d'alertes, de vraies alertes.",
       "q7": "Les agents IA comme Claude ou GPT peuvent-ils l'utiliser ?",
-      "a7": "Oui. World Monitor fournit un serveur MCP avec 61 outils, ce qui permet à Claude, GPT ou tout agent compatible MCP d'interroger en direct les scores de risque, l'état des goulets d'étranglement, les conflits, les marchés et les dossiers — avec projection JMESPath pour que les agents récupèrent exactement ce dont ils ont besoin.",
+      "a7": "Oui. World Monitor fournit un serveur MCP avec 62 outils, ce qui permet à Claude, GPT ou tout agent compatible MCP d'interroger en direct les scores de risque, l'état des goulets d'étranglement, les conflits, les marchés et les dossiers — avec projection JMESPath pour que les agents récupèrent exactement ce dont ils ont besoin.",
       "q8": "Ai-je besoin d'un compte ?",
       "a8": "Non. Le tableau de bord fonctionne instantanément sans inscription. Un compte n'importe que si vous montez en grade vers Pro ou voulez synchroniser les paramètres sur les appareils.",
       "q9": "Est-ce open source ?",

@@ -1074,6 +1074,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/_defense-industrial-source.mjs"
+        },
+        {
           "path": "scripts/ais-relay.cjs"
         },
         {
@@ -1292,6 +1295,20 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "atbackend.sipri.org",
+      "provider": "SIPRI Arms Transfers Database",
+      "kind": "structured",
+      "observed": true,
+      "license": "SIPRI fair use permits limited non-commercial use; commercial use requires prior authorization and may require a royalty",
+      "attribution": "Credit the SIPRI Arms Transfers Database and link to SIPRI terms and the public database portal.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_defense-industrial-source.mjs"
         }
       ]
     },

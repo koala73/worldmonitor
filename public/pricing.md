@@ -23,7 +23,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Price: $0/month
 - Signup required: No
 - Best for: Public situational awareness, OSINT research, market/geopolitical context, news monitoring
-- Includes: 56 map layers (all free except Resilience, which is Pro), 500+ curated feeds backed by 533+ observed upstream hosts, country briefs, hotspots, instability scores, chokepoints, cables, cascade analysis, breaking alert pipeline and watchlists
+- Includes: 56 map layers (all free except Resilience, which is Pro), 500+ curated feeds backed by 534+ observed upstream hosts, country briefs, hotspots, instability scores, chokepoints, cables, cascade analysis, breaking alert pipeline and watchlists
 - Limits: 3 dashboard tabs; free dashboard refresh cadence is typically 5-15 minutes; advanced analyst, digest, API and team workflows require paid plans
 
 ## Pro
@@ -32,7 +32,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Annual price: $359.99/year
 - Annual savings: 3 months free versus monthly billing
 - Best for: Investors, analysts, researchers, traders and operators who need the decision layer on top of the free dashboard
-- Includes: WM Analyst chat across 30+ live services with citations, Scenario Engine, Route Explorer, personal AI digest, custom widget builder, the Resilience map layer, MCP access and 61 tools under one key
+- Includes: WM Analyst chat across 30+ live services with citations, Scenario Engine, Route Explorer, personal AI digest, custom widget builder, the Resilience map layer, MCP access and 62 tools under one key
 - License: Personal use
 - Limits: 10 custom dashboards, 500 dashboard-AI requests/day, MCP + SDK 50 calls/day
 - Digest cadence: Daily, twice-daily or weekly

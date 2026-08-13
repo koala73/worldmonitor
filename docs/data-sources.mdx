@@ -164,6 +164,7 @@ Force posture and strategic infrastructure, tracked from open sources in real ti
 - Spaceports & launch facilities
 - **Orbital surveillance** — ~80–120 intelligence-relevant satellites tracked in real time via CelesTrak TLE data and client-side SGP4 propagation (satellite.js). Country-coded markers at orbital altitude, 15-min orbit trails, ground footprints. Globe-only. [Details →](/orbital-surveillance)
 - GPS/GNSS jamming zones from ADS-B transponder analysis (H3 hex grid, interference % classification)
+- Defense industrial-base indicators from the World Bank and derived five-year arms-supplier dependency shares from SIPRI
 
 **Key providers**
 
@@ -172,6 +173,20 @@ Force posture and strategic infrastructure, tracked from open sources in real ti
 | CelesTrak | Satellite TLE data for orbital tracking | [celestrak.org](https://celestrak.org) |
 | gpsjam.org | ADS-B-derived GPS interference grid | [gpsjam.org](https://gpsjam.org) |
 | LiveUAMap | Geocoded conflict events (Iran theater) | [liveuamap.com](https://liveuamap.com) |
+| World Bank Open Data | Military expenditure, personnel, and national arms-transfer totals (`MS.MIL.*`) | [api.worldbank.org](https://api.worldbank.org/) |
+| SIPRI Arms Transfers Database | Derived supplier shares and HHI for delivered major conventional weapons; no full-database mirror | [armstransfers.sipri.org](https://armstransfers.sipri.org/) |
+
+### Defense Industrial Base Licensing
+
+| Source | Stored and displayed | License and attribution posture |
+|--------|----------------------|---------------------------------|
+| World Bank Open Data | Latest and previous annual `MS.MIL.*` observations per country | [CC BY 4.0](https://www.worldbank.org/en/about/legal/terms-of-use-for-datasets); attribute World Bank. |
+| SIPRI Arms Transfers Database | Per-importer five-year supplier shares and HHI only | SIPRI attribution is required. The full database is not redistributed. SIPRI fair use permits non-commercial analytical use and reproduction of less than 10% of a dataset; commercial use requires authorization and may require a royalty. See [SIPRI terms](https://www.sipri.org/about/terms-and-conditions). |
+
+SIPRI TIV measures the volume of transfers of major conventional weapons. It is
+not a financial value. The annual seeder reads the current public portal output,
+maps recognized state entities to ISO-2 codes, logs and skips unmapped entities,
+and publishes only derived aggregates for the newest complete five-year window.
 
 Deep dives: [Military tracking](/military-tracking) · [Maritime intelligence](/maritime-intelligence) · [Orbital surveillance](/orbital-surveillance)
 
