@@ -47,13 +47,14 @@
     "ro",
     "ru",
     "sv",
+    "sw",
     "th",
     "tr",
     "uk",
     "vi",
     "zh"
   ],
-  "locales": 26,
+  "locales": 27,
   "workflows": [
     "analytics-collector-monitor.yml",
     "build-desktop.yml",

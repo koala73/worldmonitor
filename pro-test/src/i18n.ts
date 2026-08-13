@@ -5,7 +5,7 @@ import { resolveEffectiveWelcomeContentLanguage } from './welcome-language';
 
 type TranslationDictionary = Record<string, unknown>;
 
-const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi'] as const;
+const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi', 'sw'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 const SUPPORTED_SET = new Set<SupportedLanguage>(SUPPORTED_LANGUAGES);
 const loadedLanguages = new Set<SupportedLanguage>(['en']);
@@ -44,7 +44,7 @@ const OG_LOCALE: Record<string, string> = {
   es: 'es_ES', hr: 'hr_HR', hu: 'hu_HU', it: 'it_IT', pl: 'pl_PL', pt: 'pt_BR',
   nl: 'nl_NL', sv: 'sv_SE', ru: 'ru_RU', uk: 'uk_UA', ar: 'ar_SA', fa: 'fa_IR', zh: 'zh_CN',
   ja: 'ja_JP', ko: 'ko_KR', ro: 'ro_RO', tr: 'tr_TR', th: 'th_TH', vi: 'vi_VN',
-  hi: 'hi_IN',
+  hi: 'hi_IN', sw: 'sw_TZ',
 };
 
 function applyMetaTags(prefix = 'meta', contentLanguage = currentLanguageBase()): void {
