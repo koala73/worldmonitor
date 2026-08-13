@@ -771,7 +771,8 @@ All new services share these settings:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services (including the retired defense-patents producer) |
 | **Net savings** | 3 slots |
-| **Members** | Submarine Cables (weekly), Defense Patents (weekly), Defense Industrial Base (10d), Chokepoint Baselines (400d, runs rarely), Military Bases (30d, runs rarely) |
+| **Members** | Arms Suppliers (10d), Defense Industrial Base (10d), Submarine Cables (weekly), Defense Patents (weekly), Chokepoint Baselines (400d, runs rarely), Military Bases (30d, runs rarely), Mineral Production (60d, runs rarely) |
+| **Wall-time budget** | `maxBundleMs: 570_000` in `scripts/seed-bundle-static-ref.mjs`. The daily tick exists so this budget can defer lower-priority members rather than starve them; a member's own `timeoutMs` is a per-member cap inside that total, not an independent budget. |
 | **Required variable** | `USPTO_API_KEY=${{shared.USPTO_API_KEY}}` |
 
 Defense Patents is an intentional data-series migration, not a continuation of
@@ -1196,7 +1197,7 @@ Start with lowest-risk, highest-savings bundles.
 | Order | Bundle | Slots Freed | Risk | Cron Frequency |
 |---|---|---|---|---|
 | 1 | seed-bundle-ecb-eu | 3 | Low (daily, same API) | Daily |
-| 2 | seed-bundle-static-ref | 3 | Low (weekly, static data) | Weekly |
+| 2 | seed-bundle-static-ref | 3 | Low (daily tick, static data) | Daily |
 | 3 | seed-bundle-resilience | 1 | Low (6h, annual window) | 6h |
 | 4 | seed-bundle-portwatch | 3 | Medium (hourly, 4 members) | Hourly |
 | 5 | seed-bundle-climate | 4 | Medium (3h, 5 members) | 3h |
