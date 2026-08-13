@@ -139,8 +139,11 @@ jobs:
             echo "::error::no IndexNow variant hosts were derived from public/sitemap.xml"
             exit 1
           fi
+          # Split on whitespace without also glob-expanding: an unquoted $VAR
+          # would let a '*' in a host name expand against the workspace.
+          read -ra hosts <<< "$VARIANT_HOSTS"
           status=0
-          for host in $VARIANT_HOSTS; do
+          for host in "${hosts[@]}"; do
             node scripts/seo-indexnow-submit.mjs --host "$host" || status=1
           done
           exit $status

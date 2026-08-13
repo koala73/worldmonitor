@@ -329,6 +329,29 @@ describe('IndexNow submission', () => {
     }
   });
 
+  it('bounds every request so one stalled endpoint cannot consume the job', async () => {
+    // fetch has no default deadline, and seven hosts are submitted sequentially
+    // inside one job — without this, a hung endpoint strands the later hosts.
+    const requests = [];
+    const apexBatch = indexNow.INDEXNOW_BATCHES.find(({ host }) => host === 'worldmonitor.app');
+    const fetchImpl = async (url, init) => {
+      requests.push({ url: String(url), init });
+      if (String(url) === apexBatch.keyLocation) return new Response(apexBatch.key, { status: 200 });
+      return new Response(null, { status: 202 });
+    };
+
+    await indexNow.submitIndexNowBatch(apexBatch, {
+      endpoints: ['https://api.indexnow.org/IndexNow'],
+      fetchImpl,
+    });
+
+    assert.equal(requests.length, 2, 'expected the key verification plus one submission');
+    for (const { url, init } of requests) {
+      assert.ok(init.signal, `${url} must carry an abort signal`);
+      assert.equal(typeof init.signal.aborted, 'boolean', `${url} signal must be an AbortSignal`);
+    }
+  });
+
   it('requires a direct key response with the exact key body', async () => {
     const requests = [];
     const fetchImpl = async (url, init) => {
