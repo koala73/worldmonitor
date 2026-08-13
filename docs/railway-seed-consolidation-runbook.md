@@ -815,6 +815,8 @@ pre-seed evidence under the health-probe cutover contract.
 | **Replaces** | 2 services |
 | **Net savings** | 1 slot |
 | **Members** | Resilience Scores (6h), Resilience Static (annual window Oct 1-3, skips most runs), Food Stocks (monthly USDA PSD + FAOSTAT fill; needs `USDA_FAS_PSD_API_KEY`) |
+| **Wall budget** | 570 seconds, below Railway's 10-minute container kill. Section timeouts are 240s / 420s / 480s, so each fits the budget once the runner's 10s kill grace is added. Resilience Scores stays first in the array: it is the member that keeps `resilience:ranking:v27` and `resilience:intervals:v10:*` alive between cron fires, so it must be offered the budget before the heavier annual and monthly members. |
+| **Do not** | raise any section timeout above `maxBundleMs - 10_000`. A section whose timeout plus kill grace exceeds the budget is deferred on **every** tick while the bundle still exits 0 — #6556 ran this service dead for six hours behind a green badge. `tests/bundle-budget-admission.test.mjs` fails the PR, and `runBundle` refuses to start, but the arithmetic is worth knowing before you edit. |
 
 ### Bundle 5: seed-bundle-derived-signals
 
