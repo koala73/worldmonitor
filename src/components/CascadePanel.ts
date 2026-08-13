@@ -11,7 +11,7 @@ import {
   type DependencyGraph,
 } from '@/services/infrastructure-cascade';
 import type { CascadeResult, CascadeImpactLevel, InfrastructureNode } from '@/types';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { trustedHtml } from '@/utils/dom-utils';
 
 
 type NodeFilter = 'all' | 'cable' | 'pipeline' | 'port' | 'chokepoint';
@@ -194,7 +194,7 @@ export class CascadePanel extends Panel {
       </div>
     `;
 
-    setTrustedHtml(this.content, trustedHtml(`
+    this.setTrustedContent(trustedHtml(`
       <div class="cascade-panel">
         ${statsHtml}
         ${this.renderSelector()}
