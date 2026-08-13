@@ -511,12 +511,15 @@ manual recovery.
 The observer combines run summaries from the preceding 24 hours with separate
 queries for every active target status, including runs that started before that
 window. It repeats the active sweep around the history read and defers if the
-inventory changes, then reads attempt jobs only for active, recent, durably
-referenced, or non-success terminal runs. It follows at most 10 pages per
-query, makes at most 250 GitHub API requests, and bounds each request to 10
-seconds. Durable barriers and dispatch holds remain authoritative beyond that
-window; exhausting any read budget defers recovery rather than dispatching on
-partial history.
+inventory changes. With a durable mutation barrier, it reads attempt jobs only
+for active and durably referenced runs because the barrier already forbids
+recovery. After strict terminal acceptance, `lastAccepted.acceptedAt` retires
+older failures while a failure that finishes after the watermark is still read.
+Before the first trusted acceptance, it keeps the full fail-closed non-success
+scan. It follows at most 10 pages per query, makes at most 250 GitHub API
+requests, and bounds each request to 10 seconds. Durable barriers and dispatch
+holds remain authoritative beyond that window; exhausting any read budget
+defers recovery rather than dispatching on partial history.
 
 Do **not** use `railway redeploy`: Railway documents it as rebuilding the most
 recent deployment with the same code, so it cannot pick up a newer fixed commit.
