@@ -19,7 +19,7 @@ const fixture = wholeIndexFixture as typeof wholeIndexFixture & {
     requiredKeys: string[];
   };
 };
-const fixturePayload = fixture as unknown as Record<string, unknown>;
+const fixturePayload: Record<string, unknown> = Object.fromEntries(Object.entries(fixture));
 const EXPECTED_WHOLE_INDEX_PAIR_IDS = [
   'de-vs-fr',
   'no-vs-ca',
