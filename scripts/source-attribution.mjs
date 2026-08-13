@@ -226,6 +226,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Global Energy Monitor; link to the dataset page.',
     status: 'reviewed',
   },
+  'gtfsrt.ttc.ca': {
+    provider: 'Toronto Transit Commission (TTC) GTFS-RT',
+    license: 'Open Government Licence – Toronto (City of Toronto Open Data catalogue: TTC GTFS-Realtime Service Disruptions)',
+    attribution: 'Contains information licensed under the Open Government Licence – Toronto. Toronto Transit Commission GTFS-RT service alerts, https://gtfsrt.ttc.ca and https://open.toronto.ca/dataset/ttc-gtfs-realtime-gtfs-rt/.',
+    status: 'reviewed',
+  },
   'www.tenders.gov.au': {
     provider: 'AusTender',
     license: 'Australian Government data and feed terms',

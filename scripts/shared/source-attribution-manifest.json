@@ -3461,6 +3461,20 @@
       ]
     },
     {
+      "host": "gtfsrt.ttc.ca",
+      "provider": "Toronto Transit Commission (TTC) GTFS-RT",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence – Toronto (City of Toronto Open Data catalogue: TTC GTFS-Realtime Service Disruptions)",
+      "attribution": "Contains information licensed under the Open Government Licence – Toronto. Toronto Transit Commission GTFS-RT service alerts, https://gtfsrt.ttc.ca and https://open.toronto.ca/dataset/ttc-gtfs-realtime-gtfs-rt/.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-ttc-alerts.mjs"
+        }
+      ]
+    },
+    {
       "host": "hacker-news.firebaseio.com",
       "provider": "hacker-news.firebaseio.com",
       "kind": "structured",

@@ -33,7 +33,20 @@
       "cutover": {
         "probeKey": "seed-meta:supply-chain:mineral-production",
         "activatedAt": "2026-08-13T06:00:00.000Z",
-        "firstScheduledRunAt": "2026-08-14T03:00:00.000Z"      }
+        "firstScheduledRunAt": "2026-08-14T03:00:00.000Z"
+      }
+    },
+    {
+      "name": "ttcAlerts",
+      "status": "EMPTY",
+      "issue": 6623,
+      "expiresAt": "2026-08-14T12:00:00.000Z",
+      "reason": "New TTC GTFS-RT service-alerts probe. seed-ttc-alerts cron is */5 * * * *; EMPTY is expected until the first Railway tick after this branch deploys. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance rather than staying silent.",
+      "cutover": {
+        "probeKey": "seed-meta:transit:ttc:alerts",
+        "activatedAt": "2026-08-13T22:45:00.000Z",
+        "firstScheduledRunAt": "2026-08-14T12:00:00.000Z"
+      }
     }
   ]
 }
