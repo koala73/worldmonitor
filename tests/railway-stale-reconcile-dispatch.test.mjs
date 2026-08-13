@@ -1219,8 +1219,8 @@ describe('allowlisted GitHub watchdog transport', () => {
     }
   });
 
-  it('classifies only active, recent, failed, and durably referenced runs whose jobs were hydrated', async () => {
-    const selectedIds = new Set([2, 3, 4, 5, 6, 7, 8, 9]);
+  it('classifies a durable barrier from only active and durably referenced hydrated runs', async () => {
+    const selectedIds = new Set([2, 4, 5, 6, 7, 8, 9]);
     const allRuns = Array.from({ length: 792 }, (_, index) => rawRun({ id: index + 1 }));
     allRuns[1] = rawRun({ id: 2, status: 'in_progress', conclusion: null });
     allRuns[2] = rawRun({
@@ -1269,9 +1269,7 @@ describe('allowlisted GitHub watchdog transport', () => {
             total_count: 1,
             jobs: [{
               id: runId,
-              steps: runId === 3
-                ? [{ name: FINAL_ACCEPTANCE_STEP_NAME, conclusion: 'success' }]
-                : [],
+              steps: [],
             }],
           });
         }
@@ -1304,7 +1302,156 @@ describe('allowlisted GitHub watchdog transport', () => {
     assert.ok(client.requestCount <= 250);
   });
 
-  it('hydrates an old failed run so an unaccepted mutation marker cannot authorize recovery', async () => {
+  it('keeps a durable barrier observable with more old failures than the request budget', async () => {
+    const barrierRunId = 300;
+    const allRuns = Array.from({ length: barrierRunId }, (_, index) => rawRun({
+      id: index + 1,
+      status: 'completed',
+      conclusion: 'failure',
+      createdAt: new Date(NOW - 2 * 60 * 60_000).toISOString(),
+      updatedAt: new Date(NOW - 2 * 60 * 60_000 + 60_000).toISOString(),
+    }));
+    const hydratedIds = [];
+    const client = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      fetchImpl: async (url) => {
+        const parsed = new URL(url);
+        if (parsed.pathname.endsWith('/git/ref/heads/main')) {
+          return json({ object: { sha: HEAD } });
+        }
+        if (parsed.pathname.endsWith('/statuses')) {
+          return json([{ context: 'gate', state: 'success', updated_at: '2026-08-07T11:59:00Z' }]);
+        }
+        if (parsed.pathname.endsWith('/railway-deploy-trigger.yml/runs')) {
+          if (parsed.searchParams.has('status')) {
+            return json({ total_count: 0, workflow_runs: [] });
+          }
+          const page = Number(parsed.searchParams.get('page'));
+          const start = (page - 1) * 100;
+          const workflowRuns = allRuns.slice(start, start + 100);
+          return json(
+            { total_count: allRuns.length, workflow_runs: workflowRuns },
+            start + workflowRuns.length < allRuns.length ? { next: url } : {},
+          );
+        }
+        const match = /\/actions\/runs\/(\d+)\/attempts\/1\/jobs$/.exec(parsed.pathname);
+        if (match) {
+          const runId = Number(match[1]);
+          hydratedIds.push(runId);
+          return json({ total_count: 1, jobs: [{ id: runId, steps: [] }] });
+        }
+        throw new Error(`unexpected ${url}`);
+      },
+    });
+    const snapshot = await readWatchdogSnapshot({
+      github: client,
+      control: {
+        status: async () => ({
+          data: eligibleControl({
+            barrier: { attemptId: 'barrier-attempt', runId: String(barrierRunId) },
+            currentAttempt: {
+              attemptId: 'barrier-attempt',
+              runId: String(barrierRunId),
+              state: 'MUTATION_STARTED',
+            },
+          }),
+        }),
+      },
+      clock: () => NOW,
+    });
+
+    assert.deepEqual(hydratedIds, [barrierRunId]);
+    assert.ok(client.requestCount < 30, `expected bounded requests, received ${client.requestCount}`);
+    assert.equal(classifyWatchdogSnapshot(snapshot).outcome, 'MANUAL_REQUIRED_AFTER_MUTATION');
+  });
+
+  it('uses strict terminal acceptance as a watermark but still reads later failed work', async () => {
+    const acceptedAt = NOW - 30 * 60_000;
+    const oldFailures = Array.from({ length: 300 }, (_, index) => rawRun({
+      id: index + 1,
+      status: 'completed',
+      conclusion: 'failure',
+      createdAt: new Date(acceptedAt - 2 * 60 * 60_000).toISOString(),
+      updatedAt: new Date(acceptedAt - 60_000).toISOString(),
+    }));
+    const acceptance = rawRun({
+      id: 301,
+      status: 'completed',
+      conclusion: 'success',
+      createdAt: new Date(acceptedAt - 10 * 60_000).toISOString(),
+      updatedAt: new Date(acceptedAt).toISOString(),
+    });
+    const laterFailure = rawRun({
+      id: 302,
+      status: 'completed',
+      conclusion: 'failure',
+      createdAt: new Date(acceptedAt - 5 * 60_000).toISOString(),
+      updatedAt: new Date(acceptedAt + 5 * 60_000).toISOString(),
+    });
+    const allRuns = [...oldFailures, acceptance, laterFailure];
+    const hydratedIds = [];
+    const client = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      fetchImpl: async (url) => {
+        const parsed = new URL(url);
+        if (parsed.pathname.endsWith('/git/ref/heads/main')) {
+          return json({ object: { sha: HEAD } });
+        }
+        if (parsed.pathname.endsWith('/statuses')) {
+          return json([{ context: 'gate', state: 'success', updated_at: '2026-08-07T11:59:00Z' }]);
+        }
+        if (parsed.pathname.endsWith('/railway-deploy-trigger.yml/runs')) {
+          if (parsed.searchParams.has('status')) {
+            return json({ total_count: 0, workflow_runs: [] });
+          }
+          const page = Number(parsed.searchParams.get('page'));
+          const start = (page - 1) * 100;
+          const workflowRuns = allRuns.slice(start, start + 100);
+          return json(
+            { total_count: allRuns.length, workflow_runs: workflowRuns },
+            start + workflowRuns.length < allRuns.length ? { next: url } : {},
+          );
+        }
+        const match = /\/actions\/runs\/(\d+)\/attempts\/1\/jobs$/.exec(parsed.pathname);
+        if (match) {
+          const runId = Number(match[1]);
+          hydratedIds.push(runId);
+          const steps = runId === 301
+            ? [{ name: FINAL_ACCEPTANCE_STEP_NAME, conclusion: 'success' }]
+            : [{ name: MUTATION_STARTED_STEP_NAME, conclusion: 'success' }];
+          return json({ total_count: 1, jobs: [{ id: runId, steps }] });
+        }
+        throw new Error(`unexpected ${url}`);
+      },
+    });
+    const snapshot = await readWatchdogSnapshot({
+      github: client,
+      control: {
+        status: async () => ({
+          data: eligibleControl({
+            currentAttempt: { attemptId: 'accepted-attempt', state: 'TERMINAL_ACCEPTED' },
+            lastAccepted: {
+              attemptId: 'accepted-attempt',
+              runId: '301',
+              headSha: HEAD,
+              acceptedAt,
+            },
+          }),
+        }),
+      },
+      clock: () => NOW,
+    });
+
+    assert.deepEqual(new Set(hydratedIds), new Set([301, 302]));
+    assert.ok(client.requestCount < 30, `expected bounded requests, received ${client.requestCount}`);
+    assert.equal(classifyWatchdogSnapshot(snapshot).outcome, 'MANUAL_REQUIRED_AFTER_MUTATION');
+  });
+
+  it('hydrates an old failed run when no trusted acceptance watermark exists', async () => {
     const oldFailure = rawRun({
       id: 61,
       status: 'completed',
@@ -1344,13 +1491,92 @@ describe('allowlisted GitHub watchdog transport', () => {
     });
     const snapshot = await readWatchdogSnapshot({
       github: client,
-      control: { status: async () => ({ data: eligibleControl() }) },
+      control: {
+        status: async () => ({
+          data: eligibleControl({
+            lastAccepted: {
+              attemptId: 'malformed-watermark',
+              runId: 'not-a-run-id',
+              headSha: HEAD,
+              acceptedAt: NOW - 10 * 60_000,
+            },
+          }),
+        }),
+      },
       clock: () => NOW,
     });
 
     assert.equal(snapshot.runs[0].hydrated, true);
     const classified = classifyWatchdogSnapshot(snapshot);
     assert.equal(classified.outcome, 'MANUAL_REQUIRED_AFTER_MUTATION');
+    assert.equal(classified.dispatchEligible, false);
+  });
+
+  it('hydrates only a recent acceptance proof when the durable run id is unavailable', async () => {
+    const recentSuccess = rawRun({
+      id: 71,
+      createdAt: new Date(NOW - 15 * 60_000).toISOString(),
+      updatedAt: new Date(NOW - 10 * 60_000).toISOString(),
+    });
+    const olderSuccess = rawRun({
+      id: 72,
+      createdAt: new Date(NOW - 125 * 60_000).toISOString(),
+      updatedAt: new Date(NOW - 120 * 60_000).toISOString(),
+    });
+    const hydratedIds = [];
+    const client = new GitHubWatchdogClient({
+      repository: 'o/r',
+      token: 'token',
+      now: () => NOW,
+      fetchImpl: async (url) => {
+        const parsed = new URL(url);
+        if (parsed.pathname.endsWith('/git/ref/heads/main')) {
+          return json({ object: { sha: HEAD } });
+        }
+        if (parsed.pathname.endsWith('/statuses')) {
+          return json([{ context: 'gate', state: 'success', updated_at: '2026-08-07T11:59:00Z' }]);
+        }
+        if (parsed.pathname.endsWith('/railway-deploy-trigger.yml/runs')) {
+          if (parsed.searchParams.has('status')) {
+            return json({ total_count: 0, workflow_runs: [] });
+          }
+          return json({ total_count: 2, workflow_runs: [recentSuccess, olderSuccess] });
+        }
+        const match = /\/actions\/runs\/(\d+)\/attempts\/1\/jobs$/.exec(parsed.pathname);
+        if (match) {
+          const runId = Number(match[1]);
+          hydratedIds.push(runId);
+          return json({
+            total_count: 1,
+            jobs: [{
+              id: runId,
+              steps: [{ name: FINAL_ACCEPTANCE_STEP_NAME, conclusion: 'success' }],
+            }],
+          });
+        }
+        throw new Error(`unexpected ${url}`);
+      },
+    });
+    const snapshot = await readWatchdogSnapshot({
+      github: client,
+      control: {
+        status: async () => ({
+          data: eligibleControl({
+            lastAccepted: {
+              attemptId: 'accepted-without-run-id',
+              runId: null,
+              headSha: HEAD,
+              acceptedAt: NOW - 10 * 60_000,
+            },
+          }),
+        }),
+      },
+      clock: () => NOW,
+    });
+
+    assert.deepEqual(hydratedIds, [recentSuccess.id]);
+    const classified = classifyWatchdogSnapshot(snapshot);
+    assert.equal(classified.outcome, 'HEALTHY');
     assert.equal(classified.dispatchEligible, false);
   });
 
