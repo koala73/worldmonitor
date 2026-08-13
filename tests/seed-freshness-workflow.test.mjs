@@ -487,6 +487,14 @@ describe('seed freshness workflow control plane', () => {
     assert.equal(driftJob.if, undefined, 'the independent drift job must run under default job semantics');
     assert.equal(driftJob.name, 'Railway deploy drift');
     assert.equal(driftJob['timeout-minutes'], 20);
+    // The STEP-level guard below is not enough: `continue-on-error` on the JOB
+    // publishes success over a failed drift step, which is the one thing this
+    // job's conclusion must never do. `monitor` already pins the job-level key.
+    assert.equal(
+      driftJob['continue-on-error'],
+      undefined,
+      'a green drift job must mean a clean fleet',
+    );
     assert.deepEqual(driftJob.environment, {
       name: 'ingestion-acceptance-production',
       deployment: false,
@@ -503,6 +511,14 @@ describe('seed freshness workflow control plane', () => {
     assert.equal(checkout.uses, 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10');
     assert.equal(checkout.with?.['fetch-depth'], 0);
     assert.equal(checkout.with?.filter, 'blob:none');
+    // This checkout IS the comparison head: check-railway-deploy-drift.mjs resolves
+    // it with `git rev-parse HEAD`. Pinning `ref:` to anything else grades a stale
+    // tree, which reports a clean fleet while main sits undeployed.
+    assert.equal(
+      checkout.with?.ref,
+      undefined,
+      'the drift verdict must be measured against trigger head, not a pinned ref',
+    );
 
     const setupNode = driftSteps.find(
       (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/setup-node@'),
@@ -536,6 +552,14 @@ describe('seed freshness workflow control plane', () => {
       /git fetch[^\n]*--depth/,
       're-fetching with a depth would re-shallow the full-history checkout',
     );
+    // The script's exit code IS the fleet verdict. `git fetch ... || true` sits one
+    // line above it in the same run block, so a copied suffix is the likely way this
+    // regresses -- and YAML `continue-on-error` is not the only way to swallow it.
+    assert.doesNotMatch(
+      drift.run,
+      /check-railway-deploy-drift\.mjs[^\n]*\|\|/,
+      'shell suppression would publish a green drift job over a stranded fleet',
+    );
     assert.equal(
       drift['continue-on-error'],
       undefined,
@@ -543,5 +567,13 @@ describe('seed freshness workflow control plane', () => {
     );
     assert.equal(drift.if, undefined, 'no monitor gate expression may suppress the drift verdict');
     assert.doesNotMatch(JSON.stringify(driftJob), /steps\.gate|needs\s*:/);
+    // Deliberate divergence from `monitor`, which detaches onto a gated ancestor when
+    // the gate falls back. The fleet is always judged against trigger head -- the
+    // strict reading. Pinned here so the baseline cannot change without a test edit.
+    assert.equal(
+      driftSteps.some((step) => typeof step.run === 'string' && step.run.includes('git checkout')),
+      false,
+      'drift is judged against trigger head; a gated-ancestor checkout would silently move the baseline',
+    );
   });
 });

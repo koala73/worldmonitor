@@ -155,6 +155,21 @@ jobs:
       - name: Start deploy-drift run budget
         run: echo "RAILWAY_DRIFT_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
 
+      # This checkout IS the comparison head: check-railway-deploy-drift.mjs takes
+      # `--head` from `git rev-parse HEAD`, and nothing here passes one.
+      #
+      # BEHAVIOR CHANGE vs the pre-split step, recorded deliberately. `monitor`
+      # detaches onto a gated ancestor when the gate falls back (head ungated, an
+      # ancestor green); the old drift step inherited that tree and judged the fleet
+      # against the ancestor. This job has no gate and no detach, so it always judges
+      # against trigger head -- what the old comment called the strict reading, now
+      # applied on the fallback path too, not just on gate failure.
+      #
+      # The cost is bounded and fails closed. Only services whose watch-path closure
+      # intersects the ungated commits can flip to BEHIND (check-railway-deploy-drift
+      # returns CURRENT_FOR_CLOSURE otherwise), and DEFAULT_BUILD_GRACE_MS absorbs the
+      # first 30 minutes, so this needs a genuine gate stall rather than routine gate
+      # latency. It reports a false red, never a false green.
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           # The drift check asks whether a service is running something newer

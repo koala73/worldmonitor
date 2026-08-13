@@ -375,10 +375,22 @@ incident note.
 default branch. Scheduled runs first require the latest `main` commit's `gate`
 status to be green; a missing, pending, or failed gate makes the workflow fail
 closed instead of producing a green skipped run. Manual runs execute directly.
-After the repository gate, the workflow checks live Railway watch paths, cron
-schedules, required routing variables, and service presence against
-`scripts/railway-services.json`, then runs the deploy-drift check, then checks
-public compact health. It fails on
+The workflow runs two independent jobs. Read the one that answers your question.
+
+- `monitor` is the gated job. After the repository gate, it checks live Railway
+  watch paths, cron schedules, required routing variables, and service presence
+  against `scripts/railway-services.json`, then checks public compact health.
+- `Railway deploy drift` is a separate job. It has no `needs:` and no gate
+  condition, so it runs in parallel with `monitor` and publishes its own
+  conclusion. A failed gate turns `monitor` red but leaves this job's verdict
+  intact (#6523).
+
+During a gate outage, read the `Railway deploy drift` job, not `monitor`. A red
+`monitor` alone says nothing about the fleet. Note that the run's overall
+conclusion and its badge stay red whenever `monitor` fails, so you must open the
+run and read the job conclusions to tell a clean fleet from a stranded one.
+
+`monitor` fails on
 every actionable problem, including `SEED_ERROR`, `STALE_SEED`,
 `STALE_CONTENT`, and degraded composed coverage. Statuses that explicitly end
 in `_ON_DEMAND` remain informational. It deliberately does not run on an

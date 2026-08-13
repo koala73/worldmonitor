@@ -361,10 +361,16 @@ recovered, and an expiry that reddened the monitor over zero entries would be a
 finding-free failure on a check whose whole value is that its reds mean
 something.
 
-`.github/workflows/seed-freshness-monitor.yml` runs the drift check in the step
-**Check Railway deploy drift against main**, between the config audit and the
-compact-health check. Its checkout uses `fetch-depth: 50` and the step re-fetches
-main first, for the ancestry reason above.
+`.github/workflows/seed-freshness-monitor.yml` runs the drift check in its own
+`drift` job, named **Railway deploy drift**. That job has no `needs:` and no gate
+condition, so it runs in parallel with the `monitor` job and reports its own
+conclusion. It has no ordering relationship to the config audit or the
+compact-health check, which stay in `monitor` (#6523).
+
+The drift job checks out with `fetch-depth: 0`, and the step re-fetches main
+first, for the ancestry reason above. The job does not detach onto a gated
+ancestor the way `monitor` does, so the fleet is always judged against trigger
+head.
 
 ### Still true, and unchanged
 
