@@ -229,6 +229,20 @@ describe('unreachable schema drop (real bundle)', () => {
     }
   });
 
+  it('is order-independent: running the drop first emits the identical document', () => {
+    // build-openapi-json.mjs runs the drop last and its comment says that is a
+    // convention rather than a requirement — the unconditional seeding from
+    // every non-schema bucket is what actually keeps hoisted components' schema
+    // targets alive. This is that claim, executed. If it ever fails, the
+    // comment is wrong and the ordering is load-bearing after all.
+    const first = loadUnifiedOpenApiSpec();
+    dropUnreachableSchemas(first);
+    dedupeErrorResponses(first);
+    dedupeSharedChinaProvenanceSchemas(first);
+    dedupeSharedParameters(first);
+    assert.equal(JSON.stringify(first), JSON.stringify(after));
+  });
+
   it('changes nothing outside components.schemas', () => {
     const strip = (spec) => {
       const copy = { ...spec, components: { ...spec.components } };

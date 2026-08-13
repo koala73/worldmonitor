@@ -807,6 +807,22 @@ describe('CI workflow coverage', () => {
       /path: \$\{\{ runner\.temp \}\}\/openapi-capacity\.json/,
       'the capacity artifact must be read from the same path the step wrote',
     );
+    // `if: failure()` would publish nothing on a green run and `if: success()`
+    // nothing on a red one; the breakdown is worth reading in both cases, and
+    // an over-budget run is when it matters most. Narrowing this to either
+    // would stop publishing on exactly the runs someone goes looking for it.
+    const upload = unit.slice(unit.indexOf('- name: Upload OpenAPI capacity report'));
+    assert.match(
+      upload.slice(0, upload.indexOf('- name: ', 1)),
+      /if: \$\{\{ !cancelled\(\) \}\}/,
+      'the capacity artifact must be uploaded whether the step passed or failed',
+    );
+    // The report must run BEFORE the suite: an over-budget artifact fails
+    // test:data anyway, and failing at the front costs 30s instead of 10min.
+    assert.ok(
+      unit.indexOf('openapi-capacity-report.mjs') < unit.indexOf('npm run test:data'),
+      'the capacity report must run before the test suite',
+    );
   });
 
   it('keeps resilience validation bundle inputs in the CI change filter', () => {

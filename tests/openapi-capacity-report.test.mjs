@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 import { buildBundle } from '../scripts/build-openapi-json.mjs';
@@ -208,6 +208,18 @@ describe('contributor breakdowns', () => {
   it('escapes path separators so the pointers are valid JSON Pointers', () => {
     const pointers = sectionBreakdown({ 'a/b': { x: 1 } }).map((s) => s.pointer);
     assert.deepEqual(pointers, ['/a~1b'], 'a "/" inside a key must be escaped as ~1');
+  });
+
+  it('charges webhook operations too, not only paths', () => {
+    // countOperations walks paths AND webhooks; a field breakdown that walked
+    // only paths would divide real bytes by an inflated operation count.
+    const spec = {
+      paths: { '/a': { get: { description: 'x'.repeat(100) } } },
+      webhooks: { ping: { post: { description: 'y'.repeat(100) } } },
+    };
+    const [description] = operationFieldBreakdown(spec);
+    assert.equal(description.bytes > 200, true, 'both operations must be counted');
+    assert.equal(description.bytesPerOperation, Math.round(description.bytes / 2));
   });
 });
 
@@ -470,6 +482,23 @@ describe('CLI', () => {
     assert.match(result.stderr, /NOT MEASURED/);
   });
 
+  it('warns without failing when the reserve is breached', () => {
+    // The advisory band, and the only path that prints the plan-doc pointer.
+    // A budget just above the current size leaves positive headroom below the
+    // three-operation reserve.
+    const budget = realBundle.bytes + 1900;
+    const result = run(['--budget', String(budget)]);
+    assert.equal(result.status, 0, 'a breached reserve advises, it does not fail the build');
+    assert.match(result.stderr, /::warning::OpenAPI bundle reserve breached/);
+    assert.match(result.stderr, /docs\/perf\/openapi-bundle-capacity-2026-08-13\.md/);
+  });
+
+  it('exits 2 when --out cannot be written', () => {
+    const result = run(['--out', tmpdir()]); // a directory, not a file
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /cannot write/);
+  });
+
   it('exits 2 on misuse rather than reporting a number it did not measure', () => {
     for (const args of [['--nope'], ['--out'], ['--budget', 'x'], ['--budget', '-1']]) {
       assert.equal(run(args).status, 2, `${args.join(' ')} must be a usage error`);
@@ -488,6 +517,22 @@ describe('build-openapi-json CLI', () => {
     assert.ok(existsSync(artifact), 'the build must write the artifact');
     assert.equal(statSync(artifact).size, realBundle.bytes);
     assert.match(result.stdout, /dropped \d+ unreachable schemas/);
+  });
+
+  it('writes nothing when the module is merely imported', () => {
+    // The whole point of the invokedDirectly guard: the capacity report and
+    // three test files import this module for measurement. If the guard stopped
+    // matching, every import would rewrite the served artifact as a side
+    // effect. Asserted through the log line main() prints, so the check itself
+    // cannot disturb the file it is protecting.
+    const probe = spawnSync(
+      'node',
+      ['--input-type=module', '-e', `import ${JSON.stringify(pathToFileURL(buildScript).href)}; console.log('IMPORTED');`],
+      { cwd: root, encoding: 'utf8' },
+    );
+    assert.equal(probe.status, 0, probe.stderr);
+    assert.equal(probe.stdout.trim(), 'IMPORTED');
+    assert.ok(!/build-openapi-json: wrote/.test(probe.stdout), 'importing must not run main()');
   });
 
   it('refuses a source that is not an OpenAPI document', () => {
