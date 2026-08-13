@@ -60,6 +60,7 @@ import { renderNotifyCountryLink } from '@/utils/notify-country-link';
 import { exportCountryEvidenceMarkdown } from '@/utils/export';
 import type { CountryEvidenceBundleInput } from '@/utils/export';
 import { ciiBandForLevel } from './CountryDeepDivePanel-cii';
+import { renderDefenseIndustrialSection } from './CountryDeepDivePanel-defense-industrial';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
@@ -71,6 +72,7 @@ import { toApiUrl } from '@/services/runtime';
 import type { ComputeEnergyShockScenarioResponse, ProductImpact } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { overlayHistory, type OverlayCloseOrigin } from '@/utils/overlay-history';
+import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
 
 
 type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -137,6 +139,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private signalRecentBody: HTMLElement | null = null;
   private newsBody: HTMLElement | null = null;
   private militaryBody: HTMLElement | null = null;
+  private currentMilitarySummary: CountryDeepDiveMilitarySummary | null = null;
+  private currentDefenseIndustrial: GetDefenseIndustrialBaseResponse | null = null;
   private infrastructureBody: HTMLElement | null = null;
   private economicBody: HTMLElement | null = null;
   private chinaSummaryBody: HTMLElement | null = null;
@@ -472,35 +476,57 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
 
   public updateMilitaryActivity(summary: CountryDeepDiveMilitarySummary): void {
+    this.currentMilitarySummary = summary;
+    this.renderMilitaryActivity();
+  }
+
+  public updateDefenseIndustrialBase(data: GetDefenseIndustrialBaseResponse | null): void {
+    this.currentDefenseIndustrial = data;
+    this.renderMilitaryActivity();
+  }
+
+  private renderMilitaryActivity(): void {
     if (!this.militaryBody) return;
     this.militaryBody.replaceChildren();
 
-    const stats = this.el('div', 'cdp-military-grid');
-    stats.append(
-      this.metric(t('countryBrief.ownFlights'), String(summary.ownFlights), 'cdp-chip-neutral'),
-      this.metric(t('countryBrief.foreignFlights'), String(summary.foreignFlights), summary.foreignFlights > 0 ? 'cdp-chip-danger' : 'cdp-chip-neutral'),
-      this.metric(t('countryBrief.navalVessels'), String(summary.nearbyVessels), 'cdp-chip-neutral'),
-      this.metric(t('countryBrief.foreignPresence'), summary.foreignPresence ? t('countryBrief.detected') : t('countryBrief.notDetected'), summary.foreignPresence ? 'cdp-chip-danger' : 'cdp-chip-success'),
-    );
-    this.militaryBody.append(stats);
+    const summary = this.currentMilitarySummary;
+    if (summary) {
+      const stats = this.el('div', 'cdp-military-grid');
+      stats.append(
+        this.metric(t('countryBrief.ownFlights'), String(summary.ownFlights), 'cdp-chip-neutral'),
+        this.metric(t('countryBrief.foreignFlights'), String(summary.foreignFlights), summary.foreignFlights > 0 ? 'cdp-chip-danger' : 'cdp-chip-neutral'),
+        this.metric(t('countryBrief.navalVessels'), String(summary.nearbyVessels), 'cdp-chip-neutral'),
+        this.metric(t('countryBrief.foreignPresence'), summary.foreignPresence ? t('countryBrief.detected') : t('countryBrief.notDetected'), summary.foreignPresence ? 'cdp-chip-danger' : 'cdp-chip-success'),
+      );
+      this.militaryBody.append(stats);
 
-    const basesTitle = this.el('div', 'cdp-subtitle', t('countryBrief.nearestBases'));
-    this.militaryBody.append(basesTitle);
-
-    if (summary.nearestBases.length === 0) {
-      this.militaryBody.append(this.makeEmpty(t('countryBrief.noBasesNearby')));
-      return;
+      const basesTitle = this.el('div', 'cdp-subtitle', t('countryBrief.nearestBases'));
+      this.militaryBody.append(basesTitle);
+      if (summary.nearestBases.length === 0) {
+        this.militaryBody.append(this.makeEmpty(t('countryBrief.noBasesNearby')));
+      } else {
+        const list = this.el('ul', 'cdp-base-list');
+        for (const base of summary.nearestBases.slice(0, 3)) {
+          const item = this.el('li', 'cdp-base-item');
+          item.append(
+            this.el('span', 'cdp-base-name', base.name),
+            this.el('span', 'cdp-base-distance', `${Math.round(base.distanceKm)} km`),
+          );
+          list.append(item);
+        }
+        this.militaryBody.append(list);
+      }
     }
 
-    const list = this.el('ul', 'cdp-base-list');
-    for (const base of summary.nearestBases.slice(0, 3)) {
-      const item = this.el('li', 'cdp-base-item');
-      const left = this.el('span', 'cdp-base-name', base.name);
-      const right = this.el('span', 'cdp-base-distance', `${Math.round(base.distanceKm)} km`);
-      item.append(left, right);
-      list.append(item);
-    }
-    this.militaryBody.append(list);
+    this.renderDefenseIndustrialBase();
+  }
+
+  private renderDefenseIndustrialBase(): void {
+    if (!this.militaryBody || !this.currentDefenseIndustrial?.available) return;
+    this.militaryBody.append(renderDefenseIndustrialSection(
+      this.currentDefenseIndustrial,
+      (label, value, chipClass) => this.metric(label, value, chipClass),
+    ));
   }
 
   public updateInfrastructure(countryCode: string): void {
@@ -2753,6 +2779,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.cachedSectors = [];
     this.map?.clearHighlightedRoute();
     this.scoreCard = null;
+    this.currentMilitarySummary = null;
+    this.currentDefenseIndustrial = null;
     this.energyBody = null;
     this.maritimeBody = null;
     this.tradeExposureBody = null;

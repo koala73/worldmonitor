@@ -767,11 +767,11 @@ All new services share these settings:
 |---|---|
 | **Service name** | `seed-bundle-static-ref` |
 | **Start command** | `node scripts/seed-bundle-static-ref.mjs` |
-| **Cron schedule** | `0 3 * * 0` (weekly, Sunday 03:00 UTC) |
+| **Cron schedule** | `0 3 * * *` (daily at 03:00 UTC) |
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services (including the retired defense-patents producer) |
 | **Net savings** | 3 slots |
-| **Members** | Submarine Cables (weekly), Defense Patents (weekly), Chokepoint Baselines (400d, runs rarely), Military Bases (30d, runs rarely) |
+| **Members** | Submarine Cables (weekly), Defense Patents (weekly), Defense Industrial Base (10d), Chokepoint Baselines (400d, runs rarely), Military Bases (30d, runs rarely) |
 | **Required variable** | `USPTO_API_KEY=${{shared.USPTO_API_KEY}}` |
 
 Defense Patents is an intentional data-series migration, not a continuation of
@@ -781,6 +781,20 @@ empty for wire compatibility. The producer marks the discontinuity with
 `sourceVersion: uspto-odp-v1` and `schemaVersion: 2`; operational comparisons
 must not treat pre-migration grant dates and post-migration filing dates as one
 continuous metric.
+
+Defense Industrial Base writes `military:industrial-base:v1` from World Bank
+`MS.MIL.*` series and `military:arms-suppliers:v1` from SIPRI-derived five-year
+supplier shares. Both values have a 30-day TTL. Each source is eligible every
+10 days, and the daily service evaluates that interval before day 10, which
+keeps the canonical TTL above the three-refresh safety floor. The sources run
+as separate bounded processes under a 570-second bundle budget, so one failure
+cannot block the other source's publication. A SIPRI portal failure preserves
+last-good supplier rows with their original timestamps. A separate
+SIPRI-completion marker stays old after a partial pass, so the next daily tick
+retries the portal instead of treating the partial pass as complete.
+Strict health-probe registration is a staged follow-up after the first Railway
+run publishes both seed-meta keys; the follow-up must cite real Railway
+pre-seed evidence under the health-probe cutover contract.
 
 ### Bundle 4: seed-bundle-resilience
 

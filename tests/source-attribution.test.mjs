@@ -94,9 +94,9 @@ test('source inventory has complete metadata and matches the generated catalog',
   }
 
   const stats = sourceAttributionStats(inventory, manifest);
-  assert.equal(stats.activeHosts, 531);
-  assert.equal(stats.providerCount, 529);
-  assert.equal(stats.observedHosts, 650);
+  assert.equal(stats.activeHosts, 532);
+  assert.equal(stats.providerCount, 530);
+  assert.equal(stats.observedHosts, 651);
   assert.ok(stats.reviewNeeded > 0, 'terms-review rows must remain visible until a license audit is complete');
 });
 

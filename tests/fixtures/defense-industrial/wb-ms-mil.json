@@ -1,0 +1,8 @@
+[
+  { "page": 1, "pages": 1, "per_page": 1000, "total": 3 },
+  [
+    { "countryiso3code": "UKR", "date": "2024", "value": 34.5, "country": { "value": "Ukraine" } },
+    { "countryiso3code": "UKR", "date": "2023", "value": 36.7, "country": { "value": "Ukraine" } },
+    { "countryiso3code": "WLD", "date": "2024", "value": 2.5, "country": { "value": "World" } }
+  ]
+]
