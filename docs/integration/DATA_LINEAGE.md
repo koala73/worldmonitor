@@ -261,3 +261,18 @@ golden-image comparisons:
    trade or factory assertion still needs a separately licensed source-bearing
    response with observation/as-of time, delay and provenance. No Phase 11
    artifact substitutes for that route.
+
+## Phase 12 publication-provenance lineage
+
+Phase 12 adds version-control provenance only:
+
+1. **Local branch evidence.** The integration branch name, commit parents,
+   remote URLs and `origin/main` ancestry are source-control metadata recorded
+   in `phase12-publication-preflight.md`.
+2. **Connected-GitHub evidence.** Repository permission/default-branch
+   metadata and the independent upstream-main commit lookup establish where a
+   Draft PR may be opened; they do not establish product-data lineage.
+3. **No data-bearing branch.** A pushed commit, PR URL or CI result must never
+   be treated as a market observation, K-line, AIS message, shipment/cargo
+   fact, news causal conclusion, trade statistic or factory fact. Those
+   branches remain closed until their separate source-bearing records exist.

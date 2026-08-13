@@ -220,3 +220,18 @@ No upstream fetch, merge, rebase, branch rewrite, `main` mutation, force push
 or legacy-project deletion occurred while accepting Phase 11. Publication is
 deferred to Phase 12 and targets only the integration branch after remote/SHA
 verification.
+
+## Phase 12 publication lock
+
+Publication preflight observed `origin` as
+`https://github.com/daking32168-byte/worldmonitor.git` and `upstream` as
+`https://github.com/koala73/worldmonitor.git`. At preflight, owner-fork `main`
+was `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`; the connected GitHub
+integration independently resolved upstream `main` to
+`a788840c18933489294dacc9b27d57737064bf45` after a duplicate local
+`ls-remote` read encountered a transport reset.
+
+No fetch result was merged or rebased. Phase 12 may create/update only
+`origin/integration/pokieticker-maritime-china-factory` by a non-force push and
+may open only a Draft PR in `daking32168-byte/worldmonitor` targeting `main`.
+It must not push to, open a PR against, or mutate `koala73/worldmonitor`.

@@ -383,3 +383,27 @@ records that immutable SHA.
 Proceed to Phase 12 publication readiness on the integration branch only;
 verify both remotes, publish without touching `main`, and create a Draft PR
 through the connected GitHub integration.
+
+## Phase 12 - controlled integration publication
+
+Phase 12 publication preflight is complete. The local branch is
+`integration/pokieticker-maritime-china-factory`; it is not a default branch.
+`origin/main` is `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`, remains unchanged
+locally, and is an ancestor of the Phase 11 receipt
+`446e2e57764c72dd6fa2ff98e4164cdb19097897`. GitHub integration metadata
+confirms that `daking32168-byte/worldmonitor` is the owner's fork with push
+permission and default branch `main`, while `koala73/worldmonitor` is the
+read-only AGPL-3.0 upstream with default branch `main`.
+
+This phase has not pushed, merged, rebased, force-pushed or edited `main`.
+The only permitted publication target is the integration branch in the owner
+fork; the required outcome is a Draft PR to that fork's `main`. The local
+GitHub CLI session is unauthenticated, but the connected GitHub integration has
+verified owner-fork administrative/push permissions and will be used for PR
+operations. Its preflight receipt is
+`docs/integration/evidence/phase12-publication-preflight.md`.
+
+## Next action
+
+Commit the Phase 12 preflight record, backfill its SHA, then publish the
+integration branch and create a Draft PR without changing `main`.

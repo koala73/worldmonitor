@@ -201,3 +201,17 @@ irreversible operation.
   change product behavior to accommodate test infrastructure.
 - [ ] Continue to keep Provider credentials, certificates, sessions, payment
   data and CAPTCHA challenges out of chat, screenshots, test logs and Git.
+
+## Phase 12 publication control receipt (2026-08-14)
+
+The integration branch is the only authorized publication target. The connected
+GitHub integration verified owner-fork administrative/push permission, while
+the upstream is read-only. The local `gh` session reports unauthenticated and
+will not be used to bypass the connected integration.
+
+- [ ] Review the Draft PR after it is created; do not mark it ready, merge it,
+  or authorize deployment from this record alone.
+- [ ] Keep signing certificates, OAuth sessions, Provider keys, passwords,
+  payment data and CAPTCHA material outside chat, Git, screenshots and logs.
+- [ ] If a later deployment, release signing, paid Provider activation or
+  upstream contribution is desired, explicitly authorize that separate action.

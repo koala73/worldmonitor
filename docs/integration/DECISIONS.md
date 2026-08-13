@@ -312,3 +312,19 @@ fail-closed panel state could render.
 **Consequence:** Full retains runtime hostname selection; each fixed variant
 uses syntactically valid fixed assignment. Seven focused tests parse every
 non-Full emitted pre-paint script and protect unrelated HTML routes.
+
+## D-0026 - Publish only to the owner fork as a non-force integration branch
+
+**Decision:** Phase 12 targets
+`daking32168-byte/worldmonitor:integration/pokieticker-maritime-china-factory`
+with a normal tracked push and a Draft PR to that fork's `main`. It does not
+push to upstream or change any `main` ref.
+
+**Reason:** Connected GitHub metadata confirms owner-fork administrative/push
+permission, while `koala73/worldmonitor` is a read-only AGPL-3.0 upstream. The
+mixed local worktree also requires an explicit branch scope rather than a
+blanket staging/publishing action.
+
+**Consequence:** The Phase 11 commits and the Phase 12 documentation receipt
+are the only commits released by this phase. A remote PR is a review artifact,
+not a merge, deployment, Provider authorization or proof of live data.

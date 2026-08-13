@@ -305,3 +305,21 @@ commit backfills this immutable SHA.
 ACCESSIBILITY/MOBILE/PANEL REGRESSION, TEST-HARNESS HONESTY AND FINAL ACCEPTANCE
 EVIDENCE.** It does not certify a licensed Provider observation, real-time
 stock bar, AIS message, cargo inference, news causality or factory fact.
+
+## Phase 12 - controlled publication preflight
+
+**Implementation commit:** pending controlled-publication record. The next
+receipt commit will backfill its immutable SHA before the branch is published.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Integration branch identity | PASS | `integration/pokieticker-maritime-china-factory` is checked out; it is not `main` or `master`. |
+| Origin main preservation | PASS | Remote `origin/main` and local `main` both resolve to `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`; `origin/main` is an ancestor of `446e2e57764c72dd6fa2ff98e4164cdb19097897`. |
+| Prior acceptance receipt | PASS | Phase 11 implementation `a640cb3c25ac393759b1907b3f6c687b5a57e974` and receipt `446e2e57764c72dd6fa2ff98e4164cdb19097897` both resolve as local commit objects. |
+| Connected GitHub repository verification | PASS | GitHub integration reports push/admin permission for `daking32168-byte/worldmonitor` and read-only access to its upstream `koala73/worldmonitor`; both default to `main`. |
+| Publication mechanism | CONDITIONAL PASS | The connected GitHub integration is authorized; local `gh auth status` is unauthenticated and is not used as an authority to push or create the PR. |
+| Main/force safety | PASS | No merge, rebase, reset, force push, `main` mutation or user-file deletion occurred in the preflight. |
+
+**Phase 12 preflight gate: PASSED FOR A BRANCH-ONLY DRAFT-PR PUBLICATION.** It
+does not publish a branch yet, certify remote CI, deploy a service, or change
+the status of any Provider/data claim.

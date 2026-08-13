@@ -156,3 +156,11 @@ intentional absence-of-observation display, not a zero-price or no-market fact.
 Phase 11 adds no key, endpoint, subscription, entitlement or client-side
 secret. Every row needing a source-bearing response remains disabled/unknown
 until its protected Provider action is completed.
+
+## Phase 12 publication effect on Provider states
+
+Publishing an integration branch or opening a Draft PR changes source-control
+visibility only. It does not enable a Provider, create a credential, modify an
+entitlement, start a feed, or change any disabled/no-observation state. The PR
+must preserve every source/time/delay/license requirement already recorded in
+this matrix; a remote commit and passing CI are not Provider evidence.
