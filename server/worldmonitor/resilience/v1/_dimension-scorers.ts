@@ -626,14 +626,14 @@ export function sqrtCount(value: number): number {
   return Math.sqrt(Math.max(0, Number.isFinite(value) ? value : 0));
 }
 
-function normalizeLowerBetter(value: number, best: number, worst: number): number {
+export function normalizeLowerBetter(value: number, best: number, worst: number): number {
   if (!Number.isFinite(value)) return Number.NaN;
   if (worst <= best) return 50;
   const ratio = (worst - value) / (worst - best);
   return roundScore(ratio * 100);
 }
 
-function normalizeHigherBetter(value: number, worst: number, best: number): number {
+export function normalizeHigherBetter(value: number, worst: number, best: number): number {
   if (!Number.isFinite(value)) return Number.NaN;
   if (best <= worst) return 50;
   const ratio = (value - worst) / (best - worst);
@@ -737,8 +737,12 @@ export function scoreInflationStability(inflationPct: number): number {
 // blend rather than the band shape.
 export const FIN_SYS_BAND_ISOLATION_FLOOR = 30;
 export const FIN_SYS_BAND_OVEREXPOSED_FLOOR = 35;
-// The low-integration/sweet-spot boundary (5% of GDP). Everything at or below
-// it is a level reading the diversity conditioning below must not touch.
+// The band SCORE at which the premium region begins — the value
+// `normalizeBandLowerBetter` returns, not a claims percentage. The band reaches
+// it twice: rising off the low-integration leg at 5% of GDP and falling back
+// through it on the over-exposure descent near 40.6%. Everything SCORING at or
+// below it is a pure level reading the diversity conditioning must not touch;
+// everything above is premium, on either leg.
 export const FIN_SYS_BAND_PREMIUM_FLOOR = 75;
 
 export function normalizeBandLowerBetter(value: number): number {
@@ -762,8 +766,12 @@ export function normalizeBandLowerBetter(value: number): number {
   return roundScore(Math.max(FIN_SYS_BAND_OVEREXPOSED_FLOOR, 45 - (value - 60) * 0.5));
 }
 
-// The band's premium region (raw band > 75, i.e. claims between 5% and
-// ~40.9% of GDP) is documented as "healthy DIVERSIFIED financial system" —
+// The band's premium region (raw band > 75, i.e. claims in (5.4%, 40.59%] of
+// GDP — the ROUNDED band's actual crossings, since 75.5 is where it rounds
+// above 75; the unrounded 5%/40.9% figures pull in two countries that round to
+// exactly 75 and earn no premium, per the derivation in
+// docs/methodology/financial-system-exposure.md) is documented as "healthy
+// DIVERSIFIED financial system" —
 // but `normalizeBandLowerBetter` reads only the integration LEVEL. On the
 // 2026-08-12 production payload, 29 of the 77 premium-region countries held
 // that premium through ≤ 2 reporting parents: Bosnia took a 90 band on ONE
@@ -804,8 +812,8 @@ export function normalizeBandLowerBetter(value: number): number {
 // unparseable.
 //
 // That inflation is a property of the blend, not of this conditioning, and it
-// predates it: the same measurement against the raw band is 74 -> 86, so the
-// conditioning strictly REDUCES it (+10 vs +12). Coupling the two BIS slots so
+// predates it: the same measurement against the raw band is 75 -> 86, so the
+// conditioning strictly REDUCES it (+10 vs +11). Coupling the two BIS slots so
 // a half-parsed row resolves neither was measured too and is worse still
 // (-> 83): it frees even more weight onto the high legs. The real fix is at
 // the blend layer — see issue #6528 — and is deliberately not attempted here.
@@ -814,9 +822,13 @@ export function normalizeBandLowerBetter(value: number): number {
 // so a country integrated through many sub-threshold parents forfeits a
 // premium its true breadth might merit. No production row currently has
 // premium-region claims with parentCount 0. The forfeit is bounded by the
-// premium itself (≤ 25 points of band, ≤ 7.5 of dimension) and reaches ~14
-// band points at the worst arithmetically reachable case — 16 enumerated
-// reporting parents each sitting just under the 1%-of-GDP counting threshold.
+// premium itself: ≤ 25 points of band, and ≤ 7.5 of dimension ONLY while all
+// four slots resolve. `weightedBlend` renormalises the band's 0.30 onto the
+// surviving weight, so the dimension cost grows as siblings drop — 8.8 points
+// at coverage 0.85 (Component 4 gone), 11.5 at 0.65 (debt gone), 15 at 0.50.
+// It reaches ~14 band points at the worst arithmetically reachable case — 16
+// enumerated reporting parents each sitting just under the 1%-of-GDP counting
+// threshold, summing to ~16% of GDP for a raw band of 89.
 export function normalizeDiversityConditionedBand(
   claimsPctGdp: number,
   parentCount: number | null,
@@ -2203,22 +2215,38 @@ export async function scoreFinancialSystemExposure(
       // renormalising the freed Component 4 weight onto the surviving legs —
       // pre-existing, measured, and reduced (not caused) by the conditioning:
       // issue #6528.
+      //
+      // This slot now has TWO designed inputs (level and breadth), so it can
+      // resolve only half-observed. `certaintyCoverage` says which: a withheld
+      // premium is a substituted floor, not a redundancy-scaled reading, and
+      // reporting it at full certainty would claim evidence that never arrived.
+      // The sibling debt slot already draws exactly this distinction via
+      // `nonDrsDebtImputation` / #6461. Only `certaintyCoverage` is set, never
+      // `imputed`/`imputationClass`: the score is a conservative bound taken
+      // from the observed level, not a value inferred from an absence model,
+      // and it must not enter the imputed-weight accounting as if it were.
       score: bisCountry?.totalXborderPctGdp == null
         ? null
         : normalizeDiversityConditionedBand(bisCountry.totalXborderPctGdp, bisCountry.parentCount),
-      weight: 0.30,
+      weight: FIN_SYS_BAND_WEIGHT,
+      certaintyCoverage: resolveFinSysBandCertainty(bisCountry),
     },
     {
       score: fatfObservation == null || dropFatfCompliantByAbsence
         ? null
         : fatfStatusToScore(fatfObservation.status),
-      weight: 0.20,
+      weight: FIN_SYS_FATF_WEIGHT,
     },
     {
       score: bisCountry?.parentCount == null
         ? null
         : normalizeHigherBetter(bisCountry.parentCount, 1, 10),
-      weight: 0.15,
+      weight: FIN_SYS_REDUNDANCY_WEIGHT,
+      // A count computed over an incomplete reporting-parent set is an
+      // undercount, not an observation — same reasoning as the band slot.
+      certaintyCoverage: bisCountry != null && !bisCountry.parentSetComplete
+        ? FIN_SYS_BIS_DEGRADED_PARENT_SET_CERTAINTY
+        : undefined,
     },
   ]);
 
@@ -2315,6 +2343,19 @@ function readWbExternalDebtPct(envelope: WbExternalDebtEnvelope, countryCode: st
 interface BisLbsCountry {
   totalXborderPctGdp: number | null;
   parentCount: number | null;
+  /**
+   * False when the seed envelope reports that the BIS collection ran with an
+   * incomplete reporting-parent set (`successfulParents < parentCountries`).
+   * `seed-bis-lbs.mjs` tolerates up to 4 of its 16 parent fetches failing with
+   * only a `console.warn` (`MIN_SUCCESSFUL_PARENTS`), and a missing parent feed
+   * silently lowers `parentCount` for every country it would have covered. That
+   * used to move only Component 4 (weight 0.15); since the band premium is
+   * conditioned on the same count it now moves Component 2 (0.30) as well, so
+   * the incompleteness has to reach the blend as reduced certainty instead of
+   * passing as an observed reading. True when the envelope does not report the
+   * ratio at all — absence of the field is not evidence of degradation.
+   */
+  parentSetComplete: boolean;
 }
 
 // #6461 market-access proxy. Reuse the construct's existing component
@@ -2323,10 +2364,77 @@ interface BisLbsCountry {
 // zero reporting parents means no independent foreign-bank route clears the
 // redundancy floor. All three must hold, so ordinary low-debt borrowers keep
 // full weight when either banking signal shows real market access.
-const FIN_SYS_SHORT_TERM_DEBT_WEIGHT = 0.35;
+// Component weights, total 1.0. Exported and named rather than inline literals
+// so the calibration tests can blend against the SAME numbers production uses.
+// A test that restates `0.35` / `0.30` in its own arithmetic silently diverges
+// the moment a weight is retuned, and the divergence shows up as a wrong
+// baseline rather than as a failure.
+export const FIN_SYS_SHORT_TERM_DEBT_WEIGHT = 0.35;
+export const FIN_SYS_BAND_WEIGHT = 0.30;
+export const FIN_SYS_FATF_WEIGHT = 0.20;
+export const FIN_SYS_REDUNDANCY_WEIGHT = 0.15;
+// Component 4's goalposts, shared with the band premium's redundancy scale, and
+// Component 1's (short-term external debt, % of GNI; lowerBetter).
+//
+// These are re-exported for the calibration mirror but MUST stay numeric
+// literals at their call sites: `tests/helpers/resilience-scorer-doc-parity-specs.mts`
+// parses this file's source text and asserts the normalizer anchors are literals
+// so it can cross-check them against the methodology doc's goalposts. Naming
+// them at the call site makes that gate fail closed ("anchors must be numeric
+// literals"), which is the gate working as intended — the doc/code parity check
+// cannot resolve an identifier.
+export const FIN_SYS_REDUNDANCY_WORST_PARENTS = 1;
+export const FIN_SYS_REDUNDANCY_BEST_PARENTS = 10;
+export const FIN_SYS_DEBT_BEST_PCT_GNI = 0;
+export const FIN_SYS_DEBT_WORST_PCT_GNI = 15;
 export const FIN_SYS_MARKET_ACCESS_CONSTRAINED_DEBT_CERTAINTY = 0.3;
 export const FIN_SYS_MARKET_ACCESS_LOW_DEBT_PCT_GNI_MAX = 1;
 export const FIN_SYS_MARKET_ACCESS_LOW_CLAIMS_PCT_GDP_MAX = 5;
+
+// Certainty for the band slot when its integration LEVEL resolved but parent
+// BREADTH did not, so `normalizeDiversityConditionedBand` had to withhold the
+// premium for absence of evidence. One of the slot's two designed inputs was
+// observed, hence 0.5 — the fraction of the slot's evidence that arrived, on
+// the same "retain the reading at reduced confidence" principle as #6461's
+// market-access attenuation rather than a tuned constant.
+export const FIN_SYS_BAND_BREADTH_UNOBSERVED_CERTAINTY = 0.5;
+
+// Certainty for BOTH BIS-derived slots when the seed envelope reports an
+// incomplete reporting-parent collection. The count is then an undercount of
+// unknown size, so neither the redundancy reading nor the premium it scales is
+// a full observation.
+export const FIN_SYS_BIS_DEGRADED_PARENT_SET_CERTAINTY = 0.5;
+
+/**
+ * Certainty for the diversity-conditioned band slot.
+ *
+ * Two independent reasons the slot can be less than fully observed, and they
+ * can co-occur, so the lower one wins rather than compounding:
+ *   - breadth never resolved (`parentCount == null`) AND the raw band sits in
+ *     the premium region, so the withheld premium actually cost the score
+ *     something. Below the premium floor the conditioning is a no-op and the
+ *     band is a pure level reading, fully observed.
+ *   - the collection ran with an incomplete parent set, so any count it did
+ *     produce is an undercount.
+ *
+ * Note the deliberate `null` vs `0` distinction: `parentCount === 0` is an
+ * OBSERVATION (no parent clears the 1%-of-GDP counting threshold) and keeps
+ * full certainty; `null` is an absence.
+ */
+function resolveFinSysBandCertainty(bisCountry: BisLbsCountry | null): number | undefined {
+  if (bisCountry == null || bisCountry.totalXborderPctGdp == null) return undefined;
+  const reductions: number[] = [];
+  if (
+    bisCountry.parentCount == null
+    && normalizeBandLowerBetter(bisCountry.totalXborderPctGdp) > FIN_SYS_BAND_PREMIUM_FLOOR
+  ) {
+    reductions.push(FIN_SYS_BAND_BREADTH_UNOBSERVED_CERTAINTY);
+  }
+  if (!bisCountry.parentSetComplete) {
+    reductions.push(FIN_SYS_BIS_DEGRADED_PARENT_SET_CERTAINTY);
+  }
+  return reductions.length === 0 ? undefined : Math.min(...reductions);
+}
 
 function isMarketAccessConstrainedDebtSignal(
   debtPct: number | null,
@@ -2341,6 +2449,38 @@ function isMarketAccessConstrainedDebtSignal(
     && parents === 0;
 }
 
+// Upper bound on a plausible `parentCount`: the BIS CBS seeder counts parents
+// from an enumerated list (`PARENT_COUNTRIES` in `scripts/seed-bis-lbs.mjs`, 16
+// entries), so no country can legitimately report more. Used only when the
+// envelope does not carry `parentCountries` to derive the bound from.
+const FIN_SYS_BIS_REPORTING_PARENTS_MAX = 16;
+
+/**
+ * A `parentCount` the BIS seeder could actually have produced: it is
+ * `Object.values(parents).filter(...).length` over an enumerated list, so a
+ * legitimate value is a non-negative integer no larger than that list.
+ *
+ * The pre-existing `typeof === 'number'` check rejects the UNREACHABLE cases
+ * (`NaN`, `Infinity`, a stringified count) while trusting any finite number,
+ * including reachable-by-corruption ones. That asymmetry matters more now that
+ * the band premium reads the same field: a payload carrying `parentCount: 500`
+ * clamps to redundancy 100 and earns BOTH the full premium (0.30) and a perfect
+ * Component 4 (0.15), so a corrupt cache entry buys 0.45 of the dimension where
+ * before it bought 0.15.
+ *
+ * An implausible value is treated exactly like a malformed one — absent — so
+ * this adds no new resolution path. The freed Component 4 weight still
+ * renormalises onto the survivors (issue #6528); that is unchanged and out of
+ * scope here. What changes is that an impossible count no longer reads as
+ * demonstrated diversity.
+ */
+function readPlausibleParentCount(rawParentCount: unknown, maxParents: number): number | null {
+  if (typeof rawParentCount !== 'number') return null;
+  const numeric = safeNum(rawParentCount);
+  if (numeric == null || !Number.isInteger(numeric) || numeric < 0 || numeric > maxParents) return null;
+  return numeric;
+}
+
 function readBisLbsCountry(raw: unknown, countryCode: string): BisLbsCountry | null {
   if (raw == null || typeof raw !== 'object') return null;
   const countries = (raw as { countries?: Record<string, unknown> }).countries;
@@ -2349,12 +2489,28 @@ function readBisLbsCountry(raw: unknown, countryCode: string): BisLbsCountry | n
   if (!entry || typeof entry !== 'object') return null;
   const rawClaims = (entry as { totalXborderPctGdp?: unknown }).totalXborderPctGdp;
   const rawParentCount = (entry as { parentCount?: unknown }).parentCount;
+
+  // Collection completeness is an envelope-level fact, not a per-country one:
+  // the seeder publishes `successfulParents` alongside the `parentCountries`
+  // list it attempted. Absent or malformed → assume complete, so a payload
+  // predating the fields is not retroactively marked degraded.
+  const rawParentCountries = (raw as { parentCountries?: unknown }).parentCountries;
+  const attemptedParents = Array.isArray(rawParentCountries) && rawParentCountries.length > 0
+    ? rawParentCountries.length
+    : FIN_SYS_BIS_REPORTING_PARENTS_MAX;
+  const rawSuccessfulParents = (raw as { successfulParents?: unknown }).successfulParents;
+  const parentSetComplete = typeof rawSuccessfulParents === 'number'
+    && Number.isFinite(rawSuccessfulParents)
+    ? rawSuccessfulParents >= attemptedParents
+    : true;
+
   return {
     // `safeNum(null)` and `safeNum('')` are numeric zero by design. These
     // fields use zero as a real financial-isolation signal, so require a raw
     // number rather than manufacturing an observed zero from malformed data.
     totalXborderPctGdp: typeof rawClaims === 'number' ? safeNum(rawClaims) : null,
-    parentCount: typeof rawParentCount === 'number' ? safeNum(rawParentCount) : null,
+    parentCount: readPlausibleParentCount(rawParentCount, attemptedParents),
+    parentSetComplete,
   };
 }
 
@@ -2402,7 +2558,7 @@ function readFatfStatus(raw: unknown, countryCode: string): FatfObservation | nu
 // its externally defined cohort.
 const FATF_GRAY_SCORE = 55;
 
-function fatfStatusToScore(status: FatfStatus): number {
+export function fatfStatusToScore(status: FatfStatus): number {
   switch (status) {
     case 'black': return 0;
     case 'gray': return FATF_GRAY_SCORE;

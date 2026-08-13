@@ -12,7 +12,7 @@ applies_when:
   - "Reviewing a scoring pipeline where a malformed or partially-parsed upstream field can silently vanish a component instead of erroring"
   - "Evaluating a candidate fix for a blend-renormalization defect that works by dropping MORE components (coupling sibling slots, widening null propagation)"
 symptoms:
-  - "Albania's financialSystemExposure score reads 74 -> 86 when the BIS parentCount field fails to parse (a stringified count instead of a raw number)"
+  - "Albania's financialSystemExposure score reads 75 -> 86 when the BIS parentCount field fails to parse (a stringified count instead of a raw number)"
   - "A corrupted, missing, or unparseable input component RAISES the published composite score instead of lowering it or leaving it neutral"
   - "No test caught the regression, because every fixture in the suite was well-formed and none exercised the null-drop path"
 related_components:
@@ -82,9 +82,18 @@ Driving the real `scoreFinancialSystemExposure` against the pinned fixture:
 
 | band transform in use | honest | `parentCount` unparseable | inflation |
 |---|---|---|---|
-| raw band (`normalizeBandLowerBetter`, `:742`) — today's `main` | 74 | 86 | **+12** |
+| raw band (`normalizeBandLowerBetter`, `:742`) — today's `main` | 75 | 86 | **+11** |
 | diversity-conditioned (`normalizeDiversityConditionedBand`, `:818`, PR #6529) | 70 | 80 | **+10** |
 | both BIS slots coupled (attempted fix, reverted) | 70 | 83 | **+13** |
+
+Every leg in those figures is an INTEGER: production rounds each component
+through `roundScore` before `weightedBlend` divides by the surviving weight, so
+Albania's debt leg is 73, not 72.867. That detail is load-bearing here — the
+honest raw-band blend lands on exactly 74.50, which rounds to 75. Measuring it
+with unrounded legs gives 74.47 → 74 and overstates the inherited inflation by a
+point. The first version of this table did exactly that; the mirror in
+`tests/resilience-financial-system-exposure.test.mts` now rounds its legs, and
+the numbers above are the real scorer's.
 
 The arithmetic behind the +10 row: the freed 0.15 redistributes across **all**
 the survivors — debt (73), band (75), FATF (100) — and every one of them sits
@@ -154,10 +163,17 @@ makes a missing `parentCount` change the band leg at all
 reverting or patching a change that is not the defect.
 
 Measuring the same corruption through the **unconditioned** band inverted the
-verdict: +12 on the raw band versus +10 conditioned. The inflation is
+verdict: +11 on the raw band versus +10 conditioned. The inflation is
 **pre-existing** — it is what `main` does today — and the conditioning
 **reduces** it. Reasoning alone would have "fixed" a non-defect while shipping a
 strictly worse one.
+
+The margin is one point, not two, and that correction has its own lesson: the
+baseline was first measured with an unrounded mirror and read +12. A
+counterfactual is only as trustworthy as its fidelity to the real arithmetic —
+including the rounding — so the mirror that produces the baseline needs a test
+that it still reproduces the real scorer, not just that it is directionally
+sensible.
 
 ## The diagnostic that settled both
 

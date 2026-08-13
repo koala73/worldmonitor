@@ -121,6 +121,14 @@ export interface FinSysFixtureOverrides {
   debt?: Record<string, FinSysDebtEntry>;
   bis?: Record<string, FinSysBisEntry>;
   fatf?: { listings: Record<string, 'black' | 'gray' | 'compliant'>; publicationDate: string };
+  /**
+   * Envelope-level BIS fields, as opposed to the per-country `bis` rows. The
+   * seeder publishes `successfulParents` against the `parentCountries` list it
+   * attempted; the scorer reads the ratio to tell a complete collection from a
+   * tolerated partial one (`MIN_SUCCESSFUL_PARENTS` lets 12 of 16 pass with only
+   * a warning). Pass `parentCountries` as the attempted COUNT.
+   */
+  bisEnvelope?: { successfulParents?: number; parentCountries?: number };
 }
 
 /**
@@ -141,7 +149,15 @@ export function createFinSysFixtureReader(
     countries: { ...FINSYS_DEBT_FIXTURE, ...(overrides.debt ?? {}) },
     nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES,
   };
-  const bis = { countries: { ...FINSYS_BIS_FIXTURE, ...(overrides.bis ?? {}) } };
+  // Default to a COMPLETE parent set (16 of 16, matching the seeder's
+  // PARENT_COUNTRIES) so the pinned calibration values describe a healthy
+  // collection; a test that wants the degraded case says so explicitly.
+  const attemptedParents = overrides.bisEnvelope?.parentCountries ?? 16;
+  const bis = {
+    countries: { ...FINSYS_BIS_FIXTURE, ...(overrides.bis ?? {}) },
+    parentCountries: Array.from({ length: attemptedParents }, (_, i) => `P${i}`),
+    successfulParents: overrides.bisEnvelope?.successfulParents ?? attemptedParents,
+  };
   const fatf = overrides.fatf ?? FINSYS_FATF_FIXTURE;
   return async (key: string) => {
     if (key.startsWith('seed-meta:')) return { status: 'ok', fetchedAt: nowMs };

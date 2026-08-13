@@ -258,11 +258,14 @@ describe('financialSystemExposure — dimension-level matched pairs', () => {
     // A per-pair bound says nothing about how many pairs use the exception.
     // If most of the panel became thin, the dimension's directional gates
     // would collectively lose their teeth without any single check failing.
+    // Strict `<`: `thin * 2 <= length` admits a TIE (3 of 6), where decisive
+    // pairs are exactly half and so not a majority — the thing the message
+    // claims. A strict comparison makes the predicate match the promise.
     const thin = FIN_SYS_EXPOSURE_MATCHED_PAIRS.filter((p) => p.thinAnchor).length;
     assert.ok(
-      thin * 2 <= FIN_SYS_EXPOSURE_MATCHED_PAIRS.length,
+      thin * 2 < FIN_SYS_EXPOSURE_MATCHED_PAIRS.length,
       `${thin} of ${FIN_SYS_EXPOSURE_MATCHED_PAIRS.length} financialSystemExposure pairs are thin anchors — `
-        + 'the decisive contrasts must stay the majority of the panel',
+        + 'the decisive contrasts must stay a strict majority of the panel',
     );
   });
 });
