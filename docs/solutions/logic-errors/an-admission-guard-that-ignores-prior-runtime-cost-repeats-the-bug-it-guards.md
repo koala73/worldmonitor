@@ -171,6 +171,31 @@ This shape has nothing to do with Railway or seed bundles. It appears wherever a
 - An anti-vacuity check must use a different token from the extractor it checks. Two counts derived from one regex agree with each other in exactly the case where both are blind (`tests/helpers/bundle-section-parser.mjs:168` vs `:177`).
 - A static parser that can return a *wrong* number is worse than one that returns none, because a wrong smaller timeout is one a budget gate happily passes. `extractBundleSections` drops any section using a nested, shorthand, or spread `timeoutMs` (`tests/helpers/bundle-section-parser.mjs:242-245`), and the caller's independent `script:` count then fails loudly on the dropped section.
 
+## This is the third fix to the same exit-code contract
+
+The durable signal is the recurrence, not any one bug. Three separate
+corrections have now landed on `_bundle-runner.mjs`'s answer to "did real work
+happen?", each a different mechanism reaching the same wrong exit code:
+
+- **#5077 / #5078** — a member's graceful exit-75 was counted in the same
+  `failed` tally as a hard crash, so one transient upstream blip crashed the
+  whole bundle. Fixed by splitting `gracefulFailed` out so only hard failures
+  gate the exit code. That fix has no entry here; it survives only as a note.
+- **#6483** — a different mechanism (a stale image, because the build was
+  skipped) with the same shape: the service was wrong for ~24 hours and the only
+  detector was a downstream staleness alarm.
+- **#6556** — this one. Admission arithmetic made every member permanently
+  unadmittable and the bundle reported success forever.
+
+Two things follow. First, treat any change to this file's exit-code switch as
+high-risk by default and enumerate the states that deliberately do *not* alarm,
+asking what else lands in that bucket — that question is what found the
+`ran:0 deferred:>0` hole. Second, the fixes compose and must be checked against
+each other rather than in isolation: the `starvedTick` exit added here would
+have re-broken #5077 if it had fired on a graceful-only tick, which is why it
+carries `gracefulFailed === 0` and why a test asserts the graceful exemption
+still holds.
+
 ## Related Issues
 
 - Issue #6556 — P1, the silent stall (fix in PR #6564, branch `fix/6556-bundle-budget-admission`).
