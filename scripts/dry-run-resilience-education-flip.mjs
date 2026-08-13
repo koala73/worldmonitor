@@ -634,6 +634,11 @@ export function validateEducationAcceptanceArtifact(artifact, { filename } = {})
   const reportedGate9 = Array.isArray(reportedResults?.pc)
     ? reportedResults.pc.find((gate) => gate?.id === 'gate-9-effective-influence-baseline')
     : null;
+  const gate9CountryCodes = reportedGate9?.evidence?.educationCountryCodes;
+  if (!Array.isArray(gate9CountryCodes)
+    || !jsonEqual([...gate9CountryCodes].sort(), [...measurement.observedEducation].sort())) {
+    throw new Error('gate 9 education cohort does not match observed score coverage');
+  }
   const recomputedResults = {
     pc: [...evaluateGates(baseline, proposed, 'pc'), deriveRecordedExtractionCoverageGate(reportedGate9?.evidence)],
     d6: evaluateGates(baseline, proposed, 'd6'),

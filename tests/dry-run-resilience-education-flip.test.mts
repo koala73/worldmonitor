@@ -20,7 +20,6 @@ import {
 } from '../scripts/dry-run-resilience-education-flip.mjs';
 
 const universe = sovereignStatus.entries.map((entry) => entry.iso2);
-const acceptanceHarnessUrl = new URL('../scripts/dry-run-resilience-education-flip.mjs', import.meta.url);
 
 const canonicalize = (value: any): any => {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -332,7 +331,7 @@ function readEducationAcceptanceArtifacts() {
   }));
 }
 
-function buildSyntheticAcceptanceArtifact() {
+function buildSyntheticAcceptanceArtifact(harnessCommitSha: string, harnessSha256: string) {
   const pairScores: Record<string, number> = {
     DE: 90, FR: 80,
     NO: 90, CA: 80,
@@ -403,8 +402,8 @@ function buildSyntheticAcceptanceArtifact() {
       startedAt: '2026-08-13T00:00:00.000Z',
       completedAt: '2026-08-13T00:01:00.000Z',
       harness: 'scripts/dry-run-resilience-education-flip.mjs',
-      harnessCommitSha: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
-      harnessSha256: sha256(readFileSync(acceptanceHarnessUrl)),
+      harnessCommitSha,
+      harnessSha256,
       redis: {
         source: 'production-upstash-redis-rest',
         resolvedKeyCount: 1,
@@ -443,7 +442,16 @@ test('any committed education acceptance artifacts are internally consistent', (
 
 test('artifact validator rejects inconsistent verdicts, scores, gate 9 inputs, provenance, and weights', () => {
   const filename = 'resilience-education-acceptance-2026-08-13.json';
-  const original = buildSyntheticAcceptanceArtifact();
+  const harnessCommitSha = execFileSync(
+    'git',
+    ['log', '-1', '--format=%H', '--', 'scripts/dry-run-resilience-education-flip.mjs'],
+    { encoding: 'utf8' },
+  ).trim();
+  const harnessSource = execFileSync(
+    'git',
+    ['show', `${harnessCommitSha}:scripts/dry-run-resilience-education-flip.mjs`],
+  );
+  const original = buildSyntheticAcceptanceArtifact(harnessCommitSha, sha256(harnessSource));
   assert.equal(validateEducationAcceptanceArtifact(original, { filename }).verdict, 'PASS');
   const mutate = (change: (artifact: any) => void) => {
     const artifact = structuredClone(original);
@@ -478,5 +486,14 @@ test('artifact validator rejects inconsistent verdicts, scores, gate 9 inputs, p
   assert.throws(
     mutate((artifact) => { artifact.educationWeight = 0.25; }),
     /shipped education weight/,
+  );
+
+  assert.throws(
+    mutate((artifact) => {
+      const gate = artifact.acceptanceGates.gates.pc
+        .find((candidate) => candidate.id === 'gate-9-effective-influence-baseline');
+      gate.evidence.educationCountryCodes = universe.slice(-EXPECTED_EDUCATION_COVERAGE);
+    }),
+    /gate 9 education cohort/,
   );
 });
