@@ -79,6 +79,7 @@ import {
   getPremiumLayerPresentation,
   PremiumLayerGate,
 } from './premium-layer-gate';
+import { globeAltitudeToMapZoom, mapZoomToGlobeAltitude } from '@/utils/globe-zoom';
 
 export interface GlobeMapOptions {
   onInitError?: (error: unknown) => void;
@@ -482,9 +483,9 @@ interface GlobeControlsLike {
   removeEventListener(type: string, listener: () => void): void;
 }
 
-// Duration (ms) of the globe.gl pointOfView rotation used by setCenter(). Shared
-// so callers that must wait for the rotation to settle (e.g. openChokepoint,
-// which opens a popup at container centre) stay in lockstep with the animation.
+// Duration (ms) of the globe.gl pointOfView rotation used by programmatic
+// viewport moves. Shared so settlement callers and openChokepoint stay in
+// lockstep with the animation.
 const SET_CENTER_ROTATION_MS = 1200;
 
 export class GlobeMap {
@@ -616,6 +617,14 @@ export class GlobeMap {
 
   // Callbacks
   private onLayerChangeCb: ((layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void) | null = null;
+  private onStateChangeCb: ((state: MapContainerState) => void) | null = null;
+  private viewportSettleTimer: ReturnType<typeof setTimeout> | null = null;
+  private viewportSettledPromise: Promise<boolean> = Promise.resolve(true);
+  private resolveViewportSettled: ((completed: boolean) => void) | null = null;
+  private viewportTarget: { lat: number; lng: number; altitude: number } | null = null;
+  private viewportSettleDeadline = 0;
+  private viewportAutoRotateBeforeMove: boolean | null = null;
+  private viewportMovementGeneration = 0;
   private onMapContextMenuCb?: (payload: { lat: number; lon: number; screenX: number; screenY: number }) => void;
   private readonly handleContextMenu = (e: MouseEvent): void => {
     e.preventDefault();
@@ -721,11 +730,22 @@ export class GlobeMap {
     controls.enableDamping = !desktop;
 
     this.controlsEndHandler = () => {
+      // Snapshot before publishing state: a synchronous subscriber can start a
+      // newer movement, and this old event must never settle that generation.
+      const viewportMovementGeneration = this.viewportTarget
+        ? this.viewportMovementGeneration
+        : null;
       // Truncated layers are ranked by nearness to the camera, so the visible
       // subset is only correct for the POV it was computed at. Re-select when
       // the camera settles — that is what makes "rotate or zoom to bring others
       // in" true rather than a promise the badge cannot keep (#5368).
       this.reselectMarkersForViewport();
+      this.onStateChangeCb?.(this.getState());
+      if (viewportMovementGeneration !== null) {
+        queueMicrotask(() => {
+          this.trySettleViewportMovement(true, viewportMovementGeneration);
+        });
+      }
       if (!this.layers.satellites) return;
       if (this.imageryFetchTimer) clearTimeout(this.imageryFetchTimer);
       this.imageryFetchTimer = setTimeout(() => this.fetchImageryForViewport(), 800);
@@ -769,6 +789,11 @@ export class GlobeMap {
     // Pause auto-rotate on user interaction; resume after 60 s idle (like Sentinel)
     const pauseAutoRotate = () => {
       if (this.renderPaused) return;
+      // A user gesture during a tracked camera move owns the post-move state:
+      // do not restore the auto-rotation that was active before the tween.
+      if (this.viewportAutoRotateBeforeMove !== null) {
+        this.viewportAutoRotateBeforeMove = false;
+      }
       controls.autoRotate = false;
       if (this.autoRotateTimer) clearTimeout(this.autoRotateTimer);
     };
@@ -776,7 +801,12 @@ export class GlobeMap {
       if (this.renderPaused) return;
       if (this.autoRotateTimer) clearTimeout(this.autoRotateTimer);
       this.autoRotateTimer = setTimeout(() => {
-        if (!this.renderPaused) controls.autoRotate = !desktop;
+        if (this.renderPaused) return;
+        if (this.viewportAutoRotateBeforeMove !== null) {
+          this.viewportAutoRotateBeforeMove = !desktop;
+        } else {
+          controls.autoRotate = !desktop;
+        }
       }, 60_000);
     };
 
@@ -1370,7 +1400,10 @@ export class GlobeMap {
     if (d._kind === 'webcam-cluster' && this.globe) {
       const pov = this.globe.pointOfView();
       // Fly to cluster and zoom in (reduce altitude by 60%)
-      this.globe.pointOfView({ lat: d._lat, lng: d._lng, altitude: pov.altitude * 0.4 }, 800);
+      this.moveViewport(
+        { lat: d._lat, lng: d._lng, altitude: pov.altitude * 0.4 },
+        800,
+      );
     }
     if (d._kind === 'radiation' && this.popup) {
       const aRect = anchor.getBoundingClientRect();
@@ -1936,7 +1969,7 @@ export class GlobeMap {
     const pov = this.globe.pointOfView();
     if (!pov) return;
     const alt = Math.max(0.05, (pov.altitude ?? 1.8) * 0.6);
-    this.globe.pointOfView({ lat: pov.lat, lng: pov.lng, altitude: alt }, 500);
+    this.moveViewport({ lat: pov.lat, lng: pov.lng, altitude: alt }, 500);
   }
 
   private zoomOutGlobe(): void {
@@ -1944,7 +1977,7 @@ export class GlobeMap {
     const pov = this.globe.pointOfView();
     if (!pov) return;
     const alt = Math.min(4.0, (pov.altitude ?? 1.8) * 1.6);
-    this.globe.pointOfView({ lat: pov.lat, lng: pov.lng, altitude: alt }, 500);
+    this.moveViewport({ lat: pov.lat, lng: pov.lng, altitude: alt }, 500);
   }
 
   private createLayerToggles(): void {
@@ -2932,43 +2965,136 @@ export class GlobeMap {
     oceania:  { lat: -25, lng: 140,  altitude: 1.5 },
   };
 
+  private markViewportMoving(
+    target: { lat: number; lng: number; altitude: number },
+    durationMs: number,
+  ): number {
+    // Concrete renderer entry points (buttons, marker clicks and fitCountry)
+    // can bypass MapContainer's facade token. Give every one its own promise so
+    // a superseding local command resolves the older caller as interrupted.
+    this.resolveViewportSettled?.(false);
+    this.viewportSettledPromise = new Promise((resolve) => {
+      this.resolveViewportSettled = resolve;
+    });
+    const generation = ++this.viewportMovementGeneration;
+    // OrbitControls updates auto-rotation in the same frame loop as globe.gl's
+    // camera tween. Preserve its state across the whole tracked movement so it
+    // cannot pull the camera away from the exact target before settlement is
+    // observed. A superseding movement keeps the original pre-move state.
+    if (this.controls && this.viewportAutoRotateBeforeMove === null) {
+      this.viewportAutoRotateBeforeMove = this.controls.autoRotate;
+      this.controls.autoRotate = false;
+    }
+    this.viewportTarget = target;
+    this.viewportSettleDeadline = Date.now() + 15_000;
+    if (this.viewportSettleTimer) clearTimeout(this.viewportSettleTimer);
+    this.viewportSettleTimer = setTimeout(
+      () => this.trySettleViewportMovement(false, generation),
+      durationMs + 50,
+    );
+    return generation;
+  }
+
+  private trySettleViewportMovement(
+    finalMovementEvent = false,
+    generation = this.viewportMovementGeneration,
+  ): void {
+    if (generation !== this.viewportMovementGeneration) return;
+    if (this.destroyed) {
+      this.settleViewportMovement(false, generation);
+      return;
+    }
+    const target = this.viewportTarget;
+    const pov = this.globe?.pointOfView();
+    const longitudeDelta = target && pov
+      ? Math.abs((((pov.lng - target.lng) + 540) % 360) - 180)
+      : Number.POSITIVE_INFINITY;
+    const atTarget = Boolean(target && pov
+      && Math.abs(pov.lat - target.lat) <= 0.0001
+      && longitudeDelta <= 0.0001
+      && Math.abs(pov.altitude - target.altitude) <= 0.001);
+    if (atTarget) {
+      this.settleViewportMovement(true, generation);
+      return;
+    }
+    if (finalMovementEvent) {
+      this.settleViewportMovement(false, generation);
+      return;
+    }
+    if (Date.now() >= this.viewportSettleDeadline) {
+      this.settleViewportMovement(false, generation);
+      return;
+    }
+    // globe.gl animations are driven by requestAnimationFrame, which can pause
+    // in background tabs even as timers run. Keep polling instead of claiming
+    // visual completion from elapsed wall-clock time alone.
+    this.viewportSettleTimer = setTimeout(
+      () => this.trySettleViewportMovement(false, generation),
+      100,
+    );
+  }
+
+  private settleViewportMovement(
+    completed: boolean,
+    generation = this.viewportMovementGeneration,
+  ): void {
+    if (generation !== this.viewportMovementGeneration) return;
+    if (this.viewportSettleTimer) {
+      clearTimeout(this.viewportSettleTimer);
+      this.viewportSettleTimer = null;
+    }
+    if (!this.destroyed && this.globe) {
+      this.reselectMarkersForViewport();
+      this.onStateChangeCb?.(this.getState());
+    }
+    this.viewportTarget = null;
+    this.viewportSettleDeadline = 0;
+    this.viewportMovementGeneration++;
+    const resolve = this.resolveViewportSettled;
+    this.resolveViewportSettled = null;
+    resolve?.(completed);
+    if (!this.destroyed && this.viewportAutoRotateBeforeMove !== null) {
+      if (this.renderPaused && this.controlsAutoRotateBeforePause !== null) {
+        // Keep the renderer paused now, but let setRenderPaused(false) restore
+        // the state that existed before the programmatic movement.
+        this.controlsAutoRotateBeforePause = this.viewportAutoRotateBeforeMove;
+      } else if (this.controls) {
+        this.controls.autoRotate = this.viewportAutoRotateBeforeMove;
+      }
+    }
+    this.viewportAutoRotateBeforeMove = null;
+  }
+
+  public whenViewportSettled(): Promise<boolean> {
+    return this.viewportSettledPromise;
+  }
+
+  private moveViewport(
+    target: { lat: number; lng: number; altitude: number },
+    durationMs = SET_CENTER_ROTATION_MS,
+  ): void {
+    if (!this.globe) return;
+    this.wakeGlobe();
+    this.markViewportMoving(target, durationMs);
+    this.globe.pointOfView(target, durationMs);
+  }
+
   public setView(view: MapView, zoom?: number): void {
     this.currentView = view;
     if (!this.globe) return;
     this.wakeGlobe();
     const preset = GlobeMap.VIEW_POVS[view] ?? GlobeMap.VIEW_POVS.global;
-    let altitude = preset.altitude;
-    if (zoom !== undefined) {
-      if      (zoom >= 7) altitude = 0.08;
-      else if (zoom >= 6) altitude = 0.15;
-      else if (zoom >= 5) altitude = 0.3;
-      else if (zoom >= 4) altitude = 0.5;
-      else if (zoom >= 3) altitude = 0.8;
-      else                altitude = 1.5;
-    }
-    this.globe.pointOfView({ lat: preset.lat, lng: preset.lng, altitude }, SET_CENTER_ROTATION_MS);
-    // Programmatic moves emit no controls 'end' event, so re-select once the
-    // transition has landed on the new POV.
-    setTimeout(() => this.reselectMarkersForViewport(), SET_CENTER_ROTATION_MS + 50);
+    const altitude = zoom === undefined ? preset.altitude : mapZoomToGlobeAltitude(zoom);
+    // Programmatic moves emit no controls 'end' event, so publish state and
+    // re-select markers once the transition has landed on the new POV.
+    this.moveViewport({ lat: preset.lat, lng: preset.lng, altitude });
   }
 
   public setCenter(lat: number, lon: number, zoom?: number): void {
     if (!this.globe) return;
     this.wakeGlobe();
-    // Map deck.gl zoom levels → globe.gl altitude
-    // deck.gl: 2=world, 3=continent, 4=country, 5=region, 6+=city
-    // globe.gl altitude: 1.8=full globe, 0.6=country, 0.15=city
-    let altitude = 1.2;
-    if (zoom !== undefined) {
-      if      (zoom >= 7) altitude = 0.08;
-      else if (zoom >= 6) altitude = 0.15;
-      else if (zoom >= 5) altitude = 0.3;
-      else if (zoom >= 4) altitude = 0.5;
-      else if (zoom >= 3) altitude = 0.8;
-      else                altitude = 1.5;
-    }
-    this.globe.pointOfView({ lat, lng: lon, altitude }, SET_CENTER_ROTATION_MS);
-    setTimeout(() => this.reselectMarkersForViewport(), SET_CENTER_ROTATION_MS + 50);
+    const altitude = zoom === undefined ? 1.2 : mapZoomToGlobeAltitude(zoom);
+    this.moveViewport({ lat, lng: lon, altitude });
   }
 
   public getCenter(): { lat: number; lon: number } | null {
@@ -3001,8 +3127,9 @@ export class GlobeMap {
   // ─── State API ────────────────────────────────────────────────────────────
 
   public getState(): MapContainerState {
+    const altitude = this.globe?.pointOfView()?.altitude;
     return {
-      zoom: 1,
+      zoom: globeAltitudeToMapZoom(altitude),
       pan: { x: 0, y: 0 },
       view: this.currentView,
       layers: this.layers,
@@ -3038,7 +3165,16 @@ export class GlobeMap {
     // After drag-resize or fullscreen transition completes, re-sync dimensions
     if (!isResizing) this.resize();
   }
-  public setZoom(_z: number): void {}
+  public setZoom(zoom: number): void {
+    if (!this.globe) return;
+    const pov = this.globe.pointOfView();
+    if (!pov) return;
+    this.moveViewport({
+      lat: pov.lat,
+      lng: pov.lng,
+      altitude: mapZoomToGlobeAltitude(zoom),
+    });
+  }
   public setRenderPaused(paused: boolean): void {
     if (this.renderPaused === paused) return;
     this.renderPaused = paused;
@@ -3055,7 +3191,11 @@ export class GlobeMap {
 
     if (this.controls) {
       if (paused) {
-        this.controlsAutoRotateBeforePause = this.controls.autoRotate;
+        // A tracked movement temporarily forces autoRotate off. Preserve the
+        // state that should exist after that movement, not the forced value,
+        // so unpausing later restores the real pre-pause preference.
+        this.controlsAutoRotateBeforePause = this.viewportAutoRotateBeforeMove
+          ?? this.controls.autoRotate;
         this.controlsDampingBeforePause = this.controls.enableDamping;
         this.controls.autoRotate = false;
         this.controls.enableDamping = false;
@@ -3155,7 +3295,7 @@ export class GlobeMap {
     const span = Math.max(maxLat - minLat, maxLon - minLon);
     // Map geographic span → altitude: large country (Russia ~170°) vs small (Luxembourg ~0.5°)
     const altitude = span > 60 ? 1.0 : span > 20 ? 0.7 : span > 8 ? 0.45 : span > 3 ? 0.25 : 0.12;
-    this.globe.pointOfView({ lat, lng, altitude }, 1200);
+    this.moveViewport({ lat, lng, altitude }, 1200);
   }
   public highlightCountry(_code: string): void {}
   public clearCountryHighlight(): void {}
@@ -3680,7 +3820,7 @@ export class GlobeMap {
   }
   public onHotspotClicked(cb: (h: Hotspot) => void): void { this.onHotspotClickCb = cb; }
   public onTimeRangeChanged(_cb: (r: TimeRange) => void): void {}
-  public onStateChanged(_cb: (s: MapContainerState) => void): void {}
+  public onStateChanged(cb: (s: MapContainerState) => void): void { this.onStateChangeCb = cb; }
   public setOnCountry(_cb: any): void {}
   public getHotspotLevel(_id: string) { return 'low'; }
 
@@ -3922,6 +4062,7 @@ export class GlobeMap {
       this.controlsEndHandler = null;
     }
     this.destroyed = true;
+    this.settleViewportMovement(false);
     if (this.extrasAnimFrameId != null) {
       cancelAnimationFrame(this.extrasAnimFrameId);
       this.extrasAnimFrameId = null;
@@ -3958,6 +4099,7 @@ export class GlobeMap {
     this.controls = null;
     this.controlsAutoRotateBeforePause = null;
     this.controlsDampingBeforePause = null;
+    this.viewportAutoRotateBeforeMove = null;
     this.layerTogglesEl = null;
     if (this.globe) {
       try { this.globe._destructor(); } catch { /* ignore */ }

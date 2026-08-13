@@ -1194,6 +1194,22 @@ export function getEffectivePanelConfig(key: string, variant: string): PanelConf
 }
 
 /**
+ * Build the same canonical panel-settings seed App uses on a first visit:
+ * every panel is addressable, while only the selected variant's enabled
+ * defaults are active. Keeping this pure also gives non-DOM integrations a
+ * variant-realistic state without duplicating App's merge formula.
+ */
+export function getInitialPanelSettingsForVariant(variant: string): Record<string, PanelConfig> {
+  const variantDefaults = new Set(VARIANT_DEFAULTS[variant] ?? VARIANT_DEFAULTS.full ?? []);
+  return Object.fromEntries(
+    Object.keys(ALL_PANELS).map((key) => {
+      const config = getEffectivePanelConfig(key, variant);
+      return [key, { ...config, enabled: variantDefaults.has(key) && config.enabled }];
+    }),
+  );
+}
+
+/**
  * Returns true if `key` is in the current variant's default panel set.
  *
  * App.ts:577-583 merges ALL_PANELS into panelSettings on every variant so

@@ -602,8 +602,17 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // issues a fetch of its own, so a bare minified frame in them cannot be
       // the real caller; tests/debugbear-trampoline-chunks.test.mjs fails if
       // either module ever gains one, rather than letting the gate rot silently.
+      // WORLDMONITOR-Y4 recurrence is the FOURTH build-rename: a later Vite build
+      // emitted one panel-storage hop with no function name at all, and `''`
+      // matched neither pattern above, so a single nameless frame defeated the
+      // `.every()` and the whole class re-surfaced. Measured 2026-08-13: all 14
+      // events before the bare-name deploy are suppressed by it, all 14 after it
+      // surfaced, every one blocked by exactly that `fn: null` panel-storage frame.
+      // An empty name is admitted on the same bound as the bare name — only inside
+      // the two chunks whose modules issue no fetch of their own — so it cannot
+      // hide a real caller; `fetchContent` and `apiClient.fetch` still surface.
       const isTrampolineFrameFunction = (fn: string) =>
-        /^(?:\w{1,3}\.)?(?:window\.)?fetch$/.test(fn) || /^\w{1,2}$/.test(fn);
+        /^(?:\w{1,3}\.)?(?:window\.)?fetch$/.test(fn) || /^\w{1,2}$/.test(fn) || fn === '';
       if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
           && frames.some(f => isDebugBearRumScriptFrame(f.filename ?? ''))
           && nonInfraFrames.every(f =>

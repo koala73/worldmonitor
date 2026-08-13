@@ -41,7 +41,7 @@ World Monitor currently maintains:
 - **31 Tier-1 countries** in the high-frequency Country Instability Index
 - A **196-country** public Country Resilience Index universe
 - **29 stock exchanges** and **14 central-bank or supranational institutions** in the generated market catalog
-- **27 interface languages**, including right-to-left Arabic
+- **28 interface languages**, including right-to-left Arabic
 - **Six dashboard variants**: World, Tech, Finance, Commodity, Happy, and Energy Monitor
 
 These counts are generated from the repository rather than estimated in editorial copy. The current plans, limits, and capability summary are also published in [machine-readable pricing](https://www.worldmonitor.app/pricing.md).

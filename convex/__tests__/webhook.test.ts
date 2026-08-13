@@ -147,6 +147,71 @@ async function processEvent(
 // Tests
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Customers no-op rewrite skip (OCC write-avoidance)
+//
+// Convex Insights (2026-08): processWebhookEvent produced OCC write conflicts
+// on `customers` because Dodo delivers related events for one purchase in a
+// burst (subscription.active + subscription.updated within milliseconds) and
+// every subscription event unconditionally re-patched the same customers row
+// with identical userId/email — pure conflict fuel, since no consumer reads
+// customers.updatedAt (verified repo-wide). An identical upsert must be
+// read-only; a real identity change must still write.
+// ---------------------------------------------------------------------------
+
+describe("processWebhookEvent — customers no-op rewrite skip", () => {
+  async function readCustomer(t: ReturnType<typeof convexTest>) {
+    return t.run(async (ctx) =>
+      await ctx.db
+        .query("customers")
+        .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", "cust_test_001"))
+        .unique(),
+    );
+  }
+
+  test("second subscription event with identical customer identity does not rewrite the row", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    await processEvent(t, "wh_occ_1", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
+    const first = await readCustomer(t);
+    expect(first).not.toBeNull();
+
+    // Different delivery (new webhookId, later timestamp), same identity —
+    // the Dodo burst shape that produced the conflicts.
+    await processEvent(
+      t,
+      "wh_occ_2",
+      "subscription.active",
+      makeSubscriptionPayload(),
+      BASE_TIMESTAMP + 60_000,
+    );
+    const second = await readCustomer(t);
+    expect(second?.updatedAt).toBe(first?.updatedAt);
+  });
+
+  test("changed customer email still rewrites the row", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    await processEvent(t, "wh_occ_3", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
+
+    const changed = makeSubscriptionPayload({
+      customer: {
+        customer_id: "cust_test_001",
+        email: "renamed@example.com",
+        name: "Test User",
+      },
+    });
+    await processEvent(t, "wh_occ_4", "subscription.active", changed, BASE_TIMESTAMP + 60_000);
+
+    const row = await readCustomer(t);
+    expect(row?.email).toBe("renamed@example.com");
+    expect(row?.normalizedEmail).toBe("renamed@example.com");
+    expect(row?.updatedAt).toBe(BASE_TIMESTAMP + 60_000);
+  });
+});
+
 describe("webhook processWebhookEvent", () => {
   test("subscription.active creates new subscription", async () => {
     const t = convexTest(schema, modules);

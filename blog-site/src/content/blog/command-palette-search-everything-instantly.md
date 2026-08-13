@@ -19,7 +19,7 @@ World Monitor's command palette is a fuzzy-search interface that spans the entir
 
 ### Countries (195)
 
-Type any country name and instantly pull up its full intelligence dossier: CII score, active signals, AI analysis, infrastructure exposure, and 7-day timeline. Country names are searchable in all 25 supported languages, so typing "Allemagne" finds Germany, "Japón" finds Japan.
+Type any country name and instantly pull up its full intelligence dossier: CII score, active signals, AI analysis, infrastructure exposure, and 7-day timeline. Country names are searchable in all 28 supported languages, so typing "Allemagne" finds Germany, "Japón" finds Japan.
 
 ### Navigation (8 regional presets)
 
@@ -65,9 +65,9 @@ Results are grouped by category (Navigate, Layers, Panels, View, Actions, Countr
 
 ## Multilingual Search
 
-With [27 languages supported](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/), the command palette adapts to your locale. Country names and common commands are searchable in:
+With [28 languages supported](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/), the command palette adapts to your locale. Country names and common commands are searchable in:
 
-English, French, German, Spanish, Italian, Portuguese, Dutch, Swedish, Polish, Czech, Romanian, Bulgarian, Greek, Russian, Turkish, Arabic, Chinese (Simplified), Japanese, Korean, Thai, Vietnamese
+English, French, German, Spanish, Italian, Portuguese, Dutch, Swedish, Polish, Czech, Romanian, Bulgarian, Greek, Russian, Ukrainian, Turkish, Arabic, Chinese (Simplified), Japanese, Korean, Thai, Vietnamese, Persian, and Swahili
 
 An Arabic-speaking analyst can type country names in Arabic and get the same results. A Japanese user can search in kanji. The search indexes include localized keywords for all 195 countries in every supported language.
 
@@ -141,7 +141,7 @@ World Monitor's Cmd+K reduces the path from question to answer to a single searc
 Yes. On mobile, Cmd+K transforms into a touch-optimized search sheet with category chips, large touch targets, and swipe-to-dismiss. All 150+ commands and 195 countries remain accessible through a touch-first interface.
 
 **Can I search in languages other than English?**
-Absolutely. The command palette indexes country names and keywords in all 25 supported languages. You can type in Arabic, Japanese, Russian, or any other supported language and get accurate results.
+Absolutely. The command palette indexes country names and keywords in all 28 supported languages. You can type in Arabic, Japanese, Russian, or any other supported language and get accurate results.
 
 **How do I customize which commands appear first?**
 The palette is context-aware: it ranks results based on your currently active panels and layers. Your last 8 searches also appear at the top for quick access during fast-moving situations.

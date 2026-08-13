@@ -242,6 +242,12 @@ const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; z
   oceania: { longitude: 135, latitude: -25, zoom: 3.5 },
 };
 
+const VIEWPORT_MOVEMENT_EVENT_KEY = 'worldMonitorViewportGeneration';
+
+type ViewportMovementEventData = {
+  worldMonitorViewportGeneration?: unknown;
+};
+
 const MAP_INTERACTION_MODE: MapInteractionMode =
   import.meta.env.VITE_MAP_INTERACTION_MODE === 'flat' ? 'flat' : '3d';
 
@@ -820,6 +826,12 @@ export class DeckGLMap {
     this.render();
   };
   private moveTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private viewportSettleTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private viewportSettledPromise: Promise<boolean> = Promise.resolve(true);
+  private resolveViewportSettled: ((completed: boolean) => void) | null = null;
+  private viewportTarget: { lat: number; lon: number; zoom: number } | null = null;
+  private viewportSettleDeadline = 0;
+  private viewportMovementGeneration = 0;
   /** Target center set eagerly by setView() so getCenter() returns the correct
    *  destination before moveend fires, preventing stale intermediate coords
    *  from being written to the URL during flyTo. Cleared on moveend. */
@@ -1224,7 +1236,14 @@ export class DeckGLMap {
       }
     });
 
-    this.maplibreMap.on('moveend', () => {
+    this.maplibreMap.on('moveend', (event) => {
+      // Snapshot before publishing state: a synchronous subscriber can start a
+      // newer movement, and this old event must never settle that generation.
+      const viewportMovementGeneration = this.viewportTarget
+        ? this.viewportMovementGeneration
+        : null;
+      const eventGeneration = (event as unknown as ViewportMovementEventData)[VIEWPORT_MOVEMENT_EVENT_KEY];
+      if (eventGeneration !== undefined && eventGeneration !== viewportMovementGeneration) return;
       this.pendingCenter = null;
       this.lastSCZoom = -1;
       this.rafUpdateLayers();
@@ -1232,6 +1251,11 @@ export class DeckGLMap {
       this.debouncedFetchAircraft();
       this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
       this.onStateChange?.(this.getState());
+      if (viewportMovementGeneration !== null) {
+        queueMicrotask(() => {
+          this.trySettleViewportMovement(true, viewportMovementGeneration);
+        });
+      }
       if (this.state.layers.satellites) {
         if (this.imagerySearchTimer) clearTimeout(this.imagerySearchTimer);
         this.imagerySearchTimer = setTimeout(() => this.fetchImageryForViewport(), 500);
@@ -6006,6 +6030,86 @@ export class DeckGLMap {
     }
   }
 
+  private markViewportMoving(target: { lat: number; lon: number; zoom: number }, fallbackMs: number): number {
+    // Every concrete renderer command owns a distinct settlement generation.
+    // This also catches renderer-local controls that bypass MapContainer's
+    // facade token: superseding them must never make the older caller succeed.
+    this.resolveViewportSettled?.(false);
+    this.viewportSettledPromise = new Promise((resolve) => {
+      this.resolveViewportSettled = resolve;
+    });
+    const generation = ++this.viewportMovementGeneration;
+    this.viewportTarget = target;
+    this.viewportSettleDeadline = Date.now() + 15_000;
+    if (this.viewportSettleTimeoutId) clearTimeout(this.viewportSettleTimeoutId);
+    // MapLibre normally resolves this through moveend. The timer only resolves
+    // when the live camera actually reached the requested target; background
+    // tabs may throttle animation frames while allowing timers to continue.
+    this.viewportSettleTimeoutId = setTimeout(
+      () => this.trySettleViewportMovement(false, generation),
+      fallbackMs,
+    );
+    return generation;
+  }
+
+  private trySettleViewportMovement(
+    finalMovementEvent = false,
+    generation = this.viewportMovementGeneration,
+  ): void {
+    if (generation !== this.viewportMovementGeneration) return;
+    if (this.destroyed) {
+      this.settleViewportMovement(false, generation);
+      return;
+    }
+    const target = this.viewportTarget;
+    const center = this.maplibreMap?.getCenter();
+    const zoom = this.maplibreMap?.getZoom();
+    const longitudeDelta = target && center
+      ? Math.abs((((center.lng - target.lon) + 540) % 360) - 180)
+      : Number.POSITIVE_INFINITY;
+    const atTarget = Boolean(target && center && zoom != null
+      && Math.abs(center.lat - target.lat) <= 0.0001
+      && longitudeDelta <= 0.0001
+      && Math.abs(zoom - target.zoom) <= 0.01);
+    if (!this.maplibreMap?.isMoving() && atTarget) {
+      this.settleViewportMovement(true, generation);
+      return;
+    }
+    if (finalMovementEvent && !this.maplibreMap?.isMoving()) {
+      this.settleViewportMovement(false, generation);
+      return;
+    }
+    if (Date.now() >= this.viewportSettleDeadline) {
+      this.settleViewportMovement(false, generation);
+      return;
+    }
+    this.viewportSettleTimeoutId = setTimeout(
+      () => this.trySettleViewportMovement(false, generation),
+      100,
+    );
+  }
+
+  private settleViewportMovement(
+    completed: boolean,
+    generation = this.viewportMovementGeneration,
+  ): void {
+    if (generation !== this.viewportMovementGeneration) return;
+    if (this.viewportSettleTimeoutId) {
+      clearTimeout(this.viewportSettleTimeoutId);
+      this.viewportSettleTimeoutId = null;
+    }
+    this.viewportTarget = null;
+    this.viewportSettleDeadline = 0;
+    this.viewportMovementGeneration++;
+    const resolve = this.resolveViewportSettled;
+    this.resolveViewportSettled = null;
+    resolve?.(completed);
+  }
+
+  public whenViewportSettled(): Promise<boolean> {
+    return this.viewportSettledPromise;
+  }
+
   public setView(view: DeckMapView, zoom?: number): void {
     const preset = VIEW_PRESETS[view];
     if (!preset) return;
@@ -6018,11 +6122,16 @@ export class DeckGLMap {
     this.pendingCenter = { lat: preset.latitude, lon: preset.longitude };
 
     if (this.maplibreMap) {
+      const viewportMovementGeneration = this.markViewportMoving({
+        lat: preset.latitude,
+        lon: preset.longitude,
+        zoom: this.state.zoom,
+      }, 1_300);
       this.maplibreMap.flyTo({
         center: [preset.longitude, preset.latitude],
         zoom: this.state.zoom,
         duration: 1000,
-      });
+      }, { [VIEWPORT_MOVEMENT_EVENT_KEY]: viewportMovementGeneration });
     }
 
     const viewSelect = this.container.querySelector('.view-select') as HTMLSelectElement;
@@ -6039,13 +6148,24 @@ export class DeckGLMap {
   }
 
   public setCenter(lat: number, lon: number, zoom?: number): void {
+    // Publish the requested destination immediately, matching setView(). This
+    // keeps URL/context reads truthful even if flyTo is interrupted or its
+    // moveend arrives after a programmatic caller's bounded settlement wait.
+    this.pendingCenter = { lat, lon };
+    if (zoom != null) this.state.zoom = zoom;
     if (this.maplibreMap) {
+      const viewportMovementGeneration = this.markViewportMoving({
+        lat,
+        lon,
+        zoom: zoom ?? this.maplibreMap.getZoom(),
+      }, 800);
       this.maplibreMap.flyTo({
         center: [lon, lat],
         ...(zoom != null && { zoom }),
         duration: 500,
-      });
+      }, { [VIEWPORT_MOVEMENT_EVENT_KEY]: viewportMovementGeneration });
     }
+    this.onStateChange?.(this.getState());
   }
 
   public fitCountry(code: string): void {
@@ -7845,6 +7965,7 @@ export class DeckGLMap {
 
   public destroy(): void {
     this.destroyed = true;
+    this.settleViewportMovement(false);
     this.stopTradeAnimation();
     this.activeFlightTrails.clear();
     this.clearTrailsBtn = null;

@@ -87,6 +87,8 @@ describe('urlHasAsyncFlyTo — suppression guard', () => {
 class DeckGLMapStub {
   public state = { view: 'global', zoom: 1.5 };
   private pendingCenter: { lat: number; lon: number } | null = null;
+  private viewportMovementGeneration = 0;
+  private activeViewportMovementGeneration: number | null = null;
 
   private readonly VIEW_PRESETS: Record<string, { longitude: number; latitude: number; zoom: number }> = {
     global: { longitude: 0, latitude: 20, zoom: 1.5 },
@@ -95,18 +97,30 @@ class DeckGLMapStub {
     america:{ longitude: -95, latitude: 38, zoom: 3 },
   };
 
-  setView(view: string, zoom?: number): void {
+  setView(view: string, zoom?: number): number {
     const preset = this.VIEW_PRESETS[view];
-    if (!preset) return;
+    if (!preset) return this.viewportMovementGeneration;
     this.state.view = view;
     this.state.zoom = zoom ?? preset.zoom;
     this.pendingCenter = { lat: preset.latitude, lon: preset.longitude };
+    this.activeViewportMovementGeneration = ++this.viewportMovementGeneration;
     // (maplibreMap.flyTo would be called here in the real impl)
+    return this.activeViewportMovementGeneration;
   }
 
   /** Called by the real moveend listener. */
-  simulateMoveEnd(_finalLat: number, _finalLon: number, finalZoom: number): void {
+  simulateMoveEnd(
+    _finalLat: number,
+    _finalLon: number,
+    finalZoom: number,
+    eventGeneration?: number,
+  ): void {
+    if (
+      eventGeneration !== undefined
+      && eventGeneration !== this.activeViewportMovementGeneration
+    ) return;
     this.pendingCenter = null;
+    this.activeViewportMovementGeneration = null;
     this.state.zoom = finalZoom;
     // (onStateChange?.(this.getState()) would fire here)
   }
@@ -182,6 +196,18 @@ describe('DeckGLMap.pendingCenter — eager center cache', () => {
     assert.ok(c);
     assert.equal(c.lat, 50);
     assert.equal(c.lon, 15);
+  });
+
+  it('ignores a stale moveend from a superseded flight', () => {
+    const m = new DeckGLMapStub();
+    const firstGeneration = m.setView('mena');
+    m.setView('eu');
+
+    // MapLibre emits the old flight's moveend synchronously when the second
+    // flyTo stops it. The newer target must remain available to URL/context
+    // reads until the second flight settles.
+    m.simulateMoveEnd(28, 45, 3.5, firstGeneration);
+    assert.deepEqual(m.getCenter(), { lat: 50, lon: 15 });
   });
 
   it('setView updates state.view synchronously', () => {

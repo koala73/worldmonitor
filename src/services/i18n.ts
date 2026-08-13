@@ -16,7 +16,7 @@ import enShellTranslation from '../locales/en.shell.json';
 // the moment they pick another language explicitly, that choice persists here.
 const EXPLICIT_LOCALE_KEY = 'wm-locale-explicit';
 
-const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi'] as const;
+const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi', 'sw'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 type TranslationDictionary = Record<string, unknown>;
 
@@ -300,4 +300,5 @@ export const LANGUAGES = [
   { code: 'tr', label: 'Türkçe', flag: '🇹🇷' },
   { code: 'vi', label: 'Tiếng Việt', flag: '🇻🇳' },
   { code: 'hi', label: 'हिन्दी', flag: '🇮🇳' },
+  { code: 'sw', label: 'Kiswahili', flag: '🇹🇿' },
 ];

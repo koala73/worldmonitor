@@ -46,9 +46,9 @@ Click any country on the map for a full-page intelligence brief: instability sco
 
 **Show**: Click a country (e.g., Japan, Ukraine, or Iran) → full dossier page.
 
-### 4. 24 Languages Support
+### 4. 27 Languages Support
 
-Full UI in 24 languages including Japanese. Regional news feeds auto-adapt — Japanese users see NHK World, Nikkei Asia, and Japan-relevant sources. Language bundles are lazy-loaded for fast performance.
+Full UI in 27 languages including Japanese and Swahili. Regional news feeds auto-adapt — Japanese users see NHK World, Nikkei Asia, and Japan-relevant sources. Language bundles are lazy-loaded for fast performance.
 
 **Show**: Switch language to Japanese in the settings. Note how feeds change.
 
@@ -161,7 +161,7 @@ Run AI summarization entirely on your own hardware — no API keys, no cloud, no
 | v2.5.0 | Ollama/LM Studio local LLM support, settings split into LLMs + API Keys tabs, keychain vault consolidation |
 | v2.4.1 | Ultra-wide layout (panels wrap around map on 2000px+ screens) |
 | v2.4.0 | Live webcams from 19 geopolitical hotspots, 4 regions |
-| v2.3.9 | Full i18n foundation; current builds support 24 languages including Japanese, Arabic (RTL), Chinese |
+| v2.3.9 | Full i18n foundation; introduced Japanese, Arabic (RTL), Chinese, and other localized interfaces |
 | v2.3.8 | Finance variant with 29 exchanges, Gulf FDI investments |
 | v2.3.7 | Light/dark theme system, UCDP/UNHCR/Climate panels |
 | v2.3.6 | Desktop app with Tauri, OS keychain, auto-updates |

@@ -51,7 +51,7 @@ World Monitor is useful for investors, portfolio managers, energy and commodity 
 - 29 scored hotspots
 - 92 exchanges and assets
 - 63 MCP tools
-- 27 supported languages
+- 28 supported languages
 
 ## Source Examples
 

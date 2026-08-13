@@ -26,7 +26,7 @@ The freshness clock a seeder declares over the *observation dates inside* the pa
 
 Two rules follow from what the contract reduces to. It reports a single newest timestamp, so a payload assembled from *several independently-failing sources* must derive one clock per source and report the **oldest** of them; reducing all their dates together takes the newest, and the still-living source then hides the dead one indefinitely — an alarm that can only fire when every source dies at once. And an undatable payload must report nothing rather than a default, because "we cannot date this" and "this is stale" warrant the same response, while a fabricated recent date warrants none.
 
-Sizing the budget belongs to the source's own publication calendar, measured rather than assumed: the widest gap the source routinely takes — a holiday cluster, a non-working period, a weekend either side — plus room for one missed run. A budget guessed generously enough to never false-alarm has usually also stopped detecting the freeze it exists for. See also: Seed-Owned Key, Activation Marker.
+Sizing the budget belongs to the source's own publication calendar, measured rather than assumed: the widest gap the source routinely takes — a holiday cluster, a non-working period, a weekend either side — plus room for one missed run. A budget guessed generously enough to never false-alarm has usually also stopped detecting the freeze it exists for. See also: Seed-Owned Key, Activation Marker, Content Clock.
 
 ### Activation Marker
 
@@ -137,6 +137,22 @@ The invariant that exactly one layer owns retry policy for any external provider
 ### Rate-Limit Outcome
 
 The typed value a provider-rate-limited operation returns *instead of throwing*, so every downstream surface renders a deliberate retry state — an HTTP 429 with a retry hint at the service boundary, a structured error code on the public API — rather than collapsing the limit into a generic failure. The outcome only exists after the owning retry layer has exhausted its bounded attempts; a raw rate-limit error escaping before that point is a defect, not an outcome. See also: Retry Ownership.
+
+## Error Telemetry & Suppression
+
+### Trampoline Frame
+
+A stack frame contributed by a monkeypatched global — most often a third-party script's `window.fetch` wrapper — that appears in a trace as though it were a caller but merely passes the call through. Trampoline frames make third-party failures look first-party, which is why suppression gates must classify them; the trap is that their *names* are minifier output, renamed at will across builds and eventually omitted entirely, so any gate that recognizes a trampoline by name shape is on a treadmill. Identity comes instead from build-stable structural facts: which first-party chunk the frame is attributed to, and whether the wrapping script's own frame is present in the same trace. A gate that admits trampoline frames from a chunk is safe only under an *enforced* invariant that the chunk's backing modules perform no network work of their own — enforced meaning a test fails when it stops being true, not a comment asserting it. See also: Vacuous Guard.
+
+## Timestamps & Hot-Document Writes
+
+### Content Clock
+
+A timestamp whose meaning is "the data beside it was confirmed against its source at this moment" — as distinct from a write stamp, which records only that a write happened. A clock becomes a content clock the moment any consumer compares it against another clock to decide which of two sources holds the fresher content; from then on, two rules bind every writer. Any write that changes the content the clock dates must stamp the clock in the same write, or the clock silently stops dating the content. And the clock may be throttled only for *no-change* writes: skipping a write when the content is identical cannot mis-order a freshness comparison, because whichever side then wins names the same content. The seeder-payload instance of the same idea is the Content-Age Contract — date the observations, never the run. See also: Content-Age Contract, Touch Mutation.
+
+### Touch Mutation
+
+A fire-and-forget mutation that stamps a credential's last-used time as a side effect of validating it. The stamp is telemetry — nothing may treat it as a Content Clock — which is what licenses aggressive suppression of the write. Its discipline is a debounce split across two lines that share one window constant: the *scheduling* site consults the stamp returned by the validation read and schedules nothing while the stamp is fresh, so no queue of touches can accumulate behind a debounce boundary and herd-write the same hot document when the window expires; the mutation re-checks staleness on execution as the second line, turning any straggler that races anyway into a read-only no-op — and in an optimistic-concurrency store, an execution that never writes cannot conflict. Splitting the window's value across the two lines is the failure mode: the halves drift and the herd returns. See also: Content Clock.
 
 ## Test & Guard Verification
 

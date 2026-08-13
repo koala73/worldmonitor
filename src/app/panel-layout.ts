@@ -38,7 +38,7 @@ import {
 import { BETA_MODE } from '@/config/beta';
 import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
-import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, trackGateHit, replayPendingCheckoutSuccess, replayPendingProFunnelEvents, replayPendingConversionEvents } from '@/services/analytics';
+import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, trackGateHit, trackMapViewChange, replayPendingCheckoutSuccess, replayPendingProFunnelEvents, replayPendingConversionEvents } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { loadWidgets, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
 import { sanitizeLockedLayers, shouldSanitizeLockedLayers } from '@/config/map-layer-definitions';
@@ -2324,6 +2324,9 @@ export class PanelLayoutManager implements AppModule {
             getPanelConfig: (panelId) => getEffectivePanelConfig(panelId, SITE_VARIANT),
             isPanelAllowed: (panelId, config) => isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState())),
             hasPremiumAccess: () => hasPremiumAccess(getAuthState()),
+            applyViewChange: (viewAction) => {
+              if (viewAction.view) trackMapViewChange(viewAction.view);
+            },
             applyLayerChange: this.callbacks.applyMapLayerChange,
           }));
         })

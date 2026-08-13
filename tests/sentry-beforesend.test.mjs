@@ -1467,6 +1467,59 @@ describe('sentry beforeSend — Y4 bare minified trampoline hop', () => {
   });
 });
 
+// ─── WORLDMONITOR-Y4 recurrence: ANONYMOUS trampoline hop ─────────────────────
+//
+// Fourth build-rename of the same VC/VQ/Y4 wrapper. The 2026-08-04 fix admitted
+// a bare minified hop (`t`), and every Y4 event before that deploy is suppressed
+// by it. Every event AFTER it still surfaced (14/14, 2026-08-12..13), each one
+// blocked by a single `panel-storage-*.js` frame Sentry recorded with NO
+// function name at all: a later Vite build emitted that hop anonymously.
+// `isTrampolineFrameFunction('')` was false, so one nameless frame defeated the
+// `.every()` and the whole class re-surfaced.
+//
+// Admitting '' is bounded by exactly the argument that already licenses the
+// bare-name tolerance: neither module backing these two chunks issues a fetch of
+// its own (tests/debugbear-trampoline-chunks.test.mjs fails if either ever
+// gains one), so a frame in them cannot be the real caller whether or not the
+// minifier kept a name for it. The chunk allowlist and the required collector
+// frame remain the load-bearing halves — the safety tests below pin both.
+describe('sentry beforeSend — Y4 anonymous trampoline hop', () => {
+  // Verbatim from event 2026-08-13T05:18:41Z (28/28 Y4 events carry a DebugBear frame).
+  const y4AnonStack = [
+    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 't' },
+    { filename: '/assets/widget-store-CdO-mBNc.js', lineno: 2, function: 'Cn.window.fetch' },
+    { filename: '/assets/panel-storage-D-2Xh2lU.js', lineno: 2, function: null },
+    { filename: '/assets/panel-storage-D-2Xh2lU.js', lineno: 2, function: 'c' },
+  ];
+
+  it('suppresses the exact Y4 recurrence stack (anonymous hop)', () => {
+    assert.equal(beforeSend(makeEvent('Failed to fetch', 'TypeError', y4AnonStack)), null,
+      'an anonymous hop is the same DebugBear wrapper class as VC/VQ/Y4');
+  });
+
+  it('does NOT suppress an anonymous frame in a NON-allowlisted chunk', () => {
+    // The chunk allowlist is what stops '' from becoming a blanket bypass: any
+    // first-party module CAN emit an anonymous frame, and most of them do fetch.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 't' },
+      { filename: '/assets/runtime-BQi6MP9w.js', lineno: 2, function: null },
+    ]);
+    assert.ok(beforeSend(event) !== null,
+      'an anonymous frame outside the two fetch-free chunks is a real caller');
+  });
+
+  it('does NOT suppress an anonymous trampoline frame without a DebugBear frame', () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panel-storage-D-2Xh2lU.js', lineno: 2, function: null },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'no collector frame means no trampoline explanation');
+  });
+});
+
 // ─── WORLDMONITOR-WK: zero-frame RangeError confined to iOS ───────────────────
 //
 // 23 events / 20 users, 100% iOS, 21 inside the Google app's in-app WebView.
