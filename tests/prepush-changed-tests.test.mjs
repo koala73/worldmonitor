@@ -31,10 +31,26 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = join(REPO_ROOT, 'scripts', 'prepush-changed-tests.sh');
+const BASH = process.platform === 'win32'
+  ? join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'usr', 'bin', 'bash.exe')
+  : 'bash';
+
+function msysPath(path) {
+  return path.replace(/^([A-Za-z]):[\\/]/, (_match, drive) => `/${drive.toLowerCase()}/`).replaceAll('\\', '/');
+}
+
+function bashPath(stubDir = '') {
+  if (process.platform !== 'win32') return stubDir ? `${stubDir}:${process.env.PATH}` : process.env.PATH;
+  return `${stubDir ? `${msysPath(stubDir)}:` : ''}/mingw64/bin:/usr/bin:/bin`;
+}
+
+function gitBashEnv(stubDir = '') {
+  return { ...process.env, PATH: bashPath(stubDir) };
+}
 
 // Every mkdtemp below funnels through here so the run leaves nothing behind.
 // These fixtures used to accumulate one directory per call in $TMPDIR forever.
@@ -95,10 +111,11 @@ function nulList(paths) {
 }
 
 function partition(mode, { cwd, changed = CHANGED } = {}) {
-  const out = execFileSync('bash', [SCRIPT, mode], {
+  const out = execFileSync(BASH, [SCRIPT, mode], {
     cwd,
     input: nulList(changed),
     encoding: 'utf8',
+    env: gitBashEnv(),
     // execFileSync echoes child stderr to the parent unless stdio is explicit.
     // The cases below deliberately trigger the script's error paths, and this
     // suite runs INSIDE the pre-push gate — so without piping, a successful
@@ -184,7 +201,7 @@ describe('pre-push changed-test partition', () => {
     }
   });
 
-  test('a path containing a newline stays one path', () => {
+  test('a path containing a newline stays one path', { skip: process.platform === 'win32' }, () => {
     // The reason the list is NUL-delimited: a line reader would split this
     // into two entries, neither of which exists, and the old code would have
     // silently dropped both.
@@ -224,10 +241,13 @@ describe('partition stays in step with the vitest DOM project', () => {
     const probe = join(fixtureDir('wm-dom-config-probe-'), 'probe.mts');
     writeFileSync(
       probe,
-      `const m = await import(${JSON.stringify(join(REPO_ROOT, 'vitest.dom.config.mts'))});\n` +
+      `const m = await import(${JSON.stringify(pathToFileURL(join(REPO_ROOT, 'vitest.dom.config.mts')).href)});\n` +
         'console.log(JSON.stringify(m.default?.test?.include ?? null));\n',
     );
-    const out = execFileSync(join(REPO_ROOT, 'node_modules', '.bin', 'tsx'), [probe], {
+    // Calling the package's JS entry through this Node process works on both
+    // POSIX and Windows. The `.bin/tsx` shim is an extensionless shell file on
+    // POSIX but needs its .cmd sibling on Windows.
+    const out = execFileSync(process.execPath, [join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs'), probe], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
     });
@@ -296,11 +316,11 @@ describe('runner dispatch', () => {
 
     let status = 0;
     try {
-      execFileSync('bash', [SCRIPT, mode], {
+      execFileSync(BASH, [SCRIPT, mode], {
         cwd: REPO_ROOT,
         input: nulList(list),
         encoding: 'utf8',
-        env: { ...process.env, PATH: `${dir}:${process.env.PATH}` },
+        env: gitBashEnv(dir),
       });
     } catch (err) {
       status = err.status;

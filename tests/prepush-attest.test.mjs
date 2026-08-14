@@ -31,6 +31,14 @@ import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = join(REPO_ROOT, 'scripts', 'prepush-attest.sh');
+const BASH = process.platform === 'win32'
+  ? join(process.env.ProgramFiles ?? 'C:\\Program Files', 'Git', 'usr', 'bin', 'bash.exe')
+  : 'bash';
+const BASH_PATH = process.platform === 'win32' ? '/mingw64/bin:/usr/bin:/bin' : process.env.PATH;
+
+function gitBashEnv(overrides = {}) {
+  return { ...isolatedGitEnv(), ...overrides, PATH: BASH_PATH };
+}
 
 // git exports GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE... to hook children, and
 // those OVERRIDE cwd — a fixture built without stripping them writes its
@@ -90,9 +98,9 @@ function attest(cwd, args) {
   let status = 0;
   let stdout = '';
   try {
-    stdout = execFileSync('bash', [SCRIPT, ...args], {
+    stdout = execFileSync(BASH, [SCRIPT, ...args], {
       cwd,
-      env: isolatedGitEnv(),
+      env: gitBashEnv(),
       encoding: 'utf8',
     });
   } catch (err) {
@@ -111,7 +119,11 @@ describe('changed-path enumeration survives every legal git path', () => {
   const HOSTILE = {
     'tests/plain.test.mjs': 'x\n',
     'tests/café.test.mjs': 'x\n',
-    'tests/back\\slash.test.mjs': 'x\n',
+    // A backslash is a legal POSIX filename byte but the Windows path
+    // separator, so that physical fixture cannot exist on NTFS. Keep its
+    // coverage where the filesystem supports it while still exercising the
+    // C-quoted Unicode case on every platform.
+    ...(process.platform === 'win32' ? {} : { 'tests/back\\slash.test.mjs': 'x\n' }),
     'tests/with space.test.mjs': 'x\n',
   };
 
@@ -124,7 +136,9 @@ describe('changed-path enumeration survives every legal git path', () => {
     const dropped = quoted.filter((path) => path.startsWith('"'));
     assert.deepEqual(
       dropped.sort(),
-      ['"tests/back\\\\slash.test.mjs"', '"tests/caf\\303\\251.test.mjs"'],
+      process.platform === 'win32'
+        ? ['"tests/caf\\303\\251.test.mjs"']
+        : ['"tests/back\\\\slash.test.mjs"', '"tests/caf\\303\\251.test.mjs"'],
       'baseline: git C-quotes these, so they no longer name a file that exists',
     );
 
@@ -133,7 +147,7 @@ describe('changed-path enumeration survives every legal git path', () => {
     assert.deepEqual(paths.sort(), Object.keys(HOSTILE).sort(), 'every legal path must survive');
   });
 
-  test('a path containing a newline stays one path', () => {
+  test('a path containing a newline stays one path', { skip: process.platform === 'win32' }, () => {
     // The reason this is NUL-delimited rather than `core.quotePath=false`: a
     // line-oriented reader splits this path into two nonexistent ones.
     const root = makeRepo({ branchFiles: { 'tests/two\nlines.test.mjs': 'x\n' } });
