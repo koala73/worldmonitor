@@ -7,14 +7,23 @@ export const MAX_ALERTS = 50;
 // Per-source floor so Canadian alerts cannot be dropped behind US small-craft
 // advisories (and vice versa) when the merged cap is applied.
 export const PER_SOURCE_FLOOR = 15;
-export const WEATHER_ALERTS_SOURCE_VERSION = 'nws+eccc-active';
+export const WEATHER_ALERTS_SOURCE_VERSION = 'nws+eccc-issued-continued';
 
 export const NWS_HOST = 'api.weather.gov';
 export const NWS_ALERTS_URL = 'https://api.weather.gov/alerts/active';
 export const ECCC_HOST = 'api.weather.gc.ca';
-// Server-side status_en=active (#6607). limit is set high so the national
-// collection returns in one page; GeoMet defaults to 10 without it.
-export const ECCC_ALERTS_URL = 'https://api.weather.gc.ca/collections/weather-alerts/items?f=json&status_en=active&limit=10000';
+// Live ECCC vocabulary is issued/continued/ended — not 'active'.
+// status_en=active returns an empty collection. CQL IN also returned 0,
+// so issued and continued are fetched as two separate GETs. limit is set
+// high so each national collection returns in one page; GeoMet defaults
+// to 10 without it.
+export const ECCC_LIVE_STATUSES = Object.freeze(['issued', 'continued']);
+const ECCC_ALERTS_COLLECTION = 'https://api.weather.gc.ca/collections/weather-alerts/items';
+export const ECCC_ALERTS_URLS = Object.freeze(
+  ECCC_LIVE_STATUSES.map((status) => `${ECCC_ALERTS_COLLECTION}?f=json&status_en=${status}&limit=10000`),
+);
+// Issued URL kept as the single-URL handle for existing host-policy tests.
+export const ECCC_ALERTS_URL = ECCC_ALERTS_URLS[0];
 // National GeoJSON exceeds HKO's 256KiB; 4 MiB is the upper end of the
 // deliberate 2–4 MiB ceiling for this collection.
 export const ECCC_MAX_BYTES = 4 * 1024 * 1024;
@@ -108,7 +117,8 @@ export function mapEcccRiskToSeverity(riskColour, alertType) {
 }
 
 export function isActiveEcccFeature(feature) {
-  return String(feature?.properties?.status_en || '').trim().toLowerCase() === 'active';
+  const status = String(feature?.properties?.status_en || '').trim().toLowerCase();
+  return ECCC_LIVE_STATUSES.includes(status);
 }
 
 export function normalizeEcccAlert(feature) {
@@ -174,8 +184,9 @@ export function selectAlerts(features, limit = MAX_ALERTS) {
 }
 
 /**
- * ECCC GeoJSON → existing alert record. Drops status_en !== 'active'
- * (defense in depth on top of the server-side query) and unmapped severity.
+ * ECCC GeoJSON → existing alert record. Drops status_en outside
+ * issued/continued (defense in depth on top of the two server-side
+ * queries) and unmapped severity. 'active' is not a live ECCC status.
  */
 export function selectEcccAlerts(features) {
   return (Array.isArray(features) ? features : [])
@@ -230,6 +241,40 @@ async function readResponseLimited(response, maxBytes) {
     reader.releaseLock?.();
   }
   return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)))));
+}
+
+/**
+ * Fetch issued + continued as two GETs and concatenate features.
+ * One URL failing still returns the other; throws only if both fail.
+ */
+export async function fetchEcccAlertFeatures({
+  fetchFn = globalThis.fetch,
+  userAgent,
+  maxBytes = ECCC_MAX_BYTES,
+} = {}) {
+  const results = await Promise.allSettled(
+    ECCC_ALERTS_URLS.map((url) => fetchApprovedWeatherJson(url, {
+      allowedHosts: [ECCC_HOST],
+      maxBytes,
+      fetchFn,
+      userAgent,
+    }).then(requireAlertFeatures)),
+  );
+
+  const features = [];
+  const failures = [];
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      features.push(...result.value);
+    } else {
+      failures.push(result.reason);
+    }
+  }
+  if (failures.length === results.length) {
+    const detail = failures.map((err) => err?.message || String(err)).join('; ');
+    throw new Error(`ECCC issued and continued fetches both failed: ${detail}`);
+  }
+  return features;
 }
 
 /**

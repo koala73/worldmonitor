@@ -2,13 +2,12 @@
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import {
-  ECCC_ALERTS_URL,
-  ECCC_HOST,
   ECCC_MAX_BYTES,
   NWS_ALERTS_URL,
   NWS_HOST,
   WEATHER_ALERTS_SOURCE_VERSION,
   fetchApprovedWeatherJson,
+  fetchEcccAlertFeatures,
   formatTruncationWarning,
   mergeAlertSources,
   rankEligibleAlerts,
@@ -40,7 +39,13 @@ async function fetchSourceFeatures(url, allowedHosts, label) {
 async function fetchAlerts() {
   const [nwsFeatures, ecccFeatures] = await Promise.all([
     fetchSourceFeatures(NWS_ALERTS_URL, [NWS_HOST], 'NWS'),
-    fetchSourceFeatures(ECCC_ALERTS_URL, [ECCC_HOST], 'ECCC'),
+    fetchEcccAlertFeatures({
+      userAgent: CHROME_UA,
+      maxBytes: ECCC_MAX_BYTES,
+    }).catch((err) => {
+      console.warn(`weather-alerts: ECCC fetch failed: ${err.message || err}`);
+      return null;
+    }),
   ]);
 
   if (nwsFeatures == null && ecccFeatures == null) {

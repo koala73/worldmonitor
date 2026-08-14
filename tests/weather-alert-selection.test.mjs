@@ -4,7 +4,9 @@ import { describe, it } from 'node:test';
 
 import {
   ECCC_ALERTS_URL,
+  ECCC_ALERTS_URLS,
   ECCC_HOST,
+  ECCC_LIVE_STATUSES,
   ECCC_MAX_BYTES,
   MAX_ALERTS,
   PER_SOURCE_FLOOR,
@@ -13,6 +15,7 @@ import {
   eligibleAlertCount,
   extractCoordinates,
   fetchApprovedWeatherJson,
+  fetchEcccAlertFeatures,
   formatTruncationWarning,
   mapEcccRiskToSeverity,
   mergeAlertSources,
@@ -203,7 +206,7 @@ const ECCC_POLYGON = {
   coordinates: [[[-80, 43], [-79, 43], [-79, 44], [-80, 44], [-80, 43]]],
 };
 
-function ecccFeature({ id, status_en = 'active', risk_colour_en = 'red', alert_type = 'warning', geometry = ECCC_POLYGON, overrides = {} } = {}) {
+function ecccFeature({ id, status_en = 'issued', risk_colour_en = 'red', alert_type = 'warning', geometry = ECCC_POLYGON, overrides = {} } = {}) {
   return {
     id,
     geometry,
@@ -225,9 +228,9 @@ function ecccFeature({ id, status_en = 'active', risk_colour_en = 'red', alert_t
 }
 
 describe('ECCC weather alert normalisation', () => {
-  it('maps an active polygon feature onto the existing record with CA/eccc stamps and a centroid', () => {
-    const [alert] = selectEcccAlerts([ecccFeature({ id: 'ca-active-1' })]);
-    assert.equal(alert.id, 'ca-active-1');
+  it('maps an issued polygon feature onto the existing record with CA/eccc stamps and a centroid', () => {
+    const [alert] = selectEcccAlerts([ecccFeature({ id: 'ca-issued-1' })]);
+    assert.equal(alert.id, 'ca-issued-1');
     assert.equal(alert.countryCode, 'CA');
     assert.equal(alert.source, 'eccc');
     assert.equal(alert.severity, 'Extreme');
@@ -241,27 +244,30 @@ describe('ECCC weather alert normalisation', () => {
     assert.equal(alert.centroid[1], 43.4);
   });
 
-  it('drops status_en=ended features even when mixed with active ones', () => {
+  it('drops status_en=ended and status_en=active; keeps issued and continued', () => {
     const features = [
       ecccFeature({ id: 'ended-keep-out', status_en: 'ended' }),
-      ecccFeature({ id: 'active-keep', status_en: 'active' }),
+      ecccFeature({ id: 'issued-keep', status_en: 'issued' }),
+      ecccFeature({ id: 'continued-keep', status_en: 'continued' }),
+      ecccFeature({ id: 'active-keep-out', status_en: 'active' }),
       ecccFeature({ id: 'ended-2', status_en: 'ended', risk_colour_en: 'orange' }),
     ];
     const alerts = selectEcccAlerts(features);
-    assert.deepEqual(alerts.map(a => a.id), ['active-keep']);
+    assert.deepEqual(alerts.map(a => a.id), ['issued-keep', 'continued-keep']);
     assert.ok(!alerts.some(a => a.id === 'ended-keep-out'));
     assert.ok(!alerts.some(a => a.id === 'ended-2'));
+    assert.ok(!alerts.some(a => a.id === 'active-keep-out'));
   });
 
   it('excludes ended ids from a merged published payload', () => {
     const nws = selectAlerts([feature('Severe', 1)]);
     const eccc = selectEcccAlerts([
       ecccFeature({ id: 'ended-keep-out', status_en: 'ended' }),
-      ecccFeature({ id: 'ca-active', status_en: 'active' }),
+      ecccFeature({ id: 'ca-issued', status_en: 'issued' }),
     ]);
     const published = mergeAlertSources({ nws, eccc });
     assert.ok(published.some(a => a.id === 'alert-1'));
-    assert.ok(published.some(a => a.id === 'ca-active' && a.countryCode === 'CA'));
+    assert.ok(published.some(a => a.id === 'ca-issued' && a.countryCode === 'CA'));
     assert.ok(!published.some(a => a.id === 'ended-keep-out'));
   });
 
@@ -319,17 +325,25 @@ describe('NWS + ECCC merge and per-source caps', () => {
 });
 
 describe('ECCC host policy and sourceVersion lockstep', () => {
-  it('queries status_en=active on the national collection URL', () => {
-    assert.match(ECCC_ALERTS_URL, /status_en=active/);
-    assert.match(ECCC_ALERTS_URL, /[?&]f=json/);
-    assert.match(ECCC_ALERTS_URL, /api\.weather\.gc\.ca/);
+  it('queries status_en=issued and status_en=continued as two GETs', () => {
+    assert.deepEqual([...ECCC_LIVE_STATUSES], ['issued', 'continued']);
+    assert.equal(ECCC_ALERTS_URLS.length, 2);
+    assert.match(ECCC_ALERTS_URLS[0], /status_en=issued/);
+    assert.match(ECCC_ALERTS_URLS[1], /status_en=continued/);
+    assert.equal(ECCC_ALERTS_URL, ECCC_ALERTS_URLS[0]);
+    for (const url of ECCC_ALERTS_URLS) {
+      assert.match(url, /[?&]f=json/);
+      assert.match(url, /limit=10000/);
+      assert.match(url, /api\.weather\.gc\.ca/);
+      assert.doesNotMatch(url, /status_en=active/);
+    }
     assert.equal(ECCC_HOST, 'api.weather.gc.ca');
     assert.ok(ECCC_MAX_BYTES >= 2 * 1024 * 1024);
     assert.ok(ECCC_MAX_BYTES <= 4 * 1024 * 1024);
   });
 
-  it('bumps sourceVersion so NWS-only / ended-ECCC Redis snapshots are not reused', () => {
-    assert.equal(WEATHER_ALERTS_SOURCE_VERSION, 'nws+eccc-active');
+  it('bumps sourceVersion so NWS-only / empty-active Redis snapshots are not reused', () => {
+    assert.equal(WEATHER_ALERTS_SOURCE_VERSION, 'nws+eccc-issued-continued');
     assert.match(SEEDER_SOURCE, /sourceVersion:\s*WEATHER_ALERTS_SOURCE_VERSION/);
     assert.match(RELAY_SOURCE, /sourceVersion:\s*WEATHER_ALERTS_SOURCE_VERSION/);
     assert.doesNotMatch(SEEDER_SOURCE, /sourceVersion:\s*'nws-active'/);
@@ -345,9 +359,9 @@ describe('ECCC host policy and sourceVersion lockstep', () => {
 
   it('allowlists api.weather.gov and api.weather.gc.ca on both live fetches', () => {
     assert.match(RELAY_SOURCE, /allowedHosts:\s*\[NWS_HOST\]/);
-    assert.match(RELAY_SOURCE, /allowedHosts:\s*\[ECCC_HOST\]/);
+    assert.match(RELAY_SOURCE, /fetchEcccAlertFeatures/);
     assert.match(SEEDER_SOURCE, /NWS_HOST/);
-    assert.match(SEEDER_SOURCE, /ECCC_HOST/);
+    assert.match(SEEDER_SOURCE, /fetchEcccAlertFeatures/);
   });
 
   it('does not import the seeder entrypoint from this test file', () => {
@@ -391,5 +405,27 @@ describe('ECCC host policy and sourceVersion lockstep', () => {
       () => fetchApprovedWeatherJson(ECCC_ALERTS_URL, { allowedHosts: [ECCC_HOST], fetchFn, maxBytes: ECCC_MAX_BYTES }),
       /RESPONSE_TOO_LARGE/,
     );
+  });
+
+  it('hits issued and continued URLs and still returns issued features if continued fails', async () => {
+    const issuedFeature = ecccFeature({ id: 'issued-1', status_en: 'issued' });
+    const urls = [];
+    const fetchFn = async (url) => {
+      urls.push(String(url));
+      if (String(url).includes('status_en=continued')) {
+        throw new Error('continued down');
+      }
+      return {
+        ok: true,
+        headers: { get: () => null },
+        text: async () => JSON.stringify({ type: 'FeatureCollection', features: [issuedFeature] }),
+      };
+    };
+    const features = await fetchEcccAlertFeatures({ fetchFn, userAgent: 'test-ua' });
+    assert.equal(urls.length, 2);
+    assert.ok(urls.some((url) => /status_en=issued/.test(url)));
+    assert.ok(urls.some((url) => /status_en=continued/.test(url)));
+    assert.ok(!urls.some((url) => /status_en=active/.test(url)));
+    assert.deepEqual(features.map((feature) => feature.id), ['issued-1']);
   });
 });

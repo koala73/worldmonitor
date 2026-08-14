@@ -4879,20 +4879,19 @@ async function seedWeatherAlerts() {
   const t0 = Date.now();
   try {
     const {
-      ECCC_ALERTS_URL,
-      ECCC_HOST,
       ECCC_MAX_BYTES,
       NWS_ALERTS_URL,
       NWS_HOST,
       WEATHER_ALERTS_SOURCE_VERSION,
       fetchApprovedWeatherJson,
+      fetchEcccAlertFeatures,
       mergeAlertSources,
       rankEligibleAlerts,
       requireAlertFeatures,
       selectEcccAlerts,
     } = await weatherAlertSelectPromise;
 
-    async function fetchNwsFeatures() {
+    const fetchNwsFeatures = async () => {
       const weatherUrl = NWS_ALERTS_URL;
       try {
         const data = await fetchApprovedWeatherJson(weatherUrl, {
@@ -4911,17 +4910,13 @@ async function seedWeatherAlerts() {
         if (!result.ok) throw new Error(`HTTP ${result.status}`);
         return requireAlertFeatures(JSON.parse(result.buffer.toString('utf8')));
       }
-    }
+    };
 
-    async function fetchEcccFeatures() {
-      const data = await fetchApprovedWeatherJson(ECCC_ALERTS_URL, {
-        allowedHosts: [ECCC_HOST],
-        maxBytes: ECCC_MAX_BYTES,
-        userAgent: CHROME_UA,
-        fetchFn: fetch,
-      });
-      return requireAlertFeatures(data);
-    }
+    const fetchEcccFeatures = async () => fetchEcccAlertFeatures({
+      fetchFn: fetch,
+      userAgent: CHROME_UA,
+      maxBytes: ECCC_MAX_BYTES,
+    });
 
     const [nwsResult, ecccResult] = await Promise.allSettled([
       fetchNwsFeatures(),
