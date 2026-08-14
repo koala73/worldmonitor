@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { basename, dirname, relative, resolve, sep } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -24,6 +24,12 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RAILWAY_SERVICE_REGISTRY = JSON.parse(
   readFileSync(resolve(repoRoot, 'scripts/railway-services.json'), 'utf8'),
 );
+
+// Railway watch patterns and Git paths always use POSIX separators. Keep the
+// runtime-closure audit in that same namespace on Windows instead of comparing
+// `scripts\\seed.mjs` from node:path.relative with `scripts/seed.mjs` from the
+// checked-in registry.
+const repoRelative = (root, file) => relative(root, file).split(sep).join('/');
 
 function service({
   cronSchedule = '0 * * * *',
@@ -137,7 +143,7 @@ function extractFileReadDependencies(files, repoRootDir) {
     const resolved = resolve(dirname(fromFile), ...segments);
     if (!resolved.startsWith(repoRootDir)) return;
     if (!existsSync(resolved)) return;
-    dependencies.add(relative(repoRootDir, resolved));
+    dependencies.add(repoRelative(repoRootDir, resolved));
   };
   for (const file of files) {
     if (!/\.[cm]?[jt]s$/u.test(file)) continue;
@@ -307,10 +313,10 @@ function resolveRuntimeSurface(entry, repoRootDir) {
   }
 
   const runtimeFiles = new Set([
-    ...[...visited].map((file) => relative(repoRootDir, file)),
+    ...[...visited].map((file) => repoRelative(repoRootDir, file)),
     ...extractSharedConfigDependencies(visited, entry.deployMode),
     ...extractFileReadDependencies(visited, repoRootDir),
-    ...[...literals].map((file) => relative(repoRootDir, file)),
+    ...[...literals].map((file) => repoRelative(repoRootDir, file)),
   ]);
   return { visited, unresolved, runtimeFiles, converged };
 }
@@ -1082,7 +1088,7 @@ describe('closure detection layers', () => {
       );
       assert.equal(contract.hasTsx, true, 'this image installs tsx and sets NODE_OPTIONS');
       assert.ok(
-        contract.dynamicRoots.some((dir) => dir.endsWith('/server')),
+        contract.dynamicRoots.some((dir) => basename(dir) === 'server'),
         'server/ is COPYd into this image, so dynamic imports can land there',
       );
     });
