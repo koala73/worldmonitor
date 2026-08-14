@@ -612,3 +612,8 @@ upstream baseline debt and is not called green.
 Phase 12 remains open until this descendant is published by normal non-force
 fast-forward and a fresh corrected-head GitHub run passes. Draft readiness,
 merge, deployment and Provider activation are not authorized or claimed.
+
+Run-7 correction evidence record commit:
+`bcde02a5ac8f6411a6f3ff20e62a528142a75a63`; retained raw transcript commit:
+`cab3a1ae20f5618c7f5096860bd9144f158971da`. This following receipt backfills
+both immutable SHAs and does not upgrade the pending remote gate.

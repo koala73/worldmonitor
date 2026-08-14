@@ -494,3 +494,8 @@ Raw evidence:
 **Current Phase 12 gate: RUN 7 FAILURE CORRECTED LOCALLY; FRESH REMOTE
 CORRECTED-HEAD CI REQUIRED.** Run 7 is not reclassified as green, and no
 merge, deployment, release or Provider-backed live-data acceptance is claimed.
+
+Run-7 evidence record commit:
+`bcde02a5ac8f6411a6f3ff20e62a528142a75a63`; raw transcript commit:
+`cab3a1ae20f5618c7f5096860bd9144f158971da`. This following receipt backfills
+the immutable SHAs only; it is not a remote-CI acceptance result.
