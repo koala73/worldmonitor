@@ -51,8 +51,7 @@ function asLonLat(value: unknown): [number, number] | undefined {
 }
 
 function mapAlert(a: BootstrapAlert): CanadaAlert {
-  const centroid = asLonLat(a.centroid)
-    ?? (Number.isFinite(a.lon) && Number.isFinite(a.lat) ? [a.lon as number, a.lat as number] : undefined);
+  const centroid = asLonLat(a.centroid) ?? asLonLat([a.lon, a.lat]);
   return {
     id: a.id,
     province: a.province || 'AB',
