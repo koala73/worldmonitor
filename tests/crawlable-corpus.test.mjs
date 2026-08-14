@@ -70,6 +70,18 @@ describe('sources catalog domain assignment', () => {
     );
   });
 
+  it('assigns VIA Rail Tracker (unofficial) to infrastructure instead of failing the corpus build', () => {
+    const catalog = buildSourceCatalog([
+      {
+        provider: 'VIA Rail Tracker (unofficial)',
+        host: 'tsimobile.viarail.ca',
+        kind: 'structured',
+        references: [{ path: 'scripts/viarail-live.mjs' }],
+      },
+    ]);
+    assert.equal(catalog[0].domainId, 'infrastructure');
+  });
+
   it('still fails closed when a structured provider has no catalog domain', () => {
     assert.throws(
       () => buildSourceCatalog([{

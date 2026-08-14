@@ -136,6 +136,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['www.reddit.com', 'news'],
   ['SWF Institute', 'finance'],
   ['USGS ScienceBase (Mineral Commodity Summaries)', 'energy'],
+  ['VIA Rail Tracker (unofficial)', 'infrastructure'],
   ['www.techstars.com', 'technology'],
   ['www.windy.com', 'environment'],
   ['your-app.convex.site', 'infrastructure'],
