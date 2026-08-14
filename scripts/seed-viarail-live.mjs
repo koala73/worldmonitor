@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 /**
- * Optional standalone seeder for VIA Rail Tracker unofficial live JSON (#6615).
+ * Optional seeder for VIA Rail Tracker unofficial live JSON (#6615).
  *
  * Best-effort, undocumented, no customer-facing SLA. 404 / shape-break skip
  * publish and record sourceState 'unavailable'. Do not fail the box.
  *
- * - Service name: seed-viarail-live
+ * Runs as the VIA-Rail-Live member of seed-bundle-canada (#6711), not as its own
+ * Railway service, gated on intervalMs 15min — an optional unofficial feed does
+ * not earn a dedicated slot. Because the bundle owns the schedule, the freshness
+ * acknowledgement clears on BUNDLE provisioning, not on this script deploying.
  */
 import { loadEnvFile, readSeedSnapshot, runSeed, writeFreshnessMetadata } from './_seed-utils.mjs';
 import {
