@@ -14,6 +14,7 @@ import {
   BC_SOURCE,
   MAX_BC_RESPONSE_BYTES,
   bcFireCacheKey,
+  buildBcWfsUrl,
   collectBcJoinKeys,
   collectCwfisJoinKeys,
   enrichOrAppendBc,
@@ -402,6 +403,27 @@ describe('host allowlist, cache key, transport', () => {
     assert.equal(result._bcVia, 'wfs');
     assert.ok(result.fireDetections.length >= 3);
     assert.equal(result.fireDetections[0].source, 'bc-wildfire');
+  });
+
+  it('uses a stable WFS order and fails closed at an incomplete page cap', async () => {
+    assert.equal(new URL(buildBcWfsUrl()).searchParams.get('sortBy'), 'OBJECTID');
+
+    await assert.rejects(
+      fetchBcFirePoints({
+        pageSize: 4,
+        maxPages: 1,
+        fetchFn: async (url) => {
+          if (String(url).includes('/kml/')) {
+            return new Response(loaderKml, { headers: { 'content-type': 'application/vnd.google-earth.kml+xml' } });
+          }
+          return new Response(JSON.stringify({
+            ...JSON.parse(geojson),
+            numberMatched: 5,
+          }), { headers: { 'content-type': 'application/json' } });
+        },
+      }),
+      /pagination incomplete.*4 of 5/i,
+    );
   });
 });
 

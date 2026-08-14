@@ -348,6 +348,7 @@ export function buildBcWfsUrl({ startIndex = 0, count = BC_WFS_PAGE_SIZE } = {})
   url.searchParams.set('typeNames', BC_FIRE_TYPENAME);
   url.searchParams.set('srsName', 'EPSG:4326');
   url.searchParams.set('outputFormat', 'application/json');
+  url.searchParams.set('sortBy', 'OBJECTID');
   url.searchParams.set('count', String(count));
   url.searchParams.set('startIndex', String(startIndex));
   return url.toString();
@@ -389,6 +390,9 @@ async function fetchBcFireKmlTree({ fetchFn, cache, maxHops = BC_MAX_NETWORKLINK
 async function fetchBcFireWfs({ fetchFn, cache, pageSize = BC_WFS_PAGE_SIZE, maxPages = BC_WFS_MAX_PAGES } = {}) {
   const fireDetections = [];
   const seen = new Set();
+  let paginationComplete = false;
+  let lastProgress = 0;
+  let lastMatched = null;
   for (let page = 0; page < maxPages; page += 1) {
     const startIndex = page * pageSize;
     const url = buildBcWfsUrl({ startIndex, count: pageSize });
@@ -406,8 +410,22 @@ async function fetchBcFireWfs({ fetchFn, cache, pageSize = BC_WFS_PAGE_SIZE, max
     }
     const returned = parsed.numberReturned ?? parsed.fireDetections.length;
     const matched = parsed.numberMatched;
-    if (returned < pageSize || (matched != null && startIndex + returned >= matched)) break;
-    if (returned === 0) break;
+    const progress = startIndex + returned;
+    lastProgress = progress;
+    lastMatched = matched;
+    if ((matched != null && progress >= matched) || (matched == null && returned < pageSize)) {
+      paginationComplete = true;
+      break;
+    }
+    if (returned === 0) {
+      throw new BcFirePointsError(`BC wildfire WFS pagination made no progress at startIndex=${startIndex}`);
+    }
+  }
+  if (!paginationComplete) {
+    const expected = lastMatched == null ? 'unknown' : lastMatched;
+    throw new BcFirePointsError(
+      `BC wildfire WFS pagination incomplete after ${maxPages} page(s): ${lastProgress} of ${expected}`,
+    );
   }
   return fireDetections;
 }
