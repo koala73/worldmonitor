@@ -167,6 +167,91 @@ async function primeCachedFromStorage(): Promise<void> {
   await mod.ensureWmSession();
 }
 
+describe('wm-session first RPC after mint (WORLDMONITOR-XP)', () => {
+  it('attaches X-WorldMonitor-Key on the first anonymous RPC after mint', async () => {
+    const mintedToken = 'wms_first-rpc-header-token';
+    let firstRpcKey: string | null = 'unset';
+    let firstRpcCredentials: RequestCredentials | undefined;
+    let premiumKey: string | null = 'unset';
+    let mintCalls = 0;
+
+    currentFetchHandler = (input, init) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        mintCalls += 1;
+        return Promise.resolve(new Response(JSON.stringify({
+          exp: FAR_FUTURE,
+          hadSession: false,
+          token: mintedToken,
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      }
+
+      const headers = new Headers(init?.headers);
+      if (url.includes('/api/military/v1/get-usni-fleet-report')) {
+        firstRpcKey = headers.get('X-WorldMonitor-Key');
+        firstRpcCredentials = init?.credentials;
+        return Promise.resolve(new Response('ok', { status: 200 }));
+      }
+      if (url.includes('/api/market/v1/analyze-stock')) {
+        premiumKey = headers.get('X-WorldMonitor-Key');
+        return Promise.resolve(new Response('premium auth remains separate', { status: 200 }));
+      }
+      return Promise.resolve(new Response('unhandled', { status: 500 }));
+    };
+
+    const response = await wrappedFetch(
+      'https://api.worldmonitor.app/api/military/v1/get-usni-fleet-report',
+    );
+    assert.equal(response.status, 200);
+    assert.equal(mintCalls, 1, 'ensureWmSession must mint before the first RPC');
+    assert.equal(firstRpcKey, mintedToken, 'first non-premium RPC must carry X-WorldMonitor-Key: wms_…');
+    assert.equal(firstRpcCredentials, 'include', 'cookie remains primary via credentials: include');
+
+    const premium = await wrappedFetch('https://api.worldmonitor.app/api/market/v1/analyze-stock');
+    assert.equal(premium.status, 200);
+    assert.equal(premiumKey, null, 'premium paths must not receive the anonymous wms_ header');
+  });
+
+  it('reload with only sessionStorage exp remints and attaches wms_ on first RPC', async () => {
+    const mintedToken = 'wms_reload-remint-header-token';
+    let firstRpcKey: string | null = 'unset';
+    let mintCalls = 0;
+
+    memoryStorage.set('wm-session-exp', JSON.stringify({ exp: FAR_FUTURE }));
+    currentFetchHandler = (input, init) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        mintCalls += 1;
+        return Promise.resolve(new Response(JSON.stringify({
+          exp: FAR_FUTURE,
+          hadSession: false,
+          token: mintedToken,
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      }
+
+      const headers = new Headers(init?.headers);
+      if (url.includes('/api/military/v1/get-usni-fleet-report')) {
+        firstRpcKey = headers.get('X-WorldMonitor-Key');
+        return Promise.resolve(new Response('ok', { status: 200 }));
+      }
+      return Promise.resolve(new Response('unhandled', { status: 500 }));
+    };
+
+    const response = await wrappedFetch(
+      'https://api.worldmonitor.app/api/military/v1/get-usni-fleet-report',
+    );
+    assert.equal(response.status, 200);
+    assert.equal(mintCalls, 1, 'must remint because sessionStorage cannot retain the in-memory header token');
+    assert.equal(firstRpcKey, mintedToken, 'first RPC after reload remint must carry X-WorldMonitor-Key: wms_…');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Layer 1 — periodic refresh
 // ---------------------------------------------------------------------------
@@ -1686,11 +1771,12 @@ describe('wm-session route-scoped recovery failures (#5674)', () => {
 
   it('ignores an anonymous recovery result that settles after a key-session upgrade', async () => {
     memoryStorage.clear();
-    memoryStorage.set('wm-session-exp', JSON.stringify({ exp: FAR_FUTURE }));
     const { captures } = collectSentry();
     const gated = 'https://api.worldmonitor.app/api/intelligence/v1/get-risk-scores';
     let gatedAttempts = 0;
+    let anonymousMintCalls = 0;
     let releaseAnonymousMint: (() => void) | null = null;
+    const initialAnonymousToken = 'wms_initial-anonymous-session';
     const anonymousToken = 'wms_stale-anonymous-recovery';
     const fallbackHeaders: Array<string | null> = [];
 
@@ -1699,6 +1785,17 @@ describe('wm-session route-scoped recovery failures (#5674)', () => {
       if (url.includes('/api/wm-session')) {
         const body = typeof init?.body === 'string' ? JSON.parse(init.body) as { proKey?: string } : {};
         if (!body.proKey) {
+          anonymousMintCalls += 1;
+          if (anonymousMintCalls === 1) {
+            return Promise.resolve(new Response(JSON.stringify({
+              exp: FAR_FUTURE,
+              hadSession: false,
+              token: initialAnonymousToken,
+            }), {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }));
+          }
           return new Promise((resolve) => {
             releaseAnonymousMint = () => resolve(new Response(JSON.stringify({
               exp: FAR_FUTURE,
@@ -1751,7 +1848,7 @@ describe('wm-session route-scoped recovery failures (#5674)', () => {
 
     assert.deepEqual(
       fallbackHeaders,
-      [null, null, null],
+      [initialAnonymousToken, null, null],
       'a stale anonymous mint must never inject its token after a key-session upgrade',
     );
     assert.deepEqual(mod.getStruckRoutes(), [], 'the old identity must not repopulate route suppression');

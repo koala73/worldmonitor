@@ -64,7 +64,15 @@ export async function validateApiKey(req, options = {}) {
   const headerKey = getHeaderApiKey(req);
   const sessionCookie = getCookie(req, 'wm-session');
   const testerCookie = getCookie(req, 'wm-pro-key') || getCookie(req, 'wm-widget-key');
-  const key = headerKey || testerCookie || sessionCookie;
+  // Session-shaped headers (wms_) must not beat HttpOnly tester cookies.
+  // Returning tester/widget users mint a wms_ token in a new tab; JS cannot
+  // see wm-pro-key / wm-widget-key, so the interceptor still attaches wms_.
+  // headerKey || testerCookie would then authenticate as kind:'session' and
+  // 401 forceKey paths even though a valid pro cookie is on the wire.
+  const key = (headerKey && !isSessionTokenShape(headerKey) ? headerKey : '')
+    || testerCookie
+    || headerKey
+    || sessionCookie;
   const origin = req.headers.get('Origin') || '';
 
   // Desktop app — always require an enterprise key.

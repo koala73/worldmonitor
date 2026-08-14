@@ -371,6 +371,13 @@ export function stratifiedBootstrapUpperBound(examples: CalibrationExample[], ca
   const seed = asNumber(calibration.bootstrapSeed, 'bootstrapSeed');
   const confidence = asNumber(calibration.confidenceLevel, 'calibration.confidenceLevel');
   const random = mulberry32(seed);
+  assert.ok(examples.length > 0, 'calibration examples must not be empty');
+  const sorted = [...examples].sort(
+    (left, right) => left.confidence - right.confidence
+      || compareCodePoints(left.opaqueExampleId, right.opaqueExampleId),
+  );
+  const sortedRank = new Map(sorted.map((example, index) => [example, index]));
+  const sampleCounts = new Uint32Array(sorted.length);
   const strata = new Map<string, CalibrationExample[]>();
   for (const example of examples) {
     const key = `${example.goldMateriality}\u0000${example.goldDirection}`;
@@ -383,13 +390,41 @@ export function stratifiedBootstrapUpperBound(examples: CalibrationExample[], ca
   );
   const estimates: number[] = [];
   for (let iteration = 0; iteration < iterations; iteration += 1) {
-    const sample: CalibrationExample[] = [];
+    sampleCounts.fill(0);
     for (const [, stratum] of orderedStrata) {
       for (let index = 0; index < stratum.length; index += 1) {
-        sample.push(stratum[Math.floor(random() * stratum.length)]!);
+        const example = stratum[Math.floor(random() * stratum.length)]!;
+        sampleCounts[sortedRank.get(example)!] += 1;
       }
     }
-    estimates.push(adaptiveExpectedCalibrationError(sample));
+
+    // Every bootstrap sample is a multiset of the same frozen examples. Sorting
+    // that multiset 10,000 times produces the same order as walking this one
+    // canonical sort and expanding each sampled count. Keep the original
+    // per-example accumulation order so the frozen floating-point result is
+    // byte-for-byte identical without the repeated allocations and O(n log n)
+    // sorts that otherwise dominate the unit suite under concurrency.
+    const bins = Array.from({ length: 10 }, () => ({
+      count: 0,
+      confidence: 0,
+      correct: 0,
+    }));
+    let sampleIndex = 0;
+    for (const [rank, example] of sorted.entries()) {
+      for (let copy = 0; copy < sampleCounts[rank]!; copy += 1) {
+        const bin = bins[Math.min(9, Math.floor((sampleIndex * 10) / sorted.length))]!;
+        bin.count += 1;
+        bin.confidence += example.confidence;
+        if (example.correct) bin.correct += 1;
+        sampleIndex += 1;
+      }
+    }
+    estimates.push(bins.reduce((ece, bin) => {
+      if (bin.count === 0) return ece;
+      const averageConfidence = bin.confidence / bin.count;
+      const averageAccuracy = bin.correct / bin.count;
+      return ece + (bin.count / sorted.length) * Math.abs(averageConfidence - averageAccuracy);
+    }, 0));
   }
   estimates.sort((left, right) => left - right);
   return percentileOrderStatistic(estimates, confidence, iterations);
