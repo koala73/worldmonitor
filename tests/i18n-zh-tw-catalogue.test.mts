@@ -26,6 +26,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as OpenCC from 'opencc-js';
+import { GENERATED_LOCALES, LOCALES, TRANSLATABLE_LOCALES } from '../scripts/translate-locales.mjs';
 
 const repoPath = (rel: string): string => fileURLToPath(new URL(`../${rel}`, import.meta.url));
 
@@ -216,4 +217,47 @@ describe('zh-TW catalogues — per-entry overrides', () => {
       assert.deepEqual(failures, [], `rerun scripts/convert-zh-tw.py`);
     });
   }
+});
+
+// A generated catalogue is not translated from en.json, so the EN baseline in
+// translate-locales.mjs cannot say whether it is current — an English edit marks
+// it stale against a comparison it was never in scope for, and no rerun of that
+// script can clear it now that the write path skips it. The script reports those
+// separately for exactly that reason, which leaves `--check` as the only thing
+// that fails when zh.json moves and nobody reran the generator. These assertions
+// exist because that check is one deleted workflow line away from being silent,
+// and everything else about the catalogue would stay green.
+describe('zh-TW catalogues — the generator is the freshness gate', () => {
+  const workflow = readFileSync(repoPath('.github/workflows/test.yml'), 'utf8').replace(/\r\n/g, '\n');
+
+  it('keeps generated locales inside LOCALES', () => {
+    assert.ok(GENERATED_LOCALES.size > 0, 'GENERATED_LOCALES is empty, so nothing below is checking anything');
+    for (const locale of GENERATED_LOCALES) {
+      // Dropping it from LOCALES would also drop it from the freshness gate and
+      // the end-of-run scan, which is what `tracks every shipped locale` in
+      // tests/pro-locale-freshness.test.mjs already refuses.
+      assert.ok(LOCALES.includes(locale), `${locale} must stay in LOCALES; only the write path excludes it`);
+      assert.ok(!TRANSLATABLE_LOCALES.includes(locale), `${locale} must not be in TRANSLATABLE_LOCALES`);
+    }
+  });
+
+  it('runs --check inside a job the deploy gate requires', () => {
+    // Presence alone is not enough: a step in a job outside the required set
+    // reports red without blocking anything.
+    const unitJob = workflow.match(/\n {2}unit:\n([\s\S]*?)(?=\n {2}[a-z][\w-]*:\n)/);
+    assert.ok(unitJob, 'could not locate the unit job in .github/workflows/test.yml');
+    assert.match(
+      unitJob[1]!,
+      /convert-zh-tw\.py --check/,
+      'the staleness gate for the generated catalogues is not run by the unit job',
+    );
+
+    const gate = readFileSync(repoPath('.github/workflows/deploy-gate.yml'), 'utf8');
+    const required = gate.match(/required='(\[[^']*\])'/);
+    assert.ok(required, 'could not read the required-job list from deploy-gate.yml');
+    assert.ok(
+      (JSON.parse(required[1]!) as string[]).includes('unit'),
+      'the unit job is no longer gate-required, so the catalogue check stopped blocking merges',
+    );
+  });
 });

@@ -743,6 +743,7 @@ async function main() {
   // would mark the locales that were skipped as fresh and hide their rot
   // permanently.
   let unresolved = 0;
+  let generatedOutstanding = 0;
   if (!dryRun) {
     for (const loc of LOCALES) {
       const locPath = path.join(ROOT, `${loc}.json`);
@@ -755,11 +756,28 @@ async function main() {
         refreshedByLocale.get(loc) ?? new Set(),
       );
       const outstanding = left.missing.length + left.stale.length + left.orphan.length;
-      if (outstanding > 0) {
-        const sample = [...left.missing, ...left.stale, ...left.orphan].slice(0, 3).join(', ');
-        console.error(`[${loc}] ✗ still ${left.missing.length} missing / ${left.stale.length} stale / ${left.orphan.length} orphaned after run (e.g. ${sample})`);
-        unresolved += outstanding;
+      if (outstanding === 0) continue;
+      const sample = [...left.missing, ...left.stale, ...left.orphan].slice(0, 3).join(', ');
+
+      // A generated locale is being measured against the wrong source here.
+      // zh-TW is converted from zh.json, not translated from en.json, so an
+      // English edit marks it stale on the strength of a comparison it was
+      // never in scope for — and no rerun of this script can clear it, because
+      // the write path no longer targets it. Counting it into `unresolved`
+      // would block the baseline on work this script cannot do, stranding every
+      // other locale the same run just translated.
+      //
+      // Its freshness is not unguarded as a result: `convert-zh-tw.py --check`
+      // compares it byte-for-byte against zh.json in the `unit` job, which is a
+      // stricter claim than the baseline's, and is the fix named below.
+      if (GENERATED_LOCALES.has(loc)) {
+        console.error(`[${loc}] ✗ ${left.missing.length} missing / ${left.stale.length} stale / ${left.orphan.length} orphaned (e.g. ${sample}) — generated locale, not fixable here: rerun scripts/convert-zh-tw.py`);
+        generatedOutstanding += outstanding;
+        continue;
       }
+
+      console.error(`[${loc}] ✗ still ${left.missing.length} missing / ${left.stale.length} stale / ${left.orphan.length} orphaned after run (e.g. ${sample})`);
+      unresolved += outstanding;
     }
   }
 
@@ -767,7 +785,10 @@ async function main() {
   // run in dry-run — printing 0 there reads as an all-clear next to a non-zero
   // orphan or stale count.
   const unresolvedReport = dryRun ? 'n/a (dry run)' : unresolved;
-  console.log(`\n[done] missing ${totalMissing}, stale ${totalStale}, untracked ${totalUntracked}, orphaned ${totalOrphan}, translated ${totalTranslated}, rejected ${totalRejected}, unresolved-after-run ${unresolvedReport}`);
+  // Reported separately rather than folded into unresolved: it does not gate the
+  // baseline, but a silent zero would read as "every locale is fresh".
+  const generatedReport = generatedOutstanding > 0 ? `, generated-locale-outstanding ${generatedOutstanding} (rerun scripts/convert-zh-tw.py)` : '';
+  console.log(`\n[done] missing ${totalMissing}, stale ${totalStale}, untracked ${totalUntracked}, orphaned ${totalOrphan}, translated ${totalTranslated}, rejected ${totalRejected}, unresolved-after-run ${unresolvedReport}${generatedReport}`);
 
   const verdict = mayAdvanceBaseline({
     unresolved,
