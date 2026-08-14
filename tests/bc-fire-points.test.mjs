@@ -197,14 +197,14 @@ describe('dedup against #6664 nid-only cwfis:${year}_BC_${year}-${FIRE_NUMBER}',
       fireNumber: 'V30006',
       agencyFireId: 'V30006',
       stageOfControl: 'Out',
-      fireYear: 2026,
+      fireYear: 2025,
       latLonKey: '50.5273,-122.4817',
       latLonTimeKey: latLonTimeKey(50.5273, -122.4817, 0),
     }];
     const cwfisKeys = collectCwfisJoinKeys(cwfis[0]);
     const bcKeys = collectBcJoinKeys(bc[0]);
     assert.ok(cwfisKeys.has('cwfis:2025_BC_2025-V32337'));
-    assert.ok(bcKeys.has('cwfis:2026_BC_2026-V30006'));
+    assert.ok(bcKeys.has('cwfis:2025_BC_2025-V30006'));
     assert.equal(cwfisKeys.size, 1);
     assert.equal(bcKeys.size, 1);
     assert.equal(cwfisKeys.has('50.5273,-122.4817'), false);
