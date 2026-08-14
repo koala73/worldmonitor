@@ -40,12 +40,12 @@
       "name": "ttcAlerts",
       "status": "EMPTY",
       "issue": 6623,
-      "expiresAt": "2026-08-14T12:00:00.000Z",
-      "reason": "New TTC GTFS-RT service-alerts probe. seed-ttc-alerts cron is */5 * * * *; EMPTY is expected until the first Railway tick after this branch deploys. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance rather than staying silent.",
+      "expiresAt": "2026-08-15T12:00:00.000Z",
+      "reason": "New TTC GTFS-RT service-alerts probe. seed-ttc-alerts cron is */5 * * * *; EMPTY is expected until the first Railway tick after this branch deploys. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance rather than staying silent. Re-anchored 2026-08-14T18:00Z because the previous window (expiry 2026-08-14T12:00Z) lapsed before merge. The PR-time cutover check only validates that a cutover EXISTS — it never compares expiresAt to the clock — so an expired anchor ships green and reds the scheduled monitor minutes after merge. The */5 cron is not the binding constraint: seed-ttc-alerts is one of six services not yet created on Railway, so this window covers provisioning, not just deploy. If it has not merged AND been provisioned by 2026-08-15T12:00Z, re-anchor both again.",
       "cutover": {
         "probeKey": "seed-meta:transit:ttc:alerts",
-        "activatedAt": "2026-08-13T22:45:00.000Z",
-        "firstScheduledRunAt": "2026-08-14T12:00:00.000Z"
+        "activatedAt": "2026-08-14T18:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-15T12:00:00.000Z"
       }
     }
   ]

@@ -48,7 +48,7 @@
     "entF10": "Deployment cloud, on-premises o air-gapped",
     "entF11": "Onboarding e supporto dedicati",
     "entCta": "Parla con le vendite",
-    "freeF2": "500+ feed, 547+ fonti, 50+ livelli mappa"
+    "freeF2": "500+ feed, 548+ fonti, 50+ livelli mappa"
   },
   "whyUpgrade": {
     "title": "Perché fare l'upgrade",
@@ -566,7 +566,7 @@
       "s1l": "Livelli mappa",
       "s2v": "500+",
       "s2l": "Feed curati",
-      "s3v": "545+",
+      "s3v": "546+",
       "s3l": "Provider di dati",
       "s4v": "13",
       "s4l": "Punti critici · AIS live",
@@ -659,7 +659,7 @@
       "q2": "Che cos'è una dashboard di intelligence globale?",
       "a2": "Una vista live unica che fonde segnali che la maggior parte degli strumenti mantiene separati: eventi di conflitto, tracciamento di navi e aeromobili, punti di strozzatura dello shipping, satelliti, cavi sottomarini, oleodotti, mercati e minacce cyber — su una mappa mondiale in tempo reale, con punteggio IA e brief. World Monitor è una gratuita.",
       "q3": "Da dove provengono i dati?",
-      "a3": "545+ provider, nominati: ACLED e UCDP per i conflitti, AISStream per le navi live, OpenSky per gli aeromobili, NASA FIRMS per gli incendi, USGS per i terremoti, IMF, BIS, FRED e Finnhub per i mercati e le macro — più 500+ feed di notizie curati. Ogni pannello cita le sue fonti e i timestamp inline.",
+      "a3": "546+ provider, nominati: ACLED e UCDP per i conflitti, AISStream per le navi live, OpenSky per gli aeromobili, NASA FIRMS per gli incendi, USGS per i terremoti, IMF, BIS, FRED e Finnhub per i mercati e le macro — più 500+ feed di notizie curati. Ogni pannello cita le sue fonti e i timestamp inline.",
       "q4": "Posso monitorare i punti di strozzatura come Hormuz o Bab el-Mandeb in tempo reale?",
       "a4": "Sì. 13 punti di strozzatura sono tracciati con conteggi di navi AIS live, variazione dei transiti da settimana a settimana e punteggio di disruption — e le anomalie di densità sono segnalate rispetto alla baseline mobile di ogni stretto.",
       "q5": "Com'è diverso da una mappa di conflitti come Liveuamap?",

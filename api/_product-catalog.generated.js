@@ -172,8 +172,8 @@ export const PUBLIC_PRODUCT_FACTS = {
     "panelImplementations": 109,
     "feedDefinitions": 658,
     "freshnessTrackedSourceGroups": 35,
-    "sourceAttributionHosts": 547,
-    "sourceAttributionProviders": 545
+    "sourceAttributionHosts": 548,
+    "sourceAttributionProviders": 546
   }
 };
 

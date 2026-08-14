@@ -23,7 +23,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Price: $0/month
 - Signup required: No
 - Best for: Public situational awareness, OSINT research, market/geopolitical context, news monitoring
-- Includes: 56 map layers (all free except Resilience, which is Pro), 500+ curated feeds backed by 547+ observed upstream hosts, country briefs, hotspots, instability scores, chokepoints, cables, cascade analysis, breaking alert pipeline and watchlists
+- Includes: 56 map layers (all free except Resilience, which is Pro), 500+ curated feeds backed by 548+ observed upstream hosts, country briefs, hotspots, instability scores, chokepoints, cables, cascade analysis, breaking alert pipeline and watchlists
 - Limits: 3 dashboard tabs; free dashboard refresh cadence is typically 5-15 minutes; advanced analyst, digest, API and team workflows require paid plans
 
 ## Pro
