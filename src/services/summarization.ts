@@ -1,7 +1,7 @@
 /**
  * Summarization Service with Fallback Chain
  * Server-side Redis caching handles cross-user deduplication
- * Fallback: Ollama -> Groq -> OpenRouter -> Browser T5
+ * Fallback: Ollama -> OpenRouter -> OrcaRouter -> Groq -> Browser T5
  *
  * Uses NewsServiceClient.summarizeArticle() RPC instead of legacy
  * per-provider fetch endpoints.
@@ -50,7 +50,7 @@ export interface SummarizationResult {
 export type ProgressCallback = (step: number, total: number, message: string) => void;
 
 export interface SummarizeOptions {
-  skipCloudProviders?: boolean;  // true = skip Ollama/Groq/OpenRouter, go straight to browser T5
+  skipCloudProviders?: boolean;  // true = skip Ollama/OpenRouter/OrcaRouter/Groq, go straight to browser T5
   skipBrowserFallback?: boolean; // true = skip browser T5 fallback
   /**
    * Optional article bodies paired 1:1 with `headlines`. When supplied and
@@ -112,9 +112,13 @@ interface ApiProviderDef {
 // Order matches the server's default chain since #4944: OpenRouter
 // (DeepSeek V4 Flash) ahead of Groq — the RPC honors the client-supplied
 // provider, so the client's try-order decides which model summarizes.
+// OrcaRouter sits between the two as an opt-in: it only fires when the
+// server holds ORCAROUTER_API_KEY, so without a key this slot is a no-op
+// and existing users see the historic ollama → openrouter → groq chain.
 const API_PROVIDERS: ApiProviderDef[] = [
   { featureId: 'aiOllama',      provider: 'ollama',     label: 'Ollama' },
   { featureId: 'aiOpenRouter',  provider: 'openrouter', label: 'OpenRouter' },
+  { featureId: 'aiOrcaRouter',  provider: 'orcarouter', label: 'OrcaRouter' },
   { featureId: 'aiGroq',        provider: 'groq',       label: 'Groq AI' },
 ];
 
@@ -272,7 +276,7 @@ async function runApiChain(
 }
 
 /**
- * Generate a summary using the fallback chain: Ollama -> Groq -> OpenRouter -> Browser T5
+ * Generate a summary using the fallback chain: Ollama -> OpenRouter -> OrcaRouter -> Groq -> Browser T5
  * Server-side Redis caching is handled by the SummarizeArticle RPC handler.
  *
  * @param geoContext Optional geographic signal context to include in the prompt

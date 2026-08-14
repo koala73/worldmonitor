@@ -53,6 +53,14 @@ const LLM_PROVIDERS = [
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': SERVICE_UA }),
     timeout: 20_000,
   },
+  {
+    name: 'orcarouter',
+    envKey: 'ORCAROUTER_API_KEY',
+    apiUrl: 'https://api.orcarouter.ai/v1/chat/completions',
+    model: 'deepseek/deepseek-v4-flash',
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': SERVICE_UA }),
+    timeout: 20_000,
+  },
 ];
 
 /**

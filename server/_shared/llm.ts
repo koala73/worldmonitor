@@ -31,7 +31,7 @@ export interface ProviderCredentials {
   extraBody?: Record<string, unknown>;
 }
 
-export type LlmProviderName = 'ollama' | 'groq' | 'openrouter' | 'generic';
+export type LlmProviderName = 'ollama' | 'groq' | 'openrouter' | 'generic' | 'orcarouter';
 
 export interface ProviderCredentialOverrides {
   model?: string;
@@ -124,6 +124,19 @@ export function getProviderCredentials(
     };
   }
 
+  if (provider === 'orcarouter') {
+    const apiKey = process.env.ORCAROUTER_API_KEY;
+    if (!apiKey) return null;
+    return {
+      apiUrl: 'https://api.orcarouter.ai/v1/chat/completions',
+      model: overrides.model || 'deepseek/deepseek-v4-flash',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    };
+  }
+
   // Generic OpenAI-compatible endpoint via LLM_API_URL/LLM_API_KEY/LLM_MODEL
   if (provider === 'generic') {
     const apiUrl = process.env.LLM_API_URL;
@@ -192,8 +205,18 @@ export function stripThinkingTags(text: string): string {
 // via OpenRouter; groq (llama-3.3-70b-versatile) is the free-tier/outage
 // fallback. Ollama stays first so self-hosted deployments are untouched —
 // it is skipped in cloud where OLLAMA_API_URL is unset.
+//
+// orcarouter is deliberately NOT in the default chain: WorldMonitor's default
+// routing keeps the China-hosted provider exclusion (#4993) and the
+// DeepSeek-V4-Flash pin (#4944), both of which are OpenRouter-side policy that
+// a third-party gateway would bypass. It is still a first-class named
+// provider — present in PROVIDER_SET so LLM_TOOL_PROVIDER /
+// LLM_REASONING_PROVIDER / FORECAST_LLM_*_PROVIDER_ORDER and explicit
+// providerOrder all accept it — and only runs when the user opts in by
+// setting ORCAROUTER_API_KEY.
 const PROVIDER_CHAIN = ['ollama', 'openrouter', 'groq', 'generic'] as const;
-const PROVIDER_SET = new Set<string>(PROVIDER_CHAIN);
+const OPTIONAL_PROVIDERS = ['orcarouter'] as const;
+const PROVIDER_SET = new Set<string>([...PROVIDER_CHAIN, ...OPTIONAL_PROVIDERS]);
 
 export interface LlmCallOptions {
   messages: Array<{ role: string; content: string }>;
