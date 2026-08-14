@@ -43,41 +43,16 @@ describe('company monitoring worker deployment registration', () => {
     }
   });
 
-  it('softens only the pre-activation window and registers strict worker freshness', () => {
-    assert.equal(health.STANDALONE_KEYS.companyMonitoringWorker, 'company-monitoring:worker-health:v1');
-    assert.deepEqual(health.SEED_META.companyMonitoringWorker, {
-      key: 'seed-meta:company-monitoring:worker',
-      maxStaleMin: 5,
-      workerControl: true,
-    });
-    assert.equal(health.ON_DEMAND_KEYS.has('companyMonitoringWorker'), true);
-    assert.equal(
-      health.ACTIVATION_MARKERS.companyMonitoringWorker,
-      'seed-activated:company-monitoring:worker',
-    );
-
-    const base = {
-      keyStrens: new Map([['company-monitoring:worker-health:v1', 0]]),
-      keyErrors: new Map(),
-      keyMetaValues: new Map([['seed-meta:company-monitoring:worker', null]]),
-      keyMetaErrors: new Map(),
-      now: 1_800_000_000_000,
-    };
-    assert.equal(health.classifyKey(
-      'companyMonitoringWorker',
-      'company-monitoring:worker-health:v1',
-      { allowOnDemand: true },
-      { ...base, activationStates: new Map([['companyMonitoringWorker', false]]) },
-    ).status, 'EMPTY_ON_DEMAND');
-    assert.equal(health.classifyKey(
-      'companyMonitoringWorker',
-      'company-monitoring:worker-health:v1',
-      { allowOnDemand: true },
-      { ...base, activationStates: new Map([['companyMonitoringWorker', true]]) },
-    ).status, 'EMPTY');
+  it('keeps the health reader dark until Railway pre-seed evidence exists', () => {
+    const service = registry.find((entry) => entry.service === 'company-monitoring-worker');
+    assert.match(service.documentedAt, /pending provisioning.*#6402/i);
+    assert.equal(health.STANDALONE_KEYS.companyMonitoringWorker, undefined);
+    assert.equal(health.SEED_META.companyMonitoringWorker, undefined);
+    assert.equal(health.ON_DEMAND_KEYS.has('companyMonitoringWorker'), false);
+    assert.equal(health.ACTIVATION_MARKERS.companyMonitoringWorker, undefined);
   });
 
-  it('projects only the closed worker control-plane status, outcome, and counters', () => {
+  it('does not project unpublished worker metadata before health registration', () => {
     const redisKey = 'company-monitoring:worker-health:v1';
     const metaKey = 'seed-meta:company-monitoring:worker';
     const entry = health.classifyKey(
@@ -102,22 +77,7 @@ describe('company monitoring worker deployment registration', () => {
       },
     );
 
-    assert.equal(entry.status, 'OK');
-    assert.deepEqual(entry.workerControl, {
-      status: 'ok',
-      outcome: 'disabled',
-      counters: {
-        loops: 2,
-        claims: 0,
-        completed: 0,
-        nonReassuring: 0,
-        fenced: 0,
-        replayed: 0,
-        executorErrors: 0,
-        claimErrors: 0,
-        finalizeErrors: 0,
-      },
-    });
+    assert.equal(entry.workerControl, undefined);
     assert.equal(JSON.stringify(entry).includes('must-not-project'), false);
   });
 });
