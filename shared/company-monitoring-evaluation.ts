@@ -394,7 +394,9 @@ export function stratifiedBootstrapUpperBound(examples: CalibrationExample[], ca
     for (const [, stratum] of orderedStrata) {
       for (let index = 0; index < stratum.length; index += 1) {
         const example = stratum[Math.floor(random() * stratum.length)]!;
-        sampleCounts[sortedRank.get(example)!] += 1;
+        const rank = sortedRank.get(example);
+        assert.ok(rank !== undefined, 'bootstrap example must have a canonical rank');
+        sampleCounts[rank] = sampleCounts[rank]! + 1;
       }
     }
 
