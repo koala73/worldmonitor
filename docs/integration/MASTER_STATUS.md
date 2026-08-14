@@ -644,3 +644,7 @@ binary diff hash `74e052...`. The optional repository-wide `buf lint` remains
 failed on unrelated retained upstream debt. Phase 12 therefore has a complete
 local pre-push result but remains open pending a normal non-force publication
 and successful fresh GitHub workflows on the final documented head.
+
+Windows pre-push correction evidence record commit:
+`df93dc82fb623a6445451300d04c72fe1e19d6b0`. This following receipt backfills
+that immutable SHA and does not promote the still-pending remote gate.

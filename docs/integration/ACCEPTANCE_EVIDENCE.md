@@ -520,3 +520,7 @@ Raw evidence:
 PUBLISHED NORMALLY AND PASS FRESH GITHUB CI.** No main write, force push,
 merge, deployment, release, Provider activation or truth-state promotion is
 accepted by this local record.
+
+Windows pre-push evidence record commit:
+`df93dc82fb623a6445451300d04c72fe1e19d6b0`. This following receipt records
+the immutable evidence SHA only; fresh exact-head GitHub CI is still required.
