@@ -579,3 +579,7 @@ This evidence repairs the two diagnosed defects but does not rewrite run 6 as
 green. A new non-force publication and fresh GitHub run are still required;
 Phase 12 remains open and the Draft PR remains not ready, unmerged and
 undeployed.
+
+The immutable GitHub run 6 correction-evidence record is commit
+`0f40219ffd30363a50ae7d6d0e3181ed71b2f2fd`; this following receipt
+backfills that SHA without upgrading the pending remote gate.

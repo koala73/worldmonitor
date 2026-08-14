@@ -466,3 +466,7 @@ Raw correction evidence:
 **Current Phase 12 gate: RUN 6 FAILURE CORRECTED LOCALLY; FRESH REMOTE
 CORRECTED-HEAD CI REQUIRED.** No merge, deployment or Provider activation is
 accepted by this record.
+
+GitHub run 6 correction-evidence record commit:
+`0f40219ffd30363a50ae7d6d0e3181ed71b2f2fd`. This following receipt only
+backfills the immutable SHA; it is not a remote-CI pass.
