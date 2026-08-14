@@ -73,6 +73,8 @@ describe('bc live fixture coordinates and status', () => {
     assert.ok(brunswick.id.length <= 100);
     assert.equal(brunswick.stageOfControl, 'Fire of Note');
     assert.equal(brunswick.region, 'British Columbia');
+    assert.equal('latLonKey' in brunswick, false);
+    assert.equal('latLonTimeKey' in brunswick, false);
 
     const cariboo = parsed.fireDetections.find((f) => f.fireNumber === 'C41588');
     assert.equal(cariboo.location.latitude, 51.5189);
@@ -123,7 +125,7 @@ describe('bc live fixture coordinates and status', () => {
   });
 });
 
-describe('dedup against #6614 cwfis ids / lat-lon-time', () => {
+describe('dedup against #6664 nid-only cwfis:${year}_BC_${year}-${FIRE_NUMBER}', () => {
   it('does not double-count a BC point that matches cwfis:${national_fire_id}', () => {
     const cwfis = parseCwfisGeoJson(cwfisActiveJson, 'active').fireDetections;
     const bc = parseBcFireKml(kml).fireDetections;
@@ -138,39 +140,14 @@ describe('dedup against #6614 cwfis ids / lat-lon-time', () => {
     assert.ok(merged._bcEnrichedCount >= 2);
 
     const brunswickKeys = collectCwfisJoinKeys(cwfis.find((f) => f.nationalFireId === '2026_BC_2026-V10742'));
-    assert.ok(brunswickKeys.has('V10742'));
     assert.ok(brunswickKeys.has('cwfis:2026_BC_2026-V10742'));
+    assert.equal(brunswickKeys.has('V10742'), false);
+    assert.equal(brunswickKeys.has('49.8935,-121.4548'), false);
     const bcKeys = collectBcJoinKeys(bc.find((f) => f.fireNumber === 'V10742'));
+    assert.ok(bcKeys.has('cwfis:2026_BC_2026-V10742'));
+    assert.equal(bcKeys.has('V10742'), false);
+    assert.equal(bcKeys.has('49.8935,-121.4548'), false);
     assert.ok([...bcKeys].some((key) => brunswickKeys.has(key)));
-  });
-
-  it('dedups on the shared lat-lon-time bucket when native ids are absent', () => {
-    const detectedAt = Date.parse('2026-08-13T11:30:00Z');
-    const cwfis = [{
-      id: 'cwfis:49.8935,-121.4548,29777010',
-      location: { latitude: 49.89345, longitude: -121.45475 },
-      detectedAt,
-      source: 'cwfis',
-      kind: 'active',
-      emergency: true,
-      nationalFireId: '',
-      agencyFireId: '',
-    }];
-    const bc = [{
-      id: 'bc-wildfire:49.8935,-121.4548,29777010',
-      location: { latitude: 49.8935, longitude: -121.4548 },
-      detectedAt,
-      source: 'bc-wildfire',
-      kind: 'active',
-      emergency: true,
-      fireNumber: '',
-      latLonTimeKey: latLonTimeKey(49.8935, -121.4548, detectedAt),
-      latLonKey: '49.8935,-121.4548',
-    }];
-    const merged = enrichOrAppendBc(cwfis, bc);
-    assert.equal(merged.fireDetections.length, 1);
-    assert.equal(merged.fireDetections[0].source, 'cwfis');
-    assert.equal(merged._bcAppendedCount, 0);
   });
 
   it('appends BC-only fires with a bc-wildfire native id', () => {
@@ -198,6 +175,51 @@ describe('dedup against #6614 cwfis ids / lat-lon-time', () => {
     const activeOnly = merged.fireDetections.find((f) => f.fireNumber === 'C31543');
     assert.ok(activeOnly);
     assert.equal(activeOnly.source, 'bc-wildfire');
+  });
+
+  it('does not lat-lon join Out V30006 onto cwfis:2025_BC_2025-V32337', () => {
+    const cwfis = [{
+      id: 'cwfis:2025_BC_2025-V32337',
+      location: { latitude: 50.5273, longitude: -122.4817 },
+      source: 'cwfis',
+      kind: 'active',
+      emergency: true,
+      nationalFireId: '2025_BC_2025-V32337',
+      agencyFireId: 'V32337',
+      stageOfControl: 'Under Control',
+    }];
+    const bc = [{
+      id: 'bc-wildfire:V30006',
+      location: { latitude: 50.5273, longitude: -122.4817 },
+      source: 'bc-wildfire',
+      kind: 'active',
+      emergency: false,
+      fireNumber: 'V30006',
+      agencyFireId: 'V30006',
+      stageOfControl: 'Out',
+      fireYear: 2026,
+      latLonKey: '50.5273,-122.4817',
+      latLonTimeKey: latLonTimeKey(50.5273, -122.4817, 0),
+    }];
+    const cwfisKeys = collectCwfisJoinKeys(cwfis[0]);
+    const bcKeys = collectBcJoinKeys(bc[0]);
+    assert.ok(cwfisKeys.has('cwfis:2025_BC_2025-V32337'));
+    assert.ok(bcKeys.has('cwfis:2026_BC_2026-V30006'));
+    assert.equal(cwfisKeys.size, 1);
+    assert.equal(bcKeys.size, 1);
+    assert.equal(cwfisKeys.has('50.5273,-122.4817'), false);
+    assert.equal(bcKeys.has('50.5273,-122.4817'), false);
+    assert.equal(bcKeys.has('V30006'), false);
+    assert.equal([...bcKeys].some((key) => cwfisKeys.has(key)), false);
+
+    const merged = enrichOrAppendBc(cwfis, bc);
+    assert.equal(merged.fireDetections.length, 1);
+    assert.equal(merged.fireDetections[0].id, 'cwfis:2025_BC_2025-V32337');
+    assert.equal(merged.fireDetections[0].source, 'cwfis');
+    assert.equal(merged.fireDetections[0].bcFireNumber, undefined);
+    assert.equal(merged.fireDetections[0].bcFireStatus, undefined);
+    assert.equal(merged._bcEnrichedCount, 0);
+    assert.equal(merged._bcAppendedCount, 0);
   });
 
   it('still enriches a matching CWFIS row with an Out status', () => {
@@ -387,6 +409,14 @@ describe('module import contract', () => {
   it('tests import the KML module, not the seeder', () => {
     assert.doesNotMatch(testSrc, /from ['"][^'"]*seed-fire-detections/);
     assert.doesNotMatch(parseModuleSrc, /from ['"][^'"]*seed-fire-detections/);
+  });
+
+  it('drops latLonKey / latLonTimeKey / raw fire-number from the join path', () => {
+    assert.doesNotMatch(parseModuleSrc, /export function latLonKey/);
+    assert.doesNotMatch(parseModuleSrc, /export function extractAgencyFireNumber/);
+    assert.doesNotMatch(parseModuleSrc, /latLonKey:/);
+    assert.doesNotMatch(parseModuleSrc, /latLonTimeKey:/);
+    assert.match(parseModuleSrc, /cwfis:\$\{y\}_BC_\$\{y\}-\$\{number\}/);
   });
 
   it('does not add a second CWFIS client', () => {

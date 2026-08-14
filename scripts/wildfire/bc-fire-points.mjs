@@ -72,10 +72,6 @@ export function latLonTimeKey(lat, lon, detectedAt = 0) {
   return `${Number(lat).toFixed(4)},${Number(lon).toFixed(4)},${timeBucket}`;
 }
 
-export function latLonKey(lat, lon) {
-  return `${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}`;
-}
-
 function looksPrescribed(props = {}) {
   const blob = [
     props.FIRE_TYPE, props.fire_type, props.FIRE_STATUS, props.fire_status,
@@ -96,8 +92,9 @@ function fireNumberFromProps(props = {}, fallbackName = '') {
 }
 
 /**
- * Native BC id is `bc-wildfire:${FIRE_NUMBER}`. Missing native id uses the
- * same lat-lon-time bucket scheme as #6614 (`lat.toFixed(4),lon.toFixed(4),minute`).
+ * Native BC id is `bc-wildfire:${FIRE_NUMBER}`. Missing native id uses a
+ * lat-lon-time bucket for BC-only identity. That bucket is not a CWFIS join
+ * key — #6664 allows only `cwfis:${year}_BC_${year}-${FIRE_NUMBER}`.
  */
 export function stableBcFireId(props = {}, coords = {}) {
   const fireNumber = fireNumberFromProps(props);
@@ -209,8 +206,6 @@ export function normalizeBcFeature(props = {}, coords = {}) {
     incidentName: String(props.INCIDENT_NAME || props.incident_name || '').trim(),
     geographicDescription: String(props.GEOGRAPHIC_DESCRIPTION || props.geographic_description || '').trim(),
     fireYear: asFiniteNumber(props.FIRE_YEAR || props.fire_year) || 0,
-    latLonTimeKey: latLonTimeKey(lat, lon, detectedAt),
-    latLonKey: latLonKey(lat, lon),
   };
 }
 
@@ -447,66 +442,32 @@ export async function fetchBcFirePoints({
   }
 }
 
-const FIRE_NUMBER_RE = /(?:^|[_\-])([A-Z]\d{4,}|(?:RX|G|C|V|K|N|R)\d{3,})$/i;
-
-export function extractAgencyFireNumber(value) {
-  const text = String(value || '').trim();
-  if (!text) return '';
-  if (/^[A-Z]{1,3}[-]?\d{3,}$/i.test(text) || /^RX[-]?\w+/i.test(text)) return text.replace(/^(\d{4}-)/, '');
-  const stripped = text.replace(/^\d{4}-/, '');
-  const match = stripped.match(FIRE_NUMBER_RE) || text.match(/([A-Z]\d{4,})/i);
-  return match ? match[1] : stripped;
+/**
+ * #6664 nid-only contract. BC may join CWFIS ONLY on
+ * `cwfis:${year}_BC_${year}-${FIRE_NUMBER}`. latLonKey, latLonTimeKey, and
+ * the raw fire-number are not join keys.
+ */
+export function bcNationalJoinKey(fireNumber, fireYear) {
+  const number = String(fireNumber || '').trim().toUpperCase();
+  if (!number) return '';
+  const year = Number(fireYear);
+  const y = Number.isFinite(year) && year > 0 ? Math.trunc(year) : new Date().getUTCFullYear();
+  return `cwfis:${y}_BC_${y}-${number}`;
 }
 
 export function collectCwfisJoinKeys(detection) {
   const keys = new Set();
   if (!detection || typeof detection !== 'object') return keys;
-  if (detection.id) keys.add(String(detection.id));
-  if (detection.nationalFireId) {
-    const national = String(detection.nationalFireId).trim();
-    keys.add(national);
-    keys.add(`cwfis:${national}`);
-    const extracted = extractAgencyFireNumber(national);
-    if (extracted) keys.add(extracted.toUpperCase());
-  }
-  if (detection.agencyFireId) {
-    const agency = String(detection.agencyFireId).trim();
-    keys.add(agency);
-    keys.add(agency.replace(/^\d{4}-/, ''));
-    const extracted = extractAgencyFireNumber(agency);
-    if (extracted) keys.add(extracted.toUpperCase());
-  }
-  const lat = detection.location?.latitude;
-  const lon = detection.location?.longitude;
-  if (lat != null && lon != null) {
-    keys.add(latLonTimeKey(lat, lon, detection.detectedAt || 0));
-    keys.add(latLonKey(lat, lon));
-  }
+  const national = String(detection.nationalFireId || '').trim();
+  if (national) keys.add(`cwfis:${national}`);
   return keys;
 }
 
 export function collectBcJoinKeys(detection) {
   const keys = new Set();
   if (!detection || typeof detection !== 'object') return keys;
-  if (detection.id) keys.add(String(detection.id));
-  const fireNumber = String(detection.fireNumber || detection.agencyFireId || '').trim();
-  if (fireNumber) {
-    const upper = fireNumber.toUpperCase();
-    keys.add(upper);
-    keys.add(fireNumber);
-    const year = detection.fireYear || new Date().getUTCFullYear();
-    keys.add(`cwfis:${year}_BC_${year}-${fireNumber}`);
-    keys.add(`cwfis:${year}_BC_${year}-${upper}`);
-    keys.add(`${year}-${fireNumber}`);
-  }
-  if (detection.latLonTimeKey) keys.add(detection.latLonTimeKey);
-  if (detection.latLonKey) keys.add(detection.latLonKey);
-  const lat = detection.location?.latitude;
-  const lon = detection.location?.longitude;
-  if (lat != null && lon != null) {
-    keys.add(latLonTimeKey(lat, lon, detection.detectedAt || 0));
-    keys.add(latLonKey(lat, lon));
-  }
+  const key = bcNationalJoinKey(detection.fireNumber, detection.fireYear);
+  if (key) keys.add(key);
   return keys;
 }
 
@@ -522,9 +483,10 @@ function mergeById(primary = [], secondary = []) {
 }
 
 /**
- * CWFIS is baseline. A matching BC point enriches the CWFIS record (same
- * `cwfis:` / lat-lon-time identity) instead of double-counting. BC-only fires
- * are appended with `bc-wildfire:` native ids that still hash to lat-lon-time.
+ * CWFIS is baseline. A matching BC point enriches the CWFIS record on the
+ * reconstructed nid `cwfis:${year}_BC_${year}-${FIRE_NUMBER}` only
+ * (#6664). Lat-lon and raw fire-number keys are not join keys. BC-only
+ * active fires are appended with `bc-wildfire:` native ids.
  */
 export function enrichOrAppendBc(existing = [], bcDetections = []) {
   const out = existing.map((row) => ({ ...row }));
