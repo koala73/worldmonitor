@@ -51,8 +51,9 @@ function seriesValue(entry) {
 
 /**
  * Collapse a Valet observations document to the newest row per series.
- * Discontinued pairs keep their last published date; effectiveDate is the
- * newest date across the table (the live FX close), not a discontinued relic.
+ * Discontinued relics (VND 2019, RUB/SAR last print on a prior close) keep
+ * their last published date here; buildBocFxRates drops them from `rates`
+ * so they are not published as current.
  */
 export function parseValetObservations(doc) {
   const seriesDetail = doc?.seriesDetail && typeof doc.seriesDetail === 'object' ? doc.seriesDetail : {};
@@ -91,18 +92,24 @@ function fxCodeFromSeriesId(seriesId) {
 }
 
 export function buildBocFxRates(parsed) {
-  const rates = {};
+  const candidates = [];
   let effectiveDate = null;
   for (const series of parsed?.series ?? []) {
     const code = fxCodeFromSeriesId(series.seriesId);
     if (!code || !(series.value > 0)) continue;
+    candidates.push({ code, series });
+    if (effectiveDate == null || series.date > effectiveDate) effectiveDate = series.date;
+  }
+  const rates = {};
+  for (const { code, series } of candidates) {
+    // Relics (VND 2019-12-31, RUB/SAR 2026-04-30) are not the live close.
+    if (series.date !== effectiveDate) continue;
     rates[code] = {
       rate: series.value,
       date: series.date,
       label: series.label,
       seriesId: series.seriesId,
     };
-    if (effectiveDate == null || series.date > effectiveDate) effectiveDate = series.date;
   }
   return { rates, effectiveDate };
 }

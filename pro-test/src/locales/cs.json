@@ -48,7 +48,7 @@
     "entF10": "Cloud, on-premises nebo air-gapped nasazení",
     "entF11": "Dedikovaný onboarding a podpora",
     "entCta": "Kontaktujte prodej",
-    "freeF2": "500+ kanálů, 536+ zdrojů, 50+ mapových vrstev"
+    "freeF2": "500+ kanálů, 538+ zdrojů, 50+ mapových vrstev"
   },
   "whyUpgrade": {
     "title": "Proč upgradovat",
@@ -566,7 +566,7 @@
       "s1l": "Mapové vrstvy",
       "s2v": "500+",
       "s2l": "Kurátorované zdroje",
-      "s3v": "534+",
+      "s3v": "536+",
       "s3l": "Poskytovatelé dat",
       "s4v": "13",
       "s4l": "Kritické body · živý AIS",
@@ -659,7 +659,7 @@
       "q2": "Co je globální inteligentní panel?",
       "a2": "Jediné živé zobrazení, které spojuje signály, které většina nástrojů drží odděleně: konfliktní události, sledování lodí a letadel, kritická místa v přepravě, satelity, podmořské kabely, potrubí, trhy a kybernetické hrozby — na jedné mapě světa v reálném čase s AI skórováním a souhrny. World Monitor je ten zdarma.",
       "q3": "Odkud data pocházejí?",
-      "a3": "Od 534+ poskytovatelů, jmenovaných: ACLED a UCDP pro konflikty, AISStream pro živé lodě, OpenSky pro letadla, NASA FIRMS pro požáry, USGS pro zemětřesení, IMF, BIS, FRED a Finnhub pro trhy a makroekonomiku — plus 500+ kurátorských zpravodajských kanálů. Každý panel cituje své zdroje a časové značky přímo.",
+      "a3": "Od 536+ poskytovatelů, jmenovaných: ACLED a UCDP pro konflikty, AISStream pro živé lodě, OpenSky pro letadla, NASA FIRMS pro požáry, USGS pro zemětřesení, IMF, BIS, FRED a Finnhub pro trhy a makroekonomiku — plus 500+ kurátorských zpravodajských kanálů. Každý panel cituje své zdroje a časové značky přímo.",
       "q4": "Mohu sledovat kritická místa jako Hormuz nebo Bab el-Mandeb v reálném čase?",
       "a4": "Ano. 13 kritických míst je sledováno s živými počty AIS lodí, změnou tranzitu týden od týdne a skórováním narušení — a anomálie hustoty jsou označeny vůči klouzavému základnímu bodu každého průlivu.",
       "q5": "Jak se liší od mapy konfliktů jako Liveuamap?",

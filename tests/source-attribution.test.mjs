@@ -94,11 +94,11 @@ test('source inventory has complete metadata and matches the generated catalog',
   }
 
   const stats = sourceAttributionStats(inventory, manifest);
-  // Main plus this branch's two new hosts (Bank of Canada Valet via
-  // www.bankofcanada.ca, Statistics Canada WDS via www150.statcan.gc.ca).
-  assert.equal(stats.activeHosts, 538);
-  assert.equal(stats.providerCount, 536);
-  assert.equal(stats.observedHosts, 657);
+  const docsStats = JSON.parse(readFileSync(join(rootDir, 'docs/generated/stats.json'), 'utf8'));
+  // Lockstep with docs:stats so leftover host/provider counts cannot drift.
+  assert.equal(stats.activeHosts, docsStats.sourceAttribution.activeHosts);
+  assert.equal(stats.providerCount, docsStats.sourceAttribution.providerCount);
+  assert.equal(stats.observedHosts, docsStats.sourceAttribution.observedHosts);
   assert.ok(stats.reviewNeeded > 0, 'terms-review rows must remain visible until a license audit is complete');
 });
 

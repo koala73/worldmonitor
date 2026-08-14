@@ -25,6 +25,29 @@ export function utcDateIso(nowMs = Date.now()) {
   return new Date(nowMs).toISOString().slice(0, 10);
 }
 
+/** StatCan WDS change-list dates are America/Toronto civil dates, not UTC. */
+export function torontoDateIso(nowMs = Date.now()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Toronto',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(nowMs));
+}
+
+export function shiftIsoDate(dateIso, dayDelta) {
+  if (typeof dateIso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+    throw new Error('STATCAN_DATE_INVALID');
+  }
+  const [year, month, day] = dateIso.split('-').map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + dayDelta));
+  return shifted.toISOString().slice(0, 10);
+}
+
+export function isFutureStatcanDate(dateIso, nowMs = Date.now()) {
+  return dateIso > torontoDateIso(nowMs);
+}
+
 export function changedCubeListUrl(dateIso) {
   if (typeof dateIso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
     throw new Error('STATCAN_DATE_INVALID');
@@ -249,24 +272,64 @@ export async function fetchApprovedWdsJson(url, {
   return doc;
 }
 
+/**
+ * Same-day release radar. A 404 or a Toronto-future date is a quiet miss,
+ * not a hard failure — CPI/LFS vectors must still POST.
+ */
+export async function fetchChangedCubeListBestEffort({
+  dateIso,
+  fetchFn = globalThis.fetch,
+  cache = new Map(),
+  nowMs = Date.now(),
+} = {}) {
+  if (isFutureStatcanDate(dateIso, nowMs)) {
+    return { cubes: [], reason: 'future-date' };
+  }
+  const url = changedCubeListUrl(dateIso);
+  try {
+    const doc = await fetchApprovedWdsJson(url, {
+      fetchFn,
+      cache,
+      cacheKey: statcanCacheKey(url),
+    });
+    return { cubes: parseChangedCubeList(doc), reason: 'ok' };
+  } catch (err) {
+    if (err?.status === 404) return { cubes: [], reason: '404' };
+    throw err;
+  }
+}
+
 export async function fetchStatcanWds({
   fetchFn = globalThis.fetch,
   cache = new Map(),
   nowMs = Date.now(),
 } = {}) {
-  const asOfDate = utcDateIso(nowMs);
-  const changeUrl = changedCubeListUrl(asOfDate);
+  const asOfDate = torontoDateIso(nowMs);
   const vectorBody = JSON.stringify([
     { vectorId: CPI_VECTOR_ID, latestN: CPI_LATEST_N },
     { vectorId: LFS_UNEMPLOYMENT_VECTOR_ID, latestN: LFS_LATEST_N },
   ]);
 
-  const [changedDoc, vectorDoc] = await Promise.all([
-    fetchApprovedWdsJson(changeUrl, {
+  // Do not let a 404/future change-list reject Promise.all and discard CPI/LFS.
+  const changePromise = fetchChangedCubeListBestEffort({
+    dateIso: asOfDate,
+    fetchFn,
+    cache,
+    nowMs,
+  }).then(async (result) => {
+    if (result.reason === 'ok') return result.cubes;
+    const yesterday = shiftIsoDate(asOfDate, -1);
+    const fallback = await fetchChangedCubeListBestEffort({
+      dateIso: yesterday,
       fetchFn,
       cache,
-      cacheKey: statcanCacheKey(changeUrl),
-    }),
+      nowMs,
+    });
+    return fallback.reason === 'ok' ? fallback.cubes : [];
+  });
+
+  const [changedCubes, vectorDoc] = await Promise.all([
+    changePromise,
     fetchApprovedWdsJson(WDS_VECTORS_URL, {
       fetchFn,
       cache,
@@ -276,7 +339,6 @@ export async function fetchStatcanWds({
     }),
   ]);
 
-  const changedCubes = parseChangedCubeList(changedDoc);
   const payload = buildStatcanPayload({
     asOfDate,
     changedCubes,

@@ -48,7 +48,7 @@
     "entF10": "Deployment cloud, on-premises sau air-gapped",
     "entF11": "Onboarding și suport dedicate",
     "entCta": "Vorbește cu vânzările",
-    "freeF2": "500+ feeds, 536+ surse, 50+ straturi de hartă"
+    "freeF2": "500+ feeds, 538+ surse, 50+ straturi de hartă"
   },
   "whyUpgrade": {
     "title": "De ce să faci upgrade",
@@ -566,7 +566,7 @@
       "s1l": "Straturi de hartă",
       "s2v": "500+",
       "s2l": "Fluxuri curate",
-      "s3v": "534+",
+      "s3v": "536+",
       "s3l": "Furnizori de date",
       "s4v": "13",
       "s4l": "Puncte de strangulare · AIS în direct",
@@ -659,7 +659,7 @@
       "q2": "Ce este un tablou de bord de informații globale?",
       "a2": "O viziune live unică care fuzionează semnale pe care majoritatea instrumentelor le păstrează separate: evenimente de conflict, urmărirea navelor și aeronavelor, puncte de strângulare maritimă, sateliți, cabluri subsalinie, conducte, piețe și amenințări cibernetice — pe o hartă mondială în timp real, cu scoruri AI și rezumate în partea de sus. World Monitor este una gratuită.",
       "q3": "De unde provin datele?",
-      "a3": "De la 534+ furnizori, numiți: ACLED și UCDP pentru conflicte, AISStream pentru nave live, OpenSky pentru aeronave, NASA FIRMS pentru incendii, USGS pentru cutremure, IMF, BIS, FRED și Finnhub pentru piețe și macroeconomie — plus 500+ surse de știri curate. Fiecare panou citează sursele și marcajele temporale inline.",
+      "a3": "De la 536+ furnizori, numiți: ACLED și UCDP pentru conflicte, AISStream pentru nave live, OpenSky pentru aeronave, NASA FIRMS pentru incendii, USGS pentru cutremure, IMF, BIS, FRED și Finnhub pentru piețe și macroeconomie — plus 500+ surse de știri curate. Fiecare panou citează sursele și marcajele temporale inline.",
       "q4": "Pot să monitorizez puncte de strângulare precum Hormuz sau Bab el-Mandeb în timp real?",
       "a4": "Da. 13 puncte de strângulare sunt urmărite cu numărări live AIS, modificări săptămânale și scoruri de perturbație — iar anomaliile de densitate sunt marcate în raport cu linia de bază glisantă a fiecărui stret.",
       "q5": "Care este diferența față de o hartă de conflict ca Liveuamap?",

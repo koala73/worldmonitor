@@ -97,6 +97,22 @@ describe('Canada national overlay', () => {
     assert.ok(!usKeys.includes(RESILIENCE_STATCAN_WDS_KEY));
   });
 
+  it('does not drop StatCan when the IMF envelopes are missing', async () => {
+    const reader: ResilienceSeedReader = async (key) => {
+      if (key === 'economic:imf:macro:v2' || key === 'economic:imf:labor:v1') return null;
+      return canadaReader()(key);
+    };
+    const currency = await scoreCurrencyExternal('CA', reader);
+    const macro = await scoreMacroFiscal('CA', reader);
+    const imfMissingNoStatcan = await scoreCurrencyExternal('CA', async (key) => {
+      if (key === 'economic:imf:macro:v2' || key === 'economic:imf:labor:v1') return null;
+      return canadaReader({ statcan: false, boc: false })(key);
+    });
+    assert.ok(currency.score != null && currency.score > 0, 'StatCan CPI must score without an IMF envelope');
+    assert.ok(currency.score !== imfMissingNoStatcan.score, 'missing IMF must not also drop StatCan inflation');
+    assert.ok(macro.score != null && macro.observedWeight > 0, 'StatCan LFS must keep macroFiscal observed');
+  });
+
   it('scorers import the overlay keys rather than leaving CA on IMF-only reads', () => {
     assert.match(scorerSrc, /RESILIENCE_BOC_VALET_KEY/);
     assert.match(scorerSrc, /RESILIENCE_STATCAN_WDS_KEY/);

@@ -160,7 +160,7 @@
     "entF10": "Uongezaji wa juu ya wingu, ndani ya matangazo, au uhaba wa hewa",
     "entF11": "Kuandaa kwa mkakati na msaada mahususi",
     "entCta": "Ongea na Mauzo",
-    "freeF2": "500+ mtiririko, 536+ vyanzo, 50+ tabaka la ramani"
+    "freeF2": "500+ mtiririko, 538+ vyanzo, 50+ tabaka la ramani"
   },
   "whyUpgrade": {
     "title": "Kwa nini kuboreshwa",
@@ -566,7 +566,7 @@
       "s1l": "Tabaka la ramani",
       "s2v": "500+",
       "s2l": "Mitikisiko iliyokusanywa",
-      "s3v": "534+",
+      "s3v": "536+",
       "s3l": "Vyanzo",
       "s4v": "13",
       "s4l": "Sehemu nyingi · AIS karibu",
@@ -659,7 +659,7 @@
       "q2": "KDashboard ya ujumbe wa ulimwengu ni nini?",
       "a2": "Muonekano mmoja hai unaounganisha ishara ambazo zana nyingi huziweka tofauti: matukio ya migogoro, ufuatiliaji wa meli na ndege, vituo vya utoaji, satelaiti, nyuzinyuzi chini ya bahari, bomba la kuweka, soko na hatari za kiberaneti — kwenye ramani moja ya ulimwengu halisi, na alama ya AI na briefing juu. World Monitor ni moja bure.",
       "q3": "Data inatoka wapi?",
-      "a3": "Wanatoa 534+, walichaguliwa: ACLED na UCDP kwa migogoro, AISStream kwa meli hai, OpenSky kwa ndege, NASA FIRMS kwa moto, USGS kwa tetemeko, IMF, BIS, FRED na Finnhub kwa soko na macro — pamoja na zuia 500+ kwa habari. Kila paneli inacita vyanzo vyake na wakati kipaumbele.",
+      "a3": "Wanatoa 536+, walichaguliwa: ACLED na UCDP kwa migogoro, AISStream kwa meli hai, OpenSky kwa ndege, NASA FIRMS kwa moto, USGS kwa tetemeko, IMF, BIS, FRED na Finnhub kwa soko na macro — pamoja na zuia 500+ kwa habari. Kila paneli inacita vyanzo vyake na wakati kipaumbele.",
       "q4": "Je, naweza kuandamana vituo vikuu kama Hormuz au Bab el-Mandeb wakati halisi?",
       "a4": "Ndiyo. Vituo 13 vikuu vinafuatiliwa na hesabu hai ya AIS meli, mabadiliko ya utoaji wiki mwaka na alama ya kumkanganya — na anomalies ya ukosefu flagged dhidi ya mstari wa kila mkate.",
       "q5": "Hii ni tofauti gani na ramani ya migogoro kama Liveuamap?",

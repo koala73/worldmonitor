@@ -1615,7 +1615,7 @@ export async function scoreMacroFiscal(
           score: imfEntry?.currentAccountPct == null ? null : normalizeHigherBetter(Math.max(-20, Math.min(imfEntry.currentAccountPct, 20)), -20, 20),
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.currentAccountPct,
         },
-    imfLaborRaw == null
+    imfLaborRaw == null && !overlay.usedStatcanUnemployment
       ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.unemploymentPct }
       : {
           score: laborEntry?.unemploymentPct == null ? null : normalizeLowerBetter(Math.max(3, Math.min(laborEntry.unemploymentPct, 25)), 3, 25),
@@ -1674,7 +1674,8 @@ export async function scoreCurrencyExternal(
   );
   const imfEntry = overlay.imfEntry;
   const inflationPct = safeNum(imfEntry?.inflationPct);
-  const hasInflation = imfMacroRaw != null && inflationPct != null;
+  // StatCan CPI must score even when the IMF macro envelope is missing.
+  const hasInflation = inflationPct != null;
   const inflationScore = hasInflation
     ? scoreInflationStability(inflationPct!)
     : null;

@@ -14,9 +14,14 @@ import {
   computeCpiYoy,
   declareStatcanRecords,
   fetchApprovedWdsJson,
+  fetchChangedCubeListBestEffort,
+  fetchStatcanWds,
+  isFutureStatcanDate,
   parseChangedCubeList,
   parseVectorSeries,
+  shiftIsoDate,
   statcanCacheKey,
+  torontoDateIso,
   utcDateIso,
   validateStatcanPayload,
 } from '../scripts/lib/statcan-wds.mjs';
@@ -98,6 +103,57 @@ test('allowlist rejects a non-WDS host, errors on redirects, and sends Chrome UA
   assert.ok(cache.has(statcanCacheKey(url)));
   assert.equal(STATCAN_WDS_HOST, 'www150.statcan.gc.ca');
   assert.match(WDS_VECTORS_URL, /www150\.statcan\.gc\.ca/);
+});
+
+test('America/Toronto date is used for the change-list, not the UTC calendar date', () => {
+  // 02:00Z on 2026-08-14 is still 22:00 the previous evening in Toronto (EDT).
+  const earlyUtc = Date.parse('2026-08-14T02:00:00Z');
+  assert.equal(utcDateIso(earlyUtc), '2026-08-14');
+  assert.equal(torontoDateIso(earlyUtc), '2026-08-13');
+  assert.equal(isFutureStatcanDate('2026-08-14', earlyUtc), true);
+  assert.equal(isFutureStatcanDate('2026-08-13', earlyUtc), false);
+  assert.equal(shiftIsoDate('2026-08-14', -1), '2026-08-13');
+});
+
+test('404 or future-date change-list is quiet and still POSTs CPI/LFS vectors', async () => {
+  const requested = [];
+  const nowMs = Date.parse('2026-08-14T12:00:00Z'); // Toronto 08:00 on 2026-08-14
+  assert.equal(torontoDateIso(nowMs), '2026-08-14');
+
+  const future = await fetchChangedCubeListBestEffort({
+    dateIso: '2026-08-15',
+    nowMs,
+    fetchFn: async () => {
+      throw new Error('future-date must not hit the network');
+    },
+  });
+  assert.deepEqual(future, { cubes: [], reason: 'future-date' });
+
+  const payload = await fetchStatcanWds({
+    nowMs,
+    fetchFn: async (url, options) => {
+      requested.push({ url, method: options?.method || 'GET' });
+      if (String(url).includes('/getChangedCubeList/2026-08-14')) {
+        return new Response('Not Found', { status: 404 });
+      }
+      if (String(url).includes('/getChangedCubeList/2026-08-13')) {
+        return new Response(JSON.stringify(emptyDoc), { headers: { 'content-type': 'application/json' } });
+      }
+      if (String(url).includes('getDataFromVectorsAndLatestNPeriods')) {
+        assert.equal(options?.method, 'POST');
+        return new Response(JSON.stringify(vectorDoc), { headers: { 'content-type': 'application/json' } });
+      }
+      throw new Error(`unexpected url ${url}`);
+    },
+  });
+
+  assert.ok(requested.some((row) => row.url.includes('/getChangedCubeList/2026-08-14') && row.method === 'GET'));
+  assert.ok(requested.some((row) => row.url.includes('getDataFromVectorsAndLatestNPeriods') && row.method === 'POST'));
+  assert.equal(payload.asOfDate, '2026-08-14');
+  assert.equal(payload.changedCount, 0);
+  assert.equal(validateStatcanPayload(payload), true);
+  assert.equal(payload.inflationRefPer, '2026-06-01');
+  assert.equal(payload.unemploymentPct, 6.4);
 });
 
 test('tests import the lib, not the seeder main; neither binds fetch', () => {

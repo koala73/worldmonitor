@@ -56,6 +56,19 @@ test('buildBocPayload publishes CAD-per-unit FX, overnight target, and benchmark
   assert.ok(declareBocRecords(payload) >= MIN_FX_RATE_COUNT + 1);
 });
 
+test('discontinued FX relics are not published as current rates', () => {
+  const payload = buildBocPayload({ fxDoc, policyDoc, yieldsDoc, seededAtMs: Date.parse('2026-08-13T21:00:00Z') });
+  assert.equal(payload.effectiveDate, '2026-08-13');
+  assert.equal(payload.rates.VND, undefined);
+  assert.equal(payload.rates.RUB, undefined);
+  assert.equal(payload.rates.SAR, undefined);
+  assert.ok(payload.rates.USD);
+  assert.ok(payload.rates.EUR);
+  for (const [code, row] of Object.entries(payload.rates)) {
+    assert.equal(row.date, '2026-08-13', `${code} must be the live close, not a relic`);
+  }
+});
+
 test('cache keys include recent=1 for FX and the Valet query string', () => {
   assert.match(FX_RATES_DAILY_URL, /recent=1/);
   assert.ok(bocValetCacheKey(FX_RATES_DAILY_URL).includes('recent=1'));
