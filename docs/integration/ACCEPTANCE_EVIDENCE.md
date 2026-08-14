@@ -470,3 +470,27 @@ accepted by this record.
 GitHub run 6 correction-evidence record commit:
 `0f40219ffd30363a50ae7d6d0e3181ed71b2f2fd`. This following receipt only
 backfills the immutable SHA; it is not a remote-CI pass.
+
+## Phase 12 - GitHub run 7 correction evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Draft PR control | PASS for protected review boundary | GitHub connector reports PR #1 open, Draft, unmerged and mergeable; base `main@0fca203c`; head before this correction `f7c1dcf`. |
+| GitHub run 7 non-Test workflows | PASS on `f7c1dcf` | Pro `31796115430`, Lint `31796115445`, Proto `31796115443`, Typecheck `31796115453` and Lint Code `31796115455` completed `success`. |
+| GitHub Test run 7 | FAIL, retained | Run `31796115465`; unit job `94753533996`; Linux suite 23,020 tests / 3,550 suites / 23,000 pass / 14 fail / 6 skip. |
+| Run-7 contract correction | PASS locally | Correction commit `ef876ff5561f0c6659ec5151c135f840956944bb`; no test was silenced by removing a truth requirement. |
+| OpenAPI semantics and budget | PASS locally | 14/14 lossless tests; full ref expansion deep-equals the source; every 2xx remains inline; 932,903 characters and 933,154 UTF-8 bytes against fixed 950,000-character test budget. |
+| Focused assertions | PASS locally | Initial combined Windows run: 108/111, with only three `awk/bash` `ENOENT` infrastructure failures; explicit Git-for-Windows rerun: CI workflow coverage 24/24. |
+| Type, lint and freshness | PASS locally | typecheck, API/Convex audit, code lint, safe HTML, Markdown 257/257, docs 150 claims, source 533 active hosts and product facts all exit `0`. |
+| Code generation | PASS for generation/idempotency; extra lint FAIL retained | Buf generation and all injectors exit `0`; diff hash stays `74e052...` before/after. Added all-repository `buf lint` exits `100` on pre-existing unrelated proto debt. |
+| Production build | PASS locally | Strict browser-secret gate and full build exit `0`; 2,506 Vite modules; stock workspace and PWA artifacts emitted. |
+
+Raw evidence:
+
+- `docs/integration/evidence/phase12-remote-run7-correction-gates-20260814.log`,
+  6,818 bytes, SHA-256
+  `DCBC8CDAEBEDB9494F492886D3ABC3CFE308DA9157F9063BDCFDD2C2211AF039`.
+
+**Current Phase 12 gate: RUN 7 FAILURE CORRECTED LOCALLY; FRESH REMOTE
+CORRECTED-HEAD CI REQUIRED.** Run 7 is not reclassified as green, and no
+merge, deployment, release or Provider-backed live-data acceptance is claimed.

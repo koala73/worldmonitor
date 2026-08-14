@@ -483,3 +483,33 @@ tracked generated statistic still contained the old value.
 **Consequence:** The regenerated 257 total is included with the source fix,
 and the remote docs-stats job remains authoritative for Linux freshness. A
 generated count remains documentation, never Provider availability evidence.
+
+## D-0037 - Reuse only complete byte-identical OpenAPI property schemas
+
+**Decision:** Keep the public machine OpenAPI artifact under its fixed 950,000-
+character scanner budget by hoisting only complete, direct component-property
+schemas that are byte-identical and have positive measured net savings. Keep
+2xx responses inline and prove losslessness by expanding every generated ref
+and deep-comparing the whole document with the source.
+
+**Reason:** Required stock field/query descriptions correctly increased the
+artifact above budget. Removing descriptions or raising the budget would hide
+the contract defect instead of preserving both documentation and scanner
+compatibility.
+
+**Consequence:** The corrected artifact is 932,903 characters; 68 shared
+schemas serve 283 references with 19,317 measured bytes saved. The transform
+cannot merge merely similar schemas, and any semantic drift fails the 14-test
+round-trip suite.
+
+## D-0038 - Arbitrary-symbol REST operations are not falsely mapped to fixed-universe MCP tools
+
+**Decision:** Classify six arbitrary-symbol stock reads as
+`fetch-on-miss: high-cardinality-input` and the disabled forecast/similar reads
+as `deferred-to-future-tool` until a truthful dedicated MCP contract exists.
+
+**Reason:** Attaching them to a fixed-universe market-data tool would make the
+parity count green while misrepresenting symbol coverage and runtime support.
+
+**Consequence:** MCP parity is complete and explicit without claiming that a
+tool, cache, model, Provider or live response exists where it does not.

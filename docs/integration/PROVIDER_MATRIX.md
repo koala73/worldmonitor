@@ -228,3 +228,19 @@ links from the independent shell changes neither credential nor entitlement.
 Market/K-line data therefore remains fail-closed without symbol-specific,
 licensed and time-labelled source responses. Nothing in this correction may be
 displayed as real-time market data or deterministic news causality.
+
+## Phase 12 run 7 correction effect on Provider states
+
+| Corrected contract | Provider-state effect | Retained boundary |
+|---|---|---|
+| Eight stock OpenAPI operations and descriptions | None | Described symbol/time/news fields are interfaces, not observed prices or articles. |
+| Six arbitrary-symbol MCP parity exclusions | None | `fetch-on-miss: high-cardinality-input` records why fixed-universe MCP cache tools cannot truthfully cover arbitrary symbols. |
+| Forecast and similar-event parity exclusions | None | `deferred-to-future-tool` matches their disabled runtime; no prediction/model result is synthesized. |
+| Eight stock cache tiers | None | Explicit cache policy cannot turn an absent or historical response into licensed real-time data; keys remain symbol-qualified. |
+| Public `VITE_SELF_HOSTED_MODE` allowance | None | This boolean posture flag is not a credential. All Provider/API secrets remain forbidden from the client bundle. |
+| GitHub run 7 | None | Five standalone workflows passed and Test failed; neither result provisions an account, entitlement, deployment or observation. |
+
+Market/K-line Providers remain `NOT_CONFIGURED` or their accurately labelled
+licensed/delayed state until an owner supplies lawful credentials and display/
+redistribution entitlement. AIS, cargo, news-cause and trade/factory states are
+unchanged and no fallback data was added.

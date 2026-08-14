@@ -301,3 +301,23 @@ explicit cleanup decision.
 No owner action is currently required. The automated correction can proceed
 using the restored authenticated GitHub transport; this section does not grant
 permission to mutate `main`, force push, merge or deploy.
+
+## Phase 12 GitHub run 7 follow-up (2026-08-14)
+
+- [x] GitHub connector re-read PR #1 and all six run-7 workflow conclusions at
+  exact head `f7c1dcf`; the Test failure is retained.
+- [x] The 14 Linux failures were corrected locally in commit `ef876ff` with
+  focused tests, lossless OpenAPI proof, formal codegen idempotency and a real
+  production build.
+- [x] No secret, Provider login, paid entitlement, CAPTCHA, deployment owner
+  action, main mutation, force push, mock bar or cargo inference was used.
+- [ ] Publish the correction by normal non-force branch fast-forward and wait
+  for every fresh GitHub workflow to finish successfully.
+- [ ] Keep the PR Draft and do not merge, deploy or release while any fresh
+  corrected-head workflow is pending or failing.
+- [ ] Provider owners may later enter secrets only in the documented secret
+  stores; never place them in chat, Git, screenshots or evidence logs.
+
+No owner input is currently required. The extra local `buf lint` result is a
+recorded upstream-wide maintenance item, not a request to broaden this Phase 12
+correction across unrelated protocol packages.

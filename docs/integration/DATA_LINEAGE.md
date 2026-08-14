@@ -371,3 +371,33 @@ market price, K-line candle, exchange timestamp, AIS observation, cargo
 manifest, news cause, trade value, factory report, Provider licence, secret or
 deployment-health response. Fresh GitHub workflows must evaluate the new
 source commit before Phase 12 remote acceptance can advance.
+
+## Phase 12 GitHub run 7 correction lineage
+
+The GitHub connector binds run 7 to exact remote head `f7c1dcf`. Five
+standalone workflows passed; Test run `31796115465` failed in unit job
+`94753533996`. That Linux suite's 14 failures are retained, not averaged with
+23,000 passing tests into a success claim.
+
+The correction lineage is deterministic and non-observational:
+
+1. nine Market v1 proto files receive 27 human descriptions;
+2. locked Buf/sebuf tools regenerate Market and unified OpenAPI artifacts;
+3. the public JSON generator groups only canonical-equal complete property
+   schemas whose local refs produce positive net savings;
+4. tests expand every new ref, preserve every inline 2xx response and
+   deep-compare the whole result to the source;
+5. stock route-cache and MCP parity registries receive explicit entries while
+   retaining per-symbol/high-cardinality and disabled-model boundaries;
+6. independent product facts omit official offers, metadata URL evaluation is
+   lazy, and source counts match the actual 533-host inventory;
+7. a second generation produces the identical binary diff hash
+   `74e05228739cd512b88a9b6801e927817c2bdaac`;
+8. correction commit `ef876ff5561f0c6659ec5151c135f840956944bb`
+   records the source chain after the Unicode hook passes.
+
+This chain contains schema descriptions and control metadata only. It creates
+no market observation, quote, candle, event/news fact, exchange timestamp,
+Provider entitlement, AIS position/cargo fact, causal conclusion, trade value,
+factory observation, secret or deployment result. Fresh GitHub CI remains the
+required Linux acceptance authority.

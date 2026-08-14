@@ -583,3 +583,32 @@ undeployed.
 The immutable GitHub run 6 correction-evidence record is commit
 `0f40219ffd30363a50ae7d6d0e3181ed71b2f2fd`; this following receipt
 backfills that SHA without upgrading the pending remote gate.
+
+## Phase 12 - GitHub run 7 contract and truth-boundary correction
+
+The authenticated GitHub integration re-read Draft PR #1 and exact remote head
+`f7c1dcf555bc97fd4e2da38809e0daf4b73287fd`. The PR remains open, Draft,
+unmerged and mergeable; protected base `main` remains
+`0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`. Pro bundle freshness
+`31796115430`, Lint `31796115445`, Proto Generation Check `31796115443`,
+Typecheck `31796115453` and Lint Code `31796115455` passed. Test run
+`31796115465` failed and remains a failure of that immutable head.
+
+The Linux unit job passed health cutover and the real dashboard production
+build before the complete data suite found 14 contract/test failures. Commit
+`ef876ff5561f0c6659ec5151c135f840956944bb` corrects the stale tests and the
+underlying API documentation, cache-tier, MCP parity, metadata-import,
+independent-offer, SEO and source-count defects. It adds no Provider secret,
+price, K-line candle, AIS/cargo assertion or news-causality claim.
+
+Local correction gates pass: focused run-7 assertions, OpenAPI lossless
+round-trip (14/14), CI workflow coverage (24/24), typecheck, API typecheck,
+lint, Markdown lint, source/product/doc freshness and a real 2,506-module
+production build. The fixed 950,000-character OpenAPI budget remains intact at
+932,903 characters. Formal Buf generation plus all injectors is idempotent;
+the extra repository-wide `buf lint` diagnostic still fails on retained
+upstream baseline debt and is not called green.
+
+Phase 12 remains open until this descendant is published by normal non-force
+fast-forward and a fresh corrected-head GitHub run passes. Draft readiness,
+merge, deployment and Provider activation are not authorized or claimed.

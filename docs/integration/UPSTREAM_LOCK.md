@@ -308,3 +308,19 @@ The only permitted publication remains a normal, non-force fast-forward of
 `origin/integration/pokieticker-maritime-china-factory`. Run 6 failure does not
 authorize direct main mutation, upstream write, force push, newer-upstream
 intake, merge, deployment or deletion of the retained generated-file backup.
+
+## Phase 12 run 7 corrective-head lock
+
+Run 7 evaluated `f7c1dcf555bc97fd4e2da38809e0daf4b73287fd`. The single
+source correction descendant is:
+
+`f7c1dcf555bc97fd4e2da38809e0daf4b73287fd` ->
+`ef876ff5561f0c6659ec5151c135f840956944bb`.
+
+No upstream merge, rebase, cherry-pick or object intake occurred. The reviewed
+upstream remains `ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`; the GitHub
+connector re-read protected PR base
+`main@0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`. Publication remains limited
+to a compare-and-update fast-forward of the integration branch followed by a
+normal non-force push. The Test failure authorizes neither main/upstream writes
+nor force push, merge, deployment, backup deletion or unrelated proto cleanup.
