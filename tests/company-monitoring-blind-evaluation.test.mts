@@ -1459,13 +1459,13 @@ describe('Company Monitoring blind evaluation CLI', () => {
   it('separates a passing gate, a rejected gate, and an engine error by exit code', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'cm-blind-cli-'));
 
-    const runScore = (bundle: ReturnType<typeof lockedBundle>) => {
+    const scoreArgs = (bundle: ReturnType<typeof lockedBundle>): string[] => {
       const write = (name: string, value: unknown): string => {
         const path = join(workspace, name);
         writeFileSync(path, JSON.stringify(value));
         return path;
       };
-      return runBlindEvaluationCli([
+      return [
         'score',
         '--protocol', protocolPath,
         '--approved-threshold-digest', APPROVED_THRESHOLD_DIGEST,
@@ -1474,8 +1474,10 @@ describe('Company Monitoring blind evaluation CLI', () => {
         '--gold', write('gold.json', bundle.gold),
         '--predictions', write('predictions.json', bundle.predictions),
         '--forecast', write('forecast.json', bundle.forecast),
-      ]);
+      ];
     };
+    const runScore = (bundle: ReturnType<typeof lockedBundle>) =>
+      runBlindEvaluationCli(scoreArgs(bundle));
 
     try {
       const passing = runScore(lockedBundle({ namespace: 'cli-pass' }));
@@ -1483,13 +1485,30 @@ describe('Company Monitoring blind evaluation CLI', () => {
       assert.equal((JSON.parse(passing.stdout) as ScoreReport).outcome, 'pass');
 
       // A rejected gate must NOT look like success to a wrapper checking $?.
-      const rejected = runScore(lockedBundle({
+      const rejectedArgs = scoreArgs(lockedBundle({
         namespace: 'cli-fail',
         eligibleCount: 200,
         mistakes: 60,
       }));
+      const rejected = runBlindEvaluationCli(rejectedArgs);
       assert.equal(rejected.exitCode, 2);
       assert.equal((JSON.parse(rejected.stdout) as ScoreReport).outcome, 'fail');
+
+      // Keep one real process-level witness for the executable adapter. The
+      // in-process matrix avoids repeated tsx startup, while this pins the
+      // import.meta.url guard, stdout serialization, and actual exit status 2.
+      const rejectedProcess = spawnSync(
+        fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url)),
+        [
+          fileURLToPath(new URL('../scripts/company-monitoring-blind-evaluation.mts', import.meta.url)),
+          ...rejectedArgs,
+        ],
+        { encoding: 'utf8', timeout: 30_000 },
+      );
+      assert.ifError(rejectedProcess.error);
+      assert.equal(rejectedProcess.signal, null);
+      assert.equal(rejectedProcess.status, 2);
+      assert.equal((JSON.parse(rejectedProcess.stdout) as ScoreReport).outcome, 'fail');
 
       const shortfall = runScore(lockedBundle({
         namespace: 'cli-incomplete',

@@ -80,6 +80,7 @@ test('HttpOnly wm-pro-key cookie is accepted as enterprise key without a JS-read
   assert.equal(r.valid, true);
   assert.equal(r.required, true);
   assert.equal(r.kind, 'enterprise');
+  assert.equal(r.credential, ENTERPRISE_KEY, 'result must expose the credential that actually authenticated');
 });
 
 test('HttpOnly wm-widget-key cookie is accepted as enterprise key without a JS-readable header', async () => {
@@ -87,6 +88,7 @@ test('HttpOnly wm-widget-key cookie is accepted as enterprise key without a JS-r
   assert.equal(r.valid, true);
   assert.equal(r.required, true);
   assert.equal(r.kind, 'enterprise');
+  assert.equal(r.credential, ENTERPRISE_KEY, 'result must expose the credential that actually authenticated');
 });
 
 test('dual wm-pro-key cookies use the first value sent by the browser', async () => {
@@ -140,6 +142,7 @@ test('wms_ header + wm-pro-key cookie authenticates as enterprise (header + shad
   }));
   assert.equal(r.valid, true);
   assert.equal(r.kind, 'enterprise');
+  assert.equal(r.credential, ENTERPRISE_KEY, 'automatic wms_ must not become the enterprise principal');
 });
 
 test('wms_ header + wm-pro-key cookie + forceKey still authenticates as enterprise', async () => {
@@ -150,6 +153,7 @@ test('wms_ header + wm-pro-key cookie + forceKey still authenticates as enterpri
   }), { forceKey: true });
   assert.equal(r.valid, true, 'wms_ must not 401 a forceKey request that also carries wm-pro-key');
   assert.equal(r.kind, 'enterprise');
+  assert.equal(r.credential, ENTERPRISE_KEY);
 });
 
 test('wms_ header + wm-widget-key cookie authenticates as enterprise (header + shadowed cookie → valid)', async () => {
@@ -160,6 +164,7 @@ test('wms_ header + wm-widget-key cookie authenticates as enterprise (header + s
   }));
   assert.equal(r.valid, true);
   assert.equal(r.kind, 'enterprise');
+  assert.equal(r.credential, ENTERPRISE_KEY, 'automatic wms_ must not become the enterprise principal');
 });
 
 test('wms_ header + wm-widget-key cookie + forceKey still authenticates as enterprise', async () => {
@@ -170,6 +175,42 @@ test('wms_ header + wm-widget-key cookie + forceKey still authenticates as enter
   }), { forceKey: true });
   assert.equal(r.valid, true, 'wms_ must not 401 a forceKey request that also carries wm-widget-key');
   assert.equal(r.kind, 'enterprise');
+  assert.equal(r.credential, ENTERPRISE_KEY);
+});
+
+for (const cookieName of ['wm-pro-key', 'wm-widget-key']) {
+  test(`stale ${cookieName} does not shadow a valid wms_ header on anonymous routes`, async () => {
+    const { token } = await issueSessionToken();
+    const r = await validateApiKey(makeReq({
+      key: token,
+      cookie: `${cookieName}=${encodeURIComponent('rotated-old-key')}`,
+    }));
+    assert.equal(r.valid, true);
+    assert.equal(r.required, false);
+    assert.equal(r.kind, 'session');
+    assert.equal(r.credential, undefined);
+  });
+}
+
+test('stale tester cookie does not shadow a valid HttpOnly wm-session cookie', async () => {
+  const { token } = await issueSessionToken();
+  const r = await validateApiKey(makeReq({
+    cookie: `wm-pro-key=${encodeURIComponent('rotated-old-key')}; wm-session=${encodeURIComponent(token)}`,
+  }));
+  assert.equal(r.valid, true);
+  assert.equal(r.required, false);
+  assert.equal(r.kind, 'session');
+});
+
+test('stale tester cookie cannot turn anonymous authority into forceKey access', async () => {
+  const { token } = await issueSessionToken();
+  const r = await validateApiKey(makeReq({
+    key: token,
+    cookie: `wm-pro-key=${encodeURIComponent('rotated-old-key')}`,
+  }), { forceKey: true });
+  assert.equal(r.valid, false);
+  assert.equal(r.required, true);
+  assert.match(r.error, /Pro authentication/);
 });
 
 test('wms_ header ALONE is still kind session (XP preserved)', async () => {
@@ -199,6 +240,7 @@ test('enterprise key carries kind=enterprise (the only key kind that bypasses en
   const r = await validateApiKey(makeReq({ key: ENTERPRISE_KEY }));
   assert.equal(r.valid, true);
   assert.equal(r.kind, 'enterprise');
+  assert.equal(r.credential, ENTERPRISE_KEY);
 });
 
 test('enterprise key allowlist uses timingSafeIncludes, not Array.includes', async () => {

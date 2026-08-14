@@ -24,6 +24,42 @@ async function isValidEnterpriseKey(key) {
   return timingSafeIncludes(key, validKeys);
 }
 
+async function validateCredential(key, forceKey) {
+  if (isSessionTokenShape(key)) {
+    // Anonymous session tokens are NOT proof of any specific user identity
+    // — anyone can mint one via POST /api/wm-session. Reject when the caller
+    // demands a "real" key (premium / tier-gated endpoints set forceKey=true
+    // exactly because they need user-bound auth or a Pro-grade Bearer JWT).
+    if (forceKey) {
+      return { valid: false, required: true, error: 'Pro authentication required' };
+    }
+    if (await validateSessionToken(key)) {
+      return { valid: true, required: false, kind: 'session' };
+    }
+    return { valid: false, required: true, error: 'Invalid session token' };
+  }
+
+  // Enterprise key (WORLDMONITOR_VALID_KEYS) — checked BEFORE the wm_ user-key
+  // fallthrough so an operator-issued key that happens to start with wm_ is
+  // still recognized. `credential` records the authority that actually won;
+  // downstream identity/rate-limit code must not infer it again from headers.
+  if (key && await isValidEnterpriseKey(key)) {
+    return { valid: true, required: true, kind: 'enterprise', credential: key };
+  }
+
+  // wm_-prefixed user API keys — gateway re-validates against the user-key
+  // table. We must return required:true / valid:false for the gateway fallback.
+  if (key && key.startsWith('wm_')) {
+    return { valid: false, required: true, error: USER_API_KEY_GATEWAY_VALIDATION_ERROR };
+  }
+
+  if (key) {
+    return { valid: false, required: true, error: 'Invalid API key' };
+  }
+
+  return { valid: false, required: true, error: 'API key required' };
+}
+
 function getCookie(req, name) {
   const raw = req.headers.get('Cookie') || req.headers.get('cookie') || '';
   if (!raw) return '';
@@ -64,66 +100,36 @@ export async function validateApiKey(req, options = {}) {
   const headerKey = getHeaderApiKey(req);
   const sessionCookie = getCookie(req, 'wm-session');
   const testerCookie = getCookie(req, 'wm-pro-key') || getCookie(req, 'wm-widget-key');
-  // Session-shaped headers (wms_) must not beat HttpOnly tester cookies.
-  // Returning tester/widget users mint a wms_ token in a new tab; JS cannot
-  // see wm-pro-key / wm-widget-key, so the interceptor still attaches wms_.
-  // headerKey || testerCookie would then authenticate as kind:'session' and
-  // 401 forceKey paths even though a valid pro cookie is on the wire.
-  const key = (headerKey && !isSessionTokenShape(headerKey) ? headerKey : '')
-    || testerCookie
-    || headerKey
-    || sessionCookie;
   const origin = req.headers.get('Origin') || '';
 
   // Desktop app — always require an enterprise key.
   if (isDesktopOrigin(origin)) {
     if (!headerKey) return { valid: false, required: true, error: 'API key required for desktop access' };
     if (!await isValidEnterpriseKey(headerKey)) return { valid: false, required: true, error: 'Invalid API key' };
-    return { valid: true, required: true, kind: 'enterprise' };
+    return { valid: true, required: true, kind: 'enterprise', credential: headerKey };
   }
 
-  // Browser anonymous session: HMAC-signed token from /api/wm-session.
-  // Validation is purely cryptographic — no DB lookup, no header trust.
-  if (isSessionTokenShape(key)) {
-    // Anonymous session tokens are NOT proof of any specific user identity
-    // — anyone can mint one via POST /api/wm-session. Reject when the caller
-    // demands a "real" key (premium / tier-gated endpoints set forceKey=true
-    // exactly because they need user-bound auth or a Pro-grade Bearer JWT).
-    if (forceKey) {
-      return { valid: false, required: true, error: 'Pro authentication required' };
-    }
-    if (await validateSessionToken(key)) {
-      return { valid: true, required: false, kind: 'session' };
-    }
-    return { valid: false, required: true, error: 'Invalid session token' };
+  // Explicit non-session headers remain authoritative. They are machine/API
+  // credentials and must never silently fall back to ambient browser cookies.
+  if (headerKey && !isSessionTokenShape(headerKey)) {
+    return validateCredential(headerKey, forceKey);
   }
 
-  // Enterprise key (WORLDMONITOR_VALID_KEYS) — checked BEFORE the wm_ user-key
-  // fallthrough so an operator-issued key that happens to start with wm_ is
-  // still recognized. Pre-#3541 the static allowlist accepted any prefix; some
-  // legacy operator keys (e.g. the Railway relay's WORLDMONITOR_RELAY_KEY) use
-  // the wm_ prefix from before user-issued keys were namespaced. Without this
-  // ordering, those keys get punted to validateUserApiKey() and 401 because
-  // the Convex user-key table has no record of an operator-minted value.
-  // Collision risk is negligible (wm_ user keys carry ≥192 bits of entropy
-  // and would have to be added to the static env list to be honored at all,
-  // which itself requires server-env-write access).
-  if (key && await isValidEnterpriseKey(key)) {
-    return { valid: true, required: true, kind: 'enterprise' };
+  // Returning tester/widget users mint an anonymous wms_ token in a new tab,
+  // while their real tester credential is HttpOnly. Prefer that cookie only
+  // after it validates. A rotated cookie must not permanently shadow the fresh
+  // anonymous header/cookie on non-forceKey routes.
+  if (testerCookie && await isValidEnterpriseKey(testerCookie)) {
+    return { valid: true, required: true, kind: 'enterprise', credential: testerCookie };
   }
 
-  // wm_-prefixed user API keys — gateway re-validates against the user-key
-  // table. We must return required:true / valid:false for the gateway's
-  // fallback at server/gateway.ts:~440 to trigger validateUserApiKey().
-  if (key && key.startsWith('wm_')) {
-    return { valid: false, required: true, error: USER_API_KEY_GATEWAY_VALIDATION_ERROR };
-  }
+  if (headerKey) return validateCredential(headerKey, forceKey);
+  if (sessionCookie) return validateCredential(sessionCookie, forceKey);
 
-  // Non-wm_ key that isn't in the enterprise allowlist.
-  if (key) {
-    return { valid: false, required: true, error: 'Invalid API key' };
-  }
+  // Preserve the useful invalid-key error when the only credential is a stale
+  // tester cookie. The fallback above applies only when valid anonymous
+  // authority is also present.
+  if (testerCookie) return { valid: false, required: true, error: 'Invalid API key' };
 
-  // No credentials at all.
   return { valid: false, required: true, error: 'API key required' };
 }
