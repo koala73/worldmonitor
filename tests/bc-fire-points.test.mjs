@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { CHROME_UA } from '../scripts/_seed-utils.mjs';
+import { __testing__ as healthTesting } from '../api/health.js';
 import { parseCwfisGeoJson } from '../scripts/wildfire/cwfis-wfs.mjs';
 import {
   BC_FETCH_TIMEOUT_MS,
@@ -15,6 +16,7 @@ import {
   MAX_BC_RESPONSE_BYTES,
   bcFireCacheKey,
   buildBcWfsUrl,
+  canadianWildfireAfterPublish,
   collectBcJoinKeys,
   collectCwfisJoinKeys,
   enrichOrAppendBc,
@@ -282,6 +284,66 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
     assert.equal(noBc.fireDetections.filter((f) => f.source === 'firms').length, 1);
     assert.ok(noBc.fireDetections.filter((f) => f.source === 'cwfis').length >= 1);
     assert.equal(noBc._bcCount, 0);
+    assert.equal(noBc._cwfisState, 'ok');
+    assert.equal(noBc._bcState, 'failed');
+    assert.equal(noBc._bcErrorCode, 'BC_WILDFIRE_SOURCE_FAILED');
+  });
+
+  it('publishes FIRMS fallback with health-visible BC degradation metadata', async () => {
+    const merged = await mergeWildfireSourcesWithBc({
+      fetchFirms: async () => ({ fireDetections: [firmsDetection()] }),
+      fetchCwfis: async () => parseCwfisGeoJson(cwfisActiveJson, 'active'),
+      fetchBcWildfire: async () => { throw new Error('BC paging incomplete'); },
+    });
+    assert.equal(merged.fireDetections.filter((f) => f.source === 'firms').length, 1);
+    assert.equal(merged._cwfisState, 'ok');
+    assert.equal(merged._bcState, 'failed');
+
+    const patch = canadianWildfireAfterPublish(merged).freshnessMetaPatch;
+    assert.deepEqual(patch, {
+      sourceState: 'degraded',
+      errorCode: 'BC_WILDFIRE_SOURCE_FAILED',
+      canadaSourceFailureCount: 1,
+    });
+
+    const now = Date.parse('2026-08-14T12:00:00Z');
+    const dataKey = healthTesting.BOOTSTRAP_KEYS.wildfires;
+    const metaKey = healthTesting.SEED_META.wildfires.key;
+    const entry = healthTesting.classifyKey('wildfires', dataKey, { allowOnDemand: false }, {
+      keyStrens: new Map([[dataKey, 256]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[metaKey, JSON.stringify({
+        fetchedAt: now - 60_000,
+        recordCount: merged.fireDetections.length,
+        ...patch,
+      })]]),
+      keyMetaErrors: new Map(),
+      now,
+    });
+    assert.equal(entry.status, 'SEED_ERROR');
+    assert.equal(entry.errorCode, 'BC_WILDFIRE_SOURCE_FAILED');
+  });
+
+  it('uses one bounded health error when both required Canadian subsources fail', () => {
+    assert.deepEqual(canadianWildfireAfterPublish({
+      _cwfisState: 'degraded',
+      _cwfisErrorCode: 'CWFIS_PRESCRIBED_FAILED',
+      _bcState: 'ok',
+    }).freshnessMetaPatch, {
+      sourceState: 'degraded',
+      errorCode: 'CWFIS_PRESCRIBED_FAILED',
+      canadaSourceFailureCount: 1,
+    });
+    assert.deepEqual(canadianWildfireAfterPublish({
+      _cwfisState: 'failed',
+      _cwfisErrorCode: 'unexpected raw message',
+      _bcState: 'failed',
+      _bcErrorCode: 'unexpected raw message',
+    }).freshnessMetaPatch, {
+      sourceState: 'degraded',
+      errorCode: 'CANADA_WILDFIRE_SOURCES_FAILED',
+      canadaSourceFailureCount: 2,
+    });
   });
 
   it('throws when every upstream fails', async () => {
@@ -425,6 +487,44 @@ describe('host allowlist, cache key, transport', () => {
       /pagination incomplete.*4 of 5/i,
     );
   });
+
+  it('fails closed when WFS repeats a required page under a new startIndex', async () => {
+    const first = JSON.parse(geojson).features.slice(0, 1);
+    const requests = [];
+    await assert.rejects(
+      fetchBcFirePoints({
+        pageSize: 1,
+        maxPages: 2,
+        fetchFn: async (url) => {
+          requests.push(String(url));
+          if (String(url).includes('/kml/')) {
+            return new Response(loaderKml, { headers: { 'content-type': 'application/vnd.google-earth.kml+xml' } });
+          }
+          return new Response(JSON.stringify({
+            type: 'FeatureCollection',
+            features: first,
+            numberMatched: 2,
+            numberReturned: 1,
+          }), { headers: { 'content-type': 'application/json' } });
+        },
+      }),
+      /pagination repeated a page at startIndex=1/i,
+    );
+    assert.ok(requests.some((url) => new URL(url).searchParams.get('startIndex') === '0'));
+    assert.ok(requests.some((url) => new URL(url).searchParams.get('startIndex') === '1'));
+  });
+
+  it('fails closed when WFS numberReturned disagrees with the response rows', async () => {
+    assert.throws(
+      () => parseBcFireGeoJson(JSON.stringify({
+        type: 'FeatureCollection',
+        features: JSON.parse(geojson).features.slice(0, 1),
+        numberMatched: 1,
+        numberReturned: 2,
+      })),
+      /numberReturned mismatch: declared 2, received 1/i,
+    );
+  });
 });
 
 describe('module import contract', () => {
@@ -461,6 +561,7 @@ describe('module import contract', () => {
     assert.match(seederSrc, /mergeWildfireSourcesWithBc/);
     assert.match(seederSrc, /fetchBcFirePoints/);
     assert.match(seederSrc, /fetchCwfisFires/);
+    assert.match(seederSrc, /afterPublish:\s*canadianWildfireAfterPublish/);
     assert.match(seederSrc, /wildfire:fires:v1/);
     assert.doesNotMatch(seederSrc, /wildfire:canada/);
     assert.doesNotMatch(seederSrc, /fetch\.bind/);

@@ -615,7 +615,7 @@ describe('module import contract', () => {
   it('seeder merges FIRMS and CWFIS into the canonical wildfire key', () => {
     assert.match(seederSrc, /mergeWildfireSources/);
     assert.match(seederSrc, /fetchCwfisFires/);
-    assert.match(seederSrc, /afterPublish:\s*cwfisWildfireAfterPublish/);
+    assert.match(seederSrc, /afterPublish:\s*canadianWildfireAfterPublish/);
     assert.match(seederSrc, /wildfire:fires:v1/);
     assert.doesNotMatch(seederSrc, /wildfire:canada/);
     assert.doesNotMatch(seederSrc, /fetch\.bind/);

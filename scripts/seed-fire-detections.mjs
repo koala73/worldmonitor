@@ -11,10 +11,13 @@ import { loadEnvFile, runSeed, CHROME_UA, sleep, MAX_PAYLOAD_BYTES } from './_se
 import { buildEnvelope } from './_seed-envelope-source.mjs';
 import { compactWildfireDashboardPayload, WILDFIRE_CANONICAL_DETECTION_LIMIT } from './_wildfire-dashboard.mjs';
 import {
-  cwfisWildfireAfterPublish,
   fetchCwfisFires,
 } from './wildfire/cwfis-wfs.mjs';
-import { fetchBcFirePoints, mergeWildfireSourcesWithBc } from './wildfire/bc-fire-points.mjs';
+import {
+  canadianWildfireAfterPublish,
+  fetchBcFirePoints,
+  mergeWildfireSourcesWithBc,
+} from './wildfire/bc-fire-points.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -224,7 +227,7 @@ async function main() {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 360,
-    afterPublish: cwfisWildfireAfterPublish,
+    afterPublish: canadianWildfireAfterPublish,
   });
 }
 

@@ -255,10 +255,19 @@ export function parseBcFireGeoJson(payload) {
   }
   const fireDetections = [];
   const seen = new Set();
+  const pageRowKeys = [];
   for (const feature of doc.features) {
     const props = feature?.properties && typeof feature.properties === 'object'
       ? { ...feature.properties }
       : {};
+    pageRowKeys.push(String(
+      feature?.id
+      ?? props.OBJECTID
+      ?? props.objectid
+      ?? props.FIRE_NUMBER
+      ?? props.fire_number
+      ?? JSON.stringify(feature),
+    ));
     if (!props.FIRE_NUMBER && typeof feature?.id === 'string') {
       const tail = feature.id.split('.').pop();
       if (tail) props.FIRE_NUMBER = tail;
@@ -268,10 +277,17 @@ export function parseBcFireGeoJson(payload) {
     seen.add(normalized.id);
     fireDetections.push(normalized);
   }
+  const declaredReturned = asFiniteNumber(doc.numberReturned);
+  if (declaredReturned != null && declaredReturned !== doc.features.length) {
+    throw new BcFirePointsError(
+      `BC wildfire numberReturned mismatch: declared ${declaredReturned}, received ${doc.features.length}`,
+    );
+  }
   return {
     fireDetections,
+    pageRowKeys,
     numberMatched: asFiniteNumber(doc.numberMatched ?? doc.totalFeatures),
-    numberReturned: asFiniteNumber(doc.numberReturned) ?? doc.features.length,
+    numberReturned: doc.features.length,
   };
 }
 
@@ -390,6 +406,7 @@ async function fetchBcFireKmlTree({ fetchFn, cache, maxHops = BC_MAX_NETWORKLINK
 async function fetchBcFireWfs({ fetchFn, cache, pageSize = BC_WFS_PAGE_SIZE, maxPages = BC_WFS_MAX_PAGES } = {}) {
   const fireDetections = [];
   const seen = new Set();
+  const seenPageRows = new Set();
   let paginationComplete = false;
   let lastProgress = 0;
   let lastMatched = null;
@@ -403,6 +420,15 @@ async function fetchBcFireWfs({ fetchFn, cache, pageSize = BC_WFS_PAGE_SIZE, max
       accept: 'application/json, application/geo+json, */*',
     });
     const parsed = parseBcFireGeoJson(response.text);
+    let newPageRows = 0;
+    for (const rowKey of parsed.pageRowKeys) {
+      if (seenPageRows.has(rowKey)) continue;
+      seenPageRows.add(rowKey);
+      newPageRows += 1;
+    }
+    if (parsed.numberReturned > 0 && newPageRows === 0) {
+      throw new BcFirePointsError(`BC wildfire WFS pagination repeated a page at startIndex=${startIndex}`);
+    }
     for (const detection of parsed.fireDetections) {
       if (seen.has(detection.id)) continue;
       seen.add(detection.id);
@@ -599,15 +625,49 @@ export async function mergeWildfireSourcesWithBc({ fetchFirms, fetchCwfis, fetch
   const bcDetections = bcOk ? (bcResult.value?.fireDetections || []) : [];
   const baseline = mergeById(firmsDetections, cwfisDetections);
   const merged = enrichOrAppendBc(baseline, bcDetections);
+  const cwfisState = cwfisOk ? (cwfisResult.value?._cwfisState || 'ok') : 'failed';
+  const cwfisErrorCode = cwfisState === 'ok'
+    ? null
+    : (cwfisResult.value?._cwfisErrorCode === 'CWFIS_PRESCRIBED_FAILED'
+      ? 'CWFIS_PRESCRIBED_FAILED'
+      : 'CWFIS_SOURCE_FAILED');
   return {
     fireDetections: merged.fireDetections,
     _firmsCount: firmsDetections.length,
     _cwfisCount: cwfisDetections.length,
     _cwfisActiveCount: cwfisOk ? (cwfisResult.value?._cwfisActiveCount ?? null) : null,
     _cwfisPrescribedCount: cwfisOk ? (cwfisResult.value?._cwfisPrescribedCount ?? null) : null,
+    _cwfisState: cwfisState,
+    _cwfisErrorCode: cwfisErrorCode,
     _bcCount: bcDetections.length,
     _bcEnrichedCount: merged._bcEnrichedCount,
     _bcAppendedCount: merged._bcAppendedCount,
     _bcVia: bcOk ? (bcResult.value?._bcVia ?? null) : null,
+    _bcState: bcOk ? 'ok' : 'failed',
+    _bcErrorCode: bcOk ? null : 'BC_WILDFIRE_SOURCE_FAILED',
+  };
+}
+
+export function canadianWildfireAfterPublish(data) {
+  const cwfisFailed = data?._cwfisState !== 'ok';
+  const bcFailed = data?._bcState !== 'ok';
+  const failureCount = Number(cwfisFailed) + Number(bcFailed);
+  if (failureCount === 0) {
+    return { freshnessMetaPatch: { sourceState: 'ok' } };
+  }
+  let errorCode = 'CANADA_WILDFIRE_SOURCES_FAILED';
+  if (failureCount === 1 && cwfisFailed) {
+    errorCode = data?._cwfisErrorCode === 'CWFIS_PRESCRIBED_FAILED'
+      ? 'CWFIS_PRESCRIBED_FAILED'
+      : 'CWFIS_SOURCE_FAILED';
+  } else if (failureCount === 1) {
+    errorCode = 'BC_WILDFIRE_SOURCE_FAILED';
+  }
+  return {
+    freshnessMetaPatch: {
+      sourceState: 'degraded',
+      errorCode,
+      canadaSourceFailureCount: failureCount,
+    },
   };
 }
