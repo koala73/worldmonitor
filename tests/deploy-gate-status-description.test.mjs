@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -21,6 +22,33 @@ const gateStep = workflow.jobs.gate.steps.find(
   (step) => step.name === 'Check required PR gates passed for this SHA',
 );
 const SHA = 'fedcba9876543210fedcba9876543210fedcba98';
+
+function toBashPath(value) {
+  if (process.platform !== 'win32') return value;
+  return value
+    .replace(/^([A-Za-z]):[\\/]/u, (_match, drive) => `/${drive.toLowerCase()}/`)
+    .replaceAll('\\', '/');
+}
+
+function bashPathWith(prepend) {
+  const hostDelimiter = process.platform === 'win32' ? ';' : ':';
+  return [prepend, ...(process.env.PATH ?? '').split(hostDelimiter)]
+    .filter(Boolean)
+    .map(toBashPath)
+    .join(':');
+}
+
+function hostCommand(command) {
+  if (process.platform !== 'win32') return command;
+  for (const directory of (process.env.PATH ?? '').split(';')) {
+    if (!directory) continue;
+    const candidate = join(directory, `${command}.exe`);
+    if (existsSync(candidate)) return candidate;
+  }
+  return command;
+}
+
+const BASH = hostCommand('bash');
 
 // The whole required list, read from the workflow so the test cannot pass by
 // pinning a shorter list than production actually gates on.
@@ -133,18 +161,36 @@ function runGate(conclusions, { fillerFirstPage = 0 } = {}) {
     // The step sleeps 30s between poll attempts; four of those would make this
     // suite take two minutes to learn nothing.
     writeFileSync(join(fakeBin, 'sleep'), ['#!/bin/sh', 'exit 0', ''].join('\n'));
-    for (const command of ['gh', 'sleep']) chmodSync(join(fakeBin, command), 0o755);
+    const fakeCommands = ['gh', 'sleep'];
+    if (process.platform === 'win32') {
+      // Windows commonly exposes a Store/App-Execution-Alias `python3.exe`
+      // that exits 9009 (49 after POSIX truncation) instead of running Python.
+      // The real workflow runs on Ubuntu; make the Windows POSIX-shell fixture
+      // forward its `python3` command to the working host `python.exe`.
+      const python = hostCommand('python');
+      assert.notEqual(python, 'python', 'a working host Python is required for this shell fixture');
+      writeFileSync(
+        join(fakeBin, 'python3'),
+        ['#!/bin/sh', `exec "${toBashPath(python)}" "$@"`, ''].join('\n'),
+      );
+      fakeCommands.push('python3');
+    }
+    for (const command of fakeCommands) chmodSync(join(fakeBin, command), 0o755);
 
-    const result = spawnSync('bash', ['-e', '-c', gateStep.run], {
+    const result = spawnSync(BASH, ['-e', '-c', gateStep.run], {
       cwd: repoRoot,
       encoding: 'utf8',
       env: {
         ...process.env,
-        FAKE_CHECK_RUNS: runsFile,
-        FAKE_POSTED: postedFile,
-        FAKE_REJECTED: rejectedFile,
+        // The fixture runs a POSIX shell even when node:test itself runs on
+        // Windows. Pass POSIX paths explicitly; drive-letter colons and
+        // backslashes otherwise split PATH and make the fake gh read files
+        // that do not exist.
+        FAKE_CHECK_RUNS: toBashPath(runsFile),
+        FAKE_POSTED: toBashPath(postedFile),
+        FAKE_REJECTED: toBashPath(rejectedFile),
         GH_TOKEN: 'test-token',
-        PATH: `${fakeBin}:${process.env.PATH}`,
+        PATH: bashPathWith(fakeBin),
         REPO: 'koala73/worldmonitor',
         SHA,
       },
@@ -158,7 +204,12 @@ function runGate(conclusions, { fillerFirstPage = 0 } = {}) {
         return { state: line.slice(0, separator), description: line.slice(separator + 1) };
       });
 
-    return { ...result, posted: parse(postedFile), rejected: parse(rejectedFile) };
+    return {
+      ...result,
+      diagnostic: [result.error?.stack, result.stdout, result.stderr].filter(Boolean).join('\n'),
+      posted: parse(postedFile),
+      rejected: parse(rejectedFile),
+    };
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }
@@ -183,7 +234,7 @@ describe('deploy gate commit-status description', () => {
     const result = runGate({});
 
     assert.deepEqual(result.rejected, [], `the API rejected a description: ${result.stderr}`);
-    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.status, 0, result.diagnostic);
     assert.equal(result.posted.length, 1);
     assert.equal(result.posted[0].state, 'pending');
     assert.ok(result.posted[0].description.length <= 140);
@@ -197,7 +248,7 @@ describe('deploy gate commit-status description', () => {
     const result = runGate(conclusionsFor('failure'));
 
     assert.deepEqual(result.rejected, [], `the API rejected a description: ${result.stderr}`);
-    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.status, 0, result.diagnostic);
     assert.equal(result.posted.length, 1);
     assert.equal(result.posted[0].state, 'failure');
     assert.ok(result.posted[0].description.length <= 140);
@@ -210,7 +261,7 @@ describe('deploy gate commit-status description', () => {
     delete conclusions.biome;
     const result = runGate(conclusions);
 
-    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.status, 0, result.diagnostic);
     assert.equal(result.posted[0].state, 'pending');
     assert.equal(result.posted[0].description, 'Waiting for required PR gates (2): unit,biome');
     assert.doesNotMatch(result.posted[0].description, /\.\.\.$/, 'a description that fits must not be cut');
@@ -225,7 +276,7 @@ describe('deploy gate commit-status description', () => {
     // names, a ~300-character description and a 422 that posted nothing at all.
     const result = runGate(conclusionsFor('success'), { fillerFirstPage: 100 });
 
-    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.status, 0, result.diagnostic);
     assert.deepEqual(
       result.posted,
       [{ state: 'success', description: 'All required PR gates passed' }],
@@ -238,7 +289,7 @@ describe('deploy gate commit-status description', () => {
     conclusions['desktop-rust'] = 'skipped';
     const result = runGate(conclusions);
 
-    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.status, 0, result.diagnostic);
     assert.deepEqual(result.posted, [{ state: 'success', description: 'All required PR gates passed' }]);
   });
 });

@@ -86,8 +86,9 @@ describe('Vercel handler bundle graph rejects JSON import attributes', () => {
   it('reaches deep into shared/ from at least one handler (guards the walker)', () => {
     // If the resolver silently returned null for every specifier, the closures
     // below would be single-file and the assertion after them vacuous.
+    const publisherFamiliesPath = resolve(ROOT, 'shared/publisher-families.js');
     const digestConsumers = entries.filter((entry) =>
-      [...importClosure(entry)].some((f) => f.endsWith('shared/publisher-families.js')),
+      [...importClosure(entry)].some((file) => file === publisherFamiliesPath),
     );
     assert.ok(
       digestConsumers.length > 0,
