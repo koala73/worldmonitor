@@ -378,3 +378,18 @@ news cause, deployment or third-party licence.
 Provider activation or production evidence. Each data-bearing capability still
 requires its own lawful source, timestamp, scope, freshness/delay and applicable
 display/redistribution authorization.
+
+## D-0030 - A zero-file lint invocation is a failed gate signal
+
+**Decision:** Use cross-platform double-quoted glob arguments in the npm
+Markdown lint script and require its output to show the intended non-zero file
+count. When diagnosing a platform-specific invocation, also run explicit file
+targets.
+
+**Reason:** Windows `cmd` preserved the script's single quote characters, so
+markdownlint matched no files and exited `0`. Ubuntu removed those quotes,
+scanned 257 files and correctly exposed ten MD022 errors.
+
+**Consequence:** Local `npm run lint:md` now scans the same 257 tracked Markdown
+files on Windows and Linux for this tree. The retained failed run is valid
+evidence; only a corrected-head rerun can supersede it for the final CI state.

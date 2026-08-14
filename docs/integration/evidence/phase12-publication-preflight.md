@@ -208,3 +208,38 @@ The image visibly records the PR title, `Draft` badge, `main` base, integration
 head, truth-and-safety summary and `Not ready` state. It proves only that the
 Draft review surface existed and was opened; it does not prove CI completion,
 approval, mergeability at a later time, deployment or Provider activation.
+
+### Remote Markdown CI failure and correction
+
+GitHub Actions run `31790654701` completed the `Lint` workflow with failure.
+Job `94736572460` succeeded through checkout/setup/`npm ci`, then
+`npm run lint:md` scanned 257 files and failed with ten MD022 errors. All ten
+were missing blank lines above older Phase 7/8 headings in the seven required
+integration documents.
+
+The standard Windows command had earlier exited `0` while reporting
+`Linting: 0 file(s)`. Root cause was the npm script's single-quoted globs:
+single quotes are shell quoting on Ubuntu but ordinary characters in Windows
+`cmd`. Commit `04d92a99083600c0160f86420993a777fa8c855c` adds the ten blank
+lines and changes all lint-script glob arguments to JSON-escaped double quotes.
+
+Post-fix local evidence:
+
+```text
+npm run lint:md
+Linting: 257 file(s)
+Summary: 0 error(s)
+CROSS_PLATFORM_LINT_MD_EXIT=0
+
+explicit integration lint
+Linting: 8 file(s)
+Summary: 0 error(s)
+EXPLICIT_MD_LINT_EXIT=0
+
+docs-stats --check OK — 150 doc claims match code.
+DOCS_CHECK_EXIT=0
+DIFF_CHECK_EXIT=0
+```
+
+The failed run remains part of the evidence. A corrected-head workflow run is
+required before claiming remote CI success.

@@ -393,3 +393,17 @@ implied. Publication-document record commit:
 it.
 
 | Visible Draft PR review | PASS for review surface only | `docs/integration/evidence/phase12-draft-pr-created-20260814.png`, 1170x1073, 157,546 bytes, SHA-256 `651FF87ABAE15ECC3F9FD759248788B41000762DA0BECCEC26A7DF07B83FC034`. The page visibly shows `Draft` and `Not ready`; no readiness/merge/deploy action was taken. |
+
+## Phase 12 - remote Markdown CI correction
+
+| Check | Result | Evidence |
+|---|---|---|
+| Initial remote Markdown run | FAIL, retained | GitHub Actions run `31790654701`, job `94736572460`, step `npm run lint:md`: 257 files scanned, 10 MD022 errors, exit `1`. |
+| Windows false-green diagnosis | CONFIRMED | Before correction, the standard local command printed `Linting: 0 file(s)` because the npm script passed literal single quotes through Windows `cmd`. |
+| Heading-spacing correction | PASS locally | Ten missing blank lines were added across the seven integration status documents. Explicit eight-file lint scanned 8 files with 0 errors. |
+| Cross-platform standard command | PASS locally | Commit `04d92a99083600c0160f86420993a777fa8c855c` replaces single-quoted globs with JSON-escaped double-quoted globs. The unchanged standard command then scanned 257 files with 0 errors on Windows. |
+| Documentation facts and diff | PASS locally | `npm run docs:check`: 150 claims matched; `git diff --check`: exit `0`. |
+
+The first CI failure is not reclassified as a pass. The corrected head must
+receive its own remote workflow conclusion before remote CI is described as
+green.

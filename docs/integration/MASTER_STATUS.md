@@ -492,3 +492,18 @@ Visible review evidence was captured from the opened GitHub page at
 `651FF87ABAE15ECC3F9FD759248788B41000762DA0BECCEC26A7DF07B83FC034`). The
 capture shows `Draft` and `Not ready`; it is evidence of the review surface,
 not of completed CI or deployment.
+
+## Phase 12 - remote Markdown CI correction
+
+GitHub Actions run `31790654701` provided a real failing result for the
+`markdown` job: Ubuntu scanned 257 files and found ten MD022 heading-spacing
+errors in the seven integration status documents. The earlier Windows
+`npm run lint:md` output had shown `Linting: 0 file(s)` because single-quoted
+globs in `package.json` are not unquoted by Windows `cmd`.
+
+Commit `04d92a99083600c0160f86420993a777fa8c855c` adds the ten missing blank
+lines and changes the script to cross-platform double-quoted globs. The
+standard Windows command then scanned 257 files with zero errors; the explicit
+eight-file integration lint, `docs:check` (150 claims) and `git diff --check`
+also exited `0`. A remote rerun is required before remote CI can be called
+green; this correction does not change the Draft/Provider/deployment boundary.
