@@ -388,4 +388,5 @@ Go generators produced no diff and the hook's freshness check reported
 exist; main, upstream, deployment, Provider entitlements and secrets remain
 unchanged. Remote CI, human review, readiness, merge and deployment are not
 implied. Publication-document record commit:
-`PENDING_PHASE12_RECORD_SHA`; the following receipt backfills it.
+`08ee150b7a4db24a85c7e567434e437e2e0cf7aa`; the following receipt backfills
+it.

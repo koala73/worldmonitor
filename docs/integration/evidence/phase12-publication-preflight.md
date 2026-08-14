@@ -183,3 +183,9 @@ because the pre-commit Unicode hook could not find `node` in that PowerShell
 process's PATH. No hook was bypassed. The verified workspace Node/shim paths
 were then prepended and the same staged documentation commit was retried with
 the pre-commit hook active.
+
+The retry passed and created publication-document record commit
+`08ee150b7a4db24a85c7e567434e437e2e0cf7aa`. A normal non-force push advanced
+the remote integration branch from `ace1b8b49c0d02fe93c86ce419d8d2bd99b3f401`
+to that record commit with exit `0`. The following receipt commit backfills the
+record SHA in the required status documents.

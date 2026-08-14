@@ -479,7 +479,8 @@ version sync. The raw 141,634-byte log is
 `docs/integration/evidence/phase12-full-prepush-20260814.log` with SHA-256
 `9E87ECA6E4CE73E9F51A5E406C7AB58042D604074BC1C6741D95DDF7EF09347A`.
 
-The publication-document record commit is `PENDING_PHASE12_RECORD_SHA`; the
-following receipt commit backfills its immutable SHA. Phase 12 is complete for
+The publication-document record commit is
+`08ee150b7a4db24a85c7e567434e437e2e0cf7aa`; the following receipt commit
+backfills its immutable SHA. Phase 12 is complete for
 branch publication and Draft PR creation. Review/CI/deployment/merge remain
 separate actions and are not claimed by this record.
