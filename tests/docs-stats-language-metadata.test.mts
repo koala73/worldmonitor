@@ -34,6 +34,21 @@ describe('validateIndexLanguageMetadata', () => {
     assert.deepEqual(validateIndexLanguageMetadata(STATS, buildHtml()), []);
   });
 
+  it('accepts an independently branded origin-relative shell with no upstream hreflang links', () => {
+    assert.deepEqual(validateIndexLanguageMetadata(STATS, buildHtml({
+      canonical: '<link rel="canonical" href="/dashboard" />',
+      xdefault: null,
+      alternates: [],
+    })), []);
+  });
+
+  it('rejects upstream hreflang links on the independent origin-relative shell', () => {
+    const failures = validateIndexLanguageMetadata(STATS, buildHtml({
+      canonical: '<link rel="canonical" href="/dashboard" />',
+    }));
+    assert.ok(hit(failures, 'independent origin-relative build must not publish upstream hreflang links'));
+  });
+
   it('flags a missing x-default hreflang link', () => {
     const failures = validateIndexLanguageMetadata(STATS, buildHtml({ xdefault: null }));
     assert.ok(hit(failures, 'x-default hreflang link not found'));

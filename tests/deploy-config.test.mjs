@@ -816,6 +816,22 @@ describe('welcome landing page routing', () => {
       dashboardHtml.includes('<link rel="canonical" href="/dashboard" />'),
       'independent dashboard shell must canonicalize to /dashboard on its active origin'
     );
+    assert.match(
+      dashboardHtml,
+      /全球实时热点追踪·探长版/,
+      'independent dashboard metadata must name the independent product',
+    );
+    for (const upstreamIdentity of [
+      'https://www.worldmonitor.app',
+      '@worldmonitorai',
+      '"name": "World Monitor"',
+      '"name": "Elie Habib"',
+    ]) {
+      assert.ok(
+        !dashboardHtml.includes(upstreamIdentity),
+        `independent dashboard metadata must not claim upstream identity: ${upstreamIdentity}`,
+      );
+    }
   });
 
   it('keeps welcome dashboard launch CTAs off the root welcome route', () => {

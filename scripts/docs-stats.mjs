@@ -615,39 +615,46 @@ function validateIndexLanguageMetadata(_stats, html = read('index.html')) {
     failures.push('index.html: canonical link not found');
   }
 
-  const defaultLink = alternateLinks.find((l) => l.code === 'x-default');
-  if (!defaultLink) {
-    failures.push('index.html: x-default hreflang link not found');
+  const isOriginRelativeIndependentBuild = canonicalHref?.startsWith('/');
+  if (isOriginRelativeIndependentBuild) {
+    if (alternateLinks.length > 0) {
+      failures.push('index.html: independent origin-relative build must not publish upstream hreflang links');
+    }
   } else {
-    let parsed;
-    try {
-      parsed = new URL(defaultLink.href);
-    } catch {
-      failures.push('index.html: x-default hreflang href is not a valid URL');
+    const defaultLink = alternateLinks.find((l) => l.code === 'x-default');
+    if (!defaultLink) {
+      failures.push('index.html: x-default hreflang link not found');
+    } else {
+      let parsed;
+      try {
+        parsed = new URL(defaultLink.href);
+      } catch {
+        failures.push('index.html: x-default hreflang href is not a valid URL');
+      }
+      if (parsed?.searchParams.has('lang')) {
+        failures.push('index.html: x-default hreflang href must not set ?lang');
+      }
     }
-    if (parsed?.searchParams.has('lang')) {
-      failures.push('index.html: x-default hreflang href must not set ?lang');
-    }
-  }
 
-  const hreflangCodes = alternateLinks.map((link) => link.code);
-  const expectedDiscoveryCodes = ['x-default', 'en'];
-  if (!sameStringSet(hreflangCodes, expectedDiscoveryCodes)) {
-    failures.push(`index.html: hreflang set must contain only x-default and en (${describeSetDelta(hreflangCodes, expectedDiscoveryCodes)})`);
-  }
+    const hreflangCodes = alternateLinks.map((link) => link.code);
+    const expectedDiscoveryCodes = ['x-default', 'en'];
+    if (!sameStringSet(hreflangCodes, expectedDiscoveryCodes)) {
+      failures.push(`index.html: hreflang set must contain only x-default and en (${describeSetDelta(hreflangCodes, expectedDiscoveryCodes)})`);
+    }
 
-  for (const link of alternateLinks) {
-    let parsed;
-    try {
-      parsed = new URL(link.href);
-    } catch {
-      failures.push(`index.html: ${link.code} hreflang href must be an absolute URL`);
-    }
-    if (parsed?.searchParams.has('lang')) {
-      failures.push(`index.html: query-string locale URLs must not be advertised (${link.code})`);
-    }
-    if (canonicalHref && link.href !== canonicalHref) {
-      failures.push(`index.html: ${link.code} hreflang href must equal the canonical URL`);
+    for (const link of alternateLinks) {
+      let parsed;
+      try {
+        parsed = new URL(link.href);
+      } catch {
+        failures.push(`index.html: ${link.code} hreflang href must be an absolute URL`);
+      }
+      if (parsed?.searchParams.has('lang')) {
+        failures.push(`index.html: query-string locale URLs must not be advertised (${link.code})`);
+      }
+      if (canonicalHref && link.href !== canonicalHref) {
+        failures.push(`index.html: ${link.code} hreflang href must equal the canonical URL`);
+      }
     }
   }
 
