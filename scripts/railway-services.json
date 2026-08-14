@@ -1367,24 +1367,5 @@
     ],
     "cronSchedule": "0 * * * *",
     "documentedAt": "docs/market-data-cadence-audit.md"
-  },
-  {
-    "entry": "scripts/seed-ttc-alerts.mjs",
-    "deployMode": "nixpacks-root-scripts",
-    "service": "seed-ttc-alerts",
-    "watchPatterns": [
-      "scripts/_seed-contract.mjs",
-      "scripts/_seed-envelope-source.mjs",
-      "scripts/_seed-utils.mjs",
-      "scripts/_proxy-utils.cjs",
-      "scripts/lib/llm-telemetry.cjs",
-      "scripts/lib/gtfsrt.mjs",
-      "scripts/seed-ttc-alerts.mjs",
-      "scripts/nixpacks.toml",
-      "scripts/package.json",
-      "scripts/package-lock.json"
-    ],
-    "cronSchedule": "*/5 * * * *",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
   }
 ]

@@ -12,6 +12,28 @@ const DEAD_URL = 'https://alerts.ttc.ca/api/alerts/live';
 const LIVE_URL = 'https://gtfsrt.ttc.ca/alerts/all?format=binary';
 
 describe('TTC service-alerts production registration (#6623)', () => {
+  it('health probes the seed-meta key runSeed actually writes', () => {
+    // runSeed derives seed-meta as `seed-meta:${domain}:${resource}` — it is NOT
+    // the canonical key with :v1 stripped. TTC's canonical key is
+    // transit:ttc:alerts:v1 but its resource is 'ttc-alerts', so the meta key
+    // takes a HYPHEN where the canonical key has a colon. Probing the colon form
+    // watches a key that is never written: the seed reads absent forever,
+    // however healthy the seeder is. VIA Rail gets this right; TTC did not.
+    const call = SEEDER.match(/runSeed\(\s*'([^']+)'\s*,\s*'([^']+)'/);
+    assert.ok(call, 'seeder must call runSeed with literal domain and resource');
+    const [, domain, resource] = call;
+    const written = `seed-meta:${domain}:${resource}`;
+
+    assert.equal(healthTesting.SEED_META.ttcAlerts.key, written);
+
+    // The freshness cutover watches the same key, or the acknowledgement is
+    // anchored to a probe that can never clear.
+    const baseline = JSON.parse(read('scripts/seed-freshness-baseline.json'));
+    const ack = baseline.acknowledged.find((row) => row.name === 'ttcAlerts');
+    assert.ok(ack, 'ttcAlerts must carry a freshness acknowledgement');
+    assert.equal(ack.cutover.probeKey, written);
+  });
+
   it('does not ship the 404 alerts.ttc.ca/api/alerts/live URL', () => {
     assert.equal(SEEDER.includes(DEAD_URL), false);
     assert.equal(ADAPTER.includes(DEAD_URL), false);
@@ -35,7 +57,9 @@ describe('TTC service-alerts production registration (#6623)', () => {
     assert.match(SEEDER, /ttlSeconds:\s*TTC_ALERTS_TTL_SECONDS/);
     assert.match(SEEDER, /maxStaleMin:\s*TTC_ALERTS_MAX_STALE_MIN/);
     assert.equal(healthTesting.STANDALONE_KEYS.ttcAlerts, 'transit:ttc:alerts:v1');
-    assert.equal(healthTesting.SEED_META.ttcAlerts.key, 'seed-meta:transit:ttc:alerts');
+    // Hyphen, not colon — this literal previously pinned the mismatched key and
+    // is why the bug shipped green. The derivation test above is the real guard.
+    assert.equal(healthTesting.SEED_META.ttcAlerts.key, 'seed-meta:transit:ttc-alerts');
     assert.equal(healthTesting.SEED_META.ttcAlerts.maxStaleMin, 30);
     assert.equal(healthTesting.SEED_META.ttcAlerts.cutover?.mode, 'expiring-ack');
     assert.equal(healthTesting.SEED_META.ttcAlerts.cutover?.issue, 6623);
@@ -44,17 +68,31 @@ describe('TTC service-alerts production registration (#6623)', () => {
     assert.equal(healthTesting.BOOTSTRAP_KEYS.ttcAlerts, undefined);
   });
 
-  it('registers Railway cron and seed-health on the same freshness budget', () => {
+  it('runs as a bundle member, not its own Railway service', () => {
+    // TTC is one of six Canada seeders. Six services against a fleet whose
+    // runbook targets 65 is the wrong trade for ~1s of tick work, so this
+    // seeder has NO standalone row: seed-bundle-canada (#6711) owns it and
+    // gates it on a per-member intervalMs of 5 minutes.
     const railway = JSON.parse(read('scripts/railway-services.json'));
-    const service = railway.find((entry) => entry.service === 'seed-ttc-alerts');
-    assert.equal(service?.entry, 'scripts/seed-ttc-alerts.mjs');
-    assert.equal(service?.deployMode, 'nixpacks-root-scripts');
-    assert.equal(service?.cronSchedule, '*/5 * * * *');
-    assert.ok(service?.watchPatterns.includes('scripts/lib/gtfsrt.mjs'));
-    assert.ok(service?.watchPatterns.includes('scripts/seed-ttc-alerts.mjs'));
+    assert.equal(
+      railway.some((entry) => entry.service === 'seed-ttc-alerts'),
+      false,
+      'a standalone row here would claim a Railway slot the bundle already covers',
+    );
+  });
+
+  it('probes the same seed-meta key from every health surface', () => {
+    // Three carriers, and all three had the colon form. A probe on an unwritten
+    // key is invisible, not loud — so pin them together rather than one by one.
     assert.match(
       read('api/seed-health.js'),
-      /'transit:ttc:alerts':\s*\{ key: 'seed-meta:transit:ttc:alerts',\s*intervalMin:\s*15/,
+      /'transit:ttc:alerts':\s*\{ key: 'seed-meta:transit:ttc-alerts',\s*intervalMin:\s*15/,
+    );
+    assert.equal(healthTesting.SEED_META.ttcAlerts.key, 'seed-meta:transit:ttc-alerts');
+    const baseline = JSON.parse(read('scripts/seed-freshness-baseline.json'));
+    assert.equal(
+      baseline.acknowledged.find((row) => row.name === 'ttcAlerts').cutover.probeKey,
+      'seed-meta:transit:ttc-alerts',
     );
   });
 
