@@ -303,6 +303,37 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(!suppress('enforce', 'font-src', 'https://jsdelivr.net/gh/x/y.woff', '', false));
     });
 
+    it('suppresses the round-8 cdnjs FontAwesome webfonts', () => {
+      // Every distinct URI observed in the window strictly AFTER the round-7
+      // rule went live (a769c51a, 2026-08-13T14:18Z): 171 of that window's 172
+      // events, i.e. the whole live tail of this issue. All four faces appear in
+      // both .woff2 and .ttf because an @font-face src: list is tried in order —
+      // the same fallback-chain shape the round-3 and round-6 rules were widened
+      // for. Real production URIs, so a path/extension refactor that stops
+      // matching them fails here rather than in Sentry.
+      const cdnjsFa = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/webfonts';
+      for (const face of ['fa-solid-900', 'fa-regular-400', 'fa-brands-400']) {
+        assert.ok(suppress('enforce', 'font-src', `${cdnjsFa}/${face}.woff2`, '', false));
+        assert.ok(suppress('enforce', 'font-src', `${cdnjsFa}/${face}.ttf`, '', false));
+      }
+      assert.ok(suppress('enforce', 'font-src', `${cdnjsFa}/fa-v4compatibility.woff2`, '', false));
+    });
+
+    it('keeps NON-font assets from cdnjs visible', () => {
+      // Host + extension only, like the other two package CDNs, so the extension
+      // and protocol checks are the ONLY things keeping this rule narrow.
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css', '', false));
+      assert.ok(!suppress('enforce', 'script-src', 'https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css', '', false));
+      // http:, pinning the protocol conjunct.
+      assert.ok(!suppress('enforce', 'font-src', 'http://cdnjs.cloudflare.com/ajax/libs/x/y.woff2', '', false));
+      // Sibling registrable domains and subdomains an endsWith() refactor eats.
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdnjs.cloudflare.com.evil.com/ajax/libs/x/y.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://evil-cdnjs.cloudflare.com/ajax/libs/x/y.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://cdnjs.com/ajax/libs/x/y.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://cloudflare.com/ajax/libs/x/y.woff2', '', false));
+    });
+
     it('does NOT suppress a SIBLING registrable domain of a pinned font host', () => {
       // The `<host>.evil.com` fixtures elsewhere are rejected by ANY hostname
       // check, including a suffix match, so they cannot prove exactness. These

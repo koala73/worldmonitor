@@ -420,6 +420,30 @@ function shouldSuppressCspViolation(
       // style-src jsDelivr rule below makes for CSS.
       if (url.protocol === 'https:' && url.hostname === 'cdn.jsdelivr.net'
           && fontFile.test(url.pathname)) return true;
+      // ---- Round 8. Sized on the window strictly AFTER the round-7 rule was
+      // live (commit a769c51a, 2026-08-13T14:18Z), per the note above. In that
+      // window this issue took 172 events and 171 of them (99.4%) were this one
+      // host; the single remaining jsDelivr event came from a bundle built
+      // 2026-08-06, i.e. drain from a stale client rather than a rule escaping.
+      //
+      // cdnjs is the third generic package CDN in this list, and it is pinned
+      // the same way unpkg and jsDelivr are above — host + font-file extension,
+      // no path prefix — for the same reason: it mirrors whatever an arbitrary
+      // npm package ships, so it has no stable font root to anchor to.
+      //
+      // Every one of the 171 events is FontAwesome 6.7.2 requesting the same
+      // four faces in the .woff2/.ttf fallback chain
+      // (/ajax/libs/font-awesome/6.7.2/webfonts/fa-{solid-900,regular-400,
+      // brands-400,v4compatibility}.*), with an EMPTY sourceFile — the
+      // signature of an extension-injected stylesheet rather than a document
+      // one. This is the third-CDN counterpart of the existing
+      // use.fontawesome.com rules: `font-awesome` is in neither package.json
+      // nor src, `cdnjs` appears nowhere in the repo, and the dashboard's
+      // font-src is `'self' data:` with no cross-origin host at all, so a font
+      // block here can never be a first-party regression. Non-font assets from
+      // cdnjs still surface.
+      if (url.protocol === 'https:' && url.hostname === 'cdnjs.cloudflare.com'
+          && fontFile.test(url.pathname)) return true;
     } catch { /* scheme-only values fall through */ }
   }
   // YouTube live stream manifests.
