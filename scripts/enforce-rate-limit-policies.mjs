@@ -38,10 +38,12 @@
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
-const ROOT = new URL('..', import.meta.url).pathname;
+// URL.pathname yields `/D:/...` on Windows; converting through fileURLToPath
+// prevents path.join/pathToFileURL from prefixing the current drive twice.
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const OPENAPI_DIR = join(ROOT, 'docs/api');
 const RATE_LIMIT_SRC = join(ROOT, 'server/_shared/rate-limit.ts');
 const API_EXCEPTIONS = join(ROOT, 'api/api-route-exceptions.json');
