@@ -280,14 +280,20 @@ describe('VIA Rail live registration (no bootstrap / seeder import / ais-relay)'
     assert.doesNotMatch(relay, /viarail|tsimobile\.viarail\.ca/);
   });
 
-  it('schedules an optional standalone Railway cron with watchPatterns', () => {
+  it('runs as a bundle member, not its own Railway service', () => {
+    // An optional unofficial feed does not earn a dedicated Railway slot. This
+    // seeder is a seed-bundle-canada (#6711) member gated on intervalMs 15min,
+    // which is the cadence its standalone cron had. The freshness anchor must
+    // therefore clear on BUNDLE provisioning, not on this branch deploying.
     const railway = JSON.parse(read('scripts/railway-services.json'));
-    const service = railway.find((entry) => entry.service === 'seed-viarail-live');
-    assert.ok(service, 'seed-viarail-live must be in railway-services.json');
-    assert.equal(service.entry, 'scripts/seed-viarail-live.mjs');
-    assert.equal(service.cronSchedule, '*/15 * * * *');
-    assert.equal(service.deployMode, 'nixpacks-root-scripts');
-    assert.ok(service.watchPatterns.includes('scripts/seed-viarail-live.mjs'));
-    assert.ok(service.watchPatterns.includes('scripts/viarail-live.mjs'));
+    assert.equal(
+      railway.some((entry) => entry.service === 'seed-viarail-live'),
+      false,
+      'a standalone row would claim a slot the bundle already covers',
+    );
+    const ack = JSON.parse(read('scripts/seed-freshness-baseline.json'))
+      .acknowledged.find((row) => row.name === 'viarailLive');
+    assert.ok(ack, 'viarailLive keeps its expiring acknowledgement');
+    assert.equal(ack.cutover.probeKey, 'seed-meta:transit:viarail-live');
   });
 });

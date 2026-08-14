@@ -1366,24 +1366,5 @@
     ],
     "cronSchedule": "0 * * * *",
     "documentedAt": "docs/market-data-cadence-audit.md"
-  },
-  {
-    "entry": "scripts/seed-viarail-live.mjs",
-    "deployMode": "nixpacks-root-scripts",
-    "service": "seed-viarail-live",
-    "watchPatterns": [
-      "scripts/_proxy-utils.cjs",
-      "scripts/_seed-contract.mjs",
-      "scripts/_seed-envelope-source.mjs",
-      "scripts/_seed-utils.mjs",
-      "scripts/lib/llm-telemetry.cjs",
-      "scripts/nixpacks.toml",
-      "scripts/package-lock.json",
-      "scripts/package.json",
-      "scripts/seed-viarail-live.mjs",
-      "scripts/viarail-live.mjs"
-    ],
-    "cronSchedule": "*/15 * * * *",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   }
 ]
