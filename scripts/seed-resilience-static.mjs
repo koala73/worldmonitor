@@ -81,6 +81,29 @@ export function countryRedisKey(iso2) {
   return `${RESILIENCE_STATIC_PREFIX}${iso2}`;
 }
 
+export function installSigtermLockCleanup({
+  runId,
+  processRef = process,
+  release = releaseLock,
+  logError = console.error,
+} = {}) {
+  if (!runId) throw new Error('installSigtermLockCleanup requires runId');
+
+  const onSigterm = async () => {
+    logError(`  [${LOCK_DOMAIN}] SIGTERM received — releasing lock runId=${runId}`);
+    try {
+      await release(LOCK_DOMAIN, runId);
+    } catch (error) {
+      logError(`  [${LOCK_DOMAIN}] SIGTERM cleanup error: ${error?.message || error}`);
+    } finally {
+      processRef.exit(143);
+    }
+  };
+
+  processRef.once('SIGTERM', onSigterm);
+  return () => processRef.off('SIGTERM', onSigterm);
+}
+
 function nowSeedYear(now = new Date()) {
   return now.getUTCFullYear();
 }
@@ -1226,6 +1249,7 @@ export async function main() {
     return;
   }
 
+  const removeSigtermHandler = installSigtermLockCleanup({ runId });
   try {
     const result = await seedResilienceStatic();
     logSeedResult('resilience:static', result?.manifest?.recordCount ?? 0, Date.now() - startedAt, {
@@ -1235,6 +1259,7 @@ export async function main() {
     });
   } finally {
     await releaseLock(LOCK_DOMAIN, runId);
+    removeSigtermHandler();
   }
 }
 
