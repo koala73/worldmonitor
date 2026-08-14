@@ -341,3 +341,21 @@ correction across unrelated protocol packages.
 No owner login, purchase, CAPTCHA, Secret or licence action is required for
 this continuation. Credentials must remain outside chat, Git, screenshots and
 logs.
+
+## Phase 12 run 8 acceptance follow-up (2026-08-14)
+
+- [x] Publish `c730fc6...` by normal non-force integration-branch fast-forward.
+- [x] Verify with the authenticated GitHub connector that PR #1 is still open,
+  Draft, unmerged and based on unchanged `main@0fca203c...`.
+- [x] Wait for all six exact-head run-8 workflows; every conclusion is
+  `success`, including all 13 Test jobs and the 23,022-test Linux data suite.
+- [x] Keep Provider credentials, licences and live-data claims out of CI
+  acceptance; no mock or fallback production observation was introduced.
+- [ ] Keep PR #1 Draft for owner review; do not merge, deploy, release or
+  activate Providers under this Phase 12 authorization.
+- [ ] Preserve the external proto backup until a separately authorized cleanup
+  decision; do not delete it as part of acceptance documentation.
+
+No owner input is required to publish and verify this documentation-only
+receipt. Future Provider onboarding and any merge/deployment remain separate
+manual authorization gates.

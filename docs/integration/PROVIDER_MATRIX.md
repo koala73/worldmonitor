@@ -257,3 +257,17 @@ Accordingly every market/K-line, AIS/cargo, news, trade and factory state in
 this matrix is unchanged. Passing 82/82, 9/9 and the complete pre-push hook
 proves control behavior only; it cannot label historical/delayed data as
 real-time or correlation as causation.
+
+## Phase 12 run 8 acceptance effect on Provider states
+
+Run 8 proves source contracts, production compilation and Linux tests at exact
+head `c730fc6...`; it supplies no licensed response. Market/K-line Providers
+remain fail-closed or accurately labelled according to their real configured
+entitlement. The 23,022 passing tests contain assertions and fixtures, not a
+production quote, candle or exchange observation.
+
+AIS still establishes only its observed position/time/source, never cargo.
+News relevance and sentiment remain non-causal context. Trade/factory feeds
+remain subject to their documented source, observation and freshness gates.
+No credential, account, payment, licence, deployment or Provider state changed
+as a consequence of run 8.

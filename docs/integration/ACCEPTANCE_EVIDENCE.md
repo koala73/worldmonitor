@@ -524,3 +524,27 @@ accepted by this local record.
 Windows pre-push evidence record commit:
 `df93dc82fb623a6445451300d04c72fe1e19d6b0`. This following receipt records
 the immutable evidence SHA only; fresh exact-head GitHub CI is still required.
+
+## Phase 12 - GitHub run 8 green acceptance
+
+| Check | Result | Evidence |
+|---|---|---|
+| Normal integration publication | PASS | `f7c1dcf...` -> `c730fc6...`, push exit `0`; no force/no-verify/main write. |
+| Draft PR boundary | PASS | GitHub connector: open, Draft, unmerged, mergeable; base `main@0fca203c...`; head exact `c730fc6...`. |
+| Lint / Pro / Proto / Lint Code / Typecheck | PASS | Runs `31799853500`, `31799853521`, `31799853494`, `31799853501`, `31799853498`, all completed `success`. |
+| GitHub Test run 8 | PASS | Run `31799853493`; all 13 jobs success and no failed step. |
+| Linux production build | PASS | Unit job `94765062637`: 2,506 modules, 36.17 seconds, stock-workspace artifacts and PWA 253 entries. |
+| Linux data suite | PASS | 23,022 tests / 3,552 suites; 23,016 pass / 0 fail / 6 skip; 278,882.027857 ms. |
+| Deployment/desktop bundles | PASS | 28 edge entrypoints, 34 sidecar domains and 8 required desktop build keys. |
+
+Raw evidence:
+
+- `docs/integration/evidence/phase12-github-run8-green-20260814.log`, 2,878
+  bytes, SHA-256
+  `02423BF4CF020E5BD30955E05C437292F8DC01C158AB861EBF49AE2ED361BA15`.
+
+**PHASE 12 SOURCE AND FUNCTIONAL ACCEPTANCE: COMPLETE ON EXACT HEAD
+`c730fc6a2c4a6c390b305ce19cb04b1fa805c43e`.** The receipt commit is
+documentation-only and must retain green PR checks as an external integrity
+confirmation. Draft readiness, merge, deployment, release and Provider
+activation remain outside this acceptance.

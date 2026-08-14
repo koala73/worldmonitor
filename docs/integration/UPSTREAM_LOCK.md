@@ -343,3 +343,17 @@ Publication authority remains limited to a normal non-force fast-forward of
 `origin/integration/pokieticker-maritime-china-factory`. These portability
 commits do not authorize main/upstream writes, force push, merge, deployment,
 backup deletion, rebase or newer-upstream intake.
+
+## Phase 12 accepted-head lock
+
+The accepted source/functional head is
+`c730fc6a2c4a6c390b305ce19cb04b1fa805c43e`. GitHub run 8 evaluated that
+exact SHA and all six workflows succeeded. The connector simultaneously
+confirmed protected base `main@0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`
+and reviewed upstream remains
+`ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`.
+
+This acceptance receipt is a documentation-only descendant. Its publication
+remains a normal non-force integration-branch fast-forward. Neither run 8 nor
+the receipt authorizes a newer-upstream merge/rebase, direct main/upstream
+write, force push, merge, deployment, release or backup deletion.

@@ -529,3 +529,19 @@ not a platform-dependent string suffix.
 **Consequence:** Railway targeted tests pass 82/82, deployment/edge targeted
 tests pass 9/9 and the complete pre-push gate passes on Windows without
 weakening deployment, ownership, import or truth-boundary assertions.
+
+## D-0040 - Bind remote acceptance to one exact head and all workflow conclusions
+
+**Decision:** Accept Phase 12 source/functionality only after the authenticated
+GitHub connector binds the Draft PR head to the published SHA and every
+required workflow on that SHA has completed successfully. Retain test totals,
+job identity and protected-base identity in the receipt.
+
+**Reason:** Five standalone successes cannot cancel one Test failure, and a
+passing local tree cannot substitute for Linux CI. Run 7 demonstrated both
+failure modes; run 8 supplies the first complete exact-head success set.
+
+**Consequence:** `c730fc6...` is the accepted functional head: six successful
+workflows, 13 successful Test jobs and 0 failures in 23,022 data tests. The
+documentation receipt is auditable without promoting PR readiness, merge,
+deployment or Provider availability.

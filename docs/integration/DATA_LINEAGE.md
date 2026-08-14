@@ -423,3 +423,26 @@ None of these path strings is an exchange symbol, price, candle, timestamp,
 AIS position, cargo fact, article, causal result, trade value, factory report,
 Provider licence, secret or deployed health observation. Fresh GitHub CI on
 the final documented descendant remains the remote lineage boundary.
+
+## Phase 12 GitHub run 8 acceptance lineage
+
+The accepted remote chain is exact and source-bound:
+
+1. read-only Git transport observed integration head `f7c1dcf...` and protected
+   `main@0fca203c...`;
+2. normal non-force publication advanced only the integration branch to
+   `c730fc6...`, exit `0`;
+3. the GitHub connector fetched exact commit `c730fc6...` and Draft PR #1 with
+   unchanged base and unmerged state;
+4. all six run-8 workflows completed success;
+5. Test run `31799853493` completed all 13 jobs successfully;
+6. unit job `94765062637` built 2,506 modules and passed 23,022 data tests with
+   23,016 pass, 0 fail and 6 declared skips;
+7. built-output checks then passed 28 edge entries, 34 sidecar domains and all
+   eight required desktop build keys.
+
+This lineage proves compilation, contracts and test execution. It does not
+contain a licensed market observation, price, candle, exchange timestamp, AIS
+cargo fact, deterministic article cause, trade/factory observation, Provider
+secret, deployment response or account entitlement. Those remain governed by
+their source-bearing runtime lineage.

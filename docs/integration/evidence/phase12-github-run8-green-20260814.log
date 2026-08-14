@@ -1,0 +1,70 @@
+Phase 12 GitHub run 8 green evidence
+Date: 2026-08-14 (Asia/Shanghai)
+Repository: daking32168-byte/worldmonitor
+Draft PR: https://github.com/daking32168-byte/worldmonitor/pull/1
+Exact evaluated head: c730fc6a2c4a6c390b305ce19cb04b1fa805c43e
+Protected base: main@0fca203c776dd5fa4913c4bd52f99cd2c3c13a25
+
+Publication
+-----------
+Read-only remote check before publication:
+- integration/pokieticker-maritime-china-factory =
+  f7c1dcf555bc97fd4e2da38809e0daf4b73287fd
+- main = 0fca203c776dd5fa4913c4bd52f99cd2c3c13a25
+
+Publication command class: normal non-force
+HEAD:refs/heads/integration/pokieticker-maritime-china-factory
+Result: f7c1dcf..c730fc6, exit 0
+No --force, --force-with-lease, --no-verify, main write, merge or deployment.
+The command used one official GitHub endpoint through command-scoped
+http.curloptResolve and a command-scoped postBuffer; hosts and Git config were
+not modified.
+
+GitHub connector control read
+-----------------------------
+PR #1 state: open
+Draft: true
+Merged: false
+Mergeable: true
+Base: main@0fca203c776dd5fa4913c4bd52f99cd2c3c13a25
+Head: integration/pokieticker-maritime-china-factory@
+c730fc6a2c4a6c390b305ce19cb04b1fa805c43e
+Exact commit fetch: success
+
+GitHub run 8 workflow conclusions
+---------------------------------
+- Lint: run 31799853500, completed success
+- Pro bundle freshness: run 31799853521, completed success
+- Proto Generation Check: run 31799853494, completed success
+- Lint Code: run 31799853501, completed success
+- Typecheck: run 31799853498, completed success
+- Test: run 31799853493, completed success
+
+Test workflow job evidence
+--------------------------
+Test carried 13 jobs and completed success. The connector read every job with
+no failed step. Successful jobs included changes, docs-stats, consumer-prices,
+desktop-rust, convex-tests, variant-smoke-full, unit, umami-postgres,
+desktop-config, dom-tests, digest-image, resilience-validation-smoke and
+sidecar.
+
+Unit job: 94765062637, completed success
+- Health-probe cutover: passed against exact base 0fca203c...
+- Production Vite build: 2,506 modules; built in 36.17 seconds
+- Stock-workspace CSS and JS artifacts emitted
+- PWA 1.3.0: 253 precache entries, 11,319.48 KiB
+- Data tests: 23,022 tests / 3,552 suites
+- Data result: 23,016 pass / 0 fail / 6 skip
+- Data duration: 278,882.027857 ms
+- Edge bundle check: 28 tracked entrypoints
+- Sidecar handler bundles: 34 domains
+- Desktop build environment: 8 required keys present in every Tauri build
+  step; all SPA VITE_ variables classified
+
+Acceptance boundary
+-------------------
+Run 8 is the successful exact-head Linux correction gate. It does not make
+the Draft PR ready, merge it, deploy it, enable a Provider, supply a licence or
+turn historical/delayed observations into real-time data. No price, candle,
+AIS/cargo assertion or deterministic news-causality claim is manufactured by
+this CI evidence.

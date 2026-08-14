@@ -648,3 +648,25 @@ and successful fresh GitHub workflows on the final documented head.
 Windows pre-push correction evidence record commit:
 `df93dc82fb623a6445451300d04c72fe1e19d6b0`. This following receipt backfills
 that immutable SHA and does not promote the still-pending remote gate.
+
+## Phase 12 - GitHub run 8 acceptance
+
+The final documented correction head
+`c730fc6a2c4a6c390b305ce19cb04b1fa805c43e` was published by a normal
+non-force fast-forward from `f7c1dcf...`. The authenticated GitHub connector
+then re-read exact commit and Draft PR #1: open, Draft, unmerged, mergeable,
+base `main@0fca203c...`, head `c730fc6...`.
+
+All six run-8 workflows completed `success`: Lint `31799853500`, Pro bundle
+freshness `31799853521`, Proto Generation Check `31799853494`, Lint Code
+`31799853501`, Typecheck `31799853498` and Test `31799853493`. Test's 13 jobs
+all succeeded. Unit job `94765062637` built 2,506 modules, emitted the stock
+workspace and 253-entry PWA, then passed 23,022 data tests across 3,552 suites
+with 23,016 pass, 0 fail and 6 declared skips. Edge bundles (28), sidecar
+domains (34) and the eight-key desktop build environment also passed.
+
+Phase 12 source and functional acceptance is **COMPLETE** on `c730fc6...`.
+This evidence-receipt commit changes integration documentation only; its fresh
+PR checks remain an external exact-receipt integrity confirmation, not a
+reason to reclassify the already-green run 8. The PR stays Draft and no merge,
+deployment, release or Provider activation is authorized.
