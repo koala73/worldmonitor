@@ -52,12 +52,12 @@
       "name": "statcanWds",
       "status": "EMPTY",
       "issue": 6676,
-      "expiresAt": "2026-08-15T08:00:00.000Z",
-      "reason": "New Statistics Canada WDS probe. seed-bundle-macro cron is 0 8 * * * (08:00 UTC); first scheduled run after this acknowledgement is 2026-08-15T08:00:00.000Z. EMPTY is expected until that publish. Re-anchored because the previous 2026-08-14T08:00Z window expires today before merge. The expiry equals firstScheduledRunAt so EMPTY after that run is a real problem.",
+      "expiresAt": "2026-08-16T13:00:00.000Z",
+      "reason": "New Statistics Canada WDS probe. seed-bundle-macro cron is 0 8 * * * (08:00 UTC = 04:00 ET), before StatCan ~08:30 ET. Toronto-today getChangedCubeList returns HTTP 409 \"The product is not released yet\" until that window, so the first 08:00 UTC tick is not a successful publish even after treating 409 as empty and falling back to yesterday. Slipped past post-08:30 ET the same way Ontario 511 EMPTY was slipped: expires at 2026-08-16T13:00:00.000Z (09:00 ET on 2026-08-16). EMPTY is expected until then. The expiry equals firstScheduledRunAt so EMPTY after that instant is a real problem. Issue #6676 (BoC remains #6616).",
       "cutover": {
         "probeKey": "seed-meta:economic:statcan-wds",
-        "activatedAt": "2026-08-14T08:00:00.000Z",
-        "firstScheduledRunAt": "2026-08-15T08:00:00.000Z"
+        "activatedAt": "2026-08-15T13:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-16T13:00:00.000Z"
       }
     }
   ]

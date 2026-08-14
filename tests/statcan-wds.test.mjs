@@ -17,6 +17,7 @@ import {
   fetchChangedCubeListBestEffort,
   fetchStatcanWds,
   isFutureStatcanDate,
+  isUnreleasedStatcanProductError,
   parseChangedCubeList,
   parseVectorSeries,
   shiftIsoDate,
@@ -151,6 +152,63 @@ test('404 or future-date change-list is quiet and still POSTs CPI/LFS vectors', 
   assert.ok(requested.some((row) => row.url.includes('getDataFromVectorsAndLatestNPeriods') && row.method === 'POST'));
   assert.equal(payload.asOfDate, '2026-08-14');
   assert.equal(payload.changedCount, 0);
+  assert.equal(validateStatcanPayload(payload), true);
+  assert.equal(payload.inflationRefPer, '2026-06-01');
+  assert.equal(payload.unemploymentPct, 6.4);
+});
+
+test('Toronto-today 409 not-released-yet is quiet, falls back to yesterday, and still POSTs vectors', async () => {
+  // Live probe 2026-08-14 05:20Z: getChangedCubeList/2026-08-14 → 409
+  // {"message":"The product is not released yet"}. Cron 0 8 * * * is 08:00 UTC
+  // = 04:00 ET, before StatCan ~08:30 ET, so Toronto-today IS today and
+  // isFutureStatcanDate is false. A rethrown 409 used to abort Promise.all
+  // and drop the vector POST.
+  const requested = [];
+  const nowMs = Date.parse('2026-08-14T08:00:00Z');
+  assert.equal(torontoDateIso(nowMs), '2026-08-14');
+  assert.equal(isFutureStatcanDate('2026-08-14', nowMs), false);
+
+  const quiet = await fetchChangedCubeListBestEffort({
+    dateIso: '2026-08-14',
+    nowMs,
+    fetchFn: async () => new Response(
+      JSON.stringify({ message: 'The product is not released yet' }),
+      { status: 409, headers: { 'content-type': 'application/json' } },
+    ),
+  });
+  assert.deepEqual(quiet, { cubes: [], reason: '409-unreleased' });
+  assert.equal(
+    isUnreleasedStatcanProductError({ status: 409, body: '{"message":"The product is not released yet"}' }),
+    true,
+  );
+
+  const payload = await fetchStatcanWds({
+    nowMs,
+    fetchFn: async (url, options) => {
+      requested.push({ url, method: options?.method || 'GET' });
+      if (String(url).includes('/getChangedCubeList/2026-08-14')) {
+        return new Response(
+          JSON.stringify({ message: 'The product is not released yet' }),
+          { status: 409, headers: { 'content-type': 'application/json' } },
+        );
+      }
+      if (String(url).includes('/getChangedCubeList/2026-08-13')) {
+        return new Response(JSON.stringify(changedDoc), { headers: { 'content-type': 'application/json' } });
+      }
+      if (String(url).includes('getDataFromVectorsAndLatestNPeriods')) {
+        assert.equal(options?.method, 'POST');
+        return new Response(JSON.stringify(vectorDoc), { headers: { 'content-type': 'application/json' } });
+      }
+      throw new Error(`unexpected url ${url}`);
+    },
+  });
+
+  assert.ok(requested.some((row) => row.url.includes('/getChangedCubeList/2026-08-14') && row.method === 'GET'));
+  assert.ok(requested.some((row) => row.url.includes('/getChangedCubeList/2026-08-13') && row.method === 'GET'));
+  assert.ok(requested.some((row) => row.url.includes('getDataFromVectorsAndLatestNPeriods') && row.method === 'POST'));
+  assert.equal(payload.asOfDate, '2026-08-14');
+  assert.equal(payload.changedCount, parseChangedCubeList(changedDoc).length);
+  assert.ok(payload.changedCount >= 1);
   assert.equal(validateStatcanPayload(payload), true);
   assert.equal(payload.inflationRefPer, '2026-06-01');
   assert.equal(payload.unemploymentPct, 6.4);

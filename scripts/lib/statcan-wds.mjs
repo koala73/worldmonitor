@@ -260,7 +260,15 @@ export async function fetchApprovedWdsJson(url, {
     redirect: 'error',
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
-  if (!response.ok) throw Object.assign(new Error(`HTTP_${response.status}`), { status: response.status });
+  if (!response.ok) {
+    let body = '';
+    try {
+      body = await readBoundedText(response, Math.min(maxBytes, 64 * 1024));
+    } catch {
+      body = '';
+    }
+    throw Object.assign(new Error(`HTTP_${response.status}`), { status: response.status, body });
+  }
   const text = await readBoundedText(response, maxBytes);
   let doc;
   try {
@@ -273,8 +281,19 @@ export async function fetchApprovedWdsJson(url, {
 }
 
 /**
- * Same-day release radar. A 404 or a Toronto-future date is a quiet miss,
- * not a hard failure — CPI/LFS vectors must still POST.
+ * Live StatCan getChangedCubeList returns HTTP 409
+ * {"message":"The product is not released yet"} for Toronto-today before
+ * the ~08:30 ET release. That is a quiet miss, same as 404 / future-date.
+ */
+export function isUnreleasedStatcanProductError(err) {
+  if (err?.status !== 409) return false;
+  const text = `${err.message || ''} ${err.body || ''}`;
+  return /not released yet/i.test(text);
+}
+
+/**
+ * Same-day release radar. A 404, a 409 "not released yet", or a Toronto-future
+ * date is a quiet miss, not a hard failure — CPI/LFS vectors must still POST.
  */
 export async function fetchChangedCubeListBestEffort({
   dateIso,
@@ -295,6 +314,7 @@ export async function fetchChangedCubeListBestEffort({
     return { cubes: parseChangedCubeList(doc), reason: 'ok' };
   } catch (err) {
     if (err?.status === 404) return { cubes: [], reason: '404' };
+    if (isUnreleasedStatcanProductError(err)) return { cubes: [], reason: '409-unreleased' };
     throw err;
   }
 }
@@ -310,7 +330,7 @@ export async function fetchStatcanWds({
     { vectorId: LFS_UNEMPLOYMENT_VECTOR_ID, latestN: LFS_LATEST_N },
   ]);
 
-  // Do not let a 404/future change-list reject Promise.all and discard CPI/LFS.
+  // Do not let a 404/409/future change-list reject Promise.all and discard CPI/LFS.
   const changePromise = fetchChangedCubeListBestEffort({
     dateIso: asOfDate,
     fetchFn,
