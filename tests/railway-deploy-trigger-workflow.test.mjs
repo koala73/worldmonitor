@@ -95,22 +95,12 @@ describe('Railway deploy trigger lease-aware workflow', () => {
     assert.match(stepNamed('mutation', 'Trigger lease-fenced deploys for the exact green head').run, /--recovery-attempt-id/);
   });
 
-  it('uses one bounded offset schedule without repository-wide workflow fan-out', () => {
-    assert.equal(Object.hasOwn(workflow.on, 'workflow_run'), false);
-    assert.deepEqual(workflow.on?.schedule, [{ cron: '7,17,27,37,47,57 * * * *' }]);
-    const freshness = YAML.parse(readFileSync(
-      resolve(repoRoot, '.github/workflows/seed-freshness-monitor.yml'),
-      'utf8',
-    ));
-    const freshnessMinutes = new Set((freshness.on?.schedule ?? []).flatMap(({ cron }) => {
-      const minute = cron.split(' ')[0];
-      const step = /^\*\/(\d+)$/.exec(minute);
-      if (step) return Array.from({ length: 60 / Number(step[1]) }, (_, index) => index * Number(step[1]));
-      return minute.split(',').map(Number);
-    }));
-    const reconcileMinutes = workflow.on.schedule[0].cron.split(' ')[0].split(',').map(Number);
-    assert.equal(reconcileMinutes.length, 6);
-    assert.deepEqual(reconcileMinutes.filter((minute) => freshnessMinutes.has(minute)), []);
+  it('is manual rollback only and exposes no automatic trigger', () => {
+    assert.match(workflow.name, /manual rollback only/i);
+    assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch']);
+    assert.ok(workflow.on.workflow_dispatch);
+    assert.doesNotMatch(source, /^\s*schedule:/m);
+    assert.doesNotMatch(source, /^\s*(?:push|pull_request|workflow_run|repository_dispatch):/m);
   });
 
   it('keeps dry-run isolated, explicit, read-only, and lease-free', () => {
@@ -141,6 +131,16 @@ describe('Railway deploy trigger lease-aware workflow', () => {
     assert.match(mutate.run, /command_status=\$command_status/);
     assert.doesNotMatch(JSON.stringify(mutation), /RAILWAY_PRODUCTION_TOKEN/);
     assert.doesNotMatch(JSON.stringify(mutation), /npm install --global @railway\/cli/);
+  });
+
+  it('keeps an ordinary cutover-disabled dispatch out of every protected path', () => {
+    assert.match(String(job('preview').if), /dry_run == 'true'/);
+    assert.match(String(job('mutation').if), /RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true'/);
+    assert.deepEqual(job('verifier').needs, ['admission', 'mutation']);
+    assert.match(String(job('verifier').if), /needs\.mutation\.outputs\.manifest_ready == 'true'/);
+    assert.equal(job('liveness').environment, undefined);
+    assert.deepEqual(referencedSecrets('liveness'), []);
+    assert.doesNotMatch(source, /railway-reconcile-manual-recovery\.yml|workflow_call:/);
   });
 
   it('checks out the exact admitted SHA and never persists checkout credentials', () => {

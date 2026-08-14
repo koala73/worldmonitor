@@ -4,6 +4,7 @@
 //
 // WHY THIS EXISTS
 //
+// During the bounded rollback window,
 // .github/workflows/railway-deploy-trigger.yml has two outcomes that are
 // indistinguishable at the workflow-status level:
 //
@@ -50,18 +51,17 @@ export const RECONCILE_STEP_NAMES = Object.freeze([
 
 export const DEFAULT_WORKFLOW_FILE = 'railway-deploy-trigger.yml';
 
-// Sized against the workflow's bounded ten-minute schedule, not against a
-// fixture. A young head whose gate has not resolved can defer several ticks on
-// purpose; three hours still gives the scheduler 18 chances to produce one
-// strict acceptance before liveness alarms.
+// Retained only for the bounded manual rollback surface. Three hours limits the
+// evidence lookback so an old controller success cannot authorize or excuse a
+// failed rollback attempt; normal native autodeploy does not run this scanner.
 export const DEFAULT_MAX_RECONCILE_AGE_MS = 3 * 60 * 60 * 1000;
 
 // The listing is bounded by TIME, never by a run count.
 //
 // A count was the original design and it was unusable while every Deploy Gate
 // evaluation woke this workflow — measured at ~33/hour. Keep the time contract
-// even after moving to a bounded cadence: it makes the liveness decision
-// independent of delayed or dropped scheduler ticks.
+// during the rollback window so the liveness decision is independent of how
+// many explicit attempts an operator made.
 //
 // With a `created:>=` filter the window spans the threshold BY CONSTRUCTION,
 // which also collapses the old three-state result into two: if no run inside
@@ -155,7 +155,7 @@ export function describeReconcileSummary(summary) {
       : `Fleet last reconciled ${hours(summary.ageMs)}h ago (run ${summary.runId}).`;
   }
   return summary.inspected === 0
-    ? `The fleet has not been reconciled in ${hours(summary.maxAgeMs)}h: this workflow produced NO completed run in that window at all. The bounded reconciliation schedule is not firing.`
+    ? `The fleet has not been reconciled in ${hours(summary.maxAgeMs)}h: the manual rollback workflow produced NO completed run in that window.`
     : `The fleet has not been reconciled in ${hours(summary.maxAgeMs)}h. ${summary.inspected} run(s) completed in that window and none of them deployed.`;
 }
 

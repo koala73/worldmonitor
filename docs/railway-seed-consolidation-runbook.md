@@ -26,6 +26,70 @@
 
 ## Deployment safety guardrails
 
+### Native autodeploy target and quiesced rollback surface
+
+The normal deployment architecture is intentionally small:
+
+| Boundary | Authority | Normal-operation rule |
+|---|---|---|
+| Merge safety | GitHub protected `main` | Require a PR, current-base checks with `strict=true`, administrator enforcement, zero required human approvals, and no bypass actors. |
+| Service selection | Railway's native watch paths, backed by `scripts/railway-services.json` and its closure audit | A source migration may change `source.checkSuites` only. It must not change watch paths or another service field. |
+| Deployment creation | Railway's native GitHub integration on explicit branch `main` | No GitHub Actions workflow dispatches, retries, leases, or repairs a normal deployment. |
+| Drift detection | One hourly, read-only Railway workflow after the monitor migration | Unknown, failed, skipped, overdue, or contradictory state is red. The monitor has no mutation token, dispatch permission, retry, reviewer, or acceptance baseline. |
+| Recovery | Operator diagnosis followed by an explicit Railway action or batch rollback | Recovery is never automatic and never turns missing evidence green. Seed/ingestion freshness remains a separate acceptance surface. |
+
+The permanent monitor uses a credential issued to a dedicated Railway
+`VIEWER` identity. The legacy token names described later in this rollback
+section are not proof of read-only capability and are deleted with the old
+control plane; never reuse a deploy-capable project token for the target
+monitor.
+
+During the bounded rollback window, **Railway Deploy Trigger (Manual Rollback
+Only)** and **Railway Deploy Trigger Watchdog (Manual Rollback Only)** retain
+`workflow_dispatch` as an emergency surface. They have no `schedule`, `push`,
+`workflow_run`, repository-dispatch, heartbeat, or replacement dispatcher. Keep
+both `RAILWAY_RECONCILE_CUTOVER_ACTIVE=false` and
+`RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED=false` in normal operation. The first
+flag continues to guard every legacy mutation; the watchdog can authorize a
+dispatch only when both flags are exactly `true` and an operator explicitly
+runs it in `dispatch` mode.
+
+No recovery environment is approved in normal operation. In particular, do
+not approve a pending deployment for
+`ingestion-acceptance-production-breakglass`, the manual-recovery workflow, the
+Watchdog, or the legacy control worker just to clear a queue or alarm. A pending
+approval is itself a stop condition: leave it unapproved, stop the cutover,
+identify the originating run, and cancel or resolve it without granting
+recovery authority. Normal viewer/ingestion environments retain zero required
+reviewers so ordinary PRs and native Railway deployments never wait for a
+person.
+
+#### Exact native-cutover stop conditions
+
+Stop before the next service or batch, preserve sanitized evidence, and roll
+back only the current bounded batch when any of these is true:
+
+1. `main` protection is not `strict=true`, PR-required, administrator-enforced,
+   zero-approval, no-bypass, or its required contexts differ from the captured
+   set.
+2. Either legacy activation flag is unexpectedly true, or any Trigger mutation,
+   verifier, Watchdog dispatch/bind/reject, manual recovery, or control-worker
+   deployment is active, waiting, or ambiguous.
+3. A recovery environment has a pending approval. Never approve it to continue
+   a normal cutover.
+4. The watch/config audit is nonzero, incomplete, unauthorized, contradictory,
+   or emits unsanitized data; a repository-linked service is not on explicit
+   `main`; or `source.checkSuites` is not a boolean.
+5. A scoped source patch changes watch paths, cron, root directory, Dockerfile,
+   variables, repository, branch, or any field other than the selected
+   services' `source.checkSuites`; selected readback is not exact.
+6. A relevant merge produces no deployment, an unexpected service deploys, a
+   build fails or exceeds its grace window, or a deployment SHA/ancestry cannot
+   be proved. An unrelated merge must create no deployment for the service.
+7. GitHub, Railway, or Git ancestry cannot be read completely, or any other
+   evidence is missing, truncated, timed out, or contradictory. Unknown means
+   stop; there is no baseline or “warn and continue” path.
+
 ### Watch paths are a live contract, and an accurate one
 
 Railway stores watch paths in each service's environment configuration, not in
@@ -56,10 +120,11 @@ after the merge gates went green. Over closure-relevant merges that is p90
 self-reinforcing: the freshness monitor goes red exactly when the fleet is
 behind.
 
-So the closures stay, and
-`.github/workflows/railway-deploy-trigger.yml` deploys the services whose
-closure actually changed, gated on main's own `gate` status rather than on
-Railway's reading of the entire suite. Clearing the filters fleet-wide remains
+So the closures stay. The target is Railway's native GitHub integration on
+`main`, with `source.checkSuites=false` only after strict pre-merge protection
+and bounded readback have passed. The legacy
+`.github/workflows/railway-deploy-trigger.yml` is manual rollback only; it is
+not the normal deployment owner. Clearing the filters fleet-wide remains
 rejected on cost: roughly 75 build-minutes per push across 77 services at ~30
 merges a day, and three always-on services (ais-relay, notification-relay,
 scenario-worker) restarting on every merge, dropping the AIS websocket
@@ -123,19 +188,18 @@ use the broader account-scoped `RAILWAY_API_TOKEN`. Missing or inaccessible
 context intentionally fails the acceptance run rather than silently skipping
 the live audit.
 
-### Reconciliation control-plane provisioning
+### Legacy reconciliation control plane (rollback window only)
 
-The reconciliation controller is a dedicated Cloudflare Worker backed by one
-SQLite Durable Object. Its foundation can be deployed while the existing
-Railway integration remains unchanged. Keep both
+The reconciliation controller is a temporary legacy rollback surface backed by
+a Cloudflare Worker and one SQLite Durable Object. It is not part of normal
+native-autodeploy operation and must not receive automatic traffic. Keep both
 `RAILWAY_RECONCILE_CUTOVER_ACTIVE` and
-`RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` set to `false` until the lease-aware
-target workflow, protected environments, role credentials, and authenticated
-status probe are ready. Activate the flags separately with the staged cutover
-below.
+`RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` set to `false` unless an operator has
+explicitly chosen the bounded legacy rollback path after a stop condition.
 
-Provision these GitHub Actions environments with a `main`-only deployment
-branch policy:
+Until final deletion, retain these GitHub Actions environments with a
+`main`-only deployment branch policy. Do not approve or invoke them in normal
+operation:
 
 Set the non-secret repository variable `RAILWAY_RECONCILE_CONTROL_URL` to the
 dedicated HTTPS origin compiled into the shipped control client; the client
@@ -173,7 +237,8 @@ workflow contract tests, so treat any change to those guards as a change to a
 security boundary. Note also that `projectTokenCreate` rejects a CLI session
 with `Not Authorized`; both tokens must be created from the Railway dashboard.
 
-Breakglass authorization is **one-person by deliberate choice.** The environment
+Breakglass authorization is **one-person by deliberate choice during the
+bounded rollback window only.** The environment
 keeps its `main`-only branch policy and isolated secrets, but has no required
 reviewer. Requiring that same operator to review their own dispatch adds no
 independent authorization and sends one approval email for every recovery
@@ -198,26 +263,25 @@ version and authenticated status probes. Never rotate across an active lease,
 hold, or barrier: the old run would lose its only authorization path and the
 result would require protected operator recovery.
 
-#### Staged cutover
+#### Quiescing and exceptional rollback
 
-Do not enable both activation flags in one operation.
+Normal operation keeps both activation flags false and the two legacy workflows
+manual-only. Confirm the current `main` head has an exact green `gate`, no
+mutation, verifier, Watchdog, manual-recovery, or control-worker job is active,
+and authenticated controller status has no lease, barrier, attempt, or dispatch
+hold. A stale hold is diagnosed and resolved as an incident; it is not a reason
+to re-enable automatic entrants.
 
-1. Confirm the current `main` head has an exact green `gate`, no target mutation
-   or verifier run is active, and authenticated controller status has no lease,
-   barrier, attempt, or dispatch hold. Confirm every protected environment has
-   only the role credentials its jobs read.
-2. Set `RAILWAY_RECONCILE_CUTOVER_ACTIVE=true` while keeping
-   `RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED=false`. This enables the ordinary
-   lease-fenced mutation and verifier cycle plus protected manual retry, but it
-   cannot authorize a watchdog dispatch. Run one exact-green-head cycle and
-   require terminal acceptance to populate `lastAccepted`. Unset the cutover
-   flag to roll back admission of new mutation jobs.
-3. Enable `RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` only after `lastAccepted`
-   has been observed fresh, watchdog read failures fail the job after their
-   bounded streak, and a baseline exists for green deferrals caused by a live
-   paginated GitHub inventory. Run the watchdog in `dispatch` mode and require
-   `HEALTHY` with no dispatch. Unset this flag first to roll back automatic
-   recovery authority.
+If an operator explicitly selects legacy rollback during the bounded rollback
+window, change one flag at a time, run exactly the named manual workflow, and
+restore both flags to false immediately after the terminal result is captured.
+`RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` may be true only for an explicit
+manual Watchdog `dispatch` invocation while
+`RAILWAY_RECONCILE_CUTOVER_ACTIVE=true`; there is no scheduled retry. Stop on
+any active/ambiguous provider call, stale or contradictory controller state,
+unexpected deployment, failed readback, or pending environment approval. Do
+not use an acceptance baseline to authorize rollback or to make its result
+green.
 
 The native Railway source integration is not the lease-aware mutation path. It
 can continue to accept ordinary builds: the reconcile trigger reads the live
@@ -225,10 +289,11 @@ deployment inventory and treats an accepted or in-progress build for the exact
 commit as a no-op. The repository has no separate legacy GitHub workflow that
 deploys with `RAILWAY_PRODUCTION_TOKEN`; that token remains only in read paths.
 If either fact changes, disable and drain the new competing mutation path before
-the staged cutover.
+the native-autodeploy cutover.
 
-To print the authenticated raw controller state without dispatching anything,
-run the watchdog's `status` mode from `main`:
+During rollback diagnosis only, print the authenticated raw controller state
+without dispatching anything by running the Watchdog's manual `status` mode
+from `main`:
 
 ```bash
 gh workflow run railway-deploy-trigger-watchdog.yml --ref main -f mode=status
@@ -439,29 +504,25 @@ blobs. Never re-fetch with `--depth` afterwards: that re-shallows the clone and
 strands exactly those commits. An unanswerable question reports the service
 (`CLOSURE_UNKNOWN`) rather than excusing it.
 
-Accepted degradations go in `scripts/railway-deploy-drift-baseline.json`, each
-with an owner issue and the whole file with an expiry, split by the same
-`applyAcceptanceBaseline` that `scripts/check-seed-freshness.mjs` applies to
-compact health — so expiry, prune-on-recovery, and "a service failing with a
-different verdict than the one baselined still blocks" cannot acquire two
-meanings. It held 62 `REJECTED_PUSH` entries — every filtered service — until
-[#6142](https://github.com/koala73/worldmonitor/issues/6142) made the check
-closure-aware; those were not degradations, they were the check demanding that a
-filtered service run head. The last remaining entry — `umami` at `BEHIND` against
-[#6064](https://github.com/koala73/worldmonitor/issues/6064) — was pruned on
-2026-08-06 once the service was running head again, so the file is now empty.
-Acknowledged entries are printed on every run and do not fail it, so a green
-monitor here means "nothing new went stale", not "every service is on head". A
-service that recovers is printed as `recovered` — prune it. The expiry does not
-fire on an empty list: it exists to stop a suppression outliving its cause, and
-with nothing suppressed there is nothing to re-review.
+The native-autodeploy target accepts no deploy-drift baseline. Do not add,
+extend, or renew an entry in `scripts/railway-deploy-drift-baseline.json`; any
+nonempty suppression blocks cutover. Historical entries were removed after the
+closure-aware classifier landed, and the final legacy baseline file and
+application path are deleted with the reconciliation control plane. Until that
+deletion, read the unbaselined problem set directly and treat every unknown or
+unaccepted verdict as red.
 
 #### Recovering a stale service
 
-Use the **Railway Deploy Trigger** workflow. Its manual dry-run reports the
-closure plan without mutation; a normal manual dispatch runs the same
-green-`main` authorization as the automatic path. Do not run the trigger script
-directly for production recovery:
+In normal native-autodeploy operation, diagnose the red read-only monitor and
+choose an explicit Railway action or roll back only the current migration
+batch. Nothing retries or dispatches recovery automatically.
+
+During the bounded legacy rollback window only, use **Railway Deploy Trigger
+(Manual Rollback Only)**. Its manual dry-run reports the closure plan without
+mutation; a non-dry-run dispatch is possible only while
+`RAILWAY_RECONCILE_CUTOVER_ACTIVE=true`. Do not run the trigger script directly
+for production recovery:
 
 ```bash
 # Local inspection only; this cannot authorize a production mutation.
@@ -484,28 +545,31 @@ local guarantees are still useful for previews:
 
 Run `git fetch origin` before a local preview so `origin/main` is current.
 
-The reconciliation control plane deliberately separates two failures:
+The rollback-only reconciliation control plane distinguishes two legacy
+failure states:
 
 - A runner-less or pre-mutation attempt owns no unbounded GitHub lock. Once any
   bounded `LEASED`/`PREPARED` lease expires and no dispatch hold is ambiguous,
-  the independent watchdog can dispatch a replacement. It never cancels the
-  old run.
+  an operator may explicitly run the manual-only Watchdog in `dispatch` mode
+  with both activation flags true. It never cancels the old run and has no
+  schedule.
 - Once `MUTATION_STARTED` is durable, a project/environment-wide barrier blocks
-  every automatic head until the exact result passes terminal deployment
-  convergence plus strict zero drift, or the protected **Railway Reconcile
-  Manual Recovery** workflow records an audited resolution. Lease expiry alone
-  never clears this barrier.
+  every subsequent legacy mutation until the exact result passes terminal
+  deployment convergence plus strict zero drift, or the protected **Railway
+  Reconcile Manual Recovery** workflow records an audited resolution. Lease
+  expiry alone never clears this barrier.
 
-The watchdog cannot create a hold or dispatch a new recovery unless both
+The Watchdog cannot create a hold or dispatch a new recovery unless both
 `RAILWAY_RECONCILE_CUTOVER_ACTIVE` and
 `RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED` are exactly `true`. Classification is
 deliberately read-and-repair: if an earlier authorized watchdog or manual
-recovery dispatch left a `DISPATCH_HELD` record, an ordinary scheduled run may
+recovery dispatch left a `DISPATCH_HELD` record, an explicit manual run may
 bind its exact accepted workflow run or close it after definitive pre-dispatch
 rejection. That repair is independent of both flags because it completes an
 authorization that already exists; it never creates a hold or sends a dispatch.
-The first flag enables the lease-aware mutation contract and protected manual
-retry, while the second authorizes new automatic recovery. `RECOVERY_AUTHORIZED`
+The first flag enables the lease-aware mutation contract, while the second
+permits the operator-invoked Watchdog to authorize one recovery.
+`RECOVERY_AUTHORIZED`
 means the controller persisted a one-use dispatch hold but has not yet
 dispatched it;
 `RECOVERY_DISPATCHED` means GitHub accepted the request and the controller
