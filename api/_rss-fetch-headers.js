@@ -13,9 +13,10 @@
  * Some hosts also need a same-origin Referer. Add that as a per-host
  * override in `rssFetchHeadersForHost`, not as a global header.
  *
- * Alerting: `scripts/validate-rss-feeds.mjs` publishes `news:feed-health`
- * / `seed-meta:news:feed-health`. A CBC empty/403 run shows up there; do
- * not invent a separate MCP freshness key.
+ * Alerting: `scripts/_feed-health.mjs` `sustainedFailures` (same consecutive
+ * DEAD/EMPTY streak as silent-zeros). Two CBC failures escalate
+ * `seed-meta:news:feed-health` to status=error; a single blip does not.
+ * Do not invent a separate MCP freshness key.
  */
 
 export const RSS_BROWSER_UA =

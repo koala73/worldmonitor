@@ -445,6 +445,10 @@ export async function publishFeedHealth(results) {
     fetchedAt: payload.checkedAt,
     recordCount: payload.summary.ok,
     sourceVersion: 'feed-health-v1',
+    // #6624: seed-health treats meta.status === 'error' as unhealthy.
+    // A single CBC blip stays ok; N consecutive DEAD/EMPTY runs escalate.
+    status: payload.sustainedFailures.length ? 'error' : 'ok',
+    sustainedFailureCount: payload.sustainedFailures.length,
   }), 'EX', String(7 * 86400)]);
   // Durable activation marker — NO TTL by design (#4927 re-review P1):
   // health endpoints soften missing data only while this key is absent;
@@ -458,7 +462,13 @@ export async function publishFeedHealth(results) {
       console.warn(`  ${feed.name} — ${feed.consecutiveEmpty} consecutive empty runs — ${feed.url}`);
     }
   }
-  console.log(`feed-health published: ${payload.summary.ok}/${payload.feedCount} OK, ${payload.silentZeros.length} silent zeros`);
+  if (payload.sustainedFailures.length) {
+    console.warn(`\nSUSTAINED FEED FAILURES (${payload.sustainedFailures.length} native feeds delivering nothing across runs):`);
+    for (const feed of payload.sustainedFailures) {
+      console.warn(`  ${feed.name} — ${feed.consecutiveEmpty} consecutive failed runs — ${feed.url}`);
+    }
+  }
+  console.log(`feed-health published: ${payload.summary.ok}/${payload.feedCount} OK, ${payload.silentZeros.length} silent zeros, ${payload.sustainedFailures.length} sustained failures`);
   return { published: true, payload };
 }
 

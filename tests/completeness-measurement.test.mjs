@@ -10,8 +10,10 @@ import { fileURLToPath } from 'node:url';
 
 import {
   buildFeedHealthPayload,
+  isCbcRss,
   isGoogleNewsWrapper,
   SILENT_ZERO_THRESHOLD,
+  SUSTAINED_FAILURE_THRESHOLD,
 } from '../scripts/_feed-health.mjs';
 import { computeRecall } from '../scripts/_recall-benchmark-core.mjs';
 import { selectTopStories } from '../scripts/_clustering.mjs';
@@ -29,6 +31,46 @@ describe('feed-health payload (#4920a)', () => {
     assert.ok(cbc, 'CBC News must be in the server digest catalog feed-health publishes');
     assert.equal(cbc.url, 'https://www.cbc.ca/webfeed/rss/rss-world');
     assert.equal(isGoogleNewsWrapper(cbc.url), false, 'CBC is native RSS, not a GNews workaround');
+    assert.equal(isCbcRss(cbc.url), true);
+  });
+
+  it('CBC sustained fetch failure alerts after N consecutive DEAD/EMPTY runs, not a single blip (#6624)', () => {
+    const url = 'https://www.cbc.ca/webfeed/rss/rss-world';
+    assert.equal(SUSTAINED_FAILURE_THRESHOLD, SILENT_ZERO_THRESHOLD,
+      'CBC uses the same consecutive-run window as silent-zeros');
+
+    const blip = buildFeedHealthPayload(
+      [{ name: 'CBC News', url, status: 'DEAD', detail: 'HTTP 403' }],
+      null,
+      1,
+    );
+    assert.equal(blip.feeds[url].consecutiveEmpty, 1);
+    assert.equal(blip.feeds[url].cbc, true);
+    assert.equal(blip.feeds[url].sustainedFailure, undefined);
+    assert.deepEqual(blip.sustainedFailures, [], 'one 403 is a blip, not an alert');
+    assert.deepEqual(blip.silentZeros, [], 'CBC is native RSS — not a silent-zero wrapper');
+
+    const sustained = buildFeedHealthPayload(
+      [{ name: 'CBC News', url, status: 'DEAD', detail: 'HTTP 403' }],
+      blip,
+      2,
+    );
+    assert.equal(sustained.feeds[url].consecutiveEmpty, SUSTAINED_FAILURE_THRESHOLD);
+    assert.equal(sustained.feeds[url].sustainedFailure, true);
+    assert.equal(sustained.sustainedFailures.length, 1, 'N consecutive CBC failures = alert');
+    assert.equal(sustained.sustainedFailures[0].name, 'CBC News');
+    assert.equal(sustained.sustainedFailures[0].url, url);
+    assert.equal(sustained.sustainedFailures[0].status, 'DEAD');
+    assert.deepEqual(sustained.silentZeros, [], 'CBC still must not enter silentZeros');
+
+    const recovered = buildFeedHealthPayload(
+      [{ name: 'CBC News', url, status: 'OK' }],
+      sustained,
+      3,
+    );
+    assert.equal(recovered.feeds[url].consecutiveEmpty, 0);
+    assert.equal(recovered.feeds[url].sustainedFailure, undefined);
+    assert.deepEqual(recovered.sustainedFailures, [], 'recovery clears the CBC alert');
   });
 
   it('classifies wrappers and counts statuses', () => {
@@ -420,6 +462,54 @@ describe('feed-health streak continuity (#4927 external review)', () => {
     try {
       const out = await publishFeedHealth([{ name: 'X', url: 'https://x/rss', status: 'EMPTY' }]);
       assert.deepEqual(out, { published: false, reason: 'previous-read-failed' });
+    } finally {
+      globalThis.fetch = realFetch;
+      delete process.env.UPSTASH_REDIS_REST_URL;
+      delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    }
+  });
+
+  it('seed-meta status=error after sustained CBC failure, ok after a single blip (#6624)', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub-token';
+    const url = 'https://www.cbc.ca/webfeed/rss/rss-world';
+    const realFetch = globalThis.fetch;
+
+    const publishAndReadMeta = async (results, previousPayload) => {
+      const sets = [];
+      globalThis.fetch = async (_u, init) => {
+        const cmd = JSON.parse(init.body);
+        if (cmd[0] === 'GET') {
+          return new Response(JSON.stringify({
+            result: previousPayload ? JSON.stringify(previousPayload) : null,
+          }), { status: 200 });
+        }
+        if (cmd[0] === 'SET') sets.push(cmd);
+        return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+      };
+      const out = await publishFeedHealth(results);
+      const metaCmd = sets.find((c) => c[1] === 'seed-meta:news:feed-health');
+      assert.ok(metaCmd, 'must SET seed-meta:news:feed-health');
+      return { out, meta: JSON.parse(metaCmd[2]) };
+    };
+
+    try {
+      const blip = await publishAndReadMeta(
+        [{ name: 'CBC News', url, status: 'DEAD', detail: 'HTTP 403' }],
+        null,
+      );
+      assert.equal(blip.out.published, true);
+      assert.equal(blip.out.payload.sustainedFailures.length, 0);
+      assert.equal(blip.meta.status, 'ok', 'a single CBC 403 must not mark seed-meta unhealthy');
+      assert.equal(blip.meta.sustainedFailureCount, 0);
+
+      const sustained = await publishAndReadMeta(
+        [{ name: 'CBC News', url, status: 'DEAD', detail: 'HTTP 403' }],
+        blip.out.payload,
+      );
+      assert.equal(sustained.out.payload.sustainedFailures.length, 1);
+      assert.equal(sustained.meta.status, 'error', 'N consecutive CBC failures mark seed-meta unhealthy');
+      assert.equal(sustained.meta.sustainedFailureCount, 1);
     } finally {
       globalThis.fetch = realFetch;
       delete process.env.UPSTASH_REDIS_REST_URL;
