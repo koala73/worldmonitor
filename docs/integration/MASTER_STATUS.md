@@ -507,3 +507,40 @@ standard Windows command then scanned 257 files with zero errors; the explicit
 eight-file integration lint, `docs:check` (150 claims) and `git diff --check`
 also exited `0`. A remote rerun is required before remote CI can be called
 green; this correction does not change the Draft/Provider/deployment boundary.
+
+## Phase 12 - health truth and OpenAPI regeneration correction
+
+The next GitHub run on remote head
+`330508d1c03cd4a1ab868b501c99bb6b5bfe4b8a` was not green. Lint, typecheck,
+Pro-bundle freshness and lint-code passed, while Proto Generation Check run
+`31790988907` failed on generated artifacts and Test run `31790988906` failed
+only its `unit` job at the health-cutover enforcement step. Those remote
+failures remain valid evidence and are not relabelled.
+
+Three local corrective commits now follow that remote head:
+
+- `b33b927cf0f368766114883ab73bae5598a77ed8` removes the unprovisioned FRED
+  seeder from public `/api/health`, keeps seed status operator-only, corrects
+  the documented public capability count from 258 to 257 and adds strict
+  unavailable/partial/ready contract coverage.
+- `afc315b8992946e91aacee150da753ab0d7955ea` fixes two Windows-silent OpenAPI
+  generator paths, regenerates the affected API artifacts, pins the real
+  222-operation / 204-GET surface and keeps the public JSON under its existing
+  scanner budget through lossless, equality-checked `$ref` reuse.
+- `6611394a8992bdebd9764cbef1790b3c6e644ea5` removes official-upstream
+  pricing, founder, organization, domain and social identity from the
+  independently branded dashboard metadata; fixes the docs-stat contract for
+  an origin-relative independent canonical; and refreshes the exact CSP hashes.
+
+The corrected local head passes the formal TypeScript OpenAPI runner at
+616/616. `public/openapi.json` builds at 949,508 bytes against the unchanged
+950,000-byte limit; typecheck, code lint, safe-HTML lint, Markdown lint over
+257 files, docs-stat checks over 150 claims, 192/192 deployment/SEO/CSP tests,
+both generator checks and `git diff --check` exit `0`.
+
+The full Windows `test:data` rerun is deliberately retained as a failure:
+22,561 tests in 3,543 suites, 22,414 passed, 134 failed and 13 skipped. Many
+failures expose Windows file-URL/path assumptions such as `D:\D:\...`; this
+result is not used as acceptance evidence. The corrected commits must be
+pushed and receive fresh GitHub Ubuntu workflow conclusions before Phase 12
+can be described as remotely green or complete.

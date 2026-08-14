@@ -407,3 +407,37 @@ it.
 The first CI failure is not reclassified as a pass. The corrected head must
 receive its own remote workflow conclusion before remote CI is described as
 green.
+
+## Phase 12 - health and generated-artifact correction evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Remote health cutover at `330508d` | FAIL, retained | Test run `31790988906`; unit job `94737697244` failed at `Enforce health-probe cutovers`. Other reported Test jobs passed. |
+| Remote proto freshness at `330508d` | FAIL, retained | Proto Generation Check run `31790988907`; proto-breaking passed and proto-freshness job `94737608733` reported a 39-file generated diff. |
+| Public health correction | PASS locally | Commit `b33b927cf0f368766114883ab73bae5598a77ed8`; expanded focused gate 334/334, health-cutover exit `0`, public capability count 257. |
+| OpenAPI generator correction | PASS locally | Commit `afc315b8992946e91aacee150da753ab0d7955ea`; deprecated and filter injectors pass `--check`; formal `tsx` OpenAPI suite 616/616. |
+| Independent-brand metadata correction | PASS locally | Commit `6611394a8992bdebd9764cbef1790b3c6e644ea5`; deployment/SEO/CSP set 192/192, `docs:check` 150 claims, typecheck and lint exit `0`. Independent dashboard metadata contains no upstream official pricing, founder, organization, domain or social-account identity. |
+| Public OpenAPI size and semantic preservation | PASS locally | 221 paths, 949,508 minified bytes against a fixed 950,000-byte budget; lossless ref-expansion and inline-2xx assertions pass. |
+| Type and lint gates | PASS locally | `npm run typecheck`, `npm run lint`, safe-HTML guard, `npm run lint:md` over 257 files and `git diff --check` exit `0`. Code lint reports 33 warnings and 9 infos but no errors. |
+| Full Windows `test:data` | FAIL, retained; not an acceptance pass | 22,561 tests / 3,543 suites: 22,414 pass, 134 fail, 13 skip. The raw log retains Windows file-URL/path and tool-environment failures. Fresh GitHub Ubuntu CI is required. |
+
+Raw evidence artifacts:
+
+- `docs/integration/evidence/phase12-health-cutover-correction-gates-20260814.log`,
+  44,417 bytes, SHA-256
+  `E5D3D23DB24CB787A5C00476B65627F6B3D21DBCD2029FFB223F56AD0E11F98F`.
+- `docs/integration/evidence/phase12-health-cutover-correction-lint-20260814.log`,
+  22,703 bytes, SHA-256
+  `1E289A2B33E2CB9E6BB00785A66A43A37DC5EFF209032403BDF64AE5A2BFC8C0`.
+- `docs/integration/evidence/phase12-openapi-contract-gates-20260814.log`,
+  57,926 bytes, SHA-256
+  `D53E9A3F35D5DDC43D85412D69E6F4382C0C8265D4BA7091827A3E12271C5905`.
+- `docs/integration/evidence/phase12-openapi-codegen-gates-20260814.log`,
+  23,713 bytes, SHA-256
+  `2D098CD2E97BB5B5E792EB95B2A885BF86C80F2BCC6EB5408B83CBF390AC9C2B`.
+- `docs/integration/evidence/phase12-health-cutover-fix-test-data-node24-gitmsys-rerun2-20260814.log`,
+  3,220,522 bytes, SHA-256
+  `1DEBF6D8ED767721A9ED35AD17E791A17EB9B78E3930BA1F8641BDEB47D96E7D`.
+
+**Current Phase 12 gate: LOCAL CORRECTIONS PASS; REMOTE CORRECTED-HEAD CI
+PENDING.** This is neither a merge nor a deployment acceptance result.

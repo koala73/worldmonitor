@@ -194,3 +194,20 @@ added during publication.
 The Draft PR is source-control review evidence only. It is not Provider
 activation, a successful request, production deployment or a data-bearing
 acceptance result.
+
+## Phase 12 health-correction effect on Provider states
+
+| Capability | Current public state | What is still required before promotion |
+|---|---|---|
+| FRED rates seeder | Dark in public `/api/health`; strict status remains available only through the operator `api/seed-health.js` surface | A real scheduled deployment, protected seed execution, persisted coverage/freshness evidence and a successful operator health response. Historical or delayed FRED data must retain its actual observation/retrieval timing. |
+| Company-monitoring worker | Dark in public health | A real Railway deployment and source-bearing health result; generated OpenAPI coverage alone is not runtime availability. |
+| Market / K-line Providers | Unchanged and fail-closed when unconfigured | Symbol-specific licensed bars with exchange, interval, observed/as-of time, delay/real-time entitlement and display/redistribution scope. No generated contract or CI run supplies a price. |
+
+The OpenAPI operation count rising to 222 records documented interfaces, not
+222 available data feeds. Cross-platform generation, a sub-950 KB machine
+artifact and passing schema tests do not change any Provider credential,
+licence, entitlement, delay label or source-bearing observation.
+
+The independent dashboard metadata correction likewise changes presentation
+identity only. Removing upstream pricing/founder/social claims does not create
+a Provider, licence, account, payment state, feed or current observation.

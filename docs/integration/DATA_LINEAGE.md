@@ -312,3 +312,36 @@ This lineage terminates at source-control publication. It does not cross into
 market/AIS/news/trade/factory/model data lineage. No Provider secret, response,
 observed/as-of time or entitlement was created, and a Draft PR cannot supply
 those missing facts.
+
+## Phase 12 correction lineage
+
+The corrective chain adds two kinds of engineering evidence without creating
+product-data observations:
+
+1. **Health-claim correction.** Commit
+   `b33b927cf0f368766114883ab73bae5598a77ed8` removes a planned FRED seeder
+   from public health. The operator-only seed state remains the only admissible
+   source for unavailable/partial/ready coverage, and no seed response is
+   invented.
+2. **Contract regeneration.** Commit
+   `afc315b8992946e91aacee150da753ab0d7955ea` repairs Windows path handling
+   and regenerates OpenAPI from the locked proto/toolchain inputs. The
+   resulting 222 operations and 204 GET operations describe interfaces; they
+   are not observations or availability claims.
+3. **Machine-artifact preservation.** Equality-checked `$ref` reuse produces a
+   949,508-byte public JSON artifact. The test expands every transformed ref
+   and compares the result with the original specification; it does not alter
+   source, observed/as-of, retrieval, delay or licence fields.
+4. **Failure preservation.** The old remote health/proto failures and the
+   134-failure Windows full-suite log remain in the record. Only a fresh remote
+   corrected-head workflow can establish Ubuntu CI status.
+5. **Identity separation.** Commit
+   `6611394a8992bdebd9764cbef1790b3c6e644ea5` removes upstream service identity
+   from the independent shell's machine metadata. This is attribution
+   correction, not evidence that any Provider or paid upstream feature is
+   available.
+
+No item in this correction chain is a K-line bar, quote, AIS position, cargo
+fact, news cause, trade value, factory observation, Provider entitlement or
+deployment health response. Those data lineages remain closed until their own
+lawful source-bearing records exist.

@@ -1,0 +1,455 @@
+
+> world-monitor@2.10.0 lint
+> biome lint ./src ./server ./api ./tests ./e2e ./scripts ./middleware.ts && npm run lint:safe-html
+
+server\_shared\sec-edgar.ts:169:25 lint/complexity/noUselessEscapeInRegex  FIXABLE  ━━━━━━━━━━━━━━━━
+
+  i The character doesn't need to be escaped.
+  
+    167 │ export function sanitizeTicker(raw: string): string {
+    168 │   const t = (raw ?? '').trim().toUpperCase();
+  > 169 │   return /^[A-Z][A-Z0-9.\-]{0,9}$/.test(t) ? t : '';
+        │                         ^^
+    170 │ }
+    171 │ 
+  
+  i Safe fix: Unescape the character.
+  
+    169 │ ··return·/^[A-Z][A-Z0-9.\-]{0,9}$/.test(t)·?·t·:·'';
+        │                         -                           
+
+server\_shared\sec-edgar.ts:489:50 lint/complexity/noUselessEscapeInRegex  FIXABLE  ━━━━━━━━━━━━━━━━
+
+  i The character doesn't need to be escaped.
+  
+    487 │ // pass the regex then normalize to an empty (unfiltered) query.
+    488 │ const EDGAR_ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  > 489 │ export const EDGAR_FORMS_RE = /^(?=[A-Za-z0-9/, .\-]{1,40}$)(?=.*[A-Za-z0-9])[A-Za-z0-9/, .\-]+$/;
+        │                                                  ^^
+    490 │ 
+    491 │ /** Shape plus calendar validity; Date.parse alone would normalize invalid days. */
+  
+  i Safe fix: Unescape the character.
+  
+    489 │ export·const·EDGAR_FORMS_RE·=·/^(?=[A-Za-z0-9/,·.\-]{1,40}$)(?=.*[A-Za-z0-9])[A-Za-z0-9/,·.\-]+$/;
+        │                                                  -                                                
+
+src\utils\export.ts:570:24 lint/complexity/noUselessEscapeInRegex  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i The character doesn't need to be escaped.
+  
+    568 │   return sanitizeEvidenceText(value)
+    569 │     .replace(/\s+/g, ' ')
+  > 570 │     .replace(/([\\`*_{}\[\]()#+\-.!|<>])/g, '\\$1');
+        │                        ^^
+    571 │ }
+    572 │ 
+  
+  i The character should only be escaped if it is outside a character class or under the `v` flag.
+  
+  i Safe fix: Unescape the character.
+  
+    570 │ ····.replace(/([\\`*_{}\[\]()#+\-.!|<>])/g,·'\\$1');
+        │                        -                            
+
+tests\a11y-issue-5059-invariants.test.mjs:193:62 lint/complexity/noUselessEscapeInRegex  FIXABLE  ━━━━━━━━━━
+
+  i The character doesn't need to be escaped.
+  
+    191 │ describe('CSS — focus-visible indicator for toggle items', () => {
+    192 │   it('.panel-toggle-item:focus-visible rule exists', () => {
+  > 193 │     assert.match(css, /\.panel-toggle-item:focus-visible\s*[,\{]/);
+        │                                                              ^^
+    194 │   });
+    195 │ 
+  
+  i The character should only be escaped if it is outside a character class or under the `v` flag.
+  
+  i Safe fix: Unescape the character.
+  
+    193 │ ····assert.match(css,·/\.panel-toggle-item:focus-visible\s*[,\{]/);
+        │                                                              -     
+
+tests\a11y-issue-5059-invariants.test.mjs:197:63 lint/complexity/noUselessEscapeInRegex  FIXABLE  ━━━━━━━━━━
+
+  i The character doesn't need to be escaped.
+  
+    196 │   it('.source-toggle-item:focus-visible rule exists', () => {
+  > 197 │     assert.match(css, /\.source-toggle-item:focus-visible\s*[,\{]/);
+        │                                                               ^^
+    198 │   });
+    199 │ 
+  
+  i The character should only be escaped if it is outside a character class or under the `v` flag.
+  
+  i Safe fix: Unescape the character.
+  
+    197 │ ····assert.match(css,·/\.source-toggle-item:focus-visible\s*[,\{]/);
+        │                                                               -     
+
+tests\a11y-issue-5059-invariants.test.mjs:219:68 lint/complexity/noUselessEscapeInRegex  FIXABLE  ━━━━━━━━━━
+
+  i The character doesn't need to be escaped.
+  
+    218 │   it('.unified-settings-select:focus-visible rule exists', () => {
+  > 219 │     assert.match(css, /\.unified-settings-select:focus-visible\s*[,\{]/);
+        │                                                                    ^^
+    220 │   });
+    221 │ 
+  
+  i The character should only be escaped if it is outside a character class or under the `v` flag.
+  
+  i Safe fix: Unescape the character.
+  
+    219 │ ····assert.match(css,·/\.unified-settings-select:focus-visible\s*[,\{]/);
+        │                                                                    -     
+
+scripts\seed-comtrade-bilateral-hs4.mjs:272:40 lint/style/useDefaultParameterLast  FIXABLE  ━━━━━━━━━━
+
+  ! This default parameter should follow the last required parameter or should be a required parameter.
+  
+    270 │  * @param {(() => void) | undefined} [reserveRequest]
+    271 │  */
+  > 272 │ async function fetchBilateralOnce(url, timeoutMs = 45_000, reserveRequest) {
+        │                                        ^^^^^^^^^^^^^^^^^^
+    273 │   // Reserve immediately before the network call so retries count against the
+    274 │   // same hard quota budget as first attempts. A logical batch fetch may issue
+  
+  i The last required parameter is here:
+  
+    270 │  * @param {(() => void) | undefined} [reserveRequest]
+    271 │  */
+  > 272 │ async function fetchBilateralOnce(url, timeoutMs = 45_000, reserveRequest) {
+        │                                                            ^^^^^^^^^^^^^^
+    273 │   // Reserve immediately before the network call so retries count against the
+    274 │   // same hard quota budget as first attempts. A logical batch fetch may issue
+  
+  i A default parameter that precedes a required parameter cannot be omitted at call site.
+  
+  i Unsafe fix: Turn the parameter into a required parameter.
+  
+    272 │ async·function·fetchBilateralOnce(url,·timeoutMs·=·45_000,·reserveRequest)·{
+        │                                                 ---------                   
+
+scripts\seed-comtrade-bilateral-hs4.mjs:305:62 lint/style/useDefaultParameterLast  FIXABLE  ━━━━━━━━━━
+
+  ! This default parameter should follow the last required parameter or should be a required parameter.
+  
+    303 │  * @returns {Promise<Array<{cmdCode: string, partnerCode: string, primaryValue: number, year: number}>>}
+    304 │  */
+  > 305 │ export async function fetchBilateral(reporterCode, hs4Batch, period = recentPeriod(), reserveRequest) {
+        │                                                              ^^^^^^^^^^^^^^^^^^^^^^^
+    306 │   let rateLimitedOnce = false;
+    307 │   let transientRetries = 0;
+  
+  i The last required parameter is here:
+  
+    303 │  * @returns {Promise<Array<{cmdCode: string, partnerCode: string, primaryValue: number, year: number}>>}
+    304 │  */
+  > 305 │ export async function fetchBilateral(reporterCode, hs4Batch, period = recentPeriod(), reserveRequest) {
+        │                                                                                       ^^^^^^^^^^^^^^
+    306 │   let rateLimitedOnce = false;
+    307 │   let transientRetries = 0;
+  
+  i A default parameter that precedes a required parameter cannot be omitted at call site.
+  
+  i Unsafe fix: Turn the parameter into a required parameter.
+  
+    305 │ export·async·function·fetchBilateral(reporterCode,·hs4Batch,·period·=·recentPeriod(),·reserveRequest)·{
+        │                                                                    -----------------                   
+
+src\config\index.ts:131:8 lint/style/useExportType  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! All exports are only types.
+  
+    129 │ // critical path. Every consumer (search/map/globe/tech-hub services) imports
+    130 │ // directly from '@/config/tech-geo'. Type re-exports are erased, no edge. (#4404)
+  > 131 │ export {
+        │        ^
+  > 132 │   type StartupHub,
+  > 133 │   type Accelerator,
+  > 134 │   type TechHQ,
+  > 135 │   type CloudRegion,
+  > 136 │ } from './tech-geo';
+        │ ^^^^^^^^^^^^^^^^^^^^
+    137 │ 
+    138 │ // Finance variant - these are included in finance builds
+  
+  i Using export type allows compilers to safely drop exports of types without looking for their definition.
+  
+  i Safe fix: Use export type.
+  
+    129 129 │   // critical path. Every consumer (search/map/globe/tech-hub services) imports
+    130 130 │   // directly from '@/config/tech-geo'. Type re-exports are erased, no edge. (#4404)
+    131     │ - export·{
+    132     │ - ··type·StartupHub,
+    133     │ - ··type·Accelerator,
+    134     │ - ··type·TechHQ,
+    135     │ - ··type·CloudRegion,
+        131 │ + export·type·{
+        132 │ + ··StartupHub,
+        133 │ + ··Accelerator,
+        134 │ + ··TechHQ,
+        135 │ + ··CloudRegion,
+    136 136 │   } from './tech-geo';
+    137 137 │   
+  
+
+tests\bootstrap-kv-publisher.test.mjs:105:62 lint/correctness/noUnusedFunctionParameters  FIXABLE  ━━━━━━━━━━
+
+  ! This parameter is unused.
+  
+    104 │   it('aborts a KV write that exceeds its deadline', async () => {
+  > 105 │     const fetchFn = async (_url, { signal }) => new Promise((resolve, reject) => {
+        │                                                              ^^^^^^^
+    106 │       signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    107 │     });
+  
+  i Unused parameters might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: If this is intentional, prepend resolve with an underscore.
+  
+    103 103 │   
+    104 104 │     it('aborts a KV write that exceeds its deadline', async () => {
+    105     │ - ····const·fetchFn·=·async·(_url,·{·signal·})·=>·new·Promise((resolve,·reject)·=>·{
+        105 │ + ····const·fetchFn·=·async·(_url,·{·signal·})·=>·new·Promise((_resolve,·reject)·=>·{
+    106 106 │         signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    107 107 │       });
+  
+
+tests\chat-analyst-sanitize-yield.test.mts:21:89 lint/complexity/noAdjacentSpacesInRegex  FIXABLE  ━━━━━━━━━━
+
+  ! This regular expression contains unclear uses of consecutive spaces.
+  
+    20 │ test('renderMarkdownDeferred yields, guards isConnected, renders, then scrolls (R5)', () => {
+  > 21 │   const m = src.match(/private renderMarkdownDeferred\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n  \}/);
+       │                                                                                         ^^
+    22 │   assert.ok(m, 'renderMarkdownDeferred helper exists');
+    23 │   const body = m![0];
+  
+  i It's hard to visually count the amount of spaces.
+  
+  i Safe fix: Use a quantifier instead.
+  
+    19 19 │   
+    20 20 │   test('renderMarkdownDeferred yields, guards isConnected, renders, then scrolls (R5)', () => {
+    21    │ - ··const·m·=·src.match(/private·renderMarkdownDeferred\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n··\}/);
+       21 │ + ··const·m·=·src.match(/private·renderMarkdownDeferred\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n·{2}\}/);
+    22 22 │     assert.ok(m, 'renderMarkdownDeferred helper exists');
+    23 23 │     const body = m![0];
+  
+
+tests\chat-analyst-sanitize-yield.test.mts:34:90 lint/complexity/noAdjacentSpacesInRegex  FIXABLE  ━━━━━━━━━━
+
+  ! This regular expression contains unclear uses of consecutive spaces.
+  
+    33 │ test('finalizeStreamingBubble does not scroll synchronously before the deferred render (R5)', () => {
+  > 34 │   const m = src.match(/private finalizeStreamingBubble\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n  \}/);
+       │                                                                                          ^^
+    35 │   assert.ok(m, 'finalizeStreamingBubble exists');
+    36 │   assert.doesNotMatch(m![0], /this\.scrollToBottom\(\)/,
+  
+  i It's hard to visually count the amount of spaces.
+  
+  i Safe fix: Use a quantifier instead.
+  
+    32 32 │   
+    33 33 │   test('finalizeStreamingBubble does not scroll synchronously before the deferred render (R5)', () => {
+    34    │ - ··const·m·=·src.match(/private·finalizeStreamingBubble\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n··\}/);
+       34 │ + ··const·m·=·src.match(/private·finalizeStreamingBubble\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n·{2}\}/);
+    35 35 │     assert.ok(m, 'finalizeStreamingBubble exists');
+    36 36 │     assert.doesNotMatch(m![0], /this\.scrollToBottom\(\)/,
+  
+
+tests\chat-analyst-sanitize-yield.test.mts:41:80 lint/complexity/noAdjacentSpacesInRegex  FIXABLE  ━━━━━━━━━━
+
+  ! This regular expression contains unclear uses of consecutive spaces.
+  
+    40 │ test('appendMessage scrolls synchronously only for the synchronous (user) branch (R5)', () => {
+  > 41 │   const m = src.match(/private appendMessage\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n  \}/);
+       │                                                                                ^^
+    42 │   assert.ok(m, 'appendMessage exists');
+    43 │   assert.match(m![0], /if \(role !== 'assistant'\) this\.scrollToBottom\(\)/,
+  
+  i It's hard to visually count the amount of spaces.
+  
+  i Safe fix: Use a quantifier instead.
+  
+    39 39 │   
+    40 40 │   test('appendMessage scrolls synchronously only for the synchronous (user) branch (R5)', () => {
+    41    │ - ··const·m·=·src.match(/private·appendMessage\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n··\}/);
+       41 │ + ··const·m·=·src.match(/private·appendMessage\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n·{2}\}/);
+    42 42 │     assert.ok(m, 'appendMessage exists');
+    43 43 │     assert.match(m![0], /if \(role !== 'assistant'\) this\.scrollToBottom\(\)/,
+  
+
+tests\china-macro-seed.test.mjs:418:17 lint/suspicious/noUselessEscapeInString  FIXABLE  ━━━━━━━━━━━
+
+  ! The character doesn't need to be escaped.
+  
+    416 │       () => parseNbsIndustrialRelease(
+    417 │         fixture('nbs-industrial.html').replace(
+  > 418 │           '2026\/07\/16 10:00',
+        │                 ^
+    419 │           '2026/07/26 10:00',
+    420 │         ),
+  
+  i Only quotes that enclose the string and special characters need to be escaped.
+  
+  i Safe fix: Unescape the character.
+  
+    418 │ ··········'2026\/07\/16·10:00',
+        │                -               
+
+tests\chokepoint-scenario-doc-parity.test.mjs:72:56 lint/complexity/noAdjacentSpacesInRegex  FIXABLE  ━━━━━━━━━━
+
+  ! This regular expression contains unclear uses of consecutive spaces.
+  
+    70 │   assert.notEqual(start, -1, `${schemaName} schema not found`);
+    71 │   const afterStart = start + startNeedle.length;
+  > 72 │   const nextSchema = source.slice(afterStart).match(/\n        [A-Za-z0-9_]+:\n/);
+       │                                                        ^^^^^^^^
+    73 │   const end = nextSchema ? afterStart + nextSchema.index : source.length;
+    74 │   return source.slice(start, end);
+  
+  i It's hard to visually count the amount of spaces.
+  
+  i Safe fix: Use a quantifier instead.
+  
+     70  70 │     assert.notEqual(start, -1, `${schemaName} schema not found`);
+     71  71 │     const afterStart = start + startNeedle.length;
+     72     │ - ··const·nextSchema·=·source.slice(afterStart).match(/\n········[A-Za-z0-9_]+:\n/);
+         72 │ + ··const·nextSchema·=·source.slice(afterStart).match(/\n·{8}[A-Za-z0-9_]+:\n/);
+     73  73 │     const end = nextSchema ? afterStart + nextSchema.index : source.length;
+     74  74 │     return source.slice(start, end);
+  
+
+tests\shared-llm.test.mts:90:32 lint/correctness/noUnusedFunctionParameters  FIXABLE  ━━━━━━━━━━━━━━
+
+  ! This parameter is unused.
+  
+    89 │     const bodies: Array<Record<string, unknown>> = [];
+  > 90 │     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+       │                                ^^^^^
+    91 │       if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+    92 │       bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+  
+  i Unused parameters might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: If this is intentional, prepend input with an underscore.
+  
+     88  88 │   
+     89  89 │       const bodies: Array<Record<string, unknown>> = [];
+     90     │ - ····globalThis.fetch·=·(async·(input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+         90 │ + ····globalThis.fetch·=·(async·(_input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+     91  91 │         if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+     92  92 │         bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+  
+
+tests\shared-llm.test.mts:275:32 lint/correctness/noUnusedFunctionParameters  FIXABLE  ━━━━━━━━━━━━━
+
+  ! This parameter is unused.
+  
+    273 │     const postBodies: Array<Record<string, unknown>> = [];
+    274 │ 
+  > 275 │     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        │                                ^^^^^
+    276 │       if ((init?.method || 'GET') === 'GET') {
+    277 │         return new Response('', { status: 200 });
+  
+  i Unused parameters might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: If this is intentional, prepend input with an underscore.
+  
+    273 273 │       const postBodies: Array<Record<string, unknown>> = [];
+    274 274 │   
+    275     │ - ····globalThis.fetch·=·(async·(input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+        275 │ + ····globalThis.fetch·=·(async·(_input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+    276 276 │         if ((init?.method || 'GET') === 'GET') {
+    277 277 │           return new Response('', { status: 200 });
+  
+
+tests\shared-llm.test.mts:308:32 lint/correctness/noUnusedFunctionParameters  FIXABLE  ━━━━━━━━━━━━━
+
+  ! This parameter is unused.
+  
+    307 │     const bodies: Array<Record<string, unknown>> = [];
+  > 308 │     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        │                                ^^^^^
+    309 │       if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+    310 │       bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+  
+  i Unused parameters might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: If this is intentional, prepend input with an underscore.
+  
+    306 306 │   
+    307 307 │       const bodies: Array<Record<string, unknown>> = [];
+    308     │ - ····globalThis.fetch·=·(async·(input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+        308 │ + ····globalThis.fetch·=·(async·(_input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+    309 309 │         if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+    310 310 │         bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+  
+
+tests\shared-llm.test.mts:347:32 lint/correctness/noUnusedFunctionParameters  FIXABLE  ━━━━━━━━━━━━━
+
+  ! This parameter is unused.
+  
+    345 │     delete process.env.LLM_API_KEY;
+    346 │ 
+  > 347 │     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        │                                ^^^^^
+    348 │       if ((init?.method || 'GET') === 'GET') {
+    349 │         return new Response('', { status: 200 });
+  
+  i Unused parameters might be the result of an incomplete refactoring.
+  
+  i Unsafe fix: If this is intentional, prepend input with an underscore.
+  
+    345 345 │       delete process.env.LLM_API_KEY;
+    346 346 │   
+    347     │ - ····globalThis.fetch·=·(async·(input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+        347 │ + ····globalThis.fetch·=·(async·(_input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+    348 348 │         if ((init?.method || 'GET') === 'GET') {
+    349 349 │           return new Response('', { status: 200 });
+  
+
+tests\yahoo-sector-valuations.test.mjs:612:5 lint/style/useConst  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! This let declares a variable that is only assigned once.
+  
+    611 │   it('keeps quoteSummary usable after a v7Quote route cooldown', async () => {
+  > 612 │     let now = 1_700_000_000_000;
+        │     ^^^
+    613 │     const calls = [];
+    614 │     const client = new YahooQuoteSummaryClient({
+  
+  i 'now' is never reassigned.
+  
+    611 │   it('keeps quoteSummary usable after a v7Quote route cooldown', async () => {
+  > 612 │     let now = 1_700_000_000_000;
+        │         ^^^
+    613 │     const calls = [];
+    614 │     const client = new YahooQuoteSummaryClient({
+  
+  i Safe fix: Use const instead.
+  
+     610  610 │   
+     611  611 │     it('keeps quoteSummary usable after a v7Quote route cooldown', async () => {
+     612      │ - ····let·now·=·1_700_000_000_000;
+          612 │ + ····const·now·=·1_700_000_000_000;
+     613  613 │       const calls = [];
+     614  614 │       const client = new YahooQuoteSummaryClient({
+  
+
+The number of diagnostics exceeds the limit allowed. Use --max-diagnostics to increase it.
+Diagnostics not shown: 22.
+Checked 3327 files in 2s. No fixes applied.
+Found 33 warnings.
+Found 9 infos.
+
+> world-monitor@2.10.0 lint:safe-html
+> node scripts/enforce-safe-html.mjs
+
+Safe HTML guard passed (0 legacy HTML sinks tracked).
+EXIT_CODE=0

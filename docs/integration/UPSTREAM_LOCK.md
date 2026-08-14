@@ -270,3 +270,20 @@ The reviewed upstream intake remains locked at
 fetched into the integration, merged, rebased or relabelled; no ref in
 `koala73/worldmonitor` was written. PR review does not authorize a later
 upstream resync, force push, main mutation, merge or deployment.
+
+## Phase 12 corrective-head lock
+
+The health and OpenAPI corrections are descendants of the published owner
+branch head; they do not ingest a new upstream snapshot. Their local chain is
+`330508d1c03cd4a1ab868b501c99bb6b5bfe4b8a` ->
+`b33b927cf0f368766114883ab73bae5598a77ed8` ->
+`afc315b8992946e91aacee150da753ab0d7955ea` ->
+`6611394a8992bdebd9764cbef1790b3c6e644ea5`.
+
+The reviewed upstream intake remains exactly
+`ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`; owner-fork `main` remains the
+protected PR base and must not be updated directly. The only authorized remote
+write for this correction is a normal non-force update of
+`origin/integration/pokieticker-maritime-china-factory`. A generated-file
+failure does not authorize a rebase, newer-upstream merge, force push or
+replacement of user files.

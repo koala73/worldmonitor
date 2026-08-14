@@ -256,3 +256,29 @@ review.
 No manual action is required to preserve the truthful no-provider desktop
 state. Real-time stock/AIS/news/trade/model acceptance remains separately
 blocked on its own licensed source-bearing response, not on GitHub publication.
+
+## Phase 12 correction receipt and remaining actions (2026-08-14)
+
+- [x] FRED was removed from the public health capability list while its
+  protected operator seed-health contract and seeder implementation were
+  preserved.
+- [x] Cross-platform OpenAPI regeneration was repaired and locally verified;
+  the generated artifacts are stored in commit
+  `afc315b8992946e91aacee150da753ab0d7955ea`.
+- [x] The independent dashboard's structured/social metadata was separated
+  from the official upstream identity in commit
+  `6611394a8992bdebd9764cbef1790b3c6e644ea5`; no account or paid plan was
+  created or modified.
+- [ ] Do not advertise the FRED seeder or company-monitoring worker as live
+  until the owner provisions the real Railway schedules/services and records
+  protected health evidence.
+- [ ] Review the new corrected-head GitHub checks after the non-force branch
+  update. Do not mark the Draft PR ready, merge, deploy or release while any
+  required workflow is failing or pending.
+
+For recoverability, the pre-regeneration generated directories were moved,
+not deleted, to
+`D:\global-intelligence-earth\_codex_phase12_proto_backup_20260814_1845`.
+They are not runtime input and are outside Git. Leave them in place until the
+new remote proto-freshness workflow is green; deletion requires a separate,
+explicit cleanup decision.

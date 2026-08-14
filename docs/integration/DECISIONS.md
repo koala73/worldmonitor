@@ -393,3 +393,63 @@ scanned 257 files and correctly exposed ten MD022 errors.
 **Consequence:** Local `npm run lint:md` now scans the same 257 tracked Markdown
 files on Windows and Linux for this tree. The retained failed run is valid
 evidence; only a corrected-head rerun can supersede it for the final CI state.
+
+## D-0031 - Unprovisioned seeders stay out of public health
+
+**Decision:** Remove FRED seeder activation and rollout-grace state from public
+`/api/health` until a real scheduled deployment and seed result exist. Preserve
+the protected operator seed-health endpoint and strict unavailable/partial/
+ready thresholds.
+
+**Reason:** A committed seeder, Railway registry entry or planned schedule is
+not a deployed capability. Advertising it publicly before its protected
+coverage evidence exists creates a false availability claim.
+
+**Consequence:** Public health reports 257 capabilities and no FRED seeder row.
+Operators can still inspect and validate the genuine seed state without
+exposing credentials or promoting missing data.
+
+## D-0032 - A successful generator exit must mean the generator ran
+
+**Decision:** Resolve direct-run main guards with native-path normalization and
+`pathToFileURL`, and detect service protos with `basename` instead of a POSIX
+slash suffix. Add Windows-regression coverage and retain generated diffs.
+
+**Reason:** The previous guards exited `0` while silently doing no work on
+Windows. That produced a false local freshness signal and allowed the real
+39-file OpenAPI diff to appear only in Ubuntu CI.
+
+**Consequence:** The regenerated 222-operation / 204-GET surface is committed,
+both injectors pass `--check`, and a repeat generation is observable and
+idempotent across platforms. A command that selects zero work is not accepted
+merely because its process status is zero.
+
+## D-0033 - Platform-limited full-suite failures remain failures
+
+**Decision:** Retain the Windows `test:data` failure log and require fresh
+GitHub Ubuntu workflows for corrected-head acceptance. Do not aggregate focused
+passes into a claim that the full suite passed.
+
+**Reason:** The run contains many Windows file-URL/path failures and may also
+hide source defects among environment defects. Selectively discarding those
+results would weaken the evidence chain.
+
+**Consequence:** Local focused, OpenAPI, type and lint gates are recorded as
+passes; the full Windows suite is recorded as 134 failures; Phase 12 remains
+remote-CI pending until the new commit receives its own conclusions.
+
+## D-0034 - Independent metadata must not borrow upstream identity
+
+**Decision:** Keep the independent full dashboard on an origin-relative
+canonical with no official-upstream hreflang cluster, pricing, founder,
+organization, domain or social-account claim. Preserve official metadata only
+on the separately declared upstream variant/document surfaces.
+
+**Reason:** Rebranding visible title text while leaving official structured
+data and social metadata behind would still present the independent build as
+the upstream service and its paid offering.
+
+**Consequence:** The full shell identifies Global Intelligence Earth
+contributors, uses relative media/canonical URLs and conservative
+source-availability descriptions. CSP hashes are exact across Vercel and both
+nginx configurations; deployment/SEO/CSP regression tests pass 192/192.
