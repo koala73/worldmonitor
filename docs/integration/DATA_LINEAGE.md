@@ -345,3 +345,29 @@ No item in this correction chain is a K-line bar, quote, AIS position, cargo
 fact, news cause, trade value, factory observation, Provider entitlement or
 deployment health response. Those data lineages remain closed until their own
 lawful source-bearing records exist.
+
+## Phase 12 GitHub run 6 correction lineage
+
+The authenticated GitHub integration ties run 6 to exact remote source head
+`7ec5ddc74b2d9e5a473b36a2c986214bc88fcd81`. Five standalone workflows and
+ten Test jobs passed; Test run `31795261786` still concluded failure because
+docs-stats job `94750848892` and unit job `94750911768` failed. This mixed
+result is retained without aggregation into a green claim.
+
+The descendant correction has an auditable, non-product-data chain:
+
+1. public health source already contained 257 advertised capabilities;
+2. `scripts/docs-stats.mjs` regenerated the tracked statistic from 258 to 257;
+3. the independent HTML contract supplied zero upstream alternates;
+4. the official variant renderer inserted its own two self-canonical discovery
+   links and rejected any independent-base regression;
+5. 31 focused tests and a real 2,506-module production build passed locally;
+6. the raw seven-gate log was normalized to LF, stripped only of terminal
+   alignment whitespace at line ends, and hashed at
+   `451690CAD92CC814C3C95F3FE3394AC8C637D0A95AA4E21149E3764F1F1D18D0`.
+
+This lineage establishes generated-metadata consistency only. It contains no
+market price, K-line candle, exchange timestamp, AIS observation, cargo
+manifest, news cause, trade value, factory report, Provider licence, secret or
+deployment-health response. Fresh GitHub workflows must evaluate the new
+source commit before Phase 12 remote acceptance can advance.

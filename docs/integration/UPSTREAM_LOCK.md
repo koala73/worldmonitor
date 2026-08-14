@@ -287,3 +287,24 @@ write for this correction is a normal non-force update of
 `origin/integration/pokieticker-maritime-china-factory`. A generated-file
 failure does not authorize a rebase, newer-upstream merge, force push or
 replacement of user files.
+
+## Phase 12 run 6 corrective-head lock
+
+GitHub run 6 evaluated published head
+`7ec5ddc74b2d9e5a473b36a2c986214bc88fcd81`. Its retained Test failure led to
+one descendant source correction only:
+
+`7ec5ddc74b2d9e5a473b36a2c986214bc88fcd81` ->
+`f0fbf7ca66ab45332f88b1997ecd4f2a0c352649`.
+
+The commit updates the tracked generated health statistic and the existing
+variant-rendering contract. It does not merge, rebase or cherry-pick a newer
+upstream object. The reviewed upstream intake therefore remains exactly
+`ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`, while protected owner-fork
+`main` remains `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` unless a later
+read-only GitHub check proves otherwise.
+
+The only permitted publication remains a normal, non-force fast-forward of
+`origin/integration/pokieticker-maritime-china-factory`. Run 6 failure does not
+authorize direct main mutation, upstream write, force push, newer-upstream
+intake, merge, deployment or deletion of the retained generated-file backup.

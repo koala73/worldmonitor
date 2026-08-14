@@ -1,0 +1,1217 @@
+[gate:start] targeted-contracts
+▶ validateIndexLanguageMetadata
+  ✔ returns no failures for consistent language metadata (1.4652ms)
+  ✔ accepts an independently branded origin-relative shell with no upstream hreflang links (0.1758ms)
+  ✔ rejects upstream hreflang links on the independent origin-relative shell (0.1597ms)
+  ✔ flags a missing x-default hreflang link (0.1652ms)
+  ✔ flags an x-default href that carries a ?lang param (0.1422ms)
+  ✔ flags a missing English alternate (0.1231ms)
+  ✔ flags a pseudo-localized query-string alternate (0.1567ms)
+  ✔ requires absolute, self-canonical alternate URLs (0.2576ms)
+  ✔ flags x-default and English alternates that drift from the canonical (0.1267ms)
+  ✔ flags WebSite structured data that claims languages other than the raw English document (0.1594ms)
+  ✔ flags a missing WebSite JSON-LD block (0.1201ms)
+  ✔ flags unparseable JSON-LD instead of throwing (0.1226ms)
+✔ validateIndexLanguageMetadata (4.1984ms)
+▶ validateSupportedLanguagesRegistry / parseSupportedLanguages
+  ✔ parses the SUPPORTED_LANGUAGES literal array (0.3462ms)
+  ✔ returns no failures when the runtime list matches src/locales (0.152ms)
+  ✔ flags drift between SUPPORTED_LANGUAGES and src/locales (0.0822ms)
+  ✔ flags an unparseable SUPPORTED_LANGUAGES declaration (0.0516ms)
+✔ validateSupportedLanguagesRegistry / parseSupportedLanguages (0.7635ms)
+▶ international SEO application-locale mode (#5666)
+  ✔ publishes only x-default and English at each self-canonical application URL (4.9675ms)
+  ✔ serves LTR, RTL, and every supported ?lang request as 200 application state on the base canonical (14.3344ms)
+  ✔ accepts the deployed English hreflang clusters (1.5092ms)
+  ✔ rejects an advertised pseudo-localized query target (1.0323ms)
+  ✔ never lists pseudo-localized query URLs in sitemap or robots output (0.7006ms)
+✔ international SEO application-locale mode (#5666) (23.803ms)
+▶ renderVariantDashboardHtml (#4996)
+  ✔ self-canonicalizes each variant on its own subdomain (2.0627ms)
+  ✔ rewrites brand meta, English discovery links, social images, and h1 for tech (0.3981ms)
+  ✔ rewrites the WebApplication JSON-LD block but leaves the Organization block as World Monitor (0.8775ms)
+  ✔ leaves body links to the main dashboard untouched (0.8766ms)
+  ✔ throws loudly when an anchor is missing (markup drift guard) (0.4569ms)
+  ✔ throws loudly when an anchor is duplicated (0.1948ms)
+  ✔ throws when an upstream alternate is reintroduced on the independent base (0.1654ms)
+  ✔ rejects unknown variants and the full variant itself (0.0907ms)
+  ✔ names output files after the variant (0.103ms)
+✔ renderVariantDashboardHtml (#4996) (6.3874ms)
+✔ variant dashboard generation accepts the fork-relative full dashboard route (3.304ms)
+ℹ tests 31
+ℹ suites 4
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 250.184
+[gate:exit] targeted-contracts = 0
+[gate:start] docs-stats-generate
+docs/generated/stats.json written:
+{
+  "_generated": "scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`",
+  "layerDefinitions": 56,
+  "lockedLayerDefinitions": 1,
+  "lockedLayerKeys": [
+    "resilienceScore"
+  ],
+  "tier1Countries": 31,
+  "rankableUniverseCountries": 196,
+  "variantLayers": {
+    "full": 37,
+    "tech": 13,
+    "finance": 17,
+    "happy": 6,
+    "commodity": 18,
+    "energy": 18
+  },
+  "variantCount": 6,
+  "componentTopLevelTsFiles": 184,
+  "serviceTopLevelEntries": 233,
+  "apiEndpointEntries": 91,
+  "panelClasses": 108,
+  "protoFiles": 304,
+  "protoServices": 36,
+  "protoDomainFolders": 37,
+  "openapiServiceSpecs": 36,
+  "serverDomains": 35,
+  "localeCodes": [
+    "ar",
+    "bg",
+    "cs",
+    "de",
+    "el",
+    "en",
+    "es",
+    "fa",
+    "fr",
+    "hi",
+    "hr",
+    "hu",
+    "it",
+    "ja",
+    "ko",
+    "nl",
+    "pl",
+    "pt",
+    "ro",
+    "ru",
+    "sv",
+    "th",
+    "tr",
+    "uk",
+    "vi",
+    "zh"
+  ],
+  "locales": 26,
+  "workflows": [
+    "analytics-collector-monitor.yml",
+    "build-desktop.yml",
+    "china-decision-parity-live.yml",
+    "contributor-trust.yml",
+    "convex-deploy.yml",
+    "deploy-gate.yml",
+    "deploy-railway-reconcile-control.yml",
+    "deploy-worker.yml",
+    "docker-publish.yml",
+    "feed-validation.yml",
+    "indexnow-submit.yml",
+    "lint-code.yml",
+    "lint.yml",
+    "live-api-cache-auth.yml",
+    "mcp-live-smoke.yml",
+    "perf-style-layout-budget.yml",
+    "postmerge-deploy-monitor.yml",
+    "pro-bundle-freshness.yml",
+    "proto-check.yml",
+    "publish-cli.yml",
+    "publish-go.yml",
+    "publish-python.yml",
+    "publish-ruby.yml",
+    "railway-deploy-trigger-watchdog.yml",
+    "railway-deploy-trigger.yml",
+    "railway-reconcile-manual-recovery.yml",
+    "security-audit.yml",
+    "seed-freshness-monitor.yml",
+    "test-linux-app.yml",
+    "test.yml",
+    "typecheck.yml",
+    "umami-storage-monitor.yml"
+  ],
+  "workflowCount": 32,
+  "freshnessSources": 35,
+  "freshnessRequiredForRisk": 2,
+  "feedDefinitions": 632,
+  "sourceAttribution": {
+    "activeHosts": 533,
+    "structuredHosts": 293,
+    "feedHosts": 268,
+    "operationalStatusHosts": 30,
+    "providerCount": 531,
+    "observedHosts": 652,
+    "reviewNeeded": 519
+  },
+  "sourceAttributionHosts": 533,
+  "airportCount": 115,
+  "stockExchangeCount": 29,
+  "centralBankInstitutionCount": 14,
+  "telegramFullEnabledChannels": 56,
+  "telegramFullTierCounts": {
+    "1": 3,
+    "2": 23,
+    "3": 30
+  },
+  "leaderNames": 16,
+  "populationPriorityCountries": 20,
+  "sebufVersion": "v0.11.1",
+  "mcpToolCount": 60,
+  "mcpApps": {
+    "specVersion": "2026-01-26",
+    "mimeType": "text/html;profile=mcp-app",
+    "apps": [
+      {
+        "uriConst": "COUNTRY_RISK_UI_URI",
+        "uri": "ui://worldmonitor/country-risk.html",
+        "name": "Country Risk (interactive)",
+        "description": "Interactive in-conversation app shell for get_country_risk: renders the Composite Instability Index (CII 0-100), the unrest/conflict/security/news component breakdown, travel-advisory level, and sanctions exposure. Linked from the get_country_risk tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_country_risk"
+      },
+      {
+        "uriConst": "WORLD_BRIEF_UI_URI",
+        "uri": "ui://worldmonitor/world-brief.html",
+        "name": "World Brief (interactive)",
+        "description": "Interactive in-conversation app shell for get_world_brief: renders the AI-summarised global intelligence brief as readable paragraphs, the grounding headlines, and the source feed articles. Linked from the get_world_brief tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_world_brief"
+      },
+      {
+        "uriConst": "COUNTRY_BRIEF_UI_URI",
+        "uri": "ui://worldmonitor/country-brief.html",
+        "name": "Country Brief (interactive)",
+        "description": "Interactive in-conversation app shell for get_country_brief: renders the AI-synthesised per-country intelligence brief as paragraphs, the analytical framework lens, and the grounding sources. Linked from the get_country_brief tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_country_brief"
+      },
+      {
+        "uriConst": "MARKET_RADAR_UI_URI",
+        "uri": "ui://worldmonitor/market-radar.html",
+        "name": "Market Radar (interactive)",
+        "description": "Interactive in-conversation app shell for get_market_data: renders the Fear & Greed composite plus per-asset-class quote tables (equities, commodities, crypto, Gulf, sectors) with signed, colour-coded change. Linked from the get_market_data tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_market_data"
+      },
+      {
+        "uriConst": "CHOKEPOINT_MONITOR_UI_URI",
+        "uri": "ui://worldmonitor/chokepoint-monitor.html",
+        "name": "Chokepoint Monitor (interactive)",
+        "description": "Interactive in-conversation app shell for get_chokepoint_status: renders per-chokepoint rolling transit summaries (today's transit count, week-over-week change, tanker split) with a risk-level badge. Linked from the get_chokepoint_status tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_chokepoint_status"
+      },
+      {
+        "uriConst": "NEWS_INTELLIGENCE_UI_URI",
+        "uri": "ui://worldmonitor/news-intelligence.html",
+        "name": "News Intelligence (interactive)",
+        "description": "Interactive in-conversation app shell for get_news_intelligence: renders AI-classified top stories (title, category, alert flag, country, source) from WorldMonitor's intelligence layer. Linked from the get_news_intelligence tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_news_intelligence"
+      },
+      {
+        "uriConst": "CONFLICT_EVENTS_UI_URI",
+        "uri": "ui://worldmonitor/conflict-events.html",
+        "name": "Conflict Events (interactive)",
+        "description": "Interactive in-conversation app shell for get_conflict_events: renders active armed-conflict events (belligerents, violence type, country, fatalities, date) from the UCDP feed. Linked from the get_conflict_events tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_conflict_events"
+      },
+      {
+        "uriConst": "NATURAL_DISASTERS_UI_URI",
+        "uri": "ui://worldmonitor/natural-disasters.html",
+        "name": "Natural Disasters (interactive)",
+        "description": "Interactive in-conversation app shell for get_natural_disasters: groups recent earthquakes (USGS magnitude, place, time) and active wildfires (NASA FIRMS). Linked from the get_natural_disasters tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_natural_disasters"
+      },
+      {
+        "uriConst": "PREDICTION_MARKETS_UI_URI",
+        "uri": "ui://worldmonitor/prediction-markets.html",
+        "name": "Prediction Markets (interactive)",
+        "description": "Interactive in-conversation app shell for get_prediction_markets: renders active event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. Linked from the get_prediction_markets tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_prediction_markets"
+      },
+      {
+        "uriConst": "FORECASTS_UI_URI",
+        "uri": "ui://worldmonitor/forecasts.html",
+        "name": "Forecasts (interactive)",
+        "description": "Interactive in-conversation app shell for get_forecast_predictions: renders WorldMonitor's AI-generated geopolitical and economic forecasts as probability cards (title, domain, region). Linked from the get_forecast_predictions tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_forecast_predictions"
+      }
+    ],
+    "uiResources": [
+      "ui://worldmonitor/country-risk.html",
+      "ui://worldmonitor/world-brief.html",
+      "ui://worldmonitor/country-brief.html",
+      "ui://worldmonitor/market-radar.html",
+      "ui://worldmonitor/chokepoint-monitor.html",
+      "ui://worldmonitor/news-intelligence.html",
+      "ui://worldmonitor/conflict-events.html",
+      "ui://worldmonitor/natural-disasters.html",
+      "ui://worldmonitor/prediction-markets.html",
+      "ui://worldmonitor/forecasts.html"
+    ],
+    "linkedTools": [
+      "get_country_risk",
+      "get_world_brief",
+      "get_country_brief",
+      "get_market_data",
+      "get_chokepoint_status",
+      "get_news_intelligence",
+      "get_conflict_events",
+      "get_natural_disasters",
+      "get_prediction_markets",
+      "get_forecast_predictions"
+    ],
+    "toolLinks": [
+      {
+        "tool": "get_country_risk",
+        "uri": "ui://worldmonitor/country-risk.html"
+      },
+      {
+        "tool": "get_world_brief",
+        "uri": "ui://worldmonitor/world-brief.html"
+      },
+      {
+        "tool": "get_country_brief",
+        "uri": "ui://worldmonitor/country-brief.html"
+      },
+      {
+        "tool": "get_market_data",
+        "uri": "ui://worldmonitor/market-radar.html"
+      },
+      {
+        "tool": "get_chokepoint_status",
+        "uri": "ui://worldmonitor/chokepoint-monitor.html"
+      },
+      {
+        "tool": "get_news_intelligence",
+        "uri": "ui://worldmonitor/news-intelligence.html"
+      },
+      {
+        "tool": "get_conflict_events",
+        "uri": "ui://worldmonitor/conflict-events.html"
+      },
+      {
+        "tool": "get_natural_disasters",
+        "uri": "ui://worldmonitor/natural-disasters.html"
+      },
+      {
+        "tool": "get_prediction_markets",
+        "uri": "ui://worldmonitor/prediction-markets.html"
+      },
+      {
+        "tool": "get_forecast_predictions",
+        "uri": "ui://worldmonitor/forecasts.html"
+      }
+    ]
+  },
+  "mcpAppCount": 10,
+  "mcpAppUiResources": [
+    "ui://worldmonitor/country-risk.html",
+    "ui://worldmonitor/world-brief.html",
+    "ui://worldmonitor/country-brief.html",
+    "ui://worldmonitor/market-radar.html",
+    "ui://worldmonitor/chokepoint-monitor.html",
+    "ui://worldmonitor/news-intelligence.html",
+    "ui://worldmonitor/conflict-events.html",
+    "ui://worldmonitor/natural-disasters.html",
+    "ui://worldmonitor/prediction-markets.html",
+    "ui://worldmonitor/forecasts.html"
+  ],
+  "mcpAppLinkedTools": [
+    "get_country_risk",
+    "get_world_brief",
+    "get_country_brief",
+    "get_market_data",
+    "get_chokepoint_status",
+    "get_news_intelligence",
+    "get_conflict_events",
+    "get_natural_disasters",
+    "get_prediction_markets",
+    "get_forecast_predictions"
+  ],
+  "bootstrapCache": {
+    "tierCache": {
+      "slow": "max-age=300, stale-while-revalidate=600, stale-if-error=3600",
+      "fast": "max-age=60, stale-while-revalidate=120, stale-if-error=900"
+    },
+    "tierCdnCache": {
+      "slow": "public, s-maxage=7200, stale-while-revalidate=1800, stale-if-error=7200",
+      "fast": "public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900"
+    },
+    "onDemandProfiles": {
+      "chinaDecisionSignals": {
+        "browser": "max-age=60, stale-while-revalidate=120, stale-if-error=900",
+        "cdn": "public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900"
+      }
+    },
+    "onDemandDefaultTier": "slow",
+    "defaultCacheControl": "public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900",
+    "defaultCdnTier": "fast",
+    "nonCacheable": "no-store"
+  },
+  "healthProbedKeys": {
+    "bootstrap": 109,
+    "standalone": 148,
+    "total": 257
+  }
+}
+[gate:exit] docs-stats-generate = 0
+[gate:start] docs-check
+
+> world-monitor@2.10.0 docs:check
+> node scripts/docs-stats.mjs --check
+
+docs-stats --check OK — 150 doc claims match code.
+[gate:exit] docs-check = 0
+[gate:start] typecheck
+
+> world-monitor@2.10.0 typecheck
+> tsc --noEmit
+
+[gate:exit] typecheck = 0
+[gate:start] lint
+
+> world-monitor@2.10.0 lint
+> biome lint ./src ./server ./api ./tests ./e2e ./scripts ./middleware.ts && npm run lint:safe-html
+
+server\_shared\sec-edgar.ts:169:25 lint/complexity/noUselessEscapeInRegex  FIXABLE  ━━━━━━━━━━━━━━━━
+
+  i The character doesn't need to be escaped.
+
+    167 │ export function sanitizeTicker(raw: string): string {
+    168 │   const t = (raw ?? '').trim().toUpperCase();
+  > 169 │   return /^[A-Z][A-Z0-9.\-]{0,9}$/.test(t) ? t : '';
+        │                         ^^
+    170 │ }
+    171 │
+
+  i Safe fix: Unescape the character.
+
+    169 │ ··return·/^[A-Z][A-Z0-9.\-]{0,9}$/.test(t)·?·t·:·'';
+        │                         -
+
+server\_shared\sec-edgar.ts:489:50 lint/complexity/noUselessEscapeInRegex  FIXABLE  ━━━━━━━━━━━━━━━━
+
+  i The character doesn't need to be escaped.
+
+    487 │ // pass the regex then normalize to an empty (unfiltered) query.
+    488 │ const EDGAR_ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  > 489 │ export const EDGAR_FORMS_RE = /^(?=[A-Za-z0-9/, .\-]{1,40}$)(?=.*[A-Za-z0-9])[A-Za-z0-9/, .\-]+$/;
+        │                                                  ^^
+    490 │
+    491 │ /** Shape plus calendar validity; Date.parse alone would normalize invalid days. */
+
+  i Safe fix: Unescape the character.
+
+    489 │ export·const·EDGAR_FORMS_RE·=·/^(?=[A-Za-z0-9/,·.\-]{1,40}$)(?=.*[A-Za-z0-9])[A-Za-z0-9/,·.\-]+$/;
+        │                                                  -
+
+src\utils\export.ts:570:24 lint/complexity/noUselessEscapeInRegex  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  i The character doesn't need to be escaped.
+
+    568 │   return sanitizeEvidenceText(value)
+    569 │     .replace(/\s+/g, ' ')
+  > 570 │     .replace(/([\\`*_{}\[\]()#+\-.!|<>])/g, '\\$1');
+        │                        ^^
+    571 │ }
+    572 │
+
+  i The character should only be escaped if it is outside a character class or under the `v` flag.
+
+  i Safe fix: Unescape the character.
+
+    570 │ ····.replace(/([\\`*_{}\[\]()#+\-.!|<>])/g,·'\\$1');
+        │                        -
+
+tests\a11y-issue-5059-invariants.test.mjs:193:62 lint/complexity/noUselessEscapeInRegex  FIXABLE  ━━━━━━━━━━
+
+  i The character doesn't need to be escaped.
+
+    191 │ describe('CSS — focus-visible indicator for toggle items', () => {
+    192 │   it('.panel-toggle-item:focus-visible rule exists', () => {
+  > 193 │     assert.match(css, /\.panel-toggle-item:focus-visible\s*[,\{]/);
+        │                                                              ^^
+    194 │   });
+    195 │
+
+  i The character should only be escaped if it is outside a character class or under the `v` flag.
+
+  i Safe fix: Unescape the character.
+
+    193 │ ····assert.match(css,·/\.panel-toggle-item:focus-visible\s*[,\{]/);
+        │                                                              -
+
+tests\a11y-issue-5059-invariants.test.mjs:197:63 lint/complexity/noUselessEscapeInRegex  FIXABLE  ━━━━━━━━━━
+
+  i The character doesn't need to be escaped.
+
+    196 │   it('.source-toggle-item:focus-visible rule exists', () => {
+  > 197 │     assert.match(css, /\.source-toggle-item:focus-visible\s*[,\{]/);
+        │                                                               ^^
+    198 │   });
+    199 │
+
+  i The character should only be escaped if it is outside a character class or under the `v` flag.
+
+  i Safe fix: Unescape the character.
+
+    197 │ ····assert.match(css,·/\.source-toggle-item:focus-visible\s*[,\{]/);
+        │                                                               -
+
+tests\a11y-issue-5059-invariants.test.mjs:219:68 lint/complexity/noUselessEscapeInRegex  FIXABLE  ━━━━━━━━━━
+
+  i The character doesn't need to be escaped.
+
+    218 │   it('.unified-settings-select:focus-visible rule exists', () => {
+  > 219 │     assert.match(css, /\.unified-settings-select:focus-visible\s*[,\{]/);
+        │                                                                    ^^
+    220 │   });
+    221 │
+
+  i The character should only be escaped if it is outside a character class or under the `v` flag.
+
+  i Safe fix: Unescape the character.
+
+    219 │ ····assert.match(css,·/\.unified-settings-select:focus-visible\s*[,\{]/);
+        │                                                                    -
+
+scripts\seed-comtrade-bilateral-hs4.mjs:272:40 lint/style/useDefaultParameterLast  FIXABLE  ━━━━━━━━━━
+
+  ! This default parameter should follow the last required parameter or should be a required parameter.
+
+    270 │  * @param {(() => void) | undefined} [reserveRequest]
+    271 │  */
+  > 272 │ async function fetchBilateralOnce(url, timeoutMs = 45_000, reserveRequest) {
+        │                                        ^^^^^^^^^^^^^^^^^^
+    273 │   // Reserve immediately before the network call so retries count against the
+    274 │   // same hard quota budget as first attempts. A logical batch fetch may issue
+
+  i The last required parameter is here:
+
+    270 │  * @param {(() => void) | undefined} [reserveRequest]
+    271 │  */
+  > 272 │ async function fetchBilateralOnce(url, timeoutMs = 45_000, reserveRequest) {
+        │                                                            ^^^^^^^^^^^^^^
+    273 │   // Reserve immediately before the network call so retries count against the
+    274 │   // same hard quota budget as first attempts. A logical batch fetch may issue
+
+  i A default parameter that precedes a required parameter cannot be omitted at call site.
+
+  i Unsafe fix: Turn the parameter into a required parameter.
+
+    272 │ async·function·fetchBilateralOnce(url,·timeoutMs·=·45_000,·reserveRequest)·{
+        │                                                 ---------
+
+scripts\seed-comtrade-bilateral-hs4.mjs:305:62 lint/style/useDefaultParameterLast  FIXABLE  ━━━━━━━━━━
+
+  ! This default parameter should follow the last required parameter or should be a required parameter.
+
+    303 │  * @returns {Promise<Array<{cmdCode: string, partnerCode: string, primaryValue: number, year: number}>>}
+    304 │  */
+  > 305 │ export async function fetchBilateral(reporterCode, hs4Batch, period = recentPeriod(), reserveRequest) {
+        │                                                              ^^^^^^^^^^^^^^^^^^^^^^^
+    306 │   let rateLimitedOnce = false;
+    307 │   let transientRetries = 0;
+
+  i The last required parameter is here:
+
+    303 │  * @returns {Promise<Array<{cmdCode: string, partnerCode: string, primaryValue: number, year: number}>>}
+    304 │  */
+  > 305 │ export async function fetchBilateral(reporterCode, hs4Batch, period = recentPeriod(), reserveRequest) {
+        │                                                                                       ^^^^^^^^^^^^^^
+    306 │   let rateLimitedOnce = false;
+    307 │   let transientRetries = 0;
+
+  i A default parameter that precedes a required parameter cannot be omitted at call site.
+
+  i Unsafe fix: Turn the parameter into a required parameter.
+
+    305 │ export·async·function·fetchBilateral(reporterCode,·hs4Batch,·period·=·recentPeriod(),·reserveRequest)·{
+        │                                                                    -----------------
+
+src\config\index.ts:131:8 lint/style/useExportType  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! All exports are only types.
+
+    129 │ // critical path. Every consumer (search/map/globe/tech-hub services) imports
+    130 │ // directly from '@/config/tech-geo'. Type re-exports are erased, no edge. (#4404)
+  > 131 │ export {
+        │        ^
+  > 132 │   type StartupHub,
+  > 133 │   type Accelerator,
+  > 134 │   type TechHQ,
+  > 135 │   type CloudRegion,
+  > 136 │ } from './tech-geo';
+        │ ^^^^^^^^^^^^^^^^^^^^
+    137 │
+    138 │ // Finance variant - these are included in finance builds
+
+  i Using export type allows compilers to safely drop exports of types without looking for their definition.
+
+  i Safe fix: Use export type.
+
+    129 129 │   // critical path. Every consumer (search/map/globe/tech-hub services) imports
+    130 130 │   // directly from '@/config/tech-geo'. Type re-exports are erased, no edge. (#4404)
+    131     │ - export·{
+    132     │ - ··type·StartupHub,
+    133     │ - ··type·Accelerator,
+    134     │ - ··type·TechHQ,
+    135     │ - ··type·CloudRegion,
+        131 │ + export·type·{
+        132 │ + ··StartupHub,
+        133 │ + ··Accelerator,
+        134 │ + ··TechHQ,
+        135 │ + ··CloudRegion,
+    136 136 │   } from './tech-geo';
+    137 137 │
+
+
+tests\bootstrap-kv-publisher.test.mjs:105:62 lint/correctness/noUnusedFunctionParameters  FIXABLE  ━━━━━━━━━━
+
+  ! This parameter is unused.
+
+    104 │   it('aborts a KV write that exceeds its deadline', async () => {
+  > 105 │     const fetchFn = async (_url, { signal }) => new Promise((resolve, reject) => {
+        │                                                              ^^^^^^^
+    106 │       signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    107 │     });
+
+  i Unused parameters might be the result of an incomplete refactoring.
+
+  i Unsafe fix: If this is intentional, prepend resolve with an underscore.
+
+    103 103 │
+    104 104 │     it('aborts a KV write that exceeds its deadline', async () => {
+    105     │ - ····const·fetchFn·=·async·(_url,·{·signal·})·=>·new·Promise((resolve,·reject)·=>·{
+        105 │ + ····const·fetchFn·=·async·(_url,·{·signal·})·=>·new·Promise((_resolve,·reject)·=>·{
+    106 106 │         signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    107 107 │       });
+
+
+tests\chat-analyst-sanitize-yield.test.mts:21:89 lint/complexity/noAdjacentSpacesInRegex  FIXABLE  ━━━━━━━━━━
+
+  ! This regular expression contains unclear uses of consecutive spaces.
+
+    20 │ test('renderMarkdownDeferred yields, guards isConnected, renders, then scrolls (R5)', () => {
+  > 21 │   const m = src.match(/private renderMarkdownDeferred\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n  \}/);
+       │                                                                                         ^^
+    22 │   assert.ok(m, 'renderMarkdownDeferred helper exists');
+    23 │   const body = m![0];
+
+  i It's hard to visually count the amount of spaces.
+
+  i Safe fix: Use a quantifier instead.
+
+    19 19 │
+    20 20 │   test('renderMarkdownDeferred yields, guards isConnected, renders, then scrolls (R5)', () => {
+    21    │ - ··const·m·=·src.match(/private·renderMarkdownDeferred\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n··\}/);
+       21 │ + ··const·m·=·src.match(/private·renderMarkdownDeferred\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n·{2}\}/);
+    22 22 │     assert.ok(m, 'renderMarkdownDeferred helper exists');
+    23 23 │     const body = m![0];
+
+
+tests\chat-analyst-sanitize-yield.test.mts:34:90 lint/complexity/noAdjacentSpacesInRegex  FIXABLE  ━━━━━━━━━━
+
+  ! This regular expression contains unclear uses of consecutive spaces.
+
+    33 │ test('finalizeStreamingBubble does not scroll synchronously before the deferred render (R5)', () => {
+  > 34 │   const m = src.match(/private finalizeStreamingBubble\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n  \}/);
+       │                                                                                          ^^
+    35 │   assert.ok(m, 'finalizeStreamingBubble exists');
+    36 │   assert.doesNotMatch(m![0], /this\.scrollToBottom\(\)/,
+
+  i It's hard to visually count the amount of spaces.
+
+  i Safe fix: Use a quantifier instead.
+
+    32 32 │
+    33 33 │   test('finalizeStreamingBubble does not scroll synchronously before the deferred render (R5)', () => {
+    34    │ - ··const·m·=·src.match(/private·finalizeStreamingBubble\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n··\}/);
+       34 │ + ··const·m·=·src.match(/private·finalizeStreamingBubble\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n·{2}\}/);
+    35 35 │     assert.ok(m, 'finalizeStreamingBubble exists');
+    36 36 │     assert.doesNotMatch(m![0], /this\.scrollToBottom\(\)/,
+
+
+tests\chat-analyst-sanitize-yield.test.mts:41:80 lint/complexity/noAdjacentSpacesInRegex  FIXABLE  ━━━━━━━━━━
+
+  ! This regular expression contains unclear uses of consecutive spaces.
+
+    40 │ test('appendMessage scrolls synchronously only for the synchronous (user) branch (R5)', () => {
+  > 41 │   const m = src.match(/private appendMessage\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n  \}/);
+       │                                                                                ^^
+    42 │   assert.ok(m, 'appendMessage exists');
+    43 │   assert.match(m![0], /if \(role !== 'assistant'\) this\.scrollToBottom\(\)/,
+
+  i It's hard to visually count the amount of spaces.
+
+  i Safe fix: Use a quantifier instead.
+
+    39 39 │
+    40 40 │   test('appendMessage scrolls synchronously only for the synchronous (user) branch (R5)', () => {
+    41    │ - ··const·m·=·src.match(/private·appendMessage\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n··\}/);
+       41 │ + ··const·m·=·src.match(/private·appendMessage\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n·{2}\}/);
+    42 42 │     assert.ok(m, 'appendMessage exists');
+    43 43 │     assert.match(m![0], /if \(role !== 'assistant'\) this\.scrollToBottom\(\)/,
+
+
+tests\china-macro-seed.test.mjs:418:17 lint/suspicious/noUselessEscapeInString  FIXABLE  ━━━━━━━━━━━
+
+  ! The character doesn't need to be escaped.
+
+    416 │       () => parseNbsIndustrialRelease(
+    417 │         fixture('nbs-industrial.html').replace(
+  > 418 │           '2026\/07\/16 10:00',
+        │                 ^
+    419 │           '2026/07/26 10:00',
+    420 │         ),
+
+  i Only quotes that enclose the string and special characters need to be escaped.
+
+  i Safe fix: Unescape the character.
+
+    418 │ ··········'2026\/07\/16·10:00',
+        │                -
+
+tests\chokepoint-scenario-doc-parity.test.mjs:72:56 lint/complexity/noAdjacentSpacesInRegex  FIXABLE  ━━━━━━━━━━
+
+  ! This regular expression contains unclear uses of consecutive spaces.
+
+    70 │   assert.notEqual(start, -1, `${schemaName} schema not found`);
+    71 │   const afterStart = start + startNeedle.length;
+  > 72 │   const nextSchema = source.slice(afterStart).match(/\n        [A-Za-z0-9_]+:\n/);
+       │                                                        ^^^^^^^^
+    73 │   const end = nextSchema ? afterStart + nextSchema.index : source.length;
+    74 │   return source.slice(start, end);
+
+  i It's hard to visually count the amount of spaces.
+
+  i Safe fix: Use a quantifier instead.
+
+     70  70 │     assert.notEqual(start, -1, `${schemaName} schema not found`);
+     71  71 │     const afterStart = start + startNeedle.length;
+     72     │ - ··const·nextSchema·=·source.slice(afterStart).match(/\n········[A-Za-z0-9_]+:\n/);
+         72 │ + ··const·nextSchema·=·source.slice(afterStart).match(/\n·{8}[A-Za-z0-9_]+:\n/);
+     73  73 │     const end = nextSchema ? afterStart + nextSchema.index : source.length;
+     74  74 │     return source.slice(start, end);
+
+
+tests\clerk-token-cache-expiry.test.mts:539:5 lint/style/useConst  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! This let declares a variable that is only assigned once.
+
+    537 │   it('fails closed for a slow client when calibration refresh fails', async () => {
+    538 │     const serverNow = Date.now();
+  > 539 │     let clientNow = serverNow - 50_000;
+        │     ^^^
+    540 │     const token = tokenWithClaims({ iat: serverNow, exp: serverNow + 8_000 });
+    541 │     const session = {
+
+  i 'clientNow' is never reassigned.
+
+    537 │   it('fails closed for a slow client when calibration refresh fails', async () => {
+    538 │     const serverNow = Date.now();
+  > 539 │     let clientNow = serverNow - 50_000;
+        │         ^^^^^^^^^
+    540 │     const token = tokenWithClaims({ iat: serverNow, exp: serverNow + 8_000 });
+    541 │     const session = {
+
+  i Safe fix: Use const instead.
+
+    537 537 │     it('fails closed for a slow client when calibration refresh fails', async () => {
+    538 538 │       const serverNow = Date.now();
+    539     │ - ····let·clientNow·=·serverNow·-·50_000;
+        539 │ + ····const·clientNow·=·serverNow·-·50_000;
+    540 540 │       const token = tokenWithClaims({ iat: serverNow, exp: serverNow + 8_000 });
+    541 541 │       const session = {
+
+
+tests\shared-llm.test.mts:90:32 lint/correctness/noUnusedFunctionParameters  FIXABLE  ━━━━━━━━━━━━━━
+
+  ! This parameter is unused.
+
+    89 │     const bodies: Array<Record<string, unknown>> = [];
+  > 90 │     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+       │                                ^^^^^
+    91 │       if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+    92 │       bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+
+  i Unused parameters might be the result of an incomplete refactoring.
+
+  i Unsafe fix: If this is intentional, prepend input with an underscore.
+
+     88  88 │
+     89  89 │       const bodies: Array<Record<string, unknown>> = [];
+     90     │ - ····globalThis.fetch·=·(async·(input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+         90 │ + ····globalThis.fetch·=·(async·(_input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+     91  91 │         if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+     92  92 │         bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+
+
+tests\shared-llm.test.mts:275:32 lint/correctness/noUnusedFunctionParameters  FIXABLE  ━━━━━━━━━━━━━
+
+  ! This parameter is unused.
+
+    273 │     const postBodies: Array<Record<string, unknown>> = [];
+    274 │
+  > 275 │     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        │                                ^^^^^
+    276 │       if ((init?.method || 'GET') === 'GET') {
+    277 │         return new Response('', { status: 200 });
+
+  i Unused parameters might be the result of an incomplete refactoring.
+
+  i Unsafe fix: If this is intentional, prepend input with an underscore.
+
+    273 273 │       const postBodies: Array<Record<string, unknown>> = [];
+    274 274 │
+    275     │ - ····globalThis.fetch·=·(async·(input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+        275 │ + ····globalThis.fetch·=·(async·(_input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+    276 276 │         if ((init?.method || 'GET') === 'GET') {
+    277 277 │           return new Response('', { status: 200 });
+
+
+tests\shared-llm.test.mts:308:32 lint/correctness/noUnusedFunctionParameters  FIXABLE  ━━━━━━━━━━━━━
+
+  ! This parameter is unused.
+
+    307 │     const bodies: Array<Record<string, unknown>> = [];
+  > 308 │     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        │                                ^^^^^
+    309 │       if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+    310 │       bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+
+  i Unused parameters might be the result of an incomplete refactoring.
+
+  i Unsafe fix: If this is intentional, prepend input with an underscore.
+
+    306 306 │
+    307 307 │       const bodies: Array<Record<string, unknown>> = [];
+    308     │ - ····globalThis.fetch·=·(async·(input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+        308 │ + ····globalThis.fetch·=·(async·(_input:·RequestInfo·|·URL,·init?:·RequestInit)·=>·{
+    309 309 │         if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+    310 310 │         bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+
+
+tests\yahoo-sector-valuations.test.mjs:612:5 lint/style/useConst  FIXABLE  ━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  ! This let declares a variable that is only assigned once.
+
+    611 │   it('keeps quoteSummary usable after a v7Quote route cooldown', async () => {
+  > 612 │     let now = 1_700_000_000_000;
+        │     ^^^
+    613 │     const calls = [];
+    614 │     const client = new YahooQuoteSummaryClient({
+
+  i 'now' is never reassigned.
+
+    611 │   it('keeps quoteSummary usable after a v7Quote route cooldown', async () => {
+  > 612 │     let now = 1_700_000_000_000;
+        │         ^^^
+    613 │     const calls = [];
+    614 │     const client = new YahooQuoteSummaryClient({
+
+  i Safe fix: Use const instead.
+
+     610  610 │
+     611  611 │     it('keeps quoteSummary usable after a v7Quote route cooldown', async () => {
+     612      │ - ····let·now·=·1_700_000_000_000;
+          612 │ + ····const·now·=·1_700_000_000_000;
+     613  613 │       const calls = [];
+     614  614 │       const client = new YahooQuoteSummaryClient({
+
+
+The number of diagnostics exceeds the limit allowed. Use --max-diagnostics to increase it.
+Diagnostics not shown: 22.
+Checked 3327 files in 2s. No fixes applied.
+Found 33 warnings.
+Found 9 infos.
+
+> world-monitor@2.10.0 lint:safe-html
+> node scripts/enforce-safe-html.mjs
+
+Safe HTML guard passed (0 legacy HTML sinks tracked).
+[gate:exit] lint = 0
+[gate:start] lint-markdown
+
+> world-monitor@2.10.0 lint:md
+> markdownlint-cli2 "**/*.md" "!**/node_modules/**" "!.agent/**" "!.agents/**" "!.claude/**" "!.factory/**" "!.windsurf/**" "!skills/**" "!docs/internal/**" "!docs/Docs_To_Review/**" "!docs/archive/**" "!todos/**" "!docs/plans/**" "!docs/brainstorms/**" "!docs/ideation/**"
+
+markdownlint-cli2 v0.21.0 (markdownlint v0.40.0)
+Finding: **/*.md !**/node_modules/** !.agent/** !.agents/** !.claude/** !.factory/** !.windsurf/** !skills/** !docs/internal/** !docs/Docs_To_Review/** !docs/archive/** !todos/** !docs/plans/** !docs/brainstorms/** !docs/ideation/** !node_modules/** !dist/** !src-tauri/target/** !.planning/** !.context/** !.worktrees/** !DMCA-TAKEDOWN-NOTICE.md
+Linting: 257 file(s)
+Summary: 0 error(s)
+[gate:exit] lint-markdown = 0
+[gate:start] vite-production-build
+[36mvite v6.4.3 [32mbuilding for production...[36m[39m
+transforming...
+[32m✓[39m 2506 modules transformed.
+Generated an empty chunk: "rpc-client-cyber-v1".
+rendering chunks...
+[plugin vite:reporter]
+(!) D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/tauri-bridge.ts is dynamically imported by D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/components/LiveNewsPanel.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/runtime.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/runtime.ts but also statically imported by D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/app/desktop-updater.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/components/Panel.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/external-navigation.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/persistent-cache.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/runtime-config.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/settings-main.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/runtime-config.ts is dynamically imported by D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/premium-fetch.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/runtime.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/runtime.ts but also statically imported by D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/app/data-loader.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/components/EconomicPanel.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/components/MapPopup.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/components/Panel.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/components/ProBanner.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/components/RuntimeConfigPanel.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/components/SupplyChainPanel.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/components/TradePolicyPanel.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/components/provider-readiness-notice.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/config/panels.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/main.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/economic/index.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/gates/export.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/infrastructure/index.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/maritime/index.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/military-flights.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/panel-gating.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/provider-operations.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/settings-manager.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/summarization.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/trade/index.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/wingbits.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/settings-main.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/stock-analysis.ts is dynamically imported by D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/stock-analysis-history.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/services/stock-backtest.ts but also statically imported by D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/app/data-loader.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/components/StockAnalysisPanel.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/build/three.module.js is dynamically imported by D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/components/GlobeMap.ts, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/src/components/GlobeMap.ts but also statically imported by D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/globe.gl/dist/globe.gl.mjs, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three-conic-polygon-geometry/dist/three-conic-polygon-geometry.mjs, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three-geojson-geometry/dist/three-geojson-geometry.mjs, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three-globe/dist/three-globe.mjs, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three-render-objects/dist/three-render-objects.mjs, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three-slippy-map-globe/dist/three-slippy-map-globe.mjs, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/controls/FlyControls.js, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/controls/OrbitControls.js, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/controls/TrackballControls.js, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/geometries/TextGeometry.js, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/lines/LineMaterial.js, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/lines/LineSegments2.js, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/lines/LineSegmentsGeometry.js, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/loaders/FontLoader.js, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/postprocessing/EffectComposer.js, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/postprocessing/Pass.js, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/postprocessing/RenderPass.js, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/postprocessing/ShaderPass.js, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/renderers/CSS2DRenderer.js, D:/global-intelligence-earth/worldmonitor-phase12-lf-gate/node_modules/three/examples/jsm/utils/BufferGeometryUtils.js, dynamic import will not move module into another chunk.
+
+computing gzip size...
+[2mdist/[22m[32mbuild-hash.txt                                        [39m[1m[2m    0.00 kB[22m[1m[22m[2m │ gzip:   0.02 kB[22m
+[2mdist/[22m[32mmanifest.webmanifest                                  [39m[1m[2m    0.78 kB[22m[1m[22m
+[2mdist/[22m[32membed.html                                            [39m[1m[2m    1.91 kB[22m[1m[22m[2m │ gzip:   0.64 kB[22m
+[2mdist/[22m[32msettings.html                                         [39m[1m[2m    3.75 kB[22m[1m[22m[2m │ gzip:   1.46 kB[22m
+[2mdist/[22m[32mlive-channels.html                                    [39m[1m[2m    4.86 kB[22m[1m[22m[2m │ gzip:   1.20 kB[22m
+[2mdist/[22m[32mmcp-grant.html                                        [39m[1m[2m    5.50 kB[22m[1m[22m[2m │ gzip:   2.28 kB[22m
+[2mdist/[22m[32massets/nunito-vietnamese-700-normal-Ch8EUCfz.woff2    [39m[1m[2m    5.96 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-400-normal-BHkVbP3T.woff2    [39m[1m[2m    6.12 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-600-normal-BY8O6Cug.woff2    [39m[1m[2m    6.20 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-400-italic-B2PI3A8Y.woff2    [39m[1m[2m    6.58 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-700-normal-C9SQsXvj.woff     [39m[1m[2m    8.07 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-400-normal-DtOtW02z.woff     [39m[1m[2m    8.25 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-600-normal-DO1RqFw5.woff     [39m[1m[2m    8.27 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-400-normal-xAOo5cBP.woff2      [39m[1m[2m    8.47 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-700-normal-DP36NgGt.woff2      [39m[1m[2m    8.52 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-600-normal-DJGQ2h05.woff2      [39m[1m[2m    8.54 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-vietnamese-400-italic-DKD9zHau.woff     [39m[1m[2m    8.82 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-arabic-400-normal-CyCXRvzh.woff2       [39m[1m[2m    8.93 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-arabic-500-normal-BZ8ojJNu.woff2       [39m[1m[2m    8.94 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-400-italic-ZssV-nwQ.woff2      [39m[1m[2m    8.98 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-arabic-700-normal-D2-eand5.woff2       [39m[1m[2m    9.02 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-latin-500-normal-CoYeBiSI.woff2        [39m[1m[2m    9.90 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-latin-700-normal-BypgxfGb.woff2        [39m[1m[2m   10.00 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-latin-400-normal-BVNSOH3d.woff2        [39m[1m[2m   10.26 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-700-normal-DfHRUDv-.woff       [39m[1m[2m   10.40 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-400-normal-D1j0u8EH.woff       [39m[1m[2m   10.46 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-600-normal-BUjmtIuu.woff       [39m[1m[2m   10.54 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-700-normal-BuR0mlCG.woff2  [39m[1m[2m   10.99 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-400-normal-CuPM9foi.woff2  [39m[1m[2m   11.16 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-600-normal-CWPPjBOD.woff2  [39m[1m[2m   11.20 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-400-italic-kLw1qHb7.woff       [39m[1m[2m   11.21 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-400-italic-B76xxBNn.woff2  [39m[1m[2m   11.86 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-arabic-500-normal-CbVEaYEW.woff        [39m[1m[2m   11.88 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-arabic-400-normal-DCQxawbB.woff        [39m[1m[2m   12.01 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-arabic-700-normal-9L7Zusdl.woff        [39m[1m[2m   12.16 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-latin-500-normal-DU9v6xgj.woff         [39m[1m[2m   13.02 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-latin-700-normal-CV3bxpHe.woff         [39m[1m[2m   13.16 kB[22m[1m[22m
+[2mdist/[22m[32massets/tajawal-latin-400-normal-BdYcZznU.woff         [39m[1m[2m   13.46 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-700-normal-DfoqN4Gs.woff   [39m[1m[2m   13.87 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-600-normal-vnfu4DTE.woff   [39m[1m[2m   14.10 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-400-normal-xaE7D4Sw.woff   [39m[1m[2m   14.11 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-cyrillic-ext-400-italic-CEz18L3t.woff   [39m[1m[2m   15.07 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-700-normal-BWeMsAzO.woff2     [39m[1m[2m   15.82 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-400-normal-i-8OOpdj.woff2     [39m[1m[2m   15.89 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-600-normal-Dd9Zuxh1.woff2     [39m[1m[2m   16.09 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-700-normal-Dort48En.woff2         [39m[1m[2m   16.23 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-400-normal-r8SDr6Up.woff2         [39m[1m[2m   16.32 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-600-normal-Br8yIETf.woff2         [39m[1m[2m   16.56 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-400-italic--NHIeDzu.woff2     [39m[1m[2m   16.86 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-400-italic-BnrCcHbg.woff2         [39m[1m[2m   17.14 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-700-normal-OcDqTBcA.woff          [39m[1m[2m   19.99 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-400-normal-DKg4f3fz.woff          [39m[1m[2m   20.33 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-600-normal-Cd0eNu1l.woff          [39m[1m[2m   20.49 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-700-normal-D4woHhbd.woff      [39m[1m[2m   21.01 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-400-normal-CjMJVfGn.woff      [39m[1m[2m   21.29 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-600-normal-BKUpuB78.woff      [39m[1m[2m   21.30 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-400-italic-CDISnx4K.woff          [39m[1m[2m   21.43 kB[22m[1m[22m
+[2mdist/[22m[32massets/nunito-latin-ext-400-italic-k9EPGpCk.woff      [39m[1m[2m   22.45 kB[22m[1m[22m
+[2mdist/[22m[32mdashboard-happy.html                                  [39m[1m[2m   37.37 kB[22m[1m[22m[2m │ gzip:   8.80 kB[22m
+[2mdist/[22m[32mdashboard.html                                        [39m[1m[2m   37.63 kB[22m[1m[22m[2m │ gzip:   8.88 kB[22m
+[2mdist/[22m[32mdashboard-tech.html                                   [39m[1m[2m   37.74 kB[22m[1m[22m[2m │ gzip:   8.91 kB[22m
+[2mdist/[22m[32mdashboard-finance.html                                [39m[1m[2m   37.79 kB[22m[1m[22m[2m │ gzip:   8.89 kB[22m
+[2mdist/[22m[32mdashboard-commodity.html                              [39m[1m[2m   37.89 kB[22m[1m[22m[2m │ gzip:   8.86 kB[22m
+[2mdist/[22m[32mdashboard-energy.html                                 [39m[1m[2m   38.13 kB[22m[1m[22m[2m │ gzip:   9.10 kB[22m
+[2mdist/[22m[32massets/analysis.worker-wLtzui9u.js                    [39m[1m[2m   81.97 kB[22m[1m[22m
+[2mdist/[22m[32massets/ml.worker-CVf-0kIY.js                          [39m[1m[2m  824.61 kB[22m[1m[22m
+[2mdist/[22m[35massets/400-CLlbYveQ.css                               [39m[1m[2m    1.21 kB[22m[1m[22m[2m │ gzip:   0.52 kB[22m
+[2mdist/[22m[35massets/500-0ssR2RCH.css                               [39m[1m[2m    1.21 kB[22m[1m[22m[2m │ gzip:   0.51 kB[22m
+[2mdist/[22m[35massets/700-j49vq0yq.css                               [39m[1m[2m    1.21 kB[22m[1m[22m[2m │ gzip:   0.51 kB[22m
+[2mdist/[22m[35massets/400-q1oScHLn.css                               [39m[1m[2m    1.80 kB[22m[1m[22m[2m │ gzip:   0.57 kB[22m
+[2mdist/[22m[35massets/600-C6AwBqtE.css                               [39m[1m[2m    1.80 kB[22m[1m[22m[2m │ gzip:   0.57 kB[22m
+[2mdist/[22m[35massets/700-Ckf_Wdne.css                               [39m[1m[2m    1.80 kB[22m[1m[22m[2m │ gzip:   0.57 kB[22m
+[2mdist/[22m[35massets/400-italic-BxiRhXbr.css                        [39m[1m[2m    1.80 kB[22m[1m[22m[2m │ gzip:   0.58 kB[22m
+[2mdist/[22m[35massets/embed-BsNNCdEU.css                             [39m[1m[2m    3.96 kB[22m[1m[22m[2m │ gzip:   1.16 kB[22m
+[2mdist/[22m[35massets/china-factory-C65kuiIc.css                     [39m[1m[2m    4.16 kB[22m[1m[22m[2m │ gzip:   1.53 kB[22m
+[2mdist/[22m[35massets/provider-operations-DvMBEtNT.css               [39m[1m[2m    4.34 kB[22m[1m[22m[2m │ gzip:   1.40 kB[22m
+[2mdist/[22m[35massets/maritime-logistics-BXjwsxUS.css                [39m[1m[2m    6.80 kB[22m[1m[22m[2m │ gzip:   2.05 kB[22m
+[2mdist/[22m[35massets/stock-workspace-ChLN9GQn.css                   [39m[1m[2m   10.33 kB[22m[1m[22m[2m │ gzip:   2.67 kB[22m
+[2mdist/[22m[35massets/settings-oLlP82Gr.css                          [39m[1m[2m   20.75 kB[22m[1m[22m[2m │ gzip:   3.92 kB[22m
+[2mdist/[22m[35massets/happy-theme-mHHp2ayX.css                       [39m[1m[2m   25.43 kB[22m[1m[22m[2m │ gzip:   5.23 kB[22m
+[2mdist/[22m[35massets/maplibre-B46vZ9Yf.css                          [39m[1m[2m   69.94 kB[22m[1m[22m[2m │ gzip:  10.06 kB[22m
+[2mdist/[22m[35massets/main-35QpqP5Z.css                              [39m[1m[2m  545.25 kB[22m[1m[22m[2m │ gzip:  83.16 kB[22m
+[2mdist/[22m[35massets/embed-url-CD4OF9ZL.css                         [39m[1m[2m  583.52 kB[22m[1m[22m[2m │ gzip:  88.83 kB[22m
+[2mdist/[22m[36massets/rpc-client-cyber-v1-l0sNRNKZ.js                [39m[1m[2m    0.00 kB[22m[1m[22m[2m │ gzip:   0.02 kB[22m
+[2mdist/[22m[36massets/ciss-staleness-BF7WkacN.js                     [39m[1m[2m    0.03 kB[22m[1m[22m[2m │ gzip:   0.05 kB[22m
+[2mdist/[22m[36massets/d3-Bq7PrvBt.js                                 [39m[1m[2m    0.04 kB[22m[1m[22m[2m │ gzip:   0.06 kB[22m
+[2mdist/[22m[36massets/ports-D-T2TUIr.js                              [39m[1m[2m    0.07 kB[22m[1m[22m[2m │ gzip:   0.09 kB[22m
+[2mdist/[22m[36massets/array-2GBN5xbU.js                              [39m[1m[2m    0.14 kB[22m[1m[22m[2m │ gzip:   0.12 kB[22m
+[2mdist/[22m[36massets/news-context-CqnvrXzz.js                       [39m[1m[2m    0.15 kB[22m[1m[22m[2m │ gzip:   0.15 kB[22m
+[2mdist/[22m[36massets/investments-focus-kn7WiKLY.js                  [39m[1m[2m    0.15 kB[22m[1m[22m[2m │ gzip:   0.13 kB[22m
+[2mdist/[22m[36massets/max-DBeXZoyG.js                                [39m[1m[2m    0.20 kB[22m[1m[22m[2m │ gzip:   0.16 kB[22m
+[2mdist/[22m[36massets/cii-score-changes-Cz8doaSe.js                  [39m[1m[2m    0.23 kB[22m[1m[22m[2m │ gzip:   0.19 kB[22m
+[2mdist/[22m[36massets/extent-Ccx1MofX.js                             [39m[1m[2m    0.25 kB[22m[1m[22m[2m │ gzip:   0.18 kB[22m
+[2mdist/[22m[36massets/hormuz-tracker-C0OXIR7Q.js                     [39m[1m[2m    0.27 kB[22m[1m[22m[2m │ gzip:   0.22 kB[22m
+[2mdist/[22m[36massets/_cii-panel-partition-Dvh5P0rP.js               [39m[1m[2m    0.32 kB[22m[1m[22m[2m │ gzip:   0.18 kB[22m
+[2mdist/[22m[36massets/contrast-b4cEFhzZ.js                           [39m[1m[2m    0.39 kB[22m[1m[22m[2m │ gzip:   0.28 kB[22m
+[2mdist/[22m[36massets/disruption-timeline-rn1TsGcA.js                [39m[1m[2m    0.41 kB[22m[1m[22m[2m │ gzip:   0.28 kB[22m
+[2mdist/[22m[36massets/_live-webcams-origin-BScNR-MD.js               [39m[1m[2m    0.42 kB[22m[1m[22m[2m │ gzip:   0.29 kB[22m
+[2mdist/[22m[36massets/pointer-Drloq0xg.js                            [39m[1m[2m    0.45 kB[22m[1m[22m[2m │ gzip:   0.29 kB[22m
+[2mdist/[22m[36massets/live-stream-settings-BWdKungb.js               [39m[1m[2m    0.53 kB[22m[1m[22m[2m │ gzip:   0.31 kB[22m
+[2mdist/[22m[36massets/imagery-0o2PlFTS.js                            [39m[1m[2m    0.53 kB[22m[1m[22m[2m │ gzip:   0.34 kB[22m
+[2mdist/[22m[36massets/live-news-CKKxmyfj.js                          [39m[1m[2m    0.57 kB[22m[1m[22m[2m │ gzip:   0.38 kB[22m
+[2mdist/[22m[36massets/live-media-controller-CORUNGUN.js              [39m[1m[2m    0.57 kB[22m[1m[22m[2m │ gzip:   0.30 kB[22m
+[2mdist/[22m[36massets/insights-loader-xBNGGCVP.js                    [39m[1m[2m    0.57 kB[22m[1m[22m[2m │ gzip:   0.35 kB[22m
+[2mdist/[22m[36massets/fuel-shortage-registry-store-DOOgfqmY.js       [39m[1m[2m    0.59 kB[22m[1m[22m[2m │ gzip:   0.35 kB[22m
+[2mdist/[22m[36massets/storage-facility-registry-store-v1rRz4Q2.js    [39m[1m[2m    0.61 kB[22m[1m[22m[2m │ gzip:   0.35 kB[22m
+[2mdist/[22m[36massets/cross-domain-storage-BTDF4V0h.js               [39m[1m[2m    0.63 kB[22m[1m[22m[2m │ gzip:   0.47 kB[22m
+[2mdist/[22m[36massets/analyst-denial-B6xPFUy1.js                     [39m[1m[2m    0.65 kB[22m[1m[22m[2m │ gzip:   0.39 kB[22m
+[2mdist/[22m[36massets/shortage-evidence-CwhDyV8K.js                  [39m[1m[2m    0.66 kB[22m[1m[22m[2m │ gzip:   0.39 kB[22m
+[2mdist/[22m[36massets/map-interaction-guard-CvL7V2q2.js              [39m[1m[2m    0.67 kB[22m[1m[22m[2m │ gzip:   0.33 kB[22m
+[2mdist/[22m[36massets/storage-evidence-DthMONVc.js                   [39m[1m[2m    0.67 kB[22m[1m[22m[2m │ gzip:   0.39 kB[22m
+[2mdist/[22m[36massets/pipeline-registry-store-PLzCGcz4.js            [39m[1m[2m    0.67 kB[22m[1m[22m[2m │ gzip:   0.39 kB[22m
+[2mdist/[22m[36massets/correlation-runtime-mode-CCpiWRWz.js           [39m[1m[2m    0.85 kB[22m[1m[22m[2m │ gzip:   0.52 kB[22m
+[2mdist/[22m[36massets/_energy-risk-overview-state-0LaVUMqp.js        [39m[1m[2m    0.85 kB[22m[1m[22m[2m │ gzip:   0.37 kB[22m
+[2mdist/[22m[36massets/sparkline-EyuwviXB.js                          [39m[1m[2m    0.91 kB[22m[1m[22m[2m │ gzip:   0.40 kB[22m
+[2mdist/[22m[36massets/stack-DSObyWpB.js                              [39m[1m[2m    0.97 kB[22m[1m[22m[2m │ gzip:   0.49 kB[22m
+[2mdist/[22m[36massets/api-BgSsc8iN.js                                [39m[1m[2m    1.00 kB[22m[1m[22m[2m │ gzip:   0.51 kB[22m
+[2mdist/[22m[36massets/provider-readiness-notice-BtJDSei0.js          [39m[1m[2m    1.01 kB[22m[1m[22m[2m │ gzip:   0.75 kB[22m
+[2mdist/[22m[36massets/yielding-work-queue-8w2rEZXi.js                [39m[1m[2m    1.06 kB[22m[1m[22m[2m │ gzip:   0.62 kB[22m
+[2mdist/[22m[36massets/pipeline-evidence-CqE_XO-h.js                  [39m[1m[2m    1.14 kB[22m[1m[22m[2m │ gzip:   0.57 kB[22m
+[2mdist/[22m[36massets/debugbear-rum-CTwHbetR.js                      [39m[1m[2m    1.16 kB[22m[1m[22m[2m │ gzip:   0.61 kB[22m
+[2mdist/[22m[36massets/global-tenders-_zvQtVyW.js                     [39m[1m[2m    1.16 kB[22m[1m[22m[2m │ gzip:   0.68 kB[22m
+[2mdist/[22m[36massets/rpc-client-positive-events-v1-Cz97LCCM.js      [39m[1m[2m    1.30 kB[22m[1m[22m[2m │ gzip:   0.65 kB[22m
+[2mdist/[22m[36massets/humanity-counters-D6zs5eod.js                  [39m[1m[2m    1.30 kB[22m[1m[22m[2m │ gzip:   0.66 kB[22m
+[2mdist/[22m[36massets/basemap-DTliF0vF.js                            [39m[1m[2m    1.32 kB[22m[1m[22m[2m │ gzip:   0.58 kB[22m
+[2mdist/[22m[36massets/premium-denial-DOV0KxZK.js                     [39m[1m[2m    1.33 kB[22m[1m[22m[2m │ gzip:   0.60 kB[22m
+[2mdist/[22m[36massets/deduction-probability-BjdSoRov.js              [39m[1m[2m    1.35 kB[22m[1m[22m[2m │ gzip:   0.63 kB[22m
+[2mdist/[22m[36massets/pinned-store-DOAUPiGA.js                       [39m[1m[2m    1.37 kB[22m[1m[22m[2m │ gzip:   0.68 kB[22m
+[2mdist/[22m[36massets/rpc-client-natural-v1-CmqX9tZ-.js              [39m[1m[2m    1.40 kB[22m[1m[22m[2m │ gzip:   0.71 kB[22m
+[2mdist/[22m[36massets/liveChannels-DIC2OBLX.js                       [39m[1m[2m    1.42 kB[22m[1m[22m[2m │ gzip:   0.74 kB[22m
+[2mdist/[22m[36massets/referral-xxGus2vI.js                           [39m[1m[2m    1.42 kB[22m[1m[22m[2m │ gzip:   0.73 kB[22m
+[2mdist/[22m[36massets/rpc-client-thermal-v1-3QpqpyG8.js              [39m[1m[2m    1.43 kB[22m[1m[22m[2m │ gzip:   0.72 kB[22m
+[2mdist/[22m[36massets/format-intel-brief-DSjHQFgT.js                 [39m[1m[2m    1.43 kB[22m[1m[22m[2m │ gzip:   0.78 kB[22m
+[2mdist/[22m[36massets/rpc-client-radiation-v1-Biwoaels.js            [39m[1m[2m    1.44 kB[22m[1m[22m[2m │ gzip:   0.72 kB[22m
+[2mdist/[22m[36massets/font-settings-BRtdvVWs.js                      [39m[1m[2m    1.44 kB[22m[1m[22m[2m │ gzip:   0.62 kB[22m
+[2mdist/[22m[36massets/forecast-0DvwDhrC.js                           [39m[1m[2m    1.45 kB[22m[1m[22m[2m │ gzip:   0.78 kB[22m
+[2mdist/[22m[36massets/index-Ckx2KEKE.js                              [39m[1m[2m    1.47 kB[22m[1m[22m[2m │ gzip:   0.86 kB[22m
+[2mdist/[22m[36massets/theme-manager-AUWrfeQS.js                      [39m[1m[2m    1.48 kB[22m[1m[22m[2m │ gzip:   0.66 kB[22m
+[2mdist/[22m[36massets/world-happiness-BxMJ6f_1.js                    [39m[1m[2m    1.48 kB[22m[1m[22m[2m │ gzip:   0.84 kB[22m
+[2mdist/[22m[36massets/rpc-client-giving-v1-D1R0d-8x.js               [39m[1m[2m    1.52 kB[22m[1m[22m[2m │ gzip:   0.75 kB[22m
+[2mdist/[22m[36massets/topojson-BwRznoQ3.js                           [39m[1m[2m    1.56 kB[22m[1m[22m[2m │ gzip:   0.72 kB[22m
+[2mdist/[22m[36massets/rpc-client-health-v1-D4iujQ_e.js               [39m[1m[2m    1.59 kB[22m[1m[22m[2m │ gzip:   0.68 kB[22m
+[2mdist/[22m[36massets/realtime-observation-B8tyVs6o.js               [39m[1m[2m    1.59 kB[22m[1m[22m[2m │ gzip:   0.70 kB[22m
+[2mdist/[22m[36massets/live-tankers-DbYEu1Vd.js                       [39m[1m[2m    1.59 kB[22m[1m[22m[2m │ gzip:   0.84 kB[22m
+[2mdist/[22m[36massets/rpc-client-prediction-v1-CpCOR8GZ.js           [39m[1m[2m    1.63 kB[22m[1m[22m[2m │ gzip:   0.78 kB[22m
+[2mdist/[22m[36massets/rpc-client-seismology-v1-BMJf2N2O.js           [39m[1m[2m    1.68 kB[22m[1m[22m[2m │ gzip:   0.80 kB[22m
+[2mdist/[22m[36massets/settings-persistence-B12c0Yez.js               [39m[1m[2m    1.76 kB[22m[1m[22m[2m │ gzip:   1.01 kB[22m
+[2mdist/[22m[36massets/rpc-client-wildfire-v1-t_BtnRfS.js             [39m[1m[2m    1.83 kB[22m[1m[22m[2m │ gzip:   0.83 kB[22m
+[2mdist/[22m[36massets/stock-fundamentals-display-BdKFnC_N.js         [39m[1m[2m    1.85 kB[22m[1m[22m[2m │ gzip:   0.72 kB[22m
+[2mdist/[22m[36massets/keyword-spike-core-D298mGib.js                 [39m[1m[2m    1.91 kB[22m[1m[22m[2m │ gzip:   0.95 kB[22m
+[2mdist/[22m[36massets/products-DdvFCqqK.js                           [39m[1m[2m    1.92 kB[22m[1m[22m[2m │ gzip:   0.53 kB[22m
+[2mdist/[22m[36massets/index-Zt4BwSlo.js                              [39m[1m[2m    1.93 kB[22m[1m[22m[2m │ gzip:   0.95 kB[22m
+[2mdist/[22m[36massets/rpc-client-sanctions-v1-DUDkwRop.js            [39m[1m[2m    1.93 kB[22m[1m[22m[2m │ gzip:   0.79 kB[22m
+[2mdist/[22m[36massets/rpc-client-unrest-v1-B1JfjmHO.js               [39m[1m[2m    2.00 kB[22m[1m[22m[2m │ gzip:   0.89 kB[22m
+[2mdist/[22m[36massets/rpc-client-scenario-v1-Dd26pYsa.js             [39m[1m[2m    2.03 kB[22m[1m[22m[2m │ gzip:   0.80 kB[22m
+[2mdist/[22m[36massets/imagery-preview-BdHzF9z7.js                    [39m[1m[2m    2.04 kB[22m[1m[22m[2m │ gzip:   1.04 kB[22m
+[2mdist/[22m[36massets/rpc-client-resilience-v1-DGpenSyA.js           [39m[1m[2m    2.07 kB[22m[1m[22m[2m │ gzip:   0.79 kB[22m
+[2mdist/[22m[36massets/rpc-client-webcam-v1-CO81zj9I.js               [39m[1m[2m    2.08 kB[22m[1m[22m[2m │ gzip:   0.82 kB[22m
+[2mdist/[22m[36massets/attribution-footer-DXKiPXlq.js                 [39m[1m[2m    2.15 kB[22m[1m[22m[2m │ gzip:   1.05 kB[22m
+[2mdist/[22m[36massets/rpc-client-shipping-v2-DLnowl1T.js             [39m[1m[2m    2.16 kB[22m[1m[22m[2m │ gzip:   0.83 kB[22m
+[2mdist/[22m[36massets/rpc-client-displacement-v1-Bb12B88x.js         [39m[1m[2m    2.19 kB[22m[1m[22m[2m │ gzip:   0.85 kB[22m
+[2mdist/[22m[36massets/fx-rates-C75bePW4.js                           [39m[1m[2m    2.20 kB[22m[1m[22m[2m │ gzip:   0.90 kB[22m
+[2mdist/[22m[36massets/globe-render-settings-BzOdV484.js              [39m[1m[2m    2.20 kB[22m[1m[22m[2m │ gzip:   0.82 kB[22m
+[2mdist/[22m[36massets/rpc-client-news-v1-BFvEhvrC.js                 [39m[1m[2m    2.23 kB[22m[1m[22m[2m │ gzip:   0.84 kB[22m
+[2mdist/[22m[36massets/rpc-client-maritime-v1-BJc6dArx.js             [39m[1m[2m    2.31 kB[22m[1m[22m[2m │ gzip:   0.89 kB[22m
+[2mdist/[22m[36massets/followed-only-chip-Bk9bDgWs.js                 [39m[1m[2m    2.32 kB[22m[1m[22m[2m │ gzip:   1.15 kB[22m
+[2mdist/[22m[36massets/settings-window-DjIuzNLF.js                    [39m[1m[2m    2.40 kB[22m[1m[22m[2m │ gzip:   1.15 kB[22m
+[2mdist/[22m[36massets/index-Dnx3jC05.js                              [39m[1m[2m    2.64 kB[22m[1m[22m[2m │ gzip:   1.13 kB[22m
+[2mdist/[22m[36massets/panel-gating-C58yCkE6.js                       [39m[1m[2m    2.86 kB[22m[1m[22m[2m │ gzip:   1.13 kB[22m
+[2mdist/[22m[36massets/panel-support-Ba-8qESk.js                      [39m[1m[2m    2.92 kB[22m[1m[22m[2m │ gzip:   1.31 kB[22m
+[2mdist/[22m[36massets/rpc-client-forecast-v1-DnNeMFOq.js             [39m[1m[2m    2.99 kB[22m[1m[22m[2m │ gzip:   0.87 kB[22m
+[2mdist/[22m[36massets/monotone-804fPAVO.js                           [39m[1m[2m    3.00 kB[22m[1m[22m[2m │ gzip:   1.16 kB[22m
+[2mdist/[22m[36massets/index-C0dXJpUm.js                              [39m[1m[2m    3.05 kB[22m[1m[22m[2m │ gzip:   1.11 kB[22m
+[2mdist/[22m[36massets/FrameworkSelector-CRRW-Xqt.js                  [39m[1m[2m    3.12 kB[22m[1m[22m[2m │ gzip:   1.22 kB[22m
+[2mdist/[22m[36massets/push-notifications-BCpXI3b5.js                 [39m[1m[2m    3.16 kB[22m[1m[22m[2m │ gzip:   1.42 kB[22m
+[2mdist/[22m[36massets/renewable-energy-data-N3ION9qT.js              [39m[1m[2m    3.21 kB[22m[1m[22m[2m │ gzip:   1.45 kB[22m
+[2mdist/[22m[36massets/happy-share-renderer-BZVWnl0S.js               [39m[1m[2m    3.22 kB[22m[1m[22m[2m │ gzip:   1.50 kB[22m
+[2mdist/[22m[36massets/rpc-client-climate-v1-CPt9u37w.js              [39m[1m[2m    3.33 kB[22m[1m[22m[2m │ gzip:   0.94 kB[22m
+[2mdist/[22m[36massets/rpc-client-research-v1-CHwGWYnp.js             [39m[1m[2m    3.44 kB[22m[1m[22m[2m │ gzip:   0.97 kB[22m
+[2mdist/[22m[36massets/rpc-client-conflict-v1-CG5yfZk-.js             [39m[1m[2m    3.46 kB[22m[1m[22m[2m │ gzip:   0.95 kB[22m
+[2mdist/[22m[36massets/arc-CGlAFq2g.js                                [39m[1m[2m    3.58 kB[22m[1m[22m[2m │ gzip:   1.54 kB[22m
+[2mdist/[22m[36massets/line-DEDRnOn1.js                               [39m[1m[2m    3.61 kB[22m[1m[22m[2m │ gzip:   1.50 kB[22m
+[2mdist/[22m[36massets/chokepoint-registry-DUgEmTBQ.js                [39m[1m[2m    3.62 kB[22m[1m[22m[2m │ gzip:   0.88 kB[22m
+[2mdist/[22m[36massets/ollama-models-Bkp8DQxM.js                      [39m[1m[2m    3.73 kB[22m[1m[22m[2m │ gzip:   1.60 kB[22m
+[2mdist/[22m[36massets/dom-utils-B8MVJOEB.js                          [39m[1m[2m    3.76 kB[22m[1m[22m[2m │ gzip:   1.70 kB[22m
+[2mdist/[22m[36massets/persistent-cache-CCC3xpk5.js                   [39m[1m[2m    3.77 kB[22m[1m[22m[2m │ gzip:   1.40 kB[22m
+[2mdist/[22m[36massets/index-j37o84Mr.js                              [39m[1m[2m    3.89 kB[22m[1m[22m[2m │ gzip:   1.46 kB[22m
+[2mdist/[22m[36massets/ProActivationChip-UdzX2afR.js                  [39m[1m[2m    4.03 kB[22m[1m[22m[2m │ gzip:   1.86 kB[22m
+[2mdist/[22m[36massets/embed-CB6Ma3hk.js                              [39m[1m[2m    4.12 kB[22m[1m[22m[2m │ gzip:   1.77 kB[22m
+[2mdist/[22m[36massets/CountryDeepDivePanel-cii-BBvkpdDg.js           [39m[1m[2m    4.19 kB[22m[1m[22m[2m │ gzip:   1.95 kB[22m
+[2mdist/[22m[36massets/follow-button-PfpTZ1VT.js                      [39m[1m[2m    4.28 kB[22m[1m[22m[2m │ gzip:   1.86 kB[22m
+[2mdist/[22m[36massets/threat-timeline-utils-BgwkyzMF.js              [39m[1m[2m    4.30 kB[22m[1m[22m[2m │ gzip:   1.81 kB[22m
+[2mdist/[22m[36massets/rpc-client-trade-v1-BeX7uSKd.js                [39m[1m[2m    4.33 kB[22m[1m[22m[2m │ gzip:   1.07 kB[22m
+[2mdist/[22m[36massets/rpc-client-consumer-prices-v1-K8EM9w0G.js      [39m[1m[2m    4.52 kB[22m[1m[22m[2m │ gzip:   0.94 kB[22m
+[2mdist/[22m[36massets/trade-routes-BhS7CECf.js                       [39m[1m[2m    4.66 kB[22m[1m[22m[2m │ gzip:   1.33 kB[22m
+[2mdist/[22m[36massets/tech-activity-Dgy-lQyM.js                      [39m[1m[2m    4.68 kB[22m[1m[22m[2m │ gzip:   1.93 kB[22m
+[2mdist/[22m[36massets/agent-bus-applier-Dvqas8i4.js                  [39m[1m[2m    4.69 kB[22m[1m[22m[2m │ gzip:   1.97 kB[22m
+[2mdist/[22m[36massets/cable-activity-BnaVN9VX.js                     [39m[1m[2m    4.91 kB[22m[1m[22m[2m │ gzip:   2.43 kB[22m
+[2mdist/[22m[36massets/continuous-CZcCkYLj.js                         [39m[1m[2m    4.93 kB[22m[1m[22m[2m │ gzip:   2.08 kB[22m
+[2mdist/[22m[36massets/index-D7bXIZqw.js                              [39m[1m[2m    5.06 kB[22m[1m[22m[2m │ gzip:   1.75 kB[22m
+[2mdist/[22m[36massets/widget-sanitizer-CMAgMQgV.js                   [39m[1m[2m    5.72 kB[22m[1m[22m[2m │ gzip:   2.60 kB[22m
+[2mdist/[22m[36massets/rpc-client-infrastructure-v1-CiDVoFys.js       [39m[1m[2m    5.76 kB[22m[1m[22m[2m │ gzip:   1.27 kB[22m
+[2mdist/[22m[36massets/rpc-client-military-v1-CEDanz9l.js             [39m[1m[2m    5.80 kB[22m[1m[22m[2m │ gzip:   1.31 kB[22m
+[2mdist/[22m[36massets/source-coverage-Bzx0i9ge.js                    [39m[1m[2m    5.94 kB[22m[1m[22m[2m │ gzip:   2.60 kB[22m
+[2mdist/[22m[36massets/provider-operations-D15yW7F-.js                [39m[1m[2m    5.95 kB[22m[1m[22m[2m │ gzip:   3.14 kB[22m
+[2mdist/[22m[36massets/linear-C9cxmx_3.js                             [39m[1m[2m    6.01 kB[22m[1m[22m[2m │ gzip:   2.68 kB[22m
+[2mdist/[22m[36massets/mcpGrant-hgxAj1wB.js                           [39m[1m[2m    6.15 kB[22m[1m[22m[2m │ gzip:   2.36 kB[22m
+[2mdist/[22m[36massets/notification-channels-B7J5fbvW.js              [39m[1m[2m    6.27 kB[22m[1m[22m[2m │ gzip:   2.13 kB[22m
+[2mdist/[22m[36massets/giving-renderer-CpkqOgNM.js                    [39m[1m[2m    6.76 kB[22m[1m[22m[2m │ gzip:   2.11 kB[22m
+[2mdist/[22m[36massets/rss-COp5z-Yq.js                                [39m[1m[2m    6.84 kB[22m[1m[22m[2m │ gzip:   3.07 kB[22m
+[2mdist/[22m[36massets/transit-chart-C-cwZIQc.js                      [39m[1m[2m    8.43 kB[22m[1m[22m[2m │ gzip:   3.36 kB[22m
+[2mdist/[22m[36massets/trending-keywords-Dpl-DMw0.js                  [39m[1m[2m    8.56 kB[22m[1m[22m[2m │ gzip:   3.58 kB[22m
+[2mdist/[22m[36massets/cross-strait-activity-summary-BM1w-uEq.js      [39m[1m[2m    8.67 kB[22m[1m[22m[2m │ gzip:   3.04 kB[22m
+[2mdist/[22m[36massets/market-chart-modal-BFKtcg2w.js                 [39m[1m[2m    8.89 kB[22m[1m[22m[2m │ gzip:   3.74 kB[22m
+[2mdist/[22m[36massets/signal-quality-DQa7oTXj.js                     [39m[1m[2m    8.96 kB[22m[1m[22m[2m │ gzip:   3.75 kB[22m
+[2mdist/[22m[36massets/conservation-wins-n0S2OTZQ.js                  [39m[1m[2m    9.03 kB[22m[1m[22m[2m │ gzip:   2.80 kB[22m
+[2mdist/[22m[36massets/irradiators-DPwq6d5a.js                        [39m[1m[2m    9.13 kB[22m[1m[22m[2m │ gzip:   3.07 kB[22m
+[2mdist/[22m[36massets/rpc-client-aviation-v1-C2wAx-yc.js             [39m[1m[2m    9.34 kB[22m[1m[22m[2m │ gzip:   1.85 kB[22m
+[2mdist/[22m[36massets/china-factory-Bg1HOYTs.js                      [39m[1m[2m    9.64 kB[22m[1m[22m[2m │ gzip:   4.55 kB[22m
+[2mdist/[22m[36massets/index-Clk59jJy.js                              [39m[1m[2m    9.86 kB[22m[1m[22m[2m │ gzip:   3.16 kB[22m
+[2mdist/[22m[36massets/user-location-BCSTiXrP.js                      [39m[1m[2m   10.04 kB[22m[1m[22m[2m │ gzip:   4.04 kB[22m
+[2mdist/[22m[36massets/threat-classifier-B6g--Vtu.js                  [39m[1m[2m   10.07 kB[22m[1m[22m[2m │ gzip:   3.67 kB[22m
+[2mdist/[22m[36massets/daily-market-brief-Ch2TMtYt.js                 [39m[1m[2m   10.31 kB[22m[1m[22m[2m │ gzip:   4.33 kB[22m
+[2mdist/[22m[36massets/forecast-case-files-B4j5F6Ly.js                [39m[1m[2m   10.45 kB[22m[1m[22m[2m │ gzip:   4.02 kB[22m
+[2mdist/[22m[36massets/data-freshness-Bf1lvbtg.js                     [39m[1m[2m   10.59 kB[22m[1m[22m[2m │ gzip:   3.57 kB[22m
+[2mdist/[22m[36massets/story-renderer-jVkcoSWw.js                     [39m[1m[2m   10.67 kB[22m[1m[22m[2m │ gzip:   3.66 kB[22m
+[2mdist/[22m[36massets/confetti.module-C2jkTI5u.js                    [39m[1m[2m   10.70 kB[22m[1m[22m[2m │ gzip:   4.29 kB[22m
+[2mdist/[22m[36massets/signal-aggregator-BvGK_yqX.js                  [39m[1m[2m   10.83 kB[22m[1m[22m[2m │ gzip:   3.51 kB[22m
+[2mdist/[22m[36massets/rpc-client-supply-chain-v1-yRFGak63.js         [39m[1m[2m   11.02 kB[22m[1m[22m[2m │ gzip:   1.52 kB[22m
+[2mdist/[22m[36massets/StoryModal-BjvpHdjV.js                         [39m[1m[2m   11.06 kB[22m[1m[22m[2m │ gzip:   4.13 kB[22m
+[2mdist/[22m[36massets/military-vessels-fq5NpDb3.js                   [39m[1m[2m   11.11 kB[22m[1m[22m[2m │ gzip:   4.92 kB[22m
+[2mdist/[22m[36massets/web-vitals.attribution-CgS4vrHl.js             [39m[1m[2m   11.23 kB[22m[1m[22m[2m │ gzip:   4.46 kB[22m
+[2mdist/[22m[36massets/McpConnectModal-oxpfOiRD.js                    [39m[1m[2m   12.01 kB[22m[1m[22m[2m │ gzip:   3.90 kB[22m
+[2mdist/[22m[36massets/WatchlistTableView-DQcT7H76.js                 [39m[1m[2m   12.03 kB[22m[1m[22m[2m │ gzip:   3.68 kB[22m
+[2mdist/[22m[36massets/resilience-choropleth-utils-Ck1vfSH5.js        [39m[1m[2m   12.12 kB[22m[1m[22m[2m │ gzip:   3.86 kB[22m
+[2mdist/[22m[36massets/WidgetChatModal-CRUWrBen.js                    [39m[1m[2m   12.46 kB[22m[1m[22m[2m │ gzip:   4.07 kB[22m
+[2mdist/[22m[36massets/ai-regulations-D_33TG-J.js                     [39m[1m[2m   12.51 kB[22m[1m[22m[2m │ gzip:   3.91 kB[22m
+[2mdist/[22m[36massets/rpc-client-economic-v1-ClSZlM4Y.js             [39m[1m[2m   13.32 kB[22m[1m[22m[2m │ gzip:   1.91 kB[22m
+[2mdist/[22m[36massets/watchlist-modal-04QJKaf6.js                    [39m[1m[2m   13.99 kB[22m[1m[22m[2m │ gzip:   4.76 kB[22m
+[2mdist/[22m[36massets/cross-module-integration-VFlb42MC.js           [39m[1m[2m   14.18 kB[22m[1m[22m[2m │ gzip:   5.08 kB[22m
+[2mdist/[22m[36massets/regional-intelligence-board-utils-BLZskAxp.js  [39m[1m[2m   14.19 kB[22m[1m[22m[2m │ gzip:   3.47 kB[22m
+[2mdist/[22m[36massets/maritime-logistics-BwpoG-4h.js                 [39m[1m[2m   14.54 kB[22m[1m[22m[2m │ gzip:   6.26 kB[22m
+[2mdist/[22m[36massets/rpc-client-market-v1--4gtz_31.js               [39m[1m[2m   14.57 kB[22m[1m[22m[2m │ gzip:   1.78 kB[22m
+[2mdist/[22m[36massets/airports-data-5e0yM98C.js                      [39m[1m[2m   14.63 kB[22m[1m[22m[2m │ gzip:   4.64 kB[22m
+[2mdist/[22m[36massets/renewable-installations-CuB42DHj.js            [39m[1m[2m   15.01 kB[22m[1m[22m[2m │ gzip:   3.12 kB[22m
+[2mdist/[22m[36massets/finance-geo-DWBqM0zf.js                        [39m[1m[2m   15.20 kB[22m[1m[22m[2m │ gzip:   4.30 kB[22m
+[2mdist/[22m[36massets/country-port-clusters-CisGe5RV.js              [39m[1m[2m   15.48 kB[22m[1m[22m[2m │ gzip:   2.25 kB[22m
+[2mdist/[22m[36massets/live-channels-window-BrvznzVA.js               [39m[1m[2m   15.69 kB[22m[1m[22m[2m │ gzip:   5.03 kB[22m
+[2mdist/[22m[36massets/rpc-client-intelligence-v1-Cj7_GiIF.js         [39m[1m[2m   15.92 kB[22m[1m[22m[2m │ gzip:   2.10 kB[22m
+[2mdist/[22m[36massets/clerk-DuV6tB5b.js                              [39m[1m[2m   16.06 kB[22m[1m[22m[2m │ gzip:   6.30 kB[22m
+[2mdist/[22m[36massets/index-CkZ1Bfx8.js                              [39m[1m[2m   16.64 kB[22m[1m[22m[2m │ gzip:   5.89 kB[22m
+[2mdist/[22m[36massets/IntelligenceGapBadge-C4brI0Kk.js               [39m[1m[2m   16.83 kB[22m[1m[22m[2m │ gzip:   5.08 kB[22m
+[2mdist/[22m[36massets/SignalModal-BMXDZ_P_.js                        [39m[1m[2m   16.98 kB[22m[1m[22m[2m │ gzip:   4.72 kB[22m
+[2mdist/[22m[36massets/layout-batch-BMbUpC61.js                       [39m[1m[2m   17.36 kB[22m[1m[22m[2m │ gzip:   6.02 kB[22m
+[2mdist/[22m[36massets/AviationCommandBar-C2QiAnDa.js                 [39m[1m[2m   17.61 kB[22m[1m[22m[2m │ gzip:   6.05 kB[22m
+[2mdist/[22m[36massets/index-BbaVuhim.js                              [39m[1m[2m   17.89 kB[22m[1m[22m[2m │ gzip:   7.15 kB[22m
+[2mdist/[22m[36massets/sentry-init-ClB5Qsu8.js                        [39m[1m[2m   18.35 kB[22m[1m[22m[2m │ gzip:   6.91 kB[22m
+[2mdist/[22m[36massets/protomaps-DN3fPpEX.js                          [39m[1m[2m   18.57 kB[22m[1m[22m[2m │ gzip:   7.33 kB[22m
+[2mdist/[22m[36massets/macro-tiles-china-CIfP6UPu.js                  [39m[1m[2m   18.59 kB[22m[1m[22m[2m │ gzip:   5.89 kB[22m
+[2mdist/[22m[36massets/correlation-engine-D-woEWYZ.js                 [39m[1m[2m   18.59 kB[22m[1m[22m[2m │ gzip:   6.93 kB[22m
+[2mdist/[22m[36massets/gulf-fdi-Brj4tDHY.js                           [39m[1m[2m   20.66 kB[22m[1m[22m[2m │ gzip:   5.44 kB[22m
+[2mdist/[22m[36massets/string-zDhfBTx2.js                             [39m[1m[2m   20.83 kB[22m[1m[22m[2m │ gzip:   7.47 kB[22m
+[2mdist/[22m[36massets/startup-ecosystems-CHD9ZmW2.js                 [39m[1m[2m   21.94 kB[22m[1m[22m[2m │ gzip:   6.05 kB[22m
+[2mdist/[22m[36massets/export-CPQm94D1.js                             [39m[1m[2m   24.09 kB[22m[1m[22m[2m │ gzip:   8.95 kB[22m
+[2mdist/[22m[36massets/cached-risk-scores-iJCrSgBQ.js                 [39m[1m[2m   24.58 kB[22m[1m[22m[2m │ gzip:   9.01 kB[22m
+[2mdist/[22m[36massets/satellite.es-DES7etDd.js                       [39m[1m[2m   24.60 kB[22m[1m[22m[2m │ gzip:  11.87 kB[22m
+[2mdist/[22m[36massets/stock-workspace-ln88hzc8.js                    [39m[1m[2m   24.73 kB[22m[1m[22m[2m │ gzip:   9.28 kB[22m
+[2mdist/[22m[36massets/widget-store-Bwm5bRyf.js                       [39m[1m[2m   25.05 kB[22m[1m[22m[2m │ gzip:   9.38 kB[22m
+[2mdist/[22m[36massets/china-activity-nowcast-view-DVreAziS.js        [39m[1m[2m   25.11 kB[22m[1m[22m[2m │ gzip:   7.74 kB[22m
+[2mdist/[22m[36massets/ProActivationInterstitial-D6uC75o9.js          [39m[1m[2m   26.97 kB[22m[1m[22m[2m │ gzip:   8.77 kB[22m
+[2mdist/[22m[36massets/checkout-BBAwt0x7.js                           [39m[1m[2m   28.59 kB[22m[1m[22m[2m │ gzip:  10.04 kB[22m
+[2mdist/[22m[36massets/settings-DZ7qtulc.js                           [39m[1m[2m   28.63 kB[22m[1m[22m[2m │ gzip:   8.91 kB[22m
+[2mdist/[22m[36massets/purify.es-bRchjNq8.js                          [39m[1m[2m   28.91 kB[22m[1m[22m[2m │ gzip:  10.89 kB[22m
+[2mdist/[22m[36massets/Panel-BmFT7fGG.js                              [39m[1m[2m   32.25 kB[22m[1m[22m[2m │ gzip:   7.77 kB[22m
+[2mdist/[22m[36massets/MapContainer-CwnPPDAk.js                       [39m[1m[2m   41.40 kB[22m[1m[22m[2m │ gzip:   8.80 kB[22m
+[2mdist/[22m[36massets/military-surge-CuuZqH9O.js                     [39m[1m[2m   41.69 kB[22m[1m[22m[2m │ gzip:  13.72 kB[22m
+[2mdist/[22m[36massets/marked.esm-BrAPT9WN.js                         [39m[1m[2m   41.96 kB[22m[1m[22m[2m │ gzip:  12.75 kB[22m
+[2mdist/[22m[36massets/military-bases-data-DMCTREwx.js                [39m[1m[2m   43.48 kB[22m[1m[22m[2m │ gzip:   9.33 kB[22m
+[2mdist/[22m[36massets/oref-locations-EKm8gxKt.js                     [39m[1m[2m   46.76 kB[22m[1m[22m[2m │ gzip:  16.79 kB[22m
+[2mdist/[22m[36massets/index.esm-BiNDwt_v.js                          [39m[1m[2m   48.05 kB[22m[1m[22m[2m │ gzip:  17.27 kB[22m
+[2mdist/[22m[36massets/RouteExplorer-BtRlFYcG.js                      [39m[1m[2m   49.12 kB[22m[1m[22m[2m │ gzip:  12.65 kB[22m
+[2mdist/[22m[36massets/tech-geo-data-JQrgiAY7.js                      [39m[1m[2m   50.93 kB[22m[1m[22m[2m │ gzip:  11.14 kB[22m
+[2mdist/[22m[36massets/i18n-qlunRAMb.js                               [39m[1m[2m   52.46 kB[22m[1m[22m[2m │ gzip:  16.61 kB[22m
+[2mdist/[22m[36massets/embed-url-DlkjEJhw.js                          [39m[1m[2m   52.75 kB[22m[1m[22m[2m │ gzip:  17.29 kB[22m
+[2mdist/[22m[36massets/ai-datacenters-data-B8Ka8FcE.js                [39m[1m[2m   63.42 kB[22m[1m[22m[2m │ gzip:  11.19 kB[22m
+[2mdist/[22m[36massets/agent-bus-actions-CshiewlV.js                  [39m[1m[2m   70.69 kB[22m[1m[22m[2m │ gzip:  19.11 kB[22m
+[2mdist/[22m[36massets/panels-defense-IZuhMNsn.js                     [39m[1m[2m   73.37 kB[22m[1m[22m[2m │ gzip:  18.55 kB[22m
+[2mdist/[22m[36massets/apt-groups-BqicQSCc.js                         [39m[1m[2m   78.83 kB[22m[1m[22m[2m │ gzip:  18.02 kB[22m
+[2mdist/[22m[36massets/search-manager-DIlSS2c4.js                     [39m[1m[2m   93.66 kB[22m[1m[22m[2m │ gzip:  25.15 kB[22m
+[2mdist/[22m[36massets/Map-BJKYWoBL.js                                [39m[1m[2m   94.08 kB[22m[1m[22m[2m │ gzip:  24.06 kB[22m
+[2mdist/[22m[36massets/panels-energy-JUEwa-EM.js                      [39m[1m[2m   98.24 kB[22m[1m[22m[2m │ gzip:  23.53 kB[22m
+[2mdist/[22m[36massets/panels-news-CMaHhDuW.js                        [39m[1m[2m  107.46 kB[22m[1m[22m[2m │ gzip:  28.91 kB[22m
+[2mdist/[22m[36massets/panels-risk-CWLK34Eh.js                        [39m[1m[2m  109.40 kB[22m[1m[22m[2m │ gzip:  28.15 kB[22m
+[2mdist/[22m[36massets/panel-storage-Cqer7acL.js                      [39m[1m[2m  111.80 kB[22m[1m[22m[2m │ gzip:  39.78 kB[22m
+[2mdist/[22m[36massets/locale-zh-ZuHmPH5i.js                          [39m[1m[2m  117.08 kB[22m[1m[22m[2m │ gzip:  48.19 kB[22m
+[2mdist/[22m[36massets/en-yrppp8XT.js                                 [39m[1m[2m  121.96 kB[22m[1m[22m[2m │ gzip:  43.54 kB[22m
+[2mdist/[22m[36massets/locale-uk-BXzs0rWx.js                          [39m[1m[2m  122.64 kB[22m[1m[22m[2m │ gzip:  44.21 kB[22m
+[2mdist/[22m[36massets/locale-fa-DwkI1e7L.js                          [39m[1m[2m  125.92 kB[22m[1m[22m[2m │ gzip:  45.87 kB[22m
+[2mdist/[22m[36massets/locale-sv-DPvDYfeg.js                          [39m[1m[2m  128.27 kB[22m[1m[22m[2m │ gzip:  48.60 kB[22m
+[2mdist/[22m[36massets/panels-DVIK1Qyh.js                             [39m[1m[2m  128.30 kB[22m[1m[22m[2m │ gzip:  28.31 kB[22m
+[2mdist/[22m[36massets/layer-explanation-card-D3T98No-.js             [39m[1m[2m  130.49 kB[22m[1m[22m[2m │ gzip:  26.12 kB[22m
+[2mdist/[22m[36massets/locale-nl-CX7QSWbV.js                          [39m[1m[2m  130.99 kB[22m[1m[22m[2m │ gzip:  48.81 kB[22m
+[2mdist/[22m[36massets/locale-tr-BDDiK5ju.js                          [39m[1m[2m  131.30 kB[22m[1m[22m[2m │ gzip:  49.72 kB[22m
+[2mdist/[22m[36massets/locale-ko-roZEfPlo.js                          [39m[1m[2m  131.60 kB[22m[1m[22m[2m │ gzip:  48.72 kB[22m
+[2mdist/[22m[36massets/locale-de-BwTe_9ZW.js                          [39m[1m[2m  134.70 kB[22m[1m[22m[2m │ gzip:  49.17 kB[22m
+[2mdist/[22m[36massets/locale-it-WQpHbmQq.js                          [39m[1m[2m  135.60 kB[22m[1m[22m[2m │ gzip:  48.49 kB[22m
+[2mdist/[22m[36massets/locale-cs-DJfbGeBo.js                          [39m[1m[2m  136.47 kB[22m[1m[22m[2m │ gzip:  51.69 kB[22m
+[2mdist/[22m[36massets/locale-pt-uVES6gmA.js                          [39m[1m[2m  136.58 kB[22m[1m[22m[2m │ gzip:  50.01 kB[22m
+[2mdist/[22m[36massets/locale-pl-CTHB4eKx.js                          [39m[1m[2m  136.76 kB[22m[1m[22m[2m │ gzip:  52.01 kB[22m
+[2mdist/[22m[36massets/locale-ro-_ZhxgBCq.js                          [39m[1m[2m  136.98 kB[22m[1m[22m[2m │ gzip:  49.86 kB[22m
+[2mdist/[22m[36massets/locale-es-6iLW4WGn.js                          [39m[1m[2m  137.96 kB[22m[1m[22m[2m │ gzip:  49.47 kB[22m
+[2mdist/[22m[36massets/locale-ja-W1KASM76.js                          [39m[1m[2m  141.04 kB[22m[1m[22m[2m │ gzip:  51.61 kB[22m
+[2mdist/[22m[36massets/locale-fr-yIBJYUYc.js                          [39m[1m[2m  141.13 kB[22m[1m[22m[2m │ gzip:  50.22 kB[22m
+[2mdist/[22m[36massets/locale-hu-H5nwzyeG.js                          [39m[1m[2m  142.24 kB[22m[1m[22m[2m │ gzip:  52.54 kB[22m
+[2mdist/[22m[36massets/locale-hr-CmSXzZHo.js                          [39m[1m[2m  142.67 kB[22m[1m[22m[2m │ gzip:  53.37 kB[22m
+[2mdist/[22m[36massets/UnifiedSettings-D-yENSji.js                    [39m[1m[2m  143.58 kB[22m[1m[22m[2m │ gzip:  37.72 kB[22m
+[2mdist/[22m[36massets/locale-vi-D1AWwdiZ.js                          [39m[1m[2m  151.73 kB[22m[1m[22m[2m │ gzip:  49.63 kB[22m
+[2mdist/[22m[36massets/panels-economy-CdSYkn-V.js                     [39m[1m[2m  151.76 kB[22m[1m[22m[2m │ gzip:  39.35 kB[22m
+[2mdist/[22m[36massets/geo-map-data-By455S2c.js                       [39m[1m[2m  155.54 kB[22m[1m[22m[2m │ gzip:  31.87 kB[22m
+[2mdist/[22m[36massets/panels-markets-K_Xh_pDZ.js                     [39m[1m[2m  160.01 kB[22m[1m[22m[2m │ gzip:  37.13 kB[22m
+[2mdist/[22m[36massets/locale-ar--huC_Dwe.js                          [39m[1m[2m  169.73 kB[22m[1m[22m[2m │ gzip:  52.42 kB[22m
+[2mdist/[22m[36massets/gdelt-intel-DGn7mzaP.js                        [39m[1m[2m  174.43 kB[22m[1m[22m[2m │ gzip:  50.47 kB[22m
+[2mdist/[22m[36massets/locale-bg-_TMKVGwm.js                          [39m[1m[2m  193.23 kB[22m[1m[22m[2m │ gzip:  57.86 kB[22m
+[2mdist/[22m[36massets/locale-ru-Cp4dyA1D.js                          [39m[1m[2m  194.31 kB[22m[1m[22m[2m │ gzip:  59.54 kB[22m
+[2mdist/[22m[36massets/h3-js-CJ4YL9qJ.js                              [39m[1m[2m  195.42 kB[22m[1m[22m[2m │ gzip:  58.32 kB[22m
+[2mdist/[22m[36massets/locale-el-qbnbapfD.js                          [39m[1m[2m  196.84 kB[22m[1m[22m[2m │ gzip:  59.80 kB[22m
+[2mdist/[22m[36massets/locale-hi-D2uPAOwb.js                          [39m[1m[2m  226.04 kB[22m[1m[22m[2m │ gzip:  55.60 kB[22m
+[2mdist/[22m[36massets/locale-th-CZhN50TY.js                          [39m[1m[2m  236.81 kB[22m[1m[22m[2m │ gzip:  56.27 kB[22m
+[2mdist/[22m[36massets/panels-intel-B37OjVkl.js                       [39m[1m[2m  268.44 kB[22m[1m[22m[2m │ gzip:  73.34 kB[22m
+[2mdist/[22m[36massets/conflict-zone-cull-C-O71o3a.js                 [39m[1m[2m  281.99 kB[22m[1m[22m[2m │ gzip:  65.14 kB[22m
+[2mdist/[22m[36massets/sentry-DMxp_zBn.js                             [39m[1m[2m  431.70 kB[22m[1m[22m[2m │ gzip: 142.53 kB[22m
+[2mdist/[22m[36massets/hls-jw_vZdHi.js                                [39m[1m[2m  523.81 kB[22m[1m[22m[2m │ gzip: 162.06 kB[22m
+[2mdist/[22m[36massets/deck-stack-BBMyyT9G.js                         [39m[1m[2m  757.67 kB[22m[1m[22m[2m │ gzip: 212.64 kB[22m
+[2mdist/[22m[36massets/main-B96Yth42.js                               [39m[1m[2m  806.11 kB[22m[1m[22m[2m │ gzip: 244.69 kB[22m
+[2mdist/[22m[36massets/maplibre-CbyKX1MS.js                           [39m[1m[2m1,048.68 kB[22m[1m[22m[2m │ gzip: 283.49 kB[22m
+[2mdist/[22m[36massets/GlobeMap-EfwO8lgO.js                           [39m[1m[33m1,825.23 kB[39m[22m[2m │ gzip: 507.39 kB[22m
+
+(!) Some chunks are larger than 1200 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+[32m✓ built in 21.60s[39m
+
+PWA v1.3.0
+mode      generateSW
+precache  253 entries (11319.48 KiB)
+files generated
+  dist/sw.js
+  dist/workbox-c4ecbb2e.js
+[gate:exit] vite-production-build = 0

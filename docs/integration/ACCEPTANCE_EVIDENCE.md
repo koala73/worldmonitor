@@ -445,3 +445,24 @@ PENDING.** This is neither a merge nor a deployment acceptance result.
 Correction-evidence record commit:
 `f2103a1e06d9d33ffdea8e9f34f271152a26ab7d`. This following receipt commit
 backfills the immutable SHA and does not upgrade the pending remote gate.
+
+## Phase 12 - GitHub run 6 and variant-metadata correction evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| GitHub run 6 non-Test workflows | PASS on `7ec5ddc` | Lint `31795261949`, Lint Code `31795261809`, Typecheck `31795261814`, Pro bundle freshness `31795261803` and Proto Generation Check `31795261872` all completed `success`, as re-read through the authenticated GitHub integration. |
+| GitHub Test run 6 | FAIL, retained | Test run `31795261786` completed `failure`. Ten jobs passed; docs-stats job `94750848892` and unit job `94750911768` failed. |
+| docs-stats diagnosis | CONFIRMED and corrected locally | The workflow regenerated `docs/generated/stats.json` and detected the old 258 public-health total. Commit `f0fbf7ca66ab45332f88b1997ecd4f2a0c352649` commits the generated 257 total and 148 standalone count. |
+| production-build diagnosis | CONFIRMED and corrected locally | Health cutover passed remotely, but the unit job's dashboard build rejected zero base `hreflang` anchors. The renderer now requires zero upstream alternates in the independent shell and inserts each official variant's own two self-canonical discovery links. |
+| Focused regression suite | PASS locally | 31/31 across variant rendering, relative-origin generation, document-language metadata and i18n discovery contracts. |
+| Repeated local gates | PASS locally | stats generator, `docs:check` (150 claims), typecheck, lint, Markdown lint (257 files) and full Vite production build all exited `0`. Build transformed 2,506 modules and generated PWA output. |
+
+Raw correction evidence:
+
+- `docs/integration/evidence/phase12-remote-run6-correction-gates-20260814.log`,
+  92,474 bytes, SHA-256
+  `451690CAD92CC814C3C95F3FE3394AC8C637D0A95AA4E21149E3764F1F1D18D0`.
+
+**Current Phase 12 gate: RUN 6 FAILURE CORRECTED LOCALLY; FRESH REMOTE
+CORRECTED-HEAD CI REQUIRED.** No merge, deployment or Provider activation is
+accepted by this record.

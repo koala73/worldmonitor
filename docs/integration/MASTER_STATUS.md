@@ -548,3 +548,34 @@ can be described as remotely green or complete.
 The immutable local correction-evidence record is commit
 `f2103a1e06d9d33ffdea8e9f34f271152a26ab7d`; this receipt commit backfills
 that SHA. It records local readiness for publication, not remote CI success.
+
+## Phase 12 - GitHub run 6 correction
+
+The GitHub integration re-read every pull-request workflow attached to remote
+head `7ec5ddc74b2d9e5a473b36a2c986214bc88fcd81`. Run 6 completed with Lint
+`31795261949`, Lint Code `31795261809`, Typecheck `31795261814`, Pro bundle
+freshness `31795261803` and Proto Generation Check `31795261872` passing.
+Test run `31795261786` failed and remains a failure of that exact head.
+
+Within Test, ten jobs passed. The two failing jobs were precisely:
+
+- docs-stats job `94750848892`: the tracked `docs/generated/stats.json` still
+  contained the old 258-capability count after the truthful public-health
+  correction;
+- unit job `94750911768`: health-cutover enforcement passed, then the real
+  production build stopped because the official variant renderer still
+  expected two upstream `hreflang` anchors in the independent base document.
+
+Commit `f0fbf7ca66ab45332f88b1997ecd4f2a0c352649` regenerates the tracked
+statistics at 257 public health capabilities, requires zero upstream
+alternates in the independent base, and makes each official variant insert its
+own exact x-default and English discovery pair beside its self-canonical URL.
+The local correction gate passes 31/31 targeted contracts, stats generation,
+150 documentation claims, typecheck, code lint, Markdown lint over 257 files
+and a real Vite production build of 2,506 modules plus PWA artifacts. All seven
+recorded commands exited `0`.
+
+This evidence repairs the two diagnosed defects but does not rewrite run 6 as
+green. A new non-force publication and fresh GitHub run are still required;
+Phase 12 remains open and the Draft PR remains not ready, unmerged and
+undeployed.

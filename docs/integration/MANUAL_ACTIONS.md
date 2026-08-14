@@ -282,3 +282,22 @@ not deleted, to
 They are not runtime input and are outside Git. Leave them in place until the
 new remote proto-freshness workflow is green; deletion requires a separate,
 explicit cleanup decision.
+
+## Phase 12 GitHub run 6 follow-up (2026-08-14)
+
+- [x] GitHub integration re-read the complete run 6 conclusion set; Proto
+  Generation Check finished successfully and Test finished unsuccessfully.
+- [x] The two Test failures were reduced to tracked stats drift and official
+  variant metadata generation, then corrected locally without a Provider key,
+  paid plan, login, CAPTCHA or deployment action.
+- [x] The actual Vite production build and all repeated local correction gates
+  exited `0`.
+- [ ] Wait for the fresh corrected-head GitHub workflow conclusions after the
+  normal non-force branch update. Do not mark the Draft PR ready, merge,
+  deploy or release while a required check is failing or pending.
+- [ ] Continue to keep all Provider and deployment credentials outside chat,
+  Git, screenshots and logs.
+
+No owner action is currently required. The automated correction can proceed
+using the restored authenticated GitHub transport; this section does not grant
+permission to mutate `main`, force push, merge or deploy.

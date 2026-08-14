@@ -211,3 +211,20 @@ licence, entitlement, delay label or source-bearing observation.
 The independent dashboard metadata correction likewise changes presentation
 identity only. Removing upstream pricing/founder/social claims does not create
 a Provider, licence, account, payment state, feed or current observation.
+
+## Phase 12 run 6 correction effect on Provider states
+
+The failed docs-stat and HTML-build jobs carried no source-bearing response.
+Regenerating the public-health count and separating official variant discovery
+links from the independent shell changes neither credential nor entitlement.
+
+| Corrected surface | Provider-state effect | Required truth boundary |
+|---|---|---|
+| Tracked public-health statistics | None; generated count now matches the already-correct public list of 257 capabilities | A count is documentation, not deployment or observation evidence. FRED and company monitoring remain dark. |
+| Independent base `hreflang` | None; zero upstream official alternates | The independent dashboard must not claim upstream service identity or availability. |
+| Official variant discovery links | None; two links are generated only on the separately declared official variant page | Canonical/discovery metadata does not prove a quote, market bar, AIS fix, news event, licence or live endpoint. |
+| GitHub run 6 | None | Five successful workflows and ten successful Test jobs cannot promote a Provider; the overall Test failure remains recorded. |
+
+Market/K-line data therefore remains fail-closed without symbol-specific,
+licensed and time-labelled source responses. Nothing in this correction may be
+displayed as real-time market data or deterministic news causality.

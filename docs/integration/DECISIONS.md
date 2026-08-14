@@ -453,3 +453,33 @@ the upstream service and its paid offering.
 contributors, uses relative media/canonical URLs and conservative
 source-availability descriptions. CSP hashes are exact across Vercel and both
 nginx configurations; deployment/SEO/CSP regression tests pass 192/192.
+
+## D-0035 - Independent and official discovery metadata are generated separately
+
+**Decision:** Require the independent base document to contain zero
+official-upstream `hreflang` alternates. When building a separately declared
+official variant, insert exactly x-default and English links at that variant's
+self-canonical URL. Guard both counts at build time.
+
+**Reason:** Reusing upstream discovery links in the independent shell would
+misstate identity, while requiring those links to pre-exist made the official
+variant build depend on metadata that the independent shell is forbidden to
+publish.
+
+**Consequence:** The independent surface stays origin-relative and
+independently branded; each official variant owns its discovery metadata; any
+unexpected base alternate or anchor-count drift fails the production build.
+
+## D-0036 - Generated documentation statistics are a commit gate
+
+**Decision:** After a public capability is added or removed, regenerate and
+commit `docs/generated/stats.json`; do not treat source tests alone as proof
+that tracked documentation is current.
+
+**Reason:** GitHub Test run `31795261786` correctly detected that the public
+health implementation had changed from 258 to 257 capabilities while the
+tracked generated statistic still contained the old value.
+
+**Consequence:** The regenerated 257 total is included with the source fix,
+and the remote docs-stats job remains authoritative for Linux freshness. A
+generated count remains documentation, never Provider availability evidence.
