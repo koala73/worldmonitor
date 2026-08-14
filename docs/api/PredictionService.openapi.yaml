@@ -40,9 +40,22 @@ paths:
                   in: query
                   description: Optional category filter (e.g., "Politics").
                   required: false
-                  example: "cs.AI"
+                  example: "ai"
                   schema:
                     type: string
+                    enum:
+                        - 'ai'
+                        - 'tech'
+                        - 'crypto'
+                        - 'science'
+                        - 'economy'
+                        - 'fed'
+                        - 'inflation'
+                        - 'interest-rates'
+                        - 'recession'
+                        - 'trade'
+                        - 'tariffs'
+                        - 'debt-ceiling'
                 - name: query
                   in: query
                   description: Optional search query for market titles.

@@ -59,6 +59,6 @@ const pathCount = spec.paths ? Object.keys(spec.paths).length : 0;
 console.log(
   `build-openapi-json: wrote ${jsonPath} (OpenAPI ${spec.openapi}, ${pathCount} paths, ` +
     `${json.length} bytes; hoisted ${stats.hoisted} shared error responses into ${stats.replacedRefs} $refs; ` +
-    `hoisted ${paramStats.hoisted} fleet-wide parameters into ${paramStats.replacedRefs} $refs; ` +
+    `hoisted ${paramStats.hoisted} shared parameters into ${paramStats.replacedRefs} $refs; ` +
     `reused ${schemaStats.replacedRefs}/${schemaStats.compared} shared China provenance schemas)`,
 );

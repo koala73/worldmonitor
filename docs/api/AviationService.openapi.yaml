@@ -41,18 +41,31 @@ paths:
                     Optional region filter.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "example"
+                  example: "AIRPORT_REGION_AMERICAS"
                   schema:
                     type: string
+                    enum:
+                        - 'AIRPORT_REGION_AMERICAS'
+                        - 'AIRPORT_REGION_EUROPE'
+                        - 'AIRPORT_REGION_APAC'
+                        - 'AIRPORT_REGION_MENA'
+                        - 'AIRPORT_REGION_AFRICA'
                 - name: min_severity
                   in: query
                   description: |-
                     Optional minimum severity filter.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "watch"
+                  example: "FLIGHT_DELAY_SEVERITY_NORMAL"
                   schema:
                     type: string
+                    enum:
+                        - 'FLIGHT_DELAY_SEVERITY_NORMAL'
+                        - 'FLIGHT_DELAY_SEVERITY_MINOR'
+                        - 'FLIGHT_DELAY_SEVERITY_MODERATE'
+                        - 'FLIGHT_DELAY_SEVERITY_MAJOR'
+                        - 'FLIGHT_DELAY_SEVERITY_SEVERE'
+                        - 'FLIGHT_DELAY_SEVERITY_UNKNOWN'
                 - name: jmespath
                   in: query
                   description: |-
@@ -247,9 +260,13 @@ paths:
                   in: query
                   description: Direction filter.
                   required: false
-                  example: "example"
+                  example: "FLIGHT_DIRECTION_DEPARTURE"
                   schema:
                     type: string
+                    enum:
+                        - 'FLIGHT_DIRECTION_DEPARTURE'
+                        - 'FLIGHT_DIRECTION_ARRIVAL'
+                        - 'FLIGHT_DIRECTION_BOTH'
                 - name: limit
                   in: query
                   description: Maximum number of flights to return (1-100).
@@ -825,9 +842,14 @@ paths:
                   in: query
                   description: Desired cabin class.
                   required: false
-                  example: "example"
+                  example: "CABIN_CLASS_ECONOMY"
                   schema:
                     type: string
+                    enum:
+                        - 'CABIN_CLASS_ECONOMY'
+                        - 'CABIN_CLASS_PREMIUM_ECONOMY'
+                        - 'CABIN_CLASS_BUSINESS'
+                        - 'CABIN_CLASS_FIRST'
                 - name: nonstop_only
                   in: query
                   description: Whether to restrict to nonstop flights only.

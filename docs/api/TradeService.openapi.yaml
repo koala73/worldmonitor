@@ -136,6 +136,7 @@ paths:
                   example: "840"
                   schema:
                     type: string
+                    pattern: '^([0-9]{3})?$'
                 - name: partner_country
                   in: query
                   description: |-
@@ -147,6 +148,7 @@ paths:
                   example: "156"
                   schema:
                     type: string
+                    pattern: '^([0-9]{3})?$'
                 - name: product_sector
                   in: query
                   description: |-
@@ -160,6 +162,7 @@ paths:
                   example: "all"
                   schema:
                     type: string
+                    pattern: '^([a-zA-Z0-9_-]{0,16})?$'
                 - name: years
                   in: query
                   description: |-
@@ -272,6 +275,7 @@ paths:
                   example: "840"
                   schema:
                     type: string
+                    pattern: '^([0-9]{3})?$'
                 - name: partner_country
                   in: query
                   description: |-
@@ -286,6 +290,7 @@ paths:
                   example: "000"
                   schema:
                     type: string
+                    pattern: '^([0-9]{3})?$'
                 - name: years
                   in: query
                   description: |-
@@ -603,6 +608,7 @@ paths:
                   example: "2709"
                   schema:
                     type: string
+                    pattern: '^\d{4,6}$'
                 - name: anomalies_only
                   in: query
                   description: If true, only return flows with a year-over-year change exceeding 30%.

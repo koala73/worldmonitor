@@ -339,6 +339,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -441,6 +442,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: framework
                   in: query
                   description: Optional analytical framework instructions to append to system prompt. Max 2000 chars enforced at handler level.
@@ -1009,9 +1011,11 @@ paths:
                   in: query
                   description: Mode selection. MODE_UNSPECIFIED defaults to active alerts.
                   required: false
-                  example: "example"
+                  example: "MODE_HISTORY"
                   schema:
                     type: string
+                    enum:
+                        - 'MODE_HISTORY'
                 - name: jmespath
                   in: query
                   description: |-
@@ -1221,6 +1225,7 @@ paths:
             operationId: GetCompanyEnrichment
             parameters:
                 - name: domain
+                  deprecated: true
                   in: query
                   description: |-
                     Deprecated compatibility input. Domain attribution remains disabled and
@@ -1380,6 +1385,7 @@ paths:
                   schema:
                     type: string
                 - name: domain
+                  deprecated: true
                   in: query
                   description: |-
                     Deprecated compatibility input. When present, attribution stays disabled
@@ -1720,6 +1726,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -2351,6 +2358,11 @@ paths:
                   example: "hormuz_strait"
                   schema:
                     type: string
+                    enum:
+                        - 'hormuz_strait'
+                        - 'malacca_strait'
+                        - 'suez'
+                        - 'bab_el_mandeb'
                 - name: disruption_pct
                   in: query
                   description: Percent of chokepoint flow disrupted, from 0 to 100.
@@ -2363,9 +2375,13 @@ paths:
                   in: query
                   description: 'Fuel mode to model: "oil", "gas", or "both". Defaults to "oil".'
                   required: false
-                  example: "example"
+                  example: "oil"
                   schema:
                     type: string
+                    enum:
+                        - 'oil'
+                        - 'gas'
+                        - 'both'
                 - name: jmespath
                   in: query
                   description: |-
@@ -2628,6 +2644,7 @@ paths:
                   example: "mena"
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -2757,6 +2774,7 @@ paths:
                   example: "mena"
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
                 - name: limit
                   in: query
                   description: |-
@@ -2864,6 +2882,7 @@ paths:
                   example: "mena"
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -3128,9 +3147,10 @@ paths:
                   in: query
                   description: Restrict to one producing domain. Required unless `country` is set.
                   required: false
-                  example: "example"
+                  example: "conflict"
                   schema:
                     type: string
+                    pattern: '^(conflict|military|energy)?$'
                 - name: country
                   in: query
                   description: |-
@@ -3140,6 +3160,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^([A-Z]{2})?$'
                 - name: from
                   in: query
                   description: |-

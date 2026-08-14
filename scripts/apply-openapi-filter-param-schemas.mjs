@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const OPENAPI_DIR = join(ROOT, 'docs/api');
@@ -347,7 +347,7 @@ export function applyOpenApiFilterParamSchemaFiles({ check = false } = {}) {
   return changed;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const check = process.argv.includes('--check');
   const changed = applyOpenApiFilterParamSchemaFiles({ check });
   if (check && changed.length > 0) {

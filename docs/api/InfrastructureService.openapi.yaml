@@ -150,9 +150,15 @@ paths:
                   in: query
                   description: Optional status filter. Returns only services in this state.
                   required: false
-                  example: "example"
+                  example: "SERVICE_OPERATIONAL_STATUS_OPERATIONAL"
                   schema:
                     type: string
+                    enum:
+                        - 'SERVICE_OPERATIONAL_STATUS_OPERATIONAL'
+                        - 'SERVICE_OPERATIONAL_STATUS_DEGRADED'
+                        - 'SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE'
+                        - 'SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE'
+                        - 'SERVICE_OPERATIONAL_STATUS_MAINTENANCE'
                 - name: jmespath
                   in: query
                   description: |-
@@ -243,6 +249,13 @@ paths:
                   example: "military_flights"
                   schema:
                     type: string
+                    enum:
+                        - 'military_flights'
+                        - 'vessels'
+                        - 'protests'
+                        - 'news'
+                        - 'ais_gaps'
+                        - 'satellite_fires'
                 - name: region
                   in: query
                   description: Geographic region key, defaults to "global".

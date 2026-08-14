@@ -177,6 +177,34 @@ describe('dedupeErrorResponses (fixture)', () => {
   });
 });
 
+describe('dedupeSharedParameters (fixture)', () => {
+  it('hoists a large identical parameter repeated twice but leaves small operation-local parameters inline', () => {
+    const largeParameter = {
+      name: 'country',
+      in: 'query',
+      description: 'Country selector '.repeat(20),
+      schema: { type: 'string', enum: ['US', 'CN', 'DE', 'JP'] },
+    };
+    const smallParameter = { name: 'limit', in: 'query', schema: { type: 'integer' } };
+    const spec = {
+      paths: {
+        '/a': { get: { parameters: [structuredClone(largeParameter), structuredClone(smallParameter)] } },
+        '/b': { get: { parameters: [structuredClone(largeParameter), structuredClone(smallParameter)] } },
+      },
+    };
+
+    const original = structuredClone(spec);
+    const stats = dedupeSharedParameters(spec);
+
+    assert.deepEqual(stats, { hoisted: 1, replacedRefs: 2 });
+    assert.equal(spec.paths['/a'].get.parameters[0].$ref, '#/components/parameters/CountryParam');
+    assert.equal(spec.paths['/b'].get.parameters[0].$ref, '#/components/parameters/CountryParam');
+    assert.equal(spec.paths['/a'].get.parameters[1].$ref, undefined);
+    assert.equal(spec.paths['/b'].get.parameters[1].$ref, undefined);
+    assert.deepEqual(resolveParameterRefs(structuredClone(spec)), original);
+  });
+});
+
 describe('dedupeSharedChinaProvenanceSchemas (fixture)', () => {
   it('reuses only structurally identical known-value schemas across the two China surfaces', () => {
     const sharedKnownValue = { type: 'string', minLength: 1 };
@@ -244,8 +272,8 @@ describe('dedupeSharedChinaProvenanceSchemas (fixture)', () => {
     assert.deepEqual(stats, { compared: 2, replacedRefs: 1 });
     assert.equal(
       spec.components.schemas.worldmonitor_supply_chain_v1_ChinaCorridorProvenance
-        .properties.claims.properties.publisher.oneOf[0].properties.value.$ref,
-      '#/components/schemas/worldmonitor_intelligence_v1_ChinaDecisionSignalProvenanceClaims/properties/publisher/oneOf/0/properties/value',
+        .properties.claims.properties.publisher.oneOf[0].$ref,
+      '#/components/schemas/worldmonitor_intelligence_v1_ChinaDecisionSignalProvenanceClaims/properties/publisher/oneOf/0',
     );
     assert.deepEqual(
       spec.components.schemas.worldmonitor_supply_chain_v1_ChinaCorridorProvenance

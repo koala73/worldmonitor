@@ -70,6 +70,12 @@ function getParam(spec, path, method, name) {
 }
 
 describe('OpenAPI filter parameter schemas', () => {
+  it('uses a cross-platform direct-run guard so Windows generation is not a silent no-op', () => {
+    const source = readFileSync('scripts/apply-openapi-filter-param-schemas.mjs', 'utf8');
+    assert.match(source, /pathToFileURL\(resolve\(process\.argv\[1\]\)\)\.href/);
+    assert.doesNotMatch(source, /`file:\/\/\$\{process\.argv\[1\]\}`/);
+  });
+
   it('documents issue-listed allow-list filters as query parameter enums in service JSON specs', () => {
     for (const [service, path, method, name, expected] of EXPECTED_ENUMS) {
       const param = getParam(readJsonSpec(service), path, method, name);

@@ -10,7 +10,7 @@
  */
 
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serialize } from './lib/openapi-codegen.mjs';
 
@@ -63,7 +63,10 @@ function readProtoDeprecations() {
       if (fields.size > 0) deprecatedFields.set(messageName, fields);
     }
 
-    if (!file.endsWith('/service.proto')) continue;
+    // `walkFiles` returns native paths. A slash-suffix check silently skipped
+    // every service on Windows, leaving deprecated request query parameters
+    // unmarked even though the command exited successfully.
+    if (basename(file) !== 'service.proto') continue;
     const serviceConfig = src.match(/\(sebuf\.http\.service_config\)\s*=\s*\{([\s\S]*?)\}/)?.[1] ?? '';
     const basePath = serviceConfig.match(/\bbase_path:\s*"([^"]+)"/)?.[1] ?? '';
     for (const rpc of src.matchAll(

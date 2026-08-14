@@ -198,6 +198,7 @@ paths:
                   example: "scenario:1717200000000:abcd1234"
                   schema:
                     type: string
+                    pattern: '^scenario:[0-9]{13}:[a-z0-9]{8}$'
                 - name: jmespath
                   in: query
                   description: |-

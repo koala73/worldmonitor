@@ -41,9 +41,13 @@ paths:
                     Optional filter by anomaly severity.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "watch"
+                  example: "ANOMALY_SEVERITY_NORMAL"
                   schema:
                     type: string
+                    enum:
+                        - 'ANOMALY_SEVERITY_NORMAL'
+                        - 'ANOMALY_SEVERITY_MODERATE'
+                        - 'ANOMALY_SEVERITY_EXTREME'
                 - name: jmespath
                   in: query
                   description: |-

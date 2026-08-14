@@ -23,8 +23,8 @@ function knownClaim(claim) {
     (candidate) => candidate?.properties?.status?.const === 'known',
   );
   if (index === undefined || index < 0) return null;
-  const value = claim.oneOf[index]?.properties?.value;
-  return value && typeof value === 'object' ? { index, value } : null;
+  const branch = claim.oneOf[index];
+  return branch && typeof branch === 'object' ? { index, branch } : null;
 }
 
 /**
@@ -53,13 +53,16 @@ export function dedupeSharedChinaProvenanceSchemas(spec) {
     const corridorKnown = knownClaim(corridorClaim);
     const decisionKnown = knownClaim(decisionClaim);
     if (!corridorKnown || !decisionKnown) continue;
-    if (!eq(corridorKnown.value, decisionKnown.value)) continue;
+    // The two injectors use the same known-claim builder. Compare the complete
+    // branch before reusing it so descriptions, constraints, and value shape
+    // cannot be hidden by a narrower comparison.
+    if (!eq(corridorKnown.branch, decisionKnown.branch)) continue;
 
-    corridorClaim.oneOf[corridorKnown.index].properties.value = {
+    corridorClaim.oneOf[corridorKnown.index] = {
       $ref:
         `#/components/schemas/${pointerSegment(decisionEntry[0])}` +
         `/properties/${pointerSegment(dimension)}` +
-        `/oneOf/${decisionKnown.index}/properties/value`,
+        `/oneOf/${decisionKnown.index}`,
     };
     stats.replacedRefs += 1;
   }

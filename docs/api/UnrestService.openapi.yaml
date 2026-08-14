@@ -65,9 +65,13 @@ paths:
                     Optional minimum severity filter.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "watch"
+                  example: "SEVERITY_LEVEL_LOW"
                   schema:
                     type: string
+                    enum:
+                        - 'SEVERITY_LEVEL_LOW'
+                        - 'SEVERITY_LEVEL_MEDIUM'
+                        - 'SEVERITY_LEVEL_HIGH'
                 - name: ne_lat
                   in: query
                   description: |-

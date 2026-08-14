@@ -492,6 +492,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter (2-digit string). Defaults to "27" (energy/mineral fuels) when absent.
@@ -710,6 +711,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier to model as disrupted.
@@ -817,6 +819,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -919,6 +922,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier to model as disrupted.
@@ -1032,6 +1036,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
@@ -1138,6 +1143,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: ISO 3166-1 alpha-2 destination country code for the trade lane.
@@ -1145,6 +1151,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27", "85"
@@ -1264,6 +1271,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: ISO 3166-1 alpha-2 destination country code for the route.
@@ -1271,6 +1279,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code for the product sector on the route.

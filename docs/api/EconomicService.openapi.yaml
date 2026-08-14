@@ -1502,6 +1502,9 @@ paths:
                   example: "USPRIV"
                   schema:
                     type: string
+                    enum:
+                        - 'USPRIV'
+                        - 'ECIALLCIV'
                 - name: limit
                   in: query
                   description: Maximum number of observations to return. Defaults to 60.

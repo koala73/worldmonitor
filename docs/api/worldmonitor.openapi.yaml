@@ -45,18 +45,31 @@ paths:
                     Optional region filter.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "example"
+                  example: "AIRPORT_REGION_AMERICAS"
                   schema:
                     type: string
+                    enum:
+                        - 'AIRPORT_REGION_AMERICAS'
+                        - 'AIRPORT_REGION_EUROPE'
+                        - 'AIRPORT_REGION_APAC'
+                        - 'AIRPORT_REGION_MENA'
+                        - 'AIRPORT_REGION_AFRICA'
                 - name: min_severity
                   in: query
                   description: |-
                     Optional minimum severity filter.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "watch"
+                  example: "FLIGHT_DELAY_SEVERITY_NORMAL"
                   schema:
                     type: string
+                    enum:
+                        - 'FLIGHT_DELAY_SEVERITY_NORMAL'
+                        - 'FLIGHT_DELAY_SEVERITY_MINOR'
+                        - 'FLIGHT_DELAY_SEVERITY_MODERATE'
+                        - 'FLIGHT_DELAY_SEVERITY_MAJOR'
+                        - 'FLIGHT_DELAY_SEVERITY_SEVERE'
+                        - 'FLIGHT_DELAY_SEVERITY_UNKNOWN'
                 - name: jmespath
                   in: query
                   description: |-
@@ -251,9 +264,13 @@ paths:
                   in: query
                   description: Direction filter.
                   required: false
-                  example: "example"
+                  example: "FLIGHT_DIRECTION_DEPARTURE"
                   schema:
                     type: string
+                    enum:
+                        - 'FLIGHT_DIRECTION_DEPARTURE'
+                        - 'FLIGHT_DIRECTION_ARRIVAL'
+                        - 'FLIGHT_DIRECTION_BOTH'
                 - name: limit
                   in: query
                   description: Maximum number of flights to return (1-100).
@@ -829,9 +846,14 @@ paths:
                   in: query
                   description: Desired cabin class.
                   required: false
-                  example: "example"
+                  example: "CABIN_CLASS_ECONOMY"
                   schema:
                     type: string
+                    enum:
+                        - 'CABIN_CLASS_ECONOMY'
+                        - 'CABIN_CLASS_PREMIUM_ECONOMY'
+                        - 'CABIN_CLASS_BUSINESS'
+                        - 'CABIN_CLASS_FIRST'
                 - name: nonstop_only
                   in: query
                   description: Whether to restrict to nonstop flights only.
@@ -1578,9 +1600,13 @@ paths:
                     Optional filter by anomaly severity.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "watch"
+                  example: "ANOMALY_SEVERITY_NORMAL"
                   schema:
                     type: string
+                    enum:
+                        - 'ANOMALY_SEVERITY_NORMAL'
+                        - 'ANOMALY_SEVERITY_MODERATE'
+                        - 'ANOMALY_SEVERITY_EXTREME'
                 - name: jmespath
                   in: query
                   description: |-
@@ -2752,9 +2778,10 @@ paths:
                   in: query
                   description: Signed opaque cursor bound to the account, filters, mode, expiry, and snapshot generation; never a storage identifier.
                   required: false
-                  example: "next-page-token"
+                  example: "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
                   schema:
                     type: string
+                    pattern: '^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -2902,9 +2929,10 @@ paths:
                   in: query
                   description: Signed opaque cursor bound to the account, filters, mode, expiry, and snapshot generation; never a storage identifier.
                   required: false
-                  example: "next-page-token"
+                  example: "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
                   schema:
                     type: string
+                    pattern: '^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -3002,9 +3030,10 @@ paths:
                   in: query
                   description: Required signed opaque poll cursor bound to the account, mode, expiry, and snapshot generation; never a storage identifier.
                   required: true
-                  example: "next-page-token"
+                  example: "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
                   schema:
                     type: string
+                    pattern: '^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$'
                 - name: page_size
                   in: query
                   description: Maximum changes to return, from 1 through 100; zero requests the server default.
@@ -3107,9 +3136,10 @@ paths:
                   in: query
                   description: Account-scoped logical impact ID; storage identifiers are not accepted.
                   required: true
-                  example: "example-id"
+                  example: "cm_impact_01ARZ3NDEKTSV4RRFFQ69G5FAV"
                   schema:
                     type: string
+                    pattern: '^cm_impact_[0-9A-HJKMNP-TV-Z]{26}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -3216,9 +3246,10 @@ paths:
                   in: query
                   description: Account-scoped logical company ID; storage identifiers are not accepted.
                   required: true
-                  example: "example-id"
+                  example: "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
                   schema:
                     type: string
+                    pattern: '^cm_company_[0-9A-HJKMNP-TV-Z]{26}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -3651,9 +3682,249 @@ paths:
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
                   required: true
-                  example: "US"
+                  example: "AD"
                   schema:
                     type: string
+                    enum:
+                        - 'AD'
+                        - 'AE'
+                        - 'AF'
+                        - 'AG'
+                        - 'AI'
+                        - 'AL'
+                        - 'AM'
+                        - 'AO'
+                        - 'AQ'
+                        - 'AR'
+                        - 'AS'
+                        - 'AT'
+                        - 'AU'
+                        - 'AW'
+                        - 'AX'
+                        - 'AZ'
+                        - 'BA'
+                        - 'BB'
+                        - 'BD'
+                        - 'BE'
+                        - 'BF'
+                        - 'BG'
+                        - 'BH'
+                        - 'BI'
+                        - 'BJ'
+                        - 'BL'
+                        - 'BM'
+                        - 'BN'
+                        - 'BO'
+                        - 'BR'
+                        - 'BS'
+                        - 'BT'
+                        - 'BW'
+                        - 'BY'
+                        - 'BZ'
+                        - 'CA'
+                        - 'CD'
+                        - 'CF'
+                        - 'CG'
+                        - 'CH'
+                        - 'CI'
+                        - 'CK'
+                        - 'CL'
+                        - 'CM'
+                        - 'CN'
+                        - 'CO'
+                        - 'CR'
+                        - 'CU'
+                        - 'CV'
+                        - 'CW'
+                        - 'CY'
+                        - 'CZ'
+                        - 'DE'
+                        - 'DJ'
+                        - 'DK'
+                        - 'DM'
+                        - 'DO'
+                        - 'DZ'
+                        - 'EC'
+                        - 'EE'
+                        - 'EG'
+                        - 'EH'
+                        - 'ER'
+                        - 'ES'
+                        - 'ET'
+                        - 'FI'
+                        - 'FJ'
+                        - 'FK'
+                        - 'FM'
+                        - 'FO'
+                        - 'FR'
+                        - 'GA'
+                        - 'GB'
+                        - 'GD'
+                        - 'GE'
+                        - 'GG'
+                        - 'GH'
+                        - 'GI'
+                        - 'GL'
+                        - 'GM'
+                        - 'GN'
+                        - 'GQ'
+                        - 'GR'
+                        - 'GS'
+                        - 'GT'
+                        - 'GU'
+                        - 'GW'
+                        - 'GY'
+                        - 'HK'
+                        - 'HM'
+                        - 'HN'
+                        - 'HR'
+                        - 'HT'
+                        - 'HU'
+                        - 'ID'
+                        - 'IE'
+                        - 'IL'
+                        - 'IM'
+                        - 'IN'
+                        - 'IO'
+                        - 'IQ'
+                        - 'IR'
+                        - 'IS'
+                        - 'IT'
+                        - 'JE'
+                        - 'JM'
+                        - 'JO'
+                        - 'JP'
+                        - 'KE'
+                        - 'KG'
+                        - 'KH'
+                        - 'KI'
+                        - 'KM'
+                        - 'KN'
+                        - 'KP'
+                        - 'KR'
+                        - 'KW'
+                        - 'KY'
+                        - 'KZ'
+                        - 'LA'
+                        - 'LB'
+                        - 'LC'
+                        - 'LI'
+                        - 'LK'
+                        - 'LR'
+                        - 'LS'
+                        - 'LT'
+                        - 'LU'
+                        - 'LV'
+                        - 'LY'
+                        - 'MA'
+                        - 'MC'
+                        - 'MD'
+                        - 'ME'
+                        - 'MF'
+                        - 'MG'
+                        - 'MH'
+                        - 'MK'
+                        - 'ML'
+                        - 'MM'
+                        - 'MN'
+                        - 'MO'
+                        - 'MP'
+                        - 'MR'
+                        - 'MS'
+                        - 'MT'
+                        - 'MU'
+                        - 'MV'
+                        - 'MW'
+                        - 'MX'
+                        - 'MY'
+                        - 'MZ'
+                        - 'NA'
+                        - 'NC'
+                        - 'NE'
+                        - 'NF'
+                        - 'NG'
+                        - 'NI'
+                        - 'NL'
+                        - 'NO'
+                        - 'NP'
+                        - 'NR'
+                        - 'NU'
+                        - 'NZ'
+                        - 'OM'
+                        - 'PA'
+                        - 'PE'
+                        - 'PF'
+                        - 'PG'
+                        - 'PH'
+                        - 'PK'
+                        - 'PL'
+                        - 'PM'
+                        - 'PN'
+                        - 'PR'
+                        - 'PS'
+                        - 'PT'
+                        - 'PW'
+                        - 'PY'
+                        - 'QA'
+                        - 'RO'
+                        - 'RS'
+                        - 'RU'
+                        - 'RW'
+                        - 'SA'
+                        - 'SB'
+                        - 'SC'
+                        - 'SD'
+                        - 'SE'
+                        - 'SG'
+                        - 'SH'
+                        - 'SI'
+                        - 'SK'
+                        - 'SL'
+                        - 'SM'
+                        - 'SN'
+                        - 'SO'
+                        - 'SR'
+                        - 'SS'
+                        - 'ST'
+                        - 'SV'
+                        - 'SX'
+                        - 'SY'
+                        - 'SZ'
+                        - 'TC'
+                        - 'TD'
+                        - 'TF'
+                        - 'TG'
+                        - 'TH'
+                        - 'TJ'
+                        - 'TL'
+                        - 'TM'
+                        - 'TN'
+                        - 'TO'
+                        - 'TR'
+                        - 'TT'
+                        - 'TV'
+                        - 'TW'
+                        - 'TZ'
+                        - 'UA'
+                        - 'UG'
+                        - 'UM'
+                        - 'US'
+                        - 'UY'
+                        - 'UZ'
+                        - 'VA'
+                        - 'VC'
+                        - 'VE'
+                        - 'VG'
+                        - 'VI'
+                        - 'VN'
+                        - 'VU'
+                        - 'WF'
+                        - 'WS'
+                        - 'XK'
+                        - 'YE'
+                        - 'ZA'
+                        - 'ZM'
+                        - 'ZW'
                 - name: jmespath
                   in: query
                   description: |-
@@ -4642,23 +4913,39 @@ paths:
                   in: query
                   description: Optional threat type filter.
                   required: false
-                  example: "all"
+                  example: "CYBER_THREAT_TYPE_C2_SERVER"
                   schema:
                     type: string
+                    enum:
+                        - 'CYBER_THREAT_TYPE_C2_SERVER'
+                        - 'CYBER_THREAT_TYPE_MALWARE_HOST'
+                        - 'CYBER_THREAT_TYPE_PHISHING'
+                        - 'CYBER_THREAT_TYPE_MALICIOUS_URL'
                 - name: source
                   in: query
                   description: Optional source filter.
                   required: false
-                  example: "example"
+                  example: "CYBER_THREAT_SOURCE_FEODO"
                   schema:
                     type: string
+                    enum:
+                        - 'CYBER_THREAT_SOURCE_FEODO'
+                        - 'CYBER_THREAT_SOURCE_URLHAUS'
+                        - 'CYBER_THREAT_SOURCE_C2INTEL'
+                        - 'CYBER_THREAT_SOURCE_OTX'
+                        - 'CYBER_THREAT_SOURCE_ABUSEIPDB'
                 - name: min_severity
                   in: query
                   description: Optional minimum criticality filter.
                   required: false
-                  example: "watch"
+                  example: "CRITICALITY_LEVEL_LOW"
                   schema:
                     type: string
+                    enum:
+                        - 'CRITICALITY_LEVEL_LOW'
+                        - 'CRITICALITY_LEVEL_MEDIUM'
+                        - 'CRITICALITY_LEVEL_HIGH'
+                        - 'CRITICALITY_LEVEL_CRITICAL'
                 - name: jmespath
                   in: query
                   description: |-
@@ -6484,6 +6771,9 @@ paths:
                   example: "USPRIV"
                   schema:
                     type: string
+                    enum:
+                        - 'USPRIV'
+                        - 'ECIALLCIV'
                 - name: limit
                   in: query
                   description: Maximum number of observations to return. Defaults to 60.
@@ -8007,9 +8297,17 @@ paths:
                   in: query
                   description: Forecast domain to retrieve, such as geopolitics, markets, or climate.
                   required: false
-                  example: "example"
+                  example: "conflict"
                   schema:
                     type: string
+                    enum:
+                        - 'conflict'
+                        - 'market'
+                        - 'supply_chain'
+                        - 'political'
+                        - 'military'
+                        - 'cyber'
+                        - 'infrastructure'
                 - name: region
                   in: query
                   description: Optional geographic or thematic region filter for forecasts.
@@ -9418,9 +9716,15 @@ paths:
                   in: query
                   description: Optional status filter. Returns only services in this state.
                   required: false
-                  example: "example"
+                  example: "SERVICE_OPERATIONAL_STATUS_OPERATIONAL"
                   schema:
                     type: string
+                    enum:
+                        - 'SERVICE_OPERATIONAL_STATUS_OPERATIONAL'
+                        - 'SERVICE_OPERATIONAL_STATUS_DEGRADED'
+                        - 'SERVICE_OPERATIONAL_STATUS_PARTIAL_OUTAGE'
+                        - 'SERVICE_OPERATIONAL_STATUS_MAJOR_OUTAGE'
+                        - 'SERVICE_OPERATIONAL_STATUS_MAINTENANCE'
                 - name: jmespath
                   in: query
                   description: |-
@@ -9511,6 +9815,13 @@ paths:
                   example: "military_flights"
                   schema:
                     type: string
+                    enum:
+                        - 'military_flights'
+                        - 'vessels'
+                        - 'protests'
+                        - 'news'
+                        - 'ais_gaps'
+                        - 'satellite_fires'
                 - name: region
                   in: query
                   description: Geographic region key, defaults to "global".
@@ -10722,6 +11033,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -10824,6 +11136,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: framework
                   in: query
                   description: Optional analytical framework instructions to append to system prompt. Max 2000 chars enforced at handler level.
@@ -11392,9 +11705,11 @@ paths:
                   in: query
                   description: Mode selection. MODE_UNSPECIFIED defaults to active alerts.
                   required: false
-                  example: "example"
+                  example: "MODE_HISTORY"
                   schema:
                     type: string
+                    enum:
+                        - 'MODE_HISTORY'
                 - name: jmespath
                   in: query
                   description: |-
@@ -11604,6 +11919,7 @@ paths:
             operationId: GetCompanyEnrichment
             parameters:
                 - name: domain
+                  deprecated: true
                   in: query
                   description: |-
                     Deprecated compatibility input. Domain attribution remains disabled and
@@ -11763,6 +12079,7 @@ paths:
                   schema:
                     type: string
                 - name: domain
+                  deprecated: true
                   in: query
                   description: |-
                     Deprecated compatibility input. When present, attribution stays disabled
@@ -12103,6 +12420,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -12734,6 +13052,11 @@ paths:
                   example: "hormuz_strait"
                   schema:
                     type: string
+                    enum:
+                        - 'hormuz_strait'
+                        - 'malacca_strait'
+                        - 'suez'
+                        - 'bab_el_mandeb'
                 - name: disruption_pct
                   in: query
                   description: Percent of chokepoint flow disrupted, from 0 to 100.
@@ -12746,9 +13069,13 @@ paths:
                   in: query
                   description: 'Fuel mode to model: "oil", "gas", or "both". Defaults to "oil".'
                   required: false
-                  example: "example"
+                  example: "oil"
                   schema:
                     type: string
+                    enum:
+                        - 'oil'
+                        - 'gas'
+                        - 'both'
                 - name: jmespath
                   in: query
                   description: |-
@@ -13011,6 +13338,7 @@ paths:
                   example: "mena"
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -13140,6 +13468,7 @@ paths:
                   example: "mena"
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
                 - name: limit
                   in: query
                   description: |-
@@ -13247,6 +13576,7 @@ paths:
                   example: "mena"
                   schema:
                     type: string
+                    pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -13511,9 +13841,10 @@ paths:
                   in: query
                   description: Restrict to one producing domain. Required unless `country` is set.
                   required: false
-                  example: "example"
+                  example: "conflict"
                   schema:
                     type: string
+                    pattern: '^(conflict|military|energy)?$'
                 - name: country
                   in: query
                   description: |-
@@ -13523,6 +13854,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^([A-Z]{2})?$'
                 - name: from
                   in: query
                   description: |-
@@ -14999,6 +15331,52 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    enum:
+                        - 'US'
+                        - 'GB'
+                        - 'DE'
+                        - 'FR'
+                        - 'JP'
+                        - 'CN'
+                        - 'HK'
+                        - 'IN'
+                        - 'KR'
+                        - 'TW'
+                        - 'AU'
+                        - 'BR'
+                        - 'CA'
+                        - 'MX'
+                        - 'AR'
+                        - 'RU'
+                        - 'ZA'
+                        - 'SA'
+                        - 'AE'
+                        - 'IL'
+                        - 'TR'
+                        - 'PL'
+                        - 'NL'
+                        - 'CH'
+                        - 'ES'
+                        - 'IT'
+                        - 'SE'
+                        - 'NO'
+                        - 'SG'
+                        - 'TH'
+                        - 'MY'
+                        - 'ID'
+                        - 'PH'
+                        - 'NZ'
+                        - 'EG'
+                        - 'CL'
+                        - 'PE'
+                        - 'AT'
+                        - 'BE'
+                        - 'FI'
+                        - 'DK'
+                        - 'IE'
+                        - 'PT'
+                        - 'CZ'
+                        - 'HU'
                 - name: jmespath
                   in: query
                   description: |-
@@ -17533,18 +17911,46 @@ paths:
                     Optional operator filter.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "example"
+                  example: "MILITARY_OPERATOR_USAF"
                   schema:
                     type: string
+                    enum:
+                        - 'MILITARY_OPERATOR_USAF'
+                        - 'MILITARY_OPERATOR_USN'
+                        - 'MILITARY_OPERATOR_USMC'
+                        - 'MILITARY_OPERATOR_USA'
+                        - 'MILITARY_OPERATOR_RAF'
+                        - 'MILITARY_OPERATOR_RN'
+                        - 'MILITARY_OPERATOR_FAF'
+                        - 'MILITARY_OPERATOR_GAF'
+                        - 'MILITARY_OPERATOR_PLAAF'
+                        - 'MILITARY_OPERATOR_PLAN'
+                        - 'MILITARY_OPERATOR_VKS'
+                        - 'MILITARY_OPERATOR_IAF'
+                        - 'MILITARY_OPERATOR_NATO'
+                        - 'MILITARY_OPERATOR_OTHER'
                 - name: aircraft_type
                   in: query
                   description: |-
                     Optional aircraft type filter.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "all"
+                  example: "MILITARY_AIRCRAFT_TYPE_FIGHTER"
                   schema:
                     type: string
+                    enum:
+                        - 'MILITARY_AIRCRAFT_TYPE_FIGHTER'
+                        - 'MILITARY_AIRCRAFT_TYPE_BOMBER'
+                        - 'MILITARY_AIRCRAFT_TYPE_TRANSPORT'
+                        - 'MILITARY_AIRCRAFT_TYPE_TANKER'
+                        - 'MILITARY_AIRCRAFT_TYPE_AWACS'
+                        - 'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE'
+                        - 'MILITARY_AIRCRAFT_TYPE_HELICOPTER'
+                        - 'MILITARY_AIRCRAFT_TYPE_DRONE'
+                        - 'MILITARY_AIRCRAFT_TYPE_PATROL'
+                        - 'MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS'
+                        - 'MILITARY_AIRCRAFT_TYPE_VIP'
+                        - 'MILITARY_AIRCRAFT_TYPE_UNKNOWN'
                 - name: jmespath
                   in: query
                   description: |-
@@ -18205,16 +18611,44 @@ paths:
                   in: query
                   description: Optional military base type filter.
                   required: false
-                  example: "all"
+                  example: "us-nato"
                   schema:
                     type: string
+                    enum:
+                        - 'us-nato'
+                        - 'china'
+                        - 'russia'
+                        - 'uk'
+                        - 'france'
+                        - 'india'
+                        - 'italy'
+                        - 'uae'
+                        - 'turkey'
+                        - 'japan'
+                        - 'other'
                 - name: kind
                   in: query
                   description: Optional military base kind filter.
                   required: false
-                  example: "example"
+                  example: "base"
                   schema:
                     type: string
+                    enum:
+                        - 'base'
+                        - 'airfield'
+                        - 'naval_base'
+                        - 'military'
+                        - 'barracks'
+                        - 'bunker'
+                        - 'trench'
+                        - 'training_area'
+                        - 'checkpoint'
+                        - 'shelter'
+                        - 'ammunition'
+                        - 'office'
+                        - 'obstacle_course'
+                        - 'nuclear_explosion_site'
+                        - 'range'
                 - name: country
                   in: query
                   description: Optional country filter for military bases.
@@ -18764,9 +19198,10 @@ paths:
                   in: query
                   description: Deterministic cache key computed by buildSummaryCacheKey().
                   required: false
-                  example: "example"
+                  example: "summary:v1:example-cache"
                   schema:
                     type: string
+                    pattern: '^summary:v\d+:[a-z0-9:_-]{3,120}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -19064,9 +19499,22 @@ paths:
                   in: query
                   description: Optional category filter (e.g., "Politics").
                   required: false
-                  example: "cs.AI"
+                  example: "ai"
                   schema:
                     type: string
+                    enum:
+                        - 'ai'
+                        - 'tech'
+                        - 'crypto'
+                        - 'science'
+                        - 'economy'
+                        - 'fed'
+                        - 'inflation'
+                        - 'interest-rates'
+                        - 'recession'
+                        - 'trade'
+                        - 'tariffs'
+                        - 'debt-ceiling'
                 - name: query
                   in: query
                   description: Optional search query for market titles.
@@ -19517,6 +19965,13 @@ paths:
                   example: "top"
                   schema:
                     type: string
+                    enum:
+                        - 'top'
+                        - 'new'
+                        - 'best'
+                        - 'ask'
+                        - 'show'
+                        - 'job'
                 - name: jmespath
                   in: query
                   description: |-
@@ -19608,9 +20063,15 @@ paths:
                   in: query
                   description: 'Event type filter: "all", "conference", "earnings", "ipo", "other". Empty = all.'
                   required: false
-                  example: "conference"
+                  example: "all"
                   schema:
                     type: string
+                    enum:
+                        - 'all'
+                        - 'conference'
+                        - 'earnings'
+                        - 'ipo'
+                        - 'other'
                 - name: mappable
                   in: query
                   description: Only events with non-virtual coordinates.
@@ -20399,6 +20860,7 @@ paths:
                   example: "scenario:1717200000000:abcd1234"
                   schema:
                     type: string
+                    pattern: '^scenario:[0-9]{13}:[a-z0-9]{8}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -20716,9 +21178,10 @@ paths:
                   in: query
                   description: Origin country, ISO-3166-1 alpha-2 uppercase.
                   required: true
-                  example: "CN"
+                  example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: Destination country, ISO-3166-1 alpha-2 uppercase.
@@ -20726,6 +21189,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: cargoType
                   in: query
                   description: |-
@@ -21560,6 +22024,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter (2-digit string). Defaults to "27" (energy/mineral fuels) when absent.
@@ -21778,6 +22243,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier to model as disrupted.
@@ -21885,6 +22351,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: jmespath
                   in: query
                   description: |-
@@ -21987,6 +22454,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: chokepointId
                   in: query
                   description: Chokepoint identifier to model as disrupted.
@@ -22100,6 +22568,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
@@ -22206,6 +22675,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: ISO 3166-1 alpha-2 destination country code for the trade lane.
@@ -22213,6 +22683,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code, e.g. "27", "85"
@@ -22332,6 +22803,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: toIso2
                   in: query
                   description: ISO 3166-1 alpha-2 destination country code for the route.
@@ -22339,6 +22811,7 @@ paths:
                   example: "US"
                   schema:
                     type: string
+                    pattern: '^[A-Z]{2}$'
                 - name: hs2
                   in: query
                   description: HS2 chapter code for the product sector on the route.
@@ -23502,6 +23975,7 @@ paths:
                   example: "840"
                   schema:
                     type: string
+                    pattern: '^([0-9]{3})?$'
                 - name: partner_country
                   in: query
                   description: |-
@@ -23513,6 +23987,7 @@ paths:
                   example: "156"
                   schema:
                     type: string
+                    pattern: '^([0-9]{3})?$'
                 - name: product_sector
                   in: query
                   description: |-
@@ -23526,6 +24001,7 @@ paths:
                   example: "all"
                   schema:
                     type: string
+                    pattern: '^([a-zA-Z0-9_-]{0,16})?$'
                 - name: years
                   in: query
                   description: |-
@@ -23638,6 +24114,7 @@ paths:
                   example: "840"
                   schema:
                     type: string
+                    pattern: '^([0-9]{3})?$'
                 - name: partner_country
                   in: query
                   description: |-
@@ -23652,6 +24129,7 @@ paths:
                   example: "000"
                   schema:
                     type: string
+                    pattern: '^([0-9]{3})?$'
                 - name: years
                   in: query
                   description: |-
@@ -23969,6 +24447,7 @@ paths:
                   example: "2709"
                   schema:
                     type: string
+                    pattern: '^\d{4,6}$'
                 - name: anomalies_only
                   in: query
                   description: If true, only return flows with a year-over-year change exceeding 30%.
@@ -24110,9 +24589,13 @@ paths:
                     Optional minimum severity filter.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "watch"
+                  example: "SEVERITY_LEVEL_LOW"
                   schema:
                     type: string
+                    enum:
+                        - 'SEVERITY_LEVEL_LOW'
+                        - 'SEVERITY_LEVEL_MEDIUM'
+                        - 'SEVERITY_LEVEL_HIGH'
                 - name: ne_lat
                   in: query
                   description: |-

@@ -277,6 +277,13 @@ paths:
                   example: "top"
                   schema:
                     type: string
+                    enum:
+                        - 'top'
+                        - 'new'
+                        - 'best'
+                        - 'ask'
+                        - 'show'
+                        - 'job'
                 - name: jmespath
                   in: query
                   description: |-
@@ -368,9 +375,15 @@ paths:
                   in: query
                   description: 'Event type filter: "all", "conference", "earnings", "ipo", "other". Empty = all.'
                   required: false
-                  example: "conference"
+                  example: "all"
                   schema:
                     type: string
+                    enum:
+                        - 'all'
+                        - 'conference'
+                        - 'earnings'
+                        - 'ipo'
+                        - 'other'
                 - name: mappable
                   in: query
                   description: Only events with non-virtual coordinates.
