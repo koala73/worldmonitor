@@ -3044,7 +3044,7 @@ export class App {
         { name: 'pizzint', fn: () => this.dataLoader.loadPizzInt(), intervalMs: REFRESH_INTERVALS.pizzint, condition: () => SITE_VARIANT === 'full' },
         { name: 'natural', fn: () => this.dataLoader.loadNatural(), intervalMs: REFRESH_INTERVALS.natural, condition: () => this.state.mapLayers.natural },
         { name: 'weather', fn: () => this.dataLoader.loadWeatherAlerts(), intervalMs: REFRESH_INTERVALS.weather, condition: () => this.state.mapLayers.weather },
-        { name: 'canadaAlerts', fn: () => this.dataLoader.loadCanadaAlerts(), intervalMs: REFRESH_INTERVALS.canadaAlerts, condition: () => this.state.mapLayers.canadaAlerts },
+        { name: 'canadaAlerts', fn: () => this.dataLoader.loadCanadaAlerts(), intervalMs: REFRESH_INTERVALS.canadaAlerts, condition: () => !!this.state.mapLayers.canadaAlerts },
         { name: 'fred', fn: () => this.dataLoader.loadFredData(), intervalMs: REFRESH_INTERVALS.fred, condition: () => this.isPanelNearViewport('economic') },
         { name: 'spending', fn: () => this.dataLoader.loadGovernmentSpending(), intervalMs: REFRESH_INTERVALS.spending, condition: () => this.isPanelNearViewport('economic') },
         { name: 'global-tenders', fn: () => this.dataLoader.loadGlobalTenders(), intervalMs: REFRESH_INTERVALS.spending, condition: () => hasPremiumAccess() && this.isPanelNearViewport('global-procurement') },

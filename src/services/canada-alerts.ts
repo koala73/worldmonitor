@@ -42,10 +42,17 @@ const breaker = createCircuitBreaker<CanadaAlert[]>({
   persistCache: true,
 });
 
+function asLonLat(value: unknown): [number, number] | undefined {
+  if (!Array.isArray(value) || value.length !== 2) return undefined;
+  const lon = Number(value[0]);
+  const lat = Number(value[1]);
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return undefined;
+  return [lon, lat];
+}
+
 function mapAlert(a: BootstrapAlert): CanadaAlert {
-  const centroid = Array.isArray(a.centroid) && a.centroid.length === 2
-    ? a.centroid
-    : (Number.isFinite(a.lon) && Number.isFinite(a.lat) ? [a.lon as number, a.lat as number] : undefined);
+  const centroid = asLonLat(a.centroid)
+    ?? (Number.isFinite(a.lon) && Number.isFinite(a.lat) ? [a.lon as number, a.lat as number] : undefined);
   return {
     id: a.id,
     province: a.province || 'AB',

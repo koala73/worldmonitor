@@ -62,6 +62,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   outages: true,            // Power outages — energy system status
   natural: true,            // Earthquakes — infrastructure risk
   weather: true,            // Weather impacting operations
+  canadaAlerts: false,
 
   // ── Non-energy layers (DISABLED) ──────────────────────────────────────────
   gpsJamming: false,
@@ -127,6 +128,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   outages: false,
   natural: true,
   weather: false,
+  canadaAlerts: false,
 
   // All others disabled on mobile
   gpsJamming: false,

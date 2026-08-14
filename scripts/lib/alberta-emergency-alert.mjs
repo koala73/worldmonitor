@@ -109,6 +109,42 @@ export function mapAlertSeverity({ capSeverity, capUrgency, category, title, sum
   return null;
 }
 
+const ENDED_TOKEN_RE = /\b(ended|cancelled|canceled|all\s*clear|allclear)\b/i;
+
+/**
+ * Drop ended / cancelled / AllClear alerts. Title tokens catch the live
+ * "yellow watch - tornado - ended" Atom; CAP enclosure fields catch the
+ * official AllClear / Past / Cancel even when the title still says yellow.
+ */
+export function isEndedOrAllClear({ title, summary, capResponseType, capUrgency, capMsgType } = {}) {
+  const blob = `${title || ''} ${summary || ''}`;
+  if (ENDED_TOKEN_RE.test(blob)) return true;
+  const response = String(capResponseType || '').trim().toLowerCase().replace(/[\s_-]/g, '');
+  if (response === 'allclear') return true;
+  const urgency = String(capUrgency || '').trim().toLowerCase();
+  if (urgency === 'past') return true;
+  const msgType = String(capMsgType || '').trim().toLowerCase();
+  if (msgType === 'cancel') return true;
+  return false;
+}
+
+export function parseCapStatus(xml) {
+  if (typeof xml !== 'string' || !xml) return {};
+  return {
+    capResponseType: extractTag(xml, 'responseType') || extractTag(xml, 'cap:responseType'),
+    capUrgency: extractTag(xml, 'urgency') || extractTag(xml, 'cap:urgency'),
+    capMsgType: extractTag(xml, 'msgType') || extractTag(xml, 'cap:msgType'),
+    capSeverity: extractTag(xml, 'severity') || extractTag(xml, 'cap:severity'),
+  };
+}
+
+function extractEnclosureUrl(block) {
+  const hrefFirst = (block.match(/<link[^>]*\bhref=(["'])(.*?)\1[^>]*\brel=(["'])enclosure\3/i) || [])[2] || '';
+  if (hrefFirst) return decodeHtmlEntities(hrefFirst).trim();
+  const relFirst = (block.match(/<link[^>]*\brel=(["'])enclosure\1[^>]*\bhref=(["'])(.*?)\2/i) || [])[3] || '';
+  return decodeHtmlEntities(relFirst).trim();
+}
+
 /** GeoRSS polygon/point pairs are lat lon (CAP/GeoRSS), returned as [lon, lat]. */
 export function parseGeorssCoordinates(raw) {
   if (typeof raw !== 'string' || !raw.trim()) return [];
@@ -154,6 +190,11 @@ export function normalizeAeaEntry(block) {
   const summary = cleanText(extractTag(block, 'summary') || extractTag(block, 'content'));
   const capSeverity = extractTag(block, 'cap:severity');
   const capUrgency = extractTag(block, 'cap:urgency');
+  const capResponseType = extractTag(block, 'cap:responseType') || extractTag(block, 'responseType');
+  const capMsgType = extractTag(block, 'cap:msgType') || extractTag(block, 'msgType');
+  if (isEndedOrAllClear({ title, summary, capResponseType, capUrgency, capMsgType })) {
+    return null;
+  }
   const category = extractCategory(block);
   const severity = mapAlertSeverity({
     capSeverity,
@@ -193,6 +234,7 @@ export function normalizeAeaEntry(block) {
     centroid,
     coordinates: coords.slice(0, 64),
     url: extractLink(block),
+    capUrl: extractEnclosureUrl(block),
     source: AEA_SOURCE,
   };
 }
@@ -293,7 +335,45 @@ export async function fetchAlbertaEmergencyAlerts(opts = {}) {
   }
   const xml = await readLimitedText(resp, maxBytes);
   const alerts = parseAlbertaEmergencyAlertAtom(xml);
-  return { alerts };
+  const filtered = await applyCapEnclosureFilter(alerts, {
+    fetchFn,
+    userAgent,
+    timeoutMs,
+    maxBytes,
+  });
+  return { alerts: filtered };
+}
+
+async function applyCapEnclosureFilter(alerts, { fetchFn, userAgent, timeoutMs, maxBytes }) {
+  const out = [];
+  for (const alert of alerts) {
+    if (isEndedOrAllClear(alert)) continue;
+    const capUrl = alert.capUrl;
+    if (!capUrl || !isAllowedAeaHost(capUrl)) {
+      out.push(alert);
+      continue;
+    }
+    try {
+      const resp = await fetchFn(capUrl, {
+        headers: {
+          Accept: 'application/common-alerting-protocol+xml, application/xml, text/xml, */*',
+          'User-Agent': userAgent,
+        },
+        signal: AbortSignal.timeout(Math.min(timeoutMs, 8_000)),
+        redirect: 'error',
+      });
+      if (!resp.ok) {
+        out.push(alert);
+        continue;
+      }
+      const capXml = await readLimitedText(resp, maxBytes);
+      if (isEndedOrAllClear({ ...alert, ...parseCapStatus(capXml) })) continue;
+      out.push(alert);
+    } catch {
+      out.push(alert);
+    }
+  }
+  return out;
 }
 
 export { CHROME_UA };

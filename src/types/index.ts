@@ -660,7 +660,7 @@ export interface MapLayers {
   sanctions: boolean;
   weather: boolean;
   /** Alberta Emergency Alert (and later provincial siblings) (#6610). */
-  canadaAlerts?: boolean;
+  canadaAlerts: boolean;
   economic: boolean;
   waterways: boolean;
   outages: boolean;

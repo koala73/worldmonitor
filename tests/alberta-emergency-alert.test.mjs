@@ -17,7 +17,9 @@ import {
   fetchAlbertaEmergencyAlerts,
   isAllowedAeaHost,
   mapAlertSeverity,
+  isEndedOrAllClear,
   parseAlbertaEmergencyAlertAtom,
+  parseCapStatus,
   parseDateMs,
   parseGeorssCoordinates,
   validateAlbertaAeaEnvelope,
@@ -216,7 +218,7 @@ test('canadaAlerts is a distinct MapLayers key from weather and canadaRoads', ()
   const types = readFileSync(join(root, 'src/types/index.ts'), 'utf8');
   const layers = readFileSync(join(root, 'src/config/map-layer-definitions.ts'), 'utf8');
   const client = readFileSync(join(root, 'src/services/canada-alerts.ts'), 'utf8');
-  assert.match(types, /canadaAlerts\?: boolean/);
+  assert.match(types, /canadaAlerts:\s*boolean/);
   assert.doesNotMatch(types, /albertaAea\?: boolean/);
   assert.match(layers, /canadaAlerts:\s+def\('canadaAlerts'/);
   assert.match(layers, /Canada Alerts \(Alberta Emergency Alert\)/);
@@ -235,4 +237,57 @@ test('responses larger than 8MB are rejected', async () => {
     () => fetchAlbertaEmergencyAlerts({ fetchFn }),
     /payload exceeds/,
   );
+});
+
+test('ended / cancelled / AllClear title tokens are dropped, not published as Moderate', () => {
+  assert.equal(isEndedOrAllClear({ title: 'yellow watch - tornado - ended' }), true);
+  assert.equal(isEndedOrAllClear({ title: 'yellow watch - tornado - cancelled' }), true);
+  assert.equal(isEndedOrAllClear({ title: 'yellow watch - tornado - AllClear' }), true);
+  assert.equal(isEndedOrAllClear({ summary: 'this alert is all clear' }), true);
+  assert.equal(isEndedOrAllClear({ capResponseType: 'AllClear' }), true);
+  assert.equal(isEndedOrAllClear({ capUrgency: 'Past' }), true);
+  assert.equal(isEndedOrAllClear({ capMsgType: 'Cancel' }), true);
+  assert.equal(isEndedOrAllClear({ title: 'yellow watch - tornado - in effect' }), false);
+
+  const endedXml = wrapEntry(`
+    <id>ended-tornado</id>
+    <updated>2026-08-13T19:31:03-06:00</updated>
+    <title>yellow watch - tornado - ended</title>
+    <summary>Conditions are no longer favourable for the development of tornadoes.</summary>
+    <georss:point>53.9 -111.3</georss:point>
+  `);
+  assert.deepEqual(parseAlbertaEmergencyAlertAtom(endedXml), []);
+});
+
+test('ended-tornado fixture is not published as an active Moderate Canada Alert', () => {
+  const ended = readFileSync(join(root, 'tests/fixtures/alberta-emergency-alert-ended-tornado.atom'), 'utf8');
+  const alerts = parseAlbertaEmergencyAlertAtom(ended);
+  assert.deepEqual(alerts, []);
+  assert.equal(alerts.some((a) => a.severity === 'Moderate'), false);
+});
+
+test('CAP enclosure AllClear / Past drops an in-effect yellow title', async () => {
+  const cap = readFileSync(join(root, 'tests/fixtures/alberta-emergency-alert-ended-tornado.cap.xml'), 'utf8');
+  const status = parseCapStatus(cap);
+  assert.equal(status.capResponseType, 'AllClear');
+  assert.equal(status.capUrgency, 'Past');
+  assert.equal(status.capSeverity, 'Minor');
+  assert.equal(isEndedOrAllClear(status), true);
+
+  const atom = wrapEntry(`
+    <id>in-effect-but-allclear</id>
+    <updated>2026-08-13T12:46:36-06:00</updated>
+    <title>yellow watch - tornado - in effect</title>
+    <link href="https://www.alberta.ca/data/aea/cap/2026/08/13/ended-tornado.xml" rel="enclosure" type="application/common-alerting-protocol+xml"/>
+    <summary>A tornado may develop.</summary>
+    <georss:point>53.9 -111.3</georss:point>
+  `);
+  const fetchFn = async (url) => {
+    if (String(url).includes('ended-tornado.xml')) {
+      return new Response(cap, { status: 200, headers: { 'content-type': 'application/common-alerting-protocol+xml' } });
+    }
+    return atomResponse(atom);
+  };
+  const result = await fetchAlbertaEmergencyAlerts({ fetchFn, userAgent: CHROME_UA });
+  assert.deepEqual(result.alerts, []);
 });
