@@ -70,6 +70,18 @@ describe('sources catalog domain assignment', () => {
     );
   });
 
+  it('assigns Toronto Transit Commission (TTC) GTFS-RT to infrastructure instead of failing the corpus build', () => {
+    const catalog = buildSourceCatalog([
+      {
+        provider: 'Toronto Transit Commission (TTC) GTFS-RT',
+        host: 'gtfsrt.ttc.ca',
+        kind: 'structured',
+        references: [{ path: 'scripts/seed-ttc-alerts.mjs' }],
+      },
+    ]);
+    assert.equal(catalog[0].domainId, 'infrastructure');
+  });
+
   it('still fails closed when a structured provider has no catalog domain', () => {
     assert.throws(
       () => buildSourceCatalog([{

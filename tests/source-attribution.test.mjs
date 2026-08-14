@@ -94,11 +94,15 @@ test('source inventory has complete metadata and matches the generated catalog',
   }
 
   const stats = sourceAttributionStats(inventory, manifest);
-  // Includes the licensed direct-feed pack and its provider-neutral logical
-  // origin rows. Recompute these from the generated manifest when sources move.
-  assert.equal(stats.activeHosts, 547);
-  assert.equal(stats.providerCount, 545);
-  assert.equal(stats.observedHosts, 666);
+  // HARDCODED ON PURPOSE. Comparing these against docs/generated/stats.json makes
+  // the gate agree with itself: both sides come from the same generator, so a
+  // regeneration moves the expectation in lockstep with the value and the assert
+  // can never fail. Literals are the tripwire — when a source lands, recompute
+  // from the merged manifest and bump them deliberately.
+  // 547/545/666 on main + gtfsrt.ttc.ca from this PR.
+  assert.equal(stats.activeHosts, 548);
+  assert.equal(stats.providerCount, 546);
+  assert.equal(stats.observedHosts, 667);
   assert.ok(stats.reviewNeeded > 0, 'terms-review rows must remain visible until a license audit is complete');
 });
 

@@ -228,9 +228,9 @@ const PROVIDER_OVERRIDES = {
   },
   'gtfsrt.ttc.ca': {
     provider: 'Toronto Transit Commission (TTC) GTFS-RT',
-    license: 'Open Government Licence – Toronto (City of Toronto Open Data catalogue: TTC GTFS-Realtime Service Disruptions)',
-    attribution: 'Contains information licensed under the Open Government Licence – Toronto. Toronto Transit Commission GTFS-RT service alerts, https://gtfsrt.ttc.ca and https://open.toronto.ca/dataset/ttc-gtfs-realtime-gtfs-rt/.',
-    status: 'reviewed',
+    license: 'CKAN package_show for ttc-gtfs-realtime-gtfs-rt: license_id=notspecified, isopen=false (https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/package_show?id=ttc-gtfs-realtime-gtfs-rt). Portal dataset page chrome links OGL-Toronto but is not data-bound to this dataset.',
+    attribution: 'Toronto Transit Commission GTFS-RT service alerts. https://gtfsrt.ttc.ca and https://open.toronto.ca/dataset/ttc-gtfs-realtime-gtfs-rt/. Portal HTML cites OGL-Toronto; CKAN does not.',
+    status: 'terms-review',
   },
   'www.tenders.gov.au': {
     provider: 'AusTender',

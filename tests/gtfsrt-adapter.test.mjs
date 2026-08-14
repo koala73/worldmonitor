@@ -159,6 +159,30 @@ describe('gtfsrtAdapter(feedUrl)', () => {
     assert.equal(cache.has(gtfsRtCacheKey(otherUrl)), false);
   });
 
+  it('rejects http:// feed URLs before fetch', async () => {
+    await assert.rejects(
+      () => gtfsrtAdapter('http://gtfsrt.ttc.ca/alerts/all?format=binary', {
+        allowedHosts: ['gtfsrt.ttc.ca'],
+        fetch: async () => {
+          throw new Error('must not fetch');
+        },
+      }),
+      (error) => error instanceof GtfsRtError && error.code === 'HOST_NOT_ALLOWED',
+    );
+  });
+
+  it('rejects file:// feed URLs before fetch', async () => {
+    await assert.rejects(
+      () => gtfsrtAdapter('file:///etc/passwd', {
+        allowedHosts: ['gtfsrt.ttc.ca'],
+        fetch: async () => {
+          throw new Error('must not fetch');
+        },
+      }),
+      (error) => error instanceof GtfsRtError && error.code === 'HOST_NOT_ALLOWED',
+    );
+  });
+
   it('rejects a host outside the allowlist', async () => {
     await assert.rejects(
       () => gtfsrtAdapter('https://evil.example/alerts.pb', {

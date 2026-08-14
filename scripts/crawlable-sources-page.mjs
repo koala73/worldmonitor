@@ -135,6 +135,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['www.nfx.com', 'technology'],
   ['www.reddit.com', 'news'],
   ['SWF Institute', 'finance'],
+  ['Toronto Transit Commission (TTC) GTFS-RT', 'infrastructure'],
   ['USGS ScienceBase (Mineral Commodity Summaries)', 'energy'],
   ['www.techstars.com', 'technology'],
   ['www.windy.com', 'environment'],
