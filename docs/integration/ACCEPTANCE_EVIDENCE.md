@@ -390,3 +390,5 @@ unchanged. Remote CI, human review, readiness, merge and deployment are not
 implied. Publication-document record commit:
 `08ee150b7a4db24a85c7e567434e437e2e0cf7aa`; the following receipt backfills
 it.
+
+| Visible Draft PR review | PASS for review surface only | `docs/integration/evidence/phase12-draft-pr-created-20260814.png`, 1170x1073, 157,546 bytes, SHA-256 `651FF87ABAE15ECC3F9FD759248788B41000762DA0BECCEC26A7DF07B83FC034`. The page visibly shows `Draft` and `Not ready`; no readiness/merge/deploy action was taken. |

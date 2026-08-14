@@ -189,3 +189,22 @@ The retry passed and created publication-document record commit
 the remote integration branch from `ace1b8b49c0d02fe93c86ce419d8d2bd99b3f401`
 to that record commit with exit `0`. The following receipt commit backfills the
 record SHA in the required status documents.
+
+### Visible Draft PR evidence
+
+The GitHub PR page was opened in the visible in-app browser and left available
+for owner review. No button, form, readiness control, merge control,
+subscription control or deployment control was activated. The current viewport
+was captured at
+`docs/integration/evidence/phase12-draft-pr-created-20260814.png`:
+
+```text
+dimensions=1170x1073
+bytes=157546
+sha256=651FF87ABAE15ECC3F9FD759248788B41000762DA0BECCEC26A7DF07B83FC034
+```
+
+The image visibly records the PR title, `Draft` badge, `main` base, integration
+head, truth-and-safety summary and `Not ready` state. It proves only that the
+Draft review surface existed and was opened; it does not prove CI completion,
+approval, mergeability at a later time, deployment or Provider activation.

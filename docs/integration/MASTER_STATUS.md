@@ -484,3 +484,10 @@ The publication-document record commit is
 backfills its immutable SHA. Phase 12 is complete for
 branch publication and Draft PR creation. Review/CI/deployment/merge remain
 separate actions and are not claimed by this record.
+
+Visible review evidence was captured from the opened GitHub page at
+`docs/integration/evidence/phase12-draft-pr-created-20260814.png` (1170x1073,
+157,546 bytes, SHA-256
+`651FF87ABAE15ECC3F9FD759248788B41000762DA0BECCEC26A7DF07B83FC034`). The
+capture shows `Draft` and `Not ready`; it is evidence of the review surface,
+not of completed CI or deployment.
