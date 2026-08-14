@@ -10,6 +10,8 @@ import {
   validateAlbertaAeaEnvelope,
   albertaAeaContentMeta,
   AEA_MAX_CONTENT_AGE_MIN,
+  albertaAeaAfterPublish,
+  albertaAeaPublishTransform,
 } from './lib/alberta-emergency-alert.mjs';
 
 loadEnvFile(import.meta.url);
@@ -31,6 +33,8 @@ runSeed('alerts', 'alberta-aea', CANONICAL_KEY, fetchAlbertaAea, {
   maxStaleMin: 45,
   contentMeta: albertaAeaContentMeta,
   maxContentAgeMin: AEA_MAX_CONTENT_AGE_MIN,
+  publishTransform: albertaAeaPublishTransform,
+  afterPublish: albertaAeaAfterPublish,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);

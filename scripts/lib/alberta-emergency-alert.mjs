@@ -31,7 +31,12 @@ const SEVERITY_RANK = Object.freeze({ Extreme: 0, Severe: 1, Moderate: 2, Minor:
 
 export function isAllowedAeaHost(url) {
   try {
-    return new URL(url).hostname.toLowerCase() === AEA_HOST;
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:'
+      && parsed.hostname.toLowerCase() === AEA_HOST
+      && (parsed.port === '' || parsed.port === '443')
+      && parsed.username === ''
+      && parsed.password === '';
   } catch {
     return false;
   }
@@ -131,11 +136,43 @@ export function isEndedOrAllClear({ title, summary, capResponseType, capUrgency,
 export function parseCapStatus(xml) {
   if (typeof xml !== 'string' || !xml) return {};
   return {
+    capIsAlert: /<(?:[A-Za-z_][\w.-]*:)?alert\b[^>]*>/i.test(xml),
+    capStatus: extractTag(xml, 'status') || extractTag(xml, 'cap:status'),
+    capScope: extractTag(xml, 'scope') || extractTag(xml, 'cap:scope'),
+    capExpires: extractTag(xml, 'expires') || extractTag(xml, 'cap:expires'),
     capResponseType: extractTag(xml, 'responseType') || extractTag(xml, 'cap:responseType'),
     capUrgency: extractTag(xml, 'urgency') || extractTag(xml, 'cap:urgency'),
     capMsgType: extractTag(xml, 'msgType') || extractTag(xml, 'cap:msgType'),
     capSeverity: extractTag(xml, 'severity') || extractTag(xml, 'cap:severity'),
   };
+}
+
+const CAP_STATUS_VALUES = new Set(['actual', 'exercise', 'system', 'test', 'draft']);
+const CAP_MSG_TYPE_VALUES = new Set(['alert', 'update', 'cancel', 'ack', 'error']);
+const CAP_SCOPE_VALUES = new Set(['public', 'restricted', 'private']);
+
+function classifyCapLifecycle(cap, nowMs) {
+  if (!cap?.capIsAlert) return 'invalid';
+  if (isEndedOrAllClear(cap)) return 'inactive';
+  const status = String(cap.capStatus || '').trim().toLowerCase();
+  const msgType = String(cap.capMsgType || '').trim().toLowerCase();
+  const scope = String(cap.capScope || '').trim().toLowerCase();
+  const expiresMs = parseDateMs(cap.capExpires);
+  if (!CAP_STATUS_VALUES.has(status)
+    || !CAP_MSG_TYPE_VALUES.has(msgType)
+    || !CAP_SCOPE_VALUES.has(scope)
+    || expiresMs == null) {
+    return 'invalid';
+  }
+  if (expiresMs <= nowMs) return 'inactive';
+  if (status !== 'actual' || !['alert', 'update'].includes(msgType) || scope !== 'public') {
+    return 'inactive';
+  }
+  return 'active';
+}
+
+export function isPublishableCapAlert(cap, nowMs = Date.now()) {
+  return classifyCapLifecycle(cap, nowMs) === 'active';
 }
 
 function extractEnclosureUrl(block) {
@@ -271,6 +308,24 @@ export function validateAlbertaAeaEnvelope(data) {
   return data != null && typeof data === 'object' && Array.isArray(data.alerts);
 }
 
+export function albertaAeaPublishTransform(data) {
+  return { alerts: Array.isArray(data?.alerts) ? data.alerts : [] };
+}
+
+export function albertaAeaAfterPublish(data) {
+  const failed = Math.min(100, Math.max(0, Number(data?._capVerification?.failed) || 0));
+  if (failed > 0) {
+    return {
+      freshnessMetaPatch: {
+        sourceState: 'degraded',
+        errorCode: 'CAP_VERIFICATION_FAILED',
+        capVerificationFailed: failed,
+      },
+    };
+  }
+  return { freshnessMetaPatch: { sourceState: 'ok' } };
+}
+
 export function albertaAeaContentMeta(data, nowMs = Date.now()) {
   const alerts = Array.isArray(data?.alerts) ? data.alerts : [];
   let newest = -Infinity;
@@ -310,6 +365,7 @@ async function readLimitedText(resp, maxBytes) {
  *   timeoutMs?: number,
  *   maxBytes?: number,
  *   url?: string,
+ *   nowMs?: number,
  * }} [opts]
  */
 export async function fetchAlbertaEmergencyAlerts(opts = {}) {
@@ -340,17 +396,24 @@ export async function fetchAlbertaEmergencyAlerts(opts = {}) {
     userAgent,
     timeoutMs,
     maxBytes,
+    nowMs: opts.nowMs ?? Date.now(),
   });
-  return { alerts: filtered };
+  return filtered;
 }
 
-async function applyCapEnclosureFilter(alerts, { fetchFn, userAgent, timeoutMs, maxBytes }) {
+async function applyCapEnclosureFilter(alerts, { fetchFn, userAgent, timeoutMs, maxBytes, nowMs }) {
   const out = [];
+  const verification = { attempted: 0, failed: 0, inactive: 0 };
   for (const alert of alerts) {
     if (isEndedOrAllClear(alert)) continue;
     const capUrl = alert.capUrl;
-    if (!capUrl || !isAllowedAeaHost(capUrl)) {
+    if (!capUrl) {
       out.push(alert);
+      continue;
+    }
+    verification.attempted += 1;
+    if (!isAllowedAeaHost(capUrl)) {
+      verification.failed += 1;
       continue;
     }
     try {
@@ -363,17 +426,26 @@ async function applyCapEnclosureFilter(alerts, { fetchFn, userAgent, timeoutMs, 
         redirect: 'error',
       });
       if (!resp.ok) {
-        out.push(alert);
+        verification.failed += 1;
         continue;
       }
       const capXml = await readLimitedText(resp, maxBytes);
-      if (isEndedOrAllClear({ ...alert, ...parseCapStatus(capXml) })) continue;
+      const cap = parseCapStatus(capXml);
+      const lifecycle = classifyCapLifecycle(cap, nowMs);
+      if (lifecycle === 'invalid') {
+        verification.failed += 1;
+        continue;
+      }
+      if (lifecycle === 'inactive') {
+        verification.inactive += 1;
+        continue;
+      }
       out.push(alert);
     } catch {
-      out.push(alert);
+      verification.failed += 1;
     }
   }
-  return out;
+  return { alerts: out, _capVerification: verification };
 }
 
 export { CHROME_UA };

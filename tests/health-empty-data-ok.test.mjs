@@ -106,6 +106,26 @@ test('quiet metadata-only sources remain healthy while their payload is absent',
   }
 });
 
+test('Alberta CAP verification degradation is health-visible with present mixed or empty data', () => {
+  for (const recordCount of [0, 2]) {
+    const entry = classifyPresent('canadaAlerts', {
+      fetchedAt: NOW - 5 * 60_000,
+      recordCount,
+      sourceState: 'degraded',
+      errorCode: 'CAP_VERIFICATION_FAILED',
+    });
+    assert.equal(entry.status, 'SEED_ERROR');
+    assert.equal(entry.errorCode, 'CAP_VERIFICATION_FAILED');
+  }
+
+  const verifiedQuiet = classifyPresent('canadaAlerts', {
+    fetchedAt: NOW - 5 * 60_000,
+    recordCount: 0,
+    sourceState: 'ok',
+  });
+  assert.equal(verifiedQuiet.status, 'OK');
+});
+
 test('audited sparse sources require a payload even when zero records is valid', () => {
   for (const name of AUDITED_PRESENT_PAYLOAD_KEYS) {
     const seedCfg = SEED_META[name];

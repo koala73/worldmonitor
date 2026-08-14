@@ -11,11 +11,14 @@ import {
   AEA_SOURCE,
   ALBERTA_CENTROID,
   CHROME_UA,
+  albertaAeaAfterPublish,
   albertaAeaContentMeta,
+  albertaAeaPublishTransform,
   calculateCentroid,
   declareAlbertaAeaRecords,
   fetchAlbertaEmergencyAlerts,
   isAllowedAeaHost,
+  isPublishableCapAlert,
   mapAlertSeverity,
   isEndedOrAllClear,
   parseAlbertaEmergencyAlertAtom,
@@ -152,6 +155,7 @@ test('content-age uses entry updated/published and never Date.now()', () => {
 
 test('host allowlist is www.alberta.ca only', () => {
   assert.equal(isAllowedAeaHost(AEA_ATOM_URL), true);
+  assert.equal(isAllowedAeaHost('http://www.alberta.ca/data/aea/rss/feed-full.atom'), false);
   assert.equal(isAllowedAeaHost('https://alberta.ca/data/aea/rss/feed-full.atom'), false);
   assert.equal(isAllowedAeaHost('https://api.weather.gov/alerts/active'), false);
   assert.equal(isAllowedAeaHost('https://511on.ca/api/v2/get/event'), false);
@@ -161,9 +165,15 @@ test('fetchAlbertaEmergencyAlerts uses CHROME_UA, times out, and rejects off-all
   const urls = [];
   const fetchFn = async (url, init) => {
     urls.push({ url: String(url), init });
-    return atomResponse(FIXTURE);
+    return String(url) === AEA_ATOM_URL
+      ? atomResponse(FIXTURE)
+      : new Response(capAlert(), { status: 200 });
   };
-  const result = await fetchAlbertaEmergencyAlerts({ fetchFn, userAgent: CHROME_UA });
+  const result = await fetchAlbertaEmergencyAlerts({
+    fetchFn,
+    userAgent: CHROME_UA,
+    nowMs: Date.parse('2026-08-13T20:00:00Z'),
+  });
   assert.ok(result.alerts.length >= 1);
   assert.equal(result.alerts[0].province, 'AB');
   assert.ok(result.alerts[0].severity);
@@ -193,6 +203,8 @@ test('seeder is a standalone nixpacks job and does not loop ais-relay or weather
   assert.match(SEEDER_SOURCE, /alerts:alberta-aea:v1/);
   assert.match(SEEDER_SOURCE, /alberta-aea-v1/);
   assert.match(SEEDER_SOURCE, /maxStaleMin:\s*45/);
+  assert.match(SEEDER_SOURCE, /publishTransform:\s*albertaAeaPublishTransform/);
+  assert.match(SEEDER_SOURCE, /afterPublish:\s*albertaAeaAfterPublish/);
   assert.doesNotMatch(SEEDER_SOURCE, /CANONICAL_KEY = 'weather:alerts:v1'/);
   assert.match(SEEDER_SOURCE, /alerts:alberta-aea:v1/);
   assert.doesNotMatch(SEEDER_SOURCE, /fetch\.bind/);
@@ -290,4 +302,135 @@ test('CAP enclosure AllClear / Past drops an in-effect yellow title', async () =
   };
   const result = await fetchAlbertaEmergencyAlerts({ fetchFn, userAgent: CHROME_UA });
   assert.deepEqual(result.alerts, []);
+  assert.deepEqual(result._capVerification, { attempted: 1, failed: 0, inactive: 1 });
+});
+
+function capAlert({
+  status = 'Actual',
+  msgType = 'Alert',
+  scope = 'Public',
+  urgency = 'Immediate',
+  severity = 'Severe',
+  expires = '2026-08-13T22:00:00Z',
+} = {}) {
+  return `<?xml version="1.0"?><alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+    <identifier>cap-1</identifier><sender>aea@gov.ab.ca</sender><sent>2026-08-13T19:00:00Z</sent>
+    <status>${status}</status><msgType>${msgType}</msgType><scope>${scope}</scope>
+    <info><urgency>${urgency}</urgency><severity>${severity}</severity><expires>${expires}</expires></info>
+  </alert>`;
+}
+
+function activeAtomEntry(id = 'active-cap', capUrl = `https://${AEA_HOST}/data/aea/cap/active.xml`) {
+  return wrapEntry(`
+    <id>${id}</id><updated>2026-08-13T19:00:00Z</updated>
+    <title>orange warning - wildfire - in effect</title>
+    <link href="${capUrl}" rel="enclosure" type="application/common-alerting-protocol+xml"/>
+    <summary>Wildfire conditions are dangerous.</summary><cap:severity>Severe</cap:severity>
+  `);
+}
+
+test('CAP verification positively requires an Actual public Alert or Update before expiry', () => {
+  const nowMs = Date.parse('2026-08-13T20:00:00Z');
+  assert.equal(isPublishableCapAlert(parseCapStatus(capAlert()), nowMs), true);
+  assert.equal(isPublishableCapAlert(parseCapStatus(capAlert({ msgType: 'Update' })), nowMs), true);
+  for (const status of ['Test', 'Exercise', 'Draft', 'System']) {
+    assert.equal(isPublishableCapAlert(parseCapStatus(capAlert({ status })), nowMs), false, status);
+  }
+  for (const msgType of ['Cancel', 'Ack', 'Error']) {
+    assert.equal(isPublishableCapAlert(parseCapStatus(capAlert({ msgType })), nowMs), false, msgType);
+  }
+  for (const scope of ['Private', 'Restricted']) {
+    assert.equal(isPublishableCapAlert(parseCapStatus(capAlert({ scope })), nowMs), false, scope);
+  }
+  assert.equal(isPublishableCapAlert(parseCapStatus(capAlert({ expires: '2026-08-13T20:00:00Z' })), nowMs), false);
+  assert.equal(isPublishableCapAlert(parseCapStatus(capAlert({ expires: '2026-08-13T20:00:00.001Z' })), nowMs), true);
+  assert.equal(isPublishableCapAlert(parseCapStatus(capAlert({ expires: '' })), nowMs), false);
+  assert.equal(isPublishableCapAlert(parseCapStatus('<html>not CAP</html>'), nowMs), false);
+});
+
+test('unverifiable advertised CAP is dropped and records bounded degradation diagnostics', async () => {
+  const atom = activeAtomEntry();
+  const fetchFn = async (url) => String(url).endsWith('active.xml')
+    ? new Response('upstream failure', { status: 503 })
+    : atomResponse(atom);
+  const result = await fetchAlbertaEmergencyAlerts({
+    fetchFn,
+    nowMs: Date.parse('2026-08-13T20:00:00Z'),
+  });
+  assert.deepEqual(result.alerts, []);
+  assert.deepEqual(result._capVerification, { attempted: 1, failed: 1, inactive: 0 });
+  assert.deepEqual(albertaAeaPublishTransform(result), { alerts: [] });
+  assert.deepEqual(albertaAeaAfterPublish(result), {
+    freshnessMetaPatch: {
+      sourceState: 'degraded',
+      errorCode: 'CAP_VERIFICATION_FAILED',
+      capVerificationFailed: 1,
+    },
+  });
+});
+
+test('CAP transport, size, and shape failures all fail closed', async () => {
+  const atom = activeAtomEntry();
+  const failures = [
+    async () => new Response('upstream failure', { status: 503 }),
+    async () => { throw new Error('timeout'); },
+    async () => new Response('<html>not CAP</html>', { status: 200 }),
+    async () => new Response(capAlert(), {
+      status: 200,
+      headers: { 'content-length': String(8 * 1024 * 1024 + 1) },
+    }),
+  ];
+  for (const capFetch of failures) {
+    const result = await fetchAlbertaEmergencyAlerts({
+      fetchFn: async (url) => String(url).endsWith('active.xml') ? capFetch() : atomResponse(atom),
+      nowMs: Date.parse('2026-08-13T20:00:00Z'),
+    });
+    assert.deepEqual(result.alerts, []);
+    assert.deepEqual(result._capVerification, { attempted: 1, failed: 1, inactive: 0 });
+  }
+});
+
+test('verified active, verified inactive, and mixed CAP outcomes keep distinct health states', async () => {
+  const atom = activeAtomEntry('verified-active').replace(
+    '</feed>',
+    activeAtomEntry('verified-cancelled', `https://${AEA_HOST}/data/aea/cap/cancelled.xml`)
+      .replace(/^.*?<entry>/s, '<entry>')
+      .replace(/<\/feed>.*$/s, '') + '</feed>',
+  );
+  const fetchFn = async (url) => {
+    const href = String(url);
+    if (href.endsWith('active.xml')) return new Response(capAlert(), { status: 200 });
+    if (href.endsWith('cancelled.xml')) return new Response(capAlert({ msgType: 'Cancel' }), { status: 200 });
+    return atomResponse(atom);
+  };
+  const result = await fetchAlbertaEmergencyAlerts({
+    fetchFn,
+    nowMs: Date.parse('2026-08-13T20:00:00Z'),
+  });
+  assert.deepEqual(result.alerts.map((alert) => alert.id), ['verified-active']);
+  assert.deepEqual(result._capVerification, { attempted: 2, failed: 0, inactive: 1 });
+  assert.deepEqual(albertaAeaAfterPublish(result), {
+    freshnessMetaPatch: { sourceState: 'ok' },
+  });
+  assert.equal('_capVerification' in albertaAeaPublishTransform(result), false);
+});
+
+test('HTTP or off-host CAP enclosure is dropped without making a network request', async () => {
+  for (const capUrl of [
+    `http://${AEA_HOST}/data/aea/cap/active.xml`,
+    'https://example.com/active.xml',
+  ]) {
+    let calls = 0;
+    const atom = activeAtomEntry('bad-cap-url', capUrl);
+    const result = await fetchAlbertaEmergencyAlerts({
+      fetchFn: async () => {
+        calls += 1;
+        return atomResponse(atom);
+      },
+      nowMs: Date.parse('2026-08-13T20:00:00Z'),
+    });
+    assert.equal(calls, 1, capUrl);
+    assert.deepEqual(result.alerts, []);
+    assert.equal(result._capVerification.failed, 1);
+  }
 });
