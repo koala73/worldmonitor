@@ -1,0 +1,152 @@
+Phase 12 GitHub run 7 correction evidence
+Date: 2026-08-14 Asia/Shanghai
+Workspace: D:\global-intelligence-earth\worldmonitor-phase12-lf-gate
+Remote source head evaluated by run 7: f7c1dcf555bc97fd4e2da38809e0daf4b73287fd
+Protected PR base: main@0fca203c776dd5fa4913c4bd52f99cd2c3c13a25
+Draft PR: https://github.com/daking32168-byte/worldmonitor/pull/1
+
+Authenticated GitHub connector re-read
+--------------------------------------
+Pro bundle freshness  run 31796115430  completed success
+Lint                  run 31796115445  completed success
+Proto Generation Check run 31796115443 completed success
+Typecheck             run 31796115453  completed success
+Lint Code             run 31796115455  completed success
+Test                  run 31796115465  completed failure
+
+The Test run failure is retained. Twelve Test jobs passed. Unit job
+94753533996 failed after the health-cutover gate and real production build had
+already passed. Its full Linux data suite reported 23,020 tests across 3,550
+suites: 23,000 pass, 14 fail, 6 skip. The 14 failures were reduced to these
+source-level causes and corrected without adding a Provider key or mock data:
+
+1. Browser VITE allowlist omitted safe public posture flag VITE_SELF_HOSTED_MODE.
+2. CI coverage treated desktop:tauri:build:nsis packaging as a retired product-variant build.
+3. Two Cross-Strait UI tests expected the former conditional provider notice.
+4. Generated stock news fields and 21 stock query parameters lacked public descriptions.
+5. Windows-safe Markdown lint contract still expected the removed single-quoted npm glob.
+6. Eight new stock REST operations lacked explicit MCP parity classifications.
+7. meta-tags.ts read window at module-import time.
+8. Independent index product facts inherited an official upstream offer.
+9. Eight stock routes lacked explicit cache-tier classifications.
+10. The independent dashboard description exceeded the 160-character SEO bound.
+11. Source-attribution tests retained obsolete 531/529/650 inventory counts.
+
+Truth-bound corrections
+-----------------------
+- Added 27 meaningful proto comments across nine Market v1 files and regenerated
+  the Market/unified OpenAPI artifacts. No field, wire number, symbol identity,
+  price, bar, news item or Provider response was invented.
+- Added explicit cache tiers for all eight stock routes.
+- Classified six high-cardinality arbitrary-symbol REST reads as fetch-on-miss
+  and two truthful disabled future-analysis reads as deferred-to-future-tool;
+  no false fixed-universe MCP tool mapping was claimed.
+- Kept independent product facts free of official upstream offers.
+- Made browser metadata URL lookup lazy so server/test imports do not require window.
+- Preserved unconditional no-provider visibility and updated stale static tests.
+
+OpenAPI fixed-budget correction
+-------------------------------
+Command: npm.cmd run build:openapi
+Exit: 0
+Result: OpenAPI 3.1.0, 221 paths, JSON.stringify length 932903; 10 shared
+error responses -> 1127 refs; 42 shared parameters -> 340 refs; 68 complete,
+byte-identical component property schemas -> 283 refs; measured 19317 bytes
+saved; 17/17 China provenance schemas reused. Fixed budget remains 950000.
+Actual UTF-8 public/openapi.json file length: 933154 bytes.
+
+Command: node --test tests/openapi-json-dedup.test.mjs
+Exit: 0
+Result: 14 tests, 6 suites, 14 pass, 0 fail. The transform's refs were fully
+expanded and the complete document deep-compared equal to the pre-transform
+OpenAPI source. Every 2xx response remained inline.
+
+Focused remote-failure regression
+---------------------------------
+Command: node_modules/.bin/tsx.cmd --test --test-concurrency=8 <13 run-7 regression files>
+First Windows run: 111 tests, 108 pass, 3 infrastructure failures. All three
+were spawnSync awk/bash ENOENT in ci-workflow-coverage; no product assertion
+failed. Git for Windows usr/bin was then added to PATH.
+
+Command: node_modules/.bin/tsx.cmd --test tests/ci-workflow-coverage.test.mts
+Exit: 0
+Result: 24 tests, 24 pass, 0 fail.
+
+Local quality gates
+-------------------
+Command: npm.cmd run typecheck
+Exit: 0
+
+Command: npm.cmd run typecheck:api
+Exit: 0
+Result: audit-convex-string-calls PASS.
+
+Command: npm.cmd run lint
+Exit: 0
+Result: 3327 files checked; 33 warnings and 9 infos retained; safe HTML guard
+passed with 0 legacy HTML sinks.
+
+Command: npm.cmd run docs:check
+Exit: 0
+Result: 150 documentation claims match code.
+
+Command: npm.cmd run sources:check
+Exit: 0
+Result: 533 active hosts; 293 structured/API; 268 feed; 30 operational-status;
+519 terms-review.
+
+Command: npm.cmd run product:facts:check
+Exit: 0
+Result: public product facts check OK.
+
+Command: npm.cmd run lint:md
+Exit: 0
+Result: 257 Markdown files, 0 errors.
+
+Command: git diff --check
+Exit: 0
+
+Formal code generation and idempotency
+--------------------------------------
+Command: proto/buf.exe generate, then generate-request-validation plus all 14
+Makefile-declared OpenAPI injectors using locked Go plugins.
+Buf generate exit: 0
+Injector exit: 0
+Result: 161 RPCs, 556 proto rules, 36 specs, 222 operations.
+Binary diff hash before: 74e05228739cd512b88a9b6801e927817c2bdaac
+Binary diff hash after:  74e05228739cd512b88a9b6801e927817c2bdaac
+Idempotent: true
+
+Additional non-gate diagnostic: buf lint
+Exit: 100
+Result: retained upstream-wide unused annotations imports, mixed missing
+go_package values in intelligence/v1 and one response-name convention error.
+This pre-existing repository-wide lint debt was not changed or reported as a
+pass. GitHub Proto Generation Check run 31796115443 passed on run 7; the fresh
+corrected head must independently rerun freshness and breaking checks.
+
+Production build
+----------------
+Command: npm.cmd run build
+Exit: 0
+Result: strict browser-secret check passed; product facts and OpenAPI rebuilt;
+blog built; crawlable corpus and 254-URL sitemap built; TypeScript compiled;
+Vite transformed 2506 modules; stock-workspace asset emitted; PWA generated
+254 precache entries. Existing chunk-size/dynamic-import warnings were
+non-failing and are not hidden.
+
+Commit and hook
+---------------
+First commit attempt: stopped before commit because pre-commit could not find
+Node on its PATH. No commit was created and no hook was bypassed.
+Second commit attempt with locked Node 24 on PATH: success.
+Unicode safety: 11 staged files scanned; no suspicious hidden Unicode.
+Correction commit: ef876ff5561f0c6659ec5151c135f840956944bb
+
+Acceptance boundary
+-------------------
+These results correct run 7 locally. They do not rewrite run 31796115465 as a
+pass and do not prove a live quote, symbol-specific K-line, licensed real-time
+entitlement, AIS cargo fact, news cause, Provider availability, deployment,
+merge or release. A normal non-force corrected-head publication and fresh
+GitHub workflow conclusions are still required.
