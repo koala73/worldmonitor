@@ -548,3 +548,7 @@ Raw evidence:
 documentation-only and must retain green PR checks as an external integrity
 confirmation. Draft readiness, merge, deployment, release and Provider
 activation remain outside this acceptance.
+
+Run-8 acceptance evidence record commit:
+`6b39dd8a15a41c54fe5353a99ebcb71de648ca96`. This following receipt backfills
+the immutable record SHA and contains no source/provider/runtime change.

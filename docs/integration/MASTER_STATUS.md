@@ -670,3 +670,8 @@ This evidence-receipt commit changes integration documentation only; its fresh
 PR checks remain an external exact-receipt integrity confirmation, not a
 reason to reclassify the already-green run 8. The PR stays Draft and no merge,
 deployment, release or Provider activation is authorized.
+
+Run-8 acceptance evidence record commit:
+`6b39dd8a15a41c54fe5353a99ebcb71de648ca96`. This following receipt backfills
+that immutable SHA; it changes documentation only and preserves the accepted
+functional head and Draft boundary.
