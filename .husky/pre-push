@@ -140,11 +140,16 @@ fi
 # no file on disk — so the old line-read string dropped those paths silently
 # and the gate went green having run nothing.
 ATTEST="scripts/prepush-attest.sh"
-CHANGED_NUL=$(mktemp) || exit 1
-CHANGED_LIVE_NUL=$(mktemp) || exit 1
-NODE_TESTS_NUL=$(mktemp) || exit 1
-DOM_TESTS_NUL=$(mktemp) || exit 1
-WORKTREE_NUL=$(mktemp) || exit 1
+# macOS `git push` can replace TMPDIR with its per-user /var/folders path even
+# when the caller selected a sandbox-safe directory. Keep hook scratch files
+# in the portable system temp directory unless an explicit hook override is
+# provided.
+TEMP_ROOT=${WM_PREPUSH_TMPDIR:-/tmp}
+CHANGED_NUL=$(mktemp "$TEMP_ROOT/wm-prepush-changed.XXXXXX") || exit 1
+CHANGED_LIVE_NUL=$(mktemp "$TEMP_ROOT/wm-prepush-changed-live.XXXXXX") || exit 1
+NODE_TESTS_NUL=$(mktemp "$TEMP_ROOT/wm-prepush-node-tests.XXXXXX") || exit 1
+DOM_TESTS_NUL=$(mktemp "$TEMP_ROOT/wm-prepush-dom-tests.XXXXXX") || exit 1
+WORKTREE_NUL=$(mktemp "$TEMP_ROOT/wm-prepush-worktree.XXXXXX") || exit 1
 trap 'rm -f "$CHANGED_NUL" "$CHANGED_LIVE_NUL" "$NODE_TESTS_NUL" "$DOM_TESTS_NUL" "$WORKTREE_NUL"' EXIT
 
 # read_paths: NUL stdin -> the _collected array (bash 3.2 has no namerefs, so

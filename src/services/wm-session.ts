@@ -82,10 +82,10 @@ let cookieIssuedThisSession = false;
 // Latched once a mint proves the browser did not keep the previous cookie.
 let cookiePersistenceBroken = false;
 // Anonymous-only fallback for clients that reject the shared-domain HttpOnly
-// cookie. Kept in memory (never local/session storage) and activated only
-// after the server proves a prior cookie did not make the round trip.
+// cookie. Kept in memory (never local/session storage) and attached on
+// anonymous API calls as soon as a mint returns a token. Cookie remains
+// primary via credentials:include.
 let anonymousSessionHeaderToken: string | null = null;
-let useAnonymousSessionHeader = false;
 
 interface StoredSession {
   exp: number;
@@ -453,7 +453,6 @@ function noteMintCookieEvidence(hadSession: boolean, aCookieExistedWhenSent: boo
     // direct evidence outranks inference, same doctrine as noteRouteSuccess.
     cookieIssuedThisSession = true;
     cookiePersistenceBroken = false;
-    useAnonymousSessionHeader = false;
     return;
   }
   cookieIssuedThisSession = true;
@@ -470,7 +469,6 @@ function noteMintCookieEvidence(hadSession: boolean, aCookieExistedWhenSent: boo
   // without one: the browser is not storing it (strict cookie settings, an
   // in-app WebView, partitioned storage, a privacy extension).
   cookiePersistenceBroken = true;
-  useAnonymousSessionHeader = anonymousSessionHeaderToken !== null;
 }
 
 /**
@@ -556,17 +554,15 @@ async function mintSession(body?: { widgetKey?: string; proKey?: string }): Prom
       return { ok: false, cause: 'malformed' };
     }
     if (typeof data?.exp !== 'number') return { ok: false, cause: 'malformed' };
-    if (
-      sessionIdentityGeneration === identityGenerationWhenSent &&
-      typeof data.token === 'string' &&
-      data.token.startsWith('wms_')
-    ) {
-      anonymousSessionHeaderToken = data.token;
-    }
-    // Absent on an older deployment: treat as "no evidence either way" and
-    // leave the latch alone rather than accusing a healthy browser.
-    if (typeof data.hadSession === 'boolean') {
-      noteMintCookieEvidence(data.hadSession, aCookieExistedWhenSent);
+    if (sessionIdentityGeneration === identityGenerationWhenSent) {
+      if (typeof data.token === 'string' && data.token.startsWith('wms_')) {
+        anonymousSessionHeaderToken = data.token;
+      }
+      // Absent on an older deployment: treat as "no evidence either way" and
+      // leave the latch alone rather than accusing a healthy browser.
+      if (typeof data.hadSession === 'boolean') {
+        noteMintCookieEvidence(data.hadSession, aCookieExistedWhenSent);
+      }
     }
     return { ok: true, session: { exp: data.exp } };
   } catch {
@@ -585,11 +581,19 @@ export async function ensureWmSession(): Promise<boolean> {
   const stored = loadFromStorage();
   if (isFresh(stored)) {
     cached = stored;
-    return true;
+    // sessionStorage only stores {exp}. After reload the in-memory wms_
+    // token is gone; short-circuiting here would send the first RPC
+    // cookie-only (the XP bug). Remint unless we already have a token.
+    if (anonymousSessionHeaderToken) return true;
   }
 
+  const identityGenerationWhenStarted = sessionIdentityGeneration;
   inflight = (async () => {
     const fresh = await fetchNewSession();
+    // A key-session mint may replace this anonymous identity while its request
+    // is in flight. The replacement is already authoritative; let the caller
+    // replay through it without overwriting its cache or persistence verdict.
+    if (sessionIdentityGeneration !== identityGenerationWhenStarted) return true;
     if (fresh) {
       cached = fresh;
       sessionGeneration += 1;
@@ -600,7 +604,6 @@ export async function ensureWmSession(): Promise<boolean> {
       // as the API rejecting a good cookie (WORLDMONITOR-WG/XP).
       if (cookiePersistenceBroken) {
         if (anonymousSessionHeaderToken) {
-          useAnonymousSessionHeader = true;
           return true;
         }
         markWmSessionDead('cookie_not_persisted', '/api/wm-session');
@@ -638,7 +641,6 @@ export async function establishWmKeySession(keys: { widgetKey?: string; proKey?:
   recentRouteFailures.clear();
   cookiePersistenceBroken = false;
   anonymousSessionHeaderToken = null;
-  useAnonymousSessionHeader = false;
   saveToStorage(fresh);
   return true;
 }
@@ -671,7 +673,6 @@ export function __resetWmSessionForTests(): void {
   cookieIssuedThisSession = false;
   cookiePersistenceBroken = false;
   anonymousSessionHeaderToken = null;
-  useAnonymousSessionHeader = false;
   lastMintFailureCause = null;
   sentryEnqueue = enqueueSentryCall;
   fetchNewSessionTimeoutMs = 10_000;
@@ -865,8 +866,12 @@ export function installWmSessionFetchInterceptor(): void {
 
     const sendWith = (h: Headers, src: typeof input): Promise<Response> => {
       const requestHeaders = new Headers(h);
+      // Attach whenever the mint already handed us a token. Waiting on
+      // useAnonymousSessionHeader left the first post-mint RPC cookie-only,
+      // which 401s when the HttpOnly cookie has not landed yet (or never
+      // will). Cookie remains primary via credentials:'include'; the header
+      // is a same-token backup and is skipped if the caller already authed.
       if (
-        useAnonymousSessionHeader &&
         anonymousSessionHeaderToken &&
         !requestHeaders.has('Authorization') &&
         !requestHeaders.has('X-WorldMonitor-Key') &&
@@ -992,9 +997,6 @@ export function installWmSessionFetchInterceptor(): void {
         // false, so hadSession:false alone cannot safely prove persistence is
         // broken, while replaying without the returned token would send every
         // concurrent follower into the retry_401 quorum.
-        if (isCurrentSessionIdentity() && anonymousSessionHeaderToken) {
-          useAnonymousSessionHeader = true;
-        }
         const retryResp = await replayAndReport();
         return retryResp.status === 401 ? null : retryResp;
       })();

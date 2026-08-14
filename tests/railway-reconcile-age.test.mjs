@@ -12,9 +12,9 @@
 // the negative answer decidable. A count-bounded window was unusable when every
 // Deploy Gate evaluation woke this workflow (~33/hour, measured): the newest 30
 // runs could not reach back past a three-hour threshold. Keep the time contract
-// under the bounded schedule so delayed or dropped ticks do not change the
-// liveness meaning. "No run in the window reconciled" is a proof, including an
-// EMPTY window, which is the #6203 failure itself.
+// while the bounded manual rollback surface still exists. "No run in the
+// window reconciled" is a proof, including an EMPTY window, which is the #6203
+// failure itself.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -130,8 +130,9 @@ describe('reconcile-age window summary', () => {
     assert.throws(() => summarizeReconcileHistory([]), /numeric now/);
   });
 
-  it('keeps a three-hour liveness window around the bounded schedule', () => {
-    // The schedule gets 18 ten-minute opportunities before liveness alarms.
+  it('keeps a bounded three-hour manual rollback evidence window', () => {
+    // The temporary rollback surface retains a finite lookback; it does not
+    // infer health from an unbounded history of old controller successes.
     assert.equal(DEFAULT_MAX_RECONCILE_AGE_MS, 3 * HOUR);
   });
 });
@@ -330,18 +331,14 @@ describe('the cross-file names this scanner depends on', () => {
     );
   });
 
-  it('uses a bounded schedule with enough attempts inside the liveness window', () => {
+  it('is retained only behind an explicit manual rollback invocation', () => {
+    assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch']);
     assert.equal(Object.hasOwn(workflow.on, 'workflow_run'), false);
-    const schedules = workflow.on?.schedule ?? [];
-    assert.deepEqual(schedules, [{ cron: '7,17,27,37,47,57 * * * *' }]);
-    const minutes = schedules[0].cron.split(' ')[0].split(',').map(Number);
-    const cyclic = [...minutes, minutes[0] + 60];
-    const gaps = cyclic.slice(1).map((minute, index) => minute - cyclic[index]);
-    const maxGapMinutes = Math.max(...gaps);
-    assert.equal(maxGapMinutes, 10);
-    assert.ok(
-      (DEFAULT_MAX_RECONCILE_AGE_MS / (maxGapMinutes * 60_000)) >= 18,
-      'the liveness window must include at least 18 scheduled attempts',
-    );
+    assert.equal(Object.hasOwn(workflow.on, 'schedule'), false);
+    const liveness = workflow.jobs.liveness;
+    assert.match(String(liveness.if), /needs\.verifier\.result != 'success'/);
+    const enforcement = liveness.steps.find((step) => step.name === 'Enforce reconciliation liveness');
+    assert.match(enforcement.run, /CUTOVER_ACTIVE/);
+    assert.match(enforcement.run, /check-railway-reconcile-age\.mjs/);
   });
 });
