@@ -439,31 +439,6 @@
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
   {
-    "entry": "scripts/seed-alberta-emergency-alert.mjs",
-    "deployMode": "nixpacks-root-scripts",
-    "lifecycle": "active",
-    "service": "seed-alberta-emergency-alert",
-    "requiredEnv": [
-      "UPSTASH_REDIS_REST_URL",
-      "UPSTASH_REDIS_REST_TOKEN"
-    ],
-    "watchPatterns": [
-      "scripts/_html-entities.mjs",
-      "scripts/_seed-contract.mjs",
-      "scripts/_seed-envelope-source.mjs",
-      "scripts/_seed-utils.mjs",
-      "scripts/_proxy-utils.cjs",
-      "scripts/lib/alberta-emergency-alert.mjs",
-      "scripts/lib/llm-telemetry.cjs",
-      "scripts/nixpacks.toml",
-      "scripts/package-lock.json",
-      "scripts/package.json",
-      "scripts/seed-alberta-emergency-alert.mjs"
-    ],
-    "cronSchedule": "*/15 * * * *",
-    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
-  },
-  {
     "entry": "scripts/seed-fx-yoy.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-fx-yoy",

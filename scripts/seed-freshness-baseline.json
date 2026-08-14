@@ -41,7 +41,7 @@
       "status": "EMPTY",
       "issue": 6610,
       "expiresAt": "2026-08-16T20:45:00.000Z",
-      "reason": "New Alberta Emergency Alert probe (alerts:alberta-aea:v1). seed-alberta-emergency-alert cron is */15; EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. Re-anchored to 2026-08-16T20:45Z because the previous 2026-08-14T20:45Z cutover would expire today.",
+      "reason": "New Alberta Emergency Alert probe (alerts:alberta-aea:v1). EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. Re-anchored to 2026-08-16T20:45Z because the previous 2026-08-14T20:45Z cutover would expire today. This seeder no longer has a */15 cron of its own: seed-bundle-canada (#6711) owns it as a member gated on intervalMs 15min, so the first run clears on BUNDLE provisioning rather than on this branch deploying.",
       "cutover": {
         "probeKey": "seed-meta:alerts:alberta-aea",
         "activatedAt": "2026-08-15T20:45:00.000Z",
