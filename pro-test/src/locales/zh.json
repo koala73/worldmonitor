@@ -441,7 +441,8 @@
       "docs": "文档\t",
       "launch": "启动仪表板\t",
       "blog": "博客",
-      "menu": "菜单"
+      "menu": "菜单",
+      "agents": "为 AI 代理"
     },
     "hero": {
       "eyebrow": "免费全球情报仪表板 · 实时在线\t",
@@ -620,7 +621,14 @@
       "termQuery": "我们本周的红海风险敞口在恶化吗？",
       "termAnswer": "周环比运输计数下降；战争风险等级提升；过去48小时内两处密度异常。",
       "termDocs": "查看完整工具参考→",
-      "promise": "一个密钥。63 个 MCP 工具。完整 REST API。语言原生客户端。"
+      "promise": "一个密钥。63 个 MCP 工具。完整 REST API。语言原生客户端。",
+      "resources": {
+        "title": "选择入口点",
+        "briefing": "代理简报",
+        "mcp": "MCP 服务器",
+        "api": "REST API",
+        "agentView": "代理视图"
+      }
     },
     "pricing": {
       "eyebrow": "访问",
@@ -675,6 +683,18 @@
       "button": "率先找到它",
       "note": "免费 · 无需注册 · 秒速加载",
       "secondary": "或查看 Pro 计划 →"
+    },
+    "tasks": {
+      "eyebrow": "从问题开始",
+      "title": "你想了解什么？",
+      "sub": "选择与你当前任务相符的证据路线。每条路线都会打开有来源支撑的视图，而不是空白仪表板。",
+      "verifyTitle": "验证突发事件",
+      "verifyDesc": "在相信突发新闻声明之前，请检查当前危机追踪器、最新数据和引用的背景信息。",
+      "chokepointTitle": "检查海峡",
+      "chokepointDesc": "检查海运枢纽的中断状态、船舶流动和风险。",
+      "countryRiskTitle": "解释国家风险变动",
+      "countryRiskDesc": "追踪国家变化背后的政治、安全、经济和韧性信号。",
+      "open": "打开证据"
     }
   }
 }

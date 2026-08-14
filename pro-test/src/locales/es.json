@@ -441,7 +441,8 @@
       "docs": "Documentación",
       "launch": "Abrir Panel",
       "blog": "Blog",
-      "menu": "Menú"
+      "menu": "Menú",
+      "agents": "Para agentes de IA"
     },
     "hero": {
       "eyebrow": "Panel de inteligencia global gratuito · en vivo ahora",
@@ -620,7 +621,14 @@
       "termQuery": "¿Se está agravando nuestra exposición en el Mar Rojo esta semana?",
       "termAnswer": "Conteos de tránsito bajaron de semana a semana; nivel de riesgo de guerra elevado; dos anomalías de densidad en las últimas 48h.",
       "termDocs": "Ver la referencia completa de herramientas →",
-      "promise": "Una clave. 63 herramientas MCP. Una API REST completa. Clientes nativos del lenguaje."
+      "promise": "Una clave. 63 herramientas MCP. Una API REST completa. Clientes nativos del lenguaje.",
+      "resources": {
+        "title": "Elige tu punto de entrada",
+        "briefing": "Briefing del agente",
+        "mcp": "Servidor MCP",
+        "api": "API REST",
+        "agentView": "Vista de agente"
+      }
     },
     "pricing": {
       "eyebrow": "Acceso",
@@ -675,6 +683,18 @@
       "button": "Encuéntralo primero",
       "note": "Gratis · Sin registro · Se carga en segundos",
       "secondary": "O ve los planes Pro →"
+    },
+    "tasks": {
+      "eyebrow": "Comienza con la pregunta",
+      "title": "¿Qué intentas averiguar?",
+      "sub": "Elige la línea de evidencia que corresponde a la tarea que tienes. Cada ruta abre una vista respaldada por fuentes, no un panel vacío.",
+      "verifyTitle": "Verificar un evento de ruptura",
+      "verifyDesc": "Verifica los monitores de crisis actuales, métricas con fecha y contexto citado antes de confiar en una noticia de último momento.",
+      "chokepointTitle": "Inspeccionar un punto crítico",
+      "chokepointDesc": "Examina el estado de disrupciones, flujos de embarcaciones y riesgo en pasos marítimos críticos.",
+      "countryRiskTitle": "Explicar un movimiento de riesgo país",
+      "countryRiskDesc": "Traza las señales políticas, de seguridad, económicas y de resiliencia detrás del cambio de un país.",
+      "open": "Abrir evidencia"
     }
   }
 }

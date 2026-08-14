@@ -441,7 +441,8 @@
       "docs": "문서",
       "launch": "대시보드 열기",
       "blog": "블로그",
-      "menu": "메뉴"
+      "menu": "메뉴",
+      "agents": "AI 에이전트용"
     },
     "hero": {
       "eyebrow": "무료 글로벌 인텔리전스 대시보드 · 지금 실시간 중",
@@ -620,7 +621,14 @@
       "termQuery": "우리의 홍해 노출이 이번 주에 악화되고 있나요?",
       "termAnswer": "주간 통과 수 감소; 전쟁 위험 등급 상향; 지난 48시간 동안 2개의 밀도 이상.",
       "termDocs": "전체 도구 참고 자료 보기 →",
-      "promise": "하나의 키. 63개 MCP 도구. 완전한 REST API. 언어별 기본 클라이언트."
+      "promise": "하나의 키. 63개 MCP 도구. 완전한 REST API. 언어별 기본 클라이언트.",
+      "resources": {
+        "title": "진입점 선택",
+        "briefing": "에이전트 브리핑",
+        "mcp": "MCP 서버",
+        "api": "REST API",
+        "agentView": "에이전트 뷰"
+      }
     },
     "pricing": {
       "eyebrow": "접근",
@@ -675,6 +683,18 @@
       "button": "먼저 찾기",
       "note": "무료 · 가입 불필요 · 몇 초 안에 로드",
       "secondary": "또는 Pro 요금제 보기 →"
+    },
+    "tasks": {
+      "eyebrow": "질문부터 시작하세요",
+      "title": "무엇을 알아내려고 하시나요?",
+      "sub": "업무에 맞는 증거 추적 경로를 선택하세요. 각 경로는 소스 기반 뷰를 제공하며, 빈 대시보드가 아닙니다.",
+      "verifyTitle": "속보 이벤트 검증",
+      "verifyDesc": "속보 주장을 신뢰하기 전에 현재 위기 추적기, 최신 지표, 인용된 맥락을 확인하세요.",
+      "chokepointTitle": "병목 지점 확인",
+      "chokepointDesc": "주요 해상 통로의 중단 상태, 선박 흐름 및 위험을 검토하세요.",
+      "countryRiskTitle": "국가 위험 변화 설명",
+      "countryRiskDesc": "국가의 변화 뒤에 숨은 정치, 보안, 경제 및 복원력 신호를 추적하세요.",
+      "open": "증거 보기"
     }
   }
 }

@@ -441,7 +441,8 @@
       "docs": "Documente",
       "launch": "Lansați tabloul de bord",
       "blog": "Blog",
-      "menu": "Meniu"
+      "menu": "Meniu",
+      "agents": "Pentru agenți AI"
     },
     "hero": {
       "eyebrow": "Tabloul de bord gratuit de inteligență globală · live acum",
@@ -620,7 +621,14 @@
       "termQuery": "Se înrăutățește exposiția noastră la Marea Roșie în această săptămână?",
       "termAnswer": "Numere de tranzit în scădere săptămână de săptămână; nivel de risc de război ridicat; două anomalii de densitate în ultimele 48 de ore.",
       "termDocs": "Vezi referința completă a instrumentului →",
-      "promise": "O cheie. 63 instrumente MCP. O API REST completă. Clienți nativi pentru limbaje."
+      "promise": "O cheie. 63 instrumente MCP. O API REST completă. Clienți nativi pentru limbaje.",
+      "resources": {
+        "title": "Alegeți punctul de intrare",
+        "briefing": "Briefing agent",
+        "mcp": "Server MCP",
+        "api": "REST API",
+        "agentView": "Vizualizare agent"
+      }
     },
     "pricing": {
       "eyebrow": "Acces",
@@ -675,6 +683,18 @@
       "button": "Găsește-l primul",
       "note": "Gratuit · Fără înregistrare · Se încarcă în secunde",
       "secondary": "Sau vezi planuri Pro →"
+    },
+    "tasks": {
+      "eyebrow": "Începeți cu întrebarea",
+      "title": "Ce încercați să aflați?",
+      "sub": "Alegeți traseul de dovezi care se potrivește sarcinii în fața dumneavoastră. Fiecare rută deschide o vizualizare susținută de surse, nu o tablă de bord goală.",
+      "verifyTitle": "Verificați un eveniment de ultimă oră",
+      "verifyDesc": "Verificați monitorurile de crize actuale, metricile cu dată și contextul citat înainte de a avea încredere într-o pretenție de ultimă oră.",
+      "chokepointTitle": "Verificați un punct de strangulare",
+      "chokepointDesc": "Inspectați starea de perturbație, fluxurile de nave și riscul pe trecerile maritime critice.",
+      "countryRiskTitle": "Explicați o mișcare de risc-țară",
+      "countryRiskDesc": "Urmăriți semnalele politice, de securitate, economice și de reziliență din spatele unei schimbări în țară.",
+      "open": "Deschideți dovezi"
     }
   }
 }

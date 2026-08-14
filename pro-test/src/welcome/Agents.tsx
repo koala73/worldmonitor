@@ -1,5 +1,5 @@
 import { motion } from 'motion/react';
-import { Check } from 'lucide-react';
+import { ArrowUpRight, Check } from 'lucide-react';
 import { t } from '../i18n';
 
 // Registry install commands are product identifiers, not prose — they stay
@@ -9,6 +9,13 @@ const INSTALL_CHIPS = [
   { cmd: 'pip install worldmonitor-sdk', href: 'https://pypi.org/project/worldmonitor-sdk/' },
   { cmd: 'gem install worldmonitor', href: 'https://rubygems.org/gems/worldmonitor' },
   { cmd: 'go get github.com/koala73/worldmonitor/sdk/go', href: 'https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go' },
+] as const;
+
+const AGENT_RESOURCES = [
+  { key: 'briefing', href: '/llms.txt', display: '/llms.txt', eventTarget: 'welcome-agent-briefing' },
+  { key: 'mcp', href: 'https://worldmonitor.app/mcp', display: 'worldmonitor.app/mcp', eventTarget: 'welcome-agent-mcp' },
+  { key: 'api', href: 'https://api.worldmonitor.app', display: 'api.worldmonitor.app', eventTarget: 'welcome-agent-api' },
+  { key: 'agentView', href: '/?mode=agent', display: '/?mode=agent', eventTarget: 'welcome-agent-view' },
 ] as const;
 
 export const Agents = () => (
@@ -31,6 +38,28 @@ export const Agents = () => (
             </li>
           ))}
         </ul>
+        <div className="mb-6">
+          <p className="mb-3 font-mono text-[10px] uppercase tracking-[2px] text-wm-text">
+            {t('welcome.agents.resources.title')}
+          </p>
+          <div className="grid gap-px overflow-hidden rounded-sm border border-wm-border bg-wm-border sm:grid-cols-2">
+            {AGENT_RESOURCES.map(({ key, href, display, eventTarget }) => (
+              <a
+                key={key}
+                href={href}
+                data-umami-event="welcome-cta"
+                data-umami-event-target={eventTarget}
+                className="group flex min-w-0 items-center justify-between gap-3 bg-wm-card px-4 py-3 text-sm transition-colors hover:bg-wm-bg/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-wm-green"
+              >
+                <span className="min-w-0">
+                  <span className="block font-medium text-wm-text">{t(`welcome.agents.resources.${key}`)}</span>
+                  <span className="block truncate font-mono text-[10px] text-wm-muted">{display}</span>
+                </span>
+                <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-wm-green transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 rtl:-scale-x-100 rtl:group-hover:-translate-x-0.5" aria-hidden="true" />
+              </a>
+            ))}
+          </div>
+        </div>
         <div className="mb-6 rounded-sm border border-wm-border bg-wm-card/70 font-mono text-[11px] leading-none">
           {INSTALL_CHIPS.map(({ cmd, href }, i) => (
             <a

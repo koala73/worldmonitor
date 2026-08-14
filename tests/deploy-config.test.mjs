@@ -922,9 +922,26 @@ describe('welcome landing page routing', () => {
     // matching anything, leaving the guard green over code it no longer
     // described. What is actually forbidden is a query-carrying link to a ROOT
     // route (`/?…`), which lands back on the welcome page instead of the
-    // dashboard — whatever the query happens to be called.
-    const rootWelcomeLaunchLink = /href\s*[:=]\s*["'`]\/\?/;
+    // dashboard — whatever the query happens to be called. The established
+    // `/?mode=agent` discovery route is intentionally served ahead of the
+    // welcome rewrite and is not a dashboard launch CTA.
+    const rootWelcomeLaunchLink = /href\s*[:=]\s*["'`]\/\?(?!mode=agent["'`])/;
     const variantRootWelcomeLaunchLink = /https:\/\/(?:tech|finance|commodity|happy|energy)\.worldmonitor\.app\/\?/;
+    assert.doesNotMatch(
+      'href="/?mode=agent"',
+      rootWelcomeLaunchLink,
+      'the exact agent-view discovery URL must remain allowed'
+    );
+    assert.match(
+      'href="/?utm_source=welcome"',
+      rootWelcomeLaunchLink,
+      'the guard must detect ordinary query-carrying root URLs'
+    );
+    assert.match(
+      'href="/?mode=agent&utm_source=welcome"',
+      rootWelcomeLaunchLink,
+      'the agent-view exception must not hide a query-carrying launch URL'
+    );
     for (const [file, source] of welcomeSources) {
       assert.doesNotMatch(
         source,

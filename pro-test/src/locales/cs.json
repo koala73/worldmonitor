@@ -441,7 +441,8 @@
       "docs": "Dokumentace",
       "launch": "Otevřít dashboard",
       "blog": "Blog",
-      "menu": "Menu"
+      "menu": "Menu",
+      "agents": "Pro agenty AI"
     },
     "hero": {
       "eyebrow": "Bezplatný dashboard globální zpravodajské služby · live nyní",
@@ -620,7 +621,14 @@
       "termQuery": "Zhoršuje se naše expozice Červenému moři tento týden?",
       "termAnswer": "Počty tranzitů se týdně snižují; válečné riziko zvýšeno; dvě anomálie hustoty za posledních 48h.",
       "termDocs": "Podívejte se na úplný odkaz na nástroje →",
-      "promise": "Jeden klíč. 63 nástrojů MCP. Kompletní REST API. Klienti v nativních jazycích."
+      "promise": "Jeden klíč. 63 nástrojů MCP. Kompletní REST API. Klienti v nativních jazycích.",
+      "resources": {
+        "title": "Vyberte svůj vstupní bod",
+        "briefing": "Briefing agenta",
+        "mcp": "Server MCP",
+        "api": "REST API",
+        "agentView": "Pohled agenta"
+      }
     },
     "pricing": {
       "eyebrow": "Přístup",
@@ -675,6 +683,18 @@
       "button": "Najdi jej první",
       "note": "Zdarma · Bez registrace · Načte se za sekundy",
       "secondary": "Nebo podívej se na Pro plány →"
+    },
+    "tasks": {
+      "eyebrow": "Začněte s otázkou",
+      "title": "Co se snažíte zjistit?",
+      "sub": "Vyberte stopu důkazů, která odpovídá vaší úloze. Každá cesta otevře pohled podporovaný zdroji, nikoli prázdný dashboard.",
+      "verifyTitle": "Ověřit prvotní zprávu",
+      "verifyDesc": "Před důvěřením tvrzení o krizovém vývoji si ověřte aktuální sledování krizí, časově datované metriky a citované podklady.",
+      "chokepointTitle": "Zkontrolovat kritické místo",
+      "chokepointDesc": "Zkontrolujte stav přerušení, toky plavidel a rizika na kritických námořních trasách.",
+      "countryRiskTitle": "Vysvětlit posun v riziku země",
+      "countryRiskDesc": "Sledujte politické, bezpečnostní, ekonomické a resilienční signály za změnou v zemi.",
+      "open": "Otevřít důkazy"
     }
   }
 }

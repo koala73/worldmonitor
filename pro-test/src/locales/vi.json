@@ -441,7 +441,8 @@
       "docs": "Tài liệu",
       "launch": "Khởi chạy bảng điều khiển",
       "blog": "Blog",
-      "menu": "Menu"
+      "menu": "Menu",
+      "agents": "Dành cho AI agents"
     },
     "hero": {
       "eyebrow": "Bảng điều khiển tình báo toàn cầu miễn phí · đang hoạt động",
@@ -620,7 +621,14 @@
       "termQuery": "Mức độ phơi nhiễm Biển Đỏ của chúng tôi có đang trở nên tệ hơn tuần này không?",
       "termAnswer": "Số lượng chuyên chở giảm tuần này so với tuần trước; mức độ rủi ro chiến tranh được nâng cao; hai bất thường về mật độ trong 48 giờ qua.",
       "termDocs": "Xem tham chiếu công cụ đầy đủ →",
-      "promise": "Một khóa. 63 công cụ MCP. Một REST API đầy đủ. Các client hỗ trợ ngôn ngữ."
+      "promise": "Một khóa. 63 công cụ MCP. Một REST API đầy đủ. Các client hỗ trợ ngôn ngữ.",
+      "resources": {
+        "title": "Chọn điểm vào của bạn",
+        "briefing": "Tóm tắt tình hình từ agent",
+        "mcp": "Máy chủ MCP",
+        "api": "REST API",
+        "agentView": "Khung nhìn agent"
+      }
     },
     "pricing": {
       "eyebrow": "Truy cập",
@@ -675,6 +683,18 @@
       "button": "Tìm thấy nó trước",
       "note": "Miễn phí · Không đăng ký · Tải trong vài giây",
       "secondary": "Hoặc xem các gói Pro →"
+    },
+    "tasks": {
+      "eyebrow": "Bắt đầu với câu hỏi",
+      "title": "Bạn đang cố gắng tìm ra điều gì?",
+      "sub": "Chọn đường dấu vết chứng cứ phù hợp với nhiệm vụ của bạn. Mỗi lộ trình mở một khung nhìn được hỗ trợ bởi nguồn dữ liệu, không phải một dashboard trống.",
+      "verifyTitle": "Xác minh một sự kiện đột phát",
+      "verifyDesc": "Kiểm tra các bộ theo dõi khủng hoảng hiện tại, số liệu có ngày tháng và bối cảnh được trích dẫn trước khi tin tưởng một tuyên bố đột phá.",
+      "chokepointTitle": "Kiểm tra một điểm nghẽn",
+      "chokepointDesc": "Kiểm tra trạng thái gián đoạn, dòng chảy tàu, và rủi ro trên các eo biển hạn chế quan trọng.",
+      "countryRiskTitle": "Giải thích một bước ngoặt rủi ro quốc gia",
+      "countryRiskDesc": "Truy vết các tín hiệu chính trị, an ninh, kinh tế và khả năng phục hồi đằng sau sự thay đổi của một quốc gia.",
+      "open": "Mở chứng cứ"
     }
   }
 }

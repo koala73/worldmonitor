@@ -441,7 +441,8 @@
       "docs": "文件\t",
       "launch": "啟動儀表板\t",
       "blog": "部落格",
-      "menu": "選單"
+      "menu": "選單",
+      "agents": "供 AI 代理使用"
     },
     "hero": {
       "eyebrow": "免費全球情報儀表板 · 即時線上\t",
@@ -620,7 +621,14 @@
       "termQuery": "我們本週的紅海風險敞口在惡化嗎？",
       "termAnswer": "周環比運輸計數下降；戰爭風險等級提升；過去48小時內兩處密度異常。",
       "termDocs": "檢視完整工具參考→",
-      "promise": "一個金鑰。63 個 MCP 工具。完整 REST API。語言原生客戶端。"
+      "promise": "一個金鑰。63 個 MCP 工具。完整 REST API。語言原生客戶端。",
+      "resources": {
+        "title": "選擇您的入口點",
+        "briefing": "代理簡報",
+        "mcp": "MCP 伺服器",
+        "api": "REST API",
+        "agentView": "代理檢視"
+      }
     },
     "pricing": {
       "eyebrow": "訪問",
@@ -675,6 +683,18 @@
       "button": "率先找到它",
       "note": "免費 · 無需註冊 · 秒速載入",
       "secondary": "或檢視 Pro 計劃 →"
+    },
+    "tasks": {
+      "eyebrow": "從問題開始",
+      "title": "您想要找出什麼？",
+      "sub": "選擇與眼前工作相符的情報線索。每條路線都會開啟以來源支持的檢視，而不是空白的儀表板。",
+      "verifyTitle": "驗證突發事件",
+      "verifyDesc": "在信任突發新聞前，請先查核當前危機追蹤器、時間標記的指標和引用的背景資訊。",
+      "chokepointTitle": "檢查要衝",
+      "chokepointDesc": "檢視中斷狀態、船舶流量，以及關鍵海上通道的風險。",
+      "countryRiskTitle": "解釋國家風險動向",
+      "countryRiskDesc": "追蹤國家變化背後的政治、安全、經濟與韌性信號。",
+      "open": "開啟情報"
     }
   }
 }

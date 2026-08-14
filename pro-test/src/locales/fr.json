@@ -441,7 +441,8 @@
       "docs": "Documentation",
       "launch": "Lancer le tableau de bord",
       "blog": "Blog",
-      "menu": "Menu"
+      "menu": "Menu",
+      "agents": "Pour les agents IA"
     },
     "hero": {
       "eyebrow": "Tableau de bord d'intelligence mondiale gratuit · en direct maintenant",
@@ -620,7 +621,14 @@
       "termQuery": "Notre exposition à la mer Rouge s'aggrave-t-elle cette semaine ?",
       "termAnswer": "Comptages de transit en baisse semaine après semaine ; niveau de risque de guerre élevé ; deux anomalies de densité au cours des dernières 48 h.",
       "termDocs": "Voir la référence complète de l'outil →",
-      "promise": "Une clé. 63 outils MCP. Une API REST complète. Des clients natifs pour chaque langage."
+      "promise": "Une clé. 63 outils MCP. Une API REST complète. Des clients natifs pour chaque langage.",
+      "resources": {
+        "title": "Choisissez votre point d'entrée",
+        "briefing": "Briefing de l'agent",
+        "mcp": "Serveur MCP",
+        "api": "API REST",
+        "agentView": "Vue agent"
+      }
     },
     "pricing": {
       "eyebrow": "Accès",
@@ -675,6 +683,18 @@
       "button": "Trouvez-le en premier",
       "note": "Gratuit · Pas d'inscription · Se charge en secondes",
       "secondary": "Ou voir les forfaits Pro →"
+    },
+    "tasks": {
+      "eyebrow": "Commencez par la question",
+      "title": "Qu'essayez-vous de découvrir ?",
+      "sub": "Choisissez la piste de preuves qui correspond à votre objectif. Chaque route ouvre une vue adossée à des sources, pas un tableau de bord vide.",
+      "verifyTitle": "Vérifier un événement en direct",
+      "verifyDesc": "Vérifiez les suivis de crise actuels, les métriques datées et le contexte cité avant de faire confiance à une annonce d'actualité majeure.",
+      "chokepointTitle": "Vérifier un point d'étranglement",
+      "chokepointDesc": "Inspectez l'état des perturbations, les flux de navires et les risques dans les passages maritimes critiques.",
+      "countryRiskTitle": "Expliquer un mouvement de risque-pays",
+      "countryRiskDesc": "Retracer les signaux politiques, de sécurité, économiques et de résilience derrière le changement d'un pays.",
+      "open": "Ouvrir les preuves"
     }
   }
 }

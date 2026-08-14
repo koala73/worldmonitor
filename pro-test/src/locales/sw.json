@@ -441,7 +441,8 @@
       "blog": "Blogi",
       "menu": "Menyu",
       "docs": "Hati",
-      "launch": "Anzisha Dashibodi"
+      "launch": "Anzisha Dashibodi",
+      "agents": "Kwa ajili ya mawakala wa AI"
     },
     "hero": {
       "eyebrow": "Dashibodi ya akili za kimataifa · sasa moja kwa moja",
@@ -620,7 +621,14 @@
       "termQuery": "Je, umaalamo wetu wa Bahari ya Nyekundu unabadilika kwa njia mbaya wiki hii?",
       "termAnswer": "Hesabu ya utoaji hupungua wiki mwaka; kiwango cha hatari ya vita kirefu; anomalies mbili za ukosefu wiki iliyopita 48 saa.",
       "termDocs": "Angalia kumbukumbu kamili ya zana →",
-      "promise": "Ufunguo mmoja. Zana 63 za MCP. REST API kamili. Wateja wenye lugha asili."
+      "promise": "Ufunguo mmoja. Zana 63 za MCP. REST API kamili. Wateja wenye lugha asili.",
+      "resources": {
+        "title": "Chagua mahali pa kuingia",
+        "briefing": "Muhtasari wa wakala",
+        "mcp": "Seva ya MCP",
+        "api": "REST API",
+        "agentView": "Mwonekano wa wakala"
+      }
     },
     "pricing": {
       "eyebrow": "Upatikanaji",
@@ -675,6 +683,18 @@
       "button": "Itafuta kwanza",
       "note": "Bure · Hakuna kuweka akaunti · Inapakia kwa sekunde",
       "secondary": "Au ona mipango ya Pro →"
+    },
+    "tasks": {
+      "eyebrow": "Anza na swali",
+      "title": "Unataka kujua nini?",
+      "sub": "Chagua njia ya ushahidi inayolingana na kazi yako. Kila njia inafungua mwonekano unaounga mkakati wa chanzo, sio dashboard tupu.",
+      "verifyTitle": "Thibitisha tukio linaloipiga ghafla",
+      "verifyDesc": "Angalia vivuo vya mgogoro vya sasa, mipimo ya tarehe, na muktadha unaorejelewa kabla ya kuamini dai linalovunja habari.",
+      "chokepointTitle": "Angalia mahali pa kuzuia",
+      "chokepointDesc": "Chunguza hali ya usumbufu, mtiririko wa vyombo, na hatari katika njia muhimu za bahari.",
+      "countryRiskTitle": "Eleza harakati ya hatari ya nchi",
+      "countryRiskDesc": "Fuatilia maaashimiano ya kisiasa, usalama, kiuchumi, na upinzani nyuma ya mabadiliko ya nchi.",
+      "open": "Fungua ushahidi"
     }
   }
 }

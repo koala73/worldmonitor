@@ -441,7 +441,8 @@
       "docs": "Dokumentáció",
       "launch": "Irányítópult indítása",
       "blog": "Blog",
-      "menu": "Menü"
+      "menu": "Menü",
+      "agents": "AI ágensekhez"
     },
     "hero": {
       "eyebrow": "Ingyenes globális hírszerzési irányítópult · most élő",
@@ -620,7 +621,14 @@
       "termQuery": "Romlanak-e a vörös-tengeri kitettségünk ezekben a héten?",
       "termAnswer": "Az átmeneti számok csökkennek heti összehasonlítással; háborús kockázati szint megemelkedett; két sűrűség-anomália az utolsó 48 órában.",
       "termDocs": "Lásd a teljes eszközreferenciát →",
-      "promise": "Egy kulcs. 63 MCP-eszköz. Teljes REST API. Nyelvspecifikus kliensek."
+      "promise": "Egy kulcs. 63 MCP-eszköz. Teljes REST API. Nyelvspecifikus kliensek.",
+      "resources": {
+        "title": "Válassza ki a belépési pontot",
+        "briefing": "Ágens briefing",
+        "mcp": "MCP szerver",
+        "api": "REST API",
+        "agentView": "Ágens nézet"
+      }
     },
     "pricing": {
       "eyebrow": "Hozzáférés",
@@ -675,6 +683,18 @@
       "button": "Találd meg először",
       "note": "Ingyenes · Nincs regisztráció · Másodpercekben betöltődik",
       "secondary": "Vagy tekintsd meg a Pro csomagokat →"
+    },
+    "tasks": {
+      "eyebrow": "Kezdje a kérdéssel",
+      "title": "Mit szeretne megtudni?",
+      "sub": "Válassza ki az adott feladat megfelelő bizonyítéknyomvonalát. Minden útvonal forrásokkal alátámasztott nézetet nyit meg, nem pedig üres irányítópultot.",
+      "verifyTitle": "Friss esemény ellenőrzése",
+      "verifyDesc": "Az aktuális kríziskövetők, dátumozott metrikák és idézett kontextus ellenőrzésével biztosíthatod egy újdonság megbízhatóságát.",
+      "chokepointTitle": "Szoros pont ellenőrzése",
+      "chokepointDesc": "Vizsgálja meg a zavarok állapotát, a hajóáramlásokat és a kockázatokat a kritikus tengeri átjárókon.",
+      "countryRiskTitle": "Országkockázati lépés magyarázata",
+      "countryRiskDesc": "Kövesse nyomon az országváltozás mögött meghúzódó politikai, biztonsági, gazdasági és ellenálló képesség jeleket.",
+      "open": "Bizonyítékok megnyitása"
     }
   }
 }

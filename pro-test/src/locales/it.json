@@ -441,7 +441,8 @@
       "docs": "Documentazione",
       "launch": "Avvia dashboard",
       "blog": "Blog",
-      "menu": "Menu"
+      "menu": "Menu",
+      "agents": "Per agenti AI"
     },
     "hero": {
       "eyebrow": "Dashboard di intelligence globale gratuita · live adesso",
@@ -620,7 +621,14 @@
       "termQuery": "La nostra esposizione al Mar Rosso peggiora questa settimana?",
       "termAnswer": "I conteggi di transito diminuiscono da settimana a settimana; tier di rischio di guerra elevato; due anomalie di densità nelle ultime 48 ore.",
       "termDocs": "Vedi il riferimento strumento completo →",
-      "promise": "Una chiave. 63 strumenti MCP. Un'API REST completa. Client nativi del linguaggio."
+      "promise": "Una chiave. 63 strumenti MCP. Un'API REST completa. Client nativi del linguaggio.",
+      "resources": {
+        "title": "Scegli il tuo punto di ingresso",
+        "briefing": "Briefing dell'agente",
+        "mcp": "Server MCP",
+        "api": "API REST",
+        "agentView": "Visualizzazione dell'agente"
+      }
     },
     "pricing": {
       "eyebrow": "Accesso",
@@ -675,6 +683,18 @@
       "button": "Scoprilo per primo",
       "note": "Gratuito · Senza iscrizione · Si carica in secondi",
       "secondary": "Oppure visualizza i piani Pro →"
+    },
+    "tasks": {
+      "eyebrow": "Inizia dalla domanda",
+      "title": "Cosa stai cercando di scoprire?",
+      "sub": "Scegli il percorso di prove che corrisponde al compito da svolgere. Ogni rotta apre una visualizzazione supportata da fonti, non una dashboard vuota.",
+      "verifyTitle": "Verifica un evento in corso",
+      "verifyDesc": "Verifica gli attuali monitoraggi delle crisi, le metriche datate e il contesto citato prima di dare credito a un'affermazione di rottura.",
+      "chokepointTitle": "Controlla un punto critico",
+      "chokepointDesc": "Ispeziona lo stato dei disagi, i flussi di navi e i rischi attraverso i passaggi marittimi critici.",
+      "countryRiskTitle": "Spiega una mossa di rischio paese",
+      "countryRiskDesc": "Traccia i segnali politici, di sicurezza, economici e di resilienza dietro il cambio di un paese.",
+      "open": "Apri prove"
     }
   }
 }

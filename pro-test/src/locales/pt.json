@@ -441,7 +441,8 @@
       "docs": "Documentação",
       "launch": "Abrir Painel",
       "blog": "Blog",
-      "menu": "Menu"
+      "menu": "Menu",
+      "agents": "Para agentes de IA"
     },
     "hero": {
       "eyebrow": "Painel de inteligência global gratuito · agora ao vivo",
@@ -620,7 +621,14 @@
       "termQuery": "Nossa exposição no Mar Vermelho está piorando esta semana?",
       "termAnswer": "Contagens de trânsito em queda semana após semana; nível de risco de guerra elevado; duas anomalias de densidade nas últimas 48h.",
       "termDocs": "Veja a referência completa de ferramentas →",
-      "promise": "Uma chave. 63 ferramentas MCP. Uma API REST completa. Clientes nativos de linguagem."
+      "promise": "Uma chave. 63 ferramentas MCP. Uma API REST completa. Clientes nativos de linguagem.",
+      "resources": {
+        "title": "Escolha seu ponto de entrada",
+        "briefing": "Briefing do agente",
+        "mcp": "Servidor MCP",
+        "api": "REST API",
+        "agentView": "Visualização do agente"
+      }
     },
     "pricing": {
       "eyebrow": "Acesso",
@@ -675,6 +683,18 @@
       "button": "Encontre primeiro",
       "note": "Gratuito · Sem inscrição · Carrega em segundos",
       "secondary": "Ou veja planos Pro →"
+    },
+    "tasks": {
+      "eyebrow": "Comece pela pergunta",
+      "title": "O que você está tentando descobrir?",
+      "sub": "Escolha a trilha de evidências que corresponde à sua tarefa. Cada rota abre uma visualização apoiada em fontes, não um painel vazio.",
+      "verifyTitle": "Verificar um evento de última hora",
+      "verifyDesc": "Verifique os rastreadores de crise atuais, métricas datadas e contexto citado antes de confiar em uma notícia de última hora.",
+      "chokepointTitle": "Verificar um ponto de estrangulamento",
+      "chokepointDesc": "Inspecione o status de interrupção, fluxos de navios e risco em passagens marítimas críticas.",
+      "countryRiskTitle": "Explicar uma mudança de risco país",
+      "countryRiskDesc": "Rastreie os sinais políticos, de segurança, econômicos e de resiliência por trás da mudança de um país.",
+      "open": "Abrir evidências"
     }
   }
 }

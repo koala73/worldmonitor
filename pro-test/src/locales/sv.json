@@ -441,7 +441,8 @@
       "docs": "Dokumentation",
       "launch": "Starta instrumentpanel",
       "blog": "Blogg",
-      "menu": "Meny"
+      "menu": "Meny",
+      "agents": "För AI-agenter"
     },
     "hero": {
       "eyebrow": "Gratis global underrättelseinstrumentpanel · live nu",
@@ -620,7 +621,14 @@
       "termQuery": "Blir vår Red Sea-exponering värre den här veckan?",
       "termAnswer": "Transitantal ned vecka för vecka; krigsriskskikt höjt; två täthetskaviteter de senaste 48 timmarna.",
       "termDocs": "Se den fullständiga verktygslistan →",
-      "promise": "En nyckel. 63 MCP-verktyg. Ett fullständigt REST API. Språknativa klienter."
+      "promise": "En nyckel. 63 MCP-verktyg. Ett fullständigt REST API. Språknativa klienter.",
+      "resources": {
+        "title": "Välj ditt startläge",
+        "briefing": "Agentöversikt",
+        "mcp": "MCP-server",
+        "api": "REST API",
+        "agentView": "Agentvy"
+      }
     },
     "pricing": {
       "eyebrow": "Åtkomst",
@@ -675,6 +683,18 @@
       "button": "Hitta den först",
       "note": "Gratis · Ingen registrering · Laddar på sekunder",
       "secondary": "Eller se Pro-planer →"
+    },
+    "tasks": {
+      "eyebrow": "Börja med frågan",
+      "title": "Vad försöker du ta reda på?",
+      "sub": "Välj beviskedjan som motsvarar ditt uppdrag. Varje väg öppnar en källstödd vy, inte en tom instrumentpanel.",
+      "verifyTitle": "Verifiera en breaking-händelse",
+      "verifyDesc": "Kontrollera aktuella krishanterare, uppdaterade mätvärden och citerad kontext innan du litar på ett breaking-claim.",
+      "chokepointTitle": "Kontrollera en flaskhal",
+      "chokepointDesc": "Inspektera avbrottsstatus, fartygsflöden och risk över kritiska sjövägspassager.",
+      "countryRiskTitle": "Förklara ett landrisksteg",
+      "countryRiskDesc": "Spåra de politiska, säkerhetsmässiga, ekonomiska och motståndskraftssignaler bakom ett lands förändring.",
+      "open": "Öppna bevis"
     }
   }
 }

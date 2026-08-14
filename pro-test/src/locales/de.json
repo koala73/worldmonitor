@@ -441,7 +441,8 @@
       "docs": "Dokumentation",
       "launch": "Dashboard starten",
       "blog": "Blog",
-      "menu": "Menü"
+      "menu": "Menü",
+      "agents": "Für KI-Agenten"
     },
     "hero": {
       "eyebrow": "Kostenloses globales Informations-Dashboard · live jetzt",
@@ -620,7 +621,14 @@
       "termQuery": "Verschärft sich unsere Rotes-Meer-Exposition diese Woche?",
       "termAnswer": "Transitzählungen sinken Woche für Woche; Kriegsrisikostufe erhöht; zwei Dichteanomalien in den letzten 48 h.",
       "termDocs": "Vollständige Tool-Referenz anzeigen →",
-      "promise": "Ein Schlüssel. 63 MCP-Tools. Eine vollständige REST-API. Sprachenbezogene Clients."
+      "promise": "Ein Schlüssel. 63 MCP-Tools. Eine vollständige REST-API. Sprachenbezogene Clients.",
+      "resources": {
+        "title": "Wählen Sie Ihren Einstiegspunkt",
+        "briefing": "Agent-Briefing",
+        "mcp": "MCP-Server",
+        "api": "REST API",
+        "agentView": "Agent-Ansicht"
+      }
     },
     "pricing": {
       "eyebrow": "Zugriff",
@@ -675,6 +683,18 @@
       "button": "Finden Sie ihn zuerst",
       "note": "Kostenlos · Keine Anmeldung · Lädt in Sekunden",
       "secondary": "Oder siehe Pro-Pläne →"
+    },
+    "tasks": {
+      "eyebrow": "Beginnen Sie mit der Frage",
+      "title": "Was möchten Sie herausfinden?",
+      "sub": "Wählen Sie die Nachweiskette, die zu Ihrer Aufgabe passt. Jede Route öffnet eine quellengestützte Ansicht, nicht ein leeres Dashboard.",
+      "verifyTitle": "Ein Breaking Event verifizieren",
+      "verifyDesc": "Überprüfen Sie aktuelle Krisen-Tracker, datierte Metriken und zitierte Kontexte, bevor Sie einen Breaking-Bericht vertrauen.",
+      "chokepointTitle": "Einen Engpass überprüfen",
+      "chokepointDesc": "Inspizieren Sie Störungsstatus, Schiffsflüsse und Risiken in kritischen maritimen Passages.",
+      "countryRiskTitle": "Eine Länderrisiko-Bewegung erklären",
+      "countryRiskDesc": "Verfolgen Sie die politischen, sicherheitstechnischen, wirtschaftlichen und Resilienz-Signale hinter einer Länderveränderung.",
+      "open": "Belege öffnen"
     }
   }
 }

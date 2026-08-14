@@ -441,7 +441,8 @@
       "docs": "Dokumentacja",
       "launch": "Uruchom pulpit",
       "blog": "Blog",
-      "menu": "Menu"
+      "menu": "Menu",
+      "agents": "Dla agentów AI"
     },
     "hero": {
       "eyebrow": "Darmowy globalny pulpit inteligencji · dostępny teraz",
@@ -620,7 +621,14 @@
       "termQuery": "Czy nasza ekspozycja na Morzu Czerwonym pogarsza się w tym tygodniu?",
       "termAnswer": "Liczba tranzytów spadła tydzień do tygodnia; poziom ryzyka wojennego podniesiony; dwie anomalie gęstości w ostatnich 48h.",
       "termDocs": "Przejrzyj pełną dokumentację narzędzi →",
-      "promise": "Jeden klucz. 63 narzędzia MCP. Pełny REST API. Klienty natywne dla języków."
+      "promise": "Jeden klucz. 63 narzędzia MCP. Pełny REST API. Klienty natywne dla języków.",
+      "resources": {
+        "title": "Wybierz punkt wejścia",
+        "briefing": "Briefing agenta",
+        "mcp": "Serwer MCP",
+        "api": "REST API",
+        "agentView": "Widok agenta"
+      }
     },
     "pricing": {
       "eyebrow": "Dostęp",
@@ -675,6 +683,18 @@
       "button": "Znajdź go pierwszy",
       "note": "Bezpłatne · Bez rejestracji · Ładuje się w sekundy",
       "secondary": "Lub zobacz plany Pro →"
+    },
+    "tasks": {
+      "eyebrow": "Zacznij od pytania",
+      "title": "Co chcesz się dowiedzieć?",
+      "sub": "Wybierz ścieżkę dowodową pasującą do zadania przed Tobą. Każda trasa otwiera pogląd wspierany źródłami, nie pusty dashboard.",
+      "verifyTitle": "Zweryfikuj przełomowe wydarzenie",
+      "verifyDesc": "Sprawdź bieżące monitory kryzysowe, zaktualizowane metryki i cytowane źródła przed zaufaniem do sensacyjnej informacji.",
+      "chokepointTitle": "Sprawdź wąskie gardło",
+      "chokepointDesc": "Zbadaj status przeszkód, przepływy statków i ryzyko na krytycznych szlakach morskich.",
+      "countryRiskTitle": "Wyjaśnij ruch na rynku ryzyka kraju",
+      "countryRiskDesc": "Prześledzij polityczne, bezpieczeństwa, ekonomiczne i odpornościowe sygnały za zmianą kraju.",
+      "open": "Otwórz dowody"
     }
   }
 }
