@@ -1,6 +1,9 @@
 #!/usr/bin/env node
-// - Service name: seed-alberta-emergency-alert
-// Standalone nixpacks seeder for Alberta Emergency Alert Atom (#6610).
+// Runs as the Alberta-Emergency-Alert member of seed-bundle-canada (#6711), not
+// as its own Railway service. Gated on intervalMs 15min and kept there
+// deliberately: the payload is ~12KB, so the cadence is about timeliness rather
+// than bandwidth, and an emergency-alert layer that lags is worthless.
+// Seeder for Alberta Emergency Alert Atom (#6610).
 // Do not add Canada loops to ais-relay.cjs. Do not merge into the NWS weather alerts Redis key.
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
