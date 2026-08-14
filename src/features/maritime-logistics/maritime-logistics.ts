@@ -22,6 +22,7 @@ import {
   SupplyChainServiceClient,
   type GetChokepointStatusResponse,
 } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+import { premiumFetch } from '@/services/premium-fetch';
 import { getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import {
   MARITIME_FOCUS_AREAS,
@@ -34,7 +35,11 @@ import './maritime-logistics.css';
 
 const maritimeClient = new MaritimeServiceClient(getRpcBaseUrl(), { fetch: rpcFetch });
 const supplyChainClient = new SupplyChainServiceClient(getRpcBaseUrl(), { fetch: rpcFetch });
-const shippingClient = new ShippingV2ServiceClient(getRpcBaseUrl(), { fetch: rpcFetch });
+// routeIntelligence is premium. premiumFetch attaches the signed-in Clerk
+// bearer or server-issued WM key when present and otherwise fails closed; a
+// plain rpcFetch would let the generated fallback turn a 401 into silent empty
+// route intelligence for legitimate Pro sessions.
+const shippingClient = new ShippingV2ServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 const SNAPSHOT_STALE_SECONDS = 6 * 60;
 

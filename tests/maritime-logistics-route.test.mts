@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -10,11 +11,28 @@ import {
   selectVerifiedAisReports,
 } from '../src/features/maritime-logistics/maritime-logistics-route.ts';
 
+const workspaceSource = readFileSync(
+  new URL('../src/features/maritime-logistics/maritime-logistics.ts', import.meta.url),
+  'utf8',
+);
+
 test('maritime logistics owns only its native route', () => {
   assert.equal(isMaritimeLogisticsPath('/maritime-logistics'), true);
   assert.equal(isMaritimeLogisticsPath('/maritime-logistics/'), true);
   assert.equal(isMaritimeLogisticsPath('/shipping'), false);
   assert.equal(isMaritimeLogisticsPath('/maritime-logistics/extra'), false);
+});
+
+test('premium route intelligence uses the authenticated premium fetch boundary', () => {
+  assert.match(workspaceSource, /import \{ premiumFetch \} from '@\/services\/premium-fetch'/);
+  assert.match(
+    workspaceSource,
+    /new ShippingV2ServiceClient\(getRpcBaseUrl\(\), \{ fetch: premiumFetch \}\)/,
+  );
+  assert.doesNotMatch(
+    workspaceSource,
+    /new ShippingV2ServiceClient\(getRpcBaseUrl\(\), \{ fetch: rpcFetch \}\)/,
+  );
 });
 
 test('each selectable AIS focus remains inside the server bbox cap', () => {
