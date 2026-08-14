@@ -72,9 +72,9 @@ function isEligibleAlert(alert) {
   return Number.isFinite(severityRank(alert?.severity));
 }
 
-function nwsVtec(properties) {
-  const vtec = properties?.parameters?.VTEC;
-  return Array.isArray(vtec) ? vtec[0] : undefined;
+function nwsVtec(p) {
+  const vtec = Array.isArray(p?.parameters?.VTEC) ? p.parameters.VTEC[0] : undefined;
+  return vtec;
 }
 
 function normalizeNwsAlert(feature) {

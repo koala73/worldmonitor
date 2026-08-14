@@ -678,6 +678,11 @@ function deriveWeatherCoalesceKey(vtec) {
   return `nws:${m[1]}.${m[2]}.${m[3]}.${m[4]}`;
 }
 
+function nwsVtec(p) {
+  const vtec = Array.isArray(p?.parameters?.VTEC) ? p.parameters.VTEC[0] : undefined;
+  return vtec;
+}
+
 async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800 }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
@@ -4933,7 +4938,15 @@ async function seedWeatherAlerts() {
       return;
     }
 
-    const nwsAlerts = nwsResult.status === 'fulfilled' ? rankEligibleAlerts(nwsResult.value) : [];
+    const nwsFeatures = nwsResult.status === 'fulfilled' ? nwsResult.value : [];
+    const nwsAlerts = nwsResult.status === 'fulfilled'
+      ? rankEligibleAlerts(nwsFeatures).map((alert) => {
+          const feature = nwsFeatures.find((f) => (f.id || '') === alert.id);
+          const p = feature?.properties || {};
+          const vtec = nwsVtec(p);
+          return vtec ? { ...alert, vtec } : alert;
+        })
+      : [];
     const ecccAlerts = ecccResult.status === 'fulfilled' ? selectEcccAlerts(ecccResult.value) : [];
     const alerts = mergeAlertSources({ nws: nwsAlerts, eccc: ecccAlerts });
 
@@ -4963,7 +4976,7 @@ async function seedWeatherAlerts() {
       // identity from the alert so VTEC-less / ECCC alerts still deduplicate
       // against themselves.
       const familyKey = deriveWeatherCoalesceKey(a.vtec)
-        ?? `${a.source || 'nws'}:fallback:${a.id || a.headline || a.event || ''}`;
+        ?? `nws:fallback:${a.id || a.headline || a.event || ''}`;
       if (seenFamilyKeys.has(familyKey)) continue;
       seenFamilyKeys.add(familyKey);
       distinctFamilyAlerts.push(a);
