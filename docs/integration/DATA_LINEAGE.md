@@ -401,3 +401,25 @@ no market observation, quote, candle, event/news fact, exchange timestamp,
 Provider entitlement, AIS position/cargo fact, causal conclusion, trade value,
 factory observation, secret or deployment result. Fresh GitHub CI remains the
 required Linux acceptance authority.
+
+## Phase 12 Windows pre-push correction lineage
+
+This lineage is source-path and fixture-control metadata only:
+
+1. the first complete hook retained a Railway audit failure caused by Windows
+   separators at a POSIX policy namespace;
+2. `a6157e5...` normalizes repository-relative policy keys and passes 82/82;
+3. the second hook retained 2,899 tests with 2,890 pass, 6 fail and 3 skip;
+4. `5c5ca91...` converts only paths crossing the Git-for-Windows Bash fixture,
+   forwards fixture `python3` to the real host interpreter and compares the
+   edge target by exact resolved path;
+5. the corrected focused suite passes 9/9 and the third complete hook exits
+   `0` in 69.8 seconds on exact tree `5c5ca912...`;
+6. the missing `make.exe` line and separate all-repository `buf lint` failure
+   remain disclosed, while direct locked generation/idempotency retains hash
+   `74e05228739cd512b88a9b6801e927817c2bdaac`.
+
+None of these path strings is an exchange symbol, price, candle, timestamp,
+AIS position, cargo fact, article, causal result, trade value, factory report,
+Provider licence, secret or deployed health observation. Fresh GitHub CI on
+the final documented descendant remains the remote lineage boundary.

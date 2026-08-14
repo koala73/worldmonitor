@@ -321,3 +321,23 @@ permission to mutate `main`, force push, merge or deploy.
 No owner input is currently required. The extra local `buf lint` result is a
 recorded upstream-wide maintenance item, not a request to broaden this Phase 12
 correction across unrelated protocol packages.
+
+## Phase 12 Windows pre-push follow-up (2026-08-14)
+
+- [x] Correct Windows/Posix repository-relative namespace handling in the
+  Railway watch-path audit; targeted suite 82/82 passes.
+- [x] Correct only the Windows host-to-Bash fixture boundary and exact edge
+  graph path comparison; targeted suite 9/9 passes.
+- [x] Run the complete pre-push gate on exact correction tree `5c5ca912...`;
+  exit `0` with its tree cache bound to that exact source state.
+- [x] Retain the missing Windows `make.exe` disclosure and direct locked Buf
+  generation/idempotency evidence without calling the optional all-repository
+  `buf lint` diagnostic green.
+- [ ] Publish the final documented descendant by normal non-force fast-forward
+  and wait for every fresh GitHub workflow to complete successfully.
+- [ ] Keep Draft PR #1 unmerged and do not deploy, release, activate Providers
+  or delete the external proto backup during the pending remote gate.
+
+No owner login, purchase, CAPTCHA, Secret or licence action is required for
+this continuation. Credentials must remain outside chat, Git, screenshots and
+logs.

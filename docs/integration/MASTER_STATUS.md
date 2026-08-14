@@ -617,3 +617,30 @@ Run-7 correction evidence record commit:
 `bcde02a5ac8f6411a6f3ff20e62a528142a75a63`; retained raw transcript commit:
 `cab3a1ae20f5618c7f5096860bd9144f158971da`. This following receipt backfills
 both immutable SHAs and does not upgrade the pending remote gate.
+
+## Phase 12 - Windows pre-push portability closure
+
+The complete pre-push gate exposed two Windows-host fixture/namespace defects
+after the run-7 correction. The first retained failure was a backslash versus
+POSIX namespace mismatch in the Railway watch-path audit. Commit
+`a6157e5d83caae0e85d68fc8a7fcde15d33f2915` normalizes repository-relative
+paths and passes the targeted 82/82 suite. The second retained failure ran
+2,899 changed tests (2,890 pass, 6 fail, 3 skip); five deployment fixtures
+crossed the Git-for-Windows Bash boundary with host paths and one edge graph
+assertion used a platform-dependent suffix. Commit
+`5c5ca912fd04b78e939f9032b5d22d63d125d556` corrects only those portability
+boundaries and passes the targeted 9/9 suite.
+
+The third full pre-push execution on exact tree `5c5ca912...` exited `0` in
+69.8 seconds with the terminal conclusion `All pre-push gates passed`. Its
+green sections include type/API/Convex, Unicode, dependency/boundary,
+safe-HTML, health/rate/premium, changed tests, 49 edge bundles, MDX 510/510,
+generated documentation, pro-test freshness and version synchronization.
+
+The Windows host still has no `make.exe`; that printed line is retained and is
+not called a successful make invocation. Direct locked Buf generation,
+request validation and 14 injectors had already exited `0` with unchanged
+binary diff hash `74e052...`. The optional repository-wide `buf lint` remains
+failed on unrelated retained upstream debt. Phase 12 therefore has a complete
+local pre-push result but remains open pending a normal non-force publication
+and successful fresh GitHub workflows on the final documented head.

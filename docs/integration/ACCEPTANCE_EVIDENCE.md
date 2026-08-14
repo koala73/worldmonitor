@@ -499,3 +499,24 @@ Run-7 evidence record commit:
 `bcde02a5ac8f6411a6f3ff20e62a528142a75a63`; raw transcript commit:
 `cab3a1ae20f5618c7f5096860bd9144f158971da`. This following receipt backfills
 the immutable SHAs only; it is not a remote-CI acceptance result.
+
+## Phase 12 - Windows pre-push portability evidence
+
+| Check | Result | Evidence |
+|---|---|---|
+| Railway path audit first full hook | FAIL retained, then corrected | Windows repository-relative paths were normalized before POSIX namespace checks; correction `a6157e5`; targeted 82/82 pass. |
+| Changed-suite second full hook | FAIL retained, then corrected | 2,899 total / 2,890 pass / 6 fail / 3 skip; five Bash-boundary fixtures and one platform suffix corrected by `5c5ca91`; targeted 9/9 pass. |
+| Complete pre-push on exact `5c5ca91` tree | PASS locally | Exit `0`, 69.8 seconds, terminal conclusion `All pre-push gates passed`; tree-dependent cache bound to exact `5c5ca912fd04b78e939f9032b5d22d63d125d556`. |
+| Formal proto generation | PASS directly; host make absent | Locked Buf generation, request validation and 14 injectors exit `0`; binary diff hash stable `74e052...`. Hook's `make: command not found` is retained and not mislabeled. |
+| Optional all-repository `buf lint` | FAIL retained | Exit `100` on pre-existing unrelated upstream unused-import/go-package/name debt; not a Phase 12 green claim. |
+
+Raw evidence:
+
+- `docs/integration/evidence/phase12-windows-prepush-correction-20260814.log`,
+  3,628 bytes, SHA-256
+  `C757DE50EE0048960DAB81A48570C39CA00D4A2388DECFE3C959B1FBB5AC1FF5`.
+
+**Current Phase 12 gate: LOCAL PRE-PUSH PASS; FINAL DOCUMENTED HEAD MUST BE
+PUBLISHED NORMALLY AND PASS FRESH GITHUB CI.** No main write, force push,
+merge, deployment, release, Provider activation or truth-state promotion is
+accepted by this local record.

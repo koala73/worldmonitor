@@ -1,0 +1,77 @@
+Phase 12 Windows pre-push correction evidence
+Date: 2026-08-14 (Asia/Shanghai)
+Acceptance worktree: D:\global-intelligence-earth\worldmonitor-phase12-lf-gate
+Protected base: main@0fca203c776dd5fa4913c4bd52f99cd2c3c13a25
+Reviewed upstream lock: ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad
+
+Scope
+-----
+This record covers Windows-host portability defects discovered by the complete
+pre-push hook after the GitHub run-7 contract correction. It contains no
+Provider credential, price, candle, AIS/cargo assertion or news-causality
+claim. No main mutation, force push, merge or deployment occurred.
+
+Pre-push attempt 1
+------------------
+Result: FAIL (retained, not reclassified)
+Cause: railway-watch-path-audit compared repository-relative Windows paths
+with POSIX route namespaces. Backslashes prevented server/runtime ownership
+from being recognized even though the dependency graph itself was valid.
+
+Correction: a6157e5d83caae0e85d68fc8a7fcde15d33f2915
+- Normalize repository-relative paths with path.sep before namespace checks.
+- Use path.basename for the dynamic server-root boundary.
+- Targeted railway audit suite: 82/82 PASS, exit 0.
+- Typecheck, lint and tracked-diff checks: PASS, exit 0.
+
+Pre-push attempt 2
+------------------
+Result: FAIL (retained, not reclassified)
+Changed-suite result: 2,899 tests; 2,890 pass; 6 fail; 3 skip.
+Causes:
+- Five deployment-gate fixture assertions passed Windows host paths directly
+  into a Git-for-Windows Bash/Python fixture.
+- One edge import-graph assertion used a platform-dependent suffix comparison.
+
+Correction: 5c5ca912fd04b78e939f9032b5d22d63d125d556
+- Convert only fixture paths crossing the Bash boundary to POSIX form.
+- Resolve the Bash executable on the Windows host before constructing the
+  fixture PATH.
+- Supply a fixture-local python3 wrapper that forwards to the real Python
+  executable instead of the Windows Store alias.
+- Compare the edge import target with the exact platform-resolved path.
+- Targeted deployment/edge suites: 9/9 PASS, exit 0.
+- Typecheck, lint and tracked-diff checks: PASS, exit 0.
+
+Pre-push attempt 3 on exact 5c5ca912 tree
+-----------------------------------------
+Command: git push pre-push hook gate (local execution only; publication was
+not attempted by this command)
+Result: PASS, exit 0
+Wall time: 69.8 seconds
+Terminal conclusion: All pre-push gates passed.
+Tree-dependent result was cached against exact tree
+5c5ca912fd04b78e939f9032b5d22d63d125d556.
+
+Observed green sections include TypeScript/API/Convex checks, CommonJS and
+Unicode guards, dependency/boundary/safe-HTML/Sentry/health/rate/premium
+guards, changed tests, 49 edge bundles, MDX 510/510, generated documentation,
+pro-test bundle freshness and version 2.10.0 synchronization.
+
+Infrastructure disclosure
+-------------------------
+The hook printed `make: command not found` in its proto-freshness section on
+this Windows host. This line is retained and is not called a successful make
+execution. Formal locked Buf generation, request validation and all 14
+injectors had already run directly with exit 0; the generated-tree binary
+diff hash remained
+74e05228739cd512b88a9b6801e927817c2bdaac before and after regeneration.
+The separate repository-wide `buf lint` diagnostic remains exit 100 on
+pre-existing unrelated upstream debt and is not called green.
+
+Acceptance boundary
+-------------------
+This is local cross-platform gate evidence. Phase 12 still requires a normal
+non-force fast-forward publication and successful fresh GitHub workflows on
+the exact final documented head. Draft readiness, merge, deployment, release
+and Provider activation remain unauthorized.

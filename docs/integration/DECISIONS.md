@@ -513,3 +513,19 @@ parity count green while misrepresenting symbol coverage and runtime support.
 
 **Consequence:** MCP parity is complete and explicit without claiming that a
 tool, cache, model, Provider or live response exists where it does not.
+
+## D-0039 - Normalize paths only at cross-platform namespace boundaries
+
+**Decision:** Preserve native absolute paths for Windows host process launch
+and filesystem access, normalize repository-relative dependency namespaces to
+forward slashes for policy comparison, and convert fixture paths to POSIX form
+only when crossing into Git-for-Windows Bash.
+
+**Reason:** A global path rewrite would break Windows executables, while raw
+backslashes make POSIX route/ownership comparisons and shell fixtures report
+false failures. The edge import graph should compare exact resolved paths,
+not a platform-dependent string suffix.
+
+**Consequence:** Railway targeted tests pass 82/82, deployment/edge targeted
+tests pass 9/9 and the complete pre-push gate passes on Windows without
+weakening deployment, ownership, import or truth-boundary assertions.

@@ -324,3 +324,22 @@ connector re-read protected PR base
 to a compare-and-update fast-forward of the integration branch followed by a
 normal non-force push. The Test failure authorizes neither main/upstream writes
 nor force push, merge, deployment, backup deletion or unrelated proto cleanup.
+
+## Phase 12 Windows portability descendants
+
+The run-7 correction acquired two local portability-only descendants:
+
+`ef876ff5561f0c6659ec5151c135f840956944bb` ->
+`a6157e5d83caae0e85d68fc8a7fcde15d33f2915` ->
+`5c5ca912fd04b78e939f9032b5d22d63d125d556`.
+
+They normalize Windows repository paths, fixture transport into
+Git-for-Windows Bash and one exact edge-graph comparison. No upstream object,
+Provider payload or user worktree file was taken. The reviewed upstream lock
+remains `ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`; protected base remains
+`main@0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`.
+
+Publication authority remains limited to a normal non-force fast-forward of
+`origin/integration/pokieticker-maritime-china-factory`. These portability
+commits do not authorize main/upstream writes, force push, merge, deployment,
+backup deletion, rebase or newer-upstream intake.

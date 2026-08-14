@@ -244,3 +244,16 @@ Market/K-line Providers remain `NOT_CONFIGURED` or their accurately labelled
 licensed/delayed state until an owner supplies lawful credentials and display/
 redistribution entitlement. AIS, cargo, news-cause and trade/factory states are
 unchanged and no fallback data was added.
+
+## Phase 12 Windows portability-gate effect on Provider states
+
+The Railway namespace normalization and Bash/Python fixture corrections affect
+only test portability. They do not start Railway, provision a Provider, grant
+an exchange entitlement, retrieve a symbol-qualified observation or establish
+any runtime freshness. The `VITE_SELF_HOSTED_MODE` posture flag remains public
+and non-secret; all Provider credentials remain server-side and absent.
+
+Accordingly every market/K-line, AIS/cargo, news, trade and factory state in
+this matrix is unchanged. Passing 82/82, 9/9 and the complete pre-push hook
+proves control behavior only; it cannot label historical/delayed data as
+real-time or correlation as causation.
