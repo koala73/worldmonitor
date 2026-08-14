@@ -3,7 +3,15 @@
  * Seed TTC service alerts from the official GTFS-RT disruptions feed.
  *
  * Canonical key: transit:ttc:alerts:v1
- * Standalone until a transit panel exists. Do not overload VIA or 511.
+ * seed-meta key:  seed-meta:transit:ttc-alerts — runSeed derives it from
+ * (domain, resource) = ('transit', 'ttc-alerts'), so it takes a HYPHEN and is
+ * NOT the canonical key with :v1 stripped. Probing the colon form watches a key
+ * that is never written.
+ *
+ * Runs as the TTC-Alerts member of seed-bundle-canada (#6711), not as its own
+ * Railway service; the bundle's five-minute cron and this member's intervalMs
+ * of 5min keep the cadence the standalone cron had. No user-facing surface
+ * consumes this key until a transit panel exists. Do not overload VIA or 511.
  *
  * Usage:
  *   node scripts/seed-ttc-alerts.mjs
