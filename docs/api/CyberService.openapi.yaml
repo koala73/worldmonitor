@@ -18,7 +18,9 @@ paths:
             parameters:
                 - name: start
                   in: query
-                  description: "Start of time range (inclusive), Unix epoch milliseconds.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Start of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "1717200000000"
                   schema:
@@ -26,7 +28,9 @@ paths:
                     format: int64
                 - name: end
                   in: query
-                  description: "End of time range (inclusive), Unix epoch milliseconds.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    End of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "1717200000000"
                   schema:
@@ -271,11 +275,15 @@ components:
                 start:
                     type: integer
                     format: int64
-                    description: "Start of time range (inclusive), Unix epoch milliseconds.\r\n Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript"
+                    description: |-
+                        Start of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 end:
                     type: integer
                     format: int64
-                    description: "End of time range (inclusive), Unix epoch milliseconds.\r\n Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript"
+                    description: |-
+                        End of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 pageSize:
                     type: integer
                     format: int32

@@ -13,7 +13,10 @@ paths:
             tags:
                 - MaritimeService
             summary: GetVesselSnapshot
-            description: "GetVesselSnapshot retrieves a point-in-time view of AIS vessel traffic and disruptions.\r\n Empty/absent snapshot with fetched_at=0 or data_available=false means the\r\n relay snapshot is unavailable/degraded, not that traffic is confirmed absent."
+            description: |-
+                GetVesselSnapshot retrieves a point-in-time view of AIS vessel traffic and disruptions.
+                 Empty/absent snapshot with fetched_at=0 or data_available=false means the
+                 relay snapshot is unavailable/degraded, not that traffic is confirmed absent.
             operationId: GetVesselSnapshot
             parameters:
                 - name: ne_lat
@@ -50,14 +53,22 @@ paths:
                     format: double
                 - name: include_candidates
                   in: query
-                  description: "When true, populate VesselSnapshot.candidate_reports with per-vessel\r\n position reports. Clients with no position callbacks should leave this\r\n false to keep responses small."
+                  description: |-
+                    When true, populate VesselSnapshot.candidate_reports with per-vessel
+                     position reports. Clients with no position callbacks should leave this
+                     false to keep responses small.
                   required: false
                   example: true
                   schema:
                     type: boolean
                 - name: include_tankers
                   in: query
-                  description: "When true, populate VesselSnapshot.tanker_reports with per-vessel\r\n position reports for AIS ship-type 80-89 (tanker class). Used by the\r\n Energy Atlas live-tanker map layer. Stored separately from\r\n candidate_reports (which is military-only) so consumers self-select\r\n via this flag rather than the response field changing meaning."
+                  description: |-
+                    When true, populate VesselSnapshot.tanker_reports with per-vessel
+                     position reports for AIS ship-type 80-89 (tanker class). Used by the
+                     Energy Atlas live-tanker map layer. Stored separately from
+                     candidate_reports (which is military-only) so consumers self-select
+                     via this flag rather than the response field changing meaning.
                   required: false
                   example: true
                   schema:
@@ -170,7 +181,9 @@ paths:
             parameters:
                 - name: page_size
                   in: query
-                  description: "Maximum items per page (1-100).\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: 25
                   schema:
@@ -178,7 +191,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "next-page-token"
                   schema:
@@ -407,10 +422,18 @@ components:
                     description: South-west corner longitude of bounding box.
                 includeCandidates:
                     type: boolean
-                    description: "When true, populate VesselSnapshot.candidate_reports with per-vessel\r\n position reports. Clients with no position callbacks should leave this\r\n false to keep responses small."
+                    description: |-
+                        When true, populate VesselSnapshot.candidate_reports with per-vessel
+                         position reports. Clients with no position callbacks should leave this
+                         false to keep responses small.
                 includeTankers:
                     type: boolean
-                    description: "When true, populate VesselSnapshot.tanker_reports with per-vessel\r\n position reports for AIS ship-type 80-89 (tanker class). Used by the\r\n Energy Atlas live-tanker map layer. Stored separately from\r\n candidate_reports (which is military-only) so consumers self-select\r\n via this flag rather than the response field changing meaning."
+                    description: |-
+                        When true, populate VesselSnapshot.tanker_reports with per-vessel
+                         position reports for AIS ship-type 80-89 (tanker class). Used by the
+                         Energy Atlas live-tanker map layer. Stored separately from
+                         candidate_reports (which is military-only) so consumers self-select
+                         via this flag rather than the response field changing meaning.
             description: GetVesselSnapshotRequest specifies filters for the vessel snapshot.
         GetVesselSnapshotResponse:
             type: object
@@ -420,10 +443,15 @@ components:
                 fetchedAt:
                     type: integer
                     format: int64
-                    description: "Time the relay snapshot was fetched, as Unix epoch milliseconds. A value\r\n of 0 means the snapshot is unavailable/degraded, not that vessel traffic is\r\n confirmed absent.. Warning: Values > 2^53 may lose precision in JavaScript"
+                    description: |-
+                        Time the relay snapshot was fetched, as Unix epoch milliseconds. A value
+                         of 0 means the snapshot is unavailable/degraded, not that vessel traffic is
+                         confirmed absent.. Warning: Values > 2^53 may lose precision in JavaScript
                 dataAvailable:
                     type: boolean
-                    description: "True when snapshot is populated. False means an absent snapshot is\r\n graceful degradation because the relay snapshot is unavailable."
+                    description: |-
+                        True when snapshot is populated. False means an absent snapshot is
+                         graceful degradation because the relay snapshot is unavailable.
             description: GetVesselSnapshotResponse contains the vessel traffic snapshot.
         VesselSnapshot:
             type: object
@@ -620,10 +648,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: "Maximum items per page (1-100).\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 area:
                     type: string
                     description: Optional area filter (e.g., "NAVAREA IV", "Persian Gulf").

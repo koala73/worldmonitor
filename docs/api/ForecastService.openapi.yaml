@@ -243,7 +243,11 @@ paths:
             parameters:
                 - name: runId
                   in: query
-                  description: "Optional run identifier. Does not select the package — the latest stored package is\r\n always returned regardless of this value. When supplied and it differs from the\r\n returned package's runId, the response `note` field is populated to warn that per-run\r\n filtering is not yet active. Reserved for Phase 3 per-run lookup."
+                  description: |-
+                    Optional run identifier. Does not select the package — the latest stored package is
+                     always returned regardless of this value. When supplied and it differs from the
+                     returned package's runId, the response `note` field is populated to warn that per-run
+                     filtering is not yet active. Reserved for Phase 3 per-run lookup.
                   required: false
                   example: "example-id"
                   schema:
@@ -332,7 +336,16 @@ paths:
             parameters:
                 - name: runId
                   in: query
-                  description: "Filter is active for outcomes within the 24h retention window (#3734).\r\n If runId is supplied:\r\n   - Hit on the by-run key → returns that outcome, processing=false.\r\n   - By-run lookup returns the tombstone (worker write transiently failed) →\r\n     falls through to :latest with a 'note' describing the transient failure.\r\n   - No by-run match but runId is in the queue → returns processing=true.\r\n   - No match anywhere → falls back to :latest with a 'note' describing\r\n     expiry-or-mismatch.\r\n If runId is empty: returns :latest (existing behavior)."
+                  description: |-
+                    Filter is active for outcomes within the 24h retention window (#3734).
+                     If runId is supplied:
+                       - Hit on the by-run key → returns that outcome, processing=false.
+                       - By-run lookup returns the tombstone (worker write transiently failed) →
+                         falls through to :latest with a 'note' describing the transient failure.
+                       - No by-run match but runId is in the queue → returns processing=true.
+                       - No match anywhere → falls back to :latest with a 'note' describing
+                         expiry-or-mismatch.
+                     If runId is empty: returns :latest (existing behavior).
                   required: false
                   example: "example-id"
                   schema:
@@ -427,7 +440,13 @@ paths:
             tags:
                 - ForecastService
             summary: TriggerSimulation
-            description: "TriggerSimulation enqueues a simulation task for the current\r\n SIMULATION_PACKAGE_LATEST_KEY package pointer. PRO-gated. The runId\r\n is server-derived; callers cannot supply one. The Railway worker\r\n (scripts/process-simulation-tasks.mjs) polls the queue and writes\r\n outcomes; callers poll GetSimulationOutcome with the returned runId\r\n to retrieve the result. Mirrors run-scenario.ts pattern. See #3734. Requires entitlement tier >= 1."
+            description: |-
+                TriggerSimulation enqueues a simulation task for the current
+                 SIMULATION_PACKAGE_LATEST_KEY package pointer. PRO-gated. The runId
+                 is server-derived; callers cannot supply one. The Railway worker
+                 (scripts/process-simulation-tasks.mjs) polls the queue and writes
+                 outcomes; callers poll GetSimulationOutcome with the returned runId
+                 to retrieve the result. Mirrors run-scenario.ts pattern. See #3734. Requires entitlement tier >= 1.
             operationId: TriggerSimulation
             security:
                 - WorldMonitorKey: []
@@ -710,13 +729,19 @@ components:
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
                 degraded:
                     type: boolean
-                    description: "True when the forecast backend could not read the canonical cache.\r\n Distinguishes an outage from a healthy empty forecast set."
+                    description: |-
+                        True when the forecast backend could not read the canonical cache.
+                         Distinguishes an outage from a healthy empty forecast set.
                 stale:
                     type: boolean
-                    description: "True when forecasts are served from a stale fallback. Currently false for\r\n this endpoint because get-forecasts does not have a stale fallback cache."
+                    description: |-
+                        True when forecasts are served from a stale fallback. Currently false for
+                         this endpoint because get-forecasts does not have a stale fallback cache.
                 error:
                     type: string
-                    description: "Stable machine-readable reason when degraded=true, empty otherwise.\r\n Value: \"forecast_backend_unavailable\" on Redis/backend read failures."
+                    description: |-
+                        Stable machine-readable reason when degraded=true, empty otherwise.
+                         Value: "forecast_backend_unavailable" on Redis/backend read failures.
         Forecast:
             type: object
             properties:
@@ -1223,7 +1248,11 @@ components:
             properties:
                 runId:
                     type: string
-                    description: "Optional run identifier. Does not select the package — the latest stored package is\r\n always returned regardless of this value. When supplied and it differs from the\r\n returned package's runId, the response `note` field is populated to warn that per-run\r\n filtering is not yet active. Reserved for Phase 3 per-run lookup."
+                    description: |-
+                        Optional run identifier. Does not select the package — the latest stored package is
+                         always returned regardless of this value. When supplied and it differs from the
+                         returned package's runId, the response `note` field is populated to warn that per-run
+                         filtering is not yet active. Reserved for Phase 3 per-run lookup.
         GetSimulationPackageResponse:
             type: object
             properties:
@@ -1242,16 +1271,29 @@ components:
                     description: 'Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.. Warning: Values > 2^53 may lose precision in JavaScript'
                 note:
                     type: string
-                    description: "Populated when req.runId was supplied but does not match the returned package's runId.\r\n Indicates that per-run filtering is not yet active and the latest package was returned instead."
+                    description: |-
+                        Populated when req.runId was supplied but does not match the returned package's runId.
+                         Indicates that per-run filtering is not yet active and the latest package was returned instead.
                 error:
                     type: string
-                    description: "Populated when the Redis lookup failed. Distinguish from healthy not-found (found=false, error=\"\").\r\n Value: \"redis_unavailable\" on Redis errors."
+                    description: |-
+                        Populated when the Redis lookup failed. Distinguish from healthy not-found (found=false, error="").
+                         Value: "redis_unavailable" on Redis errors.
         GetSimulationOutcomeRequest:
             type: object
             properties:
                 runId:
                     type: string
-                    description: "Filter is active for outcomes within the 24h retention window (#3734).\r\n If runId is supplied:\r\n   - Hit on the by-run key → returns that outcome, processing=false.\r\n   - By-run lookup returns the tombstone (worker write transiently failed) →\r\n     falls through to :latest with a 'note' describing the transient failure.\r\n   - No by-run match but runId is in the queue → returns processing=true.\r\n   - No match anywhere → falls back to :latest with a 'note' describing\r\n     expiry-or-mismatch.\r\n If runId is empty: returns :latest (existing behavior)."
+                    description: |-
+                        Filter is active for outcomes within the 24h retention window (#3734).
+                         If runId is supplied:
+                           - Hit on the by-run key → returns that outcome, processing=false.
+                           - By-run lookup returns the tombstone (worker write transiently failed) →
+                             falls through to :latest with a 'note' describing the transient failure.
+                           - No by-run match but runId is in the queue → returns processing=true.
+                           - No match anywhere → falls back to :latest with a 'note' describing
+                             expiry-or-mismatch.
+                         If runId is empty: returns :latest (existing behavior).
         GetSimulationOutcomeResponse:
             type: object
             properties:
@@ -1270,16 +1312,30 @@ components:
                     description: 'Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.. Warning: Values > 2^53 may lose precision in JavaScript'
                 note:
                     type: string
-                    description: "Populated when req.runId was supplied but does not match the returned outcome's runId,\r\n or when the by-run lookup returned a tombstone (Redis transient write failure).\r\n Distinguishes \"your runId expired beyond 24h retention\" from \"by-run lookup failed\r\n (Redis transient); returned latest\" so callers can react differently."
+                    description: |-
+                        Populated when req.runId was supplied but does not match the returned outcome's runId,
+                         or when the by-run lookup returned a tombstone (Redis transient write failure).
+                         Distinguishes "your runId expired beyond 24h retention" from "by-run lookup failed
+                         (Redis transient); returned latest" so callers can react differently.
                 error:
                     type: string
-                    description: "Populated when the Redis lookup failed. Distinguish from healthy not-found (found=false, error=\"\").\r\n Value: \"redis_unavailable\" on Redis errors."
+                    description: |-
+                        Populated when the Redis lookup failed. Distinguish from healthy not-found (found=false, error="").
+                         Value: "redis_unavailable" on Redis errors.
                 theaterSummariesJson:
                     type: string
-                    description: "JSON-encoded array of theater summaries for the UI (populated when found=true).\r\n Shape: Array<{ theaterId, theaterLabel, stateKind, topPaths: [{label, summary, confidence, keyActors}], dominantReactions, stabilizers, invalidators }>\r\n Parse with JSON.parse() on the client. Empty string when found=false."
+                    description: |-
+                        JSON-encoded array of theater summaries for the UI (populated when found=true).
+                         Shape: Array<{ theaterId, theaterLabel, stateKind, topPaths: [{label, summary, confidence, keyActors}], dominantReactions, stabilizers, invalidators }>
+                         Parse with JSON.parse() on the client. Empty string when found=false.
                 processing:
                     type: boolean
-                    description: "True when req.runId was supplied AND the runId is currently in the simulation\r\n queue (worker hasn't drained yet). Distinguishes \"your run is processing\"\r\n from \"your run expired beyond retention\" — both previously returned NOT_FOUND.\r\n Added in #3734 to prevent the 30-day demand experiment from being contaminated\r\n by the queued-vs-expired indistinguishability."
+                    description: |-
+                        True when req.runId was supplied AND the runId is currently in the simulation
+                         queue (worker hasn't drained yet). Distinguishes "your run is processing"
+                         from "your run expired beyond retention" — both previously returned NOT_FOUND.
+                         Added in #3734 to prevent the 30-day demand experiment from being contaminated
+                         by the queued-vs-expired indistinguishability.
                 eligibleTheaterCount:
                     type: integer
                     format: int32
@@ -1293,7 +1349,9 @@ components:
                     description: True when eligible_theater_count > 0 and no theater produced an outcome.
                 completionStatus:
                     type: string
-                    description: "Machine-readable completion status. Current values:\r\n \"completed\", \"partial\", \"no_eligible_theaters\", or \"all_theaters_failed\"."
+                    description: |-
+                        Machine-readable completion status. Current values:
+                         "completed", "partial", "no_eligible_theaters", or "all_theaters_failed".
         TriggerSimulationRequest:
             type: object
             properties:

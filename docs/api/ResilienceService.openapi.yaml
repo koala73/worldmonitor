@@ -460,10 +460,23 @@ components:
                         $ref: '#/components/schemas/ResiliencePillar'
                 schemaVersion:
                     type: string
-                    description: "Phase 2 T2.1/T2.3: \"2.0\" is the current default (adds pillars; keeps\r\n overall_score / baseline_score / etc. populated for backward compat).\r\n \"1.0\" is the legacy opt-out shape (pillars empty) retained for one\r\n release cycle. Controlled at response build time by the\r\n RESILIENCE_SCHEMA_V2_ENABLED env flag (defaults to \"true\" → v2)."
+                    description: |-
+                        Phase 2 T2.1/T2.3: "2.0" is the current default (adds pillars; keeps
+                         overall_score / baseline_score / etc. populated for backward compat).
+                         "1.0" is the legacy opt-out shape (pillars empty) retained for one
+                         release cycle. Controlled at response build time by the
+                         RESILIENCE_SCHEMA_V2_ENABLED env flag (defaults to "true" → v2).
                 headlineEligible:
                     type: boolean
-                    description: "Current headline-ranking eligibility. True only when the country passes\r\n the headline gate: coverage >= 0.65 AND (population >= 200k OR\r\n coverage >= 0.85) AND !lowConfidence. GetResilienceRanking includes\r\n only eligible countries in items[]; scored but ineligible countries\r\n remain in greyedOut[]. Raw score endpoints still return the country\r\n score when available. Widget and country detail copy should show\r\n \"Outside headline ranking\" when false unless low-confidence is the more\r\n specific reason."
+                    description: |-
+                        Current headline-ranking eligibility. True only when the country passes
+                         the headline gate: coverage >= 0.65 AND (population >= 200k OR
+                         coverage >= 0.85) AND !lowConfidence. GetResilienceRanking includes
+                         only eligible countries in items[]; scored but ineligible countries
+                         remain in greyedOut[]. Raw score endpoints still return the country
+                         score when available. Widget and country detail copy should show
+                         "Outside headline ranking" when false unless low-confidence is the more
+                         specific reason.
         ResilienceDomain:
             type: object
             properties:

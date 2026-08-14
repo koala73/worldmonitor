@@ -140,7 +140,9 @@ paths:
                     format: int32
                 - name: page_size
                   in: query
-                  description: "Maximum items per page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Maximum items per page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: 25
                   schema:
@@ -148,7 +150,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "next-page-token"
                   schema:
@@ -439,7 +443,9 @@ paths:
             tags:
                 - EconomicService
             summary: GetChinaMacroSnapshot
-            description: "GetChinaMacroSnapshot reads the normalized China macro and official release\r\n calendar seeds. It never fans out to upstream providers on a cache miss."
+            description: |-
+                GetChinaMacroSnapshot reads the normalized China macro and official release
+                 calendar seeds. It never fans out to upstream providers on a cache miss.
             operationId: GetChinaMacroSnapshot
             parameters:
                 - name: jmespath
@@ -526,7 +532,9 @@ paths:
             tags:
                 - EconomicService
             summary: GetChinaActivityNowcast
-            description: "GetChinaActivityNowcast compares the revision-aware official macro pulse\r\n with reviewed proxy families using a deterministic, no-lookahead method."
+            description: |-
+                GetChinaActivityNowcast compares the revision-aware official macro pulse
+                 with reviewed proxy families using a deterministic, no-lookahead method.
             operationId: GetChinaActivityNowcast
             parameters:
                 - name: jmespath
@@ -613,7 +621,9 @@ paths:
             parameters:
                 - name: energy_sources
                   in: query
-                  description: "Energy source codes to query (e.g., \"SUN\", \"WND\", \"COL\").\r\n Empty returns all tracked sources (SUN, WND, COL)."
+                  description: |-
+                    Energy source codes to query (e.g., "SUN", "WND", "COL").
+                     Empty returns all tracked sources (SUN, WND, COL).
                   required: false
                   style: form
                   explode: true
@@ -625,7 +635,9 @@ paths:
                         type: string
                 - name: years
                   in: query
-                  description: "Number of years of historical data. Default 20 if not set.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Number of years of historical data. Default 20 if not set.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: 1
                   schema:
@@ -3194,10 +3206,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: "Maximum items per page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Maximum items per page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             required:
                 - indicatorCode
             description: ListWorldBankIndicatorsRequest specifies filters for retrieving World Bank data.
@@ -3721,11 +3737,15 @@ components:
                     type: array
                     items:
                         type: string
-                        description: "Energy source codes to query (e.g., \"SUN\", \"WND\", \"COL\").\r\n Empty returns all tracked sources (SUN, WND, COL)."
+                        description: |-
+                            Energy source codes to query (e.g., "SUN", "WND", "COL").
+                             Empty returns all tracked sources (SUN, WND, COL).
                 years:
                     type: integer
                     format: int32
-                    description: "Number of years of historical data. Default 20 if not set.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Number of years of historical data. Default 20 if not set.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
         GetEnergyCapacityResponse:
             type: object
             properties:
@@ -4215,7 +4235,9 @@ components:
                     format: int32
                 unavailable:
                     type: boolean
-                    description: "True when the upstream or seed-backed variant is unavailable; empty payload fields\r\n are graceful degradation, not confirmed zero data."
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
         EconomicEvent:
             type: object
             properties:
@@ -4316,7 +4338,10 @@ components:
                     description: Unix ms when the data was last seeded.
                 unavailable:
                     type: boolean
-                    description: "True when Redis key is missing or data is unavailable.\r\n True when the upstream or seed-backed variant is unavailable; empty payload fields\r\n are graceful degradation, not confirmed zero data."
+                    description: |-
+                        True when Redis key is missing or data is unavailable.
+                         True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
             description: GetEcbFxRatesResponse contains the latest ECB reference rates.
         EcbFxRate:
             type: object
@@ -4891,7 +4916,10 @@ components:
                     description: UTC ISO-8601 timestamp when this data was last updated.
                 unavailable:
                     type: boolean
-                    description: "True when upstream seed data is unavailable (fallback result).\r\n True when the upstream or seed-backed variant is unavailable; empty payload fields\r\n are graceful degradation, not confirmed zero data."
+                    description: |-
+                        True when upstream seed data is unavailable (fallback result).
+                         True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
             description: GetEnergyCrisisPoliciesResponse contains energy crisis policy data from the IEA tracker.
         EnergyCrisisPolicy:
             type: object

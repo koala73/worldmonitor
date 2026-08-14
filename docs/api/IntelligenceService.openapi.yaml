@@ -539,7 +539,10 @@ paths:
                     type: string
                 - name: max_records
                   in: query
-                  description: "Maximum number of articles to return. Defaults to 10 when omitted or <= 0. The\r\n handler caps returned results at 20, so values above 20 (though accepted, up to the\r\n validation limit of 250) still return at most 20 articles."
+                  description: |-
+                    Maximum number of articles to return. Defaults to 10 when omitted or <= 0. The
+                     handler caps returned results at 20, so values above 20 (though accepted, up to the
+                     validation limit of 250) still return at most 20 articles.
                   required: false
                   example: 1
                   schema:
@@ -547,21 +550,28 @@ paths:
                     format: int32
                 - name: timespan
                   in: query
-                  description: "Time span filter (e.g., \"15min\", \"1h\", \"24h\").\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Time span filter (e.g., "15min", "1h", "24h").
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "15min"
                   schema:
                     type: string
                 - name: tone_filter
                   in: query
-                  description: "Tone filter appended to query (e.g., \"tone>5\" for positive, \"tone<-5\" for negative).\r\n Left empty to skip tone filtering.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
+                     Left empty to skip tone filtering.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: sort
                   in: query
-                  description: "Sort mode: \"DateDesc\" (default), \"ToneDesc\", \"ToneAsc\", \"HybridRel\".\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "DateDesc"
                   schema:
@@ -1204,12 +1214,17 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCompanyEnrichment
-            description: "GetCompanyEnrichment aggregates a per-company intelligence composite: SEC EDGAR\r\n identity and recent filings (via authoritative ticker-to-CIK resolution), market\r\n profile and earnings surprises from Finnhub, and recent news mentions."
+            description: |-
+                GetCompanyEnrichment aggregates a per-company intelligence composite: SEC EDGAR
+                 identity and recent filings (via authoritative ticker-to-CIK resolution), market
+                 profile and earnings surprises from Finnhub, and recent news mentions.
             operationId: GetCompanyEnrichment
             parameters:
                 - name: domain
                   in: query
-                  description: "Deprecated compatibility input. Domain attribution remains disabled and\r\n returns the legacy empty stub; use ticker or name for verified CIK lookup."
+                  description: |-
+                    Deprecated compatibility input. Domain attribution remains disabled and
+                     returns the legacy empty stub; use ticker or name for verified CIK lookup.
                   required: false
                   example: "example"
                   schema:
@@ -1351,7 +1366,10 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListCompanySignals
-            description: "ListCompanySignals discovers classified intelligence signals for a company from\r\n authoritative sources: SEC 8-K material events and recent news mentions, with\r\n per-type summary rollups. Fiscal period ends are not used as event timestamps."
+            description: |-
+                ListCompanySignals discovers classified intelligence signals for a company from
+                 authoritative sources: SEC 8-K material events and recent news mentions, with
+                 per-type summary rollups. Fiscal period ends are not used as event timestamps.
             operationId: ListCompanySignals
             parameters:
                 - name: company
@@ -1363,7 +1381,9 @@ paths:
                     type: string
                 - name: domain
                   in: query
-                  description: "Deprecated compatibility input. When present, attribution stays disabled\r\n and the handler returns the legacy empty stub."
+                  description: |-
+                    Deprecated compatibility input. When present, attribution stays disabled
+                     and the handler returns the legacy empty stub.
                   required: false
                   example: "example"
                   schema:
@@ -1464,7 +1484,9 @@ paths:
             tags:
                 - IntelligenceService
             summary: SearchSecFilings
-            description: "SearchSecFilings runs a full-text search over SEC EDGAR filings with optional\r\n form-type and date-range filters."
+            description: |-
+                SearchSecFilings runs a full-text search over SEC EDGAR filings with optional
+                 form-type and date-range filters.
             operationId: SearchSecFilings
             parameters:
                 - name: query
@@ -1586,7 +1608,9 @@ paths:
             tags:
                 - IntelligenceService
             summary: ListMaterialEvents
-            description: "ListMaterialEvents returns the pre-seeded stream of recent SEC 8-K material-event\r\n filings (M&A, executive changes, restatements, bankruptcies) across all filers."
+            description: |-
+                ListMaterialEvents returns the pre-seeded stream of recent SEC 8-K material-event
+                 filings (M&A, executive changes, restatements, bankruptcies) across all filers.
             operationId: ListMaterialEvents
             parameters:
                 - name: item_code
@@ -2514,7 +2538,9 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetChinaDecisionSignals
-            description: "GetChinaDecisionSignals composes the six launched China decision-parity\r\n domains into one bounded provenance-preserving public snapshot."
+            description: |-
+                GetChinaDecisionSignals composes the six launched China decision-parity
+                 domains into one bounded provenance-preserving public snapshot.
             operationId: GetChinaDecisionSignals
             parameters:
                 - name: jmespath
@@ -2582,7 +2608,10 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetRegionalSnapshot
-            description: "GetRegionalSnapshot returns the latest persisted RegionalSnapshot for a\r\n region. The snapshot is written every 6h by scripts/seed-regional-snapshots.mjs;\r\n this handler only reads canonical state. Premium-gated. PRO-gated. Requires an active Pro subscription."
+            description: |-
+                GetRegionalSnapshot returns the latest persisted RegionalSnapshot for a
+                 region. The snapshot is written every 6h by scripts/seed-regional-snapshots.mjs;
+                 this handler only reads canonical state. Premium-gated. PRO-gated. Requires an active Pro subscription.
             operationId: GetRegionalSnapshot
             security:
                 - WorldMonitorKey: []
@@ -2708,7 +2737,10 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetRegimeHistory
-            description: "GetRegimeHistory returns the region's regime transition log newest-first.\r\n Entries are append-only from the seed writer, recorded only when\r\n diffRegionalSnapshot reports regime_changed. Premium-gated. PRO-gated. Requires an active Pro subscription."
+            description: |-
+                GetRegimeHistory returns the region's regime transition log newest-first.
+                 Entries are append-only from the seed writer, recorded only when
+                 diffRegionalSnapshot reports regime_changed. Premium-gated. PRO-gated. Requires an active Pro subscription.
             operationId: GetRegimeHistory
             security:
                 - WorldMonitorKey: []
@@ -2816,7 +2848,9 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetRegionalBrief
-            description: "GetRegionalBrief returns the latest weekly intelligence brief for a region.\r\n Written by scripts/seed-regional-briefs.mjs on a weekly cron. Premium-gated. PRO-gated. Requires an active Pro subscription."
+            description: |-
+                GetRegionalBrief returns the latest weekly intelligence brief for a region.
+                 Written by scripts/seed-regional-briefs.mjs on a weekly cron. Premium-gated. PRO-gated. Requires an active Pro subscription.
             operationId: GetRegionalBrief
             security:
                 - WorldMonitorKey: []
@@ -2922,7 +2956,11 @@ paths:
             tags:
                 - IntelligenceService
             summary: SearchIntelHistory
-            description: "SearchIntelHistory searches the durable historical intelligence store\r\n (convex/intelHistory.ts) by semantic similarity to a free-text query.\r\n The handler embeds the query, so each cache miss costs one embeddings\r\n call — the route carries its own fail-closed rate policy. Premium-gated. PRO-gated. Requires entitlement tier >= 1."
+            description: |-
+                SearchIntelHistory searches the durable historical intelligence store
+                 (convex/intelHistory.ts) by semantic similarity to a free-text query.
+                 The handler embeds the query, so each cache miss costs one embeddings
+                 call — the route carries its own fail-closed rate policy. Premium-gated. PRO-gated. Requires entitlement tier >= 1.
             operationId: SearchIntelHistory
             security:
                 - WorldMonitorKey: []
@@ -3076,7 +3114,10 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetIntelTimeline
-            description: "GetIntelTimeline returns the durable historical intelligence store\r\n newest-first for one domain and/or country. Pure index read — no\r\n embedding, no ranking. Premium-gated. PRO-gated. Requires entitlement tier >= 1."
+            description: |-
+                GetIntelTimeline returns the durable historical intelligence store
+                 newest-first for one domain and/or country. Pure index read — no
+                 embedding, no ranking. Premium-gated. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetIntelTimeline
             security:
                 - WorldMonitorKey: []
@@ -3223,7 +3264,10 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetSimilarEvents
-            description: "GetSimilarEvents returns historical precedents for a described situation.\r\n Same vector search as SearchIntelHistory over a longer free-text input,\r\n so it is likewise embeddings-backed and rate-policied. Premium-gated. PRO-gated. Requires entitlement tier >= 1."
+            description: |-
+                GetSimilarEvents returns historical precedents for a described situation.
+                 Same vector search as SearchIntelHistory over a longer free-text input,
+                 so it is likewise embeddings-backed and rate-policied. Premium-gated. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetSimilarEvents
             security:
                 - WorldMonitorKey: []
@@ -5478,10 +5522,14 @@ components:
                         $ref: '#/components/schemas/StrategicRisk'
                 degraded:
                     type: boolean
-                    description: "True when upstream scoring inputs failed and the response is served from\r\n a stale cache or from the baseline-only cold fallback."
+                    description: |-
+                        True when upstream scoring inputs failed and the response is served from
+                         a stale cache or from the baseline-only cold fallback.
                 stale:
                     type: boolean
-                    description: "True when degraded=true because a stale cached score payload was served.\r\n Baseline-only cold fallback sets degraded=true and stale=false."
+                    description: |-
+                        True when degraded=true because a stale cached score payload was served.
+                         Baseline-only cold fallback sets degraded=true and stale=false.
             description: GetRiskScoresResponse contains composite risk scores and strategic assessments.
         CiiScore:
             type: object
@@ -5941,16 +5989,26 @@ components:
                     maximum: 250
                     minimum: 1
                     format: int32
-                    description: "Maximum number of articles to return. Defaults to 10 when omitted or <= 0. The\r\n handler caps returned results at 20, so values above 20 (though accepted, up to the\r\n validation limit of 250) still return at most 20 articles."
+                    description: |-
+                        Maximum number of articles to return. Defaults to 10 when omitted or <= 0. The
+                         handler caps returned results at 20, so values above 20 (though accepted, up to the
+                         validation limit of 250) still return at most 20 articles.
                 timespan:
                     type: string
-                    description: "Time span filter (e.g., \"15min\", \"1h\", \"24h\").\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Time span filter (e.g., "15min", "1h", "24h").
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 toneFilter:
                     type: string
-                    description: "Tone filter appended to query (e.g., \"tone>5\" for positive, \"tone<-5\" for negative).\r\n Left empty to skip tone filtering.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Tone filter appended to query (e.g., "tone>5" for positive, "tone<-5" for negative).
+                         Left empty to skip tone filtering.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 sort:
                     type: string
-                    description: "Sort mode: \"DateDesc\" (default), \"ToneDesc\", \"ToneAsc\", \"HybridRel\".\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             required:
                 - query
             description: SearchGdeltDocumentsRequest specifies filters for searching GDELT news articles.
@@ -6280,14 +6338,19 @@ components:
                 domain:
                     deprecated: true
                     type: string
-                    description: "Deprecated compatibility input. Domain attribution remains disabled and\r\n returns the legacy empty stub; use ticker or name for verified CIK lookup."
+                    description: |-
+                        Deprecated compatibility input. Domain attribution remains disabled and
+                         returns the legacy empty stub; use ticker or name for verified CIK lookup.
                 name:
                     type: string
                     description: Company name, such as "Apple Inc".
                 ticker:
                     type: string
                     description: Exchange ticker symbol, such as "AAPL". Preferred lookup key.
-            description: "Request to fetch enrichment data for a company. Provide a ticker (the\r\n strongest match — an exact SEC registry key) or a name, which resolves only\r\n when it identifies exactly one filer."
+            description: |-
+                Request to fetch enrichment data for a company. Provide a ticker (the
+                 strongest match — an exact SEC registry key) or a name, which resolves only
+                 when it identifies exactly one filer.
         GetCompanyEnrichmentResponse:
             type: object
             properties:
@@ -6329,8 +6392,13 @@ components:
                         $ref: '#/components/schemas/CompanyNewsMention'
                 unavailable:
                     type: boolean
-                    description: "True when identity could not be resolved because the SEC registry was\r\n unreadable, or when a resolved company's enrichment sources all failed.\r\n Responses with this set are never cached."
-            description: "Company enrichment composite aggregated from SEC EDGAR (identity + filings),\r\n Finnhub (market profile + earnings surprises), and the news corpus (mentions)."
+                    description: |-
+                        True when identity could not be resolved because the SEC registry was
+                         unreadable, or when a resolved company's enrichment sources all failed.
+                         Responses with this set are never cached.
+            description: |-
+                Company enrichment composite aggregated from SEC EDGAR (identity + filings),
+                 Finnhub (market profile + earnings surprises), and the news corpus (mentions).
         EnrichedCompany:
             type: object
             properties:
@@ -6350,7 +6418,9 @@ components:
                     deprecated: true
                     type: integer
                     format: int32
-                    description: "Deprecated compatibility field; always 0 because no authoritative source\r\n in this composite provides founding year."
+                    description: |-
+                        Deprecated compatibility field; always 0 because no authoritative source
+                         in this composite provides founding year.
                 cik:
                     type: string
                     description: SEC Central Index Key (zero-padded 10 digits), empty when no EDGAR match.
@@ -6492,11 +6562,16 @@ components:
                 domain:
                     deprecated: true
                     type: string
-                    description: "Deprecated compatibility input. When present, attribution stays disabled\r\n and the handler returns the legacy empty stub."
+                    description: |-
+                        Deprecated compatibility input. When present, attribution stays disabled
+                         and the handler returns the legacy empty stub.
                 ticker:
                     type: string
                     description: Exchange ticker symbol, such as "AAPL". Preferred lookup key.
-            description: "Request to discover and classify company intelligence signals from authoritative\r\n sources (SEC 8-K material events and news mentions). Provide a\r\n ticker for the strongest match, or a company name matched against the SEC registry."
+            description: |-
+                Request to discover and classify company intelligence signals from authoritative
+                 sources (SEC 8-K material events and news mentions). Provide a
+                 ticker for the strongest match, or a company name matched against the SEC registry.
         ListCompanySignalsResponse:
             type: object
             properties:
@@ -6517,10 +6592,16 @@ components:
                     description: 'Unix timestamp in milliseconds when signals were discovered.. Warning: Values > 2^53 may lose precision in JavaScript'
                 cik:
                     type: string
-                    description: "SEC Central Index Key of the resolved filer (zero-padded 10 digits). Empty\r\n when the company did not resolve — this is what distinguishes \"no such\r\n company\" from \"resolved company with no recent signals\"."
+                    description: |-
+                        SEC Central Index Key of the resolved filer (zero-padded 10 digits). Empty
+                         when the company did not resolve — this is what distinguishes "no such
+                         company" from "resolved company with no recent signals".
                 unavailable:
                     type: boolean
-                    description: "True when the SEC ticker registry or authoritative submissions source\r\n could not be read. Results can be partial (for example, news without SEC\r\n filings); responses with this set are never cached."
+                    description: |-
+                        True when the SEC ticker registry or authoritative submissions source
+                         could not be read. Results can be partial (for example, news without SEC
+                         filings); responses with this set are never cached.
             description: Discovered company signals with classification and engagement metrics.
         CompanySignal:
             type: object
@@ -7075,7 +7156,9 @@ components:
                     type: string
                 electricityAvailable:
                     type: boolean
-                    description: "Phase 2 — EU electricity (ENTSO-E countries: DE FR ES IT NL BE PL PT GB NO SE)\r\n US electricity is stored by EIA balancing area, not ISO2 — not available here"
+                    description: |-
+                        Phase 2 — EU electricity (ENTSO-E countries: DE FR ES IT NL BE PL PT GB NO SE)
+                         US electricity is stored by EIA balancing area, not ISO2 — not available here
                 electricityPriceMwh:
                     type: number
                     format: double
@@ -7191,7 +7274,11 @@ components:
                     type: array
                     items:
                         type: string
-                        description: "Per-field presence for partial JODI payloads. Existing numeric fields keep\r\n their proto3 zero defaults for compatibility; a path appears here only\r\n when that source measurement was actually observed, including valid zeroes.\r\n Values use the stable source paths from jodi-measurement-fields.json."
+                        description: |-
+                            Per-field presence for partial JODI payloads. Existing numeric fields keep
+                             their proto3 zero defaults for compatibility; a path appears here only
+                             when that source measurement was actually observed, including valid zeroes.
+                             Values use the stable source paths from jodi-measurement-fields.json.
                 jodiGasObservedMeasurements:
                     type: array
                     items:
@@ -8002,7 +8089,10 @@ components:
                     type: string
                     maxLength: 500
                     minLength: 2
-                    description: "Free-text search query, e.g. \"artillery strikes near Kharkiv\". Embedded\r\n with the same model and normalization the seed writer used, so query and\r\n stored vectors are comparable."
+                    description: |-
+                        Free-text search query, e.g. "artillery strikes near Kharkiv". Embedded
+                         with the same model and normalization the seed writer used, so query and
+                         stored vectors are comparable.
                 domain:
                     type: string
                     pattern: ^(conflict|military|energy)?$
@@ -8015,21 +8105,32 @@ components:
                     type: integer
                     minimum: 0
                     format: int64
-                    description: "Earliest occurred_at to consider, Unix epoch milliseconds, inclusive.\r\n 0 or omitted means no lower bound.. Warning: Values > 2^53 may lose precision in JavaScript"
+                    description: |-
+                        Earliest occurred_at to consider, Unix epoch milliseconds, inclusive.
+                         0 or omitted means no lower bound.. Warning: Values > 2^53 may lose precision in JavaScript
                 to:
                     type: integer
                     minimum: 0
                     format: int64
-                    description: "Latest occurred_at to consider, Unix epoch milliseconds, inclusive.\r\n 0 or omitted means no upper bound.. Warning: Values > 2^53 may lose precision in JavaScript"
+                    description: |-
+                        Latest occurred_at to consider, Unix epoch milliseconds, inclusive.
+                         0 or omitted means no upper bound.. Warning: Values > 2^53 may lose precision in JavaScript
                 limit:
                     type: integer
                     maximum: 64
                     minimum: 0
                     format: int32
-                    description: "Maximum matches to return. Defaults to 20 server-side when omitted or\r\n <= 0; the handler caps it at 64, the SEARCH_MAX_LIMIT the Convex action\r\n clamps to (convex/intelHistory.ts)."
+                    description: |-
+                        Maximum matches to return. Defaults to 20 server-side when omitted or
+                         <= 0; the handler caps it at 64, the SEARCH_MAX_LIMIT the Convex action
+                         clamps to (convex/intelHistory.ts).
             required:
                 - query
-            description: "SearchIntelHistoryRequest asks for stored historical intelligence events\r\n semantically similar to a free-text query. The handler embeds `query` and\r\n runs a vector search over convex/intelHistory.ts; the optional filters\r\n narrow the candidate set before ranking."
+            description: |-
+                SearchIntelHistoryRequest asks for stored historical intelligence events
+                 semantically similar to a free-text query. The handler embeds `query` and
+                 runs a vector search over convex/intelHistory.ts; the optional filters
+                 narrow the candidate set before ranking.
         SearchIntelHistoryResponse:
             type: object
             properties:
@@ -8039,14 +8140,22 @@ components:
                         $ref: '#/components/schemas/IntelHistoryRecord'
                 query:
                     type: string
-                    description: "Echo of the search query, so a caller multiplexing requests can pair a\r\n response back to its input."
+                    description: |-
+                        Echo of the search query, so a caller multiplexing requests can pair a
+                         response back to its input.
                 partial:
                     type: boolean
                     description: True when a bounded candidate window may omit further matches.
                 upstreamUnavailable:
                     type: boolean
-                    description: "True when the embedding provider or the history store could not be\r\n reached. The gateway reads this flag out of the body and switches the\r\n response to Cache-Control: no-store, so a transient outage is never\r\n pinned as a false-empty result for the tier's full TTL."
-            description: "SearchIntelHistoryResponse returns the matching historical events, most\r\n similar first."
+                    description: |-
+                        True when the embedding provider or the history store could not be
+                         reached. The gateway reads this flag out of the body and switches the
+                         response to Cache-Control: no-store, so a transient outage is never
+                         pinned as a false-empty result for the tier's full TTL.
+            description: |-
+                SearchIntelHistoryResponse returns the matching historical events, most
+                 similar first.
         IntelHistoryRecord:
             type: object
             properties:
@@ -8200,7 +8309,10 @@ components:
                     type: string
                     maxLength: 1000
                     minLength: 10
-                    description: "Free-text description of the situation to find precedents for, e.g.\r\n \"a naval blockade closes a major grain export corridor for weeks\".\r\n Longer than a search query on purpose: more context ranks better."
+                    description: |-
+                        Free-text description of the situation to find precedents for, e.g.
+                         "a naval blockade closes a major grain export corridor for weeks".
+                         Longer than a search query on purpose: more context ranks better.
                 domain:
                     type: string
                     pattern: ^(conflict|military|energy)?$
@@ -8208,16 +8320,26 @@ components:
                 country:
                     type: string
                     pattern: ^([A-Z]{2})?$
-                    description: "Restrict precedents to one ISO 3166-1 alpha-2 country. Empty searches\r\n every country."
+                    description: |-
+                        Restrict precedents to one ISO 3166-1 alpha-2 country. Empty searches
+                         every country.
                 limit:
                     type: integer
                     maximum: 32
                     minimum: 0
                     format: int32
-                    description: "Maximum precedents to return. Defaults to 10 server-side when omitted or\r\n <= 0, capped at 32 by the handler."
+                    description: |-
+                        Maximum precedents to return. Defaults to 10 server-side when omitted or
+                         <= 0, capped at 32 by the handler.
             required:
                 - situation
-            description: "GetSimilarEventsRequest asks \"has anything like this happened before?\".\r\n\r\n Same vector search as SearchIntelHistory, different input: `situation` is a\r\n description of a developing situation rather than a search phrase, and the\r\n result set is deliberately small because it is read as a precedent list —\r\n by a human or an LLM — not scrolled."
+            description: |-
+                GetSimilarEventsRequest asks "has anything like this happened before?".
+
+                 Same vector search as SearchIntelHistory, different input: `situation` is a
+                 description of a developing situation rather than a search phrase, and the
+                 result set is deliberately small because it is read as a precedent list —
+                 by a human or an LLM — not scrolled.
         GetSimilarEventsResponse:
             type: object
             properties:
@@ -8227,11 +8349,19 @@ components:
                         $ref: '#/components/schemas/IntelHistoryRecord'
                 situation:
                     type: string
-                    description: "Echo of the situation text, so a caller multiplexing requests can pair a\r\n response back to its input."
+                    description: |-
+                        Echo of the situation text, so a caller multiplexing requests can pair a
+                         response back to its input.
                 partial:
                     type: boolean
                     description: True when a bounded candidate window may omit further precedents.
                 upstreamUnavailable:
                     type: boolean
-                    description: "True when the embedding provider or the history store could not be\r\n reached. The gateway reads this flag out of the body and switches the\r\n response to Cache-Control: no-store, so a transient outage is never\r\n pinned as a false-empty precedent list for the tier's full TTL."
-            description: "GetSimilarEventsResponse returns historical precedents for the described\r\n situation, most similar first."
+                    description: |-
+                        True when the embedding provider or the history store could not be
+                         reached. The gateway reads this flag out of the body and switches the
+                         response to Cache-Control: no-store, so a transient outage is never
+                         pinned as a false-empty precedent list for the tier's full TTL.
+            description: |-
+                GetSimilarEventsResponse returns historical precedents for the described
+                 situation, most similar first.

@@ -13,7 +13,10 @@ paths:
             tags:
                 - DisplacementService
             summary: GetDisplacementSummary
-            description: "GetDisplacementSummary retrieves global refugee and IDP statistics from UNHCR.\r\n Empty/absent summary with fetched_at=0 or data_available=false means the\r\n snapshot is unavailable/degraded, not that global displacement is zero."
+            description: |-
+                GetDisplacementSummary retrieves global refugee and IDP statistics from UNHCR.
+                 Empty/absent summary with fetched_at=0 or data_available=false means the
+                 snapshot is unavailable/degraded, not that global displacement is zero.
             operationId: GetDisplacementSummary
             parameters:
                 - name: year
@@ -402,10 +405,16 @@ components:
                 fetchedAt:
                     type: integer
                     format: int64
-                    description: "Time the seed or live fallback snapshot was fetched, as Unix epoch\r\n milliseconds. A value of 0 means the snapshot is unavailable/degraded, not\r\n that global displacement is zero.. Warning: Values > 2^53 may lose precision in JavaScript"
+                    description: |-
+                        Time the seed or live fallback snapshot was fetched, as Unix epoch
+                         milliseconds. A value of 0 means the snapshot is unavailable/degraded, not
+                         that global displacement is zero.. Warning: Values > 2^53 may lose precision in JavaScript
                 dataAvailable:
                     type: boolean
-                    description: "True when summary came from a seed snapshot or live fallback. False means\r\n an absent/empty summary is graceful degradation because the snapshot is\r\n unavailable."
+                    description: |-
+                        True when summary came from a seed snapshot or live fallback. False means
+                         an absent/empty summary is graceful degradation because the snapshot is
+                         unavailable.
             description: GetDisplacementSummaryResponse contains the global displacement summary.
         DisplacementSummary:
             type: object
@@ -569,7 +578,10 @@ components:
                     minimum: 0
                     format: double
                     description: Radius in km (required for exposure mode, defaults to 50).
-            description: "GetPopulationExposureRequest supports two modes:\r\n - countries mode (default): returns the priority countries list\r\n - exposure mode: estimates population within a radius of a point"
+            description: |-
+                GetPopulationExposureRequest supports two modes:
+                 - countries mode (default): returns the priority countries list
+                 - exposure mode: estimates population within a radius of a point
         GetPopulationExposureResponse:
             type: object
             properties:

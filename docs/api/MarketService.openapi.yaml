@@ -121,7 +121,10 @@ paths:
             parameters:
                 - name: ids
                   in: query
-                  description: "Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns the default\r\n crypto set. At most 25 IDs are accepted; the handler resolves them\r\n seed-first and fetches the remainder (gap) from the upstream provider."
+                  description: |-
+                    Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns the default
+                     crypto set. At most 25 IDs are accepted; the handler resolves them
+                     seed-first and fetches the remainder (gap) from the upstream provider.
                   required: false
                   style: form
                   explode: true
@@ -216,12 +219,19 @@ paths:
             tags:
                 - MarketService
             summary: ListCommodityQuotes
-            description: "ListCommodityQuotes retrieves commodity price quotes. Reads the seeded\r\n commodity snapshot; only symbols in the configured commodity set\r\n (shared/commodities.json) are supported."
+            description: |-
+                ListCommodityQuotes retrieves commodity price quotes. Reads the seeded
+                 commodity snapshot; only symbols in the configured commodity set
+                 (shared/commodities.json) are supported.
             operationId: ListCommodityQuotes
             parameters:
                 - name: symbols
                   in: query
-                  description: "Commodity symbols to retrieve (Yahoo symbols). Empty returns the seed\r\n defaults. Only symbols in the configured commodity set\r\n (shared/commodities.json) are supported; requesting an unsupported\r\n symbol returns HTTP 400."
+                  description: |-
+                    Commodity symbols to retrieve (Yahoo symbols). Empty returns the seed
+                     defaults. Only symbols in the configured commodity set
+                     (shared/commodities.json) are supported; requesting an unsupported
+                     symbol returns HTTP 400.
                   required: false
                   style: form
                   explode: true
@@ -318,7 +328,9 @@ paths:
             parameters:
                 - name: period
                   in: query
-                  description: "Time period for performance calculation (e.g., \"1d\", \"1w\", \"1m\"). Defaults to \"1d\".\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "1d"
                   schema:
@@ -406,7 +418,18 @@ paths:
             parameters:
                 - name: coins
                   in: query
-                  description: "CoinGecko IDs to retrieve (e.g. \"tether,usd-coin\"). Empty returns defaults.\r\n\r\n Repeated (`?coins=tether&coins=dai`) and comma-joined\r\n (`?coins=tether,dai`) forms are equivalent. IDs are trimmed, lowercased,\r\n and de-duplicated; the request is capped at 25 IDs. An ID that is not\r\n shaped like a CoinGecko ID, that overflows the cap, or that no provider\r\n can resolve is reported in `unresolved` rather than dropped.\r\n\r\n The empty (default) request is served from the seeded snapshot alone and\r\n never reaches an upstream provider. Naming IDs explicitly opts into a\r\n bounded, cached provider lookup for any ID the snapshot does not carry."
+                  description: |-
+                    CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+
+                     Repeated (`?coins=tether&coins=dai`) and comma-joined
+                     (`?coins=tether,dai`) forms are equivalent. IDs are trimmed, lowercased,
+                     and de-duplicated; the request is capped at 25 IDs. An ID that is not
+                     shaped like a CoinGecko ID, that overflows the cap, or that no provider
+                     can resolve is reported in `unresolved` rather than dropped.
+
+                     The empty (default) request is served from the seeded snapshot alone and
+                     never reaches an upstream provider. Naming IDs explicitly opts into a
+                     bounded, cached provider lookup for any ID the snapshot does not carry.
                   required: false
                   style: form
                   explode: true
@@ -3299,7 +3322,10 @@ components:
                     items:
                         type: string
                         maxItems: 25
-                        description: "Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns the default\r\n crypto set. At most 25 IDs are accepted; the handler resolves them\r\n seed-first and fetches the remainder (gap) from the upstream provider."
+                        description: |-
+                            Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns the default
+                             crypto set. At most 25 IDs are accepted; the handler resolves them
+                             seed-first and fetches the remainder (gap) from the upstream provider.
                     maxItems: 25
             description: ListCryptoQuotesRequest specifies which cryptocurrencies to retrieve.
         ListCryptoQuotesResponse:
@@ -3313,10 +3339,15 @@ components:
                     type: array
                     items:
                         type: string
-                        description: "CoinGecko IDs that were requested but could not be resolved from the seed\r\n or the upstream provider. Omitted IDs are never silently dropped."
+                        description: |-
+                            CoinGecko IDs that were requested but could not be resolved from the seed
+                             or the upstream provider. Omitted IDs are never silently dropped.
                 provider:
                     type: string
-                    description: "Data source for this response: \"seed\" (default set/seed hits only),\r\n \"upstream\" (at least one gap ID fetched from the provider), \"mixed\"\r\n (seed hits plus fetched gaps), or \"degraded\" (a gap fetch failed)."
+                    description: |-
+                        Data source for this response: "seed" (default set/seed hits only),
+                         "upstream" (at least one gap ID fetched from the provider), "mixed"
+                         (seed hits plus fetched gaps), or "degraded" (a gap fetch failed).
             description: ListCryptoQuotesResponse contains cryptocurrency quotes.
         CryptoQuote:
             type: object
@@ -3356,7 +3387,11 @@ components:
                     type: array
                     items:
                         type: string
-                        description: "Commodity symbols to retrieve (Yahoo symbols). Empty returns the seed\r\n defaults. Only symbols in the configured commodity set\r\n (shared/commodities.json) are supported; requesting an unsupported\r\n symbol returns HTTP 400."
+                        description: |-
+                            Commodity symbols to retrieve (Yahoo symbols). Empty returns the seed
+                             defaults. Only symbols in the configured commodity set
+                             (shared/commodities.json) are supported; requesting an unsupported
+                             symbol returns HTTP 400.
             description: ListCommodityQuotesRequest specifies which commodities to retrieve.
         ListCommodityQuotesResponse:
             type: object
@@ -3401,7 +3436,9 @@ components:
             properties:
                 period:
                     type: string
-                    description: "Time period for performance calculation (e.g., \"1d\", \"1w\", \"1m\"). Defaults to \"1d\".\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Time period for performance calculation (e.g., "1d", "1w", "1m"). Defaults to "1d".
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetSectorSummaryRequest specifies parameters for retrieving sector performance.
         GetSectorSummaryResponse:
             type: object
@@ -3435,7 +3472,18 @@ components:
                     type: array
                     items:
                         type: string
-                        description: "CoinGecko IDs to retrieve (e.g. \"tether,usd-coin\"). Empty returns defaults.\r\n\r\n Repeated (`?coins=tether&coins=dai`) and comma-joined\r\n (`?coins=tether,dai`) forms are equivalent. IDs are trimmed, lowercased,\r\n and de-duplicated; the request is capped at 25 IDs. An ID that is not\r\n shaped like a CoinGecko ID, that overflows the cap, or that no provider\r\n can resolve is reported in `unresolved` rather than dropped.\r\n\r\n The empty (default) request is served from the seeded snapshot alone and\r\n never reaches an upstream provider. Naming IDs explicitly opts into a\r\n bounded, cached provider lookup for any ID the snapshot does not carry."
+                        description: |-
+                            CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+
+                             Repeated (`?coins=tether&coins=dai`) and comma-joined
+                             (`?coins=tether,dai`) forms are equivalent. IDs are trimmed, lowercased,
+                             and de-duplicated; the request is capped at 25 IDs. An ID that is not
+                             shaped like a CoinGecko ID, that overflows the cap, or that no provider
+                             can resolve is reported in `unresolved` rather than dropped.
+
+                             The empty (default) request is served from the seeded snapshot alone and
+                             never reaches an upstream provider. Naming IDs explicitly opts into a
+                             bounded, cached provider lookup for any ID the snapshot does not carry.
             description: ListStablecoinMarketsRequest specifies which stablecoins to retrieve.
         ListStablecoinMarketsResponse:
             type: object
@@ -3455,7 +3503,12 @@ components:
                         $ref: '#/components/schemas/UnresolvedStablecoin'
                 dataStatus:
                     type: string
-                    description: "Coverage of THIS response, distinct from `summary.health_status` (which\r\n reports peg health, not data availability):\r\n   \"OK\"          — every requested coin was returned.\r\n   \"PARTIAL\"     — at least one coin returned, at least one unresolved.\r\n   \"UNAVAILABLE\" — no coin data available."
+                    description: |-
+                        Coverage of THIS response, distinct from `summary.health_status` (which
+                         reports peg health, not data availability):
+                           "OK"          — every requested coin was returned.
+                           "PARTIAL"     — at least one coin returned, at least one unresolved.
+                           "UNAVAILABLE" — no coin data available.
             description: ListStablecoinMarketsResponse contains stablecoin market data.
         StablecoinSummary:
             type: object
@@ -3534,10 +3587,17 @@ components:
             properties:
                 id:
                     type: string
-                    description: "The requested ID, after trimming and lowercasing. Malformed IDs are\r\n reported as sent (normalized and truncated) so the caller can spot the typo."
+                    description: |-
+                        The requested ID, after trimming and lowercasing. Malformed IDs are
+                         reported as sent (normalized and truncated) so the caller can spot the typo.
                 reason:
                     type: string
-                    description: "Bounded vocabulary — anything outside this list is a contract violation:\r\n   \"INVALID_ID\"     — not shaped like a CoinGecko ID.\r\n   \"OVER_CAP\"       — beyond the per-request ID cap; never looked up.\r\n   \"NOT_FOUND\"      — the provider answered, and has no such coin.\r\n   \"PROVIDER_ERROR\" — the lookup failed, so the ID is unknown, not absent."
+                    description: |-
+                        Bounded vocabulary — anything outside this list is a contract violation:
+                           "INVALID_ID"     — not shaped like a CoinGecko ID.
+                           "OVER_CAP"       — beyond the per-request ID cap; never looked up.
+                           "NOT_FOUND"      — the provider answered, and has no such coin.
+                           "PROVIDER_ERROR" — the lookup failed, so the ID is unknown, not absent.
             description: UnresolvedStablecoin explains why a requested ID is absent from the response.
         ListEtfFlowsRequest:
             type: object
@@ -3740,10 +3800,14 @@ components:
                 signalScore:
                     type: number
                     format: double
-                    description: "Technical-analysis score (0-100), retained as a stable pair with signal\r\n for clients that predate the fundamentals-blended rating."
+                    description: |-
+                        Technical-analysis score (0-100), retained as a stable pair with signal
+                         for clients that predate the fundamentals-blended rating.
                 signal:
                     type: string
-                    description: "Technical-only signal paired with signal_score. New clients should use\r\n rating_signal with composite_score for the surfaced investment rating."
+                    description: |-
+                        Technical-only signal paired with signal_score. New clients should use
+                         rating_signal with composite_score for the surfaced investment rating.
                 trendStatus:
                     type: string
                 volumeStatus:
@@ -3874,28 +3938,44 @@ components:
                     format: double
                 marketSession:
                     type: string
-                    description: "US-equity trading session at analysis time: \"regular\", \"pre\", \"post\" or\r\n \"closed\". Empty when session detection does not apply (non-US symbols)."
+                    description: |-
+                        US-equity trading session at analysis time: "regular", "pre", "post" or
+                         "closed". Empty when session detection does not apply (non-US symbols).
                 extendedPrice:
                     type: number
                     format: double
-                    description: "Latest pre/post-market price from Yahoo extended-hours candles. Only set\r\n when market_session is \"pre\" or \"post\" and extended data is available."
+                    description: |-
+                        Latest pre/post-market price from Yahoo extended-hours candles. Only set
+                         when market_session is "pre" or "post" and extended data is available.
                 extendedChangePercent:
                     type: number
                     format: double
-                    description: "Extended-hours change % vs the last regular-session close. Only set when\r\n extended_price is set."
+                    description: |-
+                        Extended-hours change % vs the last regular-session close. Only set when
+                         extended_price is set.
                 fundamentals:
                     $ref: '#/components/schemas/Fundamentals'
                 fundamentalScore:
                     type: number
                     format: double
-                    description: "Fundamental health score (0-100) blended from the quality/growth/leverage\r\n fundamentals above. Unset when too few fundamentals are available to score,\r\n in which case composite_score falls back to signal_score."
+                    description: |-
+                        Fundamental health score (0-100) blended from the quality/growth/leverage
+                         fundamentals above. Unset when too few fundamentals are available to score,
+                         in which case composite_score falls back to signal_score.
                 compositeScore:
                     type: number
                     format: double
-                    description: "Blend of signal_score (technicals) and fundamental_score that drives\r\n rating_signal, so a Strong buy/sell no longer fires on price action alone.\r\n Equals signal_score when fundamental_score is unset."
+                    description: |-
+                        Blend of signal_score (technicals) and fundamental_score that drives
+                         rating_signal, so a Strong buy/sell no longer fires on price action alone.
+                         Equals signal_score when fundamental_score is unset.
                 nextEarningsDate:
                     type: string
-                    description: "Next scheduled earnings date (YYYY-MM-DD) plus consensus EPS / revenue for\r\n the symbol, joined from the market:earnings-calendar:v1 seed. Unset when the\r\n symbol has no upcoming (not-yet-reported) entry in the seed's ~2-week window.\r\n (61-62 are taken by a concurrent PR; using 63-65 to avoid a field collision.)"
+                    description: |-
+                        Next scheduled earnings date (YYYY-MM-DD) plus consensus EPS / revenue for
+                         the symbol, joined from the market:earnings-calendar:v1 seed. Unset when the
+                         symbol has no upcoming (not-yet-reported) entry in the seed's ~2-week window.
+                         (61-62 are taken by a concurrent PR; using 63-65 to avoid a field collision.)
                 consensusEps:
                     type: number
                     format: double
@@ -3905,44 +3985,77 @@ components:
                 newsSentiment:
                     type: number
                     format: double
-                    description: "LLM-derived news sentiment for the analyzed symbol: a signed score in\r\n [-1, 1] (-1 very bearish, 0 neutral / no material news, +1 very bullish),\r\n emitted by the same overlay model that already reads the headlines — no\r\n extra call. Omitted when the analysis falls back to rules (no LLM overlay).\r\n (69 avoids a field collision with in-flight PRs: 61-62 blend fundamentals\r\n into the rating, 63-65 are the merged earnings join, 66-68 are the in-flight\r\n risk-analytics PR.)"
+                    description: |-
+                        LLM-derived news sentiment for the analyzed symbol: a signed score in
+                         [-1, 1] (-1 very bearish, 0 neutral / no material news, +1 very bullish),
+                         emitted by the same overlay model that already reads the headlines — no
+                         extra call. Omitted when the analysis falls back to rules (no LLM overlay).
+                         (69 avoids a field collision with in-flight PRs: 61-62 blend fundamentals
+                         into the rating, 63-65 are the merged earnings join, 66-68 are the in-flight
+                         risk-analytics PR.)
                 realizedVolatility:
                     type: number
                     format: double
-                    description: "Risk analytics computed from the 6-month daily candles already fetched for\r\n the technical snapshot (no extra upstream call).\r\n (66-68 avoid a field collision: 61-62 are claimed by the in-flight PR that\r\n blends fundamentals into the rating, and 63-65 by the merged earnings join.)\r\n\r\n Annualized realized volatility — sample stdev of daily log returns × √252 —\r\n as a fractional ratio where 0.25 means 25%. 0 when history is insufficient."
+                    description: |-
+                        Risk analytics computed from the 6-month daily candles already fetched for
+                         the technical snapshot (no extra upstream call).
+                         (66-68 avoid a field collision: 61-62 are claimed by the in-flight PR that
+                         blends fundamentals into the rating, and 63-65 by the merged earnings join.)
+
+                         Annualized realized volatility — sample stdev of daily log returns × √252 —
+                         as a fractional ratio where 0.25 means 25%. 0 when history is insufficient.
                 atr:
                     type: number
                     format: double
-                    description: "Wilder's 14-period Average True Range, in the response currency's price\r\n units. 0 when history is insufficient."
+                    description: |-
+                        Wilder's 14-period Average True Range, in the response currency's price
+                         units. 0 when history is insufficient.
                 maxDrawdown:
                     type: number
                     format: double
-                    description: "Maximum peak-to-trough drawdown over the window, as a non-positive fractional\r\n ratio where -0.25 means a 25% decline. 0 for a monotonically rising series."
+                    description: |-
+                        Maximum peak-to-trough drawdown over the window, as a non-positive fractional
+                         ratio where -0.25 means a 25% decline. 0 for a monotonically rising series.
                 ratingSignal:
                     type: string
-                    description: "Fundamentals-blended signal paired with composite_score. Kept separate\r\n from the legacy technical-only signal/signal_score pair so already-loaded\r\n web, desktop, and API clients never render a mixed-version rating."
+                    description: |-
+                        Fundamentals-blended signal paired with composite_score. Kept separate
+                         from the legacy technical-only signal/signal_score pair so already-loaded
+                         web, desktop, and API clients never render a mixed-version rating.
                 ratingSummary:
                     type: string
-                    description: "Fundamentals-blended narrative paired with rating_signal/composite_score.\r\n Legacy summary remains paired with signal/signal_score during rollout."
+                    description: |-
+                        Fundamentals-blended narrative paired with rating_signal/composite_score.
+                         Legacy summary remains paired with signal/signal_score during rollout.
                 ratingAction:
                     type: string
-                    description: "Fundamentals-blended action paired with rating_signal/composite_score.\r\n Legacy action remains paired with signal/signal_score during rollout."
+                    description: |-
+                        Fundamentals-blended action paired with rating_signal/composite_score.
+                         Legacy action remains paired with signal/signal_score during rollout.
                 ratingConfidence:
                     type: string
-                    description: "Fundamentals-blended confidence paired with rating_signal/composite_score.\r\n Legacy confidence remains paired with signal/signal_score during rollout."
+                    description: |-
+                        Fundamentals-blended confidence paired with rating_signal/composite_score.
+                         Legacy confidence remains paired with signal/signal_score during rollout.
                 ratingWhyNow:
                     type: string
-                    description: "Fundamentals-blended explanation paired with rating_signal/composite_score.\r\n Legacy why_now remains paired with signal/signal_score during rollout."
+                    description: |-
+                        Fundamentals-blended explanation paired with rating_signal/composite_score.
+                         Legacy why_now remains paired with signal/signal_score during rollout.
                 ratingBullishFactors:
                     type: array
                     items:
                         type: string
-                        description: "Fundamentals-aware positive factors supporting the composite rating.\r\n Legacy bullish_factors remain technical-only during rollout."
+                        description: |-
+                            Fundamentals-aware positive factors supporting the composite rating.
+                             Legacy bullish_factors remain technical-only during rollout.
                 ratingRiskFactors:
                     type: array
                     items:
                         type: string
-                        description: "Fundamentals-aware risks supporting the composite rating.\r\n Legacy risk_factors remain technical-only during rollout."
+                        description: |-
+                            Fundamentals-aware risks supporting the composite rating.
+                             Legacy risk_factors remain technical-only during rollout.
         StockAnalysisHeadline:
             type: object
             properties:
@@ -4068,7 +4181,9 @@ components:
                     description: Latest Yahoo financialData value denominated in financial_currency.
                 financialCurrency:
                     type: string
-                    description: "ISO 4217 currency used by the company's financial statements. This can\r\n differ from AnalyzeStockResponse.currency for ADRs and cross-listings."
+                    description: |-
+                        ISO 4217 currency used by the company's financial statements. This can
+                         differ from AnalyzeStockResponse.currency for ADRs and cross-listings.
         GetStockAnalysisHistoryRequest:
             type: object
             properties:
@@ -4173,7 +4288,10 @@ components:
                     type: string
                 ratingBasis:
                     type: string
-                    description: "\"technical_only\": historical Yahoo bars do not include point-in-time\r\n fundamentals, so this result must not be presented as a replay of the\r\n fundamentals-blended live rating."
+                    description: |-
+                        "technical_only": historical Yahoo bars do not include point-in-time
+                         fundamentals, so this result must not be presented as a replay of the
+                         fundamentals-blended live rating.
         BacktestStockEvaluation:
             type: object
             properties:
@@ -4428,7 +4546,9 @@ components:
                     format: int32
                 unavailable:
                     type: boolean
-                    description: "True when the upstream or seed-backed variant is unavailable; empty payload fields\r\n are graceful degradation, not confirmed zero data."
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
         EarningsEntry:
             type: object
             properties:
@@ -4517,7 +4637,9 @@ components:
             properties:
                 unavailable:
                     type: boolean
-                    description: "True when the upstream or seed-backed variant is unavailable; empty payload fields\r\n are graceful degradation, not confirmed zero data."
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
                 symbol:
                     type: string
                 totalBuys:
@@ -4850,7 +4972,9 @@ components:
                         $ref: '#/components/schemas/HyperliquidAssetFlow'
                 unavailable:
                     type: boolean
-                    description: "True when the upstream or seed-backed variant is unavailable; empty payload fields\r\n are graceful degradation, not confirmed zero data."
+                    description: |-
+                        True when the upstream or seed-backed variant is unavailable; empty payload fields
+                         are graceful degradation, not confirmed zero data.
         HyperliquidAssetFlow:
             type: object
             properties:

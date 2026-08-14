@@ -13,12 +13,19 @@ paths:
             tags:
                 - GivingService
             summary: GetGivingSummary
-            description: "GetGivingSummary retrieves published-claim platform projections, a verified\r\n tracked-platform annualized flow estimate, and claim-level provenance.\r\n Compatibility index/trend fields are explicitly marked unavailable.\r\n Empty/absent summary with fetched_at=0 or data_available=false means the\r\n snapshot is unavailable/degraded, not that giving activity is zero."
+            description: |-
+                GetGivingSummary retrieves published-claim platform projections, a verified
+                 tracked-platform annualized flow estimate, and claim-level provenance.
+                 Compatibility index/trend fields are explicitly marked unavailable.
+                 Empty/absent summary with fetched_at=0 or data_available=false means the
+                 snapshot is unavailable/degraded, not that giving activity is zero.
             operationId: GetGivingSummary
             parameters:
                 - name: platform_limit
                   in: query
-                  description: "Number of platform rows to return (0 = all). Aggregates and provenance\r\n continue to describe the full snapshot."
+                  description: |-
+                    Number of platform rows to return (0 = all). Aggregates and provenance
+                     continue to describe the full snapshot.
                   required: false
                   example: 25
                   schema:
@@ -26,7 +33,9 @@ paths:
                     format: int32
                 - name: category_limit
                   in: query
-                  description: "Number of category rows to return (0 = all). Aggregates and provenance\r\n continue to describe the full snapshot."
+                  description: |-
+                    Number of category rows to return (0 = all). Aggregates and provenance
+                     continue to describe the full snapshot.
                   required: false
                   example: 25
                   schema:
@@ -544,11 +553,15 @@ components:
                 platformLimit:
                     type: integer
                     format: int32
-                    description: "Number of platform rows to return (0 = all). Aggregates and provenance\r\n continue to describe the full snapshot."
+                    description: |-
+                        Number of platform rows to return (0 = all). Aggregates and provenance
+                         continue to describe the full snapshot.
                 categoryLimit:
                     type: integer
                     format: int32
-                    description: "Number of category rows to return (0 = all). Aggregates and provenance\r\n continue to describe the full snapshot."
+                    description: |-
+                        Number of category rows to return (0 = all). Aggregates and provenance
+                         continue to describe the full snapshot.
             description: GetGivingSummaryRequest specifies projections over the published-claim snapshot.
         GetGivingSummaryResponse:
             type: object
@@ -558,10 +571,16 @@ components:
                 fetchedAt:
                     type: integer
                     format: int64
-                    description: "Cache/response materialization time as Unix epoch milliseconds. This is not\r\n source publication or observation time. A value of 0 means the snapshot is\r\n unavailable/degraded, not that giving activity is zero.. Warning: Values > 2^53 may lose precision in JavaScript"
+                    description: |-
+                        Cache/response materialization time as Unix epoch milliseconds. This is not
+                         source publication or observation time. A value of 0 means the snapshot is
+                         unavailable/degraded, not that giving activity is zero.. Warning: Values > 2^53 may lose precision in JavaScript
                 dataAvailable:
                     type: boolean
-                    description: "True when a summary payload is populated. False means an absent/empty\r\n summary is graceful degradation because the snapshot is unavailable;\r\n provenance and data mode are not required on that degraded shape."
+                    description: |-
+                        True when a summary payload is populated. False means an absent/empty
+                         summary is graceful degradation because the snapshot is unavailable;
+                         provenance and data mode are not required on that degraded shape.
             description: GetGivingSummaryResponse contains a cacheable published-claim snapshot.
         GivingSummary:
             type: object

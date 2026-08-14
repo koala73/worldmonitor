@@ -26,7 +26,11 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: "Cursor for the next page. Treat it as opaque: echo the next-cursor value\r\n returned in the previous response's pagination metadata verbatim, and do\r\n not construct or parse it. Empty (or any unrecognized value) requests the\r\n first page."
+                  description: |-
+                    Cursor for the next page. Treat it as opaque: echo the next-cursor value
+                     returned in the previous response's pagination metadata verbatim, and do
+                     not construct or parse it. Empty (or any unrecognized value) requests the
+                     first page.
                   required: false
                   example: "next-page-token"
                   schema:
@@ -65,14 +69,18 @@ paths:
                     format: double
                 - name: operator
                   in: query
-                  description: "Optional operator filter.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Optional operator filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: aircraft_type
                   in: query
-                  description: "Optional aircraft type filter.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Optional aircraft type filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "all"
                   schema:
@@ -178,7 +186,9 @@ paths:
             parameters:
                 - name: theater
                   in: query
-                  description: "Theater name (e.g., \"indo-pacific\", \"european\", \"middle-east\"). Empty for all theaters.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "indo-pacific"
                   schema:
@@ -1159,7 +1169,11 @@ components:
                     description: Maximum items per page (1-100). 0 or omitted uses the default of 100.
                 cursor:
                     type: string
-                    description: "Cursor for the next page. Treat it as opaque: echo the next-cursor value\r\n returned in the previous response's pagination metadata verbatim, and do\r\n not construct or parse it. Empty (or any unrecognized value) requests the\r\n first page."
+                    description: |-
+                        Cursor for the next page. Treat it as opaque: echo the next-cursor value
+                         returned in the previous response's pagination metadata verbatim, and do
+                         not construct or parse it. Empty (or any unrecognized value) requests the
+                         first page.
                 neLat:
                     type: number
                     format: double
@@ -1456,7 +1470,9 @@ components:
             properties:
                 theater:
                     type: string
-                    description: "Theater name (e.g., \"indo-pacific\", \"european\", \"middle-east\"). Empty for all theaters.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetTheaterPostureRequest specifies the theater to assess.
         GetTheaterPostureResponse:
             type: object
@@ -2037,7 +2053,9 @@ components:
                     description: CPC class description.
                 abstract:
                     type: string
-                    description: "Compatibility field retained for existing clients. Always empty because\r\n USPTO Open Data Portal Patent File Wrapper records do not include abstracts."
+                    description: |-
+                        Compatibility field retained for existing clients. Always empty because
+                         USPTO Open Data Portal Patent File Wrapper records do not include abstracts.
                 url:
                     type: string
                     description: USPTO patent URL.

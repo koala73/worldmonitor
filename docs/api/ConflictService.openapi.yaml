@@ -35,7 +35,9 @@ paths:
                     format: int64
                 - name: page_size
                   in: query
-                  description: "Maximum items per page (1-100).\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: 25
                   schema:
@@ -43,7 +45,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "next-page-token"
                   schema:
@@ -133,7 +137,9 @@ paths:
             parameters:
                 - name: start
                   in: query
-                  description: "Start of time range (inclusive), Unix epoch milliseconds.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Start of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "1717200000000"
                   schema:
@@ -141,7 +147,9 @@ paths:
                     format: int64
                 - name: end
                   in: query
-                  description: "End of time range (inclusive), Unix epoch milliseconds.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    End of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "1717200000000"
                   schema:
@@ -149,7 +157,9 @@ paths:
                     format: int64
                 - name: page_size
                   in: query
-                  description: "Maximum items per page (1-100).\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: 25
                   schema:
@@ -157,7 +167,9 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
-                  description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   example: "next-page-token"
                   schema:
@@ -711,10 +723,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: "Maximum items per page (1-100).\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
@@ -799,18 +815,26 @@ components:
                 start:
                     type: integer
                     format: int64
-                    description: "Start of time range (inclusive), Unix epoch milliseconds.\r\n Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript"
+                    description: |-
+                        Start of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 end:
                     type: integer
                     format: int64
-                    description: "End of time range (inclusive), Unix epoch milliseconds.\r\n Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript"
+                    description: |-
+                        End of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 pageSize:
                     type: integer
                     format: int32
-                    description: "Maximum items per page (1-100).\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: "Cursor for next page.\r\n Accepted but currently ignored; no-op until this handler supports the parameter."
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
