@@ -173,6 +173,7 @@ configuration state. PortWatch aggregates, official warnings and Shipping v2
 model/registry routes are separate layers with their own unavailable states.
 No component may infer cargo, origin, buyer, value, discharge or bill-of-lading
 fact from AIS.
+
 ## D-0018 - Separate cluster recognition from trade, port and shipment evidence
 
 **Decision:** Store official industrial-cluster recognition, HS mapping,
@@ -192,6 +193,7 @@ but show no number unless a source-returned country-level record validates the
 selected filters. Port ranking stays unavailable/modelled until its method and
 lawful inputs exist; B/L remains empty until a contracted provider returns an
 authorized, timestamped record.
+
 ## D-0019 - A layout toggle is not evidence of a live observation
 
 **Decision:** Put market/stock work first in a fresh full layout while keeping

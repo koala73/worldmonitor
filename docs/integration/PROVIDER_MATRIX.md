@@ -101,6 +101,7 @@ Phase 6 added no credential and no client-side environment variable. A non-empty
 response may not be labelled LIVE unless its Provider, observation/fetch time,
 freshness/delay and applicable authorization are present. The user is not asked
 for a key to continue Phase 7 code work.
+
 ## Phase 7 China factory/trade capability matrix
 
 | Capability | Native behavior without an authorized Provider or reviewed data file | Condition for value-bearing display | Hard prohibition | Server-side secret/configuration location |

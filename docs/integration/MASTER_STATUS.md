@@ -227,6 +227,7 @@ production-build gates passed. Details are in
 Proceed automatically to Phase 7 adapter/readiness work. Missing AIS or
 PortWatch credentials do not block disabled state, contract and safety work;
 they only block a real provider-backed operational acceptance.
+
 ## Phase 7 - China industrial-cluster export explorer
 
 Phase 7 adds a native, scrollable `/china-factory` workspace and a visible

@@ -132,6 +132,7 @@ During Phase 6 no relay snapshot or Provider response was configured. The
 observed browser lineage is therefore `NOT_CONFIGURED` / no verified snapshot;
 the zero-marker display means no verified record was received, not zero ships
 in the real world.
+
 ## Phase 7 China industrial-cluster export lineage
 
 Phase 7 has four non-interchangeable branches:
@@ -161,6 +162,7 @@ During Phase 7, no authorized aggregate response, port dataset or commercial
 B/L record was configured. The observed browser lineage is consequently a
 source/HS view with no value-bearing trade row and no shipment facts; it does
 not mean that the underlying real-world trade or shipping volume is zero.
+
 ## Phase 8 layout ownership and aviation observation lineage
 
 Phase 8 introduces no new data Provider. Its lineage is deliberately split:

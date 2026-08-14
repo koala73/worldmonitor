@@ -190,6 +190,7 @@ are retained in `evidence/phase5-news-alignment.md`.
 **Phase 6 gate: COMPLETED FOR NATIVE UI, BOUNDARY VALIDATION AND
 NO-PROVIDER TRUTHFULNESS.** It does not certify real-time vessel availability,
 cargo, destination, port calls, route completion or Provider licence terms.
+
 ## Phase 7 - China industrial-cluster export explorer
 
 **Implementation commit:** `0ef6e668bbf96d436dc37cc861804a217760d6e5`

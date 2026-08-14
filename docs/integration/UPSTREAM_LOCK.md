@@ -133,6 +133,7 @@ The locked GitHub remotes remain `origin/main`
 `ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`; the recovered 443 transport was
 rechecked read-only. Phase 6 writes only the integration branch and does not
 move, merge, force-push or otherwise alter `main`.
+
 ## Phase 7 China industrial-cluster implementation receipt
 
 Phase 7 is new WorldMonitor TypeScript, CSS, test and reviewed-source registry
@@ -163,6 +164,7 @@ not an integration decision: the local integration branch stays pinned to its
 recorded baseline and Phase 7 commits. No fetch that moves a tracking ref,
 merge, rebase, push, force-push or `main` mutation was performed. A future
 upstream resync requires a separately documented comparison and gate review.
+
 ## Phase 8 native layout and posture implementation receipt
 
 Phase 8 is new WorldMonitor configuration, migration, component, service and

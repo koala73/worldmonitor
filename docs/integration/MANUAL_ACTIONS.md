@@ -83,6 +83,7 @@ when the owner elects to run a provider-backed operational acceptance.
 - [ ] If a PortWatch source is activated, record its actual dataset update cadence and geographic scope separately from AIS. Do not claim minute-level vessel tracking from a PortWatch aggregate.
 
 Never paste credentials, session cookies, payment details, CAPTCHA contents or platform owner tokens into chat or Git. If an external account login, payment, terms acceptance or CAPTCHA is actually required, open the exact official page before asking the user to act.
+
 ## Phase 7 optional observed trade and commercial B/L acceptance
 
 No user action is required to continue implementation. The following is needed
