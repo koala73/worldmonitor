@@ -96,4 +96,21 @@ describe('TTC alerts health classifier (#6623)', () => {
     assert.equal(entry.status, 'EMPTY');
     assert.equal(STATUS_COUNTS[entry.status], 'crit');
   });
+
+  it('does not classify a headerless/malformed ingest as health-green empty', () => {
+    // Malformed bodies must fail ingest (no published payload). Green-empty
+    // is only for a present payload from a valid zero-entity feed.
+    assert.match(ADAPTER, /missing FeedHeader\.gtfs_realtime_version/);
+    assert.match(SEEDER, /header\?\.gtfsRealtimeVersion/);
+    const failedIngest = classifyKey('ttcAlerts', dataKey, { allowOnDemand: true }, ctx({
+      recordCount: 0,
+    }));
+    assert.equal(failedIngest.status, 'EMPTY');
+    assert.equal(STATUS_COUNTS[failedIngest.status], 'crit');
+    const validEmpty = classifyKey('ttcAlerts', dataKey, { allowOnDemand: true }, ctx({
+      stren: 128,
+      recordCount: 0,
+    }));
+    assert.equal(validEmpty.status, 'OK');
+  });
 });

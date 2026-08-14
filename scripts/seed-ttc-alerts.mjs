@@ -65,6 +65,8 @@ export function validateTtcAlertsSnapshot(snapshot) {
     && snapshot?.agency === 'ttc'
     && snapshot?.source === 'gtfsrt'
     && snapshot?.feedUrl === TTC_GTFS_RT_ALERTS_URL
+    && typeof snapshot?.header?.gtfsRealtimeVersion === 'string'
+    && snapshot.header.gtfsRealtimeVersion.trim() !== ''
     && Array.isArray(snapshot?.alerts);
 }
 

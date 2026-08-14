@@ -86,6 +86,24 @@ function encodeAlertFeed({
   return concat(encodeBytes(1, header), encodeBytes(2, entity));
 }
 
+function encodeEmptyFeed(version = '2.0') {
+  return encodeBytes(1, encodeString(1, version));
+}
+
+function encodeHeaderlessEntity(id = 'x') {
+  return encodeBytes(2, encodeString(1, id));
+}
+
+function liveShapedResponse(body, contentType = 'application/x-protobuf') {
+  return new Response(body, {
+    status: 200,
+    headers: {
+      'content-type': contentType,
+      'content-disposition': 'attachment; filename=all-alerts.pb',
+    },
+  });
+}
+
 describe('gtfsrt protobuf parser', () => {
   it('parses a captured TTC service-alerts protobuf into alerts', () => {
     const parsed = parseGtfsRtServiceAlerts(FIXTURE);
@@ -113,6 +131,37 @@ describe('gtfsrt protobuf parser', () => {
     assert.equal(parsed.alerts[0].cause, 'CONSTRUCTION');
     assert.equal(parsed.alerts[0].effect, 'SIGNIFICANT_DELAYS');
     assert.equal(parsed.alerts[0].informedEntities[0].routeId, 'LW');
+  });
+
+  it('accepts a valid header-only feed as empty (zero entities is not malformed)', () => {
+    const parsed = parseGtfsRtServiceAlerts(encodeEmptyFeed('2.0'));
+    assert.equal(parsed.header.gtfsRealtimeVersion, '2.0');
+    assert.equal(parsed.alerts.length, 0);
+  });
+
+  it('rejects a headerless protobuf as malformed, not an empty alerts feed', () => {
+    assert.throws(
+      () => parseGtfsRtServiceAlerts(encodeHeaderlessEntity('alert-1')),
+      (error) => error instanceof GtfsRtError
+        && error.code === 'MALFORMED_PROTOBUF'
+        && /gtfs_realtime_version/.test(error.message),
+    );
+  });
+
+  it('rejects a FeedHeader that omits gtfs_realtime_version', () => {
+    const headerNoVersion = encodeBytes(1, encodeVarintField(2, 0));
+    assert.throws(
+      () => parseGtfsRtServiceAlerts(headerNoVersion),
+      (error) => error instanceof GtfsRtError && error.code === 'MALFORMED_PROTOBUF',
+    );
+  });
+
+  it('rejects an HTML body as malformed, not an empty alerts feed', () => {
+    const html = new TextEncoder().encode('<html><body>Service Unavailable</body></html>');
+    assert.throws(
+      () => parseGtfsRtServiceAlerts(html),
+      (error) => error instanceof GtfsRtError && error.code === 'MALFORMED_PROTOBUF',
+    );
   });
 });
 
@@ -228,5 +277,38 @@ describe('gtfsrtAdapter(feedUrl)', () => {
   it('does not import a seeder', () => {
     assert.equal(ADAPTER_SOURCE.includes('seed-ttc-alerts'), false);
     assert.equal(ADAPTER_SOURCE.includes('../seed-'), false);
+  });
+
+  it('live-shaped 200 + headerless protobuf is ingest failure, not a healthy empty snapshot', async () => {
+    const feedUrl = 'https://gtfsrt.ttc.ca/alerts/all?format=binary';
+    await assert.rejects(
+      () => gtfsrtAdapter(feedUrl, {
+        allowedHosts: ['gtfsrt.ttc.ca'],
+        fetch: async () => liveShapedResponse(encodeHeaderlessEntity('alert-1')),
+      }),
+      (error) => error instanceof GtfsRtError && error.code === 'MALFORMED_PROTOBUF',
+    );
+  });
+
+  it('live-shaped 200 + HTML body is ingest failure, not a healthy empty snapshot', async () => {
+    const feedUrl = 'https://gtfsrt.ttc.ca/alerts/all?format=binary';
+    const html = new TextEncoder().encode('<!DOCTYPE html><html><h1>IIS error</h1></html>');
+    await assert.rejects(
+      () => gtfsrtAdapter(feedUrl, {
+        allowedHosts: ['gtfsrt.ttc.ca'],
+        fetch: async () => liveShapedResponse(html, 'text/html'),
+      }),
+      (error) => error instanceof GtfsRtError && error.code === 'MALFORMED_PROTOBUF',
+    );
+  });
+
+  it('live-shaped 200 + valid empty feed still returns zero alerts', async () => {
+    const feedUrl = 'https://gtfsrt.ttc.ca/alerts/all?format=binary';
+    const snapshot = await gtfsrtAdapter(feedUrl, {
+      allowedHosts: ['gtfsrt.ttc.ca'],
+      fetch: async () => liveShapedResponse(encodeEmptyFeed('2.0')),
+    });
+    assert.equal(snapshot.header.gtfsRealtimeVersion, '2.0');
+    assert.equal(snapshot.alerts.length, 0);
   });
 });

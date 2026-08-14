@@ -244,6 +244,12 @@ export function parseGtfsRtServiceAlerts(input) {
       });
     }
   }
+  // FeedMessage.header + FeedHeader.gtfs_realtime_version are required.
+  // A headerless / unknown-field / garbage body must not look like a valid
+  // empty alerts feed (zero entities + missing version is not empty-success).
+  if (typeof header.gtfsRealtimeVersion !== 'string' || header.gtfsRealtimeVersion.trim() === '') {
+    throw new GtfsRtError('MALFORMED_PROTOBUF', 'missing FeedHeader.gtfs_realtime_version');
+  }
   return { header, alerts };
 }
 
