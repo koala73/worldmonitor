@@ -1,4 +1,5 @@
-import { Anchor, ArrowUpRight, Newspaper, ShieldCheck } from 'lucide-react';
+import { Anchor, Newspaper, ShieldCheck } from 'lucide-react';
+import { CardLinkArrow, cardLinkFocusRing } from './CardLink';
 import { t } from '../i18n';
 
 const TASK_ROUTES = [
@@ -44,7 +45,7 @@ export const TaskRoutes = () => (
             href={href}
             data-umami-event="welcome-cta"
             data-umami-event-target={eventTarget}
-            className={`group flex min-h-48 flex-col p-5 transition-colors hover:bg-white/[0.03] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-wm-green sm:p-6 ${index > 0 ? 'border-t border-wm-border md:border-s md:border-t-0' : ''}`}
+            className={`group flex min-h-48 flex-col p-5 transition-colors hover:bg-white/[0.03] ${cardLinkFocusRing} sm:p-6 ${index > 0 ? 'border-t border-wm-border md:border-s md:border-t-0' : ''}`}
           >
             <div className="mb-8 flex items-center justify-between">
               <Icon className="h-5 w-5 text-wm-green" aria-hidden="true" />
@@ -60,7 +61,7 @@ export const TaskRoutes = () => (
             </p>
             <span className="mt-6 inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-wm-green">
               {t('welcome.tasks.open')}
-              <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 rtl:-scale-x-100 rtl:group-hover:-translate-x-0.5" aria-hidden="true" />
+              <CardLinkArrow />
             </span>
           </a>
         ))}

@@ -1,5 +1,6 @@
 import { motion } from 'motion/react';
-import { ArrowUpRight, Check } from 'lucide-react';
+import { Check } from 'lucide-react';
+import { CardLinkArrow, cardLinkFocusRing } from './CardLink';
 import { t } from '../i18n';
 
 // Registry install commands are product identifiers, not prose — they stay
@@ -49,13 +50,13 @@ export const Agents = () => (
                 href={href}
                 data-umami-event="welcome-cta"
                 data-umami-event-target={eventTarget}
-                className="group flex min-w-0 items-center justify-between gap-3 bg-wm-card px-4 py-3 text-sm transition-colors hover:bg-wm-bg/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-wm-green"
+                className={`group flex min-w-0 items-center justify-between gap-3 bg-wm-card px-4 py-3 text-sm transition-colors hover:bg-wm-bg/80 ${cardLinkFocusRing}`}
               >
                 <span className="min-w-0">
                   <span className="block font-medium text-wm-text">{t(`welcome.agents.resources.${key}`)}</span>
                   <span className="block truncate font-mono text-[10px] text-wm-muted">{display}</span>
                 </span>
-                <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-wm-green transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 rtl:-scale-x-100 rtl:group-hover:-translate-x-0.5" aria-hidden="true" />
+                <CardLinkArrow className="shrink-0 text-wm-green" />
               </a>
             ))}
           </div>
