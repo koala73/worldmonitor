@@ -31,13 +31,30 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Anthropic } from '@anthropic-ai/sdk';
 
 export const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'sw', 'th', 'tr', 'uk', 'vi', 'zh', 'zh-TW'];
+
+// Locales produced by another generator, which this script must not write.
+//
+// zh-TW is converted from zh.json by scripts/convert-zh-tw.py. Translating it
+// from English as well would give one artifact two writers: the next run would
+// overwrite the converted catalogue with an independent translation, silently
+// undoing the phrasing decisions recorded in that script.
+//
+// It stays in LOCALES because the rest of this module is what gates it —
+// `tracks every shipped locale` requires every locale file to be listed, and
+// the end-of-run scan at `unresolved` deliberately covers every locale rather
+// than the run's targets. Removing it from LOCALES would exempt zh-TW from
+// both instead of just from the write path.
+export const GENERATED_LOCALES = new Set(['zh-TW']);
+
+/** LOCALES minus the ones another generator owns. The write path uses this. */
+export const TRANSLATABLE_LOCALES = LOCALES.filter((loc) => !GENERATED_LOCALES.has(loc));
 const LANG_NAMES = {
   ar: 'Arabic', bg: 'Bulgarian', cs: 'Czech', de: 'German', el: 'Greek',
   es: 'Spanish', fa: 'Persian (Farsi)', fr: 'French', hi: 'Hindi', hr: 'Croatian', hu: 'Hungarian', it: 'Italian', ja: 'Japanese',
   ko: 'Korean', nl: 'Dutch', pl: 'Polish', pt: 'Portuguese (Brazil)',
   ro: 'Romanian', ru: 'Russian', sv: 'Swedish', th: 'Thai', tr: 'Turkish',
   sw: 'Swahili (Kiswahili)', uk: 'Ukrainian', vi: 'Vietnamese', zh: 'Simplified Chinese',
-  'zh-TW': 'Traditional Chinese (Taiwan)',
+  // No zh-TW: it is in GENERATED_LOCALES, so it never reaches a translate call.
 };
 const BATCH_SIZE = 50;
 const MODEL = 'claude-haiku-4-5-20251001';
@@ -603,6 +620,13 @@ async function main() {
       console.error(`--only names ${unknown.length} unknown locale(s): ${unknown.join(', ')}. Known: ${LOCALES.join(', ')}`);
       process.exit(1);
     }
+    // --only bypasses TRANSLATABLE_LOCALES, so without this it is the one way
+    // left to machine-translate over a generated catalogue.
+    const generated = onlyLocales.filter(loc => GENERATED_LOCALES.has(loc));
+    if (generated.length > 0) {
+      console.error(`--only names ${generated.length} generated locale(s): ${generated.join(', ')}. These are not translated from English — regenerate with scripts/convert-zh-tw.py instead.`);
+      process.exit(1);
+    }
   }
 
   if (!dryRun && !process.env.ANTHROPIC_API_KEY) {
@@ -627,7 +651,7 @@ async function main() {
   const baselineFor = (categories) =>
     baselineFlat ? expectedKeysForLocale(baselineFlat, baselinePlurals, categories) : {};
 
-  const targets = onlyLocales || LOCALES;
+  const targets = onlyLocales || TRANSLATABLE_LOCALES;
   // locale → keys this run successfully wrote. Consumed by unresolvedAfterRun.
   const refreshedByLocale = new Map();
   let totalMissing = 0;

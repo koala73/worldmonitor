@@ -65,6 +65,55 @@ function readBannedTerms(): string[] {
   return [...block[1]!.matchAll(/^\s*"([^"]+)": "[^"]+",$/gm)].map((m) => m[1]!);
 }
 
+interface KeyRule {
+  catalogue: string;
+  path: string;
+  from: string;
+  to: string;
+}
+
+/**
+ * The per-entry rules, read from the same generator.
+ *
+ * These cannot join the banned-term list above, and that is the whole reason
+ * they live in KEY_OVERRIDES: their source terms are legitimate elsewhere. 天后
+ * is a deity and a diva, 這隻 is correct before an animal — a catalogue-wide ban
+ * would be asserting the opposite of why the entry exists. So each rule is
+ * checked against the one entry it was written for.
+ */
+function readKeyOverrides(): KeyRule[] {
+  const source = readFileSync(repoPath('scripts/convert-zh-tw.py'), 'utf8');
+  const block = source.match(/^KEY_OVERRIDES = \{$([\s\S]*?)^\}$/m);
+  assert.ok(block, 'could not find KEY_OVERRIDES in scripts/convert-zh-tw.py');
+
+  const rules: KeyRule[] = [];
+  let catalogue = '';
+  let path = '';
+
+  // Split on both endings: the file is LF in the repo but arrives CRLF on a
+  // Windows checkout, and a trailing \r would silently match nothing below.
+  for (const line of block[1]!.split(/\r?\n/)) {
+    const catalogueLine = line.match(/^ {4}"([^"]+)": \{$/);
+    if (catalogueLine) {
+      catalogue = catalogueLine[1]!;
+      path = '';
+      continue;
+    }
+    const entryLine = line.match(/^ {8}"([^"]+)": \{$/);
+    if (entryLine) {
+      path = entryLine[1]!;
+      continue;
+    }
+    const ruleLine = line.match(/^ {12}"([^"]+)": "([^"]+)",$/);
+    if (ruleLine) {
+      assert.ok(catalogue && path, `rule outside a catalogue/entry: ${line}`);
+      rules.push({ catalogue, path, from: ruleLine[1]!, to: ruleLine[2]! });
+    }
+  }
+
+  return rules;
+}
+
 describe('zh-TW catalogues — Simplified script drift', () => {
   // The guard is only meaningful over values whose Simplified source actually
   // changes under conversion. Values that are identical in both scripts (地震,
@@ -127,6 +176,44 @@ describe('zh-TW catalogues — settled vocabulary', () => {
       }
 
       assert.deepEqual(hits, [], `rejected terms found; rerun scripts/convert-zh-tw.py`);
+    });
+  }
+});
+
+describe('zh-TW catalogues — per-entry overrides', () => {
+  const rules = readKeyOverrides();
+
+  it('reads the per-entry rules from the generator', () => {
+    // A parse failure must fail the guard, not empty it.
+    assert.ok(rules.length >= 3, `parsed only ${rules.length} per-entry rules`);
+    assert.ok(
+      rules.some((rule) => rule.from === '天后'),
+      'expected the character-selection fixes to be present',
+    );
+  });
+
+  for (const catalogue of CATALOGUES) {
+    const scoped = rules.filter((rule) => rule.catalogue === catalogue.name);
+    if (scoped.length === 0) continue;
+
+    it(`${catalogue.name}: every per-entry override is applied`, () => {
+      const traditional = load(catalogue.traditional);
+      const failures: string[] = [];
+
+      for (const rule of scoped) {
+        const value = traditional.get(rule.path);
+        // A rule whose entry no longer exists is a rule nobody is enforcing.
+        if (value === undefined) {
+          failures.push(`${rule.path}: entry is gone, so "${rule.from}" is unguarded`);
+          continue;
+        }
+        if (value.includes(rule.from)) failures.push(`${rule.path}: still carries "${rule.from}"`);
+        // Checked positively too: absence of the source term is also what a
+        // rewritten or deleted string looks like.
+        if (!value.includes(rule.to)) failures.push(`${rule.path}: missing "${rule.to}"`);
+      }
+
+      assert.deepEqual(failures, [], `rerun scripts/convert-zh-tw.py`);
     });
   }
 });
