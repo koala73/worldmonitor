@@ -9,7 +9,7 @@ import { VARIANT_META } from '../src/config/variant-meta';
 
 // Mirrors the exact markup shapes of the BUILT dist/dashboard.html (index.html
 // after htmlVariantPlugin with the full meta): trailing ` />` on metas,
-// pretty-printed JSON-LD with the WebApplication block first, the English-only
+// pretty-printed JSON-LD with the WebApplication block first, no upstream
 // hreflang discovery pair, and the visually-hidden app-heading <h1>. If the real
 // markup drifts, renderVariantDashboardHtml throws at build time — this
 // fixture only exercises the transform logic.
@@ -22,8 +22,6 @@ const fixture = `<!doctype html>
     <meta name="description" content="${FULL.description}" />
     <meta name="keywords" content="${FULL.keywords}" />
     <link rel="canonical" href="${FULL.url}" />
-    <link rel="alternate" hreflang="x-default" href="${FULL.url}" />
-    <link rel="alternate" hreflang="en" href="${FULL.url}" />
     <meta name="application-name" content="World Monitor" />
     <meta name="subject" content="${FULL.subject}" />
     <meta name="classification" content="${FULL.classification}" />
@@ -153,14 +151,14 @@ describe('renderVariantDashboardHtml (#4996)', () => {
     assert.throws(() => renderVariantDashboardHtml(doubled, 'tech'), /anchor "canonical" matched 2/);
   });
 
-  it('throws when a query-string locale is reintroduced as an indexable alternate', () => {
-    const withPseudoLocale = fixture.replace(
-      `<link rel="alternate" hreflang="en" href="${FULL.url}" />`,
-      `<link rel="alternate" hreflang="en" href="${FULL.url}" />\n    <link rel="alternate" hreflang="fr" href="${FULL.url}?lang=fr" />`,
+  it('throws when an upstream alternate is reintroduced on the independent base', () => {
+    const withUpstreamAlternate = fixture.replace(
+      `<link rel="canonical" href="${FULL.url}" />`,
+      `<link rel="canonical" href="${FULL.url}" />\n    <link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/dashboard" />`,
     );
     assert.throws(
-      () => renderVariantDashboardHtml(withPseudoLocale, 'tech'),
-      /anchor "hreflang alternates" matched 3 time\(s\), expected 2\.\.2/,
+      () => renderVariantDashboardHtml(withUpstreamAlternate, 'tech'),
+      /anchor "independent hreflang alternates" matched 1 time\(s\), expected 0\.\.0/,
     );
   });
 

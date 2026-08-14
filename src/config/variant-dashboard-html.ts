@@ -57,6 +57,7 @@ function replaceCounted(
 
 const ONE: CountBounds = { min: 1, max: 1 };
 const TWO: CountBounds = { min: 2, max: 2 };
+const ZERO: CountBounds = { min: 0, max: 0 };
 
 // Derive a variant subdomain dashboard page from the built full-variant
 // dashboard.html. Only identity/meta surfaces change: title/description/
@@ -100,22 +101,28 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
 
   // Canonical + URL cards — the core #4996 fix: the page must self-canonicalize
   // on its own subdomain instead of pointing crawlers back at www.
-  html = replaceCounted(html, /(<link rel="canonical" href=")[^"]*(" \/>)/g, (_m, a, b) => `${a}${escHtml(meta.url)}${b}`, ONE, 'canonical');
-  html = replaceCounted(html, /(<meta property="og:url" content=")[^"]*(" \/>)/g, (_m, a, b) => `${a}${escHtml(meta.url)}${b}`, ONE, 'og:url');
-  html = replaceCounted(html, /(<meta name="twitter:url" content=")[^"]*(" \/>)/g, (_m, a, b) => `${a}${escHtml(meta.url)}${b}`, ONE, 'twitter:url');
-
-  // Application locales are client-side preferences, not separately indexable
-  // documents. Keep exactly x-default + English on this page's canonical host;
-  // the full fork can intentionally use a relative /dashboard before an
-  // operator declares a public host, while historical upstream builds use the
-  // old absolute URL. The exact-count guard still rejects any drift.
+  // The independent base intentionally publishes no official-upstream
+  // hreflang. Fail loudly if that boundary regresses, then insert the official
+  // variant's own x-default + English discovery pair beside its canonical.
   html = replaceCounted(
     html,
-    /(<link rel="alternate" hreflang="[^"]+" href=")(?:https:\/\/www\.worldmonitor\.app)?\/dashboard((?:\?[^"]*)?" \/>)/g,
-    (_m, a, b) => `${a}${escHtml(meta.url)}${b}`,
-    TWO,
-    'hreflang alternates',
+    /<link rel="alternate" hreflang="[^"]+" href="[^"]+" \/>\n?/g,
+    (match) => match,
+    ZERO,
+    'independent hreflang alternates',
   );
+  html = replaceCounted(
+    html,
+    /(<link rel="canonical" href=")[^"]*(" \/>)/g,
+    (_m, a, b) =>
+      `${a}${escHtml(meta.url)}${b}\n` +
+      `    <link rel="alternate" hreflang="x-default" href="${escHtml(meta.url)}" />\n` +
+      `    <link rel="alternate" hreflang="en" href="${escHtml(meta.url)}" />`,
+    ONE,
+    'canonical',
+  );
+  html = replaceCounted(html, /(<meta property="og:url" content=")[^"]*(" \/>)/g, (_m, a, b) => `${a}${escHtml(meta.url)}${b}`, ONE, 'og:url');
+  html = replaceCounted(html, /(<meta name="twitter:url" content=")[^"]*(" \/>)/g, (_m, a, b) => `${a}${escHtml(meta.url)}${b}`, ONE, 'twitter:url');
 
   // Social card images (per-variant OG assets exist under public/favico/<variant>/,
   // same files middleware.ts VARIANT_OG points at).

@@ -304,7 +304,7 @@
   },
   "healthProbedKeys": {
     "bootstrap": 109,
-    "standalone": 149,
-    "total": 258
+    "standalone": 148,
+    "total": 257
   }
 }
