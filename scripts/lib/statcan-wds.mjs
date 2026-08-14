@@ -161,16 +161,20 @@ export function buildStatcanPayload({
     cpiIndex: inflation?.index ?? null,
     unemploymentPct: unemployment?.unemploymentPct ?? null,
     unemploymentRefPer: unemployment?.refPer ?? null,
+    inflationReleaseTime: inflation?.releaseTime ?? null,
+    unemploymentReleaseTime: unemployment?.releaseTime ?? null,
     cubes: {
       cpi: {
         productId: CPI_PRODUCT_ID,
         vectorId: CPI_VECTOR_ID,
         refPer: inflation?.refPer ?? null,
+        releaseTime: inflation?.releaseTime ?? null,
       },
       lfsUnemployment: {
         productId: LFS_PRODUCT_ID,
         vectorId: LFS_UNEMPLOYMENT_VECTOR_ID,
         refPer: unemployment?.refPer ?? null,
+        releaseTime: unemployment?.releaseTime ?? null,
       },
     },
     updatedAt: new Date(seededAtMs).toISOString(),
@@ -188,16 +192,32 @@ export function validateStatcanPayload(data) {
 }
 
 export function declareStatcanRecords(data) {
-  const cubes = (Number.isFinite(data?.inflationPct) ? 1 : 0)
+  // Floor is the two resilience cubes. Unrelated getChangedCubeList hits
+  // must not pad recordCount past minRecordCount or mask a missing CPI/LFS.
+  return (Number.isFinite(data?.inflationPct) ? 1 : 0)
     + (Number.isFinite(data?.unemploymentPct) ? 1 : 0);
-  return cubes + (Number.isInteger(data?.changedCount) ? data.changedCount : 0);
+}
+
+const STATCAN_SCORE_PRODUCT_IDS = new Set([CPI_PRODUCT_ID, LFS_PRODUCT_ID]);
+
+/** Only CPI / LFS cubes count toward score freshness — not the rest of WDS. */
+export function statcanScoreCubeReleaseTimes(changedCubes) {
+  if (!Array.isArray(changedCubes)) return [];
+  return changedCubes
+    .filter((row) => STATCAN_SCORE_PRODUCT_IDS.has(Number(row?.productId)))
+    .map((row) => row?.releaseTime);
 }
 
 export function statcanContentMeta(data, nowMs = Date.now()) {
+  // Freshness keys off the CPI / LFS series (and those two cubes), never
+  // "any StatCan cube released today". An unrelated getChangedCubeList hit
+  // must not mask a stale CPI or LFS vector.
   return tokensToContentMeta([
+    data?.inflationReleaseTime,
+    data?.unemploymentReleaseTime,
     data?.inflationRefPer,
     data?.unemploymentRefPer,
-    ...(Array.isArray(data?.changedCubes) ? data.changedCubes.map((row) => row?.releaseTime) : []),
+    ...statcanScoreCubeReleaseTimes(data?.changedCubes),
   ], nowMs);
 }
 

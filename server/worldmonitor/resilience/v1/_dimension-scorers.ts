@@ -18,6 +18,7 @@ import {
   applyCanadaNationalOverlay,
   RESILIENCE_BOC_VALET_KEY,
   RESILIENCE_STATCAN_WDS_KEY,
+  statcanOverlayUsed,
 } from './_canada-national-overlay';
 
 export type ResilienceDimensionId =
@@ -3835,10 +3836,15 @@ export async function scoreAllDimensions(
   // derived from the aggregated seed-meta map. Runs before the T1.7
   // source-failure pass because source-failure only touches
   // imputationClass and does not interact with freshness.
+  // CA inflation/unemployment that consumed StatCan must stamp StatCan
+  // seed-meta, not the IMF registry key the overlay replaced.
+  const statcanUsed = countryCode === 'CA'
+    ? statcanOverlayUsed(await memoizedReader(RESILIENCE_STATCAN_WDS_KEY))
+    : undefined;
   for (const dimensionId of RESILIENCE_DIMENSION_ORDER) {
     scores[dimensionId] = {
       ...scores[dimensionId],
-      freshness: classifyDimensionFreshness(dimensionId, freshnessMap),
+      freshness: classifyDimensionFreshness(dimensionId, freshnessMap, undefined, countryCode, statcanUsed),
     };
   }
 

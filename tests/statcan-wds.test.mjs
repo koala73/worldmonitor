@@ -22,9 +22,13 @@ import {
   parseVectorSeries,
   shiftIsoDate,
   statcanCacheKey,
+  statcanContentMeta,
+  statcanScoreCubeReleaseTimes,
   torontoDateIso,
   utcDateIso,
   validateStatcanPayload,
+  CPI_PRODUCT_ID,
+  LFS_PRODUCT_ID,
 } from '../scripts/lib/statcan-wds.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -229,4 +233,62 @@ test('tests import the lib, not the seeder main; neither binds fetch', () => {
   assert.doesNotMatch(seederSrc, /fetch\.bind/);
   assert.doesNotMatch(libSrc, /fetch\.bind\(globalThis\)/);
   assert.match(seederSrc, /from '\.\/lib\/statcan-wds\.mjs'/);
+});
+
+test('unrelated StatCan cubes do not mask stale CPI/LFS freshness', () => {
+  const nowMs = Date.parse('2026-08-14T12:00:00Z');
+  const unrelatedToday = parseChangedCubeList(changedDoc);
+  assert.ok(unrelatedToday.length >= 1);
+  assert.ok(unrelatedToday.every((row) => row.productId !== CPI_PRODUCT_ID && row.productId !== LFS_PRODUCT_ID));
+  assert.deepEqual(statcanScoreCubeReleaseTimes(unrelatedToday), []);
+
+  const payload = buildStatcanPayload({
+    asOfDate: '2026-08-14',
+    changedCubes: unrelatedToday,
+    cpiSeries: parseVectorSeries(vectorDoc, CPI_VECTOR_ID),
+    lfsSeries: parseVectorSeries(vectorDoc, LFS_UNEMPLOYMENT_VECTOR_ID),
+    seededAtMs: nowMs,
+  });
+  const meta = statcanContentMeta(payload, nowMs);
+  assert.ok(meta, 'CPI/LFS series must still produce content-age');
+  const unrelatedMs = Date.parse('2026-08-13T08:30:00Z');
+  assert.ok(meta.newestItemAt < unrelatedMs, 'an unrelated same-day cube must not become newestItemAt');
+  assert.ok(meta.newestItemAt <= Date.parse('2026-08-07T08:30:00Z'), 'newestItemAt must stay on the CPI/LFS series');
+  assert.equal(declareStatcanRecords(payload), 2, 'unrelated cubes must not pad the CPI/LFS record floor');
+
+  const withCpiCube = statcanContentMeta({
+    ...payload,
+    changedCubes: [
+      ...unrelatedToday,
+      { productId: CPI_PRODUCT_ID, releaseTime: '2026-08-14T08:30' },
+    ],
+  }, nowMs);
+  assert.equal(withCpiCube.newestItemAt, Date.parse('2026-08-14T08:30:00Z'));
+});
+
+test('StatCan EMPTY waiver is the real 08:00 UTC cron tick and owns #6676', () => {
+  const baseline = JSON.parse(readFileSync(resolve(here, '../scripts/seed-freshness-baseline.json'), 'utf8'));
+  const healthSrc = readFileSync(resolve(here, '../api/health.js'), 'utf8');
+  const runbook = readFileSync(resolve(here, '../docs/railway-seed-consolidation-runbook.md'), 'utf8');
+  const statcan = baseline.acknowledged.find((row) => row.name === 'statcanWds');
+  const boc = baseline.acknowledged.find((row) => row.name === 'bocValet');
+  assert.equal(statcan.issue, 6676);
+  assert.equal(boc.issue, 6616);
+  assert.equal(statcan.expiresAt, '2026-08-16T08:00:00.000Z');
+  assert.equal(statcan.cutover.firstScheduledRunAt, '2026-08-16T08:00:00.000Z');
+  assert.equal(statcan.cutover.activatedAt, '2026-08-15T08:00:00.000Z');
+  assert.equal(boc.expiresAt, '2026-08-15T08:00:00.000Z');
+  assert.equal(boc.cutover.firstScheduledRunAt, '2026-08-15T08:00:00.000Z');
+  assert.equal(boc.cutover.activatedAt, '2026-08-14T08:00:00.000Z');
+  assert.match(boc.expiresAt, /T08:00:00\.000Z$/);
+  assert.match(statcan.expiresAt, /T08:00:00\.000Z$/);
+  assert.doesNotMatch(statcan.expiresAt, /T13:00/);
+  assert.doesNotMatch(statcan.cutover.firstScheduledRunAt, /T13:00/);
+  assert.doesNotMatch(statcan.reason, /13:00/);
+  assert.doesNotMatch(boc.expiresAt, /T13:00/);
+  assert.doesNotMatch(boc.reason, /13:00/);
+  assert.doesNotMatch(healthSrc, /2026-08-16T13:00/);
+  assert.match(runbook, /0 8 \* \* \*[^\n]*daily 08:00 UTC/);
+  assert.match(statcan.reason, /0 8 \* \* \*/);
+  assert.match(boc.reason, /0 8 \* \* \*/);
 });

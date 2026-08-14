@@ -24,6 +24,7 @@ import {
   type StalenessLevel,
 } from '../../../_shared/resilience-freshness';
 import type { ResilienceDimensionId } from './_dimension-scorers';
+import { canadaStatcanSourceKey, RESILIENCE_STATCAN_WDS_KEY, type StatcanOverlayUsed } from './_canada-national-overlay';
 import { INDICATOR_REGISTRY, getIndicatorSourceKeys } from './_indicator-registry';
 import { STANDALONE_SOURCE_META_MAX_STALE_MIN } from './_standalone-source-thresholds';
 
@@ -194,6 +195,8 @@ export function classifyDimensionFreshness(
   dimensionId: ResilienceDimensionId,
   freshnessMap: Map<string, number>,
   nowMs?: number,
+  countryCode?: string,
+  statcanUsed?: StatcanOverlayUsed,
 ): DimensionFreshnessResult {
   const indicators = INDICATOR_REGISTRY.filter((indicator) => indicator.dimension === dimensionId);
   if (indicators.length === 0) {
@@ -207,7 +210,9 @@ export function classifyDimensionFreshness(
   const effectiveNowMs = nowMs ?? Date.now();
 
   for (const indicator of indicators) {
-    for (const sourceKey of getIndicatorSourceKeys(indicator)) {
+    const statcanKey = canadaStatcanSourceKey(indicator.id, countryCode, statcanUsed);
+    const sourceKeys = statcanKey ? [statcanKey] : getIndicatorSourceKeys(indicator);
+    for (const sourceKey of sourceKeys) {
       const lastObservedAtMs = freshnessMap.get(sourceKey) ?? null;
       const staleness = classifySourceKeyFreshness(
         sourceKey,
@@ -261,6 +266,10 @@ export async function readFreshnessMap(
         sourceKeyToMetaKey.set(sourceKey, resolveSeedMetaKey(sourceKey));
       }
     }
+  }
+  // CA inflation/unemployment freshness reads StatCan, not the IMF registry key.
+  if (!sourceKeyToMetaKey.has(RESILIENCE_STATCAN_WDS_KEY)) {
+    sourceKeyToMetaKey.set(RESILIENCE_STATCAN_WDS_KEY, resolveSeedMetaKey(RESILIENCE_STATCAN_WDS_KEY));
   }
 
   // Dedupe by resolved meta key: 15+ resilience:static:{ISO2} entries

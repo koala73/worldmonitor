@@ -6,10 +6,14 @@ import { fileURLToPath } from 'node:url';
 
 import {
   applyCanadaNationalOverlay,
+  canadaStatcanSourceKey,
   RESILIENCE_BOC_VALET_KEY,
   RESILIENCE_STATCAN_WDS_KEY,
+  STATCAN_SCORE_PROVIDER,
 } from '../server/worldmonitor/resilience/v1/_canada-national-overlay.ts';
+import { classifyDimensionFreshness } from '../server/worldmonitor/resilience/v1/_dimension-freshness.ts';
 import {
+  scoreAllDimensions,
   scoreCurrencyExternal,
   scoreMacroFiscal,
   type ResilienceSeedReader,
@@ -117,5 +121,102 @@ describe('Canada national overlay', () => {
     assert.match(scorerSrc, /RESILIENCE_BOC_VALET_KEY/);
     assert.match(scorerSrc, /RESILIENCE_STATCAN_WDS_KEY/);
     assert.match(scorerSrc, /applyCanadaNationalOverlay/);
+    assert.match(scorerSrc, /classifyDimensionFreshness\([^)]*countryCode/);
+    assert.match(scorerSrc, /statcanOverlayUsed/);
+  });
+
+  it('StatCan-derived CA scores stamp StatCan source/observedAt/provider, not IMF', () => {
+    const ca = applyCanadaNationalOverlay(
+      'CA',
+      { inflationPct: LAGGED_IMF_INFLATION, currentAccountPct: -1, govRevenuePct: 40, year: 2024 },
+      { unemploymentPct: LAGGED_IMF_UNEMPLOYMENT, populationMillions: 40, year: 2024 },
+      {
+        statcan: {
+          inflationPct: STATCAN_INFLATION,
+          inflationRefPer: '2026-06-01',
+          inflationReleaseTime: '2026-07-15T08:30',
+          unemploymentPct: STATCAN_UNEMPLOYMENT,
+          unemploymentRefPer: '2026-07-01',
+          unemploymentReleaseTime: '2026-08-07T08:30',
+        },
+      },
+    );
+    assert.deepEqual(ca.inflationFreshness, {
+      sourceKey: RESILIENCE_STATCAN_WDS_KEY,
+      observedAt: '2026-07-15T08:30',
+      provider: STATCAN_SCORE_PROVIDER,
+    });
+    assert.deepEqual(ca.unemploymentFreshness, {
+      sourceKey: RESILIENCE_STATCAN_WDS_KEY,
+      observedAt: '2026-08-07T08:30',
+      provider: STATCAN_SCORE_PROVIDER,
+    });
+    assert.notEqual(ca.inflationFreshness?.sourceKey, 'economic:imf:macro:v2');
+    assert.notEqual(ca.unemploymentFreshness?.sourceKey, 'economic:imf:labor:v1');
+    assert.notEqual(ca.inflationFreshness?.observedAt, '2024');
+    const used = { inflation: true, unemployment: true };
+    assert.equal(canadaStatcanSourceKey('inflationStability', 'CA', used), RESILIENCE_STATCAN_WDS_KEY);
+    assert.equal(canadaStatcanSourceKey('unemploymentPct', 'CA', used), RESILIENCE_STATCAN_WDS_KEY);
+    assert.equal(canadaStatcanSourceKey('inflationStability', 'CA'), null, 'EMPTY StatCan must not steal IMF freshness');
+    assert.equal(canadaStatcanSourceKey('inflationStability', 'US', used), null);
+    assert.equal(canadaStatcanSourceKey('govRevenuePct', 'CA', used), null);
+
+    const us = applyCanadaNationalOverlay(
+      'US',
+      { inflationPct: 3.5, year: 2024 },
+      { unemploymentPct: 4.1, year: 2024 },
+      { statcan: { inflationPct: STATCAN_INFLATION, unemploymentPct: STATCAN_UNEMPLOYMENT } },
+    );
+    assert.equal(us.inflationFreshness, null);
+    assert.equal(us.unemploymentFreshness, null);
+  });
+
+  it('CA dimension freshness follows StatCan, not a fresh IMF stamp', () => {
+    const now = Date.parse('2026-08-14T12:00:00Z');
+    const imfFresh = now - 60 * 60 * 1000;
+    const statcanStale = now - 5 * 365 * 24 * 60 * 60 * 1000;
+    const map = new Map<string, number>([
+      ['economic:imf:macro:v2', imfFresh],
+      ['economic:imf:labor:v1', imfFresh],
+      ['economic:national-debt:v1', imfFresh],
+      ['economic:bis:dsr:v1', imfFresh],
+      ['resilience:static:*', imfFresh],
+      ['economic:bis:eer:v1', imfFresh],
+      [RESILIENCE_STATCAN_WDS_KEY, statcanStale],
+    ]);
+
+    const used = { inflation: true, unemployment: true };
+    const caCurrency = classifyDimensionFreshness('currencyExternal', map, now, 'CA', used);
+    const usCurrency = classifyDimensionFreshness('currencyExternal', map, now, 'US', used);
+    const caWithoutUse = classifyDimensionFreshness('currencyExternal', map, now, 'CA');
+    assert.equal(caCurrency.staleness, 'stale', 'stale StatCan CPI must not hide behind fresh IMF');
+    assert.equal(caCurrency.lastObservedAtMs, statcanStale);
+    assert.notEqual(usCurrency.lastObservedAtMs, statcanStale, 'US must keep IMF freshness');
+    assert.notEqual(usCurrency.staleness, 'stale', 'US IMF-fresh inflation must not inherit StatCan stale');
+    assert.notEqual(caWithoutUse.lastObservedAtMs, statcanStale, 'unused StatCan must not remap CA onto a missing WDS seed');
+
+    const caMacro = classifyDimensionFreshness('macroFiscal', map, now, 'CA', used);
+    assert.equal(caMacro.lastObservedAtMs, statcanStale, 'CA unemployment freshness is StatCan, not IMF labor');
+  });
+
+  it('scoreAllDimensions stamps CA StatCan seed-meta instead of IMF', async () => {
+    const now = Date.parse('2026-08-14T12:00:00Z');
+    const imfFresh = now - 60 * 60 * 1000;
+    const statcanStale = now - 5 * 365 * 24 * 60 * 60 * 1000;
+    const reader: ResilienceSeedReader = async (key: string) => {
+      if (key === 'seed-meta:economic:statcan-wds') {
+        return { fetchedAt: statcanStale, status: 'ok', recordCount: 2 };
+      }
+      if (key.startsWith('seed-meta:')) {
+        return { fetchedAt: imfFresh, status: 'ok', recordCount: 10 };
+      }
+      return canadaReader()(key);
+    };
+    const ca = await scoreAllDimensions('CA', reader);
+    const us = await scoreAllDimensions('US', reader);
+    assert.equal(ca.currencyExternal.freshness.lastObservedAtMs, statcanStale);
+    assert.equal(ca.macroFiscal.freshness.lastObservedAtMs, statcanStale);
+    assert.notEqual(us.currencyExternal.freshness.lastObservedAtMs, statcanStale);
+    assert.notEqual(us.macroFiscal.freshness.lastObservedAtMs, statcanStale);
   });
 });

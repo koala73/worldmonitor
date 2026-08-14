@@ -4,6 +4,7 @@
 
 export const RESILIENCE_BOC_VALET_KEY = 'economic:boc-valet:v1';
 export const RESILIENCE_STATCAN_WDS_KEY = 'economic:statcan-wds:v1';
+export const STATCAN_SCORE_PROVIDER = 'Statistics Canada';
 
 export type ImfMacroLike = {
   inflationPct?: number | null;
@@ -21,8 +22,10 @@ export type ImfLaborLike = {
 export type StatcanWdsPayload = {
   inflationPct?: number | null;
   inflationRefPer?: string | null;
+  inflationReleaseTime?: string | null;
   unemploymentPct?: number | null;
   unemploymentRefPer?: string | null;
+  unemploymentReleaseTime?: string | null;
 };
 
 export type BocValetPayload = {
@@ -30,8 +33,55 @@ export type BocValetPayload = {
   policyRate?: { rate?: number; observedAt?: string } | null;
 };
 
+export type CanadaScoreFreshness = {
+  sourceKey: typeof RESILIENCE_STATCAN_WDS_KEY;
+  observedAt: string | null;
+  provider: typeof STATCAN_SCORE_PROVIDER;
+};
+
 function finiteOrNull(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function statcanObservedAt(...tokens: Array<string | null | undefined>): string | null {
+  for (const token of tokens) {
+    if (typeof token === 'string' && token.length > 0) return token;
+  }
+  return null;
+}
+
+export function stampStatcanScoreFreshness(...tokens: Array<string | null | undefined>): CanadaScoreFreshness {
+  return {
+    sourceKey: RESILIENCE_STATCAN_WDS_KEY,
+    observedAt: statcanObservedAt(...tokens),
+    provider: STATCAN_SCORE_PROVIDER,
+  };
+}
+
+export type StatcanOverlayUsed = {
+  inflation?: boolean;
+  unemployment?: boolean;
+};
+
+export function statcanOverlayUsed(raw: unknown): StatcanOverlayUsed {
+  if (!raw || typeof raw !== 'object') return {};
+  const payload = raw as StatcanWdsPayload;
+  return {
+    inflation: finiteOrNull(payload.inflationPct) != null,
+    unemployment: finiteOrNull(payload.unemploymentPct) != null,
+  };
+}
+
+/** StatCan CPI / LFS replace IMF for these CA scores; freshness must follow. */
+export function canadaStatcanSourceKey(
+  indicatorId: string,
+  countryCode?: string,
+  used?: StatcanOverlayUsed,
+): string | null {
+  if (countryCode !== 'CA') return null;
+  if (indicatorId === 'inflationStability' && used?.inflation) return RESILIENCE_STATCAN_WDS_KEY;
+  if (indicatorId === 'unemploymentPct' && used?.unemployment) return RESILIENCE_STATCAN_WDS_KEY;
+  return null;
 }
 
 /**
@@ -50,6 +100,8 @@ export function applyCanadaNationalOverlay(
   laborEntry: ImfLaborLike | null;
   usedStatcanInflation: boolean;
   usedStatcanUnemployment: boolean;
+  inflationFreshness: CanadaScoreFreshness | null;
+  unemploymentFreshness: CanadaScoreFreshness | null;
   bocUsdCad: number | null;
   bocPolicyRate: number | null;
 } {
@@ -59,6 +111,8 @@ export function applyCanadaNationalOverlay(
       laborEntry,
       usedStatcanInflation: false,
       usedStatcanUnemployment: false,
+      inflationFreshness: null,
+      unemploymentFreshness: null,
       bocUsdCad: null,
       bocPolicyRate: null,
     };
@@ -87,6 +141,12 @@ export function applyCanadaNationalOverlay(
     laborEntry: nextLabor,
     usedStatcanInflation: statcanInflation != null,
     usedStatcanUnemployment: statcanUnemployment != null,
+    inflationFreshness: statcanInflation != null
+      ? stampStatcanScoreFreshness(sources.statcan?.inflationReleaseTime, sources.statcan?.inflationRefPer)
+      : null,
+    unemploymentFreshness: statcanUnemployment != null
+      ? stampStatcanScoreFreshness(sources.statcan?.unemploymentReleaseTime, sources.statcan?.unemploymentRefPer)
+      : null,
     bocUsdCad,
     bocPolicyRate,
   };
