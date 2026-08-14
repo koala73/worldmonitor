@@ -16,11 +16,11 @@
     "energy": 18
   },
   "variantCount": 6,
-  "componentTopLevelTsFiles": 183,
-  "serviceTopLevelEntries": 230,
+  "componentTopLevelTsFiles": 184,
+  "serviceTopLevelEntries": 233,
   "apiEndpointEntries": 91,
   "panelClasses": 108,
-  "protoFiles": 295,
+  "protoFiles": 304,
   "protoServices": 36,
   "protoDomainFolders": 37,
   "openapiServiceSpecs": 36,
@@ -93,15 +93,15 @@
   "freshnessRequiredForRisk": 2,
   "feedDefinitions": 632,
   "sourceAttribution": {
-    "activeHosts": 531,
-    "structuredHosts": 291,
+    "activeHosts": 533,
+    "structuredHosts": 293,
     "feedHosts": 268,
     "operationalStatusHosts": 30,
-    "providerCount": 529,
-    "observedHosts": 650,
-    "reviewNeeded": 517
+    "providerCount": 531,
+    "observedHosts": 652,
+    "reviewNeeded": 519
   },
-  "sourceAttributionHosts": 531,
+  "sourceAttributionHosts": 533,
   "airportCount": 115,
   "stockExchangeCount": 29,
   "centralBankInstitutionCount": 14,
@@ -304,7 +304,7 @@
   },
   "healthProbedKeys": {
     "bootstrap": 109,
-    "standalone": 150,
-    "total": 259
+    "standalone": 149,
+    "total": 258
   }
 }

@@ -24,7 +24,7 @@ World Monitor turns many public signals into one situational-awareness view. Ins
 | Natural hazards | Earthquakes, fires, volcanoes, floods, weather, and radiation signals | [USGS](https://earthquake.usgs.gov/), [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/), and official alert feeds |
 | Cyber and infrastructure | Outages, malicious infrastructure, datacenters, nuclear sites, and dependency cascades | Cloudflare Radar, abuse.ch feeds, and public infrastructure datasets |
 
-The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) documents provider, cadence, license posture, and provenance details for 531+ observed upstream hosts. A source being present does not make every observation equally fresh or authoritative; each feed retains its own reporting delay and revision policy.
+The [data-source catalog](https://www.worldmonitor.app/docs/data-sources) documents provider, cadence, license posture, and provenance details for 533+ observed upstream hosts. A source being present does not make every observation equally fresh or authoritative; each feed retains its own reporting delay and revision policy.
 
 ## How Is It Different From a News Dashboard?
 
@@ -34,7 +34,7 @@ That correlation layer is the product's central idea: separate weak signals beco
 
 ## What Is Included in the Free Dashboard?
 
-The public dashboard exposes 56 map-layer types, 500+ curated news feeds backed by 531+ observed upstream hosts, country briefs, instability scores, chokepoints, infrastructure, markets, disasters, and watchlists. Every layer except the Resilience layer is available on the free plan, and the dashboard can be opened without an account.
+The public dashboard exposes 56 map-layer types, 500+ curated news feeds backed by 533+ observed upstream hosts, country briefs, instability scores, chokepoints, infrastructure, markets, disasters, and watchlists. Every layer except the Resilience layer is available on the free plan, and the dashboard can be opened without an account.
 
 World Monitor currently maintains:
 
@@ -67,7 +67,7 @@ The dashboard supports triage and context. It does not replace a licensed termin
 
 ## Can Developers and AI Agents Use the Data?
 
-Yes. World Monitor's public interface is generated from 295 Protocol Buffer definitions into 36 REST service specifications, alongside a Model Context Protocol server with 60 live tools. Public metadata and discovery surfaces are open; data-bearing API, MCP tool, and resource calls require the appropriate Pro/API OAuth session or API key.
+Yes. World Monitor's public interface is generated from 304 Protocol Buffer definitions into 36 REST service specifications, alongside a Model Context Protocol server with 60 live tools. Public metadata and discovery surfaces are open; data-bearing API, MCP tool, and resource calls require the appropriate Pro/API OAuth session or API key.
 
 Developers can start with the [API reference](https://www.worldmonitor.app/docs/api-reference), [MCP quickstart](https://www.worldmonitor.app/docs/mcp-quickstart), or [OpenAPI specification](https://www.worldmonitor.app/openapi.json). AI agents can also read the concise [agent briefing](https://www.worldmonitor.app/llms.txt) and the fuller [platform reference](https://www.worldmonitor.app/llms-full.txt).
 
