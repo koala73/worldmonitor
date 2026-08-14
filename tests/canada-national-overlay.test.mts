@@ -244,6 +244,31 @@ describe('Canada national overlay', () => {
     assert.equal(caMacro.lastObservedAtMs, statcanStale, 'CA unemployment freshness is StatCan, not IMF labor');
   });
 
+  it('keeps a normal 13-day-old monthly StatCan observation fresh', () => {
+    const now = Date.parse('2026-08-14T12:00:00Z');
+    const recent = now - 60 * 60 * 1000;
+    const monthlyStatcan = now - 13 * 24 * 60 * 60 * 1000;
+    const map = new Map<string, number>([
+      ['economic:imf:macro:v2', recent],
+      ['economic:imf:labor:v1', recent],
+      ['economic:national-debt:v1', recent],
+      ['economic:bis:dsr:v1', recent],
+      ['resilience:static:*', recent],
+      ['economic:bis:eer:v1', recent],
+      [RESILIENCE_STATCAN_WDS_KEY, monthlyStatcan],
+    ]);
+    const used = { inflation: true, unemployment: true };
+
+    assert.equal(
+      classifyDimensionFreshness('currencyExternal', map, now, 'CA', used).staleness,
+      'fresh',
+    );
+    assert.equal(
+      classifyDimensionFreshness('macroFiscal', map, now, 'CA', used).staleness,
+      'fresh',
+    );
+  });
+
   it('scoreAllDimensions uses StatCan content time instead of fresh fetch or IMF stamps', async () => {
     const now = Date.parse('2026-08-14T12:00:00Z');
     const imfFresh = now - 60 * 60 * 1000;

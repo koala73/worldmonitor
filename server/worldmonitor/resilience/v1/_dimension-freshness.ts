@@ -174,7 +174,14 @@ function classifySourceKeyFreshness(
     nowMs,
   });
 
-  const maxStaleMin = STANDALONE_SOURCE_META_MAX_STALE_MIN[resolveSeedMetaKey(sourceKey)];
+  // StatCan is the one source whose map value is its monthly content clock
+  // (`newestItemAt`), not the seeder's operational `fetchedAt`. Applying the
+  // 3-day missed-run threshold to that content timestamp would mark a normal
+  // monthly observation stale for most of its valid publication cycle. The
+  // source-failure path still applies the 3-day threshold to fetchedAt.
+  const maxStaleMin = sourceKey === RESILIENCE_STATCAN_WDS_KEY
+    ? undefined
+    : STANDALONE_SOURCE_META_MAX_STALE_MIN[resolveSeedMetaKey(sourceKey)];
   if (
     typeof maxStaleMin === 'number'
     && lastObservedAtMs != null
