@@ -846,7 +846,7 @@ const SEED_META = {
     cutover: {
       mode: 'expiring-ack',
       fromKey: null,
-      issue: 6616,
+      issue: 6676,
       status: 'EMPTY',
     },
   }, // daily seed-bundle-macro; floor is the two resilience cubes (CPI YoY + LFS). Empty change-list is valid quiet.
