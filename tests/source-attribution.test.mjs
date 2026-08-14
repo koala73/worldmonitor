@@ -94,12 +94,12 @@ test('source inventory has complete metadata and matches the generated catalog',
   }
 
   const stats = sourceAttributionStats(inventory, manifest);
-  // Merge resolution: main's totals plus this branch's two new hosts (USDA FAS
-  // PSD via api.fas.usda.gov, FAOSTAT via fenixservices.fao.org), so the merged
-  // totals are neither side's numbers. Recomputed from the merged manifest.
-  assert.equal(stats.activeHosts, 537);
-  assert.equal(stats.providerCount, 535);
-  assert.equal(stats.observedHosts, 656);
+  const docsStats = JSON.parse(readFileSync(join(rootDir, 'docs/generated/stats.json'), 'utf8'));
+  // Lockstep with docs:stats so a new host cannot leave these three asserts a
+  // commit behind the restuck inventory.
+  assert.equal(stats.activeHosts, docsStats.sourceAttribution.activeHosts);
+  assert.equal(stats.providerCount, docsStats.sourceAttribution.providerCount);
+  assert.equal(stats.observedHosts, docsStats.sourceAttribution.observedHosts);
   assert.ok(stats.reviewNeeded > 0, 'terms-review rows must remain visible until a license audit is complete');
 });
 
