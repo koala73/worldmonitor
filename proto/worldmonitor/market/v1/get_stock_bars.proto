@@ -7,21 +7,26 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/market/v1/stock_data.proto";
 
 message GetStockBarsRequest {
+  // Exchange security symbol; every returned record must match this value.
   string symbol = 1 [
     (sebuf.http.query) = {name: "symbol"},
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
     (buf.validate.field).string.max_len = 32
   ];
+  // Requested Provider bar interval, such as 1m, 5m, 1h or 1d.
   string interval = 2 [(sebuf.http.query) = {name: "interval"}];
+  // Inclusive UTC epoch-millisecond start; zero means unset.
   int64 start_utc = 3 [
     (sebuf.http.query) = {name: "start_utc"},
     (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER
   ];
+  // Inclusive UTC epoch-millisecond end; zero means unset.
   int64 end_utc = 4 [
     (sebuf.http.query) = {name: "end_utc"},
     (sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER
   ];
+  // Named Provider range used when explicit UTC bounds are not supplied.
   string range = 5 [(sebuf.http.query) = {name: "range"}];
 }
 

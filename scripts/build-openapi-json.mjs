@@ -32,7 +32,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { dedupeErrorResponses, dedupeSharedParameters } from './openapi-dedup-responses.mjs';
-import { dedupeSharedChinaProvenanceSchemas } from './openapi-dedup-schemas.mjs';
+import {
+  dedupeSharedChinaProvenanceSchemas,
+  dedupeSharedComponentPropertySchemas,
+} from './openapi-dedup-schemas.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const yamlPath = resolve(scriptDir, '../docs/api/worldmonitor.openapi.yaml');
@@ -49,6 +52,7 @@ if (!spec || typeof spec !== 'object' || typeof spec.openapi !== 'string') {
 const stats = dedupeErrorResponses(spec);
 const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);
 const paramStats = dedupeSharedParameters(spec);
+const propertySchemaStats = dedupeSharedComponentPropertySchemas(spec);
 
 // Minified: this artifact is machine-consumed (scanners/agents), and the
 // smaller payload dodges fetch-size caps. The YAML remains the human copy.
@@ -60,5 +64,7 @@ console.log(
   `build-openapi-json: wrote ${jsonPath} (OpenAPI ${spec.openapi}, ${pathCount} paths, ` +
     `${json.length} bytes; hoisted ${stats.hoisted} shared error responses into ${stats.replacedRefs} $refs; ` +
     `hoisted ${paramStats.hoisted} shared parameters into ${paramStats.replacedRefs} $refs; ` +
+    `hoisted ${propertySchemaStats.hoisted} shared property schemas into ` +
+    `${propertySchemaStats.replacedRefs} $refs (${propertySchemaStats.bytesSaved} bytes saved); ` +
     `reused ${schemaStats.replacedRefs}/${schemaStats.compared} shared China provenance schemas)`,
 );

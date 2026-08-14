@@ -93,7 +93,11 @@ describe('cross-Strait activity production registration (#5575)', () => {
     const flightSeeder = read('scripts/seed-military-flights.mjs');
     assert.match(panel, /getHydratedData\('crossStraitActivity'\)/);
     assert.match(panel, /tryBuildCrossStraitActivityPanelModel/);
-    assert.match(panel, /if \(this\.officialActivity\) this\.requestRender\(\)/);
+    assert.match(
+      panel,
+      /this\.officialActivity = isCrossStraitActivitySnapshot\(hydrated\)[\s\S]*?this\.requestRender\(\);[\s\S]*?if \(!this\.officialActivity\) void this\.hydrateOfficialActivity\(\)/,
+    );
+    assert.doesNotMatch(panel, /if \(this\.officialActivity\) this\.requestRender\(\)/);
     assert.match(panel, /View Taiwan Strait/);
     assert.match(renderer, /Publisher claim/);
     assert.match(renderer, /not ADS-B or AIS tracks/);

@@ -248,7 +248,6 @@ describe('public product facts generation contract', () => {
     const pricingUrl = facts.product.pricingUrl;
     const plansByName = new Map(facts.plans.map((plan) => [plan.name, plan]));
     for (const path of [
-      'index.html',
       'pro-test/index.html',
       'pro-test/welcome.html',
       'public/pro/index.html',
@@ -274,6 +273,18 @@ describe('public product facts generation contract', () => {
         }
       }
     }
+
+    const independentApplication = applicationJsonLd('index.html');
+    assert.equal(
+      independentApplication.offers,
+      undefined,
+      'independent dashboard must not publish official-upstream paid offers',
+    );
+    assert.notEqual(
+      independentApplication.url,
+      pricingUrl,
+      'independent dashboard application URL must not be the upstream pricing URL',
+    );
   });
 
   it('keeps committed generated facts fresh', () => {

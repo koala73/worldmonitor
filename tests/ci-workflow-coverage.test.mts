@@ -773,17 +773,18 @@ describe('CI workflow coverage', () => {
       () => runReleasePreflight(releasePreflight, 'push', '', 'configured'),
       'populated tag releases must pass the client env preflight',
     );
-    // #5908: one published desktop binary means exactly one local build script,
-    // so the env gate has one place to live. Asserting the absence of the
-    // per-variant scripts keeps this from silently covering less than it did —
-    // a reintroduced `desktop:build:tech` would otherwise never be gate-checked.
+    // #5908: one published desktop product means exactly one variant-neutral
+    // build path. A packaging-format target such as `:nsis` is allowed; a
+    // reintroduced product variant such as `desktop:build:tech` is not.
     assert.match(
       packageScripts['desktop:tauri:build'] ?? '',
       /npm run desktop:check-env/,
       'desktop:tauri:build must run the local desktop env gate',
     );
     assert.deepEqual(
-      Object.keys(packageScripts).filter((name) => /^desktop:(tauri:)?build:/.test(name)),
+      Object.keys(packageScripts).filter((name) =>
+        /^desktop:(?:tauri:)?build:(?!nsis$)/.test(name),
+      ),
       [],
       'per-variant desktop build scripts were retired with the one-binary model (#5908)',
     );

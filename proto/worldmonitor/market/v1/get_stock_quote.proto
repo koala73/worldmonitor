@@ -7,6 +7,7 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/market/v1/stock_data.proto";
 
 message GetStockQuoteRequest {
+  // Exchange security symbol; every returned record must match this value.
   string symbol = 1 [
     (sebuf.http.query) = {name: "symbol"},
     (buf.validate.field).required = true,

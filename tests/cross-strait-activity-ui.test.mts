@@ -426,7 +426,7 @@ describe('Force Posture official-activity supplement (#5575)', () => {
     assert.match(panel, /await ensureHydrated\('crossStraitActivity'\)/);
     assert.match(panel, /this\.officialActivitySupplement = undefined;/);
     assert.match(panel, /this\.requestRender\(\)/);
-    assert.match(panel, /if \(this\.officialActivity\) this\.requestRender\(\)/);
+    assert.doesNotMatch(panel, /if \(this\.officialActivity\) this\.requestRender\(\)/);
     assert.match(panel, /override destroy\(\): void \{[\s\S]*?this\.officialActivityDestroyed = true;/);
     assert.match(panel, /model\.sourceHealth/);
     assert.match(panel, /crossStraitSourceHealthHeading\(model\.sourceHealth\.state\)/);

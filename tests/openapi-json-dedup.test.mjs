@@ -6,7 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 import { dedupeErrorResponses, dedupeSharedParameters } from '../scripts/openapi-dedup-responses.mjs';
-import { dedupeSharedChinaProvenanceSchemas } from '../scripts/openapi-dedup-schemas.mjs';
+import {
+  dedupeSharedChinaProvenanceSchemas,
+  dedupeSharedComponentPropertySchemas,
+} from '../scripts/openapi-dedup-schemas.mjs';
 
 // Guards the served public/openapi.json against the ~1 MB scanner body cap.
 // On 2026-07-05 the per-op rate-limit/idempotency/example doc injections grew
@@ -105,6 +108,23 @@ function resolveSharedChinaProvenanceRefs(spec) {
     }
   };
   visit(spec);
+  return spec;
+}
+
+function resolveSharedComponentPropertyRefs(spec) {
+  const prefix = '#/components/schemas/SharedPropertySchema';
+  const generatedNames = new Set();
+  for (const componentSchema of Object.values(spec.components?.schemas ?? {})) {
+    for (const [propertyName, propertySchema] of Object.entries(componentSchema?.properties ?? {})) {
+      if (!propertySchema?.$ref?.startsWith(prefix)) continue;
+      const name = propertySchema.$ref.replace('#/components/schemas/', '');
+      const target = spec.components?.schemas?.[name];
+      assert.ok(target, `component property ${propertyName}: dangling ${propertySchema.$ref}`);
+      componentSchema.properties[propertyName] = structuredClone(target);
+      generatedNames.add(name);
+    }
+  }
+  for (const name of generatedNames) delete spec.components.schemas[name];
   return spec;
 }
 
@@ -283,16 +303,50 @@ describe('dedupeSharedChinaProvenanceSchemas (fixture)', () => {
   });
 });
 
+describe('dedupeSharedComponentPropertySchemas (fixture)', () => {
+  it('hoists only repeated property schemas whose exact $ref form saves bytes', () => {
+    const repeated = {
+      type: 'string',
+      enum: ['ONE', 'TWO', 'THREE'],
+      description: 'A complete repeated property definition. '.repeat(12),
+    };
+    const short = { type: 'string' };
+    const spec = {
+      components: {
+        schemas: {
+          First: { properties: { state: structuredClone(repeated), label: structuredClone(short) } },
+          Second: { properties: { state: structuredClone(repeated), label: structuredClone(short) } },
+        },
+      },
+    };
+    const original = structuredClone(spec);
+
+    const stats = dedupeSharedComponentPropertySchemas(spec);
+
+    assert.equal(stats.hoisted, 1);
+    assert.equal(stats.replacedRefs, 2);
+    assert.ok(stats.bytesSaved > 0);
+    assert.match(spec.components.schemas.First.properties.state.$ref, /SharedPropertySchema/);
+    assert.equal(spec.components.schemas.First.properties.label.$ref, undefined);
+    assert.deepEqual(resolveSharedComponentPropertyRefs(structuredClone(spec)), original);
+  });
+});
+
 describe('public OpenAPI dedupe (real bundle)', () => {
   const original = loadUnifiedOpenApiSpec();
   const deduped = structuredClone(original);
   const stats = dedupeErrorResponses(deduped);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(deduped);
   const paramStats = dedupeSharedParameters(deduped);
+  const propertySchemaStats = dedupeSharedComponentPropertySchemas(deduped);
 
   it('is lossless: resolving the $refs reproduces the original spec exactly', () => {
     assert.deepEqual(
-      resolveResponseRefs(resolveSharedChinaProvenanceRefs(resolveParameterRefs(structuredClone(deduped)))),
+      resolveResponseRefs(
+        resolveSharedChinaProvenanceRefs(
+          resolveParameterRefs(resolveSharedComponentPropertyRefs(structuredClone(deduped))),
+        ),
+      ),
       original,
     );
   });
@@ -329,6 +383,12 @@ describe('public OpenAPI dedupe (real bundle)', () => {
     assert.ok(paramStats.replacedRefs >= 200, `expected fleet-wide dedup, got ${paramStats.replacedRefs} refs`);
   });
 
+  it('reuses only complete byte-identical component property schemas with positive savings', () => {
+    assert.ok(propertySchemaStats.hoisted > 0);
+    assert.ok(propertySchemaStats.replacedRefs > propertySchemaStats.hoisted);
+    assert.ok(propertySchemaStats.bytesSaved > 2_200);
+  });
+
   it(`keeps the minified JSON under the ${SIZE_BUDGET_BYTES}-byte scanner budget`, () => {
     const bytes = JSON.stringify(deduped).length;
     assert.ok(
@@ -349,5 +409,6 @@ describe('build-openapi-json wiring', () => {
     assert.match(src, /dedupeErrorResponses\(spec\)/);
     assert.match(src, /dedupeSharedChinaProvenanceSchemas\(spec\)/);
     assert.match(src, /dedupeSharedParameters\(spec\)/);
+    assert.match(src, /dedupeSharedComponentPropertySchemas\(spec\)/);
   });
 });

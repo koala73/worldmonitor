@@ -277,7 +277,9 @@ function rewriteApplicationJsonLd(source, includedGroups) {
 }
 
 const applicationJsonLdGroups = new Map([
-  ['index.html', ['free', 'pro']],
+  // The independently branded shell must not inherit official-upstream paid
+  // offers. It still receives repository-derived counts below, but pricing
+  // JSON-LD remains confined to the declared upstream Pro documents.
   ['pro-test/welcome.html', ['free', 'pro']],
   ['pro-test/index.html', null],
 ]);

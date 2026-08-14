@@ -2296,12 +2296,16 @@ paths:
             parameters:
                 - name: query
                   in: query
+                  description: |-
+                    Company name, listing name or exchange symbol to search at the configured
+                     reference Provider. Static or fabricated matches are never substituted.
                   required: true
                   example: "supply chain risk"
                   schema:
                     type: string
                 - name: limit
                   in: query
+                  description: Maximum number of Provider matches to return; zero uses the server default.
                   required: false
                   example: 25
                   schema:
@@ -2397,18 +2401,21 @@ paths:
             parameters:
                 - name: symbol
                   in: query
+                  description: Exchange security symbol; every returned record must match this value.
                   required: true
                   example: "AAPL"
                   schema:
                     type: string
                 - name: interval
                   in: query
+                  description: Requested Provider bar interval, such as 1m, 5m, 1h or 1d.
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: start_utc
                   in: query
+                  description: Inclusive UTC epoch-millisecond start; zero means unset.
                   required: false
                   example: "1717200000000"
                   schema:
@@ -2416,6 +2423,7 @@ paths:
                     format: int64
                 - name: end_utc
                   in: query
+                  description: Inclusive UTC epoch-millisecond end; zero means unset.
                   required: false
                   example: "1717200000000"
                   schema:
@@ -2423,6 +2431,7 @@ paths:
                     format: int64
                 - name: range
                   in: query
+                  description: Named Provider range used when explicit UTC bounds are not supplied.
                   required: false
                   example: "example"
                   schema:
@@ -2521,6 +2530,7 @@ paths:
             parameters:
                 - name: symbol
                   in: query
+                  description: Exchange security symbol; every returned record must match this value.
                   required: true
                   example: "AAPL"
                   schema:
@@ -2617,12 +2627,14 @@ paths:
             parameters:
                 - name: symbol
                   in: query
+                  description: Exchange security symbol; every returned record must match this value.
                   required: true
                   example: "AAPL"
                   schema:
                     type: string
                 - name: limit
                   in: query
+                  description: Maximum number of source-linked articles; zero uses the server default.
                   required: false
                   example: 25
                   schema:
@@ -2730,12 +2742,14 @@ paths:
             parameters:
                 - name: symbol
                   in: query
+                  description: Exchange security symbol; every returned record must match this value.
                   required: true
                   example: "AAPL"
                   schema:
                     type: string
                 - name: start_utc
                   in: query
+                  description: Inclusive UTC epoch-millisecond start; zero means unset.
                   required: false
                   example: "1717200000000"
                   schema:
@@ -2743,6 +2757,7 @@ paths:
                     format: int64
                 - name: end_utc
                   in: query
+                  description: Inclusive UTC epoch-millisecond end; zero means unset.
                   required: false
                   example: "1717200000000"
                   schema:
@@ -2840,12 +2855,14 @@ paths:
             parameters:
                 - name: symbol
                   in: query
+                  description: Exchange security symbol; every returned record must match this value.
                   required: true
                   example: "AAPL"
                   schema:
                     type: string
                 - name: start_utc
                   in: query
+                  description: Inclusive UTC epoch-millisecond start; zero means unset.
                   required: false
                   example: "1717200000000"
                   schema:
@@ -2853,6 +2870,7 @@ paths:
                     format: int64
                 - name: end_utc
                   in: query
+                  description: Inclusive UTC epoch-millisecond end; zero means unset.
                   required: false
                   example: "1717200000000"
                   schema:
@@ -2949,12 +2967,14 @@ paths:
             parameters:
                 - name: symbol
                   in: query
+                  description: Exchange security symbol; every returned record must match this value.
                   required: true
                   example: "AAPL"
                   schema:
                     type: string
                 - name: horizon
                   in: query
+                  description: Requested forecast horizon when a versioned model path is available.
                   required: false
                   example: "example"
                   schema:
@@ -3050,18 +3070,21 @@ paths:
             parameters:
                 - name: symbol
                   in: query
+                  description: Exchange security symbol; every returned record must match this value.
                   required: true
                   example: "AAPL"
                   schema:
                     type: string
                 - name: event_id
                   in: query
+                  description: Source-linked event identifier to compare when the capability is available.
                   required: false
                   example: "example-id"
                   schema:
                     type: string
                 - name: limit
                   in: query
+                  description: Maximum evidence-linked matches; zero uses the server default.
                   required: false
                   example: 25
                   schema:
@@ -5097,11 +5120,15 @@ components:
                     type: string
                     maxLength: 100
                     minLength: 1
+                    description: |-
+                        Company name, listing name or exchange symbol to search at the configured
+                         reference Provider. Static or fabricated matches are never substituted.
                 limit:
                     type: integer
                     maximum: 20
                     minimum: 1
                     format: int32
+                    description: Maximum number of Provider matches to return; zero uses the server default.
             required:
                 - query
         SearchStocksResponse:
@@ -5187,18 +5214,21 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Exchange security symbol; every returned record must match this value.
                 interval:
                     type: string
+                    description: Requested Provider bar interval, such as 1m, 5m, 1h or 1d.
                 startUtc:
                     type: integer
                     format: int64
-                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Inclusive UTC epoch-millisecond start; zero means unset.. Warning: Values > 2^53 may lose precision in JavaScript'
                 endUtc:
                     type: integer
                     format: int64
-                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Inclusive UTC epoch-millisecond end; zero means unset.. Warning: Values > 2^53 may lose precision in JavaScript'
                 range:
                     type: string
+                    description: Named Provider range used when explicit UTC bounds are not supplied.
             required:
                 - symbol
         GetStockBarsResponse:
@@ -5275,6 +5305,7 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Exchange security symbol; every returned record must match this value.
             required:
                 - symbol
         GetStockQuoteResponse:
@@ -5319,11 +5350,13 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Exchange security symbol; every returned record must match this value.
                 limit:
                     type: integer
                     maximum: 100
                     minimum: 1
                     format: int32
+                    description: Maximum number of source-linked articles; zero uses the server default.
             required:
                 - symbol
         ListStockNewsResponse:
@@ -5342,14 +5375,19 @@ components:
             properties:
                 id:
                     type: string
+                    description: Provider or normalized article identifier; it is not a causal-event ID.
                 symbol:
                     type: string
+                    description: Normalized requested security symbol to which the article was matched.
                 title:
                     type: string
+                    description: Publisher-supplied article headline.
                 source:
                     type: string
+                    description: Publisher or licensed news Provider label.
                 sourceUrl:
                     type: string
+                    description: Source-linked article URL used for attribution and reader verification.
                 publishedAtUtc:
                     type: integer
                     format: int64
@@ -5461,14 +5499,15 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Exchange security symbol; every returned record must match this value.
                 startUtc:
                     type: integer
                     format: int64
-                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Inclusive UTC epoch-millisecond start; zero means unset.. Warning: Values > 2^53 may lose precision in JavaScript'
                 endUtc:
                     type: integer
                     format: int64
-                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Inclusive UTC epoch-millisecond end; zero means unset.. Warning: Values > 2^53 may lose precision in JavaScript'
             required:
                 - symbol
         GetStockEventTimelineResponse:
@@ -5506,14 +5545,15 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Exchange security symbol; every returned record must match this value.
                 startUtc:
                     type: integer
                     format: int64
-                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Inclusive UTC epoch-millisecond start; zero means unset.. Warning: Values > 2^53 may lose precision in JavaScript'
                 endUtc:
                     type: integer
                     format: int64
-                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: 'Inclusive UTC epoch-millisecond end; zero means unset.. Warning: Values > 2^53 may lose precision in JavaScript'
             required:
                 - symbol
         AnalyzeStockRangeResponse:
@@ -5566,8 +5606,10 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Exchange security symbol; every returned record must match this value.
                 horizon:
                     type: string
+                    description: Requested forecast horizon when a versioned model path is available.
             required:
                 - symbol
         GetStockForecastResponse:
@@ -5597,13 +5639,16 @@ components:
                     type: string
                     maxLength: 32
                     minLength: 1
+                    description: Exchange security symbol; every returned record must match this value.
                 eventId:
                     type: string
+                    description: Source-linked event identifier to compare when the capability is available.
                 limit:
                     type: integer
                     maximum: 50
                     minimum: 1
                     format: int32
+                    description: Maximum evidence-linked matches; zero uses the server default.
             required:
                 - symbol
         FindSimilarStockEventsResponse:

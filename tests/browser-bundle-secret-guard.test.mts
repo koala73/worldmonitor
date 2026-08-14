@@ -109,6 +109,10 @@ const CLIENT_ENV_ALLOWLIST = new Set([
   'VITE_QUIET_HOURS_BATCH_ENABLED',
   'VITE_RELAY_GATES_READY',
   'VITE_RSS_DIRECT_TO_RELAY',
+  // Public posture bit only. It selects fail-closed self-hosted UI behavior;
+  // the server-only SELF_HOSTED_MODE and every Provider credential remain
+  // unprefixed and therefore outside the browser bundle.
+  'VITE_SELF_HOSTED_MODE',
   'VITE_SENTRY_DSN',
   'VITE_TAURI_API_BASE_URL',
   'VITE_TAURI_REMOTE_API_BASE_URL',

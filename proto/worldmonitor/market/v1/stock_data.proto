@@ -137,10 +137,15 @@ message StockNewsAnalysis {
 }
 
 message StockNewsItem {
+  // Provider or normalized article identifier; it is not a causal-event ID.
   string id = 1;
+  // Normalized requested security symbol to which the article was matched.
   string symbol = 2;
+  // Publisher-supplied article headline.
   string title = 3;
+  // Publisher or licensed news Provider label.
   string source = 4;
+  // Source-linked article URL used for attribution and reader verification.
   string source_url = 5;
   int64 published_at_utc = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   StockNewsAlignment alignment = 7;

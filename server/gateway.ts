@@ -206,6 +206,17 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/market/v1/get-fear-greed-index': 'slow',
   '/api/market/v1/get-market-breadth-history': 'daily',
   '/api/market/v1/list-gulf-quotes': 'medium',
+  // Arbitrary-symbol Provider calls retain their own provenance/as-of fields.
+  // Keep price-bearing reads within the one-minute live tier; identity/news
+  // search and historical analysis may use the ordinary shared tier.
+  '/api/market/v1/search-stocks': 'medium',
+  '/api/market/v1/get-stock-bars': 'live',
+  '/api/market/v1/get-stock-quote': 'live',
+  '/api/market/v1/list-stock-news': 'medium',
+  '/api/market/v1/get-stock-event-timeline': 'medium',
+  '/api/market/v1/analyze-stock-range': 'medium',
+  '/api/market/v1/get-stock-forecast': 'no-store',
+  '/api/market/v1/find-similar-stock-events': 'no-store',
   '/api/market/v1/analyze-stock': 'slow',
   '/api/market/v1/get-stock-analysis-history': 'medium',
   '/api/market/v1/backtest-stock': 'slow',

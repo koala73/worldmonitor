@@ -139,7 +139,7 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/news/v1/summarize-article",
     "llm-passthrough: request-time article summarization is intentionally REST-only; get_world_brief reads the gated seeded snapshot instead"],
 
-  // === fetch-on-miss (30) ===
+  // === fetch-on-miss (36) ===
   ["GET /api/intelligence/v1/get-risk-scores",
     "fetch-on-miss: paid-upstream — cachedFetchJsonWithMeta + ACLED API on cache miss. Cross-domain composite spans conflict plus auxiliary infra outages, climate anomalies, cyber threats, wildfires, GPS jamming, OREF history, advisories, displacement, news insights/threats, aviation, earthquakes, sanctions, temporal anomalies, and military CII; intended for a future expanded_risk_scores composite tool because the current shape doesn't fit any single existing tool."],
   ["GET /api/aviation/v1/get-carrier-ops",
@@ -176,6 +176,18 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/market/v1/get-insider-transactions",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
+  ["GET /api/market/v1/analyze-stock-range",
+    "fetch-on-miss: high-cardinality-input — caller-selected symbol and time range reach the licensed stock-bar Provider when configured"],
+  ["GET /api/market/v1/get-stock-bars",
+    "fetch-on-miss: high-cardinality-input — arbitrary symbol, interval and time range reach the licensed OHLC Provider when configured"],
+  ["GET /api/market/v1/get-stock-event-timeline",
+    "fetch-on-miss: high-cardinality-input — caller-selected symbol and range reach the licensed company-news Provider when configured"],
+  ["GET /api/market/v1/get-stock-quote",
+    "fetch-on-miss: high-cardinality-input — arbitrary symbols reach the licensed quote Provider or explicitly labelled quote fallback"],
+  ["GET /api/market/v1/list-stock-news",
+    "fetch-on-miss: high-cardinality-input — arbitrary symbols reach the licensed company-news Provider when configured"],
+  ["GET /api/market/v1/search-stocks",
+    "fetch-on-miss: high-cardinality-input — caller-entered company or symbol search text reaches the licensed reference Provider when configured"],
   ["GET /api/military/v1/get-aircraft-details",
     "fetch-on-miss: high-cardinality-input — arbitrary query/symbol/identifier params, not enumerable"],
   ["GET /api/military/v1/get-wingbits-live-flight",
@@ -257,7 +269,7 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/economic/v1/get-fred-series-batch",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
 
-  // === deferred-to-future-tool (59) ===
+  // === deferred-to-future-tool (61) ===
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",
     "deferred-to-future-tool: handler reads parameterized consumer-prices:basket-series:<market>:<basket>:<range> key NOT in get_consumer_prices._coverageKeys — bundle into a future expanded_consumer_prices tool that exposes the basket-series time series"],
   ["GET /api/company-monitoring/v1/get-company-coverage",
@@ -285,6 +297,10 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   // category is fetch-on-miss.
   ["GET /api/market/v1/get-gold-intelligence",
     "deferred-to-future-tool: handler reads 5 keys (commodities-bootstrap + COT + gold-extended + gold-ETF-flows + gold-CB-reserves); only commodities-bootstrap overlaps with get_market_data._cacheKeys — bundle into a future expanded_commodities tool that exposes COT, gold-extended, ETF flows, and CB reserves"],
+  ["GET /api/market/v1/get-stock-forecast",
+    "deferred-to-future-tool: contract is deliberately unavailable until a versioned evidence-bearing model path exists; a future stock_workspace tool must preserve that disabled state"],
+  ["GET /api/market/v1/find-similar-stock-events",
+    "deferred-to-future-tool: contract is deliberately unavailable until evidence-linked similarity is implemented; a future stock_workspace tool must not synthesize matches"],
   ["GET /api/aviation/v1/get-airport-ops-summary",
     "deferred-to-future-tool: pure-read but no MCP tool exposes aviation:delays:intl:v3 yet — bundle into a future expanded-domain tool"],
   ["GET /api/cyber/v1/list-cyber-threats",

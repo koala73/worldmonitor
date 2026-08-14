@@ -13,12 +13,16 @@ interface StoryMeta {
 
 const variantMeta = VARIANT_META[SITE_VARIANT] ?? VARIANT_META.full;
 const CANONICAL_URL = variantMeta.url;
-// `full` is intentionally relative until this independently branded fork has
-// an operator-declared public hostname. Resolve against the actual browser
-// origin instead of claiming the upstream deployment host.
-const PUBLIC_ORIGIN = new URL(variantMeta.url, window.location.origin).origin;
 const API_ORIGIN = getCanonicalApiOrigin();
-const DEFAULT_IMAGE = `${PUBLIC_ORIGIN}/favico/${SITE_VARIANT === 'full' ? '' : SITE_VARIANT + '/'}og-image.png`;
+
+function defaultImageUrl(): string {
+  // `full` is intentionally relative until this independently branded fork
+  // has an operator-declared public hostname. Resolve lazily so server-side
+  // imports and tests do not require a synthetic `window`, while real browser
+  // calls always use the active deployment origin.
+  const publicOrigin = new URL(variantMeta.url, window.location.origin).origin;
+  return `${publicOrigin}/favico/${SITE_VARIANT === 'full' ? '' : SITE_VARIANT + '/'}og-image.png`;
+}
 
 export function updateMetaTagsForStory(meta: StoryMeta): void {
   const { countryCode, countryName, ciiScore, ciiLevel, trend, type } = meta;
@@ -60,11 +64,11 @@ export function resetMetaTags(): void {
   setMetaTag('og:title', variantMeta.title);
   setMetaTag('og:description', variantMeta.description);
   setMetaTag('og:url', CANONICAL_URL);
-  setMetaTag('og:image', DEFAULT_IMAGE);
+  setMetaTag('og:image', defaultImageUrl());
   setMetaTag('twitter:title', variantMeta.title);
   setMetaTag('twitter:description', variantMeta.description);
   setMetaTag('twitter:url', CANONICAL_URL);
-  setMetaTag('twitter:image', DEFAULT_IMAGE);
+  setMetaTag('twitter:image', defaultImageUrl());
 
   try {
     sessionStorage.removeItem('storyMeta');

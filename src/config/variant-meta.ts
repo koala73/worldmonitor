@@ -14,7 +14,7 @@ export interface VariantMeta {
 export const VARIANT_META: { full: VariantMeta; [k: string]: VariantMeta } = {
   full: {
     title: '全球实时热点追踪·探长版 - Global Intelligence Dashboard',
-    description: 'Independent global intelligence workspace for source-attributed news, markets, maritime and geopolitical monitoring. Availability and freshness are shown per source.',
+    description: 'Independent global intelligence workspace for attributed news, markets, maritime and geopolitical monitoring. Availability and freshness are shown per source.',
     keywords: 'AI intelligence, AI-powered dashboard, global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions',
     // A fork without a declared public domain must not borrow World Monitor's
     // canonical host or invent a provider-looking hostname. Runtime metadata

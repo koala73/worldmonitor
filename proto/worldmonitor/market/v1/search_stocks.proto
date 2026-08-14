@@ -7,12 +7,15 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/market/v1/stock_data.proto";
 
 message SearchStocksRequest {
+  // Company name, listing name or exchange symbol to search at the configured
+  // reference Provider. Static or fabricated matches are never substituted.
   string query = 1 [
     (sebuf.http.query) = {name: "query"},
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
     (buf.validate.field).string.max_len = 100
   ];
+  // Maximum number of Provider matches to return; zero uses the server default.
   int32 limit = 2 [
     (sebuf.http.query) = {name: "limit"},
     (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
