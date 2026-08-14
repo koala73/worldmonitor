@@ -618,6 +618,22 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // the ''-only tolerance shipped and Z6 kept firing from builds that
       // contained it. '' stays admitted (other SDK paths/versions may omit the
       // stamp); both are bounded by the same fetch-free-chunk invariant.
+      // The FIFTH escape is not a build-rename at all — it is an extra frame from
+      // OUTSIDE the page. WORLDMONITOR-Z6 kept firing after the '?' tolerance
+      // shipped, carrying a stack identical to the one above plus a tab-suspender
+      // extension's `freeze-controller.js` above DebugBear's collector (the
+      // extension aborts in-flight fetches when it freezes a background tab).
+      // `nonInfraFrames` drops only `<anonymous>`, `[native code]`, and
+      // `sentry-*.js`, so an extension frame stays in the set, matches neither
+      // predicate, and one frame defeats the `.every()` — the same single-frame
+      // failure mode as the nameless hop, arriving from a different direction.
+      // An extension frame can never be OUR caller (that is precisely what the
+      // two extension gates above already assume), and this gate still requires a
+      // collector frame plus a fetch-free trampoline for every remaining frame, so
+      // admitting it cannot hide a first-party fetch — a real caller alongside the
+      // extension still surfaces, which the regression tests assert.
+      const isExtensionFrameFile = (file: string) =>
+        /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(file);
       const isTrampolineFrameFunction = (fn: string) =>
         /^(?:\w{1,3}\.)?(?:window\.)?fetch$/.test(fn) || /^\w{1,2}$/.test(fn)
         || fn === '' || fn === '?';
@@ -626,7 +642,11 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           && nonInfraFrames.every(f =>
             isDebugBearRumScriptFrame(f.filename ?? '')
             || (/\/assets\/(?:panel-storage|widget-store)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '')
-              && isTrampolineFrameFunction(f.function ?? '')))) {
+              && isTrampolineFrameFunction(f.function ?? ''))
+            // Kept last so the trampoline predicate stays adjacent to the chunk
+            // allowlist it is bound to — tests/debugbear-trampoline-chunks.test.mjs
+            // asserts that coupling by source locality.
+            || isExtensionFrameFile(f.filename ?? ''))) {
         return null;
       }
       // Suppress Sentry SDK DOM breadcrumb null-access on document.activeElement/contains.
