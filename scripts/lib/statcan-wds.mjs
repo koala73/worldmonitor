@@ -286,8 +286,11 @@ export async function fetchApprovedWdsJson(url, {
  * the ~08:30 ET release. That is a quiet miss, same as 404 / future-date.
  */
 export function isUnreleasedStatcanProductError(err) {
-  if (err?.status !== 409) return false;
-  const text = `${err.message || ''} ${err.body || ''}`;
+  // Do not rethrow 409: live getChangedCubeList returns 409 +
+  // "The product is not released yet" before ~08:30 ET, and a body-read
+  // miss must not abort Promise.all / drop the vector POST.
+  if (err?.status === 409) return true;
+  const text = `${err?.message || ''} ${err?.body || ''}`;
   return /not released yet/i.test(text);
 }
 

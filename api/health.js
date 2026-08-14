@@ -849,7 +849,7 @@ const SEED_META = {
       issue: 6676,
       status: 'EMPTY',
     },
-  }, // daily seed-bundle-macro; floor is the two resilience cubes (CPI YoY + LFS). Empty change-list is valid quiet.
+  }, // daily seed-bundle-macro 08:00 UTC = 04:00 ET, before StatCan ~08:30 ET. Toronto-today 409 "not released yet" is quiet like 404; CPI/LFS still POST. EMPTY ack #6676 expires 2026-08-16T13:00Z (post-08:30 ET). Floor is the two resilience cubes (CPI YoY + LFS).
   eurostatCountryData: { key: 'seed-meta:economic:eurostat-country-data', maxStaleMin: 4320 }, // daily seed; 4320min = 3 days = 3x interval
   eurostatHousePrices: { key: 'seed-meta:economic:eurostat-house-prices', maxStaleMin: 60 * 24 * 50 }, // weekly cron, annual data; 50d threshold = 35d TTL + 15d buffer
   eurostatGovDebtQ:    { key: 'seed-meta:economic:eurostat-gov-debt-q',   maxStaleMin: 60 * 24 * 14 }, // 2d cron, quarterly data; 14d threshold matches TTL + quarterly release drift

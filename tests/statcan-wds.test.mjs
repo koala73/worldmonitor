@@ -181,6 +181,15 @@ test('Toronto-today 409 not-released-yet is quiet, falls back to yesterday, and 
     isUnreleasedStatcanProductError({ status: 409, body: '{"message":"The product is not released yet"}' }),
     true,
   );
+  // Do not rethrow 409 even when the body-read misses the live phrase.
+  assert.equal(isUnreleasedStatcanProductError({ status: 409, message: 'HTTP_409' }), true);
+  assert.equal(isUnreleasedStatcanProductError({ message: 'The product is not released yet' }), true);
+  const bare409 = await fetchChangedCubeListBestEffort({
+    dateIso: '2026-08-14',
+    nowMs,
+    fetchFn: async () => new Response('', { status: 409 }),
+  });
+  assert.deepEqual(bare409, { cubes: [], reason: '409-unreleased' });
 
   const payload = await fetchStatcanWds({
     nowMs,
