@@ -440,3 +440,46 @@ not paste any token, private key, password, cookie or CAPTCHA into chat or
 Git. The exact resume evidence and commands are in
 `docs/integration/evidence/phase12-publication-preflight.md`; the official
 GitHub login page and this status file are opened before pausing.
+
+## Phase 12 - controlled publication completed (2026-08-14)
+
+The owner reported that GitHub authentication and network access were restored.
+The clean acceptance worktree was rechecked at
+`ace1b8b49c0d02fe93c86ce419d8d2bd99b3f401`; it had no uncommitted files.
+`origin/main` remained
+`0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` before publication. The connected
+GitHub integration independently confirmed the authenticated owner
+`daking32168-byte`, full push permission on `daking32168-byte/worldmonitor`,
+and the absence of both the integration branch and a duplicate open PR.
+
+Two ordinary HTTPS push attempts failed without a remote mutation: the first
+returned `Recv failure: Connection was reset`; the HTTP/1.1 retry could not
+connect to `github.com:443`. Diagnosis showed `api.github.com` was reachable
+while the locally resolved Git host `20.205.243.166` was not. GitHub's official
+`/meta` Git CIDR list was read, candidate Git endpoints were tested, and a
+temporary command-local `http.curloptResolve` route to `20.27.177.113` passed
+`ls-remote`. It changed no system hosts file, global Git setting or remote URL.
+The subsequent normal, non-force branch push exited `0` and created only
+`refs/heads/integration/pokieticker-maritime-china-factory`.
+
+The GitHub integration then fetched and matched remote commit
+`ace1b8b49c0d02fe93c86ce419d8d2bd99b3f401` and created Draft PR
+[#1](https://github.com/daking32168-byte/worldmonitor/pull/1), targeting
+`main`. At creation GitHub reported `draft=true`,
+`base_sha=0fca203c776dd5fa4913c4bd52f99cd2c3c13a25` and
+`head_sha=ace1b8b49c0d02fe93c86ce419d8d2bd99b3f401`. No direct or force push to
+`main`, upstream write, merge, rebase, deployment, Provider activation or
+release-signing action occurred.
+
+The final local publication gate passed in full at the published head. It
+covered type/API/Convex checks, CJS/Unicode/boundary/safe-HTML/Sentry/health,
+rate and premium policy, edge bundle/functions, changed tests, Markdown/MDX,
+source/product/locale truth checks, OpenAPI/proto/Pro-bundle freshness and
+version sync. The raw 141,634-byte log is
+`docs/integration/evidence/phase12-full-prepush-20260814.log` with SHA-256
+`9E87ECA6E4CE73E9F51A5E406C7AB58042D604074BC1C6741D95DDF7EF09347A`.
+
+The publication-document record commit is `PENDING_PHASE12_RECORD_SHA`; the
+following receipt commit backfills its immutable SHA. Phase 12 is complete for
+branch publication and Draft PR creation. Review/CI/deployment/merge remain
+separate actions and are not claimed by this record.

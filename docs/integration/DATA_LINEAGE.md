@@ -285,3 +285,28 @@ read-only owner-main verification and the absence of the remote integration
 branch. These are release-transport observations only. They cannot be reused
 as evidence for a financial price, K-line, AIS/vessel/cargo event, news causal
 claim, trade value, factory status or Provider entitlement.
+
+## Phase 12 completed publication lineage
+
+The source-control transport branch now has a complete, independently checked
+chain:
+
+1. **Local source object.** The clean acceptance worktree identified published
+   source commit `ace1b8b49c0d02fe93c86ce419d8d2bd99b3f401` and protected
+   owner-fork base `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`.
+2. **Native Git transfer.** A normal non-force refspec created only
+   `origin/integration/pokieticker-maritime-china-factory`. Its temporary
+   endpoint routing came from GitHub's official `/meta` Git list and changed no
+   durable repository/network configuration.
+3. **Connector verification.** The authenticated GitHub integration fetched
+   the exact remote commit, then created Draft PR
+   [#1](https://github.com/daking32168-byte/worldmonitor/pull/1) with the same
+   head and protected base SHA.
+4. **Evidence artifact.** The final local gate log is versioned at
+   `docs/integration/evidence/phase12-full-prepush-20260814.log`, SHA-256
+   `9E87ECA6E4CE73E9F51A5E406C7AB58042D604074BC1C6741D95DDF7EF09347A`.
+
+This lineage terminates at source-control publication. It does not cross into
+market/AIS/news/trade/factory/model data lineage. No Provider secret, response,
+observed/as-of time or entitlement was created, and a Draft PR cannot supply
+those missing facts.

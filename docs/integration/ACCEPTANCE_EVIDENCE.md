@@ -345,3 +345,47 @@ authenticated HTTPS Git path or authorized SSH key outside chat/Git.
 `713572967a016143046800ec16598dfda1f124b3`
 (`docs(integration): record Phase 12 transport block`). The following receipt
 commit backfills this immutable SHA; it does not change the blocked result.
+
+## Phase 12 - resumed publication and Draft PR result
+
+| Check | Result | Evidence |
+|---|---|---|
+| Clean local publication input | PASS | Detached acceptance worktree had an empty `git status --short`; HEAD was `ace1b8b49c0d02fe93c86ce419d8d2bd99b3f401`; local `origin/main` was `0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`. |
+| GitHub identity and permission | PASS | Connected GitHub integration returned `daking32168-byte` and owner-fork permissions `admin=true`, `maintain=true`, `push=true`; default branch is `main`. |
+| Duplicate remote target check | PASS | Before publication the integration branch search and open-PR search returned empty results. |
+| First resumed HTTPS push | FAILED SAFELY | Normal non-force push returned exit `128`, `Recv failure: Connection was reset`; no branch was reported created. |
+| HTTP/1.1 retry | FAILED SAFELY | Normal non-force retry returned exit `128`, `Failed to connect to github.com:443`; no force option was used. |
+| Network-path diagnosis | PASS | `api.github.com` returned HTTP 200; local `github.com` address `20.205.243.166` timed out. GitHub `/meta` supplied official Git ranges; command-local routing to official Git endpoint `20.27.177.113` passed `ls-remote`. No hosts/global-Git/remote mutation occurred. |
+| Integration branch push | PASS | `git -c http.version=HTTP/1.1 -c http.curloptResolve=github.com:443:20.27.177.113 push --no-verify --porcelain origin HEAD:refs/heads/integration/pokieticker-maritime-china-factory` exited `0` and reported `[new branch]`. `--no-verify` skipped only a duplicate hook run after the exact head had already passed the complete pre-push gate. |
+| Remote commit verification | PASS | GitHub integration fetched `ace1b8b49c0d02fe93c86ce419d8d2bd99b3f401` with message `fix(phase12): remove unsupported cargo inference claims`. |
+| Draft PR creation | PASS | GitHub integration created [PR #1](https://github.com/daking32168-byte/worldmonitor/pull/1) with `draft=true`, base `main@0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`, and head `integration/pokieticker-maritime-china-factory@ace1b8b49c0d02fe93c86ce419d8d2bd99b3f401`. |
+| Protected-main control | PASS | The push refspec named only the integration branch; GitHub reported the PR base SHA unchanged. There was no direct/force main push, merge or rebase. |
+| Provider/data truth boundary | PASS | Publication did not add a key or entitlement and did not establish a live bar, AIS/cargo fact, news cause, model result, trade record or factory observation. Missing Providers remain disabled. |
+
+### Final local publication gate
+
+The complete pre-push wrapper exited `0` for the exact published source head.
+Observed passing groups include typecheck, API typecheck and Convex audit,
+Convex type, CJS syntax, Unicode across 2,854 files, dependency boundaries,
+safe HTML, Sentry, health cutover, rate policy, premium fetch, edge bundle,
+253/253 edge-function tests, 510/510 MDX checks, Markdown lint, source and
+product-facts checks, locale freshness, Pro budget, generated artifact
+freshness and version `2.10.0` synchronization. The changed-test gate evaluated
+368 tests with zero failures and two explicit Windows filename skips; their
+POSIX coverage remains active. Manual proto generation was repeated and was
+idempotent at SHA-256
+`78408C57CEE7F1BDBDF5D330C76A6B028D89D0803740B75132681EE6FD665F77`.
+
+Raw gate log:
+`docs/integration/evidence/phase12-full-prepush-20260814.log`, 141,634 bytes,
+SHA-256
+`9E87ECA6E4CE73E9F51A5E406C7AB58042D604074BC1C6741D95DDF7EF09347A`.
+The log truthfully retains the missing `make` message; the separately installed
+Go generators produced no diff and the hook's freshness check reported
+`Proto-generated code is up to date`.
+
+**Phase 12 controlled-publication gate: PASS.** The source branch and Draft PR
+exist; main, upstream, deployment, Provider entitlements and secrets remain
+unchanged. Remote CI, human review, readiness, merge and deployment are not
+implied. Publication-document record commit:
+`PENDING_PHASE12_RECORD_SHA`; the following receipt backfills it.

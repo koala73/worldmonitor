@@ -232,3 +232,26 @@ review.
 - [ ] Tell Codex only that the transport is restored. It will re-check the
   remote branch, perform the normal branch-only push if still needed, create a
   Draft PR, record its URL, and leave `main` untouched.
+
+## Phase 12 publication receipt and remaining owner actions (2026-08-14)
+
+- [x] Owner reported GitHub authentication/network restored without sharing a
+  credential in chat or Git.
+- [x] The named integration branch was pushed with a normal non-force refspec.
+- [x] GitHub integration verified the remote commit and created Draft PR
+  [#1](https://github.com/daking32168-byte/worldmonitor/pull/1) against the
+  unchanged owner-fork `main`.
+- [ ] Review the Draft PR and its checks. Do not mark ready, merge, deploy or
+  release solely because Phase 12 publication passed.
+- [ ] Keep the 519 source-registry `terms-review` entries open until their
+  applicable terms, display rights and redistribution rights are reviewed.
+- [ ] Keep the company-monitoring public-health claim disabled until an actual
+  Railway deployment/health response is recorded.
+- [ ] Keep all Provider, code-signing and deployment secrets outside chat, Git,
+  screenshots and logs. If a paid plan, terms acceptance, CAPTCHA, deployment
+  ownership or signing operation becomes necessary, open the exact official
+  action page and treat it as a new authorization gate.
+
+No manual action is required to preserve the truthful no-provider desktop
+state. Real-time stock/AIS/news/trade/model acceptance remains separately
+blocked on its own licensed source-bearing response, not on GitHub publication.

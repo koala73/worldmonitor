@@ -82,3 +82,104 @@ The Phase 12 preflight commit is
 Provider activation or data-bearing result. Resume after an authenticated
 outbound HTTPS Git route or existing authorized SSH key is restored outside
 chat/Git, then perform the original normal non-force integration-branch push.
+
+## Publication resumed and completed - 2026-08-14
+
+The owner reported that GitHub authentication and network access were restored.
+The acceptance worktree was clean at
+`ace1b8b49c0d02fe93c86ce419d8d2bd99b3f401`, while local
+`refs/remotes/origin/main` remained
+`0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`.
+
+### Connected GitHub pre-write checks
+
+- Authenticated profile: `daking32168-byte` (ID `294442212`).
+- Repository: `daking32168-byte/worldmonitor`; default branch `main`;
+  `admin=true`, `maintain=true`, `push=true`.
+- Integration branch search: empty before push.
+- Open PR search for the integration head and `main` base: empty before
+  creation.
+
+### Resumed native Git commands and exits
+
+1. Normal non-force HTTPS push through the default route exited `128` after
+   21.3 seconds: `Recv failure: Connection was reset`.
+2. `git -c http.version=HTTP/1.1 ls-remote --heads origin main
+   integration/pokieticker-maritime-china-factory` exited `0` and returned only
+   `main@0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`.
+3. The HTTP/1.1 non-force push exited `128` after 21.8 seconds: `Failed to
+   connect to github.com:443`.
+4. Network diagnosis observed `api.github.com` HTTP 200 while local
+   `github.com` address `20.205.243.166` timed out. GitHub's official
+   `https://api.github.com/meta` Git ranges were read. Candidate endpoints were
+   tested with the TLS host `github.com`; official endpoint `20.27.177.113`
+   returned the public repository's upload-pack advertisement.
+5. Read-only native Git with command-local
+   `http.curloptResolve=github.com:443:20.27.177.113` returned
+   `main@0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`, exit `0`.
+6. The same temporary route performed:
+
+   ```text
+   git -c http.version=HTTP/1.1 \
+     -c http.curloptResolve=github.com:443:20.27.177.113 \
+     push --no-verify --porcelain origin \
+     HEAD:refs/heads/integration/pokieticker-maritime-china-factory
+   ```
+
+   Exit was `0`; Git reported `[new branch]`. `--no-verify` avoided only an
+   identical second hook run after the exact head had already completed the
+   full pre-push wrapper with exit `0`. No force option was used. The override
+   was not written to the hosts file, Git configuration or remote URL.
+
+### Full pre-push gate receipt
+
+The 141,634-byte raw log is versioned at
+`docs/integration/evidence/phase12-full-prepush-20260814.log`, SHA-256
+`9E87ECA6E4CE73E9F51A5E406C7AB58042D604074BC1C6741D95DDF7EF09347A`.
+It ends with `All pre-push gates passed` and records:
+
+- typecheck, API/Convex, syntax, Unicode (2,854 files), boundaries, safe HTML,
+  Sentry, health, rate, premium and edge-bundle gates passed;
+- changed tests evaluated 368 cases with zero failure and two explicit Windows
+  filename skips; POSIX coverage remains active;
+- edge functions 253/253 and MDX 510/510 passed;
+- Markdown, source, product-facts, locale-freshness, Pro-budget, generated
+  artifact and version-sync checks passed;
+- manual proto generation was repeated without a diff at SHA-256
+  `78408C57CEE7F1BDBDF5D330C76A6B028D89D0803740B75132681EE6FD665F77`.
+
+The raw log retains the Windows hook's `make: command not found` line. This was
+not hidden: Go generators were installed and run manually, idempotence was
+verified, and the hook itself reported `Proto-generated code is up to date`.
+
+### GitHub post-write verification and Draft PR
+
+The connected GitHub integration found the new branch, fetched remote commit
+`ace1b8b49c0d02fe93c86ce419d8d2bd99b3f401`, and created Draft PR
+[#1](https://github.com/daking32168-byte/worldmonitor/pull/1) at
+2026-08-14T09:41:52Z. GitHub returned:
+
+```text
+draft=true
+base=main
+base_sha=0fca203c776dd5fa4913c4bd52f99cd2c3c13a25
+head=integration/pokieticker-maritime-china-factory
+head_sha=ace1b8b49c0d02fe93c86ce419d8d2bd99b3f401
+commits=83
+changed_files=684
+additions=92773
+deletions=7837
+```
+
+**Result:** `PASS` for controlled branch publication and Draft PR creation.
+No main/upstream ref, Provider configuration, secret, deployment, signing state
+or data-bearing observation was changed. CI completion, review approval, merge
+and deployment are not claimed by this evidence.
+
+### Publication-document commit environment retry
+
+The first documentation commit attempt exited `1` before creating a commit
+because the pre-commit Unicode hook could not find `node` in that PowerShell
+process's PATH. No hook was bypassed. The verified workspace Node/shim paths
+were then prepended and the same staged documentation commit was retried with
+the pre-commit hook active.

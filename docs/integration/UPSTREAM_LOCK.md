@@ -245,3 +245,26 @@ transports were a non-force HTTPS Git push and a non-mutating SSH batch-auth
 probe; neither result authorizes a retry with `--force`, a direct `main` push,
 an upstream write, or remote commit reconstruction that loses local SHA
 lineage.
+
+## Phase 12 publication-lock completion
+
+The owner reported transport restored on 2026-08-14. The first two resumed
+HTTPS pushes failed safely with a reset and a 443 connection failure. A
+read-only diagnosis used GitHub's official `/meta` Git address list and found
+official endpoint `20.27.177.113` reachable. A temporary command-local resolve
+override then completed a normal, non-force push; it did not alter the hosts
+file, global Git configuration or either remote URL.
+
+Only
+`origin/integration/pokieticker-maritime-china-factory` was created. GitHub
+integration fetched the published head
+`ace1b8b49c0d02fe93c86ce419d8d2bd99b3f401` and created Draft PR
+[#1](https://github.com/daking32168-byte/worldmonitor/pull/1) to the owner fork's
+`main`. GitHub reported the protected base unchanged at
+`0fca203c776dd5fa4913c4bd52f99cd2c3c13a25`.
+
+The reviewed upstream intake remains locked at
+`ae0a0fe26bcbdb683b366899e4dc38fb8ccfb5ad`. No newer upstream commit was
+fetched into the integration, merged, rebased or relabelled; no ref in
+`koala73/worldmonitor` was written. PR review does not authorize a later
+upstream resync, force push, main mutation, merge or deployment.

@@ -172,3 +172,24 @@ not a Provider state. It neither downgrades nor upgrades any provider row. In
 particular, do not compensate for a blocked publication by exposing a secret,
 enabling a feed, changing a data label or substituting test evidence for a
 source-bearing response.
+
+## Phase 12 completed publication effect on Provider states
+
+The previous source-control transport block is resolved: the integration
+branch was pushed normally and Draft PR
+[#1](https://github.com/daking32168-byte/worldmonitor/pull/1) was created.
+That outcome changes no Provider row. No key, plan, entitlement, display right,
+redistribution right, observation, queue, source time or freshness evidence was
+added during publication.
+
+| Publication-time item | Final Phase 12 state | Truth-preserving consequence |
+|---|---|---|
+| Market bars/news/model Providers | Still unconfigured unless separately owner-provisioned | Stock charts and event analysis must remain unavailable/fail-closed without a symbol-matching source-bearing response; no historical/delayed result may be labelled real-time. |
+| AIS/maritime Providers | Still unconfigured unless separately owner-provisioned | No AIS observation proves cargo, buyer, bill of lading, discharge, origin or shipment value. |
+| Company-monitoring worker | Not advertised by public health | Keep the health capability dark until an actual Railway deployment and health response are recorded. |
+| Source registry licensing | 533 active hosts; 519 marked `terms-review` | A registry entry or passing source check is not a licence. Owner/legal review remains required before restricted display/rebroadcast. |
+| npm dependency advisory | One moderate advisory observed | No Provider state changes; do not apply an unsafe forced upgrade solely to hide the advisory. |
+
+The Draft PR is source-control review evidence only. It is not Provider
+activation, a successful request, production deployment or a data-bearing
+acceptance result.

@@ -343,3 +343,36 @@ recorded in Phase 0-12 evidence.
 HTTPS Git authentication/networking or an existing authorized SSH route is
 restored. The only subsequent remote write remains a normal non-force push of
 the named integration branch to the owner fork.
+
+## D-0028 - Resume publication through a command-local official Git endpoint
+
+**Decision:** After two resumed HTTPS push failures, use GitHub's official
+`/meta` Git CIDR response to identify a reachable Git endpoint, verify it first
+with `ls-remote`, and apply `http.curloptResolve` only to the individual Git
+commands. Preserve the HTTPS URL and TLS host name `github.com`.
+
+**Reason:** The authenticated GitHub integration and `api.github.com` were
+healthy while this machine's locally resolved `github.com` address was not.
+Using a reachable address from GitHub's own current Git range preserved native
+Git object transfer and the complete reversible commit chain.
+
+**Consequence:** The successful write remained a normal, non-force push of the
+named integration ref. No hosts file, global Git setting, remote URL, main ref
+or upstream ref changed. The two failures and the successful route are retained
+as evidence rather than being erased.
+
+## D-0029 - Draft publication does not promote unavailable data capabilities
+
+**Decision:** Keep every missing Provider state disabled, remove unsupported
+cargo-inference claims, keep the unprovisioned company-monitoring worker out of
+public health, and classify 519 source-registry entries as `terms-review` even
+after Draft PR creation.
+
+**Reason:** A remote commit, passing gate or PR URL proves source-control
+delivery, not a market observation, real-time entitlement, AIS cargo fact,
+news cause, deployment or third-party licence.
+
+**Consequence:** Draft PR #1 may be reviewed as code, but cannot be cited as
+Provider activation or production evidence. Each data-bearing capability still
+requires its own lawful source, timestamp, scope, freshness/delay and applicable
+display/redistribution authorization.
