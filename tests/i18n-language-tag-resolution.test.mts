@@ -8,8 +8,8 @@
 // the repo would have noticed.
 //
 // So the negative rows below matter more than the positive ones. They are the
-// reason `resolveLanguageTag` matches an explicit tag list plus the `zh-hant`
-// prefix rather than `zh-` wholesale.
+// reason `resolveLanguageTag` reads the script and region subtags rather than
+// treating `zh-` wholesale as Traditional.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -65,6 +65,44 @@ describe('resolveLanguageTag — Simplified Chinese stays on zh', () => {
       assert.equal(resolve(tag), 'zh');
     });
   }
+});
+
+describe('resolveLanguageTag — subtags the exact-match list missed', () => {
+  // Both rows below resolved wrongly while the matcher compared whole strings:
+  // `zh-TW-u-ca-chinese` fell through to `zh` (Simplified copy for a Traditional
+  // reader) and `zh_TW` fell through to `en`.
+  it('reads a region that is followed by an extension', () => {
+    assert.equal(resolve('zh-TW-u-ca-chinese'), 'zh-TW');
+    assert.equal(resolve('zh-Hant-u-ca-chinese'), 'zh-TW');
+    assert.equal(resolve('zh-Hant-TW-u-nu-hanidec'), 'zh-TW');
+  });
+
+  it('accepts the POSIX underscore spelling', () => {
+    assert.equal(resolve('zh_TW'), 'zh-TW');
+    assert.equal(resolve('zh_tw'), 'zh-TW');
+    assert.equal(resolve('zh_Hant'), 'zh-TW');
+    assert.equal(resolve('pt_BR'), 'pt');
+  });
+
+  it('stops at the singleton — an extension subtag is not a region', () => {
+    // `-x-tw` is private use, not Taiwan. A walk that keeps reading past the
+    // singleton sees a two-letter `tw` and serves Traditional to a `zh` reader.
+    assert.equal(resolve('zh-x-tw'), 'zh');
+    assert.equal(resolve('zh-u-rg-twzzzz'), 'zh');
+  });
+
+  it('lets an explicit script outrank the region', () => {
+    // Simplified in a Traditional region is a real combination, and the script
+    // subtag is the one that says which characters to render.
+    assert.equal(resolve('zh-Hans-TW'), 'zh');
+    assert.equal(resolve('zh-Hans-HK'), 'zh');
+    assert.equal(resolve('zh_Hans_TW'), 'zh');
+  });
+
+  it('keeps Simplified regions on zh through the same path', () => {
+    assert.equal(resolve('zh_CN'), 'zh');
+    assert.equal(resolve('zh-CN-u-ca-chinese'), 'zh');
+  });
 });
 
 describe('resolveLanguageTag — everything else', () => {
