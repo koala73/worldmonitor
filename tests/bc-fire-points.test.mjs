@@ -289,6 +289,40 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
     assert.equal(noBc._bcErrorCode, 'BC_WILDFIRE_SOURCE_FAILED');
   });
 
+  it('publishes Canada-only fallback with health-visible FIRMS degradation metadata', async () => {
+    const canadaOnly = await mergeWildfireSourcesWithBc({
+      fetchFirms: async () => { throw new Error('FIRMS key rejected'); },
+      fetchCwfis: async () => parseCwfisGeoJson(cwfisActiveJson, 'active'),
+      fetchBcWildfire: async () => parseBcFireKml(kml),
+    });
+    assert.equal(canadaOnly._firmsState, 'failed');
+    assert.equal(canadaOnly._firmsErrorCode, 'FIRMS_SOURCE_FAILED');
+    assert.equal(canadaOnly._cwfisState, 'ok');
+    assert.equal(canadaOnly._bcState, 'ok');
+
+    // Both Canadian sources are healthy, so canadaSourceFailureCount stays 0 —
+    // but the canonical key just lost its worldwide coverage. Never report 'ok'.
+    const patch = canadianWildfireAfterPublish(canadaOnly).freshnessMetaPatch;
+    assert.deepEqual(patch, {
+      sourceState: 'degraded',
+      errorCode: 'FIRMS_SOURCE_FAILED',
+      canadaSourceFailureCount: 0,
+    });
+  });
+
+  it('reports the global source first when FIRMS and a Canadian source both fail', async () => {
+    const patch = canadianWildfireAfterPublish({
+      _firmsState: 'failed',
+      _firmsErrorCode: 'FIRMS_SOURCE_FAILED',
+      _cwfisState: 'ok',
+      _bcState: 'failed',
+      _bcErrorCode: 'BC_WILDFIRE_SOURCE_FAILED',
+    }).freshnessMetaPatch;
+    assert.equal(patch.sourceState, 'degraded');
+    assert.equal(patch.errorCode, 'FIRMS_SOURCE_FAILED');
+    assert.equal(patch.canadaSourceFailureCount, 1);
+  });
+
   it('publishes FIRMS fallback with health-visible BC degradation metadata', async () => {
     const merged = await mergeWildfireSourcesWithBc({
       fetchFirms: async () => ({ fireDetections: [firmsDetection()] }),

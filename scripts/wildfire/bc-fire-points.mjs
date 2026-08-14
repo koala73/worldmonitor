@@ -634,6 +634,8 @@ export async function mergeWildfireSourcesWithBc({ fetchFirms, fetchCwfis, fetch
   return {
     fireDetections: merged.fireDetections,
     _firmsCount: firmsDetections.length,
+    _firmsState: firmsOk ? 'ok' : 'failed',
+    _firmsErrorCode: firmsOk ? null : 'FIRMS_SOURCE_FAILED',
     _cwfisCount: cwfisDetections.length,
     _cwfisActiveCount: cwfisOk ? (cwfisResult.value?._cwfisActiveCount ?? null) : null,
     _cwfisPrescribedCount: cwfisOk ? (cwfisResult.value?._cwfisPrescribedCount ?? null) : null,
@@ -651,9 +653,23 @@ export async function mergeWildfireSourcesWithBc({ fetchFirms, fetchCwfis, fetch
 export function canadianWildfireAfterPublish(data) {
   const cwfisFailed = data?._cwfisState !== 'ok';
   const bcFailed = data?._bcState !== 'ok';
+  // FIRMS is the GLOBAL source for this key. Losing it drops the canonical
+  // payload from worldwide coverage to Canada only, which is a bigger loss than
+  // any Canadian source failing — so it is checked first and reported first.
+  // canadaSourceFailureCount deliberately stays a count of CANADIAN sources.
+  const firmsFailed = data?._firmsState === 'failed';
   const failureCount = Number(cwfisFailed) + Number(bcFailed);
-  if (failureCount === 0) {
+  if (failureCount === 0 && !firmsFailed) {
     return { freshnessMetaPatch: { sourceState: 'ok' } };
+  }
+  if (firmsFailed) {
+    return {
+      freshnessMetaPatch: {
+        sourceState: 'degraded',
+        errorCode: 'FIRMS_SOURCE_FAILED',
+        canadaSourceFailureCount: failureCount,
+      },
+    };
   }
   let errorCode = 'CANADA_WILDFIRE_SOURCES_FAILED';
   if (failureCount === 1 && cwfisFailed) {
