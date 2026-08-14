@@ -79,6 +79,45 @@ describe('VIA Rail live parser (#6615)', () => {
     assert.match(withAlerts.alerts[0].header.fr, /avis|retard|train/i);
   });
 
+  it('treats null / empty-string / array coordinates as absent, not as 0,0', () => {
+    // Number(null) === 0, Number('') === 0, Number([]) === 0 — all finite. A
+    // train reporting no position must NOT normalize to Null Island and must not
+    // satisfy the has-position gate, or a degraded 200 overwrites last-good with
+    // a fleet parked off the coast of Africa.
+    // Before the fix each of these coerced to 0, satisfied the has-position gate,
+    // and published a valid snapshot. Now they are absent, nothing is
+    // publishable, and the parser fails closed so last-good survives.
+    for (const absent of [null, '', [], undefined, {}, true]) {
+      assert.throws(
+        () => parseViaRailLive({
+          '37': { from: 'MTRL', to: 'TRTO', lat: absent, lng: absent, times: [{ diffMin: 4 }] },
+        }, { fetchedAt: 1_700_000_000_000 }),
+        { reason: 'shape_break' },
+        `lat/lng ${JSON.stringify(absent)} must not publish as 0,0`,
+      );
+    }
+
+    // And a train whose position is absent must not report 0,0 alongside a
+    // sibling that does have one.
+    const mixed = parseViaRailLive({
+      '37': { from: 'MTRL', to: 'TRTO', lat: 45.5, lng: -73.5, times: [{ diffMin: 4 }] },
+      '38': { from: 'TRTO', to: 'MTRL', lat: null, lng: '', times: [{ diffMin: 2 }] },
+    }, { fetchedAt: 1_700_000_000_000 });
+    const absentTrain = mixed.trains.find((row) => row.id === '38');
+    assert.equal(absentTrain.lat, null);
+    assert.equal(absentTrain.lng, null);
+  });
+
+  it('still accepts a genuine zero coordinate and numeric strings', () => {
+    const snapshot = parseViaRailLive({
+      '37': { from: 'MTRL', to: 'TRTO', lat: 0, lng: '  -73.5  ', times: [{ diffMin: 4 }] },
+    }, { fetchedAt: 1_700_000_000_000 });
+    const train = snapshot.trains.find((row) => row.id === '37');
+    assert.equal(train.lat, 0);
+    assert.equal(train.lng, -73.5);
+    assert.equal(validateViaRailLiveSnapshot(snapshot), true);
+  });
+
   it('rejects a degraded 200 that is missing lat/lng + diffMin', () => {
     assert.throws(
       () => parseViaRailLive({ hello: 'world' }),

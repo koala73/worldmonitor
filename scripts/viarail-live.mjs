@@ -46,8 +46,19 @@ export function isAllowedViaRailLiveHost(url, allowedHosts = VIA_RAIL_LIVE_ALLOW
   }
 }
 
+/**
+ * Absent is null, never 0. `Number(null)`, `Number('')` and `Number([])` are all
+ * 0 and all finite, so a bare Number() coercion turned a train reporting no
+ * position into a train at 0°N 0°E — which then satisfied the has-position gate
+ * and overwrote last-good with a fleet parked in the Gulf of Guinea. Only real
+ * numbers and non-blank numeric strings are values; everything else is absent.
+ */
 function finiteNumber(value) {
-  const n = typeof value === 'number' ? value : Number(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  const n = Number(trimmed);
   return Number.isFinite(n) ? n : null;
 }
 
