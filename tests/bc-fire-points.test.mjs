@@ -185,6 +185,41 @@ describe('dedup against #6614 cwfis ids / lat-lon-time', () => {
     assert.equal(onlyBc.emergency, true);
   });
 
+  it('does not append inactive Out / extinguished BC-only points', () => {
+    const cwfis = parseCwfisGeoJson(cwfisActiveJson, 'active').fireDetections;
+    const bc = parseBcFireGeoJson(geojson).fireDetections;
+    const out = bc.find((f) => f.fireNumber === 'C20125');
+    assert.ok(out);
+    assert.equal(out.emergency, false);
+    assert.equal(out.stageOfControl, 'Out');
+    const merged = enrichOrAppendBc(cwfis, bc);
+    assert.equal(merged.fireDetections.some((f) => f.fireNumber === 'C20125' && f.source === 'bc-wildfire'), false);
+    assert.equal(merged.fireDetections.some((f) => f.id === 'bc-wildfire:C20125'), false);
+    const activeOnly = merged.fireDetections.find((f) => f.fireNumber === 'C31543');
+    assert.ok(activeOnly);
+    assert.equal(activeOnly.source, 'bc-wildfire');
+  });
+
+  it('still enriches a matching CWFIS row with an Out status', () => {
+    const cwfis = [{
+      id: 'cwfis:2026_BC_2026-C20125',
+      location: { latitude: 52.0234, longitude: -121.8296 },
+      source: 'cwfis',
+      kind: 'active',
+      emergency: true,
+      nationalFireId: '2026_BC_2026-C20125',
+      agencyFireId: 'C20125',
+    }];
+    const bc = parseBcFireGeoJson(geojson).fireDetections.filter((f) => f.fireNumber === 'C20125');
+    const merged = enrichOrAppendBc(cwfis, bc);
+    assert.equal(merged.fireDetections.length, 1);
+    assert.equal(merged.fireDetections[0].source, 'cwfis');
+    assert.equal(merged.fireDetections[0].bcFireNumber, 'C20125');
+    assert.equal(merged.fireDetections[0].bcFireStatus, 'Out');
+    assert.equal(merged._bcAppendedCount, 0);
+    assert.equal(merged._bcEnrichedCount, 1);
+  });
+
   it('keeps prescribed labelling consistent with #6614 after merge', () => {
     const prescribedCwfis = [{
       id: 'cwfis:prescribed:2026_PC_2026JA2',
@@ -284,6 +319,47 @@ describe('host allowlist, cache key, transport', () => {
       }),
       /RESPONSE_TOO_LARGE/,
     );
+  });
+
+  it('SSRF: rejects http, file, loopback, metadata, and suffix-host lookalikes', async () => {
+    const blocked = [
+      'http://openmaps.gov.bc.ca/kml/geo/layers/WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP_loader.kml',
+      'file:///etc/passwd',
+      'https://127.0.0.1/latest/meta-data',
+      'https://169.254.169.254/latest/meta-data',
+      'https://localhost/kml',
+      'https://openmaps.gov.bc.ca.evil.com/kml',
+      'https://evil-openmaps.gov.bc.ca/kml',
+    ];
+    for (const url of blocked) {
+      await assert.rejects(
+        fetchApprovedBcUrl(url, { fetchFn: async () => new Response('nope') }),
+        /UNTRUSTED_SOURCE_HOST/,
+        `expected SSRF block for ${url}`,
+      );
+    }
+  });
+
+  it('SSRF: drops off-host NetworkLink targets without fetching them', async () => {
+    const evilLoader = loaderKml.replace(
+      'https://openmaps.gov.bc.ca/kml/geo/layers/WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP.kml',
+      'https://169.254.169.254/latest/meta-data',
+    );
+    const requested = [];
+    const result = await fetchBcFirePoints({
+      pageSize: 4,
+      maxPages: 1,
+      fetchFn: async (url) => {
+        requested.push(String(url));
+        if (String(url).includes('/kml/')) {
+          return new Response(evilLoader, { headers: { 'content-type': 'application/vnd.google-earth.kml+xml' } });
+        }
+        return new Response(geojson, { headers: { 'content-type': 'application/json' } });
+      },
+    });
+    assert.equal(requested.some((url) => url.includes('169.254.169.254')), false);
+    assert.equal(requested.some((url) => url.startsWith('http://')), false);
+    assert.ok(result.fireDetections.length >= 1);
   });
 
   it('falls back to same-host WFS when the loader KML has no placemarks', async () => {

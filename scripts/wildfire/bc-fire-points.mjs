@@ -562,6 +562,9 @@ export function enrichOrAppendBc(existing = [], bcDetections = []) {
       enriched += 1;
       continue;
     }
+    // Out / inactive / extinguished points may enrich a matching CWFIS row
+    // but must not append a new dashboard detection.
+    if (isInactiveStatus(bc.stageOfControl)) continue;
     if (!bc?.id || seen.has(bc.id)) continue;
     seen.add(bc.id);
     out.push({ ...bc });
