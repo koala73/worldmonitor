@@ -49,7 +49,15 @@ const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps }
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh } = require('./shared/market-quote-refresh.cjs');
 const chinaCountryStockIndexHelpersPromise = import('./_country-stock-index.mjs');
-const weatherAlertSelectPromise = import('./_weather-alert-select.mjs');
+// The promise is created at module load but not awaited until seedWeatherAlerts()
+// runs. Under Node's default --unhandled-rejections=throw a load failure would be
+// an unhandled rejection that kills the relay at container start — taking AIS,
+// market and RSS down in a crash loop rather than degrading one seed. Resolve to
+// null instead and let the seeder fail loudly on its own terms.
+const weatherAlertSelectPromise = import('./_weather-alert-select.mjs').catch((err) => {
+  console.error(`[Weather] _weather-alert-select.mjs failed to load: ${err?.message || err}`);
+  return null;
+});
 const parseProxyUrl = parseProxyConfig;
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
@@ -4894,7 +4902,9 @@ async function seedWeatherAlerts() {
       rankEligibleAlerts,
       requireAlertFeatures,
       selectEcccAlerts,
-    } = await weatherAlertSelectPromise;
+    } = (await weatherAlertSelectPromise) || (() => {
+      throw new Error('weather alert select module unavailable');
+    })();
 
     const fetchNwsFeatures = async () => {
       const weatherUrl = NWS_ALERTS_URL;
@@ -4948,7 +4958,28 @@ async function seedWeatherAlerts() {
         })
       : [];
     const ecccAlerts = ecccResult.status === 'fulfilled' ? selectEcccAlerts(ecccResult.value) : [];
-    const alerts = mergeAlertSources({ nws: nwsAlerts, eccc: ecccAlerts });
+
+    // One source failing must not erase the other's coverage. The #6607 purge
+    // semantics — always overwrite so ended alerts clear — are only correct when
+    // BOTH sources actually answered. When one is down we carry its previous
+    // slice forward, so an NWS outage can no longer wipe every US alert off the
+    // map for the duration of the outage.
+    let carriedNws = [];
+    let carriedEccc = [];
+    if (nwsResult.status === 'rejected' || ecccResult.status === 'rejected') {
+      const prev = await envelopeRead(WEATHER_REDIS_KEY, () => null);
+      const prevAlerts = Array.isArray(prev?.alerts) ? prev.alerts : [];
+      if (nwsResult.status === 'rejected') carriedNws = prevAlerts.filter((a) => a?.source !== 'eccc');
+      if (ecccResult.status === 'rejected') carriedEccc = prevAlerts.filter((a) => a?.source === 'eccc');
+      if (carriedNws.length || carriedEccc.length) {
+        console.warn(`[Weather] carrying last-good forward (nws=${carriedNws.length} eccc=${carriedEccc.length})`);
+      }
+    }
+
+    const alerts = mergeAlertSources({
+      nws: nwsResult.status === 'fulfilled' ? nwsAlerts : carriedNws,
+      eccc: ecccResult.status === 'fulfilled' ? ecccAlerts : carriedEccc,
+    });
 
     // Always write the merged active set (#6607 purge). Do not skip overwrite
     // when a live source returns 0 — that would leave ended CA alerts cached.
@@ -4958,7 +4989,23 @@ async function seedWeatherAlerts() {
       sourceVersion: WEATHER_ALERTS_SOURCE_VERSION,
       zeroOk: true,
     });
-    const ok2 = await upstashSet('seed-meta:weather:alerts', { fetchedAt: Date.now(), recordCount: alerts.length }, 604800);
+    // A permanently dead source must be visible to /api/health. Without a
+    // sourceState the seed-meta stays fresh forever and the outage is invisible.
+    const failedSources = [
+      nwsResult.status === 'rejected' ? 'nws' : null,
+      ecccResult.status === 'rejected' ? 'eccc' : null,
+    ].filter(Boolean);
+    const ok2 = await upstashSet('seed-meta:weather:alerts', {
+      fetchedAt: Date.now(),
+      recordCount: alerts.length,
+      ...(failedSources.length > 0
+        ? {
+          sourceState: 'degraded',
+          errorCode: failedSources.includes('nws') ? 'NWS_SOURCE_FAILED' : 'ECCC_SOURCE_FAILED',
+          failedSources,
+        }
+        : { sourceState: 'ok' }),
+    }, 604800);
     console.log(`[Weather] Seeded ${alerts.length} alerts (nws=${nwsAlerts.length} eccc=${ecccAlerts.length}, redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     const highSeverityAlerts = alerts.filter(a => a.severity === 'Extreme' || a.severity === 'Severe');
     // Pick up to 3 DISTINCT event families before publishing. The naive

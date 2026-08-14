@@ -357,6 +357,34 @@ describe('ECCC host policy and sourceVersion lockstep', () => {
     assert.match(SEEDER_SOURCE, /zeroIsValid:\s*true/);
   });
 
+  // NOTE: these are SOURCE guards, not behavioural tests. `seedWeatherAlerts` is
+  // not reachable from this suite (it lives inside the relay's module scope), so
+  // the patterns below deliberately match CODE, never prose — the sibling
+  // assertion above matches a comment and would survive deleting the behaviour.
+  it('carries the surviving source forward instead of overwriting on partial failure', () => {
+    assert.match(RELAY_SOURCE, /const prev = await envelopeRead\(WEATHER_REDIS_KEY/);
+    assert.match(RELAY_SOURCE, /carriedNws = prevAlerts\.filter\(/);
+    assert.match(RELAY_SOURCE, /carriedEccc = prevAlerts\.filter\(/);
+    // The merge must consume the carried slices, not the raw per-source arrays.
+    assert.match(RELAY_SOURCE, /nws:\s*nwsResult\.status === 'fulfilled' \? nwsAlerts : carriedNws/);
+    assert.match(RELAY_SOURCE, /eccc:\s*ecccResult\.status === 'fulfilled' \? ecccAlerts : carriedEccc/);
+  });
+
+  it('marks the weather seed-meta degraded when a source fails', () => {
+    assert.match(RELAY_SOURCE, /sourceState:\s*'degraded'/);
+    assert.match(RELAY_SOURCE, /NWS_SOURCE_FAILED/);
+    assert.match(RELAY_SOURCE, /ECCC_SOURCE_FAILED/);
+    assert.match(RELAY_SOURCE, /failedSources/);
+  });
+
+  it('never leaves the weather-select import as an unhandled rejection', () => {
+    assert.match(
+      RELAY_SOURCE,
+      /import\('\.\/_weather-alert-select\.mjs'\)\.catch\(/,
+      'a bare import() rejects at module load and crash-loops the whole relay',
+    );
+  });
+
   it('allowlists api.weather.gov and api.weather.gc.ca on both live fetches', () => {
     assert.match(RELAY_SOURCE, /allowedHosts:\s*\[NWS_HOST\]/);
     assert.match(RELAY_SOURCE, /fetchEcccAlertFeatures/);
