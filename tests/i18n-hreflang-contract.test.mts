@@ -32,11 +32,11 @@ const DEPLOYED_ROUTES = new Map<string, string>([
 ]);
 
 const SOURCE_DOCUMENTS = [
-  { path: 'index.html', canonical: 'https://www.worldmonitor.app/dashboard' },
-  { path: 'pro-test/welcome.html', canonical: 'https://www.worldmonitor.app/' },
-  { path: 'pro-test/index.html', canonical: 'https://www.worldmonitor.app/pro' },
-  { path: 'public/pro/welcome.html', canonical: 'https://www.worldmonitor.app/' },
-  { path: 'public/pro/index.html', canonical: 'https://www.worldmonitor.app/pro' },
+  { path: 'index.html', canonical: '/dashboard', publishesHreflang: false },
+  { path: 'pro-test/welcome.html', canonical: 'https://www.worldmonitor.app/', publishesHreflang: true },
+  { path: 'pro-test/index.html', canonical: 'https://www.worldmonitor.app/pro', publishesHreflang: true },
+  { path: 'public/pro/welcome.html', canonical: 'https://www.worldmonitor.app/', publishesHreflang: true },
+  { path: 'public/pro/index.html', canonical: 'https://www.worldmonitor.app/pro', publishesHreflang: true },
 ];
 
 function tagText(html: string, tag: string): string {
@@ -172,15 +172,14 @@ async function validateHreflangCluster(
 
 describe('international SEO application-locale mode (#5666)', () => {
   it('publishes only x-default and English at each self-canonical application URL', () => {
-    for (const { path, canonical } of SOURCE_DOCUMENTS) {
+    for (const { path, canonical, publishesHreflang } of SOURCE_DOCUMENTS) {
       const document = parseDocument(read(path));
       assert.equal(document.htmlLang, 'en', `${path}: raw document language`);
       assert.equal(document.canonical, canonical, `${path}: canonical`);
-      assert.deepEqual(
-        document.hreflangEntries,
-        [['x-default', canonical], ['en', canonical]],
-        `${path}: indexable hreflang cluster`,
-      );
+      const expectedHreflang = publishesHreflang
+        ? [['x-default', canonical], ['en', canonical]]
+        : [];
+      assert.deepEqual(document.hreflangEntries, expectedHreflang, `${path}: indexable hreflang cluster`);
       assert.equal(document.indexable, true, `${path}: canonical document remains indexable`);
       assert.ok(document.structuredLanguages.every((language) => language === 'en'), `${path}: structured language must describe the raw English document`);
     }
@@ -198,7 +197,10 @@ describe('international SEO application-locale mode (#5666)', () => {
         const response = await fetchStaticRoute(request.href);
         assert.equal(response.status, 200, `${request.href}: HTTP status`);
         const document = parseDocument(response.body);
-        assert.equal(document.canonical, new URL(route, 'https://www.worldmonitor.app').href, `${request.href}: base canonical`);
+        const expectedCanonical = route === '/dashboard'
+          ? '/dashboard'
+          : new URL(route, 'https://www.worldmonitor.app').href;
+        assert.equal(document.canonical, expectedCanonical, `${request.href}: base canonical`);
         assert.ok(!document.hreflang.has(locale) || locale === 'en', `${request.href}: locale must not be advertised as an indexable alternate`);
       }
     }
@@ -206,6 +208,7 @@ describe('international SEO application-locale mode (#5666)', () => {
 
   it('accepts the deployed English hreflang clusters', async () => {
     for (const [route] of DEPLOYED_ROUTES) {
+      if (route === '/dashboard') continue; // independent build has no declared crawlable public host
       const url = new URL(route, 'https://www.worldmonitor.app').href;
       assert.deepEqual(await validateHreflangCluster(url, fetchStaticRoute), [], url);
     }

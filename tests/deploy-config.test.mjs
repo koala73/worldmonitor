@@ -599,7 +599,11 @@ describe('welcome landing page routing', () => {
 
   it('keeps variant canonicals aligned with the /dashboard routing strategy', () => {
     const variantUrls = getVariantUrls();
-    assert.equal(variantUrls.full, 'https://www.worldmonitor.app/dashboard');
+    assert.equal(
+      variantUrls.full,
+      '/dashboard',
+      'the independently branded full build must resolve against its deployment origin',
+    );
 
     const nonFullUrls = Object.entries(variantUrls).filter(([variant]) => variant !== 'full');
     assert.ok(nonFullUrls.length >= 5, 'expected non-full variant metadata entries');
@@ -624,7 +628,9 @@ describe('welcome landing page routing', () => {
       );
     }
 
-    for (const variant of ['full', 'tech', 'finance', 'commodity', 'happy']) {
+    // The independent full build has no declared public host, so its relative
+    // canonical must not be injected into the official-host crawler stub.
+    for (const variant of ['tech', 'finance', 'commodity', 'happy']) {
       assert.ok(
         middlewareSource.includes(`href="${variantUrls[variant]}"`),
         `AI crawler body must link ${variant} to its dashboard canonical`
@@ -807,8 +813,8 @@ describe('welcome landing page routing', () => {
       'generated welcome HTML must launch the dashboard at /dashboard'
     );
     assert.ok(
-      dashboardHtml.includes('<link rel="canonical" href="https://www.worldmonitor.app/dashboard" />'),
-      'dashboard shell must canonicalize to /dashboard'
+      dashboardHtml.includes('<link rel="canonical" href="/dashboard" />'),
+      'independent dashboard shell must canonicalize to /dashboard on its active origin'
     );
   });
 
@@ -2869,7 +2875,8 @@ describe('skeleton brand text extraction (#5541)', () => {
     // Simulate raw textContent: strip all HTML tags
     const rawText = match[1].replace(/<[^>]+>/g, '');
     assert.doesNotMatch(rawText, /WWorld/, 'skeleton-brand raw text must not concatenate as "WWorld Monitor"');
-    assert.match(rawText, /World Monitor/, 'skeleton-brand raw text must contain "World Monitor"');
+    assert.match(rawText, /全球实时热点追踪·探长版/, 'skeleton-brand raw text must contain the independent product name');
+    assert.doesNotMatch(rawText, /World Monitor/, 'independent skeleton must not present itself as the official upstream brand');
   });
 
   it('.skeleton-brand-mark is aria-hidden and has no text content', () => {
