@@ -924,8 +924,13 @@ describe('welcome landing page routing', () => {
     // route (`/?…`), which lands back on the welcome page instead of the
     // dashboard — whatever the query happens to be called. The established
     // `/?mode=agent` discovery route is intentionally served ahead of the
-    // welcome rewrite and is not a dashboard launch CTA.
-    const rootWelcomeLaunchLink = /href\s*[:=]\s*["'`]\/\?(?!mode=agent["'`])/;
+    // welcome rewrite and is not a dashboard launch CTA. The exemption only
+    // covers a literal that ENDS at its closing quote: a quote followed by
+    // `+` is a runtime concatenation (`href:"/?mode=agent"+x` in the minified
+    // asset), whose final URL is no longer exactly `/?mode=agent` and would
+    // fall through Vercel's exact-value mode=agent rewrite back onto the
+    // welcome page — so it stays forbidden.
+    const rootWelcomeLaunchLink = /href\s*[:=]\s*["'`]\/\?(?!mode=agent["'`](?!\s*\+))/;
     const variantRootWelcomeLaunchLink = /https:\/\/(?:tech|finance|commodity|happy|energy)\.worldmonitor\.app\/\?/;
     assert.doesNotMatch(
       'href="/?mode=agent"',
@@ -941,6 +946,16 @@ describe('welcome landing page routing', () => {
       'href="/?mode=agent&utm_source=welcome"',
       rootWelcomeLaunchLink,
       'the agent-view exception must not hide a query-carrying launch URL'
+    );
+    assert.doesNotMatch(
+      'href:"/?mode=agent",',
+      rootWelcomeLaunchLink,
+      'the minified-asset form of the exact agent-view URL must remain allowed'
+    );
+    assert.match(
+      'href:"/?mode=agent"+e',
+      rootWelcomeLaunchLink,
+      'a concatenation-built agent URL is not the exact discovery URL and must stay forbidden'
     );
     for (const [file, source] of welcomeSources) {
       assert.doesNotMatch(
