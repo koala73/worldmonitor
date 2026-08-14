@@ -441,3 +441,7 @@ Raw evidence artifacts:
 
 **Current Phase 12 gate: LOCAL CORRECTIONS PASS; REMOTE CORRECTED-HEAD CI
 PENDING.** This is neither a merge nor a deployment acceptance result.
+
+Correction-evidence record commit:
+`f2103a1e06d9d33ffdea8e9f34f271152a26ab7d`. This following receipt commit
+backfills the immutable SHA and does not upgrade the pending remote gate.

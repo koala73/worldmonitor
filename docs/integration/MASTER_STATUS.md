@@ -544,3 +544,7 @@ failures expose Windows file-URL/path assumptions such as `D:\D:\...`; this
 result is not used as acceptance evidence. The corrected commits must be
 pushed and receive fresh GitHub Ubuntu workflow conclusions before Phase 12
 can be described as remotely green or complete.
+
+The immutable local correction-evidence record is commit
+`f2103a1e06d9d33ffdea8e9f34f271152a26ab7d`; this receipt commit backfills
+that SHA. It records local readiness for publication, not remote CI success.
