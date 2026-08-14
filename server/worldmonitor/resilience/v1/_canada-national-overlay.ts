@@ -142,10 +142,10 @@ export function applyCanadaNationalOverlay(
     usedStatcanInflation: statcanInflation != null,
     usedStatcanUnemployment: statcanUnemployment != null,
     inflationFreshness: statcanInflation != null
-      ? stampStatcanScoreFreshness(sources.statcan?.inflationReleaseTime, sources.statcan?.inflationRefPer)
+      ? stampStatcanScoreFreshness(sources.statcan?.inflationRefPer)
       : null,
     unemploymentFreshness: statcanUnemployment != null
-      ? stampStatcanScoreFreshness(sources.statcan?.unemploymentReleaseTime, sources.statcan?.unemploymentRefPer)
+      ? stampStatcanScoreFreshness(sources.statcan?.unemploymentRefPer)
       : null,
     bocUsdCad,
     bocPolicyRate,

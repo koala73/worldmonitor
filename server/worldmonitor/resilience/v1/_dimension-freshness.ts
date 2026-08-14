@@ -26,6 +26,7 @@ import {
 import type { ResilienceDimensionId } from './_dimension-scorers';
 import { canadaStatcanSourceKey, RESILIENCE_STATCAN_WDS_KEY, type StatcanOverlayUsed } from './_canada-national-overlay';
 import { INDICATOR_REGISTRY, getIndicatorSourceKeys } from './_indicator-registry';
+import type { IndicatorSpec } from './_indicator-registry';
 import { STANDALONE_SOURCE_META_MAX_STALE_MIN } from './_standalone-source-thresholds';
 
 export interface DimensionFreshnessResult {
@@ -152,6 +153,15 @@ const STALENESS_ORDER: Record<StalenessLevel, number> = {
 
 const MINUTE_MS = 60 * 1000;
 
+export function getEffectiveIndicatorSourceKeys(
+  indicator: Pick<IndicatorSpec, 'id' | 'sourceKey' | 'sourceKeys'>,
+  countryCode?: string,
+  statcanUsed?: StatcanOverlayUsed,
+): readonly string[] {
+  const statcanKey = canadaStatcanSourceKey(indicator.id, countryCode, statcanUsed);
+  return statcanKey ? [statcanKey] : getIndicatorSourceKeys(indicator);
+}
+
 function classifySourceKeyFreshness(
   sourceKey: string,
   lastObservedAtMs: number | null,
@@ -210,9 +220,7 @@ export function classifyDimensionFreshness(
   const effectiveNowMs = nowMs ?? Date.now();
 
   for (const indicator of indicators) {
-    const statcanKey = canadaStatcanSourceKey(indicator.id, countryCode, statcanUsed);
-    const sourceKeys = statcanKey ? [statcanKey] : getIndicatorSourceKeys(indicator);
-    for (const sourceKey of sourceKeys) {
+    for (const sourceKey of getEffectiveIndicatorSourceKeys(indicator, countryCode, statcanUsed)) {
       const lastObservedAtMs = freshnessMap.get(sourceKey) ?? null;
       const staleness = classifySourceKeyFreshness(
         sourceKey,
@@ -237,7 +245,8 @@ export function classifyDimensionFreshness(
 
 /**
  * Read all seed-meta keys referenced by INDICATOR_REGISTRY and return
- * a `Map<sourceKey, fetchedAtMs>`. Missing or malformed seed-meta
+ * a `Map<sourceKey, observedAtMs>`. Most sources use fetchedAt; StatCan
+ * uses its conservative CPI/LFS content clock. Missing or malformed seed-meta
  * entries are omitted; the map lookup then returns `undefined`, which
  * the classifier treats as "never observed" (stale).
  *
@@ -275,7 +284,8 @@ export async function readFreshnessMap(
   // Dedupe by resolved meta key: 15+ resilience:static:{ISO2} entries
   // all share seed-meta:resilience:static, and we only want one read.
   const uniqueMetaKeys = [...new Set(sourceKeyToMetaKey.values())];
-  const metaKeyFetchedAt = new Map<string, number>();
+  const metaKeyObservedAt = new Map<string, number>();
+  const statcanMetaKey = resolveSeedMetaKey(RESILIENCE_STATCAN_WDS_KEY);
 
   await Promise.all(
     uniqueMetaKeys.map(async (metaKey) => {
@@ -292,9 +302,12 @@ export async function readFreshnessMap(
           // missing unless the producer explicitly marks the zero as healthy
           // via status:'ok' or state:'OK_ZERO'.
           if (!seedMetaIsFreshnessEligible(meta as Record<string, unknown>)) return;
-          const fetchedAt = Number((meta as { fetchedAt: unknown }).fetchedAt);
-          if (Number.isFinite(fetchedAt) && fetchedAt > 0) {
-            metaKeyFetchedAt.set(metaKey, fetchedAt);
+          const freshnessToken = metaKey === statcanMetaKey
+            ? (meta as { newestItemAt?: unknown }).newestItemAt
+            : (meta as { fetchedAt: unknown }).fetchedAt;
+          const observedAt = Number(freshnessToken);
+          if (Number.isFinite(observedAt) && observedAt > 0) {
+            metaKeyObservedAt.set(metaKey, observedAt);
           }
         }
       } catch {
@@ -309,9 +322,9 @@ export async function readFreshnessMap(
   // so classifyDimensionFreshness can keep querying by raw registry
   // sourceKey without needing to know the resolution rules.
   for (const [sourceKey, metaKey] of sourceKeyToMetaKey) {
-    const fetchedAt = metaKeyFetchedAt.get(metaKey);
-    if (fetchedAt != null) {
-      map.set(sourceKey, fetchedAt);
+    const observedAt = metaKeyObservedAt.get(metaKey);
+    if (observedAt != null) {
+      map.set(sourceKey, observedAt);
     }
   }
 

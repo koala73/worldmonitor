@@ -3783,6 +3783,9 @@ export async function scoreAllDimensions(
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<Record<ResilienceDimensionId, ResilienceDimensionScore>> {
   const memoizedReader = createMemoizedSeedReader(reader);
+  const statcanUsed = countryCode === 'CA'
+    ? statcanOverlayUsed(await memoizedReader(RESILIENCE_STATCAN_WDS_KEY))
+    : undefined;
   const [entries, freshnessMap, failedDatasets, standaloneFailures] = await Promise.all([
     Promise.all(
       RESILIENCE_DIMENSION_ORDER.map(async (dimensionId) => {
@@ -3828,7 +3831,7 @@ export async function scoreAllDimensions(
     // with the scorer keys in practice, the shared reader is cheap).
     readFreshnessMap(memoizedReader),
     readFailedDatasets(memoizedReader),
-    readStandaloneSourceFailureDimensions(memoizedReader),
+    readStandaloneSourceFailureDimensions(memoizedReader, undefined, countryCode, statcanUsed),
   ]);
   const scores = Object.fromEntries(entries) as Record<ResilienceDimensionId, ResilienceDimensionScore>;
 
@@ -3838,9 +3841,6 @@ export async function scoreAllDimensions(
   // imputationClass and does not interact with freshness.
   // CA inflation/unemployment that consumed StatCan must stamp StatCan
   // seed-meta, not the IMF registry key the overlay replaced.
-  const statcanUsed = countryCode === 'CA'
-    ? statcanOverlayUsed(await memoizedReader(RESILIENCE_STATCAN_WDS_KEY))
-    : undefined;
   for (const dimensionId of RESILIENCE_DIMENSION_ORDER) {
     scores[dimensionId] = {
       ...scores[dimensionId],

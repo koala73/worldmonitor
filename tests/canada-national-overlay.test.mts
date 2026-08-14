@@ -13,6 +13,11 @@ import {
 } from '../server/worldmonitor/resilience/v1/_canada-national-overlay.ts';
 import { classifyDimensionFreshness } from '../server/worldmonitor/resilience/v1/_dimension-freshness.ts';
 import {
+  buildStandaloneMetaKeyToIndicators,
+  readStandaloneSourceFailureDimensions,
+} from '../server/worldmonitor/resilience/v1/_source-failure.ts';
+import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
+import {
   scoreAllDimensions,
   scoreCurrencyExternal,
   scoreMacroFiscal,
@@ -143,12 +148,12 @@ describe('Canada national overlay', () => {
     );
     assert.deepEqual(ca.inflationFreshness, {
       sourceKey: RESILIENCE_STATCAN_WDS_KEY,
-      observedAt: '2026-07-15T08:30',
+      observedAt: '2026-06-01',
       provider: STATCAN_SCORE_PROVIDER,
     });
     assert.deepEqual(ca.unemploymentFreshness, {
       sourceKey: RESILIENCE_STATCAN_WDS_KEY,
-      observedAt: '2026-08-07T08:30',
+      observedAt: '2026-07-01',
       provider: STATCAN_SCORE_PROVIDER,
     });
     assert.notEqual(ca.inflationFreshness?.sourceKey, 'economic:imf:macro:v2');
@@ -169,6 +174,46 @@ describe('Canada national overlay', () => {
     );
     assert.equal(us.inflationFreshness, null);
     assert.equal(us.unemploymentFreshness, null);
+  });
+
+  it('maps source-failure checks to the StatCan indicators the CA overlay actually used', async () => {
+    const bothUsed = { inflation: true, unemployment: true };
+    const mapped = buildStandaloneMetaKeyToIndicators(INDICATOR_REGISTRY, 'CA', bothUsed);
+    assert.deepEqual(
+      mapped.get('seed-meta:economic:statcan-wds')?.map((indicator) => indicator.id).sort(),
+      ['inflationStability', 'unemploymentPct'],
+    );
+    assert.equal(
+      mapped.get('seed-meta:economic:imf-macro')?.some((indicator) => indicator.id === 'inflationStability') ?? false,
+      false,
+    );
+    assert.equal(
+      mapped.get('seed-meta:economic:imf-labor')?.some((indicator) => indicator.id === 'unemploymentPct') ?? false,
+      false,
+    );
+
+    const nowMs = Date.parse('2026-08-14T12:00:00Z');
+    const result = await readStandaloneSourceFailureDimensions(async (key) => (
+      key === 'seed-meta:economic:statcan-wds'
+        ? { status: 'error', fetchedAt: nowMs, recordCount: 2 }
+        : { status: 'ok', fetchedAt: nowMs, recordCount: 10 }
+    ), nowMs, 'CA', bothUsed);
+    assert.deepEqual([...result.dimensions].sort(), ['currencyExternal', 'macroFiscal']);
+    assert.deepEqual(result.failedMetaKeys, ['seed-meta:economic:statcan-wds']);
+
+    const inflationOnly = buildStandaloneMetaKeyToIndicators(
+      INDICATOR_REGISTRY,
+      'CA',
+      { inflation: true, unemployment: false },
+    );
+    assert.deepEqual(
+      inflationOnly.get('seed-meta:economic:statcan-wds')?.map((indicator) => indicator.id),
+      ['inflationStability'],
+    );
+    assert.equal(
+      inflationOnly.get('seed-meta:economic:imf-labor')?.some((indicator) => indicator.id === 'unemploymentPct'),
+      true,
+    );
   });
 
   it('CA dimension freshness follows StatCan, not a fresh IMF stamp', () => {
@@ -199,13 +244,19 @@ describe('Canada national overlay', () => {
     assert.equal(caMacro.lastObservedAtMs, statcanStale, 'CA unemployment freshness is StatCan, not IMF labor');
   });
 
-  it('scoreAllDimensions stamps CA StatCan seed-meta instead of IMF', async () => {
+  it('scoreAllDimensions uses StatCan content time instead of fresh fetch or IMF stamps', async () => {
     const now = Date.parse('2026-08-14T12:00:00Z');
     const imfFresh = now - 60 * 60 * 1000;
     const statcanStale = now - 5 * 365 * 24 * 60 * 60 * 1000;
     const reader: ResilienceSeedReader = async (key: string) => {
       if (key === 'seed-meta:economic:statcan-wds') {
-        return { fetchedAt: statcanStale, status: 'ok', recordCount: 2 };
+        return {
+          fetchedAt: imfFresh,
+          newestItemAt: statcanStale,
+          oldestItemAt: statcanStale,
+          status: 'ok',
+          recordCount: 2,
+        };
       }
       if (key.startsWith('seed-meta:')) {
         return { fetchedAt: imfFresh, status: 'ok', recordCount: 10 };

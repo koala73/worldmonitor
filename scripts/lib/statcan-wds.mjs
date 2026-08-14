@@ -198,27 +198,28 @@ export function declareStatcanRecords(data) {
     + (Number.isFinite(data?.unemploymentPct) ? 1 : 0);
 }
 
-const STATCAN_SCORE_PRODUCT_IDS = new Set([CPI_PRODUCT_ID, LFS_PRODUCT_ID]);
-
-/** Only CPI / LFS cubes count toward score freshness — not the rest of WDS. */
-export function statcanScoreCubeReleaseTimes(changedCubes) {
-  if (!Array.isArray(changedCubes)) return [];
-  return changedCubes
-    .filter((row) => STATCAN_SCORE_PRODUCT_IDS.has(Number(row?.productId)))
-    .map((row) => row?.releaseTime);
+function normalizedStatcanRefPer(token, nowMs) {
+  // WDS documents refPer as a normalized YYYY-MM-DD observation date.
+  // Keep that source contract local: releaseTime is a timezone-less Eastern
+  // publication clock and must never enter scored content freshness.
+  if (typeof token !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(token)) return null;
+  const ts = Date.parse(`${token}T00:00:00Z`);
+  if (!Number.isFinite(ts) || new Date(ts).toISOString().slice(0, 10) !== token || ts > nowMs) {
+    return null;
+  }
+  return token;
 }
 
 export function statcanContentMeta(data, nowMs = Date.now()) {
-  // Freshness keys off the CPI / LFS series (and those two cubes), never
-  // "any StatCan cube released today". An unrelated getChangedCubeList hit
-  // must not mask a stale CPI or LFS vector.
-  return tokensToContentMeta([
-    data?.inflationReleaseTime,
-    data?.unemploymentReleaseTime,
-    data?.inflationRefPer,
-    data?.unemploymentRefPer,
-    ...statcanScoreCubeReleaseTimes(data?.changedCubes),
-  ], nowMs);
+  // CPI and LFS move independently. Derive one clock per required series,
+  // fail closed when either is undatable, then expose the older observation.
+  const inflation = tokensToContentMeta(normalizedStatcanRefPer(data?.inflationRefPer, nowMs), nowMs);
+  const unemployment = tokensToContentMeta(normalizedStatcanRefPer(data?.unemploymentRefPer, nowMs), nowMs);
+  if (inflation == null || unemployment == null) return null;
+  return {
+    newestItemAt: Math.min(inflation.newestItemAt, unemployment.newestItemAt),
+    oldestItemAt: Math.min(inflation.oldestItemAt, unemployment.oldestItemAt),
+  };
 }
 
 async function readBoundedText(response, maxBytes) {

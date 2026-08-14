@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +24,6 @@ import {
   shiftIsoDate,
   statcanCacheKey,
   statcanContentMeta,
-  statcanScoreCubeReleaseTimes,
   torontoDateIso,
   utcDateIso,
   validateStatcanPayload,
@@ -240,7 +240,6 @@ test('unrelated StatCan cubes do not mask stale CPI/LFS freshness', () => {
   const unrelatedToday = parseChangedCubeList(changedDoc);
   assert.ok(unrelatedToday.length >= 1);
   assert.ok(unrelatedToday.every((row) => row.productId !== CPI_PRODUCT_ID && row.productId !== LFS_PRODUCT_ID));
-  assert.deepEqual(statcanScoreCubeReleaseTimes(unrelatedToday), []);
 
   const payload = buildStatcanPayload({
     asOfDate: '2026-08-14',
@@ -251,9 +250,10 @@ test('unrelated StatCan cubes do not mask stale CPI/LFS freshness', () => {
   });
   const meta = statcanContentMeta(payload, nowMs);
   assert.ok(meta, 'CPI/LFS series must still produce content-age');
-  const unrelatedMs = Date.parse('2026-08-13T08:30:00Z');
-  assert.ok(meta.newestItemAt < unrelatedMs, 'an unrelated same-day cube must not become newestItemAt');
-  assert.ok(meta.newestItemAt <= Date.parse('2026-08-07T08:30:00Z'), 'newestItemAt must stay on the CPI/LFS series');
+  assert.deepEqual(meta, {
+    newestItemAt: Date.parse('2026-06-01T00:00:00Z'),
+    oldestItemAt: Date.parse('2026-06-01T00:00:00Z'),
+  });
   assert.equal(declareStatcanRecords(payload), 2, 'unrelated cubes must not pad the CPI/LFS record floor');
 
   const withCpiCube = statcanContentMeta({
@@ -263,7 +263,100 @@ test('unrelated StatCan cubes do not mask stale CPI/LFS freshness', () => {
       { productId: CPI_PRODUCT_ID, releaseTime: '2026-08-14T08:30' },
     ],
   }, nowMs);
-  assert.equal(withCpiCube.newestItemAt, Date.parse('2026-08-14T08:30:00Z'));
+  assert.deepEqual(withCpiCube, meta, 'even a CPI release-radar hit must not refresh its older observation');
+});
+
+test('StatCan content age uses the older required CPI/LFS reference period in both stale permutations', () => {
+  const nowMs = Date.parse('2026-08-14T12:00:00Z');
+  const cases = [
+    {
+      name: 'fresh CPI with stale LFS',
+      inflationRefPer: '2026-08-01',
+      unemploymentRefPer: '2025-01-01',
+      expected: '2025-01-01T00:00:00Z',
+    },
+    {
+      name: 'stale CPI with fresh LFS',
+      inflationRefPer: '2025-02-01',
+      unemploymentRefPer: '2026-08-01',
+      expected: '2025-02-01T00:00:00Z',
+    },
+  ];
+
+  for (const fixture of cases) {
+    assert.deepEqual(
+      statcanContentMeta({
+        inflationRefPer: fixture.inflationRefPer,
+        unemploymentRefPer: fixture.unemploymentRefPer,
+        inflationReleaseTime: '2026-08-14T08:30',
+        unemploymentReleaseTime: '2026-08-14T08:30',
+      }, nowMs),
+      {
+        newestItemAt: Date.parse(fixture.expected),
+        oldestItemAt: Date.parse(fixture.expected),
+      },
+      fixture.name,
+    );
+  }
+});
+
+test('StatCan content age fails closed when either required reference period is absent, malformed, or future-dated', () => {
+  const nowMs = Date.parse('2026-08-14T12:00:00Z');
+  const invalidRequiredRefPers = [
+    undefined,
+    null,
+    '',
+    'not-a-date',
+    '2026-02-30',
+    '2026-08-01T00:00',
+    '2027-01-01',
+  ];
+
+  for (const invalid of invalidRequiredRefPers) {
+    assert.equal(
+      statcanContentMeta({ inflationRefPer: invalid, unemploymentRefPer: '2026-07-01' }, nowMs),
+      null,
+      `invalid CPI refPer ${JSON.stringify(invalid)} must fail closed`,
+    );
+    assert.equal(
+      statcanContentMeta({ inflationRefPer: '2026-07-01', unemploymentRefPer: invalid }, nowMs),
+      null,
+      `invalid LFS refPer ${JSON.stringify(invalid)} must fail closed`,
+    );
+  }
+
+  const nearMidnightMs = Date.parse('2026-08-14T23:30:00Z');
+  assert.equal(
+    statcanContentMeta({ inflationRefPer: '2026-08-15', unemploymentRefPer: '2026-08-01' }, nearMidnightMs),
+    null,
+    'a next-day observation inside the shared one-hour skew window must still fail closed for StatCan',
+  );
+});
+
+test('StatCan scored freshness is invariant across UTC, Toronto, and Dubai process timezones', () => {
+  const moduleUrl = new URL('../scripts/lib/statcan-wds.mjs', import.meta.url).href;
+  const script = `
+    import { statcanContentMeta } from ${JSON.stringify(moduleUrl)};
+    const meta = statcanContentMeta({
+      inflationRefPer: '2026-06-01',
+      unemploymentRefPer: '2026-07-01',
+      inflationReleaseTime: '2026-08-14T08:30',
+      unemploymentReleaseTime: '2026-08-07T08:30',
+      changedCubes: [{ productId: ${CPI_PRODUCT_ID}, releaseTime: '2026-08-14T08:30' }],
+    }, Date.parse('2026-08-14T12:00:00Z'));
+    process.stdout.write(JSON.stringify(meta));
+  `;
+  const results = ['UTC', 'America/Toronto', 'Asia/Dubai'].map((TZ) => JSON.parse(execFileSync(
+    process.execPath,
+    ['--input-type=module', '--eval', script],
+    { encoding: 'utf8', env: { ...process.env, TZ } },
+  )));
+
+  assert.deepEqual(results, [
+    { newestItemAt: Date.parse('2026-06-01T00:00:00Z'), oldestItemAt: Date.parse('2026-06-01T00:00:00Z') },
+    { newestItemAt: Date.parse('2026-06-01T00:00:00Z'), oldestItemAt: Date.parse('2026-06-01T00:00:00Z') },
+    { newestItemAt: Date.parse('2026-06-01T00:00:00Z'), oldestItemAt: Date.parse('2026-06-01T00:00:00Z') },
+  ]);
 });
 
 test('StatCan EMPTY waiver is the real 08:00 UTC cron tick and owns #6676', () => {
