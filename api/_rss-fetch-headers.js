@@ -32,8 +32,15 @@ export const RSS_DIRECT_FETCH_HEADERS = Object.freeze({
 
 /**
  * Headers for a direct upstream fetch of `hostname`.
- * Default is the seeder-convention browser UA. Per-host Referer overrides
- * belong here when a publisher still 403s without one.
+ *
+ * CURRENTLY HOST-INDEPENDENT: every host gets RSS_DIRECT_FETCH_HEADERS. The
+ * parameter is the seam, not a feature — nothing branches on it yet, so do not
+ * read a call site as evidence that a publisher has bespoke headers.
+ *
+ * Per-host overrides (a same-origin Referer is the usual one) belong here when
+ * a publisher is OBSERVED to need them. Add the observation with the override:
+ * this file's whole reason to exist is that a UA was changed for CBC without a
+ * reproduced 403 to justify it.
  */
 export function rssFetchHeadersForHost(_hostname) {
   return RSS_DIRECT_FETCH_HEADERS;

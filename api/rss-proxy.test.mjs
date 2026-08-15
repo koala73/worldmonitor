@@ -888,11 +888,17 @@ test('sends the seeder-convention browser User-Agent on a CBC direct fetch (#662
   assert.doesNotMatch(calls[0].headers['User-Agent'], /^(undici|node|WorldMonitor)/);
 });
 
-test('CBC 403s a bot UA and 200s the proxy browser UA (#6624)', async () => {
-  // Mirrors the publisher behaviour the live proxy exists to avoid: a
-  // library/bot UA is 403ed, a Chrome UA is served RSS. The mock is the
-  // lock — this box currently 200s even a bot UA, so a live fetch cannot
-  // prove the header is what prevents the 403.
+test('keeps a browser UA on the CBC path — a bot UA would be 403ed (#6624)', async () => {
+  // SCOPE, stated plainly so this is not misread as proof of a fix: the proxy
+  // ALREADY sent a browser UA before this change (Chrome/120). This mock 403s
+  // anything without Mozilla/5.0 + Chrome/, which the old UA also satisfied, so
+  // this test does NOT discriminate the new behaviour from the old and no CBC
+  // 403 is demonstrated anywhere in this change.
+  //
+  // What it does lock is a regression: if someone drops the header block or
+  // swaps in a library/undici default UA, the direct fetch starts 403ing. The
+  // version bump itself is pinned by the CHROME_UA equality test above, which
+  // is what actually fails if the proxy and seeder UAs drift apart.
   const calls = spyFetch((_url, init) => {
     const ua = init.headers?.['User-Agent'] || '';
     if (!/Mozilla\/5\.0/.test(ua) || !/Chrome\//.test(ua)) {
