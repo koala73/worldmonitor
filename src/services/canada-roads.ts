@@ -1,64 +1,127 @@
 import { createCircuitBreaker } from '@/utils';
-import { getHydratedData } from '@/services/bootstrap';
+import { ensureHydrated, getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
+import {
+  hasHealthyCanadaRoadSource,
+  loadCanadaRoadSourcesCore,
+  type CanadaRoadRecord,
+  type CanadaRoadSourceDescriptor,
+  type CanadaRoadSourceStates,
+} from './canada-roads-core';
 
-export interface CanadaRoadRecord {
-  id: string;
-  kind?: 'event' | 'alert' | 'condition';
-  lat: number | null;
-  lon: number | null;
-  centroid?: [number, number] | null;
-  severity: string;
-  eventType: string;
-  isFullClosure: boolean;
-  lanesAffected: string | null;
-  roadwayName?: string;
-  headline: string;
-  description: string;
-  path?: [number, number][] | null;
-  jurisdiction: string;
-  resource?: string;
+export {
+  hasHealthyCanadaRoadSource,
+  recordsFromPayload,
+  unionCanadaRoadRecords,
+  type CanadaRoadRecord,
+  type CanadaRoadSourceDescriptor,
+  type CanadaRoadSourceState,
+  type CanadaRoadSourceStates,
+} from './canada-roads-core';
+
+/**
+ * Unions bootstrap `canadaRoads` (infra:ontario-511:v1) and `albertaRoads`
+ * (infra:alberta-511:v1) with on-demand `torontoRoads`
+ * (infra:toronto-roads:v1).
+ */
+export const CANADA_ROAD_SOURCES: readonly CanadaRoadSourceDescriptor[] = Object.freeze([
+  { key: 'canadaRoads', source: 'ontario-511', jurisdiction: 'ON', onDemand: false },
+  { key: 'albertaRoads', source: 'alberta-511', jurisdiction: 'AB', onDemand: false },
+  { key: 'torontoRoads', source: 'toronto-roads', jurisdiction: 'Toronto', onDemand: true },
+  { key: 'bcOpen511', source: 'bc-open511', jurisdiction: 'BC', onDemand: true },
+]);
+
+const unavailableSourceStates = (): CanadaRoadSourceStates => Object.fromEntries(
+  CANADA_ROAD_SOURCES.map(({ key }) => [key, 'unavailable' as const]),
+);
+
+let lastSourceStates: CanadaRoadSourceStates = unavailableSourceStates();
+
+interface CanadaRoadSnapshot {
+  records: CanadaRoadRecord[];
+  states: CanadaRoadSourceStates;
 }
 
-const breaker = createCircuitBreaker<CanadaRoadRecord[]>({
-  name: 'Ontario 511',
+type CanadaRoadCachedValue = CanadaRoadSnapshot | CanadaRoadRecord[];
+
+const breaker = createCircuitBreaker<CanadaRoadCachedValue>({
+  name: 'Canada roads',
   cacheTtlMs: 30 * 60 * 1000,
   persistCache: true,
 });
 
-function recordsFromPayload(payload: unknown): CanadaRoadRecord[] | null {
-  if (!payload || typeof payload !== 'object') return null;
-  const value = payload as {
-    records?: CanadaRoadRecord[];
-    events?: CanadaRoadRecord[];
-    alerts?: CanadaRoadRecord[];
-    conditions?: CanadaRoadRecord[];
-  };
-  if (Array.isArray(value.records)) return value.records;
-  const combined = [
-    ...(Array.isArray(value.events) ? value.events : []),
-    ...(Array.isArray(value.alerts) ? value.alerts : []),
-    ...(Array.isArray(value.conditions) ? value.conditions : []),
-  ];
-  return combined.length || Array.isArray(value.events) ? combined : null;
+const ON_DEMAND_LOADERS: Record<string, () => Promise<unknown | undefined>> = {
+  torontoRoads: () => ensureHydrated('torontoRoads'),
+  bcOpen511: () => ensureHydrated('bcOpen511'),
+};
+
+const HYDRATED_LOADERS: Record<string, () => unknown | undefined> = {
+  canadaRoads: () => getHydratedData('canadaRoads'),
+  albertaRoads: () => getHydratedData('albertaRoads'),
+  torontoRoads: () => getHydratedData('torontoRoads'),
+  bcOpen511: () => getHydratedData('bcOpen511'),
+};
+
+interface CanadaRoadLoadDependencies {
+  getHydrated?: (key: string) => unknown | undefined;
+  ensureOnDemand?: (key: string) => Promise<unknown | undefined>;
+  fetchFn?: typeof fetch;
+}
+
+async function fetchTierKey(key: string, fetchFn: typeof fetch): Promise<unknown | undefined> {
+  const resp = await fetchFn(
+    toApiUrl(`/api/bootstrap?keys=${encodeURIComponent(key)}`),
+    { credentials: 'include', signal: AbortSignal.timeout(8000) },
+  );
+  if (!resp.ok) throw new Error(`Bootstrap fetch failed for ${key}: ${resp.status}`);
+  const json = await resp.json() as { data?: Record<string, unknown> };
+  return json.data?.[key];
+}
+
+export function loadCanadaRoadSources(
+  descriptors: readonly CanadaRoadSourceDescriptor[] = CANADA_ROAD_SOURCES,
+  dependencies: CanadaRoadLoadDependencies = {},
+): Promise<{ records: CanadaRoadRecord[] | null; states: CanadaRoadSourceStates }> {
+  const fetchFn = dependencies.fetchFn ?? fetch;
+  return loadCanadaRoadSourcesCore(descriptors, {
+    getHydrated: (key) => dependencies.getHydrated
+      ? dependencies.getHydrated(key)
+      : HYDRATED_LOADERS[key]?.(),
+    fetchMissing: (descriptor) => descriptor.onDemand
+      ? dependencies.ensureOnDemand
+        ? dependencies.ensureOnDemand(descriptor.key)
+        : ON_DEMAND_LOADERS[descriptor.key]?.() ?? Promise.resolve(undefined)
+      : fetchTierKey(descriptor.key, fetchFn),
+  });
 }
 
 export async function fetchCanadaRoads(): Promise<CanadaRoadRecord[]> {
-  return breaker.execute(async () => {
-    const hydrated = recordsFromPayload(getHydratedData('canadaRoads'));
-    if (hydrated) return hydrated;
+  const cachedValue = await breaker.execute(async () => {
+    const result = await loadCanadaRoadSources();
+    if (result.records != null) return { records: result.records, states: result.states };
+    throw new Error('No usable Canada road source in bootstrap');
+  }, { records: [], states: unavailableSourceStates() });
+  // Persistent caches written by the pre-source-state client contain the
+  // record array only. Keep that valid cache usable during the rollout while
+  // marking sibling coverage unknown/degraded until the next live refresh.
+  const snapshot: CanadaRoadSnapshot = Array.isArray(cachedValue)
+    ? {
+        records: cachedValue,
+        states: {
+          ...unavailableSourceStates(),
+          canadaRoads: cachedValue.length > 0 ? 'available' : 'empty',
+        },
+      }
+    : cachedValue;
+  lastSourceStates = snapshot.states;
+  if (!hasHealthyCanadaRoadSource(lastSourceStates)) {
+    throw new Error('All Canada road sources are unavailable or malformed');
+  }
+  return snapshot.records;
+}
 
-    const resp = await fetch(
-      toApiUrl('/api/bootstrap?keys=canadaRoads'),
-      { credentials: 'include', signal: AbortSignal.timeout(8000) },
-    );
-    if (!resp.ok) throw new Error(`Bootstrap fetch failed: ${resp.status}`);
-    const json = await resp.json() as { data?: { canadaRoads?: unknown } };
-    const records = recordsFromPayload(json.data?.canadaRoads);
-    if (records) return records;
-
-    throw new Error('No Ontario 511 data in bootstrap');
-  }, []);
+export function getCanadaRoadSourceStates(): CanadaRoadSourceStates {
+  return { ...lastSourceStates };
 }
 
 export function getCanadaRoadsStatus(): string {

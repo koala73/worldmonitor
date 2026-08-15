@@ -94,6 +94,30 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Ontario 511 (Ministry of Transportation). https://511on.ca/',
     status: 'terms-review',
   },
+  '511.alberta.ca': {
+    provider: 'Alberta 511',
+    license: 'Alberta 511 terms (https://511.alberta.ca/about/about): non-commercial/educational reproduction allowed; commercial reproduction needs written permission from Alberta Transportation and Economic Corridors. https://511.alberta.ca/help/terms returned 404.',
+    attribution: 'Alberta 511 (Alberta Transportation and Economic Corridors). https://511.alberta.ca/',
+    status: 'terms-review',
+  },
+  'secure.toronto.ca': {
+    provider: 'City of Toronto Open Data',
+    license: 'CKAN package_show for road-restrictions: license_id=notspecified, license_title="License not specified" (https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/package_show?id=road-restrictions). Portal dataset page chrome links OGL-Toronto but is not data-bound to this dataset.',
+    attribution: 'City of Toronto, Road Restrictions. https://open.toronto.ca/dataset/road-restrictions/',
+    status: 'terms-review',
+  },
+  'api.open511.gov.bc.ca': {
+    provider: 'BC Open511',
+    license: 'Open Government Licence - British Columbia (OGL-BC). Confirmed on https://api.open511.gov.bc.ca/help. API Terms of Use for OGL-BC information also apply.',
+    attribution: 'DriveBC Open511 (Province of British Columbia). Licensed under OGL-BC. https://api.open511.gov.bc.ca/help',
+    status: 'reviewed',
+  },
+  'www.alberta.ca': {
+    provider: 'Alberta Emergency Alert',
+    license: 'Alberta.ca terms of use. Open Government Licence - Alberta exists on the open.alberta.ca licence page but is not bound to the AEA Atom feed on a live dataset page (the alberta-emergency-alert.aspx page has no OGL statement).',
+    attribution: 'Alberta Emergency Alert, Government of Alberta. https://www.alberta.ca/alberta-emergency-alert.aspx',
+    status: 'terms-review',
+  },
   'api.elections.kalshi.com': {
     provider: 'Kalshi',
     license: 'Kalshi API terms; commercial-use and redistribution terms require review',

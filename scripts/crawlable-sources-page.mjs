@@ -95,6 +95,7 @@ const SOURCE_DOMAIN_MATCHERS = [
 // Keep ambiguous structured providers explicit so a new unmatched provider
 // fails the build instead of silently becoming "geopolitics".
 const SOURCE_DOMAIN_OVERRIDES = new Map([
+  ['Alberta Emergency Alert', 'environment'],
   ['Hyperliquid', 'finance'],
   ['api.rainviewer.com', 'environment'],
   ['api.scrapecreators.com', 'news'],
@@ -105,6 +106,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['archive-api.open-meteo.com', 'environment'],
   ['British Geological Survey World Mineral Statistics', 'energy'],
   ['bothsidesofthetable.com', 'technology'],
+  ['City of Toronto Open Data', 'infrastructure'],
   ['contxto.com', 'technology'],
   ['corridorrisk.io', 'infrastructure'],
   ['data.ecb.europa.eu', 'finance'],
@@ -119,6 +121,8 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['lavca.org', 'technology'],
   ['news.usni.org', 'military'],
   ['Ontario 511', 'infrastructure'],
+  ['Alberta 511', 'infrastructure'],
+  ['BC Open511', 'infrastructure'],
   ['oauth.reddit.com', 'news'],
   ['overpass-api.de', 'military'],
   ['pitchbook.com', 'technology'],

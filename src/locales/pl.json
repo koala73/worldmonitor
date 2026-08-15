@@ -481,7 +481,8 @@
         "climate": "Przełącz anomalie klimatyczne",
         "outages": "Przełącz awarie internetu",
         "tradeRoutes": "Przełącz szlaki handlowe",
-        "canadaRoads": "Toggle Ontario 511 roads overlay"
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Przełącz na tryb ciemny",
@@ -1005,7 +1006,8 @@
         "renewableInstallations": "Czysta energia",
         "radiationSpike": "Skok radioaktywności",
         "radiationElevated": "Podwyższona radioaktywność",
-        "canadaRoads": "Ontario Roads (511)"
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Warstwy",
       "layerSearch": "Szukaj warstw...",
@@ -1119,7 +1121,8 @@
           "techFires": "Aktywne pożary w pobliżu infrastruktury technologicznej",
           "geoBoundaries": "Strefy zdemilitaryzowane, linie zawieszenia broni i sporne granice",
           "ciiChoropleth": "Mapa cieplna Country Instability Index — koloruje kraje według wyniku CII (zielony=stabilny, czerwony=krytyczny)",
-          "canadaRoads": "Highway incidents, alerts, and road conditions in Ontario (511)"
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Wpływ na: Trzęsienia ziemi, Pogoda, Protesty, Przestoje"

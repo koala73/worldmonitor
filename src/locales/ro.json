@@ -479,7 +479,8 @@
         "climate": "Comutați anomaliile climatice",
         "outages": "Comutați întreruperile de internet",
         "tradeRoutes": "Comutați rutele comerciale",
-        "canadaRoads": "Toggle Ontario 511 roads overlay"
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Comutați în mod întunecat",
@@ -1192,7 +1193,8 @@
         "renewableInstallations": "Energie curată",
         "radiationSpike": "Vârf de radiații",
         "radiationElevated": "Radiații ridicate",
-        "canadaRoads": "Ontario Roads (511)"
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Cutremur",
@@ -1299,7 +1301,8 @@
           "dayNight": "Terminator solar în timp real care arată zonele de zi și de noapte",
           "geoBoundaries": "Zone demilitarizate, linii de încetare a focului și granițe disputate",
           "ciiChoropleth": "Harta termică a instabilității — colorează țările după scorul CII (verde=stabil, roșu=critic)",
-          "canadaRoads": "Highway incidents, alerts, and road conditions in Ontario (511)"
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Afectează: cutremure, vreme, proteste, întreruperi"

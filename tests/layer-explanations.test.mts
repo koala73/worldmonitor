@@ -116,7 +116,7 @@ describe('layer explanation metadata', () => {
       'ciiChoropleth',
       'natural',
       'weather',
-      'canadaRoads',
+      'canadaRoads', 'canadaAlerts',
       'flights',
       'ais',
       'waterways',
@@ -175,7 +175,11 @@ describe('layer explanation metadata', () => {
     assertDuration(renderedFreshnessText('weather'), /([0-9]+)-\s*(minute)\s+freshness budget/i, healthMaxStale('weatherAlerts'), 'weather health freshness budget');
 
     assertDuration(renderedFreshnessText('canadaRoads'), /every\s+([0-9]+)\s+(minute)s?/i, 15, 'ontario 511 seed cadence');
+    assert.equal(healthMaxStale('albertaRoads'), healthMaxStale('canadaRoads'), 'Alberta 511 shares the 45-minute 3x cron budget');
     assertDuration(renderedFreshnessText('canadaRoads'), /([0-9]+)-\s*(minute)\s+freshness budget/i, healthMaxStale('canadaRoads'), 'ontario 511 health freshness budget');
+    assertDuration(renderedFreshnessText('canadaAlerts'), /every\s+([0-9]+)\s+(minute)s?/i, 15, 'alberta AEA seed cadence');
+    assertDuration(renderedFreshnessText('canadaAlerts'), /([0-9]+)-\s*(minute)\s+freshness budget/i, healthMaxStale('canadaAlerts'), 'alberta AEA health freshness budget');
+    assert.equal(healthMaxStale('canadaAlerts'), maxStaleMin('scripts/seed-alberta-emergency-alert.mjs', 'alberta-aea'), 'canadaAlerts health budget must match seeder maxStaleMin');
 
     const aviationCadenceMin = maxStaleMin('scripts/seed-aviation.mjs', 'intl') / 3;
     assertDuration(renderedFreshnessText('flights'), /([0-9]+)-\s*(minute)\s+cadence/i, aviationCadenceMin, 'aviation disruption seed cadence');
@@ -234,6 +238,28 @@ describe('layer explanation metadata', () => {
     assert.match(cyberThreats.source, /IP geolocation enrichment/i);
   });
 
+  test('canadaRoads explanation discloses provincial and Toronto coverage on one layer', () => {
+    const roads = getLayerExplanation('canadaRoads');
+    assert.match(LAYER_REGISTRY.canadaRoads.fallbackLabel, /Canada/i);
+    assert.match(roads.source, /Ontario 511/i);
+    assert.match(roads.source, /Alberta 511/i);
+    assert.match(roads.source, /Toronto Road Restrictions/i);
+    assert.match(roads.source, /DriveBC Open511/i);
+    assert.match(roads.purpose, /closures/i);
+    assert.doesNotMatch(roads.source, /Alberta 511[^.]{0,80}road-conditions/i);
+    assert.ok(
+      roads.limitations.some(limitation => /Manitoba/i.test(limitation)),
+      'canadaRoads limitations must still name Manitoba as not ingested',
+    );
+    assert.ok(
+      roads.limitations.some(limitation => /Alberta 511 roadconditions is not ingested/i),
+      'canadaRoads limitations must say Alberta roadconditions is not ingested',
+    );
+    for (const path of ['scripts/seed-provincial-511.mjs', 'scripts/seed-toronto-road-restrictions.mjs', 'scripts/seed-open511.mjs', 'api/health.js', 'src/services/canada-roads.ts']) {
+      assert.ok(roads.evidence.includes(path), `canadaRoads evidence must cite ${path}`);
+    }
+  });
+
   test('weather explanation discloses NWS-only United States coverage', () => {
     const weather = getLayerExplanation('weather');
 
@@ -248,6 +274,21 @@ describe('layer explanation metadata', () => {
     // later addition stays covered instead of reddening this assertion.
     for (const path of ['scripts/ais-relay.cjs', 'api/health.js', 'src/services/weather.ts']) {
       assert.ok(weather.evidence.includes(path), `weather evidence must cite ${path}`);
+    }
+  });
+
+  test('canadaAlerts explanation discloses Alberta Emergency Alert coverage', () => {
+    const canadaAlerts = getLayerExplanation('canadaAlerts');
+
+    assert.equal(LAYER_REGISTRY.canadaAlerts.fallbackLabel, 'Canada Alerts (Alberta Emergency Alert)');
+    assert.match(canadaAlerts.source, /Alberta Emergency Alert/i);
+    assert.match(canadaAlerts.source, /www\.alberta\.ca/i);
+    assert.ok(
+      canadaAlerts.limitations.some(limitation => /Alberta Emergency Alert only/i.test(limitation)),
+      'canadaAlerts limitations must state Alberta-only coverage in this slice',
+    );
+    for (const path of ['scripts/seed-alberta-emergency-alert.mjs', 'api/health.js', 'src/services/canada-alerts.ts']) {
+      assert.ok(canadaAlerts.evidence.includes(path), `canadaAlerts evidence must cite ${path}`);
     }
   });
 

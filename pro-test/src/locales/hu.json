@@ -48,7 +48,7 @@
     "entF10": "Felhő, on-prem vagy air-gapped telepítés",
     "entF11": "Dedikált bevezetés és támogatás",
     "entCta": "Beszéljen az értékesítéssel",
-    "freeF2": "500+ feed, 548+ forrás, 50+ térképréteg"
+    "freeF2": "500+ feed, 552+ forrás, 50+ térképréteg"
   },
   "whyUpgrade": {
     "title": "Miért érdemes frissíteni",
@@ -566,7 +566,7 @@
       "s1l": "Térképrétegek",
       "s2v": "500+",
       "s2l": "Kurátori források",
-      "s3v": "546+",
+      "s3v": "550+",
       "s3l": "Adatszolgáltatók",
       "s4v": "13",
       "s4l": "Szűk keresztmetszetek · élő AIS",
@@ -659,7 +659,7 @@
       "q2": "Mi az a globális hírszerzési irányítópult?",
       "a2": "Egy egyetlen élő nézet, amely olyan jeleket egyesít, amelyeket a legtöbb eszköz külön tárol: konfliktusesemények, hajó- és légiforgalom-követés, szállítási szűk keresztmetszetek, műholdak, tengeralatti kábelek, vezetékek, piacok és kiberfenyegetések — egy valós idejű világtérképen, AI-pontozással és összefoglalókkal. A World Monitor egy ingyenes ilyen.",
       "q3": "Honnan származnak az adatok?",
-      "a3": "546+ szolgáltatótól, név szerint: ACLED és UCDP a konfliktusokhoz, AISStream az élő hajókhoz, OpenSky a repülőgépekhez, NASA FIRMS a tüzekhez, USGS a földrengésekhez, IMF, BIS, FRED és Finnhub a piacokhoz és makrogazdasághoz — plusz 500+ válogatott hírhírforrás. Minden panel bemutatja forrásait és időbélyegeit.",
+      "a3": "550+ szolgáltatótól, név szerint: ACLED és UCDP a konfliktusokhoz, AISStream az élő hajókhoz, OpenSky a repülőgépekhez, NASA FIRMS a tüzekhez, USGS a földrengésekhez, IMF, BIS, FRED és Finnhub a piacokhoz és makrogazdasághoz — plusz 500+ válogatott hírhírforrás. Minden panel bemutatja forrásait és időbélyegeit.",
       "q4": "Valós időben tudom követni a szűk keresztmetszetek, például Hormuz vagy Bab el-Mandeb?",
       "a4": "Igen. 13 szűk keresztmetszetetet követünk élő AIS-hajószámokkal, heti változásokkal és zavaradási pontszámokkal — és a sűrűségi anomáliákat az egyes szorosok gördülő alapértékéhez képest jelezzük.",
       "q5": "Miben különbözik ez egy konfliktustérképtől, mint a Liveuamap?",

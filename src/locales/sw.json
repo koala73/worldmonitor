@@ -556,7 +556,8 @@
         "climate": "Geuza hitilafu za hali ya hewa",
         "outages": "Geuza kukatika kwa mtandao",
         "tradeRoutes": "Geuza njia za biashara",
-        "canadaRoads": "Toggle Ontario 511 roads overlay"
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Badili hadi hali ya giza",
@@ -1341,7 +1342,8 @@
         "happiness": "Furaha ya Dunia",
         "speciesRecovery": "Urejeshaji wa Aina",
         "renewableInstallations": "Nishati Safi",
-        "canadaRoads": "Ontario Roads (511)"
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Tetemeko la ardhi",
@@ -1448,7 +1450,8 @@
           "dayNight": "Kidhibiti cha wakati halisi cha jua kinachoonyesha maeneo ya mchana na usiku",
           "geoBoundaries": "Maeneo yasiyoruhusiwa kijeshi, njia za kusitisha mapigano, na mipaka yenye mizozo",
           "ciiChoropleth": "Ramani ya joto ya Fahirisi ya Nchi Kutoimarika - rangi nchi kwa alama za CII (kijani=imara, nyekundu=muhimu)",
-          "canadaRoads": "Highway incidents, alerts, and road conditions in Ontario (511)"
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Athari: Matetemeko ya Ardhi, Hali ya Hewa, Maandamano, Kukatika"
