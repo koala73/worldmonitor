@@ -154,9 +154,9 @@ jobs:
           echo "desktop_rust=$( [ "$DESKTOP_RUST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
   docs-stats:
-    # Always-on: guards the capability counts quoted in README / ARCHITECTURE /
-    # docs against the code sources of truth. Runs on every PR/push (docs-only
-    # PRs set changes.code=false and skip `unit`, so this must not gate on it).
+    # Always-on: derives build-owned inventory facts and validates fixed or
+    # semantic documentation contracts. Runs on every PR/push (docs-only PRs
+    # set changes.code=false and skip `unit`, so this must not gate on it).
     # Pure Node builtins — no npm install required.
     runs-on: ubuntu-latest
     steps:

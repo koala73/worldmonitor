@@ -7,7 +7,12 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
-import { discoverProtoServiceNames, loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+import {
+  discoverProtoServiceNames,
+  loadUnifiedOpenApiSpec,
+  openApiOperationIds,
+  serviceOpenApiOperationIds,
+} from './_lib/openapi-spec-cache.mjs';
 
 // Guards scripts/openapi-inject-rate-limit-errors.mjs. These contracts are
 // emitted by the gateway around every generated RPC, not by the proto handlers,
@@ -38,6 +43,16 @@ const yamlSpecsByFile = new Map(serviceYaml.map((file) => [
   file,
   loadYaml(readFileSync(resolve(apiDir, file), 'utf8')),
 ]));
+const jsonServiceOperationIds = serviceOpenApiOperationIds(jsonSpecsByFile);
+const yamlServiceOperationIds = serviceOpenApiOperationIds(yamlSpecsByFile);
+const jsonBundleOperationIds = [...jsonSpecsByFile.values()]
+  .flatMap((spec) => openApiOperationIds(spec))
+  .sort();
+
+function assertExactOperationParity(actual, expected, message) {
+  if (message === undefined) assert.deepEqual(actual, expected);
+  else assert.deepEqual(actual, expected, message);
+}
 
 function operations(spec) {
   const out = [];
@@ -121,6 +136,7 @@ describe('OpenAPI gateway rate-limit and error contracts', () => {
     const postTotal = discoveredOperations.filter((op) => op.method === 'post').length;
     assert.ok(total > 0, 'service-operation discovery must not be empty');
     assert.ok(postTotal > 0, 'POST-operation discovery must not be empty');
+    assertExactOperationParity(yamlServiceOperationIds, jsonServiceOperationIds, 'YAML and JSON service specs must expose the same service/method/path set');
   });
 
   for (const file of serviceJson) {
@@ -142,13 +158,22 @@ describe('OpenAPI gateway rate-limit and error contracts', () => {
   it('the unified bundle documents the same gateway contracts', () => {
     const bundle = loadUnifiedOpenApiSpec();
     const ops = operations(bundle);
-    const serviceTotal = [...jsonSpecsByFile.values()].reduce(
-      (sum, spec) => sum + operations(spec).length,
-      0,
-    );
-    assert.equal(ops.length, serviceTotal, `expected bundle operation count to match service specs (${serviceTotal}), found ${ops.length}`);
+    const bundleOperationIds = openApiOperationIds(bundle);
+    assert.equal(new Set(jsonBundleOperationIds).size, jsonBundleOperationIds.length, 'per-service operation paths must be globally unique for the unified bundle');
+    assertExactOperationParity(bundleOperationIds, jsonBundleOperationIds, 'unified and per-service specs must expose the same method/path set');
     assertSharedSchemas(bundle, 'worldmonitor.openapi.yaml');
     for (const op of ops) assertOperationContract(op, 'worldmonitor.openapi.yaml');
+  });
+
+  it('exact operation identities reject a same-cardinality substitution', () => {
+    const baseline = openApiOperationIds({ paths: { '/api/fixture/v1/original': { get: {} } } });
+    const substituted = openApiOperationIds({ paths: { '/api/fixture/v1/substituted': { get: {} } } });
+    assert.equal(baseline.length, substituted.length, 'fixture must preserve aggregate cardinality');
+    assert.throws(
+      () => assertExactOperationParity(substituted, baseline),
+      /Expected values to be strictly deep-equal/,
+      'method/path parity must reject a same-cardinality substitution',
+    );
   });
 
   it('the injector reports the specs as in-sync', () => {

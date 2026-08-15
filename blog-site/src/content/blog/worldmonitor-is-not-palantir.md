@@ -50,7 +50,7 @@ WorldMonitor is an open-source, real-time intelligence platform that turns publi
 
 It doesn't merely put dots on a map. The map answers *where* something is happening. Panels and briefs explain *what changed*. Country indices, timelines, and cross-stream correlation help assess *how significant it may be*. Route Explorer, the Scenario Engine, and WM Analyst help investigate *what it affects* and *what could happen next*. The same data spine supports six focused dashboards; software and agents can query it through the REST API, MCP server, CLI, and official SDKs.
 
-UCDP conflict events, IMF PortWatch ship transits, EIA petroleum stocks, OFAC designations, UNHCR displacement, USGS earthquakes, Eurostat series, prediction-market odds, and 500+ curated news feeds all enter that system. The important product is not any single event, price, or headline. It is the ability to see signals that normally live in separate systems together, while retaining enough source and freshness information to judge them.
+UCDP conflict events, IMF PortWatch ship transits, EIA petroleum stocks, OFAC designations, UNHCR displacement, USGS earthquakes, Eurostat series, prediction-market odds, and curated news feeds all enter that system. The important product is not any single event, price, or headline. It is the ability to see signals that normally live in separate systems together, while retaining enough source and freshness information to judge them.
 
 ## What you can do with it
 

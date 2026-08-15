@@ -21,7 +21,7 @@ During the early hours of major events, live webcams have consistently provided 
 
 World Monitor puts these feeds alongside your intelligence data so you can cross-reference what you're reading with what you're seeing. Learn more about how the platform brings together [real-time conflict tracking](/blog/posts/track-global-conflicts-in-real-time/) with live video.
 
-## 6 Regions, 31 Streams
+## Regional Webcam and News Streams
 
 ### Iran & Conflict Zone
 
@@ -93,7 +93,7 @@ The webcam becomes a ground-truth check against the signals.
 
 ## Live Video Streams Beyond Webcams
 
-World Monitor also integrates **30+ live news video streams** from major broadcasters:
+World Monitor also integrates **live news video streams** from major broadcasters:
 
 - **[Bloomberg TV](https://www.bloomberg.com/live)** for real-time financial coverage
 - **[Sky News](https://news.sky.com/)** for UK/international breaking news
@@ -146,4 +146,4 @@ Yes. The Tauri desktop app includes staggered iframe loading and a custom sideca
 
 ---
 
-**See the world in real time at [worldmonitor.app](https://www.worldmonitor.app). 31 live webcams, 30+ news streams, zero login required.**
+**See the world in real time at [worldmonitor.app](https://www.worldmonitor.app). Live webcams and news streams, zero login required.**

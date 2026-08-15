@@ -208,6 +208,19 @@ test('single-host provider identity changes require a reviewed lifecycle epoch',
       .some((error) => error.includes('without a reviewed lifecycle epoch')),
     'a single-host provider rename must update the explicit identity review epoch',
   );
+
+  const manifest = loadManifest(rootDir);
+  const directRename = structuredClone(manifest);
+  const defaultNamedEntry = directRename.entries.find(
+    (entry) => entry.observed && entry.status !== 'excluded' && entry.provider === entry.host,
+  );
+  assert.ok(defaultNamedEntry, 'the direct-rename mutation needs a default-named provider');
+  defaultNamedEntry.provider = 'Silently Renamed Provider';
+  assert.ok(
+    validateManifest(scanUpstreamHosts(rootDir), directRename)
+      .some((error) => error.includes('must be declared in PROVIDER_OVERRIDES')),
+    'a direct single-host manifest rename must declare an explicit reviewed identity override',
+  );
   assert.match(PROVIDER_IDENTITY_REVIEW.reviewReference, /(?:PR|issue|review)\s+#?\d+/i);
 });
 
@@ -685,7 +698,7 @@ test('a retired row stops claiming a source path it is no longer found in', () =
   const rebuilt = buildManifest([], {
     entries: [{
       host: 'gone.example',
-      provider: 'Gone',
+      provider: 'gone.example',
       license: 'Terms review',
       attribution: 'Credit Gone.',
       observed: true,
@@ -787,7 +800,7 @@ test('a truncated reference list says how much it is hiding', () => {
     {
       entries: [{
         host: 'many.example',
-        provider: 'Many',
+        provider: 'many.example',
         license: 'Terms review',
         attribution: 'Credit Many.',
         observed: true,

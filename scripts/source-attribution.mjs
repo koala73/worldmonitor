@@ -104,6 +104,11 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 });
 
 const PROVIDER_OVERRIDES = {
+  'api.adsb.lol': { provider: 'adsb.lol' },
+  'api.airplanes.live': { provider: 'airplanes.live' },
+  'api.x.com': { provider: 'X API' },
+  'atbackend.sipri.org': { provider: 'SIPRI Arms Transfers Database' },
+  'opendata.adsb.fi': { provider: 'adsb.fi Open Data' },
   'auth.opensky-network.org': { provider: 'opensky-network.org', identityGroup: 'opensky-network' },
   'opensky-network.org': { provider: 'opensky-network.org', identityGroup: 'opensky-network' },
   'customer-api.wingbits.com': { provider: 'wingbits.com', identityGroup: 'wingbits' },
@@ -628,7 +633,7 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '921fc44f509b24f504a5d5c84abf0f5180d6ee1bbb93051a0c88f7c8ffd2b424',
+  sha256: '93c05ab901940d1221944d64722b191a13803045d6eade744fc6d30f93248d15',
   reason: 'Baseline the reviewed provider identities already carried by the attribution manifest.',
   reviewReference: 'PR #6736',
 });
@@ -1039,6 +1044,10 @@ export function validateManifest(inventory, manifest) {
     if (typeof entry.observed !== 'boolean') errors.push(`manifest entry ${label} observed must be boolean`);
     if (typeof entry.kind !== 'string' || !MANIFEST_KIND_RE.test(entry.kind)) errors.push(`invalid manifest kind for ${label}`);
     if (typeof entry.status !== 'string' || !MANIFEST_STATUSES.has(entry.status)) errors.push(`invalid manifest status for ${label}`);
+    const reviewedProvider = PROVIDER_OVERRIDES[entry.host]?.provider;
+    if (typeof entry.provider === 'string' && entry.provider !== entry.host && entry.provider !== reviewedProvider) {
+      errors.push(`custom provider identity for ${label} must be declared in PROVIDER_OVERRIDES`);
+    }
     if (entry.references !== undefined && !Array.isArray(entry.references)) {
       errors.push(`manifest entry ${label} references must be an array`);
     }

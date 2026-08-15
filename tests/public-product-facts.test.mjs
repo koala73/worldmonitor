@@ -1,13 +1,28 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
-import { computeStats } from '../scripts/docs-stats.mjs';
+import {
+  computeStats,
+  validateVolatileInventoryClaims,
+  VOLATILE_INVENTORY_CLAIM_RE,
+} from '../scripts/docs-stats.mjs';
 import { buildInventoryFacts, generateInventoryFacts } from '../scripts/generate-inventory-facts.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -82,19 +97,6 @@ function collectAcquisitionSurfaces() {
 }
 
 const CURRENT_FACT_SURFACES = collectAcquisitionSurfaces();
-const VOLATILE_INVENTORY_CLAIM_RE = /\b\d[\d,]*\+?\s+(?:MCP\s+)?(?:tools?|feeds?|providers?|API handlers?|REST services?|operations?|map layers?|panels?|languages?|locales?|airports?|data ?centers?|datacenters?|entities?)\b/i;
-
-function currentInventoryClaimSurfaces() {
-  return CURRENT_FACT_SURFACES.filter((path) => (
-    ['index.html', 'README.md', 'README.zh-CN.md', 'server.json', 'cli/README.md'].includes(path)
-    || (/^docs\/[^/]+\.(?:md|mdx)$/.test(path) && path !== 'docs/changelog.mdx')
-    || /^docs\/zh\/[^/]+\.mdx$/.test(path)
-    || /^public\/[^/]+\.(?:md|txt|json)$/.test(path)
-    || /^pro-test\/src\/locales\/[^/]+\.json$/.test(path)
-    || /^blog-site\/src\/content\/blog\/[^/]+\.md$/.test(path)
-  ));
-}
-
 describe('public product facts generation contract', () => {
   it('fails closed when any published inventory extractor collapses to zero', () => {
     const stats = computeStats();
@@ -122,6 +124,11 @@ describe('public product facts generation contract', () => {
       }),
       /must be a positive integer/,
       'provider parser collapse must fail generation',
+    );
+    assert.throws(
+      () => buildInventoryFacts({ ...stats, localeCodes: [] }),
+      /localeCodes must be a non-empty unique locale-code registry/,
+      'locale membership extraction must not collapse while its count stays positive',
     );
   });
 
@@ -152,6 +159,45 @@ describe('public product facts generation contract', () => {
     }
   });
 
+  it('stops consumers on an interrupted publication and repairs it on the next run', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-facts-interrupted-'));
+    mkdirSync(join(tempRoot, 'api'));
+    mkdirSync(join(tempRoot, 'public'));
+    const expected = new Map([
+      ['api/_inventory-facts.generated.js', 'edge'],
+      ['public/product-facts.json', 'public'],
+    ]);
+    let renames = 0;
+    let consumerRan = false;
+    const interruptedFileOps = {
+      mkdirSync,
+      writeFileSync,
+      unlinkSync,
+      renameSync(from, to) {
+        renames += 1;
+        if (renames === 2) throw new Error('simulated publication interruption');
+        renameSync(from, to);
+      },
+    };
+    try {
+      assert.throws(() => {
+        generateInventoryFacts({ outputs: expected, rootDir: tempRoot, fileOps: interruptedFileOps });
+        consumerRan = true;
+      }, /simulated publication interruption/);
+      assert.equal(consumerRan, false, 'a failed generator must stop the next consumer command');
+      assert.equal(readFileSync(join(tempRoot, 'api/_inventory-facts.generated.js'), 'utf8'), 'edge');
+      assert.equal(existsSync(join(tempRoot, `public/product-facts.json.tmp-${process.pid}`)), false);
+      assert.throws(
+        () => generateInventoryFacts({ check: true, outputs: expected, rootDir: tempRoot }),
+        /public\/product-facts\.json/,
+      );
+      generateInventoryFacts({ outputs: expected, rootDir: tempRoot });
+      assert.doesNotThrow(() => generateInventoryFacts({ check: true, outputs: expected, rootDir: tempRoot }));
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('keeps stable product facts separate from build-owned inventory facts', () => {
     const stableFacts = readJson('shared/product-facts.generated.json');
     const publicFacts = readJson('public/product-facts.json');
@@ -175,6 +221,7 @@ describe('public product facts generation contract', () => {
       freshnessTrackedSourceGroups: stats.freshnessSources,
       sourceAttributionHosts: stats.sourceAttributionHosts,
       sourceAttributionProviders: stats.sourceAttribution.providerCount,
+      localeCodes: stats.localeCodes,
     });
     assert.equal(stableFacts.product.lifecycle, 'launched');
     assert.equal(stableFacts.product.pricingUrl, 'https://www.worldmonitor.app/pro#pricing');
@@ -222,29 +269,15 @@ describe('public product facts generation contract', () => {
   });
 
   it('keeps volatile inventory totals out of hand-authored acquisition copy', () => {
-    const allowedExactContracts = [
-      { path: 'docs/signal-intelligence.mdx', text: /(?:3\+ source types|6\+ sources\/hour)/ },
-      { path: 'docs/ai-intelligence.mdx', text: /8\+ feeds in 2 hours/ },
-      { path: 'docs/data-sources.mdx', text: /Natural disasters from 3 sources/ },
-      { path: 'docs/data-sources.mdx', text: /25 feed categories would have generated 25,000 edge invocations/ },
-      { path: 'docs/tradingview-screener-integration.md', text: /41\/41 operations/ },
-      { path: 'docs/api-versioning.mdx', text: /version 1 operation/ },
-    ];
-    const violations = [];
-    for (const path of currentInventoryClaimSurfaces()) {
-      if (path === 'docs/source-attribution.mdx') continue;
-      for (const [index, line] of read(path).split('\n').entries()) {
-        if (!VOLATILE_INVENTORY_CLAIM_RE.test(line)) continue;
-        if (/\btool errors\b/i.test(line)) continue;
-        if (allowedExactContracts.some((entry) => entry.path === path && entry.text.test(line))) continue;
-        violations.push(`${path}:${index + 1}: ${line.trim()}`);
-      }
-    }
+    const violations = validateVolatileInventoryClaims();
     assert.deepEqual(
       violations,
       [],
       `hand-authored acquisition copy must use registry-derived or semantic inventory wording:\n${violations.join('\n')}`,
     );
+    for (const claim of ['30+ live services', '500+ curated news feeds', '25+ other live services']) {
+      assert.match(claim, VOLATILE_INVENTORY_CLAIM_RE, `modifier form must remain guarded: ${claim}`);
+    }
   });
 
   it('keeps user-visible prices aligned with generated plan facts', () => {

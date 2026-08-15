@@ -198,7 +198,7 @@ It's not a replacement for a full supply chain management platform. It's the sit
 Prices are sourced from CME, ICE, LME, and other major exchanges with near real-time updates throughout trading hours. The dashboard shows current price, daily change, and trend indicators.
 
 **Can I set alerts for specific supply chain disruptions?**
-Yes. World Monitor's Custom Keyword Monitors let you set persistent alerts for terms like "port closure," "pipeline disruption," or specific commodity names. Matching headlines from 500+ curated RSS feeds are highlighted in your chosen color.
+Yes. World Monitor's Custom Keyword Monitors let you set persistent alerts for terms like "port closure," "pipeline disruption," or specific commodity names. Matching headlines from the curated RSS catalog are highlighted in your chosen color.
 
 **Does the Commodity Monitor include geopolitical risk context?**
 Yes. The Country Instability Index (CII), conflict layers, and Infrastructure Cascade panel overlay directly onto commodity and shipping data, so you see disruption risks alongside pricing.

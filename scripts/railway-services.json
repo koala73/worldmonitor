@@ -182,7 +182,7 @@
       "scripts/shared/ucdp-candidate.cjs",
       "shared/source-attribution-manifest.json",
       "public/.well-known/mcp/server-card.json",
-      "src/components/*.ts",
+      "src/components/**/*.ts",
       "src/config/feeds.ts",
       "src/config/map-layer-definitions.ts",
       "src/config/variants/*.ts",

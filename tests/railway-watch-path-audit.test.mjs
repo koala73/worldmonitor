@@ -77,7 +77,7 @@ const RELAY_INVENTORY_BUILD_INPUTS = Object.freeze([
   'scripts/source-attribution.mjs',
   'shared/source-attribution-manifest.json',
   'public/.well-known/mcp/server-card.json',
-  'src/components/*.ts',
+  'src/components/**/*.ts',
   'src/config/feeds.ts',
   'src/config/map-layer-definitions.ts',
   'src/config/variants/*.ts',
@@ -87,24 +87,44 @@ const RELAY_INVENTORY_BUILD_INPUTS = Object.freeze([
 const RELAY_GENERATED_RUNTIME_OUTPUT = 'scripts/shared/inventory-facts.generated.json';
 
 function pathPatternMatches(pattern, path) {
-  const expression = pattern
-    .replace(/[.+?^${}()|[\]\\]/gu, '\\$&')
-    .replaceAll('*', '[^/]*');
+  let expression = '';
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+    if (char !== '*') {
+      expression += /[.+?^${}()|[\]\\]/u.test(char) ? `\\${char}` : char;
+      continue;
+    }
+    if (pattern[index + 1] === '*') {
+      index += 1;
+      if (pattern[index + 1] === '/') {
+        index += 1;
+        expression += '(?:.*/)?';
+      } else {
+        expression += '.*';
+      }
+    } else {
+      expression += '[^/]*';
+    }
+  }
   return new RegExp(`^${expression}$`, 'u').test(path);
 }
 
 function patternHasRepositoryMatch(pattern) {
   if (!pattern.includes('*')) return existsSync(resolve(repoRoot, pattern));
-  const slash = pattern.lastIndexOf('/');
-  const directory = pattern.slice(0, slash);
-  return readFileNames(resolve(repoRoot, directory))
-    .some((name) => pathPatternMatches(pattern, `${directory}/${name}`));
+  const slash = pattern.lastIndexOf('/', pattern.indexOf('*'));
+  const directory = slash === -1 ? '' : pattern.slice(0, slash);
+  return readFilePaths(resolve(repoRoot, directory), directory)
+    .some((path) => pathPatternMatches(pattern, path));
 }
 
-function readFileNames(directory) {
-  return readdirSync(directory, { withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) => entry.name);
+function readFilePaths(directory, relativeDirectory) {
+  const paths = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) paths.push(...readFilePaths(resolve(directory, entry.name), path));
+    else if (entry.isFile()) paths.push(path);
+  }
+  return paths;
 }
 
 /**
@@ -1119,6 +1139,12 @@ describe('audit CLI argument parsing', () => {
 // behaviour directly, so a broken detector fails here rather than passing a
 // co-evolved comparison.
 describe('closure detection layers', () => {
+  it('matches recursive relay inventory inputs at the component root and below it', () => {
+    assert.equal(pathPatternMatches('src/components/**/*.ts', 'src/components/NewsPanel.ts'), true);
+    assert.equal(pathPatternMatches('src/components/**/*.ts', 'src/components/map/NestedPanel.ts'), true);
+    assert.equal(pathPatternMatches('src/components/**/*.ts', 'src/components/map/NestedPanel.css'), false);
+  });
+
   const registry = RAILWAY_SERVICE_REGISTRY;
 
   describe('the container model derived from a Dockerfile', () => {

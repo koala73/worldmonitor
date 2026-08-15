@@ -34,9 +34,34 @@ import { fileURLToPath } from 'node:url';
 import { load as loadYamlSource } from 'js-yaml';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const OPENAPI_HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 
 // JSON string per absolute source path, memoized for this process.
 const jsonMemo = new Map();
+
+/** Sorted `METHOD /path` identities for every real operation in one spec. */
+export function openApiOperationIds(spec, { methods = OPENAPI_HTTP_METHODS } = {}) {
+  const ids = [];
+  for (const [path, pathItem] of Object.entries(spec?.paths ?? {})) {
+    for (const [method, operation] of Object.entries(pathItem ?? {})) {
+      if (!methods.has(method) || !operation || typeof operation !== 'object') continue;
+      ids.push(`${method.toUpperCase()} ${path}`);
+    }
+  }
+  return ids.sort();
+}
+
+/**
+ * Sorted `Service::METHOD /path` identities across per-service specifications.
+ * The service namespace makes a same-cardinality move between service files a
+ * detectable contract change, not merely a matching global route count.
+ */
+export function serviceOpenApiOperationIds(specsByFile, options) {
+  return [...specsByFile].flatMap(([file, spec]) => {
+    const service = file.replace(/\.openapi\.(?:json|yaml)$/u, '');
+    return openApiOperationIds(spec, options).map((id) => `${service}::${id}`);
+  }).sort();
+}
 
 function cacheDir() {
   return join(repoRoot, 'node_modules', '.cache', 'wm-openapi-spec');

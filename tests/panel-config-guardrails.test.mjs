@@ -120,15 +120,30 @@ function callName(node, sourceFile) {
 function panelFetchIds(callback, sourceFile) {
   const ids = new Set();
   const aliasIds = new Map();
+  const panelCollections = new Set(['this.state.panels']);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    callback.forEachChild(function collectAliases(node) {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        const initializer = unwrapExpression(node.initializer);
+        if (panelCollections.has(initializer.getText(sourceFile)) && !panelCollections.has(node.name.text)) {
+          panelCollections.add(node.name.text);
+          changed = true;
+        }
+        const panelId = panelAccessId(initializer, panelCollections);
+        if (panelId && aliasIds.get(node.name.text) !== panelId) {
+          aliasIds.set(node.name.text, panelId);
+          changed = true;
+        }
+      }
+      node.forEachChild(collectAliases);
+    });
+  }
+
   const walk = (node) => {
-    if (
-      ((ts.isElementAccessExpression(node)
-        && ts.isStringLiteralLike(node.argumentExpression)
-        && node.expression.getText(sourceFile) === 'this.state.panels')
-      || (ts.isPropertyAccessExpression(node)
-        && node.expression.getText(sourceFile) === 'this.state.panels'))
-    ) {
-      const panelId = ts.isElementAccessExpression(node) ? node.argumentExpression.text : node.name.text;
+    const panelId = panelAccessId(node, panelCollections);
+    if (panelId) {
       let declaration = node.parent;
       while (ts.isParenthesizedExpression(declaration) || ts.isAsExpression(declaration)) declaration = declaration.parent;
       if (ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)) {
@@ -153,6 +168,26 @@ function panelFetchIds(callback, sourceFile) {
     if (panelId) ids.add(panelId);
   }
   return [...ids];
+}
+
+function unwrapExpression(node) {
+  let current = node;
+  while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)) current = current.expression;
+  return current;
+}
+
+function panelAccessId(node, panelCollections) {
+  const current = unwrapExpression(node);
+  if (ts.isElementAccessExpression(current)
+    && ts.isStringLiteralLike(current.argumentExpression)
+    && panelCollections.has(unwrapExpression(current.expression).getText())) {
+    return current.argumentExpression.text;
+  }
+  if (ts.isPropertyAccessExpression(current)
+    && panelCollections.has(unwrapExpression(current.expression).getText())) {
+    return current.name.text;
+  }
+  return null;
 }
 
 function scheduledSelfFetchingPanelIds(source = appSrc) {
@@ -713,6 +748,15 @@ describe('panel-config guardrails', () => {
     `;
     assert.deepStrictEqual(scheduledSelfFetchingPanelIds(blockBody), ['alpha']);
     assert.deepStrictEqual([...primedPanelIds(blockBody)], ['alpha']);
+
+    const collectionAlias = `
+      scheduleRefresh('alpha', () => {
+        const panels = this.state.panels;
+        panels.alpha.fetchData();
+      });
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(collectionAlias), ['alpha']);
     assert.throws(
       () => scheduledSelfFetchingPanelIds("scheduleRefresh('alpha', () => (this.state.panels['beta'] as BetaPanel).fetchData());"),
       /must fetch that same panel/,

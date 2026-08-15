@@ -113,7 +113,7 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 
 | Metric | Value |
 |--------|-------|
-| News feeds monitored | 500+ |
+| News feeds monitored | Registry-derived catalog |
 | Live video streams | 8 |
 | Data layers on map | Shared layer catalog |
 | Panel implementations | Concrete classes |

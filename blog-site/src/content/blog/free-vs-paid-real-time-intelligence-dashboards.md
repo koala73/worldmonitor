@@ -18,7 +18,7 @@ This guide breaks down what free tiers actually include in 2026, what paid tiers
 More than most buyers expect. Using [World Monitor's free tier](https://www.worldmonitor.app/) as a concrete reference point — because its scope is public and it requires no signup — a $0 dashboard today includes:
 
 - **Map layer types** across conflicts, military activity, natural disasters, cyber incidents, infrastructure, shipping, and markets
-- **500+ curated news feeds** aggregated and deduplicated in real time
+- **Curated news feeds** aggregated and deduplicated in real time
 - **Country briefs and instability scores** for situational context worldwide
 - **Maritime chokepoint monitoring** (Hormuz, Suez, Malacca, Bab el-Mandeb) and undersea cable status
 - **Cascade analysis, hotspots, breaking-alert pipeline, and watchlists**
@@ -81,7 +81,7 @@ Free is the correct choice — not a compromise — when:
 Upgrade when one of these is concretely true:
 
 - **Missed events cost you money or safety.** Scheduled digests and alert routing to Slack/Teams/Telegram exist so the dashboard reaches you.
-- **You ask analytical questions daily.** An AI analyst grounded in 30+ live data services with citations replaces the hour of tab-hopping, not the dashboard.
+- **You ask analytical questions daily.** An AI analyst grounded in live data services with citations replaces the hour of tab-hopping, not the dashboard.
 - **You're integrating, not reading.** API quotas (e.g. 1,000 requests/day starter, 10,000/day business tier) and webhook rules are the product; the UI is incidental.
 - **Your agents need the data.** MCP access with a documented live tool surface lets Claude or GPT query intelligence under one key.
 - **Compliance is in the room.** SSO, RBAC, audit trails, and air-gapped deployment are enterprise-tier features everywhere; nobody ships them free.

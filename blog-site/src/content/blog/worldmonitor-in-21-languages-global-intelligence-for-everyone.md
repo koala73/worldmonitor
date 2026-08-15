@@ -84,7 +84,7 @@ World Monitor handles all of these. The command palette accepts CJK input during
 
 ## Language-Specific News Feeds
 
-This is where multilingual support goes beyond interface translation. World Monitor's **500+ curated RSS feeds** include **locale-specific sources**:
+This is where multilingual support goes beyond interface translation. World Monitor's **curated RSS catalog** includes **locale-specific sources**:
 
 When you switch World Monitor to French, you don't just see English headlines translated. You see French-language sources: [Le Monde](https://www.lemonde.fr/), [France 24](https://www.france24.com/fr/), [AFP](https://www.afp.com/fr). Switch to Arabic and you see [Al Jazeera Arabic](https://www.aljazeera.net/), [Al Arabiya](https://www.alarabiya.net/), local MENA outlets. Switch to Japanese and Japanese news sources appear.
 

@@ -13,7 +13,7 @@
  * Stats are parsed from source text (no TS execution / import-graph / env deps)
  * so this runs anywhere Node runs, including bare CI.
  */
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { buildSourceAttributionStats } from './source-attribution.mjs';
@@ -61,6 +61,38 @@ function findTopLevelObjectBlocks(source) {
     if (close === -1) return source.slice(start);
     return source.slice(start, start + close);
   });
+}
+
+function parseLayerRegistry(source) {
+  const start = source.indexOf('export const LAYER_REGISTRY');
+  const end = source.indexOf('export const V1_LAYER_EXPLANATION_KEYS', start);
+  if (start === -1 || end === -1) {
+    throw new Error('docs-stats: could not find the complete LAYER_REGISTRY block');
+  }
+  const registryBlock = source.slice(start, end);
+  const declaredKeys = [...registryBlock.matchAll(/^\s+([A-Za-z_$][\w$]*)\s*:/gm)]
+    .map((match) => match[1]);
+  const definitionMatches = [...registryBlock.matchAll(
+    /^\s+([A-Za-z_$][\w$]*)\s*:\s*def\(\s*['"]([A-Za-z_$][\w$]*)['"]/gm,
+  )];
+  const definitionKeys = definitionMatches.map((match) => match[1]);
+  const mismatchedKeys = definitionMatches
+    .filter((match) => match[1] !== match[2])
+    .map((match) => `${match[1]} -> ${match[2]}`);
+  if (declaredKeys.length === 0) {
+    throw new Error('docs-stats: LAYER_REGISTRY extraction was empty');
+  }
+  if (!sameStringSet(declaredKeys, definitionKeys) || mismatchedKeys.length > 0) {
+    const delta = describeSetDelta(definitionKeys, declaredKeys);
+    throw new Error(
+      `docs-stats: every LAYER_REGISTRY property must be a matching def('<key>', ...) call${delta ? ` (${delta})` : ''}`
+      + `${mismatchedKeys.length ? `; mismatched: ${mismatchedKeys.join(', ')}` : ''}`,
+    );
+  }
+  return {
+    keys: sorted(declaredKeys),
+    registryBlock,
+  };
 }
 
 function parseMcpAppsInventory({
@@ -732,8 +764,8 @@ function computeStats() {
 
   // ---- Map layers (src/config/map-layer-definitions.ts) ----
   const mld = read('src/config/map-layer-definitions.ts');
-  const registryBlock = mld.slice(mld.indexOf('LAYER_REGISTRY'), mld.indexOf('VARIANT_LAYER_ORDER'));
-  const layerDefinitions = (registryBlock.match(/^\s+\w+:\s+def\(/gm) || []).length;
+  const { keys: layerKeys, registryBlock } = parseLayerRegistry(mld);
+  const layerDefinitions = layerKeys.length;
 
   // Web-locked premium layers: literal 'locked' in the def() call. Desktop-only
   // locks use the `_desktop ? 'locked' : undefined` ternary and stay free on web,
@@ -951,6 +983,87 @@ function claims(s) {
     { file: 'AGENTS.md', re: /requires buf \+ sebuf (v\d+\.\d+\.\d+) plugins/, value: s.sebufVersion },
     { file: 'CONTRIBUTING.md', re: /currently \*\*(v\d+\.\d+\.\d+)\*\*/, value: s.sebufVersion },
   ];
+}
+
+export const VOLATILE_INVENTORY_CLAIM_RE = /\b(?:\d[\d,]*\+\s+(?:(?:MCP|other|live|curated|interactive|registered|observed|news)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|operations|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities)|\d[\d,]*\s+(?:(?:MCP|other|live|curated|interactive|registered|observed|news)\s+)+(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|operations|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities)|\d[\d,]*\s+(?:providers|airports|map layers|panels|locales|streams|connectors))\b/i;
+
+const ACQUISITION_CLAIM_ROOTS = [
+  'index.html',
+  'README.md',
+  'README.zh-CN.md',
+  'server.json',
+  'cli',
+  'docs',
+  'public',
+  'public/.well-known/agent-skills',
+  'pro-test/src/locales',
+  'pro-test/index.html',
+  'pro-test/welcome.html',
+  'blog-site/src/content/blog',
+  'scripts/build-agent-skills-index.mjs',
+];
+const ACQUISITION_CLAIM_EXCLUDES = [
+  'docs/audits/',
+  'docs/brainstorms/',
+  'docs/changelog.mdx',
+  'docs/Docs_To_Review/',
+  'docs/generated/',
+  'docs/internal/',
+  'docs/perf/',
+  'docs/plans/',
+  'docs/research/',
+  'docs/solutions/',
+  'docs/source-attribution.mdx',
+  'public/blog/',
+  'public/pro/assets/',
+  'public/openapi',
+];
+const ACQUISITION_CLAIM_EXTENSIONS = /\.(?:astro|html|json|md|mdx|mjs|txt)$/;
+
+export function validateVolatileInventoryClaims() {
+  const allowedExactContracts = [
+    { path: 'docs/signal-intelligence.mdx', text: /(?:3\+ source types|6\+ sources\/hour)/ },
+    { path: 'docs/ai-intelligence.mdx', text: /8\+ feeds in 2 hours/ },
+    { path: 'docs/data-sources.mdx', text: /Natural disasters from 3 sources/ },
+    { path: 'docs/data-sources.mdx', text: /25 feed categories would have generated 25,000 edge invocations/ },
+    { path: 'docs/tradingview-screener-integration.md', text: /41\/41 operations/ },
+    { path: 'docs/api-versioning.mdx', text: /version 1 operation/ },
+  ];
+  const failures = [];
+  const isCurrentClaimSurface = (path) => (
+    ['index.html', 'README.md', 'README.zh-CN.md', 'server.json', 'cli/README.md',
+      'pro-test/index.html', 'pro-test/welcome.html', 'scripts/build-agent-skills-index.mjs'].includes(path)
+    || (/^docs\/[^/]+\.(?:md|mdx)$/.test(path) && path !== 'docs/changelog.mdx' && path !== 'docs/source-attribution.mdx')
+    || /^docs\/zh\/[^/]+\.mdx$/.test(path)
+    || /^public\/[^/]+\.(?:md|txt|json)$/.test(path)
+    || /^public\/\.well-known\/agent-skills\/[^/]+\/SKILL\.md$/.test(path)
+    || /^pro-test\/src\/locales\/[^/]+\.json$/.test(path)
+    || /^blog-site\/src\/content\/blog\/[^/]+\.md$/.test(path)
+  );
+  const visit = (path) => {
+    if (ACQUISITION_CLAIM_EXCLUDES.some((prefix) => path.startsWith(prefix))) return;
+    const absolute = join(ROOT, path);
+    let stat;
+    try {
+      stat = statSync(absolute);
+    } catch {
+      return;
+    }
+    if (stat.isDirectory()) {
+      for (const entry of readdirSync(absolute)) visit(`${path}/${entry}`);
+      return;
+    }
+    if (!ACQUISITION_CLAIM_EXTENSIONS.test(path) || !isCurrentClaimSurface(path)) return;
+    for (const [index, line] of read(path).split('\n').entries()) {
+      if (!VOLATILE_INVENTORY_CLAIM_RE.test(line)) continue;
+      if (/\btool errors\b/i.test(line)) continue;
+      if (/\bTier \d+(?:[–-]\d+)? sources\b/i.test(line)) continue;
+      if (allowedExactContracts.some((entry) => entry.path === path && entry.text.test(line))) continue;
+      failures.push(`${path}:${index + 1}: hand-authored acquisition copy must use registry-derived or semantic inventory wording: ${line.trim()}`);
+    }
+  };
+  for (const path of ACQUISITION_CLAIM_ROOTS) visit(path);
+  return failures;
 }
 
 function findDocsJsonPages(node, out = []) {
@@ -1499,6 +1612,7 @@ const DOC_VALIDATORS = [
   validateHealthSummaryDocs,
   validatePlanLayerEntitlementCopy,
   validateCategoryExplainerCopy,
+  validateVolatileInventoryClaims,
 ];
 
 function main() {
@@ -1567,6 +1681,7 @@ export {
   sameStringSet,
   describeSetDelta,
   parseMcpAppsInventory,
+  parseLayerRegistry,
   validateMcpAppsDocs,
   parseBootstrapCacheContract,
   parseBootstrapKeyTiers,

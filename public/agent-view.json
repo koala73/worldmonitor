@@ -9,8 +9,7 @@
       "url": "https://worldmonitor.app/mcp",
       "transport": "streamable-http",
       "serverCard": "https://worldmonitor.app/.well-known/mcp/server-card.json",
-      "tools": 63,
-      "note": "tools/list, prompts/list, resources/list and describe_tool are anonymous; data calls need auth."
+      "note": "Call tools/list or read the server card for the live tool inventory. tools/list, prompts/list, resources/list and describe_tool are anonymous; data calls need auth."
     },
     "rest": {
       "base": "https://api.worldmonitor.app",
@@ -113,6 +112,7 @@
     "agentSkills": "https://worldmonitor.app/.well-known/agent-skills/index.json",
     "apiCatalog": "https://worldmonitor.app/.well-known/api-catalog",
     "aiCatalog": "https://worldmonitor.app/.well-known/ai-catalog.json",
+    "productFacts": "https://worldmonitor.app/product-facts.json",
     "docs": "https://www.worldmonitor.app/docs/documentation"
   },
   "instances": {

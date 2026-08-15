@@ -13,6 +13,54 @@ import {
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 
+// Independent Appendix A closure. Do not derive this from INVENTORY_CONTRACTS:
+// removing one production surface must fail this test instead of shrinking both
+// the audit loop and its expected scan count together.
+const EXPECTED_INVENTORY_SURFACES = [
+  ['source-attribution-totals', 'tests/source-attribution.test.mjs', ['stats.activeHosts', 'stats.providerCount', 'stats.observedHosts']],
+  ['panel-discoverability', 'tests/panel-config-guardrails.test.mjs', ['allRegistryPanelIds', 'panelCommandKeywordCounts', 'categoryMappedPanelIds', 'scheduled', 'primed']],
+  ['panel-discoverability', 'tests/news-panel-key-reachability.test.mts', ['feedCategories', 'catalogPanelKeys', 'registrations']],
+  ['mcp-output-schema-tools', 'tests/mcp-output-schema-coverage.test.mjs', ['registry', 'tools']],
+  ['mcp-tool-annotations', 'tests/mcp-tool-annotations.test.mjs', ['registry', 'tools']],
+  ['mcp-protocol-tools', 'tests/mcp-protocol-conformance.test.mjs', ['step1bListBody.result.tools', 'step3Body.result.tools']],
+  ['mcp-protocol-tools', 'tests/mcp.test.mjs', ['body.result.tools', 'TOOL_REGISTRY']],
+  ['mcp-protocol-tools', 'tests/mcp-resources.test.mjs', ['uiUris', 'listedUiUris']],
+  ['llms-mcp-tools', 'tests/llms-txt-mcp-tools.test.mjs', ['registry']],
+  ['openapi-server-specs', 'tests/openapi-servers-contract.test.mjs', ['serviceJsonSpecs', 'serviceYamlSpecs']],
+  ['openapi-security-specs', 'tests/openapi-security-contract.test.mjs', ['serviceSpecs']],
+  ['openapi-jmespath-specs', 'tests/openapi-jmespath-contract.test.mjs', ['serviceJsonSpecs', 'serviceYamlSpecs', 'jsonServiceGetIds', 'yamlServiceGetIds', 'bundleGetIds']],
+  ['openapi-rate-limit-operations', 'tests/openapi-rate-limit-errors-contract.test.mjs', ['serviceJson', 'serviceYaml', 'jsonServiceOperationIds', 'yamlServiceOperationIds', 'bundleOperationIds']],
+  ['route-cache-tiers', 'tests/route-cache-tier.test.mjs', ['getRoutes', 'tierKeys']],
+  ['feed-client-server-catalogs', 'tests/feeds-client-server-parity.test.mjs', ['client', 'server', 'clientNameCount', 'serverNameCount']],
+  ['feed-client-server-catalogs', 'tests/completeness-measurement.test.mjs', ['extractServerFeeds']],
+  ['feed-client-server-catalogs', 'tests/publisher-families.test.mjs', ['FEED_LABELS', 'withHosts']],
+  ['regional-feed-promises', 'tests/feed-catalog-drift.test.mts', ['CANADA_CATALOG', 'nordicBeyondSweden']],
+  ['feed-source-provenance', 'tests/source-provenance.test.mts', ['names', 'explicitUnknownDimensions']],
+  ['locale-key-completeness', 'tests/locale-completeness.test.mjs', ['enKeys', 'localeKeys']],
+  ['food-stocks-locales', 'tests/food-stocks-registration.test.mjs', ['locales']],
+  ['market-tape-locales', 'tests/market-tape-claim.test.mts', ['localeFiles']],
+  ['product-catalog-inventories', 'tests/product-catalog-freshness.test.mjs', ['generatedProductIds', 'tiersJson', 'bundleHighlights']],
+  ['agent-skills-index', 'tests/agent-skills-index.test.mjs', ['index.skills']],
+  ['mcp-presets', 'tests/mcp-presets.test.mjs', ['presets']],
+  ['route-explorer-countries', 'tests/route-explorer-pickers.test.mts', ['getAllCountries']],
+  ['notification-country-registry', 'tests/notification-relay-country-scope-5359.test.mjs', ['names']],
+  ['consumer-price-health-markets', 'tests/consumer-prices-coverage-rollout.test.mjs', ['CONSUMER_PRICE_HEALTH_MARKETS']],
+  ['iso2-country-registry', 'convex/__tests__/followed-countries-mutations.test.ts', ['_ISO2_REGISTRY_FOR_TESTS']],
+  ['public-fixed-algorithm-claims', 'tests/cii-docs-drift.test.mts', ['llmsBrief', 'llmsFull', 'pressKit', 'communityGuide', 'publicHome', 'agentView.capabilities']],
+];
+
+function inventorySurfaceRows(contracts) {
+  return contracts.flatMap((entry) => entry.surfaces.map((entrySurface) => [
+    entry.id,
+    entrySurface.path,
+    [...entrySurface.selectors],
+  ]));
+}
+
+function assertInventorySurfaceClosure(contracts) {
+  assert.deepEqual(inventorySurfaceRows(contracts), EXPECTED_INVENTORY_SURFACES);
+}
+
 function fixtureContract({ action = 'replace', classifications = ['parity'] } = {}) {
   return [{
     id: 'fixture-providers',
@@ -38,36 +86,17 @@ describe('extensible inventory count contract audit', () => {
   it('ships a valid closed-world registry for every Appendix A test surface', () => {
     assert.deepEqual(validateInventoryContractRegistry(INVENTORY_CONTRACTS), []);
     assert.equal(new Set(INVENTORY_CONTRACTS.map((entry) => entry.id)).size, INVENTORY_CONTRACTS.length);
-    const registeredIds = new Set(INVENTORY_CONTRACTS.map((entry) => entry.id));
-    for (const requiredId of [
-      'source-attribution-totals',
-      'panel-discoverability',
-      'mcp-output-schema-tools',
-      'mcp-tool-annotations',
-      'mcp-protocol-tools',
-      'llms-mcp-tools',
-      'openapi-server-specs',
-      'openapi-security-specs',
-      'openapi-jmespath-specs',
-      'openapi-rate-limit-operations',
-      'route-cache-tiers',
-      'feed-client-server-catalogs',
-      'regional-feed-promises',
-      'feed-source-provenance',
-      'locale-key-completeness',
-      'food-stocks-locales',
-      'market-tape-locales',
-      'product-catalog-inventories',
-      'agent-skills-index',
-      'mcp-presets',
-      'route-explorer-countries',
-      'notification-country-registry',
-      'consumer-price-health-markets',
-      'iso2-country-registry',
-      'public-fixed-algorithm-claims',
-    ]) {
-      assert.ok(registeredIds.has(requiredId), `missing required cross-domain contract ${requiredId}`);
-    }
+    assertInventorySurfaceClosure(INVENTORY_CONTRACTS);
+  });
+
+  it('rejects deleting one existing Appendix A surface from the registry', () => {
+    const mutant = INVENTORY_CONTRACTS.map((entry) => entry.id === 'mcp-protocol-tools'
+      ? { ...entry, surfaces: entry.surfaces.filter((entrySurface) => entrySurface.path !== 'tests/mcp.test.mjs') }
+      : entry);
+    assert.throws(
+      () => assertInventorySurfaceClosure(mutant),
+      /Expected values to be strictly deep-equal/,
+    );
   });
 
   it('keeps every registered repository surface free of unclassified inventory literals', () => {
@@ -138,6 +167,31 @@ describe('extensible inventory count contract audit', () => {
       run();
     `);
     assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 4);
+  });
+
+  it('follows inventory and numeric arguments through parameterized helpers', () => {
+    const result = auditFixture(`
+      import assert from 'node:assert/strict';
+      const arrowCheck = (actual) => assert.equal(actual, 552);
+      function namedCheck(actual, expected) {
+        assert.equal(actual, expected);
+      }
+      arrowCheck(stats.providerCount);
+      namedCheck(stats.providerCount, 500 + 52);
+    `);
+    assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 2);
+  });
+
+  it('follows array destructuring and generic identity wrappers', () => {
+    const result = auditFixture(`
+      import assert from 'node:assert/strict';
+      const [arrayCount] = [stats.providerCount];
+      const identity = (value) => value;
+      const wrappedCount = identity(stats.providerCount);
+      assert.equal(arrayCount, 552);
+      assert.equal(wrappedCount, 552);
+    `);
+    assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 2);
   });
 
   it('does not exempt an exact inventory of one', () => {

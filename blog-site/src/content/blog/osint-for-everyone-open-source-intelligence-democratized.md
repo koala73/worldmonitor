@@ -32,9 +32,9 @@ Each tool has its own interface, its own refresh cycle, its own learning curve. 
 
 World Monitor integrates all of these data sources (and many more) into a single, layered map with real-time updates. Learn more about [what World Monitor is and how it works](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/).
 
-## 500+ Intelligence Feeds, Zero Configuration
+## Curated Intelligence Feeds, Zero Configuration
 
-World Monitor aggregates **500+ curated RSS feeds** organized across 15 categories:
+World Monitor aggregates a **curated RSS catalog** organized by signal category:
 
 - Geopolitics and defense
 - Middle East and North Africa

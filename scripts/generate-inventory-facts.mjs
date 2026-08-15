@@ -28,12 +28,23 @@ export function buildInventoryFacts(stats = computeStats()) {
     freshnessTrackedSourceGroups: stats.freshnessSources,
     sourceAttributionHosts: stats.sourceAttributionHosts,
     sourceAttributionProviders: stats.sourceAttribution.providerCount,
+    localeCodes: stats.localeCodes,
   };
 
   for (const [name, value] of Object.entries(capabilities)) {
+    if (name === 'localeCodes') continue;
     if (!Number.isInteger(value) || value <= 0) {
       throw new Error(`inventory capability ${name} must be a positive integer`);
     }
+  }
+  if (!Array.isArray(capabilities.localeCodes)
+    || capabilities.localeCodes.length === 0
+    || new Set(capabilities.localeCodes).size !== capabilities.localeCodes.length
+    || capabilities.localeCodes.some((code) => typeof code !== 'string' || !/^[a-z]{2}(?:-[A-Z]{2})?$/.test(code))) {
+    throw new Error('inventory capability localeCodes must be a non-empty unique locale-code registry');
+  }
+  if (capabilities.localeCodes.length !== capabilities.locales) {
+    throw new Error('inventory capability localeCodes must match the derived locale count');
   }
 
   return {
@@ -61,15 +72,17 @@ function expectedInventoryOutputs() {
   ]);
 }
 
-function atomicWrite(rootDir, path, content) {
+const DEFAULT_FILE_OPS = Object.freeze({ mkdirSync, renameSync, unlinkSync, writeFileSync });
+
+function atomicWrite(rootDir, path, content, fileOps = DEFAULT_FILE_OPS) {
   const target = join(rootDir, path);
   const temporary = `${target}.tmp-${process.pid}`;
   try {
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(temporary, content, { flag: 'wx' });
-    renameSync(temporary, target);
+    fileOps.mkdirSync(dirname(target), { recursive: true });
+    fileOps.writeFileSync(temporary, content, { flag: 'wx' });
+    fileOps.renameSync(temporary, target);
   } catch (error) {
-    try { unlinkSync(temporary); } catch {}
+    try { fileOps.unlinkSync(temporary); } catch {}
     throw error;
   }
 }
@@ -78,6 +91,7 @@ export function generateInventoryFacts({
   check = false,
   outputs = expectedInventoryOutputs(),
   rootDir = ROOT,
+  fileOps = DEFAULT_FILE_OPS,
 } = {}) {
   // Prepare and validate every output before replacing any consumer artifact.
   const readCurrent = (path) => {
@@ -98,7 +112,7 @@ export function generateInventoryFacts({
   for (const [path, content] of outputs) {
     const current = readCurrent(path);
     if (current === content) continue;
-    atomicWrite(rootDir, path, content);
+    atomicWrite(rootDir, path, content, fileOps);
     console.log(`  ✓ ${join(rootDir, path)}`);
   }
 }

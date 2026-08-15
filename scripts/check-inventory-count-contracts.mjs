@@ -61,10 +61,10 @@ export const INVENTORY_CONTRACTS = Object.freeze([
     surface('tests/openapi-security-contract.test.mjs', ['serviceSpecs']),
   ]),
   contract('openapi-jmespath-specs', 'generated per-service OpenAPI specifications and their GET operations', ['parity'], 'replace', 'Exact sibling and operation coverage replaces aggregate spec and operation totals.', [
-    surface('tests/openapi-jmespath-contract.test.mjs', ['serviceJsonSpecs', 'serviceYamlSpecs', 'getOps']),
+    surface('tests/openapi-jmespath-contract.test.mjs', ['serviceJsonSpecs', 'serviceYamlSpecs', 'jsonServiceGetIds', 'yamlServiceGetIds', 'bundleGetIds']),
   ]),
   contract('openapi-rate-limit-operations', 'all operations discovered from generated service OpenAPI specifications', ['parity'], 'replace', 'Classified-operation coverage and bundle parity replace operation floors.', [
-    surface('tests/openapi-rate-limit-errors-contract.test.mjs', ['serviceJson', 'serviceYaml', 'serviceTotal']),
+    surface('tests/openapi-rate-limit-errors-contract.test.mjs', ['serviceJson', 'serviceYaml', 'jsonServiceOperationIds', 'yamlServiceOperationIds', 'bundleOperationIds']),
   ]),
   contract('route-cache-tiers', 'generated GET routes and RPC_CACHE_TIER keys', ['parity'], 'replace', 'Exact route-to-tier set parity already detects additions and removals.', [
     surface('tests/route-cache-tier.test.mjs', ['getRoutes', 'tierKeys']),
@@ -206,6 +206,7 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
   const constantBindings = new Map();
   const taintedNames = new Map();
   const taintedParameters = new Set();
+  const constantParameters = new Map();
   const functionDeclarations = new Map();
   let references = 0;
 
@@ -213,6 +214,9 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
       const constant = evaluateNumericConstant(node.initializer, constantBindings);
       if (constant !== undefined) constantBindings.set(node.name.text, constant);
+      if (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) {
+        functionDeclarations.set(node.name.text, node.initializer);
+      }
     }
     if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) && node.name && ts.isIdentifier(node.name)) {
       functionDeclarations.set(node.name.text, node);
@@ -248,6 +252,18 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
           changed = true;
         }
       }
+      if (
+        ts.isVariableDeclaration(node)
+        && ts.isIdentifier(node.name)
+        && node.initializer
+        && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+        && isTainted(node.initializer.body, selectorSet, taintedNames, taintedParameters)
+      ) {
+        if (!hasTaintedName(taintedNames, node.name.text, node)) {
+          addTaintedName(taintedNames, node.name.text, node);
+          changed = true;
+        }
+      }
       if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left) && isTainted(node.right, selectorSet, taintedNames, taintedParameters)) {
         if (!hasTaintedName(taintedNames, node.left.text, node.left)) {
           addTaintedName(taintedNames, node.left.text, node.left);
@@ -263,6 +279,10 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
             taintedParameters.add(parameter);
             changed = true;
           }
+          const constant = evaluateNumericConstant(argument, constantBindings, constantParameters);
+          if (parameter && constant !== undefined && addConstantParameter(constantParameters, parameter, constant)) {
+            changed = true;
+          }
         });
       }
     });
@@ -271,7 +291,7 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
   const violations = [];
   const seen = new Set();
   walk(sourceFile, (node) => {
-    const candidate = numericContractCandidate(node, selectorSet, taintedNames, taintedParameters, constantBindings);
+    const candidate = numericContractCandidate(node, selectorSet, taintedNames, taintedParameters, constantBindings, constantParameters);
     if (!candidate || candidate.semanticNonEmpty) return;
     const key = `${candidate.node.pos}:${candidate.node.end}`;
     if (seen.has(key)) return;
@@ -292,6 +312,17 @@ function taintedBindingNames(name, initializer, selectors, taintedNames, tainted
   if (ts.isIdentifier(name)) {
     return propagatesInventory(initializer, selectors, taintedNames, taintedParameters) ? [name.text] : [];
   }
+  if (ts.isArrayBindingPattern(name)) {
+    const names = [];
+    name.elements.forEach((element, index) => {
+      if (!ts.isBindingElement(element) || !ts.isIdentifier(element.name)) return;
+      const source = ts.isArrayLiteralExpression(initializer) ? initializer.elements[index] : initializer;
+      if (source && propagatesInventory(source, selectors, taintedNames, taintedParameters)) {
+        names.push(element.name.text);
+      }
+    });
+    return names;
+  }
   if (!ts.isObjectBindingPattern(name)) return [];
   const basePath = expressionPath(initializer);
   const names = [];
@@ -308,13 +339,13 @@ function taintedBindingNames(name, initializer, selectors, taintedNames, tainted
   return names;
 }
 
-function numericContractCandidate(node, selectors, taintedNames, taintedParameters, constants) {
+function numericContractCandidate(node, selectors, taintedNames, taintedParameters, constants, constantParameters) {
   if (ts.isBinaryExpression(node) && isComparison(node.operatorToken.kind)) {
     if (!isAssertedValue(node)) return null;
     const leftTainted = isInventoryCountValue(node.left, selectors, taintedNames, taintedParameters);
     const rightTainted = isInventoryCountValue(node.right, selectors, taintedNames, taintedParameters);
-    const leftConstant = evaluateNumericConstant(node.left, constants);
-    const rightConstant = evaluateNumericConstant(node.right, constants);
+    const leftConstant = evaluateNumericConstant(node.left, constants, constantParameters);
+    const rightConstant = evaluateNumericConstant(node.right, constants, constantParameters);
     if (leftTainted && rightConstant !== undefined) {
       return {
         node,
@@ -339,7 +370,7 @@ function numericContractCandidate(node, selectors, taintedNames, taintedParamete
     const taintedCallee = isTainted(node.expression, selectors, taintedNames, taintedParameters);
     if (!taintedArguments && !taintedCallee) return null;
     for (const argument of node.arguments) {
-      const constant = evaluateNumericConstant(argument, constants);
+      const constant = evaluateNumericConstant(argument, constants, constantParameters);
       if (constant !== undefined) return { node, value: constant, kind: 'exact' };
     }
     const embedded = embeddedNumericLiteral(assertionContractNodes(node));
@@ -459,21 +490,25 @@ function expressionPath(node) {
   return null;
 }
 
-function evaluateNumericConstant(node, bindings) {
+function evaluateNumericConstant(node, bindings, constantParameters = new Map()) {
   if (!node) return undefined;
   if (ts.isNumericLiteral(node)) return Number(node.text.replaceAll('_', ''));
-  if (ts.isParenthesizedExpression(node)) return evaluateNumericConstant(node.expression, bindings);
+  if (ts.isParenthesizedExpression(node)) return evaluateNumericConstant(node.expression, bindings, constantParameters);
   if (ts.isPrefixUnaryExpression(node) && [ts.SyntaxKind.PlusToken, ts.SyntaxKind.MinusToken].includes(node.operator)) {
-    const value = evaluateNumericConstant(node.operand, bindings);
+    const value = evaluateNumericConstant(node.operand, bindings, constantParameters);
     if (value === undefined) return undefined;
     return node.operator === ts.SyntaxKind.MinusToken ? -value : value;
+  }
+  if (ts.isIdentifier(node)) {
+    const parameterConstant = constantParameterReference(node, constantParameters);
+    if (parameterConstant !== undefined) return parameterConstant;
   }
   if (ts.isIdentifier(node) && bindings.has(node.text)) {
     return bindings.get(node.text);
   }
   if (!ts.isBinaryExpression(node)) return undefined;
-  const left = evaluateNumericConstant(node.left, bindings);
-  const right = evaluateNumericConstant(node.right, bindings);
+  const left = evaluateNumericConstant(node.left, bindings, constantParameters);
+  const right = evaluateNumericConstant(node.right, bindings, constantParameters);
   if (left === undefined || right === undefined) return undefined;
   switch (node.operatorToken.kind) {
     case ts.SyntaxKind.PlusToken: return left + right;
@@ -484,6 +519,28 @@ function evaluateNumericConstant(node, bindings) {
     case ts.SyntaxKind.AsteriskAsteriskToken: return left ** right;
     default: return undefined;
   }
+}
+
+function addConstantParameter(constantParameters, parameter, value) {
+  const values = constantParameters.get(parameter) ?? new Set();
+  const previousSize = values.size;
+  values.add(value);
+  constantParameters.set(parameter, values);
+  return values.size !== previousSize;
+}
+
+function constantParameterReference(identifier, constantParameters) {
+  let current = identifier.parent;
+  while (current) {
+    if (ts.isFunctionLike(current)) {
+      const parameter = current.parameters.find((candidate) =>
+        ts.isIdentifier(candidate.name) && candidate.name.text === identifier.text);
+      if (!parameter) return undefined;
+      return constantParameters.get(parameter)?.values().next().value;
+    }
+    current = current.parent;
+  }
+  return undefined;
 }
 
 function assertionLike(expression) {

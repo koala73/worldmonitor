@@ -99,7 +99,10 @@ describe('agent-mode view (/?mode=agent)', () => {
 
   it('stays in parity with the MCP server card and A2A agent card', () => {
     assert.equal(view.endpoints.mcp.url, serverCard.url);
-    assert.equal(view.endpoints.mcp.tools, serverCard.tools.length);
+    assert.equal(view.endpoints.mcp.serverCard, 'https://worldmonitor.app/.well-known/mcp/server-card.json');
+    assert.equal(view.endpoints.mcp.tools, undefined, 'agent-view must not carry a hand-maintained tool total');
+    assert.match(view.endpoints.mcp.note, /tools\/list.*live tool inventory/i);
+    assert.ok(serverCard.tools.length > 0, 'the linked live server card must expose tools');
     assert.equal(view.endpoints.a2a.url, agentCard.url);
     assert.equal(view.endpoints.nlweb.url, 'https://www.worldmonitor.app/ask');
   });
@@ -128,6 +131,7 @@ describe('agent-mode view (/?mode=agent)', () => {
         'public/.well-known/agent-skills/index.json',
       'https://worldmonitor.app/.well-known/api-catalog': 'public/.well-known/api-catalog',
       'https://worldmonitor.app/.well-known/ai-catalog.json': 'public/.well-known/ai-catalog.json',
+      'https://worldmonitor.app/product-facts.json': 'public/product-facts.json',
       'https://worldmonitor.app/llms.txt': 'public/llms.txt',
     };
     for (const [url, path] of Object.entries(trackedPaths)) {

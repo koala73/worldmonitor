@@ -6,7 +6,12 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
-import { discoverProtoServiceNames, loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+import {
+  discoverProtoServiceNames,
+  loadUnifiedOpenApiSpec,
+  openApiOperationIds,
+  serviceOpenApiOperationIds,
+} from './_lib/openapi-spec-cache.mjs';
 
 // Guards the universal `?jmespath=` response-projection parameter injected by
 // scripts/openapi-inject-jmespath.mjs. The REST gateway
@@ -21,6 +26,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
+const GET_METHOD = new Set(['get']);
 const serviceJsonSpecs = readdirSync(apiDir)
   .filter((f) => /Service\.openapi\.json$/.test(f))
   .sort();
@@ -35,16 +41,15 @@ const yamlSpecsByFile = new Map(serviceYamlSpecs.map((file) => [
   file,
   loadYaml(readFileSync(resolve(apiDir, file), 'utf8')),
 ]));
+const jsonServiceGetIds = serviceOpenApiOperationIds(jsonSpecsByFile, { methods: GET_METHOD });
+const yamlServiceGetIds = serviceOpenApiOperationIds(yamlSpecsByFile, { methods: GET_METHOD });
+const jsonBundleGetIds = [...jsonSpecsByFile.values()]
+  .flatMap((spec) => openApiOperationIds(spec, { methods: GET_METHOD }))
+  .sort();
 
-function countGetOperations(spec) {
-  return Object.values(spec.paths ?? {}).reduce(
-    (count, operations) => count + (operations?.get && typeof operations.get === 'object' ? 1 : 0),
-    0,
-  );
-}
-
-function discoveredJsonGetOperations() {
-  return [...jsonSpecsByFile.values()].reduce((count, spec) => count + countGetOperations(spec), 0);
+function assertExactOperationParity(actual, expected, message) {
+  if (message === undefined) assert.deepEqual(actual, expected);
+  else assert.deepEqual(actual, expected, message);
 }
 
 function findJmespathParam(op) {
@@ -135,26 +140,32 @@ describe('OpenAPI jmespath projection parameter contract', () => {
   });
 
   it('per-service JSON specs advertise jmespath on every discovered GET', () => {
-    const total = serviceJsonSpecs.reduce((sum, file) => {
-      const spec = jsonSpecsByFile.get(file);
-      return sum + assertJmespathContract(spec, file);
-    }, 0);
-    assert.ok(total > 0, 'GET-operation discovery must not be empty');
-    assert.equal(total, discoveredJsonGetOperations(), 'audited JSON GETs must match independently discovered JSON GETs');
+    for (const file of serviceJsonSpecs) assertJmespathContract(jsonSpecsByFile.get(file), file);
+    assert.ok(jsonServiceGetIds.length > 0, 'GET-operation discovery must not be empty');
   });
 
   it('per-service YAML specs advertise jmespath on every discovered GET', () => {
-    const total = serviceYamlSpecs.reduce((sum, file) => {
-      const spec = yamlSpecsByFile.get(file);
-      return sum + assertJmespathContract(spec, file);
-    }, 0);
-    assert.equal(total, discoveredJsonGetOperations(), 'YAML and JSON service specs must expose the same GET-operation count');
+    for (const file of serviceYamlSpecs) assertJmespathContract(yamlSpecsByFile.get(file), file);
+    assertExactOperationParity(yamlServiceGetIds, jsonServiceGetIds, 'YAML and JSON service specs must expose the same service/method/path set');
   });
 
   it('the unified bundle advertises jmespath on every discovered GET', () => {
     const bundle = loadUnifiedOpenApiSpec();
-    const total = assertJmespathContract(bundle, 'worldmonitor.openapi.yaml');
-    assert.equal(total, discoveredJsonGetOperations(), 'unified and per-service specs must expose the same GET-operation count');
+    assertJmespathContract(bundle, 'worldmonitor.openapi.yaml');
+    const bundleGetIds = openApiOperationIds(bundle, { methods: GET_METHOD });
+    assert.equal(new Set(jsonBundleGetIds).size, jsonBundleGetIds.length, 'per-service GET paths must be globally unique for the unified bundle');
+    assertExactOperationParity(bundleGetIds, jsonBundleGetIds, 'unified and per-service specs must expose the same method/path set');
+  });
+
+  it('exact operation identities reject a same-cardinality substitution', () => {
+    const baseline = openApiOperationIds({ paths: { '/api/fixture/v1/original': { get: {} } } }, { methods: GET_METHOD });
+    const substituted = openApiOperationIds({ paths: { '/api/fixture/v1/substituted': { get: {} } } }, { methods: GET_METHOD });
+    assert.equal(baseline.length, substituted.length, 'fixture must preserve aggregate cardinality');
+    assert.throws(
+      () => assertExactOperationParity(substituted, baseline),
+      /Expected values to be strictly deep-equal/,
+      'method/path parity must reject a same-cardinality substitution',
+    );
   });
 
   it('the injector reports the specs as in-sync (idempotent)', () => {
