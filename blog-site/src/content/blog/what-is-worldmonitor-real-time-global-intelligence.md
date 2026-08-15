@@ -34,23 +34,23 @@ That correlation layer is the product's central idea: separate weak signals beco
 
 ## What Is Included in the Free Dashboard?
 
-The public dashboard exposes 58 map-layer types, 500+ curated news feeds backed by 551+ observed upstream hosts, country briefs, instability scores, chokepoints, infrastructure, markets, disasters, and watchlists. Every layer except the Resilience layer is available on the free plan, and the dashboard can be opened without an account.
+The public dashboard exposes a shared map-layer catalog, curated news feeds backed by observed upstream hosts, country briefs, instability scores, chokepoints, infrastructure, markets, disasters, and watchlists. Every layer except the Resilience layer is available on the free plan, and the dashboard can be opened without an account.
 
 World Monitor currently maintains:
 
-- **31 Tier-1 countries** in the high-frequency Country Instability Index
-- A **196-country** public Country Resilience Index universe
-- **29 stock exchanges** and **14 central-bank or supranational institutions** in the generated market catalog
-- **28 interface languages**, including right-to-left Arabic
-- **Six dashboard variants**: World, Tech, Finance, Commodity, Happy, and Energy Monitor
+- The Tier-1 country registry in the high-frequency Country Instability Index
+- The public Country Resilience Index universe
+- Stock exchanges and central-bank or supranational institutions in the generated market catalog
+- Interface languages, including right-to-left Arabic
+- Dashboard variants (registry keys): `full`, `tech`, `finance`, `commodity`, `happy`, and `energy`
 
 These counts are generated from the repository rather than estimated in editorial copy. The current plans, limits, and capability summary are also published in [machine-readable pricing](https://www.worldmonitor.app/pricing.md).
 
 ## How Do the Country Risk Scores Work?
 
-The **Country Instability Index (CII)** is a high-frequency 0–100 score for 31 Tier-1 countries. It blends a curated editorial baseline with live event pressure from unrest, conflict, security, and information signals, and publishes a signed 24-hour movement delta. It is a triage signal, not a probability or a substitute for source review.
+The **Country Instability Index (CII)** is a high-frequency 0–100 score for the Tier-1 country registry. It blends a curated editorial baseline with live event pressure from unrest, conflict, security, and information signals, and publishes a signed 24-hour movement delta. It is a triage signal, not a probability or a substitute for source review.
 
-The **Country Resilience Index (CRI)** measures a different question: how well a country can absorb and recover from shocks. It covers 72 indicators across 21 active dimensions and six weighted domains for a fixed 196-country rankable universe, with coverage and imputation provenance exposed alongside the score. Read the [CII methodology](https://www.worldmonitor.app/docs/country-instability-index) and [CRI methodology](https://www.worldmonitor.app/docs/methodology/country-resilience-index) before using either index in a decision workflow.
+The **Country Resilience Index (CRI)** measures a different question: how well a country can absorb and recover from shocks. It covers 72 indicators across 21 active dimensions and six weighted domains for the public rankable universe, with coverage and imputation provenance exposed alongside the score. Read the [CII methodology](https://www.worldmonitor.app/docs/country-instability-index) and [CRI methodology](https://www.worldmonitor.app/docs/methodology/country-resilience-index) before using either index in a decision workflow.
 
 ## Who Uses World Monitor?
 
@@ -67,7 +67,7 @@ The dashboard supports triage and context. It does not replace a licensed termin
 
 ## Can Developers and AI Agents Use the Data?
 
-Yes. World Monitor's public interface is generated from 298 Protocol Buffer definitions into 36 REST service specifications, alongside a Model Context Protocol server with 63 live tools. Public metadata and discovery surfaces are open; data-bearing API, MCP tool, and resource calls require the appropriate Pro/API OAuth session or API key.
+Yes. World Monitor's public interface is generated from Protocol Buffer definitions into REST service specifications, alongside a Model Context Protocol server with a live tool registry. Public metadata and discovery surfaces are open; data-bearing API, MCP tool, and resource calls require the appropriate Pro/API OAuth session or API key.
 
 Developers can start with the [API reference](https://www.worldmonitor.app/docs/api-reference), [MCP quickstart](https://www.worldmonitor.app/docs/mcp-quickstart), or [OpenAPI specification](https://www.worldmonitor.app/openapi.json). AI agents can also read the concise [agent briefing](https://www.worldmonitor.app/llms.txt) and the fuller [platform reference](https://www.worldmonitor.app/llms-full.txt).
 

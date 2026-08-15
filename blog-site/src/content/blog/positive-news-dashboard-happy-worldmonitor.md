@@ -41,7 +41,7 @@ The Happy variant is one of [six dashboards on the platform](/blog/posts/five-da
 
 ## Limits
 
-Curation is editorial: 27 feeds chosen for credibility and signal, which means judgment calls about what counts as "positive." Progress data is slower-moving than event data by nature — the counters and progress panels update on the cadence of their underlying sources. And no, reading good news doesn't change the world state; it changes whether your model of the world state is complete.
+Curation is editorial: feeds chosen for credibility and signal, which means judgment calls about what counts as "positive." Progress data is slower-moving than event data by nature — the counters and progress panels update on the cadence of their underlying sources. And no, reading good news doesn't change the world state; it changes whether your model of the world state is complete.
 
 ## Source transparency
 

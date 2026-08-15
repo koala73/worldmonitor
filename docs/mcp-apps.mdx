@@ -3,7 +3,7 @@ title: "MCP Apps: interactive ui:// widgets for WorldMonitor"
 description: "Complete contract for WorldMonitor's MCP Apps interactive ui:// resources, tool links, host flow, security posture, and drift checks."
 ---
 
-WorldMonitor supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) through the `io.modelcontextprotocol/ui` extension. The current fleet ships 10 MCP Apps: self-contained `ui://` HTML resources that an MCP Apps host can render inline after a linked tool call.
+WorldMonitor supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) through the `io.modelcontextprotocol/ui` extension. The current fleet ships MCP Apps: self-contained `ui://` HTML resources that an MCP Apps host can render inline after a linked tool call.
 
 This page is the source-of-truth guide for the interactive surface. Use it with the [MCP Server overview](/mcp-overview) for auth, quota, transport, and general JSON-RPC behavior.
 
@@ -95,7 +95,7 @@ Important limitation: `frame-ancestors` inside a meta CSP is advisory only. Brow
 3. Add a canonical `*_UI_URI` constant and registry entry in `api/mcp/ui/registry.ts`.
 4. Set `_uiResourceUri` on exactly one backing tool in `api/mcp/registry/rpc-tools.ts` or `api/mcp/registry/cache-tools.ts`.
 5. Update `docs/mcp-apps.mdx`, the short [MCP overview](/mcp-overview#mcp-apps-interactive-ui), and `public/.well-known/mcp/server-card.json`.
-6. Run `npm run docs:stats` to refresh `docs/generated/stats.json`.
+6. Run `npm run inventory:facts:check` to validate the build-owned inventory snapshot.
 7. Run `npm run docs:check` and the focused MCP resource/tool tests.
 
 The docs-stat gate derives the app inventory from `api/mcp/ui/registry.ts` and the tool registries. It fails when:

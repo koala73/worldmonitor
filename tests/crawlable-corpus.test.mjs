@@ -45,7 +45,20 @@ const SOURCE_DOMAIN_IDS = new Set([
   'technology',
 ]);
 
+// This raw-field oracle intentionally does not import the production active
+// predicate from scripts/source-attribution.mjs.
+function rawManifestActiveEntries(manifest) {
+  assert.ok(Array.isArray(manifest?.entries), 'the attribution manifest must contain an entries array');
+  return manifest.entries.filter(
+    (entry) => entry?.observed === true && (entry.status === 'reviewed' || entry.status === 'terms-review'),
+  );
+}
+
 describe('sources catalog domain assignment', () => {
+  it('rejects an empty active-provider catalog', () => {
+    assert.throws(() => buildSourceCatalog([]), /Source catalog cannot be empty/);
+  });
+
   it('assigns mineral production hosts to energy instead of failing the corpus build', () => {
     const catalog = buildSourceCatalog([
       {
@@ -518,8 +531,7 @@ describe('crawlable corpus generator', () => {
       const attributionManifest = JSON.parse(
         readFileSync(join(repoRoot, 'shared/source-attribution-manifest.json'), 'utf8'),
       );
-      const activeAttributionEntries = attributionManifest.entries
-        .filter((entry) => entry.observed === true && entry.status !== 'excluded');
+      const activeAttributionEntries = rawManifestActiveEntries(attributionManifest);
       const activeProviderNames = new Set(activeAttributionEntries.map((entry) => entry.provider));
       assert.ok(
         sourcesPage.includes(`<strong>${activeAttributionEntries.length}</strong>`),

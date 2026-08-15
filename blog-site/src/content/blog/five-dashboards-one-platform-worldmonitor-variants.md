@@ -149,13 +149,13 @@ Regardless of which variant you use, you get the full platform engine:
 
 ### Interactive 3D Globe + Flat Map
 
-Dual map engines ([globe.gl](https://globe.gl/)/[Three.js](https://threejs.org/) for 3D, [deck.gl](https://deck.gl/) for flat WebGL) that switch at runtime. Both support all 58 map layers.
+Dual map engines ([globe.gl](https://globe.gl/)/[Three.js](https://threejs.org/) for 3D, [deck.gl](https://deck.gl/) for flat WebGL) that switch at runtime. Both support the shared map-layer catalog.
 
 ### AI Analysis
 
 The 4-tier LLM fallback chain (Ollama, Groq, OpenRouter, browser T5) works across all variants. Generate briefs, classify threats, and run analysis privately.
 
-### 28 Languages
+### Localized Interfaces
 
 Full internationalization with lazy-loaded language packs, locale-specific RSS feeds, and RTL support for Arabic.
 

@@ -10,6 +10,12 @@ public/reference/
 public/research/
 public/sources/
 public/crawlable-corpus.json
+# Volatile inventory metrics are derived during install/build. Stable product
+# lifecycle, pricing, and catalog artifacts remain committed.
+public/product-facts.json
+api/_inventory-facts.generated.js
+scripts/shared/inventory-facts.generated.json
+docs/generated/stats.json
 .DS_Store
 *.log
 .env

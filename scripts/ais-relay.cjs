@@ -6882,6 +6882,7 @@ const DODO_TIER_CONFIG = GENERATED_PRODUCT_CATALOG.tierConfig;
 const DODO_PUBLIC_TIER_GROUPS = GENERATED_PRODUCT_CATALOG.publicTierGroups;
 const DODO_FALLBACK_PRICES = GENERATED_PRODUCT_CATALOG.fallbackPrices;
 const DODO_PUBLIC_PRODUCT_FACTS = GENERATED_PRODUCT_CATALOG.facts;
+const DODO_PUBLIC_INVENTORY_FACTS = requireShared('inventory-facts.generated.json');
 
 let dodoPriceSeedInFlight = false;
 
@@ -6966,6 +6967,7 @@ async function seedDodoPrices() {
     const now = Date.now();
     const payload = {
       ...DODO_PUBLIC_PRODUCT_FACTS,
+      capabilities: DODO_PUBLIC_INVENTORY_FACTS.capabilities,
       tiers,
       fetchedAt: now,
       cachedUntil: now + DODO_PRICE_SEED_TTL * 1000,

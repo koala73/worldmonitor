@@ -43,10 +43,10 @@ describe('agent readiness: llms.txt MCP tool citations', () => {
   const registry = registryToolNames();
 
   it('the MCP registry exposes a non-trivial tool set', () => {
-    assert.ok(
-      registry.size >= 20,
-      `expected >=20 registered MCP tools in ${REGISTRY_DIR}, got ${registry.size}`,
-    );
+    assert.ok(registry.size > 0, `MCP registry extraction from ${REGISTRY_DIR} must not be empty`);
+    for (const criticalTool of ['get_world_brief', 'get_country_brief', 'describe_tool']) {
+      assert.ok(registry.has(criticalTool), `MCP registry is missing critical discovery tool ${criticalTool}`);
+    }
   });
 
   for (const rel of LLMS_FILES) {

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # =============================================================================
 # AIS Relay Sidecar
 # =============================================================================
@@ -6,6 +7,15 @@
 # scripts/package.json (fast-xml-parser, @anthropic-ai/sdk, etc.)
 # Set AISSTREAM_API_KEY in docker-compose.yml or Railway env.
 # =============================================================================
+
+# Derive inventory metrics from the immutable build context. This stage uses
+# only Node builtins; the relay's production dependency install stays intact.
+# .dockerignore excludes local environment and credential files.
+FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS inventory-builder
+
+WORKDIR /workspace
+COPY . .
+RUN node scripts/generate-inventory-facts.mjs
 
 FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd
 
@@ -61,6 +71,8 @@ COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed
 # scripts/seed-ucdp-events.mjs. Missing it = ERR_MODULE_NOT_FOUND at relay
 # startup (the require is top-level in the UCDP section).
 COPY scripts/shared/ucdp-candidate.cjs ./scripts/shared/ucdp-candidate.cjs
+# A missing inventory artifact fails the image build before relay startup.
+COPY --from=inventory-builder /workspace/scripts/shared/inventory-facts.generated.json ./scripts/shared/inventory-facts.generated.json
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
 # _seed-envelope-source.mjs and _seed-contract.mjs are transitively imported
 # by _seed-utils.mjs (lines 9-10) and by seed-chokepoint-flows.mjs /

@@ -79,7 +79,7 @@ Geographic convergence is particularly powerful. When you see protests AND milit
 
 ## 210+ Military Bases Mapped
 
-The military infrastructure layer maps over **210 bases from 9 operators**, including:
+The military infrastructure layer maps the authoritative base registry, including:
 
 - US military installations worldwide
 - Russian bases and deployment zones
@@ -146,7 +146,7 @@ Think tanks and government analysts use the Strategic Theater Posture assessment
 
 ## 8 Regional Presets
 
-Jump between regions instantly with 8 preset views: Global, Americas, Europe, MENA, Asia, Africa, Oceania, and Latin America. Each preset adjusts the map view and highlights region-relevant layers.
+Jump between regions instantly with named preset views: Global, Americas, Europe, MENA, Asia, Africa, Oceania, and Latin America. Each preset adjusts the map view and highlights region-relevant layers.
 
 ## Shareable Intelligence
 

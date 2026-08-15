@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
-import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+import { discoverProtoServiceNames, loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 // Guards scripts/openapi-inject-rate-limit-errors.mjs. These contracts are
 // emitted by the gateway around every generated RPC, not by the proto handlers,
@@ -30,6 +30,14 @@ const serviceJson = readdirSync(apiDir)
 const serviceYaml = readdirSync(apiDir)
   .filter((f) => /Service\.openapi\.yaml$/.test(f))
   .sort();
+const jsonSpecsByFile = new Map(serviceJson.map((file) => [
+  file,
+  JSON.parse(readFileSync(resolve(apiDir, file), 'utf8')),
+]));
+const yamlSpecsByFile = new Map(serviceYaml.map((file) => [
+  file,
+  loadYaml(readFileSync(resolve(apiDir, file), 'utf8')),
+]));
 
 function operations(spec) {
   const out = [];
@@ -98,21 +106,26 @@ function assertOperationContract({ path, method, op }, label) {
 
 describe('OpenAPI gateway rate-limit and error contracts', () => {
   it('audits the known operation surface', () => {
-    const total = serviceJson.reduce(
-      (sum, file) => sum + operations(JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'))).length,
-      0,
+    assert.deepEqual(
+      serviceJson.map((file) => file.replace(/\.openapi\.json$/, '')),
+      discoverProtoServiceNames(),
+      'JSON service specs must match the proto service universe exactly',
     );
-    const postTotal = serviceJson.reduce(
-      (sum, file) => sum + operations(JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'))).filter((op) => op.method === 'post').length,
-      0,
+    assert.deepEqual(
+      serviceYaml.map((file) => file.replace(/\.openapi\.yaml$/, '')),
+      discoverProtoServiceNames(),
+      'YAML service specs must match the proto service universe exactly',
     );
-    assert.ok(total >= 192, `expected at least the audited 192 service operations, found ${total}`);
-    assert.ok(postTotal >= 11, `expected at least the audited 11 POST service operations, found ${postTotal}`);
+    const discoveredOperations = [...jsonSpecsByFile.values()].flatMap(operations);
+    const total = discoveredOperations.length;
+    const postTotal = discoveredOperations.filter((op) => op.method === 'post').length;
+    assert.ok(total > 0, 'service-operation discovery must not be empty');
+    assert.ok(postTotal > 0, 'POST-operation discovery must not be empty');
   });
 
   for (const file of serviceJson) {
     it(`${file}: every operation documents gateway 429/default errors`, () => {
-      const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
+      const spec = jsonSpecsByFile.get(file);
       assertSharedSchemas(spec, file);
       for (const op of operations(spec)) assertOperationContract(op, file);
     });
@@ -120,7 +133,7 @@ describe('OpenAPI gateway rate-limit and error contracts', () => {
 
   for (const file of serviceYaml) {
     it(`${file}: every operation documents gateway 429/default errors`, () => {
-      const spec = loadYaml(readFileSync(resolve(apiDir, file), 'utf8'));
+      const spec = yamlSpecsByFile.get(file);
       assertSharedSchemas(spec, file);
       for (const op of operations(spec)) assertOperationContract(op, file);
     });
@@ -129,8 +142,8 @@ describe('OpenAPI gateway rate-limit and error contracts', () => {
   it('the unified bundle documents the same gateway contracts', () => {
     const bundle = loadUnifiedOpenApiSpec();
     const ops = operations(bundle);
-    const serviceTotal = serviceJson.reduce(
-      (sum, file) => sum + operations(JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'))).length,
+    const serviceTotal = [...jsonSpecsByFile.values()].reduce(
+      (sum, spec) => sum + operations(spec).length,
       0,
     );
     assert.equal(ops.length, serviceTotal, `expected bundle operation count to match service specs (${serviceTotal}), found ${ops.length}`);

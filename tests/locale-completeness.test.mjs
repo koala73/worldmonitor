@@ -88,6 +88,7 @@ describe('locale completeness', () => {
   // 2000 means the catalog collapsed (bad parse / mass deletion), which would
   // make the per-locale completeness checks below pass vacuously.
   it('en.json defines at least 2000 translation keys', () => {
+    // inventory-contract: locale-key-completeness; classification: floor; promise: the English UI catalog remains a full product surface; reason: a 2000-key floor detects mass deletion before locale parity can pass vacuously
     assert.ok(enKeys.length >= 2000, `expected a large en catalog, got ${enKeys.length}`);
   });
 

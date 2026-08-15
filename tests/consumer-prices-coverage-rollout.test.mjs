@@ -105,7 +105,7 @@ const computeOverall = ({ crit, warn, onDemandWarn = 0, rolloutPending = 0, tota
 // ── Registry contract ───────────────────────────────────────────────────────
 
 test('every consumer-price market has a durable activation marker registered', () => {
-  assert.equal(CONSUMER_PRICE_HEALTH_MARKETS.length, 8);
+  assert.deepEqual(CONSUMER_PRICE_HEALTH_MARKETS, ['ae', 'au', 'br', 'gb', 'in', 'sa', 'sg', 'us']);
   for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
     const name = consumerPriceCoverageHealthName(market);
     assert.equal(

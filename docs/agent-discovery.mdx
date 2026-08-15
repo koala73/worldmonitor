@@ -68,7 +68,7 @@ npx @openapitools/openapi-generator-cli generate \
   -i worldmonitor.openapi.yaml -g typescript-fetch -o ./client
 ```
 
-The bundled spec covers all 36 services in a single document, so one codegen pass produces typed clients for everything. Prefer a maintained package over codegen? [Official SDKs](/sdks) exist for Python, Ruby, Go, and JavaScript.
+The bundled spec covers the service contracts in a single document, so one codegen pass produces typed clients for everything. Prefer a maintained package over codegen? [Official SDKs](/sdks) exist for Python, Ruby, Go, and JavaScript.
 
 <Note>
   One of the 36 — **CompanyMonitoringService** — is published as a contract only. Its

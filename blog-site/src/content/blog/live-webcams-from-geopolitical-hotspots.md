@@ -62,7 +62,7 @@ World Monitor doesn't just embed video. The webcam panel includes intelligence-o
 
 **Grid View vs. Single View:** Toggle between a surveillance-style grid showing multiple feeds simultaneously and a single expanded view for detailed observation. On mobile, single view is forced for performance.
 
-**Eco-Idle Pause:** When you switch to another panel or minimize the browser, streams automatically pause to save bandwidth and CPU. They resume when you return. This matters when you're running 31 video feeds alongside a 3D globe with 58 map layers.
+**Eco-Idle Pause:** When you switch to another panel or minimize the browser, streams automatically pause to save bandwidth and CPU. They resume when you return. This matters when you're running video feeds alongside a 3D globe with map layers.
 
 **Fallback Retry Logic:** Streams go down. Governments block them. CDNs throttle them. World Monitor's player automatically retries failed streams with backoff, and the desktop app routes YouTube embeds through a custom relay to bypass origin restrictions.
 

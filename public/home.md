@@ -10,10 +10,10 @@ Open-source (AGPL-3.0), used by 2M+ people across 190+ countries, as featured in
 - 109 concrete panel implementations across six specialized variants, with shared classes reused across builds
 - CII v8 for 31 Tier-1 countries, 196-country resilience scores, and global live conflict tracking
 - Market quotes, sector heatmaps, and macro indicators
-- 13 shipping chokepoints with live AIS vessel-transit intelligence
+- Shipping chokepoints with live AIS vessel-transit intelligence
 - Satellite tracking, GPS jamming zones, submarine cables, AI datacenters
 - Daily AI brief, Scenario Engine, custom monitors and breaking alerts
-- 63-tool MCP server so AI agents can query everything above
+- MCP server so AI agents can query everything above; use `tools/list` for the live inventory
 
 ## Live instances
 

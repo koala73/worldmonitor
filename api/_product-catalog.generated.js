@@ -1,4 +1,4 @@
-// AUTO-GENERATED from convex/config/productCatalog.ts and the MCP registry.
+// AUTO-GENERATED from convex/config/productCatalog.ts.
 // Do not edit manually. Run: npm run product:facts
 // @ts-check
 

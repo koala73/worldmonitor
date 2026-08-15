@@ -151,7 +151,7 @@ curl -s 'https://api.worldmonitor.app/api/resilience/v1/get-resilience-score?cou
   -H 'X-WorldMonitor-Key: wm_YOUR_KEY'
 ```
 
-You get a 0–100 resilience score with per-domain breakdowns (energy, infrastructure, governance, security and more), a trend, and a 30-day change. It is computed across 196 countries and refreshed every six hours. Combine it with the real-time [Country Instability Index](/blog/posts/country-instability-index-methodology-explained/) and you cover both clocks: CII for what is burning this week, resilience for which countries absorb shocks and which shatter.
+You get a 0–100 resilience score with per-domain breakdowns (energy, infrastructure, governance, security and more), a trend, and a 30-day change. It is computed across the public rankable country universe and refreshed every six hours. Combine it with the real-time [Country Instability Index](/blog/posts/country-instability-index-methodology-explained/) and you cover both clocks: CII for what is burning this week, resilience for which countries absorb shocks and which shatter.
 
 A simple weekly job that flags any origin country whose resilience dropped more than a few points in 30 days catches slow-burn deterioration that no chokepoint webhook will ever see.
 

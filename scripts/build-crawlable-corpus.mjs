@@ -16,6 +16,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { writeResearchSection } from './build-research-reports.mjs';
 import { buildSourceCatalog, renderSourcesIndex } from './crawlable-sources-page.mjs';
+import {
+  activeSourceAttributionEntries,
+  scanUpstreamHosts,
+  sourceAttributionStats,
+} from './source-attribution.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -809,18 +814,13 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     DATASET_SCHEMA_CONTENT_VERSION,
   );
   const attributionManifest = readJson(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH);
-  // Same active-host predicate as scripts/source-attribution.mjs
-  // sourceAttributionStats — counts must match the audited docs inventory.
-  const activeSourceEntries = (attributionManifest.entries || [])
-    .filter((entry) => entry.observed === true && entry.status !== 'excluded');
+  // Production generators share the validated attribution predicate and stats.
+  // Tests retain a separate raw-manifest oracle so a mutation here cannot make
+  // both the expected and actual provider sets agree with the same bug.
+  const sourceInventory = scanUpstreamHosts(rootDir);
+  const sourceStats = sourceAttributionStats(sourceInventory, attributionManifest);
+  const activeSourceEntries = activeSourceAttributionEntries(attributionManifest);
   const sourceCatalog = buildSourceCatalog(activeSourceEntries);
-  const sourceStats = {
-    activeHosts: activeSourceEntries.length,
-    structuredHosts: activeSourceEntries.filter((entry) => entry.kind.split('+').includes('structured')).length,
-    feedHosts: activeSourceEntries.filter((entry) => entry.kind.split('+').includes('feed')).length,
-    operationalStatusHosts: activeSourceEntries.filter((entry) => entry.kind.split('+').includes('operational-status')).length,
-    providerCount: new Set(activeSourceEntries.map((entry) => entry.provider)).size,
-  };
   if (sourceCatalog.length !== sourceStats.providerCount) {
     throw new Error('Source catalog provider count drifted from the attribution manifest');
   }

@@ -1,6 +1,6 @@
 ---
 title: "Real-Time Market Intelligence with World Monitor Finance"
-description: "Monitor 29 stock exchanges, 14 central banks, commodities, and macro signals in one free dashboard. World Monitor Finance gives traders the geopolitical edge."
+description: "Monitor stock exchanges, central banks, commodities, and macro signals in one free dashboard. World Monitor Finance gives traders the geopolitical edge."
 metaTitle: "Real-Time Market Intelligence for Traders | World Monitor"
 keywords: "real-time market intelligence, stock market dashboard free, financial intelligence platform, macro trading signals, market monitoring tool"
 audience: "Retail and professional traders, financial analysts, macro investors, fintech enthusiasts"
@@ -38,7 +38,7 @@ The radar doesn't tell you what to buy. It tells you whether the macro environme
 
 ## 14 Central Bank and Institution Trackers
 
-Interest rates drive everything. World Monitor tracks policy and systemic indicators from 14 central banks and institutions, including:
+Interest rates drive everything. World Monitor tracks policy and systemic indicators from central banks and institutions, including:
 
 - Federal Reserve (Fed)
 - European Central Bank (ECB)

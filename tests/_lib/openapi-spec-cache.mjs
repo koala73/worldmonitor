@@ -22,7 +22,7 @@
 //     must stay shared, or non-finite numbers).
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -133,4 +133,15 @@ export function loadYamlSpecCached(absPath) {
 /** The unified bundle, the one spec expensive enough to need the cache. */
 export function loadUnifiedOpenApiSpec() {
   return loadYamlSpecCached(resolve(repoRoot, 'docs', 'api', 'worldmonitor.openapi.yaml'));
+}
+
+/** Service declarations discovered from the authoritative proto tree. */
+export function discoverProtoServiceNames() {
+  const protoRoot = resolve(repoRoot, 'proto', 'worldmonitor');
+  return readdirSync(protoRoot, { recursive: true })
+    .filter((file) => file.endsWith('.proto'))
+    .flatMap((file) => [
+      ...readFileSync(resolve(protoRoot, file), 'utf8').matchAll(/^service\s+([A-Za-z0-9_]+)/gm),
+    ].map((match) => match[1]))
+    .sort();
 }

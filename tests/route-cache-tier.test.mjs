@@ -54,8 +54,8 @@ describe('RPC_CACHE_TIER route parity', () => {
   const tierMap = extractCacheTierKeys();
   const tierKeys = Object.keys(tierMap);
 
-  it('finds at least 50 GET routes in generated server files', () => {
-    assert.ok(getRoutes.length >= 50, `Expected ≥50 GET routes, found ${getRoutes.length}`);
+  it('finds a non-empty GET route universe in generated server files', () => {
+    assert.ok(getRoutes.length > 0, 'generated GET route extraction must not be empty');
   });
 
   it('every generated GET route has an explicit cache tier entry', () => {

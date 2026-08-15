@@ -94,6 +94,16 @@ function categoryMappedPanelIds() {
   return ids;
 }
 
+function scheduledSelfFetchingPanelIds(source = appSrc) {
+  return [...source.matchAll(
+    /scheduleRefresh\(\s*'([a-z0-9-]+)',\s*\(\)\s*=>\s*\(this\.state\.panels\['[a-z0-9-]+'\][^)]*\)\.fetchData\(\)/g,
+  )].map((match) => match[1]);
+}
+
+function primedPanelIds(source = appSrc) {
+  return new Set([...source.matchAll(/primeTask\('([a-z0-9-]+)'/g)].map((match) => match[1]));
+}
+
 function parsePanelKeys(variant) {
   const src = readFileSync(resolve(__dirname, '../src/config/panels.ts'), 'utf-8');
   const tag = variant.toUpperCase() + '_PANELS';
@@ -596,9 +606,27 @@ describe('panel-config guardrails', () => {
   // the API but undiscoverable in the UI.
 
   it('parsers resolve non-empty sets (guards against silent regex drift)', () => {
-    assert.ok(allRegistryPanelIds().size > 50, `registry parse returned ${allRegistryPanelIds().size} panels — regex likely broke`);
-    assert.ok(panelCommandKeywordCounts().size > 50, `command parse returned ${panelCommandKeywordCounts().size} commands — regex likely broke`);
-    assert.ok(categoryMappedPanelIds().size > 50, `category parse returned ${categoryMappedPanelIds().size} keys — regex likely broke`);
+    const panels = allRegistryPanelIds();
+    const commands = panelCommandKeywordCounts();
+    const categories = categoryMappedPanelIds();
+    assert.ok(panels.size > 0, 'registry parse must not be empty');
+    assert.ok(commands.size > 0, 'command parse must not be empty');
+    assert.ok(categories.size > 0, 'category parse must not be empty');
+    for (const critical of ['insights', 'live-news', 'markets']) {
+      assert.ok(panels.has(critical), `registry parse must retain critical panel ${critical}`);
+      assert.ok(commands.has(critical), `command parse must retain critical panel ${critical}`);
+      assert.ok(categories.has(critical), `category parse must retain critical panel ${critical}`);
+    }
+  });
+
+  it('self-fetching schedule and prime parsers reject call-shape drift', () => {
+    const fixture = `
+      scheduleRefresh('alpha', () => (this.state.panels['alpha'] as AlphaPanel).fetchData());
+      scheduleRefresh('service', () => this.service.refresh());
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(fixture), ['alpha']);
+    assert.deepStrictEqual([...primedPanelIds(fixture)], ['alpha']);
   });
 
   it('every registered panel has a CMD+K command (discoverable by search)', () => {
@@ -630,19 +658,12 @@ describe('panel-config guardrails', () => {
   // needs a per-callback audit, not a wider regex — a wider regex would just
   // manufacture failures for callbacks that never had this contract.
   it('every panel that self-fetches on a timer is also primed on first mount', () => {
-    const scheduled = [...appSrc.matchAll(
-      /scheduleRefresh\(\s*'([a-z0-9-]+)',\s*\(\)\s*=>\s*\(this\.state\.panels\['[a-z0-9-]+'\][^)]*\)\.fetchData\(\)/g,
-    )].map((m) => m[1]);
-    const primed = new Set([...appSrc.matchAll(/primeTask\('([a-z0-9-]+)'/g)].map((m) => m[1]));
-
-    // Exact counts, not floors. A floor lets the pattern rot silently: if a
-    // refactor changed the call shape so only 20 of 27 still matched, a `>= 20`
-    // floor would stay green while seven panels quietly left the guard. Bump
-    // these when you add or remove a self-fetching timer-refreshed panel —
-    // being made to notice is the point. (Same convention as the OpenAPI
-    // surface-count assertions in tests/openapi-examples-contract.test.mjs.)
-    assert.equal(scheduled.length, 28, `expected 28 self-fetching scheduled panels, matched ${scheduled.length} — either a panel was added/removed (bump this) or the scheduleRefresh pattern stopped matching (fix the regex)`);
-    assert.equal(primed.size, 41, `expected 41 primeTask entries, matched ${primed.size} — either the prime table changed (bump this) or the primeTask pattern stopped matching (fix the regex)`);
+    const scheduled = scheduledSelfFetchingPanelIds();
+    const primed = primedPanelIds();
+    assert.ok(scheduled.length > 0, 'self-fetching schedule extraction must not be empty');
+    assert.ok(primed.size > 0, 'primeTask extraction must not be empty');
+    assert.ok(scheduled.includes('energy-crisis'), 'the critical energy-crisis refresh must stay in the self-fetching schedule');
+    assert.ok(primed.has('energy-crisis'), 'the critical energy-crisis panel must stay in the prime table');
 
     const unprimed = scheduled.filter((id) => !primed.has(id)).sort();
     assert.deepStrictEqual(

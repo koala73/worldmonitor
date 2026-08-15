@@ -558,6 +558,9 @@ function sourceDomainIdForEntries(entries) {
   return match[0];
 }
 export function buildSourceCatalog(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    throw new Error('Source catalog cannot be empty');
+  }
   const entriesByProvider = new Map();
   for (const entry of entries) {
     const providerEntries = entriesByProvider.get(entry.provider) || [];

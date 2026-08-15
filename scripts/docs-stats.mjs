@@ -2,9 +2,9 @@
 /**
  * docs-stats — single source of truth for the capability counts quoted in docs.
  *
- * Default mode  : recompute every stat from code and write docs/generated/stats.json.
- * --check mode  : recompute, then assert that every registered doc claim still
- *                 matches the live number. Exits non-zero on drift (CI gate).
+ * --check mode recomputes every stat and asserts that each registered doc
+ * contract still matches repository truth. Inventory artifacts are written
+ * atomically by scripts/generate-inventory-facts.mjs.
  *
  * Why this exists: capability counts (map layers, services, protos, locales,
  * workflows, freshness sources, feeds) were hand-maintained across README,
@@ -14,7 +14,7 @@
  * Stats are parsed from source text (no TS execution / import-graph / env deps)
  * so this runs anywhere Node runs, including bare CI.
  */
-import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { buildSourceAttributionStats } from './source-attribution.mjs';
@@ -885,7 +885,7 @@ function computeStats() {
   const populationPriorityCountries = (populationBlock[1].match(/^\s+[A-Z]{3}:\s*\{/gm) || []).length;
 
   return {
-    _generated: 'scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`',
+    _generated: 'scripts/generate-inventory-facts.mjs — build artifact; do not commit',
     layerDefinitions,
     lockedLayerDefinitions,
     lockedLayerKeys,
@@ -933,228 +933,24 @@ function computeStats() {
 }
 
 /**
- * Registered doc claims. Each entry pins one number in one doc to a live stat.
- * `value` returns the expected number; `min:true` treats the doc number as a
- * floor (doc says "500+" → live must be >= 500). The regex must capture the
- * number in group 1 and be unique enough to match the intended sentence.
+ * Registered exact document claims.
+ *
+ * Extensible inventories deliberately do not appear here. Their composition
+ * changes independently in parallel work, so hand-maintained prose totals
+ * create conflict-prone, self-updating release chores. Inventory publication
+ * is instead protected by the authoritative registry, generated artifacts,
+ * and set/parity validators at their owning boundaries.
+ *
+ * Keep only facts that are not extensible inventory cardinalities. `value`
+ * returns the expected value; `min:true` treats a published number as a real
+ * product floor. The regex must capture group 1.
  */
 function claims(s) {
   return [
-    { file: 'README.md', re: /(\d+)\s+map layer types/, value: s.layerDefinitions },
-    { file: 'README.md', re: /Protocol Buffers \((\d+)\s+protos/, value: s.protoFiles },
-    { file: 'README.md', re: /(\d+)\s+services\)/, value: s.protoServices },
-    { file: 'README.md', re: /(\d+)\s+languages/, value: s.locales },
-    { file: 'public/llms.txt', re: /(\d+)\s+languages with RTL support/, value: s.locales },
-    { file: 'public/llms-full.txt', re: /(\d+)\s+languages with RTL support/, value: s.locales },
-    { file: 'public/llms-full.txt', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'README.md', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
-    { file: 'README.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'README.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
-    { file: 'README.md', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'docs/overview.mdx', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
-    { file: 'docs/overview.mdx', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'docs/overview.mdx', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'docs/overview.mdx', re: /interface supports (\d+)\s+languages/, value: s.locales },
-    { file: 'docs/overview.mdx', re: /lists (\d+)\s+active providers/, value: s.sourceAttribution.providerCount },
-    { file: 'docs/overview.mdx', re: /active providers, (\d+)\s+upstream hosts/, value: s.sourceAttribution.activeHosts },
-    { file: 'docs/overview.mdx', re: /upstream hosts, (\d+)\s+structured endpoints/, value: s.sourceAttribution.structuredHosts },
-    { file: 'docs/overview.mdx', re: /structured endpoints, and (\d+)\s+news and OSINT feeds/, value: s.sourceAttribution.feedHosts },
-    { file: 'docs/zh/overview.mdx', re: /界面支持 (\d+)\s*种语言/, value: s.locales },
-    { file: 'docs/zh/overview.mdx', re: /列出 (\d+)\s*个活跃提供方/, value: s.sourceAttribution.providerCount },
-    { file: 'docs/zh/overview.mdx', re: /活跃提供方、(\d+)\s*个上游主机/, value: s.sourceAttribution.activeHosts },
-    { file: 'docs/zh/overview.mdx', re: /上游主机、(\d+)\s*个结构化端点/, value: s.sourceAttribution.structuredHosts },
-    { file: 'docs/zh/overview.mdx', re: /结构化端点和 (\d+)\s*个新闻及 OSINT 数据流/, value: s.sourceAttribution.feedHosts },
-
-    // ---- Translated READMEs ----
-    // Same claims as README.md, pinned in each language. Without these the
-    // translations silently rot: README.zh-CN.md sat at 279 protos while
-    // README.md had already moved to 281.
-    { file: 'README.zh-CN.md', re: /(\d+)\s*种地图图层/, value: s.layerDefinitions },
-    { file: 'README.zh-CN.md', re: /Protocol Buffers（(\d+)\s*个 proto/, value: s.protoFiles },
-    { file: 'README.zh-CN.md', re: /(\d+)\s*项服务/, value: s.protoServices },
-    { file: 'README.zh-CN.md', re: /(\d+)\s*种语言/, value: s.locales },
-    { file: 'README.zh-CN.md', re: /(\d+)\+\s*精选新闻源/, value: s.feedDefinitions, min: true },
-    { file: 'README.zh-CN.md', re: /(\d+)\+\s*个外部上游主机/, value: s.sourceAttributionHosts, min: true },
-    { file: 'README.zh-CN.md', re: /(\d+)\s*家证券交易所/, value: s.stockExchangeCount },
-    { file: 'README.ja-JP.md', re: /(\d+)\s*以上の外部プロバイダー/, value: s.sourceAttribution.providerCount, min: true },
-    { file: 'README.ja-JP.md', re: /(\d+)\s*種類のマップレイヤー/, value: s.layerDefinitions },
-    { file: 'README.ja-JP.md', re: /Protocol Buffers \((\d+)\s*proto/, value: s.protoFiles },
-    { file: 'README.ja-JP.md', re: /(\d+)\s*サービス\)/, value: s.protoServices },
-    { file: 'README.ja-JP.md', re: /(\d+)\s*言語対応/, value: s.locales },
-    { file: 'README.ja-JP.md', re: /(\d+)\s*以上の厳選ニュースフィード/, value: s.feedDefinitions, min: true },
-    { file: 'README.ja-JP.md', re: /(\d+)\s*の証券取引所/, value: s.stockExchangeCount },
-
-    // ---- Root contributor/agent/security docs ----
-    { file: 'AGENTS.md', re: /with (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
-    { file: 'AGENTS.md', re: /(\d+)\+\s+Vercel Edge API endpoint entries/, value: s.apiEndpointEntries, min: true },
-    { file: 'AGENTS.md', re: /(\d+)\s+freshness-tracked source groups/, value: s.freshnessSources },
-    { file: 'AGENTS.md', re: /components\/\s+# (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
-    { file: 'AGENTS.md', re: /services\/\s+# Business logic \((\d+)\s+service modules and domain directories\)/, value: s.serviceTopLevelEntries },
+    // The generator version is a toolchain compatibility contract, not an
+    // inventory total. Its documented value must stay exact.
     { file: 'AGENTS.md', re: /requires buf \+ sebuf (v\d+\.\d+\.\d+) plugins/, value: s.sebufVersion },
-
-    { file: 'ARCHITECTURE.md', re: /base class \((\d+)\s+classes\b/, value: s.panelClasses },
-    { file: 'ARCHITECTURE.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'CONTRIBUTING.md', re: /Service and message definitions across (\d+)\s+domains/, value: s.protoDomainFolders },
-    { file: 'CONTRIBUTING.md', re: /produces (\d+)\s+app variants/, value: s.variantCount },
-    { file: 'CONTRIBUTING.md', re: /UI components — (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
-    { file: 'CONTRIBUTING.md', re: /i18n JSON files \((\d+)\s+languages\)/, value: s.locales },
-    { file: 'CONTRIBUTING.md', re: /Sebuf handler implementations for all (\d+)\s+server handler domains/, value: s.serverDomains },
     { file: 'CONTRIBUTING.md', re: /currently \*\*(v\d+\.\d+\.\d+)\*\*/, value: s.sebufVersion },
-    { file: 'CONTRIBUTING.md', re: /expand our (\d+)\+\s+feed collection/, value: s.feedDefinitions, min: true },
-    { file: 'SECURITY.md', re: /All (\d+)\s+domain APIs are served through Sebuf/, value: s.serverDomains },
-    { file: 'index.html', re: /"(\d+)\s+language support with RTL"/, value: s.locales },
-    { file: 'index.html', re: /(\d+)(?:\+)?\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'index.html', re: /(\d+)\s+active providers/, value: s.sourceAttribution.providerCount },
-
-    { file: 'docs/architecture.mdx', re: /(\d+)\s+service domains, and (?:\d+)\s+map layers/, value: s.protoServices },
-    { file: 'docs/architecture.mdx', re: /(\d+)\s+map layers\./, value: s.layerDefinitions },
-    { file: 'docs/architecture.mdx', re: /\*\*(\d+)\s+service domains\*\* cover/, value: s.protoServices },
-    { file: 'docs/architecture.mdx', re: /All (\d+)\s+map layer toggle definitions/, value: s.layerDefinitions },
-
-    { file: 'docs/map-engine.mdx', re: /\*\*(\d+)\s+data layers\*\*/, value: s.layerDefinitions },
-    { file: 'docs/map-engine.mdx', re: /full \((\d+)\b/, value: s.variantLayers.full },
-    { file: 'docs/map-engine.mdx', re: /tech \((\d+)\b/, value: s.variantLayers.tech },
-    { file: 'docs/map-engine.mdx', re: /finance \((\d+)\b/, value: s.variantLayers.finance },
-    { file: 'docs/map-engine.mdx', re: /happy \((\d+)\b/, value: s.variantLayers.happy },
-    { file: 'docs/map-engine.mdx', re: /commodity \((\d+)\b/, value: s.variantLayers.commodity },
-    { file: 'docs/map-engine.mdx', re: /energy \((\d+)\b/, value: s.variantLayers.energy },
-
-    { file: 'docs/features.mdx', re: /(\d+)\s+data layers/, value: s.layerDefinitions },
-
-    { file: 'docs/agent-discovery.mdx', re: /all (\d+)\s+services/, value: s.protoServices },
-    { file: 'docs/api-reference.mdx', re: /all (\d+)\s+generated services/, value: s.protoServices },
-
-    { file: 'docs/mcp-overview.mdx', re: /same (\d+)\s+tools/, value: s.mcpToolCount },
-
-    // ---- MCP tool count on public agent-discovery and marketing surfaces (#5389) ----
-    { file: 'public/home.md', re: /(\d+)-tool MCP server/, value: s.mcpToolCount },
-    { file: 'public/home.md', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'public/agents.md', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'public/agents.md', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'public/developers.md', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'public/llms.txt', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'public/llms.txt', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'public/llms-full.txt', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'public/llms-full.txt', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'public/llms-full.txt', re: /MCP server endpoint, (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'public/ai-search.md', re: /- (\d+)\s+MCP tools/, value: s.mcpToolCount },
-    { file: 'public/ai-search.md', re: /- (\d+)\s+supported languages/, value: s.locales },
-    // The rest of ai-search.md's Data Coverage bullets that have a generated
-    // source of truth. The locale line above is the one that had already
-    // drifted (24 vs 26) precisely because nothing pinned it; these siblings
-    // were one capability change away from the same fate.
-    { file: 'public/ai-search.md', re: /- (\d+)\s+map layer types/, value: s.layerDefinitions },
-    { file: 'public/ai-search.md', re: /- (\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'public/ai-search.md', re: /- (\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'public/ai-search.md', re: /- (\d+)\s+live Country Instability Index countries/, value: s.tier1Countries },
-    { file: 'public/ai-search.md', re: /- (\d+)-country resilience rankings/, value: s.rankableUniverseCountries },
-    { file: 'public/sdks.md', re: /every one of the (\d+)\s+\[MCP tools\]/, value: s.mcpToolCount },
-    { file: 'public/agent.txt', re: /(\d+)\s+tools; tools\/list for the live inventory/, value: s.mcpToolCount },
-    { file: 'public/pricing.md', re: /MCP access and (\d+)\s+tools under one key/, value: s.mcpToolCount },
-    { file: 'docs/pricing.mdx', re: /MCP access \((\d+)\s+tools under one key/, value: s.mcpToolCount },
-    { file: 'docs/cli.mdx', re: /any of the (\d+)\s+MCP tools/, value: s.mcpToolCount },
-    { file: 'docs/cli.mdx', re: /every one of the (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'docs/cli.mdx', re: /for all (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'docs/mcp-quickstart.mdx', re: /one of (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'pro-test/src/locales/en.json', re: /(\d+)\s+MCP tools — risk scores/, value: s.mcpToolCount },
-    { file: 'pro-test/src/locales/en.json', re: /One key\. (\d+)\s+MCP tools/, value: s.mcpToolCount },
-    { file: 'pro-test/src/locales/en.json', re: /SDKs — (\d+)\s+tools under one key/, value: s.mcpToolCount },
-    { file: 'pro-test/src/locales/en.json', re: /"freeF2": "500\+ feeds, (\d+)\+ sources/, value: s.sourceAttributionHosts, min: true },
-    { file: 'pro-test/src/locales/en.json', re: /"s3v": "(\d+)\+"/, value: s.sourceAttribution.providerCount, min: true },
-    { file: 'pro-test/src/locales/en.json', re: /"a3": "(\d+)\+ providers/, value: s.sourceAttribution.providerCount, min: true },
-
-    // ---- Map layers in plan copy (#5387) ----
-    // Plan copy quotes the registry TOTAL and names the Pro-only layer; it never
-    // quotes a free total (see the lockedLayerKeys comment in computeStats).
-    // validatePlanLayerEntitlementCopy asserts the naming half.
-    { file: 'public/home.md', re: /(\d+)\s+data layers, \d+\+\s+observed upstream hosts, and \d+\+\s+curated news feeds/, value: s.layerDefinitions },
-    { file: 'public/home.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'middleware.ts', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'public/pricing.md', re: /Includes: (\d+)\s+map layers \(all free except Resilience/, value: s.layerDefinitions },
-    { file: 'public/pricing.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'public/pricing.md', re: /"(\d+)\s+map layers \(Resilience is Pro\)"/, value: s.layerDefinitions },
-    { file: 'docs/pricing.mdx', re: /\*\*Free\*\* — (\d+)\s+map layers \(all free except Resilience/, value: s.layerDefinitions },
-    { file: 'docs/pricing.mdx', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'docs/accounts.mdx', re: /(\d+)\s+map layers \(all but the Pro-only Resilience layer\)/, value: s.layerDefinitions },
-    { file: 'docs/zh/pricing.mdx', re: /\*\*Free\*\* — (\d+)\s*个地图图层/, value: s.layerDefinitions },
-    { file: 'docs/zh/accounts.mdx', re: /Free 套餐下列出的所有功能 — (\d+)\s*个地图图层/, value: s.layerDefinitions },
-
-    // ---- CII vs CRI country coverage (#5391) ----
-    { file: 'public/home.md', re: /CII v8 for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
-    { file: 'public/home.md', re: /(\d+)-country resilience scores/, value: s.rankableUniverseCountries },
-    { file: 'README.md', re: /CII v8 stress scoring for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
-    { file: 'docs/country-instability-index.mdx', re: /CII v8 stability scoring for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
-    { file: 'public/llms-full.txt', re: /resilience scores for the (\d+)-country public rankable universe/, value: s.rankableUniverseCountries },
-
-    { file: 'docs/mcp-apps.mdx', re: /current fleet ships (\d+)\s+MCP Apps/, value: s.mcpAppCount },
-    { file: 'docs/mcp-quickstart.mdx', re: /WorldMonitor exposes (\d+)\s+live tools/, value: s.mcpToolCount },
-    { file: 'docs/mcp-quickstart.mdx', re: /receives (\d+)\s+compressed tool descriptions/, value: s.mcpToolCount },
-    { file: 'public/mcp-server.md', re: /server ships \*\*(\d+)\s+tools\*\*/, value: s.mcpToolCount },
-    { file: 'public/product-facts.json', re: /"panelImplementations":\s*(\d+)/, value: s.panelClasses },
-
-    { file: 'docs/data-sources.mdx', re: /monitors (\d+)\s+data sources/, value: s.freshnessSources },
-    { file: 'docs/data-sources.mdx', re: /fuses \*\*(\d+) active providers/, value: s.sourceAttribution.providerCount },
-    { file: 'docs/data-sources.mdx', re: /active providers across (\d+) upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'docs/source-attribution.mdx', re: /\*\*(\d+) active upstream hosts\*\*/, value: s.sourceAttributionHosts },
-    { file: 'docs/source-attribution.mdx', re: /representing \*\*(\d+) active providers\*\*/, value: s.sourceAttribution.providerCount },
-    { file: 'docs/data-sources.mdx', re: /across (\d+)\s+monitored airports/, value: s.airportCount },
-    { file: 'docs/data-sources.mdx', re: /^(\d+)\s+airports across 5 regions/m, value: s.airportCount },
-    { file: 'docs/data-sources.mdx', re: /(\d+)\s+global stock exchanges/, value: s.stockExchangeCount },
-    { file: 'docs/data-sources.mdx', re: /(\d+)\s+central-bank and supranational finance institutions/, value: s.centralBankInstitutionCount },
-    { file: 'docs/features.mdx', re: /signals from (\d+)\s+central-bank and supranational finance institutions/, value: s.centralBankInstitutionCount },
-    { file: 'docs/overview.mdx', re: /(\d+)\s+central-bank and supranational finance institutions/, value: s.centralBankInstitutionCount },
-    { file: 'docs/architecture.mdx', re: /stock exchanges \((\d+)\)/, value: s.stockExchangeCount },
-    { file: 'docs/architecture.mdx', re: /central-bank and supranational finance institutions \((\d+)\)/, value: s.centralBankInstitutionCount },
-    { file: 'docs/COMMUNITY-PROMOTION-GUIDE.md', re: /"(\d+)\s+global stock exchanges mapped/, value: s.stockExchangeCount },
-    { file: 'docs/COMMUNITY-PROMOTION-GUIDE.md', re: /Finance variant with (\d+)\s+exchanges/, value: s.stockExchangeCount },
-    { file: 'docs/PRESS_KIT.md', re: /\| Stock exchanges mapped \| (\d+) \|/, value: s.stockExchangeCount },
-    { file: 'docs/PRESS_KIT.md', re: /\| Panel implementations \| (\d+) concrete classes \|/, value: s.panelClasses },
-    { file: 'public/llms-full.txt', re: /Stock Exchanges\*\*: (\d+)\s+global exchanges/, value: s.stockExchangeCount },
-    { file: 'public/llms-full.txt', re: /Central Banks & Institutions\*\*: (\d+)\s+central-bank and supranational finance institutions/, value: s.centralBankInstitutionCount },
-    { file: 'public/llms-full.txt', re: /Unique layers: (\d+)\s+stock exchanges/, value: s.stockExchangeCount },
-    { file: 'public/llms-full.txt', re: /Unique layers: \d+\s+stock exchanges, \d+\s+financial centers, (\d+)\s+central-bank and supranational finance institutions/, value: s.centralBankInstitutionCount },
-    { file: 'docs/data-sources.mdx', re: /^(\d+)\s+enabled channels in the default `full` Telegram channel set/m, value: s.telegramFullEnabledChannels },
-    { file: 'docs/data-sources.mdx', re: /\*\*Tier 1\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['1'] },
-    { file: 'docs/data-sources.mdx', re: /\*\*Tier 2\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['2'] },
-    { file: 'docs/data-sources.mdx', re: /\*\*Tier 3\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['3'] },
-    { file: 'docs/algorithms.mdx', re: /local (\d+)-country priority population table/, value: s.populationPriorityCountries },
-    { file: 'docs/algorithms.mdx', re: /and (\d+)\s+tracked world-leader names/, value: s.leaderNames },
-
-    // ---- Blog posts (blog-site/) — capability counts quoted in evergreen developer/overview posts ----
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /typed API: (\d+)\s+services/, value: s.protoServices },
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /typed API: \d+\s+services, (\d+)\s+proto files/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /\*\*(\d+)\s+proto files\*\* defining/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /\*\*(\d+)\s+typed service domains\*\*/, value: s.protoServices },
-    // Heading labels the table below it, which is enumerated from server/worldmonitor/* dirs → pin to serverDomains (not protoServices; the two equal 34 today but a domain with two `service` blocks would diverge them).
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /##\s+(\d+)\s+Service Domains/, value: s.serverDomains },
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /Protocol Buffers \((\d+)\s+files\)/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /worldmonitor\)\. (\d+)\s+services, \d+\s+proto files, and a global/, value: s.protoServices },
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /worldmonitor\)\. \d+\s+services, (\d+)\s+proto files, and a global/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /generated from (\d+)\s+Protocol Buffer definitions into \d+\s+REST service specifications/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /generated from \d+\s+Protocol Buffer definitions into (\d+)\s+REST service specifications/, value: s.protoServices },
-    // The explainer's remaining capability counts. These live here rather than
-    // in tests/blog-seo-contract.test.mjs because the `unit` job that runs it is
-    // gated on changes.code, whose filter drops every .md path — the contract
-    // guarding this markdown page skipped the markdown-only PRs most likely to
-    // break it. docs-stats is always-on. Shape assertions that a numeric pin
-    // cannot express live in validateCategoryExplainerCopy below.
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+map-layer types/, value: s.layerDefinitions },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+Tier-1 countries/, value: s.tier1Countries },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /\*\*(\d+)-country\*\* public Country Resilience Index universe/, value: s.rankableUniverseCountries },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+central-bank or supranational institutions/, value: s.centralBankInstitutionCount },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+interface languages/, value: s.locales },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /Model Context Protocol server with (\d+)\s+live tools/, value: s.mcpToolCount },
-    { file: 'blog-site/src/content/blog/ai-powered-intelligence-without-the-cloud.md', re: /architecture \((\d+)\s+proto files, \d+\s+typed services\)/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/ai-powered-intelligence-without-the-cloud.md', re: /architecture \(\d+\s+proto files, (\d+)\s+typed services\)/, value: s.protoServices },
-    { file: 'blog-site/src/content/blog/worldmonitor-vs-traditional-intelligence-tools.md', re: /using the (\d+)\s+typed API services/, value: s.protoServices },
-
-    // /api/health `summary.total` (#6300) is pinned by validateHealthSummaryDocs
-    // rather than by claims: a claim runs `text.match()`, which reads only the
-    // FIRST match on a page, so a second example body appended below the pinned
-    // one would publish an unpinned number. The validator checks every block.
   ];
 }
 
@@ -1615,7 +1411,6 @@ const CATEGORY_EXPLAINER_OPENING =
 // Wide enough that ordinary copy edits pass; narrow enough that the definition
 // cannot decay into a one-liner or swell back into the old narrative lede.
 const CATEGORY_EXPLAINER_OPENING_WORDS = { min: 35, max: 80 };
-const COUNT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 const CATEGORY_EXPLAINER_REQUIRED_LINKS = [
   'https://www.worldmonitor.app/docs/data-sources',
   'https://www.worldmonitor.app/pricing.md',
@@ -1668,25 +1463,6 @@ export function validateCategoryExplainerCopy(stats, readFile = read) {
     }
   }
 
-  // The variant count is spelled out in the copy, so no numeric claims() regex
-  // can reach it. Derive the word from the registry anyway: with "Six" pinned
-  // as a literal, variantCount=7 left this the one capability claim in the
-  // contract that stayed green while every numeric sibling went red.
-  const variantWord = COUNT_WORDS[stats.variantCount];
-  if (!variantWord) {
-    failures.push(`${file}: no spelled-out word for variantCount ${stats.variantCount} — extend COUNT_WORDS`);
-  } else if (!new RegExp(`\\b${variantWord} dashboard variants\\b`, 'i').test(body)) {
-    failures.push(`${file}: copy must say "${variantWord} dashboard variants" to match variantCount ${stats.variantCount}`);
-  }
-  // The count word alone stays true if a variant is added to the enumeration
-  // without moving the count, or dropped out of it.
-  const variantList = body.match(/dashboard variants\*\*: (.+)/);
-  if (!variantList) {
-    failures.push(`${file}: missing the enumerated dashboard-variant list`);
-  } else if (variantList[1].split(',').length !== stats.variantCount) {
-    failures.push(`${file}: enumerates ${variantList[1].split(',').length} dashboard variants, code has ${stats.variantCount} — ${variantList[1]}`);
-  }
-
   for (const link of CATEGORY_EXPLAINER_REQUIRED_LINKS) {
     if (!body.includes(link)) failures.push(`${file}: citation surface must link ${link}`);
   }
@@ -1695,6 +1471,18 @@ export function validateCategoryExplainerCopy(stats, readFile = read) {
   }
   for (const [pattern, what] of CATEGORY_EXPLAINER_RETIRED_COPY) {
     if (pattern.test(body)) failures.push(`${file}: reintroduces ${what}`);
+  }
+  const variantLine = body.match(/^- Dashboard variants \(registry keys\):\s*(.+)$/m)?.[1];
+  if (!variantLine) {
+    failures.push(`${file}: missing the enumerated dashboard-variant list`);
+  } else {
+    const documentedVariants = [...variantLine.matchAll(/`([^`]+)`/g)].map((match) => match[1]);
+    const expectedVariants = Object.keys(stats.variantLayers).sort();
+    if (!sameStringSet(documentedVariants, expectedVariants)) {
+      failures.push(
+        `${file}: dashboard variants drift (${describeSetDelta(documentedVariants, expectedVariants)})`,
+      );
+    }
   }
   return failures;
 }
@@ -1719,10 +1507,8 @@ function main() {
   const stats = computeStats();
 
   if (!check) {
-    mkdirSync(join(ROOT, 'docs/generated'), { recursive: true });
-    writeFileSync(join(ROOT, 'docs/generated/stats.json'), JSON.stringify(stats, null, 2) + '\n');
-    console.log('docs/generated/stats.json written:');
-    console.log(JSON.stringify(stats, null, 2));
+    console.error('docs-stats only validates claims; run `npm run inventory:facts` to write generated stats.');
+    process.exitCode = 1;
     return;
   }
 
@@ -1767,7 +1553,7 @@ function main() {
   if (failures.length) {
     console.error(`docs-stats --check FAILED (${failures.length}):`);
     for (const f of failures) console.error('  ✗ ' + f);
-    console.error('\nFix the doc number, or run `npm run docs:stats` if the code total legitimately changed.');
+    console.error('\nFix the documented contract or its authoritative registry.');
     process.exit(1);
   }
   console.log(`docs-stats --check OK — ${claims(stats).length} doc claims match code.`);

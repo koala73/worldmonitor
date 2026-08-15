@@ -1,6 +1,6 @@
 ---
 title: "Cmd+K: Search Everything on the Planet in Under a Second"
-description: "Fuzzy-search 195 countries, 58 map layers, and 150+ commands with World Monitor's Cmd+K palette. Multilingual, keyboard-driven intelligence access."
+description: "Fuzzy-search countries, map layers, and commands with World Monitor's Cmd+K palette. Multilingual, keyboard-driven intelligence access."
 metaTitle: "Cmd+K Intelligence Search Palette | World Monitor"
 keywords: "intelligence dashboard search, command palette dashboard, OSINT search tool, fast country intelligence lookup, keyboard-driven intelligence"
 audience: "Power users, analysts, developers, keyboard-first professionals"
@@ -13,7 +13,7 @@ You're monitoring a developing situation. News breaks about a military incident 
 
 In most dashboards, that's four separate navigation actions. In World Monitor, it's one: **Cmd+K** (or Ctrl+K on Windows/Linux), type what you need, hit Enter. This is one of the key advantages that sets World Monitor apart from [traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
 
-## The 150+ Command Universe
+## The Command Universe
 
 World Monitor's command palette is a fuzzy-search interface that spans the entire platform. Hit Cmd+K and you can access:
 
@@ -65,11 +65,11 @@ Results are grouped by category (Navigate, Layers, Panels, View, Actions, Countr
 
 ## Multilingual Search
 
-With [28 languages supported](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/), the command palette adapts to your locale. Country names and common commands are searchable in:
+With [localized interfaces](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/), the command palette adapts to your locale. Country names and common commands are searchable in:
 
 English, French, German, Spanish, Italian, Portuguese, Dutch, Swedish, Polish, Czech, Romanian, Bulgarian, Greek, Russian, Ukrainian, Turkish, Arabic, Chinese (Simplified), Japanese, Korean, Thai, Vietnamese, Persian, and Swahili
 
-An Arabic-speaking analyst can type country names in Arabic and get the same results. A Japanese user can search in kanji. The search indexes include localized keywords for all 195 countries in every supported language.
+An Arabic-speaking analyst can type country names in Arabic and get the same results. A Japanese user can search in kanji. The search indexes include localized keywords for the country registry in every supported language.
 
 ## Recent Searches
 
@@ -97,7 +97,7 @@ On mobile, the command palette transforms into a touch-optimized search sheet:
 - **Swipe to dismiss**
 - **Large touch targets** for result selection
 
-The same 150+ commands and 195 countries are available on mobile, just with a touch-first interface.
+The same command and country registries are available on mobile, just with a touch-first interface.
 
 ## Context-Aware Suggestions
 
@@ -138,7 +138,7 @@ World Monitor's Cmd+K reduces the path from question to answer to a single searc
 ## Frequently Asked Questions
 
 **Does the command palette work on mobile devices?**
-Yes. On mobile, Cmd+K transforms into a touch-optimized search sheet with category chips, large touch targets, and swipe-to-dismiss. All 150+ commands and 195 countries remain accessible through a touch-first interface.
+Yes. On mobile, Cmd+K transforms into a touch-optimized search sheet with category chips, large touch targets, and swipe-to-dismiss. The command and country registries remain accessible through a touch-first interface.
 
 **Can I search in languages other than English?**
 Absolutely. The command palette indexes country names and keywords in all 28 supported languages. You can type in Arabic, Japanese, Russian, or any other supported language and get accurate results.

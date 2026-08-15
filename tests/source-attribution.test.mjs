@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import {
+  PROVIDER_IDENTITY_GROUPS,
   buildManifest,
   checkSourceAttribution,
   loadManifest,
@@ -12,11 +13,22 @@ import {
   scanUpstreamHosts,
   sourceAttributionStats,
   validateManifest,
+  validateProviderIdentityGroups,
 } from '../scripts/source-attribution.mjs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+// Deliberately independent of the production active-entry predicate. Keep this
+// oracle expressed only in raw manifest fields so a predicate mutation cannot
+// change both the implementation and the expected membership.
+function rawManifestActiveEntries(manifest) {
+  assert.ok(Array.isArray(manifest?.entries), 'the attribution manifest must contain an entries array');
+  return manifest.entries.filter(
+    (entry) => entry?.observed === true && (entry.status === 'reviewed' || entry.status === 'terms-review'),
+  );
+}
 
 /**
  * Build a throwaway checkout whose committed artifacts the generator itself
@@ -25,7 +37,7 @@ const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
  */
 function makeFixtureCheckout() {
   const dir = mkdtempSync(join(tmpdir(), 'source-attribution-'));
-  for (const root of ['scripts/shared', 'server', 'api', 'src', 'shared', 'docs']) {
+  for (const root of ['scripts', 'server', 'api', 'src', 'shared', 'docs']) {
     mkdirSync(join(dir, root), { recursive: true });
   }
   writeFileSync(
@@ -35,12 +47,10 @@ function makeFixtureCheckout() {
   const inventory = scanUpstreamHosts(dir);
   const manifest = buildManifest(inventory, { entries: [], logicalEntries: [] });
   const manifestPath = join(dir, 'shared/source-attribution-manifest.json');
-  const mirrorPath = join(dir, 'scripts/shared/source-attribution-manifest.json');
   const docsPath = join(dir, 'docs/source-attribution.mdx');
   const writeManifest = (value) => {
     const serialized = `${JSON.stringify(value, null, 2)}\n`;
     writeFileSync(manifestPath, serialized);
-    writeFileSync(mirrorPath, serialized);
   };
   const writeDocs = (value) => writeFileSync(
     docsPath,
@@ -52,7 +62,6 @@ function makeFixtureCheckout() {
     dir,
     manifest,
     manifestPath,
-    mirrorPath,
     docsPath,
     writeManifest,
     writeDocs,
@@ -63,7 +72,6 @@ function makeFixtureCheckout() {
 function readFixtureArtifacts(fixture) {
   return {
     manifest: readFileSync(fixture.manifestPath, 'utf8'),
-    mirror: readFileSync(fixture.mirrorPath, 'utf8'),
     docs: readFileSync(fixture.docsPath, 'utf8'),
   };
 }
@@ -124,6 +132,78 @@ test('source inventory has complete metadata and matches the generated catalog',
   assert.equal(byHost.get('opensky-network.org')?.provider, 'opensky-network.org');
   assert.equal(byHost.get('customer-api.wingbits.com')?.provider, 'wingbits.com');
   assert.equal(byHost.get('ecs-api.wingbits.com')?.provider, 'wingbits.com');
+});
+
+test('provider identity groups declare complete reviewed multi-host membership', () => {
+  const manifest = loadManifest(rootDir);
+  assert.deepEqual(validateProviderIdentityGroups(manifest), []);
+  for (const [groupId, group] of Object.entries(PROVIDER_IDENTITY_GROUPS)) {
+    assert.ok(group.reason.trim(), `${groupId} must explain why its hosts are one provider`);
+    assert.match(group.reviewReference, /(?:PR|issue|review)\s+#?\d+/i, `${groupId} needs a review reference`);
+    const manifestHosts = manifest.entries
+      .filter((entry) => entry.provider === group.provider)
+      .map((entry) => entry.host)
+      .sort();
+    assert.deepEqual(manifestHosts, [...group.memberHosts].sort(), `${groupId} must declare every ledger host`);
+  }
+});
+
+test('provider collisions and incomplete identity groups fail closed', () => {
+  const collision = {
+    entries: ['a.example', 'b.example'].map((host) => ({
+      host,
+      provider: 'Accidentally Shared',
+      observed: true,
+      status: 'terms-review',
+    })),
+  };
+  assert.ok(
+    validateProviderIdentityGroups(collision).some((error) => error.includes('undeclared identity collision')),
+    'a shared provider label must not silently collapse two hosts',
+  );
+
+  const groups = {
+    shared: {
+      provider: 'Declared Shared',
+      memberHosts: ['a.example', 'b.example'],
+      reason: 'Reviewed shared service identity.',
+      reviewReference: 'PR #1',
+    },
+  };
+  const overrides = {
+    'a.example': { provider: 'Declared Shared', identityGroup: 'shared' },
+    'b.example': { provider: 'Declared Shared', identityGroup: 'shared' },
+  };
+  const incomplete = {
+    entries: [{ host: 'a.example', provider: 'Declared Shared', observed: true, status: 'reviewed' }],
+  };
+  assert.ok(
+    validateProviderIdentityGroups(incomplete, groups, overrides)
+      .some((error) => error.includes('manifest membership') && error.includes('b.example')),
+    'a declared group must preserve its complete host set',
+  );
+});
+
+test('the independent raw-manifest oracle catches an active-predicate mutation', async () => {
+  const sourcePath = join(rootDir, 'scripts/source-attribution.mjs');
+  const source = readFileSync(sourcePath, 'utf8');
+  const originalPredicate = "return entry?.observed === true && CREDIT_BEARING_STATUSES.has(entry.status);";
+  assert.equal(source.split(originalPredicate).length - 1, 1, 'mutation target must identify the canonical predicate once');
+  const mutantDir = mkdtempSync(join(tmpdir(), 'source-attribution-mutant-'));
+  const mutantPath = join(mutantDir, 'source-attribution-mutant.mjs');
+  try {
+    writeFileSync(
+      mutantPath,
+      source.replace(originalPredicate, "return entry?.observed === true && entry.status === 'excluded';"),
+    );
+    const mutant = await import(`${pathToFileURL(mutantPath).href}?test=${Date.now()}`);
+    const manifest = loadManifest(rootDir);
+    const expectedHosts = rawManifestActiveEntries(manifest).map((entry) => entry.host).sort();
+    const mutantHosts = mutant.activeSourceAttributionEntries(manifest).map((entry) => entry.host).sort();
+    assert.notDeepEqual(mutantHosts, expectedHosts, 'the independent oracle must reject a mutated active predicate');
+  } finally {
+    rmSync(mutantDir, { recursive: true, force: true });
+  }
 });
 
 test('the issue audit providers are represented by named attribution rows', () => {
@@ -464,7 +544,7 @@ test('the CLI refuses malformed, unpaired, or still-observed retirement requests
   }
 });
 
-test('the CLI explicitly retires a missing fixture host and updates every artifact', () => {
+test('the CLI explicitly retires a missing fixture host and updates canonical artifacts', () => {
   const fixture = makeFixtureCheckout();
   try {
     writeFileSync(join(fixture.dir, 'scripts/seed-fixture.mjs'), 'export const removed = true;\n');
@@ -485,7 +565,6 @@ test('the CLI explicitly retires a missing fixture host and updates every artifa
 
     const after = readFixtureArtifacts(fixture);
     assert.notEqual(after.manifest, before.manifest);
-    assert.equal(after.mirror, after.manifest, 'the scripts/shared mirror must match the retired manifest');
     assert.notEqual(after.docs, before.docs);
     const retired = JSON.parse(after.manifest).entries.find((entry) => entry.host === 'fixture.example');
     assert.equal(retired.observed, false);
@@ -752,11 +831,6 @@ test('the check gate goes red on manifest, docs, and logical-entry drift', () =>
       const docsPath = join(f.dir, 'docs/source-attribution.mdx');
       writeFileSync(docsPath, readFileSync(docsPath, 'utf8').replace('fixture.example', 'fixture.tampered'));
     }, /source-attribution\.mdx is out of date/],
-    ['a desynced scripts/shared mirror', (f) => {
-      const drifted = structuredClone(f.manifest);
-      drifted.entries[0].provider = 'Renamed In The Mirror Only';
-      writeFileSync(f.mirrorPath, `${JSON.stringify(drifted, null, 2)}\n`);
-    }, /scripts\/shared\/source-attribution-manifest\.json is out of sync/],
     ['a missing manifest', (f) => rmSync(f.manifestPath), /source-attribution-manifest\.json is missing/],
   ]) {
     const fixture = makeFixtureCheckout();

@@ -189,6 +189,10 @@ export function parseDockerfileCopy(src) {
   const files = new Set();
   const directories = new Set();
   for (const m of src.matchAll(/^COPY\s+([^\n]+)$/gm)) {
+    // Stage-to-stage sources live inside the build graph, not the repository.
+    // Treating `/workspace/...` as a checkout path creates a fake Railway
+    // dependency and can never be satisfied by a repository watch pattern.
+    if (/(?:^|\s)--from=\S+/u.test(m[1])) continue;
     const tokens = m[1].trim().split(/\s+/).filter((t) => !t.startsWith('--'));
     if (tokens.length < 2) continue; // need at least <src> <dest>
     for (const arg of tokens.slice(0, -1)) {

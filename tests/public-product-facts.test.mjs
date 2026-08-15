@@ -1,11 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
+import { computeStats } from '../scripts/docs-stats.mjs';
+import { generateInventoryFacts } from '../scripts/generate-inventory-facts.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path) => readFileSync(resolve(ROOT, path), 'utf8');
@@ -79,94 +82,77 @@ function collectAcquisitionSurfaces() {
 const CURRENT_FACT_SURFACES = collectAcquisitionSurfaces();
 
 describe('public product facts generation contract', () => {
-  it('publishes generated lifecycle, pricing, and capability facts', () => {
-    const sharedFacts = readJson('shared/product-facts.generated.json');
-    const publicFacts = readJson('public/product-facts.json');
+  it('fails the inventory check for missing or stale build outputs', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-facts-'));
+    mkdirSync(join(tempRoot, 'api'));
+    mkdirSync(join(tempRoot, 'public'));
+    const expected = new Map([
+      ['api/_inventory-facts.generated.js', 'edge'],
+      ['public/product-facts.json', 'public'],
+    ]);
+    try {
+      assert.throws(
+        () => generateInventoryFacts({ check: true, outputs: expected, rootDir: tempRoot }),
+        /missing or stale: api\/_inventory-facts\.generated\.js, public\/product-facts\.json/,
+      );
+      generateInventoryFacts({ outputs: expected, rootDir: tempRoot });
+      assert.doesNotThrow(() => (
+        generateInventoryFacts({ check: true, outputs: expected, rootDir: tempRoot })
+      ));
+      writeFileSync(join(tempRoot, 'api/_inventory-facts.generated.js'), 'stale');
+      assert.throws(
+        () => generateInventoryFacts({ check: true, outputs: expected, rootDir: tempRoot }),
+        /missing or stale: api\/_inventory-facts\.generated\.js/,
+      );
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
 
-    assert.deepEqual(publicFacts, sharedFacts);
-    assert.equal(sharedFacts.product.lifecycle, 'launched');
-    assert.equal(sharedFacts.product.pricingUrl, 'https://www.worldmonitor.app/pro#pricing');
-    assert.equal(sharedFacts.product.primaryCtaLabel, 'View Pro plans');
-    assert.equal(sharedFacts.currency, 'USD');
-    assert.equal(sharedFacts.capabilities.mcpTools, registryToolCount());
-    assert.equal(sharedFacts.capabilities.panelImplementations, readJson('docs/generated/stats.json').panelClasses);
-    assert.equal(sharedFacts.capabilities.sourceAttributionHosts, readJson('docs/generated/stats.json').sourceAttributionHosts);
-    assert.equal(
-      sharedFacts.capabilities.sourceAttributionProviders,
-      readJson('docs/generated/stats.json').sourceAttribution.providerCount,
+  it('keeps stable product facts separate from build-owned inventory facts', () => {
+    const stableFacts = readJson('shared/product-facts.generated.json');
+    const publicFacts = readJson('public/product-facts.json');
+    const relayInventory = readJson('scripts/shared/inventory-facts.generated.json');
+    const stats = computeStats();
+
+    assert.equal(stableFacts.capabilities, undefined);
+    assert.equal(readJson('shared/product-catalog.generated.json').facts.capabilities, undefined);
+    assert.deepEqual(
+      Object.fromEntries(Object.entries(publicFacts).filter(([key]) => key !== 'capabilities')),
+      stableFacts,
     );
+    assert.deepEqual(publicFacts.capabilities, relayInventory.capabilities);
+    assert.deepEqual(publicFacts.capabilities, {
+      mcpTools: stats.mcpToolCount,
+      locales: stats.locales,
+      variants: stats.variantCount,
+      mapLayers: stats.layerDefinitions,
+      panelImplementations: stats.panelClasses,
+      feedDefinitions: stats.feedDefinitions,
+      freshnessTrackedSourceGroups: stats.freshnessSources,
+      sourceAttributionHosts: stats.sourceAttributionHosts,
+      sourceAttributionProviders: stats.sourceAttribution.providerCount,
+    });
+    assert.equal(stableFacts.product.lifecycle, 'launched');
+    assert.equal(stableFacts.product.pricingUrl, 'https://www.worldmonitor.app/pro#pricing');
+    assert.equal(stableFacts.product.primaryCtaLabel, 'View Pro plans');
+    assert.equal(stableFacts.currency, 'USD');
     const serverCardNames = readJson('public/.well-known/mcp/server-card.json')
       .tools
       .map((tool) => tool.name);
     assert.deepEqual(serverCardNames.sort(), registryToolNames().sort());
-    assert.equal(readJson('docs/generated/stats.json').mcpToolCount, registryToolCount());
-    assert.equal(readJson('public/agent-view.json').endpoints.mcp.tools, registryToolCount());
-    for (const localePath of [
-      'pro-test/src/locales/en.json',
-      'pro-test/src/locales/fa.json',
-    ]) {
-      assert.equal(
-        Number(readJson(localePath).welcome.depth.s12v),
-        registryToolCount(),
-        `${localePath} publishes a stale MCP depth statistic`,
-      );
-    }
+    assert.equal(stats.mcpToolCount, registryToolCount());
 
-    const proMonthly = sharedFacts.plans.find((plan) => plan.planKey === 'pro_monthly');
-    const proAnnual = sharedFacts.plans.find((plan) => plan.planKey === 'pro_annual');
+    const proMonthly = stableFacts.plans.find((plan) => plan.planKey === 'pro_monthly');
+    const proAnnual = stableFacts.plans.find((plan) => plan.planKey === 'pro_annual');
     assert.equal(proMonthly.price, PRODUCT_CATALOG.pro_monthly.priceCents / 100);
     assert.equal(proMonthly.billingDuration, 'P1M');
     assert.equal(proAnnual.price, PRODUCT_CATALOG.pro_annual.priceCents / 100);
     assert.equal(proAnnual.billingDuration, 'P1Y');
-    for (const plan of sharedFacts.plans.filter((candidate) => candidate.price != null)) {
+    for (const plan of stableFacts.plans.filter((candidate) => candidate.price != null)) {
       assert.equal(plan.priceCurrency, 'USD');
       assert.equal(plan.availability, 'https://schema.org/InStock');
-      assert.equal(plan.url, sharedFacts.product.pricingUrl);
-    }
-  });
-
-  it('keeps every exact MCP count on a current public surface aligned to the registry', () => {
-    const expected = registryToolCount();
-    let claimCount = 0;
-    for (const path of CURRENT_FACT_SURFACES) {
-      const source = read(path);
-      const claims = [
-        ...source.matchAll(/\b(\d+)(?=-tool MCP server\b)/g),
-        ...source.matchAll(/\b(\d+)(?=\s+MCP tools\b)/g),
-        ...source.matchAll(/\b(\d+)(?=\s+(?:live\s+)?(?:geopolitical intelligence\s+)?tools\b)/g),
-        ...source.matchAll(/\b(\d+)\+(?=\s+(?:MCP\s+)?tools\b)/g),
-        ...source.matchAll(/\b(\d+)(?=\s+\[MCP tools\])/g),
-        ...source.matchAll(/\b(\d+)(?=\s+tool definitions\b)/g),
-        ...source.matchAll(/\b(\d+)(?=\s*个\s*(?:MCP\s*)?(?:实时|压缩的)?工具)/g),
-      ];
-      for (const claim of claims) {
-        claimCount += 1;
-        assert.equal(Number(claim[1]), expected, `${path} publishes a stale MCP tool count`);
-      }
-    }
-    assert.ok(claimCount >= 25, 'expected exact MCP counts across the public acquisition corpus');
-  });
-
-  it('keeps translated source/provider counts aligned with the audited inventory', () => {
-    const facts = readJson('shared/product-facts.generated.json');
-    const expectedProviders = facts.capabilities.sourceAttributionProviders;
-    const expectedHosts = facts.capabilities.sourceAttributionHosts;
-    const localePaths = readdirSync(join(ROOT, 'pro-test/src/locales'))
-      .filter((name) => name.endsWith('.json'));
-    for (const name of localePaths) {
-      const locale = readJson(`pro-test/src/locales/${name}`);
-      const sourceClaim = locale.twoPath?.freeF2?.match(/\b\d+\+/g)?.[1]?.replace('+', '');
-      assert.equal(Number(sourceClaim), expectedHosts, `${name}: source count`);
-      assert.equal(Number.parseInt(locale.welcome?.depth?.s3v, 10), expectedProviders, `${name}: stat tile provider count`);
-      const providerClaim = locale.welcome?.faq?.a3?.match(/\d+(?=\+|以上|개\s*이상)/)?.[0];
-      assert.equal(Number(providerClaim), expectedProviders, `${name}: FAQ provider count`);
-    }
-    const baseline = readJson('scripts/locale-baselines/pro-test.json');
-    assert.equal(Number(baseline['twoPath.freeF2']?.match(/\d+(?=\+ sources)/)?.[0]), expectedHosts, 'locale baseline source count');
-    for (const path of ['pro-test/welcome.html', 'public/pro/welcome.html']) {
-      const source = read(path);
-      assert.doesNotMatch(source, /\b60\+ other live providers\b/);
-      assert.match(source, new RegExp(`\\b${expectedProviders}\\+ providers\\b`));
+      assert.equal(plan.url, stableFacts.product.pricingUrl);
     }
   });
 
@@ -277,11 +263,16 @@ describe('public product facts generation contract', () => {
     }
   });
 
-  it('keeps committed generated facts fresh', () => {
+  it('keeps stable and build-owned generated facts fresh', () => {
     assert.doesNotThrow(() => {
       execFileSync(
         process.execPath,
         ['--import', 'tsx', 'scripts/generate-public-product-facts.mjs', '--check'],
+        { cwd: ROOT, stdio: 'pipe' },
+      );
+      execFileSync(
+        process.execPath,
+        ['scripts/generate-inventory-facts.mjs', '--check'],
         { cwd: ROOT, stdio: 'pipe' },
       );
     });

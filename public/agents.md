@@ -2,11 +2,11 @@
 
 > How AI agents should work with worldmonitor.app: machine surfaces, authentication, crawl policy, rate limits, and discovery endpoints. Prefer the structured surfaces below over scraping the HTML dashboard — the dashboard is a WebGL SPA and yields nothing useful to a text parser.
 
-World Monitor is a real-time global intelligence dashboard: 500+ news feeds, 56 map layer types, 109 concrete panel implementations, country risk/resilience scores, AI briefs, forecasts, and market/supply-chain correlation, served as machine-readable JSON with documented methodology and provenance.
+World Monitor is a real-time global intelligence dashboard: curated news feeds, a shared map-layer catalog, concrete panel implementations, country risk/resilience scores, AI briefs, forecasts, and market/supply-chain correlation, served as machine-readable JSON with documented methodology and provenance.
 
 ## Machine surfaces (use these)
 
-- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, 63 tools; issue `tools/list` for the live inventory. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
+- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP; issue `tools/list` for the live inventory. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
 - **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — Streamable HTTP, public (no auth); search-and-retrieval tools over the documentation. Use it for "how do I…" questions; use the product MCP above for live data.
 - **REST API:** base `https://api.worldmonitor.app` — OpenAPI spec: https://worldmonitor.app/openapi.yaml (JSON: /openapi.json) · API catalog: https://worldmonitor.app/.well-known/api-catalog
 - **NLWeb:** `POST https://www.worldmonitor.app/ask` (supports SSE) for natural-language questions; machine-readable dashboard view at `https://www.worldmonitor.app/?mode=agent`

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -68,6 +68,45 @@ const INSTALL_MANIFESTS = Object.freeze([
   'package-lock.json',
 ]);
 
+// Dockerfile.relay derives this ignored runtime artifact from authoritative
+// registries. These are build inputs, not runtime imports. Keep the list closed
+// so broad wildcards cannot silently expand the relay's deployment surface.
+const RELAY_INVENTORY_BUILD_INPUTS = Object.freeze([
+  'scripts/docs-stats.mjs',
+  'scripts/generate-inventory-facts.mjs',
+  'scripts/source-attribution.mjs',
+  'shared/source-attribution-manifest.json',
+  'public/.well-known/mcp/server-card.json',
+  'src/components/*.ts',
+  'src/config/feeds.ts',
+  'src/config/map-layer-definitions.ts',
+  'src/config/variants/*.ts',
+  'src/locales/*.json',
+  'src/services/data-freshness.ts',
+]);
+const RELAY_GENERATED_RUNTIME_OUTPUT = 'scripts/shared/inventory-facts.generated.json';
+
+function pathPatternMatches(pattern, path) {
+  const expression = pattern
+    .replace(/[.+?^${}()|[\]\\]/gu, '\\$&')
+    .replaceAll('*', '[^/]*');
+  return new RegExp(`^${expression}$`, 'u').test(path);
+}
+
+function patternHasRepositoryMatch(pattern) {
+  if (!pattern.includes('*')) return existsSync(resolve(repoRoot, pattern));
+  const slash = pattern.lastIndexOf('/');
+  const directory = pattern.slice(0, slash);
+  return readFileNames(resolve(repoRoot, directory))
+    .some((name) => pathPatternMatches(pattern, `${directory}/${name}`));
+}
+
+function readFileNames(directory) {
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name);
+}
+
 /**
  * Which dependency manifests a Dockerfile installs from.
  *
@@ -120,7 +159,12 @@ function buildInputsFor(entry, repoRootDir) {
     // import graph cannot see. Stage-to-stage COPY sources are image-local and
     // must not become repository watch paths.
     const copied = repositoryCopyInputs(source);
-    for (const file of copied.files) inputs.add(file);
+    for (const file of copied.files) {
+      if (file !== '.') inputs.add(file);
+    }
+    if (/^RUN node scripts\/generate-inventory-facts\.mjs$/mu.test(source)) {
+      for (const file of RELAY_INVENTORY_BUILD_INPUTS) inputs.add(file);
+    }
   }
   return inputs;
 }
@@ -1158,9 +1202,16 @@ describe('closure detection layers', () => {
         repoRoot,
       )].sort();
       const relaySource = readFileSync(resolve(repoRoot, 'Dockerfile.relay'), 'utf8');
+      const copied = repositoryCopyInputs(relaySource);
+      copied.files.delete('.');
       assert.deepEqual(
         relay,
-        ['.dockerignore', 'Dockerfile.relay', ...parseDockerfileCopy(relaySource).files].sort(),
+        [
+          '.dockerignore',
+          'Dockerfile.relay',
+          ...copied.files,
+          ...RELAY_INVENTORY_BUILD_INPUTS,
+        ].sort(),
       );
 
       // Directory sources are verified through the runtime-surface walk. Exact
@@ -1330,9 +1381,15 @@ describe('critical ingestion Railway registry contract', () => {
       assert.ok(!entry.watchPatterns.includes('scripts/**'), `${serviceName} must not watch every seeder`);
       assert.ok(!entry.watchPatterns.includes('shared/**'), `${serviceName} must not watch all shared data`);
       for (const watchedPath of entry.watchPatterns) {
-        assert.ok(!watchedPath.includes('*'), `${serviceName} must use exact watch paths`);
+        if (watchedPath.includes('*')) {
+          assert.equal(
+            serviceName === 'ais-relay' && RELAY_INVENTORY_BUILD_INPUTS.includes(watchedPath),
+            true,
+            `${serviceName} may use only closed inventory-builder globs`,
+          );
+        }
         assert.ok(
-          existsSync(resolve(repoRoot, watchedPath)),
+          patternHasRepositoryMatch(watchedPath),
           `${serviceName} watchPatterns references missing ${watchedPath}`,
         );
       }
@@ -1346,7 +1403,8 @@ describe('critical ingestion Railway registry contract', () => {
 
       const watched = new Set(entry.watchPatterns);
       const missingRuntimeFiles = [...runtimeFiles]
-        .filter((file) => !watched.has(file))
+        .filter((file) => file !== RELAY_GENERATED_RUNTIME_OUTPUT || serviceName !== 'ais-relay')
+        .filter((file) => ![...watched].some((pattern) => pathPatternMatches(pattern, file)))
         .sort();
       assert.deepEqual(
         missingRuntimeFiles,

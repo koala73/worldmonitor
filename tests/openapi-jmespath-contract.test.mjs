@@ -6,7 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
-import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+import { discoverProtoServiceNames, loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 // Guards the universal `?jmespath=` response-projection parameter injected by
 // scripts/openapi-inject-jmespath.mjs. The REST gateway
@@ -21,14 +21,31 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
-const EXPECTED_GET_OPERATIONS = 199;
-
 const serviceJsonSpecs = readdirSync(apiDir)
   .filter((f) => /Service\.openapi\.json$/.test(f))
   .sort();
 const serviceYamlSpecs = readdirSync(apiDir)
   .filter((f) => /Service\.openapi\.yaml$/.test(f))
   .sort();
+const jsonSpecsByFile = new Map(serviceJsonSpecs.map((file) => [
+  file,
+  JSON.parse(readFileSync(resolve(apiDir, file), 'utf8')),
+]));
+const yamlSpecsByFile = new Map(serviceYamlSpecs.map((file) => [
+  file,
+  loadYaml(readFileSync(resolve(apiDir, file), 'utf8')),
+]));
+
+function countGetOperations(spec) {
+  return Object.values(spec.paths ?? {}).reduce(
+    (count, operations) => count + (operations?.get && typeof operations.get === 'object' ? 1 : 0),
+    0,
+  );
+}
+
+function discoveredJsonGetOperations() {
+  return [...jsonSpecsByFile.values()].reduce((count, spec) => count + countGetOperations(spec), 0);
+}
 
 function findJmespathParam(op) {
   return (op.parameters ?? []).filter((p) => p && p.name === 'jmespath');
@@ -105,46 +122,39 @@ function assertJmespathContract(spec, label) {
 
 describe('OpenAPI jmespath projection parameter contract', () => {
   it('audits the full known service surface', () => {
-    assert.ok(serviceJsonSpecs.length >= 34, `expected >= 34 JSON service specs, found ${serviceJsonSpecs.length}`);
-    assert.equal(
-      serviceYamlSpecs.length,
-      serviceJsonSpecs.length,
-      'expected a YAML sibling for every JSON service spec',
+    assert.deepEqual(
+      serviceJsonSpecs.map((file) => file.replace(/\.openapi\.json$/, '')),
+      discoverProtoServiceNames(),
+      'JSON service specs must match the proto service universe exactly',
+    );
+    assert.deepEqual(
+      serviceYamlSpecs.map((file) => file.replace(/\.openapi\.yaml$/, '')),
+      discoverProtoServiceNames(),
+      'YAML service specs must match the proto service universe exactly',
     );
   });
 
-  it(`per-service JSON specs advertise jmespath on every GET (${EXPECTED_GET_OPERATIONS} total)`, () => {
+  it('per-service JSON specs advertise jmespath on every discovered GET', () => {
     const total = serviceJsonSpecs.reduce((sum, file) => {
-      const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
+      const spec = jsonSpecsByFile.get(file);
       return sum + assertJmespathContract(spec, file);
     }, 0);
-    assert.equal(
-      total,
-      EXPECTED_GET_OPERATIONS,
-      `expected ${EXPECTED_GET_OPERATIONS} GET operations, found ${total}`,
-    );
+    assert.ok(total > 0, 'GET-operation discovery must not be empty');
+    assert.equal(total, discoveredJsonGetOperations(), 'audited JSON GETs must match independently discovered JSON GETs');
   });
 
-  it(`per-service YAML specs advertise jmespath on every GET (${EXPECTED_GET_OPERATIONS} total)`, () => {
+  it('per-service YAML specs advertise jmespath on every discovered GET', () => {
     const total = serviceYamlSpecs.reduce((sum, file) => {
-      const spec = loadYaml(readFileSync(resolve(apiDir, file), 'utf8'));
+      const spec = yamlSpecsByFile.get(file);
       return sum + assertJmespathContract(spec, file);
     }, 0);
-    assert.equal(
-      total,
-      EXPECTED_GET_OPERATIONS,
-      `expected ${EXPECTED_GET_OPERATIONS} GET operations, found ${total}`,
-    );
+    assert.equal(total, discoveredJsonGetOperations(), 'YAML and JSON service specs must expose the same GET-operation count');
   });
 
-  it(`the unified bundle advertises jmespath on every GET (${EXPECTED_GET_OPERATIONS} total)`, () => {
+  it('the unified bundle advertises jmespath on every discovered GET', () => {
     const bundle = loadUnifiedOpenApiSpec();
     const total = assertJmespathContract(bundle, 'worldmonitor.openapi.yaml');
-    assert.equal(
-      total,
-      EXPECTED_GET_OPERATIONS,
-      `expected ${EXPECTED_GET_OPERATIONS} GET operations, found ${total}`,
-    );
+    assert.equal(total, discoveredJsonGetOperations(), 'unified and per-service specs must expose the same GET-operation count');
   });
 
   it('the injector reports the specs as in-sync (idempotent)', () => {
