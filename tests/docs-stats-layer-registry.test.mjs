@@ -45,13 +45,24 @@ describe('docs stats layer-registry extraction', () => {
     assert.deepEqual(parsed.keys, ['alpha', 'copy']);
   });
 
+  it('supports static quoted keys and rejects unsupported property forms', () => {
+    assert.deepEqual(parseLayerRegistry(source("  'alpha': def('alpha', 'A'),")).keys, ['alpha']);
+    for (const entry of [
+      '  ...EXTRA,',
+      "  ['alpha']: def('alpha', 'A'),",
+      "  alpha() { return def('alpha', 'A'); },",
+    ]) {
+      assert.throws(() => parseLayerRegistry(source(entry)), /LAYER_REGISTRY/);
+    }
+  });
+
   it('fails closed on a partial or mismatched extraction', () => {
     assert.throws(
       () => parseLayerRegistry(source(`
   alpha: def('alpha', 'A'),
   beta: makeLayer('beta', 'B'),
 `)),
-      /every LAYER_REGISTRY property must be a matching def/,
+      /LAYER_REGISTRY property beta must use def/,
     );
     assert.throws(
       () => parseLayerRegistry(source("  alpha: def('beta', 'B'),")),

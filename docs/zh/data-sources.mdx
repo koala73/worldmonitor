@@ -558,9 +558,9 @@ GDACS 事件带有彩色编码的警报级别（红色 = 严重，橙色 = 高�
 
 | 数据源             | 覆盖范围                  | 方法                                                                                                  |
 | ------------------ | ------------------------- | ----------------------------------------------------------------------------------------------------- |
-| **FAA ASWS**       | 14 个美国枢纽机场        | 来自 `nasstatus.faa.gov` 的实时 XML 源 — 地面延误、地面停留、到达/出发延误、关闭 |
-| **AviationStack**  | 56 个国际机场  | 每个机场最近 100 架航班 — 根据航班记录计算取消率和平均延误时长  |
-| **ICAO NOTAM API** | 46 个 MENA 机场           | 实时 NOTAM（Notice to Air Missions）查询，用于活跃的机场/空域关闭                      |
+| **FAA ASWS**       | 美国枢纽机场目录        | 来自 `nasstatus.faa.gov` 的实时 XML 源 — 地面延误、地面停留、到达/出发延误、关闭 |
+| **AviationStack**  | 国际机场目录  | 每个机场最近 100 架航班 — 根据航班记录计算取消率和平均延误时长  |
+| **ICAO NOTAM API** | MENA 机场目录           | 实时 NOTAM（Notice to Air Missions）查询，用于活跃的机场/空域关闭                      |
 
 **NOTAM 关闭检测**针对 MENA 机场，因军事活动或安全事件导致的空域关闭具有战略意义。检测使用两种方法：ICAO Q 码匹配（机场/空域关闭代码 `FA`、`AH`、`AL`、`AW`、`AC`、`AM` 结合关闭限定符 `LC`、`AS`、`AU`、`XX`、`AW`）和闭包关键词的自由文本正则扫描（`AD CLSD`、`AIRPORT CLOSED`、`AIRSPACE CLOSED`）。当检测到 NOTAM 关闭时，它会以 `severe/closure` 分级覆盖该机场已有的任何延误警报。
 
@@ -672,7 +672,7 @@ Tech 变体的科技行业情报。
 
 ## 数据新鲜度与情报缺口
 
-一个单例跟踪器监测 35 个数据源（GDELT、GDELT Doc、RSS、AIS、OpenSky、Wingbits、USGS、天气、中断、ACLED、ACLED 冲突、Polymarket、预测、PizzINT、经济、石油、支出、NASA FIRMS、网络威胁、UCDP、UCDP 事件、HAPI、UNHCR、气候、WorldPop、捐赠、BIS、BLS、WTO 贸易、供应链、安全公告、制裁压力、辐射、GPS 干扰、财政部收入），并按状态分类：新鲜（&lt;15 分钟）、陈旧（2 小时）、非常陈旧（6 小时）、无数据、错误、已禁用。两个浏览器跟踪器来源（GDELT、RSS）被标记为 `requiredForRisk`；该标志驱动 Strategic Risk 面板的硬性数据不足门控，而非 CII 评分输入的穷尽列表。与评分相关的源（如 UCDP 事件、ACLED 冲突、新闻摘要和网络威胁）通过来源专属健康加上 `riskScores` 健康/缓存信号密度覆盖来跟踪。该跟踪器显式报告**情报缺口** — 分析师看不到的内容 — 在关键数据源下线或降级时防止虚假信心。
+一个单例跟踪器监测注册的数据新鲜度源（包括 GDELT、GDELT Doc、RSS、AIS、OpenSky、Wingbits、USGS、天气、中断、ACLED、ACLED 冲突、Polymarket、预测、PizzINT、经济、石油、支出、NASA FIRMS、网络威胁、UCDP、UCDP 事件、HAPI、UNHCR、气候、WorldPop、捐赠、BIS、BLS、WTO 贸易、供应链、安全公告、制裁压力、辐射、GPS 干扰、财政部收入），并按状态分类：新鲜（&lt;15 分钟）、陈旧（2 小时）、非常陈旧（6 小时）、无数据、错误、已禁用。两个浏览器跟踪器来源（GDELT、RSS）被标记为 `requiredForRisk`；该标志驱动 Strategic Risk 面板的硬性数据不足门控，而非 CII 评分输入的穷尽列表。与评分相关的源（如 UCDP 事件、ACLED 冲突、新闻摘要和网络威胁）通过来源专属健康加上 `riskScores` 健康/缓存信号密度覆盖来跟踪。该跟踪器显式报告**情报缺口** — 分析师看不到的内容 — 在关键数据源下线或降级时防止虚假信心。
 
 ---
 

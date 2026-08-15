@@ -168,14 +168,28 @@ function panelFetchIds(callback, sourceFile) {
 
   const unresolvedReceivers = new Set();
   callback.forEachChild(function collectFetchCalls(node) {
-    if (ts.isCallExpression(node)
-      && ts.isPropertyAccessExpression(node.expression)
-      && node.expression.name.text === 'fetchData') {
-      const receiver = unwrapExpression(node.expression.expression);
-      const panelId = panelAccessId(receiver, panelCollections)
-        || (ts.isIdentifier(receiver) ? aliasIds.get(receiver.text) : null);
-      if (panelId) ids.add(panelId);
-      else unresolvedReceivers.add(receiver.getText(sourceFile));
+    if (ts.isCallExpression(node)) {
+      let receiver = null;
+      let methodName = null;
+      if (ts.isPropertyAccessExpression(node.expression)) {
+        receiver = unwrapExpression(node.expression.expression);
+        methodName = node.expression.name.text;
+      } else if (ts.isElementAccessExpression(node.expression)) {
+        receiver = unwrapExpression(node.expression.expression);
+        methodName = ts.isStringLiteralLike(node.expression.argumentExpression)
+          ? node.expression.argumentExpression.text
+          : null;
+      }
+      if (receiver) {
+        const panelId = panelAccessId(receiver, panelCollections)
+          || (ts.isIdentifier(receiver) ? aliasIds.get(receiver.text) : null);
+        if (methodName === 'fetchData') {
+          if (panelId) ids.add(panelId);
+          else unresolvedReceivers.add(receiver.getText(sourceFile));
+        } else if (methodName === null && panelId) {
+          unresolvedReceivers.add(`${receiver.getText(sourceFile)}[computed method]`);
+        }
+      }
     }
     node.forEachChild(collectFetchCalls);
   });
@@ -794,6 +808,12 @@ describe('panel-config guardrails', () => {
     `;
     assert.deepStrictEqual(scheduledSelfFetchingPanelIds(destructuredPanels), ['alpha']);
 
+    const literalBracketMethod = `
+      scheduleRefresh('alpha', () => this.state.panels.alpha['fetchData']());
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(literalBracketMethod), ['alpha']);
+
     assert.throws(
       () => scheduledSelfFetchingPanelIds("scheduleRefresh('alpha', () => (this.state.panels['beta'] as BetaPanel).fetchData());"),
       /must fetch that same panel/,
@@ -801,6 +821,10 @@ describe('panel-config guardrails', () => {
     assert.throws(
       () => scheduledSelfFetchingPanelIds("scheduleRefresh('alpha', () => unknownPanels.alpha.fetchData());"),
       /could not resolve fetchData receiver/,
+    );
+    assert.throws(
+      () => scheduledSelfFetchingPanelIds("scheduleRefresh('alpha', () => this.state.panels.alpha[method]());"),
+      /computed method/,
     );
   });
 

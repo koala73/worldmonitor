@@ -2299,7 +2299,22 @@ describe('agent readiness: api-catalog + openapi build', () => {
   });
 
   it('keeps a prebuild hook so the default `npm run build` path also copies the spec', () => {
-    assert.ok(pkg.scripts.prebuild, 'package.json must define scripts["prebuild"] (default build path uses it)');
+    assert.ok(
+      pkg.scripts.prebuild?.includes('npm run product:facts'),
+      'package.json scripts["prebuild"] must regenerate ignored product and inventory facts',
+    );
+    assert.ok(
+      pkg.scripts.prebuild?.includes('npm run build:openapi'),
+      'package.json scripts["prebuild"] must copy the generated OpenAPI spec',
+    );
+  });
+
+  it('regenerates ignored inventory facts before the Tauri desktop build', () => {
+    assert.equal(
+      pkg.scripts['prebuild:desktop'],
+      'npm run product:facts',
+      'Tauri packages api/ and public/ resources, so build:desktop must regenerate ignored facts',
+    );
   });
 
   it('openapi source exists at docs/api/worldmonitor.openapi.yaml', () => {

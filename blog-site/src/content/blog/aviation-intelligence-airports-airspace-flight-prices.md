@@ -15,7 +15,7 @@ WorldMonitor gives that layer a dedicated panel — and wires it into the same m
 
 ## The six-tab Aviation Intelligence panel
 
-The **Aviation Intelligence panel** covers 115 monitored airports worldwide across six tabs:
+The **Aviation Intelligence panel** covers the registered worldwide airport watchlist across six tabs:
 
 - **Ops** — operational status and delay conditions, including FAA delay programs for US hubs.
 - **Flights** — flight activity for the airports you care about.

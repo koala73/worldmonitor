@@ -77,6 +77,7 @@
     "prebuild": "npm run product:facts && npm run build:openapi && npm run build:agent-skills",
     "build": "npm run security:vite-env-secrets -- --strict-local && npm run build:blog:raw && npm run build:crawlable-corpus && npm run build:sitemap && tsc && vite build",
     "build:sidecar-sebuf": "node scripts/build-sidecar-sebuf.mjs",
+    "prebuild:desktop": "npm run product:facts",
     "build:desktop": "npm run security:vite-env-secrets -- --strict-local && node scripts/build-sidecar-sebuf.mjs && node scripts/build-sidecar-handlers.mjs && tsc && vite build",
     "prebuild:full": "npm run product:facts",
     "build:full": "npm run security:vite-env-secrets -- --strict-local && npm run build:openapi && npm run build:agent-skills && npm run build:blog:raw && npm run build:crawlable-corpus && npm run build:sitemap && cross-env-shell VITE_VARIANT=full \"tsc && vite build\"",

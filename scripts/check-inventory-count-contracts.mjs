@@ -23,11 +23,6 @@ const INVENTORY_PRESERVING_METHODS = new Set([
   'sort',
   'values',
 ]);
-const INVENTORY_PRESERVING_MATH_METHODS = new Set([
-  'ceil',
-  'floor',
-  'trunc',
-]);
 
 /**
  * Closed-world register of extensible inventory count contracts.
@@ -444,8 +439,7 @@ function propagatesInventory(node, selectors, taintedNames, taintedParameters) {
   if (ts.isPropertyAccessExpression(node.expression)) {
     return INVENTORY_PRESERVING_METHODS.has(node.expression.name.text)
       || (ts.isIdentifier(node.expression.expression)
-        && node.expression.expression.text === 'Math'
-        && INVENTORY_PRESERVING_MATH_METHODS.has(node.expression.name.text));
+        && node.expression.expression.text === 'Math');
   }
   return false;
 }

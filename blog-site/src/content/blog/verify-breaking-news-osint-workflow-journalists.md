@@ -35,7 +35,7 @@ Now the part most newsrooms skip: instruments that would have to be lying for th
 
 **Seismic data.** Major industrial explosions register on USGS seismographs. The Beirut port explosion measured as a magnitude-3.3 event. For a "massive explosion" claim, a silent seismic record near a station network is a real red flag.
 
-**Aviation.** Authorities close airspace around genuine incidents. Check airport delay status and closures (115 monitored airports, plus NOTAM-based closures across the MENA region) and whether flight paths are suddenly routing around the area. GPS jamming overlays add another tell in conflict-adjacent regions.
+**Aviation.** Authorities close airspace around genuine incidents. Check the registered airport delay and closure watchlist, including NOTAM-based closures across the MENA region, and whether flight paths are suddenly routing around the area. GPS jamming overlays add another tell in conflict-adjacent regions.
 
 **Internet connectivity.** Infrastructure damage and government responses both show up in Cloudflare Radar outage data. A localized connectivity drop at the claimed location and time is strong corroboration; nationwide throttling suggests a state response, itself a story.
 

@@ -158,7 +158,7 @@ function readCallArguments(source, argumentsStart) {
     } else if (')]}'.includes(character)) {
       if (character === ')' && depth === 0) {
         argumentsList.push(current.trim());
-        return argumentsList;
+        return { args: argumentsList, end: index };
       }
       depth -= 1;
       if (depth < 0) throw new Error('docs-stats: unbalanced LAYER_REGISTRY def() call');
@@ -180,20 +180,64 @@ function parseLayerRegistry(source) {
     throw new Error('docs-stats: could not find the complete LAYER_REGISTRY block');
   }
   const registryBlock = stripCommentsAndTemplates(source.slice(start, end));
-  const declaredKeys = [...registryBlock.matchAll(/^[ \t]+([A-Za-z_$][\w$]*)\s*:/gm)]
-    .map((match) => match[1]);
-  const definitionStarts = [...registryBlock.matchAll(
-    /^[ \t]+([A-Za-z_$][\w$]*)[ \t]*:[ \t\r\n]*def\(/gm,
-  )];
-  const definitionKeys = [];
+  let cursor = registryBlock.indexOf('{');
+  if (cursor === -1) throw new Error('docs-stats: LAYER_REGISTRY must be an object literal');
+  cursor += 1;
+  const declaredKeys = [];
   const mismatchedKeys = [];
   const lockedKeys = [];
-  for (const match of definitionStarts) {
-    const key = match[1];
-    const args = readCallArguments(registryBlock, match.index + match[0].length);
+  while (cursor < registryBlock.length) {
+    while (/\s|,/.test(registryBlock[cursor] ?? '')) cursor += 1;
+    if (registryBlock[cursor] === '}') break;
+    if (registryBlock.startsWith('...', cursor)) {
+      throw new Error('docs-stats: LAYER_REGISTRY spread properties are not supported');
+    }
+    if (registryBlock[cursor] === '[') {
+      throw new Error('docs-stats: LAYER_REGISTRY computed properties are not supported');
+    }
+
+    let key = '';
+    const quote = registryBlock[cursor] === "'" || registryBlock[cursor] === '"'
+      ? registryBlock[cursor]
+      : null;
+    if (quote) {
+      cursor += 1;
+      while (cursor < registryBlock.length && registryBlock[cursor] !== quote) {
+        if (registryBlock[cursor] === '\\') {
+          throw new Error('docs-stats: LAYER_REGISTRY property keys must not use escapes');
+        }
+        key += registryBlock[cursor];
+        cursor += 1;
+      }
+      if (registryBlock[cursor] !== quote) {
+        throw new Error('docs-stats: unterminated LAYER_REGISTRY property key');
+      }
+      cursor += 1;
+    } else {
+      const identifier = registryBlock.slice(cursor).match(/^[A-Za-z_$][\w$]*/)?.[0];
+      if (!identifier) throw new Error('docs-stats: every LAYER_REGISTRY property must have a static key');
+      key = identifier;
+      cursor += identifier.length;
+    }
+    if (!/^[A-Za-z_$][\w$]*$/.test(key)) {
+      throw new Error(`docs-stats: invalid LAYER_REGISTRY property key ${key}`);
+    }
+    while (/\s/.test(registryBlock[cursor] ?? '')) cursor += 1;
+    if (registryBlock[cursor] !== ':') {
+      throw new Error(`docs-stats: LAYER_REGISTRY property ${key} must be an assignment`);
+    }
+    cursor += 1;
+    while (/\s/.test(registryBlock[cursor] ?? '')) cursor += 1;
+    if (!registryBlock.startsWith('def(', cursor)) {
+      throw new Error(`docs-stats: LAYER_REGISTRY property ${key} must use def()`);
+    }
+    const { args, end: callEnd } = readCallArguments(registryBlock, cursor + 4);
+    cursor = callEnd + 1;
+    declaredKeys.push(key);
     const definitionKey = args[0]?.match(/^(['"])([A-Za-z_$][\w$]*)\1$/)?.[2];
-    if (!definitionKey) continue;
-    definitionKeys.push(key);
+    if (!definitionKey) {
+      throw new Error(`docs-stats: LAYER_REGISTRY property ${key} needs a static def() key`);
+    }
     if (key !== definitionKey) mismatchedKeys.push(`${key} -> ${definitionKey}`);
     if (/^(['"])locked\1$/.test(args[5] ?? '')) lockedKeys.push(key);
   }
@@ -203,11 +247,9 @@ function parseLayerRegistry(source) {
   if (new Set(declaredKeys).size !== declaredKeys.length) {
     throw new Error('docs-stats: LAYER_REGISTRY contains duplicate keys');
   }
-  if (!sameStringSet(declaredKeys, definitionKeys) || mismatchedKeys.length > 0) {
-    const delta = describeSetDelta(definitionKeys, declaredKeys);
+  if (mismatchedKeys.length > 0) {
     throw new Error(
-      `docs-stats: every LAYER_REGISTRY property must be a matching def('<key>', ...) call${delta ? ` (${delta})` : ''}`
-      + `${mismatchedKeys.length ? `; mismatched: ${mismatchedKeys.join(', ')}` : ''}`,
+      `docs-stats: every LAYER_REGISTRY property must be a matching def('<key>', ...) call; mismatched: ${mismatchedKeys.join(', ')}`,
     );
   }
   return {
@@ -1101,7 +1143,12 @@ function claims(s) {
   ];
 }
 
-export const VOLATILE_INVENTORY_CLAIM_RE = /(?:\b(?:\d[\d,]*\+\s+(?:(?:MCP|other|live|curated|interactive|registered|observed|news|data source)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|credentials|API handlers|operations|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities)|\d[\d,]*\s+(?:(?:MCP|other|live|curated|interactive|registered|observed|news)\s+)+(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|operations|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities)|\d[\d,]*\s+(?:providers|airports|map layers|panels|locales|streams|connectors))\b|\d[\d,]*\s*(?:\+|多|以上)\s*(?:个)?\s*(?:实时|精选|已注册|已观察)?\s*(?:数据源|信息源|服务|工具|提供商|操作|地图图层|面板|语言|区域设置|机场|数据中心|实体))/i;
+const ENGLISH_VOLATILE_INVENTORY_CLAIM_RE = /\b(?:\d[\d,]*\+\s+(?:(?:MCP|other|live|curated|interactive|registered|observed|monitored|news|data source)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|credentials|API handlers|operations|functions|domains|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities)|\d[\d,]*\s+(?:(?:MCP|other|live|curated|interactive|registered|observed|monitored|news)\s+)+(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|operations|functions|domains|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities)|\d[\d,]*\s+(?:providers|airports|map layers|panels|locales|streams|connectors))\b/i;
+const CHINESE_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|[^A-Za-z0-9])\d[\d,]*\s*(?:(?:\+|多|以上)\s*)?(?:个|项)?\s*(?:(?:实时|精选|已注册|已观察|监控|受监控|独立|上游|生成的|Vercel|Edge|边缘|数据|新闻)\s*)*(?:数据源|信息源|新闻源|服务(?:领域)?|工具|提供商|操作|地图图层|数据图层|图层|面板|语言|区域设置|机场|数据中心|实体|边缘函数|函数)(?=$|[\s，。、；：）)】<])/i;
+export const VOLATILE_INVENTORY_CLAIM_RE = new RegExp(
+  `(?:${ENGLISH_VOLATILE_INVENTORY_CLAIM_RE.source}|${CHINESE_VOLATILE_INVENTORY_CLAIM_RE.source})`,
+  'i',
+);
 
 const ACQUISITION_CLAIM_ROOTS = [
   'index.html',
@@ -1142,6 +1189,7 @@ export function validateVolatileInventoryClaims() {
     { path: 'docs/signal-intelligence.mdx', text: /(?:3\+ source types|6\+ sources\/hour)/ },
     { path: 'docs/ai-intelligence.mdx', text: /8\+ feeds in 2 hours/ },
     { path: 'docs/data-sources.mdx', text: /Natural disasters from 3 sources/ },
+    { path: 'docs/zh/data-sources.mdx', text: /来自 3 个数据源的自然灾害/ },
     { path: 'docs/data-sources.mdx', text: /25 feed categories would have generated 25,000 edge invocations/ },
     { path: 'docs/tradingview-screener-integration.md', text: /41\/41 operations/ },
     { path: 'docs/api-versioning.mdx', text: /version 1 operation/ },
