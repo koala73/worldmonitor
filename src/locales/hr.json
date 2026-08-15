@@ -558,6 +558,7 @@
         "climate": "Uključi/isključi klimatske anomalije",
         "outages": "Uključi/isključi ispade interneta",
         "tradeRoutes": "Uključi/isključi trgovačke rute",
+        "canadaRoads": "Toggle Canada roads overlay",
         "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
@@ -728,7 +729,7 @@
         "URLHAUS_AUTH_KEY": "Koristi se za URLhaus i ThreatFox API-je.",
         "OTX_API_KEY": "Opcionalni izvor obogaćivanja za sloj cyber prijetnji.",
         "ABUSEIPDB_API_KEY": "Opcionalni izvor obogaćivanja za reputaciju zlonamjernih IP adresa.",
-        "FINNHUB_API_KEY": "Cijene dionica u realnom vremenu i tržišni podaci.",
+        "FINNHUB_API_KEY": "Odgođene ili unaprijed učitane cijene dionica i tržišni podaci. Ključ nije živi prijenos.",
         "NASA_FIRMS_API_KEY": "Sustav za upravljanje informacijama o požarima.",
         "OLLAMA_API_URL": "npr. http://127.0.0.1:11434 (Ollama) ili http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-kompatibilan endpoint.",
         "OLLAMA_MODEL": "npr. llama3.1:8b — tag modela za summarizaciju."
@@ -1110,6 +1111,7 @@
       "noComtradeData": "Nema dostupnih podataka o strateških tokovima",
       "comtradeUnavailable": "UN Comtrade podaci privremeno nisu dostupni",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomalija",
       "colReporter": "Država",
       "colCommodity": "Roba",
@@ -1456,6 +1458,7 @@
         "happiness": "Svjetsko Blagostanje",
         "speciesRecovery": "Oporavak vrsta",
         "renewableInstallations": "Čista energija",
+        "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
@@ -1563,6 +1566,7 @@
           "dayNight": "Praćenje solarnog terminatora u stvarnom vremenu - prikaz dnevne i noćne zone",
           "geoBoundaries": "Demilitarizirane zone, linije primirja i sporne granice",
           "ciiChoropleth": "Indeks nestabilnosti države toplinska mapa — boji zemlje po CII rezultatu (zelena=stabilna, crvena=kritična)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {

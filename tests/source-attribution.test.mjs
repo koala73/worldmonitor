@@ -94,12 +94,20 @@ test('source inventory has complete metadata and matches the generated catalog',
   }
 
   const stats = sourceAttributionStats(inventory, manifest);
-  const docsStats = JSON.parse(readFileSync(join(rootDir, 'docs/generated/stats.json'), 'utf8'));
-  // Lockstep with docs:stats so a new host cannot leave these three asserts a
-  // commit behind the restuck inventory.
-  assert.equal(stats.activeHosts, docsStats.sourceAttribution.activeHosts);
-  assert.equal(stats.providerCount, docsStats.sourceAttribution.providerCount);
-  assert.equal(stats.observedHosts, docsStats.sourceAttribution.observedHosts);
+  // Hardcoded on purpose, and this DELIBERATELY OVERRIDES the lockstep-with-
+  // docs/generated/stats.json version that arrived on the #6610 branch.
+  // buildSourceAttributionStats (scripts/source-attribution.mjs:1090) is a thin
+  // wrapper that calls this exact sourceAttributionStats(inventory, manifest) on
+  // the same inputs, and that is what writes stats.json. So the lockstep form
+  // compares a value against a serialized snapshot of itself: it cannot fail on
+  // an unintended host-count change, only on a stale snapshot — which docs:check
+  // already gates. Hardcoding is what makes an accidental source drop go red.
+  // Yes, these numbers go stale; that is the tripwire working, and the fix is a
+  // conscious one-line bump. 550/548/669 on main (Ontario #6663, Alberta #6666,
+  // Toronto #6665) + api.open511.gov.bc.ca from this PR.
+  assert.equal(stats.activeHosts, 552);
+  assert.equal(stats.providerCount, 550);
+  assert.equal(stats.observedHosts, 671);
   assert.ok(stats.reviewNeeded > 0, 'terms-review rows must remain visible until a license audit is complete');
 });
 
@@ -142,6 +150,17 @@ test('the issue audit providers are represented by named attribution rows', () =
   ]) {
     assert.ok(names.has(provider), `missing named provider row: ${provider}`);
   }
+});
+
+test('City of Toronto CART host stays terms-review while CKAN licence_id is notspecified', () => {
+  const inventory = scanUpstreamHosts(rootDir);
+  const manifest = loadManifest(rootDir);
+  const observed = inventory.find((entry) => entry.host === 'secure.toronto.ca');
+  assert.ok(observed, 'secure.toronto.ca must be observed from the Toronto seeder/adapter');
+  const entry = [...manifest.entries, ...manifest.logicalEntries].find((row) => row.host === 'secure.toronto.ca');
+  assert.ok(entry, 'secure.toronto.ca must have a generated attribution row');
+  assert.equal(entry.status, 'terms-review');
+  assert.equal(entry.provider, 'City of Toronto Open Data');
 });
 
 test('uppercase URL constants are included in the upstream inventory', () => {

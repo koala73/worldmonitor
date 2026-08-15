@@ -50,6 +50,8 @@ import {
   fetchPredictions,
   fetchEarthquakes,
   fetchWeatherAlerts,
+  fetchCanadaRoads,
+  getCanadaRoadSourceStates,
   fetchCanadaAlerts,
   fetchInternetOutages,
   fetchTrafficAnomalies,
@@ -986,6 +988,7 @@ export class DataLoaderManager implements AppModule {
     if (hasPremiumAccess() && shouldLoad('wsb-ticker-scanner')) tasks.push({ name: 'wsbTickers', task: () => runGuarded('wsbTickers', () => this.loadWsbTickers()) });
     if (shouldLoad('economic')) tasks.push({ name: 'economicStress', task: () => runGuarded('economicStress', () => this.loadEconomicStress()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.weather) tasks.push({ name: 'weather', task: () => runGuarded('weather', () => this.loadWeatherAlerts()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.canadaRoads) tasks.push({ name: 'canadaRoads', task: () => runGuarded('canadaRoads', () => this.loadCanadaRoads()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.canadaAlerts) tasks.push({ name: 'canadaAlerts', task: () => runGuarded('canadaAlerts', () => this.loadCanadaAlerts()) });
     if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: () => runGuarded('ais', () => this.loadAisSignals()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: () => runGuarded('cables', () => this.loadCableActivity()) });
@@ -1065,6 +1068,9 @@ export class DataLoaderManager implements AppModule {
           break;
         case 'weather':
           await this.loadWeatherAlerts();
+          break;
+        case 'canadaRoads':
+          await this.loadCanadaRoads();
           break;
         case 'canadaAlerts':
           await this.loadCanadaAlerts();
@@ -2826,6 +2832,30 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setTechEvents([]);
       this.ctx.map?.setLayerReady('techEvents', false);
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'error', errorMessage: String(error) });
+    }
+  }
+
+  async loadCanadaRoads(): Promise<void> {
+    try {
+      const records = await fetchCanadaRoads();
+      const sourceStates = getCanadaRoadSourceStates();
+      const degradedSources = Object.entries(sourceStates)
+        .filter(([, state]) => state === 'unavailable' || state === 'malformed')
+        .map(([key]) => key);
+      this.ctx.map?.setCanadaRoads(records);
+      this.ctx.map?.setLayerReady('canadaRoads', records.length > 0);
+      this.ctx.statusPanel?.updateFeed('Canada Roads', {
+        status: degradedSources.length > 0 ? 'warning' : 'ok',
+        itemCount: records.length,
+        errorMessage: degradedSources.length > 0
+          ? `Partial coverage: ${degradedSources.join(', ')}`
+          : undefined,
+      });
+      dataFreshness.recordUpdate('ontario_511', records.length);
+    } catch (error) {
+      this.ctx.map?.setLayerReady('canadaRoads', false);
+      this.ctx.statusPanel?.updateFeed('Canada Roads', { status: 'error' });
+      dataFreshness.recordError('ontario_511', String(error));
     }
   }
 

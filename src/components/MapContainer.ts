@@ -42,6 +42,7 @@ import type { DisplacementFlow } from '@/services/displacement';
 import type { Earthquake } from '@/services/earthquakes';
 import type { ClimateAnomaly } from '@/services/climate';
 import type { WeatherAlert } from '@/services/weather';
+import type { CanadaRoadRecord } from '@/services/canada-roads';
 import type { CanadaAlert } from '@/services/canada-alerts';
 import type { PositiveGeoEvent } from '@/services/positive-events-geo';
 import type { KindnessPoint } from '@/services/kindness-data';
@@ -205,6 +206,7 @@ export class MapContainer {
   private cachedEarthquakes: Earthquake[] | null = null;
   private cachedConflictEvents: AcledConflictEvent[] | null = null;
   private cachedWeatherAlerts: WeatherAlert[] | null = null;
+  private cachedCanadaRoads: CanadaRoadRecord[] | null = null;
   private cachedCanadaAlerts: CanadaAlert[] | null = null;
   private cachedOutages: InternetOutage[] | null = null;
   private cachedAisDisruptions: AisDisruptionEvent[] | null = null;
@@ -722,6 +724,7 @@ export class MapContainer {
     if (this.cachedEarthquakes) this.setEarthquakes(this.cachedEarthquakes);
     if (this.cachedConflictEvents) this.setConflictEvents(this.cachedConflictEvents);
     if (this.cachedWeatherAlerts) this.setWeatherAlerts(this.cachedWeatherAlerts);
+    if (this.cachedCanadaRoads) this.setCanadaRoads(this.cachedCanadaRoads);
     if (this.cachedCanadaAlerts) this.setCanadaAlerts(this.cachedCanadaAlerts);
     if (this.cachedOutages) this.setOutages(this.cachedOutages);
     if (this.cachedAisDisruptions != null && this.cachedAisDensity != null) this.setAisData(this.cachedAisDisruptions, this.cachedAisDensity);
@@ -998,6 +1001,10 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setWeatherAlerts(alerts); } else { this.svgMap?.setWeatherAlerts(alerts); }
   }
 
+  public setCanadaRoads(records: CanadaRoadRecord[]): void {
+    this.cachedCanadaRoads = records;
+    if (this.useDeckGL) { this.deckGLMap?.setCanadaRoads(records); }
+  }
   public setCanadaAlerts(alerts: CanadaAlert[]): void {
     this.cachedCanadaAlerts = alerts;
     if (this.useDeckGL) { this.deckGLMap?.setCanadaAlerts(alerts); }
@@ -1694,6 +1701,7 @@ export class MapContainer {
     this.cachedEarthquakes = null;
     this.cachedConflictEvents = null;
     this.cachedWeatherAlerts = null;
+    this.cachedCanadaRoads = null;
     this.cachedCanadaAlerts = null;
     this.cachedOutages = null;
     this.cachedAisDisruptions = null;

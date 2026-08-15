@@ -477,6 +477,7 @@
         "climate": "切換氣候異常",
         "outages": "切換網際網路中斷",
         "tradeRoutes": "切換貿易路線",
+        "canadaRoads": "Toggle Canada roads overlay",
         "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
@@ -639,7 +640,7 @@
         "URLHAUS_AUTH_KEY": "用於URLhaus和ThreatFox API。",
         "OTX_API_KEY": "網路威脅圖層的可選增強資料來源。",
         "ABUSEIPDB_API_KEY": "惡意IP信譽的可選增強資料來源。",
-        "FINNHUB_API_KEY": "即時股票報價和市場資料。",
+        "FINNHUB_API_KEY": "延遲或預先載入的股票報價和市場資料。有金鑰也不代表直連行情。",
         "NASA_FIRMS_API_KEY": "消防資訊資源管理系統。",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -932,6 +933,7 @@
       "noComtradeData": "無戰略流動資料",
       "comtradeUnavailable": "聯合國貿易資料庫資料暫時不可用",
       "sourceComtrade": "聯合國貿易資料庫",
+      "comtradeNationalScope": "聯合國 Comtrade 的紀錄是報告國的國家級官方統計，不是某鎮、走廊、工廠、港口或船貨的出口。",
       "anomalyBadge": "異常",
       "colReporter": "國家",
       "colCommodity": "商品",
@@ -1189,6 +1191,7 @@
         "renewableInstallations": "清潔能源",
         "radiationSpike": "輻射峰值",
         "radiationElevated": "輻射升高",
+        "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
@@ -1296,6 +1299,7 @@
           "dayNight": "即時太陽終結線顯示晝夜區域",
           "geoBoundaries": "非軍事區、停火線和爭議邊界",
           "ciiChoropleth": "國家不穩定指數熱力圖 — 按CII評分為國家著色（綠色=穩定，紅色=危急）",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
@@ -1911,7 +1915,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2173,7 +2177,7 @@
       "infoTooltip": "<strong>災難級聯</strong> 檢測匯聚的自然災害和基礎設施訊號：<ul><li>關聯地震、野火、洪災和極端天氣</li><li>追蹤對基礎設施和供應鏈的級聯影響</li><li>突出具有複合災難風險的地區</li></ul>點選卡片可在地圖上放大到受影響區域。"
     },
     "markets": {
-      "infoTooltip": "<strong>市場</strong> 即時股票指數、股票和加密貨幣價格。使用\"觀察列表\"按鈕自定義您的觀察列表。火花線顯示最近價格趨勢。",
+      "infoTooltip": "<strong>市場</strong> 延遲或預先載入的股票指數、股票和加密貨幣價格。使用\"觀察列表\"按鈕自定義您的觀察列表。火花線顯示最近價格趨勢。",
       "chart": {
         "title": "{{symbol}} 價格圖表",
         "close": "關閉圖表"

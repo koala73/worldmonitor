@@ -60,6 +60,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   tradeRoutes: true,        // Commodity trade routes
   natural: true,            // Earthquakes/natural events (affect mine operations)
   weather: true,            // Weather impacting operations
+  canadaRoads: false,
   canadaAlerts: false,
 
   // ── All non-commodity layers (DISABLED) ───────────────────────────────────
@@ -135,6 +136,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   tradeRoutes: false,
   natural: true,
   weather: false,
+  canadaRoads: false,
   canadaAlerts: false,
 
   // All others disabled on mobile

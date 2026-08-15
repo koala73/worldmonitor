@@ -25,13 +25,29 @@ const QUIET_META_ONLY_KEYS = [
   'ddosAttacks',
   'trafficAnomalies',
   'weatherAlerts',
-  'canadaAlerts',
   'newsThreatSummary',
 ];
 
 const AUDITED_PRESENT_PAYLOAD_KEYS = [
   'cableHealth',
   'notamClosures',
+  // canadaRoads does NOT refresh metadata only on quiet cycles: the seeder
+  // publishes an explicit {records: []} envelope on every successful tick
+  // (zeroIsValid -> OK_ZERO -> canonical written). So fresh metadata plus a
+  // vanished payload is a real publish failure, not a quiet period — the same
+  // reasoning api/health.js already applies to `outages`. albertaRoads rides the
+  // same seeder and the same publish path. torontoRoads is a different seeder but
+  // the same contract: an explicit envelope on every successful tick.
+  'canadaRoads',
+  'albertaRoads',
+  'torontoRoads',
+  'bcOpen511',
+  // canadaAlerts is the same contract again: seed-alberta-emergency-alert runs
+  // with zeroIsValid, so a quiet province still writes {alerts: []}. A vanished
+  // canonical key beside fresh seed-meta is a failed publish — and on an
+  // EMERGENCY ALERT layer, reading OK while the payload is gone is the worst
+  // place in the fleet to be wrong.
+  'canadaAlerts',
 ];
 
 function classifyMissing(name, meta) {

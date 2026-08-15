@@ -12,7 +12,7 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
   'irradiators',
   'sanctions',
   'weather',
-  'canadaAlerts',
+  'canadaRoads', 'canadaAlerts',
   'economic',
   'waterways',
   'outages',

@@ -48,7 +48,7 @@
     "entF10": "Cloud, on-prem ili air-gapped implementacija",
     "entF11": "Namjenski onboarding i podrška",
     "entCta": "Razgovarajte s prodajom",
-    "freeF2": "500+ feedova, 537+ izvora, 50+ slojeva karte"
+    "freeF2": "500+ feedova, 552+ izvora, 50+ slojeva karte"
   },
   "whyUpgrade": {
     "title": "Zašto nadograditi",
@@ -566,7 +566,7 @@
       "s1l": "Slojevi karte",
       "s2v": "500+",
       "s2l": "Kurirani izvori podataka",
-      "s3v": "535+",
+      "s3v": "550+",
       "s3l": "Davatelji podataka",
       "s4v": "13",
       "s4l": "Uska grla · uživo AIS",
@@ -659,7 +659,7 @@
       "q2": "Što je globalni intelligence dashboard?",
       "a2": "Jedan živu prikaz koji spaja signale koje većina alata čuva odvojeno: događaje sukoba, praćenje brodova i zrakoplova, trgovačke uske grlo, satelite, podmorske kabele, cjevovode, tržišta i cyber prijetnje — na jednoj karta u stvarnom vremenu, s AI ocjenom i sažecima na vrhu. World Monitor je besplatan.",
       "q3": "Gdje dolaze podaci?",
-      "a3": "535+ pružatelja, nanizvučeni: ACLED i UCDP za sukobe, AISStream za live brodove, OpenSky za zrakoplove, NASA FIRMS za požare, USGS za zemljotrese, IMF, BIS, FRED i Finnhub za tržišta i makro — plus 500+ kurirane vijest-feedove. Svaki panel navodira svoje izvore i vremenske žigove u tekstu.",
+      "a3": "550+ pružatelja, nanizvučeni: ACLED i UCDP za sukobe, AISStream za live brodove, OpenSky za zrakoplove, NASA FIRMS za požare, USGS za zemljotrese, IMF, BIS, FRED i Finnhub za tržišta i makro — plus 500+ kurirane vijest-feedove. Svaki panel navodira svoje izvore i vremenske žigove u tekstu.",
       "q4": "Mogu li pratiti uska grla poput Hormuzа ili Bab el-Mandeba u stvarnom vremenu?",
       "a4": "Da. 13 uskih grla prate se s živim AIS brojevima brodova, promjenom tranzita tjedan-na-tjedan i ocjenom prekida — a anomalije gustoće označavaju se prema osnovnoj liniji svakog tjesnaца.",
       "q5": "Kako se ovo razlikuje od konfliktne karte kao što je Liveuamap?",

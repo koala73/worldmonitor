@@ -187,6 +187,7 @@
         "climate": "Klimaatanomalieën in-/uitschakelen",
         "outages": "Internetstoringen in-/uitschakelen",
         "tradeRoutes": "Handelsroutes in-/uitschakelen",
+        "canadaRoads": "Toggle Canada roads overlay",
         "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
@@ -334,7 +335,7 @@
         "URLHAUS_AUTH_KEY": "Gebruikt voor de URLhaus- en ThreatFox-API's.",
         "OTX_API_KEY": "Optionele verrijkingsbron voor de cyberdreigingslaag.",
         "ABUSEIPDB_API_KEY": "Optionele verrijkingsbron voor reputatie van kwaadaardige IP-adressen.",
-        "FINNHUB_API_KEY": "Realtime aandelenkoersen en marktgegevens.",
+        "FINNHUB_API_KEY": "Vertraagde of voorgeladen aandelenkoersen en marktgegevens. Een sleutel is geen live ticker.",
         "NASA_FIRMS_API_KEY": "Brandinformatiesysteem voor Resourcebeheer.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -592,6 +593,7 @@
         "renewableInstallations": "Schone energie",
         "radiationSpike": "Stralingspiek",
         "radiationElevated": "Verhoogde straling",
+        "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Lagen",
@@ -706,6 +708,7 @@
           "techFires": "Actieve bosbranden nabij technische infrastructuur",
           "geoBoundaries": "Gedemilitariseerde zones, staakt-het-vuren-lijnen en betwiste grenzen",
           "ciiChoropleth": "Country Instability Index heatmap — kleurt landen op basis van CII-score (groen=stabiel, rood=kritiek)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
@@ -1033,6 +1036,7 @@
       "noComtradeData": "Geen strategische stroomgegevens beschikbaar",
       "comtradeUnavailable": "UN Comtrade-gegevens tijdelijk niet beschikbaar",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomalie",
       "colReporter": "Land",
       "colCommodity": "Grondstof",
@@ -1621,7 +1625,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -1883,7 +1887,7 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Detecteert convergerende natuurramp- en infrastructuursignalen:<ul><li>Correleert aardbevingen, bosbranden, overstromingen en weerextremen</li><li>Volgt cascadische effecten op infrastructuur en toeleveringsketens</li><li>Markeert regio's met samengesteld risicorisico</li></ul>Klik op een kaart om naar de getroffen regio in te zoomen."
     },
     "markets": {
-      "infoTooltip": "<strong>Markten</strong> Real-time aandelenindices, aandelen en cryptoprijzen. Pas uw watchlist aan met de knop Watchlist. Sparklines tonen recente prijstrend.",
+      "infoTooltip": "<strong>Markten</strong> Seeded aandelenindices, aandelen en cryptoprijzen. Pas uw watchlist aan met de knop Watchlist. Sparklines tonen recente prijstrend.",
       "chart": {
         "title": "{{symbol}} prijsgrafiek",
         "close": "Grafiek sluiten"

@@ -187,6 +187,7 @@
         "climate": "Växla klimatanomalier",
         "outages": "Växla internetavbrott",
         "tradeRoutes": "Växla handelsrutter",
+        "canadaRoads": "Toggle Canada roads overlay",
         "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
@@ -334,7 +335,7 @@
         "URLHAUS_AUTH_KEY": "Används för URLhaus- och ThreatFox-API:erna.",
         "OTX_API_KEY": "Valfri berikningskälla för cyberhot-lagret.",
         "ABUSEIPDB_API_KEY": "Valfri berikningskälla för rykte för skadliga IP-adresser.",
-        "FINNHUB_API_KEY": "Aktiekurser och marknadsdata i realtid.",
+        "FINNHUB_API_KEY": "Fördröjda eller förladdade aktiekurser och marknadsdata. En nyckel är inte en direktsänd ticker.",
         "NASA_FIRMS_API_KEY": "Brandinformationssystem för resurshantering.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -592,6 +593,7 @@
         "renewableInstallations": "Ren energi",
         "radiationSpike": "Strålningsökning",
         "radiationElevated": "Förhöjd strålning",
+        "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Lager",
@@ -706,6 +708,7 @@
           "techFires": "Aktiva skogsbränder nära teknikinfrastruktur",
           "geoBoundaries": "Demilitariserade zoner, eldupphörslinjer och omtvistade gränser",
           "ciiChoropleth": "Country Instability Index värmekarta — färgar länder efter CII-poäng (grön=stabil, röd=kritisk)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
@@ -1033,6 +1036,7 @@
       "noComtradeData": "Ingen strategisk flödesdata tillgänglig",
       "comtradeUnavailable": "UN Comtrade-data är tillfälligt otillgänglig",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomali",
       "colReporter": "Land",
       "colCommodity": "Råvara",
@@ -1621,7 +1625,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -1883,7 +1887,7 @@
       "infoTooltip": "<strong>Katastrofkaskad</strong> Detekterar konvergerande signaler för naturkatastrofer och infrastruktur:<ul><li>Korrelerar jordbävningar, skogsbränder, översvämningar och extremt väder</li><li>Spårar kaskadeffekter på infrastruktur och försörjningskedjor</li><li>Markerar regioner med sammanlagd katastrofrisk</li></ul>Klicka på ett kort för att zooma in på den påverkade regionen."
     },
     "markets": {
-      "infoTooltip": "<strong>Marknader</strong> Realtids aktieindex, aktier och kryptovalutapriser. Anpassa din övervakningslista med knappen Övervakningslista. Sparklines visar den senaste pristrenden.",
+      "infoTooltip": "<strong>Marknader</strong> Fördröjda eller förladdade aktieindex, aktier och kryptovalutapriser. Anpassa din övervakningslista med knappen Övervakningslista. Sparklines visar den senaste pristrenden.",
       "chart": {
         "title": "{{symbol}} prisdiagram",
         "close": "Stäng diagram"

@@ -67,6 +67,34 @@
       ]
     },
     {
+      "host": "511.alberta.ca",
+      "provider": "Alberta 511",
+      "kind": "structured",
+      "observed": true,
+      "license": "Alberta 511 terms (https://511.alberta.ca/about/about): non-commercial/educational reproduction allowed; commercial reproduction needs written permission from Alberta Transportation and Economic Corridors. https://511.alberta.ca/help/terms returned 404.",
+      "attribution": "Alberta 511 (Alberta Transportation and Economic Corridors). https://511.alberta.ca/",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/provincial-511.mjs"
+        }
+      ]
+    },
+    {
+      "host": "511on.ca",
+      "provider": "Ontario 511",
+      "kind": "structured",
+      "observed": true,
+      "license": "Ontario 511 API terms; Government of Ontario data; attribution required",
+      "attribution": "Ontario 511 (Ministry of Transportation). https://511on.ca/",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/provincial-511.mjs"
+        }
+      ]
+    },
+    {
       "host": "abacus.worldmonitor.app",
       "provider": "abacus.worldmonitor.app",
       "kind": "structured",
@@ -732,6 +760,20 @@
       "references": [
         {
           "path": "scripts/seo-indexnow-submit.mjs"
+        }
+      ]
+    },
+    {
+      "host": "api.open511.gov.bc.ca",
+      "provider": "BC Open511",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence - British Columbia (OGL-BC). Confirmed on https://api.open511.gov.bc.ca/help. API Terms of Use for OGL-BC information also apply.",
+      "attribution": "DriveBC Open511 (Province of British Columbia). Licensed under OGL-BC. https://api.open511.gov.bc.ca/help",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/open511.mjs"
         }
       ]
     },
@@ -1652,6 +1694,23 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs"
+        }
+      ]
+    },
+    {
+      "host": "chainwire.org",
+      "provider": "Chainwire",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Chainwire and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -2740,6 +2799,23 @@
       "references": [
         {
           "path": "scripts/_yahoo-sector-valuations.cjs"
+        }
+      ]
+    },
+    {
+      "host": "feed.businesswire.com",
+      "provider": "Business Wire",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Business Wire and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -4252,6 +4328,23 @@
       ]
     },
     {
+      "host": "moxie.foxbusiness.com",
+      "provider": "Fox Business",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Fox Business and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "moxie.foxnews.com",
       "provider": "moxie.foxnews.com",
       "kind": "feed",
@@ -5718,6 +5811,20 @@
       ]
     },
     {
+      "host": "secure.toronto.ca",
+      "provider": "City of Toronto Open Data",
+      "kind": "structured",
+      "observed": true,
+      "license": "CKAN package_show for road-restrictions: license_id=notspecified, license_title=\"License not specified\" (https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/package_show?id=road-restrictions). Portal dataset page chrome links OGL-Toronto but is not data-bound to this dataset.",
+      "attribution": "City of Toronto, Road Restrictions. https://open.toronto.ca/dataset/road-restrictions/",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/toronto-road-restrictions.mjs"
+        }
+      ]
+    },
+    {
       "host": "sedeaplicaciones.minetur.gob.es",
       "provider": "sedeaplicaciones.minetur.gob.es",
       "kind": "structured",
@@ -6753,6 +6860,23 @@
       ]
     },
     {
+      "host": "ustr.gov",
+      "provider": "Office of the U.S. Trade Representative",
+      "kind": "feed",
+      "observed": true,
+      "license": "U.S. government public information; site and document-specific notices apply",
+      "attribution": "Office of the U.S. Trade Representative; link to the original release.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "venturebeat.com",
       "provider": "venturebeat.com",
       "kind": "feed+structured",
@@ -7570,6 +7694,23 @@
       "attribution": "Credit www.brasilparalelo.com.br and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.businessinsider.com",
+      "provider": "Business Insider",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Business Insider and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
         {
           "path": "src/config/feeds.ts"
         }
@@ -8503,6 +8644,23 @@
       ]
     },
     {
+      "host": "www.globenewswire.com",
+      "provider": "GlobeNewswire",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit GlobeNewswire and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "www.goldseek.com",
       "provider": "www.goldseek.com",
       "kind": "feed",
@@ -8609,6 +8767,23 @@
         },
         {
           "path": "scripts/seed-security-advisories.mjs"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.handelsblatt.com",
+      "provider": "Handelsblatt",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Handelsblatt and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
         },
         {
           "path": "src/config/feeds.ts"
@@ -8764,6 +8939,23 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.infobae.com and link to the original feed publisher.",
       "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.interfax.ru",
+      "provider": "Interfax",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Interfax and link to the original item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts"
@@ -10158,6 +10350,23 @@
       ]
     },
     {
+      "host": "www.telegraph.co.uk",
+      "provider": "The Telegraph",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit The Telegraph and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "www.tenders.gov.au",
       "provider": "AusTender",
       "kind": "structured",
@@ -10483,6 +10692,23 @@
       ]
     },
     {
+      "host": "www.welt.de",
+      "provider": "Welt",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Welt and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "www.whitehouse.gov",
       "provider": "www.whitehouse.gov",
       "kind": "feed",
@@ -10536,6 +10762,23 @@
         },
         {
           "path": "src/services/webcams/index.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.wired.com",
+      "provider": "Wired",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Wired and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -10859,6 +11102,24 @@
   ],
   "logicalEntries": [
     {
+      "provider": "Binance",
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Binance and link to the original announcement; Google News is the acquisition transport.",
+      "status": "reviewed",
+      "host": "binance.com",
+      "kind": "feed",
+      "observed": true
+    },
+    {
+      "provider": "Coinbase",
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Coinbase and link to the original blog post; Google News is the acquisition transport.",
+      "status": "reviewed",
+      "host": "coinbase.com",
+      "kind": "feed",
+      "observed": true
+    },
+    {
       "provider": "Fintraffic Digitraffic",
       "host": "not-currently-wired",
       "kind": "candidate",
@@ -10866,6 +11127,33 @@
       "license": "Not applicable: no live fetch is present in this checkout",
       "attribution": "Excluded from the live-provider count: issue audit named Digitraffic, but no current source call was found.",
       "status": "excluded"
+    },
+    {
+      "provider": "Interfax",
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Interfax and link to the original Interfax English item; Google News is the acquisition transport.",
+      "status": "reviewed",
+      "host": "interfax.com",
+      "kind": "feed",
+      "observed": true
+    },
+    {
+      "provider": "Jin10",
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Jin10 and link to the original item; Google News is the acquisition transport.",
+      "status": "reviewed",
+      "host": "jin10.com",
+      "kind": "feed",
+      "observed": true
+    },
+    {
+      "provider": "PR Newswire",
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit PR Newswire and link to the original release; Google News is the acquisition transport.",
+      "status": "reviewed",
+      "host": "prnewswire.com",
+      "kind": "feed",
+      "observed": true
     }
   ]
 }

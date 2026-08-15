@@ -546,6 +546,7 @@
         "climate": "जलवायु असामान्यताएं चालू/बंद करें",
         "outages": "इंटरनेट बंद दिखाएं/छुपाएं",
         "tradeRoutes": "व्यापार मार्ग चालू/बंद करें",
+        "canadaRoads": "Toggle Canada roads overlay",
         "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
@@ -709,7 +710,7 @@
         "URLHAUS_AUTH_KEY": "URLhaus और ThreatFox दोनों APIs के लिए उपयोग होता है।",
         "OTX_API_KEY": "साइबर खतरे के लेयर के लिए वैकल्पिक स्रोत।",
         "ABUSEIPDB_API_KEY": "खराब IP की प्रतिष्ठा के लिए वैकल्पिक स्रोत।",
-        "FINNHUB_API_KEY": "रियल-टाइम स्टॉक डेटा और मार्केट डाटा।",
+        "FINNHUB_API_KEY": "विलंबित या पहले से लोड किए गए स्टॉक भाव और मार्केट डेटा। कुंजी होना लाइव टेप नहीं है।",
         "NASA_FIRMS_API_KEY": "फायर सूचना सिस्टम के लिए।",
         "OLLAMA_API_URL": "जैसे http://127.0.0.1:11434 (Ollama) या http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-संगत एन्डपॉइंट।",
         "OLLAMA_MODEL": "जैसे llama3.1:8b — सारांश के लिए मॉडल टैग।"
@@ -1033,6 +1034,7 @@
       "noComtradeData": "कोई रणनीतिक प्रवाह डेटा उपलब्ध नहीं",
       "comtradeUnavailable": "UN Comtrade डेटा अस्थायी रूप से अनुपलब्ध",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "असामान्यता",
       "colReporter": "देश",
       "colCommodity": "वस्तु",
@@ -1330,6 +1332,7 @@
         "happiness": "विश्व खुशी",
         "speciesRecovery": "प्रजाति पुनर्प्राप्ति",
         "renewableInstallations": "स्वच्छ ऊर्जा",
+        "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
@@ -1437,6 +1440,7 @@
           "dayNight": "वास्तविक समय सूरज की रोशनी और अंधेरा क्षेत्र",
           "geoBoundaries": "विसैन्यीकृत क्षेत्र, युद्धविराम रेखाएं और विवादित सीमाएं",
           "ciiChoropleth": "देश अस्थिरता सूचकांक हीटमैप — CII स्कोर के अनुसार देशों को रंगों में दर्शाता है (हरा=स्थिर, लाल=गंभीर)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
@@ -1961,7 +1965,7 @@
       "infoTooltip": "<strong>आपदा कैस्केड</strong> प्राकृतिक आपदा और इन्फ्रास्ट्रक्चर संकेतों का संगम पता लगाता है:<ul><li>भूकंप, जंगल की आग, बाढ़, और मौसम की चरम घटनाओं का समन्वय</li><li>इन्फ्रास्ट्रक्चर और सप्लाई चेन पर कैस्केड प्रभाव ट्रैक करता है</li><li>मिल-जुल कर उच्च जोखिम वाले क्षेत्रों को दिखाता है</li></ul>प्रभावित क्षेत्र पर ज़ूम करने के लिए कार्ड क्लिक करें।"
     },
     "markets": {
-      "infoTooltip": "<strong>बाजार</strong> रियल-टाइम स्टॉक इंडेक्स, स्टॉक्स, और क्रिप्टो कीमतें। अपनी वॉचलिस्ट बटन से कस्टमाइज़ करें। स्पार्कलाइन हाल की कीमत प्रवृत्ति दिखाती है।",
+      "infoTooltip": "<strong>बाजार</strong> विलंबित स्टॉक इंडेक्स, स्टॉक्स, और क्रिप्टो कीमतें। अपनी वॉचलिस्ट बटन से कस्टमाइज़ करें। स्पार्कलाइन हाल की कीमत प्रवृत्ति दिखाती है।",
       "chart": {
         "title": "{{symbol}} मूल्य चार्ट",
         "close": "चार्ट बंद करें"
@@ -2009,7 +2013,7 @@
       "infoTooltip": "<strong>केंद्रीय बैंक वॉच</strong> फेडरल रिजर्व, ECB, बैंक ऑफ इंग्लैंड, और अन्य प्रमुख केंद्रीय बैंकों के नवीनतम बयान, दर निर्णय, और संचार।"
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>गल्फ अर्थव्यवस्थाएं</strong> खाड़ी सहयोग परिषद (सऊदी अरब, यूएई, कुवैत, कतर, बहरीन, ओमान) के लिए रियल-टाइम स्टॉक इंडेक्स, मुद्रा दरें, और तेल कीमतें।"
+      "infoTooltip": "<strong>गल्फ अर्थव्यवस्थाएं</strong> खाड़ी सहयोग परिषद (सऊदी अरब, यूएई, कुवैत, कतर, बहरीन, ओमान) के लिए विलंबित स्टॉक इंडेक्स, मुद्रा दरें, और तेल कीमतें।"
     },
     "groceryBasket": {
       "infoTooltip": "<strong>किराने का सूचकांक</strong> 24 देशों में वैश्विक किराना बास्केट मूल्य तुलना — हेडलाइन CPI से परे वास्तविक उपभोक्ता वस्तु महंगाई ट्रैक करता है।"

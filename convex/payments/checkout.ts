@@ -32,6 +32,7 @@ import {
   isCheckoutRateLimitedOutcome,
   runCheckoutWithRateLimitRetry,
 } from "./checkoutRateLimit";
+import { recordTerminalCheckoutRateLimit } from "./checkoutRateLimitAlarm";
 
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 const PAYMENT_IN_PROGRESS = "PAYMENT_IN_PROGRESS";
@@ -209,6 +210,7 @@ async function getCheckoutBlockingPendingPayment(
 }
 
 async function _createCheckoutSession(
+  ctx: ActionCtx,
   args: CheckoutArgs,
   user: UserInfo,
 ) {
@@ -317,6 +319,16 @@ async function _createCheckoutSession(
       console.warn(
         `[checkout] Dodo rate limited checkout creation for user=${user.userId} product=${args.productId} after bounded retry (<=${CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS} attempts); retry after ${result.retryAfterSeconds}s`,
       );
+      // The ladder's tail (#6698). This warn is per-occurrence and pages
+      // nobody by design; the recorder below owns the RATE and escalates to
+      // Convex auto-Sentry once a documented per-day/per-week threshold is
+      // crossed. Awaited (not scheduled) so the count is durable before the
+      // buyer's 429 is returned, and fail-open so a degraded alarm cannot
+      // convert a retryable rate limit into a hard checkout failure.
+      await recordTerminalCheckoutRateLimit(ctx, {
+        userId: user.userId,
+        productId: args.productId,
+      });
       return result;
     }
     return anonymousClaimToken
@@ -376,7 +388,7 @@ export const createCheckout = action({
         identity.name
       : undefined;
 
-    const result = await _createCheckoutSession(args, {
+    const result = await _createCheckoutSession(ctx, args, {
       userId,
       email: identity?.email,
       name: customerName,
@@ -434,6 +446,7 @@ export const internalCreateCheckout = internalAction({
       return buildPendingBlockedResponse(pending);
     }
     return _createCheckoutSession(
+      ctx,
       {
         productId: args.productId,
         returnUrl: args.returnUrl,

@@ -219,6 +219,10 @@ const BOOTSTRAP_KEYS = {
   ucdpEvents:        'conflict:ucdp-events:v1',
   ucdpEventsBootstrap: 'conflict:ucdp-events-bootstrap:v1',
   weatherAlerts:     'weather:alerts:v1',
+  canadaRoads:       'infra:ontario-511:v1',
+  albertaRoads:      'infra:alberta-511:v1',
+  torontoRoads:      'infra:toronto-roads:v1',
+  bcOpen511:         'infra:bc-open511:v1',
   canadaAlerts:      'alerts:alberta-aea:v1',
   spending:          'economic:spending:v1',
   techEvents:        'research:tech-events-bootstrap:v1',
@@ -488,6 +492,10 @@ const STANDALONE_KEYS = {
   // and alarms earlier than the underlying seed-meta staleness window.
   chokepointFlowsRelayHeartbeat: 'relay:heartbeat:chokepoint-flows',
   climateNewsRelayHeartbeat:     'relay:heartbeat:climate-news',
+  // Bundle tick heartbeat written by `_bundle-runner.mjs` on every container
+  // start, including skip-all ticks. Detects Railway cron-scheduler freeze
+  // (#6691) that member seed-meta budgets (17.5d+) cannot see.
+  staticRefBundleTick:           'bundle:heartbeat:static-ref',
   telegramFeed:                  'intelligence:telegram-feed:v1',
   digestNotifications:           'digest:last-run',
   webcams:                       'webcam:cameras:active',
@@ -677,6 +685,46 @@ const SEED_META = {
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 240 }, // CelesTrak every 120min; 240min = absorbs one missed cycle
   temporalAnomalies:{ key: 'seed-meta:temporal:anomalies',          maxStaleMin: 45 }, // request-driven producer kept warm by seed-infra; data TTL is 60min so health reaches STALE_SEED before EMPTY
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 45 }, // relay loop every 15min; 45 = 3× interval (was 30 = 2×, too tight on relay hiccup)
+  canadaRoads:      {
+    key: 'seed-meta:infra:ontario-511',
+    maxStaleMin: 45, // seed-provincial-511 cron */15; 45 = 3× interval
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6608,
+      status: 'EMPTY',
+    },
+  },
+  albertaRoads:     {
+    key: 'seed-meta:infra:alberta-511',
+    maxStaleMin: 45, // same seed-provincial-511 cron */15; 45 = 3× interval
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6612,
+      status: 'EMPTY',
+    },
+  },
+  torontoRoads:     {
+    key: 'seed-meta:infra:toronto-roads',
+    maxStaleMin: 45, // seed-toronto-road-restrictions cron */15; 45 = 3× interval
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6609,
+      status: 'EMPTY',
+    },
+  },
+  bcOpen511:        {
+    key: 'seed-meta:infra:bc-open511',
+    maxStaleMin: 45, // seed-open511 cron */15; 45 = 3× interval
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6611,
+      status: 'EMPTY',
+    },
+  },
   canadaAlerts:     {
     key: 'seed-meta:alerts:alberta-aea',
     maxStaleMin: 45, // seed-alberta-emergency-alert cron */15; 45 = 3× interval
@@ -924,6 +972,16 @@ const SEED_META = {
   // than the 720min seed-meta threshold above. TTL is 18h on the writer.
   chokepointFlowsRelayHeartbeat: { key: 'relay:heartbeat:chokepoint-flows', maxStaleMin: 480 }, // 6h loop; 8h alarm
   climateNewsRelayHeartbeat:     { key: 'relay:heartbeat:climate-news',     maxStaleMin: 60 },  // 30m loop; 60m alarm
+  staticRefBundleTick: {
+    key: 'bundle:heartbeat:static-ref',
+    maxStaleMin: 2880, // daily cron `0 3 * * *`; 48h = 2× cadence
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6691,
+      status: 'EMPTY',
+    },
+  },
   emberElectricity:     { key: 'seed-meta:energy:ember',                maxStaleMin: 2880 }, // daily cron (08:00 UTC); 2880min = 48h = 2x interval
   cryptoSectors:        { key: 'seed-meta:market:crypto-sectors',             maxStaleMin: 120 }, // relay loop every ~30min; 120min = 2h = 4x interval
   ddosAttacks:          { key: 'seed-meta:cf:radar:ddos',                    maxStaleMin: 60 }, // written by seed-internet-outages afterPublish; outages cron ~15min; 60 = 4x interval
@@ -1275,7 +1333,7 @@ function parseFredRatesRolloutUntil(results) {
 }
 
 const EMPTY_DATA_OK_KEYS = new Set([
-  'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts', 'canadaAlerts',
+  'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts', 'canadaRoads', 'albertaRoads', 'torontoRoads', 'bcOpen511', 'canadaAlerts',
   'earningsCalendar', 'econCalendar', 'cotPositioning',
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
   'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
@@ -1313,6 +1371,21 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
   'forecastsBootstrap',
   'positiveGeoEvents',
   'crossStraitActivityBootstrap',
+  // The Canada road seeders publish an explicit {records: []} envelope on every
+  // successful tick (zeroIsValid -> contractState OK_ZERO -> canonical written),
+  // so they never refresh metadata alone. Without this, an expired or evicted
+  // canonical key alongside a still-refreshing seed-meta classified OK: the map
+  // layer goes blank and nothing pages. Same reasoning as `outages`.
+  // albertaRoads is written by the same seeder on the same publish path;
+  // torontoRoads is a different seeder under the same publish contract.
+  'canadaRoads',
+  'albertaRoads',
+  'torontoRoads',
+  'bcOpen511',
+  // Same contract, and the highest-stakes member of it: seed-alberta-emergency-alert
+  // runs with zeroIsValid, so a quiet province still writes {alerts: []}. Reading
+  // OK while an EMERGENCY ALERT payload has vanished is the worst failure in this set.
+  'canadaAlerts',
 ]);
 
 // Keys where a present payload with meta recordCount=0 is valid, but the data

@@ -113,6 +113,7 @@ const layers = {
   irradiators: false,
   sanctions: false,
   weather: false,
+  canadaRoads: false,
   canadaAlerts: false,
   economic: false,
   waterways: false,

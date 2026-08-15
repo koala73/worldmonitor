@@ -44600,7 +44600,9 @@ components:
                         $ref: '#/components/schemas/worldmonitor_market_v1_MarketQuote'
                 finnhubSkipped:
                     type: boolean
-                    description: True when the Finnhub API key is not configured and stock quotes were skipped.
+                    description: |-
+                        True when the Finnhub API key is not configured and stock quotes were skipped.
+                         A configured key is not a live tape; this flag is configuration, not Tape Claim.
                 skipReason:
                     type: string
                     description: Human-readable reason when Finnhub was skipped (e.g., "FINNHUB_API_KEY not configured").
@@ -45426,6 +45428,26 @@ components:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                marketSessionAtPublish:
+                    type: string
+                    description: |-
+                        US equity session at publish time: "regular", "pre", "post", or "closed".
+                         Empty when published_at is invalid or US hours do not apply.
+                alignedTradingDate:
+                    type: string
+                    description: NYSE/Nasdaq trading date this headline aligns to (YYYY-MM-DD). Empty when unaligned.
+                alignmentRule:
+                    type: string
+                    enum:
+                        - HEADLINE_ALIGNMENT_RULE_UNSPECIFIED
+                        - HEADLINE_ALIGNMENT_RULE_REGULAR_SESSION_SAME_TRADING_DAY
+                        - HEADLINE_ALIGNMENT_RULE_PREMARKET_SAME_TRADING_DAY
+                        - HEADLINE_ALIGNMENT_RULE_AFTER_HOURS_NEXT_TRADING_DAY
+                        - HEADLINE_ALIGNMENT_RULE_NON_SESSION_NEXT_TRADING_DAY
+                        - HEADLINE_ALIGNMENT_RULE_OVERNIGHT_SAME_TRADING_DAY
+                    description: |-
+                        How a headline's publish time was mapped onto a US equity trading date.
+                         Bookkeeping only — never a claim that the headline moved the tape.
         worldmonitor_market_v1_AnalystConsensus:
             type: object
             properties:

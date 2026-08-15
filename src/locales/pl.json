@@ -481,6 +481,7 @@
         "climate": "Przełącz anomalie klimatyczne",
         "outages": "Przełącz awarie internetu",
         "tradeRoutes": "Przełącz szlaki handlowe",
+        "canadaRoads": "Toggle Canada roads overlay",
         "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
@@ -642,7 +643,7 @@
         "URLHAUS_AUTH_KEY": "Używany zarówno dla API URLhaus, jak i ThreatFox.",
         "OTX_API_KEY": "Opcjonalne źródło wzbogacania warstwy zagrożeń cybernetycznych.",
         "ABUSEIPDB_API_KEY": "Opcjonalne źródło wzbogacania reputacji złośliwych adresów IP.",
-        "FINNHUB_API_KEY": "Notowania giełdowe w czasie rzeczywistym i dane rynkowe.",
+        "FINNHUB_API_KEY": "Opóźnione lub wstępnie załadowane notowania giełdowe i dane rynkowe. Klucz to nie transmisja na żywo.",
         "NASA_FIRMS_API_KEY": "System informacji o pożarach do zarządzania zasobami.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -888,6 +889,7 @@
       "noComtradeData": "Brak dostępnych danych przepływów strategicznych",
       "comtradeUnavailable": "Dane UN Comtrade tymczasowo niedostępne",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomalia",
       "colReporter": "Kraj",
       "colCommodity": "Towar",
@@ -1004,6 +1006,7 @@
         "renewableInstallations": "Czysta energia",
         "radiationSpike": "Skok radioaktywności",
         "radiationElevated": "Podwyższona radioaktywność",
+        "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Warstwy",
@@ -1118,6 +1121,7 @@
           "techFires": "Aktywne pożary w pobliżu infrastruktury technologicznej",
           "geoBoundaries": "Strefy zdemilitaryzowane, linie zawieszenia broni i sporne granice",
           "ciiChoropleth": "Mapa cieplna Country Instability Index — koloruje kraje według wyniku CII (zielony=stabilny, czerwony=krytyczny)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
@@ -1917,7 +1921,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."

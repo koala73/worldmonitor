@@ -477,6 +477,7 @@
         "climate": "สลับความผิดปกติของสภาพภูมิอากาศ",
         "outages": "สลับการขัดข้องของอินเทอร์เน็ต",
         "tradeRoutes": "สลับเส้นทางการค้า",
+        "canadaRoads": "Toggle Canada roads overlay",
         "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
@@ -639,7 +640,7 @@
         "URLHAUS_AUTH_KEY": "ใช้สำหรับทั้ง URLhaus และ ThreatFox API",
         "OTX_API_KEY": "แหล่งเสริมทางเลือกสำหรับเลเยอร์ภัยคุกคามไซเบอร์",
         "ABUSEIPDB_API_KEY": "แหล่งเสริมทางเลือกสำหรับชื่อเสียง IP ที่เป็นอันตราย",
-        "FINNHUB_API_KEY": "ราคาหุ้นเรียลไทม์และข้อมูลตลาด",
+        "FINNHUB_API_KEY": "ราคาหุ้นที่ล่าช้าหรือโหลดไว้ล่วงหน้าและข้อมูลตลาด คีย์ไม่ใช่การถ่ายทอดสด",
         "NASA_FIRMS_API_KEY": "ระบบข้อมูลไฟสำหรับการจัดการทรัพยากร",
         "OLLAMA_API_URL": "เช่น http://127.0.0.1:11434 (Ollama) หรือ http://127.0.0.1:1234/v1 (LM Studio) — จุดปลายทางที่เข้ากันได้กับ OpenAI",
         "OLLAMA_MODEL": "เช่น llama3.1:8b — แท็กโมเดลที่ใช้สำหรับการสรุป"
@@ -932,6 +933,7 @@
       "noComtradeData": "ไม่มีข้อมูลการไหลเวียนเชิงกลยุทธ์",
       "comtradeUnavailable": "ข้อมูล UN Comtrade ไม่พร้อมใช้งานชั่วคราว",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "ความผิดปกติ",
       "colReporter": "ประเทศ",
       "colCommodity": "สินค้า",
@@ -1189,6 +1191,7 @@
         "renewableInstallations": "พลังงานสะอาด",
         "radiationSpike": "การเพิ่มขึ้นของรังสี",
         "radiationElevated": "รังสีสูงขึ้น",
+        "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
@@ -1296,6 +1299,7 @@
           "dayNight": "เส้นแบ่งเขตแสงอาทิตย์แบบเรียลไทม์แสดงโซนกลางวันและกลางคืน",
           "geoBoundaries": "เขตปลอดทหาร แนวหยุดยิง และพรมแดนที่เป็นข้อพิพาท",
           "ciiChoropleth": "แผนที่ความร้อนดัชนีความไม่มั่นคงของประเทศ — ระบายสีประเทศตามคะแนน CII (เขียว=มั่นคง, แดง=วิกฤต)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
@@ -1911,7 +1915,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2173,7 +2177,7 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> ตรวจจับสัญญาณภัยธรรมชาติและโครงสร้างพื้นฐานที่บรรจบกัน:<ul><li>สหสัมพันธ์แผ่นดินไหว ไฟป่า น้ำท่วม และสภาพอากาศสุดโต่ง</li><li>ติดตามผลกระทบแบบเรียงซ้อนต่อโครงสร้างพื้นฐานและห่วงโซ่อุปทาน</li><li>เน้นภูมิภาคที่มีความเสี่ยงจากภัยยุ่งเหยิงรวมกัน</li></ul>คลิกการ์ดเพื่อซูมไปยังภูมิภาคที่ได้รับผลกระทบ"
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> ดัชนีหุ้น หุ้น และราคา crypto แบบเรียลไทม์ ปรับแต่งรายการชมรับชองของคุณด้วยปุ่ม Watchlist Sparklines แสดงแนวโน้มราคาล่าสุด",
+      "infoTooltip": "<strong>Markets</strong> ดัชนีหุ้น หุ้น และราคา crypto แบบล่าช้าหรือโหลดไว้ล่วงหน้า ปรับแต่งรายการชมรับชองของคุณด้วยปุ่ม Watchlist Sparklines แสดงแนวโน้มราคาล่าสุด",
       "chart": {
         "title": "แผนภูมิราคา {{symbol}}",
         "close": "ปิดแผนภูมิ"

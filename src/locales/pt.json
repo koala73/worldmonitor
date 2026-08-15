@@ -187,6 +187,7 @@
         "climate": "Alternar anomalias climáticas",
         "outages": "Alternar interrupções de internet",
         "tradeRoutes": "Alternar rotas comerciais",
+        "canadaRoads": "Toggle Canada roads overlay",
         "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
@@ -334,7 +335,7 @@
         "URLHAUS_AUTH_KEY": "Usado para as APIs URLhaus e ThreatFox.",
         "OTX_API_KEY": "Fonte de enriquecimento opcional para a camada de ameaças cibernéticas.",
         "ABUSEIPDB_API_KEY": "Fonte de enriquecimento opcional para reputação de IP malicioso.",
-        "FINNHUB_API_KEY": "Cotações de ações e dados de mercado em tempo real.",
+        "FINNHUB_API_KEY": "Cotações de ações atrasadas ou pré-carregadas e dados de mercado. Uma chave não é uma transmissão ao vivo.",
         "NASA_FIRMS_API_KEY": "Sistema de Informação de Incêndios para Gestão de Recursos.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -592,6 +593,7 @@
         "renewableInstallations": "Energia limpa",
         "radiationSpike": "Pico de radiação",
         "radiationElevated": "Radiação elevada",
+        "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Camadas",
@@ -706,6 +708,7 @@
           "techFires": "Incêndios ativos perto de infraestrutura tecnológica",
           "geoBoundaries": "Zonas desmilitarizadas, linhas de cessar-fogo e fronteiras disputadas",
           "ciiChoropleth": "Mapa térmico do índice de instabilidade — colore os países pela pontuação CII (verde=estável, vermelho=crítico)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
@@ -1033,6 +1036,7 @@
       "noComtradeData": "Nenhum dado de fluxo estratégico disponível",
       "comtradeUnavailable": "Dados da Comtrade da ONU temporariamente indisponíveis",
       "sourceComtrade": "Comtrade da ONU",
+      "comtradeNationalScope": "As linhas do UN Comtrade são estatísticas oficiais a nível nacional do país declarante, não exportações de uma cidade, corredor, fábrica, porto ou envio.",
       "anomalyBadge": "Anomalia",
       "colReporter": "País",
       "colCommodity": "Commodity",
@@ -1622,7 +1626,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -1890,7 +1894,7 @@
       "infoTooltip": "<strong>Cascata de Desastres</strong> Detecta sinais convergentes de desastres naturais e infraestrutura:<ul><li>Correlaciona terremotos, incêndios florestais, inundações e extremos climáticos</li><li>Rastreia efeitos cascata em infraestrutura e cadeias de suprimentos</li><li>Destaca regiões com risco de desastre composto</li></ul>Clique em um card para ampliar a região afetada."
     },
     "markets": {
-      "infoTooltip": "<strong>Mercados</strong> Índices em tempo real, ações e preços de criptomoedas. Personalize sua watchlist com o botão Watchlist. Os gráficos de tendência mostram a tendência de preço recente.",
+      "infoTooltip": "<strong>Mercados</strong> Índices atrasados ou pré-carregados, ações e preços de criptomoedas. Personalize sua watchlist com o botão Watchlist. Os gráficos de tendência mostram a tendência de preço recente.",
       "chart": {
         "title": "Gráfico de preços {{symbol}}",
         "close": "Fechar gráfico"

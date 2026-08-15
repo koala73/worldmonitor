@@ -48,7 +48,7 @@
     "entF10": "Bulut, on-premises veya air-gapped deployment",
     "entF11": "Adanmış onboarding ve destek",
     "entCta": "Satışla konuşun",
-    "freeF2": "500+ beslenme kaynağı, 537+ kaynak, 50+ harita katmanı"
+    "freeF2": "500+ beslenme kaynağı, 552+ kaynak, 50+ harita katmanı"
   },
   "whyUpgrade": {
     "title": "Neden yükseltmeli",
@@ -566,7 +566,7 @@
       "s1l": "Harita katmanları",
       "s2v": "500+",
       "s2l": "Seçilmiş beslemeler",
-      "s3v": "535+",
+      "s3v": "550+",
       "s3l": "Veri sağlayıcıları",
       "s4v": "13",
       "s4l": "Darboğazlar · canlı AIS",
@@ -659,7 +659,7 @@
       "q2": "Global istihbarat panosu nedir?",
       "a2": "Çoğu aracın ayrı tuttuğu sinyalleri birleştiren tek bir canlı görünüm: çatışma olayları, gemi ve uçak takibi, nakliye darboğazları, uyduları, denizaltı kabloları, boru hatları, pazarlar ve siber tehditleri — tek bir gerçek zamanlı dünya haritasında, AI puanlandırması ve özetleriyle. World Monitor ücretsiz olanıdır.",
       "q3": "Veriler nereden geliyor?",
-      "a3": "535+ sağlayıcı, adlandırılmış: çatışma için ACLED ve UCDP, canlı gemiler için AISStream, uçaklar için OpenSky, yangınlar için NASA FIRMS, depremler için USGS, pazarlar ve makro için IMF, BIS, FRED ve Finnhub — artı 500+ seçilmiş haber beslemesi. Her panel kaynaklarını ve zaman damgalarını satır içinde alıntılar.",
+      "a3": "550+ sağlayıcı, adlandırılmış: çatışma için ACLED ve UCDP, canlı gemiler için AISStream, uçaklar için OpenSky, yangınlar için NASA FIRMS, depremler için USGS, pazarlar ve makro için IMF, BIS, FRED ve Finnhub — artı 500+ seçilmiş haber beslemesi. Her panel kaynaklarını ve zaman damgalarını satır içinde alıntılar.",
       "q4": "Hormuz veya Bab el-Mandeb gibi darboğazları gerçek zamanlı olarak izleyebilir miyim?",
       "a4": "Evet. 13 darboğaz canlı AIS gemi sayıları, haftadan haftaya transit değişimi ve aksamalarını puanlandırması ile takip edilir — ve yoğunluk anomalileri her boğazın yuvarlanan tabanına karşı işaretlenir.",
       "q5": "Bu, Liveuamap gibi bir çatışma haritasından nasıl farklı?",

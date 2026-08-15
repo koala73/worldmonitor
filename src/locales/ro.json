@@ -479,6 +479,7 @@
         "climate": "Comutați anomaliile climatice",
         "outages": "Comutați întreruperile de internet",
         "tradeRoutes": "Comutați rutele comerciale",
+        "canadaRoads": "Toggle Canada roads overlay",
         "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
@@ -641,7 +642,7 @@
         "URLHAUS_AUTH_KEY": "Folosit atât pentru URLhaus, cât și pentru API-urile ThreatFox.",
         "OTX_API_KEY": "Sursă opțională de îmbogățire pentru stratul de amenințări cibernetice.",
         "ABUSEIPDB_API_KEY": "Sursă opțională de îmbogățire pentru reputația IP rău intenționată.",
-        "FINNHUB_API_KEY": "Cotații bursiere și date de piață în timp real.",
+        "FINNHUB_API_KEY": "Cotații bursiere întârziate sau preîncărcate și date de piață. O cheie nu este un flux live.",
         "NASA_FIRMS_API_KEY": "Informații de incendiu pentru sistemul de management al resurselor.",
         "OLLAMA_API_URL": "de ex. http://127.0.0.1:11434 (Ollama) sau http://127.0.0.1:1234/v1 (LM Studio) — punct final compatibil cu OpenAI.",
         "OLLAMA_MODEL": "de ex. llama3.1:8b — etichetă model de utilizat pentru rezumat."
@@ -934,6 +935,7 @@
       "noComtradeData": "Nu sunt disponibile date privind fluxurile strategice",
       "comtradeUnavailable": "Datele ONU Comtrade sunt temporar indisponibile",
       "sourceComtrade": "ONU Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomalie",
       "colReporter": "Țară",
       "colCommodity": "Materie primă",
@@ -1191,6 +1193,7 @@
         "renewableInstallations": "Energie curată",
         "radiationSpike": "Vârf de radiații",
         "radiationElevated": "Radiații ridicate",
+        "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
@@ -1298,6 +1301,7 @@
           "dayNight": "Terminator solar în timp real care arată zonele de zi și de noapte",
           "geoBoundaries": "Zone demilitarizate, linii de încetare a focului și granițe disputate",
           "ciiChoropleth": "Harta termică a instabilității — colorează țările după scorul CII (verde=stabil, roșu=critic)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
@@ -1914,7 +1918,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2182,7 +2186,7 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Detectează semnale convergente de dezastre naturale și infrastructură:<ul><li>Corelează cutremure, incendii de vegetație, inundații și extremuri meteo</li><li>Urmărește efectele în cascadă asupra infrastructurii și lanțurilor de aprovizionare</li><li>Evidențiază regiuni cu risc de dezastru compus</li></ul>Faceți clic pe o carte pentru a mări regiunea afectată."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Indici bursieri în timp real, acțiuni și prețuri crypto. Personalizați lista de urmărire cu butonul Watchlist. Sparkline-urile arată tendința recentă de preț.",
+      "infoTooltip": "<strong>Markets</strong> Indici bursieri întârziați sau preîncărcați, acțiuni și prețuri crypto. Personalizați lista de urmărire cu butonul Watchlist. Sparkline-urile arată tendința recentă de preț.",
       "chart": {
         "title": "Grafic prețuri {{symbol}}",
         "close": "Închide graficul"

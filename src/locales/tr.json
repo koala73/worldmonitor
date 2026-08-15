@@ -477,6 +477,7 @@
         "climate": "İklim anomalilerini aç/kapat",
         "outages": "İnternet kesintilerini aç/kapat",
         "tradeRoutes": "Ticaret yollarını aç/kapat",
+        "canadaRoads": "Toggle Canada roads overlay",
         "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
@@ -639,7 +640,7 @@
         "URLHAUS_AUTH_KEY": "Hem URLhaus hem ThreatFox API'leri icin kullanilir.",
         "OTX_API_KEY": "Siber tehdit katmani icin opsiyonel zenginlestirme kaynagi.",
         "ABUSEIPDB_API_KEY": "Kotu amacli IP itibar bilgisi icin opsiyonel zenginlestirme kaynagi.",
-        "FINNHUB_API_KEY": "Anlik hisse senedi fiyatlari ve piyasa verileri.",
+        "FINNHUB_API_KEY": "Gecikmeli veya önceden yüklenmiş hisse fiyatları ve piyasa verileri. Anahtar canlı yayın değildir.",
         "NASA_FIRMS_API_KEY": "Kaynak Yonetimi icin Yangin Bilgi Sistemi.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -932,6 +933,7 @@
       "noComtradeData": "Stratejik akış verisi yok",
       "comtradeUnavailable": "BM Comtrade verileri geçici olarak kullanılamıyor",
       "sourceComtrade": "BM Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomali",
       "colReporter": "Ülke",
       "colCommodity": "Mal",
@@ -1189,6 +1191,7 @@
         "renewableInstallations": "Temiz Enerji",
         "radiationSpike": "Radyasyon artışı",
         "radiationElevated": "Yükseltilmiş radyasyon",
+        "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
@@ -1296,6 +1299,7 @@
           "dayNight": "Gündüz ve gece bölgelerini gösteren gerçek zamanlı güneş terminatörü",
           "geoBoundaries": "Silahsızlandırılmış bölgeler, ateşkes hatları ve tartışmalı sınırlar",
           "ciiChoropleth": "Ülke istikrarsızlık endeksi ısı haritası — CII puanına göre renklendirme (yeşil=istikrarlı, kırmızı=kritik)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
@@ -1911,7 +1915,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2173,7 +2177,7 @@
       "infoTooltip": "<strong>Felaket Kaskadı</strong> Yakınlaşan doğal afet ve altyapı sinyallerini tespit eder:<ul><li>Depremleri, orman yangınlarını, seller ve hava aşırılıklarını ilişkilendirir</li><li>Altyapı ve tedarik zincirlerine ilişkin basamaklı etkileri izler</li><li>Bileşik afet riski olan bölgeleri vurgular</li></ul>Etkilenen bölgeyi haritada yakınlaştırmak için bir kartı tıklayın."
     },
     "markets": {
-      "infoTooltip": "<strong>Piyasalar</strong> Gerçek zamanlı borsa endeksleri, hisse senetleri ve kripto fiyatları. Watchlist düğmesi ile izleme listenizi özelleştirin. Sparkline'lar son fiyat eğilimini gösterir.",
+      "infoTooltip": "<strong>Piyasalar</strong> Gecikmeli veya önceden yüklenmiş borsa endeksleri, hisse senetleri ve kripto fiyatları. Watchlist düğmesi ile izleme listenizi özelleştirin. Sparkline'lar son fiyat eğilimini gösterir.",
       "chart": {
         "title": "{{symbol}} fiyat grafiği",
         "close": "Grafiği kapat"

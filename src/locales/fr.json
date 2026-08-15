@@ -479,6 +479,7 @@
         "climate": "Basculer les anomalies climatiques",
         "outages": "Basculer les pannes internet",
         "tradeRoutes": "Basculer les routes commerciales",
+        "canadaRoads": "Toggle Canada roads overlay",
         "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
@@ -640,7 +641,7 @@
         "URLHAUS_AUTH_KEY": "Utilisé pour les API URLhaus et ThreatFox.",
         "OTX_API_KEY": "Source d'enrichissement optionnelle pour la couche cybermenaces.",
         "ABUSEIPDB_API_KEY": "Source d'enrichissement optionnelle pour la réputation IP malveillante.",
-        "FINNHUB_API_KEY": "Cours des actions et données de marché en temps réel.",
+        "FINNHUB_API_KEY": "Cours des actions différés ou préchargés et données de marché. Une clé n'est pas un flux en direct.",
         "NASA_FIRMS_API_KEY": "Système d'information sur les incendies pour la gestion des ressources.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -886,6 +887,7 @@
       "noComtradeData": "Aucune donnée de flux stratégique disponible",
       "comtradeUnavailable": "Données UN Comtrade temporairement indisponibles",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "Les lignes UN Comtrade sont des statistiques officielles au niveau national du pays déclarant, pas les exportations d’une ville, d’un corridor, d’une usine, d’un port ou d’un envoi.",
       "anomalyBadge": "Anomalie",
       "colReporter": "Pays",
       "colCommodity": "Marchandise",
@@ -1143,6 +1145,7 @@
         "renewableInstallations": "Énergie propre",
         "radiationSpike": "Pic de radiation",
         "radiationElevated": "Radiation élevée",
+        "canadaRoads": "Canada Roads",
         "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
@@ -1250,6 +1253,7 @@
           "techFires": "Incendies actifs à proximité d'infrastructures technologiques",
           "geoBoundaries": "Zones démilitarisées, lignes de cessez-le-feu et frontières contestées",
           "ciiChoropleth": "Carte thermique de l'indice d'instabilité — colore les pays selon le score CII (vert=stable, rouge=critique)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
           "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
@@ -1914,7 +1918,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2182,7 +2186,7 @@
       "infoTooltip": "<strong>Cascade de catastrophes</strong> Détecte les signaux convergents de catastrophe naturelle et d'infrastructure :<ul><li>Corrélie les tremblements de terre, les incendies, les inondations et les extrêmes météorologiques</li><li>Suit les effets en cascade sur l'infrastructure et la chaîne d'approvisionnement</li><li>Met en évidence les régions avec un risque de catastrophe composé</li></ul>Cliquez sur une carte pour zoomer sur la région affectée."
     },
     "markets": {
-      "infoTooltip": "<strong>Marchés</strong> Indices boursiers, titres et prix crypto en temps réel. Personnalisez votre liste de suivi avec le bouton Liste de suivi. Les sparklines affichent la tendance des prix récente.",
+      "infoTooltip": "<strong>Marchés</strong> Indices boursiers, titres et prix crypto différés ou préchargés. Personnalisez votre liste de suivi avec le bouton Liste de suivi. Les sparklines affichent la tendance des prix récente.",
       "chart": {
         "title": "Graphique de prix {{symbol}}",
         "close": "Fermer le graphique"
