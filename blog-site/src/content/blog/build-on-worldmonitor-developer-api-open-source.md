@@ -83,7 +83,7 @@ World Monitor's API is organized into domain-specific services:
 
 Each domain has its own edge function, proto definitions, and TypeScript client.
 
-## 80+ Vercel Edge Functions
+## Vercel Edge Functions
 
 The API layer runs on **Vercel Edge Functions**, providing:
 

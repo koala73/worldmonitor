@@ -1143,15 +1143,17 @@ function claims(s) {
   ];
 }
 
-const ENGLISH_VOLATILE_INVENTORY_CLAIM_RE = /\b\d[\d,]*(?:\+)?\s+(?:(?:MCP|OpenAPI|other|live|curated|interactive|registered|observed|monitored|news|data source|local|edge|installable|public)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|credentials|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities|agent skills|agent recipes|skills|recipes)\b/i;
+const ENGLISH_VOLATILE_INVENTORY_CLAIM_RE = /\b\d[\d,]*(?:\+)?\s+(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|other|live|curated|interactive|registered|observed|monitored|news|data source|local|edge|typed|specialized|dashboard|installable|public)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|credentials|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|variants|languages|locales|airports|data ?centers|datacenters|entities|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\b/i;
+const ENGLISH_WORD_VOLATILE_INVENTORY_CLAIM_RE = /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|other|live|curated|registered|observed|monitored|news|local|typed|specialized|dashboard|installable|public)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|variants|languages|locales|airports|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\b/i;
+const LABEL_FIRST_VOLATILE_INVENTORY_CLAIM_RE = /\b(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|languages|locales|airports|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\s*:\s*\d[\d,]*(?:\+)?\b/i;
 const CHINESE_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|[^A-Za-z0-9])\d[\d,]*\s*(?:(?:\+|多|以上)\s*)?(?:个|项)?\s*(?:(?:实时|精选|已注册|已观察|监控|受监控|独立|上游|生成的|可安装|智能体|Vercel|Edge|边缘|数据|新闻|API)\s*)*(?:数据源|信息源|新闻源|服务(?:领域)?|工具|技能|配方|提供商|处理器|操作|地图图层|数据图层|图层|面板|语言|区域设置|机场|数据中心|实体|边缘函数|函数)(?=$|[\s，。、；：）)】<])/i;
 const POSTFIX_VOLATILE_INVENTORY_CLAIM_RE = /(?:Vercel\s+)?Edge Functions\s*[（(]\s*\d[\d,]*\s*(?:\+|以上)\s*[）)]/i;
 export const VOLATILE_INVENTORY_CLAIM_RE = new RegExp(
-  `(?:${ENGLISH_VOLATILE_INVENTORY_CLAIM_RE.source}|${CHINESE_VOLATILE_INVENTORY_CLAIM_RE.source}|${POSTFIX_VOLATILE_INVENTORY_CLAIM_RE.source})`,
+  `(?:${ENGLISH_VOLATILE_INVENTORY_CLAIM_RE.source}|${ENGLISH_WORD_VOLATILE_INVENTORY_CLAIM_RE.source}|${LABEL_FIRST_VOLATILE_INVENTORY_CLAIM_RE.source}|${CHINESE_VOLATILE_INVENTORY_CLAIM_RE.source}|${POSTFIX_VOLATILE_INVENTORY_CLAIM_RE.source})`,
   'i',
 );
 
-const ACQUISITION_CLAIM_ROOTS = [
+export const ACQUISITION_CLAIM_ROOTS = [
   'index.html',
   'README.md',
   'README.zh-CN.md',
@@ -1205,7 +1207,19 @@ export function validateVolatileInventoryClaims() {
     { path: 'public/llms-full.txt', text: /72 indicators across 21 active dimensions, 6 domains/ },
     { path: 'blog-site/src/content/blog/country-instability-index-methodology-explained.md', text: /72 indicators, 21 active dimensions, and 6 domains/ },
     { path: 'blog-site/src/content/blog/country-resilience-index-methodology-explained.md', text: /72 indicators across 21 active dimensions and 6 domains/ },
+    { path: 'blog-site/src/content/blog/country-resilience-index-methodology-explained.md', text: /six domains/i },
     { path: 'blog-site/src/content/blog/country-risk-monitoring-workflow-for-analysts.md', text: /72 indicators, 21 active dimensions, and 6 domains/ },
+    { path: 'docs/mcp-tools-reference.mdx', text: /current four feeds, 5 is a compatibility safety threshold/ },
+    { path: 'docs/mcp-tools-reference.mdx', text: /across seven domains/ },
+    { path: 'docs/mcp-tools-reference.mdx', text: /between two airports/ },
+    { path: 'docs/webcam-layer.mdx', text: /up to 4 webcams simultaneously/ },
+    { path: 'docs/webcam-layer.mdx', text: /more than 4 webcams are pinned/ },
+    { path: 'docs/webcam-layer.mdx', text: /Maximum 4 webcams can be active/ },
+    { path: 'blog-site/src/content/blog/alerts-notification-channels-worldmonitor.md', text: /six channels/i },
+    { path: 'blog-site/src/content/blog/aviation-intelligence-airports-airspace-flight-prices.md', text: /between any two airports/ },
+    { path: 'blog-site/src/content/blog/build-supply-chain-early-warning-system-api.md', text: /Three signals, three endpoints/ },
+    { path: 'blog-site/src/content/blog/free-geopolitical-data-apis-2026.md', text: /ingest ten feeds/ },
+    { path: 'blog-site/src/content/blog/supply-chain-early-warning-dashboard-worldmonitor-api.md', text: /five panels/ },
   ];
   const failures = [];
   const isCurrentClaimSurface = (path) => (

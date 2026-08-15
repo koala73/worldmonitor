@@ -37,7 +37,7 @@ Two reasons. The honest one: sustained doom consumption degrades judgment. Analy
 
 The structural one: positive events are intelligence. Peace agreements, humanitarian aid flows, and diplomatic breakthroughs are state actions with consequences, and the `get_positive_events` MCP tool exposes them — diplomatic agreements, aid commitments, peace initiatives — to the same agents that consume conflict data. A model of the world built only from negatives is simply wrong.
 
-The Happy variant is one of [six dashboards on the platform](/blog/posts/five-dashboards-one-platform-worldmonitor-variants/), and like the others it's free, no login, and switchable in one click — same account, same infrastructure, same [27-language support](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
+The Happy variant is one of the [specialized dashboards on the platform](/blog/posts/five-dashboards-one-platform-worldmonitor-variants/), and like the others it's free, no login, and switchable in one click — same account, same infrastructure, and the same runtime locale catalog.
 
 ## Limits
 

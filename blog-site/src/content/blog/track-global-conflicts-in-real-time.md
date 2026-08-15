@@ -23,7 +23,7 @@ The answer comes from layering multiple intelligence sources onto a single inter
 - **[UCDP](https://ucdp.uu.se/) warfare events** for state-based and non-state conflicts
 - **Live ADS-B tracking** for military aircraft positions
 - **AIS vessel monitoring** merged with USNI fleet reports for naval movements
-- **26 Telegram OSINT channels** for raw, low-latency intelligence
+- **Curated Telegram OSINT channels** for raw, low-latency intelligence
 - **OREF rocket alerts** with 1,480 Hebrew-to-English siren translations
 - **GPS/GNSS jamming zones** detected from ADS-B anomalies
 - **NASA satellite fire detection** (VIIRS) for ground-truth verification
@@ -111,9 +111,9 @@ World Monitor maps critical infrastructure alongside conflict data:
 
 The Infrastructure Cascade panel shows what happens when a conflict zone overlaps with critical infrastructure. A pipeline through a hotspot, a cable landing station near an escalation zone. These second-order effects drive market moves and policy decisions.
 
-## 26 Telegram Channels: The Raw Feed
+## Telegram Channels: The Raw Feed
 
-For analysts who want unfiltered intelligence, World Monitor integrates 26 curated Telegram channels via MTProto. Learn more about how this fits into the broader OSINT landscape in [OSINT for Everyone](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/).
+For analysts who want unfiltered intelligence, World Monitor integrates curated Telegram channels via MTProto. Learn more about how this fits into the broader OSINT landscape in [OSINT for Everyone](/blog/posts/osint-for-everyone-open-source-intelligence-democratized/).
 
 The channels are tiered by reliability. Tier 1 sources are verified primary reporters. Tier 2 includes established OSINT accounts like Aurora Intel, BNO News, and DeepState. Tier 3 captures secondary aggregators for broader coverage.
 
@@ -157,7 +157,7 @@ For public sharing, the story export feature generates social-ready briefs with 
 ## Frequently Asked Questions
 
 **What data sources does World Monitor use for conflict tracking?**
-World Monitor aggregates ACLED conflict events, UCDP warfare data, live ADS-B aircraft transponders, AIS maritime positions merged with USNI fleet reports, 26 Telegram OSINT channels, and NASA satellite fire detection. All sources are public and verifiable.
+World Monitor aggregates ACLED conflict events, UCDP warfare data, live ADS-B aircraft transponders, AIS maritime positions merged with USNI fleet reports, curated Telegram OSINT channels, and NASA satellite fire detection. All sources are public and verifiable.
 
 **Is World Monitor free to use for conflict monitoring?**
 Yes. World Monitor is completely free and open source under AGPL-3.0. There is no login, paywall, or data collection. You can also self-host it for full control.

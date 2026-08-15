@@ -73,7 +73,7 @@ Let's be direct about what World Monitor is and isn't relative to established pl
 **World Monitor wins at:**
 
 - Broader intelligence scope (Dataminr focuses on social; World Monitor covers military, maritime, aviation, markets, infrastructure)
-- 26 Telegram OSINT channels (Dataminr has limited Telegram coverage)
+- Curated Telegram OSINT channels (Dataminr has limited Telegram coverage)
 - AI analysis with local LLM option
 - Interactive map visualization
 - No vendor dependency

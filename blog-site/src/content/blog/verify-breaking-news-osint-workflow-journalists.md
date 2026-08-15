@@ -49,7 +49,7 @@ Then place the event in its context with the country's brief and [instability sc
 
 ## Minute 8–10: Look at It
 
-Sometimes you can simply look. World Monitor streams 22 live webcams from geopolitical hotspots (Tehran, Tel Aviv, Kyiv, Taipei, and others) plus seven live news channels. If the claimed event is in view of a camera, you have a primary source with a timestamp. Even nearby cameras help: a city skyline behaving completely normally fifteen minutes after a claimed "massive explosion" is evidence too.
+Sometimes you can simply look. World Monitor streams live webcams from geopolitical hotspots (Tehran, Tel Aviv, Kyiv, Taipei, and others) alongside live news channels. If the claimed event is in view of a camera, you have a primary source with a timestamp. Even nearby cameras help: a city skyline behaving completely normally fifteen minutes after a claimed "massive explosion" is evidence too.
 
 ## What This Workflow Catches, and What It Does Not
 

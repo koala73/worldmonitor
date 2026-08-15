@@ -63,9 +63,9 @@ Ship positions from AISStream.io are merged with **USNI Fleet Reports**, giving 
 
 ADS-B anomaly data is processed through an H3 hexagonal grid to identify zones where GPS signals are being jammed or spoofed. This is a critical indicator of electronic warfare activity, and World Monitor maps it automatically.
 
-## 26 Telegram OSINT Channels
+## Telegram OSINT Channels
 
-World Monitor integrates **26 curated Telegram channels** via MTProto, organized by reliability tier:
+World Monitor integrates curated Telegram channels via MTProto, organized by reliability tier:
 
 - **Tier 1:** Verified primary sources
 - **Tier 2:** Established OSINT accounts (Aurora Intel, BNO News, DeepState, OSINT Defender, LiveUAMap)

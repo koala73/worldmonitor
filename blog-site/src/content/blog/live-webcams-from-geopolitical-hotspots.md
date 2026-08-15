@@ -1,7 +1,7 @@
 ---
-title: "Watch the World Live: 31 Webcam Streams from Geopolitical Hotspots"
-description: "Stream 31 live webcams from Tehran, Kyiv, Jerusalem, Taipei, and beyond. Get real-time situational awareness from 6 global regions on World Monitor, free."
-metaTitle: "31 Live Webcams from Geopolitical Hotspots | World Monitor"
+title: "Watch the World Live: Webcam Streams from Geopolitical Hotspots"
+description: "Stream live webcams from Tehran, Kyiv, Jerusalem, Taipei, and beyond. Get real-time situational awareness from global regions on World Monitor, free."
+metaTitle: "Live Webcams from Geopolitical Hotspots | World Monitor"
 keywords: "live webcams geopolitical hotspots, real-time city cameras, live stream world capitals, OSINT live video, global situation awareness webcams"
 audience: "OSINT analysts, journalists, security professionals, curious global citizens"
 heroImage: "/blog/images/blog/live-webcams-from-geopolitical-hotspots.jpg"
@@ -11,7 +11,7 @@ modifiedDate: "2026-07-22"
 
 When news breaks in a foreign capital, your first instinct is to look. Not at a headline. Not at a map. You want to see what's happening on the ground, right now.
 
-World Monitor streams **31 live webcams** from geopolitical hotspots across 6 regions, directly inside the intelligence dashboard. No tab switching. No searching for reliable streams. Just click and watch.
+World Monitor streams live webcams from geopolitical hotspots across its regional catalog, directly inside the intelligence dashboard. No tab switching. No searching for reliable streams. Just click and watch.
 
 ## Why Live Video Changes Intelligence Analysis
 

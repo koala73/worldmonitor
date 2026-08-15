@@ -21,13 +21,13 @@ description: "Tauri desktop architecture for World Monitor — sidecar process m
 
 ## Multi-Platform Architecture
 
-All six variants run on three platforms that work together:
+All published variants run on three platforms that work together:
 
 ```
 ┌─────────────────────────────────────┐
 │          Vercel (Edge)              │
 │  edge functions · static SPA        │
-│  Proto gateway (24 typed services)  │
+│  Proto gateway (typed services)     │
 │  CORS allowlist · Redis cache       │
 │  AI pipeline · market analytics     │
 │  CDN caching (s-maxage) · PWA host  │
@@ -47,7 +47,7 @@ All six variants run on three platforms that work together:
 ┌──────────────────────────────────────────┐
 │        Railway (Relay Server)            │
 │  AIS WebSocket · OpenSky OAuth2          │
-│  Telegram MTProto (26 OSINT channels)    │
+│  Telegram MTProto (reviewed channels)    │
 │  OREF rocket alerts (residential proxy)  │
 │  Polymarket proxy (queue backpressure)   │
 │  ICAO NOTAM · RSS proxy · gzip all resp │
@@ -58,7 +58,7 @@ All six variants run on three platforms that work together:
 
 - **AIS vessel tracking** — maintains a persistent WebSocket connection to AISStream.io and multiplexes it to all connected browser clients, avoiding per-user connection limits
 - **OpenSky aircraft data** — authenticates via OAuth2 client credentials flow (Vercel IPs get 403'd by OpenSky without auth tokens)
-- **Telegram intelligence** — a GramJS MTProto client polls 26 OSINT channels on a 60-second cycle with per-channel timeouts and FLOOD_WAIT handling
+- **Telegram intelligence** — a GramJS MTProto client polls the reviewed OSINT channel registry on a 60-second cycle with per-channel timeouts and FLOOD_WAIT handling
 - **OREF rocket alerts** — polls Israel's Home Front Command alert system via `curl` through a residential proxy (Akamai WAF blocks datacenter TLS fingerprints)
 - **Polymarket proxy** — fetches from Gamma API with concurrent upstream limiting (max 3 simultaneous, queue backpressure at 20), in-flight deduplication, and 10-minute caching to prevent stampedes from 11 parallel tag queries
 - **ICAO NOTAM proxy** — routes NOTAM closure queries through the relay for MENA airports, bypassing Vercel IP restrictions on ICAO's API

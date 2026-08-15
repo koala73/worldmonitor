@@ -71,7 +71,7 @@ Here's the sanctions layer, queried live while writing this (July 22, 2026): **2
 
 ## The structural difference: open at the layers that matter
 
-- **The product is open**: six dashboards, free, no signup, right now.
+- **The product is open**: specialized dashboards, free, no signup, right now.
 - **The source is open**: the entire platform is AGPL-3.0 — [read it, fork it, self-host it](/blog/posts/self-host-worldmonitor-open-source-osint-dashboard/).
 - **The interfaces are open**: a versioned REST API built on typed proto services, an [MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/) whose live tool catalog is publicly discoverable while data calls authenticate through OAuth or an API key, an [embeddable live map](/blog/posts/embed-live-global-map-worldmonitor/), and localized UI languages.
 - **The pricing is open**: [published on the site](/blog/posts/free-vs-paid-real-time-intelligence-dashboards/), $0 to flat monthly tiers, no "contact sales."

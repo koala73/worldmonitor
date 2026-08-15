@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 import {
+  ACQUISITION_CLAIM_ROOTS,
   computeStats,
   validateVolatileInventoryClaims,
   VOLATILE_INVENTORY_CLAIM_RE,
@@ -32,6 +33,27 @@ const readJson = (path) => JSON.parse(read(path));
 const registryToolNames = () => TOOL_REGISTRY.map((tool) => tool.name);
 const registryToolCount = () => TOOL_REGISTRY.length;
 const displayPrice = (price) => (Number.isInteger(price) ? String(price) : price.toFixed(2));
+
+const REQUIRED_ACQUISITION_CLAIM_ROOTS = [
+  'README.ja-JP.md',
+  'README.md',
+  'README.zh-CN.md',
+  'blog-site/src/content/blog',
+  'cli',
+  'docs',
+  'index.html',
+  'pro-test/index.html',
+  'pro-test/src/locales',
+  'pro-test/welcome.html',
+  'public',
+  'public/.well-known/agent-skills',
+  'scripts/build-agent-skills-index.mjs',
+  'server.json',
+];
+
+function assertAcquisitionClaimRootClosure(actualRoots) {
+  assert.deepEqual([...actualRoots].sort(), REQUIRED_ACQUISITION_CLAIM_ROOTS);
+}
 
 function machineReadablePricing() {
   const match = read('public/pricing.md').match(
@@ -98,6 +120,17 @@ function collectAcquisitionSurfaces() {
 
 const CURRENT_FACT_SURFACES = collectAcquisitionSurfaces();
 describe('public product facts generation contract', () => {
+  it('keeps the acquisition claim scan on the complete registered root set', () => {
+    assertAcquisitionClaimRootClosure(ACQUISITION_CLAIM_ROOTS);
+    assert.throws(
+      () => assertAcquisitionClaimRootClosure(
+        ACQUISITION_CLAIM_ROOTS.filter((path) => path !== 'README.ja-JP.md'),
+      ),
+      /Expected values to be strictly deep-equal/,
+      'deleting one registered acquisition root must fail closed',
+    );
+  });
+
   it('fails closed when any published inventory extractor collapses to zero', () => {
     const stats = computeStats();
     const capabilityStatKeys = [
@@ -282,6 +315,14 @@ describe('public product facts generation contract', () => {
       '12+ data source credentials',
       'MCP offers 52 tools',
       'There are 445 API handlers',
+      '80+ Vercel Edge Functions',
+      '24 typed services',
+      '26 OSINT channels',
+      '31 live webcams',
+      'seven live news channels',
+      'Panels: 102',
+      'six specialized variants',
+      'five dashboard variants',
       '25 installable agent skills',
       '跨 30+ 实时服务',
       '500 多个实时数据源',
