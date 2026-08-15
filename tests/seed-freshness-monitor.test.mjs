@@ -531,6 +531,21 @@ describe('scheduled seed freshness monitor', () => {
         'a recovered gdeltIntel failure must block the committed acceptance gate',
       );
       assert.deepEqual(gdeltFailure.acknowledged, []);
+      const mineral = committed.acknowledged.find((entry) => entry.name === 'mineralProduction');
+      assert.ok(mineral, 'mineralProduction stays acknowledged until the first post-recovery tick publishes');
+      assert.equal(mineral.status, 'EMPTY');
+      assert.equal(mineral.expiresAt, '2026-08-15T03:00:00.000Z');
+      assert.equal(mineral.cutover?.firstScheduledRunAt, '2026-08-15T03:00:00.000Z');
+      assert.equal(mineral.cutover?.probeKey, 'seed-meta:supply-chain:mineral-production');
+      const staticRefTick = committed.acknowledged.find((entry) => entry.name === 'staticRefBundleTick');
+      assert.ok(staticRefTick, 'the new tick-execution probe needs an expiring ack until the first post-deploy cron');
+      assert.equal(staticRefTick.status, 'EMPTY');
+      assert.equal(staticRefTick.issue, 6691);
+      assert.equal(staticRefTick.expiresAt, '2026-08-15T03:00:00.000Z');
+      assert.equal(staticRefTick.cutover?.probeKey, 'bundle:heartbeat:static-ref');
+      assert.equal(staticRefTick.cutover?.firstScheduledRunAt, '2026-08-15T03:00:00.000Z');
+      const staticRefService = readRailwayServices().find((entry) => entry.service === 'seed-bundle-static-ref');
+      assert.equal(staticRefService?.cronSchedule, '0 3 * * *');
       assert.ok(
         Date.parse(committed.expiresAt) > Date.parse('2026-07-28'),
         'committed baseline must not ship already expired',

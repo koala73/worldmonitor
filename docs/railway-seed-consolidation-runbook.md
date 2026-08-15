@@ -35,7 +35,7 @@ The normal deployment architecture is intentionally small:
 | Merge safety | GitHub protected `main` | Require a PR, current-base checks with `strict=true`, administrator enforcement, zero required human approvals, and no bypass actors. |
 | Service selection | Railway's native watch paths, backed by `scripts/railway-services.json`, its closure audit, and the exact identity roster in `scripts/railway-native-autodeploy-fleet.json` | A source migration may change `source.checkSuites` only. It must not change watch paths, fleet identity, or another service field. |
 | Deployment creation | Railway's native GitHub integration on explicit branch `main` | No GitHub Actions workflow dispatches, retries, leases, or repairs a normal deployment. |
-| Drift detection | One hourly, read-only Railway workflow after the monitor migration | Missing, detached, replaced, unexpected, unknown, failed, skipped, overdue, or contradictory state is red. The monitor has no mutation token, dispatch permission, retry, reviewer, or acceptance baseline. |
+| Drift detection | One six-hourly, read-only Railway workflow after the monitor migration | Missing, detached, replaced, unexpected, unknown, failed, skipped, overdue, or contradictory state is red. The monitor has no mutation token, dispatch permission, retry, reviewer, or acceptance baseline. |
 | Recovery | Operator diagnosis followed by an explicit Railway action or batch rollback | Recovery is never automatic and never turns missing evidence green. Seed/ingestion freshness remains a separate acceptance surface. |
 
 The permanent monitor uses a credential issued to a dedicated Railway
@@ -248,9 +248,10 @@ The audit only proves the trigger config matches the registry. Proving a merge
 actually reached production is the separate
 [deploy-drift check](#deploy-drift-check) below.
 
-The hourly `Railway Deploy Drift` workflow performs this audit in deployment-only
-mode and runs the independent deployment-history check. `Seed Freshness Monitor`
-owns ingestion acceptance only. Create the dedicated GitHub Actions environment
+The six-hourly `Railway Native Deploy Health` workflow performs this audit in
+deployment-only mode and runs the deployment-history check from the same
+Viewer projection. `Seed Freshness Monitor` owns ingestion acceptance only.
+Create the dedicated GitHub Actions environment
 `ingestion-acceptance-production`, restrict its deployment branch policy to
 `main`, and configure:
 
@@ -262,7 +263,7 @@ Do not define the Viewer token as a repository or organization secret:
 `workflow_dispatch` can target another ref, while the environment's server-side
 branch policy keeps the production credential unavailable there. The workflow
 references the environment with deployment tracking disabled and maps the token
-to `RAILWAY_API_TOKEN` only on the two read steps. It never links a checkout,
+to `RAILWAY_API_TOKEN` only on the combined read step. It never links a checkout,
 requests variables, or passes `--apply`. Missing or inaccessible context fails
 the monitor rather than silently skipping the live audit. See
 [Deploy-drift check](#deploy-drift-check) for the exact workflow contract.
@@ -531,11 +532,12 @@ Its one `monitor` job checks ingestion operational acceptance through
 configuration, classify deployment history, or imply that a merge reached a
 container.
 
-Read the separate hourly `Railway Deploy Drift` workflow for production source,
-build, trigger, and deployment conclusions. A red Seed Freshness run says the
-ingestion observation failed or could not be authorized. A red Railway Deploy
-Drift run says the fleet configuration or deployment evidence failed. Neither
-workflow hides or gates the other's conclusion.
+Read the separate six-hourly `Railway Native Deploy Health` workflow for
+production source, build, trigger, and deployment conclusions. A red Seed
+Freshness run says the ingestion observation failed or could not be authorized.
+A red Railway Native Deploy Health run says the fleet configuration or
+deployment evidence failed. Neither workflow hides or gates the other's
+conclusion.
 
 `monitor` fails on
 every actionable problem, including `SEED_ERROR`, `STALE_SEED`,
@@ -549,22 +551,22 @@ controls" gap.
 #### Deploy-drift check
 
 The permanent read-only surface is `.github/workflows/railway-deploy-drift.yml`
-(`Railway Deploy Drift`). It runs at minute 17 of every hour and on explicit
-manual dispatch. Its two jobs are independent: one audits the Viewer-safe
-source/build/deploy projection and the other checks deployment history and Git
-closure. Neither job depends on or dispatches the other.
+(`Railway Native Deploy Health`). It runs at minute 17 every six hours and on
+explicit manual dispatch. One job reads the Viewer-safe source/build/deploy
+projection once, audits it, and reuses the same evidence to check deployment
+history and Git closure. It normally makes one bounded fleet-history request
+after the per-service projection and performs direct history fallback only when
+a service has no stable active-deployment baseline.
 
-Both jobs run only for the literal `refs/heads/main`. The configuration audit
-uses a depth-one checkout because it compares Railway configuration with the
-immutable fleet manifest and does not inspect Git ancestry. The deployment
-check freezes the event SHA against the checkout SHA, uses full Git history
-with a blobless filter, and fails if the exact comparison commit cannot be
-fetched. It passes that immutable commit with `--head`; a local manual
+The job runs only for the literal `refs/heads/main`. It freezes the event SHA
+against the checkout SHA, uses full Git history with a blobless filter, and
+fails if the exact comparison commit cannot be fetched. It passes that
+immutable commit with `--head`; a local manual
 invocation without `--head` first refreshes the explicit `origin/main`
 tracking ref and then resolves it, never the current feature-branch `HEAD`.
 
 The workflow maps `RAILWAY_PRODUCTION_VIEWER_API_TOKEN` to
-`RAILWAY_API_TOKEN` only on the identity-verification and read steps. The
+`RAILWAY_API_TOKEN` only on the combined read step. The
 credential must belong to the dedicated Railway Viewer identity. It must not
 be exposed to checkout, setup, dependency installation, or any command with
 mutation authority. The deployment-only audit cannot query variables and
@@ -575,8 +577,18 @@ remains a separate ingestion monitor and must not install Railway, read Railway
 configuration, or classify deployments.
 
 ```bash
-node scripts/check-railway-deploy-drift.mjs        # add --json for the machine-readable form
+node scripts/check-railway-deploy-drift.mjs --audit-deployment-config # add --json for the machine-readable form
 ```
+
+The deployment check does not rediscover the live image by scanning through
+days of skipped pushes. The same Viewer-safe service projection supplies each
+service's `activeDeployments` as the running baseline. A fleet-wide deployment
+stream then reads only far enough to cross the frozen comparison commit's
+timestamp, which preserves newer `SKIPPED`, `FAILED`, and in-flight evidence.
+Only a service with no active running source, or one whose source changes while
+the two read-only snapshots are taken, falls back to a direct history read. If
+the recent stream cannot cross the comparison timestamp, the check still fails
+closed; it does not turn a capped or rate-limited read into health.
 
 The watch-path filter is one way a merge fails to reach production; a GitHub
 integration that stopped delivering (#6064) and a build that failed after the

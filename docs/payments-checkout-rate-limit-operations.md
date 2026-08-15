@@ -137,16 +137,58 @@ other holders of the same key:
 That is arithmetic plus a hypothesis, not a measured cause. The alarm exists to
 supply the correlation data needed to confirm or kill it.
 
-### Known gap in the ladder's provider floor
+### The ladder's provider floor
 
-`retryAfterMsFromError` in `convex/payments/checkoutRateLimit.ts` reads only
-`retry-after-ms` and `retry-after`. Dodo's API reference documents neither on a
-429 — it documents `X-RateLimit-Reset`. If Dodo does not also send
-`Retry-After`, the ladder's "honor the advertised provider floor" branch never
-engages in production and every wait is pure jitter. This has not been verified
-against a live 429 response's headers. Capturing those headers on the next
-alarm firing is the cheapest way to settle it; teaching the ladder to read
-`X-RateLimit-Reset` is the fix if it is confirmed.
+`retryAfterMsFromError` in `convex/payments/checkoutRateLimit.ts` reads three
+headers, strongest signal first:
+
+| Header | Meaning | Unit |
+| --- | --- | --- |
+| `retry-after-ms` | Explicit wait | Milliseconds |
+| `retry-after` | Explicit wait (RFC 9110) | Delta-seconds **or** an HTTP-date |
+| `x-ratelimit-reset` | When the window rolls over | Inferred — see below |
+
+`Retry-After` wins over `X-RateLimit-Reset` deliberately: the first is a
+directive to wait, the second only reports when the window resets.
+
+A numeric `Retry-After` is always read as delta-seconds and never retried as a
+date — a negative value is rejected outright rather than falling through to the
+date branch, where V8 would read `-5` as May 2001 and clamp it to "wait zero".
+No real HTTP-date is lost to this: all three RFC 9110 date forms begin with a
+day name.
+
+Originally the ladder read only the two `Retry-After` forms. Dodo's API
+reference documents neither on a 429 — it documents `X-RateLimit-Reset` — so if
+Dodo does not also send `Retry-After`, the "honor the advertised provider floor"
+branch never engaged and every wait was pure jitter. The ladder now reads
+`X-RateLimit-Reset` as well.
+
+**Its unit is inferred by magnitude, because Dodo does not publish one.** The
+header is genuinely ambiguous across the industry: the IETF draft's
+`RateLimit-Reset` is delta-seconds, while this repo's own API emits
+`X-RateLimit-Reset` as epoch-milliseconds (`server/_shared/api-key-rate-limit.ts`).
+All three encodings are accepted:
+
+- below `1e9` — delta-seconds (a delta that large would be ~31 years)
+- `1e9` to `1e12` — epoch-seconds (an epoch in seconds passed `1e9` in 2001)
+- `1e12` and above — epoch-milliseconds
+
+A reset already in the past clamps to `0`, so it can never subtract from the
+jittered wait. Each encoding is pinned by a test, and the sweep confirms an
+epoch misread as a delta is caught — that defect would produce a decades-long
+floor and silently disable every retry.
+
+**Two things are still unmeasured, and the alarm is what will settle them:**
+
+1. Which encoding Dodo actually sends. The magnitude rules cover all three, so
+   this is safe rather than settled.
+2. Whether the reset describes the **burst** (40/s) or the **sustained**
+   (240/min) window. This matters: if Dodo reports a sustained reset up to 60s
+   out while the real block is a per-second burst that clears immediately,
+   honoring it as a hard floor ends the ladder early and turns a checkout the
+   ladder would have rescued into a terminal 429. Watch for the alarm rate
+   rising after this change ships — that is the signature, and the fix would be
+   to cap the reset-derived floor rather than to stop reading the header.
 
 ## Related
 

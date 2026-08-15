@@ -357,11 +357,12 @@ The original implementation used
 no deployment suppression: every unknown, failed, overdue, contradictory, or
 otherwise unaccepted result is directly red.
 
-`.github/workflows/railway-deploy-drift.yml` now owns two independent read-only
-jobs: the Viewer-safe source/build/trigger audit and deployment-history drift.
-It runs hourly and on manual dispatch, only on `main`, with deployment tracking
-disabled for its GitHub environment. `Seed Freshness Monitor` owns ingestion
-acceptance only and no longer installs Railway or reports a fleet conclusion.
+`.github/workflows/railway-deploy-drift.yml` now owns one combined read-only job:
+the Viewer-safe source/build/trigger audit and deployment-history drift share a
+single per-service projection. It runs every six hours and on manual dispatch,
+only on `main`, with deployment tracking disabled for its GitHub environment.
+`Seed Freshness Monitor` owns ingestion acceptance only and no longer installs
+Railway or reports a fleet conclusion.
 
 The deployment job checks out full history with `fetch-depth: 0` and a blobless
 filter, freezes the event SHA, and refreshes the explicit `origin/main` tracking
@@ -414,12 +415,21 @@ missing, pending, or failed gate fails that workflow; it is never converted
 into a green skip. It deliberately does not run on an ingestion push because
 Railway may not have deployed or executed that revision yet.
 
-`Railway Deploy Drift` is a separate hourly workflow and has no dependency on
-the Seed Freshness gate. The gate and deployment drift share an upstream: an
-ungated or red main is exactly when Railway can refuse a push, so using the gate
-to skip the drift probe would hide the blast radius. Its two independent jobs
-therefore publish Railway configuration and deployment conclusions directly,
+`Railway Native Deploy Health` is a separate six-hourly workflow and has no
+dependency on the Seed Freshness gate. The gate and deployment drift share an
+upstream: an ungated or red main is exactly when Railway can refuse a push, so
+using the gate to skip the drift probe would hide the blast radius. Its one job
+publishes both Railway configuration and deployment conclusions directly,
 without changing the ingestion workflow's verdict.
+
+The earlier two-job hourly layout duplicated the expensive Viewer projection:
+both jobs queried all 80 services, so each scheduled run produced about 160
+per-service GraphQL calls before deployment-history reads. On 2026-08-15 this
+exhausted Railway's rolling API allowance and both jobs failed with HTTP 429.
+The combined job queries each service once with concurrency two, reuses that
+projection for both conclusions, and runs every six hours. A quota failure
+still fails closed; lowering request volume prevents the monitor from creating
+the condition it is meant to observe.
 
 ## Prevention
 

@@ -1,20 +1,20 @@
-name: Railway Deploy Drift
+name: Railway Native Deploy Health
 
 on:
   schedule:
-    - cron: '17 * * * *'
+    - cron: '17 */6 * * *'
   workflow_dispatch:
 
 concurrency:
-  group: railway-deploy-drift-${{ github.ref }}
+  group: railway-native-deploy-health-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  config-audit:
-    name: Railway deployment configuration
+  monitor:
+    name: Railway native deployment health
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -22,36 +22,7 @@ jobs:
       name: ingestion-acceptance-production
       deployment: false
     steps:
-      - name: Start config-audit run budget
-        run: echo "RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
-
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          fetch-depth: 1
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: '24'
-
-      - name: Install pinned Railway CLI
-        run: npm install --global @railway/cli@5.30.1
-
-      - name: Audit Railway deployment configuration
-        env:
-          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_VIEWER_API_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-        run: node scripts/audit-railway-watch-paths.mjs --environment production --deployment-only --concurrency 4 --json
-
-  deploy-drift:
-    name: Railway deployment drift
-    if: ${{ github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment:
-      name: ingestion-acceptance-production
-      deployment: false
-    steps:
-      - name: Start deploy-drift run budget
+      - name: Start deploy-health run budget
         run: echo "RAILWAY_DRIFT_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -76,8 +47,8 @@ jobs:
       - name: Install pinned Railway CLI
         run: npm install --global @railway/cli@5.30.1
 
-      - name: Check Railway deploy drift against main
+      - name: Check Railway deployment configuration and drift
         env:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_VIEWER_API_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-        run: node scripts/check-railway-deploy-drift.mjs --head "$RAILWAY_COMPARISON_SHA" --concurrency 4
+        run: node scripts/check-railway-deploy-drift.mjs --head "$RAILWAY_COMPARISON_SHA" --concurrency 2 --audit-deployment-config

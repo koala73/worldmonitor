@@ -41,11 +41,23 @@ function service({
   };
 }
 
-function viewerResponse(serviceId, { instance = {}, trigger = {}, pageInfo = {} } = {}) {
+function viewerResponse(serviceId, {
+  instance = {},
+  trigger = {},
+  pageInfo = {},
+  activeDeployments = [{
+    id: `deployment-${serviceId}`,
+    serviceId,
+    status: 'SUCCESS',
+    createdAt: '2026-08-14T12:00:00.000Z',
+    meta: { commitHash: 'a'.repeat(40) },
+  }],
+} = {}) {
   return {
     serviceInstance: {
       serviceId,
       source: { repo: 'koala73/worldmonitor', image: null },
+      activeDeployments,
       ...instance,
     },
     deploymentTriggers: {
@@ -124,11 +136,26 @@ describe('Viewer-compatible deployment-only projection', () => {
       startCommand: 'node seed-example.mjs',
       cronSchedule: '0 * * * *',
     });
+    assert.equal(Object.hasOwn(projected, 'activeDeployments'), false);
     assert.equal(Object.hasOwn(projected, 'variables'), false);
+  });
+
+  it('projects active deployment evidence only when the deploy drift caller opts in', () => {
+    const response = viewerResponse('svc-1');
+    const projected = projectViewerDeploymentConfig({
+      service: { id: 'svc-1', name: 'seed-example', source: { repo: 'koala73/worldmonitor' } },
+      instance: response.serviceInstance,
+      triggers: response.deploymentTriggers,
+      includeActiveDeployments: true,
+    });
+
+    assert.deepEqual(projected.activeDeployments, response.serviceInstance.activeDeployments);
   });
 
   it('makes variable reads structurally impossible and refuses deployment-only apply', () => {
     assert.match(DEPLOYMENT_ONLY_QUERY, /serviceInstance/);
+    assert.match(DEPLOYMENT_ONLY_QUERY, /\$includeActiveDeployments:\s*Boolean!/);
+    assert.match(DEPLOYMENT_ONLY_QUERY, /activeDeployments\s+@include\(if:\s*\$includeActiveDeployments\)/);
     assert.match(DEPLOYMENT_ONLY_QUERY, /deploymentTriggers/);
     assert.match(DEPLOYMENT_ONLY_QUERY, /first:\s*2/);
     assert.doesNotMatch(DEPLOYMENT_ONLY_QUERY, /variables|environmentVariables/i);
@@ -305,6 +332,40 @@ describe('Viewer-compatible deployment-only projection', () => {
       }),
       /malformed deployment trigger/i,
     );
+    assert.throws(
+      () => projectViewerDeploymentConfig({
+        ...base,
+        includeActiveDeployments: true,
+        instance: {
+          ...base.instance,
+          activeDeployments: [{
+            id: 'deployment-1',
+            serviceId: 'svc-other',
+            status: 'SUCCESS',
+            createdAt: '2026-08-14T12:00:00.000Z',
+            meta: { commitHash: 'a'.repeat(40) },
+          }],
+        },
+      }),
+      /active deployment.*another service/i,
+    );
+    assert.throws(
+      () => projectViewerDeploymentConfig({
+        ...base,
+        includeActiveDeployments: true,
+        instance: {
+          ...base.instance,
+          activeDeployments: [{
+            id: 'deployment-1',
+            serviceId: 'svc-1',
+            status: 'SUCCESS',
+            createdAt: 'not-a-date',
+            meta: { commitHash: 'a'.repeat(40) },
+          }],
+        },
+      }),
+      /active deployment.*malformed/i,
+    );
   });
 
   it('audits native source invariants across non-seeder repository services', () => {
@@ -422,7 +483,7 @@ describe('Viewer-compatible deployment-only projection', () => {
       environmentId: 'environment-1',
       concurrency: 2,
       api: async (_query, variables) => {
-        calls.push(variables.serviceId);
+        calls.push(variables);
         active += 1;
         maxActive = Math.max(maxActive, active);
         await new Promise((resolve) => setTimeout(resolve, 5));
@@ -432,7 +493,36 @@ describe('Viewer-compatible deployment-only projection', () => {
     });
     assert.equal(maxActive, 2);
     assert.equal(calls.length, services.length);
+    assert.equal(calls.every((variables) => variables.includeActiveDeployments === false), true);
     assert.deepEqual(Object.keys(projected.services).sort(), services.map((service) => service.id).sort());
+    assert.equal(
+      Object.values(projected.services).every((config) => !Object.hasOwn(config, 'activeDeployments')),
+      true,
+    );
+  });
+
+  it('requests and validates active deployment evidence for deploy drift only', async () => {
+    const services = [{
+      id: 'svc-1',
+      name: 'service-1',
+      source: { repo: 'koala73/worldmonitor' },
+    }];
+    const calls = [];
+    const projected = await readViewerDeploymentConfig('production', services, {
+      projectId: 'project-1',
+      environmentId: 'environment-1',
+      includeActiveDeployments: true,
+      api: async (_query, variables) => {
+        calls.push(variables);
+        return viewerResponse(variables.serviceId);
+      },
+    });
+
+    assert.equal(calls[0].includeActiveDeployments, true);
+    assert.deepEqual(
+      projected.services['svc-1'].activeDeployments,
+      viewerResponse('svc-1').serviceInstance.activeDeployments,
+    );
   });
 
   it('fails the whole projection when one Viewer API read fails', async () => {

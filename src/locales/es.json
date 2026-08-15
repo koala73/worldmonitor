@@ -478,7 +478,9 @@
         "displacement": "Alternar flujos de desplazamiento",
         "climate": "Alternar anomalías climáticas",
         "outages": "Alternar cortes de internet",
-        "tradeRoutes": "Alternar rutas comerciales"
+        "tradeRoutes": "Alternar rutas comerciales",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Cambiar a modo oscuro",
@@ -1037,7 +1039,9 @@
         "speciesRecovery": "Recuperación de especies",
         "renewableInstallations": "Energía limpia",
         "radiationSpike": "Pico de radiación",
-        "radiationElevated": "Radiación elevada"
+        "radiationElevated": "Radiación elevada",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "capas",
       "layerSearch": "Buscar capas...",
@@ -1150,7 +1154,9 @@
           "techFires": "Incendios forestales activos cerca de infraestructura tecnológica",
           "financeGulfInvestments": "Inversiones de fondos soberanos del CCG e inversión extranjera directa",
           "geoBoundaries": "Zonas desmilitarizadas, líneas de alto el fuego y fronteras en disputa",
-          "ciiChoropleth": "Mapa térmico del índice de inestabilidad — colorea los países según la puntuación CII (verde=estable, rojo=crítico)"
+          "ciiChoropleth": "Mapa térmico del índice de inestabilidad — colorea los países según la puntuación CII (verde=estable, rojo=crítico)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Afecta: terremotos, clima, protestas, apagones"

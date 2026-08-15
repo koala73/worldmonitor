@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>urn:oid:2.49.0.1.124.3132006609.2026</identifier>
+  <sender>cap-pac@canada.ca</sender>
+  <sent>2026-08-13T19:31:03-06:00</sent>
+  <status>Actual</status>
+  <msgType>Update</msgType>
+  <scope>Public</scope>
+  <info>
+    <language>en-CA</language>
+    <category>Met</category>
+    <event>tornado</event>
+    <responseType>AllClear</responseType>
+    <urgency>Past</urgency>
+    <severity>Minor</severity>
+    <certainty>Observed</certainty>
+    <headline>yellow watch - tornado - ended</headline>
+  </info>
+</alert>

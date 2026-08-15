@@ -16,6 +16,8 @@ import { readFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { promisify } from 'node:util';
 
+import { limitDeploymentHistory } from './railway-deployments.mjs';
+
 const execFileAsync = promisify(execFile);
 
 export const REPOSITORY = 'koala73/worldmonitor';
@@ -528,10 +530,14 @@ export async function readFleetDeployments({
   deadlineAt = Number.POSITIVE_INFINITY,
   monotonicNow = Date.now,
 }) {
-  const accumulator = accumulatorFactory({ serviceIds, notBefore });
+  const accumulator = accumulatorFactory({
+    serviceIds,
+    notBefore,
+  });
   let after = null;
   let pages = 0;
   let records = 0;
+  const seenCursors = new Set();
   while (pages < maxPages) {
     if (monotonicNow() >= deadlineAt) {
       throw new Error(DEPLOYMENT_READ_DEADLINE_ERROR);
@@ -542,16 +548,36 @@ export async function readFleetDeployments({
       ...(after ? { after } : {}),
     });
     const connection = data?.deployments;
-    if (!connection?.edges) throw new Error('railway api returned no deployments connection');
+    if (!Array.isArray(connection?.edges)) {
+      throw new Error('railway api returned no deployments connection');
+    }
+    if (typeof connection.pageInfo?.hasNextPage !== 'boolean') {
+      throw new Error('railway deployments pageInfo.hasNextPage must be a boolean');
+    }
+    const nextCursor = connection.pageInfo.endCursor;
+    if (connection.pageInfo.hasNextPage
+      && (typeof nextCursor !== 'string' || nextCursor.length === 0 || seenCursors.has(nextCursor))) {
+      throw new Error('railway deployments cursor did not advance');
+    }
+    const nodes = connection.edges.map((edge, index) => {
+      if (!edge?.node || typeof edge.node !== 'object' || Array.isArray(edge.node)
+        || typeof edge.node.id !== 'string' || edge.node.id.length === 0
+        || typeof edge.node.status !== 'string' || edge.node.status.length === 0
+        || typeof edge.node.serviceId !== 'string' || edge.node.serviceId.length === 0) {
+        throw new Error(`railway deployment edge ${index} is malformed`);
+      }
+      return edge.node;
+    });
     pages += 1;
     records += connection.edges.length;
-    accumulator.absorb(connection.edges.map((edge) => edge?.node).filter(Boolean));
-    if (!connection.pageInfo?.hasNextPage) {
+    accumulator.absorb(nodes);
+    if (!connection.pageInfo.hasNextPage) {
       accumulator.markExhausted();
       break;
     }
     if (accumulator.done) break;
-    after = connection.pageInfo.endCursor;
+    seenCursors.add(nextCursor);
+    after = nextCursor;
   }
   const result = accumulator.result();
   const complete = accumulator.done;
@@ -591,6 +617,7 @@ export async function readDeploymentsForFleet({
   onRoute = () => {},
   deadlineAt = Number.POSITIVE_INFINITY,
   monotonicNow = Date.now,
+  readFleet = readFleetDeployments,
   readDirect = readDeployments,
 }) {
   const byId = new Map(services.map((service) => [service.id, service]));
@@ -601,7 +628,7 @@ export async function readDeploymentsForFleet({
     onRoute({ route: 'per-service', reason: DEPLOYMENT_READ_DEADLINE_ERROR });
   } else if (projectId && environmentId && accumulatorFactory) {
     try {
-      const fleet = await readFleetDeployments({
+      const fleet = await readFleet({
         projectId,
         environmentId,
         serviceIds: [...byId.keys()],
@@ -624,7 +651,10 @@ export async function readDeploymentsForFleet({
           // returned `window`. Leaving them in silently changes what the
           // classifier sees — and every extra SKIPPED record costs a `git show`,
           // which is what actually dominates a sweep's wall clock.
-          results.set(serviceId, { deployments: deployments.slice(0, window), error: null });
+          results.set(serviceId, {
+            deployments: limitDeploymentHistory(deployments, window),
+            error: null,
+          });
         }
       }
       needDirect = fleet.unresolved.map((serviceId) => byId.get(serviceId)).filter(Boolean);

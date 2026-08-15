@@ -186,7 +186,9 @@
         "displacement": "Växla förflyttningsflöden",
         "climate": "Växla klimatanomalier",
         "outages": "Växla internetavbrott",
-        "tradeRoutes": "Växla handelsrutter"
+        "tradeRoutes": "Växla handelsrutter",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Byt till mörkt läge",
@@ -590,7 +592,9 @@
         "speciesRecovery": "Artåterhämtning",
         "renewableInstallations": "Ren energi",
         "radiationSpike": "Strålningsökning",
-        "radiationElevated": "Förhöjd strålning"
+        "radiationElevated": "Förhöjd strålning",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Lager",
       "layerSearch": "Sök lager...",
@@ -703,7 +707,9 @@
           "techEvents": "Stora teknikkonferenser och evenemang",
           "techFires": "Aktiva skogsbränder nära teknikinfrastruktur",
           "geoBoundaries": "Demilitariserade zoner, eldupphörslinjer och omtvistade gränser",
-          "ciiChoropleth": "Country Instability Index värmekarta — färgar länder efter CII-poäng (grön=stabil, röd=kritisk)"
+          "ciiChoropleth": "Country Instability Index värmekarta — färgar länder efter CII-poäng (grön=stabil, röd=kritisk)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Påverkar: Jordbävningar, väder, protester, avbrott"

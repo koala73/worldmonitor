@@ -125,7 +125,13 @@ export default defineSchema({
     windowStart: v.number(),
     count: v.number(),
     updatedAt: v.number(),
-  }).index("by_user_window", ["userId", "windowStart"]),
+  })
+    .index("by_user_window", ["userId", "windowStart"])
+    // Retention scan for `pruneStaleWriteRateLimits` (#6706). Expired-window
+    // rows are garbage-collected off the write path, so the sweep needs a
+    // cross-user range on age alone; without it the prune would be a full
+    // table scan whose read set collides with every live counter.
+    .index("by_windowStart", ["windowStart"]),
 
   notificationChannels: defineTable(
     v.union(

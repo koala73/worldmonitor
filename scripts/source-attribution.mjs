@@ -72,6 +72,10 @@ const licensedPublisherFeed = (provider) => ({
 });
 
 const PROVIDER_OVERRIDES = {
+  'auth.opensky-network.org': { provider: 'opensky-network.org' },
+  'opensky-network.org': { provider: 'opensky-network.org' },
+  'customer-api.wingbits.com': { provider: 'wingbits.com' },
+  'ecs-api.wingbits.com': { provider: 'wingbits.com' },
   'moxie.foxbusiness.com': licensedPublisherFeed('Fox Business'),
   'www.wired.com': licensedPublisherFeed('Wired'),
   'www.businessinsider.com': licensedPublisherFeed('Business Insider'),
@@ -87,6 +91,36 @@ const PROVIDER_OVERRIDES = {
     license: 'U.S. government public information; site and document-specific notices apply',
     attribution: 'Office of the U.S. Trade Representative; link to the original release.',
     status: 'reviewed',
+  },
+  '511on.ca': {
+    provider: 'Ontario 511',
+    license: 'Ontario 511 API terms; Government of Ontario data; attribution required',
+    attribution: 'Ontario 511 (Ministry of Transportation). https://511on.ca/',
+    status: 'terms-review',
+  },
+  '511.alberta.ca': {
+    provider: 'Alberta 511',
+    license: 'Alberta 511 terms (https://511.alberta.ca/about/about): non-commercial/educational reproduction allowed; commercial reproduction needs written permission from Alberta Transportation and Economic Corridors. https://511.alberta.ca/help/terms returned 404.',
+    attribution: 'Alberta 511 (Alberta Transportation and Economic Corridors). https://511.alberta.ca/',
+    status: 'terms-review',
+  },
+  'secure.toronto.ca': {
+    provider: 'City of Toronto Open Data',
+    license: 'CKAN package_show for road-restrictions: license_id=notspecified, license_title="License not specified" (https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/package_show?id=road-restrictions). Portal dataset page chrome links OGL-Toronto but is not data-bound to this dataset.',
+    attribution: 'City of Toronto, Road Restrictions. https://open.toronto.ca/dataset/road-restrictions/',
+    status: 'terms-review',
+  },
+  'api.open511.gov.bc.ca': {
+    provider: 'BC Open511',
+    license: 'Open Government Licence - British Columbia (OGL-BC). Confirmed on https://api.open511.gov.bc.ca/help. API Terms of Use for OGL-BC information also apply.',
+    attribution: 'DriveBC Open511 (Province of British Columbia). Licensed under OGL-BC. https://api.open511.gov.bc.ca/help',
+    status: 'reviewed',
+  },
+  'www.alberta.ca': {
+    provider: 'Alberta Emergency Alert',
+    license: 'Alberta.ca terms of use. Open Government Licence - Alberta exists on the open.alberta.ca licence page but is not bound to the AEA Atom feed on a live dataset page (the alberta-emergency-alert.aspx page has no OGL statement).',
+    attribution: 'Alberta Emergency Alert, Government of Alberta. https://www.alberta.ca/alberta-emergency-alert.aspx',
+    status: 'terms-review',
   },
   'api.elections.kalshi.com': {
     provider: 'Kalshi',
@@ -513,6 +547,12 @@ const PROVIDER_OVERRIDES = {
     license: 'Excluded: schema/standards reference',
     attribution: 'Excluded from the provider count: standards reference, not an ingested source.',
     status: 'excluded',
+  },
+  'tsimobile.viarail.ca': {
+    provider: 'VIA Rail Tracker (unofficial)',
+    license: 'VIA Rail Site Terms prohibit commercial use of the Site (https://www.viarail.ca/en/terms-and-conditions). Developer Resources publish GTFS only under Open Government Licence – Canada v2 (https://www.viarail.ca/en/developer-resources); that OGL grant does not cover tsimobile.viarail.ca unofficial live JSON. Terms require review.',
+    attribution: 'VIA Rail Canada; unofficial live train JSON at tsimobile.viarail.ca. Not the Developer Resources GTFS feed; OGL does not apply to this host. Best-effort only.',
+    status: 'terms-review',
   },
 };
 

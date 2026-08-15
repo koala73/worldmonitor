@@ -24,6 +24,7 @@
 //   node scripts/check-railway-deploy-drift.mjs --json
 //   node scripts/check-railway-deploy-drift.mjs --head <sha> --window 200
 //   node scripts/check-railway-deploy-drift.mjs --concurrency 4
+//   node scripts/check-railway-deploy-drift.mjs --audit-deployment-config
 
 import { readFileSync, realpathSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
@@ -44,6 +45,10 @@ import {
   selectExpectedRepositoryServices,
 } from './railway-cli.mjs';
 import { readViewerDeploymentConfig } from './railway-viewer-deployment-config.mjs';
+import {
+  auditRailwayServiceConfig,
+  printAudit,
+} from './audit-railway-watch-paths.mjs';
 import {
   FAILED_STATUSES,
   IN_FLIGHT_STATUSES,
@@ -745,6 +750,7 @@ async function main() {
   });
   const asJson = process.argv.includes('--json');
   const strict = process.argv.includes('--strict');
+  const auditDeploymentConfig = process.argv.includes('--audit-deployment-config');
   const expectedServices = readRepeatedArguments(process.argv, '--expected-service');
   const environment = readArgument(process.argv, '--environment', DEFAULT_ENVIRONMENT);
   const window = Number(readArgument(process.argv, '--window', String(DEFAULT_DEPLOYMENT_WINDOW)));
@@ -811,9 +817,8 @@ async function main() {
   // repository's declaration and the live config is what Railway is actually
   // filtering on; resolveServiceClosure unions them, because between a merged
   // registry edit and the audit's --apply each knows a path the other does not.
-  const registryByService = new Map(
-    JSON.parse(readFileSync(REGISTRY_URL, 'utf8')).map((entry) => [entry.service, entry]),
-  );
+  const registry = JSON.parse(readFileSync(REGISTRY_URL, 'utf8'));
+  const registryByService = new Map(registry.map((entry) => [entry.service, entry]));
   // The dedicated Viewer cannot see environment-variable values. Read only the
   // explicit source/build/deploy projection used by closure classification.
   assertRailwayCallCanStart('resolving the Railway environment id');
@@ -829,8 +834,27 @@ async function main() {
     projectId,
     environmentId,
     concurrency,
+    includeActiveDeployments: true,
     deadlineAt: deepPassDeadlineAt,
   })).services;
+  const configurationDrift = auditDeploymentConfig
+    ? auditRailwayServiceConfig(
+        { services: liveById },
+        new Map(services.map((service) => [service.name, service.id])),
+        registry,
+        {
+          evaluateRequiredEnv: false,
+          requireMainTrigger: true,
+        },
+      )
+    : [];
+  if (auditDeploymentConfig && !asJson) printAudit(configurationDrift);
+  const initialDeploymentsByService = new Map(
+    Object.entries(liveById).map(([serviceId, config]) => [
+      serviceId,
+      config.activeDeployments,
+    ]),
+  );
   const changedPathsSince = createChangedPathsReader(headSha, { git: runGit });
   const changedPathsIn = createCommitPathsReader({ git: runGit });
 
@@ -850,7 +874,10 @@ async function main() {
     window,
     concurrency,
     notBefore: headCommittedAt,
-    accumulatorFactory: createFleetAccumulator,
+    accumulatorFactory: (args) => createFleetAccumulator({
+      ...args,
+      initialDeploymentsByService,
+    }),
     onRoute: (route) => {
       // stderr, not stdout: --json must remain one parseable document, and a
       // human progress line in front of it breaks every machine consumer.
@@ -942,6 +969,10 @@ async function main() {
         capped: deepPass.capped,
         deadlineDeferred: deepPass.deadlineDeferred,
       },
+      configurationAudit: {
+        evaluated: auditDeploymentConfig,
+        drift: configurationDrift,
+      },
       summary,
       results,
     }, null, 2));
@@ -953,7 +984,7 @@ async function main() {
     }
     for (const service of summary.missing) console.error(`- ${service} [MISSING] was not positively classified`);
   } else printReport(results, summary, headSha, graceSha);
-  if (!summary.ok) process.exitCode = 1;
+  if (!summary.ok || configurationDrift.length > 0) process.exitCode = 1;
 }
 
 // realpath BOTH sides: Node sets import.meta.url to the realpath while argv[1]

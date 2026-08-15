@@ -28,12 +28,96 @@
       "name": "mineralProduction",
       "status": "EMPTY",
       "issue": 6439,
-      "reason": "New USGS/BGS mineral-production probe. seed-bundle-static-ref runs daily at 03:00 UTC (`0 3 * * *` in scripts/railway-services.json), so the key cannot exist until the first tick after this PR deploys; EMPTY is expected until then. Anchored to that real cron window: MAX_ROLLOUT_WINDOW_MS caps firstScheduledRunAt-activatedAt at 24h, and a daily tick fits inside it. If this PR has not merged by 2026-08-14T03:00Z, re-anchor both to the next 03:00 UTC tick.",
-      "expiresAt": "2026-08-14T03:00:00.000Z",
+      "reason": "USGS/BGS mineral-production probe has never published. seed-bundle-static-ref cron froze after the lone Aug 9 tick (#6691); recovery redeploy landed 2026-08-14T12:40Z. EMPTY is expected until the next 03:00 UTC tick. Re-anchored from the expired 2026-08-14T03:00Z cutover to that first post-recovery window.",
+      "expiresAt": "2026-08-15T03:00:00.000Z",
       "cutover": {
         "probeKey": "seed-meta:supply-chain:mineral-production",
-        "activatedAt": "2026-08-13T06:00:00.000Z",
-        "firstScheduledRunAt": "2026-08-14T03:00:00.000Z"
+        "activatedAt": "2026-08-14T12:45:00.000Z",
+        "firstScheduledRunAt": "2026-08-15T03:00:00.000Z"
+      }
+    },
+    {
+      "name": "staticRefBundleTick",
+      "status": "EMPTY",
+      "issue": 6691,
+      "reason": "New tick-execution heartbeat for seed-bundle-static-ref. Writer ships in this change; the key cannot exist until the first 03:00 UTC cron after deploy. EMPTY is expected until then. Expiry equals firstScheduledRunAt so a missed recovery tick pages instead of staying silent.",
+      "expiresAt": "2026-08-15T03:00:00.000Z",
+      "cutover": {
+        "probeKey": "bundle:heartbeat:static-ref",
+        "activatedAt": "2026-08-14T12:45:00.000Z",
+        "firstScheduledRunAt": "2026-08-15T03:00:00.000Z"
+      }
+    },
+    {
+      "name": "canadaRoads",
+      "status": "EMPTY",
+      "issue": 6608,
+      "expiresAt": "2026-08-16T20:15:00.000Z",
+      "reason": "New Ontario 511 probe (infra:ontario-511:v1). EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. Re-anchored from 2026-08-14T20:15Z to 2026-08-16T20:15Z so merge slip does not fail the EMPTY window; activatedAt moved with firstScheduledRunAt to stay inside the 24h MAX_ROLLOUT_WINDOW_MS cap. This seeder no longer has a */15 cron of its own: seed-bundle-canada (#6711) owns it as a member gated on intervalMs 15min, so the first run clears on BUNDLE provisioning rather than on this branch deploying.",
+      "cutover": {
+        "probeKey": "seed-meta:infra:ontario-511",
+        "activatedAt": "2026-08-15T20:20:00.000Z",
+        "firstScheduledRunAt": "2026-08-16T20:15:00.000Z"
+      }
+    },
+    {
+      "name": "albertaRoads",
+      "status": "EMPTY",
+      "issue": 6612,
+      "expiresAt": "2026-08-16T20:15:00.000Z",
+      "reason": "New Alberta 511 probe (infra:alberta-511:v1). EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. Re-anchored from 2026-08-14T21:00Z to 2026-08-16T20:15Z so merge slip does not fail the EMPTY window; activatedAt moved with firstScheduledRunAt to stay inside the 24h MAX_ROLLOUT_WINDOW_MS cap. Alberta rides the same seed-provincial-511 script as Ontario, which is now a seed-bundle-canada (#6711) member gated on intervalMs 15min rather than its own cron \u2014 so both provinces clear on BUNDLE provisioning, on the same tick.",
+      "cutover": {
+        "probeKey": "seed-meta:infra:alberta-511",
+        "activatedAt": "2026-08-15T20:20:00.000Z",
+        "firstScheduledRunAt": "2026-08-16T20:15:00.000Z"
+      }
+    },
+    {
+      "name": "torontoRoads",
+      "status": "EMPTY",
+      "issue": 6609,
+      "expiresAt": "2026-08-16T22:15:00.000Z",
+      "reason": "New Toronto road restrictions probe (infra:toronto-roads:v1). EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. Re-anchored from 2026-08-14T20:15Z to 2026-08-16T20:15Z so merge slip does not fail the EMPTY window; activatedAt moved with firstScheduledRunAt to stay inside the 24h MAX_ROLLOUT_WINDOW_MS cap. This seeder no longer has a */15 cron of its own: seed-bundle-canada (#6711) owns it as a member gated on intervalMs 2h \u2014 road restrictions are construction permits, not live incidents, and polling a 3.6MB body every 15 minutes cost 348 MB/day. The first run therefore clears on BUNDLE provisioning, and the 2h gate means it can land up to two hours after that.",
+      "cutover": {
+        "probeKey": "seed-meta:infra:toronto-roads",
+        "activatedAt": "2026-08-15T22:20:00.000Z",
+        "firstScheduledRunAt": "2026-08-16T22:15:00.000Z"
+      }
+    },
+    {
+      "name": "bcOpen511",
+      "status": "EMPTY",
+      "issue": 6611,
+      "expiresAt": "2026-08-16T21:15:00.000Z",
+      "reason": "New BC Open511 probe (infra:bc-open511:v1). EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. Re-anchored from 2026-08-14T20:45Z so merge slip does not fail the EMPTY window; activatedAt moved with firstScheduledRunAt to stay inside the 24h MAX_ROLLOUT_WINDOW_MS cap. This seeder no longer has a */15 cron of its own: seed-bundle-canada (#6711) owns it as a member gated on intervalMs 30min, so the first publish clears on BUNDLE provisioning and can land up to half an hour after it \u2014 the window is widened by that gate rather than pinned to the provisioning instant.",
+      "cutover": {
+        "probeKey": "seed-meta:infra:bc-open511",
+        "activatedAt": "2026-08-15T21:30:00.000Z",
+        "firstScheduledRunAt": "2026-08-16T21:15:00.000Z"
+      }
+    },
+    {
+      "name": "canadaAlerts",
+      "status": "EMPTY",
+      "issue": 6610,
+      "expiresAt": "2026-08-16T20:45:00.000Z",
+      "reason": "New Alberta Emergency Alert probe (alerts:alberta-aea:v1). EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. Re-anchored to 2026-08-16T20:45Z because the previous 2026-08-14T20:45Z cutover would expire today. This seeder no longer has a */15 cron of its own: seed-bundle-canada (#6711) owns it as a member gated on intervalMs 15min, so the first run clears on BUNDLE provisioning rather than on this branch deploying.",
+      "cutover": {
+        "probeKey": "seed-meta:alerts:alberta-aea",
+        "activatedAt": "2026-08-15T20:45:00.000Z",
+        "firstScheduledRunAt": "2026-08-16T20:45:00.000Z"
+      }
+    },
+    {
+      "name": "viarailLive",
+      "status": "STALE_SEED",
+      "issue": 6615,
+      "expiresAt": "2026-08-15T12:00:00.000Z",
+      "reason": "New optional unofficial VIA Rail live JSON probe (#6615). EMPTY_DATA_OK maps a missing key to STALE_SEED (warn), not EMPTY/crit or SEED_ERROR. After the first tick a 404/shape-break writes sourceState unavailable (NOT_CONFIGURED) rather than remaining STALE_SEED. Re-anchored 2026-08-14T18:00Z: this seeder no longer has its own */15 cron \u2014 seed-bundle-canada (#6711) owns it as a member gated on intervalMs 15min \u2014 so the first run cannot happen until that bundle service is CREATED on Railway, not merely until this branch deploys. The window covers provisioning and matches the ttcAlerts anchor, since both clear on the same event. If the bundle has not been provisioned by 2026-08-15T12:00Z, re-anchor both again.",
+      "cutover": {
+        "probeKey": "seed-meta:transit:viarail-live",
+        "activatedAt": "2026-08-14T18:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-15T12:00:00.000Z"
       }
     },
     {
@@ -41,7 +125,7 @@
       "status": "EMPTY",
       "issue": 6623,
       "expiresAt": "2026-08-15T12:00:00.000Z",
-      "reason": "New TTC GTFS-RT service-alerts probe. seed-ttc-alerts cron is */5 * * * *; EMPTY is expected until the first Railway tick after this branch deploys. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance rather than staying silent. Re-anchored 2026-08-14T18:00Z because the previous window (expiry 2026-08-14T12:00Z) lapsed before merge. The PR-time cutover check only validates that a cutover EXISTS — it never compares expiresAt to the clock — so an expired anchor ships green and reds the scheduled monitor minutes after merge. The */5 cron is not the binding constraint: seed-ttc-alerts is one of six services not yet created on Railway, so this window covers provisioning, not just deploy. If it has not merged AND been provisioned by 2026-08-15T12:00Z, re-anchor both again.",
+      "reason": "New TTC GTFS-RT service-alerts probe. seed-ttc-alerts cron is */5 * * * *; EMPTY is expected until the first Railway tick after this branch deploys. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance rather than staying silent. Re-anchored 2026-08-14T18:00Z because the previous window (expiry 2026-08-14T12:00Z) lapsed before merge. The PR-time cutover check only validates that a cutover EXISTS \u2014 it never compares expiresAt to the clock \u2014 so an expired anchor ships green and reds the scheduled monitor minutes after merge. The */5 cron is not the binding constraint: seed-ttc-alerts is one of six services not yet created on Railway, so this window covers provisioning, not just deploy. If it has not merged AND been provisioned by 2026-08-15T12:00Z, re-anchor both again.",
       "cutover": {
         "probeKey": "seed-meta:transit:ttc-alerts",
         "activatedAt": "2026-08-14T18:00:00.000Z",

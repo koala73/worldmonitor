@@ -1764,6 +1764,14 @@ async function dispatch(requestUrl, req, routes, context) {
     const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
     const hdrs = toHeaders(req.headers, { stripOrigin: true });
     hdrs.set('Origin', `http://127.0.0.1:${context.port}`);
+    // The OpenSky route is product-only. Its local handler requires the
+    // desktop product key in addition to the native transport token that was
+    // verified above. Inject it inside the sidecar so the renderer never sees
+    // or handles the key.
+    if (requestUrl.pathname === '/api/opensky') {
+      const productKey = process.env.WORLDMONITOR_API_KEY;
+      if (productKey) hdrs.set('X-WorldMonitor-Key', productKey);
+    }
     // The transport credential authenticates the nginx/sidecar hop only. Do
     // not expose it to route handlers, where Authorization is caller identity
     // (OAuth bearer) and X-WorldMonitor-Key is the caller's API key.

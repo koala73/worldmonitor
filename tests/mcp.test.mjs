@@ -1314,13 +1314,28 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   });
 
   it('default cap: get_military_posture caps the theaters array', async () => {
-    const theater_posture = { theaters: Array.from({ length: 40 }, (_, i) => ({ theater: `t${i}`, postureLevel: 'normal' })) };
+    const theater_posture = { provider: 'wingbits', theaters: Array.from({ length: 40 }, (_, i) => ({ theater: `t${i}`, postureLevel: 'normal' })) };
     mockCacheKeys(
       { 'theater_posture:sebuf:stale:v1': theater_posture },
       { 'seed-meta:intelligence:risk-scores': { fetchedAt: Date.now() - 60_000, recordCount: 40 } },
     );
     const out = await callTool('get_military_posture', {});
     assert.equal(out.data.theater_posture.theaters.length, 30, 'no-args must cap theaters to 30');
+    assert.equal(out.data.theater_posture.provider, undefined, 'provider policy metadata is not part of the MCP contract');
+  });
+
+  it('get_military_posture fails closed for OpenSky-derived and unattributed snapshots', async () => {
+    for (const theater_posture of [
+      { provider: 'opensky', theaters: [{ theater: 'iran-theater', postureLevel: 'elevated' }] },
+      { theaters: [{ theater: 'iran-theater', postureLevel: 'elevated' }] },
+    ]) {
+      mockCacheKeys(
+        { 'theater_posture:sebuf:stale:v1': theater_posture },
+        { 'seed-meta:intelligence:risk-scores': { fetchedAt: Date.now() - 60_000, recordCount: 1 } },
+      );
+      const out = await callTool('get_military_posture', {});
+      assert.deepEqual(out.data.theater_posture.theaters, []);
+    }
   });
 
   it('default cap: get_chokepoint_status caps the chokepoints array', async () => {
@@ -2672,7 +2687,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
           positions: [
             { callsign: 'UAE123', icao24: 'abc123', lat: 24.5, lon: 54.3, altitude_m: 11000, ground_speed_kts: 480, track_deg: 270, on_ground: false },
           ],
-          source: 'opensky',
+          source: 'wingbits',
           updated_at: 1711620000000,
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
@@ -2697,6 +2712,42 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(Array.isArray(data.military_flights), 'military_flights must be array');
     assert.ok(data.bounding_box?.sw_lat !== undefined, 'bounding_box must be present');
     assert.equal(data.partial, undefined, 'no partial flag when both sources succeed');
+    assert.equal(data.source, 'wingbits');
+  });
+
+  it('get_airspace excludes OpenSky observations even if a downstream response regresses', async () => {
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes('/api/aviation/v1/track-aircraft')) {
+        return new Response(JSON.stringify({
+          positions: [
+            { callsign: 'OSKY1', icao24: 'abc123', lat: 24.5, lon: 54.3, altitude_m: 11000, ground_speed_kts: 480, track_deg: 270, on_ground: false },
+          ],
+          source: 'opensky',
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes('/api/military/v1/list-military-flights')) {
+        return new Response(JSON.stringify({
+          flights: [
+            { callsign: 'OSKY2', hex_code: 'def456', source: 'opensky-auth' },
+            { callsign: 'WING1', hex_code: 'fed654', source: 'wingbits' },
+          ],
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 1010, method: 'tools/call',
+      params: { name: 'get_airspace', arguments: { country_code: 'AE' } },
+    }));
+    const body = await res.json();
+    const data = JSON.parse(body.result.content[0].text);
+    assert.equal(data.civilian_count, 0);
+    assert.equal(data.military_count, 1);
+    assert.deepEqual(data.military_flights.map((flight) => flight.callsign), ['WING1']);
+    assert.equal(data.source, 'wingbits');
+    assert.equal(data.partial, true);
   });
 
   it('get_airspace returns error for unknown country code', async () => {
@@ -2714,7 +2765,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     globalThis.fetch = async (url) => {
       const u = url.toString();
       if (u.includes('/api/aviation/v1/track-aircraft')) {
-        return new Response(JSON.stringify({ positions: [], source: 'opensky' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ positions: [], source: 'wingbits' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       if (u.includes('/api/military/v1/list-military-flights')) {
         return new Response('Service Unavailable', { status: 503 });
@@ -2742,6 +2793,26 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     }));
     const body = await res.json();
     assert.equal(body.error?.code, -32603, 'total outage must return -32603');
+  });
+
+  it('get_airspace treats excluded OpenSky data plus a military failure as a total outage', async () => {
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes('/api/aviation/v1/track-aircraft')) {
+        return new Response(JSON.stringify({
+          positions: [{ callsign: 'OSKY1', icao24: 'abc123', lat: 51.5, lon: -0.1 }],
+          source: 'opensky',
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response('Service Unavailable', { status: 503 });
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 1013, method: 'tools/call',
+      params: { name: 'get_airspace', arguments: { country_code: 'GB' } },
+    }));
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603, 'no redistributable observation must return -32603');
   });
 
   it('get_airspace surfaces a mid-call billing denial instead of a generic failure', async () => {
@@ -2810,7 +2881,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       const u = url.toString();
       if (u.includes('/api/military/')) militaryFetched = true;
       if (u.includes('/api/aviation/v1/track-aircraft')) {
-        return new Response(JSON.stringify({ positions: [], source: 'opensky' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ positions: [], source: 'wingbits' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       return originalFetch(url);
     };

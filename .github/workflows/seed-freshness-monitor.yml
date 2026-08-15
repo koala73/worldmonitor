@@ -99,7 +99,7 @@ jobs:
         run: git checkout --detach "$GATED_SHA"
 
       # This workflow owns only ingestion/data acceptance. Deployment
-      # configuration and image drift have their own hourly read-only workflow.
+      # configuration and image drift have their own six-hourly read-only workflow.
       - name: Check ingestion operational acceptance
         if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
         run: node scripts/check-seed-freshness.mjs

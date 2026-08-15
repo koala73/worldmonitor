@@ -2,6 +2,7 @@ import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
+import { resolveLanguageTag } from '@/shared/language-tags';
 import { readQueryLanguage, stripQueryLanguage } from '@/utils/i18n-url';
 
 // Keep only first-paint English strings in the entry chunk. The full English
@@ -40,21 +41,8 @@ const localeModules = import.meta.glob<TranslationDictionary>(
 
 const RTL_LANGUAGES = new Set(['ar', 'fa']);
 
-// Traditional-Chinese tags must be resolved before the region suffix is
-// stripped — zh-TW/zh-HK/zh-Hant would otherwise collapse to `zh` and serve the
-// Simplified dictionary to readers who asked for Traditional.
-const TRADITIONAL_CHINESE_TAGS = new Set(['zh-tw', 'zh-hk', 'zh-mo', 'zh-hant']);
-
 function normalizeLanguage(lng: string): SupportedLanguage {
-  const tag = (lng || 'en').toLowerCase();
-  if (TRADITIONAL_CHINESE_TAGS.has(tag) || tag.startsWith('zh-hant')) {
-    return 'zh-TW';
-  }
-  const base = tag.split('-')[0] || 'en';
-  if (SUPPORTED_LANGUAGE_SET.has(base as SupportedLanguage)) {
-    return base as SupportedLanguage;
-  }
-  return 'en';
+  return resolveLanguageTag(lng, SUPPORTED_LANGUAGE_SET) as SupportedLanguage;
 }
 
 function applyDocumentDirection(lang: string): void {
@@ -262,12 +250,29 @@ export function getCurrentLanguage(): string {
   return lang.split('-')[0]!;
 }
 
+/**
+ * The active language as a full catalogue tag — `zh-TW`, never collapsed to `zh`.
+ *
+ * `getCurrentLanguage()` strips the region because most callers want the FEED
+ * language, where Traditional and Simplified readers want the same thing: both
+ * read the same Chinese-language sources. Use this accessor instead where the
+ * caller is sensitive to the SCRIPT — which entry the language picker marks as
+ * selected, and how dates and numbers format, differ between the two even though
+ * the feeds do not.
+ */
+export function getCurrentLanguageTag(): string {
+  return normalizeLanguage(i18next.language || 'en');
+}
+
 export function isRTL(): boolean {
   return RTL_LANGUAGES.has(getCurrentLanguage());
 }
 
 export function getLocale(): string {
-  const lang = getCurrentLanguage();
+  // Script-sensitive: zh-TW formats dates, numbers and relative times differently
+  // from zh-CN. Tags that are already full BCP-47 locales fall through the map
+  // unchanged — it exists only to expand bare base codes.
+  const lang = getCurrentLanguageTag();
   const map: Record<string, string> = { en: 'en-US', bg: 'bg-BG', cs: 'cs-CZ', el: 'el-GR', fa: 'fa-IR', zh: 'zh-CN', pt: 'pt-BR', ja: 'ja-JP', ko: 'ko-KR', ro: 'ro-RO', tr: 'tr-TR', th: 'th-TH', vi: 'vi-VN', hi: 'hi-IN' };
   return map[lang] || lang;
 }

@@ -740,6 +740,8 @@ export class MapComponent {
       helpItem(label('economicCenters'), 'economicCenters'),
       helpItem(label('strategicWaterways'), 'macroWaterways'),
       helpItem(label('weatherAlerts'), 'weatherAlertsMarket'),
+      helpItem(label('canadaRoads'), 'canadaRoads'),
+      helpItem(label('canadaAlerts'), 'canadaAlerts'),
       helpItem(label('naturalEvents'), 'naturalEventsMacro'),
     ])}
       </div>
@@ -782,6 +784,8 @@ export class MapComponent {
       helpItem(label('naturalEvents'), 'naturalEventsFull'),
       helpItem(label('fires'), 'firesFull'),
       helpItem(label('weatherAlerts'), 'weatherAlerts'),
+      helpItem(label('canadaRoads'), 'canadaRoads'),
+      helpItem(label('canadaAlerts'), 'canadaAlerts'),
       helpItem(label('climateAnomalies'), 'climateAnomalies'),
       helpItem(label('economicCenters'), 'economicCenters'),
       helpItem(label('criticalMinerals'), 'mineralsFull'),

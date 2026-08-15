@@ -541,6 +541,54 @@ test('replaces browser origin with localhost origin for local handlers', async (
   }
 });
 
+test('injects the desktop product key into the product-only OpenSky local handler', async () => {
+  const originalProductKey = process.env.WORLDMONITOR_API_KEY;
+  process.env.WORLDMONITOR_API_KEY = 'desktop-product-key';
+  const remote = await setupRemoteServer();
+  const localApi = await setupApiDir({
+    'opensky.js': `
+      export default async function handler(req) {
+        return new Response(JSON.stringify({
+          origin: req.headers.get('origin'),
+          productKey: req.headers.get('x-worldmonitor-key'),
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/opensky`, {
+      headers: {
+        Origin: 'https://tauri.localhost',
+        'X-WorldMonitor-Key': 'renderer-supplied-key',
+      },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      origin: `http://127.0.0.1:${port}`,
+      productKey: 'desktop-product-key',
+    });
+    assert.equal(remote.hits.length, 0);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+    if (originalProductKey === undefined) delete process.env.WORLDMONITOR_API_KEY;
+    else process.env.WORLDMONITOR_API_KEY = originalProductKey;
+  }
+});
+
 test('preserves caller Authorization while hiding the sidecar transport token', async () => {
   const localApi = await setupApiDir({
     'header-check.js': `

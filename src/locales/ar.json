@@ -484,7 +484,9 @@
         "displacement": "تبديل تدفقات النزوح",
         "climate": "تبديل الشذوذ المناخي",
         "outages": "تبديل انقطاعات الإنترنت",
-        "tradeRoutes": "تبديل طرق التجارة"
+        "tradeRoutes": "تبديل طرق التجارة",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "التبديل إلى الوضع الداكن",
@@ -1148,7 +1150,9 @@
         "speciesRecovery": "تعافي الأنواع",
         "renewableInstallations": "طاقة نظيفة",
         "radiationSpike": "ارتفاع حاد في الإشعاع",
-        "radiationElevated": "إشعاع مرتفع"
+        "radiationElevated": "إشعاع مرتفع",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "زلزال",
@@ -1254,7 +1258,9 @@
           "techEvents": "مؤتمرات وفعاليات تقنية كبرى",
           "techFires": "حرائق غابات نشطة بالقرب من البنية التحتية التقنية",
           "geoBoundaries": "مناطق منزوعة السلاح وخطوط الهدنة والحدود المتنازع عليها",
-          "ciiChoropleth": "خريطة حرارية لمؤشر عدم الاستقرار — تلوّن الدول حسب درجة CII (أخضر=مستقر، أحمر=حرج)"
+          "ciiChoropleth": "خريطة حرارية لمؤشر عدم الاستقرار — تلوّن الدول حسب درجة CII (أخضر=مستقر، أحمر=حرج)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "يؤثر على: الزلازل، الطقس، الاحتجاجات، الانقطاعات"

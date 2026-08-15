@@ -476,7 +476,9 @@
         "displacement": "Yerinden edilme akışlarını aç/kapat",
         "climate": "İklim anomalilerini aç/kapat",
         "outages": "İnternet kesintilerini aç/kapat",
-        "tradeRoutes": "Ticaret yollarını aç/kapat"
+        "tradeRoutes": "Ticaret yollarını aç/kapat",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Karanlık moda geç",
@@ -1188,7 +1190,9 @@
         "speciesRecovery": "Tür Kurtarma",
         "renewableInstallations": "Temiz Enerji",
         "radiationSpike": "Radyasyon artışı",
-        "radiationElevated": "Yükseltilmiş radyasyon"
+        "radiationElevated": "Yükseltilmiş radyasyon",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -1294,7 +1298,9 @@
           "tradeRoutes": "Limanları stratejik darboğazlar üzerinden bağlayan başlıca küresel deniz yolları",
           "dayNight": "Gündüz ve gece bölgelerini gösteren gerçek zamanlı güneş terminatörü",
           "geoBoundaries": "Silahsızlandırılmış bölgeler, ateşkes hatları ve tartışmalı sınırlar",
-          "ciiChoropleth": "Ülke istikrarsızlık endeksi ısı haritası — CII puanına göre renklendirme (yeşil=istikrarlı, kırmızı=kritik)"
+          "ciiChoropleth": "Ülke istikrarsızlık endeksi ısı haritası — CII puanına göre renklendirme (yeşil=istikrarlı, kırmızı=kritik)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Etkiler: Depremler, Hava Durumu, Protestolar, Kesintiler"

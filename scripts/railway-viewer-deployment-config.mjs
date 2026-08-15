@@ -9,6 +9,7 @@ import {
   resolveEnvironmentId,
   runRailwayApiAsync,
 } from './railway-cli.mjs';
+import { isValidDeploymentTimestamp } from './railway-deployments.mjs';
 
 export const DEPLOYMENT_CONFIG_READ_DEADLINE_ERROR = 'run deadline reached before deployment configuration read';
 
@@ -19,10 +20,14 @@ export const DEPLOYMENT_ONLY_QUERY = `query ViewerDeploymentConfig(
   $projectId: String!
   $environmentId: String!
   $serviceId: String!
+  $includeActiveDeployments: Boolean!
 ) {
   serviceInstance(environmentId: $environmentId, serviceId: $serviceId) {
     serviceId
     source { repo image }
+    activeDeployments @include(if: $includeActiveDeployments) {
+      id status createdAt serviceId meta
+    }
     rootDirectory
     watchPatterns
     dockerfilePath
@@ -60,7 +65,34 @@ function triggerNodes(connection) {
   });
 }
 
-export function projectViewerDeploymentConfig({ service, instance, triggers }) {
+function activeDeploymentNodes(instance, service) {
+  if (!Array.isArray(instance.activeDeployments)) {
+    throw new Error(`Railway active deployments must be an array for ${service.name}`);
+  }
+  return instance.activeDeployments.map((deployment, index) => {
+    if (!deployment || typeof deployment !== 'object' || Array.isArray(deployment)
+      || typeof deployment.id !== 'string' || deployment.id.length === 0
+      || typeof deployment.status !== 'string' || deployment.status.length === 0
+      || !isValidDeploymentTimestamp(deployment.createdAt)) {
+      throw new Error(`Railway active deployment ${index} is malformed for ${service.name}`);
+    }
+    if (deployment.serviceId !== service.id) {
+      throw new Error(`Railway active deployment ${deployment.id} belongs to another service while reading ${service.name}`);
+    }
+    if (deployment.meta != null
+      && (typeof deployment.meta !== 'object' || Array.isArray(deployment.meta))) {
+      throw new Error(`Railway active deployment ${deployment.id} has malformed metadata for ${service.name}`);
+    }
+    return deployment;
+  });
+}
+
+export function projectViewerDeploymentConfig({
+  service,
+  instance,
+  triggers,
+  includeActiveDeployments = false,
+}) {
   if (!service?.id || !instance || typeof instance !== 'object' || Array.isArray(instance)) {
     throw new Error(`Railway returned no serviceInstance projection for ${service?.name ?? service?.id ?? 'unknown service'}`);
   }
@@ -102,6 +134,9 @@ export function projectViewerDeploymentConfig({ service, instance, triggers }) {
       startCommand: instance.startCommand ?? null,
       cronSchedule: instance.cronSchedule ?? null,
     },
+    ...(includeActiveDeployments
+      ? { activeDeployments: activeDeploymentNodes(instance, service) }
+      : {}),
   };
 }
 
@@ -114,6 +149,7 @@ export async function readViewerDeploymentConfig(
     resolveEnvironment = resolveEnvironmentId,
     api = runRailwayApiAsync,
     concurrency = DEFAULT_CONCURRENCY,
+    includeActiveDeployments = false,
     deadlineAt = Number.POSITIVE_INFINITY,
     monotonicNow = () => performance.now(),
   } = {},
@@ -150,6 +186,7 @@ export async function readViewerDeploymentConfig(
       projectId,
       environmentId: resolvedEnvironmentId,
       serviceId: service.id,
+      includeActiveDeployments,
     }, {
       timeoutMs: Math.min(RAILWAY_CALL_TIMEOUT_MS, Math.max(1, Math.floor(remainingMs))),
     });
@@ -160,6 +197,7 @@ export async function readViewerDeploymentConfig(
       service,
       instance: data?.serviceInstance,
       triggers: data?.deploymentTriggers,
+      includeActiveDeployments,
     })];
   });
   return { services: Object.fromEntries(projected) };

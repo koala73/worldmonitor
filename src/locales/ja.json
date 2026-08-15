@@ -476,7 +476,9 @@
         "displacement": "避難フローの切り替え",
         "climate": "気候異常の切り替え",
         "outages": "インターネット障害の切り替え",
-        "tradeRoutes": "貿易ルートの切り替え"
+        "tradeRoutes": "貿易ルートの切り替え",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "ダークモードに切り替え",
@@ -1188,7 +1190,9 @@
         "speciesRecovery": "種の回復",
         "renewableInstallations": "クリーンエネルギー",
         "radiationSpike": "放射線スパイク",
-        "radiationElevated": "放射線上昇"
+        "radiationElevated": "放射線上昇",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1294,7 +1298,9 @@
           "tradeRoutes": "戦略的なチョークポイントを通じて港を結ぶ主要な世界の航路",
           "dayNight": "リアルタイムの太陽ターミネーターで昼夜のゾーンを表示",
           "geoBoundaries": "非武装地帯、停戦ライン、係争境界線",
-          "ciiChoropleth": "国家不安定度指数ヒートマップ — CIIスコアで国を色分け（緑=安定、赤=危機的）"
+          "ciiChoropleth": "国家不安定度指数ヒートマップ — CIIスコアで国を色分け（緑=安定、赤=危機的）",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "影響: 地震、気象、抗議活動、障害"

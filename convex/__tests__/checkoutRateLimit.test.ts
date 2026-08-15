@@ -70,6 +70,17 @@ function pinRetryClock() {
   return vi.spyOn(checkoutRetryClock, "sleep").mockResolvedValue(undefined);
 }
 
+/**
+ * Fixed wall clock for the absolute-timestamp header cases. Whole seconds, so
+ * an HTTP-date round-trip (which truncates to seconds) stays exact.
+ */
+const FIXED_NOW = 1_786_000_000_000;
+
+/** Pin only the clock, leaving sleep/jitter untouched. */
+function pinRetryClockNow() {
+  return vi.spyOn(checkoutRetryClock, "now").mockReturnValue(FIXED_NOW);
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   // restoreAllMocks does not reset module-factory vi.fn()s — clear queued
@@ -131,6 +142,116 @@ describe("checkout rate-limit classification", () => {
       retryAfterMsFromError(sdkRateLimitError({ "retry-after": "soon" })),
     ).toBeNull();
     expect(retryAfterMsFromError(new Error("no headers"))).toBeNull();
+  });
+
+  test("reads Retry-After in its RFC 9110 HTTP-date form", () => {
+    pinRetryClockNow();
+
+    expect(
+      retryAfterMsFromError(
+        sdkRateLimitError({
+          "retry-after": new Date(FIXED_NOW + 5_000).toUTCString(),
+        }),
+      ),
+    ).toBe(5_000);
+  });
+
+  /**
+   * A numeric Retry-After must never reach the HTTP-date branch. V8 parses
+   * "-5" as a real date (May 2001), so falling through would launder a
+   * negative delta into a stale timestamp and clamp it to 0 — reporting "wait
+   * zero" where the header was simply invalid and no floor was advertised.
+   * Every RFC 9110 date form starts with a day name, so no valid date is lost.
+   */
+  test("rejects a negative numeric Retry-After instead of reading it as a date", () => {
+    pinRetryClockNow();
+
+    expect(
+      retryAfterMsFromError(sdkRateLimitError({ "retry-after": "-5" })),
+    ).toBeNull();
+    expect(
+      retryAfterMsFromError(sdkRateLimitError({ "retry-after": "-0.5" })),
+    ).toBeNull();
+    // A zero delta is advertised, not invalid — it stays 0, not null.
+    expect(
+      retryAfterMsFromError(sdkRateLimitError({ "retry-after": "0" })),
+    ).toBe(0);
+  });
+
+  /**
+   * Dodo advertises X-RateLimit-Reset on a limited response but does not
+   * publish its unit, and the header is genuinely ambiguous in the wild — this
+   * repo's own API emits it as epoch-MILLISECONDS
+   * (server/_shared/api-key-rate-limit.ts) while the IETF draft's
+   * RateLimit-Reset is delta-SECONDS. Reading an epoch as a delta would yield a
+   * ~57-year floor and silently disable the ladder's retries, so each encoding
+   * is pinned.
+   */
+  test("honors X-RateLimit-Reset across delta, epoch-seconds, and epoch-ms encodings", () => {
+    pinRetryClockNow();
+
+    // Delta-seconds (IETF RateLimit-Reset convention).
+    expect(
+      retryAfterMsFromError(sdkRateLimitError({ "x-ratelimit-reset": "30" })),
+    ).toBe(30_000);
+
+    // Epoch-seconds.
+    expect(
+      retryAfterMsFromError(
+        sdkRateLimitError({
+          "x-ratelimit-reset": String(FIXED_NOW / 1_000 + 30),
+        }),
+      ),
+    ).toBe(30_000);
+
+    // Epoch-milliseconds (this repo's own legacy convention).
+    expect(
+      retryAfterMsFromError(
+        sdkRateLimitError({ "x-ratelimit-reset": String(FIXED_NOW + 45_000) }),
+      ),
+    ).toBe(45_000);
+  });
+
+  test("clamps an already-elapsed X-RateLimit-Reset to zero rather than going negative", () => {
+    pinRetryClockNow();
+
+    // A reset in the past must not produce a negative floor, which would
+    // subtract from the jittered ladder wait.
+    expect(
+      retryAfterMsFromError(
+        sdkRateLimitError({ "x-ratelimit-reset": String(FIXED_NOW - 60_000) }),
+      ),
+    ).toBe(0);
+  });
+
+  test("prefers an explicit Retry-After over the weaker X-RateLimit-Reset window hint", () => {
+    pinRetryClockNow();
+
+    expect(
+      retryAfterMsFromError(
+        sdkRateLimitError({
+          "retry-after-ms": "1500",
+          "retry-after": "3",
+          "x-ratelimit-reset": "30",
+        }),
+      ),
+    ).toBe(1_500);
+    expect(
+      retryAfterMsFromError(
+        sdkRateLimitError({ "retry-after": "3", "x-ratelimit-reset": "30" }),
+      ),
+    ).toBe(3_000);
+  });
+
+  test("ignores an unparseable or negative X-RateLimit-Reset", () => {
+    pinRetryClockNow();
+
+    expect(
+      retryAfterMsFromError(sdkRateLimitError({ "x-ratelimit-reset": "soon" })),
+    ).toBeNull();
+    expect(
+      retryAfterMsFromError(sdkRateLimitError({ "x-ratelimit-reset": "-5" })),
+    ).toBeNull();
   });
 });
 

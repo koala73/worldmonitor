@@ -25,7 +25,11 @@ import {
   runRailwayApiAsync,
   selectExpectedRepositoryServices,
 } from '../scripts/railway-cli.mjs';
-import { createFleetAccumulator } from '../scripts/railway-deployments.mjs';
+import {
+  createFleetAccumulator,
+  limitDeploymentHistory,
+  newestRunning,
+} from '../scripts/railway-deployments.mjs';
 
 const HEAD_AT = Date.parse('2026-08-04T12:00:00.000Z');
 
@@ -251,10 +255,67 @@ describe('immutable native-autodeploy fleet', () => {
 });
 
 function node(serviceId, status, at, commitHash) {
-  return { serviceId, status, createdAt: at, meta: commitHash ? { commitHash } : {} };
+  return {
+    id: `${serviceId}-${status}-${String(at)}-${commitHash ?? 'none'}`,
+    serviceId,
+    status,
+    createdAt: at,
+    meta: commitHash ? { commitHash } : {},
+  };
 }
 
 describe('fleet accumulator', () => {
+  it('rejects malformed Viewer active-deployment baselines', () => {
+    assert.throws(
+      () => createFleetAccumulator({
+        serviceIds: ['a'],
+        initialDeploymentsByService: [],
+      }),
+      /must be a Map/i,
+    );
+    assert.throws(
+      () => createFleetAccumulator({
+        serviceIds: ['a'],
+        initialDeploymentsByService: new Map([['a', {}]]),
+      }),
+      /for a must be an array/i,
+    );
+    assert.throws(
+      () => createFleetAccumulator({
+        serviceIds: ['a'],
+        initialDeploymentsByService: new Map([
+          ['a', [node('b', 'SUCCESS', '2026-08-01T11:00:00Z', 'aaa')]],
+        ]),
+      }),
+      /belongs to another service/i,
+    );
+  });
+
+  it('uses Viewer active deployments as the running baseline and reads only recent fleet events', () => {
+    const initialDeploymentsByService = new Map([
+      ['a', [node('a', 'SUCCESS', '2026-08-01T11:00:00Z', 'aaa')]],
+      ['b', [node('b', 'CRASHED', '2026-08-01T10:00:00Z', 'bbb')]],
+    ]);
+    const accumulator = createFleetAccumulator({
+      serviceIds: ['a', 'b'],
+      notBefore: HEAD_AT,
+      initialDeploymentsByService,
+    });
+
+    accumulator.absorb([
+      node('a', 'SKIPPED', '2026-08-04T11:00:00Z', 'head-a'),
+      node('b', 'FAILED', '2026-08-04T10:00:00Z', 'head-b'),
+    ]);
+
+    assert.equal(accumulator.done, true, 'the stream is already older than the comparison head');
+    assert.deepEqual(accumulator.result().unresolved, []);
+    assert.deepEqual(
+      accumulator.result().byService.get('a').map((deployment) => deployment.status),
+      ['SKIPPED', 'SUCCESS'],
+      'recent refusal evidence must be retained ahead of the active running baseline',
+    );
+  });
+
   it('groups a mixed stream by service', () => {
     const accumulator = createFleetAccumulator({ serviceIds: ['a', 'b'], notBefore: 0 });
     accumulator.absorb([
@@ -273,7 +334,163 @@ describe('fleet accumulator', () => {
     assert.deepEqual([...accumulator.result().byService.keys()], ['a']);
   });
 
-  it('is not done until every service has shown a RUNNING record', () => {
+  it('uses foreign stream records to prove the global cursor crossed head', () => {
+    const initialDeploymentsByService = new Map([
+      ['a', [node('a', 'SUCCESS', '2026-08-04T13:00:00Z', 'aaa')]],
+    ]);
+    const accumulator = createFleetAccumulator({
+      serviceIds: ['a'],
+      notBefore: HEAD_AT,
+      initialDeploymentsByService,
+    });
+
+    accumulator.absorb([node('foreign', 'SUCCESS', '2026-08-04T11:00:00Z', 'bbb')]);
+
+    assert.equal(accumulator.done, true);
+    assert.equal(accumulator.result().byService.get('a').length, 1);
+  });
+
+  it('rejects malformed fleet timestamps instead of treating them as older than head', () => {
+    const accumulator = createFleetAccumulator({
+      serviceIds: ['a'],
+      notBefore: HEAD_AT,
+      initialDeploymentsByService: new Map([
+        ['a', [node('a', 'SUCCESS', '2026-08-04T13:00:00Z', 'aaa')]],
+      ]),
+    });
+
+    for (const createdAt of ['not-a-date', 0, '2026-08-04']) {
+      assert.throws(
+        () => accumulator.absorb([node('foreign', 'FAILED', createdAt, 'head')]),
+        /valid createdAt/i,
+      );
+    }
+    assert.equal(accumulator.done, false);
+  });
+
+  it('uses the later fleet status when an active deployment changes state', () => {
+    const activeBuilding = {
+      ...node('a', 'BUILDING', '2026-08-04T10:00:00Z', 'head'),
+      id: 'deployment-a',
+    };
+    const accumulator = createFleetAccumulator({
+      serviceIds: ['a'],
+      notBefore: HEAD_AT,
+      initialDeploymentsByService: new Map([['a', [activeBuilding]]]),
+    });
+
+    accumulator.absorb([{
+      ...node('a', 'FAILED', '2026-08-04T11:00:00Z', 'head'),
+      id: 'deployment-a',
+    }]);
+
+    assert.deepEqual(
+      accumulator.result().byService.get('a').map((deployment) => deployment.status),
+      ['FAILED'],
+    );
+    assert.deepEqual(accumulator.result().unresolved, ['a']);
+  });
+
+  it('keeps active provenance when the fleet repeats the same deployment state', () => {
+    const active = {
+      ...node('a', 'SUCCESS', '2026-08-04T10:00:00Z', 'serving'),
+      id: 'deployment-a',
+    };
+    const accumulator = createFleetAccumulator({
+      serviceIds: ['a'],
+      notBefore: HEAD_AT,
+      initialDeploymentsByService: new Map([['a', [active]]]),
+    });
+
+    accumulator.absorb([{ ...active }]);
+
+    assert.equal(newestRunning(accumulator.result().byService.get('a')).meta.commitHash, 'serving');
+    assert.deepEqual(accumulator.result().unresolved, []);
+  });
+
+  it('requires a fresh direct read when a distinct newer deployment becomes active mid-scan', () => {
+    const active = {
+      ...node('a', 'SUCCESS', '2026-08-04T10:00:00Z', 'viewer-head'),
+      id: 'viewer-active-a',
+    };
+    const accumulator = createFleetAccumulator({
+      serviceIds: ['a'],
+      notBefore: HEAD_AT,
+      initialDeploymentsByService: new Map([['a', [active]]]),
+    });
+
+    accumulator.absorb([{
+      ...node('a', 'SUCCESS', '2026-08-04T11:00:00Z'),
+      id: 'replacement-a',
+    }]);
+
+    assert.deepEqual(accumulator.result().unresolved, ['a']);
+  });
+
+  it('does not restore stale Viewer provenance after a newer deployment on an exhausted stream', () => {
+    const active = {
+      ...node('a', 'SUCCESS', '2026-08-04T10:00:00Z', 'viewer-head'),
+      id: 'viewer-active-a',
+    };
+    const replacement = {
+      ...node('a', 'SUCCESS', '2026-08-04T11:00:00Z'),
+      id: 'replacement-a',
+    };
+    const accumulator = createFleetAccumulator({
+      serviceIds: ['a'],
+      notBefore: HEAD_AT,
+      initialDeploymentsByService: new Map([['a', [active]]]),
+    });
+
+    accumulator.absorb([replacement, { ...active }]);
+    accumulator.markExhausted();
+
+    assert.equal(newestRunning(accumulator.result().byService.get('a')).id, replacement.id);
+    assert.deepEqual(accumulator.result().unresolved, []);
+  });
+
+  it('keeps the Viewer-active source authoritative over newer removed history', () => {
+    const active = node('a', 'SUCCESS', '2026-08-04T10:00:00Z', 'serving');
+    const accumulator = createFleetAccumulator({
+      serviceIds: ['a'],
+      notBefore: HEAD_AT,
+      initialDeploymentsByService: new Map([['a', [active]]]),
+    });
+
+    accumulator.absorb([
+      node('a', 'REMOVED', '2026-08-04T11:00:00Z', 'aborted-head'),
+      node('a', 'SKIPPED', '2026-08-04T09:00:00Z', 'skipped'),
+    ]);
+
+    assert.equal(newestRunning(accumulator.result().byService.get('a')), active);
+  });
+
+  it('retains only a Viewer-active running baseline beyond the recent-event window', () => {
+    const skipped = Array.from({ length: 50 }, (_, index) => node(
+      'a',
+      'SKIPPED',
+      new Date(Date.parse('2026-08-05T12:00:00Z') - index * 1_000).toISOString(),
+      `skip-${index}`,
+    ));
+    const active = node('a', 'SUCCESS', '2026-08-01T11:00:00Z', 'running');
+
+    const accumulator = createFleetAccumulator({
+      serviceIds: ['a'],
+      initialDeploymentsByService: new Map([['a', [active]]]),
+    });
+    accumulator.absorb(skipped);
+    const limited = limitDeploymentHistory(accumulator.result().byService.get('a'), 50);
+
+    assert.equal(limited.length, 51);
+    assert.equal(newestRunning(limited), active);
+
+    const historical = node('a', 'SUCCESS', '2026-08-01T10:00:00Z', 'historical');
+    const directWindow = limitDeploymentHistory([...skipped, historical], 50);
+    assert.equal(directWindow.length, 50, 'shared mutation callers retain their exact history window');
+    assert.equal(newestRunning(directWindow), undefined);
+  });
+
+  it('is not done until every service has shown a RUNNING record without Viewer baselines', () => {
     const accumulator = createFleetAccumulator({ serviceIds: ['a', 'b'], notBefore: HEAD_AT });
     accumulator.absorb([node('a', 'SUCCESS', '2026-08-04T01:00:00Z', 'aaa')]);
     assert.equal(accumulator.done, false, 'b has not been located yet');
@@ -291,7 +508,7 @@ describe('fleet accumulator', () => {
     assert.equal(accumulator.done, true);
   });
 
-  it('a SKIPPED-only service is NOT counted as located', () => {
+  it('a SKIPPED-only service is NOT counted as located without Viewer baselines', () => {
     // SKIPPED never produced an image, so it cannot answer "what is running".
     const accumulator = createFleetAccumulator({ serviceIds: ['a'], notBefore: HEAD_AT });
     accumulator.absorb([node('a', 'SKIPPED', '2026-08-04T01:00:00Z', 'aaa')]);
@@ -323,7 +540,15 @@ describe('fleet paging', () => {
     return () => {
       const page = pages[index] ?? { edges: [], pageInfo: { hasNextPage: false } };
       index += 1;
-      return { deployments: page };
+      return {
+        deployments: {
+          ...page,
+          pageInfo: {
+            ...page.pageInfo,
+            ...(page.pageInfo?.hasNextPage ? { endCursor: `cursor-${index}` } : {}),
+          },
+        },
+      };
     };
   }
   const page = (nodes, hasNextPage) => ({
@@ -344,7 +569,37 @@ describe('fleet paging', () => {
     assert.deepEqual(result.unresolved, []);
   });
 
-  it('keeps paging while a service is still missing', async () => {
+  it('does not discard Viewer running baselines when the recent stream contains only skipped pushes', async () => {
+    const initialDeploymentsByService = new Map([
+      ['a', [node('a', 'SUCCESS', '2026-08-01T11:00:00Z', 'aaa')]],
+      ['b', [node('b', 'SUCCESS', '2026-08-01T10:00:00Z', 'bbb')]],
+    ]);
+    const api = pager([
+      page([
+        node('a', 'SKIPPED', '2026-08-04T11:00:00Z', 'head-a'),
+        node('b', 'SKIPPED', '2026-08-04T10:00:00Z', 'head-b'),
+      ], true),
+    ]);
+
+    const result = await readFleetDeployments({
+      projectId: 'p',
+      environmentId: 'e',
+      serviceIds: ['a', 'b'],
+      notBefore: HEAD_AT,
+      maxPages: 1,
+      api,
+      accumulatorFactory: (args) => createFleetAccumulator({
+        ...args,
+        initialDeploymentsByService,
+      }),
+    });
+
+    assert.equal(result.pages, 1);
+    assert.deepEqual(result.unresolved, []);
+    assert.deepEqual(result.byService.get('a').map((deployment) => deployment.status), ['SKIPPED', 'SUCCESS']);
+  });
+
+  it('keeps paging while a service is still missing without Viewer baselines', async () => {
     const api = pager([
       page([node('a', 'SUCCESS', '2026-08-04T11:00:00Z', 'aaa')], true),
       page([node('b', 'SUCCESS', '2026-08-04T10:00:00Z', 'bbb')], true),
@@ -404,6 +659,43 @@ describe('fleet paging', () => {
       }),
       /no deployments connection/,
     );
+    await assert.rejects(
+      () => readFleetDeployments({
+        projectId: 'p',
+        environmentId: 'e',
+        serviceIds: ['a'],
+        notBefore: HEAD_AT,
+        api: () => ({ deployments: { edges: [], pageInfo: {} } }),
+        accumulatorFactory: (args) => createFleetAccumulator({
+          ...args,
+          initialDeploymentsByService: new Map([
+            ['a', [node('a', 'SUCCESS', '2026-08-04T13:00:00Z', 'aaa')]],
+          ]),
+        }),
+      }),
+      /hasNextPage.*boolean/i,
+    );
+    await assert.rejects(
+      () => readFleetDeployments({
+        projectId: 'p',
+        environmentId: 'e',
+        serviceIds: ['a'],
+        notBefore: HEAD_AT,
+        api: () => ({
+          deployments: {
+            edges: [{ node: node('a', 'SKIPPED', '2026-08-04T11:00:00Z', 'head') }],
+            pageInfo: { hasNextPage: true, endCursor: null },
+          },
+        }),
+        accumulatorFactory: (args) => createFleetAccumulator({
+          ...args,
+          initialDeploymentsByService: new Map([
+            ['a', [node('a', 'SUCCESS', '2026-08-04T13:00:00Z', 'aaa')]],
+          ]),
+        }),
+      }),
+      /cursor/i,
+    );
   });
 
   it('checks the shared run deadline before every fleet page', async () => {
@@ -431,6 +723,113 @@ describe('fleet paging', () => {
 });
 
 describe('fleet read deadline', () => {
+  it('refreshes only a service whose active source changes during the fleet scan', async () => {
+    const services = [{ id: 'a' }, { id: 'b' }];
+    const directReads = [];
+    const active = new Map([
+      ['a', [{ ...node('a', 'SUCCESS', '2026-08-04T10:00:00Z', 'old-a'), id: 'active-a' }]],
+      ['b', [{ ...node('b', 'SUCCESS', '2026-08-04T10:00:00Z', 'head-b'), id: 'active-b' }]],
+    ]);
+    const api = () => ({
+      deployments: {
+        edges: [
+          { node: { ...node('a', 'SUCCESS', '2026-08-04T11:00:00Z'), id: 'replacement-a' } },
+          { node: node('b', 'SKIPPED', '2026-08-04T09:00:00Z', 'skip-b') },
+        ],
+        pageInfo: { hasNextPage: true, endCursor: 'older-events' },
+      },
+    });
+    const result = await readDeploymentsForFleet({
+      services,
+      environment: 'production',
+      environmentId: 'environment-1',
+      projectId: 'project-1',
+      window: 50,
+      notBefore: HEAD_AT,
+      accumulatorFactory: (args) => createFleetAccumulator({
+        ...args,
+        initialDeploymentsByService: active,
+      }),
+      readFleet: (args) => readFleetDeployments({ ...args, api }),
+      readDirect: async (service) => {
+        directReads.push(service.id);
+        return [node(service.id, 'SUCCESS', '2026-08-04T11:30:00Z', `fresh-${service.id}`)];
+      },
+    });
+
+    assert.deepEqual(directReads, ['a']);
+    assert.equal(newestRunning(result.get('a').deployments).meta.commitHash, 'fresh-a');
+    assert.equal(newestRunning(result.get('b').deployments).meta.commitHash, 'head-b');
+  });
+
+  it('falls back to direct reads when the fleet page is malformed', async () => {
+    const directReads = [];
+    const result = await readDeploymentsForFleet({
+      services: [{ id: 'a' }, { id: 'b' }],
+      environment: 'production',
+      environmentId: 'environment-1',
+      projectId: 'project-1',
+      window: 50,
+      accumulatorFactory: (args) => createFleetAccumulator({
+        ...args,
+        initialDeploymentsByService: new Map([
+          ['a', [node('a', 'SUCCESS', '2026-08-04T10:00:00Z', 'head-a')]],
+          ['b', [node('b', 'SUCCESS', '2026-08-04T10:00:00Z', 'head-b')]],
+        ]),
+      }),
+      readFleet: (args) => readFleetDeployments({
+        ...args,
+        api: () => ({ deployments: { edges: [], pageInfo: {} } }),
+      }),
+      readDirect: async (service) => {
+        directReads.push(service.id);
+        return [node(service.id, 'SUCCESS', '2026-08-04T11:00:00Z', `fresh-${service.id}`)];
+      },
+    });
+
+    assert.deepEqual(directReads.sort(), ['a', 'b']);
+    assert.equal(result.get('a').error, null);
+    assert.equal(result.get('b').error, null);
+  });
+
+  it('direct-reads only the service missing a Viewer active baseline', async () => {
+    const directReads = [];
+    const active = node('a', 'SUCCESS', '2026-08-04T10:00:00Z', 'serving-a');
+    const api = () => ({
+      deployments: {
+        edges: [
+          node('a', 'SKIPPED', '2026-08-04T11:00:00Z', 'skip-a'),
+          node('b', 'SKIPPED', '2026-08-04T10:00:00Z', 'skip-b'),
+        ].map((deployment) => ({ node: deployment })),
+        pageInfo: { hasNextPage: true, endCursor: 'older-events' },
+      },
+    });
+    const result = await readDeploymentsForFleet({
+      services: [{ id: 'a' }, { id: 'b' }],
+      environment: 'production',
+      environmentId: 'environment-1',
+      projectId: 'project-1',
+      window: 50,
+      notBefore: HEAD_AT,
+      accumulatorFactory: (args) => createFleetAccumulator({
+        ...args,
+        initialDeploymentsByService: new Map([
+          ['a', [active]],
+          ['b', []],
+        ]),
+      }),
+      readFleet: (args) => readFleetDeployments({ ...args, api }),
+      readDirect: async (service) => {
+        directReads.push(service.id);
+        return [node(service.id, 'SUCCESS', '2026-08-04T09:00:00Z', `serving-${service.id}`)];
+      },
+    });
+
+    assert.deepEqual(directReads, ['b']);
+    assert.equal(newestRunning(result.get('a').deployments), active);
+    assert.equal(newestRunning(result.get('b').deployments).meta.commitHash, 'serving-b');
+  });
+
   it('scopes every direct fallback read to the explicit Railway project', async () => {
     const options = [];
     const result = await readDeploymentsForFleet({
