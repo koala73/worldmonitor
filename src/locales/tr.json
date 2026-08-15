@@ -3278,7 +3278,9 @@
     "fontFamily": "Yazı Tipi Ailesi",
     "fontFamilyDesc": "Teknik görünüş için Monospace, daha kolay okuma için sistem varsayılanı.",
     "fontMono": "Monospace",
-    "fontSystem": "Sistem Varsayılanı"
+    "fontSystem": "Sistem Varsayılanı",
+    "autoTranslateLabel": "Auto-translate headlines",
+    "autoTranslateDesc": "Automatically translate news headlines into your display language using AI"
   },
   "contextMenu": {
     "openCountryBrief": "Ülke özetini aç",

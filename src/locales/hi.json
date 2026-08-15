@@ -3352,7 +3352,9 @@
     "fontFamily": "फॉन्ट परिवार",
     "fontFamilyDesc": "तकनीकी लुक के लिए मोनोस्पेस, आसानी से पढ़ने के लिए सिस्टम डिफ़ॉल्ट।",
     "fontMono": "मोनोस्पेस",
-    "fontSystem": "सिस्टम डिफ़ॉल्ट"
+    "fontSystem": "सिस्टम डिफ़ॉल्ट",
+    "autoTranslateLabel": "Auto-translate headlines",
+    "autoTranslateDesc": "Automatically translate news headlines into your display language using AI"
   },
   "premium": {
     "pro": "PRO",

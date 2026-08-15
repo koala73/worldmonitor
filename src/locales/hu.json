@@ -3352,7 +3352,9 @@
     "fontFamily": "Betűtípus család",
     "fontFamilyDesc": "Monospace a technikai megjelenéshez, rendszer alapértelmezés az olvashatóság kedvéért.",
     "fontMono": "Monospace",
-    "fontSystem": "Rendszer alapértelmezés"
+    "fontSystem": "Rendszer alapértelmezés",
+    "autoTranslateLabel": "Auto-translate headlines",
+    "autoTranslateDesc": "Automatically translate news headlines into your display language using AI"
   },
   "premium": {
     "pro": "PRO",

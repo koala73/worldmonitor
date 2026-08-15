@@ -3314,7 +3314,9 @@
     "fontFamily": "Rodzina czcionki",
     "fontFamilyDesc": "Monospace dla wyglądu technicznego, domyślna czcionka systemowa dla łatwiejszego czytania.",
     "fontMono": "Monospace",
-    "fontSystem": "Domyślna czcionka systemowa"
+    "fontSystem": "Domyślna czcionka systemowa",
+    "autoTranslateLabel": "Auto-translate headlines",
+    "autoTranslateDesc": "Automatically translate news headlines into your display language using AI"
   },
   "contextMenu": {
     "openCountryBrief": "Otwórz przegląd kraju",

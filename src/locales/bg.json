@@ -3278,7 +3278,9 @@
     "fontFamily": "Семейство шрифтове",
     "fontFamilyDesc": "Монопространствен за технически вид, системен по подразбиране за по-лесно четене.",
     "fontMono": "Монопространствен",
-    "fontSystem": "Системен по подразбиране"
+    "fontSystem": "Системен по подразбиране",
+    "autoTranslateLabel": "Auto-translate headlines",
+    "autoTranslateDesc": "Automatically translate news headlines into your display language using AI"
   },
   "contextMenu": {
     "openCountryBrief": "Отвори обзор на страната",

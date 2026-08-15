@@ -3275,6 +3275,8 @@
     "mapThemeDesc": "マップタイルのビジュアルスタイル。",
     "globePreset": "ビジュアルプリセット",
     "globePresetDesc": "クラシックと拡張地球表示を切り替えます。",
+    "autoTranslateLabel": "ニュース見出しの自動翻訳",
+    "autoTranslateDesc": "ニュースの見出しを表示言語へ自動翻訳します(対応ブラウザでは端末内翻訳、それ以外はAIクラウド)",
     "fontFamily": "フォントファミリー",
     "fontFamilyDesc": "テクニカルな見た目にはモノスペース、より読みやすくするにはシステムデフォルトを選択できます。",
     "fontMono": "モノスペース",

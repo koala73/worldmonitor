@@ -16,6 +16,7 @@ import { trackLLMUsage, trackLLMFailure } from './analytics';
 import { getCurrentLanguage } from './i18n';
 import type { SummarizeArticleResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
+import { parseNumberedList } from '@/utils/numbered-list';
 import { buildSummaryCacheKey } from '@/utils/summary-cache-key';
 import { NewsServiceClient } from '@/services/generated-rpc-clients';
 import { premiumFetch } from '@/services/premium-fetch';
@@ -409,16 +410,31 @@ async function generateSummaryInternal(
 }
 
 /**
- * Translate text using the fallback chain (via SummarizeArticle RPC with mode='translate')
- * @param text Text to translate
- * @param targetLang Target language code (e.g., 'fr', 'es')
+ * Translate a batch of texts in ONE RPC (SummarizeArticle mode='translate').
+ * The server caches each headline individually and only sends cache misses
+ * to the LLM, so callers should batch freely instead of looping.
+ *
+ * @param texts Up to 10 texts, deduplicated by the caller (the server dedups
+ *   too, but the returned numbered list is aligned to the request order, so
+ *   duplicates simply repeat).
+ * @param targetLang Target language code (e.g., 'ja', 'fr')
+ * @returns Array aligned 1:1 with `texts`; null = untranslated (keep original)
  */
-export async function translateText(
-  text: string,
+export async function translateTexts(
+  texts: string[],
   targetLang: string,
   onProgress?: ProgressCallback
-): Promise<string | null> {
-  if (!text) return null;
+): Promise<Array<string | null>> {
+  const nothing: Array<string | null> = texts.map(() => null);
+  // Send only non-empty texts — the server's numbered response is aligned to
+  // the request array, so blank entries would just waste batch slots. The
+  // entries list remaps parsed results back to the caller's indexes.
+  const entries = texts
+    .map((text, index) => ({ index, text: typeof text === 'string' ? text.trim() : '' }))
+    .filter((entry) => entry.text.length > 0)
+    .slice(0, 10);
+  if (entries.length === 0) return nothing;
+  const payload = entries.map((entry) => entry.text);
 
   const totalSteps = API_PROVIDERS.length;
   for (const [i, providerDef] of API_PROVIDERS.entries()) {
@@ -429,7 +445,7 @@ export async function translateText(
       const resp = await summaryBreaker.execute(async () => {
         return newsClient.summarizeArticle({
           provider: providerDef.provider,
-          headlines: [text],
+          headlines: payload,
           mode: 'translate',
           geoContext: '',
           variant: targetLang,
@@ -441,11 +457,35 @@ export async function translateText(
 
       if (resp.fallback || resp.status === 'SUMMARIZE_STATUS_SKIPPED') continue;
       const summary = typeof resp.summary === 'string' ? resp.summary.trim() : '';
-      if (summary) return summary;
+      if (!summary) continue;
+
+      const parsed = parseNumberedList(summary, payload.length);
+      if (parsed.some((p) => p && p.trim().length > 0)) {
+        const result = [...nothing];
+        for (const [slot, entry] of entries.entries()) {
+          result[entry.index] = parsed[slot]?.trim() || null;
+        }
+        return result;
+      }
     } catch (e) {
       console.warn(`${providerDef.label} translation failed`, e);
     }
   }
 
-  return null;
+  return nothing;
+}
+
+/**
+ * Translate text using the fallback chain (via SummarizeArticle RPC with mode='translate')
+ * @param text Text to translate
+ * @param targetLang Target language code (e.g., 'fr', 'es')
+ */
+export async function translateText(
+  text: string,
+  targetLang: string,
+  onProgress?: ProgressCallback
+): Promise<string | null> {
+  if (!text) return null;
+  const [translated] = await translateTexts([text], targetLang, onProgress);
+  return translated ?? null;
 }
