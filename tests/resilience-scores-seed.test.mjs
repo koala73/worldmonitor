@@ -21,6 +21,8 @@ import {
   fetchRuntimeCacheState,
   parseCachedScorePayload,
   seedResilienceScores,
+  warmLaggardCountries,
+  LAGGARD_WARMUP_BUDGET_MS,
 } from '../scripts/seed-resilience-scores.mjs';
 
 const D6_DOMAINS = [
@@ -1103,5 +1105,74 @@ describe('handler warm pipeline is chunked', () => {
       /for\s*\([^)]*i\s*\+=\s*SET_BATCH/,
       'pipeline SETs must be issued in SET_BATCH-sized chunks',
     );
+  });
+});
+
+describe('laggard warmup aggregate budget (#6562 item 3)', () => {
+  it('LAGGARD_WARMUP_BUDGET_MS stays below the 240s Resilience-Scores section timeout', () => {
+    assert.ok(
+      LAGGARD_WARMUP_BUDGET_MS < 240_000,
+      `budget ${LAGGARD_WARMUP_BUDGET_MS}ms must leave headroom below the 240s section cap`,
+    );
+  });
+
+  it('stops warming once the budget is exhausted and reports the partial count', async () => {
+    const stillMissing = Array.from({ length: 12 }, (_, i) => `C${String(i).padStart(2, '0')}`);
+    const fetched = [];
+    const fetchImpl = async (url) => {
+      fetched.push(String(url));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return new Response('{}', { status: 200 });
+    };
+    const warmed = await warmLaggardCountries(stillMissing, {
+      apiKey: 'test-key',
+      budgetMs: 1,
+      batchSize: 5,
+      fetchImpl,
+    });
+    assert.equal(fetched.length, 5, 'only the first batch may start before the deadline trips');
+    assert.equal(warmed, 5);
+  });
+
+  it('warms every laggard when the budget holds', async () => {
+    const stillMissing = ['US', 'FR', 'DE', 'JP', 'KR', 'BR'];
+    const fetched = [];
+    const fetchImpl = async (url) => {
+      fetched.push(String(url));
+      return new Response('{}', { status: 200 });
+    };
+    const warmed = await warmLaggardCountries(stillMissing, {
+      apiKey: 'test-key',
+      budgetMs: 10_000,
+      batchSize: 5,
+      fetchImpl,
+    });
+    assert.equal(fetched.length, stillMissing.length);
+    assert.equal(warmed, stillMissing.length);
+  });
+
+  it('skips warmup without an API key and fetches nothing', async () => {
+    const warmed = await warmLaggardCountries(['US'], {
+      apiKey: null,
+      fetchImpl: async () => {
+        throw new Error('must not fetch without an API key');
+      },
+    });
+    assert.equal(warmed, 0);
+  });
+
+  it('counts only fulfilled requests toward the warmed total', async () => {
+    const fetchImpl = async (url) => {
+      const cc = new URL(String(url)).searchParams.get('countryCode');
+      if (cc === 'FR') return new Response('{}', { status: 503 });
+      return new Response('{}', { status: 200 });
+    };
+    const warmed = await warmLaggardCountries(['US', 'FR', 'DE'], {
+      apiKey: 'test-key',
+      budgetMs: 10_000,
+      batchSize: 5,
+      fetchImpl,
+    });
+    assert.equal(warmed, 2);
   });
 });
