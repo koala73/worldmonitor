@@ -190,7 +190,6 @@ describe('selectTopStories drop stats (#4920b)', () => {
 describe('server catalog extraction (#4920a)', () => {
   it('extracts the digest feed catalog with rebuilt Google News URLs', () => {
     const feeds = extractServerFeeds();
-    assert.ok(feeds.length > 250, `expected 250+ server feeds, got ${feeds.length}`);
     const wrapper = feeds.find((f) => f.url.includes('news.google.com'));
     assert.ok(wrapper, 'gn() URLs must be rebuilt');
     assert.match(wrapper.url, /^https:\/\/news\.google\.com\/rss\/search\?q=.+&hl=/);

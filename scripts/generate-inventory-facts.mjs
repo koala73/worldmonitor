@@ -17,7 +17,7 @@ const read = (path) => readFileSync(join(ROOT, path), 'utf8');
 const readJson = (path) => JSON.parse(read(path));
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 
-function buildInventoryFacts(stats = computeStats()) {
+export function buildInventoryFacts(stats = computeStats()) {
   const capabilities = {
     mcpTools: stats.mcpToolCount,
     locales: stats.locales,
@@ -31,8 +31,8 @@ function buildInventoryFacts(stats = computeStats()) {
   };
 
   for (const [name, value] of Object.entries(capabilities)) {
-    if (!Number.isInteger(value) || value < 0) {
-      throw new Error(`inventory capability ${name} must be a non-negative integer`);
+    if (!Number.isInteger(value) || value <= 0) {
+      throw new Error(`inventory capability ${name} must be a positive integer`);
     }
   }
 

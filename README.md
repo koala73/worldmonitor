@@ -113,7 +113,7 @@ See the **[self-hosting guide](https://www.worldmonitor.app/docs/getting-started
 | **Desktop** | Tauri 2 (Rust) with Node.js sidecar |
 | **AI/ML** | Ollama / Groq / OpenRouter, Transformers.js (browser-side) |
 | **API Contracts** | Protocol Buffers and sebuf HTTP annotations |
-| **Deployment** | Vercel Edge Functions (60+), Railway relay, Tauri, PWA |
+| **Deployment** | Vercel Edge Functions, Railway relay, Tauri, PWA |
 | **Caching** | Redis (Upstash), 3-tier cache, CDN, service worker |
 
 Full stack details in the **[architecture docs](https://www.worldmonitor.app/docs/architecture)**.

@@ -7,7 +7,7 @@ description: "Tauri desktop architecture for World Monitor — sidecar process m
 
 ### Desktop Application (Tauri)
 
-- **Native desktop app** for macOS, Windows, and Linux — packages the full dashboard with a local Node.js sidecar that runs all 60+ API handlers locally
+- **Native desktop app** for macOS, Windows, and Linux — packages the full dashboard with a local Node.js sidecar that runs the supported API handler catalog locally
 - **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager), never in plaintext files
 - **Token-authenticated sidecar** — a unique session token prevents other local processes from accessing the sidecar on localhost. Generated per launch using randomized hashing
 - **Cloud fallback** — when a local API handler fails or is missing, requests transparently fall through to the cloud deployment (worldmonitor.app) with origin headers stripped
@@ -84,7 +84,7 @@ The Tauri desktop app wraps the dashboard in a native window (macOS, Windows, Li
                       ▼
 ┌─────────────────────────────────────────────────┐
 │      Node.js Sidecar (dynamic port)             │
-│  60+ API handlers · Local RSS proxy             │
+│  API handler catalog · Local RSS proxy          │
 │  Brotli/Gzip compression · Cloud fallback       │
 │  Traffic logging · Verbose debug mode           │
 └─────────────────────┬───────────────────────────┘

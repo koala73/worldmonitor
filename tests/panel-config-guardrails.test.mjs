@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appSrcRaw = readFileSync(resolve(__dirname, '../src/App.ts'), 'utf-8');
@@ -94,14 +95,89 @@ function categoryMappedPanelIds() {
   return ids;
 }
 
+function callExpressions(source) {
+  const sourceFile = ts.createSourceFile('App.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  assert.deepStrictEqual(sourceFile.parseDiagnostics, [], 'App.ts call-site extraction must parse cleanly');
+  const calls = [];
+  const walk = (node) => {
+    if (ts.isCallExpression(node)) calls.push({ node, sourceFile });
+    node.forEachChild(walk);
+  };
+  walk(sourceFile);
+  return calls;
+}
+
+function literalFirstArgument(call) {
+  return ts.isStringLiteralLike(call.arguments[0]) ? call.arguments[0].text : null;
+}
+
+function callName(node, sourceFile) {
+  if (ts.isIdentifier(node.expression)) return node.expression.text;
+  if (ts.isPropertyAccessExpression(node.expression)) return node.expression.name.text;
+  return node.expression.getText(sourceFile);
+}
+
+function panelFetchIds(callback, sourceFile) {
+  const ids = new Set();
+  const aliasIds = new Map();
+  const walk = (node) => {
+    if (
+      ((ts.isElementAccessExpression(node)
+        && ts.isStringLiteralLike(node.argumentExpression)
+        && node.expression.getText(sourceFile) === 'this.state.panels')
+      || (ts.isPropertyAccessExpression(node)
+        && node.expression.getText(sourceFile) === 'this.state.panels'))
+    ) {
+      const panelId = ts.isElementAccessExpression(node) ? node.argumentExpression.text : node.name.text;
+      let declaration = node.parent;
+      while (ts.isParenthesizedExpression(declaration) || ts.isAsExpression(declaration)) declaration = declaration.parent;
+      if (ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)) {
+        aliasIds.set(declaration.name.text, panelId);
+      }
+      let current = node.parent;
+      while (current && current !== callback) {
+        if (ts.isPropertyAccessExpression(current) && current.name.text === 'fetchData') {
+          ids.add(panelId);
+          break;
+        }
+        current = current.parent;
+      }
+    }
+    node.forEachChild(walk);
+  };
+  walk(callback);
+  for (const { node } of callExpressions(callback.getText(sourceFile))) {
+    if (!ts.isPropertyAccessExpression(node.expression) || node.expression.name.text !== 'fetchData') continue;
+    if (!ts.isIdentifier(node.expression.expression)) continue;
+    const panelId = aliasIds.get(node.expression.expression.text);
+    if (panelId) ids.add(panelId);
+  }
+  return [...ids];
+}
+
 function scheduledSelfFetchingPanelIds(source = appSrc) {
-  return [...source.matchAll(
-    /scheduleRefresh\(\s*'([a-z0-9-]+)',\s*\(\)\s*=>\s*\(this\.state\.panels\['[a-z0-9-]+'\][^)]*\)\.fetchData\(\)/g,
-  )].map((match) => match[1]);
+  const scheduled = [];
+  for (const { node, sourceFile } of callExpressions(source)) {
+    if (callName(node, sourceFile) !== 'scheduleRefresh') continue;
+    const scheduleId = literalFirstArgument(node);
+    if (!scheduleId || !node.arguments[1]) continue;
+    const fetchedPanels = panelFetchIds(node.arguments[1], sourceFile);
+    if (fetchedPanels.length === 0) continue;
+    assert.deepStrictEqual(
+      fetchedPanels,
+      [scheduleId],
+      `scheduleRefresh('${scheduleId}') must fetch that same panel exactly once`,
+    );
+    scheduled.push(scheduleId);
+  }
+  return scheduled;
 }
 
 function primedPanelIds(source = appSrc) {
-  return new Set([...source.matchAll(/primeTask\('([a-z0-9-]+)'/g)].map((match) => match[1]));
+  return new Set(callExpressions(source)
+    .filter(({ node, sourceFile }) => callName(node, sourceFile) === 'primeTask')
+    .map(({ node }) => literalFirstArgument(node))
+    .filter(Boolean));
 }
 
 function parsePanelKeys(variant) {
@@ -627,6 +703,20 @@ describe('panel-config guardrails', () => {
     `;
     assert.deepStrictEqual(scheduledSelfFetchingPanelIds(fixture), ['alpha']);
     assert.deepStrictEqual([...primedPanelIds(fixture)], ['alpha']);
+
+    const blockBody = `
+      scheduleRefresh('alpha', () => {
+        const panel = this.state.panels['alpha'] as AlphaPanel;
+        panel.fetchData();
+      });
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(blockBody), ['alpha']);
+    assert.deepStrictEqual([...primedPanelIds(blockBody)], ['alpha']);
+    assert.throws(
+      () => scheduledSelfFetchingPanelIds("scheduleRefresh('alpha', () => (this.state.panels['beta'] as BetaPanel).fetchData());"),
+      /must fetch that same panel/,
+    );
   });
 
   it('every registered panel has a CMD+K command (discoverable by search)', () => {

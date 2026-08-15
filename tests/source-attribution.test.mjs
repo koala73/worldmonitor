@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import test from 'node:test';
 import {
   PROVIDER_IDENTITY_GROUPS,
+  PROVIDER_IDENTITY_REVIEW,
   buildManifest,
   checkSourceAttribution,
   loadManifest,
@@ -14,6 +15,7 @@ import {
   sourceAttributionStats,
   validateManifest,
   validateProviderIdentityGroups,
+  providerIdentityDigest,
 } from '../scripts/source-attribution.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -182,6 +184,31 @@ test('provider collisions and incomplete identity groups fail closed', () => {
       .some((error) => error.includes('manifest membership') && error.includes('b.example')),
     'a declared group must preserve its complete host set',
   );
+
+  assert.ok(
+    validateProviderIdentityGroups({ entries: [] }, groups, overrides)
+      .some((error) => error.includes('manifest membership') && error.includes('(empty)')),
+    'deleting an entire declared group must require an explicit group retirement review',
+  );
+});
+
+test('single-host provider identity changes require a reviewed lifecycle epoch', () => {
+  const overrides = {
+    'single.example': { provider: 'Original Provider' },
+  };
+  const review = {
+    sha256: providerIdentityDigest(overrides),
+    reason: 'Fixture baseline.',
+    reviewReference: 'PR #1',
+  };
+  assert.deepEqual(validateProviderIdentityGroups({ entries: [] }, {}, overrides, review), []);
+  overrides['single.example'].provider = 'Renamed Provider';
+  assert.ok(
+    validateProviderIdentityGroups({ entries: [] }, {}, overrides, review)
+      .some((error) => error.includes('without a reviewed lifecycle epoch')),
+    'a single-host provider rename must update the explicit identity review epoch',
+  );
+  assert.match(PROVIDER_IDENTITY_REVIEW.reviewReference, /(?:PR|issue|review)\s+#?\d+/i);
 });
 
 test('the independent raw-manifest oracle catches an active-predicate mutation', async () => {
@@ -803,7 +830,7 @@ test('the check gate passes on a checkout the generator just wrote', () => {
   try {
     const { errors, stats } = checkSourceAttribution(fixture.dir);
     assert.deepEqual(errors, []);
-    assert.equal(stats.activeHosts, 1, 'the fixture must contain a host, or every red case below is vacuous');
+    assert.ok(stats.activeHosts > 0, 'the fixture must contain a host, or every red case below is vacuous');
   } finally {
     fixture.cleanup();
   }

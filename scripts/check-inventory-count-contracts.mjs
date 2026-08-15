@@ -30,7 +30,7 @@ const INVENTORY_PRESERVING_METHODS = new Set([
  * `selectors` identify the inventory values in the audited test surface. They
  * are deliberately local to one file: a generic name such as `registry` is
  * safe here because it cannot taint an unrelated test. Adding a new audited
- * surface requires a registry row; keyword discovery is only a review aid.
+ * surface requires a registry row; review must keep the register complete.
  */
 export const INVENTORY_CONTRACTS = Object.freeze([
   contract('source-attribution-totals', 'source-attribution manifest entries and explicit retirement records', ['retirement', 'parity'], 'replace', 'Aggregate source totals are derived; explicit retirement and exact identity parity protect deletion.', [
@@ -38,6 +38,7 @@ export const INVENTORY_CONTRACTS = Object.freeze([
   ]),
   contract('panel-discoverability', 'PANEL_REGISTRY, panel commands, categories, scheduleRefresh and primeTask call sites', ['derived', 'parity'], 'replace', 'Structural set extraction and containment replace parser-size tripwires.', [
     surface('tests/panel-config-guardrails.test.mjs', ['allRegistryPanelIds', 'panelCommandKeywordCounts', 'categoryMappedPanelIds', 'scheduled', 'primed']),
+    surface('tests/news-panel-key-reachability.test.mts', ['feedCategories', 'catalogPanelKeys', 'registrations']),
   ]),
   contract('mcp-output-schema-tools', 'TOOL_REGISTRY and the tools/list response', ['parity'], 'replace', 'Exact tool/schema set parity makes arbitrary tool floors redundant.', [
     surface('tests/mcp-output-schema-coverage.test.mjs', ['registry', 'tools']),
@@ -47,6 +48,8 @@ export const INVENTORY_CONTRACTS = Object.freeze([
   ]),
   contract('mcp-protocol-tools', 'the MCP tools/list response', ['parity'], 'replace', 'Protocol assertions cover the complete returned tool set.', [
     surface('tests/mcp-protocol-conformance.test.mjs', ['step1bListBody.result.tools', 'step3Body.result.tools']),
+    surface('tests/mcp.test.mjs', ['body.result.tools', 'TOOL_REGISTRY']),
+    surface('tests/mcp-resources.test.mjs', ['uiUris', 'listedUiUris']),
   ]),
   contract('llms-mcp-tools', 'api/mcp/registry tool names and public discovery citations', ['named-member', 'parity'], 'replace', 'Registry-to-citation parity plus named critical tools replaces an arbitrary floor.', [
     surface('tests/llms-txt-mcp-tools.test.mjs', ['registry']),
@@ -68,6 +71,8 @@ export const INVENTORY_CONTRACTS = Object.freeze([
   ]),
   contract('feed-client-server-catalogs', 'client and server feed catalogs', ['parity'], 'replace', 'Exact mirrored feed identity parity replaces arbitrary catalog-size sentinels.', [
     surface('tests/feeds-client-server-parity.test.mjs', ['client', 'server', 'clientNameCount', 'serverNameCount']),
+    surface('tests/completeness-measurement.test.mjs', ['extractServerFeeds']),
+    surface('tests/publisher-families.test.mjs', ['FEED_LABELS', 'withHosts']),
   ]),
   contract('regional-feed-promises', 'regional feed catalogs and default-enable policy', ['named-member', 'parity'], 'keep', 'Named regional members and their metadata express the coverage promise without a redundant numeric floor.', [
     surface('tests/feed-catalog-drift.test.mts', ['CANADA_CATALOG', 'nordicBeyondSweden']),
@@ -229,9 +234,17 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
   while (changed) {
     changed = false;
     walk(sourceFile, (node) => {
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && propagatesInventory(node.initializer, selectorSet, taintedNames, taintedParameters)) {
-        if (!hasTaintedName(taintedNames, node.name.text, node)) {
-          addTaintedName(taintedNames, node.name.text, node);
+      if (ts.isVariableDeclaration(node) && node.initializer) {
+        for (const name of taintedBindingNames(node.name, node.initializer, selectorSet, taintedNames, taintedParameters)) {
+          if (!hasTaintedName(taintedNames, name, node)) {
+            addTaintedName(taintedNames, name, node);
+            changed = true;
+          }
+        }
+      }
+      if (ts.isFunctionDeclaration(node) && node.name && node.body && isTainted(node.body, selectorSet, taintedNames, taintedParameters)) {
+        if (!hasTaintedName(taintedNames, node.name.text, node.parent)) {
+          addTaintedName(taintedNames, node.name.text, node.parent);
           changed = true;
         }
       }
@@ -259,7 +272,7 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
   const seen = new Set();
   walk(sourceFile, (node) => {
     const candidate = numericContractCandidate(node, selectorSet, taintedNames, taintedParameters, constantBindings);
-    if (!candidate || candidate.value === 0 || (candidate.kind === 'exact' && candidate.value === 1)) return; // zero/one are supported fixture anti-vacuity sentinels
+    if (!candidate || candidate.semanticNonEmpty) return;
     const key = `${candidate.node.pos}:${candidate.node.end}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -275,15 +288,49 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
   return { references, violations };
 }
 
+function taintedBindingNames(name, initializer, selectors, taintedNames, taintedParameters) {
+  if (ts.isIdentifier(name)) {
+    return propagatesInventory(initializer, selectors, taintedNames, taintedParameters) ? [name.text] : [];
+  }
+  if (!ts.isObjectBindingPattern(name)) return [];
+  const basePath = expressionPath(initializer);
+  const names = [];
+  for (const element of name.elements) {
+    if (!ts.isIdentifier(element.name)) continue;
+    const property = element.propertyName ?? element.name;
+    const propertyText = ts.isIdentifier(property) || ts.isStringLiteralLike(property) ? property.text : null;
+    if (!propertyText) continue;
+    const selectorPath = basePath ? `${basePath}.${propertyText}` : null;
+    if ((selectorPath && selectors.has(selectorPath)) || isTainted(initializer, selectors, taintedNames, taintedParameters)) {
+      names.push(element.name.text);
+    }
+  }
+  return names;
+}
+
 function numericContractCandidate(node, selectors, taintedNames, taintedParameters, constants) {
   if (ts.isBinaryExpression(node) && isComparison(node.operatorToken.kind)) {
     if (!isAssertedValue(node)) return null;
-    const leftTainted = isTainted(node.left, selectors, taintedNames, taintedParameters);
-    const rightTainted = isTainted(node.right, selectors, taintedNames, taintedParameters);
+    const leftTainted = isInventoryCountValue(node.left, selectors, taintedNames, taintedParameters);
+    const rightTainted = isInventoryCountValue(node.right, selectors, taintedNames, taintedParameters);
     const leftConstant = evaluateNumericConstant(node.left, constants);
     const rightConstant = evaluateNumericConstant(node.right, constants);
-    if (leftTainted && rightConstant !== undefined) return { node, value: rightConstant, kind: comparisonKind(node.operatorToken.kind) };
-    if (rightTainted && leftConstant !== undefined) return { node, value: leftConstant, kind: comparisonKind(node.operatorToken.kind) };
+    if (leftTainted && rightConstant !== undefined) {
+      return {
+        node,
+        value: rightConstant,
+        kind: comparisonKind(node.operatorToken.kind),
+        semanticNonEmpty: rightConstant === 0 && node.operatorToken.kind === ts.SyntaxKind.GreaterThanToken,
+      };
+    }
+    if (rightTainted && leftConstant !== undefined) {
+      return {
+        node,
+        value: leftConstant,
+        kind: comparisonKind(node.operatorToken.kind),
+        semanticNonEmpty: leftConstant === 0 && node.operatorToken.kind === ts.SyntaxKind.LessThanToken,
+      };
+    }
   }
 
   if (ts.isCallExpression(node) && assertionLike(node.expression)) {
@@ -299,6 +346,11 @@ function numericContractCandidate(node, selectors, taintedNames, taintedParamete
     if (embedded !== undefined) return { node, value: embedded, kind: 'exact' };
   }
   return null;
+}
+
+function isInventoryCountValue(node, selectors, taintedNames, taintedParameters) {
+  if (!isTainted(node, selectors, taintedNames, taintedParameters)) return false;
+  return !ts.isCallExpression(node) || propagatesInventory(node, selectors, taintedNames, taintedParameters);
 }
 
 function isTainted(node, selectors, taintedNames, taintedParameters) {
@@ -321,7 +373,12 @@ function addTaintedName(taintedNames, name, node) {
 }
 
 function hasTaintedName(taintedNames, name, node) {
-  return taintedNames.get(lexicalScope(node))?.has(name) ?? false;
+  let scope = lexicalScope(node);
+  while (scope) {
+    if (taintedNames.get(scope)?.has(name)) return true;
+    scope = enclosingLexicalScope(scope.parent);
+  }
+  return false;
 }
 
 function lexicalScope(node) {
@@ -333,10 +390,21 @@ function lexicalScope(node) {
   return current;
 }
 
+function enclosingLexicalScope(node) {
+  let current = node;
+  while (current) {
+    if (ts.isFunctionLike(current) || ts.isSourceFile(current)) return current;
+    current = current.parent;
+  }
+  return null;
+}
+
 function propagatesInventory(node, selectors, taintedNames, taintedParameters) {
   if (!isTainted(node, selectors, taintedNames, taintedParameters)) return false;
   if (!ts.isCallExpression(node)) return true;
   if (matchesSelector(node.expression, selectors)) return true;
+  if (ts.isIdentifier(node.expression) && hasTaintedName(taintedNames, node.expression.text, node.expression)) return true;
+  if (ts.isIdentifier(node.expression) && ['BigInt', 'Number', 'parseFloat', 'parseInt'].includes(node.expression.text)) return true;
   if (ts.isPropertyAccessExpression(node.expression)) {
     return INVENTORY_PRESERVING_METHODS.has(node.expression.name.text);
   }

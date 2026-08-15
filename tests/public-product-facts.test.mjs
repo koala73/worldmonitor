@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 import { computeStats } from '../scripts/docs-stats.mjs';
-import { generateInventoryFacts } from '../scripts/generate-inventory-facts.mjs';
+import { buildInventoryFacts, generateInventoryFacts } from '../scripts/generate-inventory-facts.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path) => readFileSync(resolve(ROOT, path), 'utf8');
@@ -39,6 +39,8 @@ function applicationJsonLd(path) {
 
 const ACQUISITION_ROOTS = [
   'index.html',
+  'README.md',
+  'README.zh-CN.md',
   'server.json',
   'cli',
   'docs',
@@ -80,8 +82,49 @@ function collectAcquisitionSurfaces() {
 }
 
 const CURRENT_FACT_SURFACES = collectAcquisitionSurfaces();
+const VOLATILE_INVENTORY_CLAIM_RE = /\b\d[\d,]*\+?\s+(?:MCP\s+)?(?:tools?|feeds?|providers?|API handlers?|REST services?|operations?|map layers?|panels?|languages?|locales?|airports?|data ?centers?|datacenters?|entities?)\b/i;
+
+function currentInventoryClaimSurfaces() {
+  return CURRENT_FACT_SURFACES.filter((path) => (
+    ['index.html', 'README.md', 'README.zh-CN.md', 'server.json', 'cli/README.md'].includes(path)
+    || (/^docs\/[^/]+\.(?:md|mdx)$/.test(path) && path !== 'docs/changelog.mdx')
+    || /^docs\/zh\/[^/]+\.mdx$/.test(path)
+    || /^public\/[^/]+\.(?:md|txt|json)$/.test(path)
+    || /^pro-test\/src\/locales\/[^/]+\.json$/.test(path)
+    || /^blog-site\/src\/content\/blog\/[^/]+\.md$/.test(path)
+  ));
+}
 
 describe('public product facts generation contract', () => {
+  it('fails closed when any published inventory extractor collapses to zero', () => {
+    const stats = computeStats();
+    const capabilityStatKeys = [
+      'mcpToolCount',
+      'locales',
+      'variantCount',
+      'layerDefinitions',
+      'panelClasses',
+      'feedDefinitions',
+      'freshnessSources',
+      'sourceAttributionHosts',
+    ];
+    for (const key of capabilityStatKeys) {
+      assert.throws(
+        () => buildInventoryFacts({ ...stats, [key]: 0 }),
+        /must be a positive integer/,
+        `${key} parser collapse must fail generation`,
+      );
+    }
+    assert.throws(
+      () => buildInventoryFacts({
+        ...stats,
+        sourceAttribution: { ...stats.sourceAttribution, providerCount: 0 },
+      }),
+      /must be a positive integer/,
+      'provider parser collapse must fail generation',
+    );
+  });
+
   it('fails the inventory check for missing or stale build outputs', () => {
     const tempRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-facts-'));
     mkdirSync(join(tempRoot, 'api'));
@@ -176,6 +219,32 @@ describe('public product facts generation contract', () => {
       assert.equal(locale.form, undefined, `${name}: legacy waitlist form copy`);
       assert.equal(locale.referral, undefined, `${name}: legacy waitlist referral copy`);
     }
+  });
+
+  it('keeps volatile inventory totals out of hand-authored acquisition copy', () => {
+    const allowedExactContracts = [
+      { path: 'docs/signal-intelligence.mdx', text: /(?:3\+ source types|6\+ sources\/hour)/ },
+      { path: 'docs/ai-intelligence.mdx', text: /8\+ feeds in 2 hours/ },
+      { path: 'docs/data-sources.mdx', text: /Natural disasters from 3 sources/ },
+      { path: 'docs/data-sources.mdx', text: /25 feed categories would have generated 25,000 edge invocations/ },
+      { path: 'docs/tradingview-screener-integration.md', text: /41\/41 operations/ },
+      { path: 'docs/api-versioning.mdx', text: /version 1 operation/ },
+    ];
+    const violations = [];
+    for (const path of currentInventoryClaimSurfaces()) {
+      if (path === 'docs/source-attribution.mdx') continue;
+      for (const [index, line] of read(path).split('\n').entries()) {
+        if (!VOLATILE_INVENTORY_CLAIM_RE.test(line)) continue;
+        if (/\btool errors\b/i.test(line)) continue;
+        if (allowedExactContracts.some((entry) => entry.path === path && entry.text.test(line))) continue;
+        violations.push(`${path}:${index + 1}: ${line.trim()}`);
+      }
+    }
+    assert.deepEqual(
+      violations,
+      [],
+      `hand-authored acquisition copy must use registry-derived or semantic inventory wording:\n${violations.join('\n')}`,
+    );
   });
 
   it('keeps user-visible prices aligned with generated plan facts', () => {

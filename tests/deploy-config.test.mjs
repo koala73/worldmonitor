@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -308,12 +309,63 @@ describe('crawlable content corpus deployment contracts', () => {
         source.indexOf('npm run build:sitemap') < source.indexOf('npx vite build'),
         name + ' must update public/sitemap.xml before Vite copies public/ into dist/'
       );
+      assert.ok(
+        source.indexOf('node scripts/generate-inventory-facts.mjs') < source.indexOf('npx vite build'),
+        name + ' must generate ignored inventory assets in a clean build context before Vite runs',
+      );
     }
+    assert.ok(
+      dockerfileSource.indexOf('node scripts/generate-inventory-facts.mjs') < dockerfileSource.indexOf('node docker/build-handlers.mjs'),
+      'the self-host image must generate the Edge inventory module before handler bundling',
+    );
+    assert.match(frontendDockerfileSource, /RUN test -s dist\/product-facts\.json/);
+    assert.ok(!packageJson.scripts['build:full'].includes('npm run build:blog &&'), 'build:full must not regenerate inventory facts inside build:blog');
   });
 
   it('builds Vercel when corpus source files change', () => {
     assert.ok(vercelIgnoreSource.includes("'CHANGELOG.md'"));
     assert.ok(vercelIgnoreSource.includes("'docs/snapshots/'"));
+    for (const path of [
+      'scripts/generate-inventory-facts.mjs',
+      'scripts/docs-stats.mjs',
+      'scripts/source-attribution.mjs',
+    ]) {
+      assert.equal(vercelIgnoreSource.split(`'${path}'`).length - 1, 2, `${path} must trigger main and preview builds`);
+    }
+  });
+
+  it('builds Vercel for script-only inventory derivation changes', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'wm-vercel-ignore-'));
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: fixture });
+      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: fixture });
+      execFileSync('git', ['config', 'user.name', 'Test'], { cwd: fixture });
+      writeFileSync(join(fixture, 'README.md'), 'base\n');
+      execFileSync('git', ['add', 'README.md'], { cwd: fixture });
+      execFileSync('git', ['commit', '-qm', 'base'], { cwd: fixture });
+
+      for (const path of [
+        'scripts/generate-inventory-facts.mjs',
+        'scripts/docs-stats.mjs',
+        'scripts/source-attribution.mjs',
+      ]) {
+        const previous = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: fixture, encoding: 'utf8' }).trim();
+        mkdirSync(dirname(join(fixture, path)), { recursive: true });
+        writeFileSync(join(fixture, path), `${path}\n`);
+        execFileSync('git', ['add', path], { cwd: fixture });
+        execFileSync('git', ['commit', '-qm', path], { cwd: fixture });
+        assert.throws(
+          () => execFileSync('/bin/bash', [resolve(__dirname, '../scripts/vercel-ignore.sh')], {
+            cwd: fixture,
+            env: { ...process.env, VERCEL_GIT_COMMIT_REF: 'main', VERCEL_GIT_PREVIOUS_SHA: previous },
+          }),
+          (error) => error?.status === 1,
+          `${path} must request a Vercel build`,
+        );
+      }
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
   });
 
   it('keeps corpus inputs available in Docker build contexts', () => {

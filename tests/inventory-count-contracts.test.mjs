@@ -43,10 +43,26 @@ describe('extensible inventory count contract audit', () => {
       'source-attribution-totals',
       'panel-discoverability',
       'mcp-output-schema-tools',
+      'mcp-tool-annotations',
+      'mcp-protocol-tools',
+      'llms-mcp-tools',
       'openapi-server-specs',
+      'openapi-security-specs',
+      'openapi-jmespath-specs',
+      'openapi-rate-limit-operations',
+      'route-cache-tiers',
       'feed-client-server-catalogs',
+      'regional-feed-promises',
+      'feed-source-provenance',
       'locale-key-completeness',
+      'food-stocks-locales',
+      'market-tape-locales',
       'product-catalog-inventories',
+      'agent-skills-index',
+      'mcp-presets',
+      'route-explorer-countries',
+      'notification-country-registry',
+      'consumer-price-health-markets',
       'iso2-country-registry',
       'public-fixed-algorithm-claims',
     ]) {
@@ -94,6 +110,59 @@ describe('extensible inventory count contract audit', () => {
       checkProviderCount(count);
     `);
     assert.ok(codes(result).includes('unclassified-literal'));
+  });
+
+  it('follows object destructuring and string element access', () => {
+    const result = auditFixture(`
+      import assert from 'node:assert/strict';
+      const { providerCount: count } = stats;
+      const alsoCount = stats['providerCount'];
+      assert.equal(count, 552);
+      assert.equal(alsoCount, 552);
+    `);
+    assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 2);
+  });
+
+  it('follows enclosing aliases, function returns, arrow helpers, and numeric wrappers', () => {
+    const result = auditFixture(`
+      import assert from 'node:assert/strict';
+      const outer = stats.providerCount;
+      const arrow = () => stats.providerCount;
+      function helper() { return stats.providerCount; }
+      function run() {
+        assert.equal(outer, 552);
+        assert.equal(arrow(), 552);
+        assert.equal(helper(), 552);
+        assert.equal(Number(outer), 552);
+      }
+      run();
+    `);
+    assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 4);
+  });
+
+  it('does not exempt an exact inventory of one', () => {
+    const result = auditFixture(`
+      import assert from 'node:assert/strict';
+      assert.equal(stats.providerCount, 1);
+    `);
+    assert.ok(codes(result).includes('unclassified-literal'));
+  });
+
+  it('does not exempt exact zero or a vacuous greater-than-or-equal zero floor', () => {
+    const result = auditFixture(`
+      import assert from 'node:assert/strict';
+      assert.equal(stats.providerCount, 0);
+      assert.ok(stats.providerCount >= 0);
+    `);
+    assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 2);
+  });
+
+  it('accepts a semantic non-empty assertion against zero', () => {
+    const result = auditFixture(`
+      import assert from 'node:assert/strict';
+      assert.ok(stats.providerCount > 0);
+    `);
+    assert.deepEqual(result.violations, []);
   });
 
   it('rejects an exact inventory total embedded in a positive prose regex', () => {

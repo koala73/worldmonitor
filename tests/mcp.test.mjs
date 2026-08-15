@@ -121,7 +121,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const res = await handler(req);
     assert.equal(res.status, 200, 'unauthenticated tools/list must be public');
     const body = await res.json();
-    assert.ok(Array.isArray(body.result?.tools) && body.result.tools.length >= 3, 'must expose the tool catalog anonymously');
+    assert.ok(Array.isArray(body.result?.tools), 'must expose the tool catalog anonymously');
+    assert.deepEqual(
+      body.result.tools.map((tool) => tool.name).sort(),
+      TOOL_REGISTRY.map((tool) => tool.name).sort(),
+      'anonymous discovery must expose the complete tool registry',
+    );
   });
 
   it('resources/list succeeds WITHOUT credentials (public discovery) and returns resources', async () => {

@@ -1,15 +1,14 @@
 #!/usr/bin/env node
 /**
- * docs-stats — single source of truth for the capability counts quoted in docs.
+ * docs-stats — derived inventory metrics plus fixed documentation contracts.
  *
  * --check mode recomputes every stat and asserts that each registered doc
  * contract still matches repository truth. Inventory artifacts are written
  * atomically by scripts/generate-inventory-facts.mjs.
  *
- * Why this exists: capability counts (map layers, services, protos, locales,
- * workflows, freshness sources, feeds) were hand-maintained across README,
- * ARCHITECTURE.md, and docs/*.mdx and drifted independently. Every number a doc
- * quotes must be derivable here and registered in CLAIMS below.
+ * Volatile capability counts are build artifacts for runtime/product display,
+ * not hand-edited acceptance criteria. CLAIMS below retains only fixed
+ * compatibility contracts that are behaviorally exact.
  *
  * Stats are parsed from source text (no TS execution / import-graph / env deps)
  * so this runs anywhere Node runs, including bare CI.
@@ -360,7 +359,7 @@ function parseBootstrapKeyTiers(source = read('shared/bootstrap-tier-keys.js')) 
 // Text-parsed rather than imported, like every other stat here: the docs-stats
 // CI job runs on bare Node with no `npm install`, and the runtime registry size
 // additionally depends on process.env.IRAN_EVENTS_ENABLED — an env-dependent
-// number must not land in the committed docs/generated/stats.json.
+// number must not land in the build-owned docs/generated/stats.json.
 //
 // The two object literals are NOT the whole registry: health.js mutates them
 // after declaration. Hardcoding that arithmetic is the same trap the docs fell

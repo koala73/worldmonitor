@@ -98,6 +98,7 @@ describe('locale completeness', () => {
       const localeKeySet = new Set(flattenKeys(locale));
       const missing = enKeys.filter((key) => !localeKeySet.has(key));
 
+      // inventory-contract: locale-key-completeness; classification: parity; reason: missing-key parity is an exact completeness contract, not a catalog total
       assert.equal(
         missing.length,
         0,

@@ -19,6 +19,10 @@ RUN npm ci --ignore-scripts
 # Copy full source
 COPY . .
 
+# Generated inventory modules are intentionally untracked. Recreate them in
+# the clean image context before handlers import or bundle them.
+RUN node scripts/generate-inventory-facts.mjs
+
 # Compile TypeScript API handlers → self-contained ESM bundles
 # Output is api/**/*.js alongside the source .ts files
 RUN node docker/build-handlers.mjs

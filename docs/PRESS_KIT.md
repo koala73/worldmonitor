@@ -80,7 +80,7 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 - **NASA FIRMS**: Satellite fire detection (VIIRS thermal hotspots)
 - **Cloudflare Radar**: Internet outage detection
 - **Submarine cable landing points** and cable repair ship tracking
-- **111 airports** monitored for delays and NOTAM closures
+- **Global airports** monitored for delays and NOTAM closures through the live airport registry
 
 ### Markets & Finance
 

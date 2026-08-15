@@ -10,7 +10,8 @@ if [ "$VERCEL_GIT_COMMIT_REF" = "main" ] && [ -n "$VERCEL_GIT_PREVIOUS_SHA" ]; t
       'CHANGELOG.md' 'docs/snapshots/' \
       'scripts/build-crawlable-corpus.mjs' 'scripts/build-research-reports.mjs' \
       'scripts/build-sitemap.mjs' 'scripts/discover-content-corpus-pages.mjs' \
-      'scripts/crawlable-live-tools.mjs' 'scripts/vercel-ignore.sh' \
+      'scripts/crawlable-live-tools.mjs' 'scripts/generate-inventory-facts.mjs' \
+      'scripts/docs-stats.mjs' 'scripts/source-attribution.mjs' 'scripts/vercel-ignore.sh' \
       'package.json' 'package-lock.json' 'vite.config.ts' 'tsconfig.json' \
       'tsconfig.api.json' 'vercel.json' 'middleware.ts' 'index.html' | head -1)
     [ -z "$WEB_CHANGES" ] && echo "Skipping: no web-relevant changes on main" && exit 0
@@ -72,6 +73,9 @@ git diff --name-only "$COMPARE_SHA" HEAD -- \
   'scripts/build-sitemap.mjs' \
   'scripts/discover-content-corpus-pages.mjs' \
   'scripts/crawlable-live-tools.mjs' \
+  'scripts/generate-inventory-facts.mjs' \
+  'scripts/docs-stats.mjs' \
+  'scripts/source-attribution.mjs' \
   'scripts/vercel-ignore.sh' \
   'package.json' \
   'package-lock.json' \

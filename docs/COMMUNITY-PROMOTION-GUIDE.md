@@ -78,7 +78,7 @@ Registry-backed live news streams and webcams from geopolitical hotspots across 
 
 ### 9. Desktop Application (Free)
 
-Native app for macOS, Windows, and Linux via Tauri. API keys stored in OS keychain (not plaintext). Local Node.js sidecar runs all 60+ API handlers offline-capable. Run local LLMs for fully private, offline AI summaries.
+Native app for macOS, Windows, and Linux via Tauri. API keys stored in OS keychain (not plaintext). The local Node.js sidecar runs the supported API handler catalog offline-capable. Run local LLMs for fully private, offline AI summaries.
 
 **Show**: The download buttons on the site, or the desktop app running natively.
 

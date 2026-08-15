@@ -15,6 +15,7 @@ import {
   readdirSync,
   writeFileSync,
 } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
@@ -622,6 +623,24 @@ const PROVIDER_OVERRIDES = {
   },
 };
 
+// Provider display identities change rarely and affect attribution, catalog
+// grouping, and public provider totals. This review epoch makes any change to
+// a provider-bearing override a separate, explicit lifecycle event instead of
+// something `--write` can silently normalize into the manifest.
+export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
+  sha256: '921fc44f509b24f504a5d5c84abf0f5180d6ee1bbb93051a0c88f7c8ffd2b424',
+  reason: 'Baseline the reviewed provider identities already carried by the attribution manifest.',
+  reviewReference: 'PR #6736',
+});
+
+export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
+  const identities = Object.entries(providerOverrides || {})
+    .filter(([, override]) => typeof override?.provider === 'string')
+    .map(([host, override]) => [host, override.provider])
+    .sort(([left], [right]) => left.localeCompare(right));
+  return createHash('sha256').update(JSON.stringify(identities)).digest('hex');
+}
+
 const LOGICAL_ENTRIES = [
   {
     ...licensedPublisherFeed('Interfax'),
@@ -1103,6 +1122,7 @@ export function validateProviderIdentityGroups(
   manifest,
   groups = PROVIDER_IDENTITY_GROUPS,
   providerOverrides = PROVIDER_OVERRIDES,
+  providerIdentityReview = providerOverrides === PROVIDER_OVERRIDES ? PROVIDER_IDENTITY_REVIEW : null,
 ) {
   const errors = [];
   const entries = Array.isArray(manifest?.entries) ? manifest.entries : [];
@@ -1118,6 +1138,21 @@ export function validateProviderIdentityGroups(
     const activeHosts = activeHostsByProvider.get(entry.provider) || [];
     activeHosts.push(entry.host);
     activeHostsByProvider.set(entry.provider, activeHosts);
+  }
+  const requireDeclaredMembership = providerOverrides !== PROVIDER_OVERRIDES
+    || entries.some((entry) => providerOverrides?.[entry?.host]);
+
+  if (providerIdentityReview) {
+    if (typeof providerIdentityReview.reason !== 'string' || !providerIdentityReview.reason.trim()) {
+      errors.push('provider identity review needs a reason');
+    }
+    if (typeof providerIdentityReview.reviewReference !== 'string' || !providerIdentityReview.reviewReference.trim()) {
+      errors.push('provider identity review needs a review reference');
+    }
+    const digest = providerIdentityDigest(providerOverrides);
+    if (providerIdentityReview.sha256 !== digest) {
+      errors.push(`provider identity overrides changed without a reviewed lifecycle epoch; expected sha256 ${providerIdentityReview.sha256}, got ${digest}`);
+    }
   }
 
   for (const [groupId, group] of Object.entries(groups || {})) {
@@ -1155,15 +1190,13 @@ export function validateProviderIdentityGroups(
       }
     }
 
-    // Once any member is present, the ledger must preserve the complete group,
-    // including explicitly retired rows. This makes host retirement and
-    // provider regrouping separate review events.
+    // The ledger must preserve the complete group, including explicitly
+    // retired rows. This makes host retirement and provider regrouping
+    // separate review events and rejects deleting the whole group at once.
     const manifestHosts = [...(allHostsByProvider.get(group.provider) || [])].sort();
-    if (manifestHosts.length > 0) {
-      const declaredHosts = [...memberHosts].sort();
-      if (!isDeepStrictEqual(manifestHosts, declaredHosts)) {
-        errors.push(`${label} manifest membership is ${manifestHosts.join(', ') || '(empty)'}; expected ${declaredHosts.join(', ')}`);
-      }
+    const declaredHosts = [...memberHosts].sort();
+    if (requireDeclaredMembership && !isDeepStrictEqual(manifestHosts, declaredHosts)) {
+      errors.push(`${label} manifest membership is ${manifestHosts.join(', ') || '(empty)'}; expected ${declaredHosts.join(', ')}`);
     }
   }
 
