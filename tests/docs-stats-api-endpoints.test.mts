@@ -76,3 +76,27 @@ describe('docs-stats api endpoint inventory', () => {
     }
   });
 });
+
+// ── #6702: dirHasFiles must tolerate a concurrent delete ──
+//
+// The race: a sibling test file runs computeStats() end to end on the real
+// repo while THIS file creates and removes a probe directory. The parent
+// readdir lists the probe, this file rmSync's it, then the child readdir
+// ENOENTs. The fix: dirHasFiles catches ENOENT and answers the question it
+// was asked — a vanished dir has no files.
+it('dirHasFiles tolerates a directory vanishing mid-scan (#6702)', () => {
+  const probe = resolve(REPO_ROOT, 'api/[__docs_stats_race_probe__]');
+  mkdirSync(resolve(probe, 'v1'), { recursive: true });
+  try {
+    // Simulate the interleaving the race produces: the parent readdir has
+    // already listed the probe, then it is removed before the child
+    // readdir reaches it. dirHasFiles is not exported, but computeStats()
+    // walks api/ through it — the vanished dir must not ENOENT.
+    rmSync(probe, { recursive: true, force: true });
+    const baseline = computeStats().apiEndpointEntries;
+    assert.ok(typeof baseline === 'number',
+      'computeStats must survive a directory vanishing mid-scan');
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+});

@@ -716,8 +716,24 @@ function walk(rel, out = []) {
 // Local leftovers (empty `api/[domain]/v1` after a dirty checkout) are not
 // endpoints. Git cannot track empty trees, so a readdir count that includes
 // them writes a stats.json CI cannot reproduce.
+//
+// #6702: a directory that vanishes between the parent's readdir listing and
+// this recursive readdir is not an endpoint either — the question this
+// function answers is "does this dir have files", and a dir that no longer
+// exists has none. Without the catch, a test that creates and removes a
+// probe directory inside the real repo tree (docs-stats-api-endpoints)
+// races any sibling running computeStats() end to end on the same tree
+// (docs-stats-plan-layer-entitlement), and the ENOENT reddens the sibling
+// on an unrelated PR.
 function dirHasFiles(rel) {
-  for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+  let entries;
+  try {
+    entries = readdirSync(join(ROOT, rel), { withFileTypes: true });
+  } catch (e) {
+    if (e && e.code === 'ENOENT') return false;
+    throw e;
+  }
+  for (const e of entries) {
     if (e.name.startsWith('.')) continue;
     const child = `${rel}/${e.name}`;
     if (e.isFile()) return true;
