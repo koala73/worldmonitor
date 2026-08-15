@@ -419,3 +419,59 @@ describe('GivingPanel', () => {
     panel.destroy();
   });
 });
+
+// ── #6714: a locked panel's success render must still clear the error state ──
+//
+// The helpers bail on _locked before any WRITE (pinned above), but the
+// error-state clear now runs ahead of the bail: clearing the chip and the
+// backoff rung paints nothing, so it cannot reopen the paywall hole. Before
+// #6714 the bail came first, so a fail -> lock -> recover sequence left a red
+// header over the lock CTA and a stale retryAttempt rung after unlock.
+describe('locked-panel error-state clear (#6714)', () => {
+  it('clears the error chip and backoff rung even though the success write bails', async () => {
+    vi.spyOn(
+      TechEventsPanel.prototype as unknown as { fetchEvents(): Promise<void> },
+      'fetchEvents',
+    ).mockResolvedValue(undefined);
+
+    const panel = new TechEventsPanel('tech-events');
+    mount(panel);
+
+    // 1. Fail: paint the error state and climb the backoff ladder.
+    flags(panel).loading = false;
+    flags(panel).error = 'source down';
+    (panel as unknown as { render(): void }).render();
+    expect(countdownText(panel)).not.toBeNull('precondition: the error state is visible');
+    expect(internals(panel).retryAttempt).toBeGreaterThan(0, 'precondition: the backoff rung advanced');
+
+    // 2. Lock the panel (the fail -> lock half of the sequence).
+    panel.showLocked(['Premium feature']);
+    expect(lockedCta(panel)).not.toBeNull();
+
+    // 3. The source recovers and the success write lands — it must bail
+    //    (CTA survives) yet still clear the error state.
+    flags(panel).loading = false;
+    flags(panel).error = null;
+    (panel as unknown as { render(): void }).render();
+
+    expect(lockedCta(panel)).not.toBeNull('the write still bails on the lock');
+    expect(internals(panel).retryAttempt).toBe(0, 'the backoff rung is cleared, not stranded');
+    expect(countdownText(panel)).toBeNull('the error chip is cleared, not latched over the CTA');
+
+    panel.destroy();
+  });
+
+  it('isLocked is the base-class accessor, not a class-name proxy', () => {
+    // The accessor exists so positional writers (GdeltIntelPanel's summary
+    // hide) can honour the lock without mirroring private state through
+    // classList. Reading it before/after showLocked pins the contract.
+    const panel = new ServiceStatusPanel();
+    mount(panel);
+    expect((panel as unknown as { isLocked: boolean }).isLocked).toBe(false);
+    panel.showLocked(['Premium feature']);
+    expect((panel as unknown as { isLocked: boolean }).isLocked).toBe(true);
+    panel.unlockPanel();
+    expect((panel as unknown as { isLocked: boolean }).isLocked).toBe(false);
+    panel.destroy();
+  });
+});
