@@ -337,27 +337,33 @@ describe('crawlable content corpus deployment contracts', () => {
   it('builds Vercel for script-only inventory derivation changes', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'wm-vercel-ignore-'));
     try {
-      execFileSync('git', ['init', '-q'], { cwd: fixture });
-      execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: fixture });
-      execFileSync('git', ['config', 'user.name', 'Test'], { cwd: fixture });
+      const fixtureEnv = { ...process.env };
+      for (const key of ['GIT_COMMON_DIR', 'GIT_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_WORK_TREE']) {
+        delete fixtureEnv[key];
+      }
+      const git = (...args) => execFileSync('git', args, { cwd: fixture, env: fixtureEnv, encoding: 'utf8' });
+
+      git('init', '-q');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
       writeFileSync(join(fixture, 'README.md'), 'base\n');
-      execFileSync('git', ['add', 'README.md'], { cwd: fixture });
-      execFileSync('git', ['commit', '-qm', 'base'], { cwd: fixture });
+      git('add', 'README.md');
+      git('commit', '-qm', 'base');
 
       for (const path of [
         'scripts/generate-inventory-facts.mjs',
         'scripts/docs-stats.mjs',
         'scripts/source-attribution.mjs',
       ]) {
-        const previous = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: fixture, encoding: 'utf8' }).trim();
+        const previous = git('rev-parse', 'HEAD').trim();
         mkdirSync(dirname(join(fixture, path)), { recursive: true });
         writeFileSync(join(fixture, path), `${path}\n`);
-        execFileSync('git', ['add', path], { cwd: fixture });
-        execFileSync('git', ['commit', '-qm', path], { cwd: fixture });
+        git('add', path);
+        git('commit', '-qm', path);
         assert.throws(
           () => execFileSync('/bin/bash', [resolve(__dirname, '../scripts/vercel-ignore.sh')], {
             cwd: fixture,
-            env: { ...process.env, VERCEL_GIT_COMMIT_REF: 'main', VERCEL_GIT_PREVIOUS_SHA: previous },
+            env: { ...fixtureEnv, VERCEL_GIT_COMMIT_REF: 'main', VERCEL_GIT_PREVIOUS_SHA: previous },
           }),
           (error) => error?.status === 1,
           `${path} must request a Vercel build`,
