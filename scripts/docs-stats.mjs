@@ -1143,10 +1143,11 @@ function claims(s) {
   ];
 }
 
-const ENGLISH_VOLATILE_INVENTORY_CLAIM_RE = /\b(?:\d[\d,]*\+\s+(?:(?:MCP|other|live|curated|interactive|registered|observed|monitored|news|data source)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|credentials|API handlers|operations|functions|domains|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities)|\d[\d,]*\s+(?:(?:MCP|other|live|curated|interactive|registered|observed|monitored|news)\s+)+(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|operations|functions|domains|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities)|\d[\d,]*\s+(?:providers|airports|map layers|panels|locales|streams|connectors))\b/i;
-const CHINESE_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|[^A-Za-z0-9])\d[\d,]*\s*(?:(?:\+|多|以上)\s*)?(?:个|项)?\s*(?:(?:实时|精选|已注册|已观察|监控|受监控|独立|上游|生成的|Vercel|Edge|边缘|数据|新闻)\s*)*(?:数据源|信息源|新闻源|服务(?:领域)?|工具|提供商|操作|地图图层|数据图层|图层|面板|语言|区域设置|机场|数据中心|实体|边缘函数|函数)(?=$|[\s，。、；：）)】<])/i;
+const ENGLISH_VOLATILE_INVENTORY_CLAIM_RE = /\b\d[\d,]*(?:\+)?\s+(?:(?:MCP|OpenAPI|other|live|curated|interactive|registered|observed|monitored|news|data source|local|edge|installable|public)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|credentials|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities|agent skills|agent recipes|skills|recipes)\b/i;
+const CHINESE_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|[^A-Za-z0-9])\d[\d,]*\s*(?:(?:\+|多|以上)\s*)?(?:个|项)?\s*(?:(?:实时|精选|已注册|已观察|监控|受监控|独立|上游|生成的|可安装|智能体|Vercel|Edge|边缘|数据|新闻|API)\s*)*(?:数据源|信息源|新闻源|服务(?:领域)?|工具|技能|配方|提供商|处理器|操作|地图图层|数据图层|图层|面板|语言|区域设置|机场|数据中心|实体|边缘函数|函数)(?=$|[\s，。、；：）)】<])/i;
+const POSTFIX_VOLATILE_INVENTORY_CLAIM_RE = /(?:Vercel\s+)?Edge Functions\s*[（(]\s*\d[\d,]*\s*(?:\+|以上)\s*[）)]/i;
 export const VOLATILE_INVENTORY_CLAIM_RE = new RegExp(
-  `(?:${ENGLISH_VOLATILE_INVENTORY_CLAIM_RE.source}|${CHINESE_VOLATILE_INVENTORY_CLAIM_RE.source})`,
+  `(?:${ENGLISH_VOLATILE_INVENTORY_CLAIM_RE.source}|${CHINESE_VOLATILE_INVENTORY_CLAIM_RE.source}|${POSTFIX_VOLATILE_INVENTORY_CLAIM_RE.source})`,
   'i',
 );
 
@@ -1154,6 +1155,7 @@ const ACQUISITION_CLAIM_ROOTS = [
   'index.html',
   'README.md',
   'README.zh-CN.md',
+  'README.ja-JP.md',
   'server.json',
   'cli',
   'docs',
@@ -1171,11 +1173,13 @@ const ACQUISITION_CLAIM_EXCLUDES = [
   'docs/changelog.mdx',
   'docs/zh/changelog.mdx',
   'docs/Docs_To_Review/',
+  'docs/desktop-parity-matrix.md',
   'docs/generated/',
   'docs/internal/',
   'docs/perf/',
   'docs/plans/',
   'docs/research/',
+  'docs/railway-seed-consolidation-runbook.md',
   'docs/solutions/',
   'docs/source-attribution.mdx',
   'public/blog/',
@@ -1193,10 +1197,19 @@ export function validateVolatileInventoryClaims() {
     { path: 'docs/data-sources.mdx', text: /25 feed categories would have generated 25,000 edge invocations/ },
     { path: 'docs/tradingview-screener-integration.md', text: /41\/41 operations/ },
     { path: 'docs/api-versioning.mdx', text: /version 1 operation/ },
+    { path: 'docs/architecture.mdx', text: /protoc-gen-openapiv3.*OpenAPI 3\.1\.0 specs/ },
+    { path: 'docs/PRESS_KIT.md', text: /72 indicators, 21 active dimensions, 6 domains/ },
+    { path: 'docs/documentation.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
+    { path: 'docs/features.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
+    { path: 'docs/overview.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
+    { path: 'public/llms-full.txt', text: /72 indicators across 21 active dimensions, 6 domains/ },
+    { path: 'blog-site/src/content/blog/country-instability-index-methodology-explained.md', text: /72 indicators, 21 active dimensions, and 6 domains/ },
+    { path: 'blog-site/src/content/blog/country-resilience-index-methodology-explained.md', text: /72 indicators across 21 active dimensions and 6 domains/ },
+    { path: 'blog-site/src/content/blog/country-risk-monitoring-workflow-for-analysts.md', text: /72 indicators, 21 active dimensions, and 6 domains/ },
   ];
   const failures = [];
   const isCurrentClaimSurface = (path) => (
-    ['index.html', 'README.md', 'README.zh-CN.md', 'server.json', 'cli/README.md',
+    ['index.html', 'README.md', 'README.zh-CN.md', 'README.ja-JP.md', 'server.json', 'cli/README.md',
       'pro-test/index.html', 'pro-test/welcome.html', 'scripts/build-agent-skills-index.mjs'].includes(path)
     || (/^docs\/[^/]+\.(?:md|mdx)$/.test(path) && path !== 'docs/changelog.mdx' && path !== 'docs/source-attribution.mdx')
     || /^docs\/zh\/[^/]+\.mdx$/.test(path)

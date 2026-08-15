@@ -112,7 +112,7 @@ npm run dev:energy     # energy.worldmonitor.app
 | **桌面** | Tauri 2（Rust）与 Node.js sidecar |
 | **AI/ML** | Ollama / Groq / OpenRouter、Transformers.js（浏览器端） |
 | **API 契约** | Protocol Buffers 与 sebuf HTTP 注解 |
-| **部署** | Vercel Edge Functions（60+）、Railway 中继、Tauri、PWA |
+| **部署** | Vercel Edge Functions、Railway 中继、Tauri、PWA |
 | **缓存** | Redis（Upstash）、3 层缓存、CDN、service worker |
 
 完整技术栈详情请参阅**[架构文档](https://www.worldmonitor.app/docs/zh/architecture)**。

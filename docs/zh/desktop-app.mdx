@@ -7,7 +7,7 @@ description: "World Monitor Tauri 桌面应用架构深度详解：涵盖 Rust s
 
 ### 桌面应用（Tauri）
 
-- **原生桌面应用**，支持 macOS、Windows 和 Linux —— 打包完整的仪表盘，并附带一个本地 Node.js sidecar，在本地运行全部 60+ 个 API 处理器
+- **原生桌面应用**，支持 macOS、Windows 和 Linux —— 打包完整的仪表盘，并附带一个本地 Node.js sidecar，在本地运行 API 处理器
 - **OS 钥匙串集成** —— API 密钥存储在系统凭据管理器中（macOS Keychain、Windows Credential Manager），绝不以明文文件形式存储
 - **Token 鉴权的 sidecar** —— 一个唯一的会话 token 防止其他本地进程访问 localhost 上的 sidecar。每次启动时通过随机化哈希生成
 - **云端回退** —— 当本地 API 处理器失败或缺失时，请求会透明地回退到云端部署（worldmonitor.app），并剥离 Origin 头
@@ -37,7 +37,7 @@ description: "World Monitor Tauri 桌面应用架构深度详解：涵盖 Rust s
            │  ┌───────────────────────────────────┐
            │  │     Tauri Desktop (Rust + Node)   │
            │  │  OS keychain · Token-auth sidecar │
-           │  │  60+ local API handlers · br/gzip    │
+           │  │  local API handlers · br/gzip        │
            │  │  Cloud fallback · Traffic logging │
            │  └───────────────────────────────────┘
            │

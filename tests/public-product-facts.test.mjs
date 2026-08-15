@@ -280,8 +280,14 @@ describe('public product facts generation contract', () => {
       '500+ curated news feeds',
       '25+ other live services',
       '12+ data source credentials',
+      'MCP offers 52 tools',
+      'There are 445 API handlers',
+      '25 installable agent skills',
       '跨 30+ 实时服务',
       '500 多个实时数据源',
+      '25 个可安装智能体技能',
+      'Vercel Edge Functions（60+）',
+      'Vercel Edge Functions (60 以上)',
     ]) {
       assert.match(claim, VOLATILE_INVENTORY_CLAIM_RE, `modifier form must remain guarded: ${claim}`);
     }

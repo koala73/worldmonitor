@@ -75,7 +75,7 @@ World Monitor 发布了公开且可搜索的[数据源目录（英文）](https:
 | [官方 SDK](/zh/sdks) 与 [CLI](/zh/cli) | Python、Ruby、Go、JavaScript 应用或 Shell 自动化 | 对应语言运行时；数据调用需要 API 密钥。零依赖 SDK 和 npm CLI 支持托管及自托管基础 URL。 |
 | [通知渠道](/zh/api-notifications) | 向运营系统发送通用领域告警 | 已计费的 PRO 账户和 Clerk bearer token。支持的交付渠道包括签名 HTTPS Webhook、Telegram、Slack、Discord、电子邮件和 Web Push。可用性取决于事件领域和渠道配置。 |
 | [航运 Webhook](/zh/api-shipping-v2) | 咽喉要道中断通知 | 具备 PRO 权限的 API 密钥，以及通过文档所述 SSRF 检查的公开 HTTPS 回调。交付使用 HMAC-SHA256 签名，并采用至少一次语义。这些 Webhook 仅适用于特定领域，并非全平台通用事件总线。 |
-| [智能体发现](/zh/agent-discovery) | 自动化接入和智能体原生工作流 | 标准 `.well-known` 元数据、`llms.txt`、OpenAPI 资产、MCP 服务器卡，以及包含 25 个可安装智能体技能的目录。发现元数据公开；携带数据的操作仍需要相应凭据。 |
+| [智能体发现](/zh/agent-discovery) | 自动化接入和智能体原生工作流 | 标准 `.well-known` 元数据、`llms.txt`、OpenAPI 资产、MCP 服务器卡和可安装的智能体技能目录。发现元数据公开；携带数据的操作仍需要相应凭据。 |
 | 自托管部署 | 需要自行运行整个技术栈的团队 | Node.js 22+、Docker 或 Podman、Redis、部署密钥，并遵守 [AGPL 或单独商业许可](/zh/license)。请参阅[入门指南](/zh/getting-started)。 |
 
 浏览器内 API 调用请查看 [CORS 策略](/zh/cors)。生成客户端请使用机器可读合同：[OpenAPI 规范](https://www.worldmonitor.app/openapi.yaml)。

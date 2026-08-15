@@ -99,9 +99,13 @@ describe('agent readiness: agent-skills index', () => {
     const nav = JSON.parse(readFileSync(DOCS_NAV_PATH, 'utf-8'));
 
     assert.match(page, /^title: "Agent Skills Catalog"$/m);
-    assert.ok(
-      page.includes(`${index.skills.length} World Monitor agent skills`),
-      'docs page must state the current catalog size',
+    const documentedSkills = [...page.matchAll(/^\| `([^`]+)` \|/gm)]
+      .map((match) => match[1])
+      .sort();
+    assert.deepEqual(
+      documentedSkills,
+      index.skills.map((skill) => skill.name).sort(),
+      'docs page must list the exact machine-readable skill set',
     );
     assert.ok(
       page.includes('https://worldmonitor.app/.well-known/agent-skills/index.json'),
