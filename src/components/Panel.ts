@@ -160,6 +160,18 @@ export class Panel {
   private retryCallback: (() => void) | null = null;
   private retryCountdownTimer: ReturnType<typeof setInterval> | null = null;
   private retryAttempt = 0;
+  // #6679: the exponential-backoff rung. Protected access so a subclass can
+  // preserve it across a `setContentNodes` write when the render is NOT a
+  // proven recovery — setContentNodes always does the full `clearErrorState()`
+  // (the #6557 latch fix), which is right for a fresh successful fetch but
+  // wrongly credits a cached-topic switch or a breaker-swallowed empty list
+  // with a recovery the source never made.
+  protected get retryRung(): number {
+    return this.retryAttempt;
+  }
+  protected set retryRung(value: number) {
+    this.retryAttempt = Math.max(0, Math.round(value));
+  }
   private _fetching = false;
   private _locked = false;
   // Last reason rendered by showGatedCta, so repeat gating passes with an
@@ -946,6 +958,22 @@ export class Panel {
     this.setErrorState(false);
     this.clearRetryCountdown();
     this.retryAttempt = 0;
+  }
+
+  /**
+   * Chip + countdown only; leaves `retryAttempt` alone (#6679).
+   *
+   * For renders that are NOT a proven recovery: a cached-topic switch, or an
+   * empty list a circuit breaker resolved to after swallowing a failure. Those
+   * renders have no evidence the failing source recovered, so crediting them
+   * with a full `clearErrorState()` drops the exponential-backoff ladder back
+   * to its floor and pins a failing source at the minimum retry interval.
+   * `clearRetryCountdown` is private, so subclasses cannot compose this from
+   * the two halves — the base class has to expose the narrow form itself.
+   */
+  public clearErrorUi(): void {
+    this.setErrorState(false);
+    this.clearRetryCountdown();
   }
 
   public showLocked(features: string[] = []): void {

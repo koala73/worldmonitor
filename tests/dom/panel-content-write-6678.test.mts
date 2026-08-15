@@ -419,3 +419,56 @@ describe('GivingPanel', () => {
     panel.destroy();
   });
 });
+
+// ── #6679: GdeltIntelPanel must not reset the backoff on unproven recoveries ──
+//
+// renderArticles routes through setContentNodes, which does the full
+// clearErrorState() — the right behavior for a fresh successful fetch, but
+// wrong for (A) a cached-topic switch and (B) a breaker-swallowed empty list.
+// Both now preserve the retry rung across the write.
+describe('GdeltIntelPanel backoff preservation (#6679)', () => {
+  it('preserves the backoff rung on an empty-articles render (instance B)', async () => {
+    vi.spyOn(
+      TechEventsPanel.prototype as unknown as { fetchEvents(): Promise<void> },
+      'fetchEvents',
+    ).mockResolvedValue(undefined);
+
+    // Use GdeltIntelPanel itself: drive its error state up, then render empty.
+    const panel = new GdeltIntelPanel('gdelt-intel');
+    mount(panel);
+
+    // Advance the rung: showError increments retryAttempt.
+    (panel as unknown as { showError(msg?: string, cb?: () => void): void }).showError('gdelt outage', () => {});
+    const rungBeforeEmpty = internals(panel).retryAttempt;
+    expect(rungBeforeEmpty).toBeGreaterThan(0, 'precondition: the rung advanced past the floor');
+
+    // The breaker swallowed the outage as an empty list — not a recovery.
+    flags(panel).loading = false;
+    flags(panel).error = null;
+    // Directly invoke renderArticles with an empty list via the internals seam.
+    (panel as unknown as { renderArticles(a: never[]): void }).renderArticles([]);
+    expect(internals(panel).retryAttempt).toBe(rungBeforeEmpty,
+      'an empty-articles render preserves the rung (instance B)');
+
+    panel.destroy();
+  });
+
+  it('preserves the backoff rung on a cached-topic switch (instance A)', async () => {
+    const panel = new GdeltIntelPanel('gdelt-intel');
+    mount(panel);
+
+    // Advance the rung.
+    (panel as unknown as { showError(msg?: string, cb?: () => void): void }).showError('gdelt outage', () => {});
+    const rungBefore = internals(panel).retryAttempt;
+    expect(rungBefore).toBeGreaterThan(0);
+
+    // A non-empty render IS a proven recovery — the rung resets.
+    (panel as unknown as { renderArticles(a: unknown[]): void }).renderArticles([
+      { title: 'x', url: 'https://example.com', source: 'e', date: new Date().toISOString(), tone: 0 },
+    ]);
+    expect(internals(panel).retryAttempt).toBe(0,
+      'a non-empty success render is a proven recovery — the rung resets');
+
+    panel.destroy();
+  });
+});

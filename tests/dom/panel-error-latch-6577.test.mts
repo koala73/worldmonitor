@@ -293,7 +293,15 @@ describe('GdeltIntelPanel', () => {
         await (panel as unknown as { loadActiveTopic(): Promise<void> }).loadActiveTopic();
       },
       () => {
-        (panel as unknown as { renderArticles(a: unknown[]): void }).renderArticles([]);
+        // #6679: an empty-articles render is not a proven recovery (the
+        // breaker resolves GDELT outages to []), so the backoff must survive
+        // it — the rung-preservation regression lives in the #6679 tests in
+        // panel-content-write-6678.test.mts. Here the recovery write uses a
+        // NON-empty list, which is the only shape that legitimately resets
+        // the ladder.
+        (panel as unknown as { renderArticles(a: unknown[]): void }).renderArticles([
+          { title: 'recovered', url: 'https://example.com', source: 'ex', date: new Date().toISOString(), tone: 0 },
+        ]);
       },
     );
 
