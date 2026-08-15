@@ -115,11 +115,11 @@ paths:
                                 "dataAvailable": true
                                 "fetchedAt": 1717200000000
                                 "fireDetections":
-                                    - "brightness": 1.5
+                                    - "agencyCode": "example"
+                                      "agencyFireId": "example-id"
+                                      "brightness": 1.5
                                       "confidence": "FIRE_CONFIDENCE_LOW"
                                       "dayNight": "example"
-                                      "detectedAt": 1717200000000
-                                      "frp": 1.5
                                       "id": "example-id"
                                 "pagination":
                                     "nextCursor": "next-page-token"
@@ -470,6 +470,35 @@ components:
                     description: |-
                         Whether the thermal signature suggests a possible explosion rather than a fire
                          (FRP > 80 MW and brightness > 380 K).
+                source:
+                    type: string
+                    description: |-
+                        Producer of the row: "firms" for satellite detections, "cwfis" / "bcws" for
+                         agency-reported fires. Absent means FIRMS, for rows written before this field.
+                kind:
+                    type: string
+                    description: |-
+                        Agency fire classification, e.g. "wildfire", "prescribed", "outOfControl".
+                         Empty for satellite detections, which classify nothing.
+                emergency:
+                    type: boolean
+                    description: |-
+                        Whether the row should page. Prescribed burns are reported fires but are
+                         NOT emergencies, and must not be treated as such by a consumer.
+                agencyFireId:
+                    type: string
+                    description: Agency's own identifier for the fire, stable across ticks. Empty for FIRMS.
+                agencyCode:
+                    type: string
+                    description: Reporting agency code (e.g. "BC", "AB", "ON"). Empty for FIRMS.
+                fireSize:
+                    type: number
+                    format: double
+                    description: |-
+                        Reported fire size in HECTARES. 0 when unknown or not applicable — FIRMS
+                         detections report radiative power, not area. Named to match the key the
+                         seeder actually emits: a proto field the payload never populates is worse
+                         than no field, because consumers see it in the schema and get nothing.
             required:
                 - id
             description: FireDetection represents a satellite-detected active fire from NASA FIRMS.
