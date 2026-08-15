@@ -41,8 +41,8 @@ function gitRevision(revision) {
   return result.stdout.trim();
 }
 
-function fakeRailwayCli({ repoRoot: fixtureRoot, headSha, previousSha }) {
-  const { readFileSync: readFixture } = require('node:fs');
+function fakeRailwayCli({ repoRoot: fixtureRoot, headSha, previousSha, queryLog }) {
+  const { appendFileSync, readFileSync: readFixture } = require('node:fs');
 
   const repository = 'koala73/worldmonitor';
   const manifest = JSON.parse(readFixture(`${fixtureRoot}/scripts/railway-native-autodeploy-fleet.json`, 'utf8'));
@@ -128,6 +128,7 @@ function fakeRailwayCli({ repoRoot: fixtureRoot, headSha, previousSha }) {
     const query = args[1] ?? '';
     const variables = JSON.parse(argument('--variables'));
     if (query.includes('ViewerDeploymentConfig')) {
+      if (queryLog) appendFileSync(queryLog, 'ViewerDeploymentConfig\n');
       const service = servicesById.get(variables.serviceId);
       if (!service) {
         fail(`unknown service ${variables.serviceId}`);
@@ -153,6 +154,7 @@ function fakeRailwayCli({ repoRoot: fixtureRoot, headSha, previousSha }) {
         });
       }
     } else if (query.includes('FleetDeployments')) {
+      if (queryLog) appendFileSync(queryLog, 'FleetDeployments\n');
       writeJson({
         data: {
           deployments: {
@@ -190,14 +192,15 @@ function createProbeFixture() {
   const startedAtMs = Date.now();
   const fakeRailway = join(directory, 'railway');
   const fakeDate = join(directory, 'date');
+  const queryLog = join(directory, 'query-log');
   writeFileSync(
     fakeRailway,
-    `#!/usr/bin/env node\nconst fixture = ${JSON.stringify({ repoRoot, headSha, previousSha })};\n(${fakeRailwayCli.toString()})(fixture);\n`,
+    `#!/usr/bin/env node\nconst fixture = ${JSON.stringify({ repoRoot, headSha, previousSha, queryLog })};\n(${fakeRailwayCli.toString()})(fixture);\n`,
   );
   writeFileSync(fakeDate, `#!/bin/sh\nprintf '%s\\n' '${startedAtMs}'\n`);
   chmodSync(fakeRailway, 0o755);
   chmodSync(fakeDate, 0o755);
-  return { directory, headSha, startedAtMs };
+  return { directory, headSha, queryLog, startedAtMs };
 }
 
 function executeWorkflowShell(run, fixture, {
@@ -219,35 +222,33 @@ function executeWorkflowShell(run, fixture, {
       RAILWAY_API_TOKEN: mode,
       RAILWAY_PROJECT_ID: 'project-1',
       RAILWAY_COMPARISON_SHA: fixture.headSha,
-      RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS: String(startedAtMs),
       RAILWAY_DRIFT_JOB_STARTED_AT_MS: String(startedAtMs),
     },
   });
 }
 
-describe('Railway Deploy Drift workflow', () => {
-  it('is one hourly and manually dispatchable read-only workflow', () => {
-    assert.equal(workflow.name, 'Railway Deploy Drift');
-    assert.deepEqual(workflow.on.schedule, [{ cron: '17 * * * *' }]);
+describe('Railway Native Deploy Health workflow', () => {
+  it('is one six-hourly and manually dispatchable read-only workflow', () => {
+    assert.equal(workflow.name, 'Railway Native Deploy Health');
+    assert.deepEqual(workflow.on.schedule, [{ cron: '17 */6 * * *' }]);
     assert.ok(Object.hasOwn(workflow.on, 'workflow_dispatch'));
     assert.deepEqual(workflow.permissions, { contents: 'read' });
     assert.deepEqual(workflow.concurrency, {
-      group: 'railway-deploy-drift-${{ github.ref }}',
+      group: 'railway-native-deploy-health-${{ github.ref }}',
       'cancel-in-progress': true,
     });
   });
 
-  it('publishes independent config and deployment conclusions on main only', () => {
-    assert.deepEqual(Object.keys(workflow.jobs).sort(), ['config-audit', 'deploy-drift']);
-    for (const job of Object.values(workflow.jobs)) {
-      assert.equal(job.if, MAIN_GUARD);
-      assert.equal(job.needs, undefined);
-      assert.equal(job['continue-on-error'], undefined);
-      assert.deepEqual(job.environment, {
-        name: 'ingestion-acceptance-production',
-        deployment: false,
-      });
-    }
+  it('publishes one combined configuration and deployment conclusion on main only', () => {
+    assert.deepEqual(Object.keys(workflow.jobs), ['monitor']);
+    const job = workflow.jobs.monitor;
+    assert.equal(job.if, MAIN_GUARD);
+    assert.equal(job.needs, undefined);
+    assert.equal(job['continue-on-error'], undefined);
+    assert.deepEqual(job.environment, {
+      name: 'ingestion-acceptance-production',
+      deployment: false,
+    });
   });
 
   it('uses only the dedicated Viewer API token and never a mutation surface', () => {
@@ -270,86 +271,74 @@ describe('Railway Deploy Drift workflow', () => {
     assert.doesNotMatch(source, /gh\s+(?:workflow\s+run|api[^\n]*dispatch)|repository_dispatch|retry|recovery/i);
   });
 
-  it('runs the Viewer-compatible deployment projection without variable access', () => {
-    const audit = stepNamed(workflow.jobs['config-audit'], 'Audit Railway deployment configuration');
-    assert.match(
-      audit.run,
-      /node scripts\/audit-railway-watch-paths\.mjs --environment production --deployment-only --concurrency 4 --json/,
+  it('runs one Viewer-compatible combined probe without variable access', () => {
+    const check = stepNamed(
+      workflow.jobs.monitor,
+      'Check Railway deployment configuration and drift',
     );
-    assert.doesNotMatch(audit.run, /variable|environment config|--apply/i);
+    assert.match(
+      check.run,
+      /node scripts\/check-railway-deploy-drift\.mjs --head "\$RAILWAY_COMPARISON_SHA" --concurrency 2 --audit-deployment-config/,
+    );
+    assert.doesNotMatch(check.run, /variable|environment config|--apply/i);
+    assert.doesNotMatch(source, /audit-railway-watch-paths\.mjs/);
   });
 
-  it('starts and executes both run budgets before every prerequisite', () => {
+  it('starts and executes the run budget before every prerequisite', () => {
     const fixture = createProbeFixture();
     try {
-      for (const { jobName, stepName, variable } of [
-        {
-          jobName: 'config-audit',
-          stepName: 'Start config-audit run budget',
-          variable: 'RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS',
-        },
-        {
-          jobName: 'deploy-drift',
-          stepName: 'Start deploy-drift run budget',
-          variable: 'RAILWAY_DRIFT_JOB_STARTED_AT_MS',
-        },
-      ]) {
-        const job = workflow.jobs[jobName];
-        const budget = stepNamed(job, stepName);
-        const githubEnv = join(fixture.directory, `budget-env-${jobName}`);
-        assert.equal(steps(job).indexOf(budget), 0);
-        const result = executeWorkflowShell(budget.run, fixture, { githubEnv });
-        assert.equal(result.status, 0, result.stderr);
-        assert.equal(
-          readFileSync(githubEnv, 'utf8'),
-          `${variable}=${fixture.startedAtMs}\n`,
-        );
-      }
+      const job = workflow.jobs.monitor;
+      const budget = stepNamed(job, 'Start deploy-health run budget');
+      const githubEnv = join(fixture.directory, 'budget-env-monitor');
+      assert.equal(steps(job).indexOf(budget), 0);
+      const result = executeWorkflowShell(budget.run, fixture, { githubEnv });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(
+        readFileSync(githubEnv, 'utf8'),
+        `RAILWAY_DRIFT_JOB_STARTED_AT_MS=${fixture.startedAtMs}\n`,
+      );
     } finally {
       rmSync(fixture.directory, { recursive: true, force: true });
     }
   });
 
-  it('executes both production probes and preserves their fail-closed verdicts', () => {
-    const audit = stepNamed(
-      workflow.jobs['config-audit'],
-      'Audit Railway deployment configuration',
-    );
-    const drift = stepNamed(
-      workflow.jobs['deploy-drift'],
-      'Check Railway deploy drift against main',
+  it('reuses one Viewer projection and preserves both fail-closed verdicts', () => {
+    const check = stepNamed(
+      workflow.jobs.monitor,
+      'Check Railway deployment configuration and drift',
     );
     const fixture = createProbeFixture();
 
     try {
-      const healthyAudit = executeWorkflowShell(audit.run, fixture);
-      assert.equal(
-        healthyAudit.status,
-        0,
-        `healthy config audit failed\nstdout:\n${healthyAudit.stdout}\nstderr:\n${healthyAudit.stderr}`,
-      );
-      assert.match(healthyAudit.stdout, /"drift": \[\]/);
-
-      const healthyDrift = executeWorkflowShell(drift.run, fixture);
+      writeFileSync(fixture.queryLog, '');
+      const healthyDrift = executeWorkflowShell(check.run, fixture);
       assert.equal(
         healthyDrift.status,
         0,
         `healthy deploy drift failed\nstdout:\n${healthyDrift.stdout}\nstderr:\n${healthyDrift.stderr}`,
       );
+      assert.match(healthyDrift.stdout, /Railway operational-config audit passed/);
       assert.match(healthyDrift.stdout, /Every service this repository deploys is running/);
       assert.match(
         healthyDrift.stderr,
         /Read 80 service histories in 1 fleet page\(s\) \(80 records\), 0 direct fallback\(s\)\./,
       );
+      const queries = readFileSync(fixture.queryLog, 'utf8').trim().split('\n');
+      assert.equal(
+        queries.filter((query) => query === 'ViewerDeploymentConfig').length,
+        80,
+        'the config audit must reuse the deployment projection instead of reading 80 services twice',
+      );
+      assert.equal(queries.filter((query) => query === 'FleetDeployments').length, 1);
 
-      const projectedConfigDrift = executeWorkflowShell(audit.run, fixture, {
+      const projectedConfigDrift = executeWorkflowShell(check.run, fixture, {
         mode: 'config-drift',
       });
       assert.notEqual(projectedConfigDrift.status, 0);
-      assert.match(projectedConfigDrift.stdout, /"sourceBranch"/);
-      assert.match(projectedConfigDrift.stdout, /"actual": "feature\/drift"/);
+      assert.match(projectedConfigDrift.stderr, /source branch "feature\/drift" != "main"/);
+      assert.match(projectedConfigDrift.stdout, /Every service this repository deploys is running/);
 
-      const deploymentDrift = executeWorkflowShell(drift.run, fixture, {
+      const deploymentDrift = executeWorkflowShell(check.run, fixture, {
         mode: 'deploy-drift',
       });
       assert.notEqual(deploymentDrift.status, 0);
@@ -360,15 +349,7 @@ describe('Railway Deploy Drift workflow', () => {
   });
 
   it('freezes checkout head, fetches ancestry fatally, and passes the immutable target', () => {
-    const configCheckout = steps(workflow.jobs['config-audit'])
-      .find((step) => step.uses?.startsWith('actions/checkout@'));
-    assert.ok(configCheckout);
-    assert.equal(configCheckout.uses, 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10');
-    assert.equal(configCheckout.with?.['fetch-depth'], 1);
-    assert.equal(configCheckout.with?.filter, undefined);
-    assert.equal(configCheckout.with?.ref, undefined);
-
-    const drift = workflow.jobs['deploy-drift'];
+    const drift = workflow.jobs.monitor;
     const driftCheckout = steps(drift).find((step) => step.uses?.startsWith('actions/checkout@'));
     assert.ok(driftCheckout);
     assert.equal(driftCheckout.uses, 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10');
@@ -376,7 +357,7 @@ describe('Railway Deploy Drift workflow', () => {
     assert.equal(driftCheckout.with?.filter, 'blob:none');
     assert.equal(driftCheckout.with?.ref, undefined);
     const freeze = stepNamed(drift, 'Freeze comparison head and fetch main ancestry');
-    const check = stepNamed(drift, 'Check Railway deploy drift against main');
+    const check = stepNamed(drift, 'Check Railway deployment configuration and drift');
     assert.ok(steps(drift).indexOf(freeze) < steps(drift).indexOf(check));
     assert.match(freeze.run, /git rev-parse HEAD/);
     assert.match(freeze.run, /GITHUB_SHA/);
@@ -388,13 +369,14 @@ describe('Railway Deploy Drift workflow', () => {
     assert.doesNotMatch(freeze.run, /git fetch[^\n]*--depth|git fetch[^\n]*\|\|/);
     assert.doesNotMatch(freeze.run, /git checkout|git switch|git reset/);
     assert.match(check.run, /--head "\$RAILWAY_COMPARISON_SHA"/);
-    assert.match(check.run, /--concurrency 4/);
+    assert.match(check.run, /--concurrency 2/);
+    assert.match(check.run, /--audit-deployment-config/);
     assert.doesNotMatch(check.run, /\|\||continue-on-error/);
   });
 
   it('executes the frozen-head shell fail-closed on a mismatch or fetch failure', () => {
     const freeze = stepNamed(
-      workflow.jobs['deploy-drift'],
+      workflow.jobs.monitor,
       'Freeze comparison head and fetch main ancestry',
     );
     const directory = mkdtempSync(join(tmpdir(), 'railway-drift-freeze-'));

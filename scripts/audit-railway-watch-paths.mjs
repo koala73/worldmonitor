@@ -506,9 +506,9 @@ export async function waitForRailwayServiceConfigConvergence(
   return remaining;
 }
 
-function printAudit(drift) {
+export function printAudit(drift) {
   if (drift.length === 0) {
-    console.log('Railway operational-config audit passed: registry-managed Dockerfile paths, cron schedules, and watch paths match production, and every other live seeder watches broadly enough not to miss a helper change.');
+    console.log('Railway operational-config audit passed: live Railway configuration matches repository policy.');
     return;
   }
 
