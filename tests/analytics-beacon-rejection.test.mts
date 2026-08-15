@@ -1449,12 +1449,15 @@ describe('collector latch release is module-owned (#6288)', () => {
     const onUnhandled = (reason: unknown) => { leaked.push(reason); };
     process.on('unhandledRejection', onUnhandled);
     let settleLate: ((response: Response) => void) | undefined;
-    let failLate: ((error: unknown) => void) | undefined;
+    let failSecond: ((error: unknown) => void) | undefined;
     let calls = 0;
     window.fetch = (() => {
       calls += 1;
       if (calls === 1) {
-        return new Promise<Response>((resolve, reject) => { settleLate = resolve; failLate = reject; });
+        return new Promise<Response>((resolve) => { settleLate = resolve; });
+      }
+      if (calls === 2) {
+        return new Promise<Response>((_resolve, reject) => { failSecond = reject; });
       }
       return Promise.resolve(collectorResponse(true, 200));
     }) as typeof window.fetch;
@@ -1486,7 +1489,14 @@ describe('collector latch release is module-owned (#6288)', () => {
       const secondAbandoned = window.fetch(UMAMI_SEND_URL, collectorEventInit());
       void secondAbandoned.catch(() => {});
       await drainPromiseHandlers();
-      failLate?.(new TypeError('Failed to fetch'));
+
+      const secondLatchDeadline = findLatchDeadline(fakeTimers.timers);
+      assert.ok(secondLatchDeadline, 'the second request must still be outstanding at its deadline');
+      secondLatchDeadline.callback();
+      await assert.rejects(secondAbandoned, { name: 'TimeoutError' });
+
+      assert.ok(failSecond, 'the abandoned second transport must still be rejectable');
+      failSecond(new TypeError('Failed to fetch'));
       await drainPromiseHandlers();
       await new Promise((resolve) => globalThis.queueMicrotask(() => resolve(null)));
 
