@@ -321,13 +321,14 @@ describe('Railway Native Deploy Health workflow', () => {
       assert.match(healthyDrift.stdout, /Every service this repository deploys is running/);
       assert.match(
         healthyDrift.stderr,
-        /Read 80 service histories in 1 fleet page\(s\) \(80 records\), 0 direct fallback\(s\)\./,
+        // 81 since seed-bundle-canada was provisioned; still one fleet page.
+        /Read 81 service histories in 1 fleet page\(s\) \(81 records\), 0 direct fallback\(s\)\./,
       );
       const queries = readFileSync(fixture.queryLog, 'utf8').trim().split('\n');
       assert.equal(
         queries.filter((query) => query === 'ViewerDeploymentConfig').length,
-        80,
-        'the config audit must reuse the deployment projection instead of reading 80 services twice',
+        81,
+        'the config audit must reuse the deployment projection instead of reading 81 services twice',
       );
       assert.equal(queries.filter((query) => query === 'FleetDeployments').length, 1);
 

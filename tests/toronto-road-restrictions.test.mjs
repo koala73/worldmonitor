@@ -351,20 +351,24 @@ test("bootstrap keeps Ontario and Alberta fast but fetches Toronto roads on dema
   assert.match(onDemand, /'bcOpen511'/);
 });
 
-test("seed-freshness-baseline acknowledges the Toronto roads cutover", () => {
+test("Toronto roads is live, so it carries no freshness acknowledgement", () => {
+  // Was: pinned the expiring-ack window for a probe that had never published.
+  // The bundle is provisioned and torontoRoads reads healthy, so the ack was
+  // removed as SATISFIED rather than re-anchored. Asserting its absence keeps
+  // it from being reinstated — a suppression outliving its problem would
+  // silently absorb a future Toronto outage.
   const baseline = JSON.parse(readFileSync(join(root, "scripts/seed-freshness-baseline.json"), "utf8"));
   const row = baseline.acknowledged.find((a) => a.issue === 6609 || a.name === "torontoRoads");
-  assert.ok(row);
-  assert.equal(row.status, "EMPTY");
-  assert.equal(row.issue, 6609);
-  assert.equal(row.cutover.probeKey, "seed-meta:infra:toronto-roads");
-  // The window has to outlast the member's own gate. Toronto runs on
-  // intervalMs 2h, so the first publish can land up to two hours after the
-  // bundle is provisioned — an expiry pinned to the provisioning instant would
-  // red the monitor while the seeder is working correctly. activatedAt moved
-  // with it to stay inside the 24h MAX_ROLLOUT_WINDOW_MS cap.
-  assert.equal(row.expiresAt, "2026-08-16T22:15:00.000Z");
-  assert.equal(row.cutover.firstScheduledRunAt, "2026-08-16T22:15:00.000Z");
-  const gapMs = Date.parse(row.cutover.firstScheduledRunAt) - Date.parse(row.cutover.activatedAt);
-  assert.ok(gapMs > 0 && gapMs < 24 * 60 * 60 * 1000, "rollout window must stay under the 24h cap");
+  assert.equal(row, undefined, "torontoRoads publishes now; it must not be acknowledged as known-empty");
+
+  // The staleness budget must still cover the 2h bundle cadence. This is the
+  // pairing that broke once already: the interval moved to 2h while the probe
+  // kept a 45min budget, so a healthy publisher read STALE_SEED permanently.
+  const health = readFileSync(join(root, "api/health.js"), "utf8");
+  const probe = /torontoRoads:\s*\{[\s\S]{0,200}?maxStaleMin:\s*(\d+)/.exec(health);
+  assert.ok(probe, "torontoRoads must still have a health probe");
+  assert.ok(
+    Number(probe[1]) * 60_000 >= 2 * 60 * 60 * 1000,
+    `maxStaleMin ${probe[1]}min must cover the 2h seed-bundle-canada interval`,
+  );
 });
