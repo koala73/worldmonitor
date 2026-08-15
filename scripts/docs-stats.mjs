@@ -10,14 +10,13 @@
  * not hand-edited acceptance criteria. CLAIMS below retains only fixed
  * compatibility contracts that are behaviorally exact.
  *
- * Stats are parsed from source text without executing TypeScript or loading its
- * import graph, so this runs anywhere the repository's build dependencies are
- * installed, including bare CI.
+ * Stats are parsed from source text without executing TypeScript, loading its
+ * import graph, or requiring installed packages. This keeps the generator
+ * usable in dependency-free CI and container build stages.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
-import ts from 'typescript';
 import { buildSourceAttributionStats } from './source-attribution.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -65,82 +64,138 @@ function findTopLevelObjectBlocks(source) {
   });
 }
 
+function stripCommentsAndTemplates(source) {
+  let output = '';
+  let state = 'code';
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    const next = source[index + 1];
+    if (state === 'code') {
+      if (character === '/' && next === '/') {
+        output += '  ';
+        state = 'line-comment';
+        index += 1;
+      } else if (character === '/' && next === '*') {
+        output += '  ';
+        state = 'block-comment';
+        index += 1;
+      } else if (character === '`') {
+        output += ' ';
+        state = 'template';
+      } else {
+        output += character;
+        if (character === "'") state = 'single-quote';
+        if (character === '"') state = 'double-quote';
+      }
+      continue;
+    }
+    if (state === 'line-comment') {
+      output += character === '\n' ? '\n' : ' ';
+      if (character === '\n') state = 'code';
+      continue;
+    }
+    if (state === 'block-comment') {
+      if (character === '*' && next === '/') {
+        output += '  ';
+        state = 'code';
+        index += 1;
+      } else {
+        output += character === '\n' ? '\n' : ' ';
+      }
+      continue;
+    }
+    if (state === 'template') {
+      output += character === '\n' ? '\n' : ' ';
+      if (character === '\\') {
+        if (next === '\n') output += '\n';
+        else output += ' ';
+        index += 1;
+      } else if (character === '`') {
+        state = 'code';
+      }
+      continue;
+    }
+    output += character;
+    if (character === '\\') {
+      output += next ?? '';
+      index += 1;
+    } else if (
+      (state === 'single-quote' && character === "'")
+      || (state === 'double-quote' && character === '"')
+    ) {
+      state = 'code';
+    }
+  }
+  if (state === 'block-comment' || state === 'template' || state.endsWith('quote')) {
+    throw new Error(`docs-stats: unterminated ${state} in LAYER_REGISTRY`);
+  }
+  return output;
+}
+
+function readCallArguments(source, argumentsStart) {
+  const argumentsList = [];
+  let current = '';
+  let quote = null;
+  let depth = 0;
+  for (let index = argumentsStart; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote) {
+      current += character;
+      if (character === '\\') {
+        current += source[index + 1] ?? '';
+        index += 1;
+      } else if (character === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      current += character;
+    } else if ('([{'.includes(character)) {
+      depth += 1;
+      current += character;
+    } else if (')]}'.includes(character)) {
+      if (character === ')' && depth === 0) {
+        argumentsList.push(current.trim());
+        return argumentsList;
+      }
+      depth -= 1;
+      if (depth < 0) throw new Error('docs-stats: unbalanced LAYER_REGISTRY def() call');
+      current += character;
+    } else if (character === ',' && depth === 0) {
+      argumentsList.push(current.trim());
+      current = '';
+    } else {
+      current += character;
+    }
+  }
+  throw new Error('docs-stats: unterminated LAYER_REGISTRY def() call');
+}
+
 function parseLayerRegistry(source) {
   const start = source.indexOf('export const LAYER_REGISTRY');
   const end = source.indexOf('export const V1_LAYER_EXPLANATION_KEYS', start);
   if (start === -1 || end === -1) {
     throw new Error('docs-stats: could not find the complete LAYER_REGISTRY block');
   }
-  const sourceFile = ts.createSourceFile(
-    'map-layer-definitions.ts',
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
-  if (sourceFile.parseDiagnostics.length > 0) {
-    const messages = sourceFile.parseDiagnostics
-      .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, ' '))
-      .join('; ');
-    throw new Error(`docs-stats: could not parse LAYER_REGISTRY source (${messages})`);
-  }
-
-  let registryInitializer;
-  for (const statement of sourceFile.statements) {
-    if (!ts.isVariableStatement(statement)) continue;
-    const declaration = statement.declarationList.declarations.find(
-      (candidate) => ts.isIdentifier(candidate.name) && candidate.name.text === 'LAYER_REGISTRY',
-    );
-    if (declaration) {
-      registryInitializer = declaration.initializer;
-      break;
-    }
-  }
-  while (
-    registryInitializer
-    && (ts.isAsExpression(registryInitializer)
-      || ts.isSatisfiesExpression(registryInitializer)
-      || ts.isParenthesizedExpression(registryInitializer))
-  ) {
-    registryInitializer = registryInitializer.expression;
-  }
-  if (!registryInitializer || !ts.isObjectLiteralExpression(registryInitializer)) {
-    throw new Error('docs-stats: LAYER_REGISTRY must be an object literal');
-  }
-
-  const declaredKeys = [];
+  const registryBlock = stripCommentsAndTemplates(source.slice(start, end));
+  const declaredKeys = [...registryBlock.matchAll(/^[ \t]+([A-Za-z_$][\w$]*)\s*:/gm)]
+    .map((match) => match[1]);
+  const definitionStarts = [...registryBlock.matchAll(
+    /^[ \t]+([A-Za-z_$][\w$]*)[ \t]*:[ \t\r\n]*def\(/gm,
+  )];
   const definitionKeys = [];
   const mismatchedKeys = [];
   const lockedKeys = [];
-  for (const property of registryInitializer.properties) {
-    if (!ts.isPropertyAssignment(property)) {
-      throw new Error('docs-stats: every LAYER_REGISTRY entry must be a property assignment');
-    }
-    const key = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
-      ? property.name.text
-      : null;
-    if (!key) {
-      throw new Error('docs-stats: every LAYER_REGISTRY property must have a static key');
-    }
-    declaredKeys.push(key);
-
-    let initializer = property.initializer;
-    while (ts.isParenthesizedExpression(initializer)) initializer = initializer.expression;
-    if (
-      !ts.isCallExpression(initializer)
-      || !ts.isIdentifier(initializer.expression)
-      || initializer.expression.text !== 'def'
-      || !ts.isStringLiteral(initializer.arguments[0])
-    ) {
-      continue;
-    }
-    const definitionKey = initializer.arguments[0].text;
+  for (const match of definitionStarts) {
+    const key = match[1];
+    const args = readCallArguments(registryBlock, match.index + match[0].length);
+    const definitionKey = args[0]?.match(/^(['"])([A-Za-z_$][\w$]*)\1$/)?.[2];
+    if (!definitionKey) continue;
     definitionKeys.push(key);
     if (key !== definitionKey) mismatchedKeys.push(`${key} -> ${definitionKey}`);
-    const premiumArgument = initializer.arguments[5];
-    if (premiumArgument && ts.isStringLiteral(premiumArgument) && premiumArgument.text === 'locked') {
-      lockedKeys.push(key);
-    }
+    if (/^(['"])locked\1$/.test(args[5] ?? '')) lockedKeys.push(key);
   }
   if (declaredKeys.length === 0) {
     throw new Error('docs-stats: LAYER_REGISTRY extraction was empty');

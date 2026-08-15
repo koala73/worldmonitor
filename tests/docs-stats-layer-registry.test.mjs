@@ -37,6 +37,14 @@ describe('docs stats layer-registry extraction', () => {
     assert.deepEqual(parsed.lockedKeys, []);
   });
 
+  it('ignores definition-shaped text inside template literals', () => {
+    const parsed = parseLayerRegistry(source(`
+  alpha: def('alpha', 'A'),
+  copy: def('copy', 'C', 'copy', \`\n  retiredTemplate: def('retiredTemplate', 'R'),\`),
+`));
+    assert.deepEqual(parsed.keys, ['alpha', 'copy']);
+  });
+
   it('fails closed on a partial or mismatched extraction', () => {
     assert.throws(
       () => parseLayerRegistry(source(`
