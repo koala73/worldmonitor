@@ -4,6 +4,7 @@ import { invokeTauri } from './tauri-bridge';
 export type RuntimeSecretKey =
   | 'GROQ_API_KEY'
   | 'OPENROUTER_API_KEY'
+  | 'ORCAROUTER_API_KEY'
   | 'EXA_API_KEYS'
   | 'BRAVE_API_KEYS'
   | 'SERPAPI_API_KEYS'
@@ -33,6 +34,7 @@ export type RuntimeSecretKey =
 export type RuntimeFeatureId =
   | 'aiGroq'
   | 'aiOpenRouter'
+  | 'aiOrcaRouter'
   | 'stockNewsSearchExa'
   | 'stockNewsSearchBrave'
   | 'stockNewsSearchSerpApi'
@@ -83,6 +85,7 @@ const TOGGLES_STORAGE_KEY = 'worldmonitor-runtime-feature-toggles';
 const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   aiGroq: true,
   aiOpenRouter: true,
+  aiOrcaRouter: true,
   stockNewsSearchExa: true,
   stockNewsSearchBrave: true,
   stockNewsSearchSerpApi: true,
@@ -128,6 +131,13 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
     name: 'OpenRouter summarization',
     description: 'Secondary LLM provider for AI summary fallback.',
     requiredSecrets: ['OPENROUTER_API_KEY'],
+    fallback: 'Falls back to local browser model only.',
+  },
+  {
+    id: 'aiOrcaRouter',
+    name: 'OrcaRouter summarization',
+    description: 'Unified AI gateway LLM provider (150+ provider-scoped models) for AI summary fallback. Opt-in: only fires when ORCAROUTER_API_KEY is set.',
+    requiredSecrets: ['ORCAROUTER_API_KEY'],
     fallback: 'Falls back to local browser model only.',
   },
   {

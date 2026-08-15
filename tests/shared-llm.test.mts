@@ -8,6 +8,7 @@ const originalFetch = globalThis.fetch;
 const originalAbortSignalTimeout = AbortSignal.timeout;
 const originalGroqApiKey = process.env.GROQ_API_KEY;
 const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
+const originalOrcaRouterApiKey = process.env.ORCAROUTER_API_KEY;
 const originalOllamaApiUrl = process.env.OLLAMA_API_URL;
 const originalLlmApiUrl = process.env.LLM_API_URL;
 const originalLlmApiKey = process.env.LLM_API_KEY;
@@ -31,6 +32,9 @@ afterEach(() => {
 
   if (originalOpenRouterApiKey === undefined) delete process.env.OPENROUTER_API_KEY;
   else process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
+
+  if (originalOrcaRouterApiKey === undefined) delete process.env.ORCAROUTER_API_KEY;
+  else process.env.ORCAROUTER_API_KEY = originalOrcaRouterApiKey;
 
   if (originalOllamaApiUrl === undefined) delete process.env.OLLAMA_API_URL;
   else process.env.OLLAMA_API_URL = originalOllamaApiUrl;
@@ -768,5 +772,107 @@ describe('callLlm', () => {
       true,
       'the accepted empty stream resets the streak before the next rejection',
     );
+  });
+
+  it('reaches the orcarouter gateway when pinned via providerOrder', async () => {
+    process.env.ORCAROUTER_API_KEY = 'sk-orca-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const postUrls: string[] = [];
+    const postBodies: Array<Record<string, unknown>> = [];
+    const postHeaders: Array<Record<string, string>> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      postUrls.push(url);
+      postBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+      postHeaders.push((init?.headers ?? {}) as Record<string, string>);
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'orcarouter response' } }],
+        usage: { total_tokens: 8 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Summarize the setup.' }],
+      providerOrder: ['orcarouter'],
+    });
+
+    assert.ok(result);
+    assert.equal(result.provider, 'orcarouter');
+    assert.equal(result.model, 'deepseek/deepseek-v4-flash');
+    assert.deepEqual(postUrls.filter(url => url.includes('/chat/completions')), [
+      'https://api.orcarouter.ai/v1/chat/completions',
+    ]);
+    assert.equal(postBodies[0]?.model, 'deepseek/deepseek-v4-flash');
+    assert.equal(postHeaders[0]?.Authorization, 'Bearer sk-orca-test-key');
+  });
+
+  it('falls back to orcarouter within an explicit provider order', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    process.env.ORCAROUTER_API_KEY = 'sk-orca-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const postUrls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      postUrls.push(url);
+      if (url.includes('openrouter.ai')) return new Response('upstream error', { status: 503 });
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'orcarouter fallback response' } }],
+        usage: { total_tokens: 5 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Try orca after openrouter.' }],
+      providerOrder: ['openrouter', 'orcarouter'],
+    });
+
+    assert.ok(result);
+    assert.equal(result.provider, 'orcarouter');
+    assert.deepEqual(postUrls.filter(url => url.includes('/chat/completions')), [
+      'https://openrouter.ai/api/v1/chat/completions',
+      'https://api.orcarouter.ai/v1/chat/completions',
+    ]);
+  });
+
+  it('skips orcarouter in an explicit order when ORCAROUTER_API_KEY is absent', async () => {
+    delete process.env.ORCAROUTER_API_KEY;
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const postUrls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      postUrls.push(url);
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'groq response' } }],
+        usage: { total_tokens: 3 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'hi' }],
+      providerOrder: ['orcarouter', 'groq'],
+    });
+
+    assert.ok(result);
+    assert.equal(result.provider, 'groq');
+    assert.deepEqual(postUrls.filter(url => url.includes('/chat/completions')), [
+      'https://api.groq.com/openai/v1/chat/completions',
+    ]);
   });
 });
