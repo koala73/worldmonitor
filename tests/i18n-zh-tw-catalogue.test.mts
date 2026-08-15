@@ -37,6 +37,32 @@ const CATALOGUES = [
   { name: 'pro-test', simplified: 'pro-test/src/locales/zh.json', traditional: 'pro-test/src/locales/zh-TW.json' },
 ];
 
+/**
+ * The rejected terms, written out here and not only read from the generator.
+ *
+ * Everything else that could notice a term coming back is downstream of
+ * `PHRASE_OVERRIDES`: `--check` regenerates the catalogues from that table, and
+ * `readBannedTerms()` reads the same table. Delete a rule and the catalogue,
+ * the check and the sweep all agree the term is fine now. This literal is the
+ * copy the generator does not get a vote on — the sweep below runs off it, so
+ * it keeps working even if the parser stops finding anything, and the deepEqual
+ * makes dropping a rule a deliberate edit in two files instead of one.
+ */
+const EXPECTED_BANNED = [
+  '實時',
+  '攝像頭',
+  '賬戶',
+  '自定義',
+  '小部件',
+  '小元件',
+  '許可權',
+  '高階',
+  '訪問',
+  '曆史',
+  '髮生',
+  '隻基金',
+];
+
 /** Flatten to dotted paths, descending into arrays — the plan-feature bullets live there. */
 function flatten(node: unknown, path = '', out = new Map<string, string>()): Map<string, string> {
   if (Array.isArray(node)) {
@@ -55,15 +81,19 @@ const load = (rel: string): Map<string, string> =>
   flatten(JSON.parse(readFileSync(repoPath(rel), 'utf8')));
 
 /**
- * The terms the project has already ruled wrong, read from the generator so the
- * two can't drift. Same technique `scripts/docs-stats.mjs` uses to read
- * SUPPORTED_LANGUAGES out of i18n.ts.
+ * The same terms read back out of the generator, so the literal above and the
+ * table that actually runs cannot drift apart. Same technique
+ * `scripts/docs-stats.mjs` uses to read SUPPORTED_LANGUAGES out of i18n.ts.
+ *
+ * The trailing comma is optional in Python, so it is optional here too — a last
+ * entry written without one used to parse as absent, which is the failure this
+ * function must not have.
  */
 function readBannedTerms(): string[] {
   const source = readFileSync(repoPath('scripts/convert-zh-tw.py'), 'utf8');
   const block = source.match(/^PHRASE_OVERRIDES = \{$([\s\S]*?)^\}$/m);
   assert.ok(block, 'could not find PHRASE_OVERRIDES in scripts/convert-zh-tw.py');
-  return [...block[1]!.matchAll(/^\s*"([^"]+)": "[^"]+",$/gm)].map((m) => m[1]!);
+  return [...block[1]!.matchAll(/^\s*"([^"]+)": "[^"]+",?$/gm)].map((m) => m[1]!);
 }
 
 interface KeyRule {
@@ -73,14 +103,48 @@ interface KeyRule {
   to: string;
 }
 
+/** The per-entry rules, written out for the same reason as EXPECTED_BANNED. */
+const EXPECTED_KEY_RULES: KeyRule[] = [
+  {
+    catalogue: 'src',
+    path: 'modals.settingsWindow.worldMonitor.register.description',
+    from: '請訪問',
+    to: '請造訪',
+  },
+  { catalogue: 'src', path: 'popups.techEvent.days.inDays', from: '天后', to: '天後' },
+  { catalogue: 'pro-test', path: 'faq.q5', from: '這隻', to: '這只' },
+];
+
 /**
- * The per-entry rules, read from the same generator.
+ * Dotted paths where a KEY_OVERRIDES source term is the right answer rather than
+ * residue, per term. 天后 is a deity and a diva, 這隻 is correct before an
+ * animal — that ambiguity is why those rules are per-entry rather than global.
  *
- * These cannot join the banned-term list above, and that is the whole reason
- * they live in KEY_OVERRIDES: their source terms are legitimate elsewhere. 天后
- * is a deity and a diva, 這隻 is correct before an animal — a catalogue-wide ban
- * would be asserting the opposite of why the entry exists. So each rule is
- * checked against the one entry it was written for.
+ * The lists are nonetheless empty, because neither sense occurs in either
+ * catalogue: the terms are banned everywhere until one does. Scoping the guard
+ * to the three entries the rules name instead leaves every other entry open —
+ * a new key holding "3天后" converts to 天后 and the suite stays green — and
+ * scoping it to the sense the entry has is not something a substring can do.
+ * A future entry that legitimately needs one of these adds its path here.
+ */
+const KEY_OVERRIDE_ALLOWED_PATHS = new Map<string, readonly string[]>([
+  ['請訪問', []],
+  ['天后', []],
+  ['這隻', []],
+]);
+
+/** Field by field, so reordering the Python table is not a failure. */
+const byField = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+const sortRules = (rules: readonly KeyRule[]): KeyRule[] =>
+  [...rules].sort(
+    (a, b) =>
+      byField(a.catalogue, b.catalogue) || byField(a.path, b.path) || byField(a.from, b.from),
+  );
+
+/**
+ * The same rules read back out of the generator. Trailing comma optional, as
+ * above.
  */
 function readKeyOverrides(): KeyRule[] {
   const source = readFileSync(repoPath('scripts/convert-zh-tw.py'), 'utf8');
@@ -105,7 +169,7 @@ function readKeyOverrides(): KeyRule[] {
       path = entryLine[1]!;
       continue;
     }
-    const ruleLine = line.match(/^ {12}"([^"]+)": "([^"]+)",$/);
+    const ruleLine = line.match(/^ {12}"([^"]+)": "([^"]+)",?$/);
     if (ruleLine) {
       assert.ok(catalogue && path, `rule outside a catalogue/entry: ${line}`);
       rules.push({ catalogue, path, from: ruleLine[1]!, to: ruleLine[2]! });
@@ -157,12 +221,14 @@ describe('zh-TW catalogues — Simplified script drift', () => {
 });
 
 describe('zh-TW catalogues — settled vocabulary', () => {
-  const banned = readBannedTerms();
-
-  it('reads the term list from the generator', () => {
-    // A parse failure must fail the guard, not empty it.
-    assert.ok(banned.length >= 8, `parsed only ${banned.length} override terms`);
-    assert.ok(banned.includes('許可權'), 'expected the #6555 terms to be present');
+  it('the generator table still holds every term enforced here', () => {
+    // Not a floor on the count: a floor of 8 over 12 terms lets 4 go silently,
+    // and a parse that finds nothing at all has to fail rather than pass empty.
+    assert.deepEqual(
+      readBannedTerms().sort(),
+      [...EXPECTED_BANNED].sort(),
+      'PHRASE_OVERRIDES and EXPECTED_BANNED disagree — a rule was dropped, renamed, or written in a form the parser misses',
+    );
   });
 
   for (const catalogue of CATALOGUES) {
@@ -171,8 +237,11 @@ describe('zh-TW catalogues — settled vocabulary', () => {
       const hits: string[] = [];
 
       for (const [key, value] of traditional) {
-        for (const term of banned) {
+        for (const term of EXPECTED_BANNED) {
           if (value.includes(term)) hits.push(`${key}: ${term}`);
+        }
+        for (const [term, allowedPaths] of KEY_OVERRIDE_ALLOWED_PATHS) {
+          if (value.includes(term) && !allowedPaths.includes(key)) hits.push(`${key}: ${term}`);
         }
       }
 
@@ -182,19 +251,28 @@ describe('zh-TW catalogues — settled vocabulary', () => {
 });
 
 describe('zh-TW catalogues — per-entry overrides', () => {
-  const rules = readKeyOverrides();
+  it('the generator table still holds every rule enforced here', () => {
+    assert.deepEqual(
+      sortRules(readKeyOverrides()),
+      sortRules(EXPECTED_KEY_RULES),
+      'KEY_OVERRIDES and EXPECTED_KEY_RULES disagree — a rule was dropped, renamed, or written in a form the parser misses',
+    );
+  });
 
-  it('reads the per-entry rules from the generator', () => {
-    // A parse failure must fail the guard, not empty it.
-    assert.ok(rules.length >= 3, `parsed only ${rules.length} per-entry rules`);
-    assert.ok(
-      rules.some((rule) => rule.from === '天后'),
-      'expected the character-selection fixes to be present',
+  it('every per-entry source term has a decided allow-list', () => {
+    // Without this a rule could be added to both tables above and still reach
+    // no catalogue-wide ban, which is the gap the per-entry checks leave open.
+    assert.deepEqual(
+      [...KEY_OVERRIDE_ALLOWED_PATHS.keys()].sort(),
+      [...new Set(EXPECTED_KEY_RULES.map((rule) => rule.from))].sort(),
+      'each per-entry source term needs an entry in KEY_OVERRIDE_ALLOWED_PATHS, empty if no path is exempt',
     );
   });
 
   for (const catalogue of CATALOGUES) {
-    const scoped = rules.filter((rule) => rule.catalogue === catalogue.name);
+    // Scoped off the literal, not the parse, so a parser that finds nothing
+    // registers a failing test rather than no test.
+    const scoped = EXPECTED_KEY_RULES.filter((rule) => rule.catalogue === catalogue.name);
     if (scoped.length === 0) continue;
 
     it(`${catalogue.name}: every per-entry override is applied`, () => {
