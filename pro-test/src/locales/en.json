@@ -160,7 +160,7 @@
     "entF10": "Cloud, on-prem, or air-gapped deployment",
     "entF11": "Dedicated onboarding & support",
     "entCta": "Talk to Sales",
-    "freeF2": "500+ feeds, 536+ sources, 50+ map layers"
+    "freeF2": "500+ feeds, 554+ sources, 50+ map layers"
   },
   "whyUpgrade": {
     "title": "Why upgrade",
@@ -436,6 +436,7 @@
       "useCases": "Correlations",
       "firstFive": "First 5 min",
       "depth": "Depth",
+      "agents": "For AI agents",
       "pricing": "Pricing",
       "faq": "FAQ",
       "blog": "Blog",
@@ -457,6 +458,18 @@
       "plateNote": "Captured from the live map — click to open it",
       "trustBuild": "Build on it:",
       "positioningLink": "WorldMonitor is not an open-source Palantir"
+    },
+    "tasks": {
+      "eyebrow": "Start with the question",
+      "title": "What are you trying to find out?",
+      "sub": "Choose the evidence trail that matches the job in front of you. Each route opens a source-backed view, not an empty dashboard.",
+      "verifyTitle": "Verify a breaking event",
+      "verifyDesc": "Check current crisis trackers, dated metrics, and cited context before trusting a breaking claim.",
+      "chokepointTitle": "Check a chokepoint",
+      "chokepointDesc": "Inspect disruption status, vessel flows, and risk across critical maritime passages.",
+      "countryRiskTitle": "Explain a country-risk move",
+      "countryRiskDesc": "Trace the political, security, economic, and resilience signals behind a country's change.",
+      "open": "Open evidence"
     },
     "live": {
       "eyebrow": "Live right now",
@@ -565,7 +578,7 @@
       "s1l": "Map layers",
       "s2v": "500+",
       "s2l": "Curated feeds",
-      "s3v": "534+",
+      "s3v": "550+",
       "s3l": "Sources",
       "s4v": "13",
       "s4l": "Chokepoints · live AIS",
@@ -615,6 +628,13 @@
       "b2": "Documented REST API — 193 operations, one OpenAPI 3.1 spec, one key",
       "b3": "Official SDKs on npm, PyPI, RubyGems, and Go — zero-dependency, MCP-first",
       "b4": "JMESPath projection on every call — fetch exactly the fields you need",
+      "resources": {
+        "title": "Choose your entry point",
+        "briefing": "Agent briefing",
+        "mcp": "MCP server",
+        "api": "REST API",
+        "agentView": "Agent view"
+      },
       "cta": "Read the developer docs",
       "termTitle": "claude — session",
       "termQuery": "Is our Red Sea exposure getting worse this week?",
@@ -651,7 +671,7 @@
       "q2": "What is a global intelligence dashboard?",
       "a2": "A single live view that fuses signals most tools keep separate: conflict events, ship and aircraft tracking, shipping chokepoints, satellites, subsea cables, pipelines, markets and cyber threats — on one real-time world map, with AI scoring and briefs on top. World Monitor is a free one.",
       "q3": "Where does the data come from?",
-      "a3": "534+ providers, named: ACLED and UCDP for conflict, AISStream for live vessels, OpenSky for aircraft, NASA FIRMS for fires, USGS for earthquakes, IMF, BIS, FRED and Finnhub for markets and macro — plus 500+ curated news feeds. Every panel cites its sources and timestamps inline.",
+      "a3": "550+ providers, named: ACLED and UCDP for conflict, AISStream for live vessels, OpenSky for aircraft, NASA FIRMS for fires, USGS for earthquakes, IMF, BIS, FRED and Finnhub for markets and macro — plus 500+ curated news feeds. Every panel cites its sources and timestamps inline.",
       "q4": "Can I watch chokepoints like Hormuz or Bab el-Mandeb in real time?",
       "a4": "Yes. 13 chokepoints are tracked with live AIS vessel counts, week-over-week transit change and disruption scoring — and density anomalies are flagged against each strait's rolling baseline.",
       "q5": "How is this different from a conflict map like Liveuamap?",

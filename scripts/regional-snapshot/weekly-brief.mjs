@@ -14,6 +14,12 @@
 
 import { extractFirstJsonObject, cleanJsonText } from '../_llm-json.mjs';
 import { buildLlmCallEvent, emitLlmEvents } from '../lib/llm-telemetry.cjs';
+import {
+  GROQ_DEFAULT_MODEL,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
+  OPENROUTER_PROVIDER_ROUTING,
+} from '../_llm-model-timeouts.mjs';
 
 const CHROME_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -22,6 +28,11 @@ const BRIEF_TEMPERATURE = 0.3;
 const MAX_TRANSITIONS_IN_PROMPT = 10;
 const MAX_KEY_DEVELOPMENTS = 5;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+let weeklyBriefFetchForTests = null;
+export function __setWeeklyBriefTransportForTests(overrides = null) {
+  weeklyBriefFetchForTests = typeof overrides?.fetch === 'function' ? overrides.fetch : null;
+}
 
 const DEFAULT_PROVIDERS = [
   {
@@ -37,13 +48,43 @@ const DEFAULT_PROVIDERS = [
       'X-Title': 'World Monitor',
       'User-Agent': CHROME_UA,
     }),
-    extraBody: { reasoning: { enabled: false } },
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+  },
+  {
+    name: 'openrouter-free',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_PRIMARY_MODEL,
+    timeout: 25_000,
+    headers: (key) => ({
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://worldmonitor.app',
+      'X-Title': 'World Monitor',
+      'User-Agent': CHROME_UA,
+    }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+  },
+  {
+    name: 'openrouter-free-backup',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_BACKUP_MODEL,
+    timeout: 25_000,
+    headers: (key) => ({
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://worldmonitor.app',
+      'X-Title': 'World Monitor',
+      'User-Agent': CHROME_UA,
+    }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
   },
   {
     name: 'groq',
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.3-70b-versatile',
+    model: GROQ_DEFAULT_MODEL,
     timeout: 25_000,
     headers: (key) => ({
       Authorization: `Bearer ${key}`,
@@ -212,8 +253,9 @@ export function parseBriefJson(text) {
  * @param {{ validate?: (text: string) => boolean }} [opts]
  * @returns {Promise<{ text: string, provider: string, model: string } | null>}
  */
-async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
+export async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
   const validate = opts.validate;
+  const briefFetch = weeklyBriefFetchForTests || ((...args) => globalThis.fetch(...args));
   // llm_call telemetry (#4944 U5): one event per provider attempt, unified
   // with the Vercel-side stream via scripts/lib/llm-telemetry.cjs.
   const promptChars = (systemPrompt?.length ?? 0) + (userPrompt?.length ?? 0);
@@ -232,7 +274,7 @@ async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
       }));
     };
     try {
-      const resp = await fetch(provider.apiUrl, {
+      const resp = await briefFetch(provider.apiUrl, {
         method: 'POST',
         headers: provider.headers(envVal),
         body: JSON.stringify({

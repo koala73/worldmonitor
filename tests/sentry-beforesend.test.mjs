@@ -120,6 +120,23 @@ describe('ignoreErrors filters', () => {
       'Generic first-party load-failure messages must NOT be ignored',
     );
   });
+
+  // WORLDMONITOR-ZC: Kaspersky-style content script double-injected, redeclaring
+  // its own top-level `SENDER` const. Cannot come from our bundle — esbuild fails
+  // the build on a duplicate top-level declaration.
+  it('suppresses the extension double-injection SENDER redeclaration', () => {
+    assert.ok(
+      isIgnored("Identifier 'SENDER' has already been declared"),
+      'SENDER duplicate-declaration must be ignored',
+    );
+  });
+
+  it('does NOT suppress a duplicate-declaration for an unlisted identifier', () => {
+    assert.ok(
+      !isIgnored("Identifier 'mapLayers' has already been declared"),
+      'Only the enumerated extension identifiers may be ignored',
+    );
+  });
 });
 
 // ─── P2: firstPartyFile regex covers all Vite chunk patterns ─────────────
@@ -1561,6 +1578,57 @@ describe('sentry beforeSend — Y4 anonymous trampoline hop', () => {
       { filename: '/assets/panel-storage-Cz30-usJ.js', lineno: 2, function: '?' },
     ]);
     assert.ok(beforeSend(event) !== null, 'no collector frame means no trampoline explanation');
+  });
+
+  // ── A browser-extension frame riding the same wrapper ───────────────────────
+  //
+  // WORLDMONITOR-Z6 kept firing after the '?' fix with a stack identical to
+  // y4RuntimeStack except for ONE extra frame: a tab-suspender extension's
+  // freeze-controller.js sitting above DebugBear's collector. `nonInfraFrames`
+  // drops only <anonymous>, [native code], and sentry-*.js, so the extension
+  // frame stays in the set, matches neither the collector predicate nor the
+  // trampoline predicate, and a single frame defeats the `.every()` — the same
+  // failure mode as the nameless hop before it, from a different direction.
+  //
+  // An extension frame can never be OUR caller, and the surrounding gate still
+  // demands a DebugBear collector frame plus fetch-free trampolines for every
+  // remaining frame, so admitting it cannot hide a first-party fetch.
+  const z6ExtensionStack = [
+    { filename: 'chrome-extension://nbgpkmdjdopfhiibdminmpbpmnppcjgm/freeze-controller.js', lineno: 279, function: '?' },
+    ...y4RuntimeStack,
+  ];
+
+  it('suppresses the exact Z6 stack (extension frame above the DebugBear wrapper)', () => {
+    assert.equal(beforeSend(makeEvent('Failed to fetch', 'TypeError', z6ExtensionStack)), null,
+      'a tab-suspender extension aborting a DebugBear-wrapped fetch is not our bug');
+  });
+
+  it('suppresses the moz-extension variant of the same shape', () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: 'moz-extension://a1b2c3/freeze-controller.js', lineno: 279, function: '?' },
+      ...y4RuntimeStack,
+    ]);
+    assert.equal(beforeSend(event), null, 'the extension family is not Chrome-specific');
+  });
+
+  it('does NOT suppress an extension frame without a DebugBear collector', () => {
+    // The collector frame is what explains the trampolines; without it an
+    // extension frame alone must not buy suppression of a first-party fetch.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: 'chrome-extension://nbgpkmdjdopfhiibdminmpbpmnppcjgm/freeze-controller.js', lineno: 279, function: '?' },
+      { filename: '/assets/panels-DzUv7BBV.js', lineno: 100, function: 'loadCountryGeometry' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'a genuine first-party caller must still surface');
+  });
+
+  it('does NOT suppress an extension stack that also carries a real first-party caller', () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: 'chrome-extension://nbgpkmdjdopfhiibdminmpbpmnppcjgm/freeze-controller.js', lineno: 279, function: '?' },
+      ...y4RuntimeStack,
+      { filename: '/assets/panels-DzUv7BBV.js', lineno: 100, function: 'loadCountryGeometry' },
+    ]);
+    assert.ok(beforeSend(event) !== null,
+      'the extension tolerance must not swallow a named first-party fetch caller');
   });
 });
 

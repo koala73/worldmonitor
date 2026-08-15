@@ -115,6 +115,8 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
       }
     },
     { name: 'DW News', url: { en: rss('https://rss.dw.com/xml/rss-en-all'), de: rss('https://rss.dw.com/xml/rss-de-all'), es: rss('https://news.google.com/rss/search?q=site:dw.com/es&hl=es-419&gl=MX&ceid=MX:es-419') } },
+    { name: 'Telegraph', url: rss('https://www.telegraph.co.uk/rss.xml') },
+    { name: 'Interfax EN', url: rss('https://news.google.com/rss/search?q=site%3Ainterfax.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
     // Spanish (ES)
     { name: 'El País', url: rss('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada'), lang: 'es' },
     { name: 'El Mundo', url: rss('https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml'), lang: 'es' },
@@ -124,6 +126,8 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Bild', url: rss('https://www.bild.de/feed/alles.xml'), lang: 'de' },
     { name: 'Der Spiegel', url: rss('https://www.spiegel.de/schlagzeilen/tops/index.rss'), lang: 'de' },
     { name: 'Die Zeit', url: rss('https://newsfeed.zeit.de/index'), lang: 'de' },
+    { name: 'Handelsblatt', url: rss('https://www.handelsblatt.com/contentexport/feed/schlagzeilen'), lang: 'de' },
+    { name: 'Welt', url: rss('https://www.welt.de/feeds/latest.rss'), lang: 'de' },
     // Italian (IT)
     { name: 'ANSA', url: rss('https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml'), lang: 'it' },
     { name: 'Corriere della Sera', url: rss('https://www.corriere.it/rss/homepage.xml'), lang: 'it' },
@@ -209,6 +213,7 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     // Default EN path must not be “Western wires + RU state media only.”
     // Independent / exile / UA outlets below are eligible for defaults; state media is not.
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
+    { name: 'Interfax RU', url: rss('https://www.interfax.ru/rss.asp'), lang: 'ru' },
     // Meduza: multi-URL so EN digests use the English RSS (no lang gate); RU UI keeps Russian.
     { name: 'Meduza', url: {
       en: rss('https://meduza.io/rss/en/all'),
@@ -283,6 +288,7 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Ars Technica', url: rss('https://feeds.arstechnica.com/arstechnica/technology-lab') },
     { name: 'The Verge', url: rss('https://www.theverge.com/rss/index.xml') },
     { name: 'MIT Tech Review', url: rss('https://www.technologyreview.com/feed/') },
+    { name: 'Wired', url: rss('https://www.wired.com/feed/rss') },
   ],
   ai: [
     { name: 'AI News', url: rss('https://news.google.com/rss/search?q=(OpenAI+OR+Anthropic+OR+Google+AI+OR+"large+language+model"+OR+ChatGPT)+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -297,6 +303,15 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Yahoo Finance', url: rss('https://finance.yahoo.com/news/rssindex') },
     { name: 'Financial Times', url: rss('https://www.ft.com/rss/home') },
     { name: 'Reuters Business', url: rss('https://news.google.com/rss/search?q=site:reuters.com+business+markets&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Fox Business', url: rss('https://moxie.foxbusiness.com/google-publisher/latest.xml') },
+    { name: 'Business Insider', url: rss('https://www.businessinsider.com/rss') },
+    { name: 'GlobeNewswire', url: rss('https://www.globenewswire.com/RssFeed/subjectcode/22/feedTitle/GlobeNewswire') },
+    { name: 'Business Wire', url: rss('https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeGVtRWA==') },
+    { name: 'PR Newswire', url: rss('https://news.google.com/rss/search?q=site%3Aprnewswire.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Chainwire', url: rss('https://chainwire.org/feed/') },
+    { name: 'Coinbase Blog', url: rss('https://news.google.com/rss/search?q=site%3Acoinbase.com%2Fblog%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Binance Announcements', url: rss('https://news.google.com/rss/search?q=site%3Abinance.com%2Fen%2Fsupport%2Fannouncement%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Jin10', url: rss('https://news.google.com/rss/search?q=site%3Ajin10.com%20when%3A1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'), lang: 'zh' },
   ],
   gov: [
     { name: 'White House', url: rss('https://news.google.com/rss/search?q=site:whitehouse.gov&hl=en-US&gl=US&ceid=US:en') },
@@ -310,6 +325,7 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'CDC', url: rss('https://news.google.com/rss/search?q=site:cdc.gov+OR+CDC+health&hl=en-US&gl=US&ceid=US:en') },
     { name: 'FEMA', url: rss('https://news.google.com/rss/search?q=site:fema.gov+OR+FEMA+emergency&hl=en-US&gl=US&ceid=US:en') },
     { name: 'DHS', url: rss('https://news.google.com/rss/search?q=site:dhs.gov+OR+"Homeland+Security"&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'U.S. Trade Representative', url: rss('https://ustr.gov/rss.xml') },
     { name: 'UN News', url: railwayRss('https://news.un.org/feed/subscribe/en/news/all/rss.xml') },
     { name: 'CISA', url: railwayRss('https://www.cisa.gov/cybersecurity-advisories/all.xml') },
   ],
@@ -473,6 +489,7 @@ const TECH_FEEDS: Record<string, Feed[]> = {
     { name: 'TechMeme', url: rss('https://www.techmeme.com/feed.xml') },
     { name: 'Engadget', url: rss('https://www.engadget.com/rss.xml') },
     { name: 'Fast Company', url: rss('https://feeds.feedburner.com/fastcompany/headlines') },
+    { name: 'Wired', url: rss('https://www.wired.com/feed/rss') },
   ],
   ai: [
     { name: 'AI News', url: rss('https://news.google.com/rss/search?q=(OpenAI+OR+Anthropic+OR+Google+AI+OR+"large+language+model"+OR+ChatGPT+OR+Claude+OR+"AI+model")+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -697,6 +714,11 @@ const FINANCE_FEEDS: Record<string, Feed[]> = {
     { name: 'Reuters Markets', url: rss('https://news.google.com/rss/search?q=site:reuters.com+markets+stocks+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Bloomberg Markets', url: rss('https://news.google.com/rss/search?q=site:bloomberg.com+markets+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Investing.com News', url: rss('https://news.google.com/rss/search?q=site:investing.com+markets+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Fox Business', url: rss('https://moxie.foxbusiness.com/google-publisher/latest.xml') },
+    { name: 'Business Insider', url: rss('https://www.businessinsider.com/rss') },
+    { name: 'GlobeNewswire', url: rss('https://www.globenewswire.com/RssFeed/subjectcode/22/feedTitle/GlobeNewswire') },
+    { name: 'Business Wire', url: rss('https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeGVtRWA==') },
+    { name: 'PR Newswire', url: rss('https://news.google.com/rss/search?q=site%3Aprnewswire.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   forex: [
     { name: 'Forex News', url: rss('https://news.google.com/rss/search?q=("forex"+OR+"currency"+OR+"FX+market")+trading+when:1d&hl=en-US&gl=US&ceid=US:en') },
@@ -736,6 +758,10 @@ const FINANCE_FEEDS: Record<string, Feed[]> = {
     { name: 'Wu Blockchain', url: rss('https://news.google.com/rss/search?q=site:wublockchain.com+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Messari', url: rss('https://news.google.com/rss/search?q=site:messari.io+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Bloomberg Crypto', url: rss('https://news.google.com/rss/search?q=bloomberg+crypto+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Chainwire', url: rss('https://chainwire.org/feed/') },
+    { name: 'Coinbase Blog', url: rss('https://news.google.com/rss/search?q=site%3Acoinbase.com%2Fblog%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Binance Announcements', url: rss('https://news.google.com/rss/search?q=site%3Abinance.com%2Fen%2Fsupport%2Fannouncement%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Jin10', url: rss('https://news.google.com/rss/search?q=site%3Ajin10.com%20when%3A1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'), lang: 'zh' },
     { name: 'Reuters Crypto', url: rss('https://news.google.com/rss/search?q=reuters+crypto+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'NFT News', url: rss('https://news.google.com/rss/search?q=(NFT+OR+"non-fungible")+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Stablecoin Policy', url: rss('https://news.google.com/rss/search?q=(stablecoin+regulation+OR+"stablecoin+bill")+when:7d&hl=en-US&gl=US&ceid=US:en') },

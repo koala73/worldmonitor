@@ -7,6 +7,15 @@ const enLocale = () =>
   JSON.parse(readFileSync(new URL('../pro-test/src/locales/en.json', import.meta.url), 'utf8'));
 const WELCOME_FAQ_COUNT = 11;
 
+const welcomeRoot = () => {
+  const rootMatch = welcomeHtml().match(/<div id="root"(?<attrs>[^>]*)>(?<content>[\s\S]*?)<\/body>/);
+  assert.ok(rootMatch?.groups, 'welcome page should contain #root before body close');
+  return {
+    attrs: rootMatch.groups.attrs,
+    content: rootMatch.groups.content.split('<noscript>')[0],
+  };
+};
+
 test('welcome FAQPage JSON-LD matches every visible FAQ entry', () => {
   const html = welcomeHtml();
   const en = enLocale();
@@ -24,12 +33,7 @@ test('welcome FAQPage JSON-LD matches every visible FAQ entry', () => {
 });
 
 test('built welcome page ships the real hero in #root before JavaScript', () => {
-  const html = welcomeHtml();
-  const rootMatch = html.match(/<div id="root"(?<attrs>[^>]*)>(?<content>[\s\S]*?)<\/body>/);
-  assert.ok(rootMatch?.groups, 'welcome page should contain #root before body close');
-
-  const { attrs, content } = rootMatch.groups;
-  const rootContent = content.split('<noscript>')[0];
+  const { attrs, content: rootContent } = welcomeRoot();
   assert.match(attrs, /data-wm-prerendered="welcome"/);
   assert.match(attrs, /data-wm-prerender-lang="en"/);
   assert.doesNotMatch(rootContent, /id="seo-prerender"/);
@@ -61,4 +65,44 @@ test('built welcome page ships the real hero in #root before JavaScript', () => 
   const heroSection = rootContent.slice(0, rootContent.indexOf('<section class="py-16'));
   assert.doesNotMatch(heroSection, /opacity:0/);
   assert.match(rootContent, /<img[^>]+src="\/pro\/assets\/worldmonitor-7-mar-2026-[^"]+\.jpg"[^>]+fetchPriority="high"/);
+});
+
+test('built welcome page prerenders task routes and agent discovery links', () => {
+  const { content: rootContent } = welcomeRoot();
+  const heroIndex = rootContent.indexOf('By the time it&#x27;s news,');
+  const taskIndex = rootContent.indexOf('What are you trying to find out?');
+  const liveIndex = rootContent.indexOf('This page is plugged into the same APIs as the dashboard.');
+  assert.ok(heroIndex >= 0, 'hero should remain in the prerendered root');
+  assert.ok(taskIndex > heroIndex, 'task routes should follow the hero');
+  assert.ok(liveIndex > taskIndex, 'live proof should follow the task routes');
+
+  const taskLinks = [
+    ['crises', 'task-verify', 'welcome-task-verify'],
+    ['chokepoints', 'task-chokepoint', 'welcome-task-chokepoint'],
+    ['countries', 'task-country-risk', 'welcome-task-country-risk'],
+  ];
+  for (const [route, content, target] of taskLinks) {
+    assert.match(
+      rootContent,
+      new RegExp(`href="/${route}/\\?utm_source=welcome&amp;utm_content=${content}"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="${target}"`),
+    );
+  }
+  assert.doesNotMatch(rootContent, /href="\/(?:crises|chokepoints|countries)\/\?[^"#]*(?:ref|wm_referral)=/);
+
+  const navContent = rootContent.slice(
+    rootContent.indexOf('<nav'),
+    rootContent.indexOf('</nav>') + '</nav>'.length,
+  );
+  assert.match(navContent, /href="#agents"[^>]*>For AI agents<\/a>/);
+
+  const agentSection = rootContent.slice(rootContent.indexOf('<section id="agents"'));
+  const agentLinks = [
+    /href="\/llms\.txt"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-briefing"/,
+    /href="https:\/\/worldmonitor\.app\/mcp"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-mcp"/,
+    /href="https:\/\/api\.worldmonitor\.app"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-api"/,
+    /href="\/\?mode=agent"[^>]*data-umami-event="welcome-cta"[^>]*data-umami-event-target="welcome-agent-view"/,
+  ];
+  for (const linkPattern of agentLinks) {
+    assert.match(agentSection, linkPattern);
+  }
 });

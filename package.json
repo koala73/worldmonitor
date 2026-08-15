@@ -169,6 +169,7 @@
     "happy-dom": "^20.11.1",
     "js-yaml": "^4.3.1",
     "markdownlint-cli2": "^0.21.0",
+    "opencc-js": "^1.4.1",
     "tsx": "^4.21.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",

@@ -48,7 +48,7 @@
     "entF10": "Cloud, on-premises of air-gapped deployment",
     "entF11": "Dedicated onboarding en support",
     "entCta": "Praat met sales",
-    "freeF2": "500+ feeds, 536+ bronnen, 50+ kaartlagen"
+    "freeF2": "500+ feeds, 554+ bronnen, 50+ kaartlagen"
   },
   "whyUpgrade": {
     "title": "Waarom upgraden",
@@ -441,7 +441,8 @@
       "docs": "Documentatie",
       "launch": "Dashboard starten",
       "blog": "Blog",
-      "menu": "Menu"
+      "menu": "Menu",
+      "agents": "Voor AI-agenten"
     },
     "hero": {
       "eyebrow": "Gratis dashboard voor wereldwijd inlichtingen · nu live",
@@ -565,7 +566,7 @@
       "s1l": "Kaartlagen",
       "s2v": "500+",
       "s2l": "Samengestelde feeds",
-      "s3v": "534+",
+      "s3v": "550+",
       "s3l": "Gegevensproviders",
       "s4v": "13",
       "s4l": "Knelpunten · live AIS",
@@ -620,7 +621,14 @@
       "termQuery": "Wordt onze blootstelling aan de Rode Zee deze week erger?",
       "termAnswer": "Transittelling omlaag week-over-week; oorlogsrisico-niveau verhoogd; twee dichtheidsafwijkingen in de laatste 48 uur.",
       "termDocs": "Zie de volledige toolreferentie →",
-      "promise": "Één sleutel. 63 MCP-tools. Een volledige REST API. Taal-native clients."
+      "promise": "Één sleutel. 63 MCP-tools. Een volledige REST API. Taal-native clients.",
+      "resources": {
+        "title": "Kies je ingang",
+        "briefing": "Agent-briefing",
+        "mcp": "MCP-server",
+        "api": "REST API",
+        "agentView": "Agentweergave"
+      }
     },
     "pricing": {
       "eyebrow": "Toegang",
@@ -651,7 +659,7 @@
       "q2": "Wat is een global intelligence dashboard?",
       "a2": "Een enkele live weergave die signalen samenvoegt die de meeste tools gescheiden houden: conflictgebeurtenissen, schip- en vliegtuigtracking, scheepvaartknelpunten, satellieten, onderzeese kabels, pijpleidingen, markten en cyberbedreigingen — op één realtime wereldkaart, met AI-scoring en samenvattingen erbovenop. World Monitor is een gratis versie.",
       "q3": "Waar komen de gegevens vandaan?",
-      "a3": "534+ providers, benoemd: ACLED en UCDP voor conflicten, AISStream voor live schepen, OpenSky voor vliegtuigen, NASA FIRMS voor branden, USGS voor aardbevingen, IMF, BIS, FRED en Finnhub voor markten en macro — plus 500+ gecureerde nieuwsfeeds. Elk paneel vermeldt zijn bronnen en tijdstempels inline.",
+      "a3": "550+ providers, benoemd: ACLED en UCDP voor conflicten, AISStream voor live schepen, OpenSky voor vliegtuigen, NASA FIRMS voor branden, USGS voor aardbevingen, IMF, BIS, FRED en Finnhub voor markten en macro — plus 500+ gecureerde nieuwsfeeds. Elk paneel vermeldt zijn bronnen en tijdstempels inline.",
       "q4": "Kan ik knelpunten zoals Hormuz of Bab el-Mandeb in real time volgen?",
       "a4": "Ja. 13 knelpunten worden gevolgd met live AIS-scheepstellingen, week-over-week transitieverandering en verstoringsscore — en dichtheidsafwijkingen worden gemarkeerd tegen de rolling baseline van elke zeestraat.",
       "q5": "Hoe verschilt dit van een conflictkaart zoals Liveuamap?",
@@ -675,6 +683,18 @@
       "button": "Vind het eerst",
       "note": "Gratis · Geen registratie · Laadt in seconden",
       "secondary": "Of bekijk Pro-plannen →"
+    },
+    "tasks": {
+      "eyebrow": "Begin met de vraag",
+      "title": "Wat wil je ontdekken?",
+      "sub": "Kies het bewijspad dat aansluit bij je taak. Elke route opent een brongestuurde weergave, geen leeg dashboard.",
+      "verifyTitle": "Verifieer een breaking event",
+      "verifyDesc": "Controleer huidige crisisbewakers, actuele metrische gegevens en geciteerde context voordat u een breaking claim vertrouwt.",
+      "chokepointTitle": "Controleer een kritiek passage",
+      "chokepointDesc": "Inspecteer verstoringsstatus, scheepsbewegingen en risico's in kritieke zeepassages.",
+      "countryRiskTitle": "Leg een landenrisico-beweging uit",
+      "countryRiskDesc": "Traceer de politieke, veiligheids-, economische en veerkrachtssignalen achter een verandering van een land.",
+      "open": "Open bewijs"
     }
   }
 }

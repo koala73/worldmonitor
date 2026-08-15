@@ -763,13 +763,11 @@ describe('CI workflow coverage', () => {
     }
   });
 
-  it('routes the generated OpenAPI bundle into the job that measures it (#6558)', () => {
-    // Executes the real awk rather than matching its source. The bundle lives
-    // under `docs/`, which the blanket `/^docs\// { next }` rule excludes, so
-    // this carve-out is the only thing keeping a bundle-only PR from setting
-    // code=false and skipping `unit` — the job that runs BOTH the
-    // <= 950,000-byte scanner guard and the capacity report, against the very
-    // artifact such a PR changes.
+  it('routes generated OpenAPI artifacts into the owning unit job (#6558, #6650)', () => {
+    // Executes the real awk rather than matching its source. These artifacts
+    // live under `docs/`, which the blanket `/^docs\// { next }` rule excludes,
+    // so the carve-outs are the only thing keeping an OpenAPI-only PR from
+    // setting code=false and skipping the contract tests in `unit`.
     const awkBlock = shellAwkAssignmentBlock('CODE');
     const codeFilterSays = (path: string) => evaluateAwkAssignmentBlock(awkBlock, [path]) > 0;
 
@@ -777,6 +775,15 @@ describe('CI workflow coverage', () => {
       codeFilterSays('docs/api/worldmonitor.openapi.yaml'),
       'a PR that only regenerates the unified OpenAPI bundle must still run the unit job',
     );
+    for (const path of [
+      'docs/api/MarketService.openapi.json',
+      'docs/api/MarketService.openapi.yaml',
+    ]) {
+      assert.ok(
+        codeFilterSays(path),
+        `${path} must set code=true so the OpenAPI filter-parameter contract test runs`,
+      );
+    }
     // Prose under docs/ stays excluded — the carve-out is for the machine
     // artifact, not for the directory.
     for (const path of ['docs/api-reference.mdx', 'docs/perf/openapi-bundle-capacity-2026-08-13.md']) {

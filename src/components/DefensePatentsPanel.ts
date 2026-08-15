@@ -95,8 +95,6 @@ export class DefensePatentsPanel extends Panel {
       return;
     }
 
-    this.clearErrorState();
-
     const tabs: [ViewMode, string][] = [
       ['all', t('components.defensePatents.tabs.all')],
       ...CPC_CODES.map((code): [ViewMode, string] => [code, cpcLabel(code)]),
@@ -104,7 +102,7 @@ export class DefensePatentsPanel extends Panel {
 
     const filtered = this.getFiltered();
 
-    replaceChildren(this.content,
+    this.setContentNodes(
       h('div', { className: 'defense-patents-panel' },
         h('div', { className: 'panel-tabs' },
           ...tabs.map(([mode, label]) =>

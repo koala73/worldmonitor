@@ -48,7 +48,7 @@
     "entF10": "Deployment cloud, on-premises o air-gapped",
     "entF11": "Onboarding e supporto dedicati",
     "entCta": "Parla con le vendite",
-    "freeF2": "500+ feed, 536+ fonti, 50+ livelli mappa"
+    "freeF2": "500+ feed, 554+ fonti, 50+ livelli mappa"
   },
   "whyUpgrade": {
     "title": "Perché fare l'upgrade",
@@ -441,7 +441,8 @@
       "docs": "Documentazione",
       "launch": "Avvia dashboard",
       "blog": "Blog",
-      "menu": "Menu"
+      "menu": "Menu",
+      "agents": "Per agenti AI"
     },
     "hero": {
       "eyebrow": "Dashboard di intelligence globale gratuita · live adesso",
@@ -565,7 +566,7 @@
       "s1l": "Livelli mappa",
       "s2v": "500+",
       "s2l": "Feed curati",
-      "s3v": "534+",
+      "s3v": "550+",
       "s3l": "Provider di dati",
       "s4v": "13",
       "s4l": "Punti critici · AIS live",
@@ -620,7 +621,14 @@
       "termQuery": "La nostra esposizione al Mar Rosso peggiora questa settimana?",
       "termAnswer": "I conteggi di transito diminuiscono da settimana a settimana; tier di rischio di guerra elevato; due anomalie di densità nelle ultime 48 ore.",
       "termDocs": "Vedi il riferimento strumento completo →",
-      "promise": "Una chiave. 63 strumenti MCP. Un'API REST completa. Client nativi del linguaggio."
+      "promise": "Una chiave. 63 strumenti MCP. Un'API REST completa. Client nativi del linguaggio.",
+      "resources": {
+        "title": "Scegli il tuo punto di ingresso",
+        "briefing": "Briefing dell'agente",
+        "mcp": "Server MCP",
+        "api": "API REST",
+        "agentView": "Visualizzazione dell'agente"
+      }
     },
     "pricing": {
       "eyebrow": "Accesso",
@@ -651,7 +659,7 @@
       "q2": "Che cos'è una dashboard di intelligence globale?",
       "a2": "Una vista live unica che fonde segnali che la maggior parte degli strumenti mantiene separati: eventi di conflitto, tracciamento di navi e aeromobili, punti di strozzatura dello shipping, satelliti, cavi sottomarini, oleodotti, mercati e minacce cyber — su una mappa mondiale in tempo reale, con punteggio IA e brief. World Monitor è una gratuita.",
       "q3": "Da dove provengono i dati?",
-      "a3": "534+ provider, nominati: ACLED e UCDP per i conflitti, AISStream per le navi live, OpenSky per gli aeromobili, NASA FIRMS per gli incendi, USGS per i terremoti, IMF, BIS, FRED e Finnhub per i mercati e le macro — più 500+ feed di notizie curati. Ogni pannello cita le sue fonti e i timestamp inline.",
+      "a3": "550+ provider, nominati: ACLED e UCDP per i conflitti, AISStream per le navi live, OpenSky per gli aeromobili, NASA FIRMS per gli incendi, USGS per i terremoti, IMF, BIS, FRED e Finnhub per i mercati e le macro — più 500+ feed di notizie curati. Ogni pannello cita le sue fonti e i timestamp inline.",
       "q4": "Posso monitorare i punti di strozzatura come Hormuz o Bab el-Mandeb in tempo reale?",
       "a4": "Sì. 13 punti di strozzatura sono tracciati con conteggi di navi AIS live, variazione dei transiti da settimana a settimana e punteggio di disruption — e le anomalie di densità sono segnalate rispetto alla baseline mobile di ogni stretto.",
       "q5": "Com'è diverso da una mappa di conflitti come Liveuamap?",
@@ -675,6 +683,18 @@
       "button": "Scoprilo per primo",
       "note": "Gratuito · Senza iscrizione · Si carica in secondi",
       "secondary": "Oppure visualizza i piani Pro →"
+    },
+    "tasks": {
+      "eyebrow": "Inizia dalla domanda",
+      "title": "Cosa stai cercando di scoprire?",
+      "sub": "Scegli il percorso di prove che corrisponde al compito da svolgere. Ogni rotta apre una visualizzazione supportata da fonti, non una dashboard vuota.",
+      "verifyTitle": "Verifica un evento in corso",
+      "verifyDesc": "Verifica gli attuali monitoraggi delle crisi, le metriche datate e il contesto citato prima di dare credito a un'affermazione di rottura.",
+      "chokepointTitle": "Controlla un punto critico",
+      "chokepointDesc": "Ispeziona lo stato dei disagi, i flussi di navi e i rischi attraverso i passaggi marittimi critici.",
+      "countryRiskTitle": "Spiega una mossa di rischio paese",
+      "countryRiskDesc": "Traccia i segnali politici, di sicurezza, economici e di resilienza dietro il cambio di un paese.",
+      "open": "Apri prove"
     }
   }
 }

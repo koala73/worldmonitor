@@ -33,7 +33,7 @@ Let's be direct about what World Monitor is and isn't relative to established pl
 
 - Geopolitical intelligence integration with market data
 - Conflict and military monitoring (Bloomberg has zero)
-- Visual map-based interface with 56 map layers
+- Visual map-based interface with 58 map layers
 - AI analysis that runs locally (Bloomberg's AI is cloud-only)
 - Price: free vs. $24,000/year
 - Open source transparency

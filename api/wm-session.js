@@ -89,6 +89,16 @@ function sessionCookie(req, name, value) {
   return `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}${cookieDomainAttribute(req)}; HttpOnly; Secure; SameSite=Lax`;
 }
 
+/**
+ * Host-only Max-Age=0 tombstone for the same name/path. An older api-host
+ * wm-session (no Domain) would otherwise shadow the new Domain=.worldmonitor.app
+ * cookie: browsers send both, and first-match readers keep the stale host-only
+ * value. Only emit this on shared-domain production hosts.
+ */
+function hostOnlySessionTombstone() {
+  return `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+}
+
 function clearReadableCookie(name) {
   return `${name}=; Domain=.worldmonitor.app; Path=/; Max-Age=0; Secure; SameSite=Lax`;
 }
@@ -217,7 +227,12 @@ export default async function handler(req, ctx) {
     return respond({ error: 'Invalid session key' }, 401, cors, 'auth_401');
   }
 
-  let headers = appendHeader(cors, 'Set-Cookie', sessionCookie(req, SESSION_COOKIE, issued.token));
+  let headers = cors;
+  if (shouldUseSharedCookieDomain(req)) {
+    // Tombstone first so the subsequent Domain cookie is the only live wm-session.
+    headers = appendHeader(headers, 'Set-Cookie', hostOnlySessionTombstone());
+  }
+  headers = appendHeader(headers, 'Set-Cookie', sessionCookie(req, SESSION_COOKIE, issued.token));
 
   // Best-effort cleanup for old JS-readable cookies only when replacing that
   // key. A no-key session refresh must preserve existing HttpOnly key cookies.

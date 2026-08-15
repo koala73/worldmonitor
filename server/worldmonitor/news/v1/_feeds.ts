@@ -77,7 +77,12 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'EuroNews', url: 'https://www.euronews.com/rss?format=xml' },
       { name: 'Le Monde', url: 'https://www.lemonde.fr/en/rss/une.xml' },
       { name: 'DW News', url: 'https://rss.dw.com/xml/rss-en-all' },
+      { name: 'Telegraph', url: 'https://www.telegraph.co.uk/rss.xml' },
+      { name: 'Interfax EN', url: gn('site:interfax.com when:7d') },
       { name: 'Tagesschau', url: 'https://www.tagesschau.de/xml/rss2/', lang: 'de' },
+      { name: 'Handelsblatt', url: 'https://www.handelsblatt.com/contentexport/feed/schlagzeilen', lang: 'de' },
+      { name: 'Welt', url: 'https://www.welt.de/feeds/latest.rss', lang: 'de' },
+      { name: 'Interfax RU', url: 'https://www.interfax.ru/rss.asp', lang: 'ru' },
       { name: 'ANSA', url: 'https://www.ansa.it/sito/ansait_rss.xml', lang: 'it' },
       { name: 'NOS Nieuws', url: 'https://feeds.nos.nl/nosnieuwsalgemeen', lang: 'nl' },
       { name: 'SVT Nyheter', url: 'https://www.svt.se/nyheter/rss.xml', lang: 'sv' },
@@ -181,6 +186,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/technology-lab' },
       { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
       { name: 'MIT Tech Review', url: 'https://www.technologyreview.com/feed/' },
+      { name: 'Wired', url: 'https://www.wired.com/feed/rss' },
     ],
     ai: [
       { name: 'AI News', url: gn('(OpenAI OR Anthropic OR Google AI OR "large language model" OR ChatGPT) when:2d') },
@@ -195,6 +201,15 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Yahoo Finance', url: 'https://finance.yahoo.com/news/rssindex' },
       { name: 'Financial Times', url: 'https://www.ft.com/rss/home' },
       { name: 'Reuters Business', url: gn('site:reuters.com business markets when:1d') },
+      { name: 'Fox Business', url: 'https://moxie.foxbusiness.com/google-publisher/latest.xml' },
+      { name: 'Business Insider', url: 'https://www.businessinsider.com/rss' },
+      { name: 'GlobeNewswire', url: 'https://www.globenewswire.com/RssFeed/subjectcode/22/feedTitle/GlobeNewswire' },
+      { name: 'Business Wire', url: 'https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeGVtRWA==' },
+      { name: 'PR Newswire', url: gn('site:prnewswire.com when:1d') },
+      { name: 'Chainwire', url: 'https://chainwire.org/feed/' },
+      { name: 'Coinbase Blog', url: gn('site:coinbase.com/blog when:7d') },
+      { name: 'Binance Announcements', url: gn('site:binance.com/en/support/announcement when:3d') },
+      { name: 'Jin10', url: gnLocale('site:jin10.com when:1d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh' },
     ],
     // MCP digest-backed tools consume `full`, while the finance dashboard
     // consumes `finance`. Keep this literal array aligned with the finance
@@ -227,6 +242,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Pentagon', url: 'https://www.war.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=1&Site=945' },
       { name: 'Federal Reserve', url: 'https://www.federalreserve.gov/feeds/press_all.xml' },
       { name: 'SEC', url: 'https://www.sec.gov/news/pressreleases.rss' },
+      { name: 'U.S. Trade Representative', url: 'https://ustr.gov/rss.xml' },
       { name: 'UN News', url: 'https://news.un.org/feed/subscribe/en/news/all/rss.xml' },
       { name: 'CISA', url: 'https://www.cisa.gov/cybersecurity-advisories/all.xml' },
       { name: 'Treasury', url: gn('site:treasury.gov when:1d') },
@@ -348,6 +364,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
       { name: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/technology-lab' },
       { name: 'Hacker News', url: 'https://hnrss.org/frontpage' },
+      { name: 'Wired', url: 'https://www.wired.com/feed/rss' },
     ],
     ai: [
       { name: 'AI News', url: gn('(OpenAI OR Anthropic OR Google AI OR "large language model" OR ChatGPT) when:2d') },
@@ -439,6 +456,11 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'CNBC', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
       { name: 'Yahoo Finance', url: 'https://finance.yahoo.com/rss/topstories' },
       { name: 'Seeking Alpha', url: 'https://seekingalpha.com/market_currents.xml' },
+      { name: 'Fox Business', url: 'https://moxie.foxbusiness.com/google-publisher/latest.xml' },
+      { name: 'Business Insider', url: 'https://www.businessinsider.com/rss' },
+      { name: 'GlobeNewswire', url: 'https://www.globenewswire.com/RssFeed/subjectcode/22/feedTitle/GlobeNewswire' },
+      { name: 'Business Wire', url: 'https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeGVtRWA==' },
+      { name: 'PR Newswire', url: gn('site:prnewswire.com when:1d') },
     ],
     forex: [
       { name: 'Forex News', url: gn('(forex OR currency OR "exchange rate" OR FX OR "US dollar") when:2d') },
@@ -455,6 +477,10 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Cointelegraph', url: 'https://cointelegraph.com/rss' },
       { name: 'The Block', url: 'https://news.google.com/rss/search?q=site:theblock.co+when:1d&hl=en-US&gl=US&ceid=US:en' },
       { name: 'Decrypt', url: 'https://decrypt.co/feed' },
+      { name: 'Chainwire', url: 'https://chainwire.org/feed/' },
+      { name: 'Coinbase Blog', url: gn('site:coinbase.com/blog when:7d') },
+      { name: 'Binance Announcements', url: gn('site:binance.com/en/support/announcement when:3d') },
+      { name: 'Jin10', url: gnLocale('site:jin10.com when:1d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh' },
       // Blockworks REMOVED in parity with src/config/feeds.ts (PR #3715
       // review). blockworks.co/feed is Cloudflare-blocked from both Vercel
       // edge AND Railway egress, AND Google News returns 0 items for

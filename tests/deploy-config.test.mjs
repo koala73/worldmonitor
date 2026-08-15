@@ -922,9 +922,41 @@ describe('welcome landing page routing', () => {
     // matching anything, leaving the guard green over code it no longer
     // described. What is actually forbidden is a query-carrying link to a ROOT
     // route (`/?…`), which lands back on the welcome page instead of the
-    // dashboard — whatever the query happens to be called.
-    const rootWelcomeLaunchLink = /href\s*[:=]\s*["'`]\/\?/;
+    // dashboard — whatever the query happens to be called. The established
+    // `/?mode=agent` discovery route is intentionally served ahead of the
+    // welcome rewrite and is not a dashboard launch CTA. The exemption only
+    // covers a literal that ENDS at its closing quote: a quote followed by
+    // `+` is a runtime concatenation (`href:"/?mode=agent"+x` in the minified
+    // asset), whose final URL is no longer exactly `/?mode=agent` and would
+    // fall through Vercel's exact-value mode=agent rewrite back onto the
+    // welcome page — so it stays forbidden.
+    const rootWelcomeLaunchLink = /href\s*[:=]\s*["'`]\/\?(?!mode=agent["'`](?!\s*\+))/;
     const variantRootWelcomeLaunchLink = /https:\/\/(?:tech|finance|commodity|happy|energy)\.worldmonitor\.app\/\?/;
+    assert.doesNotMatch(
+      'href="/?mode=agent"',
+      rootWelcomeLaunchLink,
+      'the exact agent-view discovery URL must remain allowed'
+    );
+    assert.match(
+      'href="/?utm_source=welcome"',
+      rootWelcomeLaunchLink,
+      'the guard must detect ordinary query-carrying root URLs'
+    );
+    assert.match(
+      'href="/?mode=agent&utm_source=welcome"',
+      rootWelcomeLaunchLink,
+      'the agent-view exception must not hide a query-carrying launch URL'
+    );
+    assert.doesNotMatch(
+      'href:"/?mode=agent",',
+      rootWelcomeLaunchLink,
+      'the minified-asset form of the exact agent-view URL must remain allowed'
+    );
+    assert.match(
+      'href:"/?mode=agent"+e',
+      rootWelcomeLaunchLink,
+      'a concatenation-built agent URL is not the exact discovery URL and must stay forbidden'
+    );
     for (const [file, source] of welcomeSources) {
       assert.doesNotMatch(
         source,
@@ -1496,6 +1528,36 @@ describe('security header guardrails', () => {
           `${label} ${directive} must not allow Google Fonts after the dashboard self-hosts fonts`
         );
       }
+    }
+  });
+
+  it('dashboard CSP font-src admits ZERO cross-origin sources — the CSP filter depends on it', () => {
+    // This is the license for the blanket font-src suppression in src/main.ts
+    // (`cspFontSrcAllowsCrossOrigin`). That filter drops EVERY cross-origin font
+    // block on the reasoning that this policy admits none, so such a block can
+    // only be an injected stylesheet. It replaced sixteen host-pinned rules that
+    // each re-derived the same premise (WORLDMONITOR-TR rounds 1-9).
+    //
+    // If the app ever adopts a cross-origin font host, this assertion fails
+    // FIRST — before the filter silently starts hiding a real regression. The
+    // fix then is to feed the real policy into the filter, not to delete this.
+    const surfaces = [
+      ['vercel', getHeaderValue('Content-Security-Policy')],
+      ['docker/nginx', getNginxHeaderValue('Content-Security-Policy')],
+    ];
+    for (const [label, csp] of surfaces) {
+      const tokens = getCspDirectiveTokens(csp, 'font-src');
+      assert.ok(tokens.length > 0, `${label} must declare an explicit font-src`);
+      const crossOrigin = tokens.filter(
+        (token) => !/^'[^']*'$/.test(token) && !/^(?:data|blob):$/.test(token),
+      );
+      assert.deepEqual(
+        crossOrigin,
+        [],
+        `${label} font-src must admit no cross-origin source (found: ${crossOrigin.join(', ')}). ` +
+          'src/main.ts suppresses all cross-origin font-src violations on the strength of this; ' +
+          'adopting a remote font host requires revisiting that filter in the same change.',
+      );
     }
   });
 

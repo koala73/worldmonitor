@@ -47,6 +47,11 @@ jobs:
             # without this rule the guard skips on exactly the PR that commits
             # an artifact and can only ever fire on unrelated changes.
             /^docs\/snapshots\/resilience-.*-acceptance-.*\.json$/ { count++; next }
+            # Per-service OpenAPI specs are generated machine artifacts consumed
+            # by tests/openapi-filter-param-schemas.test.mjs, which enumerates
+            # every JSON spec. Keep the JSON/YAML siblings on the same `unit`
+            # job when a PR changes only docs/api output (#6650).
+            /^docs\/api\/[^\/]+Service\.openapi\.(json|yaml)$/ { count++; next }
             # The generated OpenAPI bundle sits under docs/ but is the INPUT to
             # the served public/openapi.json. Its <= 950,000-byte scanner guard
             # (tests/openapi-json-dedup.test.mjs) and the capacity report that
@@ -191,6 +196,23 @@ jobs:
           node-version: '24'
           cache: 'npm'
       - run: npm ci
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: zh-TW catalogues reproduce from their Simplified source (#6555)
+        # The zh-TW catalogues are generated from zh.json, not translated from
+        # en.json, so the EN baseline in translate-locales.mjs is the wrong
+        # instrument for them and reports them separately. That leaves this as
+        # the only check that fails when zh.json moves and nobody reran the
+        # generator — without it, key-existence stays green while the values
+        # rot, which is the #5645 blindspot on this catalogue.
+        #
+        # Version-pinned deliberately: a different OpenCC build shifts terms no
+        # override pins, and reporting both catalogues stale at once is the
+        # intended loud failure rather than a silent reformat.
+        run: |
+          pip install opencc-python-reimplemented==0.1.7
+          python3 scripts/convert-zh-tw.py --check
       - name: Enforce health-probe cutovers
         env:
           HEALTH_PROBE_CUTOVER_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}

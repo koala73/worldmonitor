@@ -12,12 +12,17 @@
 // scripts/railway-deploy-closure.mjs (what a change can reach), both pure.
 
 import { execFile, spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { performance } from 'node:perf_hooks';
 import { promisify } from 'node:util';
+
+import { limitDeploymentHistory } from './railway-deployments.mjs';
 
 const execFileAsync = promisify(execFile);
 
 export const REPOSITORY = 'koala73/worldmonitor';
 export const DEPLOYMENT_READ_DEADLINE_ERROR = 'run deadline reached before deployment history read';
+const EXPECTED_REPOSITORY_FLEET_URL = new URL('./railway-native-autodeploy-fleet.json', import.meta.url);
 
 const GIT_CALL_TIMEOUT_MS = 30_000;
 const RAILWAY_CLI_ENV_KEYS = Object.freeze([
@@ -93,6 +98,22 @@ export const RAILWAY_CALL_TIMEOUT_MS = 60_000;
 // limited or starved of file descriptors.
 export const DEFAULT_CONCURRENCY = 8;
 
+/** Charge workflow prerequisites and the script itself to one monotonic budget. */
+export function resolveRunDeadlineAt({
+  budgetMs,
+  jobStartedAtMs,
+  epochNow = Date.now(),
+  monotonicNow = performance.now(),
+}) {
+  if (!Number.isFinite(budgetMs) || budgetMs < 0) {
+    throw new TypeError('run budget must be a non-negative finite number');
+  }
+  const elapsedBeforeScriptMs = Number.isFinite(jobStartedAtMs)
+    ? Math.max(0, epochNow - jobStartedAtMs)
+    : 0;
+  return monotonicNow + Math.max(0, budgetMs - elapsedBeforeScriptMs);
+}
+
 export function runRailway(args, options = {}, spawnImpl = spawnSync) {
   const { env: sourceEnv = process.env, ...spawnOptions } = options;
   const timeout = spawnOptions.timeout ?? RAILWAY_CALL_TIMEOUT_MS;
@@ -125,15 +146,129 @@ export function isRepositoryService(service) {
 }
 
 /** Every service in the environment, unfiltered. */
-export function readServices(environment) {
-  const services = JSON.parse(runRailway(['service', 'list', '--environment', environment, '--json']));
+export function readServices(
+  environment,
+  { projectId = process.env.RAILWAY_PROJECT_ID } = {},
+) {
+  const services = JSON.parse(runRailway([
+    'service',
+    'list',
+    ...(projectId ? ['--project', projectId] : []),
+    '--environment',
+    environment,
+    '--json',
+  ]));
   if (!Array.isArray(services)) throw new Error('railway service list must return an array');
   return services;
 }
 
+function validateExpectedRepositoryFleet(services) {
+  if (!Array.isArray(services) || services.length === 0) {
+    throw new Error('expected Railway repository fleet must contain services');
+  }
+  const ids = new Set();
+  const names = new Set();
+  for (const [index, service] of services.entries()) {
+    if (!service || typeof service !== 'object' || Array.isArray(service)
+      || typeof service.id !== 'string' || service.id.length === 0
+      || typeof service.name !== 'string' || service.name.length === 0) {
+      throw new Error(`expected Railway repository fleet service ${index} is malformed`);
+    }
+    if (ids.has(service.id)) {
+      throw new Error(`expected Railway repository fleet repeats service id ${service.id}`);
+    }
+    if (names.has(service.name)) {
+      throw new Error(`expected Railway repository fleet repeats service name ${service.name}`);
+    }
+    ids.add(service.id);
+    names.add(service.name);
+  }
+  return services;
+}
+
+/**
+ * The immutable repository-service identity roster captured by the last
+ * terminally accepted production reconciliation.
+ *
+ * This is not an acceptance baseline: every mismatch is red. It prevents an
+ * expected service whose GitHub source was detached from disappearing before
+ * repository filtering and making both read-only monitors look healthy.
+ */
+export function readExpectedRepositoryFleet(url = EXPECTED_REPOSITORY_FLEET_URL) {
+  const manifest = JSON.parse(readFileSync(url, 'utf8'));
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)
+    || manifest.version !== 1 || manifest.repository !== REPOSITORY
+    || typeof manifest.acceptedHead !== 'string'
+    || !/^[0-9a-f]{40}$/.test(manifest.acceptedHead)
+    || !Number.isSafeInteger(manifest.acceptedRunId)) {
+    throw new Error('expected Railway repository fleet manifest is malformed');
+  }
+  return validateExpectedRepositoryFleet(manifest.services);
+}
+
+/**
+ * Prove the complete live repository fleet before returning any service.
+ *
+ * The caller must pass the unfiltered environment inventory. Matching only
+ * `source.repo` first would silently omit exactly the detached-service failure
+ * this guard exists to detect.
+ */
+export function selectExpectedRepositoryServices(inventory, expectedServices) {
+  if (!Array.isArray(inventory) || inventory.length === 0) {
+    throw new Error('Railway service inventory was empty');
+  }
+  const expected = validateExpectedRepositoryFleet(expectedServices);
+  const byId = new Map();
+  const byName = new Map();
+  for (const [index, service] of inventory.entries()) {
+    if (!service || typeof service !== 'object' || Array.isArray(service)
+      || typeof service.id !== 'string' || service.id.length === 0
+      || typeof service.name !== 'string' || service.name.length === 0) {
+      throw new Error(`Railway service inventory contains malformed service ${index}`);
+    }
+    if (byId.has(service.id)) throw new Error(`Railway service inventory repeats id ${service.id}`);
+    if (byName.has(service.name)) throw new Error(`Railway service inventory repeats name ${service.name}`);
+    byId.set(service.id, service);
+    byName.set(service.name, service);
+  }
+
+  const selected = [];
+  const expectedIds = new Set(expected.map((service) => service.id));
+  for (const service of expected) {
+    const live = byId.get(service.id);
+    if (!live) {
+      const replacement = byName.get(service.name);
+      if (replacement) {
+        throw new Error(
+          `${service.name} has service id ${replacement.id}; expected ${service.id}`,
+        );
+      }
+      throw new Error(`${service.name} is missing from the Railway service inventory`);
+    }
+    if (live.name !== service.name) {
+      throw new Error(
+        `Railway service id ${service.id} is named ${live.name}; expected ${service.name}`,
+      );
+    }
+    if (!isRepositoryService(live) || live.source?.image != null) {
+      throw new Error(`${service.name} no longer has the expected repository source ${REPOSITORY}`);
+    }
+    selected.push(live);
+  }
+
+  const unexpected = inventory
+    .filter((service) => isRepositoryService(service) && !expectedIds.has(service.id))
+    .map((service) => service.name)
+    .sort();
+  if (unexpected.length > 0) {
+    throw new Error(`unexpected repository service(s): ${unexpected.join(', ')}`);
+  }
+  return selected;
+}
+
 /** Just the ones this repository deploys. */
-export function readRepositoryServices(environment) {
-  return readServices(environment).filter(isRepositoryService);
+export function readRepositoryServices(environment, options) {
+  return readServices(environment, options).filter(isRepositoryService);
 }
 
 /**
@@ -155,24 +290,58 @@ export function readEnvironmentConfig(environment) {
 }
 
 /**
- * The environment's id, for the deploy mutation.
+ * Prove that an explicit Railway status read resolved the requested target.
+ *
+ * Mutating callers must not infer a project from the checkout link or accept a
+ * same-named environment from an ambiguous payload. Keep this pure so bounded
+ * operator tools can test every fail-closed status shape without invoking the
+ * CLI.
+ */
+export function resolveRailwayTarget(status, expectedProjectId, environmentName) {
+  if (!status || typeof status !== 'object' || Array.isArray(status)) {
+    throw new Error('Railway status must return an object');
+  }
+  if (typeof status.id !== 'string' || status.id !== expectedProjectId) {
+    throw new Error(
+      `Railway status resolved project id ${String(status.id ?? 'missing')}; expected ${expectedProjectId}`,
+    );
+  }
+  const edges = status?.environments?.edges;
+  if (!Array.isArray(edges)) {
+    throw new Error('Railway status must contain an environments connection');
+  }
+  const matches = edges
+    .map((edge) => edge?.node)
+    .filter((node) => node?.name === environmentName);
+  if (matches.length !== 1 || typeof matches[0]?.id !== 'string' || matches[0].id.length === 0) {
+    throw new Error(
+      `Railway status must resolve exactly one environment ${environmentName}; found ${matches.length}`,
+    );
+  }
+  return {
+    environmentId: matches[0].id,
+  };
+}
+
+/**
+ * Resolve one explicit environment id on a clean runner.
  *
  * `--project` is not optional on a CI runner. A clean runner has no `.railway`
  * link, and a bare `railway status --json` answers "No linked project found" —
- * which JSON.parse then fails on, at the moment of deploying. Every other call
- * this script makes (service list, environment config, deployment list) is
- * proven to work on just the project-scoped RAILWAY_TOKEN by the freshness
- * monitor that has been running them every 15 minutes; `railway status` is the
- * one call that workflow passes `--project` to, and this had been the only
- * place in the new code without that precedent.
+ * which would otherwise fail or resolve an unrelated local context. Read-only
+ * monitors and bounded operator tools share this explicit target proof.
  */
-export function resolveEnvironmentId(environmentName, projectId = process.env.RAILWAY_PROJECT_ID) {
+export function resolveEnvironmentId(
+  environmentName,
+  projectId = process.env.RAILWAY_PROJECT_ID,
+  { timeoutMs = RAILWAY_CALL_TIMEOUT_MS } = {},
+) {
   const status = JSON.parse(runRailway([
     'status',
     ...(projectId ? ['--project', projectId] : []),
     '--environment', environmentName,
     '--json',
-  ]));
+  ], { timeout: timeoutMs }));
   const nodes = (status?.environments?.edges ?? []).map((edge) => edge?.node).filter(Boolean);
   const match = nodes.find((node) => node.name === environmentName);
   if (!match?.id) {
@@ -186,6 +355,7 @@ export function resolveEnvironmentId(environmentName, projectId = process.env.RA
 /** One service's deployment history, newest first, up to `window` records. */
 export async function readDeployments(service, environment, window, {
   env = process.env,
+  projectId = env.RAILWAY_PROJECT_ID,
   execFileImpl = execFileAsync,
   timeoutMs = RAILWAY_CALL_TIMEOUT_MS,
 } = {}) {
@@ -194,6 +364,7 @@ export async function readDeployments(service, environment, window, {
     'list',
     '--service',
     service.id ?? service.name,
+    ...(projectId ? ['--project', projectId] : []),
     '--environment',
     environment,
     '--limit',
@@ -228,12 +399,7 @@ const FLEET_QUERY = `query FleetDeployments($input: DeploymentListInput!, $first
   }
 }`;
 
-/** Run one GraphQL document through the Railway CLI and return `data`. */
-export function runRailwayApi(query, variables, { timeoutMs = RAILWAY_CALL_TIMEOUT_MS } = {}) {
-  const stdout = runRailway(
-    ['api', query, '--variables', JSON.stringify(variables), '--compact'],
-    { timeout: timeoutMs },
-  );
+function parseRailwayApiOutput(stdout) {
   // `railway api` can print advisory lines before the payload; the JSON document
   // is the first line that parses.
   for (const line of stdout.split('\n')) {
@@ -245,6 +411,38 @@ export function runRailwayApi(query, variables, { timeoutMs = RAILWAY_CALL_TIMEO
     if (parsed?.data) return parsed.data;
   }
   throw new Error('railway api returned no JSON payload');
+}
+
+/** Run one GraphQL document through the Railway CLI and return `data`. */
+export function runRailwayApi(query, variables, { timeoutMs = RAILWAY_CALL_TIMEOUT_MS } = {}) {
+  const stdout = runRailway(
+    ['api', query, '--variables', JSON.stringify(variables), '--compact'],
+    { timeout: timeoutMs },
+  );
+  return parseRailwayApiOutput(stdout);
+}
+
+/**
+ * Async form for bounded-concurrency Viewer projections.
+ *
+ * The deployment-only audit reads one small projection per service. Using the
+ * async child-process API lets its shared deadline and subprocess timeout stay
+ * effective without blocking the workflow process between reads.
+ */
+export async function runRailwayApiAsync(query, variables, {
+  timeoutMs = RAILWAY_CALL_TIMEOUT_MS,
+  env = process.env,
+  execFileImpl = execFileAsync,
+} = {}) {
+  const { stdout } = await execFileImpl('railway', [
+    'api', query, '--variables', JSON.stringify(variables), '--compact',
+  ], {
+    encoding: 'utf8',
+    maxBuffer: 10 * 1024 * 1024,
+    timeout: timeoutMs,
+    env: createRailwayCliEnv(env),
+  });
+  return parseRailwayApiOutput(stdout);
 }
 
 /**
@@ -332,10 +530,14 @@ export async function readFleetDeployments({
   deadlineAt = Number.POSITIVE_INFINITY,
   monotonicNow = Date.now,
 }) {
-  const accumulator = accumulatorFactory({ serviceIds, notBefore });
+  const accumulator = accumulatorFactory({
+    serviceIds,
+    notBefore,
+  });
   let after = null;
   let pages = 0;
   let records = 0;
+  const seenCursors = new Set();
   while (pages < maxPages) {
     if (monotonicNow() >= deadlineAt) {
       throw new Error(DEPLOYMENT_READ_DEADLINE_ERROR);
@@ -346,16 +548,36 @@ export async function readFleetDeployments({
       ...(after ? { after } : {}),
     });
     const connection = data?.deployments;
-    if (!connection?.edges) throw new Error('railway api returned no deployments connection');
+    if (!Array.isArray(connection?.edges)) {
+      throw new Error('railway api returned no deployments connection');
+    }
+    if (typeof connection.pageInfo?.hasNextPage !== 'boolean') {
+      throw new Error('railway deployments pageInfo.hasNextPage must be a boolean');
+    }
+    const nextCursor = connection.pageInfo.endCursor;
+    if (connection.pageInfo.hasNextPage
+      && (typeof nextCursor !== 'string' || nextCursor.length === 0 || seenCursors.has(nextCursor))) {
+      throw new Error('railway deployments cursor did not advance');
+    }
+    const nodes = connection.edges.map((edge, index) => {
+      if (!edge?.node || typeof edge.node !== 'object' || Array.isArray(edge.node)
+        || typeof edge.node.id !== 'string' || edge.node.id.length === 0
+        || typeof edge.node.status !== 'string' || edge.node.status.length === 0
+        || typeof edge.node.serviceId !== 'string' || edge.node.serviceId.length === 0) {
+        throw new Error(`railway deployment edge ${index} is malformed`);
+      }
+      return edge.node;
+    });
     pages += 1;
     records += connection.edges.length;
-    accumulator.absorb(connection.edges.map((edge) => edge?.node).filter(Boolean));
-    if (!connection.pageInfo?.hasNextPage) {
+    accumulator.absorb(nodes);
+    if (!connection.pageInfo.hasNextPage) {
       accumulator.markExhausted();
       break;
     }
     if (accumulator.done) break;
-    after = connection.pageInfo.endCursor;
+    seenCursors.add(nextCursor);
+    after = nextCursor;
   }
   const result = accumulator.result();
   const complete = accumulator.done;
@@ -395,6 +617,7 @@ export async function readDeploymentsForFleet({
   onRoute = () => {},
   deadlineAt = Number.POSITIVE_INFINITY,
   monotonicNow = Date.now,
+  readFleet = readFleetDeployments,
   readDirect = readDeployments,
 }) {
   const byId = new Map(services.map((service) => [service.id, service]));
@@ -405,7 +628,7 @@ export async function readDeploymentsForFleet({
     onRoute({ route: 'per-service', reason: DEPLOYMENT_READ_DEADLINE_ERROR });
   } else if (projectId && environmentId && accumulatorFactory) {
     try {
-      const fleet = await readFleetDeployments({
+      const fleet = await readFleet({
         projectId,
         environmentId,
         serviceIds: [...byId.keys()],
@@ -428,7 +651,10 @@ export async function readDeploymentsForFleet({
           // returned `window`. Leaving them in silently changes what the
           // classifier sees — and every extra SKIPPED record costs a `git show`,
           // which is what actually dominates a sweep's wall clock.
-          results.set(serviceId, { deployments: deployments.slice(0, window), error: null });
+          results.set(serviceId, {
+            deployments: limitDeploymentHistory(deployments, window),
+            error: null,
+          });
         }
       }
       needDirect = fleet.unresolved.map((serviceId) => byId.get(serviceId)).filter(Boolean);
@@ -452,7 +678,10 @@ export async function readDeploymentsForFleet({
       return;
     }
     try {
-      results.set(service.id, { deployments: await readDirect(service, environment, window), error: null });
+      results.set(service.id, {
+        deployments: await readDirect(service, environment, window, { projectId }),
+        error: null,
+      });
     } catch (error) {
       results.set(service.id, {
         deployments: null,
@@ -468,14 +697,20 @@ export async function readDeploymentsForFleet({
 export async function mapWithConcurrency(items, limit, worker) {
   const results = new Array(items.length);
   let next = 0;
+  let firstError = null;
   const runners = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
-    while (next < items.length) {
+    while (next < items.length && firstError === null) {
       const index = next;
       next += 1;
-      results[index] = await worker(items[index], index);
+      try {
+        results[index] = await worker(items[index], index);
+      } catch (error) {
+        if (firstError === null) firstError = error;
+      }
     }
   });
   await Promise.all(runners);
+  if (firstError !== null) throw firstError;
   return results;
 }
 

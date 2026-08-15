@@ -94,13 +94,30 @@ test('source inventory has complete metadata and matches the generated catalog',
   }
 
   const stats = sourceAttributionStats(inventory, manifest);
-  // Merge resolution: main's totals plus this branch's two new hosts (USDA FAS
-  // PSD via api.fas.usda.gov, FAOSTAT via fenixservices.fao.org), so the merged
-  // totals are neither side's numbers. Recomputed from the merged manifest.
-  assert.equal(stats.activeHosts, 536);
-  assert.equal(stats.providerCount, 534);
-  assert.equal(stats.observedHosts, 655);
+  // Hardcoded on purpose, and this DELIBERATELY OVERRIDES the lockstep-with-
+  // docs/generated/stats.json version that arrived on the #6610 branch.
+  // buildSourceAttributionStats (scripts/source-attribution.mjs:1090) is a thin
+  // wrapper that calls this exact sourceAttributionStats(inventory, manifest) on
+  // the same inputs, and that is what writes stats.json. So the lockstep form
+  // compares a value against a serialized snapshot of itself: it cannot fail on
+  // an unintended host-count change, only on a stale snapshot — which docs:check
+  // already gates. Hardcoding is what makes an accidental source drop go red.
+  // Yes, these numbers go stale; that is the tripwire working, and the fix is a
+  // conscious one-line bump. Main carries 552/548/671 — 550 providers from the
+  // Canada roads stack and Alberta Emergency Alert (#6669), less the two the
+  // OpenSky and Wingbits aliases collapsed in #6717 without removing a host.
+  // Main carries 553/549/672 once VIA Rail (#6615) landed. This PR adds
+  // gtfsrt.ttc.ca: +1 host, +1 provider, +1 observed.
+  assert.equal(stats.activeHosts, 554);
+  assert.equal(stats.providerCount, 550);
+  assert.equal(stats.observedHosts, 673);
   assert.ok(stats.reviewNeeded > 0, 'terms-review rows must remain visible until a license audit is complete');
+
+  const byHost = new Map(manifest.entries.map((entry) => [entry.host, entry]));
+  assert.equal(byHost.get('auth.opensky-network.org')?.provider, 'opensky-network.org');
+  assert.equal(byHost.get('opensky-network.org')?.provider, 'opensky-network.org');
+  assert.equal(byHost.get('customer-api.wingbits.com')?.provider, 'wingbits.com');
+  assert.equal(byHost.get('ecs-api.wingbits.com')?.provider, 'wingbits.com');
 });
 
 test('the issue audit providers are represented by named attribution rows', () => {
@@ -142,6 +159,17 @@ test('the issue audit providers are represented by named attribution rows', () =
   ]) {
     assert.ok(names.has(provider), `missing named provider row: ${provider}`);
   }
+});
+
+test('City of Toronto CART host stays terms-review while CKAN licence_id is notspecified', () => {
+  const inventory = scanUpstreamHosts(rootDir);
+  const manifest = loadManifest(rootDir);
+  const observed = inventory.find((entry) => entry.host === 'secure.toronto.ca');
+  assert.ok(observed, 'secure.toronto.ca must be observed from the Toronto seeder/adapter');
+  const entry = [...manifest.entries, ...manifest.logicalEntries].find((row) => row.host === 'secure.toronto.ca');
+  assert.ok(entry, 'secure.toronto.ca must have a generated attribution row');
+  assert.equal(entry.status, 'terms-review');
+  assert.equal(entry.provider, 'City of Toronto Open Data');
 });
 
 test('uppercase URL constants are included in the upstream inventory', () => {

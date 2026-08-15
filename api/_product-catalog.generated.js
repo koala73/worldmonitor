@@ -168,12 +168,12 @@ export const PUBLIC_PRODUCT_FACTS = {
     "mcpTools": 63,
     "locales": 28,
     "variants": 6,
-    "mapLayers": 56,
+    "mapLayers": 58,
     "panelImplementations": 109,
-    "feedDefinitions": 632,
-    "freshnessTrackedSourceGroups": 35,
-    "sourceAttributionHosts": 536,
-    "sourceAttributionProviders": 534
+    "feedDefinitions": 658,
+    "freshnessTrackedSourceGroups": 37,
+    "sourceAttributionHosts": 554,
+    "sourceAttributionProviders": 550
   }
 };
 

@@ -48,7 +48,7 @@
     "entF10": "Moln, on-premises eller air-gapped deployment",
     "entF11": "Dedikerad onboarding och support",
     "entCta": "Prata med sälj",
-    "freeF2": "500+ flöden, 536+ källor, 50+ kartlager"
+    "freeF2": "500+ flöden, 554+ källor, 50+ kartlager"
   },
   "whyUpgrade": {
     "title": "Varför uppgradera",
@@ -441,7 +441,8 @@
       "docs": "Dokumentation",
       "launch": "Starta instrumentpanel",
       "blog": "Blogg",
-      "menu": "Meny"
+      "menu": "Meny",
+      "agents": "För AI-agenter"
     },
     "hero": {
       "eyebrow": "Gratis global underrättelseinstrumentpanel · live nu",
@@ -565,7 +566,7 @@
       "s1l": "Kartlager",
       "s2v": "500+",
       "s2l": "Kurerade flöden",
-      "s3v": "534+",
+      "s3v": "550+",
       "s3l": "Dataleverantörer",
       "s4v": "13",
       "s4l": "Flaskhalsar · direkt AIS",
@@ -620,7 +621,14 @@
       "termQuery": "Blir vår Red Sea-exponering värre den här veckan?",
       "termAnswer": "Transitantal ned vecka för vecka; krigsriskskikt höjt; två täthetskaviteter de senaste 48 timmarna.",
       "termDocs": "Se den fullständiga verktygslistan →",
-      "promise": "En nyckel. 63 MCP-verktyg. Ett fullständigt REST API. Språknativa klienter."
+      "promise": "En nyckel. 63 MCP-verktyg. Ett fullständigt REST API. Språknativa klienter.",
+      "resources": {
+        "title": "Välj ditt startläge",
+        "briefing": "Agentöversikt",
+        "mcp": "MCP-server",
+        "api": "REST API",
+        "agentView": "Agentvy"
+      }
     },
     "pricing": {
       "eyebrow": "Åtkomst",
@@ -651,7 +659,7 @@
       "q2": "Vad är en global intelligence-instrumentbräda?",
       "a2": "En enda live-vy som sammanfogar signaler som de flesta verktyg håller åtskilda: konflikthändelser, fartygs- och flygspårning, sjövägsflaskhalsar, satelliter, undersjökablar, pipelines, marknader och cyberhotningar — på en realtids-världskarta, med AI-poäng och sammanfattningar överst. World Monitor är en gratis sådan.",
       "q3": "Var kommer data från?",
-      "a3": "534+ leverantörer, namngivna: ACLED och UCDP för konflikter, AISStream för live-fartyg, OpenSky för flygplan, NASA FIRMS för bränder, USGS för jordbävningar, IMF, BIS, FRED och Finnhub för marknader och makro — plus 500+ utvalda nyhetsflöden. Varje panel citerar sina källor och tidsstämplar inline.",
+      "a3": "550+ leverantörer, namngivna: ACLED och UCDP för konflikter, AISStream för live-fartyg, OpenSky för flygplan, NASA FIRMS för bränder, USGS för jordbävningar, IMF, BIS, FRED och Finnhub för marknader och makro — plus 500+ utvalda nyhetsflöden. Varje panel citerar sina källor och tidsstämplar inline.",
       "q4": "Kan jag övervaka flaskhalsar som Hormuz eller Bab el-Mandeb i realtid?",
       "a4": "Ja. 13 flaskhalsar spåras med live AIS-fartygsantal, vecka-för-vecka transitförändring och störningspoäng — och densitetsavvikelser flaggas mot varje sunds löpande baslinjen.",
       "q5": "Hur skiljer sig detta från en konfliktkarta som Liveuamap?",
@@ -675,6 +683,18 @@
       "button": "Hitta den först",
       "note": "Gratis · Ingen registrering · Laddar på sekunder",
       "secondary": "Eller se Pro-planer →"
+    },
+    "tasks": {
+      "eyebrow": "Börja med frågan",
+      "title": "Vad försöker du ta reda på?",
+      "sub": "Välj beviskedjan som motsvarar ditt uppdrag. Varje väg öppnar en källstödd vy, inte en tom instrumentpanel.",
+      "verifyTitle": "Verifiera en breaking-händelse",
+      "verifyDesc": "Kontrollera aktuella krishanterare, uppdaterade mätvärden och citerad kontext innan du litar på ett breaking-claim.",
+      "chokepointTitle": "Kontrollera en flaskhal",
+      "chokepointDesc": "Inspektera avbrottsstatus, fartygsflöden och risk över kritiska sjövägspassager.",
+      "countryRiskTitle": "Förklara ett landrisksteg",
+      "countryRiskDesc": "Spåra de politiska, säkerhetsmässiga, ekonomiska och motståndskraftssignaler bakom ett lands förändring.",
+      "open": "Öppna bevis"
     }
   }
 }

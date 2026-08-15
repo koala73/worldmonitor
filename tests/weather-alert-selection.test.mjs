@@ -11,6 +11,7 @@ import {
   requireAlertFeatures,
   selectAlerts,
   validateSelectedAlerts,
+  weatherAlertNotifyLocation,
 } from '../scripts/_weather-alert-select.mjs';
 
 const SEEDER_SOURCE = readFileSync(
@@ -23,10 +24,10 @@ const POLYGON = {
   coordinates: [[[-100, 40], [-99, 40], [-99, 41], [-100, 41], [-100, 40]]],
 };
 
-function feature(severity, index, overrides = {}) {
+function feature(severity, index, overrides = {}, geometry = POLYGON) {
   return {
     id: `alert-${index}`,
-    geometry: POLYGON,
+    geometry,
     properties: {
       severity,
       event: `${severity} event ${index}`,
@@ -179,5 +180,145 @@ describe('weather alert selection', () => {
 
   it('returns undefined centroid for an empty ring', () => {
     assert.equal(calculateCentroid([]), undefined);
+  });
+});
+
+const AIS_RELAY_SOURCE = readFileSync(
+  new URL('../scripts/ais-relay.cjs', import.meta.url),
+  'utf8',
+);
+
+// The fixture ring is the closed square [-100,40] [-99,40] [-99,41] [-100,41]
+// [-100,40], whose true centre is -99.5 / 40.5. Averaging the raw ring counts
+// the repeated closing vertex twice and yields -99.6 / 40.4 — ~14km off, and
+// dependent on where the ring starts. These assertions pin the TRUE centre so
+// the closing-vertex bias cannot come back.
+describe('weather_alert notification location payload', () => {
+  it('maps a GeoJSON-order centroid onto lat/lon and carries the polygon', () => {
+    const [alert] = selectAlerts([feature('Severe', 1)]);
+    const location = weatherAlertNotifyLocation(alert);
+
+    assert.equal(location.lat, 40.5);
+    assert.equal(location.lon, -99.5);
+    assert.deepEqual(location.geometry, {
+      type: 'Polygon',
+      coordinates: [alert.coordinates],
+    });
+  });
+
+  it('centroid ignores the duplicated closing vertex and is rotation-invariant', () => {
+    const square = [[-100, 40], [-99, 40], [-99, 41], [-100, 41], [-100, 40]];
+    const rotated = [[-99, 40], [-99, 41], [-100, 41], [-100, 40], [-99, 40]];
+
+    assert.deepEqual(calculateCentroid(square), [-99.5, 40.5]);
+    // Same polygon, different start vertex -> must be the same point.
+    assert.deepEqual(calculateCentroid(rotated), [-99.5, 40.5]);
+    // An open ring (no repeated closing vertex) is averaged as-is.
+    assert.deepEqual(calculateCentroid([[0, 0], [2, 0], [2, 2], [0, 2]]), [1, 1]);
+  });
+
+  it('omits lat/lon and geometry when the alert has no centroid', () => {
+    assert.deepEqual(
+      weatherAlertNotifyLocation({ coordinates: [], centroid: undefined }),
+      {},
+    );
+  });
+
+  it('omits geometry when only a centroid exists', () => {
+    assert.deepEqual(
+      weatherAlertNotifyLocation({ centroid: [-99.5, 40.5], coordinates: [] }),
+      { lat: 40.5, lon: -99.5 },
+    );
+  });
+
+  it('publishes every warned area of a MultiPolygon alert, not just the first', () => {
+    const ringA = [[-100, 40], [-99, 40], [-99, 41], [-100, 41], [-100, 40]];
+    const ringB = [[-80, 30], [-79, 30], [-79, 31], [-80, 31], [-80, 30]];
+    const [alert] = selectAlerts([feature('Extreme', 1, {}, {
+      type: 'MultiPolygon',
+      coordinates: [[ringA], [ringB]],
+    })]);
+
+    const location = weatherAlertNotifyLocation(alert);
+
+    // Both disjoint areas must reach the consumer: a point-in-polygon filter
+    // fed only ringA drops every user inside ringB.
+    assert.deepEqual(location.geometry, {
+      type: 'MultiPolygon',
+      coordinates: [[ringA], [ringB]],
+    });
+    // lat/lon stays the PRIMARY ring's centre — a representative anchor, with
+    // geometry as the authoritative area.
+    assert.equal(location.lat, 40.5);
+    assert.equal(location.lon, -99.5);
+  });
+
+  it('still emits a plain Polygon for a single-part alert', () => {
+    const [alert] = selectAlerts([feature('Severe', 1)]);
+    assert.equal(alert.rings, undefined, 'single-part alerts must not carry a redundant rings field');
+    assert.equal(weatherAlertNotifyLocation(alert).geometry.type, 'Polygon');
+  });
+
+  it('omits geometry for a ring that is not a valid closed LinearRing', () => {
+    // RFC 7946 requires >= 4 positions with first === last. A 3-position ring
+    // and an unclosed ring are both rejected by strict parsers, so publish
+    // lat/lon alone rather than geometry a consumer will choke on.
+    const tooShort = [[-100, 40], [-99, 40], [-100, 40]];
+    const unclosed = [[-100, 40], [-99, 40], [-99, 41], [-100, 41]];
+
+    assert.deepEqual(
+      weatherAlertNotifyLocation({ centroid: [-99.5, 40.5], coordinates: tooShort }),
+      { lat: 40.5, lon: -99.5 },
+    );
+    assert.deepEqual(
+      weatherAlertNotifyLocation({ centroid: [-99.5, 40.5], coordinates: unclosed }),
+      { lat: 40.5, lon: -99.5 },
+    );
+  });
+
+  it('rejects a non-numeric centroid rather than coercing it to 0,0', () => {
+    // Number(null) === 0 and Number.isFinite(0) is true, so a bare isFinite
+    // check publishes 0,0 in the Gulf of Guinea — the exact value the
+    // omit-entirely contract exists to prevent.
+    for (const bad of [null, '', [], false]) {
+      assert.deepEqual(
+        weatherAlertNotifyLocation({ centroid: [bad, bad], coordinates: [] }),
+        {},
+        `centroid [${JSON.stringify(bad)}, ...] must omit, not coerce to 0`,
+      );
+    }
+  });
+
+  it('rejects a non-finite centroid so consumers never see 0,0 from missing geo', () => {
+    assert.deepEqual(
+      weatherAlertNotifyLocation({ centroid: [Number.NaN, 40], coordinates: POLYGON.coordinates[0] }),
+      {},
+    );
+  });
+
+  // centroid is GeoJSON order [lon, lat], so the case above only drives `lon`
+  // non-finite. Without this second case, weakening the guard to check just one
+  // operand (`!Number.isFinite(lon)`) still passes every other test here, and a
+  // NaN latitude would serialize onto the wire as `lat: null` — the opposite of
+  // the omit-entirely contract.
+  it('rejects a non-finite latitude even when longitude is finite', () => {
+    assert.deepEqual(
+      weatherAlertNotifyLocation({ centroid: [-99.6, Number.NaN], coordinates: POLYGON.coordinates[0] }),
+      {},
+    );
+  });
+
+  it('threads weatherAlertNotifyLocation into the weather_alert publish payload', () => {
+    assert.match(
+      AIS_RELAY_SOURCE,
+      // Bounded to the weather_alert payload object literal. An unbounded
+      // `[\s\S]*?` gap passes as long as the token appears ANYWHERE later in
+      // this 12k-line file, so deleting the spread from the payload while any
+      // other reference survives keeps the guard green. The inner alternation
+      // permits the one nested `{ coalesceKey }` / `{}` pair already present
+      // but cannot cross the payload's closing brace.
+      /eventType:\s*'weather_alert',\s*payload:\s*\{(?:[^{}]|\{[^{}]*\})*\.\.\.weatherAlertNotifyLocation\(a\),/,
+      'ais-relay must spread weatherAlertNotifyLocation(a) INSIDE the weather_alert payload object so the already-computed centroid is published',
+    );
   });
 });

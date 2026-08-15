@@ -160,7 +160,7 @@
     "entF10": "Cloud, on-prem, or air-gapped deployment",
     "entF11": "Dedicated onboarding & support",
     "entCta": "Talk to Sales",
-    "freeF2": "500+ feeds, 536+ sources, 50+ map layers"
+    "freeF2": "500+ feeds, 554+ sources, 50+ map layers"
   },
   "whyUpgrade": {
     "title": "Why upgrade",
@@ -441,7 +441,8 @@
       "blog": "وبلاگ",
       "menu": "منو",
       "docs": "Docs",
-      "launch": "Launch Dashboard"
+      "launch": "Launch Dashboard",
+      "agents": "برای عوامل هوش مصنوعی"
     },
     "hero": {
       "eyebrow": "Free global intelligence dashboard · live now",
@@ -565,7 +566,7 @@
       "s1l": "Map layers",
       "s2v": "500+",
       "s2l": "Curated feeds",
-      "s3v": "534+",
+      "s3v": "550+",
       "s3l": "Data providers",
       "s4v": "13",
       "s4l": "Chokepoints · live AIS",
@@ -620,7 +621,14 @@
       "termQuery": "Is our Red Sea exposure getting worse this week?",
       "termAnswer": "Transit counts down week-over-week; war-risk tier elevated; two density anomalies in the last 48h.",
       "termDocs": "See the full tool reference →",
-      "promise": "یک کلید. 63 ابزار MCP. یک REST API کامل. کلاینت‌های بومی زبان."
+      "promise": "یک کلید. 63 ابزار MCP. یک REST API کامل. کلاینت‌های بومی زبان.",
+      "resources": {
+        "title": "نقطه ورود خود را انتخاب کنید",
+        "briefing": "گزارش وضعیت عامل",
+        "mcp": "سرور MCP",
+        "api": "REST API",
+        "agentView": "نمای عامل"
+      }
     },
     "pricing": {
       "eyebrow": "Access",
@@ -651,7 +659,7 @@
       "q2": "What is a global intelligence dashboard?",
       "a2": "A single live view that fuses signals most tools keep separate: conflict events, ship and aircraft tracking, shipping chokepoints, satellites, subsea cables, pipelines, markets and cyber threats — on one real-time world map, with AI scoring and briefs on top. World Monitor is a free one.",
       "q3": "Where does the data come from?",
-      "a3": "534+ providers, named: ACLED and UCDP for conflict, AISStream for live vessels, OpenSky for aircraft, NASA FIRMS for fires, USGS for earthquakes, IMF, BIS, FRED and Finnhub for markets and macro — plus 500+ curated news feeds. Every panel cites its sources and timestamps inline.",
+      "a3": "550+ providers, named: ACLED and UCDP for conflict, AISStream for live vessels, OpenSky for aircraft, NASA FIRMS for fires, USGS for earthquakes, IMF, BIS, FRED and Finnhub for markets and macro — plus 500+ curated news feeds. Every panel cites its sources and timestamps inline.",
       "q4": "Can I watch chokepoints like Hormuz or Bab el-Mandeb in real time?",
       "a4": "Yes. 13 chokepoints are tracked with live AIS vessel counts, week-over-week transit change and disruption scoring — and density anomalies are flagged against each strait's rolling baseline.",
       "q5": "How is this different from a conflict map like Liveuamap?",
@@ -675,6 +683,18 @@
       "button": "Find it first",
       "note": "Free · No signup · Loads in seconds",
       "secondary": "Or see Pro plans →"
+    },
+    "tasks": {
+      "eyebrow": "شروع با سؤال",
+      "title": "شما به دنبال چه اطلاعاتی هستید؟",
+      "sub": "مسیر شواهدی را انتخاب کنید که با وظیفه پیش رو مطابقت دارد. هر مسیر یک نمای تأیید‌شده توسط منابع را باز می‌کند، نه یک داشبورد خالی.",
+      "verifyTitle": "تأیید یک رویداد اخبار شکاف‌ساز",
+      "verifyDesc": "پیش از اعتماد به یک خبر شکاف‌ساز، ردیاب بحران‌های فعلی، معیارهای تاریخ‌دار و متن‌های استناد‌شده را بررسی کنید.",
+      "chokepointTitle": "بررسی یک نقطه تنگناک",
+      "chokepointDesc": "وضعیت اختلال، جریان کشتی‌ها و ریسک در مسیرهای دریایی حیاتی را بررسی کنید.",
+      "countryRiskTitle": "توضیح حرکت ریسک کشور",
+      "countryRiskDesc": "سیگنال‌های سیاسی، امنیتی، اقتصادی و تاب‌آوری پشت تغییر کشور را ردیابی کنید.",
+      "open": "باز کردن شواهد"
     }
   }
 }

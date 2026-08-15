@@ -20,8 +20,12 @@ const target = YAML.parse(readFileSync(
 ));
 
 describe('Railway deploy trigger watchdog workflow contract', () => {
-  it('uses the exact offset cadence, raw-status mode, and an isolated concurrency lane', () => {
-    assert.deepEqual(workflow.on.schedule, [{ cron: '8,23,38,53 * * * *' }]);
+  it('is manual rollback only with raw-status mode and an isolated concurrency lane', () => {
+    assert.match(workflow.name, /manual rollback only/i);
+    assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch']);
+    assert.ok(workflow.on.workflow_dispatch);
+    assert.doesNotMatch(source, /^\s*schedule:/m);
+    assert.doesNotMatch(source, /^\s*(?:push|pull_request|workflow_run|repository_dispatch):/m);
     assert.equal(workflow.on.workflow_dispatch.inputs.mode.default, 'classify');
     assert.deepEqual(workflow.on.workflow_dispatch.inputs.mode.options, [
       'status', 'classify', 'dispatch',
@@ -127,11 +131,20 @@ describe('Railway deploy trigger watchdog workflow contract', () => {
     assert.match(workflow.jobs.bind.if, /RECOVERY_DISPATCH_ACCEPTED/);
   });
 
+  it('keeps cutover-disabled manual classification out of recovery jobs', () => {
+    assert.match(String(workflow.jobs.dispatch.if), /RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true'/);
+    assert.match(String(workflow.jobs.bind.if), /RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true'/);
+    assert.match(String(workflow.jobs.reject.if), /needs\.dispatch\.result == 'success'/);
+    assert.doesNotMatch(source, /railway-reconcile-manual-recovery\.yml|workflow_call:/);
+  });
+
   it('keeps activation fail-closed and contains no Railway mutation or cancellation capability', () => {
     const controller = workflow.jobs.classify.steps.find((step) => step.id === 'controller');
     assert.match(controller.env.AUTO_RECOVERY_ENABLED, /RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED == 'true'/);
     assert.match(controller.env.AUTO_RECOVERY_ENABLED, /RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true'/);
+    assert.match(controller.env.AUTO_RECOVERY_ENABLED, /github\.event_name == 'workflow_dispatch'/);
     assert.match(controller.env.AUTO_RECOVERY_ENABLED, /inputs\.mode == 'dispatch'/);
+    assert.doesNotMatch(controller.env.AUTO_RECOVERY_ENABLED, /schedule/);
     for (const forbidden of [
       'RAILWAY_TOKEN',
       'RAILWAY_RECONCILE_DEPLOY_TOKEN',
@@ -144,5 +157,16 @@ describe('Railway deploy trigger watchdog workflow contract', () => {
     ]) {
       assert.ok(!source.includes(forbidden), `workflow must not contain ${forbidden}`);
     }
+  });
+
+  it('fails a blind manual classification immediately without a scheduled-history dependency', () => {
+    const marker = workflow.jobs.classify.steps.find(
+      (step) => step.name === 'Record watchdog read-path failure',
+    );
+    assert.equal(String(marker.if), "always() && steps.controller.outputs.read_failure == 'true'");
+    assert.match(dispatchSource, /the manual watchdog could not read GitHub/);
+    assert.match(dispatchSource, /if \(!result\?\.readFailureCode\).*failJob: false/s);
+    assert.match(dispatchSource, /failJob: true/);
+    assert.doesNotMatch(dispatchSource, /readReadFailureStreak|event:\s*'schedule'/);
   });
 });

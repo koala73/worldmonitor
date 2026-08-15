@@ -48,7 +48,7 @@
     "entF10": "Cloud-, On-Premises- oder Air-Gapped-Deployment",
     "entF11": "Dediziertes Onboarding und Support",
     "entCta": "Vertrieb kontaktieren",
-    "freeF2": "500+ Feeds, 536+ Quellen, 50+ Kartenebenen"
+    "freeF2": "500+ Feeds, 554+ Quellen, 50+ Kartenebenen"
   },
   "whyUpgrade": {
     "title": "Warum upgraden",
@@ -441,7 +441,8 @@
       "docs": "Dokumentation",
       "launch": "Dashboard starten",
       "blog": "Blog",
-      "menu": "Menü"
+      "menu": "Menü",
+      "agents": "Für KI-Agenten"
     },
     "hero": {
       "eyebrow": "Kostenloses globales Informations-Dashboard · live jetzt",
@@ -565,7 +566,7 @@
       "s1l": "Kartenschichten",
       "s2v": "500+",
       "s2l": "Kuratierte Feeds",
-      "s3v": "534+",
+      "s3v": "550+",
       "s3l": "Datenanbieter",
       "s4v": "13",
       "s4l": "Engpässe · live AIS",
@@ -620,7 +621,14 @@
       "termQuery": "Verschärft sich unsere Rotes-Meer-Exposition diese Woche?",
       "termAnswer": "Transitzählungen sinken Woche für Woche; Kriegsrisikostufe erhöht; zwei Dichteanomalien in den letzten 48 h.",
       "termDocs": "Vollständige Tool-Referenz anzeigen →",
-      "promise": "Ein Schlüssel. 63 MCP-Tools. Eine vollständige REST-API. Sprachenbezogene Clients."
+      "promise": "Ein Schlüssel. 63 MCP-Tools. Eine vollständige REST-API. Sprachenbezogene Clients.",
+      "resources": {
+        "title": "Wählen Sie Ihren Einstiegspunkt",
+        "briefing": "Agent-Briefing",
+        "mcp": "MCP-Server",
+        "api": "REST API",
+        "agentView": "Agent-Ansicht"
+      }
     },
     "pricing": {
       "eyebrow": "Zugriff",
@@ -651,7 +659,7 @@
       "q2": "Was ist ein globales Intelligence-Dashboard?",
       "a2": "Eine einzige Live-Ansicht, die Signale zusammenführt, die die meisten Tools separat halten: Konfliktereignisse, Schiffs- und Flugzeugverfolgung, Versandengpässe, Satelliten, Unterseekabel, Pipelines, Märkte und Cyber-Bedrohungen — auf einer Echtzeit-Weltkarte mit KI-Bewertung und Zusammenfassungen. World Monitor ist eine kostenlose Version davon.",
       "q3": "Woher stammen die Daten?",
-      "a3": "Von 534+ Anbietern, benannt: ACLED und UCDP für Konflikte, AISStream für Live-Schiffe, OpenSky für Flugzeuge, NASA FIRMS für Brände, USGS für Erdbeben, IMF, BIS, FRED und Finnhub für Märkte und Makroökonomie — plus 500+ kuratierte Nachrichtenfeeds. Jedes Panel zitiert seine Quellen und Zeitstempel inline.",
+      "a3": "Von 550+ Anbietern, benannt: ACLED und UCDP für Konflikte, AISStream für Live-Schiffe, OpenSky für Flugzeuge, NASA FIRMS für Brände, USGS für Erdbeben, IMF, BIS, FRED und Finnhub für Märkte und Makroökonomie — plus 500+ kuratierte Nachrichtenfeeds. Jedes Panel zitiert seine Quellen und Zeitstempel inline.",
       "q4": "Kann ich Engpässe wie Hormuz oder Bab el-Mandeb in Echtzeit beobachten?",
       "a4": "Ja. 13 Engpässe werden mit Live-AIS-Schiffszählungen, Woche-über-Woche-Transitveränderung und Störungsbewertung verfolgt — und Dichteanomалien werden gegen die rollende Basislinie jeder Meerenge gekennzeichnet.",
       "q5": "Wie unterscheidet sich dies von einer Konfliktkarte wie Liveuamap?",
@@ -675,6 +683,18 @@
       "button": "Finden Sie ihn zuerst",
       "note": "Kostenlos · Keine Anmeldung · Lädt in Sekunden",
       "secondary": "Oder siehe Pro-Pläne →"
+    },
+    "tasks": {
+      "eyebrow": "Beginnen Sie mit der Frage",
+      "title": "Was möchten Sie herausfinden?",
+      "sub": "Wählen Sie die Nachweiskette, die zu Ihrer Aufgabe passt. Jede Route öffnet eine quellengestützte Ansicht, nicht ein leeres Dashboard.",
+      "verifyTitle": "Ein Breaking Event verifizieren",
+      "verifyDesc": "Überprüfen Sie aktuelle Krisen-Tracker, datierte Metriken und zitierte Kontexte, bevor Sie einen Breaking-Bericht vertrauen.",
+      "chokepointTitle": "Einen Engpass überprüfen",
+      "chokepointDesc": "Inspizieren Sie Störungsstatus, Schiffsflüsse und Risiken in kritischen maritimen Passages.",
+      "countryRiskTitle": "Eine Länderrisiko-Bewegung erklären",
+      "countryRiskDesc": "Verfolgen Sie die politischen, sicherheitstechnischen, wirtschaftlichen und Resilienz-Signale hinter einer Länderveränderung.",
+      "open": "Belege öffnen"
     }
   }
 }

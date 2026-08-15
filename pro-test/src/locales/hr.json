@@ -48,7 +48,7 @@
     "entF10": "Cloud, on-prem ili air-gapped implementacija",
     "entF11": "Namjenski onboarding i podrška",
     "entCta": "Razgovarajte s prodajom",
-    "freeF2": "500+ feedova, 536+ izvora, 50+ slojeva karte"
+    "freeF2": "500+ feedova, 554+ izvora, 50+ slojeva karte"
   },
   "whyUpgrade": {
     "title": "Zašto nadograditi",
@@ -441,7 +441,8 @@
       "docs": "Dokumentacija",
       "launch": "Pokreni nadzornu ploču",
       "blog": "Blog",
-      "menu": "Izbornik"
+      "menu": "Izbornik",
+      "agents": "Za AI agente"
     },
     "hero": {
       "eyebrow": "Besplatna nadzorna ploča globalne obavještajne službe · sada dostupna",
@@ -565,7 +566,7 @@
       "s1l": "Slojevi karte",
       "s2v": "500+",
       "s2l": "Kurirani izvori podataka",
-      "s3v": "534+",
+      "s3v": "550+",
       "s3l": "Davatelji podataka",
       "s4v": "13",
       "s4l": "Uska grla · uživo AIS",
@@ -620,7 +621,14 @@
       "termQuery": "Je li naša ekspozicija Crvenog mora ova tjedna gore?",
       "termAnswer": "Brojevi tranzita padaju tjedan po tjedan; razina rizika rata je povećana; dvije anomalije gustoće u posljednjih 48h.",
       "termDocs": "Vidi puni referenac alata →",
-      "promise": "Jedan ključ. 63 MCP alata. Potpuni REST API. Jezično-Native klijenti."
+      "promise": "Jedan ključ. 63 MCP alata. Potpuni REST API. Jezično-Native klijenti.",
+      "resources": {
+        "title": "Odaberite vašu početnu točku",
+        "briefing": "Agent briefing",
+        "mcp": "MCP server",
+        "api": "REST API",
+        "agentView": "Agent view"
+      }
     },
     "pricing": {
       "eyebrow": "Pristup",
@@ -651,7 +659,7 @@
       "q2": "Što je globalni intelligence dashboard?",
       "a2": "Jedan živu prikaz koji spaja signale koje većina alata čuva odvojeno: događaje sukoba, praćenje brodova i zrakoplova, trgovačke uske grlo, satelite, podmorske kabele, cjevovode, tržišta i cyber prijetnje — na jednoj karta u stvarnom vremenu, s AI ocjenom i sažecima na vrhu. World Monitor je besplatan.",
       "q3": "Gdje dolaze podaci?",
-      "a3": "534+ pružatelja, nanizvučeni: ACLED i UCDP za sukobe, AISStream za live brodove, OpenSky za zrakoplove, NASA FIRMS za požare, USGS za zemljotrese, IMF, BIS, FRED i Finnhub za tržišta i makro — plus 500+ kurirane vijest-feedove. Svaki panel navodira svoje izvore i vremenske žigove u tekstu.",
+      "a3": "550+ pružatelja, nanizvučeni: ACLED i UCDP za sukobe, AISStream za live brodove, OpenSky za zrakoplove, NASA FIRMS za požare, USGS za zemljotrese, IMF, BIS, FRED i Finnhub za tržišta i makro — plus 500+ kurirane vijest-feedove. Svaki panel navodira svoje izvore i vremenske žigove u tekstu.",
       "q4": "Mogu li pratiti uska grla poput Hormuzа ili Bab el-Mandeba u stvarnom vremenu?",
       "a4": "Da. 13 uskih grla prate se s živim AIS brojevima brodova, promjenom tranzita tjedan-na-tjedan i ocjenom prekida — a anomalije gustoće označavaju se prema osnovnoj liniji svakog tjesnaца.",
       "q5": "Kako se ovo razlikuje od konfliktne karte kao što je Liveuamap?",
@@ -675,6 +683,18 @@
       "button": "Pronađi ga prvi",
       "note": "Besplatno · Bez prijave · Učitava se u sekundama",
       "secondary": "Ili pogledaj Pro planove →"
+    },
+    "tasks": {
+      "eyebrow": "Počnite s pitanjem",
+      "title": "Što pokušavate otkriti?",
+      "sub": "Odaberite tragu dokaza koja odgovara vašem zadatku. Svaki put otvara pregled s izvorima, ne praznu kontrolnu ploču.",
+      "verifyTitle": "Potvrdi tekući događaj",
+      "verifyDesc": "Provjerite trenutne praćenje kriza, datirane metrike i citirani kontekst prije nego što vjerujete ranog izvještaja.",
+      "chokepointTitle": "Provjeri usko mjesto",
+      "chokepointDesc": "Provjeri status prekida, tokove broda i rizik kroz kritične morske prolaze.",
+      "countryRiskTitle": "Objasni politički rizik zemlje",
+      "countryRiskDesc": "Prati političke, sigurnosne, ekonomske i otpornosti signale iza promjene zemlje.",
+      "open": "Otvori dokaze"
     }
   }
 }

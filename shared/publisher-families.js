@@ -103,6 +103,7 @@ const PUBLISHER_FAMILY_DATA = {
   },
   'hacker-news': { publisher: "Hacker News", labels: ["Hacker News", "Show HN", "YC News"] },
   'hromadske': { publisher: "Hromadske", labels: ["Hromadske", "Hromadske EN"] },
+  'interfax': { publisher: "Interfax", labels: ["Interfax EN", "Interfax RU"] },
   'iea': { publisher: "International Energy Agency", labels: ["IEA Critical Minerals", "IEA News"] },
   'kitco': { publisher: "Kitco", labels: ["Kitco Gold", "Kitco News"] },
   'marketwatch': { publisher: "MarketWatch", labels: ["MarketWatch", "MarketWatch Tech"] },
