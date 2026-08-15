@@ -107,6 +107,19 @@ describe('variant layer guardrail', () => {
     });
   }
 
+  it('every variant MapLayers object includes canadaRoads', () => {
+    for (const { desktop, mobile } of Object.values(VARIANT_DEFAULTS)) {
+      for (const name of [desktop, mobile]) {
+        const re = new RegExp(`const ${name}[\\s\\S]*?canadaRoads:\\s*(true|false)`);
+        assert.match(
+          panelsSource,
+          re,
+          `${name} must set canadaRoads so VARIANT_LAYER_ORDER layers exist on the MapLayers object`,
+        );
+      }
+    }
+  });
+
   it('every layer in VARIANT_LAYER_ORDER has at least one DeckGL/Globe renderer', () => {
     const noRenderer = [];
     for (const [variant, keys] of Object.entries(variantOrder)) {

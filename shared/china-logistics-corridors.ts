@@ -219,6 +219,20 @@ const NATIONAL_SOURCE_SELECTORS: readonly ChinaCorridorSourceSelector[] = Object
   { family: 'trade', id: 'supply_chain:shipping:v2:CCFI' },
 ]);
 
+/**
+ * Signal families whose corridor signals are derived from national UN Comtrade
+ * data. Derived from the selector table above rather than hardcoded, so a
+ * surface that captions Comtrade-backed numbers cannot silently drop the
+ * national-scope disclaimer when a new family is added.
+ */
+export const COMTRADE_NATIONAL_FAMILIES: readonly ChinaCorridorSignalFamily[] = Object.freeze([
+  ...new Set(
+    NATIONAL_SOURCE_SELECTORS
+      .filter((selector) => selector.id.startsWith('comtrade:'))
+      .map((selector) => selector.family),
+  ),
+]);
+
 export function findCorridorsForSourceSelector(
   family: ChinaCorridorSignalFamily,
   selectorId: string,

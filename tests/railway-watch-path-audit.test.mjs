@@ -753,6 +753,12 @@ describe('planned Railway service lifecycle', () => {
     // made rather than a way to quiet a red gate.
     //
     const expectedPlannedServices = [
+      // Lands before its six member seeders so they can drop their own service
+      // rows in the same review round. Stays planned — and therefore out of the
+      // live audit and out of `--apply` — until every member has merged and the
+      // Railway service actually exists. Activating it means adding
+      // watchPatterns + a */5 cron in a deliberate follow-up.
+      'seed-bundle-canada',
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',

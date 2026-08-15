@@ -18,8 +18,13 @@
  *     outer awaits it — a permanent deadlock that silently stops all analytics
  *     for the page. Installing once is safe: a later wrapper delegates down to
  *     us, so we still see every collector write.
- *  2. Every dispatch is time-bounded. The single slot means one hung request
- *     would otherwise wedge every subsequent write for the page's lifetime.
+ *  2. Every dispatch is time-bounded on BOTH sides. The single slot means one
+ *     hung request would otherwise wedge every subsequent write for the page's
+ *     lifetime. An abort signal alone does not buy that: it bounds the request
+ *     only if the transport underneath honors it, and `window.fetch` on this
+ *     page is routinely wrapped by third-party instrumentation that does not.
+ *     So the slot is released on a deadline this module owns, raced against the
+ *     awaited response — see `withCollectorDeadline` and `CollectorFailure.raced`.
  */
 
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
@@ -45,6 +50,42 @@ export type CollectorFailure = {
    * an alert-noise fix into a conversion-accounting change.
    */
   botFiltered?: boolean;
+  /**
+   * This module gave up on the write while the request was STILL OUTSTANDING.
+   *
+   * Only ever set on `kind: 'timeout'`, and only by the module-owned latch
+   * deadline (see `withCollectorDeadline`). A `timeout` without this marker means the
+   * transport observed our abort and settled, so nothing is left on the wire.
+   * With it, the request was never cancelled — a wrapper that discarded
+   * `init.signal` is still holding it, and it may yet commit.
+   *
+   * KNOWN LIMITATION: this is a timing inference, not a fact reported by the
+   * transport. `LATCH_RELEASE_GRACE_MS` makes a false positive unlikely, not
+   * impossible — a hidden tab under intensive timer throttling can leave both
+   * clocks due in one wake-up, and a cleanly-cancelled write would then be
+   * marked `raced` and lose both its retry and its durable marker. The inverse
+   * (a genuinely outstanding request NOT marked `raced`) cannot happen: only
+   * this module's deadline sets the marker.
+   *
+   * A MARKER rather than a `kind`, for the same reason as `botFiltered`: the
+   * delivery classification and the health cohorts keep treating it as the
+   * timeout it is, so no `kind`-consuming arm has to be re-audited. Unlike
+   * `botFiltered`, it is read in two categories of place, and both are
+   * deliberate:
+   *
+   *  - RE-SEND (the reason the marker exists): `isRetryableCollectorFailure`
+   *    and the durable checkout marker in `analytics.ts` both refuse to replay
+   *    it, because re-sending an append-only conversion whose original may
+   *    still commit double-counts it. `isRetryableIdentityFailure` still
+   *    replays — an idempotent overwrite has no such hazard.
+   *  - ALERTING: it is exempt from the environment-noise floors, skips the
+   *    once-per-cohort noise latch, reports without waiting on the cross-user
+   *    aggregate's verdict, and carries its own Sentry fingerprint segment.
+   *    Not gold-plating — this fix REMOVES `queue-overflow`, the parked page's
+   *    only other symptom, so without these the population goes dark exactly
+   *    when the bug is fixed (#6288).
+   */
+  raced?: boolean;
 };
 
 export type CollectorRequestType = 'event' | 'identify';
@@ -111,6 +152,31 @@ const HEALTH_WINDOW_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 20_000;
 
 /**
+ * How long after the request-side deadline the module releases the latch anyway.
+ *
+ * The abort signal and the latch deadline must NOT expire on the same tick. A
+ * transport that honors the abort still needs a moment to reject — in a browser
+ * that rejection is queued as a task, and on the native path the platform's
+ * `AbortSignal.timeout` timer is not ordered against this module's `setTimeout`
+ * at all. Firing both at once would make the winner unspecified, so a perfectly
+ * cooperative transport would intermittently be reclassified as `raced` and lose
+ * the retry it is entitled to. The grace period buys determinism: the transport
+ * always gets first refusal, and the module only steps in for a transport that
+ * did not answer the abort at all.
+ *
+ * Sized well above the rejection itself because the two clocks can drift under
+ * load: a long task, or a hidden tab under Chromium's intensive throttling
+ * (setTimeout clamped to ~1/min after 5 minutes), can leave both timers due in
+ * one wake-up. The extra latency lands ONLY on the already-anomalous stalled
+ * tail — a healthy write settles in milliseconds and never sees this timer — so
+ * widening it costs nothing on the happy path and buys margin against a false
+ * `raced`, which would cost a legitimate write both its retry and its durable
+ * marker. It is a hedge, not a guarantee: see the known limitation in the
+ * `raced` docblock.
+ */
+const LATCH_RELEASE_GRACE_MS = 5_000;
+
+/**
  * Statuses safe to retry for an APPEND-ONLY event.
  *
  * Deliberately excludes 500 and every gateway status (502/504). The collector
@@ -167,19 +233,22 @@ async function sendCollectorHealthReport(
   if (typeof globalThis.fetch !== 'function') return false;
   // Bound through the same compatibility path as the collector write itself
   // (#6086). The previous `if (AbortSignal.timeout) init.signal = ...` left this
-  // POST with NO deadline on exactly the browsers withManualTimeout exists for,
+  // POST with NO deadline on exactly the browsers withManualAbort exists for,
   // so a hung /api/analytics-health kept the reporting promise pending forever —
-  // the same defect this module fixes one layer down.
+  // the same defect this module fixes one layer down. The race is here for the
+  // same reason it is on the collector write (#6288): the same fetch wrappers
+  // sit in front of this POST, and a promise that never settles would strand
+  // the Sentry fallback that reads this result.
   let bound: TimeoutBoundInit | undefined;
   try {
-    bound = withTimeout({
+    bound = withCollectorDeadline({
       method: 'POST',
       credentials: 'omit',
       keepalive: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(report),
     }, COLLECTOR_HEALTH_REPORT_TIMEOUT_MS);
-    const response = await globalThis.fetch(endpoint, bound.init);
+    const response = await Promise.race([globalThis.fetch(endpoint, bound.init), bound.deadline]);
     return response.ok;
   } catch {
     return false;
@@ -234,7 +303,19 @@ function createCollectorHealthWindow(startedAt = 0): CollectorHealthWindow {
 }
 
 function collectorFailureSignature(failure: CollectorFailure): string {
-  return [failure.kind, failure.status ?? 'none', failure.prismaCode ?? 'none', failure.constraint ?? 'none'].join('|');
+  // `raced` is part of the signature because a parked transport and an honored
+  // abort share `kind` AND `status`, so without it the two would collapse to one
+  // entry and whichever landed first in the window would silence the other.
+  // (What stops the cohort-level noise latch pre-empting a raced report is the
+  // separate `!failure.raced` guard in emitCollectorFailureToSentry — this
+  // segment only keeps the two apart once they reach the dedup.)
+  return [
+    failure.kind,
+    failure.status ?? 'none',
+    failure.prismaCode ?? 'none',
+    failure.constraint ?? 'none',
+    failure.raced ? 'raced' : 'settled',
+  ].join('|');
 }
 
 let collectorHealthWindow = createCollectorHealthWindow();
@@ -351,7 +432,13 @@ export async function inspectCollectorResponse(response: Response): Promise<Coll
 
 export function collectorFailureFromError(error: unknown): CollectorFailure {
   if (error instanceof CollectorDeliveryError) return error.failure;
-  if (error instanceof Error && error.name === 'TimeoutError') return { kind: 'timeout' };
+  if (error instanceof Error && error.name === 'TimeoutError') {
+    // A platform abort and this module's latch deadline both arrive as
+    // TimeoutError. Only the latter leaves the request outstanding.
+    return (error as CollectorTimeoutError).collectorLatchRaced
+      ? { kind: 'timeout', raced: true }
+      : { kind: 'timeout' };
+  }
   return { kind: 'network' };
 }
 
@@ -365,6 +452,12 @@ export function isKnownSessionDataConflict(failure: CollectorFailure): boolean {
  */
 export function isRetryableCollectorFailure(failure: CollectorFailure): boolean {
   if (isKnownSessionDataConflict(failure)) return false;
+  // The latch deadline abandoned this request; it was never cancelled and may
+  // still commit. That is the same "committed, then we stopped listening"
+  // ambiguity that rules out retrying a 500 or a gateway status, so it gets the
+  // same answer. Releasing the queue must not be paid for in duplicate
+  // conversions (#6288).
+  if (failure.raced) return false;
   // A dropped request never reached the network, but re-queueing it just feeds
   // the same saturated queue.
   if (failure.kind === 'queue-overflow') return false;
@@ -380,6 +473,11 @@ export function isRetryableCollectorFailure(failure: CollectorFailure): boolean 
  * because replaying an identify overwrites the same fields — the
  * duplicate-conversion hazard does not exist. HTTP 500 stays retryable here:
  * that is the exact failure #5715 was opened for.
+ *
+ * A `raced` failure stays retryable here for the same reason, and deliberately:
+ * idempotency is what lets the latch race (#6288) recover an identity write it
+ * abandoned. If the abandoned request does commit, the replay writes the same
+ * snapshot over it.
  */
 export function isRetryableIdentityFailure(failure: CollectorFailure): boolean {
   if (isKnownSessionDataConflict(failure)) return false;
@@ -454,6 +552,16 @@ export function isAlertWorthyCollectorFailure(
 ): boolean {
   // The collector deliberately discarded a bot's write. Working as designed.
   if (failure.botFiltered) return false;
+  // A raced timeout is NOT the ad-blocker baseline these floors exist to
+  // silence — it is a specific, actionable client condition (a fetch wrapper
+  // that discarded our abort), and it can never clear them anyway: the module
+  // abandons at most one write per REQUEST_TIMEOUT_MS + LATCH_RELEASE_GRACE_MS,
+  // so a parked page produces ~2 writes per 60s window against a 5-write floor.
+  // Leaving it inside the noise branch would make the parked population go dark
+  // exactly when this fix removes its `queue-overflow` symptom (#6288) — the
+  // opposite of what the fix is for. Volume stays bounded: one Sentry event per
+  // redacted signature per window, same as every other failure.
+  if (failure.raced) return true;
   if (ENVIRONMENT_NOISE_KINDS.has(failure.kind as EnvironmentNoiseKind)) {
     // The fallback emits at most one environment event per page per window.
     // Without this, crossing the rate floor makes EVERY remaining failure in the
@@ -520,7 +628,12 @@ function emitCollectorFailureToSentry(
   cohort: CollectorHealthCohort,
   diagnostics: Record<string, unknown>,
 ): void {
-  if (isEnvironmentNoiseFailure(failure)) {
+  // `!failure.raced` is load-bearing: this latch fires BEFORE the signature
+  // check below, so an ordinary blocked request earlier in the window would
+  // otherwise return here and suppress the raced report entirely — making the
+  // per-signature split pointless for the one failure it was added for. A raced
+  // timeout is deduped by signature alone (one per window), not by cohort.
+  if (!failure.raced && isEnvironmentNoiseFailure(failure)) {
     const cohortWindow = collectorHealthWindow.cohorts[cohort];
     if (cohortWindow.noiseReported) return;
     cohortWindow.noiseReported = true;
@@ -543,12 +656,17 @@ function emitCollectorFailureToSentry(
       // ad-blocker population (`network`, unactionable by design) buried a
       // `queue-overflow` count that was our own dropped writes, in a single
       // 2230-event issue nobody could read a cause out of (WORLDMONITOR-Y3).
-      // Cardinality stays bounded: 5 kinds x the small status set.
+      // Cardinality stays bounded: 5 kinds x the small status set, plus the one
+      // extra group a raced timeout adds. That group is worth its own issue: a
+      // parked transport and an honored abort are the same `kind` but different
+      // incidents, and the parked one is the failure whose only other outward
+      // symptom is a queue-overflow warning that looks like trivial volume.
       fingerprint: [
         'analytics-collector',
         'write-failed',
         failure.kind,
         String(failure.status ?? 'none'),
+        ...(failure.raced ? ['raced'] : []),
       ],
       tags: {
         kind: 'analytics_collector_write_failed',
@@ -556,6 +674,7 @@ function emitCollectorFailureToSentry(
         status: String(failure.status ?? 'none'),
         requestType: request.requestType,
         healthCohort: cohort,
+        raced: String(failure.raced ?? false),
       },
       extra: diagnostics,
     }));
@@ -616,6 +735,9 @@ function recordCollectorOutcome(request: CollectorRequest, failure: CollectorFai
     // WHY a receiptless 200 happened — otherwise a developer reading devtools
     // during a bot-filtered write starts debugging a write path that is fine.
     botFiltered: failure.botFiltered ?? false,
+    // True means the request is STILL OUTSTANDING — the queue was released
+    // without it, so this page is behind a fetch wrapper that ignores aborts.
+    raced: failure.raced ?? false,
   };
   console.warn('[Analytics] Umami collector write failed', diagnostics);
 
@@ -627,6 +749,32 @@ function recordCollectorOutcome(request: CollectorRequest, failure: CollectorFai
   // actionable failures get an event. Environment failures first go through
   // the cross-user aggregate. If that path is unavailable, the original
   // per-page floor remains as a bounded fallback.
+  // A raced write still counts toward the cross-user aggregate like any other
+  // environment failure, but its Sentry event does NOT wait on the aggregate's
+  // verdict. The ordinary path below emits only when the aggregate DECLINES the
+  // report (`if (accepted || ...) return`), which on a healthy site is never —
+  // so routing a raced timeout through it would silence the parked population
+  // on exactly the deployments where the aggregate endpoint is working. This is
+  // the one client condition whose only other symptom this fix deliberately
+  // removes (#6288), so it reports on its own.
+  if (failure.raced) {
+    // `raced` is only ever set on a `timeout` (see CollectorFailure.raced),
+    // which is an environment-noise kind. The guard proves that to the compiler
+    // and keeps the aggregate correct if the marker's domain ever widens.
+    const racedReport = isEnvironmentNoiseFailure(failure)
+      ? buildCollectorHealthReport(cohort, failure.kind)
+      : null;
+    if (racedReport) {
+      try {
+        void Promise.resolve(collectorHealthReporter(racedReport)).catch(() => {});
+      } catch {
+        // Best effort — the Sentry event below is the signal that matters here.
+      }
+    }
+    emitCollectorFailureToSentry(request, failure, cohort, diagnostics);
+    return;
+  }
+
   if (isEnvironmentNoiseFailure(failure)) {
     const localSnapshot: CollectorHealthSnapshot = {
       writes: cohortWindow.writes,
@@ -661,21 +809,44 @@ function recordCollectorOutcome(request: CollectorRequest, failure: CollectorFai
   emitCollectorFailureToSentry(request, failure, cohort, diagnostics);
 }
 
-type TimeoutBoundInit = {
+/** A request-side abort binding: the deadline we ASK the transport to observe. */
+type AbortBoundInit = {
   init: RequestInit;
   cleanup: () => void;
 };
 
-function createTimeoutError(timeoutMs: number = REQUEST_TIMEOUT_MS): Error {
-  const error = new Error(`Umami collector request timed out after ${timeoutMs}ms`);
+type TimeoutBoundInit = AbortBoundInit & {
+  /**
+   * The module-owned half of the deadline: rejects with a raced `TimeoutError`
+   * once the transport has had the request bound plus `LATCH_RELEASE_GRACE_MS`
+   * to answer. Race this against the awaited response so releasing the
+   * serialized slot never depends on the callee honoring `init.signal`.
+   */
+  deadline: Promise<never>;
+};
+
+/**
+ * `raced` distinguishes the two failures that both surface as `TimeoutError`:
+ * an abort the transport observed (nothing left on the wire) and a deadline
+ * this module enforced unilaterally (the request is still outstanding).
+ */
+type CollectorTimeoutError = Error & { collectorLatchRaced?: true };
+
+function createTimeoutError(timeoutMs: number = REQUEST_TIMEOUT_MS, raced = false): Error {
+  const error: CollectorTimeoutError = new Error(
+    raced
+      ? `Umami collector request abandoned after ${timeoutMs}ms without the transport settling`
+      : `Umami collector request timed out after ${timeoutMs}ms`,
+  );
   error.name = 'TimeoutError';
+  if (raced) error.collectorLatchRaced = true;
   return error;
 }
 
-function withManualTimeout(
+function withManualAbort(
   init: RequestInit | undefined,
   timeoutMs: number = REQUEST_TIMEOUT_MS,
-): TimeoutBoundInit {
+): AbortBoundInit {
   if (typeof AbortController === 'undefined') throw createTimeoutError(timeoutMs);
 
   const controller = new AbortController();
@@ -697,12 +868,12 @@ function withManualTimeout(
   };
 }
 
-function withTimeout(
+function withRequestAbort(
   init: RequestInit | undefined,
   timeoutMs: number = REQUEST_TIMEOUT_MS,
-): TimeoutBoundInit {
+): AbortBoundInit {
   if (typeof AbortSignal === 'undefined' || typeof AbortSignal.timeout !== 'function') {
-    return withManualTimeout(init, timeoutMs);
+    return withManualAbort(init, timeoutMs);
   }
   const existing = init?.signal;
   if (!existing) {
@@ -717,7 +888,54 @@ function withTimeout(
       cleanup: () => {},
     };
   }
-  return withManualTimeout(init, timeoutMs);
+  return withManualAbort(init, timeoutMs);
+}
+
+/**
+ * Bind BOTH halves of the deadline (#6288).
+ *
+ * The abort signal above is request-side: an `AbortController` only settles a
+ * fetch if the implementation underneath honors the signal, and nothing
+ * verifies that it does. `src/bootstrap/sentry-init.ts` documents third-party
+ * `window.fetch` wrapping as a live condition on this collector host, and two
+ * wrapper shapes defeat an abort outright — one that rebuilds the request
+ * (`orig(new Request(url, { method, headers, body }))`, the standard shape for
+ * RUM SDKs that re-time requests) silently drops `init.signal`, and one that
+ * re-wraps the promise without forwarding rejection never settles at all. On
+ * the native branch the entire deadline lives inside the `AbortSignal.timeout`
+ * object such a wrapper discards, so that path — which carries essentially all
+ * real traffic — had strictly LESS module-side protection than the
+ * compatibility path.
+ *
+ * `deadline` is the half nobody else can withhold. Keep sending the abort too:
+ * cancelling a well-behaved transport is still correct, and the race only stops
+ * a badly-behaved one from holding the single in-flight slot forever.
+ */
+function withCollectorDeadline(
+  init: RequestInit | undefined,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
+): TimeoutBoundInit {
+  // First, because withManualAbort throws when AbortController is unavailable.
+  const bound = withRequestAbort(init, timeoutMs);
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    deadlineTimer = setTimeout(
+      () => reject(createTimeoutError(timeoutMs, true)),
+      timeoutMs + LATCH_RELEASE_GRACE_MS,
+    );
+  });
+  // The transport wins the race in every healthy case, and the loser of a
+  // Promise.race is still rejected. Keep that from surfacing as an unhandled
+  // rejection on the page.
+  void deadline.catch(() => {});
+  return {
+    init: bound.init,
+    deadline,
+    cleanup: () => {
+      clearTimeout(deadlineTimer);
+      bound.cleanup();
+    },
+  };
 }
 
 async function runCollectorRequest(request: CollectorRequest, generation: number): Promise<void> {
@@ -729,16 +947,32 @@ async function runCollectorRequest(request: CollectorRequest, generation: number
     // across the await would make every write issued while one is in flight
     // bypass the queue, which is the serialization this module exists for.
     let responsePromise: Promise<Response>;
+    let deadline: Promise<never>;
     collectorDispatchDepth += 1;
     try {
-      timeoutBoundInit = withTimeout(request.init);
+      timeoutBoundInit = withCollectorDeadline(request.init);
+      deadline = timeoutBoundInit.deadline;
       responsePromise = request.originalFetch(request.input, timeoutBoundInit.init);
     } finally {
       collectorDispatchDepth -= 1;
     }
-    const response = await responsePromise;
+    // Race, rather than trusting the callee to observe the abort (#6288). The
+    // single in-flight slot means this `await` IS the latch: `drainCollectorRequestQueue`
+    // releases `collectorRequestInFlight` from the `.finally()` on this call, so
+    // a transport that never settles parks every subsequent write for the life
+    // of the page. Losing the race abandons the request but cannot cancel it,
+    // which is why the resulting failure is marked `raced` — see CollectorFailure.
+    const response = await Promise.race([responsePromise, deadline]);
+    // The body is a SEPARATE stream from the headers. `fetch` resolves the
+    // moment response headers arrive, and `inspectCollectorResponse` then
+    // awaits `response.text()` to read the write receipt. Racing only the
+    // headers would leave a transport that answers headers and stalls the body
+    // re-parking the latch HERE — the same #6288 wedge, one line past the
+    // deadline that just guarded it. The timer is still live (had it expired,
+    // it would have won the race above and we would be in the catch), so
+    // extending the same deadline across the read costs nothing.
     const failure = generation === collectorTransportGeneration
-      ? await inspectCollectorResponse(response)
+      ? await Promise.race([inspectCollectorResponse(response), deadline])
       : null;
     if (generation === collectorTransportGeneration) recordCollectorOutcome(request, failure);
     // Resolve the TRACKER's promise with the real Response either way — Umami

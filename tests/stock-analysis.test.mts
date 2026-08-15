@@ -423,6 +423,7 @@ describe('fetchYahooAnalystData', () => {
     assert.match(systemPrompt, /debtToEquity 1\.5 means debt is 1\.5x equity/);
     assert.match(systemPrompt, /fundamentals\.financialCurrency/);
     assert.match(systemPrompt, /newsSentiment/);
+    assert.match(systemPrompt, /not a cause of any price move/);
 
     const userMessage = llmRequestBody?.messages?.find((message) => message.role === 'user')?.content || '{}';
     const userPayload = JSON.parse(userMessage) as {

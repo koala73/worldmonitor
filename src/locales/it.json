@@ -478,7 +478,9 @@
         "displacement": "Attiva/disattiva flussi di sfollamento",
         "climate": "Attiva/disattiva anomalie climatiche",
         "outages": "Attiva/disattiva interruzioni internet",
-        "tradeRoutes": "Attiva/disattiva rotte commerciali"
+        "tradeRoutes": "Attiva/disattiva rotte commerciali",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Passa alla modalità scura",
@@ -640,7 +642,7 @@
         "URLHAUS_AUTH_KEY": "Utilizzata per le API URLhaus e ThreatFox.",
         "OTX_API_KEY": "Fonte di arricchimento opzionale per il livello minacce cyber.",
         "ABUSEIPDB_API_KEY": "Fonte di arricchimento opzionale per la reputazione IP malevoli.",
-        "FINNHUB_API_KEY": "Quotazioni azionarie in tempo reale e dati di mercato.",
+        "FINNHUB_API_KEY": "Quotazioni azionarie differite o precaricate e dati di mercato. Una chiave non è un flusso in diretta.",
         "NASA_FIRMS_API_KEY": "Sistema informativo sugli incendi per la gestione delle risorse.",
         "OLLAMA_API_URL": "es. http://127.0.0.1:11434 (Ollama) o http://127.0.0.1:1234/v1 (LM Studio) — endpoint compatibile OpenAI.",
         "OLLAMA_MODEL": "es. llama3.1:8b — tag modello da usare per la sintesi."
@@ -921,6 +923,7 @@
       "noComtradeData": "Nessun dato flusso strategico disponibile",
       "comtradeUnavailable": "Dati UN Comtrade temporaneamente non disponibili",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "Le righe UN Comtrade sono statistiche ufficiali a livello nazionale del paese dichiarante, non le esportazioni di una città, un corridoio, una fabbrica, un porto o una spedizione.",
       "anomalyBadge": "Anomalia",
       "colReporter": "Paese",
       "colCommodity": "Merce",
@@ -1036,7 +1039,9 @@
         "speciesRecovery": "Recupero delle specie",
         "renewableInstallations": "Energia pulita",
         "radiationSpike": "Picco di radiazione",
-        "radiationElevated": "Radiazione elevata"
+        "radiationElevated": "Radiazione elevata",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Livelli",
       "layerSearch": "Cerca livelli...",
@@ -1149,7 +1154,9 @@
           "techFires": "Incendi attivi vicino a infrastrutture tecnologiche",
           "financeGulfInvestments": "Investimenti dei fondi sovrani del CCG e investimenti diretti esteri",
           "geoBoundaries": "Zone demilitarizzate, linee di cessate il fuoco e confini contestati",
-          "ciiChoropleth": "Mappa termica dell'indice di instabilità — colora i paesi in base al punteggio CII (verde=stabile, rosso=critico)"
+          "ciiChoropleth": "Mappa termica dell'indice di instabilità — colora i paesi in base al punteggio CII (verde=stabile, rosso=critico)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Effetti: terremoti, condizioni meteorologiche, proteste, interruzioni"
@@ -1911,7 +1918,7 @@
       "infoTooltip": "<strong>Cripto</strong> Prezzi in tempo reale, variazioni 24h e volume delle principali criptovalute. Dati forniti da CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Economie del Golfo</strong> Indici di borsa del Golfo in tempo reale, tassi di cambio e prezzi del petrolio per le economie del CCG (Arabia Saudita, EAU, Kuwait, Qatar, Bahrein, Oman)."
+      "infoTooltip": "<strong>Economie del Golfo</strong> Indici di borsa del Golfo precaricati, tassi di cambio e prezzi del petrolio per le economie del CCG (Arabia Saudita, EAU, Kuwait, Qatar, Bahrein, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Indice Paniere Alimentare</strong> Confronto prezzi del paniere alimentare in 24 paesi in tutto il mondo — traccia l'inflazione dei beni di consumo al dettaglio al di là dell'IPC generale."
@@ -2179,7 +2186,7 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Rileva segnali convergenti di disastri naturali e infrastrutture:<ul><li>Correla terremoti, incendi boschivi, alluvioni ed estremi meteorologici</li><li>Traccia effetti a cascata su infrastrutture e supply chain</li><li>Evidenzia regioni con rischio di disastri composti</li></ul>Clicca su una card per ingrandire la regione interessata."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Indici azionari in tempo reale, azioni e prezzi crypto. Personalizza la tua watchlist con il pulsante Watchlist. Le sparkline mostrano il trend di prezzo recente.",
+      "infoTooltip": "<strong>Markets</strong> Indici azionari differiti o precaricati, azioni e prezzi crypto. Personalizza la tua watchlist con il pulsante Watchlist. Le sparkline mostrano il trend di prezzo recente.",
       "chart": {
         "title": "Grafico del prezzo {{symbol}}",
         "close": "Chiudi grafico"

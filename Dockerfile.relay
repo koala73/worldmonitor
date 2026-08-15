@@ -35,6 +35,8 @@ COPY scripts/lib/usni-fleet-parser.cjs ./scripts/lib/usni-fleet-parser.cjs
 # llm-telemetry.cjs is transitively imported by _seed-utils.mjs (SIGTERM
 # telemetry flush, #4954) — missing it = silent startup crash in the image.
 COPY scripts/lib/llm-telemetry.cjs ./scripts/lib/llm-telemetry.cjs
+# Canonical CommonJS model policy required directly by ais-relay.cjs.
+COPY scripts/lib/llm-model-policy.cjs ./scripts/lib/llm-model-policy.cjs
 COPY scripts/shared/country-name-to-iso2.cjs ./scripts/shared/country-name-to-iso2.cjs
 # country-names.json backs the full name→ISO2 map (#5359 uniform country
 # scoping); required by country-name-to-iso2.cjs at startup.
@@ -73,6 +75,12 @@ COPY scripts/_seed-contract.mjs ./scripts/_seed-contract.mjs
 # companion cache from a one-month Yahoo chart.
 COPY scripts/_country-stock-index.mjs ./scripts/_country-stock-index.mjs
 # ais-relay dynamically imports weather alert selection (NWS + ECCC, #6606/#6607).
+# ais-relay dynamically imports this helper to attach the NWS centroid/polygon
+# to weather_alert notification payloads. The import() is issued at module load
+# and nothing attaches a handler until seedWeatherAlerts() awaits it, so a
+# missing file is an UNHANDLED rejection: the relay exits 1 at container start
+# (crash loop taking AIS/market/RSS with it), NOT a degraded weather seed.
+# Guarded by tests/dockerfile-relay-imports.test.mjs.
 COPY scripts/_weather-alert-select.mjs ./scripts/_weather-alert-select.mjs
 COPY scripts/_country-resolver.mjs ./scripts/_country-resolver.mjs
 COPY scripts/_climate-news-helpers.mjs ./scripts/_climate-news-helpers.mjs

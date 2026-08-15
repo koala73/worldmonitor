@@ -476,7 +476,9 @@
         "displacement": "Vertreibungsströme umschalten",
         "climate": "Klimaanomalien umschalten",
         "outages": "Internetausfälle umschalten",
-        "tradeRoutes": "Handelsrouten umschalten"
+        "tradeRoutes": "Handelsrouten umschalten",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Zum Dunkelmodus wechseln",
@@ -638,7 +640,7 @@
         "URLHAUS_AUTH_KEY": "Wird für URLhaus- und ThreatFox-APIs verwendet.",
         "OTX_API_KEY": "Optionale Anreicherungsquelle für die Cyberbedrohungsebene.",
         "ABUSEIPDB_API_KEY": "Optionale Anreicherungsquelle für die Reputation bösartiger IPs.",
-        "FINNHUB_API_KEY": "Echtzeit-Aktienkurse und Marktdaten.",
+        "FINNHUB_API_KEY": "Verzögerte oder vorgeladene Aktienkurse und Marktdaten. Ein Schlüssel ist kein Live-Ticker.",
         "NASA_FIRMS_API_KEY": "Branderkennungssystem für Ressourcenmanagement.",
         "OLLAMA_API_URL": "z. B. http://127.0.0.1:11434 (Ollama) oder http://127.0.0.1:1234/v1 (LM Studio) – OpenAI-kompatibler Endpunkt.",
         "OLLAMA_MODEL": "z. B. llama3.1:8b – Modell-Tag, das für die Zusammenfassung verwendet wird."
@@ -919,6 +921,7 @@
       "noComtradeData": "Keine Daten zu strategischen Flüssen verfügbar",
       "comtradeUnavailable": "UN Comtrade-Daten vorübergehend nicht verfügbar",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN-Comtrade-Zeilen sind offizielle Statistiken auf nationaler Ebene des meldenden Landes, keine Exporte einer Stadt, eines Korridors, einer Fabrik, eines Hafens oder einer Sendung.",
       "anomalyBadge": "Anomalie",
       "colReporter": "Land",
       "colCommodity": "Rohstoff",
@@ -1034,7 +1037,9 @@
         "speciesRecovery": "Artenerholung",
         "renewableInstallations": "Saubere Energie",
         "radiationSpike": "Strahlungsspitze",
-        "radiationElevated": "Erhöhte Strahlung"
+        "radiationElevated": "Erhöhte Strahlung",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Ebenen",
       "layerSearch": "Ebenen suchen...",
@@ -1147,7 +1152,9 @@
           "techFires": "Aktive Waldbrände in der Nähe von Technologieinfrastruktur",
           "financeGulfInvestments": "GCC-Staatsfonds-Investitionen und ausländische Direktinvestitionen",
           "geoBoundaries": "Entmilitarisierte Zonen, Waffenstillstandslinien und umstrittene Grenzen",
-          "ciiChoropleth": "Country Instability Index Heatmap — färbt Länder nach CII-Wert ein (grün=stabil, rot=kritisch)"
+          "ciiChoropleth": "Country Instability Index Heatmap — färbt Länder nach CII-Wert ein (grün=stabil, rot=kritisch)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"
@@ -1908,7 +1915,7 @@
       "infoTooltip": "<strong>Krypto</strong> Live-Kurse, 24h-Veränderungen und Volumen der wichtigsten Kryptowährungen. Daten von CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Golf-Volkswirtschaften</strong> Echtzeit-Aktienindizes, Wechselkurse und Ölpreise der GCC-Staaten (Saudi-Arabien, VAE, Kuwait, Katar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Golf-Volkswirtschaften</strong> Vorgeladene Aktienindizes, Wechselkurse und Ölpreise der GCC-Staaten (Saudi-Arabien, VAE, Kuwait, Katar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Lebensmittelindex</strong> Globaler Preisvergleich eines Lebensmittelkorbs über 24 Länder – misst die tatsächliche Verbrauchsgüterinflation jenseits der Gesamt-Inflationsrate."
@@ -2170,7 +2177,7 @@
       "infoTooltip": "<strong>Katastrophen-Kaskadeneffekte</strong> Erkennt konvergierende Signale natürlicher Katastrophen und Infrastruktur:<ul><li>Korreliert Erdbeben, Waldbrände, Überschwemmungen und Wetterextreme</li><li>Verfolgt kaskadierende Effekte auf Infrastruktur und Lieferketten</li><li>Hebt Regionen mit zusammengesetztem Katastrophenrisiko hervor</li></ul>Klicken Sie auf eine Karte, um die betroffene Region zu vergrößern."
     },
     "markets": {
-      "infoTooltip": "<strong>Märkte</strong> Echtzeit-Börsenindizes, Aktien und Kryptowährungspreise. Passen Sie Ihre Beobachtungsliste mit der Schaltfläche Beobachtungsliste an. Sparklines zeigen aktuelle Preistrendentwicklung.",
+      "infoTooltip": "<strong>Märkte</strong> Verzögerte oder vorgeladene Börsenindizes, Aktien und Kryptowährungspreise. Passen Sie Ihre Beobachtungsliste mit der Schaltfläche Beobachtungsliste an. Sparklines zeigen aktuelle Preistrendentwicklung.",
       "chart": {
         "title": "{{symbol}} Preisdiagramm",
         "close": "Diagramm schließen"

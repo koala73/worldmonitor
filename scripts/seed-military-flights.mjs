@@ -1924,7 +1924,7 @@ async function main() {
       ...theater,
       assessedAt,
     }));
-    const posturePayload = { theaters };
+    const posturePayload = { theaters, provider: source || '' };
     // Derived from `theaters`, which is already in scope here, so it must NOT live inside the
     // theater-posture lock block below: `forecastInputsPayload.stats` reads it unconditionally,
     // including on the lock-skipped branch. #6092 wrapped the publish in `else { try { … } }` and

@@ -52,10 +52,11 @@ const CURATED = (() => {
   );
   const scenarioIds = new Set([...scenarioSrc.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]));
   const llmSrc = readFileSync(resolve(root, 'server/_shared/llm.ts'), 'utf8');
-  const llmProviderType = llmSrc.match(/export type LlmProviderName = ([^;]+);/);
-  assert.ok(llmProviderType, 'expected LlmProviderName union in server/_shared/llm.ts');
-  const llmProviders = new Set([...llmProviderType[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
-  assert.ok(llmProviders.size > 0, 'expected at least one LLM provider in LlmProviderName');
+  const llmProviderChain = llmSrc.match(/const PROVIDER_CHAIN = \[([\s\S]*?)\] as const;/);
+  assert.ok(llmProviderChain, 'expected PROVIDER_CHAIN in server/_shared/llm.ts');
+  assert.match(llmSrc, /export type LlmProviderName = typeof PROVIDER_CHAIN\[number\];/);
+  const llmProviders = new Set([...llmProviderChain[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+  assert.ok(llmProviders.size > 0, 'expected at least one provider in PROVIDER_CHAIN');
   const gdeltSrc = readFileSync(resolve(root, 'scripts/seed-gdelt-intel.mjs'), 'utf8');
   const gdeltTopics = new Set([...gdeltSrc.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]));
   const geographySrc = readFileSync(resolve(root, 'scripts/shared/geography.js'), 'utf8');

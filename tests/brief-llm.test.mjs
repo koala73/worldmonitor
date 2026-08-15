@@ -341,12 +341,12 @@ describe('generateWhyMatters', () => {
     assert.equal(llm.calls.length, 1, 'clipped v5 cache row must attempt regeneration');
   });
 
-  it('pins the provider chain to openrouter (skipProviders=ollama,groq)', async () => {
+  it('pins the provider chain to paid openrouter with an exact allowlist', async () => {
     const cache = makeCache();
     const llm = makeLLM('Closure of the Strait of Hormuz would spike oil prices globally.');
     await generateWhyMatters(story(), { ...cache, callLLM: llm.callLLM });
     assert.ok(llm.calls[0]);
-    assert.deepEqual(llm.calls[0].opts.skipProviders, ['ollama', 'groq']);
+    assert.deepEqual(llm.calls[0].opts.allowedProviders, ['openrouter']);
   });
 
   it('caches shared story-hash across users (no per-user key)', async () => {

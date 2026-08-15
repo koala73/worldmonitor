@@ -106,9 +106,21 @@ export const DIRECT_WRITE_PATTERNS = [
  * idiom inside a comment; scanning raw text counted 2, which would have let the
  * entry survive migration of the only real call.
  *
- * 43 entries / 97 call sites across 28 files. Every entry is a latent instance
- * of the #6557 latch for as long as it stays. The confirmed-defect subset is
- * tracked in #6577.
+ * 41 entries / 91 call sites across 27 files. Every entry is a latent instance
+ * of the #6557 latch for as long as it stays. The confirmed-defect subset was
+ * tracked in #6577 and closed by #6587 (behaviour) + #6678 (this migration).
+ *
+ * #6678 moved the five #6577 panels' SUCCESS writes onto the sanctioned helpers,
+ * which is why three of them now read `x1` rather than `x2`: the surviving write
+ * in each is the LOADING branch, which must stay off `setContentNodes` — that
+ * helper clears through `clearErrorState()`, and resetting the backoff on a
+ * loading paint would flatten the retry ladder to its 15s floor. Do NOT "finish"
+ * those three by driving the remaining write to zero — an `x1` here is the
+ * ratchet's terminal state, not an unfinished migration. All three are pinned:
+ * TechEvents by `tests/dom/panel-error-latch-6577.test.mts`, ServiceStatus and
+ * DefensePatents by `tests/dom/panel-content-write-6678.test.mts`.
+ * `GivingPanel` left the inventory entirely and `GdeltIntelPanel` keeps only its
+ * `insertAdjacentElement` sibling insert (see DIRECT_WRITE_PATTERNS).
  */
 export const LEGACY_DIRECT_CONTENT_WRITES = [
   'src/components/AirlineIntelPanel.ts :: setTrustedHtml(this.content, …) x15',
@@ -119,10 +131,8 @@ export const LEGACY_DIRECT_CONTENT_WRITES = [
   'src/components/CountersPanel.ts :: this.content.appendChild(…) x1',
   'src/components/CountersPanel.ts :: this.content.innerHTML = … x1',
   'src/components/DeductionPanel.ts :: replaceChildren(this.content, …) x1',
-  'src/components/DefensePatentsPanel.ts :: replaceChildren(this.content, …) x2',
-  'src/components/GdeltIntelPanel.ts :: replaceChildren(this.content, …) x2',
+  'src/components/DefensePatentsPanel.ts :: replaceChildren(this.content, …) x1',
   'src/components/GdeltIntelPanel.ts :: this.content.insertAdjacentElement(…) x1',
-  'src/components/GivingPanel.ts :: setTrustedHtml(this.content, …) x1',
   'src/components/GoodThingsDigestPanel.ts :: setTrustedHtml(this.content, …) x3',
   'src/components/GoodThingsDigestPanel.ts :: this.content.appendChild(…) x1',
   'src/components/HeroSpotlightPanel.ts :: setTrustedHtml(this.content, …) x3',
@@ -148,11 +158,11 @@ export const LEGACY_DIRECT_CONTENT_WRITES = [
   'src/components/RenewableEnergyPanel.ts :: replaceChildren(this.content, …) x1',
   'src/components/RenewableEnergyPanel.ts :: this.content.appendChild(…) x3',
   'src/components/RuntimeConfigPanel.ts :: setTrustedHtml(this.content, …) x2',
-  'src/components/ServiceStatusPanel.ts :: replaceChildren(this.content, …) x2',
+  'src/components/ServiceStatusPanel.ts :: replaceChildren(this.content, …) x1',
   'src/components/SpeciesComebackPanel.ts :: replaceChildren(this.content, …) x1',
   'src/components/SpeciesComebackPanel.ts :: this.content.appendChild(…) x2',
   'src/components/SupplyChainPanel.ts :: this.content.prepend(…) x1',
-  'src/components/TechEventsPanel.ts :: replaceChildren(this.content, …) x2',
+  'src/components/TechEventsPanel.ts :: replaceChildren(this.content, …) x1',
   'src/components/TelegramIntelPanel.ts :: replaceChildren(this.content, …) x3',
 ];
 
@@ -316,7 +326,8 @@ function main() {
 
   if (result.stale.length > 0) {
     problems.push(
-      'These recorded writes no longer match the tree. Update LEGACY_DIRECT_CONTENT_WRITES in scripts/enforce-panel-content-writes.mjs (lower the count, or delete the line) so the inventory keeps matching reality:',
+      'These recorded writes no longer match the tree. Update LEGACY_DIRECT_CONTENT_WRITES in scripts/enforce-panel-content-writes.mjs (lower the count, or delete the line) so the inventory keeps matching reality.',
+      'FIRST, though: if the write that vanished was a LOADING branch, check it did not move to setContentNodes — that clears through clearErrorState() and flattens the retry ladder to its 15s floor. tests/dom/panel-content-write-6678.test.mts and tests/dom/panel-error-latch-6577.test.mts red if it did. Routing a loading branch through the inherited showLoading() is fine and legitimately zeroes the entry.',
       ...result.stale.map((pair) => `  - ${pair}`),
     );
   }

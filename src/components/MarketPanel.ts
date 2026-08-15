@@ -20,6 +20,8 @@ import type {
   MarketQuoteUnavailableReason,
 } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { openMarketChartModal } from './market-chart-modal';
+import { navigateToStockResearch } from '@/features/stock-research/stock-research-overlay';
+import { normalizeStockResearchSymbol } from '@/features/stock-research/stock-research-route';
 import {
   bindMarketChartActivation,
   getMarketChartRowAttributes,
@@ -61,7 +63,16 @@ export class MarketPanel extends Panel {
 
     // Delegated once on the persistent content element (each render only swaps
     // innerHTML): click or Enter/Space on a plottable ticker opens its terminal chart.
-    bindMarketChartActivation(this.content, () => this._markets, openMarketChartModal);
+    // Rows are marked role="button" purely on having a plottable series, so
+    // every one of them must lead somewhere. The research route only accepts
+    // /^[A-Z][A-Z0-9.-]{0,14}$/, which rejects the caret-prefixed indices
+    // (^GSPC, ^DJI, ^IXIC …) and digit-leading Asian tickers (0700.HK,
+    // 600519.SS …) that lead this panel — those keep the chart modal rather
+    // than becoming announced-but-inert controls.
+    bindMarketChartActivation(this.content, () => this._markets, (stock) => {
+      if (normalizeStockResearchSymbol(stock.symbol)) navigateToStockResearch(stock.symbol, stock);
+      else openMarketChartModal(stock);
+    });
   }
 
   public renderMarkets(
