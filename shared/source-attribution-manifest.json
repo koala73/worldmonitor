@@ -1379,7 +1379,7 @@
     },
     {
       "host": "auth.opensky-network.org",
-      "provider": "auth.opensky-network.org",
+      "provider": "opensky-network.org",
       "kind": "structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
@@ -1994,7 +1994,7 @@
     },
     {
       "host": "customer-api.wingbits.com",
-      "provider": "customer-api.wingbits.com",
+      "provider": "wingbits.com",
       "kind": "structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
@@ -2536,7 +2536,7 @@
     },
     {
       "host": "ecs-api.wingbits.com",
-      "provider": "ecs-api.wingbits.com",
+      "provider": "wingbits.com",
       "kind": "structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
@@ -7156,6 +7156,9 @@
         },
         {
           "path": "api/og-story.js"
+        },
+        {
+          "path": "api/opensky.js"
         },
         {
           "path": "api/referral/me.ts"

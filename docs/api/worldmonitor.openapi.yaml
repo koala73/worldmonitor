@@ -34984,7 +34984,6 @@ components:
                     type: string
                     enum:
                         - POSITION_SOURCE_UNSPECIFIED
-                        - POSITION_SOURCE_OPENSKY
                         - POSITION_SOURCE_WINGBITS
                         - POSITION_SOURCE_SIMULATED
                     description: PositionSource identifies the provider of aircraft position data.
@@ -46634,7 +46633,7 @@ components:
                     $ref: '#/components/schemas/worldmonitor_military_v1_FlightEnrichment'
                 source:
                     type: string
-                    description: Provider that supplied this observation (for example, "adsb.lol" or "opensky").
+                    description: Provider that supplied this observation (for example, "adsb.lol" or "wingbits").
             required:
                 - id
             description: MilitaryFlight represents a tracked military aircraft from the configured ADS-B providers.

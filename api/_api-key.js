@@ -10,7 +10,7 @@ const DESKTOP_ORIGIN_PATTERNS = [
   /^asset:\/\/localhost$/,
 ];
 
-function isDesktopOrigin(origin) {
+export function isDesktopOrigin(origin) {
   return Boolean(origin) && DESKTOP_ORIGIN_PATTERNS.some(p => p.test(origin));
 }
 

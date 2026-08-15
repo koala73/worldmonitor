@@ -173,7 +173,7 @@ export const PUBLIC_PRODUCT_FACTS = {
     "feedDefinitions": 658,
     "freshnessTrackedSourceGroups": 37,
     "sourceAttributionHosts": 553,
-    "sourceAttributionProviders": 551
+    "sourceAttributionProviders": 549
   }
 };
 

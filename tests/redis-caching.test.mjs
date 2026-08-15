@@ -1336,6 +1336,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     return importPatchedTsModule('server/worldmonitor/military/v1/get-theater-posture.ts', {
       './_shared': resolve(root, 'server/worldmonitor/military/v1/_shared.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
+      '../../../_shared/provider-redistribution': resolve(root, 'server/_shared/provider-redistribution.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
       '../../../_shared/response-headers': resolve(root, 'server/_shared/response-headers.ts'),
     });
@@ -1379,6 +1380,121 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
       const result = await module.getTheaterPosture({ request: new Request('https://worldmonitor.app/api/military/v1/get-theater-posture') }, {});
       assert.equal(openskyFetchCount, 0, 'must not call upstream APIs (Redis-read-only)');
       assert.deepEqual(result, liveData, 'should return live Redis data');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('keeps OpenSky posture in the product but excludes it from API responses', async () => {
+    const { module, cleanup } = await importTheaterPosture();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+    });
+    const originalFetch = globalThis.fetch;
+    const openskyData = {
+      provider: 'OpenSky Network',
+      theaters: [{ theater: 'product-only', postureLevel: 'elevated', activeFlights: 2 }],
+    };
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/').pop() || '');
+        return jsonResponse({
+          result: key === 'theater-posture:sebuf:v1' ? JSON.stringify(openskyData) : undefined,
+        });
+      }
+      return jsonResponse({}, false);
+    };
+
+    try {
+      const product = await module.getTheaterPosture({
+        request: new Request('https://worldmonitor.app/api/military/v1/get-theater-posture'),
+      }, {});
+      assert.deepEqual(product, { theaters: openskyData.theaters });
+
+      const api = await module.getTheaterPosture({
+        request: new Request('https://worldmonitor.app/api/military/v1/get-theater-posture', {
+          headers: { 'X-WorldMonitor-Key': 'wm_commercial-api-key' },
+        }),
+      }, {});
+      assert.deepEqual(api, { theaters: [] });
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('serves provider-attributed Wingbits posture to API callers', async () => {
+    const { module, cleanup } = await importTheaterPosture();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+    });
+    const originalFetch = globalThis.fetch;
+    const wingbitsData = {
+      provider: 'wingbits',
+      theaters: [{ theater: 'redistributable', postureLevel: 'normal', activeFlights: 1 }],
+    };
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/').pop() || '');
+        return jsonResponse({
+          result: key === 'theater-posture:sebuf:v1' ? JSON.stringify(wingbitsData) : undefined,
+        });
+      }
+      return jsonResponse({}, false);
+    };
+
+    try {
+      const result = await module.getTheaterPosture({
+        request: new Request('https://worldmonitor.app/api/military/v1/get-theater-posture', {
+          headers: { 'X-WorldMonitor-Key': 'wm_commercial-api-key' },
+        }),
+      }, {});
+      assert.deepEqual(result, { theaters: wingbitsData.theaters });
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('fails closed for an unattributed posture requested by an API caller', async () => {
+    const { module, cleanup } = await importTheaterPosture();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+    });
+    const originalFetch = globalThis.fetch;
+    const unattributedData = {
+      theaters: [{ theater: 'unknown-provider', postureLevel: 'elevated', activeFlights: 3 }],
+    };
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/').pop() || '');
+        return jsonResponse({
+          result: key === 'theater-posture:sebuf:v1' ? JSON.stringify(unattributedData) : undefined,
+        });
+      }
+      return jsonResponse({}, false);
+    };
+
+    try {
+      const result = await module.getTheaterPosture({
+        request: new Request('https://worldmonitor.app/api/military/v1/get-theater-posture', {
+          headers: { 'X-WorldMonitor-Key': 'wm_commercial-api-key' },
+        }),
+      }, {});
+      assert.deepEqual(result, { theaters: [] });
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
@@ -1718,6 +1834,7 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
       './_shared': resolve(root, 'server/_shared/relay.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+      '../../../_shared/provider-redistribution': resolve(root, 'server/_shared/provider-redistribution.ts'),
     });
   }
 
@@ -1935,10 +2052,12 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
       UPSTASH_REDIS_REST_TOKEN: undefined,
     });
     const originalFetch = globalThis.fetch;
+    let openskyCalls = 0;
 
     globalThis.fetch = async (url) => {
       const raw = String(url);
       if (raw.includes('/opensky/states/all') && raw.includes('icao24=')) {
+        openskyCalls += 1;
         return jsonResponse({
           states: [['4b1805', 'TEST1', null, null, null, 10.5, 20.5, 30000, false, 420, 180]],
         });
@@ -1959,6 +2078,56 @@ describe('aviation aircraft provider priority', { concurrency: 1 }, () => {
       assert.equal(result.positions[0].icao24, '4b1805');
       assert.equal(result.positions[0].lat, 20.5);
       assert.equal(result.positions[0].lon, 10.5);
+      assert.equal(openskyCalls, 1);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('keeps OpenSky in the product but excludes it from API-key responses', async () => {
+    const { module, cleanup } = await importTrackAircraft();
+    const restoreEnv = withEnv({
+      WS_RELAY_URL: 'wss://relay.test',
+      UPSTASH_REDIS_REST_URL: undefined,
+      UPSTASH_REDIS_REST_TOKEN: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    let openskyCalls = 0;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/opensky/states/all') && raw.includes('icao24=')) {
+        openskyCalls += 1;
+        return jsonResponse({
+          states: [['4b1805', 'TEST1', null, null, null, 10.5, 20.5, 30000, false, 420, 180]],
+        });
+      }
+      return jsonResponse({}, false);
+    };
+
+    try {
+      const product = await module.trackAircraft({
+        request: new Request('https://wm.test/api/aviation/v1/track-aircraft', {
+          headers: { 'X-WorldMonitor-Key': 'wms_browser-session' },
+        }),
+      }, {
+        icao24: '4b1805', swLat: 0, swLon: 0, neLat: 0, neLon: 0,
+      });
+      const api = await module.trackAircraft({
+        request: new Request('https://wm.test/api/aviation/v1/track-aircraft', {
+          headers: { 'X-Api-Key': 'wm_customer-key' },
+        }),
+      }, {
+        icao24: '4b1805', swLat: 0, swLon: 0, neLat: 0, neLon: 0,
+      });
+
+      assert.equal(product.source, 'opensky');
+      assert.equal(product.positions.length, 1, 'the dashboard product keeps its OpenSky observation');
+      assert.equal(api.source, 'none');
+      assert.deepEqual(api.positions, [], 'programmatic API responses must not redistribute OpenSky data');
+      assert.equal(openskyCalls, 1, 'only the dashboard request may spend an OpenSky fallback call');
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
@@ -2062,6 +2231,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
       '../../../_shared/relay': resolve(root, 'server/_shared/relay.ts'),
       '../../../_shared/response-headers': resolve(root, 'server/_shared/response-headers.ts'),
+      '../../../_shared/provider-redistribution': resolve(root, 'server/_shared/provider-redistribution.ts'),
     });
   }
 
@@ -2146,6 +2316,112 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       assert.deepEqual(result.flights.map((flight) => flight.id), ['adsb-ae0301']);
       assert.equal(result.flights[0].hexCode, 'AE0301');
       assert.equal(result.flights[0].source, 'adsb.lol');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('filters OpenSky seed rows from API-key responses while retaining redistributable providers', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: 'wss://relay.test',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const redisKeys = [];
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/')[1] || '');
+        redisKeys.push(key);
+        if (key === 'military:flights:v1') {
+          return jsonResponse({
+            result: JSON.stringify({
+              flights: [
+                { id: 'open-1', hexCode: 'OPEN01', callsign: 'RCH101', lat: 20.2, lon: 10.2, sourceMeta: { source: 'opensky-auth' } },
+                { id: 'wing-1', hexCode: 'WING01', callsign: 'RCH102', lat: 20.3, lon: 10.3, sourceMeta: { source: 'wingbits' } },
+                { id: 'adsb-1', hexCode: 'ADSB01', callsign: 'RCH103', lat: 20.4, lon: 10.4, sourceMeta: { source: 'adsb.lol' } },
+                { id: 'unknown-1', hexCode: 'UNKNOWN01', callsign: 'RCH104', lat: 20.5, lon: 10.5 },
+              ],
+              coverage: 'global',
+              fetchedAt: Date.now(),
+            }),
+          });
+        }
+        return jsonResponse({ result: null });
+      }
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const result = await module.listMilitaryFlights({
+        request: new Request('https://wm.test/api/military/v1/list-military-flights', {
+          headers: { 'X-WorldMonitor-Key': 'wm_customer-key' },
+        }),
+      }, seededRequest);
+
+      assert.deepEqual(result.flights.map((flight) => flight.id), ['wing-1', 'adsb-1']);
+      assert.deepEqual(result.flights.map((flight) => flight.source), ['wingbits', 'adsb.lol']);
+      assert.deepEqual(result.pagination, { nextCursor: '', totalCount: 2 });
+      assert.match(redisKeys[0], /:redistributable$/, 'API results must not share a cache entry with the product fallback policy');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('fails closed for unattributed flights inside cached API clusters', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const wingbits = { ...cachedMilitaryFlight('wing-cached', 20.2, 10.2), source: 'wingbits' };
+    const unattributed = { ...cachedMilitaryFlight('unknown-cached', 20.3, 10.3), source: '' };
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/')[1] || '');
+        if (key.endsWith(':redistributable')) {
+          return jsonResponse({
+            result: JSON.stringify({
+              flights: [wingbits, unattributed],
+              clusters: [
+                { id: 'mixed', flightCount: 2, flights: [wingbits, unattributed] },
+                { id: 'unknown-only', flightCount: 1, flights: [unattributed] },
+              ],
+            }),
+          });
+        }
+        return jsonResponse({ result: null });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const result = await module.listMilitaryFlights({
+        request: new Request('https://wm.test/api/military/v1/list-military-flights', {
+          headers: { 'X-WorldMonitor-Key': 'wm_customer-key' },
+        }),
+      }, seededRequest);
+
+      assert.deepEqual(result.flights.map((flight) => flight.id), ['wing-cached']);
+      assert.deepEqual(result.clusters.map((cluster) => cluster.id), ['mixed']);
+      assert.equal(result.clusters[0].flightCount, 1);
+      assert.deepEqual(result.clusters[0].flights.map((flight) => flight.id), ['wing-cached']);
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
@@ -2999,6 +3275,45 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       assert.equal(liveSeedReads, 1, 'the global snapshot must be consulted before provider recovery');
       assert.equal(openskyCalls, 1, 'a snapshot miss must still reach request-specific recovery');
       assert.deepEqual(result.flights.map((flight) => flight.id), ['OUTSIDE-REGION']);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('does not use OpenSky recovery for an API-key request when the seed is missing', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: 'wss://relay.test',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    let openskyCalls = 0;
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: null });
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
+      if (raw.includes('/opensky')) {
+        openskyCalls += 1;
+        return jsonResponse({ states: [] });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const result = await module.listMilitaryFlights({
+        request: new Request('https://wm.test/api/military/v1/list-military-flights', {
+          headers: { 'X-Api-Key': 'wm_customer-key' },
+        }),
+      }, request);
+      assert.equal(openskyCalls, 0, 'programmatic traffic must not trigger OpenSky recovery');
+      assert.deepEqual(result, { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } });
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;

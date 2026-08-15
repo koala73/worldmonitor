@@ -72,6 +72,10 @@ const licensedPublisherFeed = (provider) => ({
 });
 
 const PROVIDER_OVERRIDES = {
+  'auth.opensky-network.org': { provider: 'opensky-network.org' },
+  'opensky-network.org': { provider: 'opensky-network.org' },
+  'customer-api.wingbits.com': { provider: 'wingbits.com' },
+  'ecs-api.wingbits.com': { provider: 'wingbits.com' },
   'moxie.foxbusiness.com': licensedPublisherFeed('Fox Business'),
   'www.wired.com': licensedPublisherFeed('Wired'),
   'www.businessinsider.com': licensedPublisherFeed('Business Insider'),
