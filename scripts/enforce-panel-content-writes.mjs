@@ -130,7 +130,6 @@ export const LEGACY_DIRECT_CONTENT_WRITES = [
   'src/components/CorrelationPanel.ts :: replaceChildren(this.content, …) x2',
   'src/components/CountersPanel.ts :: this.content.appendChild(…) x1',
   'src/components/CountersPanel.ts :: this.content.innerHTML = … x1',
-  'src/components/DeductionPanel.ts :: replaceChildren(this.content, …) x1',
   'src/components/DefensePatentsPanel.ts :: replaceChildren(this.content, …) x1',
   'src/components/GdeltIntelPanel.ts :: this.content.insertAdjacentElement(…) x1',
   'src/components/GoodThingsDigestPanel.ts :: setTrustedHtml(this.content, …) x3',
