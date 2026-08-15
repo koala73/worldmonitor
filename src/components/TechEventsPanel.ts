@@ -82,7 +82,6 @@ export class TechEventsPanel extends Panel {
       return;
     }
 
-    this.clearErrorState();
     const filteredEvents = this.getFilteredEvents();
     const upcomingConferences = this.events.filter(e => e.type === 'conference' && new Date(e.startDate) >= new Date());
     const mappableCount = upcomingConferences.filter(e => e.coords && !e.coords.virtual).length;
@@ -94,7 +93,7 @@ export class TechEventsPanel extends Panel {
       ['all', t('components.techEvents.all')],
     ];
 
-    replaceChildren(this.content,
+    this.setContentNodes(
       h('div', { className: 'tech-events-panel' },
         h('div', { className: 'panel-tabs' },
           ...tabEntries.map(([view, label]) =>

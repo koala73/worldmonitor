@@ -27552,3 +27552,57 @@ body.map-width-resizing {
 .markers-settled .tech-event-marker.upcoming-soon::after {
   animation: none;
 }
+
+.stock-research-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.72);
+}
+.stock-research-room {
+  width: min(920px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border, #2c3038);
+  border-radius: 10px;
+  padding: 20px 22px 24px;
+  color: var(--text, #e8e4da);
+}
+.stock-research-close {
+  float: right;
+  background: transparent;
+  color: inherit;
+  border: 1px solid var(--border, #2c3038);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+.stock-research-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.stock-research-symbol {
+  font-family: var(--font-mono, monospace);
+  letter-spacing: 0.06em;
+}
+.stock-research-tape {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-dim, #9a9589);
+}
+.stock-research-chart {
+  margin: 12px 0 20px;
+}
+.stock-research-news {
+  padding-left: 18px;
+}
+.stock-research-news span {
+  display: block;
+  color: var(--text-dim, #9a9589);
+  font-size: 12px;
+}

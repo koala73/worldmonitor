@@ -545,7 +545,9 @@
         "displacement": "Toggle displacement flows",
         "climate": "Toggle climate anomalies",
         "outages": "Toggle internet outages",
-        "tradeRoutes": "Toggle trade routes"
+        "tradeRoutes": "Toggle trade routes",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Switch to dark mode",
@@ -708,7 +710,7 @@
         "URLHAUS_AUTH_KEY": "Used for both URLhaus and ThreatFox APIs.",
         "OTX_API_KEY": "Optional enrichment source for the cyber threat layer.",
         "ABUSEIPDB_API_KEY": "Optional enrichment source for malicious IP reputation.",
-        "FINNHUB_API_KEY": "Real-time stock quotes and market data.",
+        "FINNHUB_API_KEY": "Delayed or seeded stock quotes and market data. A key is not a live tape.",
         "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -1032,6 +1034,7 @@
       "noComtradeData": "No strategic flow data available",
       "comtradeUnavailable": "UN Comtrade data temporarily unavailable",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomaly",
       "colReporter": "Country",
       "colCommodity": "Commodity",
@@ -1328,7 +1331,9 @@
         "kindness": "Acts of Kindness",
         "happiness": "World Happiness",
         "speciesRecovery": "Species Recovery",
-        "renewableInstallations": "Clean Energy"
+        "renewableInstallations": "Clean Energy",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1434,7 +1439,9 @@
           "tradeRoutes": "Major global shipping lanes connecting ports through strategic chokepoints",
           "dayNight": "Real-time solar terminator showing day and night zones",
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
-          "ciiChoropleth": "Country Instability Index heat-map — colors countries by CII score (green=stable, red=critical)"
+          "ciiChoropleth": "Country Instability Index heat-map — colors countries by CII score (green=stable, red=critical)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
@@ -1961,7 +1968,7 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Detects converging natural disaster and infrastructure signals:<ul><li>Correlates earthquakes, wildfires, floods, and weather extremes</li><li>Tracks cascading effects on infrastructure and supply chains</li><li>Highlights regions with compounding disaster risk</li></ul>Click a card to zoom to the affected region."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Real-time stock indices, equities, and crypto prices. Customize your watchlist with the Watchlist button. Sparklines show recent price trend.",
+      "infoTooltip": "<strong>Markets</strong> Delayed or seeded stock indices, equities, and crypto prices. Customize your watchlist with the Watchlist button. Sparklines show recent price trend.",
       "chart": {
         "title": "{{symbol}} price chart",
         "close": "Close chart"
@@ -2009,7 +2016,7 @@
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."

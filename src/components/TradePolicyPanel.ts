@@ -451,9 +451,10 @@ export class TradePolicyPanel extends Panel {
   }
 
   private renderComtradeFlows(): string {
+    const scope = `<p class="trade-comtrade-scope" data-comtrade-scope="national">${escapeHtml(t('components.tradePolicy.comtradeNationalScope'))}</p>`;
     const flows = this.comtradeData?.flows;
     if (!flows?.length) {
-      return `<div class="economic-empty">${t('components.tradePolicy.noComtradeData')}</div>`;
+      return `${scope}<div class="economic-empty">${t('components.tradePolicy.noComtradeData')}</div>`;
     }
 
     // Prefer world-total rows: UN Comtrade API returns partnerCode as integer 0 for world aggregates,
@@ -500,7 +501,7 @@ export class TradePolicyPanel extends Panel {
       </tr>`;
     }).join('');
 
-    return `<div class="trade-tariffs-table">
+    return `${scope}<div class="trade-tariffs-table">
       <table>
         <thead><tr>
           <th>${t('components.tradePolicy.colReporter')}</th>

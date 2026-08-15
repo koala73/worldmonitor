@@ -1,6 +1,6 @@
 {
   "_generated": "scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`",
-  "layerDefinitions": 56,
+  "layerDefinitions": 58,
   "lockedLayerDefinitions": 1,
   "lockedLayerKeys": [
     "resilienceScore"
@@ -8,16 +8,16 @@
   "tier1Countries": 31,
   "rankableUniverseCountries": 196,
   "variantLayers": {
-    "full": 37,
+    "full": 39,
     "tech": 13,
-    "finance": 17,
+    "finance": 19,
     "happy": 6,
-    "commodity": 18,
-    "energy": 18
+    "commodity": 20,
+    "energy": 20
   },
   "variantCount": 6,
   "componentTopLevelTsFiles": 186,
-  "serviceTopLevelEntries": 233,
+  "serviceTopLevelEntries": 237,
   "apiEndpointEntries": 91,
   "panelClasses": 109,
   "protoFiles": 298,
@@ -81,6 +81,7 @@
     "publish-go.yml",
     "publish-python.yml",
     "publish-ruby.yml",
+    "railway-deploy-drift.yml",
     "railway-deploy-trigger-watchdog.yml",
     "railway-deploy-trigger.yml",
     "railway-reconcile-manual-recovery.yml",
@@ -91,20 +92,20 @@
     "typecheck.yml",
     "umami-storage-monitor.yml"
   ],
-  "workflowCount": 33,
-  "freshnessSources": 35,
+  "workflowCount": 34,
+  "freshnessSources": 37,
   "freshnessRequiredForRisk": 2,
-  "feedDefinitions": 632,
+  "feedDefinitions": 658,
   "sourceAttribution": {
-    "activeHosts": 537,
-    "structuredHosts": 297,
-    "feedHosts": 268,
+    "activeHosts": 553,
+    "structuredHosts": 302,
+    "feedHosts": 279,
     "operationalStatusHosts": 30,
-    "providerCount": 535,
-    "observedHosts": 656,
-    "reviewNeeded": 519
+    "providerCount": 551,
+    "observedHosts": 672,
+    "reviewNeeded": 523
   },
-  "sourceAttributionHosts": 537,
+  "sourceAttributionHosts": 553,
   "airportCount": 115,
   "stockExchangeCount": 29,
   "centralBankInstitutionCount": 14,
@@ -306,8 +307,8 @@
     "nonCacheable": "no-store"
   },
   "healthProbedKeys": {
-    "bootstrap": 109,
-    "standalone": 154,
-    "total": 263
+    "bootstrap": 114,
+    "standalone": 155,
+    "total": 269
   }
 }

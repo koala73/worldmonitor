@@ -480,7 +480,9 @@
         "displacement": "Переключить потоки перемещённых лиц",
         "climate": "Переключить климатические аномалии",
         "outages": "Переключить интернет-отключения",
-        "tradeRoutes": "Переключить торговые маршруты"
+        "tradeRoutes": "Переключить торговые маршруты",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Переключить на тёмную тему",
@@ -642,7 +644,7 @@
         "URLHAUS_AUTH_KEY": "Используется для API URLhaus и ThreatFox.",
         "OTX_API_KEY": "Дополнительный источник обогащения для уровня киберугроз.",
         "ABUSEIPDB_API_KEY": "Дополнительный источник репутации вредоносных IP-адресов.",
-        "FINNHUB_API_KEY": "Котировки акций и рыночные данные в реальном времени.",
+        "FINNHUB_API_KEY": "Задержанные или предзагруженные котировки акций и рыночные данные. Ключ — это не прямая трансляция.",
         "NASA_FIRMS_API_KEY": "Система управления информацией о пожарах.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -935,6 +937,7 @@
       "noComtradeData": "Данные стратегических потоков недоступны",
       "comtradeUnavailable": "Данные UN Comtrade временно недоступны",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "Строки UN Comtrade — официальная статистика на национальном уровне отчитывающейся страны, а не экспорт города, коридора, завода, порта или партии.",
       "anomalyBadge": "Аномалия",
       "colReporter": "Страна",
       "colCommodity": "Товар",
@@ -1191,7 +1194,9 @@
         "speciesRecovery": "Восстановление видов",
         "renewableInstallations": "Чистая энергия",
         "radiationSpike": "Всплеск радиации",
-        "radiationElevated": "Повышенный уровень радиации"
+        "radiationElevated": "Повышенный уровень радиации",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Землетрясение",
@@ -1297,7 +1302,9 @@
           "tradeRoutes": "Основные мировые судоходные маршруты, соединяющие порты через стратегические узкие места",
           "dayNight": "Солнечный терминатор в реальном времени, показывающий зоны дня и ночи",
           "geoBoundaries": "Демилитаризованные зоны, линии прекращения огня и спорные границы",
-          "ciiChoropleth": "Тепловая карта индекса нестабильности стран — цвета по CII (зелёный=стабильно, красный=критично)"
+          "ciiChoropleth": "Тепловая карта индекса нестабильности стран — цвета по CII (зелёный=стабильно, красный=критично)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Влияет на: Землетрясения, Погода, Протесты, Сбои"
@@ -1914,7 +1921,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2188,7 +2195,7 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Обнаруживает сходящиеся сигналы природных бедствий и инфраструктуры:<ul><li>Коррелирует землетрясения, лесные пожары, наводнения и экстремальную погоду</li><li>Отслеживает каскадные эффекты на инфраструктуру и цепи поставок</li><li>Выделяет регионы с сопутствующим риском бедствий</li></ul>Нажмите на карточку, чтобы увеличить затронутый регион."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Котировки индексов в реальном времени, акции и цены крипто. Настройте свой список отслеживания с помощью кнопки Список отслеживания. Спарклайны показывают недавний ценовой тренд.",
+      "infoTooltip": "<strong>Markets</strong> Задержанные или предзагруженные котировки индексов, акции и цены крипто. Настройте свой список отслеживания с помощью кнопки Список отслеживания. Спарклайны показывают недавний ценовой тренд.",
       "chart": {
         "title": "График цены {{symbol}}",
         "close": "Закрыть график"

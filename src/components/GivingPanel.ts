@@ -4,7 +4,7 @@ import {
   type GivingSummary,
 } from '@/services/giving/model';
 import { t } from '@/services/i18n';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { trustedHtml } from '@/utils/dom-utils';
 import {
   availableGivingTabs,
   renderGivingPanelContent,
@@ -36,7 +36,6 @@ export class GivingPanel extends Panel {
     }
 
     this.data = data;
-    this.clearErrorState();
     this.setCount(data.platforms.length);
     this.renderContent();
   }
@@ -79,8 +78,7 @@ export class GivingPanel extends Panel {
     const tabs = availableGivingTabs(this.data);
     if (!tabs.includes(this.activeTab)) this.activeTab = 'platforms';
 
-    setTrustedHtml(
-      this.content,
+    this.setTrustedContent(
       trustedHtml(
         renderGivingPanelContent(this.data, this.activeTab, t),
         'Giving provenance renderer escapes values and validates source links',

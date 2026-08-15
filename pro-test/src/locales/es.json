@@ -48,7 +48,7 @@
     "entF10": "Despliegue en la nube, on-premises o air-gapped",
     "entF11": "Onboarding y soporte dedicados",
     "entCta": "Habla con ventas",
-    "freeF2": "500+ feeds, 537+ fuentes, 50+ capas de mapa"
+    "freeF2": "500+ feeds, 553+ fuentes, 50+ capas de mapa"
   },
   "whyUpgrade": {
     "title": "Por qué mejorar",
@@ -566,7 +566,7 @@
       "s1l": "Capas del mapa",
       "s2v": "500+",
       "s2l": "Feeds curados",
-      "s3v": "535+",
+      "s3v": "551+",
       "s3l": "Proveedores de datos",
       "s4v": "13",
       "s4l": "Puntos de estrangulamiento · AIS en directo",
@@ -659,7 +659,7 @@
       "q2": "¿Qué es un panel de inteligencia global?",
       "a2": "Una vista en vivo única que fusiona señales que la mayoría de herramientas mantienen separadas: eventos de conflicto, seguimiento de barcos y aeronaves, cuellos de botella de envío, satélites, cables submarinos, oleoductos, mercados y amenazas cibernéticas — en un mapa mundial en tiempo real, con puntuación de IA y resúmenes incluidos. World Monitor es uno gratuito.",
       "q3": "¿De dónde provienen los datos?",
-      "a3": "535+ proveedores, nombrados: ACLED y UCDP para conflictos, AISStream para barcos en vivo, OpenSky para aeronaves, NASA FIRMS para incendios, USGS para terremotos, IMF, BIS, FRED y Finnhub para mercados y macro — más 500+ feeds de noticias curados. Cada panel cita sus fuentes e incluye marcas de tiempo en línea.",
+      "a3": "551+ proveedores, nombrados: ACLED y UCDP para conflictos, AISStream para barcos en vivo, OpenSky para aeronaves, NASA FIRMS para incendios, USGS para terremotos, IMF, BIS, FRED y Finnhub para mercados y macro — más 500+ feeds de noticias curados. Cada panel cita sus fuentes e incluye marcas de tiempo en línea.",
       "q4": "¿Puedo vigilar cuellos de botella como Hormuz o Bab el-Mandeb en tiempo real?",
       "a4": "Sí. Se rastrean 13 cuellos de botella con conteos de barcos AIS en vivo, cambio de tránsito semana a semana y puntuación de disrupciones — y las anomalías de densidad se marcan contra la línea base móvil de cada estrecho.",
       "q5": "¿En qué se diferencia esto de un mapa de conflictos como Liveuamap?",

@@ -144,6 +144,7 @@
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
       "scripts/_seed-utils.mjs",
+      "scripts/_weather-alert-select.mjs",
       "scripts/_yahoo-sector-valuations.cjs",
       "scripts/ais-relay.cjs",
       "scripts/lib/llm-telemetry.cjs",

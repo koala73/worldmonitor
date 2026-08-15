@@ -72,6 +72,13 @@ const EXCLUDED_FROM_MCP = new Map([
   ['economic:fred:batch:v1',
     'operational: producer batch envelope written by seed-fred-rates for health and rollout validation; the individual FRED series are the queryable data surfaces, so the batch envelope is intentionally not exposed through MCP.'],
 
+  ['infra:ontario-511:v1',
+    'dashboard-internal: Ontario 511 records feed the canadaRoads map layer (#6608); not a queryable MCP slice.'],
+  ['infra:alberta-511:v1',
+    'dashboard-internal: Alberta 511 events and alerts union onto the canadaRoads map layer (#6612); not a queryable MCP slice.'],
+  ['infra:bc-open511:v1',
+    'dashboard-internal: DriveBC Open511 events union onto the canadaRoads map layer (#6611); not a queryable MCP slice.'],
+
   // ===========================================================================
   // Intermediate / pipeline keys (data surfaces through a sibling tool)
   // ===========================================================================
@@ -83,6 +90,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'cascade-mirror: stale fallback of military:surges:v1, which is covered by get_military_surge; this copy is retained for the health freshness probe.'],
   ['intelligence:military-cii:v1',
     'intermediate: per-country military-presence aggregate (own/foreign flights+vessels, AIS disruption buckets) read by server/worldmonitor/intelligence/v1/get-risk-scores.ts to feed the CII Security component; surfaces transitively via the country-risk score returned by get_country_risk. Not a queryable MCP slice on its own.'],
+  ['alerts:alberta-aea:v1',
+    'map-only Alberta Emergency Alert overlay (canadaAlerts). #6610 ships the Atom seeder and DeckGL dots; no MCP tool. Do not fold into weather:alerts:v1 (NWS). A future Canada emergency-alerts tool should cover this key when BC/ON/SK siblings ship.'],
   ['weather:hko-warnings:v1',
     'intermediate: dedicated HKO warning snapshot is independently health-monitored, while its warning events are merged into natural:events:v1 and exposed by get_natural_disasters. The raw side snapshot has no separate MCP schema or filter surface.'],
 
@@ -372,6 +381,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
   ['relay:heartbeat:climate-news',
     'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
+  ['bundle:heartbeat:static-ref',
+    'operational: seed-bundle-static-ref tick-execution heartbeat — covered by /api/health, not a user-facing data slice for MCP (#6691).'],
   ['digest:last-run',
     'operational: digest-notifications cron heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
   ['intel-history:ingest-health:conflict:acled-intel:v1',
@@ -396,6 +407,10 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
   ['consumer-prices:coverage:us',
     'operational: consumer-price market/retailer completion and validator-rejection coverage published for /api/health; the underlying price observations are exposed through get_consumer_prices, while this health snapshot is not a queryable MCP slice (#5945).'],
+  ['infra:ontario-511:v1',
+    'dashboard-internal: Ontario 511 events, alerts, and road conditions overlay on the canadaRoads map layer; not a queryable MCP slice (#6608).'],
+  ['infra:toronto-roads:v1',
+    'dashboard-internal: City of Toronto CART v3 road restrictions overlay on the same canadaRoads map layer; not a queryable MCP slice (#6609).'],
 ]);
 
 const EDUCATION_EXCLUSION_REASON = EXCLUDED_FROM_MCP.get('resilience:education-attainment:v1');

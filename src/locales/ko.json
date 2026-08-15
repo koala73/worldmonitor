@@ -476,7 +476,9 @@
         "displacement": "이재민 흐름 전환",
         "climate": "기후 이상 전환",
         "outages": "인터넷 장애 전환",
-        "tradeRoutes": "무역 노선 전환"
+        "tradeRoutes": "무역 노선 전환",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "다크 모드로 전환",
@@ -638,7 +640,7 @@
         "URLHAUS_AUTH_KEY": "URLhaus 및 ThreatFox API에 사용됩니다.",
         "OTX_API_KEY": "사이버 위협 레이어의 선택적 보강 소스입니다.",
         "ABUSEIPDB_API_KEY": "악성 IP 평판 확인을 위한 선택적 보강 소스입니다.",
-        "FINNHUB_API_KEY": "실시간 주가 및 시장 데이터.",
+        "FINNHUB_API_KEY": "지연되었거나 사전 적재된 주가 및 시장 데이터. 키가 있어도 라이브 시세가 아닙니다.",
         "NASA_FIRMS_API_KEY": "자원 관리 시스템을 위한 화재 정보.",
         "OLLAMA_API_URL": "예: http://127.0.0.1:11434 (Ollama) 또는 http://127.0.0.1:1234/v1 (LM Studio) — OpenAI 호환 엔드포인트.",
         "OLLAMA_MODEL": "예: llama3.1:8b — 요약에 사용할 모델 태그."
@@ -931,6 +933,7 @@
       "noComtradeData": "전략적 흐름 데이터 미제공",
       "comtradeUnavailable": "UN Comtrade 데이터 일시 미제공",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade 행은 보고국의 국가 단위 공식 통계이며 마을·회랑·공장·항구·선적의 수출이 아닙니다.",
       "anomalyBadge": "이상",
       "colReporter": "국가",
       "colCommodity": "상품",
@@ -1187,7 +1190,9 @@
         "speciesRecovery": "종 복원",
         "renewableInstallations": "클린 에너지",
         "radiationSpike": "방사능 급증",
-        "radiationElevated": "상승된 방사능"
+        "radiationElevated": "상승된 방사능",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "지진",
@@ -1293,7 +1298,9 @@
           "tradeRoutes": "전략적 병목 지점을 경유하여 항구를 연결하는 주요 글로벌 해운 항로",
           "dayNight": "주간 및 야간 영역을 표시하는 실시간 태양 종단선",
           "geoBoundaries": "비무장지대, 휴전선 및 분쟁 경계선",
-          "ciiChoropleth": "국가 불안정 지수 히트맵 — CII 점수에 따라 국가를 색상으로 표시 (녹색=안정, 빨간색=심각)"
+          "ciiChoropleth": "국가 불안정 지수 히트맵 — CII 점수에 따라 국가를 색상으로 표시 (녹색=안정, 빨간색=심각)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "영향 대상: 지진, 기상, 시위, 장애"
@@ -1908,7 +1915,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2170,7 +2177,7 @@
       "infoTooltip": "<strong>재난 연쇄 반응</strong> 수렴하는 자연재해 및 인프라 신호 감지:<ul><li>지진, 산불, 홍수 및 극한 날씨의 상관관계</li><li>인프라 및 공급망에 대한 연쇄 효과 추적</li><li>복합 재난 위험이 있는 지역 강조</li></ul>카드를 클릭하여 영향을 받는 지역으로 확대합니다."
     },
     "markets": {
-      "infoTooltip": "<strong>시장</strong> 실시간 주식 지수, 주식 및 암호화폐 가격. 감시목록 버튼으로 감시목록을 사용자 정의합니다. 스파크라인은 최근 가격 추세를 표시합니다.",
+      "infoTooltip": "<strong>시장</strong> 지연되었거나 사전 적재된 주식 지수, 주식 및 암호화폐 가격. 감시목록 버튼으로 감시목록을 사용자 정의합니다. 스파크라인은 최근 가격 추세를 표시합니다.",
       "chart": {
         "title": "{{symbol}} 가격 차트",
         "close": "차트 닫기"

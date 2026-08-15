@@ -13,7 +13,7 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
-import { DAY, readSectionFreshness } from '../scripts/_bundle-runner.mjs';
+import { DAY, readSectionFreshness, bundleHeartbeatKey, BUNDLE_HEARTBEAT_TTL_SECONDS } from '../scripts/_bundle-runner.mjs';
 import {
   atomicSwitch,
   backfillSeedMetaFromActiveVersion,
@@ -1123,6 +1123,64 @@ test('dependsOn: throws on unknown label reference', async () => {
     assert.notEqual(code, 0);
     assert.match(stderr, /dependsOn unknown label 'DoesNotExist'/,
       `expected unknown-label error; stderr:\n${stderr}`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('bundleHeartbeatKey names the tick-execution watchdog key from the bundle label', () => {
+  assert.equal(bundleHeartbeatKey('static-ref'), 'bundle:heartbeat:static-ref');
+  assert.equal(BUNDLE_HEARTBEAT_TTL_SECONDS, 7 * 24 * 60 * 60);
+});
+
+test('runBundle writes a tick heartbeat even when every section is skipped', async () => {
+  // Scheduler-freeze detection needs a write on EVERY container start, including
+  // the common daily tick where all weekly/monthly members are still fresh.
+  // Member seed-meta cannot see those ticks (#6691).
+  const cleanup = writeFixture('_bundle-fixture-heartbeat-skip.mjs', `console.log('must-not-run');\n`);
+  const redis = await startFakeUpstash({
+    strings: new Map([['seed-meta:heartbeat-skip', JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 })]]),
+  });
+  try {
+    const { code, stdout, stderr } = await runBundleWith(
+      [{
+        label: 'SKIPME',
+        script: '_bundle-fixture-heartbeat-skip.mjs',
+        seedMetaKey: 'heartbeat-skip',
+        intervalMs: DAY,
+        timeoutMs: 5_000,
+      }],
+      {},
+      { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token },
+    );
+    assert.equal(code, 0, stderr);
+    assert.match(stdout, /\[SKIPME\] Skipped/);
+    assert.doesNotMatch(stdout, /must-not-run/);
+    const set = redis.commands.find((command) => command[0] === 'SET' && command[1] === bundleHeartbeatKey('test'));
+    assert.ok(set, `expected SET ${bundleHeartbeatKey('test')}; commands=${JSON.stringify(redis.commands)}`);
+    const payload = JSON.parse(set[2]);
+    assert.equal(payload.recordCount, 1);
+    assert.ok(Number.isFinite(payload.fetchedAt), 'heartbeat must carry fetchedAt');
+    assert.equal(payload.lastBundleRunAt, payload.fetchedAt);
+    assert.equal(set[3], 'EX');
+    assert.equal(set[4], BUNDLE_HEARTBEAT_TTL_SECONDS);
+  } finally {
+    cleanup();
+    await redis.close();
+  }
+});
+
+test('a missing Redis URL must not crash the bundle after the heartbeat write is added', async () => {
+  const cleanup = writeFixture('_bundle-fixture-heartbeat-noredist.mjs', `console.log('noredist-ran');\n`);
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'OK', script: '_bundle-fixture-heartbeat-noredist.mjs', intervalMs: 1, timeoutMs: 5_000 },
+    ], {}, {
+      UPSTASH_REDIS_REST_URL: '',
+      UPSTASH_REDIS_REST_TOKEN: '',
+    });
+    assert.equal(code, 0);
+    assert.match(stdout, /noredist-ran/);
   } finally {
     cleanup();
   }

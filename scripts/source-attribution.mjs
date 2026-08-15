@@ -64,7 +64,60 @@ const SOURCE_HINT_RE = /\b(?:fetch\w*|new\s+URL|axios|rss|feed|statusPage|endpoi
 // hosts without treating every ordinary string literal as an upstream source.
 const DECLARATION_RE = /\b(?:const|let|var)\s+[A-Z][A-Z0-9_]*\s*=\s*$/;
 
+const licensedPublisherFeed = (provider) => ({
+  provider,
+  license: 'Licensed publisher content; redistribution governed by the World Monitor agreement',
+  attribution: `Credit ${provider} and link to the original item.`,
+  status: 'reviewed',
+});
+
 const PROVIDER_OVERRIDES = {
+  'moxie.foxbusiness.com': licensedPublisherFeed('Fox Business'),
+  'www.wired.com': licensedPublisherFeed('Wired'),
+  'www.businessinsider.com': licensedPublisherFeed('Business Insider'),
+  'www.handelsblatt.com': licensedPublisherFeed('Handelsblatt'),
+  'www.welt.de': licensedPublisherFeed('Welt'),
+  'www.telegraph.co.uk': licensedPublisherFeed('The Telegraph'),
+  'www.globenewswire.com': licensedPublisherFeed('GlobeNewswire'),
+  'feed.businesswire.com': licensedPublisherFeed('Business Wire'),
+  'chainwire.org': licensedPublisherFeed('Chainwire'),
+  'www.interfax.ru': licensedPublisherFeed('Interfax'),
+  'ustr.gov': {
+    provider: 'Office of the U.S. Trade Representative',
+    license: 'U.S. government public information; site and document-specific notices apply',
+    attribution: 'Office of the U.S. Trade Representative; link to the original release.',
+    status: 'reviewed',
+  },
+  '511on.ca': {
+    provider: 'Ontario 511',
+    license: 'Ontario 511 API terms; Government of Ontario data; attribution required',
+    attribution: 'Ontario 511 (Ministry of Transportation). https://511on.ca/',
+    status: 'terms-review',
+  },
+  '511.alberta.ca': {
+    provider: 'Alberta 511',
+    license: 'Alberta 511 terms (https://511.alberta.ca/about/about): non-commercial/educational reproduction allowed; commercial reproduction needs written permission from Alberta Transportation and Economic Corridors. https://511.alberta.ca/help/terms returned 404.',
+    attribution: 'Alberta 511 (Alberta Transportation and Economic Corridors). https://511.alberta.ca/',
+    status: 'terms-review',
+  },
+  'secure.toronto.ca': {
+    provider: 'City of Toronto Open Data',
+    license: 'CKAN package_show for road-restrictions: license_id=notspecified, license_title="License not specified" (https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/package_show?id=road-restrictions). Portal dataset page chrome links OGL-Toronto but is not data-bound to this dataset.',
+    attribution: 'City of Toronto, Road Restrictions. https://open.toronto.ca/dataset/road-restrictions/',
+    status: 'terms-review',
+  },
+  'api.open511.gov.bc.ca': {
+    provider: 'BC Open511',
+    license: 'Open Government Licence - British Columbia (OGL-BC). Confirmed on https://api.open511.gov.bc.ca/help. API Terms of Use for OGL-BC information also apply.',
+    attribution: 'DriveBC Open511 (Province of British Columbia). Licensed under OGL-BC. https://api.open511.gov.bc.ca/help',
+    status: 'reviewed',
+  },
+  'www.alberta.ca': {
+    provider: 'Alberta Emergency Alert',
+    license: 'Alberta.ca terms of use. Open Government Licence - Alberta exists on the open.alberta.ca licence page but is not bound to the AEA Atom feed on a live dataset page (the alberta-emergency-alert.aspx page has no OGL statement).',
+    attribution: 'Alberta Emergency Alert, Government of Alberta. https://www.alberta.ca/alberta-emergency-alert.aspx',
+    status: 'terms-review',
+  },
   'api.elections.kalshi.com': {
     provider: 'Kalshi',
     license: 'Kalshi API terms; commercial-use and redistribution terms require review',
@@ -494,6 +547,41 @@ const PROVIDER_OVERRIDES = {
 };
 
 const LOGICAL_ENTRIES = [
+  {
+    ...licensedPublisherFeed('Interfax'),
+    host: 'interfax.com',
+    kind: 'feed',
+    observed: true,
+    attribution: 'Credit Interfax and link to the original Interfax English item; Google News is the acquisition transport.',
+  },
+  {
+    ...licensedPublisherFeed('PR Newswire'),
+    host: 'prnewswire.com',
+    kind: 'feed',
+    observed: true,
+    attribution: 'Credit PR Newswire and link to the original release; Google News is the acquisition transport.',
+  },
+  {
+    ...licensedPublisherFeed('Coinbase'),
+    host: 'coinbase.com',
+    kind: 'feed',
+    observed: true,
+    attribution: 'Credit Coinbase and link to the original blog post; Google News is the acquisition transport.',
+  },
+  {
+    ...licensedPublisherFeed('Binance'),
+    host: 'binance.com',
+    kind: 'feed',
+    observed: true,
+    attribution: 'Credit Binance and link to the original announcement; Google News is the acquisition transport.',
+  },
+  {
+    ...licensedPublisherFeed('Jin10'),
+    host: 'jin10.com',
+    kind: 'feed',
+    observed: true,
+    attribution: 'Credit Jin10 and link to the original item; Google News is the acquisition transport.',
+  },
   {
     provider: 'Fintraffic Digitraffic',
     host: 'not-currently-wired',
