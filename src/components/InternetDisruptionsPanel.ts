@@ -62,7 +62,11 @@ export class InternetDisruptionsPanel extends Panel {
       : this.tab === 'ddos'
         ? this.buildDdos()
         : this.buildAnomalies();
-    replaceChildren(this.content, tabs, body);
+    // Route through the sanctioned helper (#6557): render() is called from
+    // data setters (setOutages/setDdos/setAnomalies), so each call is a
+    // proven success — clearing the error state alongside the replace is
+    // the correct semantic.
+    this.setContentNodes(tabs, body);
   }
 
   private buildTabs(): HTMLElement {
