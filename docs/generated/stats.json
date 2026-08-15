@@ -93,7 +93,7 @@
     "umami-storage-monitor.yml"
   ],
   "workflowCount": 34,
-  "freshnessSources": 37,
+  "freshnessSources": 39,
   "freshnessRequiredForRisk": 2,
   "feedDefinitions": 658,
   "sourceAttribution": {
