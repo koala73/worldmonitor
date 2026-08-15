@@ -51,6 +51,7 @@ import {
   fetchEarthquakes,
   fetchWeatherAlerts,
   fetchCanadaRoads,
+  CANADA_ROAD_FRESHNESS_IDS,
   getCanadaRoadSourceStates,
   fetchCanadaAlerts,
   fetchInternetOutages,
@@ -2851,11 +2852,26 @@ export class DataLoaderManager implements AppModule {
           ? `Partial coverage: ${degradedSources.join(', ')}`
           : undefined,
       });
-      dataFreshness.recordUpdate('ontario_511', records.length);
+      // Per source, not one blanket ontario_511. Four feeds union onto this
+      // layer, and attributing all of them to Ontario meant an Alberta, Toronto
+      // or BC outage either read as an Ontario failure or — for the two with no
+      // id at all — never reached the freshness panel. getCanadaRoadSourceStates
+      // already knows which one is degraded; this just stops discarding it.
+      for (const { key, freshnessId } of CANADA_ROAD_FRESHNESS_IDS) {
+        const state = sourceStates[key];
+        if (state === 'unavailable' || state === 'malformed') {
+          dataFreshness.recordError(freshnessId, `${key}: ${state}`);
+        } else {
+          dataFreshness.recordUpdate(freshnessId, records.length);
+        }
+      }
     } catch (error) {
       this.ctx.map?.setLayerReady('canadaRoads', false);
       this.ctx.statusPanel?.updateFeed('Canada Roads', { status: 'error' });
-      dataFreshness.recordError('ontario_511', String(error));
+      // The whole fetch failed, so every source is unknown — not just Ontario.
+      for (const { freshnessId } of CANADA_ROAD_FRESHNESS_IDS) {
+        dataFreshness.recordError(freshnessId, String(error));
+      }
     }
   }
 

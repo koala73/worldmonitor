@@ -14,6 +14,8 @@ export type DataSourceId =
   | 'cyber_threats'
   | 'weather'
   | 'ontario_511'
+  | 'alberta_511'
+  | 'toronto_roads'
   | 'bc_open511'
   | 'economic'
   | 'oil'
