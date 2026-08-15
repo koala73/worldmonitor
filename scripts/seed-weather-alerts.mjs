@@ -37,7 +37,7 @@ async function fetchSourceFeatures(url, allowedHosts, label) {
 }
 
 async function fetchAlerts() {
-  const [nwsFeatures, ecccFeatures] = await Promise.all([
+  const [nwsFeatures, ecccResult] = await Promise.all([
     fetchSourceFeatures(NWS_ALERTS_URL, [NWS_HOST], 'NWS'),
     fetchEcccAlertFeatures({
       userAgent: CHROME_UA,
@@ -48,17 +48,35 @@ async function fetchAlerts() {
     }),
   ]);
 
-  if (nwsFeatures == null && ecccFeatures == null) {
+  if (nwsFeatures == null && ecccResult == null) {
     throw new Error('NWS and ECCC weather alert fetches both failed');
   }
 
   const nwsAlerts = nwsFeatures ? rankEligibleAlerts(nwsFeatures) : [];
-  const ecccAlerts = ecccFeatures ? selectEcccAlerts(ecccFeatures) : [];
+  const ecccAlerts = ecccResult ? selectEcccAlerts(ecccResult.features) : [];
   const alerts = mergeAlertSources({ nws: nwsAlerts, eccc: ecccAlerts });
   const truncationWarning = formatTruncationWarning(nwsAlerts.length + ecccAlerts.length, alerts.length);
   if (truncationWarning) console.warn(truncationWarning);
 
-  return { alerts };
+  // A partial ECCC fetch still publishes — dropping the statuses that DID answer
+  // would trade a silent gap for a bigger one. But it must not read healthy:
+  // sourceState 'degraded' classifies as SEED_ERROR, so a national alert set
+  // missing its `continued` half is visible instead of indistinguishable from a
+  // quiet day. Whole-source loss is already reported by the warnings above.
+  const degraded = [];
+  if (ecccResult?.partial) {
+    degraded.push(`eccc-partial:${ecccResult.failedStatuses.join('+')}`);
+    console.warn(
+      `weather-alerts: ECCC PARTIAL — status ${ecccResult.failedStatuses.join(', ')} failed `
+      + `(${ecccResult.failureDetail}); published set is missing those alerts`,
+    );
+  }
+  if (nwsFeatures == null) degraded.push('nws-unavailable');
+  if (ecccResult == null) degraded.push('eccc-unavailable');
+
+  return degraded.length
+    ? { alerts, sourceState: 'degraded', errorCode: 'WEATHER_ALERT_SOURCE_INCOMPLETE', skipReason: degraded.join(',') }
+    : { alerts };
 }
 
 export function declareRecords(data) {

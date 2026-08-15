@@ -263,18 +263,32 @@ export async function fetchEcccAlertFeatures({
 
   const features = [];
   const failures = [];
-  for (const result of results) {
+  const failedStatuses = [];
+  results.forEach((result, index) => {
     if (result.status === 'fulfilled') {
       features.push(...result.value);
     } else {
       failures.push(result.reason);
+      failedStatuses.push(ECCC_LIVE_STATUSES[index]);
     }
-  }
+  });
   if (failures.length === results.length) {
     const detail = failures.map((err) => err?.message || String(err)).join('; ');
     throw new Error(`ECCC issued and continued fetches both failed: ${detail}`);
   }
-  return features;
+  // Returns an OBJECT, not a bare array, so a partial fetch cannot be consumed
+  // as if it were the whole set. `issued` and `continued` are two separate GETs
+  // and each carries alerts the other does not: `continued` is where an ONGOING
+  // warning lives after its first issue. Returning just the surviving features
+  // when one status 500s publishes a silently truncated national alert set —
+  // and on the relay, whose purge semantics always overwrite, it DELETES every
+  // continued alert from the live key while health still reads OK.
+  return {
+    features,
+    failedStatuses,
+    partial: failedStatuses.length > 0,
+    failureDetail: failures.map((err) => err?.message || String(err)).join('; '),
+  };
 }
 
 /**

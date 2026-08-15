@@ -4927,11 +4927,25 @@ async function seedWeatherAlerts() {
       }
     };
 
-    const fetchEcccFeatures = async () => fetchEcccAlertFeatures({
-      fetchFn: fetch,
-      userAgent: CHROME_UA,
-      maxBytes: ECCC_MAX_BYTES,
-    });
+    // A PARTIAL ECCC fetch is rejected here on purpose. This writer purges —
+    // it always overwrites so ended alerts clear — which is only correct when
+    // the source answered in full. Publishing `issued` without `continued`
+    // would DELETE every ongoing Canadian warning from the live key. Rejecting
+    // routes it into the same carry-forward path as a total ECCC outage below,
+    // which keeps the last-good Canadian slice until a complete fetch returns.
+    const fetchEcccFeatures = async () => {
+      const result = await fetchEcccAlertFeatures({
+        fetchFn: fetch,
+        userAgent: CHROME_UA,
+        maxBytes: ECCC_MAX_BYTES,
+      });
+      if (result.partial) {
+        throw new Error(
+          `ECCC partial fetch — status ${result.failedStatuses.join(', ')} failed: ${result.failureDetail}`,
+        );
+      }
+      return result.features;
+    };
 
     const [nwsResult, ecccResult] = await Promise.allSettled([
       fetchNwsFeatures(),

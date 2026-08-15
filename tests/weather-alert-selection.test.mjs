@@ -449,11 +449,45 @@ describe('ECCC host policy and sourceVersion lockstep', () => {
         text: async () => JSON.stringify({ type: 'FeatureCollection', features: [issuedFeature] }),
       };
     };
-    const features = await fetchEcccAlertFeatures({ fetchFn, userAgent: 'test-ua' });
+    const result = await fetchEcccAlertFeatures({ fetchFn, userAgent: 'test-ua' });
     assert.equal(urls.length, 2);
     assert.ok(urls.some((url) => /status_en=issued/.test(url)));
     assert.ok(urls.some((url) => /status_en=continued/.test(url)));
     assert.ok(!urls.some((url) => /status_en=active/.test(url)));
-    assert.deepEqual(features.map((feature) => feature.id), ['issued-1']);
+    assert.deepEqual(result.features.map((feature) => feature.id), ['issued-1']);
+
+    // The surviving half is still returned — dropping it would trade a silent
+    // gap for a bigger one — but the caller MUST be able to see that the set is
+    // incomplete. This assertion is the whole point of the object return: with a
+    // bare array there is no way to distinguish "one status is down" from
+    // "Canada is quiet", and both the seeder and the purging relay writer then
+    // treat a truncated national alert set as authoritative.
+    assert.equal(result.partial, true, 'a half-failed ECCC fetch must report itself partial');
+    assert.deepEqual(result.failedStatuses, ['continued']);
+    assert.match(result.failureDetail, /continued down/);
+  });
+
+  it('reports a complete ECCC fetch as not partial', async () => {
+    // The negative case, or `partial` could be hardcoded true and every
+    // assertion above would still pass.
+    const fetchFn = async (url) => ({
+      ok: true,
+      headers: { get: () => null },
+      text: async () => JSON.stringify({
+        type: 'FeatureCollection',
+        features: [ecccFeature({
+          id: /continued/.test(String(url)) ? 'continued-1' : 'issued-1',
+          status_en: /continued/.test(String(url)) ? 'continued' : 'issued',
+        })],
+      }),
+    });
+    const result = await fetchEcccAlertFeatures({ fetchFn, userAgent: 'test-ua' });
+    assert.equal(result.partial, false);
+    assert.deepEqual(result.failedStatuses, []);
+    assert.deepEqual(
+      result.features.map((feature) => feature.id).sort(),
+      ['continued-1', 'issued-1'],
+      'both statuses contribute alerts; continued is where an ONGOING warning lives',
+    );
   });
 });
