@@ -13,18 +13,56 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { resolveLanguageTag } from '../src/shared/language-tags.ts';
 
-// Mirrors SUPPORTED_LANGUAGES in src/services/i18n.ts. Not imported: that module
-// evaluates `import.meta.glob` at load time, which does not exist outside Vite.
-// The registry itself is gated separately by scripts/docs-stats.mjs.
-const SUPPORTED = new Set([
-  'en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl',
-  'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'ro', 'tr', 'th',
-  'vi', 'hi', 'sw',
-]);
+/**
+ * SUPPORTED_LANGUAGES, read out of src/services/i18n.ts.
+ *
+ * The module cannot be imported — it evaluates `import.meta.glob` at load time,
+ * which does not exist outside Vite — but it can be read, which is what
+ * scripts/docs-stats.mjs already does to the same constant.
+ *
+ * It used to be mirrored here instead, and a mirror answers the wrong question:
+ * every row below asserts what a tag resolves to GIVEN a registry, so with a
+ * private copy of that registry they keep passing after the app stops shipping
+ * the language they resolve to. Dropping `zh-TW` upstream left this file green
+ * while `resolve('zh-TW')` in the app returned `en`.
+ */
+function readSupportedLanguages(): string[] {
+  const source = readFileSync(
+    fileURLToPath(new URL('../src/services/i18n.ts', import.meta.url)),
+    'utf8',
+  );
+  const block = source.match(/const\s+SUPPORTED_LANGUAGES\s*=\s*\[([\s\S]*?)\]\s*as const/);
+  if (!block) throw new Error('could not read SUPPORTED_LANGUAGES from src/services/i18n.ts');
+  return [...block[1]!.matchAll(/'([^']+)'/g)].map((match) => match[1]!);
+}
+
+const SUPPORTED = new Set(readSupportedLanguages());
 
 const resolve = (tag: string): string => resolveLanguageTag(tag, SUPPORTED);
+
+describe('resolveLanguageTag — the registry the rows below resolve against', () => {
+  it('reads the shipped registry, and finds the codes these rows depend on', () => {
+    // A parse that quietly returned nothing would send every tag to the `en`
+    // fallback, and the Simplified rows — the ones that matter most — would
+    // pass for the wrong reason.
+    assert.ok(
+      SUPPORTED.size > 20,
+      `parsed ${SUPPORTED.size} language(s) out of src/services/i18n.ts, so the parse is broken`,
+    );
+    // Naming them makes removing one a red test here rather than a silent
+    // change of meaning in every assertion below.
+    for (const code of ['zh', 'zh-TW', 'en', 'pt', 'sw', 'ja']) {
+      assert.ok(
+        SUPPORTED.has(code),
+        `${code} is no longer in SUPPORTED_LANGUAGES, so the rows asserting it resolve are stale`,
+      );
+    }
+  });
+});
 
 describe('resolveLanguageTag — Traditional Chinese', () => {
   const traditional = [
