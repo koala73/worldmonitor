@@ -28,12 +28,24 @@
       "name": "mineralProduction",
       "status": "EMPTY",
       "issue": 6439,
-      "reason": "New USGS/BGS mineral-production probe. seed-bundle-static-ref runs daily at 03:00 UTC (`0 3 * * *` in scripts/railway-services.json), so the key cannot exist until the first tick after this PR deploys; EMPTY is expected until then. Anchored to that real cron window: MAX_ROLLOUT_WINDOW_MS caps firstScheduledRunAt-activatedAt at 24h, and a daily tick fits inside it. If this PR has not merged by 2026-08-14T03:00Z, re-anchor both to the next 03:00 UTC tick.",
-      "expiresAt": "2026-08-14T03:00:00.000Z",
+      "reason": "USGS/BGS mineral-production probe has never published. seed-bundle-static-ref cron froze after the lone Aug 9 tick (#6691); recovery redeploy landed 2026-08-14T12:40Z. EMPTY is expected until the next 03:00 UTC tick. Re-anchored from the expired 2026-08-14T03:00Z cutover to that first post-recovery window.",
+      "expiresAt": "2026-08-15T03:00:00.000Z",
       "cutover": {
         "probeKey": "seed-meta:supply-chain:mineral-production",
-        "activatedAt": "2026-08-13T06:00:00.000Z",
-        "firstScheduledRunAt": "2026-08-14T03:00:00.000Z"
+        "activatedAt": "2026-08-14T12:45:00.000Z",
+        "firstScheduledRunAt": "2026-08-15T03:00:00.000Z"
+      }
+    },
+    {
+      "name": "staticRefBundleTick",
+      "status": "EMPTY",
+      "issue": 6691,
+      "reason": "New tick-execution heartbeat for seed-bundle-static-ref. Writer ships in this change; the key cannot exist until the first 03:00 UTC cron after deploy. EMPTY is expected until then. Expiry equals firstScheduledRunAt so a missed recovery tick pages instead of staying silent.",
+      "expiresAt": "2026-08-15T03:00:00.000Z",
+      "cutover": {
+        "probeKey": "bundle:heartbeat:static-ref",
+        "activatedAt": "2026-08-14T12:45:00.000Z",
+        "firstScheduledRunAt": "2026-08-15T03:00:00.000Z"
       }
     },
     {

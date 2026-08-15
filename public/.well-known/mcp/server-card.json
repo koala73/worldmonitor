@@ -190,7 +190,7 @@
     },
     {
       "name": "get_airspace",
-      "description": "Live ADS-B aircraft over a country. Returns civilian flights (OpenSky) and identified military aircraft with callsigns, positions, altitudes, and headings. Answers questions like \"how many planes are over the UAE right now?\" or \"are there military aircraft over Taiwan?\""
+      "description": "Live ADS-B aircraft over a country. Returns Wingbits-backed civilian flights and identified military aircraft from redistributable providers, with callsigns, positions, altitudes, and headings. Answers questions like \"how many planes are over the UAE right now?\" or \"are there military aircraft over Taiwan?\""
     },
     {
       "name": "get_maritime_activity",

@@ -349,9 +349,10 @@ LLM layer is enabled. Digest prose and
 story-description calls use temperature `0.4`. Regional weekly briefs
 intentionally differ from those digest prose and `whyMatters` surfaces:
 `scripts/regional-snapshot/weekly-brief.mjs`
-tries OpenRouter first with `deepseek/deepseek-v4-flash`, then falls back to
-Groq `llama-3.3-70b-versatile`, and sends both providers temperature
-`0.3` because the output is structured weekly JSON for regional snapshots
+tries OpenRouter first with `deepseek/deepseek-v4-flash`, then the fixed free
+OpenRouter models `google/gemma-4-26b-a4b-it:free` and
+`openai/gpt-oss-20b:free`, then Groq `openai/gpt-oss-20b`. It sends every
+provider temperature `0.3` because the output is structured weekly JSON for regional snapshots
 rather than per-user digest prose. The digest prompt requires a named
 actor/event lead, bans generic editorial phrases such as "the global stage"
 and weak stitching phrases such as "this comes as" or "meanwhile", requires

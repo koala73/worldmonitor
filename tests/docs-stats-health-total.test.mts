@@ -338,8 +338,14 @@ describe('/api/health probed-key count doc gate (#6300)', () => {
     // only the conformance check can see it. Without this fixture, disabling
     // that check leaves all other tests green.
     const source = mutate(
-      "  intelHistoryIngestEnergyIntelligence:  'intel-history:ingest-health:energy:intelligence:v1',\n};",
-      "  intelHistoryIngestEnergyIntelligence:  'intel-history:ingest-health:energy:intelligence:v1',\n  ...EXTRA_STANDALONE_KEYS\n};",
+      // Anchored on the LAST entry of STANDALONE_KEYS, because the mutation
+      // appends a non-conforming spread just before the closing brace. The
+      // merge that brought #6615 and #6623 together put ttcAlerts last, so this
+      // fixture tracks ttcAlerts rather than viarailLive — if a later change
+      // reorders that registry, this string has to follow it or mutate() throws
+      // on a snippet that no longer exists.
+      "  ttcAlerts: 'transit:ttc:alerts:v1',\n};",
+      "  ttcAlerts: 'transit:ttc:alerts:v1',\n  ...EXTRA_STANDALONE_KEYS\n};",
     );
     assert.throws(() => parseHealthProbedKeys(source), /cannot read/);
   });

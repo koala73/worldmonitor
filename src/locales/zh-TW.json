@@ -476,7 +476,9 @@
         "displacement": "切換流離失所流向",
         "climate": "切換氣候異常",
         "outages": "切換網際網路中斷",
-        "tradeRoutes": "切換貿易路線"
+        "tradeRoutes": "切換貿易路線",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "切換到暗色模式",
@@ -638,12 +640,12 @@
         "URLHAUS_AUTH_KEY": "用於URLhaus和ThreatFox API。",
         "OTX_API_KEY": "網路威脅圖層的可選增強資料來源。",
         "ABUSEIPDB_API_KEY": "惡意IP信譽的可選增強資料來源。",
-        "FINNHUB_API_KEY": "即時股票報價和市場資料。",
+        "FINNHUB_API_KEY": "延遲或預置的股票報價和市場資料。有金鑰也不代表直連行情。",
         "NASA_FIRMS_API_KEY": "消防資訊資源管理系統。",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
       },
-      "reserveEarlyAccess": "預留早期訪問許可權"
+      "reserveEarlyAccess": "預留早期存取權限"
     },
     "settingsWindow": {
       "validating": "正在驗證API金鑰...",
@@ -668,7 +670,7 @@
         "dividerOr": "或",
         "register": {
           "title": "需要 API 金鑰？",
-          "description": "請訪問 worldmonitor.app/docs/api-keys 檢視分步說明。手動 API 金鑰需要 API Starter 或 API Business 方案。",
+          "description": "請造訪 worldmonitor.app/docs/api-keys 檢視分步說明。手動 API 金鑰需要 API Starter 或 API Business 方案。",
           "submitBtn": "檢視 API 方案"
         }
       },
@@ -931,6 +933,7 @@
       "noComtradeData": "無戰略流動資料",
       "comtradeUnavailable": "聯合國貿易資料庫資料暫時不可用",
       "sourceComtrade": "聯合國貿易資料庫",
+      "comtradeNationalScope": "聯合國 Comtrade 的記錄是報告國的國家級官方統計，不是某鎮、走廊、工廠、港口或船貨的出口。",
       "anomalyBadge": "異常",
       "colReporter": "國家",
       "colCommodity": "商品",
@@ -1187,7 +1190,9 @@
         "speciesRecovery": "物種恢復",
         "renewableInstallations": "清潔能源",
         "radiationSpike": "輻射峰值",
-        "radiationElevated": "輻射升高"
+        "radiationElevated": "輻射升高",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1293,7 +1298,9 @@
           "tradeRoutes": "連線港口並經過戰略咽喉要道的全球主要航運通道",
           "dayNight": "即時太陽終結線顯示晝夜區域",
           "geoBoundaries": "非軍事區、停火線和爭議邊界",
-          "ciiChoropleth": "國家不穩定指數熱力圖 — 按CII評分為國家著色（綠色=穩定，紅色=危急）"
+          "ciiChoropleth": "國家不穩定指數熱力圖 — 按CII評分為國家著色（綠色=穩定，紅色=危急）",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "影響範圍：地震、天氣、抗議、中斷"
@@ -1781,7 +1788,7 @@
         "volume": "成交量",
         "change": "漲跌幅"
       },
-      "infoTooltip": "<strong>BTC ETF 追蹤</strong> 追蹤美國現貨比特幣 ETF 的每日預估資金流向：<ul><li>流入/流出方向和規模</li><li>每隻基金的成交量和價格變化</li><li>所有追蹤 ETF 的淨聚合流向</li></ul>"
+      "infoTooltip": "<strong>BTC ETF 追蹤</strong> 追蹤美國現貨比特幣 ETF 的每日預估資金流向：<ul><li>流入/流出方向和規模</li><li>每檔基金的成交量和價格變化</li><li>所有追蹤 ETF 的淨聚合流向</li></ul>"
     },
     "macroSignals": {
       "overall": "綜合",
@@ -1872,7 +1879,7 @@
       "restoreDefaults": "恢復預設頻道",
       "availableChannels": "可用頻道",
       "noResults": "未找到與\"{{term}}\"匹配的頻道",
-      "customChannel": "自定義頻道",
+      "customChannel": "自訂頻道",
       "regionNorthAmerica": "北美",
       "regionEurope": "歐洲",
       "regionLatinAmerica": "拉丁美洲",
@@ -1908,7 +1915,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2170,7 +2177,7 @@
       "infoTooltip": "<strong>災難級聯</strong> 檢測匯聚的自然災害和基礎設施訊號：<ul><li>關聯地震、野火、洪災和極端天氣</li><li>追蹤對基礎設施和供應鏈的級聯影響</li><li>突出具有複合災難風險的地區</li></ul>點選卡片可在地圖上放大到受影響區域。"
     },
     "markets": {
-      "infoTooltip": "<strong>市場</strong> 即時股票指數、股票和加密貨幣價格。使用\"觀察列表\"按鈕自定義您的觀察列表。火花線顯示最近價格趨勢。",
+      "infoTooltip": "<strong>市場</strong> 延遲或預置的股票指數、股票和加密貨幣價格。使用\"觀察列表\"按鈕自訂您的觀察列表。火花線顯示最近價格趨勢。",
       "chart": {
         "title": "{{symbol}} 價格圖表",
         "close": "關閉圖表"
@@ -2248,14 +2255,14 @@
       "dismiss": "關閉"
     },
     "billingState": {
-      "onHoldDesc": "支付失敗。請更新您的支付方式以恢復高階訪問許可權。",
+      "onHoldDesc": "支付失敗。請更新您的支付方式以恢復進階存取權限。",
       "onHoldBannerMessage": "支付失敗。請更新您的支付方式以保持訂閱有效。",
       "updatePayment": "更新支付方式",
-      "renewalPendingDesc": "我們正在核實您的訂閱續訂。確認後將自動恢復高階訪問許可權。",
+      "renewalPendingDesc": "我們正在核實您的訂閱續訂。確認後將自動恢復進階存取權限。",
       "refreshStatus": "重新整理狀態",
       "renewalFailedDesc": "我們無法核實您的訂閱續訂。請管理賬單，如問題持續請聯絡支援。",
       "manageBilling": "管理賬單",
-      "lapsedDesc": "您的 Pro 訂閱已結束。重新訂閱以恢復高階訪問許可權。",
+      "lapsedDesc": "您的 Pro 訂閱已結束。重新訂閱以恢復進階存取權限。",
       "resubscribe": "重新訂閱"
     },
     "checkoutFailureBanner": {
@@ -2297,7 +2304,7 @@
         },
         "power": {
           "heading": "您的 Pro 工具包",
-          "body": "自定義小元件、MCP 連線和 AI 研究員已解鎖。構建您真正想要關注的看板。",
+          "body": "自訂小工具、MCP 連線和 AI 研究員已解鎖。構建您真正想要關注的看板。",
           "confirmCta": "探索 Pro 工具",
           "confirming": "正在開啟…",
           "doneNote": "您已經在使用 Pro 工具了。",
@@ -2306,7 +2313,7 @@
           "channelsNote": "更喜歡 Telegram、Slack、Discord 還是 Webhook？",
           "pointers": {
             "search": "搜尋整個儀表板",
-            "widgets": "建立自定義小元件",
+            "widgets": "建立自訂小工具",
             "analyst": "諮詢 AI 分析師",
             "mcpClients": "設定 MCP",
             "channels": "在通知設定中進行配置"
@@ -2904,7 +2911,7 @@
       "days": {
         "today": "今天",
         "tomorrow": "明天",
-        "inDays": "{{count}}天后"
+        "inDays": "{{count}}天後"
       },
       "date": "日期",
       "moreInformation": "更多資訊"
@@ -3288,29 +3295,29 @@
     "offlineRetry": "重試"
   },
   "widgets": {
-    "confirmDelete": "永久刪除此小元件?",
-    "chatTitle": "小元件生成器",
-    "modifyTitle": "編輯小元件",
-    "inputPlaceholder": "描述您的小元件...",
+    "confirmDelete": "永久刪除此小工具?",
+    "chatTitle": "小工具生成器",
+    "modifyTitle": "編輯小工具",
+    "inputPlaceholder": "描述您的小工具...",
     "addToDashboard": "新增到儀表板",
     "applyChanges": "應用更改",
     "send": "傳送",
-    "modifyWithAi": "使用 AI 編輯小元件",
-    "ready": "小元件已就緒: {{title}}",
+    "modifyWithAi": "使用 AI 編輯小工具",
+    "ready": "小工具已就緒: {{title}}",
     "fetching": "正在獲取 {{target}}...",
     "requestTimedOut": "請求超時。請重試。",
     "serverError": "伺服器錯誤: {{status}}",
     "unknownError": "未知錯誤",
-    "generatedWidget": "生成的小元件: {{title}}",
-    "saveFailed": "無法儲存小元件。請重試。",
-    "checkingConnection": "檢查小元件訪問許可權中…",
-    "preflightConnected": "已連線到小元件代理",
-    "preflightInvalidKey": "小元件金鑰被拒絕。請更新 wm-widget-key 並重新載入。",
-    "preflightUnavailable": "小元件代理暫時不可用。",
+    "generatedWidget": "生成的小工具: {{title}}",
+    "saveFailed": "無法儲存小工具。請重試。",
+    "checkingConnection": "檢查小工具存取權限中…",
+    "preflightConnected": "已連線到小工具代理",
+    "preflightInvalidKey": "小工具金鑰被拒絕。請更新 wm-widget-key 並重新載入。",
+    "preflightUnavailable": "小工具代理暫時不可用。",
     "preflightAiUnavailable": "AI 後端不可用。請稍後重試。",
-    "readyToGenerate": "已就緒。選擇示例或描述您的小元件。",
+    "readyToGenerate": "已就緒。選擇示例或描述您的小工具。",
     "readyToApply": "{{title}} 的預覽已就緒。請審閱後新增到儀表板。",
-    "modifyHint": "預覽當前小元件。提交更改請求以修改它。",
+    "modifyHint": "預覽當前小工具。提交更改請求以修改它。",
     "generating": "生成中…",
     "examplesTitle": "提示示例",
     "previewTitle": "即時預覽",
@@ -3320,25 +3327,25 @@
     "phaseComposing": "構建中",
     "phaseComplete": "就緒",
     "phaseError": "錯誤",
-    "previewCheckingHeading": "連線小元件生成器中",
-    "previewReadyHeading": "描述您想要的小元件",
+    "previewCheckingHeading": "連線小工具生成器中",
+    "previewReadyHeading": "描述您想要的小工具",
     "previewFetchingHeading": "正在獲取即時 WorldMonitor 資料",
-    "previewComposingHeading": "正在構建小元件佈局",
+    "previewComposingHeading": "正在構建小工具佈局",
     "previewErrorHeading": "預覽需要處理",
-    "previewCheckingCopy": "我們正在驗證您的小元件金鑰和後端可用性，然後啟用生成。",
+    "previewCheckingCopy": "我們正在驗證您的小工具金鑰和後端可用性，然後啟用生成。",
     "previewReadyCopy": "使用提示示例或描述您想要的精確即時檢視。預覽將在此處更新，然後您可以儲存。",
-    "previewFetchingCopy": "代理正在呼叫已批准的 WorldMonitor 端點併為小元件塑形資料集。",
+    "previewFetchingCopy": "代理正在呼叫已批准的 WorldMonitor 端點併為小工具塑形資料集。",
     "previewComposingCopy": "預覽正在使用最新的即時資料和儀表板樣式進行呈現。",
-    "previewErrorCopy": "修復問題後重試。您現有的小元件不受影響。",
-    "createInteractive": "建立互動式小元件",
+    "previewErrorCopy": "修復問題後重試。您現有的小工具不受影響。",
+    "createInteractive": "建立互動式小工具",
     "proBadge": "PRO",
-    "preflightProUnavailable": "PRO 小元件代理不可用。請檢查伺服器上的 PRO_WIDGET_KEY。",
+    "preflightProUnavailable": "PRO 小工具代理不可用。請檢查伺服器上的 PRO_WIDGET_KEY。",
     "preflightInvalidProKey": "PRO 金鑰被拒絕。請更新 wm-pro-key 並重新載入。",
     "preflightProSubscriptionRequired": "需要 Pro 訂閱。如果您剛升級，請重新整理頁面；否則請聯絡支援。",
-    "preflightProRequired": "需要 Pro 訂閱才能使用小部件生成器。升級以解鎖。",
+    "preflightProRequired": "需要 Pro 訂閱才能使用小工具生成器。升級以解鎖。",
     "examples": {
       "oilGold": "顯示今天的原油價格與黃金價格對比",
-      "cryptoMovers": "為過去 24 小時內漲跌幅最大的加密貨幣建立小部件",
+      "cryptoMovers": "為過去 24 小時內漲跌幅最大的加密貨幣建立小工具",
       "flightDelays": "總結目前國際航班延誤最嚴重的情況",
       "conflictHotspots": "標記最新 UCDP 衝突熱點及簡短標籤"
     },
@@ -3357,9 +3364,9 @@
   "premium": {
     "pro": "PRO",
     "lockedDesc": "需要 World Monitor 許可證金鑰",
-    "signInToUnlock": "登入以解鎖高階功能",
+    "signInToUnlock": "登入以解鎖進階功能",
     "signIn": "登入以解鎖",
-    "upgradeDesc": "升級到 Pro 以獲得完整的高階分析訪問許可權",
+    "upgradeDesc": "升級到 Pro 以獲得完整的進階分析存取權限",
     "upgradeToPro": "升級到 Pro",
     "features": {
       "orefSirens1": "即時以色列導彈和火箭警報",
@@ -3381,7 +3388,7 @@
     "optional": "可選",
     "apiKey": "API 金鑰",
     "apiKeyPlaceholder": "貼上您的 API 金鑰",
-    "useCustomHeaders": "高階：使用自定義標頭 ↓",
+    "useCustomHeaders": "進階：使用自訂標頭 ↓",
     "useApiKey": "← 使用 API 金鑰",
     "connectBtn": "連線並列出工具",
     "connecting": "連線中...",
@@ -3399,7 +3406,7 @@
     "invalidJson": "無效的 JSON",
     "confirmDelete": "移除此 MCP 面板？",
     "quickConnect": "快速連線",
-    "or": "或輸入自定義伺服器",
+    "or": "或輸入自訂伺服器",
     "generatingVisualization": "正在生成視覺化...",
     "visualizationFailed": "視覺化失敗"
   },

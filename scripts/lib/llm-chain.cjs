@@ -1,6 +1,12 @@
 'use strict';
 
 const { buildLlmCallEvent, emitLlmEvents } = require('./llm-telemetry.cjs');
+const {
+  GROQ_DEFAULT_MODEL,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
+  OPENROUTER_PROVIDER_ROUTING,
+} = require('./llm-model-policy.cjs');
 
 const SERVICE_UA = 'worldmonitor-llm/1.0';
 
@@ -41,7 +47,7 @@ const LLM_PROVIDERS = [
     name: 'groq',
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.1-8b-instant',
+    model: GROQ_DEFAULT_MODEL,
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': SERVICE_UA }),
     timeout: 15_000,
   },
@@ -53,10 +59,28 @@ const LLM_PROVIDERS = [
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': SERVICE_UA }),
     timeout: 20_000,
   },
+  {
+    name: 'openrouter-free',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_PRIMARY_MODEL,
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': SERVICE_UA }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    timeout: 20_000,
+  },
+  {
+    name: 'openrouter-free-backup',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_BACKUP_MODEL,
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': SERVICE_UA }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    timeout: 20_000,
+  },
 ];
 
 /**
- * Call an LLM using the Ollama → Groq → OpenRouter provider chain.
+ * Call an LLM using the Ollama → Groq → paid OpenRouter → fixed free OpenRouter chain.
  *
  * @param {string} systemPrompt
  * @param {string} userPrompt
@@ -64,11 +88,21 @@ const LLM_PROVIDERS = [
  * @param {number} [opts.maxTokens=500]
  * @param {number} [opts.temperature=0.3]
  * @param {number} [opts.timeoutMs] - Override per-provider timeout
+ * @param {string[]} [opts.allowedProviders] - Optional exact provider allowlist
+ * @param {string[]} [opts.skipProviders] - Optional provider denylist
  * @param {string} [opts.stage] - llm_call telemetry surface tag (#4944 U5)
  * @returns {Promise<string|null>} Generated text, or null if all providers fail
  */
 async function callLLM(systemPrompt, userPrompt, opts = {}) {
-  const { maxTokens = 500, temperature = 0.3, timeoutMs, skipProviders, stage = 'llm-chain' } = opts;
+  const {
+    maxTokens = 500,
+    temperature = 0.3,
+    timeoutMs,
+    allowedProviders,
+    skipProviders,
+    stage = 'llm-chain',
+  } = opts;
+  const allowedSet = allowedProviders ? new Set(allowedProviders) : null;
   const skipSet = skipProviders ? new Set(skipProviders) : null;
 
   const promptChars = (systemPrompt?.length ?? 0) + (userPrompt?.length ?? 0);
@@ -76,6 +110,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
   let attemptIndex = 0;
 
   for (const provider of LLM_PROVIDERS) {
+    if (allowedSet && !allowedSet.has(provider.name)) continue;
     if (skipSet?.has(provider.name)) continue;
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;

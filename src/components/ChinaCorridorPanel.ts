@@ -9,10 +9,12 @@ import {
 } from '@/services/supply-chain';
 import {
   CHINA_CORRIDOR_SIGNAL_FAMILIES,
+  COMTRADE_NATIONAL_FAMILIES,
   type ChinaCorridorSignalFamily,
   type ChinaLogisticsCorridorId,
 } from '../../shared/china-logistics-corridors';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { CHINA_COMTRADE_NATIONAL_CAPTION } from '../../shared/china-factory-clusters';
 
 const FAMILY_LABELS: Record<ChinaCorridorSignalFamily, string> = {
   port: 'Ports',
@@ -161,6 +163,15 @@ export class ChinaCorridorPanel extends Panel {
     this.render();
   }
 
+  /**
+   * True when any selected family is backed by national Comtrade data. Gating
+   * on 'trade' alone dropped the national-scope caption while the
+   * strategic_industry family — also comtrade:reporter:156 — stayed rendered.
+   */
+  private hasComtradeBackedSelection(): boolean {
+    return COMTRADE_NATIONAL_FAMILIES.some((family) => this.selectedFamilies.has(family));
+  }
+
   private selectedCorridor(): ChinaCorridorControlTower | null {
     return this.response.corridors.find((corridor) => corridor.id === this.selectedId) ?? null;
   }
@@ -242,6 +253,9 @@ export class ChinaCorridorPanel extends Panel {
           </div>
           ${this.showRendererHint
             ? `<p class="china-corridor-renderer-hint" role="status">${escapeHtml(RENDERER_HINT)}</p>`
+            : ''}
+          ${this.hasComtradeBackedSelection()
+            ? `<p class="china-corridor-comtrade-scope" data-comtrade-scope="national">${escapeHtml(CHINA_COMTRADE_NATIONAL_CAPTION)}</p>`
             : ''}
           <div class="china-corridor-conditions">${conditions || '<p class="china-corridor-missing">Select at least one signal family.</p>'}</div>
         </section>

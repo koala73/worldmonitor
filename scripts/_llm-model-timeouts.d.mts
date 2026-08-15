@@ -1,6 +1,9 @@
 // Declaration file for the dependency-free timeout + OpenRouter routing policy
 // shared by the Railway forecast workers and bundled server code.
 export const DEEPSEEK_V4_FLASH_MODEL_PREFIX: string;
+export const OPENROUTER_FREE_PRIMARY_MODEL: string;
+export const OPENROUTER_FREE_BACKUP_MODEL: string;
+export const GROQ_DEFAULT_MODEL: string;
 export const DEEPSEEK_V4_FLASH_COMPLETION_TIMEOUT_MS: number;
 export const DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS: number;
 

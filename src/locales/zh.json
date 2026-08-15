@@ -476,7 +476,9 @@
         "displacement": "切换流离失所流向",
         "climate": "切换气候异常",
         "outages": "切换互联网中断",
-        "tradeRoutes": "切换贸易路线"
+        "tradeRoutes": "切换贸易路线",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "切换到暗色模式",
@@ -638,7 +640,7 @@
         "URLHAUS_AUTH_KEY": "用于URLhaus和ThreatFox API。",
         "OTX_API_KEY": "网络威胁图层的可选增强数据源。",
         "ABUSEIPDB_API_KEY": "恶意IP信誉的可选增强数据源。",
-        "FINNHUB_API_KEY": "实时股票报价和市场数据。",
+        "FINNHUB_API_KEY": "延迟或预置的股票报价和市场数据。有密钥也不代表直连行情。",
         "NASA_FIRMS_API_KEY": "消防信息资源管理系统。",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -931,6 +933,7 @@
       "noComtradeData": "无战略流动数据",
       "comtradeUnavailable": "联合国贸易数据库数据暂时不可用",
       "sourceComtrade": "联合国贸易数据库",
+      "comtradeNationalScope": "联合国 Comtrade 的记录是报告国的国家级官方统计，不是某镇、走廊、工厂、港口或船货的出口。",
       "anomalyBadge": "异常",
       "colReporter": "国家",
       "colCommodity": "商品",
@@ -1187,7 +1190,9 @@
         "speciesRecovery": "物种恢复",
         "renewableInstallations": "清洁能源",
         "radiationSpike": "辐射峰值",
-        "radiationElevated": "辐射升高"
+        "radiationElevated": "辐射升高",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1293,7 +1298,9 @@
           "tradeRoutes": "连接港口并经过战略咽喉要道的全球主要航运通道",
           "dayNight": "实时太阳终结线显示昼夜区域",
           "geoBoundaries": "非军事区、停火线和争议边界",
-          "ciiChoropleth": "国家不稳定指数热力图 — 按CII评分为国家着色（绿色=稳定，红色=危急）"
+          "ciiChoropleth": "国家不稳定指数热力图 — 按CII评分为国家着色（绿色=稳定，红色=危急）",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "影响范围：地震、天气、抗议、中断"
@@ -1908,7 +1915,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2170,7 +2177,7 @@
       "infoTooltip": "<strong>灾难级联</strong> 检测汇聚的自然灾害和基础设施信号：<ul><li>关联地震、野火、洪灾和极端天气</li><li>追踪对基础设施和供应链的级联影响</li><li>突出具有复合灾难风险的地区</li></ul>点击卡片可在地图上放大到受影响区域。"
     },
     "markets": {
-      "infoTooltip": "<strong>市场</strong> 实时股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。",
+      "infoTooltip": "<strong>市场</strong> 延迟或预置的股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。",
       "chart": {
         "title": "{{symbol}} 价格图表",
         "close": "关闭图表"

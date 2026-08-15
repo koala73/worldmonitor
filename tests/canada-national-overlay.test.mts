@@ -106,6 +106,49 @@ describe('Canada national overlay', () => {
     assert.ok(!usKeys.includes(RESILIENCE_STATCAN_WDS_KEY));
   });
 
+  it('falls back to IMF when StatCan and BoC are absent — the outage path', () => {
+    // The overlay REPLACES IMF values when StatCan answers. When it does not
+    // answer, the CA score must degrade to the previous IMF-lag behaviour, not
+    // to a missing or invented number. The code does this (nextImf keeps
+    // imfEntry when statcanInflation is null) but nothing pinned it: every
+    // existing case supplies StatCan, so a refactor that made the StatCan value
+    // REQUIRED would leave CA with no inflation score and stay green.
+    const outage = applyCanadaNationalOverlay(
+      'CA',
+      { inflationPct: LAGGED_IMF_INFLATION, currentAccountPct: -1, govRevenuePct: 40, year: 2024 },
+      { unemploymentPct: LAGGED_IMF_UNEMPLOYMENT, populationMillions: 40, year: 2024 },
+      { statcan: null, boc: null },
+    );
+
+    assert.equal(outage.imfEntry?.inflationPct, LAGGED_IMF_INFLATION, 'IMF inflation must survive a StatCan outage');
+    assert.equal(outage.laborEntry?.unemploymentPct, LAGGED_IMF_UNEMPLOYMENT, 'IMF unemployment must survive a StatCan outage');
+    assert.equal(outage.usedStatcanInflation, false);
+    assert.equal(outage.usedStatcanUnemployment, false);
+    // Freshness must NOT be stamped from a source that did not answer — a
+    // StatCan reference period here would claim currency the overlay never had.
+    assert.equal(outage.inflationFreshness, null);
+    assert.equal(outage.unemploymentFreshness, null);
+    assert.equal(outage.bocUsdCad, null);
+    assert.equal(outage.bocPolicyRate, null);
+  });
+
+  it('keeps the half that answered when only one national source is down', () => {
+    // Partial outage: StatCan CPI published, LFS did not. The dimension that
+    // answered must use StatCan; the one that did not must keep IMF rather than
+    // dropping to null because its sibling succeeded.
+    const partial = applyCanadaNationalOverlay(
+      'CA',
+      { inflationPct: LAGGED_IMF_INFLATION },
+      { unemploymentPct: LAGGED_IMF_UNEMPLOYMENT },
+      { statcan: { inflationPct: STATCAN_INFLATION }, boc: null },
+    );
+    assert.equal(partial.imfEntry?.inflationPct, STATCAN_INFLATION);
+    assert.equal(partial.usedStatcanInflation, true);
+    assert.equal(partial.laborEntry?.unemploymentPct, LAGGED_IMF_UNEMPLOYMENT);
+    assert.equal(partial.usedStatcanUnemployment, false);
+    assert.equal(partial.unemploymentFreshness, null);
+  });
+
   it('does not drop StatCan when the IMF envelopes are missing', async () => {
     const reader: ResilienceSeedReader = async (key) => {
       if (key === 'economic:imf:macro:v2' || key === 'economic:imf:labor:v1') return null;

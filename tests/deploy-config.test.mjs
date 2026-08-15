@@ -1531,6 +1531,36 @@ describe('security header guardrails', () => {
     }
   });
 
+  it('dashboard CSP font-src admits ZERO cross-origin sources — the CSP filter depends on it', () => {
+    // This is the license for the blanket font-src suppression in src/main.ts
+    // (`cspFontSrcAllowsCrossOrigin`). That filter drops EVERY cross-origin font
+    // block on the reasoning that this policy admits none, so such a block can
+    // only be an injected stylesheet. It replaced sixteen host-pinned rules that
+    // each re-derived the same premise (WORLDMONITOR-TR rounds 1-9).
+    //
+    // If the app ever adopts a cross-origin font host, this assertion fails
+    // FIRST — before the filter silently starts hiding a real regression. The
+    // fix then is to feed the real policy into the filter, not to delete this.
+    const surfaces = [
+      ['vercel', getHeaderValue('Content-Security-Policy')],
+      ['docker/nginx', getNginxHeaderValue('Content-Security-Policy')],
+    ];
+    for (const [label, csp] of surfaces) {
+      const tokens = getCspDirectiveTokens(csp, 'font-src');
+      assert.ok(tokens.length > 0, `${label} must declare an explicit font-src`);
+      const crossOrigin = tokens.filter(
+        (token) => !/^'[^']*'$/.test(token) && !/^(?:data|blob):$/.test(token),
+      );
+      assert.deepEqual(
+        crossOrigin,
+        [],
+        `${label} font-src must admit no cross-origin source (found: ${crossOrigin.join(', ')}). ` +
+          'src/main.ts suppresses all cross-origin font-src violations on the strength of this; ' +
+          'adopting a remote font host requires revisiting that filter in the same change.',
+      );
+    }
+  });
+
   it('CSP script-src includes wasm-unsafe-eval for WebAssembly support', () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';

@@ -555,7 +555,9 @@
         "displacement": "Geuza mtiririko wa uhamishaji",
         "climate": "Geuza hitilafu za hali ya hewa",
         "outages": "Geuza kukatika kwa mtandao",
-        "tradeRoutes": "Geuza njia za biashara"
+        "tradeRoutes": "Geuza njia za biashara",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Badili hadi hali ya giza",
@@ -718,7 +720,7 @@
         "URLHAUS_AUTH_KEY": "Inatumika kwa URLhaus na API za ThreatFox.",
         "OTX_API_KEY": "Chanzo cha hiari cha uboreshaji kwa safu ya tishio la mtandao.",
         "ABUSEIPDB_API_KEY": "Chanzo cha hiari cha uboreshaji kwa sifa mbaya ya IP.",
-        "FINNHUB_API_KEY": "Nukuu za hisa za wakati halisi na data ya soko.",
+        "FINNHUB_API_KEY": "Nukuu za hisa zilizocheleweshwa au zilizopakiwa awali na data ya soko. Ufunguo si mtiririko wa moja kwa moja.",
         "NASA_FIRMS_API_KEY": "Taarifa za Moto kwa Mfumo wa Usimamizi wa Rasilimali.",
         "OLLAMA_API_URL": "k.m. http://127.0.0.1:11434 (Ollama) au http://127.0.0.1:1234/v1 (LM Studio) - Mwisho unaoendana na OpenAI.",
         "OLLAMA_MODEL": "k.m. llama3.1:8b - lebo ya mfano ya kutumia kwa muhtasari."
@@ -1042,6 +1044,7 @@
       "noComtradeData": "Hakuna data ya mtiririko wa kimkakati inayopatikana",
       "comtradeUnavailable": "Data ya UN Comtrade haipatikani kwa muda",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomaly",
       "colReporter": "Nchi",
       "colCommodity": "Bidhaa",
@@ -1338,7 +1341,9 @@
         "kindness": "Matendo ya Fadhili",
         "happiness": "Furaha ya Dunia",
         "speciesRecovery": "Urejeshaji wa Aina",
-        "renewableInstallations": "Nishati Safi"
+        "renewableInstallations": "Nishati Safi",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Tetemeko la ardhi",
@@ -1444,7 +1449,9 @@
           "tradeRoutes": "Njia kuu za kimataifa za meli zinazounganisha bandari kupitia sehemu za kimkakati za chokepoints",
           "dayNight": "Kidhibiti cha wakati halisi cha jua kinachoonyesha maeneo ya mchana na usiku",
           "geoBoundaries": "Maeneo yasiyoruhusiwa kijeshi, njia za kusitisha mapigano, na mipaka yenye mizozo",
-          "ciiChoropleth": "Ramani ya joto ya Fahirisi ya Nchi Kutoimarika - rangi nchi kwa alama za CII (kijani=imara, nyekundu=muhimu)"
+          "ciiChoropleth": "Ramani ya joto ya Fahirisi ya Nchi Kutoimarika - rangi nchi kwa alama za CII (kijani=imara, nyekundu=muhimu)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Athari: Matetemeko ya Ardhi, Hali ya Hewa, Maandamano, Kukatika"
@@ -1971,7 +1978,7 @@
       "infoTooltip": "<strong>Msiba wa Maafa</strong> Hutambua mawimbi ya maafa ya asili na mawimbi ya miundombinu:<ul><li>Inahusiana na matetemeko ya ardhi, moto wa nyika, mafuriko na hali mbaya ya hewa</li><li>Hufuatilia athari za uharibifu kwenye miundombinu na ugavi</li><li>Huangazia maeneo yenye hatari kubwa ya maafa</li></ul>Bofya kadi ili kukuza eneo lililoathiriwa."
     },
     "markets": {
-      "infoTooltip": "<strong>Masoko</strong> Fahirisi za hisa za wakati halisi, hisa na bei za crypto. Geuza kukufaa orodha yako ya kutazama kwa kitufe cha Orodha ya Kufuatilia. Cheche zinaonyesha mwenendo wa bei ya hivi majuzi.",
+      "infoTooltip": "<strong>Masoko</strong> Fahirisi za hisa zilizocheleweshwa au zilizopakiwa awali, hisa na bei za crypto. Geuza kukufaa orodha yako ya kutazama kwa kitufe cha Orodha ya Kufuatilia. Cheche zinaonyesha mwenendo wa bei ya hivi majuzi.",
       "chart": {
         "title": "{{symbol}} price chart",
         "close": "Close chart"
@@ -2019,7 +2026,7 @@
       "infoTooltip": "<strong>Tazama Benki Kuu</strong> Taarifa za hivi punde, maamuzi ya viwango, na mawasiliano kutoka kwa Hifadhi ya Shirikisho, ECB, Benki ya Uingereza, na benki kuu nyingine kuu duniani kote."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Uchumi wa Ghuba</strong> Fahirisi za hisa za wakati halisi za Ghuba, viwango vya sarafu, na bei za mafuta kwa uchumi wa GCC (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Uchumi wa Ghuba</strong> Fahirisi za hisa zilizocheleweshwa au zilizopakiwa awali za Ghuba, viwango vya sarafu, na bei za mafuta kwa uchumi wa GCC (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Kielezo cha Grocery</strong> Ulinganisho wa bei ya kikapu cha mboga duniani kote katika nchi 24 - hufuatilia mfumuko wa bei wa bidhaa za walaji katika ulimwengu halisi zaidi ya CPI ya kichwa."

@@ -8,12 +8,26 @@
  * (15s -> 30s -> 60s ... capped at 180s).
  *
  * `setContentHtml` unwinds all three implicitly. Panels that paint with
- * `replaceChildren(this.content, ...)` bypass that path, so they must call the
- * public `clearErrorState()` themselves. The panels below used to call
- * `setErrorState(false)`, which drops ONLY the chip — leaving the countdown
- * ticking against a panel that had already recovered (one redundant refresh per
- * recovery) and leaving the backoff latched a step high, so the next real
- * failure re-entered at the wrong rung.
+ * `replaceChildren(this.content, ...)` bypass that path, so they must clear the
+ * whole state themselves. The panels below used to call `setErrorState(false)`,
+ * which drops ONLY the chip — leaving the countdown ticking against a panel that
+ * had already recovered (one redundant refresh per recovery) and leaving the
+ * backoff latched a step high, so the next real failure re-entered at the wrong
+ * rung.
+ *
+ * SUPERSEDED MECHANISM, SAME CONTRACT (#6678). #6577's fix was an explicit
+ * `clearErrorState()` next to each raw write, because `Panel.setContentNodes` /
+ * `setTrustedContent` did not exist yet. They do now, and #6678 routed all five
+ * panels' SUCCESS writes through them — so the clear is part of the write and
+ * none of these panels calls `clearErrorState()` directly any more. Do NOT copy
+ * the old idiom into a new panel; use the sanctioned helpers.
+ *
+ * The cases below are unaffected because they drive each panel's real
+ * `render()` / `setData()` / `renderArticles()` chain rather than the clear
+ * itself — a broken clear inside the helper still fails them. What they no
+ * longer pin is WHICH mechanism performs the clear; the per-call-site lock-bail
+ * proof for the new mechanism lives in
+ * `tests/dom/panel-content-write-6678.test.mts`.
  *
  * Each case drives the panel's OWN error and success call sites rather than the
  * shared `Panel` helper: a single mutation of `clearErrorState()` would be
@@ -384,6 +398,8 @@ describe('loading renders preserve the backoff rung', () => {
 
     flags(panel).loading = true;
     (panel as unknown as { render(): void }).render();
+
+    expect(internals(panel).content.querySelector('.tech-events-loading')).not.toBeNull();
 
     // 30s, not 15s: the loading render must not have reset the backoff.
     expect(driveSecondFailure(panel)).toMatch(/\(30s\)/);
