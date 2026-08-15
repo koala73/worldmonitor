@@ -8,16 +8,18 @@
 // The bundle script cannot be imported — it calls runBundle at module scope — so
 // this reads it through the same static parser the repo-wide bundle gates use.
 
-import { test } from 'node:test';
+import { describe, it, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { extractBundleSections, resolveExpr } from './helpers/bundle-section-parser.mjs';
+import { bundleDisableEnvVar, disabledMembersFromEnv } from '../scripts/_bundle-runner.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const src = readFileSync(join(root, 'scripts/seed-bundle-canada.mjs'), 'utf8');
+const RUNNER_SRC = readFileSync(join(root, 'scripts/_bundle-runner.mjs'), 'utf8');
 const sections = extractBundleSections(src);
 
 const MIN = 60_000;
@@ -195,4 +197,62 @@ test('every member’s TTL and health staleness budget cover its bundle interval
   }
 
   assert.equal(checked, 6, 'all six members must be checked, or this guard is partly vacuous');
+});
+
+describe('per-member kill switch (#6711)', () => {
+  // A bundle collapses N services into one, which also collapses N deploy
+  // controls into one: before this, taking a single misbehaving member out of
+  // rotation meant editing the section list and redeploying the bundle, which
+  // stops its siblings too.
+
+  it('scopes the env var per bundle so one bundle cannot disable another', () => {
+    assert.equal(bundleDisableEnvVar('Canada'), 'WM_BUNDLE_CANADA_DISABLED_MEMBERS');
+    assert.equal(bundleDisableEnvVar('ecb-eu'), 'WM_BUNDLE_ECB_EU_DISABLED_MEMBERS');
+    // Two bundles with a same-named member must not share a switch.
+    assert.notEqual(bundleDisableEnvVar('Canada'), bundleDisableEnvVar('ecb-eu'));
+  });
+
+  it('parses a comma list, tolerating spacing and empties', () => {
+    const env = { WM_BUNDLE_CANADA_DISABLED_MEMBERS: ' Toronto-Roads , ,BC-Open511 ' };
+    const disabled = disabledMembersFromEnv('Canada', env);
+    assert.deepEqual([...disabled].sort(), ['BC-Open511', 'Toronto-Roads']);
+  });
+
+  it('treats an unset or blank switch as nothing disabled', () => {
+    // Must be empty, not "everything" — a blank env var disabling the whole
+    // bundle would be a catastrophic default.
+    assert.equal(disabledMembersFromEnv('Canada', {}).size, 0);
+    assert.equal(disabledMembersFromEnv('Canada', { WM_BUNDLE_CANADA_DISABLED_MEMBERS: '' }).size, 0);
+    assert.equal(disabledMembersFromEnv('Canada', { WM_BUNDLE_CANADA_DISABLED_MEMBERS: '   ' }).size, 0);
+  });
+
+  it('refuses to start when the switch names a section that does not exist', () => {
+    // THE FAIL-CLOSED PROPERTY. A typo'd kill switch that silently disables
+    // nothing is the worst outcome: an operator believes a source is off while
+    // it keeps running. Verified on the runner source because runBundle spawns
+    // child processes.
+    assert.match(RUNNER_SRC, /names unknown section\(s\)/);
+    assert.match(RUNNER_SRC, /Refusing to start/);
+    // It must throw, not warn-and-continue.
+    const guard = /const unknownDisabled[\s\S]*?\n  \}/.exec(RUNNER_SRC);
+    assert.ok(guard, 'the unknown-label guard must exist');
+    assert.match(guard[0], /throw new Error/);
+  });
+
+  it('logs a disabled member instead of skipping it silently', () => {
+    // A member that vanishes with no log is indistinguishable from one that was
+    // never configured.
+    assert.match(RUNNER_SRC, /status=DISABLED reason=kill-switch/);
+    assert.match(RUNNER_SRC, /disabled:\$\{disabled\}/);
+  });
+
+  it('does not count a disabled member as ran, failed, or graceful', () => {
+    // Counting it as ran would let a fully-disabled bundle report a healthy
+    // tick; counting it as failed would crash the service on a deliberate
+    // operator action.
+    const block = /if \(disabledMembers\.has\(section\.label\)\) \{[\s\S]*?continue;\n    \}/.exec(RUNNER_SRC);
+    assert.ok(block, 'the disable branch must exist');
+    assert.match(block[0], /disabled\+\+/);
+    assert.equal(/ran\+\+|failed\+\+|gracefulFailed\+\+/.test(block[0]), false);
+  });
 });
