@@ -345,8 +345,10 @@ test("bootstrap keeps Ontario and Alberta fast but fetches Toronto roads on dema
   assert.match(fast, /'canadaRoads'/);
   assert.match(fast, /'albertaRoads'/);
   assert.doesNotMatch(fast, /'torontoRoads'/);
+  assert.doesNotMatch(fast, /'bcOpen511'/);
   const onDemand = src.slice(src.indexOf("const ON_DEMAND_KEY_NAMES"));
   assert.match(onDemand, /'torontoRoads'/);
+  assert.match(onDemand, /'bcOpen511'/);
 });
 
 test("seed-freshness-baseline acknowledges the Toronto roads cutover", () => {

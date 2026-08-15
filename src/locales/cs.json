@@ -481,7 +481,8 @@
         "climate": "Přepnout klimatické anomálie",
         "outages": "Přepnout výpadky internetu",
         "tradeRoutes": "Přepnout obchodní trasy",
-        "canadaRoads": "Toggle Canada roads overlay"
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Přepnout na tmavý režim",
@@ -1182,7 +1183,8 @@
         "renewableInstallations": "Čistá energie",
         "radiationSpike": "Skokový nárůst radiace",
         "radiationElevated": "Zvýšená radiace",
-        "canadaRoads": "Canada Roads"
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Zemětřesení",
@@ -1289,7 +1291,8 @@
           "dayNight": "Sluneční terminátor v reálném čase ukazující denní a noční zóny",
           "geoBoundaries": "Demilitarizované zóny, linie příměří a sporné hranice",
           "ciiChoropleth": "Tepelná mapa Country Instability Index — zbarvuje země podle skóre CII (zelená=stabilní, červená=kritická)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions"
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Ovlivňuje: Zemětřesení, Počasí, Protesty, Výpadky"

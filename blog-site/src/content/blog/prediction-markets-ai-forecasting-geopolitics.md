@@ -168,4 +168,4 @@ The AI synthesizes CII scores, news velocity, military signals, Telegram OSINT, 
 
 ---
 
-**See what's coming at [worldmonitor.app](https://www.worldmonitor.app). Prediction markets, AI forecasting, and 57 map layers, all free.**
+**See what's coming at [worldmonitor.app](https://www.worldmonitor.app). Prediction markets, AI forecasting, and 58 map layers, all free.**

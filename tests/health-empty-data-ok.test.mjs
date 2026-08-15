@@ -41,6 +41,13 @@ const AUDITED_PRESENT_PAYLOAD_KEYS = [
   'canadaRoads',
   'albertaRoads',
   'torontoRoads',
+  'bcOpen511',
+  // canadaAlerts is the same contract again: seed-alberta-emergency-alert runs
+  // with zeroIsValid, so a quiet province still writes {alerts: []}. A vanished
+  // canonical key beside fresh seed-meta is a failed publish — and on an
+  // EMERGENCY ALERT layer, reading OK while the payload is gone is the worst
+  // place in the fleet to be wrong.
+  'canadaAlerts',
 ];
 
 function classifyMissing(name, meta) {
@@ -113,6 +120,26 @@ test('quiet metadata-only sources remain healthy while their payload is absent',
     assert.equal(entry.status, 'OK', `${name}: a quiet successful cycle may publish metadata without a payload`);
     assert.equal(STATUS_COUNTS[entry.status], 'ok');
   }
+});
+
+test('Alberta CAP verification degradation is health-visible with present mixed or empty data', () => {
+  for (const recordCount of [0, 2]) {
+    const entry = classifyPresent('canadaAlerts', {
+      fetchedAt: NOW - 5 * 60_000,
+      recordCount,
+      sourceState: 'degraded',
+      errorCode: 'CAP_VERIFICATION_FAILED',
+    });
+    assert.equal(entry.status, 'SEED_ERROR');
+    assert.equal(entry.errorCode, 'CAP_VERIFICATION_FAILED');
+  }
+
+  const verifiedQuiet = classifyPresent('canadaAlerts', {
+    fetchedAt: NOW - 5 * 60_000,
+    recordCount: 0,
+    sourceState: 'ok',
+  });
+  assert.equal(verifiedQuiet.status, 'OK');
 });
 
 test('audited sparse sources require a payload even when zero records is valid', () => {

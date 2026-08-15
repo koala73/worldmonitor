@@ -441,7 +441,7 @@
     {
       "path": "api/opensky.js",
       "category": "upstream-proxy",
-      "reason": "Transparent proxy to OpenSky Network API. Shape is OpenSky's; we don't remodel it.",
+      "reason": "Desktop-product-only OpenSky relay. It requires the Tauri origin plus an enterprise product key and is not part of the public API offering.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

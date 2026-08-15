@@ -65,7 +65,7 @@
       "status": "EMPTY",
       "issue": 6612,
       "expiresAt": "2026-08-16T20:15:00.000Z",
-      "reason": "New Alberta 511 probe (infra:alberta-511:v1). EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. Re-anchored from 2026-08-14T21:00Z to 2026-08-16T20:15Z so merge slip does not fail the EMPTY window; activatedAt moved with firstScheduledRunAt to stay inside the 24h MAX_ROLLOUT_WINDOW_MS cap. Alberta rides the same seed-provincial-511 script as Ontario, which is now a seed-bundle-canada (#6711) member gated on intervalMs 15min rather than its own cron — so both provinces clear on BUNDLE provisioning, on the same tick.",
+      "reason": "New Alberta 511 probe (infra:alberta-511:v1). EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. Re-anchored from 2026-08-14T21:00Z to 2026-08-16T20:15Z so merge slip does not fail the EMPTY window; activatedAt moved with firstScheduledRunAt to stay inside the 24h MAX_ROLLOUT_WINDOW_MS cap. Alberta rides the same seed-provincial-511 script as Ontario, which is now a seed-bundle-canada (#6711) member gated on intervalMs 15min rather than its own cron \u2014 so both provinces clear on BUNDLE provisioning, on the same tick.",
       "cutover": {
         "probeKey": "seed-meta:infra:alberta-511",
         "activatedAt": "2026-08-15T20:20:00.000Z",
@@ -77,11 +77,35 @@
       "status": "EMPTY",
       "issue": 6609,
       "expiresAt": "2026-08-16T22:15:00.000Z",
-      "reason": "New Toronto road restrictions probe (infra:toronto-roads:v1). EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. Re-anchored from 2026-08-14T20:15Z to 2026-08-16T20:15Z so merge slip does not fail the EMPTY window; activatedAt moved with firstScheduledRunAt to stay inside the 24h MAX_ROLLOUT_WINDOW_MS cap. This seeder no longer has a */15 cron of its own: seed-bundle-canada (#6711) owns it as a member gated on intervalMs 2h — road restrictions are construction permits, not live incidents, and polling a 3.6MB body every 15 minutes cost 348 MB/day. The first run therefore clears on BUNDLE provisioning, and the 2h gate means it can land up to two hours after that.",
+      "reason": "New Toronto road restrictions probe (infra:toronto-roads:v1). EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. Re-anchored from 2026-08-14T20:15Z to 2026-08-16T20:15Z so merge slip does not fail the EMPTY window; activatedAt moved with firstScheduledRunAt to stay inside the 24h MAX_ROLLOUT_WINDOW_MS cap. This seeder no longer has a */15 cron of its own: seed-bundle-canada (#6711) owns it as a member gated on intervalMs 2h \u2014 road restrictions are construction permits, not live incidents, and polling a 3.6MB body every 15 minutes cost 348 MB/day. The first run therefore clears on BUNDLE provisioning, and the 2h gate means it can land up to two hours after that.",
       "cutover": {
         "probeKey": "seed-meta:infra:toronto-roads",
         "activatedAt": "2026-08-15T22:20:00.000Z",
         "firstScheduledRunAt": "2026-08-16T22:15:00.000Z"
+      }
+    },
+    {
+      "name": "bcOpen511",
+      "status": "EMPTY",
+      "issue": 6611,
+      "expiresAt": "2026-08-16T21:15:00.000Z",
+      "reason": "New BC Open511 probe (infra:bc-open511:v1). EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. Re-anchored from 2026-08-14T20:45Z so merge slip does not fail the EMPTY window; activatedAt moved with firstScheduledRunAt to stay inside the 24h MAX_ROLLOUT_WINDOW_MS cap. This seeder no longer has a */15 cron of its own: seed-bundle-canada (#6711) owns it as a member gated on intervalMs 30min, so the first publish clears on BUNDLE provisioning and can land up to half an hour after it \u2014 the window is widened by that gate rather than pinned to the provisioning instant.",
+      "cutover": {
+        "probeKey": "seed-meta:infra:bc-open511",
+        "activatedAt": "2026-08-15T21:30:00.000Z",
+        "firstScheduledRunAt": "2026-08-16T21:15:00.000Z"
+      }
+    },
+    {
+      "name": "canadaAlerts",
+      "status": "EMPTY",
+      "issue": 6610,
+      "expiresAt": "2026-08-16T20:45:00.000Z",
+      "reason": "New Alberta Emergency Alert probe (alerts:alberta-aea:v1). EMPTY is expected until the first Railway tick after this acknowledgement. Expiry equals firstScheduledRunAt so a missed first publication blocks acceptance. Re-anchored to 2026-08-16T20:45Z because the previous 2026-08-14T20:45Z cutover would expire today. This seeder no longer has a */15 cron of its own: seed-bundle-canada (#6711) owns it as a member gated on intervalMs 15min, so the first run clears on BUNDLE provisioning rather than on this branch deploying.",
+      "cutover": {
+        "probeKey": "seed-meta:alerts:alberta-aea",
+        "activatedAt": "2026-08-15T20:45:00.000Z",
+        "firstScheduledRunAt": "2026-08-16T20:45:00.000Z"
       }
     }
   ]

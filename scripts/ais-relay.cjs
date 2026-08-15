@@ -4657,7 +4657,7 @@ async function seedTheaterPosture() {
     console.warn(`[TheaterPosture] Rejected empty publication: no military flights or vessels; preserving last-known-good data [${elapsed}s]`);
     return;
   }
-  const payload = { theaters };
+  const payload = { theaters, provider: flightSource };
   const publicationId = `ais-relay:${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   const lockResult = await upstashSetNx(THEATER_POSTURE_LOCK_KEY, publicationId, THEATER_POSTURE_LOCK_TTL_SECONDS);
   if (lockResult !== 'new') {

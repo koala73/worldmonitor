@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  HOST_511_RATES,
   acquire511Slot,
   create511RateLimiter,
   reset511RateLimiterForTests,
@@ -67,6 +68,37 @@ describe('per-host 511 limiter (#6618 v1)', () => {
     assert.doesNotMatch(ADAPTER_SOURCE, /fetch\.bind/);
   });
 
+  it('BC Open511 is paced at one request per second; Ontario stays 10/60', async () => {
+    assert.deepEqual(HOST_511_RATES['api.open511.gov.bc.ca'], { capacity: 1, windowMs: 1_000 });
+    let nowMs = 1_000;
+    const sleeps = [];
+    const limiter = create511RateLimiter({
+      hostRates: HOST_511_RATES,
+      now: () => nowMs,
+      sleep: async (ms) => {
+        sleeps.push(ms);
+        nowMs += ms;
+      },
+    });
+
+    await limiter.acquire511Slot('api.open511.gov.bc.ca');
+    assert.equal(limiter.pendingCount('api.open511.gov.bc.ca'), 1);
+    assert.equal(limiter.pendingCount('511on.ca'), 0);
+
+    await limiter.acquire511Slot('api.open511.gov.bc.ca');
+    assert.ok(sleeps.length >= 1, 'second BC call must wait for the one-second window');
+    assert.equal(sleeps[0], 1_000);
+
+    sleeps.length = 0;
+    for (let i = 0; i < 10; i++) {
+      await limiter.acquire511Slot('511on.ca');
+    }
+    assert.equal(sleeps.length, 0, 'Ontario 10/60 must not wait on the first 10 calls');
+    await limiter.acquire511Slot('511on.ca');
+    assert.ok(sleeps.length >= 1, '11th Ontario call must still wait');
+    assert.equal(sleeps[0], 60_000);
+  });
+
   it('seeder is a standalone nixpacks job and does not loop ais-relay', () => {
     assert.match(SEEDER_SOURCE, /fetchVendor511\(ONTARIO_511/);
     assert.match(SEEDER_SOURCE, /fetchVendor511\(ALBERTA_511/);
@@ -79,7 +111,6 @@ describe('per-host 511 limiter (#6618 v1)', () => {
     assert.doesNotMatch(RELAY_SOURCE, /ontario-511/);
     assert.doesNotMatch(RELAY_SOURCE, /alberta-511/);
     assert.doesNotMatch(RELAY_SOURCE, /canadaRoads/);
-    assert.match(CANADA_ROADS_SOURCE, /infra:alberta-511:v1/);
     assert.match(CANADA_ROADS_SOURCE, /albertaRoads/);
     assert.match(CANADA_ROADS_SOURCE, /alberta-511/);
   });

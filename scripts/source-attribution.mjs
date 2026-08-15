@@ -72,6 +72,10 @@ const licensedPublisherFeed = (provider) => ({
 });
 
 const PROVIDER_OVERRIDES = {
+  'auth.opensky-network.org': { provider: 'opensky-network.org' },
+  'opensky-network.org': { provider: 'opensky-network.org' },
+  'customer-api.wingbits.com': { provider: 'wingbits.com' },
+  'ecs-api.wingbits.com': { provider: 'wingbits.com' },
   'moxie.foxbusiness.com': licensedPublisherFeed('Fox Business'),
   'www.wired.com': licensedPublisherFeed('Wired'),
   'www.businessinsider.com': licensedPublisherFeed('Business Insider'),
@@ -104,6 +108,18 @@ const PROVIDER_OVERRIDES = {
     provider: 'City of Toronto Open Data',
     license: 'CKAN package_show for road-restrictions: license_id=notspecified, license_title="License not specified" (https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/package_show?id=road-restrictions). Portal dataset page chrome links OGL-Toronto but is not data-bound to this dataset.',
     attribution: 'City of Toronto, Road Restrictions. https://open.toronto.ca/dataset/road-restrictions/',
+    status: 'terms-review',
+  },
+  'api.open511.gov.bc.ca': {
+    provider: 'BC Open511',
+    license: 'Open Government Licence - British Columbia (OGL-BC). Confirmed on https://api.open511.gov.bc.ca/help. API Terms of Use for OGL-BC information also apply.',
+    attribution: 'DriveBC Open511 (Province of British Columbia). Licensed under OGL-BC. https://api.open511.gov.bc.ca/help',
+    status: 'reviewed',
+  },
+  'www.alberta.ca': {
+    provider: 'Alberta Emergency Alert',
+    license: 'Alberta.ca terms of use. Open Government Licence - Alberta exists on the open.alberta.ca licence page but is not bound to the AEA Atom feed on a live dataset page (the alberta-emergency-alert.aspx page has no OGL statement).',
+    attribution: 'Alberta Emergency Alert, Government of Alberta. https://www.alberta.ca/alberta-emergency-alert.aspx',
     status: 'terms-review',
   },
   'api.elections.kalshi.com': {

@@ -5,10 +5,11 @@ description: "AIS 与 OpenSky 中继路径使用的每一个环境变量清单 �
 本文档涵盖 AIS/OpenSky 中继路径使用的所有环境变量：
 
 - Railway 中继进程：`scripts/ais-relay.cjs`
-- Vercel 中继代理端点（旧版）：`api/opensky.js`、`api/ais-snapshot.js`、`api/polymarket.js`、`api/rss-proxy.js`
+- 仅供桌面产品使用的 OpenSky 中继：`api/opensky.js`（不属于公共 API 产品）
+- Vercel 中继代理端点（旧版）：`api/ais-snapshot.js`、`api/polymarket.js`、`api/rss-proxy.js`
 
 <Note>
-  上述 `api/*.js` edge function 端点是旧版模式，正逐步被淘汰，以改用 sebuf proto-first 方式。有关当前推荐的模式，请参阅[添加端点](/zh/adding-endpoints)。
+  第二项中的旧版代理端点正逐步被淘汰，以改用 sebuf proto-first 方式。OpenSky 路由仅是受限的桌面产品传输层，不是公共集成接口。有关当前推荐的模式，请参阅[添加端点](/zh/adding-endpoints)。
 </Note>
 - 服务器中继调用方：`server/worldmonitor/*` 处理器
 - `src/services/*` 中的可选浏览器本地回退调用方

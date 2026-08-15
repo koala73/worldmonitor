@@ -94,15 +94,28 @@ test('source inventory has complete metadata and matches the generated catalog',
   }
 
   const stats = sourceAttributionStats(inventory, manifest);
-  // Hardcoded on purpose: comparing these against docs/generated/stats.json
-  // makes the gate agree with itself, because both sides come from the same
-  // generator — a regeneration moves the expectation in lockstep with the value
-  // and the assert can never fail. 549/547/668 on main (Ontario 511 in #6663,
-  // Alberta 511 in #6666) + secure.toronto.ca from this PR.
-  assert.equal(stats.activeHosts, 550);
+  // Hardcoded on purpose, and this DELIBERATELY OVERRIDES the lockstep-with-
+  // docs/generated/stats.json version that arrived on the #6610 branch.
+  // buildSourceAttributionStats (scripts/source-attribution.mjs:1090) is a thin
+  // wrapper that calls this exact sourceAttributionStats(inventory, manifest) on
+  // the same inputs, and that is what writes stats.json. So the lockstep form
+  // compares a value against a serialized snapshot of itself: it cannot fail on
+  // an unintended host-count change, only on a stale snapshot — which docs:check
+  // already gates. Hardcoding is what makes an accidental source drop go red.
+  // Yes, these numbers go stale; that is the tripwire working, and the fix is a
+  // conscious one-line bump. Current main carries 552 hosts, 550 providers,
+  // and 671 observed hosts. The OpenSky and Wingbits aliases in this PR collapse
+  // two duplicate provider identities without removing any host.
+  assert.equal(stats.activeHosts, 552);
   assert.equal(stats.providerCount, 548);
-  assert.equal(stats.observedHosts, 669);
+  assert.equal(stats.observedHosts, 671);
   assert.ok(stats.reviewNeeded > 0, 'terms-review rows must remain visible until a license audit is complete');
+
+  const byHost = new Map(manifest.entries.map((entry) => [entry.host, entry]));
+  assert.equal(byHost.get('auth.opensky-network.org')?.provider, 'opensky-network.org');
+  assert.equal(byHost.get('opensky-network.org')?.provider, 'opensky-network.org');
+  assert.equal(byHost.get('customer-api.wingbits.com')?.provider, 'wingbits.com');
+  assert.equal(byHost.get('ecs-api.wingbits.com')?.provider, 'wingbits.com');
 });
 
 test('the issue audit providers are represented by named attribution rows', () => {

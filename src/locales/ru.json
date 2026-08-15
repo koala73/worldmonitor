@@ -481,7 +481,8 @@
         "climate": "Переключить климатические аномалии",
         "outages": "Переключить интернет-отключения",
         "tradeRoutes": "Переключить торговые маршруты",
-        "canadaRoads": "Toggle Canada roads overlay"
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Переключить на тёмную тему",
@@ -1194,7 +1195,8 @@
         "renewableInstallations": "Чистая энергия",
         "radiationSpike": "Всплеск радиации",
         "radiationElevated": "Повышенный уровень радиации",
-        "canadaRoads": "Canada Roads"
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Землетрясение",
@@ -1301,7 +1303,8 @@
           "dayNight": "Солнечный терминатор в реальном времени, показывающий зоны дня и ночи",
           "geoBoundaries": "Демилитаризованные зоны, линии прекращения огня и спорные границы",
           "ciiChoropleth": "Тепловая карта индекса нестабильности стран — цвета по CII (зелёный=стабильно, красный=критично)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions"
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Влияет на: Землетрясения, Погода, Протесты, Сбои"

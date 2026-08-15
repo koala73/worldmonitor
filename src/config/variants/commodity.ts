@@ -61,6 +61,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   natural: true,            // Earthquakes/natural events (affect mine operations)
   weather: true,            // Weather impacting operations
   canadaRoads: false,
+  canadaAlerts: false,
 
   // ── All non-commodity layers (DISABLED) ───────────────────────────────────
   // Geopolitical / military
@@ -136,6 +137,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   natural: true,
   weather: false,
   canadaRoads: false,
+  canadaAlerts: false,
 
   // All others disabled on mobile
   gpsJamming: false,

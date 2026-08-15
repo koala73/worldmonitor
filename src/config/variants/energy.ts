@@ -63,6 +63,7 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   natural: true,            // Earthquakes — infrastructure risk
   weather: true,            // Weather impacting operations
   canadaRoads: false,
+  canadaAlerts: false,
 
   // ── Non-energy layers (DISABLED) ──────────────────────────────────────────
   gpsJamming: false,
@@ -129,6 +130,7 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   natural: true,
   weather: false,
   canadaRoads: false,
+  canadaAlerts: false,
 
   // All others disabled on mobile
   gpsJamming: false,

@@ -14,6 +14,7 @@ export type DataSourceId =
   | 'cyber_threats'
   | 'weather'
   | 'ontario_511'
+  | 'bc_open511'
   | 'economic'
   | 'oil'
   | 'spending'
@@ -660,8 +661,10 @@ export interface MapLayers {
   radiationWatch?: boolean;
   sanctions: boolean;
   weather: boolean;
-  /** Official Canada road events and conditions, including Ontario, Alberta, and Toronto. */
+  /** Official Canada road events and conditions from Ontario, Alberta, Toronto, and British Columbia. */
   canadaRoads: boolean;
+  /** Alberta Emergency Alert (and later provincial siblings) (#6610). */
+  canadaAlerts: boolean;
   economic: boolean;
   waterways: boolean;
   outages: boolean;

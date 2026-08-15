@@ -477,7 +477,8 @@
         "climate": "Bật/tắt bất thường khí hậu",
         "outages": "Bật/tắt gián đoạn internet",
         "tradeRoutes": "Bật/tắt tuyến thương mại",
-        "canadaRoads": "Toggle Canada roads overlay"
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Chuyển sang chế độ tối",
@@ -1190,7 +1191,8 @@
         "renewableInstallations": "Năng lượng sạch",
         "radiationSpike": "Đột tăng bức xạ",
         "radiationElevated": "Bức xạ tăng cao",
-        "canadaRoads": "Canada Roads"
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -1297,7 +1299,8 @@
           "dayNight": "Đường phân chia mặt trời thời gian thực hiển thị vùng ngày và đêm",
           "geoBoundaries": "Khu phi quân sự, đường ngừng bắn và ranh giới tranh chấp",
           "ciiChoropleth": "Bản đồ nhiệt Chỉ số Bất ổn Quốc gia — tô màu quốc gia theo điểm CII (xanh=ổn định, đỏ=nghiêm trọng)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions"
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Ảnh hưởng: Động đất, Thời tiết, Biểu tình, Gián đoạn"

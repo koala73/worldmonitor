@@ -1,4 +1,5 @@
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
+import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { buildAlertDigest, buildWeeklyTrends } from '../../../shared/analysis-alert-digest';
 import {
   anomaliesToDigestInput,
@@ -607,8 +608,11 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         aircraftCount: alert.aircraftCount,
       }));
 
-      const seededSurges = Array.isArray((surgesPayload as { surges?: unknown[] } | null)?.surges)
-        ? ((surgesPayload as { surges: unknown[] }).surges as Array<Record<string, unknown>>)
+      const redistributableSurgesPayload = hasRedistributableProviderAttribution(
+        (surgesPayload as { sourceVersion?: unknown } | null)?.sourceVersion,
+      ) ? surgesPayload : null;
+      const seededSurges = Array.isArray((redistributableSurgesPayload as { surges?: unknown[] } | null)?.surges)
+        ? ((redistributableSurgesPayload as { surges: unknown[] }).surges as Array<Record<string, unknown>>)
         : [];
 
       const theaterFilter = typeof params.theater === 'string' ? params.theater.trim().toLowerCase() : '';
@@ -633,7 +637,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
               alert.region.toLowerCase().includes(theaterFilter))
             : foreignPresence,
           seeded_surges: seededSurges.filter((surge) => matchesTheater(surge.theaterId, surge.theater)),
-          seeded_surges_available: surgesPayload !== null,
+          seeded_surges_available: redistributableSurgesPayload !== null,
           history_available: historyPayload !== null,
           cii_available: riskScores !== null,
           flight_count: flights.length,

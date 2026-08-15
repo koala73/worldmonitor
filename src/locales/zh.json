@@ -477,7 +477,8 @@
         "climate": "切换气候异常",
         "outages": "切换互联网中断",
         "tradeRoutes": "切换贸易路线",
-        "canadaRoads": "Toggle Canada roads overlay"
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "切换到暗色模式",
@@ -1190,7 +1191,8 @@
         "renewableInstallations": "清洁能源",
         "radiationSpike": "辐射峰值",
         "radiationElevated": "辐射升高",
-        "canadaRoads": "Canada Roads"
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1297,7 +1299,8 @@
           "dayNight": "实时太阳终结线显示昼夜区域",
           "geoBoundaries": "非军事区、停火线和争议边界",
           "ciiChoropleth": "国家不稳定指数热力图 — 按CII评分为国家着色（绿色=稳定，红色=危急）",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions"
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "影响范围：地震、天气、抗议、中断"

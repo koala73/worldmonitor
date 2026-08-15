@@ -72,6 +72,8 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   canadaRoads: 'infra:ontario-511:v1',
   albertaRoads: 'infra:alberta-511:v1',
   torontoRoads: 'infra:toronto-roads:v1',
+  bcOpen511: 'infra:bc-open511:v1',
+  canadaAlerts: 'alerts:alberta-aea:v1',
   spending: 'economic:spending:v1',
   techEvents: 'research:tech-events-bootstrap:v1',
   gdeltIntel: 'intelligence:gdelt-intel:v1',
@@ -175,7 +177,7 @@ const SLOW_KEY_NAMES = new Set([
 const FAST_KEY_NAMES = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints',
   'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays', 'insights', 'predictions',
-  'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'canadaRoads', 'albertaRoads', 'spending', 'theaterPosture', 'gdeltIntel',
+  'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'canadaRoads', 'albertaRoads', 'spending', 'theaterPosture', 'gdeltIntel', 'canadaAlerts',
   'correlationCards', 'forecasts', 'shippingRates', 'shippingStress', 'socialVelocity', 'wsbTickers',
 ]);
 
@@ -204,6 +206,8 @@ const ON_DEMAND_KEY_NAMES = new Set([
   // Toronto's live road-restrictions snapshot is about 2 MB. Keep it off the
   // global FAST payload and fetch it only when the Canada-roads layer renders.
   'torontoRoads',
+  // DriveBC is also too large for every visitor's startup payload.
+  'bcOpen511',
 ]);
 
 /**

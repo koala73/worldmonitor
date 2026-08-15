@@ -187,7 +187,8 @@
         "climate": "Klimaatanomalieën in-/uitschakelen",
         "outages": "Internetstoringen in-/uitschakelen",
         "tradeRoutes": "Handelsroutes in-/uitschakelen",
-        "canadaRoads": "Toggle Canada roads overlay"
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Naar donkere modus",
@@ -592,7 +593,8 @@
         "renewableInstallations": "Schone energie",
         "radiationSpike": "Stralingspiek",
         "radiationElevated": "Verhoogde straling",
-        "canadaRoads": "Canada Roads"
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Lagen",
       "layerSearch": "Lagen zoeken...",
@@ -706,7 +708,8 @@
           "techFires": "Actieve bosbranden nabij technische infrastructuur",
           "geoBoundaries": "Gedemilitariseerde zones, staakt-het-vuren-lijnen en betwiste grenzen",
           "ciiChoropleth": "Country Instability Index heatmap — kleurt landen op basis van CII-score (groen=stabiel, rood=kritiek)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions"
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"

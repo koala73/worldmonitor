@@ -479,7 +479,8 @@
         "climate": "Basculer les anomalies climatiques",
         "outages": "Basculer les pannes internet",
         "tradeRoutes": "Basculer les routes commerciales",
-        "canadaRoads": "Toggle Canada roads overlay"
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Passer en mode sombre",
@@ -1144,7 +1145,8 @@
         "renewableInstallations": "Énergie propre",
         "radiationSpike": "Pic de radiation",
         "radiationElevated": "Radiation élevée",
-        "canadaRoads": "Canada Roads"
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Tremblement de terre",
@@ -1251,7 +1253,8 @@
           "techFires": "Incendies actifs à proximité d'infrastructures technologiques",
           "geoBoundaries": "Zones démilitarisées, lignes de cessez-le-feu et frontières contestées",
           "ciiChoropleth": "Carte thermique de l'indice d'instabilité — colore les pays selon le score CII (vert=stable, rouge=critique)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions"
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Affecte : tremblements de terre, conditions météorologiques, manifestations, pannes"

@@ -558,7 +558,8 @@
         "climate": "Uključi/isključi klimatske anomalije",
         "outages": "Uključi/isključi ispade interneta",
         "tradeRoutes": "Uključi/isključi trgovačke rute",
-        "canadaRoads": "Toggle Canada roads overlay"
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Prebedi na tamni način",
@@ -1457,7 +1458,8 @@
         "happiness": "Svjetsko Blagostanje",
         "speciesRecovery": "Oporavak vrsta",
         "renewableInstallations": "Čista energija",
-        "canadaRoads": "Canada Roads"
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Zemljotres",
@@ -1564,7 +1566,8 @@
           "dayNight": "Praćenje solarnog terminatora u stvarnom vremenu - prikaz dnevne i noćne zone",
           "geoBoundaries": "Demilitarizirane zone, linije primirja i sporne granice",
           "ciiChoropleth": "Indeks nestabilnosti države toplinska mapa — boji zemlje po CII rezultatu (zelena=stabilna, crvena=kritična)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions"
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Utječe na: Zemljotresi, Vrijeme, Protesti, Prekidi"

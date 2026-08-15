@@ -764,6 +764,20 @@
       ]
     },
     {
+      "host": "api.open511.gov.bc.ca",
+      "provider": "BC Open511",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence - British Columbia (OGL-BC). Confirmed on https://api.open511.gov.bc.ca/help. API Terms of Use for OGL-BC information also apply.",
+      "attribution": "DriveBC Open511 (Province of British Columbia). Licensed under OGL-BC. https://api.open511.gov.bc.ca/help",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/open511.mjs"
+        }
+      ]
+    },
+    {
       "host": "api.openaq.org",
       "provider": "OpenAQ",
       "kind": "structured",
@@ -1365,7 +1379,7 @@
     },
     {
       "host": "auth.opensky-network.org",
-      "provider": "auth.opensky-network.org",
+      "provider": "opensky-network.org",
       "kind": "structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
@@ -1980,7 +1994,7 @@
     },
     {
       "host": "customer-api.wingbits.com",
-      "provider": "customer-api.wingbits.com",
+      "provider": "wingbits.com",
       "kind": "structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
@@ -2522,7 +2536,7 @@
     },
     {
       "host": "ecs-api.wingbits.com",
-      "provider": "ecs-api.wingbits.com",
+      "provider": "wingbits.com",
       "kind": "structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
@@ -4801,6 +4815,15 @@
           "path": "server/worldmonitor/aviation/v1/list-aviation-news.ts"
         }
       ]
+    },
+    {
+      "host": "open.alberta.ca",
+      "provider": "open.alberta.ca",
+      "kind": "structured",
+      "observed": false,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit open.alberta.ca and link to the original upstream API/dataset.",
+      "status": "excluded"
     },
     {
       "host": "opendata.adsb.fi",
@@ -7121,6 +7144,9 @@
           "path": "api/og-story.js"
         },
         {
+          "path": "api/opensky.js"
+        },
+        {
           "path": "api/referral/me.ts"
         },
         {
@@ -7396,6 +7422,23 @@
       "references": [
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.alberta.ca",
+      "provider": "Alberta Emergency Alert",
+      "kind": "structured",
+      "observed": true,
+      "license": "Alberta.ca terms of use. Open Government Licence - Alberta exists on the open.alberta.ca licence page but is not bound to the AEA Atom feed on a live dataset page (the alberta-emergency-alert.aspx page has no OGL statement).",
+      "attribution": "Alberta Emergency Alert, Government of Alberta. https://www.alberta.ca/alberta-emergency-alert.aspx",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/alberta-emergency-alert.mjs"
+        },
+        {
+          "path": "scripts/source-attribution.mjs"
         }
       ]
     },

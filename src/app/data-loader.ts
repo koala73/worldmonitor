@@ -52,6 +52,7 @@ import {
   fetchWeatherAlerts,
   fetchCanadaRoads,
   getCanadaRoadSourceStates,
+  fetchCanadaAlerts,
   fetchInternetOutages,
   fetchTrafficAnomalies,
   fetchDdosAttacks,
@@ -988,6 +989,7 @@ export class DataLoaderManager implements AppModule {
     if (shouldLoad('economic')) tasks.push({ name: 'economicStress', task: () => runGuarded('economicStress', () => this.loadEconomicStress()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.weather) tasks.push({ name: 'weather', task: () => runGuarded('weather', () => this.loadWeatherAlerts()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.canadaRoads) tasks.push({ name: 'canadaRoads', task: () => runGuarded('canadaRoads', () => this.loadCanadaRoads()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.canadaAlerts) tasks.push({ name: 'canadaAlerts', task: () => runGuarded('canadaAlerts', () => this.loadCanadaAlerts()) });
     if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: () => runGuarded('ais', () => this.loadAisSignals()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: () => runGuarded('cables', () => this.loadCableActivity()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cableHealth', task: () => runGuarded('cableHealth', () => this.loadCableHealth()) });
@@ -1069,6 +1071,9 @@ export class DataLoaderManager implements AppModule {
           break;
         case 'canadaRoads':
           await this.loadCanadaRoads();
+          break;
+        case 'canadaAlerts':
+          await this.loadCanadaAlerts();
           break;
         case 'outages':
           await this.loadOutages();
@@ -2865,6 +2870,18 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('weather', false);
       this.ctx.statusPanel?.updateFeed('Weather', { status: 'error' });
       dataFreshness.recordError('weather', String(error));
+    }
+  }
+
+  async loadCanadaAlerts(): Promise<void> {
+    try {
+      const alerts = await fetchCanadaAlerts();
+      this.ctx.map?.setCanadaAlerts(alerts);
+      this.ctx.map?.setLayerReady('canadaAlerts', alerts.length > 0);
+      this.ctx.statusPanel?.updateFeed('Canada alerts', { status: 'ok', itemCount: alerts.length });
+    } catch (error) {
+      this.ctx.map?.setLayerReady('canadaAlerts', false);
+      this.ctx.statusPanel?.updateFeed('Canada alerts', { status: 'error' });
     }
   }
 

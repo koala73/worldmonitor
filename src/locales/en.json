@@ -546,7 +546,8 @@
         "climate": "Toggle climate anomalies",
         "outages": "Toggle internet outages",
         "tradeRoutes": "Toggle trade routes",
-        "canadaRoads": "Toggle Canada roads overlay"
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Switch to dark mode",
@@ -1331,7 +1332,8 @@
         "happiness": "World Happiness",
         "speciesRecovery": "Species Recovery",
         "renewableInstallations": "Clean Energy",
-        "canadaRoads": "Canada Roads"
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1438,7 +1440,8 @@
           "dayNight": "Real-time solar terminator showing day and night zones",
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
           "ciiChoropleth": "Country Instability Index heat-map — colors countries by CII score (green=stable, red=critical)",
-          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions"
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
