@@ -11,7 +11,7 @@ description: "World Monitor Tauri 桌面应用架构深度详解：涵盖 Rust s
 - **OS 钥匙串集成** —— API 密钥存储在系统凭据管理器中（macOS Keychain、Windows Credential Manager），绝不以明文文件形式存储
 - **Token 鉴权的 sidecar** —— 一个唯一的会话 token 防止其他本地进程访问 localhost 上的 sidecar。每次启动时通过随机化哈希生成
 - **云端回退** —— 当本地 API 处理器失败或缺失时，请求会透明地回退到云端部署（worldmonitor.app），并剥离 Origin 头
-- **设置窗口** —— 专用配置 UI（Cmd+,），包含三个标签页：**LLMs**（Ollama 端点、模型选择、Groq、OpenRouter）、**API Keys**（12+ 个数据源凭据，逐键校验）以及 **Debug & Logs**（流量日志、详细模式、日志文件）。每个标签页运行独立的校验流水线 —— 在 LLMs 标签页保存不会阻塞 API Keys 的校验
+- **设置窗口** —— 专用配置 UI（Cmd+,），包含三个标签页：**LLMs**（Ollama 端点、模型选择、Groq、OpenRouter）、**API Keys**（受支持的数据源凭据目录，逐键校验）以及 **Debug & Logs**（流量日志、详细模式、日志文件）。每个标签页运行独立的校验流水线 —— 在 LLMs 标签页保存不会阻塞 API Keys 的校验
 - **自动模型发现** —— 当你在 LLMs 标签页设置 Ollama 或 LM Studio 的端点 URL 时，设置面板会立即查询其可用模型（先尝试 Ollama 原生 `/api/tags`，再尝试 OpenAI 兼容的 `/v1/models`），并填充下拉菜单。Embedding 模型会被过滤掉。如果发现失败，会显示一个手动文本输入作为回退
 - **跨窗口密钥同步** —— 主仪表盘和设置窗口运行在独立的 webview 中，具有独立的 JS 上下文。在 Settings 中保存密钥时会写入 OS 钥匙串并广播一个 `localStorage` 变更事件。主窗口监听此事件并热重载所有密钥，无需重启应用
 - **合并式钥匙串保险库** —— 所有密钥作为一个 JSON blob 存储在单个钥匙串条目（`secrets-vault`）中，而非每个密钥一个条目。这将每次应用启动时的 macOS Keychain 授权提示从 20+ 次减少到正好 1 次。一次性迁移会读取现有任何单独条目，合并它们，并清理旧格式

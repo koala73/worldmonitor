@@ -39,6 +39,7 @@ const COUNTRY_BBOXES_PATH = 'shared/country-bboxes.js';
 const CRISIS_REGISTRY_PATH = 'shared/crawlable-crises.json';
 const RESEARCH_REPORTS_INDEX_PATH = 'shared/research-reports/index.mjs';
 const SOURCE_ATTRIBUTION_MANIFEST_PATH = 'shared/source-attribution-manifest.json';
+const SOURCE_PAGE_RENDERER_PATH = 'scripts/crawlable-sources-page.mjs';
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
@@ -826,6 +827,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   }
   const sourcesLastmod = laterDate(
     gitFileLastmod(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH),
+    gitFileLastmod(rootDir, SOURCE_PAGE_RENDERER_PATH),
     CORPUS_GENERATOR_CONTENT_VERSION,
     SOURCES_PAGE_CONTENT_VERSION,
   );
@@ -844,6 +846,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       crisisRegistry: CRISIS_REGISTRY_PATH,
       researchReports: RESEARCH_REPORTS_INDEX_PATH,
       sourceAttributionManifest: SOURCE_ATTRIBUTION_MANIFEST_PATH,
+      sourcePageRenderer: SOURCE_PAGE_RENDERER_PATH,
     },
     lastmod: {
       countries: countriesLastmod,

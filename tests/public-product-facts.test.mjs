@@ -275,7 +275,14 @@ describe('public product facts generation contract', () => {
       [],
       `hand-authored acquisition copy must use registry-derived or semantic inventory wording:\n${violations.join('\n')}`,
     );
-    for (const claim of ['30+ live services', '500+ curated news feeds', '25+ other live services']) {
+    for (const claim of [
+      '30+ live services',
+      '500+ curated news feeds',
+      '25+ other live services',
+      '12+ data source credentials',
+      '跨 30+ 实时服务',
+      '500 多个实时数据源',
+    ]) {
       assert.match(claim, VOLATILE_INVENTORY_CLAIM_RE, `modifier form must remain guarded: ${claim}`);
     }
   });

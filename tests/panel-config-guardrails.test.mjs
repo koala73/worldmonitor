@@ -120,53 +120,70 @@ function callName(node, sourceFile) {
 function panelFetchIds(callback, sourceFile) {
   const ids = new Set();
   const aliasIds = new Map();
+  const stateObjects = new Set(['this.state']);
   const panelCollections = new Set(['this.state.panels']);
   let changed = true;
   while (changed) {
     changed = false;
     callback.forEachChild(function collectAliases(node) {
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      if (ts.isVariableDeclaration(node) && node.initializer) {
         const initializer = unwrapExpression(node.initializer);
-        if (panelCollections.has(initializer.getText(sourceFile)) && !panelCollections.has(node.name.text)) {
-          panelCollections.add(node.name.text);
-          changed = true;
+        const initializerText = initializer.getText(sourceFile);
+        if (ts.isIdentifier(node.name)) {
+          if (stateObjects.has(initializerText) && !stateObjects.has(node.name.text)) {
+            stateObjects.add(node.name.text);
+            changed = true;
+          }
+          if (
+            (panelCollections.has(initializerText)
+              || (ts.isPropertyAccessExpression(initializer)
+                && initializer.name.text === 'panels'
+                && stateObjects.has(unwrapExpression(initializer.expression).getText(sourceFile))))
+            && !panelCollections.has(node.name.text)
+          ) {
+            panelCollections.add(node.name.text);
+            changed = true;
+          }
+          const panelId = panelAccessId(initializer, panelCollections);
+          if (panelId && aliasIds.get(node.name.text) !== panelId) {
+            aliasIds.set(node.name.text, panelId);
+            changed = true;
+          }
         }
-        const panelId = panelAccessId(initializer, panelCollections);
-        if (panelId && aliasIds.get(node.name.text) !== panelId) {
-          aliasIds.set(node.name.text, panelId);
-          changed = true;
+        if (ts.isObjectBindingPattern(node.name) && stateObjects.has(initializerText)) {
+          for (const element of node.name.elements) {
+            if (!ts.isIdentifier(element.name)) continue;
+            const property = element.propertyName ?? element.name;
+            if ((ts.isIdentifier(property) || ts.isStringLiteralLike(property)) && property.text === 'panels'
+              && !panelCollections.has(element.name.text)) {
+              panelCollections.add(element.name.text);
+              changed = true;
+            }
+          }
         }
       }
       node.forEachChild(collectAliases);
     });
   }
 
-  const walk = (node) => {
-    const panelId = panelAccessId(node, panelCollections);
-    if (panelId) {
-      let declaration = node.parent;
-      while (ts.isParenthesizedExpression(declaration) || ts.isAsExpression(declaration)) declaration = declaration.parent;
-      if (ts.isVariableDeclaration(declaration) && ts.isIdentifier(declaration.name)) {
-        aliasIds.set(declaration.name.text, panelId);
-      }
-      let current = node.parent;
-      while (current && current !== callback) {
-        if (ts.isPropertyAccessExpression(current) && current.name.text === 'fetchData') {
-          ids.add(panelId);
-          break;
-        }
-        current = current.parent;
-      }
+  const unresolvedReceivers = new Set();
+  callback.forEachChild(function collectFetchCalls(node) {
+    if (ts.isCallExpression(node)
+      && ts.isPropertyAccessExpression(node.expression)
+      && node.expression.name.text === 'fetchData') {
+      const receiver = unwrapExpression(node.expression.expression);
+      const panelId = panelAccessId(receiver, panelCollections)
+        || (ts.isIdentifier(receiver) ? aliasIds.get(receiver.text) : null);
+      if (panelId) ids.add(panelId);
+      else unresolvedReceivers.add(receiver.getText(sourceFile));
     }
-    node.forEachChild(walk);
-  };
-  walk(callback);
-  for (const { node } of callExpressions(callback.getText(sourceFile))) {
-    if (!ts.isPropertyAccessExpression(node.expression) || node.expression.name.text !== 'fetchData') continue;
-    if (!ts.isIdentifier(node.expression.expression)) continue;
-    const panelId = aliasIds.get(node.expression.expression.text);
-    if (panelId) ids.add(panelId);
-  }
+    node.forEachChild(collectFetchCalls);
+  });
+  assert.deepStrictEqual(
+    [...unresolvedReceivers],
+    [],
+    `scheduleRefresh callback could not resolve fetchData receiver(s): ${[...unresolvedReceivers].join(', ')}`,
+  );
   return [...ids];
 }
 
@@ -757,9 +774,33 @@ describe('panel-config guardrails', () => {
       primeTask('alpha', () => panel.fetchData());
     `;
     assert.deepStrictEqual(scheduledSelfFetchingPanelIds(collectionAlias), ['alpha']);
+
+    const chainedStateAlias = `
+      scheduleRefresh('alpha', () => {
+        const state = this.state;
+        const panels = state.panels;
+        panels.alpha.fetchData();
+      });
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(chainedStateAlias), ['alpha']);
+
+    const destructuredPanels = `
+      scheduleRefresh('alpha', () => {
+        const { panels } = this.state;
+        panels.alpha.fetchData();
+      });
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(destructuredPanels), ['alpha']);
+
     assert.throws(
       () => scheduledSelfFetchingPanelIds("scheduleRefresh('alpha', () => (this.state.panels['beta'] as BetaPanel).fetchData());"),
       /must fetch that same panel/,
+    );
+    assert.throws(
+      () => scheduledSelfFetchingPanelIds("scheduleRefresh('alpha', () => unknownPanels.alpha.fetchData());"),
+      /could not resolve fetchData receiver/,
     );
   });
 

@@ -719,9 +719,19 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.liveToolsScript, 'scripts/crawlable-live-tools.mjs');
     assert.equal(data.sources.countryBboxes, 'shared/country-bboxes.js');
     assert.equal(data.sources.crisisRegistry, 'shared/crawlable-crises.json');
+    assert.equal(data.sources.sourcePageRenderer, 'scripts/crawlable-sources-page.mjs');
     assert.equal(data.resilience.capturedAt, '2026-05-28');
     assert.equal(data.lastmod.countries, '2026-08-12');
     assert.equal(data.lastmod.research, '2026-08-12');
+    assert.equal(
+      data.lastmod.sources,
+      [
+        '2026-08-12',
+        gitFileLastmod(repoRoot, data.sources.sourceAttributionManifest),
+        gitFileLastmod(repoRoot, data.sources.sourcePageRenderer),
+      ].filter(Boolean).sort().at(-1),
+      'source-page lastmod must include both manifest and renderer changes',
+    );
     assert.equal(data.crises.length, 4);
     assert.ok(data.crises.some((crisis) => crisis.slug === 'ukraine-war' && crisis.coverage.some((country) => country.code === 'UA')));
     assert.ok(data.countryBounds.some((country) => country.code === 'JP' && country.bounds[0] === 31.11));

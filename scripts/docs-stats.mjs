@@ -10,12 +10,14 @@
  * not hand-edited acceptance criteria. CLAIMS below retains only fixed
  * compatibility contracts that are behaviorally exact.
  *
- * Stats are parsed from source text (no TS execution / import-graph / env deps)
- * so this runs anywhere Node runs, including bare CI.
+ * Stats are parsed from source text without executing TypeScript or loading its
+ * import graph, so this runs anywhere the repository's build dependencies are
+ * installed, including bare CI.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
+import ts from 'typescript';
 import { buildSourceAttributionStats } from './source-attribution.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -69,18 +71,82 @@ function parseLayerRegistry(source) {
   if (start === -1 || end === -1) {
     throw new Error('docs-stats: could not find the complete LAYER_REGISTRY block');
   }
-  const registryBlock = source.slice(start, end);
-  const declaredKeys = [...registryBlock.matchAll(/^\s+([A-Za-z_$][\w$]*)\s*:/gm)]
-    .map((match) => match[1]);
-  const definitionMatches = [...registryBlock.matchAll(
-    /^\s+([A-Za-z_$][\w$]*)\s*:\s*def\(\s*['"]([A-Za-z_$][\w$]*)['"]/gm,
-  )];
-  const definitionKeys = definitionMatches.map((match) => match[1]);
-  const mismatchedKeys = definitionMatches
-    .filter((match) => match[1] !== match[2])
-    .map((match) => `${match[1]} -> ${match[2]}`);
+  const sourceFile = ts.createSourceFile(
+    'map-layer-definitions.ts',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  if (sourceFile.parseDiagnostics.length > 0) {
+    const messages = sourceFile.parseDiagnostics
+      .map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, ' '))
+      .join('; ');
+    throw new Error(`docs-stats: could not parse LAYER_REGISTRY source (${messages})`);
+  }
+
+  let registryInitializer;
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    const declaration = statement.declarationList.declarations.find(
+      (candidate) => ts.isIdentifier(candidate.name) && candidate.name.text === 'LAYER_REGISTRY',
+    );
+    if (declaration) {
+      registryInitializer = declaration.initializer;
+      break;
+    }
+  }
+  while (
+    registryInitializer
+    && (ts.isAsExpression(registryInitializer)
+      || ts.isSatisfiesExpression(registryInitializer)
+      || ts.isParenthesizedExpression(registryInitializer))
+  ) {
+    registryInitializer = registryInitializer.expression;
+  }
+  if (!registryInitializer || !ts.isObjectLiteralExpression(registryInitializer)) {
+    throw new Error('docs-stats: LAYER_REGISTRY must be an object literal');
+  }
+
+  const declaredKeys = [];
+  const definitionKeys = [];
+  const mismatchedKeys = [];
+  const lockedKeys = [];
+  for (const property of registryInitializer.properties) {
+    if (!ts.isPropertyAssignment(property)) {
+      throw new Error('docs-stats: every LAYER_REGISTRY entry must be a property assignment');
+    }
+    const key = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
+      ? property.name.text
+      : null;
+    if (!key) {
+      throw new Error('docs-stats: every LAYER_REGISTRY property must have a static key');
+    }
+    declaredKeys.push(key);
+
+    let initializer = property.initializer;
+    while (ts.isParenthesizedExpression(initializer)) initializer = initializer.expression;
+    if (
+      !ts.isCallExpression(initializer)
+      || !ts.isIdentifier(initializer.expression)
+      || initializer.expression.text !== 'def'
+      || !ts.isStringLiteral(initializer.arguments[0])
+    ) {
+      continue;
+    }
+    const definitionKey = initializer.arguments[0].text;
+    definitionKeys.push(key);
+    if (key !== definitionKey) mismatchedKeys.push(`${key} -> ${definitionKey}`);
+    const premiumArgument = initializer.arguments[5];
+    if (premiumArgument && ts.isStringLiteral(premiumArgument) && premiumArgument.text === 'locked') {
+      lockedKeys.push(key);
+    }
+  }
   if (declaredKeys.length === 0) {
     throw new Error('docs-stats: LAYER_REGISTRY extraction was empty');
+  }
+  if (new Set(declaredKeys).size !== declaredKeys.length) {
+    throw new Error('docs-stats: LAYER_REGISTRY contains duplicate keys');
   }
   if (!sameStringSet(declaredKeys, definitionKeys) || mismatchedKeys.length > 0) {
     const delta = describeSetDelta(definitionKeys, declaredKeys);
@@ -91,7 +157,7 @@ function parseLayerRegistry(source) {
   }
   return {
     keys: sorted(declaredKeys),
-    registryBlock,
+    lockedKeys: sorted(lockedKeys),
   };
 }
 
@@ -764,7 +830,7 @@ function computeStats() {
 
   // ---- Map layers (src/config/map-layer-definitions.ts) ----
   const mld = read('src/config/map-layer-definitions.ts');
-  const { keys: layerKeys, registryBlock } = parseLayerRegistry(mld);
+  const { keys: layerKeys, lockedKeys: lockedLayerKeys } = parseLayerRegistry(mld);
   const layerDefinitions = layerKeys.length;
 
   // Web-locked premium layers: literal 'locked' in the def() call. Desktop-only
@@ -778,11 +844,6 @@ function computeStats() {
   // VITE_ENABLE_CYBER_LAYER=true) and VARIANT_LAYER_ORDER means no single site
   // shows the whole registry. Plan copy therefore names the Pro-only layer
   // instead of quoting a free total — see validatePlanLayerEntitlementCopy.
-  const lockedLayerKeys = registryBlock
-    .split('\n')
-    .filter((line) => line.includes("'locked'") && !line.includes("? 'locked'"))
-    .map((line) => line.match(/^\s+(\w+):/)?.[1])
-    .filter(Boolean);
   const lockedLayerDefinitions = lockedLayerKeys.length;
 
   const variantBlock = mld.slice(mld.indexOf('VARIANT_LAYER_ORDER'), mld.indexOf('export function getLayersForVariant'));
@@ -985,7 +1046,7 @@ function claims(s) {
   ];
 }
 
-export const VOLATILE_INVENTORY_CLAIM_RE = /\b(?:\d[\d,]*\+\s+(?:(?:MCP|other|live|curated|interactive|registered|observed|news)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|operations|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities)|\d[\d,]*\s+(?:(?:MCP|other|live|curated|interactive|registered|observed|news)\s+)+(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|operations|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities)|\d[\d,]*\s+(?:providers|airports|map layers|panels|locales|streams|connectors))\b/i;
+export const VOLATILE_INVENTORY_CLAIM_RE = /(?:\b(?:\d[\d,]*\+\s+(?:(?:MCP|other|live|curated|interactive|registered|observed|news|data source)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|credentials|API handlers|operations|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities)|\d[\d,]*\s+(?:(?:MCP|other|live|curated|interactive|registered|observed|news)\s+)+(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|operations|map layers|panels|languages|locales|airports|data ?centers|datacenters|entities)|\d[\d,]*\s+(?:providers|airports|map layers|panels|locales|streams|connectors))\b|\d[\d,]*\s*(?:\+|多|以上)\s*(?:个)?\s*(?:实时|精选|已注册|已观察)?\s*(?:数据源|信息源|服务|工具|提供商|操作|地图图层|面板|语言|区域设置|机场|数据中心|实体))/i;
 
 const ACQUISITION_CLAIM_ROOTS = [
   'index.html',
@@ -1006,6 +1067,7 @@ const ACQUISITION_CLAIM_EXCLUDES = [
   'docs/audits/',
   'docs/brainstorms/',
   'docs/changelog.mdx',
+  'docs/zh/changelog.mdx',
   'docs/Docs_To_Review/',
   'docs/generated/',
   'docs/internal/',

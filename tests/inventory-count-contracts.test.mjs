@@ -194,6 +194,19 @@ describe('extensible inventory count contract audit', () => {
     assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 2);
   });
 
+  it('follows integer-preserving Math wrappers', () => {
+    const result = auditFixture(`
+      import assert from 'node:assert/strict';
+      const truncated = Math.trunc(stats.providerCount);
+      const floored = Math.floor(stats.providerCount);
+      const ceiled = Math.ceil(stats.providerCount);
+      assert.equal(truncated, 552);
+      assert.equal(floored, 552);
+      assert.equal(ceiled, 552);
+    `);
+    assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 3);
+  });
+
   it('does not exempt an exact inventory of one', () => {
     const result = auditFixture(`
       import assert from 'node:assert/strict';

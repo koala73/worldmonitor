@@ -14,14 +14,27 @@ export const V1_LAYER_EXPLANATION_KEYS = [];
 
 describe('docs stats layer-registry extraction', () => {
   it('derives every key across single-line and multiline definitions', () => {
-    assert.deepEqual(
-      parseLayerRegistry(source(`
+    const parsed = parseLayerRegistry(source(`
   alpha: def('alpha', 'A'),
   beta:
     def('beta', 'B'),
-`)).keys,
-      ['alpha', 'beta'],
-    );
+  premium: def('premium', 'P', 'premium', 'Premium', ['flat'], 'locked'),
+  desktopPremium: def('desktopPremium', 'D', 'desktopPremium', 'Desktop', ['flat'], desktop ? 'locked' : undefined),
+`));
+    assert.deepEqual(parsed.keys, ['alpha', 'beta', 'desktopPremium', 'premium']);
+    assert.deepEqual(parsed.lockedKeys, ['premium']);
+  });
+
+  it('ignores commented-out definitions and locked markers', () => {
+    const parsed = parseLayerRegistry(source(`
+  alpha: def('alpha', 'A'),
+  // retiredLine: def('retiredLine', 'R', 'retired', 'Retired', ['flat'], 'locked'),
+  /*
+  retiredBlock: def('retiredBlock', 'R', 'retired', 'Retired', ['flat'], 'locked'),
+  */
+`));
+    assert.deepEqual(parsed.keys, ['alpha']);
+    assert.deepEqual(parsed.lockedKeys, []);
   });
 
   it('fails closed on a partial or mismatched extraction', () => {

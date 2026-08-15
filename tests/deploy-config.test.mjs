@@ -37,6 +37,7 @@ const dockerNginxSource = readFileSync(resolve(__dirname, '../docker/nginx.conf'
 const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dockerfile'), 'utf-8');
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
+const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
 const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
@@ -326,6 +327,7 @@ describe('crawlable content corpus deployment contracts', () => {
     assert.ok(vercelIgnoreSource.includes("'CHANGELOG.md'"));
     assert.ok(vercelIgnoreSource.includes("'docs/snapshots/'"));
     for (const path of [
+      'scripts/crawlable-sources-page.mjs',
       'scripts/generate-inventory-facts.mjs',
       'scripts/docs-stats.mjs',
       'scripts/source-attribution.mjs',
@@ -351,6 +353,7 @@ describe('crawlable content corpus deployment contracts', () => {
       git('commit', '-qm', 'base');
 
       for (const path of [
+        'scripts/crawlable-sources-page.mjs',
         'scripts/generate-inventory-facts.mjs',
         'scripts/docs-stats.mjs',
         'scripts/source-attribution.mjs',
@@ -2268,17 +2271,29 @@ describe('agent readiness: api-catalog + openapi build', () => {
     );
   });
 
-  it('every web-variant build chains npm run build:openapi', () => {
+  it('every web-variant build regenerates inventory facts and OpenAPI', () => {
     // build:desktop and build:pro are intentionally excluded — Tauri
     // sidecar builds and the standalone pro-test workspace don't ship
     // the OpenAPI spec.
-    const webVariants = ['build:full', 'build:tech', 'build:finance', 'build:happy', 'build:commodity'];
-    for (const variant of webVariants) {
-      const script = pkg.scripts[variant];
-      assert.ok(script, `package.json must define scripts["${variant}"]`);
+    const declaredVariants = variantDashboardSource
+      .match(/WEB_DASHBOARD_VARIANTS\s*=\s*\[([^\]]+)\]/)?.[1]
+      .match(/'[^']+'/g)
+      ?.map((value) => value.slice(1, -1));
+    assert.ok(declaredVariants?.length, 'WEB_DASHBOARD_VARIANTS extraction must not be empty');
+
+    for (const variant of ['full', ...declaredVariants]) {
+      const buildName = `build:${variant}`;
+      const prebuildName = `prebuild:${variant}`;
+      const script = pkg.scripts[buildName];
+      assert.ok(script, `package.json must define scripts["${buildName}"]`);
       assert.ok(
         script.includes('npm run build:openapi'),
-        `scripts["${variant}"] must chain "npm run build:openapi" so the web bundle ships the spec; got: ${script}`
+        `scripts["${buildName}"] must chain "npm run build:openapi" so the web bundle ships the spec; got: ${script}`
+      );
+      assert.equal(
+        pkg.scripts[prebuildName],
+        'npm run product:facts',
+        `scripts["${prebuildName}"] must regenerate ignored inventory facts before ${buildName}`,
       );
     }
   });
