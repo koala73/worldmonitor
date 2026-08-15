@@ -753,12 +753,12 @@ describe('planned Railway service lifecycle', () => {
     // made rather than a way to quiet a red gate.
     //
     const expectedPlannedServices = [
-      // Lands before its six member seeders so they can drop their own service
-      // rows in the same review round. Stays planned — and therefore out of the
-      // live audit and out of `--apply` — until every member has merged and the
-      // Railway service actually exists. Activating it means adding
-      // watchPatterns + a */5 cron in a deliberate follow-up.
-      'seed-bundle-canada',
+      // seed-bundle-canada is deliberately ABSENT now: all six members merged
+      // (#6669, #6672, #6674 and the roads stack) and the Railway service was
+      // provisioned, so it is a live cron and belongs in the audit. Leaving it
+      // planned would exempt the one service most likely to drift — six member
+      // scripts behind a single */5 cron — from the watch-path and deploy-drift
+      // checks that exist to catch exactly that.
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',

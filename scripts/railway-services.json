@@ -444,8 +444,38 @@
   {
     "entry": "scripts/seed-bundle-canada.mjs",
     "deployMode": "nixpacks-root-scripts",
-    "lifecycle": "planned",
     "service": "seed-bundle-canada",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_511-rate-limit.mjs",
+      "scripts/_bundle-runner.mjs",
+      "scripts/_html-entities.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/alberta-emergency-alert.mjs",
+      "scripts/lib/gtfsrt.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/open511.mjs",
+      "scripts/lib/provincial-511.mjs",
+      "scripts/lib/toronto-road-restrictions.mjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/seed-alberta-emergency-alert.mjs",
+      "scripts/seed-bundle-canada.mjs",
+      "scripts/seed-open511.mjs",
+      "scripts/seed-provincial-511.mjs",
+      "scripts/seed-toronto-road-restrictions.mjs",
+      "scripts/seed-ttc-alerts.mjs",
+      "scripts/seed-viarail-live.mjs",
+      "scripts/viarail-live.mjs"
+    ],
+    "cronSchedule": "*/5 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
   {
