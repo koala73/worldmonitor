@@ -48,7 +48,7 @@
     "entF10": "Moln, on-premises eller air-gapped deployment",
     "entF11": "Dedikerad onboarding och support",
     "entCta": "Prata med sälj",
-    "freeF2": "500+ flöden, 555+ källor, 50+ kartlager"
+    "freeF2": "500+ flöden, 557+ källor, 50+ kartlager"
   },
   "whyUpgrade": {
     "title": "Varför uppgradera",
@@ -566,7 +566,7 @@
       "s1l": "Kartlager",
       "s2v": "500+",
       "s2l": "Kurerade flöden",
-      "s3v": "551+",
+      "s3v": "553+",
       "s3l": "Dataleverantörer",
       "s4v": "13",
       "s4l": "Flaskhalsar · direkt AIS",
@@ -659,7 +659,7 @@
       "q2": "Vad är en global intelligence-instrumentbräda?",
       "a2": "En enda live-vy som sammanfogar signaler som de flesta verktyg håller åtskilda: konflikthändelser, fartygs- och flygspårning, sjövägsflaskhalsar, satelliter, undersjökablar, pipelines, marknader och cyberhotningar — på en realtids-världskarta, med AI-poäng och sammanfattningar överst. World Monitor är en gratis sådan.",
       "q3": "Var kommer data från?",
-      "a3": "551+ leverantörer, namngivna: ACLED och UCDP för konflikter, AISStream för live-fartyg, OpenSky för flygplan, NASA FIRMS för bränder, USGS för jordbävningar, IMF, BIS, FRED och Finnhub för marknader och makro — plus 500+ utvalda nyhetsflöden. Varje panel citerar sina källor och tidsstämplar inline.",
+      "a3": "553+ leverantörer, namngivna: ACLED och UCDP för konflikter, AISStream för live-fartyg, OpenSky för flygplan, NASA FIRMS för bränder, USGS för jordbävningar, IMF, BIS, FRED och Finnhub för marknader och makro — plus 500+ utvalda nyhetsflöden. Varje panel citerar sina källor och tidsstämplar inline.",
       "q4": "Kan jag övervaka flaskhalsar som Hormuz eller Bab el-Mandeb i realtid?",
       "a4": "Ja. 13 flaskhalsar spåras med live AIS-fartygsantal, vecka-för-vecka transitförändring och störningspoäng — och densitetsavvikelser flaggas mot varje sunds löpande baslinjen.",
       "q5": "Hur skiljer sig detta från en konfliktkarta som Liveuamap?",

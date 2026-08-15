@@ -369,20 +369,20 @@ test('bootstrap keeps canadaRoads on the fast tier; bcOpen511 is on-demand (~797
   assert.match(onDemand, /'bcOpen511'/);
 });
 
-test('seed-freshness-baseline acknowledges the BC Open511 cutover', () => {
+test('BC Open511 is live, so it carries no freshness acknowledgement', () => {
+  // Was: pinned the expiring-ack dates for a probe that had never published.
+  // seed-bundle-canada is provisioned and bcOpen511 now reads healthy, so the
+  // ack was removed as SATISFIED. Asserting its absence is what stops it being
+  // reinstated: an acknowledgement that outlives its problem is a suppression
+  // with nothing to suppress, and would silently absorb a FUTURE BC outage.
   const baseline = JSON.parse(readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8'));
   const row = baseline.acknowledged.find((a) => a.issue === 6611 || a.name === 'bcOpen511');
-  assert.ok(row);
-  assert.equal(row.status, 'EMPTY');
-  assert.equal(row.cutover.probeKey, 'seed-meta:infra:bc-open511');
-  // Widened by the member's own gate: on intervalMs 30min the first publish can
-  // land half an hour after the bundle is provisioned, so an expiry pinned to
-  // the provisioning instant would red the monitor while the seeder works.
-  assert.equal(row.expiresAt, '2026-08-16T21:15:00.000Z');
-  assert.equal(row.cutover.firstScheduledRunAt, '2026-08-16T21:15:00.000Z');
-  assert.equal(row.cutover.activatedAt, '2026-08-15T21:30:00.000Z');
-  const gapMs = Date.parse(row.cutover.firstScheduledRunAt) - Date.parse(row.cutover.activatedAt);
-  assert.ok(gapMs > 0 && gapMs < 24 * 60 * 60 * 1000, 'rollout window must stay under the 24h cap');
+  assert.equal(row, undefined, 'bcOpen511 publishes now; it must not be acknowledged as a known-empty probe');
+
+  // The probe itself must still exist, or "no ack" would be trivially true
+  // because nothing is watching the key at all.
+  const health = readFileSync(new URL('../api/health.js', import.meta.url), 'utf8');
+  assert.match(health, /bcOpen511:\s*\{[\s\S]{0,120}?key:\s*'seed-meta:infra:bc-open511'/);
 });
 
 test('following next_url without status=ACTIVE still requests ACTIVE pages', async () => {

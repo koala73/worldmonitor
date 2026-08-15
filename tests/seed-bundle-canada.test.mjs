@@ -8,16 +8,18 @@
 // The bundle script cannot be imported — it calls runBundle at module scope — so
 // this reads it through the same static parser the repo-wide bundle gates use.
 
-import { test } from 'node:test';
+import { describe, it, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { extractBundleSections, resolveExpr } from './helpers/bundle-section-parser.mjs';
+import { bundleDisableEnvVar, disabledMembersFromEnv } from '../scripts/_bundle-runner.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const src = readFileSync(join(root, 'scripts/seed-bundle-canada.mjs'), 'utf8');
+const RUNNER_SRC = readFileSync(join(root, 'scripts/_bundle-runner.mjs'), 'utf8');
 const sections = extractBundleSections(src);
 
 const MIN = 60_000;
@@ -113,15 +115,42 @@ test('skips a member whose script is absent instead of failing the whole bundle'
   assert.match(src, /SKIPPING \$\{section\.label\}/);
 });
 
-test('is registered as planned, so it never enters the live audit unprovisioned', () => {
+test('is registered as an active service now that it is provisioned', () => {
+  // Was: asserted lifecycle 'planned' with no watchPatterns and no cron, which
+  // is what keeps an unprovisioned row out of the live audit. The service now
+  // exists on Railway (0a4b8757, cron */5), so the row has to say so — a
+  // 'planned' row for a service that IS running hides it from the very drift
+  // and watch-path audits that would catch it deploying stale code.
   const registry = JSON.parse(readFileSync(join(root, 'scripts/railway-services.json'), 'utf8'));
   const entry = registry.find((row) => row.service === 'seed-bundle-canada');
   assert.ok(entry, 'seed-bundle-canada must be in the Railway registry');
-  assert.equal(entry.lifecycle, 'planned');
-  // A planned row carries no watchPatterns and no cron by convention — both are
-  // added in the deliberate activation change, once the service actually exists.
-  assert.equal(Object.hasOwn(entry, 'watchPatterns'), false);
-  assert.equal(Object.hasOwn(entry, 'cronSchedule'), false);
+  assert.equal(Object.hasOwn(entry, 'lifecycle'), false, 'an active service carries no lifecycle marker');
+  assert.equal(entry.cronSchedule, '*/5 * * * *', 'must match the cron configured on Railway');
+  assert.ok(Array.isArray(entry.watchPatterns) && entry.watchPatterns.length > 0);
+  assert.deepEqual(
+    entry.requiredEnv,
+    ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'],
+    'members publish through runSeed, which needs the Upstash REST pair',
+  );
+});
+
+test('every member script and its bundle entry is a watch path', () => {
+  // A member whose script is missing from watchPatterns does not redeploy when
+  // it changes: the service keeps running the previously-built copy, silently,
+  // with a green cron. The bundle spawns members as child processes, so their
+  // paths are NOT reachable from the entry's own import graph — nothing else
+  // forces them into this list.
+  const registry = JSON.parse(readFileSync(join(root, 'scripts/railway-services.json'), 'utf8'));
+  const entry = registry.find((row) => row.service === 'seed-bundle-canada');
+  const patterns = new Set(entry.watchPatterns);
+  assert.ok(patterns.has('scripts/seed-bundle-canada.mjs'), 'the bundle entry must be a watch path');
+  assert.ok(patterns.has('scripts/_bundle-runner.mjs'), 'the shared runner must be a watch path');
+  for (const s of sections) {
+    assert.ok(
+      patterns.has(`scripts/${s.script}`),
+      `${s.label}: scripts/${s.script} must be a watch path, or a change to it never redeploys`,
+    );
+  }
 });
 
 // A member's cadence is not just a cost knob: the Redis TTL and the health
@@ -195,4 +224,62 @@ test('every member’s TTL and health staleness budget cover its bundle interval
   }
 
   assert.equal(checked, 6, 'all six members must be checked, or this guard is partly vacuous');
+});
+
+describe('per-member kill switch (#6711)', () => {
+  // A bundle collapses N services into one, which also collapses N deploy
+  // controls into one: before this, taking a single misbehaving member out of
+  // rotation meant editing the section list and redeploying the bundle, which
+  // stops its siblings too.
+
+  it('scopes the env var per bundle so one bundle cannot disable another', () => {
+    assert.equal(bundleDisableEnvVar('Canada'), 'WM_BUNDLE_CANADA_DISABLED_MEMBERS');
+    assert.equal(bundleDisableEnvVar('ecb-eu'), 'WM_BUNDLE_ECB_EU_DISABLED_MEMBERS');
+    // Two bundles with a same-named member must not share a switch.
+    assert.notEqual(bundleDisableEnvVar('Canada'), bundleDisableEnvVar('ecb-eu'));
+  });
+
+  it('parses a comma list, tolerating spacing and empties', () => {
+    const env = { WM_BUNDLE_CANADA_DISABLED_MEMBERS: ' Toronto-Roads , ,BC-Open511 ' };
+    const disabled = disabledMembersFromEnv('Canada', env);
+    assert.deepEqual([...disabled].sort(), ['BC-Open511', 'Toronto-Roads']);
+  });
+
+  it('treats an unset or blank switch as nothing disabled', () => {
+    // Must be empty, not "everything" — a blank env var disabling the whole
+    // bundle would be a catastrophic default.
+    assert.equal(disabledMembersFromEnv('Canada', {}).size, 0);
+    assert.equal(disabledMembersFromEnv('Canada', { WM_BUNDLE_CANADA_DISABLED_MEMBERS: '' }).size, 0);
+    assert.equal(disabledMembersFromEnv('Canada', { WM_BUNDLE_CANADA_DISABLED_MEMBERS: '   ' }).size, 0);
+  });
+
+  it('refuses to start when the switch names a section that does not exist', () => {
+    // THE FAIL-CLOSED PROPERTY. A typo'd kill switch that silently disables
+    // nothing is the worst outcome: an operator believes a source is off while
+    // it keeps running. Verified on the runner source because runBundle spawns
+    // child processes.
+    assert.match(RUNNER_SRC, /names unknown section\(s\)/);
+    assert.match(RUNNER_SRC, /Refusing to start/);
+    // It must throw, not warn-and-continue.
+    const guard = /const unknownDisabled[\s\S]*?\n  \}/.exec(RUNNER_SRC);
+    assert.ok(guard, 'the unknown-label guard must exist');
+    assert.match(guard[0], /throw new Error/);
+  });
+
+  it('logs a disabled member instead of skipping it silently', () => {
+    // A member that vanishes with no log is indistinguishable from one that was
+    // never configured.
+    assert.match(RUNNER_SRC, /status=DISABLED reason=kill-switch/);
+    assert.match(RUNNER_SRC, /disabled:\$\{disabled\}/);
+  });
+
+  it('does not count a disabled member as ran, failed, or graceful', () => {
+    // Counting it as ran would let a fully-disabled bundle report a healthy
+    // tick; counting it as failed would crash the service on a deliberate
+    // operator action.
+    const block = /if \(disabledMembers\.has\(section\.label\)\) \{[\s\S]*?continue;\n    \}/.exec(RUNNER_SRC);
+    assert.ok(block, 'the disable branch must exist');
+    assert.match(block[0], /disabled\+\+/);
+    assert.equal(/ran\+\+|failed\+\+|gracefulFailed\+\+/.test(block[0]), false);
+  });
 });

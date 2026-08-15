@@ -93,19 +93,19 @@
     "umami-storage-monitor.yml"
   ],
   "workflowCount": 34,
-  "freshnessSources": 37,
+  "freshnessSources": 39,
   "freshnessRequiredForRisk": 2,
   "feedDefinitions": 658,
   "sourceAttribution": {
-    "activeHosts": 555,
-    "structuredHosts": 304,
+    "activeHosts": 557,
+    "structuredHosts": 306,
     "feedHosts": 279,
     "operationalStatusHosts": 30,
-    "providerCount": 551,
-    "observedHosts": 674,
+    "providerCount": 553,
+    "observedHosts": 676,
     "reviewNeeded": 524
   },
-  "sourceAttributionHosts": 555,
+  "sourceAttributionHosts": 557,
   "airportCount": 115,
   "stockExchangeCount": 29,
   "centralBankInstitutionCount": 14,
@@ -308,7 +308,7 @@
   },
   "healthProbedKeys": {
     "bootstrap": 114,
-    "standalone": 156,
-    "total": 270
+    "standalone": 158,
+    "total": 272
   }
 }

@@ -17,7 +17,10 @@ import {
   RESILIENCE_DIMENSION_ORDER,
   scoreAllDimensions,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
-import { resolveSeedMetaKey } from '../server/worldmonitor/resilience/v1/_dimension-freshness.ts';
+import {
+  getEffectiveIndicatorSourceKeys,
+  resolveSeedMetaKey,
+} from '../server/worldmonitor/resilience/v1/_dimension-freshness.ts';
 import {
   INDICATOR_REGISTRY,
   getIndicatorSourceKeys,
@@ -287,7 +290,11 @@ function readHealthSeedMetaThresholds(): Map<string, number> {
 function resolvedStandaloneRegistryMetaKeys(): string[] {
   return [...new Set(
     INDICATOR_REGISTRY
-      .flatMap((indicator) => getIndicatorSourceKeys(indicator).map((sourceKey) => resolveSeedMetaKey(sourceKey)))
+      .flatMap((indicator) => [
+        ...getIndicatorSourceKeys(indicator),
+        ...getEffectiveIndicatorSourceKeys(indicator, 'CA', { inflation: true, unemployment: true }),
+      ])
+      .map((sourceKey) => resolveSeedMetaKey(sourceKey))
       .filter((key) => key !== RESILIENCE_STATIC_META_KEY),
   )].sort();
 }

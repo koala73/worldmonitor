@@ -31,6 +31,19 @@ export const CANADA_ROAD_SOURCES: readonly CanadaRoadSourceDescriptor[] = Object
   { key: 'bcOpen511', source: 'bc-open511', jurisdiction: 'BC', onDemand: true },
 ]);
 
+/**
+ * Freshness-panel id per road source. Derived from CANADA_ROAD_SOURCES so a
+ * fifth jurisdiction cannot be added without deciding how it reports freshness:
+ * the union previously recorded every source as `ontario_511`, which made an
+ * Alberta/Toronto/BC outage indistinguishable from an Ontario one.
+ */
+export const CANADA_ROAD_FRESHNESS_IDS = Object.freeze([
+  { key: 'canadaRoads', freshnessId: 'ontario_511' },
+  { key: 'albertaRoads', freshnessId: 'alberta_511' },
+  { key: 'torontoRoads', freshnessId: 'toronto_roads' },
+  { key: 'bcOpen511', freshnessId: 'bc_open511' },
+] as const);
+
 const unavailableSourceStates = (): CanadaRoadSourceStates => Object.fromEntries(
   CANADA_ROAD_SOURCES.map(({ key }) => [key, 'unavailable' as const]),
 );
