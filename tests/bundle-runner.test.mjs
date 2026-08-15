@@ -1185,3 +1185,93 @@ test('a missing Redis URL must not crash the bundle after the heartbeat write is
     cleanup();
   }
 });
+
+test('a deferred section older than 2x its interval fails the tick even when siblings ran', async () => {
+  // #6562 item 4: partial starvation. starvedTick only catches the
+  // published-nothing tick; a section can be squeezed out on EVERY tick while
+  // a healthy sibling keeps the bundle green — ran:1 deferred:1 exited 0 and
+  // the deferral read as ordinary pressure. At deferral time the runner holds
+  // the victim's seed-meta age; over STALL_AGE_INTERVAL_MULTIPLE of its own
+  // interval it must page regardless of what else ran.
+  const HOUR = 60 * 60 * 1000;
+  const cleanup = writeFixture('_bundle-fixture-stall-run.mjs', `console.log('stall-ran');\n`);
+  const staleMeta = JSON.stringify({ fetchedAt: Date.now() - 3 * HOUR, recordCount: 1 });
+  const freshKeys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+  const redis = await startFakeUpstash({
+    getDelayMs: 2_000,
+    strings: new Map([
+      ...freshKeys.map((key) => [`seed-meta:stall:${key}`, JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 })]),
+      ['seed-meta:stall:victim', staleMeta],
+    ]),
+  });
+  try {
+    const { code, stdout, stderr } = await runBundleWith(
+      [
+        ...freshKeys.map((k) => ({
+          label: `FRESH_${k.toUpperCase()}`,
+          script: '_bundle-fixture-stall-run.mjs',
+          seedMetaKey: `stall:${k}`,
+          intervalMs: DAY,
+          timeoutMs: 5_000,
+        })),
+        { label: 'RUNS', script: '_bundle-fixture-stall-run.mjs', intervalMs: 1, timeoutMs: 5_000 },
+        // worst case 35s+10s grace+15s headroom = 60s fits the admission
+        // check, but the 20s of freshness reads above mean only 40s remain —
+        // so VICTIM is deferred at runtime while its 3h-old seed-meta (3x a
+        // 1h interval) marks the deferral as a stall.
+        { label: 'VICTIM', script: '_bundle-fixture-stall-run.mjs', seedMetaKey: 'stall:victim', intervalMs: HOUR, timeoutMs: 35_000 },
+      ],
+      { maxBundleMs: 60_000 },
+      { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token },
+    );
+    assert.equal(code, 1, 'a starved-while-green tick is not a success');
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:10 deferred:1 failed:0 graceful:0 stalled:1/);
+    assert.match(stderr, /starvation, not pressure/, `expected the per-section stall line; stderr:\n${stderr}`);
+    assert.match(stderr, /older than 2x their interval — starvation while the bundle reported progress/);
+    assert.doesNotMatch(stdout, /ran:0 while/);
+  } finally {
+    cleanup();
+    await redis.close();
+  }
+});
+
+test('a deferred section within 2x its interval stays ordinary pressure (exit 0)', async () => {
+  // The other side of #6562 item 4: a due section (age past the 0.8x floor)
+  // losing ONE budget race is pressure, not a stall — it retries next tick and
+  // must not page, or the stall signal becomes the alert fatigue the
+  // GRACEFUL_FAIL exemption exists to prevent.
+  const HOUR = 60 * 60 * 1000;
+  const cleanup = writeFixture('_bundle-fixture-pressure-run.mjs', `console.log('pressure-ran');\n`);
+  const dueMeta = JSON.stringify({ fetchedAt: Date.now() - Math.round(0.9 * HOUR), recordCount: 1 });
+  const freshKeys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
+  const redis = await startFakeUpstash({
+    getDelayMs: 2_000,
+    strings: new Map([
+      ...freshKeys.map((key) => [`seed-meta:pressure:${key}`, JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 })]),
+      ['seed-meta:pressure:victim', dueMeta],
+    ]),
+  });
+  try {
+    const { code, stdout, stderr } = await runBundleWith(
+      [
+        ...freshKeys.map((k) => ({
+          label: `FRESH_${k.toUpperCase()}`,
+          script: '_bundle-fixture-pressure-run.mjs',
+          seedMetaKey: `pressure:${k}`,
+          intervalMs: DAY,
+          timeoutMs: 5_000,
+        })),
+        { label: 'RUNS', script: '_bundle-fixture-pressure-run.mjs', intervalMs: 1, timeoutMs: 5_000 },
+        { label: 'VICTIM', script: '_bundle-fixture-pressure-run.mjs', seedMetaKey: 'pressure:victim', intervalMs: HOUR, timeoutMs: 35_000 },
+      ],
+      { maxBundleMs: 60_000 },
+      { UPSTASH_REDIS_REST_URL: redis.url, UPSTASH_REDIS_REST_TOKEN: redis.token },
+    );
+    assert.equal(code, 0, 'ordinary pressure with a healthy sibling stays exit 0');
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:10 deferred:1 failed:0 graceful:0 stalled:0/);
+    assert.doesNotMatch(stderr, /starvation/);
+  } finally {
+    cleanup();
+    await redis.close();
+  }
+});
