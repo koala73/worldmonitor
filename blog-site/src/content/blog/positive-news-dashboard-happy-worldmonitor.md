@@ -1,6 +1,6 @@
 ---
 title: "The Good News Dashboard: Positive News with an Intelligence Engine"
-description: "Explore Happy Monitor's 27 positive-news feeds covering conservation wins, scientific breakthroughs, clean energy, and live human-progress indicators."
+description: "Explore Happy Monitor's positive-news catalog covering conservation wins, scientific breakthroughs, clean energy, and live human-progress indicators."
 metaTitle: "Positive News Dashboard | World Monitor Happy"
 keywords: "positive news website, good news dashboard, uplifting news aggregator, human progress tracker, conservation wins, science breakthrough news"
 audience: "General readers, educators, parents, mental-health-conscious news consumers, optimists who want evidence"
@@ -11,11 +11,11 @@ modifiedDate: "2026-07-22"
 
 The news industry has a structural bias, not a conspiracy: bad news is sudden and good news is gradual. A pipeline explosion is an event; a species recovering is a decade. Feeds optimized for events will always overweight catastrophe — which is how you end up with an audience that knows every disaster and none of the progress.
 
-WorldMonitor's answer isn't a filter that hides the bad news. It's a sixth dashboard with the polarity reversed: **happy.worldmonitor.app**, the same intelligence engine pointed at what's improving.
+WorldMonitor's answer isn't a filter that hides the bad news. It's a dedicated dashboard with the polarity reversed: **happy.worldmonitor.app**, the same intelligence engine pointed at what's improving.
 
 ## Same engine, inverted filter
 
-The Happy variant is not a greeting-card site. It runs the same infrastructure as the geopolitical dashboard — feed ingestion, deduplication, classification, mapping — over **27 curated positive-news feeds across six categories**: dedicated positive outlets (Good News Network, Positive.News, Reasons to be Cheerful, Optimist Daily, and others), science sources (Nature News, ScienceDaily, New Scientist, Human Progress), conservation reporting (Mongabay, Conservation Optimism), health, community, and everyday-hero stories.
+The Happy variant is not a greeting-card site. It runs the same infrastructure as the geopolitical dashboard — feed ingestion, deduplication, classification, mapping — over a curated positive-news catalog: dedicated positive outlets (Good News Network, Positive.News, Reasons to be Cheerful, Optimist Daily, and others), science sources (Nature News, ScienceDaily, New Scientist, Human Progress), conservation reporting (Mongabay, Conservation Optimism), health, community, and everyday-hero stories.
 
 The panels are built around measurable progress, not just pleasant headlines:
 
@@ -55,7 +55,7 @@ Yes — free and login-free like the other WorldMonitor variants. It's at happy.
 
 **Is this just filtered regular news?**
 
-No. It's a separate curated feed set — 27 positive-news, science, conservation, and community sources — run through the same classification and deduplication pipeline as the intelligence dashboards, with its own panels and map layers.
+No. It's a separate curated feed set spanning positive-news, science, conservation, and community sources, run through the same classification and deduplication pipeline as the intelligence dashboards, with its own panels and map layers.
 
 **Can apps and agents use the positive-events data?**
 

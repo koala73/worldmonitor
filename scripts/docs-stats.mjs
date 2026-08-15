@@ -1143,13 +1143,15 @@ function claims(s) {
   ];
 }
 
-const ENGLISH_VOLATILE_INVENTORY_CLAIM_RE = /\b\d[\d,]*(?:\+)?\s+(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|other|live|curated|interactive|registered|observed|monitored|news|data source|local|edge|typed|specialized|dashboard|installable|public)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|credentials|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|variants|languages|locales|airports|data ?centers|datacenters|entities|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\b/i;
-const ENGLISH_WORD_VOLATILE_INVENTORY_CLAIM_RE = /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|other|live|curated|registered|observed|monitored|news|local|typed|specialized|dashboard|installable|public)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|variants|languages|locales|airports|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\b/i;
+const ENGLISH_VOLATILE_INVENTORY_CLAIM_RE = /\b\d[\d,]*(?:\+)?\s+(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|other|live|curated|interactive|registered|observed|monitored|supported|news|data source|local|edge|typed|specialized|dashboard|installable|public|proto-backed|positive-news)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|credentials|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|variants|languages|locales|airports|data ?centers|datacenters|entities|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\b/i;
+const ENGLISH_WORD_VOLATILE_INVENTORY_CLAIM_RE = /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|other|live|curated|registered|observed|monitored|supported|news|local|typed|specialized|dashboard|installable|public|proto-backed|positive-news)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|variants|languages|locales|airports|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\b/i;
 const LABEL_FIRST_VOLATILE_INVENTORY_CLAIM_RE = /\b(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|languages|locales|airports|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\s*:\s*\d[\d,]*(?:\+)?\b/i;
-const CHINESE_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|[^A-Za-z0-9])\d[\d,]*\s*(?:(?:\+|多|以上)\s*)?(?:个|项)?\s*(?:(?:实时|精选|已注册|已观察|监控|受监控|独立|上游|生成的|可安装|智能体|Vercel|Edge|边缘|数据|新闻|API)\s*)*(?:数据源|信息源|新闻源|服务(?:领域)?|工具|技能|配方|提供商|处理器|操作|地图图层|数据图层|图层|面板|语言|区域设置|机场|数据中心|实体|边缘函数|函数)(?=$|[\s，。、；：）)】<])/i;
+const MARKDOWN_TABLE_VOLATILE_INVENTORY_CLAIM_RE = /\|\s*(?:(?:live|video|news|data|map|military|AI|strategic|undersea|intelligence|Telegram|prediction)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|layers|panels|variants|languages|locales|airports|datacenters|cameras|webcams|channels|events)(?:\s+(?:supported|monitored|mapped|tracked|available))?\s*\|\s*\d[\d,]*(?:\+)?(?=\s*(?:\([^|\n]*\)\s*)?\|)/i;
+const CHINESE_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|[^A-Za-z0-9])\d[\d,]*\s*(?:(?:\+|多|以上)\s*)?(?:个|项)?\s*(?:(?:实时|精选|已注册|已观察|监控|受监控|独立|上游|生成的|可安装|智能体|Vercel|Edge|边缘|数据|新闻|API|OSINT)\s*)*(?:数据源|信息源|新闻源|服务(?:领域)?|工具|技能|配方|提供商|处理器|操作|地图图层|数据图层|图层|面板|语言|区域设置|机场|数据中心|实体|边缘函数|函数|频道|頻道)(?=$|[\s，。、；：）)】<])/i;
+const JAPANESE_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|[^A-Za-z0-9])\d[\d,]*\s*(?:\+|以上)?\s*(?:個|個の|つの|件の|項目の|の)?\s*(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|ライブ|登録済み|監視対象|専門|ダッシュボード)\s*)*(?:ツール|フィード|データソース|情報源|プロバイダー|サービス|ストリーム|コネクター|APIハンドラー|APIエンドポイント|エンドポイント|オペレーション|関数|ドメイン|仕様|マップレイヤー|パネル|バリアント|言語|ロケール|空港|データセンター|ウェブカメラ|チャンネル|エージェントスキル|Edge Functions|ダッシュボード)(?=$|[\s、。；：）)】<])/i;
 const POSTFIX_VOLATILE_INVENTORY_CLAIM_RE = /(?:Vercel\s+)?Edge Functions\s*[（(]\s*\d[\d,]*\s*(?:\+|以上)\s*[）)]/i;
 export const VOLATILE_INVENTORY_CLAIM_RE = new RegExp(
-  `(?:${ENGLISH_VOLATILE_INVENTORY_CLAIM_RE.source}|${ENGLISH_WORD_VOLATILE_INVENTORY_CLAIM_RE.source}|${LABEL_FIRST_VOLATILE_INVENTORY_CLAIM_RE.source}|${CHINESE_VOLATILE_INVENTORY_CLAIM_RE.source}|${POSTFIX_VOLATILE_INVENTORY_CLAIM_RE.source})`,
+  `(?:${ENGLISH_VOLATILE_INVENTORY_CLAIM_RE.source}|${ENGLISH_WORD_VOLATILE_INVENTORY_CLAIM_RE.source}|${LABEL_FIRST_VOLATILE_INVENTORY_CLAIM_RE.source}|${MARKDOWN_TABLE_VOLATILE_INVENTORY_CLAIM_RE.source}|${CHINESE_VOLATILE_INVENTORY_CLAIM_RE.source}|${JAPANESE_VOLATILE_INVENTORY_CLAIM_RE.source}|${POSTFIX_VOLATILE_INVENTORY_CLAIM_RE.source})`,
   'i',
 );
 
@@ -1220,6 +1222,7 @@ export function validateVolatileInventoryClaims() {
     { path: 'blog-site/src/content/blog/build-supply-chain-early-warning-system-api.md', text: /Three signals, three endpoints/ },
     { path: 'blog-site/src/content/blog/free-geopolitical-data-apis-2026.md', text: /ingest ten feeds/ },
     { path: 'blog-site/src/content/blog/supply-chain-early-warning-dashboard-worldmonitor-api.md', text: /five panels/ },
+    { path: 'pro-test/src/locales/ja.json', text: /25ダッシュボード/ },
   ];
   const failures = [];
   const isCurrentClaimSurface = (path) => (

@@ -58,7 +58,7 @@ description: "World Monitor Tauri 桌面应用架构深度详解：涵盖 Rust s
 
 - **AIS 船舶追踪** —— 维护到 AISStream.io 的持久 WebSocket 连接，并将其多路复用到所有已连接的浏览器客户端，避免触发每用户连接限制
 - **OpenSky 航空器数据** —— 通过 OAuth2 client credentials 流程进行认证（Vercel IP 在没有 auth token 时会被 OpenSky 返回 403）
-- **Telegram 情报** —— 一个 GramJS MTProto 客户端以 60 秒为周期轮询 26 个 OSINT 频道，具备逐频道超时和 FLOOD_WAIT 处理
+- **Telegram 情报** —— 一个 GramJS MTProto 客户端以 60 秒为周期轮询已审核的 OSINT 频道注册表，具备逐频道超时和 FLOOD_WAIT 处理
 - **OREF 火箭警报** —— 通过 `curl` 经住宅代理轮询以色列后方司令部警报系统（Akamai WAF 会屏蔽数据中心的 TLS 指纹）
 - **Polymarket 代理** —— 从 Gamma API 拉取，带有并发上游限流（最多 3 个同时请求，队列背压阈值为 20）、在途请求去重，以及 10 分钟缓存，以防止来自 11 个并行标签查询的踩踏
 - **ICAO NOTAM 代理** —— 通过中继路由 MENA 机场的 NOTAM 关闭查询，绕过 ICAO API 上对 Vercel IP 的限制

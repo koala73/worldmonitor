@@ -242,7 +242,7 @@ src/
 api/                          # Vercel Edge Functions (two kinds, see Architecture)
 ├── <domain>/v<N>/[rpc].ts    # Generated domain gateways — aviation, market,
 │                             #   conflict, climate, cyber, sanctions, maritime,
-│                             #   resilience, ... (34 proto-backed domains)
+│                             #   resilience, ... (registered proto-backed domains)
 ├── bootstrap.js              # Two-tier Redis hydration for the SPA
 ├── health/                   # Per-key freshness + cascade status
 ├── mcp.ts / mcp-proxy.ts     # Model Context Protocol server endpoints
@@ -252,7 +252,7 @@ api/                          # Vercel Edge Functions (two kinds, see Architectu
 └── notify.ts                 # Notification dispatch (hand-written operational)
 server/                       # Server-side handlers (bundled into Edge functions)
 ├── gateway.ts                # createDomainGateway — per-domain Edge bundles
-├── worldmonitor/<domain>/    # 34 proto-backed domain handler implementations
+├── worldmonitor/<domain>/    # Proto-backed domain handler implementations
 └── _shared/                  # Redis client, source tiers, shared utilities
 ```
 

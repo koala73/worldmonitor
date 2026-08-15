@@ -19,7 +19,7 @@ World Monitor's command palette is a fuzzy-search interface that spans the entir
 
 ### Countries (195)
 
-Type any country name and instantly pull up its full intelligence dossier: CII score, active signals, AI analysis, infrastructure exposure, and 7-day timeline. Country names are searchable in all 28 supported languages, so typing "Allemagne" finds Germany, "Japón" finds Japan.
+Type any country name and instantly pull up its full intelligence dossier: CII score, active signals, AI analysis, infrastructure exposure, and 7-day timeline. Country names are searchable across the runtime locale catalog, so typing "Allemagne" finds Germany, "Japón" finds Japan.
 
 ### Navigation (8 regional presets)
 
@@ -141,7 +141,7 @@ World Monitor's Cmd+K reduces the path from question to answer to a single searc
 Yes. On mobile, Cmd+K transforms into a touch-optimized search sheet with category chips, large touch targets, and swipe-to-dismiss. The command and country registries remain accessible through a touch-first interface.
 
 **Can I search in languages other than English?**
-Absolutely. The command palette indexes country names and keywords in all 28 supported languages. You can type in Arabic, Japanese, Russian, or any other supported language and get accurate results.
+Absolutely. The command palette indexes country names and keywords across the runtime locale catalog. You can type in Arabic, Japanese, Russian, or any other supported language and get accurate results.
 
 **How do I customize which commands appear first?**
 The palette is context-aware: it ranks results based on your currently active panels and layers. Your last 8 searches also appear at the top for quick access during fast-moving situations.

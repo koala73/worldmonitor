@@ -114,21 +114,21 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 | Metric | Value |
 |--------|-------|
 | News feeds monitored | Registry-derived catalog |
-| Live video streams | 8 |
+| Live video streams | Curated stream catalog |
 | Data layers on map | Shared layer catalog |
 | Panel implementations | Concrete classes |
-| Countries monitored | 200+ |
-| Languages supported | 27 (including RTL) |
-| Military bases mapped | 220+ |
-| AI datacenters mapped | 111 |
+| Countries monitored | Global country catalog |
+| Languages supported | Runtime locale catalog, including RTL locales |
+| Military bases mapped | Reviewed base catalog |
+| AI datacenters mapped | Curated datacenter catalog |
 | Stock exchanges mapped | Global coverage |
-| Strategic ports mapped | 83 |
-| Undersea cables tracked | 55+ |
-| Pipelines mapped | 88 |
-| Intelligence satellites tracked | 80-120 |
-| Telegram OSINT channels | 26 |
-| Airports monitored | 111 |
-| Prediction market events | 100+ |
+| Strategic ports mapped | Curated port catalog |
+| Undersea cables tracked | Curated cable catalog |
+| Pipelines mapped | Curated pipeline catalog |
+| Intelligence satellites tracked | Live satellite catalog |
+| Telegram OSINT channels | Reviewed channel registry |
+| Airports monitored | Registered airport catalog |
+| Prediction market events | Live market catalog |
 
 ---
 
