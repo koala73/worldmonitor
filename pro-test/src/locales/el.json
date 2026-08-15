@@ -48,7 +48,7 @@
     "entF10": "Deployment cloud, on-premises ή air-gapped",
     "entF11": "Αφοσιωμένο onboarding και υποστήριξη",
     "entCta": "Μιλήστε με πωλήσεις",
-    "freeF2": "500+ ροές, 538+ πηγές, 50+ στρώματα χάρτη"
+    "freeF2": "500+ ροές, 556+ πηγές, 50+ στρώματα χάρτη"
   },
   "whyUpgrade": {
     "title": "Γιατί να αναβαθμίσετε",
@@ -566,7 +566,7 @@
       "s1l": "Επίπεδα χάρτη",
       "s2v": "500+",
       "s2l": "Επιμελημένα feeds",
-      "s3v": "536+",
+      "s3v": "552+",
       "s3l": "Πάροχοι δεδομένων",
       "s4v": "13",
       "s4l": "Σημεία συμφόρησης · ζωντανό AIS",
@@ -659,7 +659,7 @@
       "q2": "Τι είναι ένα global intelligence dashboard;",
       "a2": "Μια μοναδική ζωντανή προβολή που συγχωνεύει σήματα που τα περισσότερα εργαλεία κρατάνε ξεχωριστά: γεγονότα σύγκρουσης, παρακολούθηση σκαφών και αεροσκαφών, κομβικά σημεία αποστολής, δορυφόρους, υποθαλάσσια καλώδια, αγωγούς, αγορές και κυβερνο-απειλές — σε έναν χάρτη πραγματικού χρόνου, με AI scoring και briefs στην κορυφή. Το World Monitor είναι ένα δωρεάν.",
       "q3": "Πόθεν προέρχονται τα δεδομένα;",
-      "a3": "536+ providers, με όνομα: ACLED και UCDP για conflict, AISStream για live vessels, OpenSky για aircraft, NASA FIRMS για fires, USGS για earthquakes, IMF, BIS, FRED και Finnhub για markets και macro — συν 500+ curated news feeds. Κάθε panel αναφέρει τις πηγές του και τις ημερομηνίες/ώρες ενσωματωμένες.",
+      "a3": "552+ providers, με όνομα: ACLED και UCDP για conflict, AISStream για live vessels, OpenSky για aircraft, NASA FIRMS για fires, USGS για earthquakes, IMF, BIS, FRED και Finnhub για markets και macro — συν 500+ curated news feeds. Κάθε panel αναφέρει τις πηγές του και τις ημερομηνίες/ώρες ενσωματωμένες.",
       "q4": "Μπορώ να παρακολουθώ κομβικά σημεία όπως το Hormuz ή το Bab el-Mandeb σε πραγματικό χρόνο;",
       "a4": "Ναι. 13 chokepoints παρακολουθούνται με live AIS vessel counts, week-over-week transit change και disruption scoring — και οι anomalies πυκνότητας επισημαίνονται σε σχέση με τη rolling baseline κάθε στενού.",
       "q5": "Πώς διαφέρει από έναν χάρτη σύγκρουσης όπως ο Liveuamap;",

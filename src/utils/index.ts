@@ -1,7 +1,9 @@
 export function formatTime(date: Date): string {
   const now = new Date();
   const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
-  const lang = getCurrentLanguage();
+  // Script-sensitive, so the full tag: Intl renders zh as Simplified, which put
+  // 分钟/小时/上周 in front of Traditional readers on every timestamped item.
+  const lang = getCurrentLanguageTag();
 
   // Safe fallback if Intl is not available (though it is in all modern browsers)
   try {
@@ -199,6 +201,6 @@ export type { Theme, ThemePreference } from './theme-manager';
 export { toFlagEmoji } from './country-flag';
 export { showToast } from './toast';
 
-import { getCurrentLanguage } from '../services/i18n';
+import { getCurrentLanguageTag } from '../services/i18n';
 import { isQuotaError, markStorageQuotaExceeded } from './storage-quota';
 export { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from './storage-quota';

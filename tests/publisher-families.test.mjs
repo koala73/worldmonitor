@@ -145,6 +145,7 @@ describe('publisher-families map data', () => {
       a16z: 'a16z.com / a16z.news plus Google News keyword feeds — no single host',
       acquired: 'podcast, reached only through Google News keyword feeds',
       asharq: 'asharqbusiness.com and asharq.com — one newsroom, two properties',
+      interfax: 'interfax.ru Russian feed and interfax.com English edition — one Interfax newsroom',
       ndtv: 'both labels arrive via feedburner, which identifies no publisher',
       pivot: 'one show across a tier-only label and a megaphone.fm feed',
     };

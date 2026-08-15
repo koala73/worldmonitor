@@ -51,7 +51,7 @@
 ## What It Does
 
 - **500+ curated news feeds** across 15 categories, AI-synthesized into briefs
-- **Dual map engine** — 3D globe (globe.gl) and WebGL flat map (deck.gl) with 56 map layer types
+- **Dual map engine** — 3D globe (globe.gl) and WebGL flat map (deck.gl) with 58 map layer types
 - **Panel inventory** — 109 concrete panel implementations across six specialized variants
 - **Cross-stream correlation** — military, economic, disaster, and escalation signal convergence
 - **Country Instability Index (CII)** — server-authoritative CII v8 stress scoring for 31 Tier-1 countries
@@ -148,7 +148,7 @@ Flight data provided graciously by [Wingbits](https://wingbits.com?utm_source=wo
 
 ## Data Sources
 
-WorldMonitor aggregates 538+ observed upstream hosts across geopolitics, finance, energy, climate, aviation, cyber, military, infrastructure, and news intelligence — surfaced through 500+ curated feeds and tracked by a freshness monitor covering 35 source groups. See the full [data sources catalog](https://www.worldmonitor.app/docs/data-sources) for providers, feed tiers, license posture, and collection methods.
+WorldMonitor aggregates 556+ observed upstream hosts across geopolitics, finance, energy, climate, aviation, cyber, military, infrastructure, and news intelligence — surfaced through 500+ curated feeds and tracked by a freshness monitor covering 35 source groups. See the full [data sources catalog](https://www.worldmonitor.app/docs/data-sources) for providers, feed tiers, license posture, and collection methods.
 
 ---
 

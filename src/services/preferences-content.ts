@@ -1,4 +1,4 @@
-import { LANGUAGES, getCurrentLanguage, changeLanguage, t } from '@/services/i18n';
+import { LANGUAGES, getCurrentLanguageTag, changeLanguage, t } from '@/services/i18n';
 import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS } from '@/services/ai-flow-settings';
 import { getMapProvider, setMapProvider, MAP_PROVIDER_OPTIONS, MAP_THEME_OPTIONS, getMapTheme, setMapTheme, type MapProvider } from '@/config/basemap';
 import { getLiveStreamsAlwaysOn, setLiveStreamsAlwaysOn } from '@/services/live-stream-settings';
@@ -120,7 +120,9 @@ function updateAiStatus(container: HTMLElement): void {
 
 export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const settings = getAiFlowSettings();
-  const currentLang = getCurrentLanguage();
+  // Compared against LANGUAGES[].code below, which carries full tags (`zh-TW`).
+  // The region-stripped accessor would mark 简体中文 selected for a Traditional reader.
+  const currentLang = getCurrentLanguageTag();
   let html = '';
 
   // ── Display group ──

@@ -43,6 +43,13 @@ export const MIN = 60_000;
 export const HOUR = 3_600_000;
 export const DAY = 86_400_000;
 export const WEEK = 604_800_000;
+// 7d TTL outlives the 48h (2× daily) static-ref health gate so a late tick
+// reports STALE_SEED while the heartbeat is still readable, not EMPTY.
+export const BUNDLE_HEARTBEAT_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+export function bundleHeartbeatKey(label) {
+  return `bundle:heartbeat:${label}`;
+}
 
 loadEnvFile(import.meta.url);
 
@@ -66,6 +73,52 @@ async function readRedisKey(key) {
     return body.result ? JSON.parse(body.result) : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Record that the scheduler actually started this container.
+ *
+ * Member seed-meta only advances when a section runs. Daily crons with
+ * weekly/monthly members therefore look healthy across many missed ticks
+ * (#6691). This heartbeat is written on every tick, including skip-all.
+ * Missing Redis must not crash the bundle — writeSeedMeta exits(1).
+ */
+async function writeBundleHeartbeat(label) {
+  if (!REDIS_URL || !REDIS_TOKEN) return false;
+  const fetchedAt = Date.now();
+  const meta = { fetchedAt, recordCount: 1, lastBundleRunAt: fetchedAt };
+  try {
+    const resp = await fetch(REDIS_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${REDIS_TOKEN}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-bundle-runner/1.0',
+      },
+      body: JSON.stringify([
+        'SET',
+        bundleHeartbeatKey(label),
+        JSON.stringify(meta),
+        'EX',
+        BUNDLE_HEARTBEAT_TTL_SECONDS,
+      ]),
+      signal: AbortSignal.timeout(REDIS_READ_TIMEOUT_MS),
+    });
+    if (!resp.ok) {
+      console.warn(`[Bundle:${label}] tick heartbeat write failed: HTTP ${resp.status}`);
+      return false;
+    }
+    const body = await resp.json().catch(() => null);
+    if (!body || typeof body !== 'object' || body.result !== 'OK') {
+      const detail = body && typeof body === 'object' && body.error ? body.error : 'missing OK result';
+      console.warn(`[Bundle:${label}] tick heartbeat write failed: ${detail}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(`[Bundle:${label}] tick heartbeat write failed: ${err instanceof Error ? err.message : err}`);
+    return false;
   }
 }
 
@@ -395,6 +448,11 @@ export async function runBundle(label, sections, opts = {}) {
   const t0 = Date.now();
   const budgetLabel = Number.isFinite(maxBundleMs) ? `, budget ${Math.round(maxBundleMs / 1000)}s` : '';
   console.log(`[Bundle:${label}] Starting (${sections.length} sections${budgetLabel})`);
+  // Write before any section so a skip-all tick still proves the scheduler fired.
+  const wroteHeartbeat = await writeBundleHeartbeat(label);
+  if (wroteHeartbeat) {
+    console.log(`[Bundle:${label}] tick heartbeat ${bundleHeartbeatKey(label)}`);
+  }
 
   let ran = 0, skipped = 0, deferred = 0, failed = 0, gracefulFailed = 0;
 

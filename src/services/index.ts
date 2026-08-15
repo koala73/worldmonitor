@@ -7,6 +7,8 @@ export * from './velocity';
 export * from './storage';
 export * from './correlation';
 export * from './weather';
+export * from './canada-roads';
+export * from './canada-alerts';
 // economic is NOT re-exported here (#4571): it runs a module-load side effect
 // (new EconomicServiceClient() + circuit breakers), so an `export *` re-export
 // keeps it un-tree-shakeable in eager main.js. Its consumers import it directly

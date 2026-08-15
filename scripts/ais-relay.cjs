@@ -26,6 +26,12 @@ const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = require('./_proxy-utils.cjs');
 const {
+  GROQ_DEFAULT_MODEL,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
+  OPENROUTER_PROVIDER_ROUTING,
+} = require('./lib/llm-model-policy.cjs');
+const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
   buildSectorValuationCoverage,
@@ -49,6 +55,16 @@ const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps }
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh } = require('./shared/market-quote-refresh.cjs');
 const chinaCountryStockIndexHelpersPromise = import('./_country-stock-index.mjs');
+// Terminal handler attached AT DECLARATION. This promise is created at module
+// load but not awaited until seedWeatherAlerts() runs, so without a .catch()
+// here a rejection is an UNHANDLED rejection: under Node's default
+// --unhandled-rejections=throw the relay exits 1 at container start, taking AIS,
+// market and RSS with it, rather than degrading one seed. seedWeatherAlerts()
+// turns the null into a loud, monitor-visible failure (see below).
+const weatherAlertSelectPromise = import('./_weather-alert-select.mjs').catch((e) => {
+  console.error('[Weather] location helper failed to load:', e?.message || e);
+  return null;
+});
 const parseProxyUrl = parseProxyConfig;
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
@@ -3672,9 +3688,8 @@ function classifyCacheKey(title) {
 }
 
 // LLM provider fallback chain — mirrors seed-insights.mjs LLM_PROVIDERS
-// Order: ollama → openrouter → groq (canonical chain since #4944, mirrors
-// server/_shared/llm.ts: DeepSeek V4 Flash primary with reasoning disabled,
-// groq llama-3.3-70b-versatile as the free-tier/outage fallback).
+// Order mirrors server/_shared/llm.ts: paid OpenRouter, two fixed free
+// OpenRouter variants, then Groq.
 const CLASSIFY_LLM_PROVIDERS = [
   {
     name: 'ollama',
@@ -3696,14 +3711,32 @@ const CLASSIFY_LLM_PROVIDERS = [
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
     model: 'deepseek/deepseek-v4-flash',
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
-    extraBody: { reasoning: { enabled: false } },
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    timeout: 30000,
+  },
+  {
+    name: 'openrouter-free',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_PRIMARY_MODEL,
+    headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    timeout: 30000,
+  },
+  {
+    name: 'openrouter-free-backup',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_BACKUP_MODEL,
+    headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
     timeout: 30000,
   },
   {
     name: 'groq',
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.3-70b-versatile',
+    model: GROQ_DEFAULT_MODEL,
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
     timeout: 30000,
   },
@@ -4647,7 +4680,7 @@ async function seedTheaterPosture() {
     console.warn(`[TheaterPosture] Rejected empty publication: no military flights or vessels; preserving last-known-good data [${elapsed}s]`);
     return;
   }
-  const payload = { theaters };
+  const payload = { theaters, provider: flightSource };
   const publicationId = `ais-relay:${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   const lockResult = await upstashSetNx(THEATER_POSTURE_LOCK_KEY, publicationId, THEATER_POSTURE_LOCK_TTL_SECONDS);
   if (lockResult !== 'new') {
@@ -4875,6 +4908,17 @@ async function seedWeatherAlerts() {
   weatherSeedInFlight = true;
   const t0 = Date.now();
   try {
+    // Resolved BEFORE the fetch, and fatal for this cycle. Resolving it after
+    // the envelopeWrite/seed-meta writes would put the failure downstream of the
+    // freshness signal: Redis would hold fresh alerts and seed-meta would report
+    // a current fetchedAt while 100% of weather_alert notifications silently
+    // stopped, with health.js/seed-health.js/cache-tools.ts all still green.
+    // Failing here instead leaves seed-meta unwritten, so STALE_SEED fires.
+    const weatherAlertSelect = await weatherAlertSelectPromise;
+    if (!weatherAlertSelect) {
+      throw new Error('_weather-alert-select.mjs unavailable — check its COPY entry in Dockerfile.relay');
+    }
+    const { weatherAlertNotifyLocation, extractCoordinates, extractRings, calculateCentroid } = weatherAlertSelect;
     const weatherUrl = 'https://api.weather.gov/alerts/active';
     let data;
     try {
@@ -4899,15 +4943,18 @@ async function seedWeatherAlerts() {
       .slice(0, 50)
       .map((f) => {
         const p = f.properties;
-        let coords = [];
-        try {
-          const g = f.geometry;
-          if (g?.type === 'Polygon') coords = g.coordinates[0]?.map((c) => [c[0], c[1]]) || [];
-          else if (g?.type === 'MultiPolygon') coords = g.coordinates[0]?.[0]?.map((c) => [c[0], c[1]]) || [];
-        } catch { /* ignore */ }
-        const centroid = coords.length > 0
-          ? [coords.reduce((s, c) => s + c[0], 0) / coords.length, coords.reduce((s, c) => s + c[1], 0) / coords.length]
-          : undefined;
+        // Geometry math comes from _weather-alert-select.mjs, the same module
+        // that consumes these fields in weatherAlertNotifyLocation below. This
+        // used to be a hand-written duplicate of extractCoordinates/
+        // calculateCentroid; the two copies had already drifted, and nothing
+        // tested this one, so a rename or an axis swap here would have silently
+        // emptied or transposed every published location.
+        const coords = extractCoordinates(f.geometry);
+        const centroid = calculateCentroid(coords);
+        // Only carried for genuinely multi-part alerts — for the single-polygon
+        // majority this would just duplicate `coordinates` in the cached
+        // envelope, and weatherAlertNotifyLocation falls back to it anyway.
+        const rings = extractRings(f.geometry);
         // Slot B: NWS VTEC string. NWS wraps VTEC in an array under
         // properties.parameters.VTEC; pick the first entry (most alerts have one;
         // multi-VTEC alerts use the primary). Used to derive a coalesce family key
@@ -4918,7 +4965,7 @@ async function seedWeatherAlerts() {
           id: f.id || '', event: p.event || '', severity: p.severity || 'Unknown',
           headline: p.headline || '', description: (p.description || '').slice(0, 500),
           areaDesc: p.areaDesc || '', onset: p.onset || '', expires: p.expires || '',
-          coordinates: coords, centroid, vtec,
+          coordinates: coords, ...(rings.length > 1 ? { rings } : {}), centroid, vtec,
         };
       });
     if (alerts.length === 0) {
@@ -4967,6 +5014,7 @@ async function seedWeatherAlerts() {
           source: 'NWS',
           countryCode: 'US',
           ...(coalesceKey ? { coalesceKey } : {}),
+          ...weatherAlertNotifyLocation(a),
         },
         severity: a.severity === 'Extreme' ? 'critical' : 'high',
         variant: undefined,

@@ -6,6 +6,7 @@ import {
   validateChinaMacroAvailabilityBindings,
 } from '../../../shared/china-macro-normalization';
 import { getSourceProvenanceState } from '../../../shared/source-provenance';
+import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
 import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
@@ -159,6 +160,21 @@ function addNewsSourceProvenance(value: unknown): unknown {
       sourceProvenance: getSourceProvenanceState(sourceName),
     };
   });
+}
+
+function projectRedistributableTheaterPosture(data: Record<string, unknown>): Record<string, unknown> {
+  const raw = data.theater_posture;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    data.theater_posture = { theaters: [] };
+    return data;
+  }
+  const posture = raw as Record<string, unknown>;
+  if (!hasRedistributableProviderAttribution(posture.provider)) {
+    data.theater_posture = { theaters: [] };
+    return data;
+  }
+  delete posture.provider;
+  return data;
 }
 
 function projectChinaMacroForMcp(value: unknown): unknown {
@@ -982,6 +998,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      projectRedistributableTheaterPosture(data);
       const theater = argStr(params.theater);
       const level = argStr(params.posture_level);
       if (theater) narrowNested(data, 'theater_posture', 'theaters', (t) => ciIncludes(t.theater, theater));

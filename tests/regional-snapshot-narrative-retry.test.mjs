@@ -131,13 +131,13 @@ describe('narrative callLlmDefault retry/budget', () => {
         const href = String(url);
         providers.push(href.includes('api.groq.com') ? 'groq' : 'openrouter');
         if (href.includes('openrouter.ai')) return { ok: false, status: 402, headers: { get: () => null } };
-        return okResponse('llama-3.3-70b-versatile', '{"situation":"ok"}');
+        return okResponse('openai/gpt-oss-20b', '{"situation":"ok"}');
       },
     });
 
     const result = await callLlmDefault(PROMPT, { retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['openrouter', 'groq']);
+    assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'groq']);
     assert.equal(result?.provider, 'groq');
   });
 });
@@ -164,14 +164,14 @@ describe('narrative callLlmDefault does not sleep on an unreachable Retry-After 
             // The groq daily-quota shape: ~20 minutes out.
             return { ok: false, status: 429, headers: { get: (n) => (n.toLowerCase() === 'retry-after' ? '1213' : null) } };
           }
-          return okResponse('llama-3.3-70b-versatile', '{"situation":"ok"}');
+          return okResponse('openai/gpt-oss-20b', '{"situation":"ok"}');
         },
       });
 
       const result = await callLlmDefault(PROMPT, { retryDelayMs: 0 });
 
       assert.deepEqual(waits, [], 'a hint 20 minutes out must not be slept on at all');
-      assert.deepEqual(providers, ['openrouter', 'groq'], 'the budget saved must be spent on the next provider');
+      assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'groq'], 'the budget saved must be spent on the next provider');
       assert.equal(result?.provider, 'groq');
     } finally {
       globalThis.setTimeout = originalSetTimeout;
@@ -199,14 +199,14 @@ describe('narrative callLlmDefault does not sleep on an unreachable Retry-After 
           if (href.includes('openrouter.ai')) {
             return { ok: false, status: 429, headers: { get: (n) => (n.toLowerCase() === 'retry-after' ? '2' : null) } };
           }
-          return okResponse('llama-3.3-70b-versatile', '{"situation":"ok"}');
+          return okResponse('openai/gpt-oss-20b', '{"situation":"ok"}');
         },
       });
 
       const result = await callLlmDefault(PROMPT, { retryDelayMs: 0, callBudgetMs: 7_000 });
 
       assert.deepEqual(waits, [], 'equality must fail-fast, not sleep the full remainder');
-      assert.deepEqual(providers, ['openrouter', 'groq'], 'saved budget must reach the next provider');
+      assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'groq'], 'saved budget must reach the next provider');
       assert.equal(result?.provider, 'groq');
     } finally {
       globalThis.setTimeout = originalSetTimeout;

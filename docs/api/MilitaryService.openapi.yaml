@@ -1846,7 +1846,7 @@ components:
                     $ref: '#/components/schemas/FlightEnrichment'
                 source:
                     type: string
-                    description: Provider that supplied this observation (for example, "adsb.lol" or "opensky").
+                    description: Provider that supplied this observation (for example, "adsb.lol" or "wingbits").
             required:
                 - id
             description: MilitaryFlight represents a tracked military aircraft from the configured ADS-B providers.

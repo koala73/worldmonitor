@@ -11,10 +11,13 @@ import { fileURLToPath } from 'node:url';
 
 import {
   analyzeStock,
+  alignStockHeadlines,
+  alignUsEquityNewsTimestamp,
   buildAnalysisResponse,
   buildTechnicalSnapshot,
   getFallbackOverlay,
   fetchExtendedHoursQuote,
+  nextUsEquityTradingDate,
   usEquityHoursApply,
   type Candle,
   type AnalystData,
@@ -391,5 +394,96 @@ describe('source contracts (#4922d)', () => {
       analyzeStockSrc,
       /marketSession === 'pre' \|\| marketSession === 'post'\)\s*\? fetchExtendedHoursQuote\(/,
     );
+  });
+});
+
+describe('headline session alignment', () => {
+  it('aligns a regular-session publish to the same trading date', () => {
+    const alignment = alignUsEquityNewsTimestamp(Date.parse('2026-08-14T16:00:00.000Z'));
+    assert.ok(alignment);
+    assert.equal(alignment.marketSessionAtPublish, 'regular');
+    assert.equal(alignment.alignedTradingDate, '2026-08-14');
+    assert.equal(alignment.alignmentRule, 'HEADLINE_ALIGNMENT_RULE_REGULAR_SESSION_SAME_TRADING_DAY');
+  });
+
+  it('aligns after-hours and weekends to the next trading date', () => {
+    const afterHours = alignUsEquityNewsTimestamp(Date.parse('2026-08-14T21:00:00.000Z'));
+    assert.ok(afterHours);
+    assert.equal(afterHours.marketSessionAtPublish, 'post');
+    assert.equal(afterHours.alignedTradingDate, '2026-08-17');
+    assert.equal(afterHours.alignmentRule, 'HEADLINE_ALIGNMENT_RULE_AFTER_HOURS_NEXT_TRADING_DAY');
+
+    const weekend = alignUsEquityNewsTimestamp(Date.parse('2026-08-15T18:00:00.000Z'));
+    assert.ok(weekend);
+    assert.equal(weekend.marketSessionAtPublish, 'closed');
+    // Pinned to a literal, not to nextUsEquityTradingDate(...): comparing the
+    // result against the same function the production path already called is
+    // f(x) === f(x) and passes for any output. Aug 15 2026 is a Saturday, so
+    // the next NYSE regular session is Monday Aug 17.
+    assert.equal(weekend.alignedTradingDate, '2026-08-17');
+    assert.equal(weekend.alignmentRule, 'HEADLINE_ALIGNMENT_RULE_NON_SESSION_NEXT_TRADING_DAY');
+  });
+
+  it('aligns an overnight publish to the trading day that follows it hours later', () => {
+    // getUsEquitySessionAt returns 'closed' for BOTH 20:00-24:00 ET and
+    // 00:00-04:00 ET. Only the first should roll to the next trading day: a
+    // headline published at 02:00 ET precedes that same day's 04:00 pre-market.
+    const overnight = alignUsEquityNewsTimestamp(Date.parse('2026-08-18T06:00:00.000Z'));
+    assert.ok(overnight);
+    assert.equal(overnight.marketSessionAtPublish, 'closed');
+    assert.equal(overnight.alignedTradingDate, '2026-08-18');
+    assert.equal(overnight.alignmentRule, 'HEADLINE_ALIGNMENT_RULE_OVERNIGHT_SAME_TRADING_DAY');
+  });
+
+  it('does not jump three days across the 04:00 ET pre-market boundary', () => {
+    // 03:59 ET and 04:00 ET on the same trading day must resolve to the same
+    // trading date; before the fix they differed by a full session.
+    const justBefore = alignUsEquityNewsTimestamp(Date.parse('2026-08-18T07:59:00.000Z'));
+    const justAfter = alignUsEquityNewsTimestamp(Date.parse('2026-08-18T08:00:00.000Z'));
+    assert.ok(justBefore);
+    assert.ok(justAfter);
+    assert.equal(justAfter.marketSessionAtPublish, 'pre');
+    assert.equal(justBefore.alignedTradingDate, justAfter.alignedTradingDate);
+    assert.equal(justBefore.alignedTradingDate, '2026-08-18');
+  });
+
+  it('still rolls an overnight publish on a non-trading day to the next session', () => {
+    // 02:00 ET on a Saturday is overnight AND not a trading date, so the
+    // same-day shortcut must not fire.
+    const weekendOvernight = alignUsEquityNewsTimestamp(Date.parse('2026-08-15T06:00:00.000Z'));
+    assert.ok(weekendOvernight);
+    assert.equal(weekendOvernight.alignedTradingDate, '2026-08-17');
+    assert.equal(weekendOvernight.alignmentRule, 'HEADLINE_ALIGNMENT_RULE_NON_SESSION_NEXT_TRADING_DAY');
+  });
+
+  it('rolls a post-close publish to the next trading day', () => {
+    // The other half of the overloaded 'closed' state must keep rolling.
+    const lateEvening = alignUsEquityNewsTimestamp(Date.parse('2026-08-19T01:00:00.000Z'));
+    assert.ok(lateEvening);
+    assert.equal(lateEvening.marketSessionAtPublish, 'closed');
+    assert.equal(lateEvening.alignedTradingDate, '2026-08-19');
+    assert.equal(lateEvening.alignmentRule, 'HEADLINE_ALIGNMENT_RULE_NON_SESSION_NEXT_TRADING_DAY');
+  });
+
+  it('aligns a pre-market publish to the same trading day', () => {
+    const premarket = alignUsEquityNewsTimestamp(Date.parse('2026-08-18T12:00:00.000Z'));
+    assert.ok(premarket);
+    assert.equal(premarket.marketSessionAtPublish, 'pre');
+    assert.equal(premarket.alignedTradingDate, '2026-08-18');
+    assert.equal(premarket.alignmentRule, 'HEADLINE_ALIGNMENT_RULE_PREMARKET_SAME_TRADING_DAY');
+  });
+
+  it('omits alignment for invalid timestamps and leaves non-US headlines untouched', () => {
+    assert.equal(alignUsEquityNewsTimestamp(0), null);
+    assert.equal(alignUsEquityNewsTimestamp(Number.NaN), null);
+    const raw = [{ title: 'X', source: 'Y', link: 'https://example.com', publishedAt: Date.parse('2026-08-14T16:00:00.000Z') }];
+    assert.deepEqual(alignStockHeadlines(raw, false), [{
+      ...raw[0],
+      marketSessionAtPublish: '',
+      alignedTradingDate: '',
+      alignmentRule: 'HEADLINE_ALIGNMENT_RULE_UNSPECIFIED',
+    }]);
+    const aligned = alignStockHeadlines(raw, true);
+    assert.equal(aligned[0]?.alignedTradingDate, '2026-08-14');
   });
 });
