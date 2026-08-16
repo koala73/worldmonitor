@@ -194,6 +194,19 @@ describe('extensible inventory count contract audit', () => {
     assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 2);
   });
 
+  it('follows object and static generic identity wrappers', () => {
+    const result = auditFixture(`
+      import assert from 'node:assert/strict';
+      const helpers = { identity(value) { return value; } };
+      class Helpers { static identity(value) { return value; } }
+      const objectWrapped = helpers.identity(stats.providerCount);
+      const staticWrapped = Helpers.identity(stats.providerCount);
+      assert.equal(objectWrapped, 552);
+      assert.equal(staticWrapped, 552);
+    `);
+    assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 2);
+  });
+
   it('follows integer-preserving Math wrappers', () => {
     const result = auditFixture(`
       import assert from 'node:assert/strict';
@@ -221,6 +234,26 @@ describe('extensible inventory count contract audit', () => {
       assert.equal(stats.providerCount, snapshots[0]);
     `);
     assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 2);
+  });
+
+  it('resolves forward numeric references and numeric destructuring', () => {
+    const result = auditFixture(`
+      import assert from 'node:assert/strict';
+      const expected = { providers: TOTAL };
+      const TOTAL = 500 + 52;
+      const { providers: objectCount } = { providers: 552 };
+      const [arrayCount] = [552];
+      const numericObject = { providers: 552 };
+      const { providers: referencedObjectCount } = numericObject;
+      const numericArray = [552];
+      const [referencedArrayCount] = numericArray;
+      assert.equal(stats.providerCount, expected.providers);
+      assert.equal(stats.providerCount, objectCount);
+      assert.equal(stats.providerCount, arrayCount);
+      assert.equal(stats.providerCount, referencedObjectCount);
+      assert.equal(stats.providerCount, referencedArrayCount);
+    `);
+    assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 5);
   });
 
   it('follows inventory aliases through object spreads', () => {

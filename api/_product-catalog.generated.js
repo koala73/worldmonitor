@@ -163,18 +163,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "dashboardAiCallsPerDay": null,
       "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option"
     }
-  ],
-  "capabilities": {
-    "mcpTools": 63,
-    "locales": 28,
-    "variants": 6,
-    "mapLayers": 58,
-    "panelImplementations": 109,
-    "feedDefinitions": 658,
-    "freshnessTrackedSourceGroups": 39,
-    "sourceAttributionHosts": 558,
-    "sourceAttributionProviders": 554
-  }
+  ]
 };
 
 export const PRODUCT_CATALOG = {

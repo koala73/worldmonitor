@@ -48,7 +48,7 @@
     "entF10": "Cloud-, On-Premises- oder Air-Gapped-Deployment",
     "entF11": "Dediziertes Onboarding und Support",
     "entCta": "Vertrieb kontaktieren",
-    "freeF2": "500+ Feeds, 558+ Quellen, 50+ Kartenebenen"
+    "freeF2": "Kuratierte Feeds, attribuierte Quellen und Kartenebenen"
   },
   "whyUpgrade": {
     "title": "Warum upgraden",
@@ -566,7 +566,7 @@
       "s1l": "Kartenschichten",
       "s2v": "Kuratiert",
       "s2l": "Kuratierte Feeds",
-      "s3v": "554+",
+      "s3v": "Attribuiert",
       "s3l": "Datenanbieter",
       "s4v": "Live",
       "s4l": "Engpässe · live AIS",
@@ -659,7 +659,7 @@
       "q2": "Was ist ein globales Intelligence-Dashboard?",
       "a2": "Eine einzige Live-Ansicht, die Signale zusammenführt, die die meisten Tools separat halten: Konfliktereignisse, Schiffs- und Flugzeugverfolgung, Versandengpässe, Satelliten, Unterseekabel, Pipelines, Märkte und Cyber-Bedrohungen — auf einer Echtzeit-Weltkarte mit KI-Bewertung und Zusammenfassungen. World Monitor ist eine kostenlose Version davon.",
       "q3": "Woher stammen die Daten?",
-      "a3": "Von 554+ Anbietern, benannt: ACLED und UCDP für Konflikte, AISStream für Live-Schiffe, OpenSky für Flugzeuge, NASA FIRMS für Brände, USGS für Erdbeben, IMF, BIS, FRED und Finnhub für Märkte und Makroökonomie — plus 500+ kuratierte Nachrichtenfeeds. Jedes Panel zitiert seine Quellen und Zeitstempel inline.",
+      "a3": "Benannte Provider sind ACLED und UCDP für Konflikte, AISStream für Live-Schiffe, OpenSky für Flugzeuge, NASA FIRMS für Brände, USGS für Erdbeben, IMF, BIS, FRED und Finnhub für Märkte und Makro – plus kuratierte News-Feeds. Jedes Panel zitiert seine Quellen und Zeitstempel inline.",
       "q4": "Kann ich Engpässe wie Hormuz oder Bab el-Mandeb in Echtzeit beobachten?",
       "a4": "Ja. Engpässe werden mit Live-AIS-Schiffszählungen, Woche-über-Woche-Transitveränderung und Disruptions-Bewertung überwacht – und Dichte-Anomalien werden gegen jede Meerenge-Baseline gekennzeichnet.",
       "q5": "Wie unterscheidet sich dies von einer Konfliktkarte wie Liveuamap?",

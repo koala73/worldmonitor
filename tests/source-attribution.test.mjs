@@ -104,29 +104,20 @@ test('source inventory has complete metadata and matches the generated catalog',
   }
 
   const stats = sourceAttributionStats(inventory, manifest);
-  // Hardcoded on purpose, and this DELIBERATELY OVERRIDES the lockstep-with-
-  // docs/generated/stats.json version that arrived on the #6610 branch.
-  // buildSourceAttributionStats (scripts/source-attribution.mjs:1090) is a thin
-  // wrapper that calls this exact sourceAttributionStats(inventory, manifest) on
-  // the same inputs, and that is what writes stats.json. So the lockstep form
-  // compares a value against a serialized snapshot of itself: it cannot fail on
-  // an unintended host-count change, only on a stale snapshot — which docs:check
-  // already gates. Hardcoding is what makes an accidental source drop go red.
-  // Yes, these numbers go stale; that is the tripwire working, and the fix is a
-  // conscious one-line bump. Main carries 552/548/671 — 550 providers from the
-  // Canada roads stack and Alberta Emergency Alert (#6669), less the two the
-  // OpenSky and Wingbits aliases collapsed in #6717 without removing a host.
-  // Main carries 553/549/672 once VIA Rail (#6615) landed. This PR adds
-  // gtfsrt.ttc.ca: +1 host, +1 provider, +1 observed.
-  // Main carries 554/550/673. This PR adds www.bankofcanada.ca and
-  // www150.statcan.gc.ca: +2 hosts, +2 providers, +2 observed.
-  // Main carries 556/552/675 after BoC/StatCan (#6670). This PR adds
-  // api.weather.gc.ca (ECCC GeoMet): +1 host, +1 provider, +1 observed.
-  // Main carries 557/553/676 after ECCC (#6662). This PR adds
-  // www.earthquakescanada.nrcan.gc.ca: +1 host, +1 provider, +1 observed.
-  assert.equal(stats.activeHosts, 558);
-  assert.equal(stats.providerCount, 554);
-  assert.equal(stats.observedHosts, 677);
+  const activeEntries = rawManifestActiveEntries(manifest);
+  const inventoryHosts = new Set(inventory.map((entry) => entry.host));
+  const observedManifestHosts = new Set(
+    manifest.entries.filter((entry) => entry.observed === true).map((entry) => entry.host),
+  );
+  assert.ok(activeEntries.length > 0, 'the active source oracle must not be empty');
+  assert.deepEqual(observedManifestHosts, inventoryHosts, 'raw manifest membership must match the source scan exactly');
+  assert.equal(stats.activeHosts, activeEntries.length, 'production stats must match the independent active-host oracle');
+  assert.equal(
+    stats.providerCount,
+    new Set(activeEntries.map((entry) => entry.provider)).size,
+    'production stats must match the independent provider oracle',
+  );
+  assert.equal(stats.observedHosts, inventory.length, 'observed stats must derive from the source scan');
   assert.ok(stats.reviewNeeded > 0, 'terms-review rows must remain visible until a license audit is complete');
 
   const byHost = new Map(manifest.entries.map((entry) => [entry.host, entry]));

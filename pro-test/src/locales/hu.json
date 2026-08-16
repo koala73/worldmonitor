@@ -48,7 +48,7 @@
     "entF10": "Felhő, on-prem vagy air-gapped telepítés",
     "entF11": "Dedikált bevezetés és támogatás",
     "entCta": "Beszéljen az értékesítéssel",
-    "freeF2": "500+ feed, 558+ forrás, 50+ térképréteg"
+    "freeF2": "Válogatott feedek, forrásokkal megjelölt tartalmak és térképrétegek"
   },
   "whyUpgrade": {
     "title": "Miért érdemes frissíteni",
@@ -566,7 +566,7 @@
       "s1l": "Térképrétegek",
       "s2v": "Válogatott",
       "s2l": "Kurátori források",
-      "s3v": "554+",
+      "s3v": "Megjelölt",
       "s3l": "Adatszolgáltatók",
       "s4v": "Élő",
       "s4l": "Szűk keresztmetszetek · élő AIS",
@@ -659,7 +659,7 @@
       "q2": "Mi az a globális hírszerzési irányítópult?",
       "a2": "Egy egyetlen élő nézet, amely olyan jeleket egyesít, amelyeket a legtöbb eszköz külön tárol: konfliktusesemények, hajó- és légiforgalom-követés, szállítási szűk keresztmetszetek, műholdak, tengeralatti kábelek, vezetékek, piacok és kiberfenyegetések — egy valós idejű világtérképen, AI-pontozással és összefoglalókkal. A World Monitor egy ingyenes ilyen.",
       "q3": "Honnan származnak az adatok?",
-      "a3": "554+ szolgáltatótól, név szerint: ACLED és UCDP a konfliktusokhoz, AISStream az élő hajókhoz, OpenSky a repülőgépekhez, NASA FIRMS a tüzekhez, USGS a földrengésekhez, IMF, BIS, FRED és Finnhub a piacokhoz és makrogazdasághoz — plusz 500+ válogatott hírhírforrás. Minden panel bemutatja forrásait és időbélyegeit.",
+      "a3": "Nevesített szolgáltatók közé tartozik az ACLED és UCDP a konfliktusokért, az AISStream az élő hajókért, az OpenSky a repülőgépekért, a NASA FIRMS a tüzekért, az USGS a földrengésekért, az IMF, BIS, FRED és Finnhub a piacokért és makroökonómiáért — valamint válogatott hírfeedek. Minden panel felsorolja a forrásait és az időbélyegeket beágyazva.",
       "q4": "Valós időben tudom követni a szűk keresztmetszetek, például Hormuz vagy Bab el-Mandeb?",
       "a4": "Igen. A szűk keresztmetszetek nyomon követésre kerülnek élő AIS hajóalakokkal, hét/hét fordulatváltás és zavar pontozásával — és a sűrűségi anomáliák mindegyik szoros alapvonalához képest jelzésre kerülnek.",
       "q5": "Miben különbözik ez egy konfliktustérképtől, mint a Liveuamap?",

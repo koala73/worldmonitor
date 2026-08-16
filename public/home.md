@@ -6,9 +6,9 @@ Open-source (AGPL-3.0), used by 2M+ people across 190+ countries, as featured in
 
 ## What you get
 
-- Real-time global map with 58 data layers, 558+ observed upstream hosts, and 500+ curated news feeds
-- 109 concrete panel implementations across six specialized variants, with shared classes reused across builds
-- CII v8 for 31 Tier-1 countries, 196-country resilience scores, and global live conflict tracking
+- Real-time global map with a shared layer catalog, observed upstream hosts, and curated news feeds
+- Concrete panel implementations across specialized variants, with shared classes reused across builds
+- CII v8 for 31 Tier-1 countries, resilience scores for the 196-country public rankable universe, and global live conflict tracking
 - Market quotes, sector heatmaps, and macro indicators
 - Shipping chokepoints with live AIS vessel-transit intelligence
 - Satellite tracking, GPS jamming zones, submarine cables, AI datacenters

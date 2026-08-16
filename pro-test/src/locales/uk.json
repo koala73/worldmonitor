@@ -160,7 +160,7 @@
     "entF10": "Cloud, on-prem, or air-gapped deployment",
     "entF11": "Dedicated onboarding & support",
     "entCta": "Talk to Sales",
-    "freeF2": "500+ feeds, 558+ sources, 50+ map layers"
+    "freeF2": "Курировані стрічки, атрибутовані джерела та шари карт"
   },
   "whyUpgrade": {
     "title": "Why upgrade",
@@ -566,7 +566,7 @@
       "s1l": "Map layers",
       "s2v": "Куровано",
       "s2l": "Curated feeds",
-      "s3v": "554+",
+      "s3v": "Атрибутовано",
       "s3l": "Data providers",
       "s4v": "Живе",
       "s4l": "Chokepoints · live AIS",
@@ -659,7 +659,7 @@
       "q2": "What is a global intelligence dashboard?",
       "a2": "A single live view that fuses signals most tools keep separate: conflict events, ship and aircraft tracking, shipping chokepoints, satellites, subsea cables, pipelines, markets and cyber threats — on one real-time world map, with AI scoring and briefs on top. World Monitor is a free one.",
       "q3": "Where does the data come from?",
-      "a3": "554+ providers, named: ACLED and UCDP for conflict, AISStream for live vessels, OpenSky for aircraft, NASA FIRMS for fires, USGS for earthquakes, IMF, BIS, FRED and Finnhub for markets and macro — plus 500+ curated news feeds. Every panel cites its sources and timestamps inline.",
+      "a3": "Названі постачальники включають ACLED та UCDP для конфліктів, AISStream для живих суден, OpenSky для літаків, NASA FIRMS для пожеж, USGS для землетрусів, IMF, BIS, FRED та Finnhub для ринків та макро — плюс куровані стрічки новин. Кожна панель цитує свої джерела та мітки часу в межах.",
       "q4": "Can I watch chokepoints like Hormuz or Bab el-Mandeb in real time?",
       "a4": "Так. Вузькі місця відслідковуються з живими AIS-підрахунками суден, змінами транзиту тиждень від тижня та оцінюванням збоїв — а аномалії щільності позначаються порівняно з базовою лінією проливу.",
       "q5": "How is this different from a conflict map like Liveuamap?",

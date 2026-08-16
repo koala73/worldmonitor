@@ -2,7 +2,7 @@
 
 > Machine-readable entry point for the World Monitor developer surface — the MCP server, REST API, CLI, SDKs, and agent skills that expose the platform's real-time global-intelligence tools as structured JSON.
 
-World Monitor's data is available to agents and applications through five interchangeable surfaces that share one auth model and one tool inventory: an MCP server (Streamable HTTP), a versioned REST API, a zero-dependency CLI, official SDKs (Python, Ruby, Go, JavaScript), and a set of published agent skills. Every surface returns source-attributed structured JSON and supports server-side JMESPath projection to cut response size 80–95%.
+World Monitor's data is available to agents and applications through interchangeable surfaces that share one auth model and one tool inventory: an MCP server (Streamable HTTP), a versioned REST API, a zero-dependency CLI, official SDKs (Python, Ruby, Go, JavaScript), and published agent skills. Every surface returns source-attributed structured JSON and supports server-side JMESPath projection to cut response size 80–95%.
 
 This is the API-section companion to the site-wide briefing at https://worldmonitor.app/llms.txt and the human documentation at https://worldmonitor.app/docs/llms.txt.
 

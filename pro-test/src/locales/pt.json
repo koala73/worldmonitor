@@ -48,7 +48,7 @@
     "entF10": "Deployment cloud, on-premises ou air-gapped",
     "entF11": "Onboarding e suporte dedicados",
     "entCta": "Fale com vendas",
-    "freeF2": "500+ feeds, 558+ fontes, 50+ camadas de mapa"
+    "freeF2": "Feeds curados, fontes atribuídas e camadas de mapa"
   },
   "whyUpgrade": {
     "title": "Porquê atualizar",
@@ -566,7 +566,7 @@
       "s1l": "Camadas de mapa",
       "s2v": "Curado",
       "s2l": "Feeds curadas",
-      "s3v": "554+",
+      "s3v": "Atribuído",
       "s3l": "Provedores de dados",
       "s4v": "Ao Vivo",
       "s4l": "Pontos de estrangulamento · AIS ao vivo",
@@ -659,7 +659,7 @@
       "q2": "O que é um dashboard de inteligência global?",
       "a2": "Uma única visualização ao vivo que funde sinais que a maioria das ferramentas mantém separados: eventos de conflito, rastreamento de navios e aeronaves, pontos de estrangulamento de navegação, satélites, cabos submarinos, gasodutos, mercados e ameaças cibernéticas — em um único mapa-múndi em tempo real, com pontuação de IA e resumos no topo. World Monitor é um gratuito.",
       "q3": "De onde vêm os dados?",
-      "a3": "554+ provedores, nomeados: ACLED e UCDP para conflitos, AISStream para navios ao vivo, OpenSky para aeronaves, NASA FIRMS para incêndios, USGS para terremotos, IMF, BIS, FRED e Finnhub para mercados e macro — mais 500+ feeds de notícias curados. Cada painel cita suas fontes e timestamps inline.",
+      "a3": "Provedores nomeados incluem ACLED e UCDP para conflitos, AISStream para navios ao vivo, OpenSky para aeronaves, NASA FIRMS para incêndios, USGS para terremotos, IMF, BIS, FRED e Finnhub para mercados e macro — mais feeds de notícias curados. Cada painel cita suas fontes e timestamps inline.",
       "q4": "Posso monitorar pontos de estrangulamento como Hormuz ou Bab el-Mandeb em tempo real?",
       "a4": "Sim. Gargalos são monitorados com contagens ao vivo de navios AIS, mudança de trânsito semana-a-semana e pontuação de disrupção — e anomalias de densidade são sinalizadas contra a linha de base móvel de cada estreito.",
       "q5": "Como isso é diferente de um mapa de conflitos como Liveuamap?",

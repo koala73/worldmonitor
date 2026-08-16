@@ -633,8 +633,8 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '0d6bced3aa4209be0aba06facce0b7529d46908d2b1a36a3e1ca81691a7709ce',
-  reason: 'Baseline the reviewed identities, including the merged ECCC, Bank of Canada, and Statistics Canada providers.',
+  sha256: '7dfa44fa1a81c5bddc59164b563fb6af8f9f4d9e704651f5f2e9c9abfaa318d8',
+  reason: 'Baseline the reviewed identities, including the merged ECCC, Bank of Canada, Statistics Canada, and Earthquakes Canada providers.',
   reviewReference: 'PR #6662; PR #6670; PR #6736',
 });
 

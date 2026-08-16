@@ -209,24 +209,31 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
   const taintedParameters = new Set();
   const constantParameters = new Map();
   const functionDeclarations = new Map();
+  const inventoryPreservingCalls = new Set();
   let references = 0;
 
   walk(sourceFile, (node) => {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      constantDeclarations.push(...numericBindingDeclarations(node.name.text, node.initializer));
-      if (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) {
-        functionDeclarations.set(node.name.text, node.initializer);
-      }
+    if (ts.isVariableDeclaration(node) && node.initializer) {
+      constantDeclarations.push(...numericVariableBindingDeclarations(node.name, node.initializer));
+      collectVariableFunctionDeclarations(node, functionDeclarations);
     }
-    if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) && node.name && ts.isIdentifier(node.name)) {
+    if (ts.isFunctionDeclaration(node) && node.name) {
       functionDeclarations.set(node.name.text, node);
     }
+    if (ts.isMethodDeclaration(node)) collectMethodDeclaration(node, functionDeclarations);
     if (matchesSelector(node, selectorSet)) references++;
   });
 
-  for (const [path, initializer] of constantDeclarations) {
-    const constant = evaluateNumericConstant(initializer, constantBindings);
-    if (constant !== undefined) constantBindings.set(path, constant);
+  let constantsChanged = true;
+  while (constantsChanged) {
+    constantsChanged = false;
+    for (const [path, initializer] of constantDeclarations) {
+      const constant = evaluateNumericDeclaration(initializer, constantBindings);
+      if (constant !== undefined && !constantBindings.has(path)) {
+        constantBindings.set(path, constant);
+        constantsChanged = true;
+      }
+    }
   }
 
   if (references === 0) {
@@ -244,7 +251,14 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
     changed = false;
     walk(sourceFile, (node) => {
       if (ts.isVariableDeclaration(node) && node.initializer) {
-        for (const name of taintedBindingNames(node.name, node.initializer, selectorSet, taintedNames, taintedParameters)) {
+        for (const name of taintedBindingNames(
+          node.name,
+          node.initializer,
+          selectorSet,
+          taintedNames,
+          taintedParameters,
+          inventoryPreservingCalls,
+        )) {
           if (!hasTaintedName(taintedNames, name, node)) {
             addTaintedName(taintedNames, name, node);
             changed = true;
@@ -275,8 +289,8 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
           changed = true;
         }
       }
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-        const declaration = functionDeclarations.get(node.expression.text);
+      if (ts.isCallExpression(node)) {
+        const declaration = functionDeclarations.get(callableExpressionPath(node.expression));
         if (!declaration) return;
         node.arguments.forEach((argument, index) => {
           const parameter = declaration.parameters[index];
@@ -289,6 +303,11 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
             changed = true;
           }
         });
+        if (functionReturnsTainted(declaration, selectorSet, taintedNames, taintedParameters)
+          && !inventoryPreservingCalls.has(node)) {
+          inventoryPreservingCalls.add(node);
+          changed = true;
+        }
       }
     });
   }
@@ -296,7 +315,15 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
   const violations = [];
   const seen = new Set();
   walk(sourceFile, (node) => {
-    const candidate = numericContractCandidate(node, selectorSet, taintedNames, taintedParameters, constantBindings, constantParameters);
+    const candidate = numericContractCandidate(
+      node,
+      selectorSet,
+      taintedNames,
+      taintedParameters,
+      constantBindings,
+      constantParameters,
+      inventoryPreservingCalls,
+    );
     if (!candidate || candidate.semanticNonEmpty) return;
     const key = `${candidate.node.pos}:${candidate.node.end}`;
     if (seen.has(key)) return;
@@ -313,9 +340,9 @@ function auditSurfaceSource(sourceText, path, entry, auditedSurface) {
   return { references, violations };
 }
 
-function taintedBindingNames(name, initializer, selectors, taintedNames, taintedParameters) {
+function taintedBindingNames(name, initializer, selectors, taintedNames, taintedParameters, inventoryPreservingCalls) {
   if (ts.isIdentifier(name)) {
-    return propagatesInventory(initializer, selectors, taintedNames, taintedParameters)
+    return propagatesInventory(initializer, selectors, taintedNames, taintedParameters, inventoryPreservingCalls)
       || objectSpreadPropagatesInventory(initializer, selectors, taintedNames, taintedParameters)
       ? [name.text]
       : [];
@@ -325,7 +352,7 @@ function taintedBindingNames(name, initializer, selectors, taintedNames, tainted
     name.elements.forEach((element, index) => {
       if (!ts.isBindingElement(element) || !ts.isIdentifier(element.name)) return;
       const source = ts.isArrayLiteralExpression(initializer) ? initializer.elements[index] : initializer;
-      if (source && propagatesInventory(source, selectors, taintedNames, taintedParameters)) {
+      if (source && propagatesInventory(source, selectors, taintedNames, taintedParameters, inventoryPreservingCalls)) {
         names.push(element.name.text);
       }
     });
@@ -358,11 +385,11 @@ function objectSpreadPropagatesInventory(initializer, selectors, taintedNames, t
   });
 }
 
-function numericContractCandidate(node, selectors, taintedNames, taintedParameters, constants, constantParameters) {
+function numericContractCandidate(node, selectors, taintedNames, taintedParameters, constants, constantParameters, inventoryPreservingCalls) {
   if (ts.isBinaryExpression(node) && isComparison(node.operatorToken.kind)) {
     if (!isAssertedValue(node)) return null;
-    const leftTainted = isInventoryCountValue(node.left, selectors, taintedNames, taintedParameters);
-    const rightTainted = isInventoryCountValue(node.right, selectors, taintedNames, taintedParameters);
+    const leftTainted = isInventoryCountValue(node.left, selectors, taintedNames, taintedParameters, inventoryPreservingCalls);
+    const rightTainted = isInventoryCountValue(node.right, selectors, taintedNames, taintedParameters, inventoryPreservingCalls);
     const leftConstant = evaluateNumericConstant(node.left, constants, constantParameters);
     const rightConstant = evaluateNumericConstant(node.right, constants, constantParameters);
     if (leftTainted && rightConstant !== undefined) {
@@ -398,9 +425,10 @@ function numericContractCandidate(node, selectors, taintedNames, taintedParamete
   return null;
 }
 
-function isInventoryCountValue(node, selectors, taintedNames, taintedParameters) {
+function isInventoryCountValue(node, selectors, taintedNames, taintedParameters, inventoryPreservingCalls) {
   if (!isTainted(node, selectors, taintedNames, taintedParameters)) return false;
-  return !ts.isCallExpression(node) || propagatesInventory(node, selectors, taintedNames, taintedParameters);
+  return !ts.isCallExpression(node)
+    || propagatesInventory(node, selectors, taintedNames, taintedParameters, inventoryPreservingCalls);
 }
 
 function isTainted(node, selectors, taintedNames, taintedParameters) {
@@ -449,9 +477,10 @@ function enclosingLexicalScope(node) {
   return null;
 }
 
-function propagatesInventory(node, selectors, taintedNames, taintedParameters) {
+function propagatesInventory(node, selectors, taintedNames, taintedParameters, inventoryPreservingCalls = new Set()) {
   if (!isTainted(node, selectors, taintedNames, taintedParameters)) return false;
   if (!ts.isCallExpression(node)) return true;
+  if (inventoryPreservingCalls.has(node)) return true;
   if (matchesSelector(node.expression, selectors)) return true;
   if (ts.isIdentifier(node.expression) && hasTaintedName(taintedNames, node.expression.text, node.expression)) return true;
   if (ts.isIdentifier(node.expression) && ['BigInt', 'Number', 'parseFloat', 'parseInt'].includes(node.expression.text)) return true;
@@ -499,6 +528,7 @@ function matchesSelector(node, selectors) {
 }
 
 function expressionPath(node) {
+  if (node.kind === ts.SyntaxKind.ThisKeyword) return 'this';
   if (ts.isIdentifier(node)) return node.text;
   if (ts.isPropertyAccessExpression(node)) {
     const left = expressionPath(node.expression);
@@ -510,6 +540,119 @@ function expressionPath(node) {
     return left ? `${left}.${node.argumentExpression.text}` : null;
   }
   return null;
+}
+
+function callableExpressionPath(node) {
+  let current = node;
+  while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)) {
+    current = current.expression;
+  }
+  if (
+    ts.isCallExpression(current)
+    && ts.isPropertyAccessExpression(current.expression)
+    && current.expression.name.text === 'bind'
+  ) {
+    return callableExpressionPath(current.expression.expression);
+  }
+  return expressionPath(current);
+}
+
+function collectVariableFunctionDeclarations(node, declarations) {
+  if (!ts.isIdentifier(node.name) || !node.initializer) return;
+  if (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) {
+    declarations.set(node.name.text, node.initializer);
+    return;
+  }
+  if (ts.isObjectLiteralExpression(node.initializer)) {
+    collectObjectFunctionDeclarations(node.name.text, node.initializer, declarations);
+  }
+}
+
+function collectObjectFunctionDeclarations(basePath, object, declarations) {
+  for (const property of object.properties) {
+    if (ts.isSpreadAssignment(property)) continue;
+    const name = propertyNameText(property.name);
+    if (name === null) continue;
+    const path = `${basePath}.${name}`;
+    if (ts.isMethodDeclaration(property)) {
+      declarations.set(path, property);
+    } else if (ts.isPropertyAssignment(property)) {
+      if (ts.isArrowFunction(property.initializer) || ts.isFunctionExpression(property.initializer)) {
+        declarations.set(path, property.initializer);
+      } else if (ts.isObjectLiteralExpression(property.initializer)) {
+        collectObjectFunctionDeclarations(path, property.initializer, declarations);
+      }
+    }
+  }
+}
+
+function collectMethodDeclaration(node, declarations) {
+  const methodName = propertyNameText(node.name);
+  if (methodName === null) return;
+  let owner = node.parent;
+  while (owner && !ts.isClassDeclaration(owner) && !ts.isClassExpression(owner)) owner = owner.parent;
+  if (!owner) return;
+  const isStatic = node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword);
+  if (isStatic && owner.name) declarations.set(`${owner.name.text}.${methodName}`, node);
+  else declarations.set(`this.${methodName}`, node);
+}
+
+function functionReturnsTainted(declaration, selectors, taintedNames, taintedParameters) {
+  if (ts.isArrowFunction(declaration) && !ts.isBlock(declaration.body)) {
+    return isTainted(declaration.body, selectors, taintedNames, taintedParameters);
+  }
+  let found = false;
+  walk(declaration.body, (node) => {
+    if (!found && ts.isReturnStatement(node) && node.expression) {
+      found = isTainted(node.expression, selectors, taintedNames, taintedParameters);
+    }
+  });
+  return found;
+}
+
+function numericVariableBindingDeclarations(name, initializer) {
+  if (ts.isIdentifier(name)) return numericBindingDeclarations(name.text, initializer);
+  const declarations = [];
+  if (ts.isObjectBindingPattern(name)) {
+    const basePath = expressionPath(initializer);
+    for (const element of name.elements) {
+      if (!ts.isIdentifier(element.name)) continue;
+      const propertyName = propertyNameText(element.propertyName ?? element.name);
+      if (propertyName === null) continue;
+      const property = ts.isObjectLiteralExpression(initializer)
+        ? initializer.properties.find((candidate) =>
+          !ts.isSpreadAssignment(candidate) && propertyNameText(candidate.name) === propertyName)
+        : null;
+      if (property && ts.isPropertyAssignment(property)) {
+        declarations.push(...numericBindingDeclarations(element.name.text, property.initializer));
+      } else if (property && ts.isShorthandPropertyAssignment(property)) {
+        declarations.push([element.name.text, property.name]);
+      } else if (basePath) {
+        declarations.push([element.name.text, { bindingPath: `${basePath}.${propertyName}` }]);
+      } else if (element.initializer) {
+        declarations.push(...numericBindingDeclarations(element.name.text, element.initializer));
+      }
+    }
+  } else if (ts.isArrayBindingPattern(name)) {
+    const basePath = expressionPath(initializer);
+    name.elements.forEach((element, index) => {
+      if (!ts.isBindingElement(element) || !ts.isIdentifier(element.name)) return;
+      const source = ts.isArrayLiteralExpression(initializer) ? initializer.elements[index] : null;
+      if (source && !ts.isOmittedExpression(source) && !ts.isSpreadElement(source)) {
+        declarations.push(...numericBindingDeclarations(element.name.text, source));
+      } else if (basePath) {
+        declarations.push([element.name.text, { bindingPath: `${basePath}.${index}` }]);
+      } else if (element.initializer) {
+        declarations.push(...numericBindingDeclarations(element.name.text, element.initializer));
+      }
+    });
+  }
+  return declarations;
+}
+
+function evaluateNumericDeclaration(initializer, bindings) {
+  if (initializer?.bindingPath) return bindings.get(initializer.bindingPath);
+  return evaluateNumericConstant(initializer, bindings);
 }
 
 function numericBindingDeclarations(path, initializer) {

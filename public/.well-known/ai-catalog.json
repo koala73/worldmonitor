@@ -50,7 +50,7 @@
       "displayName": "World Monitor REST API",
       "type": "application/vnd.oai.openapi+json;version=3.1",
       "url": "https://worldmonitor.app/openapi.json",
-      "description": "World Monitor's public REST API: 190+ documented operations across conflict, markets, energy, maritime, aviation, climate, health, and supply-chain intelligence, with API-key and OAuth access.",
+      "description": "World Monitor's public REST API spans conflict, markets, energy, maritime, aviation, climate, health, and supply-chain intelligence, with API-key and OAuth access. Read the linked OpenAPI document for the live operation inventory.",
       "tags": [
         "news-and-intelligence",
         "api",

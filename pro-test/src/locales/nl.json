@@ -48,7 +48,7 @@
     "entF10": "Cloud, on-premises of air-gapped deployment",
     "entF11": "Dedicated onboarding en support",
     "entCta": "Praat met sales",
-    "freeF2": "500+ feeds, 558+ bronnen, 50+ kaartlagen"
+    "freeF2": "Samengestelde feeds, geattribueerde bronnen en kaartlagen"
   },
   "whyUpgrade": {
     "title": "Waarom upgraden",
@@ -566,7 +566,7 @@
       "s1l": "Kaartlagen",
       "s2v": "Samengesteld",
       "s2l": "Samengestelde feeds",
-      "s3v": "554+",
+      "s3v": "Geattribueerd",
       "s3l": "Gegevensproviders",
       "s4v": "Live",
       "s4l": "Knelpunten · live AIS",
@@ -659,7 +659,7 @@
       "q2": "Wat is een global intelligence dashboard?",
       "a2": "Een enkele live weergave die signalen samenvoegt die de meeste tools gescheiden houden: conflictgebeurtenissen, schip- en vliegtuigtracking, scheepvaartknelpunten, satellieten, onderzeese kabels, pijpleidingen, markten en cyberbedreigingen — op één realtime wereldkaart, met AI-scoring en samenvattingen erbovenop. World Monitor is een gratis versie.",
       "q3": "Waar komen de gegevens vandaan?",
-      "a3": "554+ providers, benoemd: ACLED en UCDP voor conflicten, AISStream voor live schepen, OpenSky voor vliegtuigen, NASA FIRMS voor branden, USGS voor aardbevingen, IMF, BIS, FRED en Finnhub voor markten en macro — plus 500+ gecureerde nieuwsfeeds. Elk paneel vermeldt zijn bronnen en tijdstempels inline.",
+      "a3": "Genoemde providers zijn ACLED en UCDP voor conflicten, AISStream voor live schepen, OpenSky voor vliegtuigen, NASA FIRMS voor branden, USGS voor aardbevingen, IMF, BIS, FRED en Finnhub voor markten en macro-economie — plus samengestelde nieuwsfeeds. Elk panel citeert zijn bronnen en timestamps inline.",
       "q4": "Kan ik knelpunten zoals Hormuz of Bab el-Mandeb in real time volgen?",
       "a4": "Ja. Bottlenecks worden gemonitord met live AIS-scheepstellingen, week-over-week transitverandering en verstoringsscoringen — en dichtheidsanomalieën worden gemarkeerd tegen elk zeeëngtebasislijncijfer.",
       "q5": "Hoe verschilt dit van een conflictkaart zoals Liveuamap?",
