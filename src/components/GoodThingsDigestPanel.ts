@@ -42,8 +42,8 @@ export class GoodThingsDigestPanel extends Panel {
       return;
     }
 
-    // Render stub cards immediately (titles only, no summaries yet)
-    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
+    // Render stub cards immediately (titles only, no summaries yet).
+    // Build the full list first, then one atomic write (#6557).
     const list = document.createElement('div');
     list.className = 'digest-list';
     this.cardElements = [];
@@ -65,7 +65,7 @@ export class GoodThingsDigestPanel extends Panel {
       list.appendChild(card);
       this.cardElements.push(card);
     }
-    this.content.appendChild(list);
+    this.setContentNodes(list);
 
     // Summarize in parallel with progressive updates
     const signal = this.summaryAbort.signal;
