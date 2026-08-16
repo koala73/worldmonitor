@@ -53,6 +53,7 @@ interface FeedsModule {
   FRONTLINE_EUROPE_PROTECTED_SOURCES: readonly string[];
   CANADA_EN_DEFAULT_SOURCES: readonly string[];
   CANADA_ARCTIC_OPT_IN_SOURCES: readonly string[];
+  CANADA_DEPTH_OPT_IN_SOURCES: readonly string[];
   REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES: readonly string[];
   REGIONAL_FEED_ROLLOUT_OPT_IN_SOURCES: readonly string[];
   INTEL_SOURCES: FeedEntry[];
@@ -826,7 +827,11 @@ describe('feed catalog drift', () => {
     assert.ok(states.length > 1, 'default-only and at least one cap path must be recognized');
     assert.equal(new Set(canonical).size, states.length, 'equivalent release paths must be deduplicated');
     assert.ok(canonical.includes(preRolloutDefault), 'the untouched pre-#5976 default state must be recognized');
-    for (const name of [...feeds.CANADA_EN_DEFAULT_SOURCES, ...feeds.CANADA_ARCTIC_OPT_IN_SOURCES]) {
+    for (const name of [
+      ...feeds.CANADA_EN_DEFAULT_SOURCES,
+      ...feeds.CANADA_ARCTIC_OPT_IN_SOURCES,
+      ...feeds.CANADA_DEPTH_OPT_IN_SOURCES,
+    ]) {
       assert.equal(
         preRolloutDefault.includes(name),
         false,
@@ -839,7 +844,7 @@ describe('feed catalog drift', () => {
     }
   });
 
-  it('migrates dormant schema-1/2 EN rows from before #5949 through schema 6', () => {
+  it('migrates dormant schema-1/2 EN rows from before #5949 through schema 7', () => {
     const preFrontlineDefault = new Set(
       feeds.computePreRegionalFeedRolloutDefaultDisabledSources('en'),
     );
@@ -876,12 +881,13 @@ describe('feed catalog drift', () => {
       },
       regionalRollout: { targets },
       canadaArctic: { optInSources: feeds.CANADA_ARCTIC_OPT_IN_SOURCES },
+      canadaDepth: { optInSources: feeds.CANADA_DEPTH_OPT_IN_SOURCES },
     });
     for (const fromVersion of [1, 2]) {
       const blob = {
         'worldmonitor-disabled-feeds': JSON.stringify([...preFrontlineDefault]),
       };
-      const migrated = applyMigrationChain(blob, fromVersion, 6, migrations);
+      const migrated = applyMigrationChain(blob, fromVersion, 7, migrations);
       const disabled = new Set(
         JSON.parse(migrated['worldmonitor-disabled-feeds'] as string) as string[],
       );
@@ -903,6 +909,19 @@ describe('feed catalog drift', () => {
         assert.ok(
           disabled.has(name),
           `schema ${fromVersion}: ${name} must be disabled after the Canada pack migration`,
+        );
+      }
+      for (const name of feeds.CANADA_DEPTH_OPT_IN_SOURCES) {
+        assert.ok(
+          disabled.has(name),
+          `schema ${fromVersion}: ${name} must be disabled after the Canada depth migration`,
+        );
+      }
+      for (const name of feeds.CANADA_EN_DEFAULT_SOURCES) {
+        assert.equal(
+          disabled.has(name),
+          false,
+          `schema ${fromVersion}: ${name} must remain enabled (not stuffed into the denylist)`,
         );
       }
     }
@@ -988,11 +1007,35 @@ describe('feed catalog drift', () => {
 
   // Issue #5960 — Canada + Arctic/Nordic security pack for North America keyCountry CA
   // and High North coverage beyond Sweden-only SVT.
-  const CANADA_CATALOG = [
+  const CANADA_CATALOG_5960 = [
     'CBC News',
     'Globe and Mail',
     'Global News',
   ] as const;
+  const CANADA_DEPTH_CATALOG = [
+    'Toronto Star',
+    'National Post',
+    'Financial Post',
+    'iPolitics',
+    'The Narwhal',
+    'The Tyee',
+    "Maclean's",
+    'Radio-Canada',
+    'La Presse',
+    'Le Devoir',
+    'TVA Nouvelles',
+    'Vancouver Sun',
+    'Calgary Herald',
+    'Winnipeg Free Press',
+    'Edmonton Journal',
+    'Ottawa Citizen',
+    'The Province',
+    'CTV News',
+    'CP24',
+    'Montreal Gazette',
+  ] as const;
+  const CANADA_CATALOG = [...CANADA_CATALOG_5960, ...CANADA_DEPTH_CATALOG] as const;
+  const CANADA_FR_SOURCES = ['Radio-Canada', 'La Presse', 'Le Devoir', 'TVA Nouvelles'] as const;
   const NORDIC_ARCTIC_CATALOG = [
     'Yle News',
     'NRK',
@@ -1004,13 +1047,31 @@ describe('feed catalog drift', () => {
     'CBC News': 'https://www.cbc.ca/webfeed/rss/rss-world',
     'Globe and Mail': 'https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/canada/?outputType=xml',
     'Global News': 'https://globalnews.ca/feed/',
+    'Toronto Star': 'https://www.thestar.com/search/?f=rss&t=article&c=news/canada',
+    'National Post': 'https://nationalpost.com/feed/',
+    'Financial Post': 'https://financialpost.com/feed/',
+    'iPolitics': 'https://www.ipolitics.ca/feed',
+    'The Narwhal': 'https://thenarwhal.ca/feed/',
+    'The Tyee': 'https://thetyee.ca/rss2.xml',
+    "Maclean's": 'https://macleans.ca/feed/',
+    'Radio-Canada': 'https://ici.radio-canada.ca/info/rss/info/en-continu',
+    'La Presse': 'https://www.lapresse.ca/actualites/rss',
+    'Le Devoir': 'https://www.ledevoir.com/rss/manchettes.xml',
+    'TVA Nouvelles': 'https://www.tvanouvelles.ca/rss.xml',
+    'Vancouver Sun': 'https://vancouversun.com/feed/',
+    'Calgary Herald': 'https://calgaryherald.com/feed/',
+    'Winnipeg Free Press': 'https://www.winnipegfreepress.com/feed',
+    'Edmonton Journal': 'https://edmontonjournal.com/feed/',
+    'Ottawa Citizen': 'https://ottawacitizen.com/feed/',
+    'The Province': 'https://theprovince.com/feed/',
     'Yle News': 'https://yle.fi/rss/news',
     'NRK': 'https://www.nrk.no/nyheter/siste.rss',
     'Aftenposten': 'https://www.aftenposten.no/rss',
     'DR Nyheder': 'https://www.dr.dk/nyheder/service/feeds/allenyheder',
   };
 
-  it('catalogs ≥2 Canadian sources and default-enables CBC News (#5960)', () => {
+  it('catalogs Canadian sources and default-enables CBC + CTV + Toronto Star (#5960/#6604)', () => {
+
     const us = feeds.FEEDS.us ?? [];
     const byName = new Map(us.map((f) => [f.name, f]));
     for (const name of CANADA_CATALOG) {
@@ -1018,17 +1079,51 @@ describe('feed catalog drift', () => {
     }
 
     const usDefaults = feeds.DEFAULT_ENABLED_SOURCES.us ?? [];
-    assert.ok(usDefaults.includes('CBC News'), 'CBC News must be DEFAULT_ENABLED us');
+    for (const name of feeds.CANADA_EN_DEFAULT_SOURCES) {
+      assert.ok(usDefaults.includes(name), `${name} must be DEFAULT_ENABLED us`);
+    }
+    assert.ok(usDefaults.includes('CTV News'), 'CTV News must be DEFAULT_ENABLED us');
+    assert.equal(usDefaults.includes('National Post'), false, 'National Post must not be DEFAULT_ENABLED us');
     const enabled = feeds.getAllDefaultEnabledSources();
     const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
-    assert.ok(enabled.has('CBC News'), 'CBC News must be default-enabled');
-    assert.ok(!disabledEn.has('CBC News'), 'CBC News must not be disabled for fresh EN');
+    for (const name of feeds.CANADA_EN_DEFAULT_SOURCES) {
+      assert.ok(enabled.has(name), `${name} must be default-enabled`);
+      assert.ok(!disabledEn.has(name), `${name} must not be disabled for fresh EN`);
+    }
 
-    // Globe / Global News remain opt-in (noise control on US-heavy panel).
     for (const optIn of ['Globe and Mail', 'Global News'] as const) {
       assert.ok(!enabled.has(optIn), `${optIn} must remain catalog opt-in`);
       assert.ok(disabledEn.has(optIn), `${optIn} must start disabled for fresh EN`);
     }
+    for (const name of feeds.CANADA_DEPTH_OPT_IN_SOURCES) {
+      assert.ok(!enabled.has(name), `${name} must remain catalog opt-in`);
+      assert.ok(disabledEn.has(name), `${name} must start disabled for fresh EN`);
+    }
+    for (const name of CANADA_FR_SOURCES) {
+      assert.equal(byName.get(name)?.lang, 'fr', `${name} must be lang:fr`);
+      assert.equal(byName.get(name)?.strategicDefault, undefined, `${name} must not be strategicDefault`);
+    }
+    const boostedFr = feeds.getLocaleBoostedSources('fr');
+    for (const name of CANADA_FR_SOURCES) {
+      assert.ok(boostedFr.has(name), `${name} must be locale-boosted for fr`);
+    }
+  });
+
+  it('puts CTV News on the Canada depth introducedNames stage, not the frozen CBC #5960 stage (#6605)', () => {
+    const stages = feeds.REGIONAL_FEED_ROLLOUT_STAGES;
+    const cbcStage = stages.find((s) => s.introducedNames.includes('CBC News'));
+    const depthStage = stages.find((s) => s.introducedNames.includes('Toronto Star'));
+    assert.ok(cbcStage, 'frozen #5960 CBC stage must exist');
+    assert.ok(depthStage, 'Canada depth stage must exist');
+    assert.equal(
+      cbcStage.introducedNames.includes('CTV News'),
+      false,
+      'CTV News must not rewrite the frozen #5960 CBC stage',
+    );
+    assert.ok(
+      depthStage.introducedNames.includes('CTV News'),
+      'CTV News must be on the Canada depth introducedNames list next to Toronto Star',
+    );
   });
 
   it('catalogs ≥1 Nordic beyond Sweden and EN-reachable High North sources (#5960)', () => {
@@ -1060,10 +1155,23 @@ describe('feed catalog drift', () => {
     const serverUs = new Map((serverFeeds.VARIANT_FEEDS.full?.us ?? []).map((f) => [f.name, f]));
     const serverEu = new Map((serverFeeds.VARIANT_FEEDS.full?.europe ?? []).map((f) => [f.name, f]));
 
+    const CANADA_GNEWS_ONLY = new Set(['CTV News', 'CP24', 'Montreal Gazette']);
     for (const name of CANADA_CATALOG) {
       assert.ok(serverUs.has(name), `server us catalog must include ${name}`);
       const clientUrl = typeof clientUs.get(name)?.url === 'string' ? clientUs.get(name)!.url as string : '';
+      if (CANADA_GNEWS_ONLY.has(name)) {
+        assert.match(clientUrl, /news\.google\.com\/rss\/search/, `${name} client URL must use Google News`);
+        assert.match(serverUs.get(name)!.url, /news\.google\.com\/rss\/search/, `${name} server URL must use Google News`);
+        assert.match(clientUrl, /[?&]hl=en-CA/, `${name} must use CA locale`);
+        assert.match(serverUs.get(name)!.url, /[?&]hl=en-CA/, `${name} server must use CA locale`);
+        continue;
+      }
       assert.equal(serverUs.get(name)?.url, clientUrl, `${name} client/server URL must match`);
+      assert.equal(clientUrl.includes('news.google.com'), false, `${name} must not use a GNews URL`);
+      if ((CANADA_FR_SOURCES as readonly string[]).includes(name)) {
+        assert.equal(serverUs.get(name)?.lang, 'fr', `${name} server feed must have lang:fr`);
+        assert.equal(clientUs.get(name)?.lang, 'fr', `${name} client feed must have lang:fr`);
+      }
     }
     for (const name of NORDIC_ARCTIC_CATALOG) {
       assert.ok(serverEu.has(name), `server europe catalog must include ${name}`);
@@ -1094,11 +1202,13 @@ describe('feed catalog drift', () => {
     assert.ok(feeds.SOURCE_TYPES['Arctic Today'], 'Arctic Today must have SOURCE_TYPES');
   });
 
-  it('keeps CBC News under the production free cap (#5960)', () => {
-    assert.ok(
-      feeds.FREE_CAP_PROTECTED_SOURCES.includes('CBC News'),
-      'CBC News must be FREE_CAP_PROTECTED so free-tier round-robin cannot strip it',
-    );
+  it('keeps Canada EN default-on sources under the production free cap (#5960/#6604)', () => {
+    for (const name of feeds.CANADA_EN_DEFAULT_SOURCES) {
+      assert.ok(
+        feeds.FREE_CAP_PROTECTED_SOURCES.includes(name),
+        `${name} must be FREE_CAP_PROTECTED so free-tier round-robin cannot strip it`,
+      );
+    }
     const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
     const { keep, autoDisabled } = selectSourcesUnderCap(
       feeds.FEEDS,
@@ -1107,17 +1217,37 @@ describe('feed catalog drift', () => {
       80,
       new Set(feeds.FREE_CAP_PROTECTED_SOURCES),
     );
-    assert.ok(keep.has('CBC News'), 'CBC News must survive the free source cap');
-    assert.ok(!autoDisabled.has('CBC News'), 'CBC News must not be auto-disabled by the free source cap');
+    for (const name of feeds.CANADA_EN_DEFAULT_SOURCES) {
+      assert.ok(keep.has(name), `${name} must survive the free source cap`);
+      assert.ok(!autoDisabled.has(name), `${name} must not be auto-disabled by the free source cap`);
+    }
   });
 
   it('treats Canada/Arctic catalog companions as opt-in for fresh EN profiles (#5960)', () => {
     assert.deepEqual(
       [...feeds.CANADA_ARCTIC_OPT_IN_SOURCES].sort(),
-      [...CANADA_CATALOG, ...NORDIC_ARCTIC_CATALOG].filter((n) => n !== 'CBC News').sort(),
+      [...CANADA_CATALOG_5960, ...NORDIC_ARCTIC_CATALOG].filter((n) => n !== 'CBC News').sort(),
     );
     const disabled = new Set(feeds.computeDefaultDisabledSources('en'));
     for (const name of feeds.CANADA_ARCTIC_OPT_IN_SOURCES) {
+      assert.ok(disabled.has(name), `${name} must start disabled for a fresh EN profile`);
+    }
+  });
+
+  it('treats Canada depth companions as opt-in and does not append them onto the arctic list (#6604/#6605)', () => {
+    assert.deepEqual(
+      [...feeds.CANADA_DEPTH_OPT_IN_SOURCES].sort(),
+      [...CANADA_DEPTH_CATALOG].filter((n) => n !== 'Toronto Star' && n !== 'CTV News').sort(),
+    );
+    for (const name of feeds.CANADA_DEPTH_OPT_IN_SOURCES) {
+      assert.equal(
+        (feeds.CANADA_ARCTIC_OPT_IN_SOURCES as readonly string[]).includes(name),
+        false,
+        `${name} must not be appended onto CANADA_ARCTIC_OPT_IN_SOURCES`,
+      );
+    }
+    const disabled = new Set(feeds.computeDefaultDisabledSources('en'));
+    for (const name of feeds.CANADA_DEPTH_OPT_IN_SOURCES) {
       assert.ok(disabled.has(name), `${name} must start disabled for a fresh EN profile`);
     }
   });

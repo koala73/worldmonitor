@@ -19,10 +19,10 @@
     "PL": 1,
     "TW": 1,
     "PK": 1,
-    "CA": 1
+    "CA": 3
   },
   "zeroDefaultOnAllowlist": {
-    "AR": "Clarín / Infobae Americas are es locale-gated; no EN default-on local source.",
+    "AR": "Clar\u00edn / Infobae Americas are es locale-gated; no EN default-on local source.",
     "GB": "By design: covered via global-remit UK outlets (BBC World, Guardian World); no UK-domestic feed in catalog.",
     "EG": "No Egypt-dedicated source in catalog; covered via MENA wires.",
     "IQ": "Catalog has Rudaw (Kurdistan Region of Iraq); not EN default-on.",
@@ -35,7 +35,7 @@
     "LK": "No Sri Lanka-dedicated source in catalog.",
     "AF": "No Afghanistan-dedicated source in catalog.",
     "BR": "O Globo / Folha de S.Paulo / Brasil Paralelo are pt locale-boosted only.",
-    "CO": "El Tiempo / La Silla Vacía in catalog; not EN default-on.",
+    "CO": "El Tiempo / La Silla Vac\u00eda in catalog; not EN default-on.",
     "CL": "No Chile-dedicated source in catalog.",
     "VE": "No Venezuela-dedicated source in catalog.",
     "PE": "No Peru-dedicated source in catalog.",

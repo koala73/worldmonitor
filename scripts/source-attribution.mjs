@@ -208,6 +208,18 @@ const PROVIDER_OVERRIDES = {
     attribution: 'U.S. Geological Survey Mineral Commodity Summaries; link to the ScienceBase data release (https://doi.org/10.5066/P1WKQ63T).',
     status: 'reviewed',
   },
+  'geoserver.cwfif.nrcan.gc.ca': {
+    provider: 'CWFIS / CWFIF (NRCan)',
+    license: 'Open Government Licence - Canada; redistribution granted (copy, modify, publish, distribute, including commercial use) with attribution',
+    attribution: 'Canadian Forest Service. Canadian Wildland Fire Information System (CWFIS), Natural Resources Canada, Canadian Forest Service, Northern Forestry Centre, Edmonton, Alberta. https://cwfis.cfs.nrcan.gc.ca. Contains information licensed under the Open Government Licence – Canada (https://open.canada.ca/en/open-government-licence-canada). Evidence: https://cwfis.cfs.nrcan.gc.ca/downloads/licence.txt',
+    status: 'reviewed',
+  },
+  'openmaps.gov.bc.ca': {
+    provider: 'BC Wildfire Service (OpenMaps)',
+    license: 'Open Government Licence - British Columbia; redistribution granted (copy, modify, publish, distribute, including commercial use) with attribution',
+    attribution: 'Contains information licensed under the Open Government Licence – British Columbia. BC Wildfire Service, Current Fire Locations (PROT_CURRENT_FIRE_PNTS_SP), Government of British Columbia. https://catalogue.data.gov.bc.ca/dataset/bc-wildfire-fire-locations-current. Evidence: https://www2.gov.bc.ca/gov/content/data/policy-standards/data-policies/open-data/open-government-licence-bc and https://open.canada.ca/data/en/dataset/2790e3f7-6395-4230-8545-04efb5a18800',
+    status: 'reviewed',
+  },
   'www.earthquakescanada.nrcan.gc.ca': {
     provider: 'Earthquakes Canada (NRCan)',
     license: 'Earthquakes Canada citation terms; live Atom redistribution not explicitly granted (historical catalogues on the Open Government Portal are OGL-Canada)',
@@ -639,8 +651,8 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '64187a722c2d1c464fc052691e668ca6e1566e5b4b4b0e7d996feab1bb478cc5',
-  reason: 'Baseline the reviewed identities, including the merged ECCC, Bank of Canada, Statistics Canada, Earthquakes Canada, and Global Affairs Canada providers.',
+  sha256: '38b0b43635fdb230c9e0c6f4de8ba93b500168c4d05cef7794a556e3a7aa3e4f',
+  reason: 'Baseline the reviewed identities, including the merged ECCC, Bank of Canada, Statistics Canada, Earthquakes Canada, Global Affairs Canada, CWFIS, BC Wildfire Service, and Canadian news providers.',
   reviewReference: 'PR #6662; PR #6670; PR #6736',
 });
 

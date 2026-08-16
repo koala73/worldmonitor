@@ -1594,6 +1594,23 @@
       ]
     },
     {
+      "host": "calgaryherald.com",
+      "provider": "calgaryherald.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit calgaryherald.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "canadabuys.canada.ca",
       "provider": "canadabuys.canada.ca",
       "kind": "structured",
@@ -2560,6 +2577,23 @@
       ]
     },
     {
+      "host": "edmontonjournal.com",
+      "provider": "edmontonjournal.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit edmontonjournal.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "efts.sec.gov",
       "provider": "SEC EDGAR Full-Text Search",
       "kind": "structured",
@@ -3137,6 +3171,23 @@
       ]
     },
     {
+      "host": "financialpost.com",
+      "provider": "financialpost.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit financialpost.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "finnhub.io",
       "provider": "finnhub.io",
       "kind": "structured",
@@ -3312,6 +3363,20 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "geoserver.cwfif.nrcan.gc.ca",
+      "provider": "CWFIS / CWFIF (NRCan)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence - Canada; redistribution granted (copy, modify, publish, distribute, including commercial use) with attribution",
+      "attribution": "Canadian Forest Service. Canadian Wildland Fire Information System (CWFIS), Natural Resources Canada, Canadian Forest Service, Northern Forestry Centre, Edmonton, Alberta. https://cwfis.cfs.nrcan.gc.ca. Contains information licensed under the Open Government Licence – Canada (https://open.canada.ca/en/open-government-licence-canada). Evidence: https://cwfis.cfs.nrcan.gc.ca/downloads/licence.txt",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/wildfire/cwfis-wfs.mjs"
         }
       ]
     },
@@ -3641,6 +3706,23 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit hvg.hu and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "ici.radio-canada.ca",
+      "provider": "ici.radio-canada.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit ici.radio-canada.ca and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -4238,6 +4320,23 @@
       ]
     },
     {
+      "host": "macleans.ca",
+      "provider": "macleans.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit macleans.ca and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "maps.worldmonitor.app",
       "provider": "maps.worldmonitor.app",
       "kind": "structured",
@@ -4459,6 +4558,23 @@
         },
         {
           "path": "server/worldmonitor/aviation/v1/_shared.ts"
+        }
+      ]
+    },
+    {
+      "host": "nationalpost.com",
+      "provider": "nationalpost.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit nationalpost.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -4868,6 +4984,20 @@
       ]
     },
     {
+      "host": "openmaps.gov.bc.ca",
+      "provider": "BC Wildfire Service (OpenMaps)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence - British Columbia; redistribution granted (copy, modify, publish, distribute, including commercial use) with attribution",
+      "attribution": "Contains information licensed under the Open Government Licence – British Columbia. BC Wildfire Service, Current Fire Locations (PROT_CURRENT_FIRE_PNTS_SP), Government of British Columbia. https://catalogue.data.gov.bc.ca/dataset/bc-wildfire-fire-locations-current. Evidence: https://www2.gov.bc.ca/gov/content/data/policy-standards/data-policies/open-data/open-government-licence-bc and https://open.canada.ca/data/en/dataset/2790e3f7-6395-4230-8545-04efb5a18800",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/wildfire/bc-fire-points.mjs"
+        }
+      ]
+    },
+    {
       "host": "openrouter.ai",
       "provider": "openrouter.ai",
       "kind": "structured",
@@ -4935,6 +5065,23 @@
       "references": [
         {
           "path": "src/components/LiveNewsPanel.ts"
+        }
+      ]
+    },
+    {
+      "host": "ottawacitizen.com",
+      "provider": "ottawacitizen.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit ottawacitizen.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -6574,6 +6721,23 @@
       ]
     },
     {
+      "host": "thenarwhal.ca",
+      "provider": "thenarwhal.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit thenarwhal.ca and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "thenewstack.io",
       "provider": "thenewstack.io",
       "kind": "feed+structured",
@@ -6611,12 +6775,46 @@
       ]
     },
     {
+      "host": "theprovince.com",
+      "provider": "theprovince.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit theprovince.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "thesentry.org",
       "provider": "thesentry.org",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit thesentry.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "thetyee.ca",
+      "provider": "thetyee.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit thetyee.ca and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -6909,6 +7107,23 @@
       "license": "U.S. government public information; site and document-specific notices apply",
       "attribution": "Office of the U.S. Trade Representative; link to the original release.",
       "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "vancouversun.com",
+      "provider": "vancouversun.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit vancouversun.com and link to the original feed publisher.",
+      "status": "terms-review",
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts"
@@ -9053,6 +9268,23 @@
       ]
     },
     {
+      "host": "www.ipolitics.ca",
+      "provider": "www.ipolitics.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.ipolitics.ca and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "www.irrawaddy.com",
       "provider": "www.irrawaddy.com",
       "kind": "feed",
@@ -9138,6 +9370,23 @@
       ]
     },
     {
+      "host": "www.lapresse.ca",
+      "provider": "www.lapresse.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.lapresse.ca and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "www.lasillavacia.com",
       "provider": "www.lasillavacia.com",
       "kind": "feed",
@@ -9146,6 +9395,23 @@
       "attribution": "Credit www.lasillavacia.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.ledevoir.com",
+      "provider": "www.ledevoir.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.ledevoir.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
         {
           "path": "src/config/feeds.ts"
         }
@@ -10570,6 +10836,23 @@
       ]
     },
     {
+      "host": "www.thestar.com",
+      "provider": "www.thestar.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.thestar.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "www.theverge.com",
       "provider": "www.theverge.com",
       "kind": "feed+structured",
@@ -10643,6 +10926,23 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.tvanouvelles.ca",
+      "provider": "www.tvanouvelles.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.tvanouvelles.ca and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -10849,6 +11149,23 @@
         },
         {
           "path": "src/services/webcams/index.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.winnipegfreepress.com",
+      "provider": "www.winnipegfreepress.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.winnipegfreepress.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },

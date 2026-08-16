@@ -191,6 +191,9 @@ export interface CloudPrefsMigrationOptions {
   canadaArctic?: {
     optInSources?: ReadonlyArray<string>;
   };
+  canadaDepth?: {
+    optInSources?: ReadonlyArray<string>;
+  };
 }
 
 export function buildMigrations(
@@ -201,6 +204,7 @@ export function buildMigrations(
   const strategic = options.strategic ?? {};
   const regionalRollout = options.regionalRollout ?? {};
   const canadaArctic = options.canadaArctic ?? {};
+  const canadaDepth = options.canadaDepth ?? {};
   return {
     2: (data) => migrateDisabledFeedsV2(data, feedsByCategory),
     3: (data) => migrateFrontlineEuropeDefaultsV3(
@@ -221,6 +225,7 @@ export function buildMigrations(
       regionalRollout.targets ?? [],
     ),
     6: (data) => migrateCanadaArcticOptInsV6(data, canadaArctic.optInSources ?? []),
+    7: (data) => migrateCanadaDepthOptInsV7(data, canadaDepth.optInSources ?? []),
   };
 }
 
@@ -495,6 +500,41 @@ export function migrateCanadaArcticOptInsV6(
 
   console.log(
     `[prefs] schema-6 migration: disabled ${updated.length - parsed.length} Canada/Arctic opt-in source(s)`,
+  );
+  return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(updated) };
+}
+
+/**
+ * Schema-7 migration for the Canada depth pack (#6604/#6605).
+ *
+ * Copy of migrateCanadaArcticOptInsV6: insert ONLY the new opt-in names.
+ * Schema 6 already ran for returners; a new App.ts localStorage key alone
+ * is not enough — cloud blobs need this version bump.
+ */
+export function migrateCanadaDepthOptInsV7(
+  data: Record<string, unknown>,
+  optInSources: ReadonlyArray<string>,
+): Record<string, unknown> {
+  const raw = data['worldmonitor-disabled-feeds'];
+  if (typeof raw !== 'string') return data;
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return data; }
+  if (
+    !Array.isArray(parsed)
+    || parsed.length === 0
+    || parsed.some((name) => typeof name !== 'string')
+  ) return data;
+
+  const existing = new Set(parsed);
+  const updated = [...parsed];
+  for (const name of optInSources) {
+    if (!existing.has(name)) updated.push(name);
+  }
+  if (updated.length === parsed.length) return data;
+
+  console.log(
+    `[prefs] schema-7 migration: disabled ${updated.length - parsed.length} Canada depth opt-in source(s)`,
   );
   return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(updated) };
 }

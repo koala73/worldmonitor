@@ -115,6 +115,7 @@ import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-se
 
 import {
   CANADA_ARCTIC_OPT_IN_SOURCES,
+  CANADA_DEPTH_OPT_IN_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -197,6 +198,7 @@ import {
   migrateStrategicDefaultsV4,
   migrateRegionalFeedRolloutDefaultsV5,
   migrateCanadaArcticOptInsV6,
+  migrateCanadaDepthOptInsV7,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -1306,6 +1308,31 @@ export class App {
           }
         }
         localStorage.setItem(canadaArcticKey, 'done');
+      }
+      // #6604/#6605 — Canada depth pack: new opt-in names need a NEW key.
+      // Do not reuse worldmonitor-canada-arctic-optin-v1 (already fired).
+      const canadaDepthKey = 'worldmonitor-canada-depth-optin-v1';
+      if (!localStorage.getItem(canadaDepthKey)) {
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateCanadaDepthOptInsV7({
+          [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current),
+        }, CANADA_DEPTH_OPT_IN_SOURCES);
+        const rawUpdated = migrated[STORAGE_KEYS.disabledFeeds];
+        if (typeof rawUpdated === 'string') {
+          let updated: unknown;
+          try { updated = JSON.parse(rawUpdated); } catch { updated = null; }
+          if (
+            Array.isArray(updated)
+            && updated.every((name): name is string => typeof name === 'string')
+            && JSON.stringify(updated) !== JSON.stringify(current)
+          ) {
+            saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+            console.log(
+              `[App] Canada depth opt-in (#6604/#6605): disabled ${updated.length - current.length} newly cataloged source(s)`,
+            );
+          }
+        }
+        localStorage.setItem(canadaDepthKey, 'done');
       }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →

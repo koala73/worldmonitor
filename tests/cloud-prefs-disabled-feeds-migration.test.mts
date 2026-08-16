@@ -7,6 +7,7 @@ import {
   migrateStrategicDefaultsV4,
   migrateRegionalFeedRolloutDefaultsV5,
   migrateCanadaArcticOptInsV6,
+  migrateCanadaDepthOptInsV7,
   applyMigrationChain,
   applyMigrationChainWithSchemaVersion,
   buildMigrations,
@@ -26,6 +27,24 @@ const CANADA_ARCTIC_OPT_INS = [
   'Aftenposten',
   'DR Nyheder',
   'Arctic Today',
+] as const;
+const CANADA_DEPTH_OPT_INS = [
+  'National Post',
+  'Financial Post',
+  'iPolitics',
+  'The Narwhal',
+  'The Tyee',
+  "Maclean's",
+  'Radio-Canada',
+  'La Presse',
+  'Le Devoir',
+  'TVA Nouvelles',
+  'Vancouver Sun',
+  'Calgary Herald',
+  'Winnipeg Free Press',
+  'Edmonton Journal',
+  'Ottawa Citizen',
+  'The Province',
 ] as const;
 
 describe('cloud-prefs schema-2 migration: re-enable fully-disabled categories', () => {
@@ -349,6 +368,7 @@ describe('cloud-prefs schema-5 migration: regional feed rollout intent', () => {
     const migrations = buildMigrations({}, {
       regionalRollout: { targets },
       canadaArctic: { optInSources: CANADA_ARCTIC_OPT_INS },
+      canadaDepth: { optInSources: CANADA_DEPTH_OPT_INS },
     });
     const applied = applyMigrationChainWithSchemaVersion(
       blob,
@@ -365,7 +385,7 @@ describe('cloud-prefs schema-5 migration: regional feed rollout intent', () => {
     const independentlyApplied = applyMigrationChainWithSchemaVersion(
       blob,
       4,
-      6,
+      7,
       migrations,
       (version, data) => (
         version === 5 && isRegionalFeedRolloutMigrationAmbiguous(data, targets)
@@ -379,8 +399,8 @@ describe('cloud-prefs schema-5 migration: regional feed rollout intent', () => {
     );
     assert.deepEqual(
       JSON.parse(independentlyApplied.data['worldmonitor-disabled-feeds'] as string),
-      [...ambiguousLegacy, ...CANADA_ARCTIC_OPT_INS],
-      'schema 6 must still protect opt-ins while schema 5 remains retryable',
+      [...ambiguousLegacy, ...CANADA_ARCTIC_OPT_INS, ...CANADA_DEPTH_OPT_INS],
+      'schema 6/7 must still protect opt-ins while schema 5 remains retryable',
     );
   });
 
@@ -429,6 +449,67 @@ describe('cloud-prefs schema-6 migration: Canada/Arctic opt-in boundary', () => 
     ]) {
       const blob = { 'worldmonitor-disabled-feeds': raw };
       assert.equal(migrateCanadaArcticOptInsV6(blob, CANADA_ARCTIC_OPT_INS), blob);
+    }
+  });
+});
+
+describe('cloud-prefs schema-7 migration: Canada depth opt-in boundary', () => {
+  it('adds each companion source once while preserving the existing order', () => {
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify(['user-choice', 'National Post']),
+      'worldmonitor-panels': '{"keep":true}',
+    };
+    const result = migrateCanadaDepthOptInsV7(blob, CANADA_DEPTH_OPT_INS);
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['user-choice', 'National Post', ...CANADA_DEPTH_OPT_INS.filter((n) => n !== 'National Post')],
+    );
+    assert.equal(result['worldmonitor-panels'], '{"keep":true}');
+    assert.equal(
+      migrateCanadaDepthOptInsV7(result, CANADA_DEPTH_OPT_INS),
+      result,
+      'a completed migration must be idempotent and preserve object identity',
+    );
+  });
+
+  it('leaves empty, malformed, and non-string states untouched', () => {
+    for (const raw of [
+      '[]',
+      'not-json',
+      JSON.stringify(['user-choice', 42]),
+    ]) {
+      const blob = { 'worldmonitor-disabled-feeds': raw };
+      assert.equal(migrateCanadaDepthOptInsV7(blob, CANADA_DEPTH_OPT_INS), blob);
+    }
+  });
+
+  it('does not insert default-on CBC/CTV/Toronto Star into a pre-pack denylist', () => {
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify(['user-choice']) };
+    const result = migrateCanadaDepthOptInsV7(blob, CANADA_DEPTH_OPT_INS);
+    const disabled = JSON.parse(result['worldmonitor-disabled-feeds'] as string) as string[];
+    for (const name of ['CBC News', 'CTV News', 'Toronto Star']) {
+      assert.equal(disabled.includes(name), false, `${name} must stay absent from disabled`);
+    }
+    for (const name of CANADA_DEPTH_OPT_INS) {
+      assert.ok(disabled.includes(name), `${name} must be present in disabled`);
+    }
+  });
+
+  it('keeps Globe/Global disabled for a user who already had the arctic migration', () => {
+    const prePack = [
+      'user-choice',
+      ...CANADA_ARCTIC_OPT_INS,
+    ];
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify(prePack) };
+    const result = migrateCanadaDepthOptInsV7(blob, CANADA_DEPTH_OPT_INS);
+    const disabled = JSON.parse(result['worldmonitor-disabled-feeds'] as string) as string[];
+    assert.ok(disabled.includes('Globe and Mail'));
+    assert.ok(disabled.includes('Global News'));
+    for (const name of ['CBC News', 'CTV News', 'Toronto Star']) {
+      assert.equal(disabled.includes(name), false, `${name} must stay absent from disabled`);
+    }
+    for (const name of CANADA_DEPTH_OPT_INS) {
+      assert.ok(disabled.includes(name), `${name} must be present in disabled`);
     }
   });
 });
@@ -542,6 +623,17 @@ describe('applyMigrationChain', () => {
     assert.deepEqual(
       JSON.parse(result['worldmonitor-disabled-feeds'] as string),
       ['user-choice', ...CANADA_ARCTIC_OPT_INS],
+    );
+  });
+
+  it('integrates the Canada depth opt-in migration as schema 7', () => {
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify(['user-choice']) };
+    const result = applyMigrationChain(blob, 6, 7, buildMigrations({}, {
+      canadaDepth: { optInSources: CANADA_DEPTH_OPT_INS },
+    }));
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['user-choice', ...CANADA_DEPTH_OPT_INS],
     );
   });
 });

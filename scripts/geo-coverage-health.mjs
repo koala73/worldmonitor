@@ -178,6 +178,7 @@ export async function loadGeoCoverageInputs(repoRoot = DEFAULT_REPO_ROOT, paths 
       ...feeds.REGIONAL_FEED_ROLLOUT_OPT_IN_SOURCES,
       ...feeds.CANADA_EN_DEFAULT_SOURCES,
       ...feeds.CANADA_ARCTIC_OPT_IN_SOURCES,
+      ...feeds.CANADA_DEPTH_OPT_IN_SOURCES,
       ...feeds.THEATER_PRESETS.flatMap((preset) => preset.sourceNames),
     ]);
     const validIso2 = new Set([...Object.keys(iso2ToRegion), ...byIso.keys()]);
