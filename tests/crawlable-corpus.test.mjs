@@ -746,12 +746,11 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.lastmod.research, '2026-08-12');
     assert.equal(
       data.lastmod.sources,
-      [
-        '2026-08-12',
-        gitFileLastmod(repoRoot, data.sources.sourceAttributionManifest),
-        gitFileLastmod(repoRoot, data.sources.sourcePageRenderer),
-        gitFileLastmod(repoRoot, data.sources.sharedPageTemplate),
-      ].filter(Boolean).sort().at(-1),
+      sourcePageLastmod({
+        manifestLastmod: gitFileLastmod(repoRoot, data.sources.sourceAttributionManifest),
+        rendererLastmod: gitFileLastmod(repoRoot, data.sources.sourcePageRenderer),
+        sharedTemplateLastmod: gitFileLastmod(repoRoot, data.sources.sharedPageTemplate),
+      }),
       'source-page lastmod must include manifest, renderer, and shared-template changes',
     );
     assert.equal(data.crises.length, 4);
