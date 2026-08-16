@@ -14683,6 +14683,53 @@ const FORECAST_LLM_PROVIDERS = [
   { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: GROQ_DEFAULT_MODEL, timeout: 20_000 },
 ];
 
+// PER-79 (upstream PR 3/3): generic OpenAI-compatible provider — smallest
+// faithful mirror of the corresponding entry in scripts/seed-insights.mjs.
+// Activated ONLY when LLM_API_URL, LLM_API_KEY, and LLM_MODEL are all set
+// AND none of the named providers above (openrouter, openrouter-free,
+// openrouter-free-backup, groq) have a key. Resolved-time append keeps the
+// existing FORECAST_LLM_PROVIDERS table (and its array-shape tests) intact.
+// LLM_API_URL is the FULL chat/completions endpoint verbatim (see
+// SELF_HOSTING.md); LLM_MODEL defaults to 'gpt-3.5-turbo' to mirror the
+// seed-insights generic branch. Names only — never echo the env values.
+const FORECAST_GENERIC_LLM_PROVIDER_SPEC = Object.freeze({
+  name: 'generic',
+  // envKey points at the BEARER credential, not the URL: the loop body and
+  // the runnable filter both read process.env[provider.envKey] as the
+  // Authorization token. The URL is captured separately in apiUrl below.
+  envKey: 'LLM_API_KEY',
+  envUrlKey: 'LLM_API_URL',
+  envModelKey: 'LLM_MODEL',
+  defaultModel: 'gpt-3.5-turbo',
+  defaultTimeout: 60_000,
+});
+
+function isForecastGenericLlmReady() {
+  // All three envs must be present AND non-empty; the contract names only the
+  // names of the variables in any debug output, never their values.
+  return Boolean(
+    process.env.LLM_API_URL
+    && process.env.LLM_API_KEY
+    && process.env.LLM_MODEL,
+  );
+}
+
+function buildForecastGenericLlmProvider() {
+  const apiUrl = process.env.LLM_API_URL;
+  const model = process.env.LLM_MODEL || FORECAST_GENERIC_LLM_PROVIDER_SPEC.defaultModel;
+  const headers = { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA };
+  const apiKey = process.env.LLM_API_KEY;
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  return {
+    name: FORECAST_GENERIC_LLM_PROVIDER_SPEC.name,
+    envKey: FORECAST_GENERIC_LLM_PROVIDER_SPEC.envKey,
+    apiUrl,
+    model,
+    headers,
+    timeout: FORECAST_GENERIC_LLM_PROVIDER_SPEC.defaultTimeout,
+  };
+}
+
 // market_implications does NOT fall back to groq. Groq's free tier caps at 100k
 // tokens/day and this stage alone needs ~114k (4,749 tokens x 24 hourly runs), so
 // the fallback 429s for most of the day. Reserving 20s of run budget for a provider
@@ -14862,6 +14909,30 @@ function resolveForecastLlmProviders(options = {}) {
       extraBody: options.extraBodyOverrides?.[provider.name] !== undefined
         ? (options.extraBodyOverrides[provider.name] || undefined)
         : provider.extraBody,
+    });
+  }
+  // PER-79 (upstream PR 3/3): append the generic OpenAI-compatible provider
+  // ONLY when all three envs are set AND the chain above matched no named
+  // provider (envKey for both openrouter and groq unset). The env check uses
+  // ONLY the names — never echo or log the values. Kept out of
+  // FORECAST_LLM_PROVIDERS so existing table-shape tests and the per-stage
+  // pinning in critical_signals / market_implications stay exact.
+  if (isForecastGenericLlmReady()
+    && !process.env.OPENROUTER_API_KEY
+    && !process.env.GROQ_API_KEY
+    && !seen.has(FORECAST_GENERIC_LLM_PROVIDER_SPEC.name)) {
+    const generic = buildForecastGenericLlmProvider();
+    const genericModel = generic.model;
+    const failFastOnTimeout = isDeepseekV4FlashModel(genericModel);
+    providers.push({
+      ...generic,
+      timeout: getLlmAttemptTimeoutMs(
+        genericModel,
+        FORECAST_GENERIC_LLM_PROVIDER_SPEC.defaultTimeout,
+        DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS,
+      ),
+      failFastOnTimeout,
+      extraBody: undefined,
     });
   }
   return providers.length > 0 ? providers : FORECAST_LLM_PROVIDERS;
