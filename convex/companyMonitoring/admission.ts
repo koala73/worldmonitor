@@ -13,6 +13,7 @@ import {
   evaluateCompanyMonitoringClassification,
 } from "../../scripts/lib/company-monitoring-classification.mjs";
 import { fingerprint, randomFence } from "./_shared";
+import { assertValidCandidateState } from "./validators";
 import {
   companyMonitoringCandidateEvidenceSnapshotDigest as candidateEvidenceSnapshotDigest,
   companyMonitoringEvidenceShape as evidenceShape,
@@ -251,6 +252,7 @@ export async function terminalizeSystemDecision(
 ) {
   if (candidate.state === "terminal") return candidate.lastAdmissionDecisionId;
   const decisionId = await appendSystemDecision(ctx, candidate, decision, reasonCode, now);
+  assertValidCandidateState({ state: "terminal", holdUntil: undefined, terminalReason });
   await ctx.db.patch(candidate._id, {
     state: "terminal",
     terminalReason,
@@ -563,6 +565,11 @@ async function persistAdmissionResult(
     ) {
       throw new ConvexError("COMPANY_MONITORING_CANDIDATE_HOLD_INVALID");
     }
+    assertValidCandidateState({
+      state: "held",
+      holdUntil: result.retryAt,
+      terminalReason: undefined,
+    });
     await ctx.db.patch(candidate._id, {
       state: "held",
       holdUntil: result.retryAt,
@@ -589,6 +596,11 @@ async function persistAdmissionResult(
       },
     );
   } else {
+    assertValidCandidateState({
+      state: "terminal",
+      holdUntil: undefined,
+      terminalReason: admissionTerminalReason(result.decision),
+    });
     await ctx.db.patch(candidate._id, {
       state: "terminal",
       holdUntil: undefined,
@@ -733,6 +745,11 @@ export const releaseHeldAdmissionCandidate = internalMutation({
       );
       return { status: "expired" as const };
     }
+    assertValidCandidateState({
+      state: "pending_classification",
+      holdUntil: undefined,
+      terminalReason: candidate.terminalReason,
+    });
     await ctx.db.patch(candidate._id, {
       state: "pending_classification",
       holdUntil: undefined,
