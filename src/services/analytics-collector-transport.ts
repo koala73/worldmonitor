@@ -985,7 +985,22 @@ async function runCollectorRequest(request: CollectorRequest, generation: number
     if (generation === collectorTransportGeneration) {
       recordCollectorOutcome(request, collectorFailureFromError(error));
     }
-    request.reject(error);
+    // #6746: the raw network error (bare `TypeError: Failed to fetch`) is
+    // returned to third-party tracker code (DebugBear, Umami) whose own
+    // wrappers may re-throw it without our stack frames — making it
+    // indistinguishable from a real first-party API outage in Sentry. Wrap
+    // it so the rejection self-identifies as collector-originated and a
+    // single Sentry `ignoreErrors` entry can catch it without the fragile
+    // chunk-name trampoline allowlist.
+    const tagged = error instanceof Error
+      ? Object.create(error, {
+        message: { value: `[wm-collector] ${error.message}`, enumerable: true },
+        name: { value: error.name, enumerable: true },
+      })
+      : error;
+    request.reject(tagged);
+    // The delivery deferred is pre-caught by design (see enqueueCollectorRequest);
+    // the original error is fine there since it never surfaces unhandled.
     request.rejectDelivery(error);
   } finally {
     timeoutBoundInit?.cleanup();

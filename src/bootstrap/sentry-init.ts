@@ -70,6 +70,11 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
     sendDefaultPii: true,
     tracesSampleRate: 0.1,
     ignoreErrors: [
+      // #6746: the analytics collector gate tags its transport rejections
+      // with [wm-collector], making them self-identifying. This replaces
+      // the DebugBear trampoline chunk-name allowlist in beforeSend (which
+      // had to be widened six times as Vite re-partitioned chunks).
+      /\[wm-collector\]/,
       'Invalid WebGL2RenderingContext',
       'WebGL context lost',
       /imageManager/,
@@ -632,6 +637,16 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // collector frame plus a fetch-free trampoline for every remaining frame, so
       // admitting it cannot hide a first-party fetch — a real caller alongside the
       // extension still surfaces, which the regression tests assert.
+      //
+      // RETIRED (#6746, WORLDMONITOR-Z6/ZG): the chunk-name allowlist above
+      // was structurally unsound — Rollup re-partitions shared chunks across
+      // builds, so `analytics-*.js` now carries `runtime.ts` (which issues
+      // real fetches), and admitting it would suppress genuine API outages.
+      // The replacement is a `[wm-collector]` tag on the collector gate's
+      // transport rejection (analytics-collector-transport.ts) plus a single
+      // `ignoreErrors` entry — self-identifying, no chunk-name guessing.
+      // The gate below is kept temporarily for cached pre-tag builds and
+      // can be deleted once those age out of the Sentry event stream.
       const isExtensionFrameFile = (file: string) =>
         /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(file);
       const isTrampolineFrameFunction = (fn: string) =>
