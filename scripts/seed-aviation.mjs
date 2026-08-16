@@ -1337,14 +1337,26 @@ export function avstackMonthlyBudget() {
   return nonNegativeEnv('AVIATIONSTACK_MONTHLY_BUDGET', 130_000);
 }
 
+/**
+ * Redis counter key for the current UTC billing month.
+ *
+ * The server-side reserver in server/worldmonitor/aviation/v1/_avstack-budget.ts
+ * builds the SAME key; if the two ever drift, the shared monthly ceiling splits
+ * into two independent counters and silently doubles AviationStack spend.
+ * Exported so that agreement can be asserted by comparing the two functions'
+ * output rather than by grepping both files for `getUTCMonth()`.
+ */
+export function avstackBudgetKey(now = new Date()) {
+  const ym = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  return `aviation:avstack:calls:${ym}`;
+}
+
 export async function reserveAviationStackBudget(count) {
   const cap = avstackMonthlyBudget();
   if (cap <= 0 || count <= 0) return true; // disabled
   const { url, token } = getRedisCredentials();
   if (!url || !token) return true; // fail-open (gate already bounds spend)
-  const now = new Date();
-  const ym = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-  const key = `aviation:avstack:calls:${ym}`;
+  const key = avstackBudgetKey();
   const ttl = 40 * 24 * 60 * 60; // 40d
   try {
     const resp = await fetch(`${url}/pipeline`, {

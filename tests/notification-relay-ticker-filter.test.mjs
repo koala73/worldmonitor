@@ -1,34 +1,38 @@
-/**
- * Regression test: scripts/notification-relay.cjs's watchlist ticker-scope
- * filter for `watchlist_story_alert` events (#4922 item e / U3).
- *
- * Modeled on tests/notification-relay-country-filter.test.mjs — two surfaces:
- *  1. Source-grep: the filter MUST be wired into the per-rule matching loop
- *     alongside shouldNotify/eventMatchesCountryScope, and the delivery loop
- *     must still consult the batch PRO gate (isUserPro → proSet).
- *  2. Behavioural: re-execute the filter logic against a synthetic
- *     rule × event matrix to lock in the OPT-IN semantics:
- *       - unlike `countries` (empty = unscoped, all events match), an empty
- *         or absent `rule.tickers` means NO delivery for this event type;
- *       - the rule must explicitly list 'watchlist_story_alert' in its
- *         eventTypes (the empty-eventTypes wildcard does NOT cover it);
- *       - a rule whose eventTypes only adds the watchlist opt-in keeps its
- *         wildcard behaviour for broadcast event types (rss_alert etc.).
- *
- * Also locks the tickers forwarding contract through the API layers
- * (api/notification-channels.ts + convex/http.ts), mirroring
- * tests/notification-channels-countries-contract.test.mjs.
- *
- * Run: node --test tests/notification-relay-ticker-filter.test.mjs
- */
-
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import Module from 'node:module';
+import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+
+process.env.UPSTASH_REDIS_REST_URL ??= 'https://stub.upstash.io';
+process.env.UPSTASH_REDIS_REST_TOKEN ??= 'stub-token';
+process.env.CONVEX_URL ??= 'https://stub.convex.cloud';
+process.env.RELAY_SHARED_SECRET ??= 'stub-secret';
+process.env.TELEGRAM_BOT_TOKEN ??= 'stub-bot-token';
+
+const originalLoad = Module._load;
+Module._load = function patchedLoad(request, parent, ...rest) {
+  if (request === 'resend') return { Resend: class {} };
+  if (request === 'convex/browser') {
+    return { ConvexHttpClient: class { async query() {} } };
+  }
+  return originalLoad.call(this, request, parent, ...rest);
+};
+
+// These used to be hand-copied MIRRORS of the relay's predicates, 'kept in sync
+// via the source-grep tests below'. A mirror cannot fail when the relay
+// changes. The relay only starts its poll loop when require.main === module, so
+// requiring it here is side-effect free (same technique as
+// tests/notification-relay-country-scope-5359.test.mjs).
+const { eventMatchesTickerScope, ruleMatchesEventType } = require(
+  resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
+);
+
 const relaySrc = readFileSync(
   resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
   'utf-8',
@@ -37,34 +41,17 @@ const edgeSrc = readFileSync(resolve(__dirname, '..', 'api', 'notification-chann
 const convexHttpSrc = readFileSync(resolve(__dirname, '..', 'convex', 'http.ts'), 'utf-8');
 const convexRulesSrc = readFileSync(resolve(__dirname, '..', 'convex', 'alertRules.ts'), 'utf-8');
 
-// ── Mirror implementations (kept in sync via the source-grep tests below;
-// the relay file is a runtime script with no exports — same pattern as the
-// country-filter test). ──────────────────────────────────────────────────────
-
+// The one literal the fixtures below need. It is asserted against the relay's
+// own declaration by the source-grep contract further down, so a rename there
+// fails loudly rather than silently building fixtures nothing can match.
 const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
-
-function ruleMatchesEventType(rule, event) {
-  if (event?.eventType === WATCHLIST_STORY_EVENT_TYPE) {
-    return rule.eventTypes.includes(WATCHLIST_STORY_EVENT_TYPE);
-  }
-  const broadcastTypes = rule.eventTypes.filter((t) => t !== WATCHLIST_STORY_EVENT_TYPE);
-  return broadcastTypes.length === 0 || broadcastTypes.includes(event.eventType);
-}
-
-function eventMatchesTickerScope(event, rule) {
-  if (event?.eventType !== WATCHLIST_STORY_EVENT_TYPE) return true;
-  if (!Array.isArray(rule.tickers) || rule.tickers.length === 0) return false;
-  const eventTickers = Array.isArray(event?.payload?.tickers) ? event.payload.tickers : [];
-  if (eventTickers.length === 0) return false;
-  const ruleSet = new Set(rule.tickers.map((t) => String(t).toUpperCase()));
-  return eventTickers.some((t) => ruleSet.has(String(t).toUpperCase()));
-}
 
 // Full matching predicate for a rule (eventTypes gate + ticker scope), so the
 // behavioural matrix exercises the same conjunction the relay's filter uses.
 function matchesWatchlist(rule, event) {
   return ruleMatchesEventType(rule, event) && eventMatchesTickerScope(event, rule);
 }
+
 
 describe('notification-relay watchlist ticker filter — source-grep contract', () => {
   it('declares eventMatchesTickerScope helper', () => {
