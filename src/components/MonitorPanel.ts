@@ -37,9 +37,9 @@ export class MonitorPanel extends Panel {
     const monitorsList = h('div', { id: 'monitorsList' });
     const monitorsResults = h('div', { id: 'monitorsResults' });
 
-    this.content.appendChild(inputContainer);
-    this.content.appendChild(monitorsList);
-    this.content.appendChild(monitorsResults);
+    // Route through the sanctioned helper (#6557): the monitor UI is the
+    // panel's authoritative content — atomic replace with error-state clear.
+    this.setContentNodes(inputContainer, monitorsList, monitorsResults);
 
     this.renderMonitorsList();
   }
