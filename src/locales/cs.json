@@ -2376,13 +2376,14 @@
     },
     "sanctionsPressure": {
       "title": "Sankce a designace",
-      "infoTooltip": "OFAC sankce designace ze seznamů SDN a Consolidated Lists. Ukazuje, které země čelí největšímu tlaku na desig­nace, jaké programy to řídí a co bylo nově přidáno od poslední aktualizace.",
+      "infoTooltip": "OFAC seznamy SDN a Consolidated plus označení SEMA/JVCFOA od Global Affairs Canada. Ukazuje, které země čelí největšímu tlaku na desig­nace, jaké programy to řídí a co bylo nově přidáno od poslední aktualizace.",
       "loading": "Načítání dat sankcí...",
       "unavailable": "Data sankcí není dostupná.",
       "summary": {
         "new": "Nový",
         "vessels": "Plavidla",
-        "aircraft": "Letadla"
+        "aircraft": "Letadla",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Země s sankcemi",
@@ -2397,11 +2398,12 @@
       "footer": {
         "updated": "Aktualizováno {{time}}",
         "dataset": "dataset {{date}}",
-        "source": "Zdroj: OFAC"
+        "source": "Zdroj: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nových",
-        "new": "nový"
+        "new": "nový",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} designace",
       "designations_other": "{{count}} designací",

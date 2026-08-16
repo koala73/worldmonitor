@@ -2367,13 +2367,14 @@
     },
     "sanctionsPressure": {
       "title": "Sancțiuni și Desemnări",
-      "infoTooltip": "Desemnări sancțiuni OFAC din listele SDN și Consolidated. Arată ce țări se confruntă cu cea mai mare presiune de desemnare, ce programe o determină și ce a fost adăugat recent de la ultima actualizare.",
+      "infoTooltip": "Listele SDN și Consolidated OFAC plus desemnările SEMA/JVCFOA ale Global Affairs Canada. Arată ce țări se confruntă cu cea mai mare presiune de desemnare, ce programe o determină și ce a fost adăugat recent de la ultima actualizare.",
       "loading": "Se încarcă datele sancțiunilor...",
       "unavailable": "Datele sancțiunilor nu sunt disponibile.",
       "summary": {
         "new": "Nou",
         "vessels": "Nave",
-        "aircraft": "Aeronave"
+        "aircraft": "Aeronave",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Țări sancționate",
@@ -2388,11 +2389,12 @@
       "footer": {
         "updated": "Actualizat {{time}}",
         "dataset": "set de date {{date}}",
-        "source": "Sursă: OFAC"
+        "source": "Sursă: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nou",
-        "new": "nou"
+        "new": "nou",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} desemnare",
       "designations_other": "{{count}} desemnări",

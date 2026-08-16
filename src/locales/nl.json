@@ -2068,13 +2068,14 @@
     },
     "sanctionsPressure": {
       "title": "Sancties & Aanwijzingen",
-      "infoTooltip": "OFAC-sanctiesaanwijzingen uit de SDN- en Geconsolideerde Lijsten. Toont welke landen het meeste druk van aanwijzingen ervaren, welke programma's dit veroorzaken, en wat sinds de laatste update is toegevoegd.",
+      "infoTooltip": "OFAC SDN- en Geconsolideerde Lijsten plus SEMA/JVCFOA-aanwijzingen van Global Affairs Canada. Toont welke landen het meeste druk van aanwijzingen ervaren, welke programma's dit veroorzaken, en wat sinds de laatste update is toegevoegd.",
       "loading": "Sanctiegegevens laden...",
       "unavailable": "Sanctiegegevens niet beschikbaar.",
       "summary": {
         "new": "Nieuw",
         "vessels": "Schepen",
-        "aircraft": "Luchtvaartuigen"
+        "aircraft": "Luchtvaartuigen",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Gesanctioneerde landen",
@@ -2089,11 +2090,12 @@
       "footer": {
         "updated": "Bijgewerkt {{time}}",
         "dataset": "dataset {{date}}",
-        "source": "Bron: OFAC"
+        "source": "Bron: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nieuw",
-        "new": "nieuw"
+        "new": "nieuw",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} aanwijzing",
       "designations_other": "{{count}} aanwijzingen",

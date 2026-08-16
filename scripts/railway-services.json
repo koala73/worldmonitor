@@ -509,6 +509,34 @@
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
   {
+    "entry": "scripts/seed-sanctions-pressure.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-sanctions-pressure",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_content-age-helpers.mjs",
+      "scripts/_html-entities.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_sanctions-source.mjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/_sema-sanctions.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/seed-sanctions-pressure.mjs",
+      "scripts/shared/country-name-to-iso2.cjs",
+      "scripts/shared/country-names.json"
+    ],
+    "cronSchedule": "0 */6 * * *",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
+  },
+  {
     "entry": "scripts/seed-comtrade-bilateral-hs4.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-comtrade-bilateral-hs4",

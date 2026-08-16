@@ -2376,13 +2376,14 @@
     },
     "sanctionsPressure": {
       "title": "Санкции и обозначения",
-      "infoTooltip": "Обозначения санкций OFAC из списков SDN и Consolidated Lists. Показывает, какие страны сталкиваются с наибольшим давлением обозначений, какие программы его вызывают и что было добавлено с последнего обновления.",
+      "infoTooltip": "Списки SDN и Consolidated OFAC плюс обозначения SEMA/JVCFOA Global Affairs Canada. Показывает, какие страны сталкиваются с наибольшим давлением обозначений, какие программы его вызывают и что было добавлено с последнего обновления.",
       "loading": "Загрузка данных санкций...",
       "unavailable": "Данные санкций недоступны.",
       "summary": {
         "new": "Новое",
         "vessels": "Суда",
-        "aircraft": "Воздушные суда"
+        "aircraft": "Воздушные суда",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Страны под санкциями",
@@ -2397,11 +2398,12 @@
       "footer": {
         "updated": "Обновлено {{time}}",
         "dataset": "набор данных {{date}}",
-        "source": "Источник: OFAC"
+        "source": "Источник: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} новое",
-        "new": "новое"
+        "new": "новое",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} обозначение",
       "designations_other": "{{count}} обозначений",

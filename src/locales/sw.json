@@ -2350,13 +2350,14 @@
     },
     "sanctionsPressure": {
       "title": "Vikwazo na Uteuzi",
-      "infoTooltip": "Uteuzi wa vikwazo vya OFAC kutoka SDN na Orodha Zilizounganishwa. Huonyesha ni nchi zipi zinakabiliwa na shinikizo la juu zaidi la uteuzi, ni programu gani zinazoiendesha, na ni nini ambacho kimeongezwa hivi karibuni tangu sasisho la mwisho.",
+      "infoTooltip": "Orodha za SDN na Zilizounganishwa za OFAC pamoja na uteuzi wa SEMA/JVCFOA wa Global Affairs Canada. Huonyesha ni nchi zipi zinakabiliwa na shinikizo la juu zaidi la uteuzi, ni programu gani zinazoiendesha, na ni nini ambacho kimeongezwa hivi karibuni tangu sasisho la mwisho.",
       "loading": "Inapakia data ya vikwazo...",
       "unavailable": "Data ya vikwazo haipatikani.",
       "summary": {
         "new": "Mpya",
         "vessels": "Vyombo",
-        "aircraft": "Ndege"
+        "aircraft": "Ndege",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Nchi zilizoidhinishwa",
@@ -2371,11 +2372,12 @@
       "footer": {
         "updated": "Ilisasishwa {{time}}",
         "dataset": "mkusanyiko wa data {{date}}",
-        "source": "Chanzo: OFAC"
+        "source": "Chanzo: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} mpya",
-        "new": "mpya"
+        "new": "mpya",
+        "sema": "sema-ca"
       },
       "designations_one": "Jina {{count}}",
       "designations_other": "Majina {{count}}",

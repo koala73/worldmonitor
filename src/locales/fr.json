@@ -2367,13 +2367,14 @@
     },
     "sanctionsPressure": {
       "title": "Sanctions et désignations",
-      "infoTooltip": "Désignations des sanctions OFAC provenant des listes SDN et consolidées. Affiche quels pays font face à la plus forte pression de désignation, quels programmes la pilotent et ce qui a été récemment ajouté depuis la dernière mise à jour.",
+      "infoTooltip": "Listes SDN et consolidées de l’OFAC plus les désignations SEMA/JVCFOA d’Affaires mondiales Canada. Affiche quels pays font face à la plus forte pression de désignation, quels programmes la pilotent et ce qui a été récemment ajouté depuis la dernière mise à jour.",
       "loading": "Chargement des données de sanctions...",
       "unavailable": "Données de sanctions indisponibles.",
       "summary": {
         "new": "Nouveau",
         "vessels": "Navires",
-        "aircraft": "Aéronefs"
+        "aircraft": "Aéronefs",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Pays sanctionnés",
@@ -2388,11 +2389,12 @@
       "footer": {
         "updated": "Mise à jour {{time}}",
         "dataset": "ensemble de données {{date}}",
-        "source": "Source : OFAC"
+        "source": "Source : OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nouveau(x)",
-        "new": "nouveau"
+        "new": "nouveau",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} désignation",
       "designations_other": "{{count}} désignations",

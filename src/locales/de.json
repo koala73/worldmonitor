@@ -2358,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "Sanktionen & Listungen",
-      "infoTooltip": "OFAC-Sanktionsdesignierungen aus der SDN und Consolidated Lists. Zeigt, welche Länder unter dem höchsten Designierungsdruck stehen, welche Programme dies vorantreiben, und was seit der letzten Aktualisierung neu hinzugekommen ist.",
+      "infoTooltip": "OFAC-SDN- und Consolidated Lists plus SEMA/JVCFOA-Listungen von Global Affairs Canada. Zeigt, welche Länder unter dem höchsten Designierungsdruck stehen, welche Programme dies vorantreiben, und was seit der letzten Aktualisierung neu hinzugekommen ist.",
       "loading": "Sanktionsdaten werden geladen...",
       "unavailable": "Sanktionsdaten nicht verfügbar.",
       "summary": {
         "new": "Neu",
         "vessels": "Schiffe",
-        "aircraft": "Flugzeuge"
+        "aircraft": "Flugzeuge",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Sanktionierte Länder",
@@ -2379,11 +2380,12 @@
       "footer": {
         "updated": "Aktualisiert {{time}}",
         "dataset": "Datensatz {{date}}",
-        "source": "Quelle: OFAC"
+        "source": "Quelle: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} neu",
-        "new": "neu"
+        "new": "neu",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} Listung",
       "designations_other": "{{count}} Listungen",

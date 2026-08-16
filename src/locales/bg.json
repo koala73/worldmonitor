@@ -2358,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "Санкции и определения",
-      "infoTooltip": "OFAC санкции определения от SDN и Consolidated Lists. Показва кои страни са изложени на най-силното определяне на санкции, какви програми го движат и какво е ново добавено от последния преглед.",
+      "infoTooltip": "OFAC SDN и Consolidated Lists плюс SEMA/JVCFOA обозначения на Global Affairs Canada. Показва кои страни са изложени на най-силното определяне на санкции, какви програми го движат и какво е ново добавено от последния преглед.",
       "loading": "Зареждане на данни за санкции...",
       "unavailable": "Данни за санкции недостъпни.",
       "summary": {
         "new": "Ново",
         "vessels": "Кораби",
-        "aircraft": "Летателни средства"
+        "aircraft": "Летателни средства",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Санкционирани страни",
@@ -2379,11 +2380,12 @@
       "footer": {
         "updated": "Актуализирано {{time}}",
         "dataset": "набор от данни {{date}}",
-        "source": "Източник: OFAC"
+        "source": "Източник: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} ново",
-        "new": "ново"
+        "new": "ново",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} определение",
       "designations_other": "{{count}} определения",

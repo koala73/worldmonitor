@@ -2427,13 +2427,14 @@
     },
     "sanctionsPressure": {
       "title": "Szankciók & Kijelölések",
-      "infoTooltip": "OFAC szankció kijelölések az SDN és Konszolidált Listáról. Megmutatja, mely országok szembenéznek a legmagasabb kijelölési nyomással, mely programok hajtják azt, és mi lett újonnan hozzáadva az utolsó frissítés óta.",
+      "infoTooltip": "OFAC SDN és Konszolidált Listák, plusz a kanadai Global Affairs SEMA/JVCFOA kijelölések. Megmutatja, mely országok szembenéznek a legmagasabb kijelölési nyomással, mely programok hajtják azt, és mi lett újonnan hozzáadva az utolsó frissítés óta.",
       "loading": "Szankció adatok betöltése...",
       "unavailable": "Szankció adatok nem érhetőek el.",
       "summary": {
         "new": "Új",
         "vessels": "Hajók",
-        "aircraft": "Repülőgép"
+        "aircraft": "Repülőgép",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Szankcionált országok",
@@ -2448,11 +2449,12 @@
       "footer": {
         "updated": "Frissítve: {{time}}",
         "dataset": "adatkészlet {{date}}",
-        "source": "Forrás: OFAC"
+        "source": "Forrás: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} új",
-        "new": "új"
+        "new": "új",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} bejelentés",
       "designations_other": "{{count}} bejelentés",

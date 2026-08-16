@@ -356,6 +356,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'OpenSanctions; link to the matching entity/dataset.',
     status: 'terms-review',
   },
+  'www.international.gc.ca': {
+    provider: 'Global Affairs Canada (SEMA consolidated sanctions)',
+    license: 'Government of Canada website terms; no explicit redistribution licence on the SEMA XML. Canada.ca terms restrict commercial reproduction unless otherwise specified. The Open Government Licence page on this host covers international-assistance open data sets, not this sanctions list.',
+    attribution: 'Global Affairs Canada, Consolidated Canadian Autonomous Sanctions List; link to https://www.international.gc.ca/world-monde/international_relations-relations_internationales/sanctions/consolidated-consolide.aspx?lang=eng',
+    status: 'terms-review',
+  },
   'earth-search.aws.element84.com': {
     provider: 'Element84 Earth Search STAC',
     license: 'AWS Open Data and dataset-specific collection licenses',
@@ -633,8 +639,8 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '7dfa44fa1a81c5bddc59164b563fb6af8f9f4d9e704651f5f2e9c9abfaa318d8',
-  reason: 'Baseline the reviewed identities, including the merged ECCC, Bank of Canada, Statistics Canada, and Earthquakes Canada providers.',
+  sha256: '64187a722c2d1c464fc052691e668ca6e1566e5b4b4b0e7d996feab1bb478cc5',
+  reason: 'Baseline the reviewed identities, including the merged ECCC, Bank of Canada, Statistics Canada, Earthquakes Canada, and Global Affairs Canada providers.',
   reviewReference: 'PR #6662; PR #6670; PR #6736',
 });
 

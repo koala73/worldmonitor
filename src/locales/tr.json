@@ -2358,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "Yaptırımlar ve Tanımlamalar",
-      "infoTooltip": "SDN ve Birleşik Listelerden OFAC yaptırım tanımlamaları. Hangi ülkelerin en yüksek tanımlama baskısı altında olduğunu, hangi programların bunu yönlendirdiğini ve son güncellemeden bu yana neler yeni eklendiğini gösterir.",
+      "infoTooltip": "OFAC SDN ve Birleşik Listeler ile Kanada Küresel İşler SEMA/JVCFOA tanımlamaları. Hangi ülkelerin en yüksek tanımlama baskısı altında olduğunu, hangi programların bunu yönlendirdiğini ve son güncellemeden bu yana neler yeni eklendiğini gösterir.",
       "loading": "Yaptırım verileri yükleniyor...",
       "unavailable": "Yaptırım verileri kullanılamıyor.",
       "summary": {
         "new": "Yeni",
         "vessels": "Gemiler",
-        "aircraft": "Uçaklar"
+        "aircraft": "Uçaklar",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Yaptırım altındaki ülkeler",
@@ -2379,11 +2380,12 @@
       "footer": {
         "updated": "Güncelleme: {{time}}",
         "dataset": "veri seti {{date}}",
-        "source": "Kaynak: OFAC"
+        "source": "Kaynak: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} yeni",
-        "new": "yeni"
+        "new": "yeni",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} tanımlama",
       "designations_other": "{{count}} tanımlama",

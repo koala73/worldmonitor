@@ -2358,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "제재 및 지정",
-      "infoTooltip": "SDN 및 통합 목록의 OFAC 제재 지정. 어느 국가가 가장 높은 지정 압력을 받고 있는지, 어떤 프로그램이 이를 주도하고 있는지, 마지막 업데이트 이후 새로 추가된 것이 무엇인지를 보여줍니다.",
+      "infoTooltip": "OFAC SDN 및 통합 목록과 캐나다 글로벌 어페어스 SEMA/JVCFOA 지정. 어느 국가가 가장 높은 지정 압력을 받고 있는지, 어떤 프로그램이 이를 주도하고 있는지, 마지막 업데이트 이후 새로 추가된 것이 무엇인지를 보여줍니다.",
       "loading": "제재 데이터 로드 중...",
       "unavailable": "제재 데이터를 사용할 수 없습니다.",
       "summary": {
         "new": "신규",
         "vessels": "선박",
-        "aircraft": "항공기"
+        "aircraft": "항공기",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "제재 대상국",
@@ -2379,11 +2380,12 @@
       "footer": {
         "updated": "{{time}}에 업데이트됨",
         "dataset": "데이터셋 {{date}}",
-        "source": "출처: OFAC"
+        "source": "출처: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} 신규",
-        "new": "신규"
+        "new": "신규",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}}개 지정",
       "designations_other": "{{count}}개 지정",

@@ -2358,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "制裁・指定",
-      "infoTooltip": "OFAC制裁指定（SDNおよび統合リスト）。最も高い指定圧力に直面している国、それを推進しているプログラム、前回の更新以降に新たに追加されたものを表示します。",
+      "infoTooltip": "OFACのSDNおよび統合リストに加え、カナダグローバル問題省のSEMA/JVCFOA指定。 最も高い指定圧力に直面している国、それを推進しているプログラム、前回の更新以降に新たに追加されたものを表示します。",
       "loading": "制裁データを読み込み中...",
       "unavailable": "制裁データは利用できません。",
       "summary": {
         "new": "新規",
         "vessels": "船舶",
-        "aircraft": "航空機"
+        "aircraft": "航空機",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "制裁国",
@@ -2379,11 +2380,12 @@
       "footer": {
         "updated": "{{time}}に更新",
         "dataset": "データセット{{date}}",
-        "source": "出典: OFAC"
+        "source": "出典: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}}件新規",
-        "new": "新規"
+        "new": "新規",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}}件の指定",
       "designations_other": "{{count}}件の指定",

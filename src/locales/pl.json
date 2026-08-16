@@ -2376,13 +2376,14 @@
     },
     "sanctionsPressure": {
       "title": "Sankcje i desygnacje",
-      "infoTooltip": "Desygnacje sankcji OFAC z list SDN i konsolidowanej. Pokazuje, które kraje napotykają największą presję desygnacji, jakie programy ją napędzają i co zostało niedawno dodane od ostatniej aktualizacji.",
+      "infoTooltip": "Listy SDN i skonsolidowana OFAC oraz desygnacje SEMA/JVCFOA Global Affairs Canada. Pokazuje, które kraje napotykają największą presję desygnacji, jakie programy ją napędzają i co zostało niedawno dodane od ostatniej aktualizacji.",
       "loading": "Ładowanie danych sankcji...",
       "unavailable": "Dane sankcji niedostępne.",
       "summary": {
         "new": "Nowe",
         "vessels": "Statki",
-        "aircraft": "Statki powietrzne"
+        "aircraft": "Statki powietrzne",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Kraje objęte sankcjami",
@@ -2397,11 +2398,12 @@
       "footer": {
         "updated": "Zaktualizowane {{time}}",
         "dataset": "zestaw danych {{date}}",
-        "source": "Źródło: OFAC"
+        "source": "Źródło: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nowych",
-        "new": "nowe"
+        "new": "nowe",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} desygnacja",
       "designations_other": "{{count}} desygnacji",

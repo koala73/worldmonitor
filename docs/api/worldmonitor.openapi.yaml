@@ -48885,6 +48885,13 @@ components:
                 aircraftCount:
                     type: integer
                     format: int32
+                semaCount:
+                    type: integer
+                    format: int32
+                    description: Number of Canadian SEMA designations represented in this snapshot.
+                semaError:
+                    type: string
+                    description: Present when the SEMA source failed while other sanctions data remained available.
             description: ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
         worldmonitor_sanctions_v1_SanctionsEntry:
             type: object

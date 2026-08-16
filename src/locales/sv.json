@@ -2068,13 +2068,14 @@
     },
     "sanctionsPressure": {
       "title": "Sanktioner och beteckningar",
-      "infoTooltip": "OFAC-sanktionsbeteckningar från SDN- och konsoliderade listor. Visar vilka länder som står under största beteckningspressung, vilka program som driver det, och vad som är nytt sedan senaste uppdateringen.",
+      "infoTooltip": "OFAC:s SDN- och konsoliderade listor plus Global Affairs Canadas SEMA/JVCFOA-beteckningar. Visar vilka länder som står under största beteckningspressung, vilka program som driver det, och vad som är nytt sedan senaste uppdateringen.",
       "loading": "Läser in sanktionsdata...",
       "unavailable": "Sanktionsdata är inte tillgänglig.",
       "summary": {
         "new": "Nytt",
         "vessels": "Fartyg",
-        "aircraft": "Flygplan"
+        "aircraft": "Flygplan",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Sanktionerade länder",
@@ -2089,11 +2090,12 @@
       "footer": {
         "updated": "Uppdaterad {{time}}",
         "dataset": "dataset {{date}}",
-        "source": "Källa: OFAC"
+        "source": "Källa: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nya",
-        "new": "nya"
+        "new": "nya",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} beteckning",
       "designations_other": "{{count}} beteckningar",

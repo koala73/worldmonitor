@@ -138,6 +138,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['www.aaronsw.com', 'technology'],
   ['www.cbr.ru', 'finance'],
   ['Financial Action Task Force (FATF)', 'geopolitics'],
+  ['Global Affairs Canada (SEMA consolidated sanctions)', 'geopolitics'],
   ['www.fwdstart.me', 'technology'],
   ['International Forum of Sovereign Wealth Funds', 'finance'],
   ['www.newyorkfed.org', 'finance'],

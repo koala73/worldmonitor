@@ -2604,13 +2604,14 @@
     },
     "sanctionsPressure": {
       "title": "Sankcije i Označavanja",
-      "infoTooltip": "OFAC sankcijama označavanja iz SDN i Consolidated Lists. Prikazuje koje zemlje suočavaju najveću tlak označavanja, koji programi ga pokrivaju i što je novo dodano od posljednje ažuriranja.",
+      "infoTooltip": "OFAC SDN i Consolidated Lists plus SEMA/JVCFOA oznake Global Affairs Canada. Prikazuje koje zemlje suočavaju najveću tlak označavanja, koji programi ga pokrivaju i što je novo dodano od posljednje ažuriranja.",
       "loading": "Učitavanje podataka sankcija...",
       "unavailable": "Podaci sankcija nisu dostupni.",
       "summary": {
         "new": "Novo",
         "vessels": "Plovila",
-        "aircraft": "Zrakoplov"
+        "aircraft": "Zrakoplov",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Zemlje pod sankcijama",
@@ -2625,11 +2626,12 @@
       "footer": {
         "updated": "Ažurirano {{time}}",
         "dataset": "skup podataka {{date}}",
-        "source": "Izvor: OFAC"
+        "source": "Izvor: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} novo",
-        "new": "novo"
+        "new": "novo",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} designacija",
       "designations_other": "{{count}} designacija",

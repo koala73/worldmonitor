@@ -2358,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "制裁与指定",
-      "infoTooltip": "来自 SDN 和综合名单的 OFAC 制裁指定。显示哪些国家面临最高指定压力、驱动因素以及自上次更新以来新增的内容。",
+      "infoTooltip": "OFAC 的 SDN 与综合名单，以及加拿大全球事务部 SEMA/JVCFOA 指定。 显示哪些国家面临最高指定压力、驱动因素以及自上次更新以来新增的内容。",
       "loading": "正在加载制裁数据...",
       "unavailable": "制裁数据不可用。",
       "summary": {
         "new": "新增",
         "vessels": "船舶",
-        "aircraft": "飞机"
+        "aircraft": "飞机",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "受制裁国家",
@@ -2379,11 +2380,12 @@
       "footer": {
         "updated": "更新于 {{time}}",
         "dataset": "数据集 {{date}}",
-        "source": "来源：OFAC"
+        "source": "来源：OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} 新增",
-        "new": "新增"
+        "new": "新增",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} 项指定",
       "designations_other": "{{count}} 项指定",

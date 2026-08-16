@@ -2446,13 +2446,14 @@
     },
     "sanctionsPressure": {
       "title": "Sanctions & Designations",
-      "infoTooltip": "OFAC sanctions designations from the SDN and Consolidated Lists. Shows which countries face the highest designation pressure, what programs are driving it, and what has been newly added since the last update.",
+      "infoTooltip": "Списки SDN і зведені списки OFAC плюс визначення SEMA/JVCFOA Global Affairs Canada. Показує, які країни зазнають найбільшого тиску визначень, які програми це зумовлюють і що було додано з останнього оновлення.",
       "loading": "Loading sanctions data...",
       "unavailable": "Sanctions data unavailable.",
       "summary": {
         "new": "New",
         "vessels": "Vessels",
-        "aircraft": "Aircraft"
+        "aircraft": "Aircraft",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Sanctioned countries",
@@ -2467,11 +2468,12 @@
       "footer": {
         "updated": "Updated {{time}}",
         "dataset": "dataset {{date}}",
-        "source": "Source: OFAC"
+        "source": "Джерело: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} new",
-        "new": "new"
+        "new": "new",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} designation",
       "designations_other": "{{count}} designations",

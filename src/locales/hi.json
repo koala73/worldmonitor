@@ -2427,13 +2427,14 @@
     },
     "sanctionsPressure": {
       "title": "प्रतिबंध और नामांकन",
-      "infoTooltip": "OFAC प्रतिबंध नामांकन SDN और संयोजित सूचियों से। दिखाता है कौन से देशों पर सबसे अधिक दबाव है, कौन से कार्यक्रम यह चला रहे हैं, और पिछली अपडेट से नया क्या जोड़ा गया।",
+      "infoTooltip": "OFAC SDN और संयोजित सूचियाँ तथा Global Affairs Canada SEMA/JVCFOA नामांकन। दिखाता है कौन से देशों पर सबसे अधिक दबाव है, कौन से कार्यक्रम यह चला रहे हैं, और पिछली अपडेट से नया क्या जोड़ा गया।",
       "loading": "प्रतिबंध डेटा लोड हो रहा है...",
       "unavailable": "प्रतिबंध डेटा उपलब्ध नहीं।",
       "summary": {
         "new": "नया",
         "vessels": "जहाज",
-        "aircraft": "विमान"
+        "aircraft": "विमान",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "प्रतिबंधित देश",
@@ -2448,11 +2449,12 @@
       "footer": {
         "updated": "अपडेट किया गया {{time}}",
         "dataset": "डेटासेट {{date}}",
-        "source": "स्रोत: OFAC"
+        "source": "स्रोत: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} नया",
-        "new": "नया"
+        "new": "नया",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} नामांकन",
       "designations_other": "{{count}} नामांकन",

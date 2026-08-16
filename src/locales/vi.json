@@ -2358,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "Trừng phạt & Chỉ định",
-      "infoTooltip": "Các chỉ định trừng phạt OFAC từ Danh sách SDN và Danh sách Hợp nhất. Hiển thị các quốc gia nào đối mặt với áp lực chỉ định cao nhất, chương trình nào đang thúc đẩy và những gì được thêm mới kể từ lần cập nhật cuối cùng.",
+      "infoTooltip": "Danh sách SDN và Hợp nhất của OFAC cùng các chỉ định SEMA/JVCFOA của Global Affairs Canada. Hiển thị các quốc gia nào đối mặt với áp lực chỉ định cao nhất, chương trình nào đang thúc đẩy và những gì được thêm mới kể từ lần cập nhật cuối cùng.",
       "loading": "Đang tải dữ liệu trừng phạt...",
       "unavailable": "Dữ liệu trừng phạt không khả dụng.",
       "summary": {
         "new": "Mới",
         "vessels": "Tàu",
-        "aircraft": "Tàu bay"
+        "aircraft": "Tàu bay",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Quốc gia bị trừng phạt",
@@ -2379,11 +2380,12 @@
       "footer": {
         "updated": "Cập nhật {{time}}",
         "dataset": "tập dữ liệu {{date}}",
-        "source": "Nguồn: OFAC"
+        "source": "Nguồn: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} mới",
-        "new": "mới"
+        "new": "mới",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} chỉ định",
       "designations_other": "{{count}} chỉ định",
