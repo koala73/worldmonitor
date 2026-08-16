@@ -287,21 +287,19 @@ test('fetchTorontoRoadRestrictions rejects a foreign host and a non-list 200', a
   );
 });
 
-test('seeder is a standalone nixpacks job and does not loop ais-relay or reuse 511', () => {
-  assert.match(SEEDER_SOURCE, /fetchTorontoRoadRestrictions/);
-  assert.match(SEEDER_SOURCE, /zeroIsValid:\s*true/);
-  assert.match(SEEDER_SOURCE, /infra:toronto-roads:v1/);
-  assert.match(SEEDER_SOURCE, /toronto-roads-v1/);
-  assert.doesNotMatch(SEEDER_SOURCE, /from ['"].*provincial-511/);
-  assert.doesNotMatch(SEEDER_SOURCE, /acquire511Slot/);
-  assert.doesNotMatch(SEEDER_SOURCE, /fetch\.bind/);
-  assert.doesNotMatch(LIB_SOURCE, /_511-rate-limit/);
-  assert.doesNotMatch(LIB_SOURCE, /from ['"].*provincial-511/);
-  assert.doesNotMatch(LIB_SOURCE, /511on\.ca/);
+test('Toronto roads stay isolated from the relay and the 511 rate limiter', () => {
+  // Isolation policy: absence of a reference is the contract, and no
+  // executable test can observe it. Toronto ships as a standalone nixpacks job
+  // so a relay incident cannot take it down, and its fetch must not inherit the
+  // shared 511 limiter — that coupling is what stalled this feed before.
+  // The seeder's own config values (zeroIsValid, the key names) used to be
+  // echoed here too; those restated the object literal inside the seeder.
+  assert.doesNotMatch(SEEDER_SOURCE, /from ['"].*provincial-511|acquire511Slot|fetch\.bind/);
+  assert.doesNotMatch(LIB_SOURCE, /_511-rate-limit|from ['"].*provincial-511|511on\.ca/);
+  assert.doesNotMatch(RELAY_SOURCE, /toronto\.ca|toronto-roads|secure\.toronto\.ca/);
+
+  // And it reaches only its own upstream host.
   assert.match(LIB_SOURCE, new RegExp(TORONTO_ROADS_HOST.replace(/\./g, '\\.')));
-  assert.doesNotMatch(RELAY_SOURCE, /toronto\.ca/);
-  assert.doesNotMatch(RELAY_SOURCE, /toronto-roads/);
-  assert.doesNotMatch(RELAY_SOURCE, /secure\.toronto\.ca/);
 });
 
 test("this test file does not import the seeder module", () => {

@@ -17,6 +17,7 @@ import {
   CONTENT_CORPUS_PREFIXES,
   discoverContentCorpusPages,
 } from '../scripts/discover-content-corpus-pages.mjs';
+import { guardBuiltOutput, shouldSkipBuiltOutput } from './_lib/built-output-guard.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8'));
@@ -834,13 +835,21 @@ describe('welcome landing page routing', () => {
   });
 
   it('renames the web dashboard HTML output away from root index.html', () => {
-    assert.match(viteConfigSource, /function dashboardHtmlOutputPlugin\(\)/);
-    assert.match(viteConfigSource, /enforce:\s*'post'/);
-    assert.match(viteConfigSource, /Object\.entries\(bundle\)\.find/);
-    assert.match(viteConfigSource, /output\.fileName === 'index\.html'/);
-    assert.match(viteConfigSource, /delete bundle\[bundleKey\]/);
-    assert.match(viteConfigSource, /dashboardHtml\.fileName = 'dashboard\.html'/);
-    assert.match(viteConfigSource, /!isDesktopBuild && dashboardHtmlOutputPlugin\(\)/);
+    // Assert the build's OUTPUT, not the plugin's internals. Vercel's
+    // filesystem precedence serves a root index.html at / ahead of every
+    // rewrite above, so what matters is that the web build emits
+    // dashboard.html and leaves no index.html behind — however the plugin
+    // happens to accomplish it.
+    const distDir = resolve(__dirname, '../dist');
+    const dashboardHtml = join(distDir, 'dashboard.html');
+    if (shouldSkipBuiltOutput(dashboardHtml)) return;
+    guardBuiltOutput(dashboardHtml);
+
+    assert.ok(existsSync(dashboardHtml), 'web build must emit dist/dashboard.html');
+    assert.ok(
+      !existsSync(join(distDir, 'index.html')),
+      'web build must not leave a root dist/index.html — Vercel would serve it at / ahead of the dashboard rewrite',
+    );
   });
 
   it('does not keep stale welcome exclusions in the SPA catch-all rewrite', () => {

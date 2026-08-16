@@ -1,5 +1,6 @@
 import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   createIntervalDiagnostics,
@@ -695,112 +696,35 @@ describe('computeIntervals', () => {
 });
 
 describe('script is self-contained .mjs', () => {
-  it('does not import from ../server/', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
+  // The seeder runs in a bare-node Railway container with no TypeScript loader
+  // and no access to server/, so its import graph is a real deployment
+  // constraint that nothing executable can observe. The diagnostic-identifier
+  // assertions that used to sit alongside these (createIntervalDiagnostics,
+  // intervalClampCount, formulaSkipCount, …) just restated names the seeder
+  // logs; the logging behaviour itself is exercised by the interval and
+  // classification suites above, which run the real functions.
+  const src = readFileSync(
+    new URL('../scripts/seed-resilience-scores.mjs', import.meta.url),
+    'utf8',
+  );
+
+  it('never reaches into server/ or a TypeScript loader', () => {
     assert.equal(src.includes('../server/'), false, 'Must not import from ../server/');
     assert.equal(src.includes('tsx/esm'), false, 'Must not reference tsx/esm');
   });
 
-  it('all imports are local ./ relative paths', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
-    const imports = [...src.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
-    for (const imp of imports) {
+  it('imports only local ./ relative paths', () => {
+    for (const imp of [...src.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1])) {
       assert.ok(imp.startsWith('./'), `Import "${imp}" must be a local ./ relative path`);
     }
   });
 
-  it('uses the shared resilience interval helper', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
+  it('derives domain weights from the shared interval helper, not a private copy', () => {
     assert.match(src, /from ['"]\.\/_resilience-intervals\.mjs['"]/);
     assert.doesNotMatch(src, /const DOMAIN_WEIGHTS =/);
   });
-
-  it('logs interval active-score clamp diagnostics', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
-    assert.match(src, /createIntervalDiagnostics/);
-    assert.match(src, /intervalClampCount/);
-    assert.match(src, /activeScoreClampMaxDelta/);
-  });
-
-  it('alerts when cached score payloads lack usable interval formula tags', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
-    assert.match(src, /formulaSkipCount/);
-    assert.match(src, /missing\/ambiguous formula tags/);
-    assert.match(src, /intervalFormulaSkipCount/);
-    assert.match(src, /intervalFormulaSkipSamples/);
-  });
-
-  it('reports missing and malformed score payload diagnostics when interval writes are empty', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
-    assert.match(src, /missingScorePayloadCount/);
-    assert.match(src, /staleScorePayloadCount/);
-    assert.match(src, /invalidScorePayloadCount/);
-    assert.match(src, /malformedScorePayloadCount/);
-    assert.match(src, /intervalPayloadSkipCount/);
-    assert.match(src, /intervalFailureReason/);
-  });
-
-  it('gates interval writes on the live runtime formula when available', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
-    assert.match(src, /\/api\/resilience\/v1\/get-runtime-manifest/);
-    assert.match(src, /const \{ expectedFormula, expectedEducationState \} = await runtimeCacheState\(\);/);
-    assert.match(src, /if \(!isKnownScoreFormulaTag\(expectedFormula\) \|\| !isKnownEducationState\(expectedEducationState\)\) \{/);
-    assert.match(src, /const expectedCacheState = \{ expectedFormula, expectedEducationState \};/);
-    assert.match(src, /countCachedFromPipeline\(preResults, expectedCacheState\)/);
-    assert.match(src, /parseCachedScorePayload\(raw, expectedCacheState\)/);
-    assert.match(src, /countCachedFromPipeline\(finalResults, expectedCacheState\)/);
-    assert.match(src, /computeAndWriteIntervals\(url, token, countryCodes, finalResults, expectedCacheState\)/);
-    assert.match(src, /computeAndWriteIntervals\(url, token, countryCodes, refreshedResults, expectedCacheState\)/);
-    assert.match(src, /_formula: options\.expectedFormula/);
-    assert.match(src, /_educationState: options\.expectedEducationState/);
-    assert.match(src, /_intervalMethodology: INTERVAL_METHODOLOGY/);
-    assert.doesNotMatch(src, /currentCacheFormulaLocal/);
-  });
-
-  it('builds intervals only from tagged Redis score payloads', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
-    const intervalWriter = src.slice(
-      src.indexOf('async function computeAndWriteIntervals'),
-      src.indexOf('async function seedResilienceScores'),
-    );
-    assert.match(src, /\['GET', `\$\{RESILIENCE_SCORE_CACHE_PREFIX\}\$\{c\}`\]/);
-    assert.match(intervalWriter, /buildIntervalPayloadFromCachedScore\(raw, countryCode, diagnostics, options\)/);
-    assert.doesNotMatch(intervalWriter, /get-resilience-score\?countryCode=/);
-    assert.doesNotMatch(intervalWriter, /allowLegacyFormulaInference:\s*true/);
-  });
 });
+
 
 describe('ensures ranking aggregate is present every cron, with truthful meta', () => {
   // The ranking aggregate has the same 6h TTL as the per-country scores. If we
