@@ -3,7 +3,7 @@
 # Multi-stage build for the World Monitor web app (frontend only).
 
 # Stage 1: Build the frontend with TypeScript + Vite.
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS builder
+FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS builder
 ARG BUILDKIT_SBOM_SCAN_STAGE=true
 
 WORKDIR /app
