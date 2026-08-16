@@ -4,12 +4,12 @@
 // (openrouter, groq — ollama belongs to seed-insights, never to this table)
 // have a key. When a named provider's key IS set, the existing chain wins
 // bit-for-bit and generic never fires. The URL is used verbatim as the chat/
-// completions endpoint (SELF_HOSTING.md), the model field is populated from
-// LLM_MODEL (defaulting to 'gpt-3.5-turbo' to mirror seed-insights), and the
-// bearer header carries LLM_API_KEY — the env names only, never their values.
-// Default tables stay unchanged, so the existing array-shape tests in
-// forecast-detectors.test.mjs/forecast-llm-flash-routing-and-timeout.test.mjs
-// continue to pass.
+// completions endpoint (SELF_HOSTING.md) and the model field is populated
+// verbatim from LLM_MODEL — the strict all-three gate means there is no
+// default model. The env names only are referenced in debug output, never
+// their values. Default tables stay unchanged, so the existing array-shape
+// tests in forecast-detectors.test.mjs/forecast-llm-flash-routing-and-
+// timeout.test.mjs continue to pass.
 import test, { afterEach, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -147,16 +147,20 @@ test('partial generic env coverage never fires generic', () => {
   assert.equal(resolveForecastLlmProviders().some((p) => p.name === 'generic'), false);
 });
 
-test('LLM_MODEL falls back to the documented default when unset but URL+KEY are set', () => {
+test('partial generic env coverage (URL + KEY but no LLM_MODEL) keeps generic disabled', () => {
+  // LLM_MODEL is a hard requirement of the all-three gate. The provider has
+  // no default model: the resolver returns verbatim from process.env.LLM_MODEL
+  // and only appends generic after isForecastGenericLlmReady() confirms all
+  // three envs are non-empty. Without LLM_MODEL, generic must stay disabled
+  // and named-provider resolution stays bit-for-bit identical to baseline.
   process.env.LLM_API_URL = 'https://example.invalid/v1/chat/completions';
   process.env.LLM_API_KEY = 'redacted-llm-key';
   // deliberately omit LLM_MODEL — the contract requires LLM_MODEL to be set,
-  // so generic should NOT append under this configuration. The default only
-  // applies if the resolver ever softens the contract, which it must not.
+  // so generic should NOT append under this configuration.
   assert.equal(
     resolveForecastLlmProviders().some((p) => p.name === 'generic'),
     false,
-    'all-three-env rule is strict — partial coverage must NOT enable the default fallback',
+    'all-three-env rule is strict — a missing LLM_MODEL keeps generic disabled',
   );
 });
 
@@ -286,11 +290,13 @@ test('generic branch never carries openrouter-only headers (HTTP-Referer / X-Tit
   );
 });
 
-test('generic branch is selected over globalThis.fetch when a named-provider key is set in the same call', async () => {
-  // Regression for a subtle case: even with OPENROUTER_API_KEY set, the generic
-  // branch must NOT fire because the chain reads `provider.envKey` as the gate
-  // and generic's envKey is LLM_API_KEY. The named-provider key doesn't count.
-  // This keeps the generic branch truly last-resort and avoids double-routing.
+test('named-provider keys in the same call suppress generic from the resolved chain', async () => {
+  // Regression for a subtle case: even with all three generic envs set, the
+  // generic branch must NOT fire when OPENROUTER_API_KEY (or GROQ_API_KEY)
+  // is also set — the chain reads `provider.envKey` as the gate and generic's
+  // envKey is LLM_API_KEY, so the named-provider keys don't count for it.
+  // This keeps the generic branch truly last-resort and avoids double-routing
+  // to a self-hosted endpoint when a hosted provider is already wired up.
   process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
   process.env.GROQ_API_KEY = 'groq-test-key';
   setGenericEnv();

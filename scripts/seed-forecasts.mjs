@@ -14683,15 +14683,15 @@ const FORECAST_LLM_PROVIDERS = [
   { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: GROQ_DEFAULT_MODEL, timeout: 20_000 },
 ];
 
-// PER-79 (upstream PR 3/3): generic OpenAI-compatible provider — smallest
-// faithful mirror of the corresponding entry in scripts/seed-insights.mjs.
-// Activated ONLY when LLM_API_URL, LLM_API_KEY, and LLM_MODEL are all set
-// AND none of the named providers above (openrouter, openrouter-free,
-// openrouter-free-backup, groq) have a key. Resolved-time append keeps the
-// existing FORECAST_LLM_PROVIDERS table (and its array-shape tests) intact.
-// LLM_API_URL is the FULL chat/completions endpoint verbatim (see
-// SELF_HOSTING.md); LLM_MODEL defaults to 'gpt-3.5-turbo' to mirror the
-// seed-insights generic branch. Names only — never echo the env values.
+// PER-79 (upstream PR 3/3): generic OpenAI-compatible provider for the
+// forecast seeder. Activated ONLY when LLM_API_URL, LLM_API_KEY, and
+// LLM_MODEL are all set AND none of the named providers above (openrouter,
+// openrouter-free, openrouter-free-backup, groq) have a key. Resolved-time
+// append keeps the existing FORECAST_LLM_PROVIDERS table (and its
+// array-shape tests) intact. LLM_API_URL is the FULL chat/completions
+// endpoint verbatim (see SELF_HOSTING.md) and LLM_MODEL is required — the
+// strict all-three gate means there is no default model. Names only — never
+// echo the env values.
 const FORECAST_GENERIC_LLM_PROVIDER_SPEC = Object.freeze({
   name: 'generic',
   // envKey points at the BEARER credential, not the URL: the loop body and
@@ -14700,7 +14700,6 @@ const FORECAST_GENERIC_LLM_PROVIDER_SPEC = Object.freeze({
   envKey: 'LLM_API_KEY',
   envUrlKey: 'LLM_API_URL',
   envModelKey: 'LLM_MODEL',
-  defaultModel: 'gpt-3.5-turbo',
   defaultTimeout: 60_000,
 });
 
@@ -14715,8 +14714,12 @@ function isForecastGenericLlmReady() {
 }
 
 function buildForecastGenericLlmProvider() {
+  // Caller (resolveForecastLlmProviders) has already asserted all three envs
+  // are non-empty via isForecastGenericLlmReady(), so reading them verbatim
+  // here is safe — no default fallback exists because the strict all-three
+  // gate forbids partial coverage.
   const apiUrl = process.env.LLM_API_URL;
-  const model = process.env.LLM_MODEL || FORECAST_GENERIC_LLM_PROVIDER_SPEC.defaultModel;
+  const model = process.env.LLM_MODEL;
   const headers = { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA };
   const apiKey = process.env.LLM_API_KEY;
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
