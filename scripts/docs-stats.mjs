@@ -1143,15 +1143,16 @@ function claims(s) {
   ];
 }
 
-const ENGLISH_VOLATILE_INVENTORY_CLAIM_RE = /\b\d[\d,]*(?:\+)?\s+(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|other|live|curated|interactive|registered|observed|monitored|supported|news|data source|local|edge|typed|specialized|dashboard|installable|public|proto-backed|positive-news)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|credentials|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|variants|languages|locales|airports|data ?centers|datacenters|entities|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\b/i;
-const ENGLISH_WORD_VOLATILE_INVENTORY_CLAIM_RE = /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|other|live|curated|registered|observed|monitored|supported|news|local|typed|specialized|dashboard|installable|public|proto-backed|positive-news)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|variants|languages|locales|airports|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\b/i;
+const ENGLISH_VOLATILE_INVENTORY_CLAIM_RE = /\b\d[\d,]*(?:\s*[–-]\s*\d[\d,]*)?(?:\+)?\s+(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|other|live|curated|interactive|registered|observed|monitored|supported|news|data source|data|intelligence|separate|local|edge|typed|specialized|dashboard|military|strategic|operational|associated|government|advisory|installable|public|proto-backed|positive-news|mapped|tracked)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|credentials|API handlers|API endpoints|endpoints|operations|functions|domains|specs|layers|map layers|panels|variants|languages|locales|airports|bases|theaters|ports|pipelines|waterways|chokepoints|cables|satellites|clusters|routes|data ?centers|datacenters|entities|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\b/i;
+const ENGLISH_WORD_VOLATILE_INVENTORY_CLAIM_RE = /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|other|live|curated|registered|observed|monitored|supported|news|data|intelligence|separate|local|typed|specialized|dashboard|military|strategic|operational|associated|government|advisory|installable|public|proto-backed|positive-news|mapped|tracked)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|layers|map layers|panels|variants|languages|locales|airports|bases|theaters|ports|pipelines|waterways|chokepoints|cables|satellites|clusters|routes|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\b/i;
+const HYPHENATED_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|\s)\d[\d,]*(?:\+)?-(?:tool|feed|source|provider|service|stream|connector|endpoint|operation|function|domain|spec|layer|panel|variant|language|locale|airport|base|theater|port|pipeline|waterway|chokepoint|cable|satellite|cluster|route|webcam|camera|channel|skill|recipe)s?\b/i;
 const LABEL_FIRST_VOLATILE_INVENTORY_CLAIM_RE = /\b(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|languages|locales|airports|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\s*:\s*\d[\d,]*(?:\+)?\b/i;
-const MARKDOWN_TABLE_VOLATILE_INVENTORY_CLAIM_RE = /\|\s*(?:(?:live|video|news|data|map|military|AI|strategic|undersea|intelligence|Telegram|prediction)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|layers|panels|variants|languages|locales|airports|datacenters|cameras|webcams|channels|events)(?:\s+(?:supported|monitored|mapped|tracked|available))?\s*\|\s*\d[\d,]*(?:\+)?(?=\s*(?:\([^|\n]*\)\s*)?\|)/i;
-const CHINESE_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|[^A-Za-z0-9])\d[\d,]*\s*(?:(?:\+|多|以上)\s*)?(?:个|项)?\s*(?:(?:实时|精选|已注册|已观察|监控|受监控|独立|上游|生成的|可安装|智能体|Vercel|Edge|边缘|数据|新闻|API|OSINT)\s*)*(?:数据源|信息源|新闻源|服务(?:领域)?|工具|技能|配方|提供商|处理器|操作|地图图层|数据图层|图层|面板|语言|区域设置|机场|数据中心|实体|边缘函数|函数|频道|頻道)(?=$|[\s，。、；：）)】<])/i;
-const JAPANESE_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|[^A-Za-z0-9])\d[\d,]*\s*(?:\+|以上)?\s*(?:個|個の|つの|件の|項目の|の)?\s*(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|ライブ|登録済み|監視対象|専門|ダッシュボード)\s*)*(?:ツール|フィード|データソース|情報源|プロバイダー|サービス|ストリーム|コネクター|APIハンドラー|APIエンドポイント|エンドポイント|オペレーション|関数|ドメイン|仕様|マップレイヤー|パネル|バリアント|言語|ロケール|空港|データセンター|ウェブカメラ|チャンネル|エージェントスキル|Edge Functions|ダッシュボード)(?=$|[\s、。；：）)】<])/i;
+const MARKDOWN_TABLE_VOLATILE_INVENTORY_CLAIM_RE = /\|\s*(?:(?:live|video|news|data|map|military|AI|strategic|undersea|intelligence|Telegram|prediction)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|layers|panels|variants|languages|locales|airports|bases|theaters|ports|pipelines|waterways|chokepoints|satellites|clusters|routes|datacenters|cameras|webcams|channels|events)(?:\s+(?:supported|monitored|mapped|tracked|available))?\s*\|\s*\d[\d,]*(?:\+)?(?=\s*(?:\([^|\n]*\)\s*)?\|)/i;
+const CHINESE_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|[^A-Za-z0-9])\d[\d,]*\s*(?:(?:\+|多|以上)\s*)?(?:个|项)?\s*(?:(?:实时|精选|已注册|已观察|监控|受监控|独立|上游|生成的|可安装|公开|智能体|Vercel|Edge|边缘|数据|新闻|API|OSINT|军事|战略|作战)\s*)*(?:数据源|信息源|新闻源|服务(?:领域)?|工具|技能|配方|提供商|处理器|操作|地图图层|数据图层|图层|面板|语言|区域设置|机场|基地(?:数据库)?|战区|戰區|港口|管道|水道|咽喉要道|海底电缆|卫星|衛星|集群|路线|路線|数据中心|实体|边缘函数|函数|频道|頻道)(?=$|[\s，。、；：）)】<])/i;
+const JAPANESE_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|[^A-Za-z0-9])\d[\d,]*\s*(?:\+|以上)?\s*(?:個|個の|つの|件の|項目の|の)?\s*(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|ライブ|登録済み|監視対象|専門|ダッシュボード)\s*)*(?:ツール|フィード|データソース|情報源|プロバイダー|サービス|ストリーム|コネクター|APIハンドラー|APIエンドポイント|エンドポイント|オペレーション|関数|ドメイン|仕様|マップレイヤー|パネル|バリアント|言語|ロケール|空港|データセンター|ウェブカメラ|チャンネル|エージェントスキル|Edge Functions|ダッシュボード)(?=$|[\s、。；：）)】<をがはにでへと])/i;
 const POSTFIX_VOLATILE_INVENTORY_CLAIM_RE = /(?:Vercel\s+)?Edge Functions\s*[（(]\s*\d[\d,]*\s*(?:\+|以上)\s*[）)]/i;
 export const VOLATILE_INVENTORY_CLAIM_RE = new RegExp(
-  `(?:${ENGLISH_VOLATILE_INVENTORY_CLAIM_RE.source}|${ENGLISH_WORD_VOLATILE_INVENTORY_CLAIM_RE.source}|${LABEL_FIRST_VOLATILE_INVENTORY_CLAIM_RE.source}|${MARKDOWN_TABLE_VOLATILE_INVENTORY_CLAIM_RE.source}|${CHINESE_VOLATILE_INVENTORY_CLAIM_RE.source}|${JAPANESE_VOLATILE_INVENTORY_CLAIM_RE.source}|${POSTFIX_VOLATILE_INVENTORY_CLAIM_RE.source})`,
+  `(?:${ENGLISH_VOLATILE_INVENTORY_CLAIM_RE.source}|${ENGLISH_WORD_VOLATILE_INVENTORY_CLAIM_RE.source}|${HYPHENATED_VOLATILE_INVENTORY_CLAIM_RE.source}|${LABEL_FIRST_VOLATILE_INVENTORY_CLAIM_RE.source}|${MARKDOWN_TABLE_VOLATILE_INVENTORY_CLAIM_RE.source}|${CHINESE_VOLATILE_INVENTORY_CLAIM_RE.source}|${JAPANESE_VOLATILE_INVENTORY_CLAIM_RE.source}|${POSTFIX_VOLATILE_INVENTORY_CLAIM_RE.source})`,
   'i',
 );
 
@@ -1173,13 +1174,16 @@ export const ACQUISITION_CLAIM_ROOTS = [
 ];
 const ACQUISITION_CLAIM_EXCLUDES = [
   'docs/audits/',
+  'docs/api/',
   'docs/brainstorms/',
+  'docs/archive/',
   'docs/changelog.mdx',
   'docs/zh/changelog.mdx',
   'docs/Docs_To_Review/',
   'docs/desktop-parity-matrix.md',
   'docs/generated/',
   'docs/internal/',
+  'docs/ideation/',
   'docs/perf/',
   'docs/plans/',
   'docs/research/',
@@ -1187,13 +1191,54 @@ const ACQUISITION_CLAIM_EXCLUDES = [
   'docs/solutions/',
   'docs/source-attribution.mdx',
   'public/blog/',
-  'public/pro/assets/',
+  'public/pro/',
   'public/openapi',
 ];
 const ACQUISITION_CLAIM_EXTENSIONS = /\.(?:astro|html|json|md|mdx|mjs|txt)$/;
 
+function isCurrentAcquisitionClaimSurface(path) {
+  return (
+    ['index.html', 'README.md', 'README.zh-CN.md', 'README.ja-JP.md', 'server.json', 'cli/README.md',
+      'pro-test/index.html', 'pro-test/welcome.html', 'scripts/build-agent-skills-index.mjs'].includes(path)
+    || /^docs\/.+\.(?:md|mdx)$/.test(path)
+    || /^public\/[^/]+\.(?:md|txt|json)$/.test(path)
+    || /^public\/\.well-known\/agent-skills\/[^/]+\/SKILL\.md$/.test(path)
+    || /^pro-test\/src\/locales\/[^/]+\.json$/.test(path)
+    || /^blog-site\/src\/content\/blog\/[^/]+\.md$/.test(path)
+  );
+}
+
+export function collectCurrentAcquisitionClaimFiles() {
+  const files = new Set();
+  const visit = (path) => {
+    if (ACQUISITION_CLAIM_EXCLUDES.some((prefix) => path.startsWith(prefix))) return;
+    const absolute = join(ROOT, path);
+    let stat;
+    try {
+      stat = statSync(absolute);
+    } catch {
+      return;
+    }
+    if (stat.isDirectory()) {
+      for (const entry of readdirSync(absolute)) visit(`${path}/${entry}`);
+      return;
+    }
+    if (ACQUISITION_CLAIM_EXTENSIONS.test(path) && isCurrentAcquisitionClaimSurface(path)) {
+      files.add(path);
+    }
+  };
+  for (const path of ACQUISITION_CLAIM_ROOTS) visit(path);
+  return [...files].sort();
+}
+
+export function retainedExactContractCoverageFailures(contracts, observedContracts) {
+  return contracts
+    .filter((contract) => !observedContracts.has(contract))
+    .map((contract) => `${contract.path}: retained exact count contract is missing or changed: ${contract.text}`);
+}
+
 export function validateVolatileInventoryClaims() {
-  const allowedExactContracts = [
+  const retainedExactContracts = [
     { path: 'docs/signal-intelligence.mdx', text: /(?:3\+ source types|6\+ sources\/hour)/ },
     { path: 'docs/ai-intelligence.mdx', text: /8\+ feeds in 2 hours/ },
     { path: 'docs/data-sources.mdx', text: /Natural disasters from 3 sources/ },
@@ -1211,53 +1256,61 @@ export function validateVolatileInventoryClaims() {
     { path: 'blog-site/src/content/blog/country-resilience-index-methodology-explained.md', text: /72 indicators across 21 active dimensions and 6 domains/ },
     { path: 'blog-site/src/content/blog/country-resilience-index-methodology-explained.md', text: /six domains/i },
     { path: 'blog-site/src/content/blog/country-risk-monitoring-workflow-for-analysts.md', text: /72 indicators, 21 active dimensions, and 6 domains/ },
+    // Fixed resilience schema. tests/resilience-doc-parity.test.mts derives
+    // these values from the scorer registry and validates this exact page.
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /196 countries using 72 indicators across 21 dimensions and 6 domains/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /pillars\[\].*six domains/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /72 indicators across 21 active dimensions and 6 domains.*3 pillars.*2 structurally-retired dimensions/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /196-country public rankable universe.*72 indicators across 21 active dimensions and 6 domains.*2 structurally-retired dimensions/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /organized into 6 domains/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /6 domains are regrouped into 3 pillars/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /average of 5 domains and 13 dimensions/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /5-domain \/ 13-dimension structure.*6 new recovery dimensions/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /six-domain weighted aggregate.*rollback path/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /five-domain flat structure.*six-domain structure.*six new dimensions.*three-pillar outer layer/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /Re-anchored release-gate bands.*6-domain formula's/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /The 6-domain formula lives alongside the pillar combine/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /current registry contains 72 indicators across 21 active dimensions and 6 domains.*2 structurally-retired dimensions/ },
+    // Fixed scoring limits, not extensible source inventories.
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /Corroboration score is capped at five sources/ },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /per entity-level source, capped at five sources/ },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`critical-developing`.*\+5 sources/ },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`high-event`.*\+5 sources/ },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`sanctions-regulatory`.*\+5 sources/ },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`med`.*\+5 sources/ },
     { path: 'docs/mcp-tools-reference.mdx', text: /current four feeds, 5 is a compatibility safety threshold/ },
     { path: 'docs/mcp-tools-reference.mdx', text: /across seven domains/ },
     { path: 'docs/mcp-tools-reference.mdx', text: /between two airports/ },
     { path: 'docs/webcam-layer.mdx', text: /up to 4 webcams simultaneously/ },
     { path: 'docs/webcam-layer.mdx', text: /more than 4 webcams are pinned/ },
     { path: 'docs/webcam-layer.mdx', text: /Maximum 4 webcams can be active/ },
+    { path: 'docs/algorithms.mdx', text: /38\+ (?:associated )?military bases/ },
+    { path: 'docs/algorithms.mdx', text: /five operational theaters/ },
     { path: 'blog-site/src/content/blog/alerts-notification-channels-worldmonitor.md', text: /six channels/i },
     { path: 'blog-site/src/content/blog/aviation-intelligence-airports-airspace-flight-prices.md', text: /between any two airports/ },
     { path: 'blog-site/src/content/blog/build-supply-chain-early-warning-system-api.md', text: /Three signals, three endpoints/ },
     { path: 'blog-site/src/content/blog/free-geopolitical-data-apis-2026.md', text: /ingest ten feeds/ },
     { path: 'blog-site/src/content/blog/supply-chain-early-warning-dashboard-worldmonitor-api.md', text: /five panels/ },
     { path: 'pro-test/src/locales/ja.json', text: /25ダッシュボード/ },
+    { path: 'pro-test/src/locales/ja.json', text: /紛争は1つのマップレイヤー/ },
   ];
   const failures = [];
-  const isCurrentClaimSurface = (path) => (
-    ['index.html', 'README.md', 'README.zh-CN.md', 'README.ja-JP.md', 'server.json', 'cli/README.md',
-      'pro-test/index.html', 'pro-test/welcome.html', 'scripts/build-agent-skills-index.mjs'].includes(path)
-    || (/^docs\/[^/]+\.(?:md|mdx)$/.test(path) && path !== 'docs/changelog.mdx' && path !== 'docs/source-attribution.mdx')
-    || /^docs\/zh\/[^/]+\.mdx$/.test(path)
-    || /^public\/[^/]+\.(?:md|txt|json)$/.test(path)
-    || /^public\/\.well-known\/agent-skills\/[^/]+\/SKILL\.md$/.test(path)
-    || /^pro-test\/src\/locales\/[^/]+\.json$/.test(path)
-    || /^blog-site\/src\/content\/blog\/[^/]+\.md$/.test(path)
-  );
+  const observedRetainedContracts = new Set();
   const visit = (path) => {
-    if (ACQUISITION_CLAIM_EXCLUDES.some((prefix) => path.startsWith(prefix))) return;
-    const absolute = join(ROOT, path);
-    let stat;
-    try {
-      stat = statSync(absolute);
-    } catch {
-      return;
-    }
-    if (stat.isDirectory()) {
-      for (const entry of readdirSync(absolute)) visit(`${path}/${entry}`);
-      return;
-    }
-    if (!ACQUISITION_CLAIM_EXTENSIONS.test(path) || !isCurrentClaimSurface(path)) return;
     for (const [index, line] of read(path).split('\n').entries()) {
-      if (!VOLATILE_INVENTORY_CLAIM_RE.test(line)) continue;
       if (/\btool errors\b/i.test(line)) continue;
       if (/\bTier \d+(?:[–-]\d+)? sources\b/i.test(line)) continue;
-      if (allowedExactContracts.some((entry) => entry.path === path && entry.text.test(line))) continue;
+      const retained = retainedExactContracts.filter((entry) => entry.path === path && entry.text.test(line));
+      if (retained.length > 0) {
+        for (const contract of retained) observedRetainedContracts.add(contract);
+        continue;
+      }
+      if (!VOLATILE_INVENTORY_CLAIM_RE.test(line)) continue;
       failures.push(`${path}:${index + 1}: hand-authored acquisition copy must use registry-derived or semantic inventory wording: ${line.trim()}`);
     }
   };
-  for (const path of ACQUISITION_CLAIM_ROOTS) visit(path);
+  for (const path of collectCurrentAcquisitionClaimFiles()) visit(path);
+  failures.push(...retainedExactContractCoverageFailures(retainedExactContracts, observedRetainedContracts));
   return failures;
 }
 

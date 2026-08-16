@@ -1,6 +1,6 @@
 ---
 title: "Track Global Conflicts in Real Time with World Monitor"
-description: "Monitor active conflicts, military movements, and geopolitical escalation in real time. World Monitor tracks 210+ bases across 9 theaters with live ADS-B data."
+description: "Monitor active conflicts, military movements, and geopolitical escalation in real time with the reviewed base and strategic-theater registries plus live ADS-B data."
 metaTitle: "Track Global Conflicts in Real Time | World Monitor"
 keywords: "real-time conflict map, geopolitical intelligence map, military tracking dashboard, conflict monitoring tool, global conflict tracker"
 audience: "Geopolitical analysts, defense researchers, policy makers, journalists covering conflict"
@@ -30,9 +30,9 @@ The answer comes from layering multiple intelligence sources onto a single inter
 
 Each layer can be toggled independently. Combine them to build a multi-source picture of any developing situation. For a broader look at what the platform offers, see [What Is World Monitor?](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/).
 
-## 9 Strategic Theaters Under Continuous Assessment
+## Strategic Theaters Under Continuous Assessment
 
-World Monitor maintains real-time posture assessments for 9 operational theaters:
+World Monitor maintains real-time posture assessments for its operational-theater registry:
 
 1. **Iran / Persian Gulf:** Strait of Hormuz chokepoint, IRGC activity, proxy conflict indicators
 2. **Taiwan Strait:** PLA military exercises, naval deployments, airspace incursions
@@ -77,7 +77,7 @@ World Monitor's escalation algorithm goes beyond showing where events are happen
 
 Geographic convergence is particularly powerful. When you see protests AND military deployments AND a communications outage in the same area within the same day, that pattern has predictive value that individual events don't.
 
-## 210+ Military Bases Mapped
+## Military Bases Mapped
 
 The military infrastructure layer maps the authoritative base registry, including:
 

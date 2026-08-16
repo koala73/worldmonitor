@@ -15,6 +15,7 @@ const agentCard = JSON.parse(
   readFileSync(join(ROOT, 'public/.well-known/agent-card.json'), 'utf-8'),
 );
 const vercelConfig = JSON.parse(readFileSync(join(ROOT, 'vercel.json'), 'utf-8'));
+const productFacts = JSON.parse(readFileSync(join(ROOT, 'public/product-facts.json'), 'utf-8'));
 
 // Guards for the ?mode=agent machine-readable homepage view (orank Identity
 // `agent-mode-view` bonus): the static JSON must stay in parity with the real
@@ -105,6 +106,19 @@ describe('agent-mode view (/?mode=agent)', () => {
     assert.ok(serverCard.tools.length > 0, 'the linked live server card must expose tools');
     assert.equal(view.endpoints.a2a.url, agentCard.url);
     assert.equal(view.endpoints.nlweb.url, 'https://www.worldmonitor.app/ask');
+  });
+
+  it('points agents at derived tool and locale inventories instead of orphaned totals', () => {
+    assert.equal(view.endpoints.mcp.tools, undefined);
+    assert.match(view.endpoints.mcp.note, /tools\/list.*live tool inventory/i);
+    const llmsFull = readFileSync(join(ROOT, 'public/llms-full.txt'), 'utf-8');
+    assert.match(llmsFull, /product-facts\.json.*capabilities\.localeCodes/);
+    assert.ok(productFacts.capabilities.localeCodes.length > 0);
+    assert.equal(
+      productFacts.capabilities.localeCodes.length,
+      productFacts.capabilities.locales,
+      'the agent-readable locale list must match the derived locale count',
+    );
   });
 
   it('vercel.json serves it for /?mode=agent ahead of the welcome rewrite', () => {

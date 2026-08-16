@@ -210,7 +210,7 @@ The live inventory currently covers 558+ observed upstream hosts. The [data-sour
 
 ## Supported Languages
 
-Localization follows the runtime locale registry, including right-to-left bundles. Language bundles are lazy-loaded on demand. Localized news feeds load region-specific RSS sources based on language preference. AI translation is available for cross-language intelligence gathering.
+Localization follows the runtime locale registry, including right-to-left bundles. Fetch `https://worldmonitor.app/product-facts.json` and read `capabilities.localeCodes` for the exact current locale list. Language bundles are lazy-loaded on demand. Localized news feeds load region-specific RSS sources based on language preference. AI translation is available for cross-language intelligence gathering.
 
 ## Multi-Variant Build System
 

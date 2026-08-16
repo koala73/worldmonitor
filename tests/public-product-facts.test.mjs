@@ -20,7 +20,9 @@ import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 import {
   ACQUISITION_CLAIM_ROOTS,
+  collectCurrentAcquisitionClaimFiles,
   computeStats,
+  retainedExactContractCoverageFailures,
   validateVolatileInventoryClaims,
   VOLATILE_INVENTORY_CLAIM_RE,
 } from '../scripts/docs-stats.mjs';
@@ -53,6 +55,37 @@ const REQUIRED_ACQUISITION_CLAIM_ROOTS = [
 
 function assertAcquisitionClaimRootClosure(actualRoots) {
   assert.deepEqual([...actualRoots].sort(), REQUIRED_ACQUISITION_CLAIM_ROOTS);
+}
+
+const REQUIRED_CURRENT_DOC_EXCLUDES = [
+  'docs/Docs_To_Review/',
+  'docs/api/',
+  'docs/archive/',
+  'docs/audits/',
+  'docs/brainstorms/',
+  'docs/generated/',
+  'docs/ideation/',
+  'docs/internal/',
+  'docs/perf/',
+  'docs/plans/',
+  'docs/research/',
+  'docs/solutions/',
+];
+
+function independentlyCollectCurrentDocs() {
+  const paths = [];
+  const visit = (path) => {
+    if (REQUIRED_CURRENT_DOC_EXCLUDES.some((prefix) => path.startsWith(prefix))) return;
+    if (['docs/changelog.mdx', 'docs/desktop-parity-matrix.md', 'docs/railway-seed-consolidation-runbook.md', 'docs/source-attribution.mdx', 'docs/zh/changelog.mdx'].includes(path)) return;
+    const stat = statSync(join(ROOT, path));
+    if (stat.isDirectory()) {
+      for (const entry of readdirSync(join(ROOT, path))) visit(`${path}/${entry}`);
+      return;
+    }
+    if (/\.(?:md|mdx)$/.test(path)) paths.push(path);
+  };
+  visit('docs');
+  return paths.sort();
 }
 
 function machineReadablePricing() {
@@ -128,6 +161,27 @@ describe('public product facts generation contract', () => {
       ),
       /Expected values to be strictly deep-equal/,
       'deleting one registered acquisition root must fail closed',
+    );
+  });
+
+  it('keeps recursive current documentation in the exact acquisition scan closure', () => {
+    const expected = independentlyCollectCurrentDocs();
+    const actual = collectCurrentAcquisitionClaimFiles().filter((path) => path.startsWith('docs/'));
+    assert.deepEqual(actual, expected);
+    assert.ok(actual.includes('docs/panels/news-feeds.mdx'), 'nested panel docs must be scanned');
+    assert.throws(
+      () => assert.deepEqual(actual.filter((path) => path !== 'docs/panels/news-feeds.mdx'), expected),
+      /Expected values to be strictly deep-equal/,
+      'deleting one nested current documentation surface must fail closed',
+    );
+  });
+
+  it('fails closed when a retained exact contract disappears', () => {
+    const contract = { path: 'docs/fixed-protocol.mdx', text: /six fixed fields/ };
+    assert.deepEqual(retainedExactContractCoverageFailures([contract], new Set([contract])), []);
+    assert.deepEqual(
+      retainedExactContractCoverageFailures([contract], new Set()),
+      ['docs/fixed-protocol.mdx: retained exact count contract is missing or changed: /six fixed fields/'],
     );
   });
 
@@ -326,17 +380,32 @@ describe('public product facts generation contract', () => {
       '34 proto-backed domains',
       '27 positive-news feeds',
       '28 supported languages',
+      '44 data layers',
+      '44 other intelligence layers',
+      '20+ separate services',
       '| Live video streams | 8 |',
       '| Languages supported | 27 (including RTL) |',
       '| Airports monitored | 111 |',
       '52個のMCPツール',
       '60以上のVercel Edge Functions',
       '6つのダッシュボード',
+      '313のAIデータセンターを電力・運営者メタデータ付きでマッピング',
       '26 个 OSINT 频道',
+      '210+ military bases',
+      '38+ associated military bases',
+      '9 strategic theaters',
+      '210+ 基地数据库',
+      '56-channel Telegram OSINT feed',
+      '62 strategic ports',
+      '88 mapped pipelines',
+      '13 monitored waterways',
+      '~100 tracked satellites',
+      '80–120 intelligence satellites',
       '25 installable agent skills',
       '跨 30+ 实时服务',
       '500 多个实时数据源',
       '25 个可安装智能体技能',
+      '25 个公开智能体配方',
       'Vercel Edge Functions（60+）',
       'Vercel Edge Functions (60 以上)',
     ]) {

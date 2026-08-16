@@ -74,9 +74,9 @@ World Monitor maps the world's **10 major commodity exchanges**:
 
 Click any exchange for trading hours, primary instruments, and current market status.
 
-## 83 Strategic Ports Under Watch
+## Strategic Ports Under Watch
 
-Maritime chokepoints and major ports are the pressure points of global trade. World Monitor maps **83 strategic ports** with:
+Maritime chokepoints and major ports are the pressure points of global trade. World Monitor maps its **strategic-port registry** with:
 
 - Current operational status
 - Geographic chokepoint proximity (Suez, Strait of Hormuz, Malacca, Panama Canal)

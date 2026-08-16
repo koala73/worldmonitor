@@ -201,6 +201,51 @@ function panelFetchIds(callback, sourceFile) {
   return [...ids];
 }
 
+function localFunctionDeclarations(sourceFile) {
+  const declarations = new Map();
+  sourceFile.forEachChild(function collect(node) {
+    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+      declarations.set(node.name.text, node);
+    } else if (
+      ts.isVariableDeclaration(node)
+      && ts.isIdentifier(node.name)
+      && node.initializer
+      && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+    ) {
+      declarations.set(node.name.text, node.initializer);
+    }
+    node.forEachChild(collect);
+  });
+  return declarations;
+}
+
+function panelFetchIdsWithLocalHelpers(callback, sourceFile, declarations, seen = new Set()) {
+  if (ts.isIdentifier(callback)) {
+    const declaration = declarations.get(callback.text);
+    assert.ok(declaration, `scheduleRefresh callback ${callback.text} could not be resolved`);
+    if (seen.has(callback.text)) return [];
+    return panelFetchIdsWithLocalHelpers(declaration, sourceFile, declarations, new Set([...seen, callback.text]));
+  }
+
+  const ids = new Set(panelFetchIds(callback, sourceFile));
+  callback.forEachChild(function collectHelperFetches(node) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const helperName = node.expression.text;
+      const declaration = declarations.get(helperName);
+      if (declaration && !seen.has(helperName)) {
+        for (const id of panelFetchIdsWithLocalHelpers(
+          declaration,
+          sourceFile,
+          declarations,
+          new Set([...seen, helperName]),
+        )) ids.add(id);
+      }
+    }
+    node.forEachChild(collectHelperFetches);
+  });
+  return [...ids];
+}
+
 function unwrapExpression(node) {
   let current = node;
   while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)) current = current.expression;
@@ -223,11 +268,13 @@ function panelAccessId(node, panelCollections) {
 
 function scheduledSelfFetchingPanelIds(source = appSrc) {
   const scheduled = [];
+  let declarations;
   for (const { node, sourceFile } of callExpressions(source)) {
     if (callName(node, sourceFile) !== 'scheduleRefresh') continue;
     const scheduleId = literalFirstArgument(node);
     if (!scheduleId || !node.arguments[1]) continue;
-    const fetchedPanels = panelFetchIds(node.arguments[1], sourceFile);
+    declarations ??= localFunctionDeclarations(sourceFile);
+    const fetchedPanels = panelFetchIdsWithLocalHelpers(node.arguments[1], sourceFile, declarations);
     if (fetchedPanels.length === 0) continue;
     assert.deepStrictEqual(
       fetchedPanels,
@@ -813,6 +860,22 @@ describe('panel-config guardrails', () => {
       primeTask('alpha', () => panel.fetchData());
     `;
     assert.deepStrictEqual(scheduledSelfFetchingPanelIds(literalBracketMethod), ['alpha']);
+
+    const namedCallback = `
+      const loadAlpha = () => this.state.panels.alpha.fetchData();
+      scheduleRefresh('alpha', loadAlpha);
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(namedCallback), ['alpha']);
+
+    const namedHelper = `
+      function loadAlpha() {
+        this.state.panels.alpha.fetchData();
+      }
+      scheduleRefresh('alpha', () => loadAlpha());
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(namedHelper), ['alpha']);
 
     assert.throws(
       () => scheduledSelfFetchingPanelIds("scheduleRefresh('alpha', () => (this.state.panels['beta'] as BetaPanel).fetchData());"),

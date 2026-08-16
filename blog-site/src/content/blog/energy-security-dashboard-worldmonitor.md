@@ -15,11 +15,11 @@ WorldMonitor's [energy-shock monitoring workflow](/blog/posts/energy-shock-monit
 
 ## The physical layer: flows, chokepoints, infrastructure
 
-The dashboard opens on the **Energy Atlas map** and a **Chokepoint Status strip** covering the [13 monitored waterways](/blog/posts/what-is-a-maritime-chokepoint/), seven of which publish live oil-and-gas flow estimates against EIA baselines. The **Strait of Hormuz Tracker** gets its own panel, because roughly a fifth of global oil transit deserves one.
+The dashboard opens on the **Energy Atlas map** and a **Chokepoint Status strip** covering the [canonical monitored-waterway registry](/blog/posts/what-is-a-maritime-chokepoint/). Waterways with EIA baselines publish live oil-and-gas flow estimates. The **Strait of Hormuz Tracker** gets its own panel, because roughly a fifth of global oil transit deserves one.
 
 Around the chokepoints sits the fixed infrastructure:
 
-- **Oil & Gas Pipeline Status** — 88 mapped pipelines with status tracking.
+- **Oil & Gas Pipeline Status** — the mapped pipeline registry with status tracking.
 - **Strategic Storage Atlas** — where the buffers physically are.
 - **Global Fuel Shortage Registry** — where the buffers have already failed.
 - **Energy Disruptions Log** — the running record of outages, attacks, and force majeure events.

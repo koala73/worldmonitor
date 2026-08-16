@@ -18,14 +18,14 @@ const SOURCE_DOMAINS = [
     id: 'military',
     name: 'Military & Strategic',
     anchor: 'military-%26-strategic',
-    blurb: '226 military bases, live ADS-B military flights, naval activity, ~100 tracked satellites, and GPS jamming detected from transponder anomalies.',
+    blurb: 'Military bases, live ADS-B military flights, naval activity, tracked satellites, and GPS jamming detected from transponder anomalies.',
     providers: ['adsb.lol', 'Wingbits', 'CelesTrak', 'gpsjam.org', 'LiveUAMap'],
   },
   {
     id: 'news',
     name: 'News & OSINT',
     anchor: 'news-%26-osint',
-    blurb: 'Hundreds of tiered news feeds across six variants, a 56-channel Telegram OSINT lane, live TV, and webcam grids — every source disclosed and bias-tagged.',
+    blurb: 'Tiered news feeds across every product variant, a curated Telegram OSINT lane, live TV, and webcam grids — every source disclosed and bias-tagged.',
     providers: ['Reuters', 'BBC', 'AP', 'Al Jazeera', 'Bellingcat', 'ISW'],
   },
   {
@@ -46,7 +46,7 @@ const SOURCE_DOMAINS = [
     id: 'infrastructure',
     name: 'Infrastructure & Cyber',
     anchor: 'infrastructure-%26-cyber',
-    blurb: 'Undersea cables, pipelines, 62 strategic ports, AI datacenters, internet outages, and six live threat-intelligence feeds.',
+    blurb: 'Undersea cables, pipelines, strategic ports, AI datacenters, internet outages, and live threat-intelligence feeds.',
     providers: ['Cloudflare Radar', 'Submarine Cable Map', 'abuse.ch', 'AbuseIPDB', 'Epoch AI'],
   },
   {
@@ -67,7 +67,7 @@ const SOURCE_DOMAINS = [
     id: 'china',
     name: 'China Coverage',
     anchor: 'china-coverage',
-    blurb: 'Source-attributed official lanes: NBS and SAFE macro, policy documents from six ministries, exchange disclosures, and cross-strait activity claims.',
+    blurb: 'Source-attributed official lanes: NBS and SAFE macro, ministry policy documents, exchange disclosures, and cross-strait activity claims.',
     providers: ['NBS', 'SAFE', "People's Bank of China", 'SSE / SZSE', 'Taiwan MND'],
   },
   {

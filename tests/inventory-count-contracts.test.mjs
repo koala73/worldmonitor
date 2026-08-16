@@ -211,6 +211,28 @@ describe('extensible inventory count contract audit', () => {
     assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 5);
   });
 
+  it('follows numeric constants through object properties and array elements', () => {
+    const result = auditFixture(`
+      import assert from 'node:assert/strict';
+      const expected = { providers: 500 + 52 };
+      const snapshots = [552];
+      assert.ok(stats.providerCount > 0);
+      assert.equal(stats.providerCount, expected.providers);
+      assert.equal(stats.providerCount, snapshots[0]);
+    `);
+    assert.equal(codes(result).filter((code) => code === 'unclassified-literal').length, 2);
+  });
+
+  it('follows inventory aliases through object spreads', () => {
+    const result = auditFixture(`
+      import assert from 'node:assert/strict';
+      assert.ok(stats.providerCount > 0);
+      const snapshot = { ...stats };
+      assert.equal(snapshot.providerCount, 552);
+    `);
+    assert.ok(codes(result).includes('unclassified-literal'));
+  });
+
   it('does not exempt an exact inventory of one', () => {
     const result = auditFixture(`
       import assert from 'node:assert/strict';

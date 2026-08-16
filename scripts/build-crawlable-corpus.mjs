@@ -40,6 +40,7 @@ const CRISIS_REGISTRY_PATH = 'shared/crawlable-crises.json';
 const RESEARCH_REPORTS_INDEX_PATH = 'shared/research-reports/index.mjs';
 const SOURCE_ATTRIBUTION_MANIFEST_PATH = 'shared/source-attribution-manifest.json';
 const SOURCE_PAGE_RENDERER_PATH = 'scripts/crawlable-sources-page.mjs';
+const SHARED_PAGE_TEMPLATE_PATH = 'scripts/build-crawlable-corpus.mjs';
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
@@ -217,6 +218,22 @@ function laterDate(...values) {
     .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? ''))
     .sort()
     .at(-1) ?? null;
+}
+
+export function sourcePageLastmod({
+  manifestLastmod,
+  rendererLastmod,
+  sharedTemplateLastmod,
+  generatorContentVersion = CORPUS_GENERATOR_CONTENT_VERSION,
+  pageContentVersion = SOURCES_PAGE_CONTENT_VERSION,
+}) {
+  return laterDate(
+    manifestLastmod,
+    rendererLastmod,
+    sharedTemplateLastmod,
+    generatorContentVersion,
+    pageContentVersion,
+  );
 }
 
 function normalizeBaseUrl(baseUrl) {
@@ -825,12 +842,11 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   if (sourceCatalog.length !== sourceStats.providerCount) {
     throw new Error('Source catalog provider count drifted from the attribution manifest');
   }
-  const sourcesLastmod = laterDate(
-    gitFileLastmod(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH),
-    gitFileLastmod(rootDir, SOURCE_PAGE_RENDERER_PATH),
-    CORPUS_GENERATOR_CONTENT_VERSION,
-    SOURCES_PAGE_CONTENT_VERSION,
-  );
+  const sourcesLastmod = sourcePageLastmod({
+    manifestLastmod: gitFileLastmod(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH),
+    rendererLastmod: gitFileLastmod(rootDir, SOURCE_PAGE_RENDERER_PATH),
+    sharedTemplateLastmod: gitFileLastmod(rootDir, SHARED_PAGE_TEMPLATE_PATH),
+  });
 
   return {
     generatorContentVersion: CORPUS_GENERATOR_CONTENT_VERSION,
@@ -847,6 +863,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       researchReports: RESEARCH_REPORTS_INDEX_PATH,
       sourceAttributionManifest: SOURCE_ATTRIBUTION_MANIFEST_PATH,
       sourcePageRenderer: SOURCE_PAGE_RENDERER_PATH,
+      sharedPageTemplate: SHARED_PAGE_TEMPLATE_PATH,
     },
     lastmod: {
       countries: countriesLastmod,

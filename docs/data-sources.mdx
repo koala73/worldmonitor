@@ -96,7 +96,7 @@ Population exposure estimation calculates affected populations within event-spec
 
 Government travel advisories serve as expert risk assessments from national intelligence agencies — when the US State Department issues a "Do Not Travel" advisory, it reflects classified threat intelligence that no open-source algorithm can replicate.
 
-**Sources**: 3 government advisory feeds (US State Dept, Australia DFAT Smartraveller, UK FCDO), 13 US Embassy country-specific alert feeds (Thailand, UAE, Germany, Ukraine, Mexico, India, Pakistan, Colombia, Poland, Bangladesh, Italy, Dominican Republic, Myanmar), and health agency feeds (CDC Travel Notices, ECDC epidemiological updates, WHO News, WHO Africa Emergencies).
+**Sources**: Government travel advisories (US State Dept, Australia DFAT Smartraveller, UK FCDO), US Embassy country-specific alerts, and health agency feeds (CDC Travel Notices, ECDC epidemiological updates, WHO News, WHO Africa Emergencies).
 
 **Advisory levels** (ranked): Do-Not-Travel (4) → Reconsider Travel (3) → Exercise Caution (2) → Normal (1) → Info (0). Both RSS (item) and Atom (entry) formats are parsed. Country extraction uses a 265-entry country name map (generated from GeoJSON + aliases) for accurate matching of compound names and alternative spellings.
 
@@ -156,7 +156,7 @@ Markets are filtered to exclude sports and entertainment (100+ exclusion keyword
 
 Force posture and strategic infrastructure, tracked from open sources in real time.
 
-- 226 military bases from 9 operators
+- Registered military bases with operator attribution
 - Live military flight tracking (ADS-B) — see [Aviation & Airspace](#aviation-%26-airspace) for the provider chain
 - Naval vessel monitoring (AIS)
 - Nuclear facilities & gamma irradiators
@@ -213,8 +213,8 @@ GPS jamming and spoofing — increasingly used as electronic warfare in conflict
 The news backbone: tiered RSS feeds across the published variants, a raw Telegram OSINT lane, live TV streams, and a webcam grid — every source disclosed, tiered, and bias-tagged.
 
 - Tiered global news network spanning politics, regional desks, finance, tech, energy, think tanks, and crisis monitors — the complete per-variant inventory is disclosed [below](#server-side-feed-aggregation)
-- 56-channel Telegram OSINT feed with official, independent, and belligerent-party sources
-- Live TV news streams and a 22-feed webcam surveillance grid from geopolitical hotspots
+- Curated Telegram OSINT feed with official, independent, and belligerent-party sources
+- Live TV news streams and a webcam surveillance grid from geopolitical hotspots
 - Curated positive-news network for the Happy variant (Good News Network, Positive.News, Reasons to be Cheerful, and more)
 - Every feed carries source tier, propaganda-risk rating, and state-affiliation metadata
 
@@ -355,7 +355,7 @@ The YouTube live-stream catalog covers geopolitical hotspots across global regio
 | **Americas**       | Washington DC, New York, Los Angeles, Miami                      |
 | **Asia-Pacific**   | Taipei, Shanghai, Tokyo, Seoul, Sydney                           |
 
-The webcam panel supports two viewing modes: a 4-feed grid (default strategic selection: Jerusalem, Tehran, Kyiv, Washington DC) and a single-feed expanded view. Region tabs (ALL/IRAN/MIDEAST/EUROPE/AMERICAS/ASIA) filter the available feeds. The Iran/Attacks tab provides a dedicated 2×2 grid for real-time visual monitoring during escalation events between Iran and Israel.
+The webcam panel supports two viewing modes: a 2×2 grid (default strategic selection: Jerusalem, Tehran, Kyiv, Washington DC) and a single-feed expanded view. Region tabs (ALL/IRAN/MIDEAST/EUROPE/AMERICAS/ASIA) filter the available feeds. The Iran/Attacks tab provides a dedicated 2×2 grid for real-time visual monitoring during escalation events between Iran and Israel.
 
 Resource management is aggressive — iframes are lazy-loaded via Intersection Observer (only rendered when the panel scrolls into view), paused after 5 minutes of user inactivity, and destroyed from the DOM entirely when the browser tab is hidden. On Tauri desktop, YouTube embeds route through a cloud proxy to bypass WKWebView autoplay restrictions. Each feed carries a fallback video ID in case the primary stream goes offline.
 
@@ -457,8 +457,8 @@ The physical and digital backbone: cables, pipelines, ports, datacenters, intern
 
 - Undersea cables with landing points, cable health advisories (NGA navigational warnings), and cable repair ship tracking
 - Oil & gas pipelines
-- AI datacenters (313 clusters from Epoch AI dataset)
-- 62 strategic ports across 6 types (container, oil, LNG, naval, mixed, bulk) with throughput rankings
+- AI datacenters from the Epoch AI dataset
+- Strategic ports grouped by container, oil, LNG, naval, mixed, and bulk roles, with throughput rankings
 - Internet outages (Cloudflare Radar)
 - Critical mineral deposits
 - 19 global trade routes (container, energy, bulk) with multi-segment arcs through strategic chokepoints
@@ -494,7 +494,7 @@ IOCs are classified into four types (`c2_server`, `malware_host`, `phishing`, `m
 
 ### Strategic Port Infrastructure
 
-62 strategic ports are cataloged across six types, reflecting their role in global trade and military posture:
+Strategic ports are cataloged by role, reflecting their place in global trade and military posture:
 
 | Type           | Count | Examples                                             |
 | -------------- | ----- | ---------------------------------------------------- |

@@ -15,6 +15,7 @@ import {
   GENERATED_DIRS,
   gitFileLastmod,
   loadCorpusData,
+  sourcePageLastmod,
 } from '../scripts/build-crawlable-corpus.mjs';
 import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
 import { buildSourceCatalog, sourceProviderDisplayName } from '../scripts/crawlable-sources-page.mjs';
@@ -232,6 +233,25 @@ function productionScriptNonce() {
 }
 
 describe('crawlable corpus generator', () => {
+  it('advances the sources lastmod when the shared page template changes', () => {
+    const baseline = sourcePageLastmod({
+      manifestLastmod: '2026-08-10',
+      rendererLastmod: '2026-08-11',
+      sharedTemplateLastmod: '2026-08-12',
+      generatorContentVersion: '2026-08-09',
+      pageContentVersion: '2026-08-08',
+    });
+    const afterTemplateChange = sourcePageLastmod({
+      manifestLastmod: '2026-08-10',
+      rendererLastmod: '2026-08-11',
+      sharedTemplateLastmod: '2026-08-13',
+      generatorContentVersion: '2026-08-09',
+      pageContentVersion: '2026-08-08',
+    });
+    assert.equal(baseline, '2026-08-12');
+    assert.equal(afterTemplateChange, '2026-08-13');
+  });
+
   // #6492 added public/sources/ to GENERATED_DIRS and not to .gitignore, so
   // every built worktree carried it as untracked noise. Nothing tied the two
   // lists together, so the next directory added would repeat it.
@@ -720,6 +740,7 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.countryBboxes, 'shared/country-bboxes.js');
     assert.equal(data.sources.crisisRegistry, 'shared/crawlable-crises.json');
     assert.equal(data.sources.sourcePageRenderer, 'scripts/crawlable-sources-page.mjs');
+    assert.equal(data.sources.sharedPageTemplate, 'scripts/build-crawlable-corpus.mjs');
     assert.equal(data.resilience.capturedAt, '2026-05-28');
     assert.equal(data.lastmod.countries, '2026-08-12');
     assert.equal(data.lastmod.research, '2026-08-12');
@@ -729,8 +750,9 @@ describe('crawlable corpus generator', () => {
         '2026-08-12',
         gitFileLastmod(repoRoot, data.sources.sourceAttributionManifest),
         gitFileLastmod(repoRoot, data.sources.sourcePageRenderer),
+        gitFileLastmod(repoRoot, data.sources.sharedPageTemplate),
       ].filter(Boolean).sort().at(-1),
-      'source-page lastmod must include both manifest and renderer changes',
+      'source-page lastmod must include manifest, renderer, and shared-template changes',
     );
     assert.equal(data.crises.length, 4);
     assert.ok(data.crises.some((crisis) => crisis.slug === 'ukraine-war' && crisis.coverage.some((country) => country.code === 'UA')));
