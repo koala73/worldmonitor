@@ -123,8 +123,42 @@ const EASTERN_FLANK_FEEDS = {
   'Daily Sabah': { url: 'https://www.dailysabah.com/rss/home-page' },
 } as const;
 
+const POLAND_DEPTH_FEEDS = {
+  PAP: {
+    url: 'https://news.google.com/rss/search?q=site%3Apap.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl',
+    lang: 'pl',
+    countries: ['PL'],
+  },
+  'Gazeta Wyborcza': {
+    url: 'https://news.google.com/rss/search?q=site%3Awyborcza.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl',
+    lang: 'pl',
+    countries: ['PL'],
+  },
+  Polityka: {
+    url: 'https://news.google.com/rss/search?q=site%3Apolityka.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl',
+    lang: 'pl',
+    countries: ['PL'],
+  },
+  Onet: {
+    url: 'https://news.google.com/rss/search?q=site%3Awiadomosci.onet.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl',
+    lang: 'pl',
+    countries: ['PL'],
+  },
+  'OKO.press': {
+    url: 'https://oko.press/feed',
+    lang: 'pl',
+    countries: ['PL'],
+  },
+  'TVP Info': {
+    url: 'https://news.google.com/rss/search?q=site%3Atvp.info%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl',
+    lang: 'pl',
+    countries: ['PL'],
+  },
+} as const;
+
 const STRATEGIC_DEFAULTS = [
   'ActuNiger',
+  'Annahar',
   'Hurriyet',
   'Polsat News',
   'Studio Tamani',
@@ -166,6 +200,7 @@ const CRISIS_DESK_PACK = {
   'Pajhwok Afghan News': { category: 'asia', countries: ['AF'], url: 'https://news.google.com/rss/search?q=site%3Apajhwok.com%20Afghanistan%20when%3A7d&hl=en-US&gl=US&ceid=US:en', role: 'opt-in' },
   'Naharnet Lebanon': { category: 'middleeast', countries: ['LB'], url: 'https://www.naharnet.com/tags/lebanon/en/feed.atom', role: 'en-default' },
   "L'Orient Today": { category: 'middleeast', countries: ['LB'], url: 'https://news.google.com/rss/search?q=site%3Alorientlejour.com%20Lebanon%20when%3A7d&hl=en-US&gl=US&ceid=US:en', role: 'opt-in' },
+  Annahar: { category: 'middleeast', countries: ['LB'], url: 'https://news.google.com/rss/search?q=site%3Aannahar.com%2Flebanon%20when%3A7d&hl=ar&gl=LB&ceid=LB:ar', lang: 'ar', strategicDefault: true, role: 'strategic-default' },
   'Studio Tamani': { category: 'africa', countries: ['ML'], url: 'https://www.studiotamani.org/feed/', lang: 'fr', strategicDefault: true, role: 'strategic-default' },
   'leFaso.net': { category: 'africa', countries: ['BF'], url: 'https://lefaso.net/spip.php?page=backend', lang: 'fr', strategicDefault: true, role: 'strategic-default' },
   ActuNiger: { category: 'africa', countries: ['NE'], url: 'https://news.google.com/rss/search?q=site%3Aactuniger.com%20Niger%20when%3A7d&hl=fr&gl=FR&ceid=FR:fr', lang: 'fr', strategicDefault: true, role: 'strategic-default' },
@@ -793,7 +828,7 @@ describe('feed catalog drift', () => {
     }
   });
 
-  it('locks the independently reviewed crisis-desk route, language, and activation matrix (#6813-#6830)', () => {
+  it('locks the independently reviewed crisis-desk route, language, and activation matrix (#6813-#6830 plus Annahar)', () => {
     const enabled = feeds.getAllDefaultEnabledSources();
     const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
     const clientByName = new Map(
@@ -852,6 +887,46 @@ describe('feed catalog drift', () => {
     assert.equal(feeds.SOURCE_TYPES['WAFA English'], 'gov');
     assert.equal(feeds.SOURCE_PROPAGANDA_RISK['WAFA English']?.risk, 'high');
     assert.equal(feeds.SOURCE_PROPAGANDA_RISK['WAFA English']?.stateAffiliated, 'Palestine');
+  });
+
+  it('locks the Polish depth pack as locale-boosted catalog opt-in', () => {
+    const enabled = feeds.getAllDefaultEnabledSources();
+    const disabledEn = new Set(feeds.computeDefaultDisabledSources('en'));
+    const boostedPl = feeds.getLocaleBoostedSources('pl');
+    const clientByName = new Map(
+      Object.values(feeds.FEEDS ?? {}).flat().map((feed) => [feed.name, feed]),
+    );
+    const serverByName = new Map(
+      (serverFeeds.VARIANT_FEEDS.full?.europe ?? []).map((feed) => [feed.name, feed]),
+    );
+    const sourceGeography = JSON.parse(
+      readFileSync(join(repoRoot, 'shared/source-geography.json'), 'utf8'),
+    ) as Record<string, string[]>;
+
+    for (const [name, expected] of Object.entries(POLAND_DEPTH_FEEDS)) {
+      const client = clientByName.get(name);
+      const server = serverByName.get(name);
+      assert.ok(client, `${name} must exist in the client Europe catalog`);
+      assert.ok(server, `${name} must exist in the server full/Europe catalog`);
+      assert.equal(client.url, expected.url, `${name} client route drifted`);
+      assert.equal(server.url, expected.url, `${name} server route drifted`);
+      assert.equal(client.lang, expected.lang, `${name} client language drifted`);
+      assert.equal(server.lang, expected.lang, `${name} server language drifted`);
+      assert.equal(client.strategicDefault, undefined, `${name} must not be a strategic default`);
+      assert.equal(server.strategicDefault, undefined, `${name} must not be a strategic default`);
+      assert.deepEqual(sourceGeography[name], [...expected.countries], `${name} country mapping drifted`);
+      assert.ok(isAllowedDomain(new URL(expected.url).hostname), `${name} route host must be RSS-allowlisted`);
+      assert.ok(feeds.SOURCE_TYPES[name], `${name} must have a reviewed source type`);
+      assert.ok(feeds.SOURCE_PROPAGANDA_RISK[name], `${name} must have a reviewed risk declaration`);
+      assert.ok(!enabled.has(name), `${name} must remain globally opt-in`);
+      assert.ok(disabledEn.has(name), `${name} must start disabled for a fresh EN profile`);
+      assert.ok(boostedPl.has(name), `${name} must locale-boost for the Polish UI`);
+    }
+
+    assert.equal(feeds.SOURCE_TYPES.PAP, 'wire');
+    assert.equal(feeds.SOURCE_TYPES['OKO.press'], 'intel');
+    assert.equal(feeds.SOURCE_PROPAGANDA_RISK.PAP?.stateAffiliated, 'Poland');
+    assert.equal(feeds.SOURCE_PROPAGANDA_RISK['TVP Info']?.stateAffiliated, 'Poland');
   });
 
   it('allows every Africa-depth feed through the RSS proxy host policy (#5955)', () => {

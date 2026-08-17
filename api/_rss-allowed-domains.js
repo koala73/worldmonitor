@@ -155,6 +155,7 @@ export default [
   "oc-media.org",
   "oglobo.globo.com",
   "oilprice.com",
+  "oko.press",
   "onemileatatime.com",
   "openai.com",
   "ottawacitizen.com",

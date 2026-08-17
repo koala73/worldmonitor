@@ -149,6 +149,7 @@ export const THEATER_PRESETS: readonly TheaterPreset[] = [
       '+972 Magazine',
       'Naharnet Lebanon',
       "L'Orient Today",
+      'Annahar',
       'Libya Herald',
       'Egypt Independent',
       'Mada Masr',

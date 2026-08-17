@@ -147,10 +147,11 @@ describe('sources catalog origin countries', () => {
     assert.equal(sourceOriginLabel('QA'), 'Qatar');
   });
 
-  it('classifies every crisis-desk publisher added by #6813-#6830', () => {
+  it('classifies every crisis-desk publisher added by #6813-#6830 and the Annahar follow-up', () => {
     const expectedOrigins = new Map([
       ['actuniger.com', 'NE'],
       ['airinfoagadez.com', 'NE'],
+      ['annahar.com', 'LB'],
       ['amu.tv', 'AF'],
       ['ayibopost.com', 'HT'],
       ['dhakatribune.com', 'BD'],
@@ -163,12 +164,14 @@ describe('sources catalog origin countries', () => {
       ['lorientlejour.com', 'LB'],
       ['madamasr.com', 'EG'],
       ['nation.africa', 'KE'],
+      ['oko.press', 'PL'],
       ['pajhwok.com', 'AF'],
       ['sanaacenter.org', 'YE'],
       ['syriadirect.org', 'SY'],
       ['tchadinfos.com', 'TD'],
       ['thedailystar.net', 'BD'],
       ['theguardianpostcameroon.com', 'CM'],
+      ['tvp.info', 'PL'],
       ['yemenonline.info', 'YE'],
       ['www.14ymedio.com', 'CU'],
       ['www.972mag.com', 'IL'],
@@ -706,6 +709,21 @@ describe('crawlable corpus generator', () => {
         sourcesPage,
         /data-provider="L&#39;Orient Today"[\s\S]*?lorientlejour\.com/,
         "sources page must list L'Orient Today under its own host",
+      );
+      assert.match(
+        sourcesPage,
+        /data-provider="Annahar"[\s\S]*?annahar\.com/,
+        'sources page must list Annahar under its own host',
+      );
+      assert.match(
+        sourcesPage,
+        /data-provider="OKO.press"[\s\S]*?oko\.press/,
+        'sources page must list OKO.press under its own host',
+      );
+      assert.match(
+        sourcesPage,
+        /data-provider="PAP"[\s\S]*?pap\.pl/,
+        'sources page must list PAP under its own host',
       );
       assert.match(
         sourcesPage,

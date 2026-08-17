@@ -171,6 +171,7 @@ const EXPECTED_REQUIRED_SOURCE_GEOGRAPHY = new Map<string, readonly string[]>([
   ['Pajhwok Afghan News', ['AF']],
   ['Naharnet Lebanon', ['LB']],
   ["L'Orient Today", ['LB']],
+  ['Annahar', ['LB']],
   ['Studio Tamani', ['ML']],
   ['leFaso.net', ['BF']],
   ['ActuNiger', ['NE']],

@@ -195,6 +195,15 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
       en: rss('https://www.rp.pl/rss_main'),
       pl: rss('https://www.rp.pl/rss_main'),
     } },
+    // Polish depth — catalog opt-in, locale-boosted for `pl`. Native RSS for
+    // PAP (`/rss.xml`) and Onet (`wiadomosci.onet.pl/rss/index.xml`) is dead;
+    // keep those on Google News. OKO.press still publishes a live native feed.
+    { name: 'PAP', url: rss('https://news.google.com/rss/search?q=site%3Apap.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'Gazeta Wyborcza', url: rss('https://news.google.com/rss/search?q=site%3Awyborcza.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'Polityka', url: rss('https://news.google.com/rss/search?q=site%3Apolityka.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'Onet', url: rss('https://news.google.com/rss/search?q=site%3Awiadomosci.onet.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'OKO.press', url: rss('https://oko.press/feed'), lang: 'pl' },
+    { name: 'TVP Info', url: rss('https://news.google.com/rss/search?q=site%3Atvp.info%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
     // Hungarian (HU) — V4 / CEE coverage. Locale-gated for hu users only,
     // matching the Tagesschau (de) / ANSA (it) / NOS Nieuws (nl) / SVT (sv)
     // convention. `hu` is registered as a supported locale in src/services/i18n.ts.
@@ -316,6 +325,7 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'WAFA English', url: rss('https://news.google.com/rss/search?q=site%3Aenglish.wafa.ps%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Naharnet Lebanon', url: rss('https://www.naharnet.com/tags/lebanon/en/feed.atom') },
     { name: "L'Orient Today", url: rss('https://news.google.com/rss/search?q=site%3Alorientlejour.com%20Lebanon%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Annahar', url: rss('https://news.google.com/rss/search?q=site%3Aannahar.com%2Flebanon%20when%3A7d&hl=ar&gl=LB&ceid=LB:ar'), lang: 'ar', strategicDefault: true },
     { name: 'Libya Herald', url: rss('https://libyaherald.com/rss.xml') },
     { name: 'Egypt Independent', url: rss('https://www.egyptindependent.com/feed/') },
     { name: 'Mada Masr', url: rss('https://news.google.com/rss/search?q=site%3Amadamasr.com%20when%3A30d&hl=en-US&gl=US&ceid=US:en') },
@@ -1288,6 +1298,7 @@ export const CRISIS_FLOOR_EN_DEFAULT_SOURCES = [
 
 /** Non-English sources approved as global strategic floor defaults. */
 export const CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES = [
+  'Annahar',
   'Studio Tamani',
   'leFaso.net',
   'ActuNiger',

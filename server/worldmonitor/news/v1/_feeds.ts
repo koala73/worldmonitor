@@ -184,6 +184,14 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       // language and protected from client-side source filtering.
       { name: 'Hurriyet', url: 'https://www.hurriyet.com.tr/rss/anasayfa', lang: 'tr', strategicDefault: true },
       { name: 'Polsat News', url: 'https://www.polsatnews.pl/rss/wszystkie.xml', lang: 'pl', strategicDefault: true },
+      // Polish depth — catalog opt-in, locale-boosted for `pl`. PAP/Onet native
+      // RSS is gone; OKO.press still has a live publisher feed.
+      { name: 'PAP', url: gnLocale('site:pap.pl when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
+      { name: 'Gazeta Wyborcza', url: gnLocale('site:wyborcza.pl when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
+      { name: 'Polityka', url: gnLocale('site:polityka.pl when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
+      { name: 'Onet', url: gnLocale('site:wiadomosci.onet.pl when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
+      { name: 'OKO.press', url: 'https://oko.press/feed', lang: 'pl' },
+      { name: 'TVP Info', url: gnLocale('site:tvp.info when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
       { name: 'Kathimerini', url: gnLocale('site:kathimerini.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el', strategicDefault: true },
     ],
     middleeast: [
@@ -210,6 +218,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'WAFA English', url: gn('site:english.wafa.ps when:7d') },
       { name: 'Naharnet Lebanon', url: 'https://www.naharnet.com/tags/lebanon/en/feed.atom' },
       { name: "L'Orient Today", url: gn('site:lorientlejour.com Lebanon when:7d') },
+      { name: 'Annahar', url: gnLocale('site:annahar.com/lebanon when:7d', 'ar', 'LB', 'LB:ar'), lang: 'ar', strategicDefault: true },
       { name: 'Libya Herald', url: 'https://libyaherald.com/rss.xml' },
       { name: 'Egypt Independent', url: 'https://www.egyptindependent.com/feed/' },
       { name: 'Mada Masr', url: gn('site:madamasr.com when:30d') },

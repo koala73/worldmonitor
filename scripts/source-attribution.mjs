@@ -160,6 +160,13 @@ const PROVIDER_OVERRIDES = {
   'pajhwok.com': publisherMetadataFeed('Pajhwok Afghan News'),
   'www.naharnet.com': publisherMetadataFeed('Naharnet Lebanon'),
   'lorientlejour.com': publisherMetadataFeed("L'Orient Today"),
+  'annahar.com': publisherMetadataFeed('Annahar'),
+  'pap.pl': publisherMetadataFeed('PAP'),
+  'wyborcza.pl': publisherMetadataFeed('Gazeta Wyborcza'),
+  'polityka.pl': publisherMetadataFeed('Polityka'),
+  'wiadomosci.onet.pl': publisherMetadataFeed('Onet'),
+  'oko.press': publisherMetadataFeed('OKO.press'),
+  'tvp.info': publisherMetadataFeed('TVP Info'),
   'www.studiotamani.org': publisherMetadataFeed('Studio Tamani'),
   'lefaso.net': publisherMetadataFeed('leFaso.net'),
   'actuniger.com': publisherMetadataFeed('ActuNiger'),
@@ -699,9 +706,9 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '69c3fa808e80592086ebdba220adf79f27546a97a0b7d1971c30b1e7b1bc61cd',
-  reason: 'Baseline the reviewed identities, including site-scoped publishers that use Google News URLs and the crisis-desk publishers selected in issues #6813-#6830.',
-  reviewReference: 'PR #6662; PR #6670; PR #6736; PR #6840; issues #6813-#6830',
+  sha256: '05ff5054ce1a277d10772f75031895a7bf3916c4097305b45907f794cc130faf',
+  reason: 'Add reviewed Polish publisher identities for PAP, Gazeta Wyborcza, Polityka, Onet, OKO.press, and TVP Info while retaining the prior site-scoped and crisis-desk identities.',
+  reviewReference: 'PR #6662; PR #6670; PR #6736; PR #6840; issues #6813-#6830; Annahar Lebanon follow-up; Polish depth follow-up',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {

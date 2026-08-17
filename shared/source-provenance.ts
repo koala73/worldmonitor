@@ -70,6 +70,9 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'ERR News': 'mainstream', 'LRT English': 'mainstream', 'LSM English': 'mainstream',
   // Turkey EN path (#5952)
   'Daily Sabah': 'mainstream',
+  // Polish (PL) depth — catalog opt-in, locale-boosted
+  'PAP': 'wire', 'Gazeta Wyborcza': 'mainstream', 'Polityka': 'mainstream',
+  'Onet': 'mainstream', 'OKO.press': 'intel', 'TVP Info': 'mainstream',
   // Czech (CS) — V4 balance (#5952)
   'Seznam Zprávy': 'mainstream',
   // Hindi (HI)
@@ -161,7 +164,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   '+972 Magazine': 'mainstream', 'WAFA English': 'gov',
   'HaitiLibre English': 'mainstream', 'AyiboPost': 'mainstream',
   'Amu TV': 'mainstream', 'Pajhwok Afghan News': 'wire',
-  'Naharnet Lebanon': 'mainstream', "L'Orient Today": 'mainstream',
+  'Naharnet Lebanon': 'mainstream', "L'Orient Today": 'mainstream', 'Annahar': 'mainstream',
   'Studio Tamani': 'mainstream', 'leFaso.net': 'mainstream',
   'ActuNiger': 'mainstream', 'Aïr Info': 'mainstream',
   'Caracas Chronicles': 'mainstream', 'Efecto Cocuyo': 'mainstream',
@@ -342,6 +345,13 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'Pajhwok Afghan News': { risk: 'medium', note: 'Independent Kabul-based news agency operating under domestic restrictions' },
   'Naharnet Lebanon': { risk: 'low', note: 'Independent Lebanese digital outlet' },
   "L'Orient Today": { risk: 'low', note: 'Independent English-language Lebanese newsroom' },
+  'Annahar': { risk: 'low', note: 'Independent Lebanese Arabic-language political newspaper' },
+  'PAP': { risk: 'medium', stateAffiliated: 'Poland', note: 'Polish national news agency (Polska Agencja Prasowa); state-owned wire' },
+  'Gazeta Wyborcza': { risk: 'low', note: 'Independent Polish daily newspaper published by Agora' },
+  'Polityka': { risk: 'low', note: 'Independent Polish weekly news magazine' },
+  'Onet': { risk: 'low', note: 'Polish commercial news portal published by Ringier Axel Springer Polska' },
+  'OKO.press': { risk: 'low', note: 'Independent Polish investigative and fact-checking outlet' },
+  'TVP Info': { risk: 'medium', stateAffiliated: 'Poland', note: 'Polish public-service news channel; state-funded broadcaster' },
   'Studio Tamani': { risk: 'low', note: 'Mali newsroom operated by Fondation Hirondelle; Journalism Trust Initiative certified' },
   'leFaso.net': { risk: 'low', note: 'Independent Burkina Faso digital newsroom' },
   'ActuNiger': { risk: 'medium', note: 'Niger-focused independent newsroom' },

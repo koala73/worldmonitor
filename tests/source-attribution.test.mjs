@@ -145,6 +145,37 @@ test('Google News site feeds account for both the editorial host and Google News
     "L'Orient Today must retain its server feed reference",
   );
 
+  const annahar = byHost.get('annahar.com');
+  assert.ok(annahar, 'Annahar must be accounted under annahar.com');
+  assert.ok(
+    annahar.references.some((reference) => reference.path === 'src/config/feeds.ts'),
+    'Annahar must retain its client feed reference',
+  );
+  assert.ok(
+    annahar.references.some((reference) => reference.path === 'server/worldmonitor/news/v1/_feeds.ts'),
+    'Annahar must retain its server feed reference',
+  );
+
+  for (const [host, provider] of [
+    ['pap.pl', 'PAP'],
+    ['wyborcza.pl', 'Gazeta Wyborcza'],
+    ['polityka.pl', 'Polityka'],
+    ['wiadomosci.onet.pl', 'Onet'],
+    ['oko.press', 'OKO.press'],
+    ['tvp.info', 'TVP Info'],
+  ]) {
+    const entry = byHost.get(host);
+    assert.ok(entry, `${provider} must be accounted under ${host}`);
+    assert.ok(
+      entry.references.some((reference) => reference.path === 'src/config/feeds.ts'),
+      `${provider} must retain its client feed reference`,
+    );
+    assert.ok(
+      entry.references.some((reference) => reference.path === 'server/worldmonitor/news/v1/_feeds.ts'),
+      `${provider} must retain its server feed reference`,
+    );
+  }
+
   const serverFeeds = readFileSync(
     join(rootDir, 'server/worldmonitor/news/v1/_feeds.ts'),
     'utf8',
