@@ -184,6 +184,37 @@ describe('health freshness ingestion', () => {
     assert.equal(bis?.lastError, 'REDIS_DOWN');
   });
 
+  it('ranks unknown status as degraded/error rather than OK', async () => {
+    const checkedAtMs = Date.now();
+    const applied = await refreshDataFreshnessFromHealth({
+      endpoint: '/api/health',
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        checkedAt: new Date(checkedAtMs).toISOString(),
+        checks: {
+          bisPolicy: {
+            status: 'OK',
+            records: 12,
+            seedAgeMin: 0,
+            maxStaleMin: 360,
+          },
+          bisDsr: {
+            status: 'UNKNOWN_DEGRADED_STATE',
+            records: 0,
+            seedAgeMin: 5,
+            maxStaleMin: 360,
+          },
+        },
+      }),
+    });
+
+    assert.equal(applied, 1);
+    const bis = dataFreshness.getSource('bis');
+    assert.equal(bis?.healthStatus, 'UNKNOWN_DEGRADED_STATE');
+    assert.equal(bis?.status, 'error');
+    assert.equal(bis?.lastError, 'UNKNOWN_DEGRADED_STATE');
+  });
+
   it('marks mapped sources unhealthy when /api/health reports top-level redis outage without checks', async () => {
     const mappedSources = new Set(Object.values(HEALTH_CHECK_SOURCE_MAP).flat());
     const checkedAtMs = Date.now();

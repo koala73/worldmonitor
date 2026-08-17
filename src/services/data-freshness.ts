@@ -479,7 +479,20 @@ class DataFreshnessTracker {
   }
 
   private healthStatusIsError(status: string): boolean {
-    return status === 'SEED_ERROR' || status === 'REDIS_DOWN' || status === 'REDIS_PARTIAL';
+    return (
+      status === 'SEED_ERROR' ||
+      status === 'REDIS_DOWN' ||
+      status === 'REDIS_PARTIAL' ||
+      (status !== 'OK' &&
+        status !== 'NOT_CONFIGURED' &&
+        status !== 'OK_CASCADE' &&
+        status !== 'EMPTY' &&
+        status !== 'EMPTY_DATA' &&
+        status !== 'EMPTY_ON_DEMAND' &&
+        status !== 'STALE_SEED' &&
+        status !== 'STALE_CONTENT' &&
+        status !== 'COVERAGE_PARTIAL')
+    );
   }
 
   private healthStatusHasNoData(status: string): boolean {

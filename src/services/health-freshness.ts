@@ -70,7 +70,7 @@ function statusRank(status: string): number {
     case 'NOT_CONFIGURED':
       return 0;
     default:
-      return 0;
+      return 5;
   }
 }
 
