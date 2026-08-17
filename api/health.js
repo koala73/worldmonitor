@@ -1342,16 +1342,10 @@ function sanitizeCoverageFailureReasons(raw) {
 // bound is checkable per market forever — anchoring the check to a single
 // historical deploy constant instead would make a ninth market added months from
 // now unable to declare a valid window at all.
-const CONSUMER_PRICE_COVERAGE_ROLLOUT = Object.freeze({
-  ae: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
-  au: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
-  br: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
-  gb: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
-  in: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
-  sa: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
-  sg: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
-  us: { from: '2026-08-02T10:54:58Z', until: '2026-08-03T06:00:00Z' },
-});
+// The 2026-08-02 eight-market window closed 2026-08-03T06:00:00Z and was
+// pruned after its 14-day grace. Add a new market with its own { from, until }.
+// Do not revive the closed eight-market dates — that would re-soften live keys.
+const CONSUMER_PRICE_COVERAGE_ROLLOUT = Object.freeze({});
 
 // name -> epoch ms after which ROLLOUT_PENDING softening is no longer offered.
 // Absent name = no rollout window; the key is strict from the first sweep.
@@ -1359,11 +1353,15 @@ const ROLLOUT_PENDING_UNTIL_MS = {};
 const ROLLOUT_PENDING_FROM_MS = {};
 for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
   const name = consumerPriceCoverageHealthName(market);
-  ACTIVATION_MARKERS[name] = consumerPriceCoverageActivationKey(market);
   const window = CONSUMER_PRICE_COVERAGE_ROLLOUT[market];
   const until = Date.parse(window?.until ?? '');
   const from = Date.parse(window?.from ?? '');
-  if (Number.isFinite(until)) ROLLOUT_PENDING_UNTIL_MS[name] = until;
+  // Probe the marker only while a window can still be revoked by it. After the
+  // window is gone the EXISTS result cannot change status or emit `activated`.
+  if (Number.isFinite(until)) {
+    ACTIVATION_MARKERS[name] = consumerPriceCoverageActivationKey(market);
+    ROLLOUT_PENDING_UNTIL_MS[name] = until;
+  }
   if (Number.isFinite(from)) ROLLOUT_PENDING_FROM_MS[name] = from;
 }
 
@@ -1970,7 +1968,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   // `onDemand`, and covers BOTH markers a check can consult: its own, and the
   // separate content-freshness marker its seed config names.
   const activationUnknown = Boolean(ctx.activationStates) && [
-    ACTIVATION_MARKERS[name] ? name : null,
+    (ACTIVATION_MARKERS[name] || ctx.rolloutPendingUntilMs?.has(name)) ? name : null,
     seedCfg?.contentFreshnessActivation ?? null,
   ].some((markerName) => markerName !== null && !ctx.activationStates.has(markerName));
 
