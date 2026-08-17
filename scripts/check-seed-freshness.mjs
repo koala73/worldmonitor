@@ -82,6 +82,17 @@ export function findOperationalProblems(payload, now = Date.now()) {
       ...(Number.isFinite(problem?.maxStaleMin)
         ? { maxStaleMin: problem.maxStaleMin }
         : {}),
+      // The content clock, carried so the report can name the pair that
+      // actually fired. Without these a STALE_CONTENT line could only print
+      // the SEED pair, which is by definition inside budget for that status —
+      // the reader sees `age=1200m max=5760m` on a problem row and reasonably
+      // concludes the monitor is broken.
+      ...(Number.isFinite(problem?.contentAgeMin)
+        ? { contentAgeMin: problem.contentAgeMin }
+        : {}),
+      ...(Number.isFinite(problem?.maxContentAgeMin)
+        ? { maxContentAgeMin: problem.maxContentAgeMin }
+        : {}),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -274,10 +285,36 @@ function readAcceptanceBaseline() {
   return JSON.parse(readFileSync(BASELINE_URL, 'utf8'));
 }
 
+/**
+ * Health runs TWO independent clocks and this line has to print the one that
+ * actually fired.
+ *
+ *   seed    seedAgeMin vs maxStaleMin        "is the seeder running"  -> STALE_SEED
+ *   content contentAgeMin vs maxContentAgeMin "is the data advancing"  -> STALE_CONTENT
+ *
+ * This printed the seed pair unconditionally, so every STALE_CONTENT line read
+ * as a contradiction: euFsi showed `age=1200m max=5760m` — comfortably inside
+ * budget — while the breach was contentAgeMin 19230 against maxContentAgeMin
+ * 14400. A reader can only conclude the monitor is wrong, and the numbers that
+ * would explain it are already on the wire and simply were not printed.
+ */
 function describeProblem(problem) {
-  const freshness = Number.isFinite(problem.seedAgeMin)
-    ? ` age=${problem.seedAgeMin}m max=${problem.maxStaleMin ?? 'unknown'}m`
-    : '';
+  // A content budget with no readable content age is its OWN failure mode:
+  // health scores `contentAgeMin == null` as stale (fail-closed), so the source
+  // is flagged because the clock could not be read, not because it ran out.
+  // jodiGas reads exactly this way. Printing the seed pair there reproduces the
+  // original bug on the other branch, so name the unreadable clock instead.
+  const contentClock = problem.status === 'STALE_CONTENT'
+    && Number.isFinite(problem.maxContentAgeMin);
+  const contentAge = Number.isFinite(problem.contentAgeMin)
+    ? `${problem.contentAgeMin}m`
+    : 'unknown (no dated item; scored stale)';
+  const freshness = contentClock
+    ? ` contentAge=${contentAge} maxContentAge=${problem.maxContentAgeMin}m`
+      + (Number.isFinite(problem.seedAgeMin) ? ` (seed age=${problem.seedAgeMin}m ok)` : '')
+    : Number.isFinite(problem.seedAgeMin)
+      ? ` age=${problem.seedAgeMin}m max=${problem.maxStaleMin ?? 'unknown'}m`
+      : '';
   return `${problem.name}: status=${problem.status} records=${problem.records ?? 'unknown'}${freshness}`;
 }
 

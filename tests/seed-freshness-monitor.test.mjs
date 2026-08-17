@@ -807,6 +807,76 @@ describe('scheduled seed freshness monitor', () => {
       ]);
     });
 
+    it('a STALE_CONTENT row prints the clock that fired, not the one that did not', () => {
+      // Health runs two independent clocks. STALE_CONTENT is decided by
+      // contentAgeMin vs maxContentAgeMin, but this line used to print the SEED
+      // pair unconditionally — which for that status is ALWAYS inside budget.
+      // Production read `euFsi: status=STALE_CONTENT age=1200m max=5760m`, so
+      // the only available conclusion was that the monitor was wrong. The
+      // numbers that explain it were on the wire and were being dropped by the
+      // projection before the formatter ever saw them.
+      const payload = {
+        status: 'DEGRADED',
+        checkedAt: '2026-08-17T10:00:00.000Z',
+        summary: { total: 1, ok: 0, warn: 1, crit: 0 },
+        problems: {
+          euFsi: {
+            status: 'STALE_CONTENT',
+            records: 252,
+            seedAgeMin: 1200,
+            maxStaleMin: 5760,
+            contentAgeMin: 19230,
+            maxContentAgeMin: 14400,
+          },
+        },
+      };
+      const [problem] = findOperationalProblems(payload);
+      assert.equal(problem.contentAgeMin, 19230, 'the projection must carry the content clock');
+      assert.equal(problem.maxContentAgeMin, 14400);
+
+      const report = formatAcceptanceReport(
+        baselineResult({ blocking: [problem] }),
+        '2026-08-17T10:00:00.000Z',
+      );
+      const line = report.errors.find((row) => row.includes('euFsi'));
+      assert.match(line, /contentAge=19230m maxContentAge=14400m/, 'the breached pair must be named');
+      assert.match(line, /seed age=1200m ok/, 'and the healthy clock marked as such, not omitted');
+      assert.doesNotMatch(
+        line,
+        /\bage=1200m max=5760m/,
+        'the bare seed pair must not be presented as the reason for a content breach',
+      );
+    });
+
+    it('names an UNREADABLE content clock rather than falling back to the seed pair', () => {
+      // health scores `contentAgeMin == null` as stale (fail-closed), so a source
+      // can be STALE_CONTENT because nothing in the payload carries a date at
+      // all. jodiGas reads exactly this way in production. Printing the seed
+      // pair here would reproduce the original bug on the other branch: the
+      // reader again sees a clock that is comfortably inside budget.
+      const problem = {
+        name: 'jodiGas',
+        status: 'STALE_CONTENT',
+        records: 57,
+        seedAgeMin: 8793,
+        maxStaleMin: 57600,
+        contentAgeMin: null,
+        maxContentAgeMin: 267840,
+      };
+      const report = formatAcceptanceReport(
+        baselineResult({ blocking: [problem] }),
+        '2026-08-17T10:00:00.000Z',
+      );
+      const line = report.errors.find((row) => row.includes('jodiGas'));
+      assert.match(line, /contentAge=unknown/, 'an unreadable clock must be named as unreadable');
+      assert.match(line, /scored stale/, 'and the fail-closed scoring made explicit');
+      assert.doesNotMatch(
+        line,
+        /\bage=8793m max=57600m/,
+        'the passing seed pair must not be offered as the reason',
+      );
+    });
+
     it('still reports the blocking problems on the run where the baseline expires', () => {
       const report = formatAcceptanceReport(
         baselineResult({ blocking: [blocked], expired: true, expiresAt: '2020-01-01' }),
