@@ -45,6 +45,21 @@ const SLOW_KEYS = new Set(bootstrapTierKeyNames('slow', { iranEventsEnabled: IRA
 const FAST_KEYS = new Set(bootstrapTierKeyNames('fast', { iranEventsEnabled: IRAN_EVENTS_ENABLED }));
 const ON_DEMAND_KEYS = new Set(bootstrapTierKeyNames('on-demand', { iranEventsEnabled: IRAN_EVENTS_ENABLED }));
 
+// Temporary #6659 cutover fallback. Keep the new multi-province aggregate
+// authoritative, but let bootstrap clients use the prior Alberta snapshot until
+// alerts:canada:v1 has been published in every environment.
+const CANADA_ALERTS_CUTOVER_FALLBACK_KEY = 'alerts:alberta-aea:v1';
+
+function bootstrapRedisReadKeys(keys) {
+  if (
+    keys.includes(BOOTSTRAP_CACHE_KEYS.canadaAlerts)
+    && !keys.includes(CANADA_ALERTS_CUTOVER_FALLBACK_KEY)
+  ) {
+    return [...keys, CANADA_ALERTS_CUTOVER_FALLBACK_KEY];
+  }
+  return keys;
+}
+
 // No public/s-maxage: CF (in front of api.worldmonitor.app) ignores Vary: Origin and would
 // pin ACAO: worldmonitor.app on cached responses, breaking CORS for preview deployments.
 // Vercel CDN caching is handled by TIER_CDN_CACHE via CDN-Cache-Control below.
@@ -544,7 +559,10 @@ export default async function handler(req, ctx) {
 
   let cached;
   try {
-    cached = await getCachedJsonBatch(keys, measureR2Shadow ? tier : null);
+    cached = await getCachedJsonBatch(
+      bootstrapRedisReadKeys(keys),
+      measureR2Shadow ? tier : null,
+    );
   } catch {
     const isPublic = isPublicBootstrapKind(auth.kind);
     if (isPublic) {
@@ -576,7 +594,10 @@ export default async function handler(req, ctx) {
   const data = {};
   const missing = [];
   for (let i = 0; i < names.length; i++) {
-    const val = cached.get(keys[i]);
+    const val = keys[i] === BOOTSTRAP_CACHE_KEYS.canadaAlerts
+      && !cached.has(BOOTSTRAP_CACHE_KEYS.canadaAlerts)
+      ? cached.get(CANADA_ALERTS_CUTOVER_FALLBACK_KEY)
+      : cached.get(keys[i]);
     if (val !== undefined) {
       let responseValue = val;
       // Strip seed-internal metadata not intended for API clients

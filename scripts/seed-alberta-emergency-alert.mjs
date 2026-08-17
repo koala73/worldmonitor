@@ -16,17 +16,21 @@ import {
   albertaAeaAfterPublish,
   albertaAeaPublishTransform,
 } from './lib/alberta-emergency-alert.mjs';
+import {
+  CANADA_ALERT_SOURCES,
+  rebuildCanadaAlertsUnion,
+} from './lib/canada-alerts-union.mjs';
 
 loadEnvFile(import.meta.url);
 
-const CANONICAL_KEY = 'alerts:alberta-aea:v1';
+const SOURCE = CANADA_ALERT_SOURCES.find((entry) => entry.province === 'AB');
 const CACHE_TTL = 5400; // 90 min ≥ 3× the */15 cron (900s)
 
 async function fetchAlbertaAea() {
   return fetchAlbertaEmergencyAlerts({ userAgent: CHROME_UA });
 }
 
-runSeed('alerts', 'alberta-aea', CANONICAL_KEY, fetchAlbertaAea, {
+runSeed('alerts', 'alberta-aea', SOURCE.key, fetchAlbertaAea, {
   validateFn: validateAlbertaAeaEnvelope,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'alberta-aea-v1',
@@ -37,7 +41,17 @@ runSeed('alerts', 'alberta-aea', CANONICAL_KEY, fetchAlbertaAea, {
   contentMeta: albertaAeaContentMeta,
   maxContentAgeMin: AEA_MAX_CONTENT_AGE_MIN,
   publishTransform: albertaAeaPublishTransform,
-  afterPublish: albertaAeaAfterPublish,
+  afterPublish: async (data) => {
+    const diagnostics = albertaAeaAfterPublish(data);
+    await rebuildCanadaAlertsUnion({
+      currentSource: {
+        province: 'AB',
+        snapshot: albertaAeaPublishTransform(data),
+        metaPatch: diagnostics.freshnessMetaPatch,
+      },
+    });
+    return diagnostics;
+  },
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);

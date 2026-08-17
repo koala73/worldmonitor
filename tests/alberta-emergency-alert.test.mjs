@@ -234,7 +234,7 @@ test('canadaAlerts is a distinct MapLayers key from weather and canadaRoads', ()
   assert.match(types, /canadaAlerts:\s*boolean/);
   assert.doesNotMatch(types, /albertaAea\?: boolean/);
   assert.match(layers, /canadaAlerts:\s+def\('canadaAlerts'/);
-  assert.match(layers, /Canada Alerts \(Alberta Emergency Alert\)/);
+  assert.match(layers, /Canada Alerts \(AB \+ BC\)/);
   assert.doesNotMatch(layers, /canadaRoads:\s+def\('canadaAlerts'/);
   assert.match(client, /getHydratedData\('canadaAlerts'\)/);
   assert.match(client, /keys=canadaAlerts/);

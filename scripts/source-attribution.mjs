@@ -84,6 +84,12 @@ const publisherMetadataFeed = (provider) => ({
  * become a provider rename or regroup.
  */
 export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
+  'bc-evacuation-orders-alerts': Object.freeze({
+    provider: 'B.C. Evacuation Orders and Alerts',
+    memberHosts: Object.freeze(['catalogue.data.gov.bc.ca', 'services6.arcgis.com']),
+    reason: 'The B.C. catalogue record supplies the licence for the ArcGIS evacuation dataset.',
+    reviewReference: 'Issue #6659 source-rights probe',
+  }),
   interfax: Object.freeze({
     provider: 'Interfax',
     memberHosts: Object.freeze(['interfax.com', 'www.interfax.ru']),
@@ -213,6 +219,20 @@ const PROVIDER_OVERRIDES = {
     provider: 'BC Open511',
     license: 'Open Government Licence - British Columbia (OGL-BC). Confirmed on https://api.open511.gov.bc.ca/help. API Terms of Use for OGL-BC information also apply.',
     attribution: 'DriveBC Open511 (Province of British Columbia). Licensed under OGL-BC. https://api.open511.gov.bc.ca/help',
+    status: 'reviewed',
+  },
+  'catalogue.data.gov.bc.ca': {
+    provider: 'B.C. Evacuation Orders and Alerts',
+    identityGroup: 'bc-evacuation-orders-alerts',
+    license: 'Open Government Licence - British Columbia (OGL-BC). The B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33 explicitly assigns OGL-BC to this ArcGIS layer.',
+    attribution: 'Contains information licensed under the Open Government Licence - British Columbia. https://catalogue.data.gov.bc.ca/dataset/7efd46d0-b5d3-4dff-af80-d376c42aec33',
+    status: 'reviewed',
+  },
+  'services6.arcgis.com': {
+    provider: 'B.C. Evacuation Orders and Alerts',
+    identityGroup: 'bc-evacuation-orders-alerts',
+    license: 'Open Government Licence - British Columbia (OGL-BC). The B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33 explicitly assigns OGL-BC to this ArcGIS layer.',
+    attribution: 'Contains information licensed under the Open Government Licence - British Columbia. https://catalogue.data.gov.bc.ca/dataset/7efd46d0-b5d3-4dff-af80-d376c42aec33',
     status: 'reviewed',
   },
   'www.alberta.ca': {
@@ -706,9 +726,9 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '05ff5054ce1a277d10772f75031895a7bf3916c4097305b45907f794cc130faf',
-  reason: 'Add reviewed Polish publisher identities for PAP, Gazeta Wyborcza, Polityka, Onet, OKO.press, and TVP Info while retaining the prior site-scoped and crisis-desk identities.',
-  reviewReference: 'PR #6662; PR #6670; PR #6736; PR #6840; issues #6813-#6830; Annahar Lebanon follow-up; Polish depth follow-up',
+  sha256: '69ecb089452208985ec08b482bfa8beb048c547d3e374d72c9c6c07538d71a0d',
+  reason: 'Add the reviewed B.C. Evacuation Orders and Alerts identity for the OGL-BC ArcGIS source while retaining prior publisher identities.',
+  reviewReference: 'Issue #6659 source-rights probe; B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {

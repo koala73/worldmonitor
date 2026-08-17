@@ -103,6 +103,7 @@ const SOURCE_DOMAIN_MATCHERS = [
 // fails the build instead of silently becoming "geopolitics".
 const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['Alberta Emergency Alert', 'environment'],
+  ['B.C. Evacuation Orders and Alerts', 'environment'],
   ['Hyperliquid', 'finance'],
   ['api.rainviewer.com', 'environment'],
   ['api.scrapecreators.com', 'news'],
