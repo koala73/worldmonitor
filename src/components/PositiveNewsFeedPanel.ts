@@ -6,7 +6,7 @@ import { shareHappyCard } from '@/services/happy-share-renderer';
 import { formatTime } from '@/utils';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { trustedHtml } from '@/utils/dom-utils';
 
 
 /**
