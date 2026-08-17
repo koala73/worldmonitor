@@ -104,12 +104,17 @@ describe('api/mcp — usage telemetry (#4866)', () => {
 
   it('pro bearer with lapsed entitlement emits tier_403 attributed to the userId', async () => {
     const { deps } = makeProDeps({
-      getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0 }),
+      getEntitlements: async () => ({
+        planKey: 'free',
+        features: { tier: 0, mcpAccess: false },
+        validUntil: 0,
+        billingStatus: 'subscription_lapsed',
+      }),
     });
     const events = captureAxiom();
     const { ctx, settle } = makeCtx();
     const res = await mcpHandler(proReq('POST', callBody('describe_tool', { tool_name: 'get_market_data' })), deps, ctx);
-    assert.equal(res.status, 401);
+    assert.equal(res.status, 403);
     await settle();
     assert.equal(events.length, 1);
     const ev = events[0];

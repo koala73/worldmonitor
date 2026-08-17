@@ -306,6 +306,13 @@ export function getMcpBillingVerificationDenial(
   headers.set('Cache-Control', 'no-store');
   headers.set('Content-Type', 'application/json');
 
+  // #6716 — confirmed lapse stays on the billing envelope (-32002 / 403) but
+  // also carries the agent-facing upgrade attribution fields so clients can
+  // distinguish lapsed-subscription from never-subscribed free accounts.
+  const structured = billingStatus === 'subscription_lapsed'
+    ? buildMcpStructuredDenial('lapsed-subscription')
+    : null;
+
   return new Response(
     JSON.stringify({
       jsonrpc: '2.0',
@@ -316,8 +323,10 @@ export function getMcpBillingVerificationDenial(
         // docs/mcp-error-catalog.mdx — reusing it here sent doc-following
         // agents into a pointless OAuth re-auth loop.
         code: retryable ? -32603 : -32002,
-        message,
-        data: { code: billingStatus },
+        message: structured?.message ?? message,
+        data: structured
+          ? { code: billingStatus, ...structured.data }
+          : { code: billingStatus },
       },
     }),
     { status: denial.status, headers },
@@ -558,13 +567,13 @@ async function checkMcpEntitlementGate(
   if (!gate) {
     return passed();
   }
-  // Billing-verification states (lapse / renewal / unverifiable) keep their
-  // existing envelopes. A confirmed lapse gets the structured upgrade denial
-  // reason so agents can distinguish it from a never-subscribed free account.
+  // Billing-verification states keep their existing envelopes (403/-32002 for
+  // a confirmed lapse; 503 for renewal/unverifiable). Do not flatten a lapse
+  // into the free-account structured 401 — agents must not OAuth-loop on
+  // -32001 for a terminal billing state (docs/mcp-error-catalog.mdx).
+  // getMcpBillingVerificationDenial already attaches upgrade attribution on
+  // lapsed responses (#6716).
   if (gate.kind === 'billing_verification') {
-    if (gate.denial.code === 'subscription_lapsed') {
-      return rejected('lapsed-subscription');
-    }
     const billingDenial = getMcpBillingVerificationDenial(ent, corsHeaders, id);
     if (billingDenial) return { ok: false, response: billingDenial };
     return rejected('lapsed-subscription');

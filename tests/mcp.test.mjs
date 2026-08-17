@@ -3312,22 +3312,31 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(body.error?.code, -32001);
   });
 
-  it('error: tier 0 → -32001 + 401', async () => {
-    const { deps } = makeProDeps({
+  it('error: free-account allowance admits gated tools (metered); checkProMcpAccess still refuses elsewhere (#6716)', async () => {
+    const { deps, pipe } = makeProDeps({
       getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
+    });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 200, 'MCP call-site admits free-account allowance');
+    assert.ok(pipe.count >= 1, 'free-account meter reserved a slot');
+  });
+
+  it('error: free-account allowance exhausted → structured denial (#6716)', async () => {
+    const { deps } = makeProDeps({
+      getEntitlements: async () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
+      pipelineOpts: { initialCount: 5 },
     });
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
     assert.equal(res.status, 401);
     const body = await res.json();
     assert.equal(body.error?.code, -32001);
-  });
-
-  it('error: tier 1 but mcpAccess false → -32001 + 401', async () => {
-    const { deps } = makeProDeps({
-      getEntitlements: async () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
-    });
-    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
-    assert.equal(res.status, 401);
+    assert.equal(body.error?.data?.reason, 'allowance-exhausted');
   });
 
   it('current Pro fallback remains usable while stronger renewal verification is pending', async () => {
@@ -3403,6 +3412,8 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     // by re-authenticating.
     assert.equal(body.error?.code, -32002);
     assert.equal(body.error?.data?.code, 'subscription_lapsed');
+    assert.equal(body.error?.data?.reason, 'lapsed-subscription');
+    assert.ok(body.error?.data?.upgradeUrl);
     assert.equal(pipe.count, 0);
   });
 

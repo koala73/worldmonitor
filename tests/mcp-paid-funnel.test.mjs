@@ -125,7 +125,10 @@ describe('MCP call-site free-account reinterpretation', () => {
       CORS,
     );
     assert.equal(result.ok, false);
+    assert.equal(result.response.status, 403);
     const body = await result.response.json();
+    assert.equal(body.error?.code, -32002);
+    assert.equal(body.error?.data?.code, 'subscription_lapsed');
     assert.equal(body.error?.data?.reason, 'lapsed-subscription');
     assert.equal(body.error?.data?.upgradeUrl, MCP_UPGRADE_URL);
   });

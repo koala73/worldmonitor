@@ -360,12 +360,14 @@ describe('#5697 NLP MCP tools', () => {
       }
     });
 
-    it('enforces the Pro entitlement gate before fetching', async () => {
+    it('enforces free-account allowance before fetching (exhausted → no upstream) (#6716)', async () => {
       const { response, body } = await callTool('classify_event', { text: 'headline' }, {
         getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
+        pipelineOpts: { initialCount: 5 },
       });
       assert.equal(response.status, 401);
       assert.equal(body.error.code, -32001);
+      assert.equal(body.error.data?.reason, 'allowance-exhausted');
       assert.equal(requests.length, 0);
     });
   });

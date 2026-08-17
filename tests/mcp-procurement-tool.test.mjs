@@ -123,12 +123,14 @@ describe('get_procurement_opportunities MCP tool', () => {
     assert.equal(requestUrl.searchParams.get('min_automation_score'), '1');
   });
 
-  it('uses the same Pro entitlement gate as the canonical route before fetching data', async () => {
+  it('uses the same free-account allowance meter as other gated tools before fetching (#6716)', async () => {
     const { response, body } = await callTool({}, {
       getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
+      pipelineOpts: { initialCount: 5 },
     });
     assert.equal(response.status, 401);
     assert.equal(body.error.code, -32001);
-    assert.equal(requests.length, 0, 'failed entitlement must not reach the canonical route');
+    assert.equal(body.error.data?.reason, 'allowance-exhausted');
+    assert.equal(requests.length, 0, 'exhausted free allowance must not reach the canonical route');
   });
 });
