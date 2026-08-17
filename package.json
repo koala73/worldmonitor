@@ -63,7 +63,7 @@
     "build:sitemap:check": "npm run build:crawlable-corpus && node scripts/build-sitemap.mjs --check",
     "verify:sitemaps": "node scripts/verify-sitemaps.mjs",
     "prebuild:pro": "npm run product:facts",
-    "build:pro": "cd pro-test && npm ci && npm run build",
+    "build:pro": "cd pro-test && npm ci --prefer-offline && npm run build",
     "build:openapi": "node -e \"require('fs').cpSync('docs/api/worldmonitor.openapi.yaml', 'public/openapi.yaml')\" && node scripts/build-openapi-json.mjs",
     "gen:openapi:security": "node scripts/openapi-inject-security.mjs",
     "gen:openapi:examples": "node scripts/openapi-inject-examples.mjs",

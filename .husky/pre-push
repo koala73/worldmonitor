@@ -339,9 +339,15 @@ PREPUSH_ADMISSION_LEASE=$(node scripts/prepush-admission.mjs acquire "$PREPUSH_C
 
 # A fresh worktree's install is part of the expensive phase too. Keep it under
 # the shared lease so several new worktrees cannot all run npm ci at once.
+# Symlinking node_modules is known-broken here: a later cleanup can delete
+# the symlink *target*. Copy, hardlink, or share caches.
+if [ -L node_modules ]; then
+  echo "ERROR: node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
+  exit 1
+fi
 if [ ! -d node_modules ]; then
   echo "node_modules missing, running npm ci..."
-  npm ci --cache "$npm_config_cache" || exit 1
+  npm ci --cache "$npm_config_cache" --prefer-offline || exit 1
 fi
 
 if changed '^(src/|tests/|e2e/|middleware|index\.html|vite\.config|scripts/|types/)'; then
@@ -697,9 +703,34 @@ if [ "$RUN_ALL" = true ] || path_matches '^(pro-test|public/pro)/|^convex/config
     echo "ERROR: product config generation failed"
     exit 1
   }
+  if [ -L pro-test/node_modules ]; then
+    echo "ERROR: pro-test/node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
+    exit 1
+  fi
   if [ ! -d pro-test/node_modules ]; then
     echo "  Installing pro-test deps..."
-    (cd pro-test && npm ci --cache "$npm_config_cache") || exit 1
+    (cd pro-test && npm ci --cache "$npm_config_cache" --prefer-offline) || exit 1
+  fi
+  # Point Vite's default cacheDir (pro-test/node_modules/.vite) at a
+  # lockfile-sharded directory under the shared git-common-dir. Do not
+  # edit pro-test/vite.config.ts here: that path trips this gate and
+  # forces a public/pro rebuild. The .vite link is a cache dir, not a
+  # node_modules symlink. Serialize concurrent writes with flock.
+  if [ -n "$PREPUSH_COMMON_DIR" ]; then
+    _lock_hash=$(sha256sum < pro-test/package-lock.json 2>/dev/null | cut -c1-12)
+    [ -n "$_lock_hash" ] || _lock_hash=nolock
+    _vite_cache="$PREPUSH_COMMON_DIR/wm-vite-cache/pro-test-${_lock_hash}"
+    mkdir -p "$_vite_cache"
+    if [ -d pro-test/node_modules ] && [ ! -e pro-test/node_modules/.vite ]; then
+      ln -s "$_vite_cache" pro-test/node_modules/.vite
+    fi
+    if command -v flock >/dev/null 2>&1; then
+      exec 9>"$PREPUSH_COMMON_DIR/wm-vite-cache/pro-test.build.lock"
+      if ! flock -w 180 9; then
+        echo "ERROR: could not lock shared pro-test vite cache"
+        exit 1
+      fi
+    fi
   fi
   (cd pro-test && npm run build >/dev/null) || {
     echo "ERROR: pro-test build failed"

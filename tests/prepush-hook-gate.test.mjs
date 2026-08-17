@@ -16,7 +16,7 @@
 import { strict as assert } from 'node:assert';
 import { after, describe, test } from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,7 +87,12 @@ let fixtureCount = 0;
  * A repo carrying the real hook and its delegated scripts, with
  * `refs/remotes/origin/main` at the base commit so branch scoping resolves.
  */
-function makeFixture({ branchFiles = {}, scriptsCjs = true, failAttestMode = null } = {}) {
+function makeFixture({
+  branchFiles = {},
+  scriptsCjs = true,
+  failAttestMode = null,
+  proTestNodeModules = true,
+} = {}) {
   const id = fixtureCount++;
   const root = join(WORK, `repo-${id}`);
   const { bin, log } = makeStubs(join(WORK, `aux-${id}`));
@@ -122,7 +127,9 @@ function makeFixture({ branchFiles = {}, scriptsCjs = true, failAttestMode = nul
   // one, so they all have to exist and be tracked for the gate to reach its
   // own verdict. An empty pro-test/node_modules skips the install branch
   // (git does not track empty directories, so it stays invisible to `dirty`).
-  mkdirSync(join(root, 'pro-test', 'node_modules'), { recursive: true });
+  if (proTestNodeModules) {
+    mkdirSync(join(root, 'pro-test', 'node_modules'), { recursive: true });
+  }
   for (const [path, contents] of Object.entries({
     'src/config/products.generated.ts': 'export const PRODUCTS = [];\n',
     'src/config/product-ids.generated.ts': 'export const PRODUCT_IDS = [];\n',
@@ -526,6 +533,91 @@ describe('a broken enumeration blocks the push, it does not empty the list', () 
       assert.equal(fixture.cached(), null);
     });
   }
+});
+
+function npmRuns(invocations) {
+  const lines = invocations.split('\n');
+  const runs = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i] !== '== npm') continue;
+    const args = [];
+    for (let j = i + 1; j < lines.length && lines[j].startsWith('>'); j += 1) {
+      args.push(lines[j].slice(1));
+    }
+    runs.push(args);
+  }
+  return runs;
+}
+
+describe('pro-test freshness install prefers the shared npm cache (#6766)', () => {
+  test('npm ci --prefer-offline when pro-test/node_modules is missing', () => {
+    const fixture = makeFixture({
+      branchFiles: { 'pro-test/src/stale.ts': 'export const n = 1;\n' },
+      proTestNodeModules: false,
+    });
+
+    const { status, stdout, invocations } = fixture.run();
+    assert.equal(status, 0, stdout);
+    const ci = npmRuns(invocations).find((args) => args[0] === 'ci');
+    assert.ok(ci, `expected npm ci, got:\n${invocations}`);
+    assert.ok(ci.includes('--prefer-offline'), ci.join(' '));
+    assert.ok(ci.includes('--cache'), ci.join(' '));
+  });
+
+  test('shares Vite cache via .vite link, never a node_modules symlink', () => {
+    const fixture = makeFixture({
+      branchFiles: {
+        'pro-test/src/stale.ts': 'export const n = 1;\n',
+        'pro-test/package-lock.json': '{"lockfileVersion":3}\n',
+      },
+    });
+
+    const { status, stdout } = fixture.run();
+    assert.equal(status, 0, stdout);
+    const nodeModules = join(fixture.root, 'pro-test', 'node_modules');
+    assert.equal(lstatSync(nodeModules).isSymbolicLink(), false);
+    const viteCache = join(nodeModules, '.vite');
+    assert.equal(lstatSync(viteCache).isSymbolicLink(), true);
+    assert.match(readlinkSync(viteCache), /wm-vite-cache\/pro-test-[0-9a-f]{12}$/);
+  });
+
+  test('still fails when a committed public/pro/ byte is stale', () => {
+    const fixture = makeFixture({
+      branchFiles: { 'pro-test/src/stale.ts': 'export const n = 1;\n' },
+    });
+    writeFileSync(join(fixture.root, 'public/pro/index.html'), '<!doctype html>\n<!-- stale -->\n');
+
+    const { status, stdout } = fixture.run();
+    assert.equal(status, 1, stdout);
+    assert.match(stdout, /product catalog, generated config, pro locales, or public\/pro\/ is stale/);
+  });
+
+  test('refuses a pro-test/node_modules symlink instead of installing through it', (t) => {
+    const fixture = makeFixture({
+      branchFiles: { 'pro-test/src/stale.ts': 'export const n = 1;\n' },
+    });
+    const stolen = join(WORK, `stolen-nm-${fixtureCount}`);
+    mkdirSync(stolen, { recursive: true });
+    rmSync(join(fixture.root, 'pro-test', 'node_modules'), { recursive: true, force: true });
+    try {
+      symlinkSync(stolen, join(fixture.root, 'pro-test', 'node_modules'));
+    } catch (error) {
+      if (error?.code === 'EPERM' || error?.code === 'EACCES') {
+        t.skip('symlink creation is unavailable in this environment');
+        return;
+      }
+      throw error;
+    }
+
+    const { status, stdout, invocations } = fixture.run();
+    assert.equal(status, 1, stdout);
+    assert.match(stdout, /pro-test\/node_modules is a symlink/);
+    assert.equal(
+      npmRuns(invocations).filter((args) => args[0] === 'ci').length,
+      0,
+      'must not npm ci through a symlink',
+    );
+  });
 });
 
 describe('the gate does not fail closed on its own edge cases', () => {
