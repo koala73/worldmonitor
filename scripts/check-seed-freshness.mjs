@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 
 const DEFAULT_HEALTH_URL = 'https://api.worldmonitor.app/api/health?compact=1';
 const BASELINE_URL = new URL('./seed-freshness-baseline.json', import.meta.url);
@@ -376,7 +377,27 @@ export function formatAcceptanceReport(
   return { info, errors, failed: errors.length > 0 };
 }
 
+/**
+ * One machine-readable observation, built from the exact same fail-closed split
+ * and report as the human log. The workflow status publisher consumes this;
+ * keeping it here prevents the text and machine verdicts from drifting apart.
+ */
+export function buildAcceptanceObservation(payload, baseline, now = Date.now()) {
+  const acceptance = applyAcceptanceBaseline(findOperationalProblems(payload, now), baseline, now);
+  return {
+    version: 1,
+    checkedAt: payload.checkedAt ?? null,
+    acceptance,
+    report: formatAcceptanceReport(acceptance, payload.checkedAt),
+  };
+}
+
 async function main() {
+  const { values } = parseArgs({
+    args: process.argv.slice(2),
+    options: { 'json-output': { type: 'string' } },
+    strict: true,
+  });
   const healthUrl = process.env.HEALTH_URL || DEFAULT_HEALTH_URL;
   const response = await fetch(healthUrl, {
     headers: { 'User-Agent': 'worldmonitor-seed-freshness-monitor/1.0' },
@@ -387,10 +408,10 @@ async function main() {
   }
 
   const payload = await response.json();
-  const report = formatAcceptanceReport(
-    applyAcceptanceBaseline(findOperationalProblems(payload), readAcceptanceBaseline()),
-    payload.checkedAt,
-  );
+  const observation = buildAcceptanceObservation(payload, readAcceptanceBaseline());
+  const outputPath = values['json-output'];
+  if (outputPath) writeFileSync(outputPath, `${JSON.stringify(observation, null, 2)}\n`);
+  const { report } = observation;
   for (const line of report.info) console.log(line);
   for (const line of report.errors) console.error(line);
   if (report.failed) process.exitCode = 1;

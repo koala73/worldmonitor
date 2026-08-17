@@ -536,6 +536,21 @@ Its one `monitor` job checks ingestion operational acceptance through
 configuration, classify deployment history, or imply that a merge reached a
 container.
 
+The probe is strict on every run, but the workflow conclusion is
+transition-based. `scripts/update-seed-health-statuses.mjs` publishes one
+durable `ingestion/seed/<source>` commit status on the exact gated revision.
+A new failure, a changed failure class, an expired acknowledgement, a probe
+transport error, or a malformed observation fails the workflow. The same
+unchanged incident on a later poll keeps its per-source status red but does not
+create another generic failed run. This preserves the alarm while separating
+"still broken" from "broke again".
+
+Recovery is not inferred from a merge, image build, or elapsed time. The
+publisher posts success only after the live compact-health observation stops
+reporting that source. The first run after this status lifecycle is activated
+can fail once to establish the durable status for incidents that already
+exist; later exact repeats are quiet.
+
 Read the separate six-hourly `Railway Native Deploy Health` workflow for
 production source, build, trigger, and deployment conclusions. A red Seed
 Freshness run says the ingestion observation failed or could not be authorized.
@@ -543,14 +558,14 @@ A red Railway Native Deploy Health run says the fleet configuration or
 deployment evidence failed. Neither workflow hides or gates the other's
 conclusion.
 
-`monitor` fails on
-every actionable problem, including `SEED_ERROR`, `STALE_SEED`,
-`STALE_CONTENT`, and degraded composed coverage. Statuses that explicitly end
-in `_ON_DEMAND` remain informational. It deliberately does not run on an
-ingestion push because Railway may not have deployed or executed that revision
-yet. This is the operational acceptance gate for the "merged and green, but
-production data is still unhealthy or running under stale deployment
-controls" gap.
+The probe classifies every actionable problem, including `SEED_ERROR`,
+`STALE_SEED`, `STALE_CONTENT`, and degraded composed coverage. Statuses that
+explicitly end in `_ON_DEMAND` remain informational. It deliberately does not
+run on an ingestion push because Railway may not have deployed or executed
+that revision yet. This is the operational acceptance gate for the "merged and
+green, but production data is still unhealthy" gap. A workflow failure means
+new operational information or an unreadable control plane; the durable source
+statuses remain the current incident inventory between transitions.
 
 #### Deploy-drift check
 

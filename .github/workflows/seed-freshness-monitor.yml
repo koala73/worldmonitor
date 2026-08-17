@@ -12,7 +12,9 @@ concurrency:
 
 permissions:
   contents: read
-  statuses: read
+  # Per-source statuses keep an unchanged incident machine-visible without
+  # making every scheduled observation look like a new failed run.
+  statuses: write
 
 jobs:
   monitor:
@@ -97,4 +99,25 @@ jobs:
       # configuration and image drift have their own six-hourly read-only workflow.
       - name: Check ingestion operational acceptance
         if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
-        run: node scripts/check-seed-freshness.mjs
+        # The probe remains strict and exits non-zero for every active problem.
+        # The next step decides whether that problem is a new transition or the
+        # same durable incident already attached to a first-parent revision.
+        continue-on-error: true
+        run: node scripts/check-seed-freshness.mjs --json-output "$RUNNER_TEMP/seed-freshness-observation.json"
+
+      - name: Publish ingestion operational transitions
+        if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SEED_ACCEPTANCE_SHA: ${{ steps.gate.outputs.sha || github.sha }}
+        run: |
+          # During the first post-merge race, the newest gated ancestor can
+          # predate this lifecycle. Wait for the new revision to pass `gate`
+          # instead of turning that expected bootstrap state into an alarm.
+          if [ ! -f scripts/update-seed-health-statuses.mjs ]; then
+            echo "Transition publisher is not active on gated revision $SEED_ACCEPTANCE_SHA; waiting for a gated activation revision."
+            exit 0
+          fi
+          node scripts/update-seed-health-statuses.mjs \
+            --sha "$SEED_ACCEPTANCE_SHA" \
+            --report "$RUNNER_TEMP/seed-freshness-observation.json"

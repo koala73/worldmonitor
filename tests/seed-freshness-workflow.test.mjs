@@ -274,7 +274,21 @@ describe('seed freshness workflow control plane', () => {
     // monitoring for the whole fleet.
     assert.equal(acceptance.if, GATE_GUARD, 'acceptance must stay behind the fail-closed gate and nothing else');
     assert.match(GATE_GUARD, /steps\.gate\.conclusion != 'failure'/);
-    assert.equal(acceptance['continue-on-error'], undefined);
+    assert.equal(acceptance['continue-on-error'], true, 'health incidents are classified by the status publisher');
+    assert.match(acceptance.run, /--json-output "\$RUNNER_TEMP\/seed-freshness-observation\.json"/);
+
+    const publisher = stepNamed('Publish ingestion operational transitions');
+    assert.equal(publisher.if, GATE_GUARD);
+    assert.equal(publisher['continue-on-error'], undefined);
+    assert.equal(publisher.env.GH_TOKEN, '${{ github.token }}');
+    assert.equal(publisher.env.SEED_ACCEPTANCE_SHA, '${{ steps.gate.outputs.sha || github.sha }}');
+    assert.match(publisher.run, /update-seed-health-statuses\.mjs/);
+    assert.match(publisher.run, /if \[ ! -f scripts\/update-seed-health-statuses\.mjs \]/);
+    assert.match(publisher.run, /not active on gated revision/);
+    assert.match(publisher.run, /--sha "\$SEED_ACCEPTANCE_SHA"/);
+    assert.match(publisher.run, /--report "\$RUNNER_TEMP\/seed-freshness-observation\.json"/);
+    assertBashSyntax(publisher.run);
+    assert.equal(workflow.permissions.statuses, 'write');
   });
 
   it('checks out the resolved revision before the ingestion probe', () => {
@@ -284,7 +298,10 @@ describe('seed freshness workflow control plane', () => {
     const acceptanceIndex = monitorSteps.findIndex(
       (step) => step.name === 'Check ingestion operational acceptance',
     );
-    assert.ok(gateIndex < checkoutIndex && checkoutIndex < acceptanceIndex);
+    const publisherIndex = monitorSteps.findIndex(
+      (step) => step.name === 'Publish ingestion operational transitions',
+    );
+    assert.ok(gateIndex < checkoutIndex && checkoutIndex < acceptanceIndex && acceptanceIndex < publisherIndex);
     assert.equal(checkout.if, "${{ steps.gate.outputs.sha != '' && steps.gate.outputs.sha != github.sha }}");
     assert.equal(checkout.env.GATED_SHA, '${{ steps.gate.outputs.sha }}');
     assert.match(checkout.run, /git checkout --detach "\$GATED_SHA"/);
