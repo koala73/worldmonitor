@@ -74,6 +74,7 @@ vi.mock('@/components/giving-renderer', () => ({
 
 import { DefensePatentsPanel } from '@/components/DefensePatentsPanel';
 import { GdeltIntelPanel } from '@/components/GdeltIntelPanel';
+import { getIntelTopics } from '@/services/gdelt-intel';
 import { GivingPanel } from '@/components/GivingPanel';
 import { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import { TechEventsPanel } from '@/components/TechEventsPanel';
@@ -434,7 +435,7 @@ describe('GdeltIntelPanel backoff preservation (#6679)', () => {
     ).mockResolvedValue(undefined);
 
     // Use GdeltIntelPanel itself: drive its error state up, then render empty.
-    const panel = new GdeltIntelPanel('gdelt-intel');
+    const panel = new GdeltIntelPanel();
     mount(panel);
 
     // Advance the rung: showError increments retryAttempt.
@@ -454,20 +455,30 @@ describe('GdeltIntelPanel backoff preservation (#6679)', () => {
   });
 
   it('preserves the backoff rung on a cached-topic switch (instance A)', async () => {
-    const panel = new GdeltIntelPanel('gdelt-intel');
+    const panel = new GdeltIntelPanel();
     mount(panel);
 
     // Advance the rung.
     (panel as unknown as { showError(msg?: string, cb?: () => void): void }).showError('gdelt outage', () => {});
     const rungBefore = internals(panel).retryAttempt;
-    expect(rungBefore).toBeGreaterThan(0);
+    expect(rungBefore).toBeGreaterThan(0, 'precondition: the rung advanced past the floor');
 
-    // A non-empty render IS a proven recovery — the rung resets.
-    (panel as unknown as { renderArticles(a: unknown[]): void }).renderArticles([
-      { title: 'x', url: 'https://example.com', source: 'e', date: new Date().toISOString(), tone: 0 },
-    ]);
-    expect(internals(panel).retryAttempt).toBe(0,
-      'a non-empty success render is a proven recovery — the rung resets');
+    // Seed a still-fresh cache entry for a DIFFERENT topic and switch to it
+    // through the panel's own tab-switch path — that is the write whose
+    // rung-preservation this test exists to pin, not a plain recovery render.
+    const topics = getIntelTopics();
+    const activeId = (panel as unknown as { activeTopic: { id: string } }).activeTopic.id;
+    const other = topics.find(tp => tp.id !== activeId) ?? topics[0]!;
+    const articles = [
+      { title: 'cached', url: 'https://example.com', source: 'e', date: new Date().toISOString(), tone: 0 },
+    ];
+    const topicData = (panel as unknown as { topicData: Map<string, unknown> }).topicData;
+    topicData.set(other.id, { topic: other, articles, fetchedAt: new Date() });
+
+    (panel as unknown as { selectTopic(topic: unknown): void }).selectTopic(other);
+
+    expect(internals(panel).retryAttempt).toBe(rungBefore,
+      'a cached-topic switch is not a proven recovery — the rung survives the write');
 
     panel.destroy();
   });
