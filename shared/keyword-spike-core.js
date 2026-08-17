@@ -178,13 +178,10 @@ function collectPublisherNames(stories) {
 }
 
 function sampleHeadlineFromStory(story) {
-  const labels = Array.isArray(story.sources)
-    ? story.sources.filter((label) => typeof label === 'string' && label.trim())
-    : [];
-  const first = [...labels].sort((a, b) => a.localeCompare(b))[0];
+  const names = collectPublisherNames([story]).sourceNames;
   return {
     title: story.title,
-    source: first ? displayNameForLabel(first) : '',
+    source: names.join(', '),
     link: typeof story.link === 'string' ? story.link : '',
   };
 }
@@ -248,7 +245,10 @@ export function computeKeywordSpikesFromStories(stories, {
       windowMs,
       uniqueSources: publishers.uniqueSources,
       sourceNames: publishers.sourceNames,
-      sampleHeadlines: record.recent.slice(0, maxSampleHeadlines).map(sampleHeadlineFromStory),
+      sampleHeadlines: (record.recent.some((story) => collectPublisherNames([story]).uniqueSources > 0)
+        ? record.recent.filter((story) => collectPublisherNames([story]).uniqueSources > 0)
+        : record.recent
+      ).slice(0, maxSampleHeadlines).map(sampleHeadlineFromStory),
     });
   }
 

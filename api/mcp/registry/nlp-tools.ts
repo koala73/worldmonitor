@@ -57,6 +57,7 @@ const KEYWORD_SPIKE_BASELINE_MS = 48 * 60 * 60 * 1000; // digest:accumulator ret
 const KEYWORD_SPIKE_CACHE_TTL_S = 600;
 const KEYWORD_SPIKE_MAX_STORIES = 800;
 const KEYWORD_SPIKE_MAX_STORED = 25;
+const KEYWORD_SPIKE_LINK_MAX_BYTES = 384;
 const DIGEST_ACCUMULATOR_KEY_MCP = 'digest:accumulator:v1:full:en';
 
 // Agent-addressable digest variants and their category keys. Kept as local
@@ -650,8 +651,8 @@ export const NLP_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_keyword_spikes',
-    _outputBudgetBytes: 16384,
-    description: 'Trending keyword, CVE, and APT/FIN threat-group spikes versus baseline, using the same term-candidacy and spike-decision math as the dashboard. Each spike lists sourceNames (publisher names, not feed labels) and sampleHeadlines as {title, source, link}. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard\'s incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM.',
+    _outputBudgetBytes: 32768,
+    description: 'Keyword/CVE/APT spikes vs baseline, each with sourceNames and {title, source, link}. Uses the dashboard term-candidacy and spike-decision math. sourceNames are curated publisher names, or the original feed label when unmapped. sampleHeadlines are up to 3 newest recent-window stories; sourceNames is the complete publisher set. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard\'s incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -678,16 +679,17 @@ export const NLP_TOOLS: ToolDef[] = [
             sourceNames: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Human-readable publisher names matching uniqueSources, not feed labels.',
+              description: 'Publisher names matching uniqueSources: curated masthead, otherwise the original feed label.',
             },
             sampleHeadlines: {
               type: 'array',
+              description: 'Up to 3 newest recent-window stories by lastSeen. Not the full count; sourceNames is the complete publisher set.',
               items: {
                 type: 'object',
                 required: ['title', 'source', 'link'],
                 properties: {
                   title: { type: 'string' },
-                  source: { type: 'string', description: 'Publisher name for this story (publisher family, not feed label).' },
+                  source: { type: 'string', description: 'Publisher(s) that carried this collapsed title. Empty when the story has no usable feed labels. Not necessarily the outlet of link.' },
                   link: { type: 'string', description: 'Canonical story URL from story:track:v1.link. Empty when the row has no link.' },
                 },
               },
@@ -886,7 +888,11 @@ export const NLP_TOOLS: ToolDef[] = [
         multiplier: Math.round(spike.multiplier * 100) / 100,
         uniqueSources: spike.uniqueSources,
         sourceNames: spike.sourceNames,
-        sampleHeadlines: spike.sampleHeadlines,
+        sampleHeadlines: spike.sampleHeadlines.map((sample) => ({
+          title: sample.title,
+          source: sample.source,
+          link: nlpTruncateUtf8(sample.link, KEYWORD_SPIKE_LINK_MAX_BYTES),
+        })),
       }));
 
       const payload = {

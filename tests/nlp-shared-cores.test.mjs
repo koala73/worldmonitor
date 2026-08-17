@@ -233,6 +233,61 @@ describe('keyword-spike-core', () => {
     ]);
   });
 
+  it('joins every publisher on a collapsed multi-outlet title instead of picking one owner', () => {
+    const HOUR = 60 * 60 * 1000;
+    const nowMs = 1_800_000_000_000;
+    const windowMs = 2 * HOUR;
+    const stories = [
+      {
+        title: 'Zaporizhzhia plant shelling escalates (0)',
+        lastSeenMs: nowMs - 10 * 60 * 1000,
+        sources: ['BBC World', 'Reuters World'],
+        link: 'https://example.test/reuters-canonical',
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (1)',
+        lastSeenMs: nowMs - 20 * 60 * 1000,
+        sources: ['Al Jazeera'],
+        link: 'https://example.test/aj-1',
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (2)',
+        lastSeenMs: nowMs - 30 * 60 * 1000,
+        sources: ['AP News'],
+        link: 'https://example.test/ap-2',
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (3)',
+        lastSeenMs: nowMs - 40 * 60 * 1000,
+        sources: ['BBC Africa'],
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (4)',
+        lastSeenMs: nowMs - 50 * 60 * 1000,
+        sources: ['Reuters US'],
+      },
+    ];
+    for (let i = 0; i < 30; i++) {
+      stories.push({
+        title: `Weather outlook stays calm (${i})`,
+        lastSeenMs: nowMs - windowMs - (i * 90 * 60 * 1000),
+        sources: ['weather-wire'],
+      });
+    }
+
+    const spikes = computeKeywordSpikesFromStories(stories, {
+      nowMs, windowMs, baselineDurationMs: 46 * HOUR,
+    });
+    const spike = spikes.find((s) => s.term === 'zaporizhzhia');
+    assert.ok(spike, `expected zaporizhzhia spike, got: ${spikes.map((s) => s.term).join(', ')}`);
+    assert.equal(spike.sampleHeadlines[0].source, 'BBC, Reuters');
+    assert.equal(spike.sampleHeadlines[0].link, 'https://example.test/reuters-canonical');
+    assert.ok(
+      spike.sampleHeadlines[0].source !== 'BBC',
+      'must not invent a single owner for a multi-outlet title hash',
+    );
+  });
+
   // #6428: `uniqueSources` gates the spike alert and is surfaced to agents by
   // get_keyword_spikes. It counted feed LABELS read back from
   // story:sources:v1 (raw `item.source` values, 7-day TTL), so one newsroom's

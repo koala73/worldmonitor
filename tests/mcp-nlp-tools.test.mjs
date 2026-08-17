@@ -280,6 +280,17 @@ describe('#5697 NLP MCP tools', () => {
       /title, source, link/,
       'uncompressed description must describe the attributed sample headline shape',
     );
+    const listedSpike = byName.get('get_keyword_spikes');
+    assert.match(
+      listedSpike?.description ?? '',
+      /sourceNames/,
+      'tools/list compressed description must still name sourceNames',
+    );
+    assert.match(
+      listedSpike?.description ?? '',
+      /title, source, link/,
+      'tools/list compressed description must still name the sample shape',
+    );
   });
 
   describe('classify_event', () => {
@@ -1168,12 +1179,25 @@ describe('#5697 NLP MCP tools', () => {
     it('treats a missing HMGET title as degraded and never caches it', async () => {
       seedAccumulator();
       upstashState.pipelineReplyTransforms.set('HMGET', (reply) => reply.map((item, index) => (
-        index === 0 ? { result: [null] } : item
+        index === 0 ? { result: [null, 'https://example.test/missing-title'] } : item
       )));
 
       const { result } = await callTool('get_keyword_spikes', {});
       assert.match(result.note, /partial story-store read/);
       assert.equal(upstashState.storedPayloads.size, 0);
+    });
+
+    it('treats a missing HMGET link as an empty string and still caches', async () => {
+      seedAccumulator();
+      upstashState.pipelineReplyTransforms.set('HMGET', (reply) => reply.map((item, index) => (
+        index === 0 ? { result: ['Zaporizhzhia plant shelling escalates (0)', null] } : item
+      )));
+
+      const { result } = await callTool('get_keyword_spikes', {});
+      assert.equal(result.note, undefined);
+      assert.equal(upstashState.storedPayloads.size, 1);
+      const spike = result.spikes.find((s) => s.term === 'zaporizhzhia');
+      assert.equal(spike.sampleHeadlines[0].link, '');
     });
 
     it('falls back to live computation when the cache read fails', async () => {
