@@ -114,7 +114,17 @@ describe('E2E visual workflow contract', () => {
     assert.match(String(job.if), /conclusion != 'cancelled'/);
     const sync = jobSteps(job).find((step) => step.id === 'sync' || /aws s3 sync/.test(String(step.run ?? '')));
     assert.ok(sync, 'publish job must define an S3 sync step');
-    assert.match(String(sync.if ?? job.if), /E2E_SCREENSHOT_BUCKET|secrets/);
+    // secrets.* is forbidden in step `if:` — gate on the public bucket var only.
+    assert.match(String(sync.if), /E2E_SCREENSHOT_BUCKET/);
+    assert.doesNotMatch(String(sync.if), /secrets\./);
+    for (const step of jobSteps(job)) {
+      assert.doesNotMatch(
+        String(step.if ?? ''),
+        /secrets\./,
+        'publish steps must not reference secrets in if: (GitHub context restriction)',
+      );
+    }
+    assert.match(String(sync.run), /E2E_SCREENSHOT_S3_ACCESS_KEY_ID is unset/);
     assert.match(String(sync.run), /E2E_SCREENSHOT_ENDPOINT is unset/);
     assert.match(String(sync.run), /exit 1/);
     assert.match(String(sync.run), /no PNG captures/);

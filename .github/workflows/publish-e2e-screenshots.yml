@@ -31,13 +31,15 @@ jobs:
           path: gallery
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
+      # secrets.* cannot appear in step `if:` (GitHub context restriction). Gate on
+      # the public var here; fail closed on a missing access key inside the script.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        if: ${{ vars.E2E_SCREENSHOT_BUCKET != '' && secrets.E2E_SCREENSHOT_S3_ACCESS_KEY_ID != '' }}
+        if: ${{ vars.E2E_SCREENSHOT_BUCKET != '' }}
         with:
           node-version: '24'
       - name: Sync gallery to object storage
         id: sync
-        if: ${{ vars.E2E_SCREENSHOT_BUCKET != '' && secrets.E2E_SCREENSHOT_S3_ACCESS_KEY_ID != '' }}
+        if: ${{ vars.E2E_SCREENSHOT_BUCKET != '' }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.E2E_SCREENSHOT_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.E2E_SCREENSHOT_S3_SECRET_ACCESS_KEY }}
@@ -50,6 +52,10 @@ jobs:
           WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
           set -euo pipefail
+          if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
+            echo "E2E_SCREENSHOT_S3_ACCESS_KEY_ID is unset while E2E_SCREENSHOT_BUCKET is configured."
+            exit 1
+          fi
           if [ -z "${S3_ENDPOINT:-}" ]; then
             echo "E2E_SCREENSHOT_ENDPOINT is unset while bucket and access key are configured."
             exit 1
@@ -88,5 +94,5 @@ jobs:
           aws s3 sync gallery/ "s3://${S3_BUCKET}/playwright/" --endpoint-url "$S3_ENDPOINT"
           echo "Published screenshot gallery to s3://${S3_BUCKET}/playwright/"
       - name: Note when object storage is not configured
-        if: ${{ vars.E2E_SCREENSHOT_BUCKET == '' || secrets.E2E_SCREENSHOT_S3_ACCESS_KEY_ID == '' }}
+        if: ${{ vars.E2E_SCREENSHOT_BUCKET == '' }}
         run: echo "E2E screenshot object storage is not configured; the gallery artifact on E2E Visual is the durable copy."
