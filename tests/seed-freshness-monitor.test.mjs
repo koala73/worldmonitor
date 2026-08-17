@@ -877,6 +877,35 @@ describe('scheduled seed freshness monitor', () => {
       );
     });
 
+    it('does not present the seed pair when the content clock is operator-only', () => {
+      // health also reaches STALE_CONTENT via requireContentFreshness — a
+      // per-country verdict. That detail names WHICH country is stale, so
+      // api/health.js strips it from the public compact shape (#6060) this
+      // monitor reads, and the row arrives with NO content fields at all.
+      // portwatchPortActivity reads exactly this way. Falling back to the seed
+      // pair here reproduced the original bug a third time: `age=297m
+      // max=2160m` is inside budget and explains nothing.
+      const problem = {
+        name: 'portwatchPortActivity',
+        status: 'STALE_CONTENT',
+        records: 174,
+        seedAgeMin: 297,
+        maxStaleMin: 2160,
+      };
+      const report = formatAcceptanceReport(
+        baselineResult({ blocking: [problem] }),
+        '2026-08-17T17:00:00.000Z',
+      );
+      const line = report.errors.find((row) => row.includes('portwatchPortActivity'));
+      assert.match(line, /contentAge=operator-only/, 'the withheld clock must be named as withheld');
+      assert.match(line, /detailed \/api\/health/, 'and the operator pointed at where it lives');
+      assert.doesNotMatch(
+        line,
+        /\bage=297m max=2160m/,
+        'the passing seed pair must never stand in as the reason for a content verdict',
+      );
+    });
+
     it('still reports the blocking problems on the run where the baseline expires', () => {
       const report = formatAcceptanceReport(
         baselineResult({ blocking: [blocked], expired: true, expiresAt: '2020-01-01' }),
