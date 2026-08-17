@@ -99,6 +99,13 @@ describe('reportCheckoutError call sites in src/services/checkout.ts', () => {
         'unparsable-success-body',
         'no-token',
         'no-user',
+        // #5911: the server produced a usable checkout URL but the desktop
+        // handoff to the OS browser never opened it. Distinct from every tag
+        // above because the failure is client/native-side, not a server
+        // contract violation — and it is NOT skipped: a buyer who cannot
+        // reach a checkout session we already created is exactly the event
+        // that must reach Sentry.
+        'desktop-handoff-failed',
       ].sort(),
     );
   });

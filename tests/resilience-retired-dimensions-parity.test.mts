@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 
 import {
   RESILIENCE_RETIRED_DIMENSIONS,
+  RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE,
   RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers';
 
@@ -77,6 +78,19 @@ describe('retired-dimensions client/server parity', () => {
       `Server-only not-applicable dims: ${serverOnly.join(', ')}. Update RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE_IDS in src/components/resilience-widget-utils.ts.`);
     assert.deepEqual(clientOnly, [],
       `Client-only not-applicable dims: ${clientOnly.join(', ')}. Update RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE in server/worldmonitor/resilience/v1/_dimension-scorers.ts.`);
+  });
+
+  it('server RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE matches client RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE_IDS', () => {
+    const serverSet = new Set<string>(RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE);
+    const clientSet = parseClientSet('RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE_IDS');
+
+    const serverOnly = [...serverSet].filter((id) => !clientSet.has(id));
+    const clientOnly = [...clientSet].filter((id) => !serverSet.has(id));
+
+    assert.deepEqual(serverOnly, [],
+      `Server-only flag-dark dims: ${serverOnly.join(', ')}. Update RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE_IDS in src/components/resilience-widget-utils.ts.`);
+    assert.deepEqual(clientOnly, [],
+      `Client-only flag-dark dims: ${clientOnly.join(', ')}. Update RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE in server/worldmonitor/resilience/v1/_dimension-scorers.ts.`);
   });
 });
 

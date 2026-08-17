@@ -1,5 +1,6 @@
 import countryNames from '../../shared/country-names.json';
 import iso2ToIso3 from '../../shared/iso2-to-iso3.json';
+import sovereignStatus from '../../scripts/shared/sovereign-status.json';
 
 export const G20_COUNTRIES = [
   'AR', 'AU', 'BR', 'CA', 'CN', 'DE', 'FR', 'GB', 'ID', 'IN',
@@ -406,6 +407,41 @@ export function buildReleaseGateFixtures(): ReleaseGateFixtureMap {
       descriptors.map(({ code }) => [code, { unemploymentPct: 5.0, populationMillions: 50, year: 2025 }]),
     ),
     seededAt: '2026-04-04T00:00:00.000Z',
+  };
+  // #6460: `education` is live as of the 2026-08-11 activation, so the release
+  // gate's "every dimension carries positive coverage" assertion now applies to
+  // it like any other active dimension. Both halves are required — the scorer
+  // fail-closes on the seed-meta preflight BEFORE it reads the payload, so a
+  // fixture with only the payload surfaces as `source-failure`, not as data.
+  //
+  // Attainment is derived from the same `quality` scale the other synthetic
+  // signals use, so a fixture country's education score tracks its profile
+  // instead of introducing an unrelated ordering. Real-world range for the
+  // series is roughly 1.15 (Niger) to 98.2 (Belarus).
+  fixtures['seed-meta:resilience:education-attainment'] = {
+    status: 'ok',
+    fetchedAt: Date.now(),
+    recordCount: sovereignStatus.entries.length,
+    rankableRecordCount: sovereignStatus.entries.length,
+  };
+  const educationCountries = Object.fromEntries(
+    sovereignStatus.entries.map((entry, index) => [
+      entry.iso2,
+      { value: 35 + (index % 45), year: 2024 },
+    ]),
+  );
+  for (const { code, profile } of descriptors) {
+    educationCountries[code] = {
+      value: round(clamp(qualityFor(profile) * 0.9 + 5, 2, 98), 1),
+      year: 2024,
+    };
+  }
+  fixtures['resilience:education-attainment:v1'] = {
+    // The active scorer checks the payload-wide rankable floor. Fill the
+    // complete universe, then retain profile-derived values for every country
+    // whose ordering this release fixture asserts.
+    countries: educationCountries,
+    seededAt: '2026-08-11T08:03:25.357Z',
   };
   fixtures['economic:national-debt:v1'] = { entries: debtEntries };
   fixtures['economic:bis:credit:v1'] = { entries: bisCreditEntries };

@@ -29,6 +29,11 @@ import { fetchAll, fetchGdeltConflictEvents, CONFLICT_COUNTRIES } from '../scrip
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_EXIT = process.exit;
+
+// Every fetch below is stubbed, so withRetry's exponential backoffs would just
+// idle the suite (two fetchAll tests slept ~12 s each through 429 retry
+// chains). Attempts still run and are still logged with their real waits.
+process.env.WM_SEED_RETRY_DELAY_MS = '1';
 const ORIGINAL_ENV = {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,

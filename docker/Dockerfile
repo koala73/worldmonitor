@@ -3,7 +3,7 @@
 # Multi-stage build for the World Monitor web app (frontend only).
 
 # Stage 1: Build the frontend with TypeScript + Vite.
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS builder
+FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS builder
 ARG BUILDKIT_SBOM_SCAN_STAGE=true
 
 WORKDIR /app
@@ -26,11 +26,16 @@ ARG VITE_WS_API_URL=https://api.worldmonitor.app
 ENV VITE_VARIANT=${VITE_VARIANT}
 ENV VITE_WS_API_URL=${VITE_WS_API_URL}
 
+# Generated inventory assets are intentionally untracked. Recreate them in the
+# clean release image before Vite copies public/ into dist/.
+RUN node scripts/generate-inventory-facts.mjs
+
 # Build the crawlable static corpus, then tsc + vite build directly like the
 # sidecar image's builder. `npm run build` would chain build:blog
 # (blog-site has its own lockfile, not installed here) and the prebuild
 # openapi/agent-skills generators.
 RUN npm run build:crawlable-corpus && npm run build:sitemap && npx tsc && npx vite build
+RUN test -s dist/product-facts.json
 
 
 # Stage 2: Serve the built assets from nginx.

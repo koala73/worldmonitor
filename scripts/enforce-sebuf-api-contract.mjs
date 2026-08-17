@@ -8,8 +8,9 @@
  *   2. A listed entry in api/api-route-exceptions.json with category, reason,
  *      owner, and (for temporary categories) a removal_issue.
  *
- * Also checks the reverse: every generated service has a gateway. This catches
- * the case where a proto is deleted but the gateway wrapper is left behind.
+ * Also checks the reverse: every generated service has a gateway unless it is
+ * explicitly deferred behind a tracked acceptance gate. Deferred entries are
+ * rejected once their service disappears or an HTTP gateway is added.
  *
  * Skips: underscore-prefixed helpers, *.test.*, and anything gitignored (the
  * compiled sidecar bundles at api/[[...path]].js and api/<domain>/v1/[rpc].js
@@ -27,6 +28,14 @@ const ROOT = process.cwd();
 const API_DIR = join(ROOT, 'api');
 const GEN_SERVER_DIR = join(ROOT, 'src/generated/server/worldmonitor');
 const MANIFEST_PATH = join(API_DIR, 'api-route-exceptions.json');
+
+// Contract-first services that may exist before their runtime is allowed to route.
+// The list and its staleness rules live in scripts/lib/sebuf-deferred-services.mjs so
+// they can be unit-tested without executing this gate's top-level scan.
+import {
+  DEFERRED_GENERATED_SERVICES,
+  collectDeferredServiceViolations,
+} from './lib/sebuf-deferred-services.mjs';
 
 const VALID_CATEGORIES = new Set([
   'external-protocol',
@@ -226,6 +235,7 @@ function kebabToSnake(s) {
 }
 
 const seenGatewayDomains = new Set();
+const seenGeneratedServices = new Set();
 
 for (const absolute of candidateFiles) {
   const rel = relative(ROOT, absolute).split(sep).join('/');
@@ -285,7 +295,8 @@ if (existsSync(GEN_SERVER_DIR)) {
       );
       if (!existsSync(serviceServer)) continue;
       const key = `${snakeDomain}/${versionDir.name}`;
-      if (!seenGatewayDomains.has(key)) {
+      seenGeneratedServices.add(key);
+      if (!seenGatewayDomains.has(key) && !DEFERRED_GENERATED_SERVICES.has(key)) {
         const kebabDomain = snakeDomain.replace(/_/g, '-');
         violation(
           relative(ROOT, serviceServer),
@@ -295,6 +306,18 @@ if (existsSync(GEN_SERVER_DIR)) {
       }
     }
   }
+}
+
+for (const deferredViolation of collectDeferredServiceViolations({
+  deferred: DEFERRED_GENERATED_SERVICES,
+  seenGeneratedServices,
+  seenGatewayDomains,
+  // Distinguishes "the service was deleted" from "nothing has been generated in this
+  // tree yet" — those need opposite fixes, and an empty set alone cannot tell them apart.
+  generatedTreePresent: existsSync(GEN_SERVER_DIR),
+  today: new Date().toISOString().slice(0, 10),
+})) {
+  violation(deferredViolation.file, deferredViolation.message, deferredViolation.remedy);
 }
 
 // --- Proto query-param implementation guard ---

@@ -20,7 +20,16 @@ export type McpAuthContext =
   // resolved owner userId (per-user rate limit + daily quota + the mcpAccess
   // entitlement pre-check — a user_key context must NEVER skip that gate the
   // way env_key does).
-  | { kind: 'user_key'; apiKey: string; userId: string };
+  | { kind: 'user_key'; apiKey: string; userId: string }
+  // U7 (R7): an uncredentialed caller admitted to the always-free tool subset.
+  // Carries NO identity by construction — it is the absence of a principal,
+  // modelled as its own kind rather than a synthesised `env_key`/`pro` so every
+  // kind-switch is forced by the compiler to decide what it means instead of
+  // silently inheriting an authenticated arm's behaviour. Two arms that would
+  // have been wrong by default: `setUsageContext` labelled the fallthrough
+  // `enterprise_api_key` (free traffic would have reported as enterprise in
+  // Axiom) and `buildAuthHeaders` fell through to HMAC-signing as `pro`.
+  | { kind: 'free' };
 
 export type McpInboundHostClass =
   | 'canonical_api'
@@ -50,6 +59,16 @@ export interface BaseToolDef {
   // envelope instead of the oversized payload. Required so a new tool can't
   // be added without an explicit budget choice.
   _outputBudgetBytes: number;
+  // U7 (R7, R9): membership in the always-free subset — servable to an
+  // uncredentialed caller, consuming no quota for any principal. Declared HERE,
+  // on the tool itself, so the roster and the tool definition cannot drift
+  // apart; there is deliberately no second list.
+  //
+  // A free-tier tool MUST reach no credentialed downstream: it runs with a
+  // `{ kind: 'free' }` context that carries no identity, so `buildAuthHeaders`
+  // throws rather than signing. In practice that means `_apiPaths: []` and a
+  // committed-registry or cache read. Enforced by test, not by convention.
+  _freeTier?: true;
   // Spec-defined `Tool.outputSchema` (MCP 2025-06-18+). JSON Schema fragment
   // describing the tool's normal (non-envelope) response shape so a compliant
   // client can validate `tools/call` results AND so the LLM can write a
@@ -164,9 +183,10 @@ export interface CacheToolDef extends BaseToolDef {
   // Explicit output labels for keys whose last informative segment is too
   // generic (for example economic:china:macro:v2 -> "china-macro").
   _cacheLabels?: Record<string, string>;
-  _seedMetaKey: string;
-  _maxStaleMin: number;
-  _freshnessChecks?: FreshnessCheck[];
+  // Per-key freshness contract. Required and non-empty (tuple = at least one
+  // element) — every cache tool must declare at least one freshness budget, and
+  // the dispatcher reads this list directly with no synthesized fallback.
+  _freshnessChecks: [FreshnessCheck, ...FreshnessCheck[]];
   _execute?: never;
   // Optional in-memory post-filter applied to the label-walked `data` map
   // AFTER the Redis reads + freshness + cache_all_null guard. Pure narrowing:
@@ -197,8 +217,6 @@ export interface CacheToolDef extends BaseToolDef {
 // hybrid _execute's `_coverageKeys` are equivalent for that audit.
 export interface RpcToolDef extends BaseToolDef {
   _cacheKeys?: never;
-  _seedMetaKey?: never;
-  _maxStaleMin?: never;
   _freshnessChecks?: never;
   _execute: (
     params: Record<string, unknown>,
@@ -258,18 +276,32 @@ export interface PublicToolShape {
     idempotentHint: boolean;
     openWorldHint: boolean;
   };
-  // MCP Apps (`io.modelcontextprotocol/ui`) tool→UI linkage. Spec-reserved
-  // public `_meta` — present ONLY on tools that declare a `_uiResourceUri`.
-  // Both the nested `ui.resourceUri` (current form) and the flat
-  // `ui/resourceUri` (deprecated legacy alias ext-apps normalizes) are
-  // emitted so hosts on either revision resolve the app shell.
-  _meta?: { ui: { resourceUri: string }; 'ui/resourceUri': string };
+  // Spec-reserved public `_meta`. Carries two independent things:
+  //   - MCP Apps (`io.modelcontextprotocol/ui`) tool→UI linkage, present ONLY
+  //     on tools that declare a `_uiResourceUri`. Both the nested
+  //     `ui.resourceUri` (current form) and the flat `ui/resourceUri`
+  //     (deprecated legacy alias ext-apps normalizes) are emitted so hosts on
+  //     either revision resolve the app shell.
+  //   - `worldmonitor/access` (U7 / R6), present ONLY when the tool is servable
+  //     without credentials, with value `free`. Omission means the tool is
+  //     subscription-gated; we do not repeat that default on every entry. A
+  //     namespaced vendor key, so it cannot collide with a future spec field.
+  _meta?: {
+    ui?: { resourceUri: string };
+    'ui/resourceUri'?: string;
+    'worldmonitor/access'?: 'free';
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Daily-quota pipeline types
 // ---------------------------------------------------------------------------
-export type PipelineFn = (commands: Array<Array<string | number>>, timeoutMs?: number) => Promise<Array<{ result: unknown }> | null>;
+// Mirrors redisPipeline in api/_upstash-json.d.ts. `result` is OPTIONAL and
+// `error` exists because Upstash reports per-command failures inside an
+// otherwise-successful 200 — the shape readExistsFlags branches on. While this
+// omitted `error`, a consumer could not read that field without a local cast
+// (api/mcp/dispatch.ts carried one, with a comment saying so, until #6152).
+export type PipelineFn = (commands: Array<Array<string | number>>, timeoutMs?: number) => Promise<Array<{ result?: unknown; error?: unknown }> | null>;
 
 export interface QuotaReserved {
   ok: true;
@@ -296,7 +328,13 @@ export type QuotaRejected =
 // ---------------------------------------------------------------------------
 export interface McpHandlerDeps {
   resolveBearerToContext: (token: string) => Promise<McpAuthContext | null>;
-  validateProMcpToken: (tokenId: string) => Promise<{ userId: string } | null>;
+  validateProMcpToken: (tokenId: string) => Promise<
+    | { userId: string }
+    | { ok: 'valid'; userId: string }
+    | { ok: 'revoked' }
+    | { ok: 'transient' }
+    | null
+  >;
   getEntitlements: (userId: string) => Promise<{
     planKey?: string;
     features: {

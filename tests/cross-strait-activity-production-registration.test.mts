@@ -80,6 +80,13 @@ describe('cross-Strait activity production registration (#5575)', () => {
     );
   });
 
+  it('pins the resilient Japan MOD source-version marker used by publication health', () => {
+    assert.match(
+      read('scripts/seed-cross-strait-activity.mjs'),
+      /sourceVersion:\s*'taiwan-mnd-html\+japan-joint-staff-homepage-v3'/,
+    );
+  });
+
   it('hydrates the existing Force Posture panel without touching flight identity rules', () => {
     const panel = read('src/components/MilitaryCorrelationPanel.ts');
     const renderer = read('src/components/cross-strait-activity-summary.ts');

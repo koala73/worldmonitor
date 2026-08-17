@@ -18,6 +18,7 @@ const DEFAULT_SCOPED_PROTO_FILES = new Set([
   'worldmonitor/maritime/v1/list_navigational_warnings.proto',
   'worldmonitor/market/v1/get_sector_summary.proto',
   'worldmonitor/market/v1/list_earnings_calendar.proto',
+  'worldmonitor/market/v1/list_stablecoin_markets.proto',
   'worldmonitor/military/v1/get_theater_posture.proto',
   'worldmonitor/military/v1/list_military_flights.proto',
   'worldmonitor/natural/v1/list_natural_events.proto',

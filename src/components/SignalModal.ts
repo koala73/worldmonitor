@@ -1,10 +1,16 @@
+import type { SignalArticle } from '@/services/analysis-core';
 import type { CorrelationSignal } from '@/services/correlation';
 import type { UnifiedAlert } from '@/services/cross-module-integration';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import { getSignalContext, type SignalType } from '@/utils/analysis-constants';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
+// Render-side display ceiling for a keyword spike's evidence list. Independent
+// of the emitter's own cap (MAX_SPIKE_ARTICLES) and deliberately higher, so it
+// bounds an untrusted producer without ever truncating what handleSpike emits.
+const MAX_RENDERED_EVIDENCE_ITEMS = 12;
 
 function suppressTrendingTermLazy(term: string): void {
   void import('@/services/trending-keywords')
@@ -391,6 +397,7 @@ export class SignalModal {
               ${signal.data.relatedTopics.map(t => `<span class="signal-topic">${escapeHtml(t)}</span>`).join('')}
             </div>
           ` : ''}
+          ${this.renderSpikeEvidence(signal)}
           ${signal.type === 'keyword_spike' && typeof data?.term === 'string' ? `
             <div class="signal-actions">
               <button class="suppress-keyword-btn" data-term="${escapeHtml(data.term)}">${t('modals.signal.suppress')}</button>
@@ -401,6 +408,82 @@ export class SignalModal {
     }).join('');
 
     setTrustedHtml(content, trustedHtml(html, "legacy direct innerHTML migration"));
+  }
+
+  /**
+   * A keyword spike reports "N mentions across M sources"; until #6414 the
+   * sources and articles behind that count were dropped at the emit site, so
+   * the only thing a user could do with the alert was silence it. The payload
+   * now carries them — render them so the alert is reachable from the news it
+   * is about.
+   *
+   * Shape is validated rather than trusted: `signal.data` is a loose bag that
+   * already carries undeclared fields (`newsCorrelation`, `focalPointContext`,
+   * `lat`/`lon`), and signals reach this modal from several producers — the
+   * main-thread correlation engine, the analysis worker, and the unified-alert
+   * adapter — so the render boundary cannot assume the declared type.
+   */
+  private renderSpikeEvidence(signal: CorrelationSignal): string {
+    if (signal.type !== 'keyword_spike') return '';
+
+    const data = signal.data as { sourceNames?: unknown; articles?: unknown };
+
+    const sourceNames = Array.isArray(data.sourceNames)
+      ? data.sourceNames.filter(
+          (name): name is string => typeof name === 'string' && name.trim().length > 0,
+        )
+      : [];
+
+    const articles = Array.isArray(data.articles)
+      ? (data.articles as SignalArticle[]).filter(
+          article => !!article && typeof article.title === 'string' && article.title.length > 0,
+        )
+      : [];
+
+    if (sourceNames.length === 0 && articles.length === 0) return '';
+
+    // A display ceiling, deliberately set ABOVE the emitter's MAX_SPIKE_ARTICLES
+    // so it never truncates a legitimate payload — it exists only so a producer
+    // this boundary does not trust cannot make the modal render an arbitrarily
+    // long list. A term trending across dozens of feeds is normal, so the chips
+    // overflow into a "+N" counter rather than being silently dropped.
+    const shownSources = sourceNames.slice(0, MAX_RENDERED_EVIDENCE_ITEMS);
+    const hiddenSourceCount = sourceNames.length - shownSources.length;
+
+    // Deliberately reusing `header.sources` and `popups.relatedHeadlines`:
+    // both already carry vetted translations in every locale, and nothing in
+    // CI backfills a brand-new key, so a fresh `modals.signal.*` pair would
+    // ship as English to every non-English user. `header.sources` is already
+    // mirrored in en.shell.json, so this costs no first-paint shell budget.
+    const sourcesBlock = sourceNames.length ? `
+      <div class="signal-sources">
+        <span class="signal-sources-label">${t('header.sources')}</span>
+        ${shownSources.map(name => `<span class="signal-source-chip">${escapeHtml(name)}</span>`).join('')}
+        ${hiddenSourceCount > 0 ? `<span class="signal-source-chip signal-source-chip-more">+${hiddenSourceCount}</span>` : ''}
+      </div>
+    ` : '';
+
+    const articlesBlock = articles.length ? `
+      <div class="signal-articles">
+        <div class="signal-articles-header">📰 ${t('popups.relatedHeadlines')}</div>
+        ${articles.slice(0, MAX_RENDERED_EVIDENCE_ITEMS).map(article => {
+          // sanitizeUrl returns '' for anything that is not http(s) — render
+          // the headline as text rather than as a link that cannot be trusted.
+          const href = typeof article.link === 'string' ? sanitizeUrl(article.link) : '';
+          const title = escapeHtml(article.title);
+          return `
+            <div class="signal-article-item">
+              <span class="news-source">${escapeHtml(article.source ?? '')}</span>
+              ${href
+                ? `<a class="news-title" href="${href}" target="_blank" rel="noopener noreferrer">${title}</a>`
+                : `<span class="news-title">${title}</span>`}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    ` : '';
+
+    return `${sourcesBlock}${articlesBlock}`;
   }
 
   private formatTime(date: Date): string {

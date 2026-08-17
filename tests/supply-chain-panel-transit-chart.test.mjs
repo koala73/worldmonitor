@@ -123,7 +123,7 @@ describe('SupplyChainPanel transit chart mount contract', () => {
 
   it('tab switch clears transit chart before re-rendering', () => {
     // Clicking a different tab should clear chart state before rendering new tab
-    const tabHandler = panelSrc.match(/if\s*\(tab\)\s*\{([\s\S]*?)\n\s{8}return/);
+    const tabHandler = panelSrc.match(/if\s*\(tab\?\.dataset\.tab\)\s*\{([\s\S]*?)\n\s{8}return/);
     assert.ok(tabHandler, 'tab click handler should exist');
     const body = tabHandler[1];
     assert.ok(body.includes('clearTransitChart'), 'tab switch must clear chart before render');

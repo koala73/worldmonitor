@@ -10,6 +10,7 @@ const {
   parseProxyConfigForAttempt,
   proxyFetch,
   resolveProxyString,
+  resolveProxyStringForAttempt,
 } = createRequire(import.meta.url)('../scripts/_proxy-utils.cjs');
 
 function proxyFetchHarness(response, { maxResponseBytes = Infinity } = {}) {
@@ -137,6 +138,89 @@ describe('proxy utilities', () => {
     );
   });
 
+  it('rotates the curl proxy string onto a distinct Decodo sticky exit per attempt', () => {
+    const decodo = 'gate.decodo.com:10001:proxy-user:proxy-secret';
+
+    // Attempt 0 must be byte-identical to the non-rotating resolver, so adopting
+    // rotation cannot silently move the default route onto a different exit.
+    assert.equal(resolveProxyStringForAttempt(0, decodo), resolveProxyString(decodo));
+    assert.equal(
+      resolveProxyStringForAttempt(0, decodo),
+      'proxy-user:proxy-secret@us.decodo.com:10001',
+    );
+    assert.equal(
+      resolveProxyStringForAttempt(1, decodo),
+      'proxy-user:proxy-secret@us.decodo.com:10002',
+    );
+    assert.equal(
+      resolveProxyStringForAttempt(3, decodo),
+      'proxy-user:proxy-secret@us.decodo.com:10004',
+    );
+    // Sticky ports wrap rather than escaping the provider's assigned range.
+    assert.equal(
+      resolveProxyStringForAttempt(1, 'gate.decodo.com:49999:proxy-user:proxy-secret'),
+      'proxy-user:proxy-secret@us.decodo.com:10001',
+    );
+
+    // Rotating (non-sticky) Decodo ports and every other provider keep their
+    // configured route: advancing the port there would point at nothing.
+    assert.equal(
+      resolveProxyStringForAttempt(2, 'gate.decodo.com:10000:proxy-user:proxy-secret'),
+      'proxy-user:proxy-secret@us.decodo.com:10000',
+    );
+    assert.equal(
+      resolveProxyStringForAttempt(2, 'https://proxy-user:proxy-secret@proxy.test:443'),
+      'proxy-user:proxy-secret@proxy.test:443',
+    );
+    assert.equal(resolveProxyStringForAttempt(2, ''), '');
+  });
+
+  it('reads the attempt as the first argument so a proxy string cannot land in it', () => {
+    // resolveProxyString takes the raw config first; this one takes the attempt.
+    // A swapped call must degrade to the configured exit, not to a port computed
+    // from a string.
+    //
+    // `raw` is deliberately NON-empty here. With raw = '' the assertion proves
+    // nothing: parseProxyConfig returns null on a falsy raw before `attempt` is
+    // ever read, so the result is '' whether the coercion exists or not.
+    assert.equal(
+      resolveProxyStringForAttempt(
+        'gate.decodo.com:10001:proxy-user:proxy-secret',
+        'gate.decodo.com:10001:u:p',
+      ),
+      'u:p@us.decodo.com:10001',
+      'a proxy string in the attempt slot degrades to attempt 0',
+    );
+    // Every other non-numeric attempt degrades the same way rather than
+    // producing NaN, which would resolve to a port outside the sticky range.
+    for (const badAttempt of [undefined, null, NaN, 'two', {}, [], Infinity]) {
+      assert.equal(
+        resolveProxyStringForAttempt(badAttempt, 'gate.decodo.com:10001:u:p'),
+        'u:p@us.decodo.com:10001',
+        `attempt=${String(badAttempt)}`,
+      );
+    }
+    // A negative attempt clamps forward, never below the sticky floor.
+    assert.equal(
+      resolveProxyStringForAttempt(-5, 'gate.decodo.com:10001:u:p'),
+      'u:p@us.decodo.com:10001',
+    );
+    // A fractional attempt truncates rather than producing a fractional port.
+    assert.equal(
+      resolveProxyStringForAttempt(2.9, 'gate.decodo.com:10001:u:p'),
+      'u:p@us.decodo.com:10003',
+    );
+  });
+
+  it('leaves a Decodo port above the sticky range unrotated', () => {
+    // parseProxyConfigForAttempt excludes both sides of the sticky range in one
+    // condition; only the below-minimum side had coverage.
+    assert.equal(
+      resolveProxyStringForAttempt(2, 'gate.decodo.com:50000:proxy-user:proxy-secret'),
+      'proxy-user:proxy-secret@us.decodo.com:50000',
+    );
+  });
+
   it('rejects a response stream as soon as it exceeds the byte limit', async () => {
     await assert.rejects(
       _readBoundedResponseStream(
@@ -172,6 +256,14 @@ describe('proxy utilities', () => {
       location: 'https://trusted.example/signed.xml',
       buffer: Buffer.from('redirect'),
       contentType: 'text/plain',
+      // The full header map rides along so callers can read headers this shape
+      // does not promote to a named field — rate-limit headers on a 429 are the
+      // motivating case, and dropping them silently downgrades an OpenSky quota
+      // cooldown from the advertised window to a short fallback (#6241).
+      headers: {
+        location: 'https://trusted.example/signed.xml',
+        'content-type': 'text/plain',
+      },
     });
     assert.equal(redirectHarness.destroyed(), 1);
 

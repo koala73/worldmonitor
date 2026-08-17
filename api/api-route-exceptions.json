@@ -122,6 +122,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/source-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY source-discovery tool entry (get_sources). Reads the committed shared/ source-attribution manifest and source-tiers registry to report coverage, licensing status, editorial tier, and provenance; exports no JSON data route and performs no network I/O. Same external-protocol constraint as its sibling registry modules.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/index.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY merge + buildPublicTool + SUMMARY_SCHEMA + TOOL_LIST_RESPONSE precompute + collision guard. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
@@ -441,7 +448,7 @@
     {
       "path": "api/opensky.js",
       "category": "upstream-proxy",
-      "reason": "Transparent proxy to OpenSky Network API. Shape is OpenSky's; we don't remodel it.",
+      "reason": "Desktop-product-only OpenSky relay. It requires the Tauri origin plus an enterprise product key and is not part of the public API offering.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -605,13 +612,6 @@
       "path": "api/internal/brief-why-matters.ts",
       "category": "internal-helper",
       "reason": "LLM-enrichment helper for the brief pipeline. Cron-triggered from Railway under RELAY_SHARED_SECRET bearer auth — never reached by dashboards, desktop, or partners. Request/response shape is an implementation detail of the brief renderer; modeling it as a generated service would publish internal cron plumbing as user-facing API surface. Same shape constraint as api/notify.ts (also cron-only).",
-      "owner": "@SebastienMelki",
-      "removal_issue": null
-    },
-    {
-      "path": "api/internal/china-exchange-egress.js",
-      "category": "internal-helper",
-      "reason": "Fixed-target SZSE metadata egress for the Railway corporate-disclosure seed (#5771). RELAY_SHARED_SECRET-authenticated, POST-only, and constrained to the reviewed issuer, channel, page, and 92-day window; it is deployment plumbing for one source adapter rather than a user-facing data API.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

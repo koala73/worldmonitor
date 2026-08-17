@@ -29,6 +29,13 @@ export interface SourceCapResult {
   autoDisabled: Set<string>;
 }
 
+export interface SourceGateOwnershipResult {
+  /** Sources disabled by the current cap calculation. */
+  gateOwned: Set<string>;
+  /** Persisted denylist containing both user and gate-owned disables. */
+  disabled: Set<string>;
+}
+
 export interface SourceCapRolloutStage {
   /** Source names that first became configured in this release stage. */
   introducedNames: ReadonlySet<string>;
@@ -38,6 +45,63 @@ export interface SourceCapRolloutStage {
 
 export function canonicalStringSet(values: ReadonlySet<string>): string {
   return JSON.stringify([...values].sort());
+}
+
+export function stringSetsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const value of a) if (!b.has(value)) return false;
+  return true;
+}
+
+/**
+ * Replace the previous free-tier cap selection without confusing it with the
+ * user's own denylist. This makes repeated enforcement responsive to catalog,
+ * locale, and protection changes instead of permanently baking in the first
+ * 80-source selection.
+ */
+export function reconcileSourceGateOwnership(
+  userDisabled: ReadonlySet<string>,
+  nextGateOwned: ReadonlySet<string>,
+): SourceGateOwnershipResult {
+  const gateOwned = new Set(nextGateOwned);
+  return {
+    gateOwned,
+    disabled: new Set([...userDisabled, ...gateOwned]),
+  };
+}
+
+/** Restore only the source disables that the free-tier cap owned. */
+export function restoreGateOwnedSources(
+  persistedDisabled: ReadonlySet<string>,
+  gateOwned: ReadonlySet<string>,
+): Set<string> {
+  return new Set([...persistedDisabled].filter((name) => !gateOwned.has(name)));
+}
+
+/** A direct user source toggle transfers those names out of gate ownership. */
+export function transferSourceGateOwnershipToUser(
+  gateOwned: ReadonlySet<string>,
+  names: Iterable<string>,
+): Set<string> {
+  const next = new Set(gateOwned);
+  for (const name of names) next.delete(name);
+  return next;
+}
+
+/**
+ * Conservatively recover ownership for profiles capped before ownership was
+ * stored. Exact equality is required: one customized source leaves the blob
+ * untouched rather than guessing about user intent.
+ */
+export function inferExactSourceGateOwnership(
+  persistedDisabled: ReadonlySet<string>,
+  defaultUserDisabled: ReadonlySet<string>,
+  expectedGateOwned: ReadonlySet<string>,
+): Set<string> | null {
+  const expectedPersisted = new Set([...defaultUserDisabled, ...expectedGateOwned]);
+  return stringSetsEqual(persistedDisabled, expectedPersisted)
+    ? new Set(expectedGateOwned)
+    : null;
 }
 
 function filterFeedsToAvailable(

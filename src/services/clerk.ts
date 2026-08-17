@@ -60,15 +60,28 @@ function getAppearance() {
     ? document.documentElement.dataset.theme !== 'light'
     : true;
 
+  // Both naming generations are listed for every color. The @clerk/ui v1
+  // bundle (loaded at runtime via __internal_ClerkUICtor) parses ONLY the
+  // new names -- colorForeground / colorInput / colorInputForeground /
+  // colorMutedForeground -- and silently ignores the legacy v5 names, so
+  // without the new names text falls back to light-dark() defaults that
+  // resolve near-black (e.g. invisible OTP digits on the dark card). The
+  // legacy names stay for clerk-js's own legacy components. Unknown keys
+  // are ignored by either parser, so the union is safe.
   return isDark
     ? {
         variables: {
           colorBackground: '#0f0f0f',
           colorInputBackground: '#141414',
+          colorInput: '#141414',
           colorInputText: '#e8e8e8',
+          colorInputForeground: '#e8e8e8',
           colorText: '#e8e8e8',
+          colorForeground: '#e8e8e8',
           colorTextSecondary: '#aaaaaa',
+          colorMutedForeground: '#aaaaaa',
           colorPrimary: '#44ff88',
+          colorPrimaryForeground: '#000000',
           colorNeutral: '#e8e8e8',
           colorDanger: '#ff4444',
           borderRadius: '4px',
@@ -95,10 +108,15 @@ function getAppearance() {
         variables: {
           colorBackground: '#ffffff',
           colorInputBackground: '#f8f9fa',
+          colorInput: '#f8f9fa',
           colorInputText: '#1a1a1a',
+          colorInputForeground: '#1a1a1a',
           colorText: '#1a1a1a',
+          colorForeground: '#1a1a1a',
           colorTextSecondary: '#555555',
+          colorMutedForeground: '#555555',
           colorPrimary: '#16a34a',
+          colorPrimaryForeground: '#ffffff',
           colorNeutral: '#1a1a1a',
           colorDanger: '#dc2626',
           borderRadius: '4px',

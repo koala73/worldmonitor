@@ -20,6 +20,7 @@ import {
   DIPLOMACY_KEYWORDS,
   ENTITY_BIGRAMS,
 } from './_clustering.mjs';
+import { MIN_CORROBORATING_PUBLISHERS } from './shared/publisher-families.js';
 import { extractCountryCode } from './shared/geo-extract.mjs';
 import { buildChinaNewsCoverage } from './_china-news-coverage.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
@@ -29,10 +30,28 @@ import {
   briefUserPrompt,
   synthesisSystemPrompt,
   synthesisUserPrompt,
-  parseBriefSynthesis,
-  composeSynthesizedBrief,
 } from './_insights-brief.mjs';
+import {
+  INSIGHTS_COMPOSER_THREW,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES,
+  classifyInsightsSynthesisFailure,
+  composeInsightsSynthesis,
+  resolveInsightsSynthesis,
+} from './_insights-synthesis-diagnostics.mjs';
+export {
+  INSIGHTS_COMPOSER_THREW,
+  INSIGHTS_SYNTHESIS_FAILURE_CODES,
+  classifyInsightsSynthesisFailure,
+  composeInsightsSynthesis,
+  resolveInsightsSynthesis,
+};
 import { buildLlmCallEvent, emitLlmEvents, flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
+import {
+  GROQ_DEFAULT_MODEL,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
+  OPENROUTER_PROVIDER_ROUTING,
+} from './_llm-model-timeouts.mjs';
 // Import from the scripts mirror (`scripts/shared/`) — NOT the repo-root
 // `shared/`. Railway services with nixpacks `rootDirectory=scripts` only
 // package files under scripts/; a `../shared/` import resolves to
@@ -92,7 +111,6 @@ const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval. Shorter = key ex
                          // is gated at brief-selection time (see pickBriefCluster + briefSystemPrompt
                          // in _insights-brief.mjs), not by aging out fast.
 const MAX_HEADLINE_LEN = 500;
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const INSIGHTS_SOURCE_VERSION = 'digest-clustering-v2-importance-diversity';
 const INSIGHTS_MAX_CONSECUTIVE_FAILURES = 100;
 const INSIGHTS_RUN_OUTCOMES = Object.freeze({
@@ -101,15 +119,6 @@ const INSIGHTS_RUN_OUTCOMES = Object.freeze({
   DEGRADED: 'degraded',
 });
 
-// These codes are intentionally low-cardinality and safe to put in seed-meta,
-// health responses, and logs. Never include prompt or model output text in the
-// rejection diagnostic: the payload may contain sensitive intelligence.
-export const INSIGHTS_SYNTHESIS_FAILURE_CODES = Object.freeze({
-  PARSE: 'INSIGHTS_SYNTHESIS_PARSE',
-  GATE: 'INSIGHTS_SYNTHESIS_GATE',
-  MISSING_CLUSTER: 'INSIGHTS_SYNTHESIS_MISSING_CLUSTER',
-  PROVIDER: 'INSIGHTS_SYNTHESIS_PROVIDER',
-});
 const INSIGHTS_SYNTHESIS_FAILURE_CODE_SET = new Set(Object.values(INSIGHTS_SYNTHESIS_FAILURE_CODES));
 const INSIGHTS_RUN_META = Symbol('worldmonitor.insightsRunMeta');
 
@@ -156,24 +165,6 @@ export function publishInsightsPayload(data) {
 export function validateInsightsPayload(data) {
   if (insightsRunMeta(data)?.outcome === INSIGHTS_RUN_OUTCOMES.LKG_PRESERVED) return false;
   return declareRecords(data) > 0;
-}
-
-/**
- * Keep synthesis rejection telemetry bounded and machine-actionable. The
- * classifier deliberately accepts only stage outcomes, never raw prompt or
- * provider text, so this value is safe for seed-meta, health, and logs.
- */
-export function classifyInsightsSynthesisFailure({
-  hasBriefCluster = false,
-  synthesisResult = null,
-  parsedSynthesis = null,
-  composed = null,
-} = {}) {
-  if (composed) return null;
-  if (!hasBriefCluster) return INSIGHTS_SYNTHESIS_FAILURE_CODES.MISSING_CLUSTER;
-  if (!synthesisResult) return INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER;
-  if (!parsedSynthesis) return INSIGHTS_SYNTHESIS_FAILURE_CODES.PARSE;
-  return INSIGHTS_SYNTHESIS_FAILURE_CODES.GATE;
 }
 
 export function resolveInsightsFallbackStatus({ synthesisFailureCode, legacyStatus }) {
@@ -369,8 +360,8 @@ async function readExistingInsights() {
 }
 
 // Provider config — mirrors server/_shared/llm.ts getProviderCredentials()
-// Order: ollama → openrouter → groq (canonical chain since #4944: DeepSeek
-// V4 Flash primary with reasoning disabled, groq 70B free-tier fallback)
+// Order: Ollama → paid OpenRouter → two fixed free OpenRouter models → Groq.
+// Each free model stays a separate application-validated attempt.
 const LLM_PROVIDERS = [
   {
     name: 'ollama',
@@ -392,14 +383,34 @@ const LLM_PROVIDERS = [
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
     model: 'deepseek/deepseek-v4-flash',
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
-    extraBody: { reasoning: { enabled: false } },
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
     timeout: 20_000,
+  },
+  {
+    name: 'openrouter-free',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_PRIMARY_MODEL,
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    timeout: 20_000,
+    maxRetries: 0,
+  },
+  {
+    name: 'openrouter-free-backup',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_BACKUP_MODEL,
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    timeout: 20_000,
+    maxRetries: 0,
   },
   {
     name: 'groq',
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: GROQ_MODEL,
+    model: GROQ_DEFAULT_MODEL,
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
     timeout: 15_000,
   },
@@ -503,10 +514,18 @@ async function callLLM(headline, options = {}) {
           signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usable))),
         });
         if (!response.ok) {
-          throw httpRetryError(response, { maxRetryAfterMs: INSIGHTS_LLM_RETRY_AFTER_MAX_MS, capMs: usableBudgetMs() });
+          // #6110: `usableBudgetMs()` is a real remaining wall clock, so pass it
+          // as `remainingBudgetMs` — a hint longer than that (groq's daily-quota
+          // 429 asks for ~20 minutes) makes the error nonRetryable and we fall
+          // through to the next provider immediately, instead of clamping the
+          // hint to the ceiling and sleeping it away twice.
+          throw httpRetryError(response, {
+            maxRetryAfterMs: INSIGHTS_LLM_RETRY_AFTER_MAX_MS,
+            remainingBudgetMs: usableBudgetMs(),
+          });
         }
         return response;
-      }, INSIGHTS_LLM_MAX_RETRIES, retryDelayMs);
+      }, provider.maxRetries ?? INSIGHTS_LLM_MAX_RETRIES, retryDelayMs);
 
       const json = await resp.json();
       const usage = {
@@ -803,29 +822,16 @@ async function fetchInsights() {
   } else if (!hasBriefCluster) {
     console.warn(`  [brief_synthesis] no corroborated cluster in corpus (eligible=${briefEligibleClusters ?? 'unknown'})`);
   }
-  // #6001: one definition of "is this synthesis publishable", used BOTH as the
-  // provider-acceptance gate and for the final result, so the chain can never
-  // accept output the composer would later reject. Pure and cheap, so running
-  // it once more below costs nothing and keeps failure classification exact.
-  // Fault-tolerant on purpose: this runs once per provider AND once more for
-  // the final result. An uncaught throw here escapes fetchInsights into
-  // runSeed's withRetry, which would re-run the whole digest read and LLM
-  // chain up to four times until the seed lock expires. Failing to null
-  // classifies as GATE, keeps the LKG fail-safe, and stays visible in the log.
-  const composeFromText = (text) => {
-    try {
-      return composeSynthesizedBrief(text, topStories, {
-        validatorMode: BRIEF_VALIDATOR_MODE,
-        sanitizeTitle,
-        sourceFromStory: briefSourceFromStory,
-        briefCluster,
-        parsedSynthesis: parseBriefSynthesis(text, topStories.length),
-      });
-    } catch (err) {
-      console.warn(`  [brief_synthesis] composer threw (${err.message}) — treating as rejected`);
-      return null;
-    }
+  // The acceptance gate is the composer itself (#6001), so the chain can never
+  // accept output the composer would later reject.
+  const synthesisComposerOptions = {
+    briefCluster,
+    validatorMode: BRIEF_VALIDATOR_MODE,
+    sanitizeTitle,
+    sourceFromStory: briefSourceFromStory,
   };
+  const composeFromText = (text) =>
+    composeInsightsSynthesis(text, topStories, synthesisComposerOptions).brief;
 
   // #6001: L1 may now walk the whole provider chain, and L2 below makes a
   // SECOND callLLM. Stamp the run's LLM start so L2 gets only the remainder —
@@ -841,16 +847,12 @@ async function fetchInsights() {
         accept: composeFromText,
       })
     : null;
-  const parsedSynthesis = synthesisResult
-    ? parseBriefSynthesis(synthesisResult.text, topStories.length)
-    : null;
-  const composed = synthesisResult ? composeFromText(synthesisResult.text) : null;
-  synthesisFailureCode = classifyInsightsSynthesisFailure({
-    hasBriefCluster,
+  const { composed, failureCode } = resolveInsightsSynthesis({
     synthesisResult,
-    parsedSynthesis,
-    composed,
+    topStories,
+    ...synthesisComposerOptions,
   });
+  synthesisFailureCode = failureCode;
 
   if (composed) {
     worldBrief = composed.lead;
@@ -886,7 +888,14 @@ async function fetchInsights() {
     });
   }
 
-  const multiSourceCount = clusters.filter(c => (c.sources?.length ?? 0) >= 2 || c.entityCorroboration === true).length;
+  // #6428: "multi-source" is a claim about publishers. Counting c.sources
+  // counted feed labels, so a cluster carried only by one newsroom's own
+  // editions was published as multi-source. clusterItems already resolved the
+  // families onto the cluster — read it rather than recomputing.
+  const multiSourceCount = clusters.filter(
+    c => (c.uniquePublisherCount ?? 0) >= MIN_CORROBORATING_PUBLISHERS
+      || c.entityCorroboration === true,
+  ).length;
   const fastMovingCount = 0; // velocity not available in digest items
 
   const enrichedStories = topStories.map(story => {
@@ -903,7 +912,12 @@ async function fetchInsights() {
       primaryLink: story.primaryLink,
       pubDate: story.pubDate,
       sourceCount: story.sourceCount,
-      uniqueSourceCount: Array.isArray(story.sources) ? story.sources.length : 0,
+      // #6428: uniqueSourceCount is the corroboration breadth number every
+      // consumer (InsightsPanel badge, MCP get_news_intelligence) quotes back
+      // to a user, so it counts PUBLISHERS. `sources` stays the label list —
+      // it is what the UI credits and links, and collapsing it would drop
+      // attribution the publisher is owed.
+      uniqueSourceCount: story.uniquePublisherCount ?? 0,
       sources: Array.isArray(story.sources) ? story.sources : [],
       lastUpdated: story.lastUpdated,
       memberTitles: Array.isArray(story.memberTitles) ? story.memberTitles : [story.primaryTitle],

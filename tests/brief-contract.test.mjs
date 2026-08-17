@@ -18,6 +18,7 @@ import {
   leadGroundsAgainstStory,
   extractAnchorTokens,
   validateNoHallucinatedFacts,
+  validateNoHallucinatedProperNouns,
 } from '../shared/brief-llm-core.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -44,6 +45,44 @@ describe('synthesis prompts (#4921)', () => {
     assert.match(prompt, /1\. Iran threatens to close Strait of Hormuz \(Reuters, 2 sources\)/);
     assert.match(prompt, /2\. Turkey hikes interest rates to 50% \(Bloomberg, 1 source\)/);
     assert.match(prompt, /3\. Magnitude 6\.8 earthquake/);
+  });
+
+  // #6428: this count is fed to the LLM that writes the published brief, so it
+  // is the most directly user-visible corroboration claim in the product. It
+  // read story.sources.length — feed LABELS — so one newsroom's own editions
+  // told the model a single-sourced story carried six.
+  it('user prompt counts publishers, not feed labels', () => {
+    const prompt = synthesisUserPrompt([
+      {
+        primaryTitle: 'Missile attack kills troops in border strike',
+        primarySource: 'Reuters World',
+        sources: ['Reuters World', 'Reuters US', 'Reuters Business', 'Reuters Asia'],
+      },
+      {
+        primaryTitle: 'Talks resume in Geneva',
+        primarySource: 'Reuters World',
+        sources: ['Reuters World', 'BBC World', 'Al Jazeera'],
+      },
+    ]);
+    assert.match(
+      prompt,
+      /1\. Missile attack kills troops in border strike \(Reuters World, 1 source\)/,
+      'four Reuters feed labels are one publisher',
+    );
+    assert.match(
+      prompt,
+      /2\. Talks resume in Geneva \(Reuters World, 3 sources\)/,
+      'three real publishers must still read as three',
+    );
+  });
+
+  it('user prompt never falls back to the article count', () => {
+    // sourceCount is articles. A story with no usable source list must claim
+    // one source, not the number of headlines that clustered into it.
+    const prompt = synthesisUserPrompt([
+      { primaryTitle: 'Something happened', primarySource: 'Wire', sources: [], sourceCount: 9 },
+    ]);
+    assert.match(prompt, /1\. Something happened \(Wire, 1 source\)/);
   });
 });
 
@@ -181,20 +220,26 @@ describe('citation-scoped numeric and date grounding (#6030)', () => {
 
 describe('brief-contract wiring (source-textual)', () => {
   it('seed-insights runs the synthesis path through the pure composer with enforce-by-default', () => {
-    const src = readSrc('scripts/seed-insights.mjs');
-    assert.match(src, /synthesisSystemPrompt/);
+    const seedSrc = readSrc('scripts/seed-insights.mjs');
+    const diagnosticsSrc = readSrc('scripts/_insights-synthesis-diagnostics.mjs');
+    assert.match(seedSrc, /synthesisSystemPrompt/);
     // #6001 moved the composer call behind composeFromText so the SAME gate
     // decides provider acceptance and the final result. Both links still have
     // to hold: the composer receives topStories, and the synthesis response is
     // what gets composed.
-    assert.match(src, /composeSynthesizedBrief\(text, topStories, \{/);
-    assert.match(src, /composeFromText\(synthesisResult\.text\)/);
-    assert.match(src, /accept: composeFromText/, 'the acceptance gate must be the composer itself');
-    assert.match(src, /validatorMode: BRIEF_VALIDATOR_MODE/);
-    assert.match(src, /=== 'shadow' \? 'shadow' : 'enforce'/, 'enforce must be the default mode');
-    assert.match(src, /generateLegacySingleHeadlineBrief\(topStories[,)]/, 'L2 fallback must be wired');
-    assert.match(src, /briefStoryLines/);
-    assert.match(src, /sourceAgeRange/);
+    assert.match(diagnosticsSrc, /composeSynthesizedBriefResult\(text, topStories, composerOptions\)/);
+    // #5947 moved the compose+classify glue into the exported
+    // resolveInsightsSynthesis so it is reachable behaviorally; the
+    // enforce-by-default and gate-reason contracts are asserted for real in
+    // tests/seed-insights-freshness.test.mjs rather than by matching this text.
+    assert.match(seedSrc, /resolveInsightsSynthesis\(\{/);
+    assert.match(seedSrc, /accept: composeFromText/, 'the acceptance gate must be the composer itself');
+    assert.match(diagnosticsSrc, /opts\.validatorMode \?\? 'enforce'/);
+    assert.match(seedSrc, /=== 'shadow' \? 'shadow' : 'enforce'/, 'enforce must be the default mode');
+    assert.match(seedSrc, /sourceFromStory: briefSourceFromStory/, 'the seeder must inject its formatter');
+    assert.match(seedSrc, /generateLegacySingleHeadlineBrief\(topStories[,)]/, 'L2 fallback must be wired');
+    assert.match(seedSrc, /briefStoryLines/);
+    assert.match(seedSrc, /sourceAgeRange/);
   });
 
   it('country-intel brief strips invented citations before shipping', () => {
@@ -511,5 +556,52 @@ describe('fragmented-cluster leads (#6001)', () => {
     // The no-invention floor is untouched — merging is now legal, inventing is not.
     assert.match(prompt, /Do not invent proper nouns/);
     assert.match(prompt, /ONLY facts present/);
+  });
+
+  // #5947: "U.S." followed by a CAPITALIZED word ("U.S. President Trump") is
+  // genuinely ambiguous — the splitter cannot tell it from a sentence boundary
+  // and must fail closed, so the whole brief is rejected. That ambiguity only
+  // exists because of the periods, so the prompt removes it at the source.
+  //
+  // Evidence, stated honestly: on a live digest where the shape occurred, 9 of
+  // 24 samples were rejected on the fragment "Iran denied U.S." and none were
+  // once this rule was added — but that pair of runs was NOT controlled for
+  // digest rotation, so it is not a clean effect measurement. A 40-pair
+  // interleaved A/B on one digest later measured the rule as neutral (29/35 vs
+  // 31/36) — on a digest where the shape never appeared, so it could only have
+  // shown harm, not benefit. The rule is kept because it is mechanistically
+  // sound (no periods -> the ambiguity class cannot arise) and measured
+  // harmless, NOT because a controlled run proved it helps.
+  it('system prompt tells the model to write acronyms without periods', () => {
+    const prompt = synthesisSystemPrompt('2026-08-03');
+    assert.match(prompt, /acronyms WITHOUT periods/i);
+    assert.match(prompt, /"US"/, 'the bare form must be shown, not just described');
+  });
+
+  it('system prompt forbids substituting a metonym for the actor the story names', () => {
+    // Observed live: the model wrote "not with Washington" against a story
+    // reading "but not US" — a proper noun the cited source never contains.
+    const prompt = synthesisSystemPrompt('2026-08-03');
+    assert.match(prompt, /Washington/, 'the substitution to avoid must be named concretely');
+  });
+
+  // The rule above is only safe because acronym grounding is canonicalized on
+  // BOTH sides: sources write "U.S." while the brief is now told to write "US".
+  // If normalizeDottedAcronyms stopped canonicalizing either side, the prompt
+  // change would start manufacturing hallucination flags instead of removing
+  // ambiguity — so pin the property the instruction depends on.
+  it('grounds a bare-acronym lead against a dotted-acronym source and vice versa', () => {
+    const dotted = 'U.S. Embassies Urge Citizens to Consider Leaving the Region';
+    const bare = 'US embassies urge citizens to consider leaving the region';
+    assert.equal(
+      validateNoHallucinatedProperNouns('US embassies urged citizens to leave [2].', dotted).ok,
+      true,
+      'writing "US" against a "U.S." source must not read as invention',
+    );
+    assert.equal(
+      validateNoHallucinatedProperNouns('U.S. embassies urged citizens to leave [2].', bare).ok,
+      true,
+      'the reverse must hold too — sources are inconsistent about the style',
+    );
   });
 });

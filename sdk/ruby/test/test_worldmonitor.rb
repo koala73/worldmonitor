@@ -105,6 +105,16 @@ class TestMCPCalls < Minitest::Test
     refute rpc.key?("params")
   end
 
+  def test_get_sources_is_keyless
+    transport = FakeTransport.new([rpc_result({ "sources" => [] })])
+    result = WorldMonitor::Client.new(env: {}, transport: transport).call_tool("get_sources", view: "summary")
+    assert_equal({ "sources" => [] }, result)
+    request, = transport.requests.first
+    refute_includes request[:headers], WorldMonitor::API_KEY_HEADER
+    rpc = JSON.parse(request[:body])
+    assert_equal({ "name" => "get_sources", "arguments" => { "view" => "summary" } }, rpc["params"])
+  end
+
   def test_mcp_error_raises_with_auth_hint
     transport = FakeTransport.new([json_response(
       { "jsonrpc" => "2.0", "id" => 1,

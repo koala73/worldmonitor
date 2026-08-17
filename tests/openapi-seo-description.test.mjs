@@ -31,8 +31,8 @@ const SEMANTIC_CONTRACTS = [
   {
     file: 'MilitaryService.openapi.json',
     operationId: 'ListMilitaryFlights',
-    required: [/OpenSky/, /bounding box/],
-    forbidden: [/clusters/i, /Wingbits/i],
+    required: [/bounding box/, /source fields/],
+    forbidden: [/clusters/i, /OpenSky/i, /Wingbits/i],
   },
 ];
 

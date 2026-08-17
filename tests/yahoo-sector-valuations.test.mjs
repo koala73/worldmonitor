@@ -9,6 +9,7 @@ import {
   buildSectorValuationCoverage,
   buildSectorValuationPublication,
   parseV7Quote,
+  parseV7QuoteBatch,
   parseCurlResponse,
   parseQuoteSummary,
   requestCurlText,
@@ -732,6 +733,66 @@ describe('parseV7Quote', () => {
   });
 });
 
+describe('parseV7QuoteBatch', () => {
+  it('maps one authenticated batch response back to requested symbols', () => {
+    const result = parseV7QuoteBatch(JSON.stringify({
+      quoteResponse: {
+        result: [
+          { symbol: 'XLK', trailingPE: 25.3, beta: 1.05 },
+          { symbol: 'SMH', trailingPE: 37.2, beta: 1.2 },
+        ],
+      },
+    }), ['XLK', 'SMH']);
+
+    assert.equal(result.kind, 'success');
+    assert.equal(result.value.valuations.XLK.trailingPE, 25.3);
+    assert.equal(result.value.valuations.SMH.trailingPE, 37.2);
+  });
+
+  // A batch that covered only some requested symbols must NOT report route
+  // success: _fetchRoute returns on the first successful transport, so calling
+  // this 'success' would deny the uncovered symbols the proxy leg.
+  it('reports partial (not success) when some requested symbols are uncovered', () => {
+    const result = parseV7QuoteBatch(JSON.stringify({
+      quoteResponse: {
+        result: [
+          { symbol: 'XLK', trailingPE: 25.3, beta: 1.05 },
+          { symbol: 'SMH', trailingPE: 37.2, beta: 1.2 },
+        ],
+      },
+    }), ['XLK', 'SMH', 'XLV']);
+
+    assert.equal(result.kind, 'partial');
+    assert.equal(result.value.valuations.XLK.trailingPE, 25.3);
+    assert.equal(result.value.outcomes.XLV.kind, 'no_data');
+    assert.ok(!('XLV' in result.value.valuations));
+  });
+
+  it('reports a fully unmatched batch by its first outcome, not success', () => {
+    const result = parseV7QuoteBatch(JSON.stringify({
+      quoteResponse: { result: [{ symbol: 'SPY', trailingPE: 21 }] },
+    }), ['XLK', 'SMH']);
+
+    assert.equal(result.kind, 'no_data');
+    assert.deepEqual(result.value.valuations, {});
+    assert.equal(result.value.outcomes.XLK.kind, 'no_data');
+  });
+
+  it('classifies an upstream error envelope without inventing valuations', () => {
+    const result = parseV7QuoteBatch(JSON.stringify({
+      quoteResponse: { error: 'Invalid crumb', result: null },
+    }), ['XLK']);
+
+    assert.equal(result.kind, 'upstream_error');
+    assert.equal(result.failure, 'quote_response_error');
+    assert.equal(result.value, null);
+  });
+
+  it('returns invalid_json for a garbage body', () => {
+    assert.equal(parseV7QuoteBatch('<html>429</html>', ['XLK']).kind, 'invalid_json');
+  });
+});
+
 describe('parseCurlResponse', () => {
   it('ignores the proxy CONNECT preamble and parses the upstream response', () => {
     const parsed = parseCurlResponse([
@@ -840,6 +901,31 @@ describe('buildSectorValuationCoverage', () => {
       symbols: ['XLF'],
     });
   });
+
+  it('keeps coverage partial when stale last-good records fill missing symbols', () => {
+    const coverage = buildSectorValuationCoverage({
+      valuationCount: 12,
+      expectedCount: 12,
+      currentValuationCount: 8,
+      fetchedAt,
+      sources: ['yahoo_v7_quote_authenticated_direct'],
+      unavailableSymbols: ['SMH', 'XLK', 'XLV', 'XLY'],
+      lastGoodFetchedAt: fetchedAt - 60_000,
+      lastGoodValuationSymbols: ['SMH', 'XLK', 'XLV', 'XLY'],
+    });
+
+    assert.equal(coverage.valuationCount, 12);
+    assert.equal(coverage.currentValuationCount, 8);
+    assert.equal(coverage.sourceStatus, 'partial');
+    assert.equal(coverage.seedSourceState, 'partial');
+    assert.equal(coverage.errorCode, 'SECTOR_VALUATIONS_PARTIAL');
+    assert.deepEqual(coverage.staleValuationSymbols, ['SMH', 'XLK', 'XLV', 'XLY']);
+    assert.deepEqual(coverage.lastGood, {
+      fetchedAt: fetchedAt - 60_000,
+      stale: true,
+      symbols: ['SMH', 'XLK', 'XLV', 'XLY'],
+    });
+  });
 });
 
 describe('buildSectorValuationPublication', () => {
@@ -942,5 +1028,639 @@ describe('sector seed metadata write contract', () => {
       errorCode: 'SECTOR_DATA_WRITE_FAILED',
     });
     assert.deepEqual(buildSectorSeedMeta(sectorMeta, true), sectorMeta);
+  });
+});
+
+// Yahoo populates its quote fundamentals cache PER RESIDENTIAL EXIT IP. Measured
+// on 2026-08-05 across 10 rotated Decodo sticky exits: 3 returned trailingPE for
+// all 12 sector ETFs, 7 dropped the entire 9-key fundamentals block for exactly
+// XLK/XLV/XLY/SMH. The seeder pins one sticky port, so a pinned bad exit makes
+// every 5-minute cycle partial -- the observed 46/61 partial rate matches the
+// ~70% bad-exit rate. Retrying the SAME exit can never recover those symbols;
+// only landing on a different exit can.
+const v7BatchResponse = (symbols, { truncated = [] } = {}) => ({
+  status: 200,
+  headers: {},
+  body: JSON.stringify({
+    quoteResponse: {
+      result: symbols.map((symbol) => (
+        truncated.includes(symbol)
+          // A truncated row is HTTP 200 with the fundamentals keys absent --
+          // not an error, and not a null-valued field.
+          ? { symbol, regularMarketPrice: 100 }
+          : { symbol, trailingPE: 31.2, beta: 1.08 }
+      )),
+      error: null,
+    },
+  }),
+});
+
+function symbolsFromQuoteUrl(url) {
+  return (new URL(url).searchParams.get('symbols') || '').split(',').filter(Boolean);
+}
+
+/**
+ * Simulates the measured upstream: `badExits` drop fundamentals for `truncated`
+ * symbols; every other exit serves them. Records one entry per request so a test
+ * can assert exit rotation, per-exit session isolation, and request volume.
+ */
+function exitHarness({ badExits = [], truncated = [], directTruncated = true } = {}) {
+  const requests = [];
+  const sessionsByExit = new Map();
+
+  const handle = (transport) => async (url, options) => {
+    const kind = requestKind(url);
+    const exit = transport === 'direct' ? 'direct' : String(options?.proxy || '');
+    requests.push({ transport, exit, kind, cookie: options?.headers?.Cookie, url });
+    if (kind === 'cookie') {
+      sessionsByExit.set(exit, (sessionsByExit.get(exit) || 0) + 1);
+      return cookieResponse(`A3=${exit}-cookie-${sessionsByExit.get(exit)}`);
+    }
+    if (kind === 'crumb') return crumbResponse(`${exit}-crumb-${sessionsByExit.get(exit)}`);
+    const symbols = symbolsFromQuoteUrl(url);
+    const isBad = transport === 'direct' ? directTruncated : badExits.includes(exit);
+    return v7BatchResponse(symbols, { truncated: isBad ? truncated : [] });
+  };
+
+  return {
+    requests,
+    directRequest: handle('direct'),
+    proxyRequest: handle('proxy'),
+    quoteRequests: () => requests.filter((r) => r.kind === 'v7'),
+    exitsTried: () => [...new Set(
+      requests.filter((r) => r.kind === 'v7' && r.transport === 'proxy').map((r) => r.exit),
+    )],
+  };
+}
+
+describe('YahooQuoteSummaryClient exit rotation', () => {
+  const SECTORS = ['XLK', 'XLF', 'XLV'];
+  const TRUNCATED = ['XLK', 'XLV'];
+
+  it('does not issue a request for an empty symbol set', async () => {
+    let requests = 0;
+    const client = new YahooQuoteSummaryClient({
+      directRequest: async () => { requests += 1; throw new Error('unexpected direct request'); },
+      proxyRequest: async () => { requests += 1; throw new Error('unexpected proxy request'); },
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits([]);
+
+    assert.equal(requests, 0);
+    assert.equal(result.kind, 'no_data');
+    assert.equal(result.stopReason, 'complete');
+    assert.equal(result.exitsTried, 0);
+  });
+
+  it('rotates onto a fresh exit when a 200 response omits the fundamentals block', async () => {
+    const harness = exitHarness({ badExits: ['exit-0', 'exit-1'], truncated: TRUNCATED });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+    assert.equal(result.kind, 'success');
+    assert.deepEqual(
+      Object.keys(result.value.valuations).sort(),
+      ['XLF', 'XLK', 'XLV'],
+      'every symbol is recovered once a good exit is reached',
+    );
+    assert.equal(result.value.valuations.XLK.trailingPE, 31.2);
+    assert.equal(result.lastExitAttempt, 2, 'reports the exit that completed coverage');
+    assert.deepEqual(harness.exitsTried(), ['exit-0', 'exit-1', 'exit-2']);
+  });
+
+  it('gives each exit its own cookie and crumb', async () => {
+    const harness = exitHarness({ badExits: ['exit-0'], truncated: TRUNCATED });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    await client.fetchV7BatchAcrossExits(SECTORS);
+
+    // A crumb is bound to the cookie that minted it, and Yahoo ties both to the
+    // originating IP. Reusing exit-0's session on exit-1 would authenticate as
+    // the exit we are trying to leave.
+    const quotes = harness.quoteRequests().filter((r) => r.transport === 'proxy');
+    assert.ok(quotes.length >= 2);
+    for (const request of quotes) {
+      assert.equal(
+        request.cookie,
+        `A3=${request.exit}-cookie-1`,
+        `${request.exit} must use its own cookie`,
+      );
+      assert.match(request.url, new RegExp(`crumb=${request.exit}-crumb-1`));
+    }
+  });
+
+  it('stops rotating the moment coverage is complete', async () => {
+    const harness = exitHarness({ badExits: [], truncated: TRUNCATED });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      maxExitAttempts: 8,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+    assert.equal(result.kind, 'success');
+    // Proxy bandwidth is metered and a Decodo traffic limit has taken the fleet
+    // down before: a good first exit must cost exactly one proxy quote request.
+    assert.deepEqual(harness.exitsTried(), ['exit-0']);
+  });
+
+  it('bounds rotation at maxExitAttempts and keeps whatever it recovered', async () => {
+    const harness = exitHarness({
+      badExits: ['exit-0', 'exit-1', 'exit-2', 'exit-3', 'exit-4', 'exit-5'],
+      truncated: TRUNCATED,
+    });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      maxExitAttempts: 3,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+    assert.equal(harness.exitsTried().length, 3, 'rotation is capped');
+    assert.equal(result.kind, 'partial');
+    assert.equal(result.stopReason, 'attempt_cap_exhausted');
+    assert.deepEqual(
+      Object.keys(result.value.valuations),
+      ['XLF'],
+      'symbols the exits did cover are still returned for publication',
+    );
+    assert.equal(result.value.outcomes.XLK.kind, 'missing_fields');
+  });
+
+  it('classifies a fully consumed exit window as attempt-cap exhaustion at the deadline boundary', async () => {
+    let now = 1_700_000_000_000;
+    const deadlineAt = now + 1_000;
+    const harness = exitHarness({ badExits: ['exit-0'], truncated: TRUNCATED });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: async (url, options) => {
+        const response = await harness.proxyRequest(url, options);
+        if (requestKind(url) === 'v7') now = deadlineAt;
+        return response;
+      },
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      maxExitAttempts: 1,
+      now: () => now,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS, { deadlineAt });
+
+    assert.equal(result.kind, 'partial');
+    assert.equal(result.stopReason, 'attempt_cap_exhausted');
+    assert.equal(result.lastExitAttempt, 0);
+    assert.equal(result.exitsTried, 1, 'the entire one-exit window was consumed');
+    assert.deepEqual(harness.exitsTried(), ['exit-0']);
+  });
+
+  it('stops rotating when the valuation budget is spent', async () => {
+    let now = 1_700_000_000_000;
+    const harness = exitHarness({
+      badExits: ['exit-0', 'exit-1', 'exit-2', 'exit-3', 'exit-4', 'exit-5', 'exit-6', 'exit-7'],
+      truncated: TRUNCATED,
+    });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      maxExitAttempts: 8,
+      now: () => now,
+      // Every paced gap advances the clock, so the deadline lands mid-rotation.
+      sleepFn: async () => { now += 400; },
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS, { deadlineAt: now + 1_500 });
+
+    assert.ok(harness.exitsTried().length < 8, 'the budget cuts rotation short');
+    assert.ok(['partial', 'deadline_exceeded', 'missing_fields'].includes(result.kind));
+    assert.equal(result.stopReason, 'deadline');
+  });
+
+  it('starts from the caller-supplied exit so a known-good exit is tried first', async () => {
+    const harness = exitHarness({ badExits: ['exit-0', 'exit-1'], truncated: TRUNCATED });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS, { startExitAttempt: 2 });
+
+    assert.equal(result.kind, 'success');
+    assert.deepEqual(harness.exitsTried(), ['exit-2'], 'the cached exit is used first, not exit-0');
+    assert.equal(result.lastExitAttempt, 2);
+  });
+
+  it('nominates the exit that covered the most symbols, not the last one tried', async () => {
+    // Coverage can be assembled across exits. Persisting the LAST attempt as the
+    // preferred exit poisons the next cycle: it starts on an exit that serves
+    // only the tail of the set, then rotates fruitlessly for the rest. The best
+    // single starting point is the exit that covered the most.
+    const serves = { 'exit-5': ['XLK', 'XLF'], 'exit-6': ['XLK', 'XLF', 'XLV'] };
+    const client = new YahooQuoteSummaryClient({
+      directRequest: async () => { throw new Error('no direct'); },
+      proxyRequest: async (url, options) => {
+        const kind = requestKind(url);
+        const exit = String(options?.proxy || '');
+        if (kind === 'cookie') return cookieResponse(`A3=${exit}`);
+        if (kind === 'crumb') return crumbResponse(`${exit}-crumb`);
+        const requested = symbolsFromQuoteUrl(url);
+        const served = serves[exit] || [];
+        return v7BatchResponse(requested, {
+          truncated: requested.filter((s) => !served.includes(s)),
+        });
+      },
+      resolveProxyString: () => 'exit-5',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS, { startExitAttempt: 5 });
+
+    assert.equal(result.kind, 'success');
+    assert.deepEqual(result.exitBySymbol, { XLK: 5, XLF: 5, XLV: 6 });
+    assert.equal(result.lastExitAttempt, 6, 'lastExitAttempt reports the last exit tried');
+    assert.equal(
+      result.bestExitAttempt,
+      6,
+      'exit 6 covers the full original set, so it is the better next start',
+    );
+  });
+
+  it('breaks a best-exit tie toward the earlier exit so the choice is deterministic', async () => {
+    const serves = { 'exit-0': ['XLK'], 'exit-1': ['XLF'], 'exit-2': ['XLV'] };
+    const client = new YahooQuoteSummaryClient({
+      directRequest: async () => { throw new Error('no direct'); },
+      proxyRequest: async (url, options) => {
+        const kind = requestKind(url);
+        const exit = String(options?.proxy || '');
+        if (kind === 'cookie') return cookieResponse(`A3=${exit}`);
+        if (kind === 'crumb') return crumbResponse(`${exit}-crumb`);
+        const requested = symbolsFromQuoteUrl(url);
+        const served = serves[exit] || [];
+        return v7BatchResponse(requested, {
+          truncated: requested.filter((s) => !served.includes(s)),
+        });
+      },
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+    assert.equal(result.bestExitAttempt, 0);
+  });
+
+  it('reports no best exit when no exit served anything', async () => {
+    const harness = exitHarness({
+      badExits: ['exit-0', 'exit-1', 'exit-2'],
+      truncated: SECTORS,
+      directTruncated: true,
+    });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      maxExitAttempts: 3,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+    assert.equal(result.bestExitAttempt, null, 'nothing was learned, so nothing is nominated');
+  });
+
+  it('labels the source by which leg actually supplied rows', async () => {
+    // The direct/proxy union treats an empty proxy valuations map as a
+    // contribution, so a direct-served row gets published with proxy
+    // provenance. Health metadata must not claim a fetch that never happened.
+    const client = new YahooQuoteSummaryClient({
+      directRequest: async (url) => {
+        const kind = requestKind(url);
+        if (kind === 'cookie') return cookieResponse('A3=direct');
+        if (kind === 'crumb') return crumbResponse('direct-crumb');
+        return v7BatchResponse(symbolsFromQuoteUrl(url), { truncated: ['XLV'] });
+      },
+      proxyRequest: async (url) => {
+        const kind = requestKind(url);
+        if (kind === 'cookie') return cookieResponse('A3=proxy');
+        if (kind === 'crumb') return crumbResponse('proxy-crumb');
+        // Proxy covers nothing: its valuations map is present but empty.
+        return v7BatchResponse(symbolsFromQuoteUrl(url), { truncated: symbolsFromQuoteUrl(url) });
+      },
+      resolveProxyString: () => 'exit-0',
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(['XLK', 'XLV']);
+
+    assert.deepEqual(Object.keys(result.value.valuations), ['XLK']);
+    assert.deepEqual(result.exitBySymbol, {}, 'a direct row is not credited to a proxy exit');
+    assert.equal(result.bestExitAttempt, null, 'a direct row cannot nominate a proxy exit');
+    assert.equal(result.value.outcomes.XLK.kind, 'success', 'the serving direct outcome is retained');
+    assert.match(
+      result.value.valuations.XLK.source,
+      /_direct$/,
+      'XLK came from the direct leg, so the source must not claim proxy',
+    );
+  });
+
+  it('preserves per-symbol provenance when direct and proxy legs both contribute', async () => {
+    const client = new YahooQuoteSummaryClient({
+      directRequest: async (url) => {
+        const kind = requestKind(url);
+        if (kind === 'cookie') return cookieResponse('A3=direct');
+        if (kind === 'crumb') return crumbResponse('direct-crumb');
+        return v7BatchResponse(symbolsFromQuoteUrl(url), { truncated: ['XLV'] });
+      },
+      proxyRequest: async (url) => {
+        const kind = requestKind(url);
+        if (kind === 'cookie') return cookieResponse('A3=proxy');
+        if (kind === 'crumb') return crumbResponse('proxy-crumb');
+        return v7BatchResponse(symbolsFromQuoteUrl(url), { truncated: ['XLK'] });
+      },
+      resolveProxyString: () => 'exit-0',
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(['XLK', 'XLV']);
+
+    assert.deepEqual(result.exitBySymbol, { XLV: 0 });
+    assert.match(result.value.valuations.XLK.source, /_direct$/);
+    assert.match(result.value.valuations.XLV.source, /_proxy$/);
+    assert.equal(result.value.outcomes.XLK.kind, 'success');
+    assert.equal(result.value.outcomes.XLV.kind, 'success');
+  });
+
+  it('attributes each symbol to the exit that actually served it', async () => {
+    // XLF comes back on the first exit; XLK/XLV only on the third. Reporting one
+    // batch-wide exit would credit XLF to an exit it never touched.
+    const client = new YahooQuoteSummaryClient({
+      directRequest: async () => { throw new Error('no direct'); },
+      proxyRequest: async (url, options) => {
+        const kind = requestKind(url);
+        const exit = String(options?.proxy || '');
+        if (kind === 'cookie') return cookieResponse(`A3=${exit}`);
+        if (kind === 'crumb') return crumbResponse(`${exit}-crumb`);
+        const requested = symbolsFromQuoteUrl(url);
+        return v7BatchResponse(requested, {
+          truncated: exit === 'exit-2' ? [] : TRUNCATED,
+        });
+      },
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+    assert.equal(result.kind, 'success');
+    assert.equal(result.exitBySymbol.XLF, 0, 'XLF was served by the first exit');
+    assert.equal(result.exitBySymbol.XLK, 2);
+    assert.equal(result.exitBySymbol.XLV, 2);
+    assert.equal(result.exitsTried, 3);
+  });
+
+  it('reports how many exits were tried for a symbol none of them covered', async () => {
+    const harness = exitHarness({
+      badExits: ['exit-0', 'exit-1', 'exit-2', 'exit-3'],
+      truncated: TRUNCATED,
+    });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      maxExitAttempts: 3,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+    assert.equal(result.exitsTried, 3);
+    assert.equal(result.exitBySymbol.XLK, undefined, 'no exit served XLK, so none is claimed');
+    assert.equal(result.exitBySymbol.XLF, 0);
+  });
+
+  it('does not let one exit\'s durable failure cool down the others', async () => {
+    // A 500 on exit-0 is evidence about exit-0, not about the endpoint. Sharing
+    // one cooldown across exits would suppress the rotation that recovers from
+    // exactly this, for the whole cooldown window.
+    const seen = [];
+    const client = new YahooQuoteSummaryClient({
+      directRequest: async () => { throw new Error('no direct'); },
+      proxyRequest: async (url, options) => {
+        const kind = requestKind(url);
+        const exit = String(options?.proxy || '');
+        if (kind === 'cookie') return cookieResponse(`A3=${exit}`);
+        if (kind === 'crumb') return crumbResponse(`${exit}-crumb`);
+        seen.push(exit);
+        if (exit === 'exit-0') return { status: 500, headers: {}, body: '' };
+        return v7BatchResponse(symbolsFromQuoteUrl(url));
+      },
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      cooldownMs: 300_000,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+    assert.equal(result.kind, 'success', 'rotation survives a durable failure on one exit');
+    assert.ok(seen.includes('exit-1'), 'the next exit is still reachable');
+  });
+
+  it('falls back to the default cap for out-of-range maxExitAttempts', async () => {
+    // Every other test passes 3, 6, or 8, so the clamp branch was never executed.
+    // A 0 slipping through would disable rotation entirely and silently restore
+    // the pinned-exit behaviour this whole change exists to remove.
+    for (const [configured, expectedAttempts] of [[0, 4], [-1, 4], [2.5, 4], [1, 1], [2, 2]]) {
+      const harness = exitHarness({
+        badExits: Array.from({ length: 12 }, (_, i) => `exit-${i}`),
+        truncated: TRUNCATED,
+      });
+      const client = new YahooQuoteSummaryClient({
+        directRequest: harness.directRequest,
+        proxyRequest: harness.proxyRequest,
+        resolveProxyString: () => 'exit-0',
+        resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+        maxExitAttempts: configured,
+        sleepFn: async () => {},
+        logger: { warn: () => {} },
+      });
+
+      const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+      assert.equal(
+        result.exitsTried,
+        expectedAttempts,
+        `maxExitAttempts: ${configured}`,
+      );
+    }
+  });
+
+  it('gives up quickly when every exit fails the same way', async () => {
+    // A Decodo quota 407 or credential expiry fails identically on every exit.
+    // Per-exit cooldowns no longer suppress that the way one shared key did, so
+    // rotation must stop itself rather than probing the whole pool each cycle
+    // against a provider that is already refusing traffic.
+    const attempts = [];
+    const client = new YahooQuoteSummaryClient({
+      directRequest: async () => { throw new Error('no direct'); },
+      proxyRequest: async (_url, options) => {
+        attempts.push(String(options?.proxy || ''));
+        return { status: 407, headers: {}, body: '' };
+      },
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      maxExitAttempts: 8,
+      cooldownMs: 300_000,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+    assert.equal(result.exitsTried, 2, 'one retry for a flaky exit, then stop');
+    assert.equal(new Set(attempts).size, 2);
+    assert.equal(result.bestExitAttempt, null);
+    assert.equal(result.stopReason, 'durable_failures');
+  });
+
+  it('counts proxy failures even when the direct leg returned a partial batch', async () => {
+    const client = new YahooQuoteSummaryClient({
+      directRequest: async (url) => {
+        const kind = requestKind(url);
+        if (kind === 'cookie') return cookieResponse('A3=direct');
+        if (kind === 'crumb') return crumbResponse('direct-crumb');
+        return v7BatchResponse(symbolsFromQuoteUrl(url), { truncated: TRUNCATED });
+      },
+      proxyRequest: async () => ({ status: 407, headers: {}, body: '' }),
+      resolveProxyString: () => 'exit-0',
+      resolveProxyStringForAttempt: (attempt) => `exit-${attempt}`,
+      maxExitAttempts: 6,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+    assert.equal(result.exitsTried, 2, 'the provider-wide proxy failure stops after one retry');
+    assert.deepEqual(Object.keys(result.value.valuations), ['XLF']);
+    assert.equal(result.exitBySymbol.XLF, undefined, 'the direct row is not credited to a failed exit');
+    assert.equal(result.stopReason, 'durable_failures');
+  });
+
+  it('stops rotating when the resolver cannot actually change the exit', async () => {
+    // Non-Decodo providers and Decodo's rotating (non-sticky) ports return the
+    // same route for every attempt, so further attempts re-query the identical
+    // exit. Rotation cannot help there, and the requests are billed anyway.
+    const quotes = [];
+    const client = new YahooQuoteSummaryClient({
+      directRequest: async () => { throw new Error('no direct'); },
+      proxyRequest: async (url, options) => {
+        const kind = requestKind(url);
+        if (kind === 'cookie') return cookieResponse('A3=fixed');
+        if (kind === 'crumb') return crumbResponse('fixed-crumb');
+        quotes.push(String(options?.proxy || ''));
+        return v7BatchResponse(symbolsFromQuoteUrl(url), { truncated: TRUNCATED });
+      },
+      resolveProxyString: () => 'fixed',
+      resolveProxyStringForAttempt: () => 'fixed',
+      maxExitAttempts: 6,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+    assert.equal(quotes.length, 1, 'one query against the only reachable exit, not six');
+    assert.equal(result.exitsTried, 1);
+    assert.equal(result.stopReason, 'repeated_route');
+  });
+
+  it('stops rotating when no proxy is configured at all', async () => {
+    const harness = exitHarness({ badExits: [], truncated: TRUNCATED });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => '',
+      // Wired, but yields nothing -- PROXY_URL unset. Looping would re-run the
+      // same direct-only leg maxExitAttempts times for no new information.
+      resolveProxyStringForAttempt: () => '',
+      maxExitAttempts: 6,
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+    const directQuotes = harness.quoteRequests().filter((r) => r.transport === 'direct');
+    assert.equal(directQuotes.length, 1, 'the direct leg runs once, not once per attempt');
+    assert.deepEqual(Object.keys(result.value.valuations), ['XLF']);
+    assert.equal(result.stopReason, 'no_route');
+  });
+
+  it('falls back to the single-exit batch when no rotating resolver is wired', async () => {
+    const harness = exitHarness({ badExits: ['exit-0'], truncated: TRUNCATED });
+    const client = new YahooQuoteSummaryClient({
+      directRequest: harness.directRequest,
+      proxyRequest: harness.proxyRequest,
+      resolveProxyString: () => 'exit-0',
+      sleepFn: async () => {},
+      logger: { warn: () => {} },
+    });
+
+    const result = await client.fetchV7BatchAcrossExits(SECTORS);
+
+    assert.deepEqual(harness.exitsTried(), ['exit-0'], 'no rotation without a resolver');
+    assert.equal(result.value.outcomes.XLK.kind, 'missing_fields');
+    assert.equal(result.stopReason, 'single_exit');
   });
 });

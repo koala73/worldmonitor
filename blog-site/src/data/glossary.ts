@@ -71,7 +71,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     abbr: 'CRI',
     category: 'Scoring & Indices',
     short:
-      'The Country Resilience Index (CRI) is a composite 0–100 score of a country’s structural ability to absorb and recover from shocks, refreshed every six hours across six weighted domains and 20 active dimensions for a fixed 196-country rankable universe.',
+      'The Country Resilience Index (CRI) is a composite 0–100 score built from 72 indicators across 21 active dimensions and six weighted domains, refreshed every six hours for a fixed 196-country rankable universe.',
     body: [
       'The Country Resilience Index (CRI) is a composite 0–100 score of a country’s structural ability to absorb and recover from shocks. Where the CII measures short-term instability, the CRI measures durable capacity — economic, infrastructure, energy, social-governance, health-and-food, and recovery strength — refreshed every six hours from official sources with full coverage and imputation provenance.',
       'The six domains carry design weights — economic 0.17, infrastructure 0.15, energy 0.11, social-governance 0.19, health-food 0.13, recovery 0.25 (sum 1.00) — and are regrouped into three pillars (structural readiness, live-shock exposure, recovery capacity) that combine into the headline score through a non-compensatory formula with a min-pillar penalty. Recovery carries the largest single-domain weight, which is the mechanical reason fiscally strong smaller states cluster near the top while fragile states separate cleanly at the bottom.',
@@ -103,9 +103,9 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Dimension Coverage',
     category: 'Scoring & Indices',
     short:
-      'Dimension coverage is the share of a country’s resilience dimensions backed by real observed data rather than imputed — the mean of the 20 active per-dimension coverage values, used to gauge how much of a CRI score is real.',
+      'Dimension coverage is the share of a country’s resilience dimensions backed by real observed data rather than imputed — the mean of the 21 active per-dimension coverage values, used to gauge how much of a CRI score is real.',
     body: [
-      'Dimension coverage is the share of a country’s resilience dimensions that are backed by real observed data rather than imputed, reported as the mean of the 20 active per-dimension coverage values (structurally-retired dimensions are excluded from the average). It is deliberately labelled "dimension coverage" rather than "data coverage" to be precise about what is measured.',
+      'Dimension coverage is the share of a country’s resilience dimensions that are backed by real observed data rather than imputed, reported as the mean of the 21 active per-dimension coverage values (structurally-retired dimensions are excluded from the average). It is deliberately labelled "dimension coverage" rather than "data coverage" to be precise about what is measured.',
       'Coverage drives a confidence gate: when a country’s average dimension coverage falls below 0.55 — or too much of its score is imputed — the Country Resilience Index marks that score low-confidence, and countries that also fail the headline-eligibility thresholds are routed to a separate greyed-out list rather than the public ranking. Thin-data countries are never presented as if they were confidently scored.',
     ],
     related: ['country-resilience-index'],

@@ -4,6 +4,7 @@ import {
   clusterItems,
   computeEntityCorroboration,
   isBriefLeadEligible,
+  publisherFamilyCount,
   scoreImportance,
   selectTopStories,
 } from '../scripts/_clustering.mjs';
@@ -408,6 +409,144 @@ describe('_clustering.mjs', () => {
       assert.notEqual(lead, null, 'entity corroboration alone must satisfy the reservation');
       assert.equal(lead.entityCorroboration, true);
       assert.equal(lead.sources.length, 1, 'this arm covers single-source entity corroboration');
+    });
+  });
+
+  // #6428: every corroboration gate counted FEED LABELS. One publisher's own
+  // editions — nine BBC feeds, eight Reuters feeds — read as that many
+  // independent sources, so a single story reprinted across one newsroom's
+  // own labels cleared a gate whose stated intent is independent sourcing.
+  describe('publisher-family corroboration', () => {
+    const ONE_WIRE_MANY_LABELS = [
+      'Reuters World',
+      'Reuters US',
+      'Reuters Business',
+      'Reuters Asia',
+      'Reuters Energy',
+      'Reuters Commodities',
+    ];
+
+    const wireCluster = (overrides = {}) => ({
+      primaryTitle: 'Missile attack kills troops in border strike, officials say',
+      primarySource: 'Reuters World',
+      primaryLink: 'http://wire',
+      sources: ONE_WIRE_MANY_LABELS,
+      sourceCount: ONE_WIRE_MANY_LABELS.length,
+      sourceTier: 1,
+      isAlert: false,
+      ...overrides,
+    });
+
+    it('counts many labels of one wire as a single publisher', () => {
+      assert.equal(publisherFamilyCount(wireCluster()), 1);
+    });
+
+    it('resolves uniquePublisherCount onto the cluster itself', () => {
+      // seed-insights reads this field for uniqueSourceCount and
+      // multiSourceCount rather than recomputing, so it is load-bearing:
+      // if clusterItems stopped setting it, both published numbers would
+      // silently fail closed to 0 instead of erroring.
+      const oneWire = clusterItems([
+        { title: 'Missile attack kills troops in border strike officials say', source: 'Reuters World', link: 'http://a' },
+        { title: 'Missile attack kills troops in border strike officials say more', source: 'Reuters US', link: 'http://b' },
+      ]);
+      assert.equal(oneWire.length, 1, 'fixture must cluster or this asserts nothing');
+      assert.equal(oneWire[0].sourceCount, 2, 'sourceCount stays the article count');
+      assert.equal(oneWire[0].uniquePublisherCount, 1);
+
+      const twoPublishers = clusterItems([
+        { title: 'Missile attack kills troops in border strike officials say', source: 'Reuters World', link: 'http://a' },
+        { title: 'Missile attack kills troops in border strike officials say more', source: 'BBC World', link: 'http://b' },
+      ]);
+      assert.equal(twoPublishers.length, 1);
+      assert.equal(twoPublishers[0].uniquePublisherCount, 2);
+    });
+
+    it('denies brief-lead eligibility to a cluster carried by one publisher only', () => {
+      assert.equal(isBriefLeadEligible(wireCluster()), false);
+    });
+
+    it('keeps a genuinely multi-publisher cluster eligible', () => {
+      const multi = wireCluster({
+        sources: ['Reuters World', 'BBC World', 'Al Jazeera'],
+        sourceCount: 3,
+      });
+      assert.equal(publisherFamilyCount(multi), 3);
+      assert.equal(isBriefLeadEligible(multi), true);
+    });
+
+    it('still admits an unmapped label as its own publisher (fails closed, never merges)', () => {
+      const fresh = wireCluster({ sources: ['Brand New Feed', 'Another Brand New Feed'], sourceCount: 2 });
+      assert.equal(publisherFamilyCount(fresh), 2);
+      assert.equal(isBriefLeadEligible(fresh), true);
+    });
+
+    it('does not pay the source-breadth ranking boost for one publisher repeated', () => {
+      const oneWire = wireCluster();
+      const sixPublishers = wireCluster({
+        sources: ['Reuters World', 'BBC World', 'Al Jazeera', 'AP News', 'AFP', 'Le Monde'],
+      });
+      assert.ok(
+        scoreImportance(sixPublishers) > scoreImportance(oneWire),
+        'six publishers must outscore six labels of one publisher',
+      );
+      // And the collapsed cluster must score as the single publisher it is.
+      const singleLabel = wireCluster({ sources: ['Reuters World'], sourceCount: 1 });
+      assert.equal(scoreImportance(oneWire), scoreImportance(singleLabel));
+    });
+
+    it('takes the most generous of the three counts, but only among family counts', () => {
+      // publisherFamilyCount keeps Math.max over the cluster's own sources, the
+      // entity-bucket count, and the digest's story-identity count: each measures
+      // a different corpus, so the max is the best available breadth evidence.
+      // What #6428 removed is the label basis under all three.
+      const withUpstream = wireCluster({ corroborationCount: 4, corroborationSourceCount: 2 });
+      assert.equal(publisherFamilyCount(withUpstream), 4);
+      assert.equal(publisherFamilyCount(wireCluster({ corroborationCount: 0 })), 1);
+    });
+
+    it('never reports fewer than one publisher', () => {
+      assert.equal(publisherFamilyCount({ sources: [] }), 1);
+      assert.equal(publisherFamilyCount({}), 1);
+    });
+
+    it('does not let one publisher entity-corroborate itself across clusters', () => {
+      const nowMs = Date.now();
+      const iso = (hoursAgo) => new Date(nowMs - hoursAgo * 3600000).toISOString();
+      const selfCorroborating = [
+        {
+          primaryTitle: 'Iran deal talks resume in Geneva',
+          primarySource: 'Reuters World',
+          sources: ['Reuters World'],
+          sourceCount: 1,
+          lastUpdated: iso(2),
+          memberTitles: ['Iran deal talks resume in Geneva'],
+        },
+        {
+          primaryTitle: 'Officials say Iran deal framework is close',
+          primarySource: 'Reuters US',
+          sources: ['Reuters US'],
+          sourceCount: 1,
+          lastUpdated: iso(2),
+          memberTitles: ['Officials say Iran deal framework is close'],
+        },
+      ];
+      computeEntityCorroboration(selfCorroborating, nowMs);
+      assert.equal(selfCorroborating[0].entityCorroboration, false);
+      assert.equal(selfCorroborating[1].entityCorroboration, false);
+      assert.equal(selfCorroborating[0].corroborationSourceCount, 0);
+
+      // Premise check: the same pair under two genuinely different publishers
+      // must still corroborate, or the assertion above proves only that the
+      // bigram never matched.
+      const genuine = selfCorroborating.map((c, i) => ({
+        ...c,
+        primarySource: i === 0 ? 'Reuters World' : 'BBC World',
+        sources: [i === 0 ? 'Reuters World' : 'BBC World'],
+      }));
+      computeEntityCorroboration(genuine, nowMs);
+      assert.equal(genuine[0].entityCorroboration, true);
+      assert.equal(genuine[0].corroborationSourceCount, 2);
     });
   });
 });

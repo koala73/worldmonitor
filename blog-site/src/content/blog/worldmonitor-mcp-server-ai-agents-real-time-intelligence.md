@@ -1,6 +1,6 @@
 ---
 title: "Give Your AI Agent Eyes on the World: The World Monitor MCP Server"
-description: "Connect Claude, Cursor, or any MCP client to 59 live geopolitical intelligence tools. Real-time country risk, conflicts, chokepoints, and markets for AI agents."
+description: "Connect Claude, Cursor, or any MCP client to live geopolitical intelligence tools. Real-time country risk, conflicts, chokepoints, and markets for AI agents."
 metaTitle: "Real-Time Intelligence MCP Server | World Monitor"
 keywords: "MCP server real-time data, Claude MCP server, Model Context Protocol geopolitics, AI agent live data, geopolitical data for LLMs, real-time intelligence API for AI"
 audience: "AI engineers, agent builders, Claude power users, developers, intelligence analysts automating workflows"
@@ -11,7 +11,7 @@ modifiedDate: "2026-07-22"
 
 Ask any LLM what is happening in the Strait of Hormuz right now and you get a polite version of "my training data ends months ago." Large language models are brilliant reasoners with no eyes. They cannot see today's vessel traffic, this morning's conflict events, or the country risk score that moved overnight.
 
-The Model Context Protocol (MCP) fixes the plumbing problem: it gives AI assistants a standard way to call live tools. World Monitor fixes the data problem: it exposes the entire intelligence platform, the same one behind the [free real-time dashboard](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/), as an MCP server with **59 live tools**.
+The Model Context Protocol (MCP) fixes the plumbing problem: it gives AI assistants a standard way to call live tools. World Monitor fixes the data problem: it exposes the entire intelligence platform, the same one behind the [free real-time dashboard](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/), as an MCP server with a **live tool registry**.
 
 Connect the two and your agent can answer questions like "Which of my supplier countries got riskier this week, and why?" with real numbers instead of vibes.
 
@@ -23,7 +23,7 @@ The endpoint is a single URL:
 https://worldmonitor.app/mcp
 ```
 
-It speaks streamable HTTP (JSON-RPC 2.0), handles OAuth automatically on first connection, and serves 59 tools across six domains. The flagship ones:
+It speaks streamable HTTP (JSON-RPC 2.0), handles OAuth automatically on first connection, and serves a live tool registry across domains. The flagship ones:
 
 | Tool | What your agent gets |
 |------|----------------------|
@@ -103,7 +103,7 @@ World Monitor treats autonomous agents as first-class clients. From the root URL
 - `/llms.txt`: LLM-friendly markdown briefing of the whole platform
 - `/.well-known/api-catalog`: RFC 9727 linkset bundling every discovery URL
 - `/.well-known/mcp/server-card.json`: transport, endpoint, OAuth scopes, capability flags
-- `/openapi.yaml`: one bundled OpenAPI 3.1 spec covering all 34 REST services
+- `/openapi.yaml`: one bundled OpenAPI 3.1 spec covering the complete REST service registry
 
 So an agent that has never heard of World Monitor can start from `https://worldmonitor.app/`, read the Link headers, and wire itself up without a human in the loop. If you prefer raw REST over MCP, the same data is available through the [developer API](/blog/posts/build-on-worldmonitor-developer-api-open-source/), and the two share authentication.
 

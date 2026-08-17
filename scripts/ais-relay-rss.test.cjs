@@ -85,13 +85,22 @@ function createMockUpstream() {
 
 function createTestRssProxy(upstreamPort) {
   const https = require('node:http'); // use http for testing, not https
-  const zlib = require('node:zlib');
 
   const rssResponseCache = new Map();
+  const rssNegativeCache = new Map();
   const rssInFlight = new Map();
   const RSS_CACHE_TTL_MS = 5 * 60 * 1000;
   const RSS_NEGATIVE_CACHE_TTL_MS = 60 * 1000;
   const RSS_CACHE_MAX_ENTRIES = 5; // small cap for testing
+  const RSS_NEGATIVE_CACHE_MAX_ENTRIES = 3; // failures need less headroom than feed bodies
+
+  function setBoundedCacheEntry(cache, key, value, maxEntries) {
+    if (!cache.has(key) && cache.size >= maxEntries) {
+      const oldest = cache.keys().next().value;
+      if (oldest !== undefined) cache.delete(oldest);
+    }
+    cache.set(key, value);
+  }
 
   function safeEnd(res, statusCode, headers, body) {
     if (res.headersSent || res.writableEnded) return false;
@@ -111,32 +120,49 @@ function createTestRssProxy(upstreamPort) {
       return res.end(JSON.stringify({ error: 'Missing url' }));
     }
 
-    // Cache check with status-aware TTL
+    // Successful and negative responses have separate lifetimes and stores.
     const rssCached = rssResponseCache.get(feedUrl);
-    if (rssCached) {
-      const ttl = (rssCached.statusCode >= 200 && rssCached.statusCode < 300)
-        ? RSS_CACHE_TTL_MS : RSS_NEGATIVE_CACHE_TTL_MS;
-      if (Date.now() - rssCached.timestamp < ttl) {
-        res.writeHead(rssCached.statusCode, {
+    const rssNegativeCached = rssNegativeCache.get(feedUrl);
+    if (rssCached && Date.now() - rssCached.timestamp < RSS_CACHE_TTL_MS) {
+      res.writeHead(200, { 'Content-Type': 'application/xml', 'X-Cache': 'HIT' });
+      return res.end(rssCached.data);
+    }
+    if (rssNegativeCached) {
+      if (Date.now() - rssNegativeCached.timestamp < RSS_NEGATIVE_CACHE_TTL_MS) {
+        if (rssCached) {
+          res.writeHead(200, { 'Content-Type': 'application/xml', 'X-Cache': 'NEGATIVE-STALE' });
+          return res.end(rssCached.data);
+        }
+        res.writeHead(rssNegativeCached.statusCode, {
           'Content-Type': 'application/xml',
           'X-Cache': 'HIT',
         });
-        return res.end(rssCached.data);
+        return res.end(rssNegativeCached.data);
       }
+      rssNegativeCache.delete(feedUrl);
     }
 
     // In-flight dedup — cascade-resistant
     const existing = rssInFlight.get(feedUrl);
     if (existing) {
       try {
-        await existing;
+        const fetchResult = await existing;
         const deduped = rssResponseCache.get(feedUrl);
         if (deduped) {
-          res.writeHead(deduped.statusCode, {
+          const dedupedNegative = rssNegativeCache.get(feedUrl);
+          res.writeHead(200, {
+            'Content-Type': 'application/xml',
+            'X-Cache': dedupedNegative || fetchResult?.stale ? 'DEDUP-STALE' : 'DEDUP',
+          });
+          return res.end(deduped.data);
+        }
+        const dedupedNegative = rssNegativeCache.get(feedUrl);
+        if (dedupedNegative) {
+          res.writeHead(dedupedNegative.statusCode, {
             'Content-Type': 'application/xml',
             'X-Cache': 'DEDUP',
           });
-          return res.end(deduped.data);
+          return res.end(dedupedNegative.data);
         }
         return safeEnd(res, 502, { 'Content-Type': 'application/json' },
           JSON.stringify({ error: 'Upstream fetch completed but not cached' }));
@@ -158,7 +184,7 @@ function createTestRssProxy(upstreamPort) {
       }, (response) => {
         if (response.statusCode === 304 && rssCached) {
           rssCached.timestamp = Date.now();
-          resolveInFlight();
+          resolveInFlight({ stale: false });
           res.writeHead(200, {
             'Content-Type': rssCached.contentType || 'application/xml',
             'X-Cache': 'REVALIDATED',
@@ -171,18 +197,26 @@ function createTestRssProxy(upstreamPort) {
         response.on('data', (c) => chunks.push(c));
         response.on('end', () => {
           const data = Buffer.concat(chunks);
-          // FIFO eviction
-          if (rssResponseCache.size >= RSS_CACHE_MAX_ENTRIES && !rssResponseCache.has(feedUrl)) {
-            const oldest = rssResponseCache.keys().next().value;
-            if (oldest) rssResponseCache.delete(oldest);
-          }
-          rssResponseCache.set(feedUrl, {
+          const isSuccess = response.statusCode >= 200 && response.statusCode < 300;
+          const cacheEntry = {
             data, contentType: 'application/xml',
             statusCode: response.statusCode, timestamp: Date.now(),
-            etag: response.headers.etag || null,
-            lastModified: response.headers['last-modified'] || null,
-          });
-          resolveInFlight();
+          };
+          if (isSuccess) {
+            cacheEntry.etag = response.headers.etag || null;
+            cacheEntry.lastModified = response.headers['last-modified'] || null;
+            setBoundedCacheEntry(rssResponseCache, feedUrl, cacheEntry, RSS_CACHE_MAX_ENTRIES);
+            rssNegativeCache.delete(feedUrl);
+          } else {
+            setBoundedCacheEntry(rssNegativeCache, feedUrl, cacheEntry, RSS_NEGATIVE_CACHE_MAX_ENTRIES);
+          }
+          if (!isSuccess && rssCached) {
+            res.writeHead(200, { 'Content-Type': 'application/xml', 'X-Cache': 'STALE' });
+            res.end(rssCached.data);
+            resolveInFlight({ stale: true });
+            return;
+          }
+          resolveInFlight({ stale: false });
           res.writeHead(response.statusCode, {
             'Content-Type': 'application/xml',
             'X-Cache': 'MISS',
@@ -195,7 +229,7 @@ function createTestRssProxy(upstreamPort) {
         if (rssCached) {
           res.writeHead(200, { 'Content-Type': 'application/xml', 'X-Cache': 'STALE' });
           res.end(rssCached.data);
-          resolveInFlight();
+          resolveInFlight({ stale: true });
           return;
         }
         rejectInFlight(err);
@@ -208,7 +242,7 @@ function createTestRssProxy(upstreamPort) {
         if (rssCached) {
           res.writeHead(200, { 'Content-Type': 'application/xml', 'X-Cache': 'STALE' });
           res.end(rssCached.data);
-          resolveInFlight();
+          resolveInFlight({ stale: true });
           return;
         }
         rejectInFlight(new Error('timeout'));
@@ -221,7 +255,7 @@ function createTestRssProxy(upstreamPort) {
     fetchPromise.catch(() => {}).finally(() => rssInFlight.delete(feedUrl));
   });
 
-  return { server, cache: rssResponseCache, inFlight: rssInFlight };
+  return { server, cache: rssResponseCache, negativeCache: rssNegativeCache, inFlight: rssInFlight };
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -252,6 +286,111 @@ test('RSS proxy: negative caching prevents thundering herd on 429', async (_t) =
   const r3 = await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
   assert.equal(r3.headers['x-cache'], 'HIT');
   assert.equal(upstream.getHitCount(), 1);
+
+  upstream.server.close();
+  proxy.server.close();
+});
+
+test('RSS proxy: upstream rejection preserves the last successful body', async (_t) => {
+  const upstream = createMockUpstream();
+  upstream.setResponse(200, '<rss><channel><title>Fresh</title></channel></rss>');
+  const upstreamPort = await listen(upstream.server);
+
+  const proxy = createTestRssProxy(upstreamPort);
+  const proxyPort = await listen(proxy.server);
+  const feedUrl = 'http://example.com/stale-403';
+
+  const fresh = await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
+  assert.equal(fresh.status, 200);
+  const cached = proxy.cache.get(feedUrl);
+  cached.timestamp = Date.now() - 10 * 60 * 1000;
+
+  upstream.setResponse(403, 'Forbidden');
+  const stale = await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
+  assert.equal(stale.status, 200);
+  assert.equal(stale.headers['x-cache'], 'STALE');
+  assert.match(stale.body, /Fresh/);
+  assert.equal(proxy.negativeCache.get(feedUrl).statusCode, 403);
+
+  // A second request is served by the short-lived negative cache while the
+  // positive body remains available, exercising the NEGATIVE-STALE branch.
+  const negativeStale = await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
+  assert.equal(negativeStale.status, 200);
+  assert.equal(negativeStale.headers['x-cache'], 'NEGATIVE-STALE');
+  assert.match(negativeStale.body, /Fresh/);
+
+  upstream.server.close();
+  proxy.server.close();
+});
+
+test('RSS proxy: concurrent stale followers are deduplicated and served', async (_t) => {
+  const upstream = createMockUpstream();
+  upstream.setResponse(200, '<rss><channel><title>Fresh</title></channel></rss>');
+  const upstreamPort = await listen(upstream.server);
+
+  const proxy = createTestRssProxy(upstreamPort);
+  const proxyPort = await listen(proxy.server);
+  const feedUrl = 'http://example.com/stale-dedup';
+
+  await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
+  proxy.cache.get(feedUrl).timestamp = Date.now() - 10 * 60 * 1000;
+  upstream.setResponse(503, 'Unavailable');
+  upstream.setDelay(100);
+
+  const responses = await Promise.all([
+    fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`),
+    fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`),
+  ]);
+  assert.ok(responses.every((response) => response.status === 200));
+  assert.deepEqual(new Set(responses.map((response) => response.headers['x-cache'])), new Set(['STALE', 'DEDUP-STALE']));
+  assert.equal(upstream.getHitCount(), 2, 'only the leader should hit upstream after the initial prime');
+
+  upstream.server.close();
+  proxy.server.close();
+});
+
+test('RSS proxy: successful recovery clears the negative cache', async (_t) => {
+  const upstream = createMockUpstream();
+  upstream.setResponse(503, 'Unavailable');
+  const upstreamPort = await listen(upstream.server);
+
+  const proxy = createTestRssProxy(upstreamPort);
+  const proxyPort = await listen(proxy.server);
+  const feedUrl = 'http://example.com/recovery';
+
+  const failed = await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
+  assert.equal(failed.status, 503);
+  proxy.negativeCache.get(feedUrl).timestamp = Date.now() - 2 * 60 * 1000;
+
+  upstream.setResponse(200, '<rss><channel><title>Recovered</title></channel></rss>');
+  const recovered = await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
+  assert.equal(recovered.status, 200);
+  assert.equal(recovered.headers['x-cache'], 'MISS');
+  assert.equal(proxy.negativeCache.has(feedUrl), false);
+
+  const hit = await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
+  assert.equal(hit.headers['x-cache'], 'HIT');
+  assert.equal(upstream.getHitCount(), 2);
+
+  upstream.server.close();
+  proxy.server.close();
+});
+
+test('RSS proxy: negative cache has its own bounded entry cap', async (_t) => {
+  const upstream = createMockUpstream();
+  upstream.setResponse(429, 'Rate limited');
+  const upstreamPort = await listen(upstream.server);
+
+  const proxy = createTestRssProxy(upstreamPort);
+  const proxyPort = await listen(proxy.server);
+
+  for (let i = 0; i < 4; i++) {
+    const feedUrl = `http://example.com/negative-${i}`;
+    await fetch(`http://127.0.0.1:${proxyPort}/?url=${encodeURIComponent(feedUrl)}`);
+  }
+
+  assert.equal(proxy.negativeCache.size, 3);
+  assert.equal(proxy.negativeCache.has('http://example.com/negative-0'), false);
 
   upstream.server.close();
   proxy.server.close();

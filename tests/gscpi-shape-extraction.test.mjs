@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { extractGscpiObservations } from '../scripts/seed-economy.mjs';
+import { extractGscpiObservations } from '../scripts/_fred-seeder.mjs';
 
 describe('extractGscpiObservations', () => {
   it('reads the ais-relay FRED-compatible shape (observations under .series)', () => {

@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import http, { createServer, request as httpRequest } from 'node:http';
 import https from 'node:https';
 import { createHmac } from 'node:crypto';
+import dns from 'node:dns/promises';
 import { EventEmitter } from 'node:events';
 import net from 'node:net';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
@@ -10,6 +11,11 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
+
+test('keeps seed-owned defense snapshots cloud-preferred regardless of relay configuration', () => {
+  assert.equal(__testing__.isCloudPreferred('/api/bootstrap'), true);
+  assert.equal(__testing__.isCloudPreferred('/api/military/v1/get-defense-industrial-base'), true);
+});
 
 // The sidecar default-denies when LOCAL_API_TOKEN is unset (security fix:
 // previously "unset" meant "auth disabled", which made any standalone run
@@ -535,6 +541,54 @@ test('replaces browser origin with localhost origin for local handlers', async (
   }
 });
 
+test('injects the desktop product key into the product-only OpenSky local handler', async () => {
+  const originalProductKey = process.env.WORLDMONITOR_API_KEY;
+  process.env.WORLDMONITOR_API_KEY = 'desktop-product-key';
+  const remote = await setupRemoteServer();
+  const localApi = await setupApiDir({
+    'opensky.js': `
+      export default async function handler(req) {
+        return new Response(JSON.stringify({
+          origin: req.headers.get('origin'),
+          productKey: req.headers.get('x-worldmonitor-key'),
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/opensky`, {
+      headers: {
+        Origin: 'https://tauri.localhost',
+        'X-WorldMonitor-Key': 'renderer-supplied-key',
+      },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      origin: `http://127.0.0.1:${port}`,
+      productKey: 'desktop-product-key',
+    });
+    assert.equal(remote.hits.length, 0);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+    if (originalProductKey === undefined) delete process.env.WORLDMONITOR_API_KEY;
+    else process.env.WORLDMONITOR_API_KEY = originalProductKey;
+  }
+});
+
 test('preserves caller Authorization while hiding the sidecar transport token', async () => {
   const localApi = await setupApiDir({
     'header-check.js': `
@@ -849,6 +903,120 @@ test('allows only Docker mode to fetch configured private Redis REST origin', as
     await new Promise((resolve, reject) => {
       upstream.close((error) => (error ? reject(error) : resolve()));
     });
+  }
+});
+
+test('allows only Docker mode to fetch configured private LLM origins', async () => {
+  const envSnapshot = {
+    LLM_API_URL: process.env.LLM_API_URL,
+    OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+    UNCONFIGURED_PRIVATE_URL: process.env.UNCONFIGURED_PRIVATE_URL,
+  };
+  let handlerHits = 0;
+
+  const upstreams = [];
+  const warnings = [];
+  async function createProbeOrigin() {
+    const upstream = createServer((req, res) => {
+      if (req.headers['x-sidecar-test-probe'] === '1') handlerHits += 1;
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    upstreams.push(upstream);
+    const port = await listen(upstream);
+    return `http://127.0.0.1:${port}/v1/chat/completions`;
+  }
+
+  const [privateLlmUrl, privateOllamaUrl, unconfiguredPrivateUrl] = await Promise.all([
+    createProbeOrigin(),
+    createProbeOrigin(),
+    createProbeOrigin(),
+  ]);
+
+  const localApi = await setupApiDir({
+    'llm-probe.js': `
+      export default async function handler(request) {
+        const envKey = new URL(request.url).searchParams.get('envKey');
+        const upstream = await fetch(process.env[envKey], {
+          headers: { 'x-sidecar-test-probe': '1' },
+        });
+        const payload = await upstream.text();
+        return new Response(payload, {
+          status: upstream.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  async function runProbes(mode, envKeys) {
+    const app = await createLocalApiServer({
+      port: 0,
+      apiDir: localApi.apiDir,
+      mode,
+      logger: { log() { }, warn(message) { warnings.push(message); }, error() { } },
+    });
+    const { port } = await app.start();
+    try {
+      return await Promise.all(
+        envKeys.map((envKey) => authFetch(
+          `http://127.0.0.1:${port}/api/llm-probe?envKey=${encodeURIComponent(envKey)}`,
+        )),
+      );
+    } finally {
+      await app.close();
+    }
+  }
+
+  try {
+    process.env.LLM_API_URL = privateLlmUrl;
+    process.env.OLLAMA_API_URL = privateOllamaUrl;
+    process.env.UNCONFIGURED_PRIVATE_URL = unconfiguredPrivateUrl;
+    const envKeys = ['LLM_API_URL', 'OLLAMA_API_URL', 'UNCONFIGURED_PRIVATE_URL'];
+    const dockerResponses = await runProbes('docker', envKeys);
+    for (const [index, envKey] of envKeys.entries()) {
+      const dockerResponse = dockerResponses[index];
+      if (index < 2) {
+        assert.equal(dockerResponse.status, 200, envKey);
+        assert.deepEqual(await dockerResponse.json(), { ok: true });
+      } else {
+        assert.equal(dockerResponse.status, 502, envKey);
+        const dockerBody = await dockerResponse.json();
+        assert.equal(dockerBody.error, 'Local handler error');
+        assert.match(dockerBody.reason, /SSRF blocked/);
+      }
+    }
+
+    const desktopResponses = await runProbes('desktop-sidecar', envKeys);
+    for (const [index, envKey] of envKeys.entries()) {
+      const desktopResponse = desktopResponses[index];
+      assert.equal(desktopResponse.status, 502, envKey);
+      const desktopBody = await desktopResponse.json();
+      assert.equal(desktopBody.error, 'Local handler error');
+      assert.match(desktopBody.reason, /SSRF blocked/);
+    }
+    assert.equal(handlerHits, 2, 'only Docker handler probes should reach the upstream');
+
+    process.env.LLM_API_URL = 'not-a-url';
+    process.env.OLLAMA_API_URL = '://also-not-a-url';
+    const malformedResponses = await runProbes('docker', ['LLM_API_URL', 'OLLAMA_API_URL']);
+    for (const [index, envKey] of ['LLM_API_URL', 'OLLAMA_API_URL'].entries()) {
+      assert.equal(malformedResponses[index].status, 502, envKey);
+      const malformedBody = await malformedResponses[index].json();
+      assert.equal(malformedBody.error, 'Local handler error');
+      assert.match(malformedBody.reason, /(?:parse URL|Invalid URL)/i);
+    }
+    assert.ok(warnings.some((message) => message.includes('LLM_API_URL is not a valid URL')));
+    assert.ok(warnings.some((message) => message.includes('OLLAMA_API_URL is not a valid URL')));
+  } finally {
+    for (const [key, value] of Object.entries(envSnapshot)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await localApi.cleanup();
+    await Promise.all(upstreams.map((upstream) => new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    })));
   }
 });
 
@@ -1334,6 +1502,55 @@ test('accepts WM_DESKTOP_SHARED_SECRET via /api/local-env-update', async () => {
   } finally {
     if (originalSecret === undefined) delete process.env.WM_DESKTOP_SHARED_SECRET;
     else process.env.WM_DESKTOP_SHARED_SECRET = originalSecret;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('accepts ALPHA_VANTAGE_API_KEY via /api/local-env-update', async () => {
+  const originalKey = process.env.ALPHA_VANTAGE_API_KEY;
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/local-env-update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'ALPHA_VANTAGE_API_KEY', value: 'desktop-av-key' }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(process.env.ALPHA_VANTAGE_API_KEY, 'desktop-av-key');
+  } finally {
+    if (originalKey === undefined) delete process.env.ALPHA_VANTAGE_API_KEY;
+    else process.env.ALPHA_VANTAGE_API_KEY = originalKey;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('stores ALPHA_VANTAGE_API_KEY without claiming the provider demo response verifies it', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await postJsonViaHttp(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+      key: 'ALPHA_VANTAGE_API_KEY',
+      value: 'desktop-av-key',
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.json?.valid, true);
+    assert.equal(response.json?.message, 'Key stored');
+  } finally {
     await app.close();
     await localApi.cleanup();
   }
@@ -1998,6 +2215,114 @@ test('default-deny: rejects every authenticated route when LOCAL_API_TOKEN is un
     if (originalToken !== undefined) {
       process.env.LOCAL_API_TOKEN = originalToken;
     }
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy pins an IPv6-only hostname to the validated address', async () => {
+  const localApi = await setupApiDir({});
+  const originalResolve4 = dns.resolve4;
+  const originalResolve6 = dns.resolve6;
+  const originalHttpsRequest = https.request;
+  const publicIpv6 = '2606:4700:4700::1111';
+  let outboundOptions = null;
+  let pinnedLookup = null;
+
+  dns.resolve4 = async () => {
+    const error = new Error('No A records');
+    error.code = 'ENODATA';
+    throw error;
+  };
+  dns.resolve6 = async (hostname) => {
+    assert.equal(hostname, 'ipv6-only.example');
+    return [publicIpv6];
+  };
+  https.request = (options, onResponse) => {
+    outboundOptions = options;
+    if (typeof options.lookup === 'function') {
+      options.lookup(options.hostname, { family: options.family }, (error, address, family) => {
+        assert.ifError(error);
+        pinnedLookup = { address, family };
+      });
+    }
+
+    const req = new EventEmitter();
+    req.setTimeout = () => {};
+    req.write = () => {};
+    req.destroy = (error) => {
+      if (error) req.emit('error', error);
+    };
+    req.end = () => {
+      queueMicrotask(() => {
+        const res = new EventEmitter();
+        res.statusCode = 200;
+        res.statusMessage = 'OK';
+        res.headers = { 'content-type': 'application/rss+xml' };
+        onResponse(res);
+        res.emit('data', Buffer.from('<rss />'));
+        res.emit('end');
+      });
+    };
+    return req;
+  };
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const feedUrl = encodeURIComponent('https://ipv6-only.example/feed.xml');
+    const response = await authFetch(`http://127.0.0.1:${port}/api/rss-proxy?url=${feedUrl}`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), '<rss />');
+    assert.equal(outboundOptions?.hostname, 'ipv6-only.example');
+    assert.equal(outboundOptions?.family, 6);
+    assert.deepEqual(pinnedLookup, { address: publicIpv6, family: 6 });
+  } finally {
+    dns.resolve4 = originalResolve4;
+    dns.resolve6 = originalResolve6;
+    https.request = originalHttpsRequest;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy rejects a hostname with mixed public and private DNS answers', async () => {
+  const localApi = await setupApiDir({});
+  const originalResolve4 = dns.resolve4;
+  const originalResolve6 = dns.resolve6;
+  const originalHttpsRequest = https.request;
+  let outboundCalls = 0;
+
+  dns.resolve4 = async () => ['93.184.216.34'];
+  dns.resolve6 = async () => ['fd00::1'];
+  https.request = () => {
+    outboundCalls += 1;
+    throw new Error('blocked DNS result must not reach the network');
+  };
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const feedUrl = encodeURIComponent('https://mixed-dns.example/feed.xml');
+    const response = await authFetch(`http://127.0.0.1:${port}/api/rss-proxy?url=${feedUrl}`);
+    assert.equal(response.status, 403);
+    const body = await response.json();
+    assert.match(body.error, /private\/reserved/);
+    assert.equal(outboundCalls, 0);
+  } finally {
+    dns.resolve4 = originalResolve4;
+    dns.resolve6 = originalResolve6;
+    https.request = originalHttpsRequest;
     await app.close();
     await localApi.cleanup();
   }

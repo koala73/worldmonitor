@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+import "sebuf/http/annotations.proto";
+
+message MineralCountryShare {
+  string iso2 = 1;
+  string country = 2;
+  optional double output = 3;
+  optional double share = 4;
+  bool withheld = 5;
+  bool estimated = 6;
+  bool residual = 7;
+}
+
+message MineralStageSnapshot {
+  int32 year = 1;
+  string unit = 2;
+  repeated MineralCountryShare countries = 3;
+  double hhi = 4;
+  optional double world_total = 5;
+  int32 withheld_count = 6;
+}
+
+message MineralProductionRecord {
+  string commodity_id = 1;
+  string commodity = 2;
+  int32 year = 3;
+  string unit = 4;
+  optional MineralStageSnapshot mine = 5;
+  optional MineralStageSnapshot refinery = 6;
+  repeated string sources = 7;
+}
+
+message MineralCountryHolding {
+  string commodity_id = 1;
+  string commodity = 2;
+  string stage = 3;
+  optional double output = 4;
+  optional double share = 5;
+  bool withheld = 6;
+}
+
+message MineralCountryPortfolio {
+  string iso2 = 1;
+  repeated MineralCountryHolding holdings = 2;
+}
+
+message GetMineralProductionRequest {
+  // USGS commodity id or label (e.g. "cobalt"). Empty returns every commodity.
+  string commodity = 1 [(sebuf.http.query) = {name: "commodity"}];
+  // ISO 3166-1 alpha-2. When set, countries[] is scoped to this producer and
+  // the countries portfolio is populated.
+  string iso2 = 2 [(sebuf.http.query) = {name: "iso2"}];
+  // "mine" or "refinery". Empty returns both stages when present.
+  string stage = 3 [(sebuf.http.query) = {name: "stage"}];
+}
+
+message GetMineralProductionResponse {
+  repeated MineralProductionRecord commodities = 1;
+  repeated MineralCountryPortfolio countries = 2;
+  string fetched_at = 3;
+  bool upstream_unavailable = 4;
+  int32 data_year = 5;
+}

@@ -211,7 +211,11 @@ describe('relay startup auth guard (#3801)', () => {
       assert.equal(r.child.exitCode, null, 'relay should remain available without the optional AIS upstream');
       const res = await httpGet(port, '/health');
       assert.equal(res.status, 200);
-      assert.equal(JSON.parse(res.body).connected, false);
+      const health = JSON.parse(res.body);
+      assert.equal(health.status, 'ok', 'an intentionally disabled optional AIS source is not an outage');
+      assert.equal(health.connected, false);
+      assert.equal(health.ingestion.aisSnapshot.enabled, false);
+      assert.equal(health.ingestion.aisSnapshot.status, 'disabled');
 
       const snapshot = await httpGet(port, '/ais/snapshot', { 'x-relay-key': 'good-secret' });
       assert.equal(snapshot.status, 200);

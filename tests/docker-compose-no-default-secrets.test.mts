@@ -4,6 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { describe, it } from 'node:test';
+import { parse } from 'yaml';
 
 // Regression coverage for issue #3804: the self-hosted Docker stack must
 // not ship default Redis credentials. Earlier releases defaulted SRH_TOKEN
@@ -33,6 +34,53 @@ function serviceBlock(compose: string, serviceName: string): string {
   );
   assert.ok(match, `docker-compose.yml must define ${serviceName} service`);
   return match[1];
+}
+
+interface ComposeService {
+  environment?: Record<string, unknown>;
+}
+
+interface ComposeConfig {
+  services?: Record<string, ComposeService>;
+}
+
+function assertRequiredRelaySecretWiring(compose: string): void {
+  const parsed = parse(compose) as ComposeConfig;
+  const requiredSecret = /^\$\{RELAY_SHARED_SECRET:\?[^}\r\n]+\}$/;
+  const worldmonitorSecret = parsed.services?.worldmonitor?.environment?.RELAY_SHARED_SECRET;
+  const relaySecret = parsed.services?.['ais-relay']?.environment?.RELAY_SHARED_SECRET;
+  const allRelaySecretExpansions = compose.match(/\$\{RELAY_SHARED_SECRET[^}\r\n]*\}/g) ?? [];
+
+  assert.equal(
+    typeof worldmonitorSecret,
+    'string',
+    'worldmonitor must receive RELAY_SHARED_SECRET through its environment mapping',
+  );
+  assert.match(
+    worldmonitorSecret,
+    requiredSecret,
+    'worldmonitor RELAY_SHARED_SECRET must use a ${RELAY_SHARED_SECRET:?...} guard',
+  );
+  assert.equal(
+    typeof relaySecret,
+    'string',
+    'ais-relay must receive RELAY_SHARED_SECRET through its environment mapping',
+  );
+  assert.match(
+    relaySecret,
+    requiredSecret,
+    'ais-relay RELAY_SHARED_SECRET must use a ${RELAY_SHARED_SECRET:?...} guard',
+  );
+  assert.equal(
+    worldmonitorSecret,
+    relaySecret,
+    'worldmonitor and ais-relay must receive the same required secret expansion',
+  );
+  assert.deepEqual(
+    allRelaySecretExpansions,
+    [worldmonitorSecret, relaySecret],
+    'the two consumer mappings must be the only RELAY_SHARED_SECRET expansions, with no bare or defaulted bypass',
+  );
 }
 
 async function writeExecutable(path: string, contents: string): Promise<void> {
@@ -148,6 +196,32 @@ describe('docker self-hosting — no default credentials (#3804)', () => {
       relay,
       /depends_on:\s*\n\s+redis-rest:\s*\n\s+condition:\s*service_started/,
       'ais-relay must wait for redis-rest so Redis-backed seed loops can start in the bundled stack',
+    );
+  });
+
+  it('docker-compose.yml passes one fail-closed relay secret to both consumers (#6537)', async () => {
+    const compose = await read('docker-compose.yml');
+    assertRequiredRelaySecretWiring(compose);
+  });
+
+  it('rejects a relay secret guard outside a service environment mapping', () => {
+    const misplacedSecret = '${RELAY_SHARED_SECRET:?RELAY_SHARED_SECRET required}';
+    const compose = [
+      'services:',
+      '  worldmonitor:',
+      '    environment:',
+      '      LOCAL_API_MODE: docker',
+      '    labels:',
+      `      RELAY_SHARED_SECRET: "${misplacedSecret}"`,
+      '  ais-relay:',
+      '    environment:',
+      `      RELAY_SHARED_SECRET: "${misplacedSecret}"`,
+      '',
+    ].join('\n');
+
+    assert.throws(
+      () => assertRequiredRelaySecretWiring(compose),
+      /worldmonitor must receive RELAY_SHARED_SECRET through its environment mapping/,
     );
   });
 

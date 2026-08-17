@@ -15,6 +15,7 @@ const agentCard = JSON.parse(
   readFileSync(join(ROOT, 'public/.well-known/agent-card.json'), 'utf-8'),
 );
 const vercelConfig = JSON.parse(readFileSync(join(ROOT, 'vercel.json'), 'utf-8'));
+const productFacts = JSON.parse(readFileSync(join(ROOT, 'public/product-facts.json'), 'utf-8'));
 
 // Guards for the ?mode=agent machine-readable homepage view (orank Identity
 // `agent-mode-view` bonus): the static JSON must stay in parity with the real
@@ -99,9 +100,25 @@ describe('agent-mode view (/?mode=agent)', () => {
 
   it('stays in parity with the MCP server card and A2A agent card', () => {
     assert.equal(view.endpoints.mcp.url, serverCard.url);
-    assert.equal(view.endpoints.mcp.tools, serverCard.tools.length);
+    assert.equal(view.endpoints.mcp.serverCard, 'https://worldmonitor.app/.well-known/mcp/server-card.json');
+    assert.equal(view.endpoints.mcp.tools, undefined, 'agent-view must not carry a hand-maintained tool total');
+    assert.match(view.endpoints.mcp.note, /tools\/list.*live tool inventory/i);
+    assert.ok(serverCard.tools.length > 0, 'the linked live server card must expose tools');
     assert.equal(view.endpoints.a2a.url, agentCard.url);
     assert.equal(view.endpoints.nlweb.url, 'https://www.worldmonitor.app/ask');
+  });
+
+  it('points agents at derived tool and locale inventories instead of orphaned totals', () => {
+    assert.equal(view.endpoints.mcp.tools, undefined);
+    assert.match(view.endpoints.mcp.note, /tools\/list.*live tool inventory/i);
+    const llmsFull = readFileSync(join(ROOT, 'public/llms-full.txt'), 'utf-8');
+    assert.match(llmsFull, /product-facts\.json.*capabilities\.localeCodes/);
+    assert.ok(productFacts.capabilities.localeCodes.length > 0);
+    assert.equal(
+      productFacts.capabilities.localeCodes.length,
+      productFacts.capabilities.locales,
+      'the agent-readable locale list must match the derived locale count',
+    );
   });
 
   it('vercel.json serves it for /?mode=agent ahead of the welcome rewrite', () => {
@@ -128,6 +145,7 @@ describe('agent-mode view (/?mode=agent)', () => {
         'public/.well-known/agent-skills/index.json',
       'https://worldmonitor.app/.well-known/api-catalog': 'public/.well-known/api-catalog',
       'https://worldmonitor.app/.well-known/ai-catalog.json': 'public/.well-known/ai-catalog.json',
+      'https://worldmonitor.app/product-facts.json': 'public/product-facts.json',
       'https://worldmonitor.app/llms.txt': 'public/llms.txt',
     };
     for (const [url, path] of Object.entries(trackedPaths)) {

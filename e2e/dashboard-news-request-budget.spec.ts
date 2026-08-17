@@ -443,13 +443,17 @@ test.describe('dashboard news request budget (#5376)', () => {
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
     await firstDigest;
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
-
-    expect(
-      log.digestUrls.length,
-      `a 200 digest carrying no categories leaves every panel empty, so it must stay ` +
-        `retryable exactly like a failed request (attempts: ${log.digestUrls.length})`,
-    ).toBeGreaterThanOrEqual(2);
+    await expect
+      .poll(
+        () => log.digestUrls.length,
+        {
+          message:
+            'a 200 digest carrying no categories leaves every panel empty, so it must stay ' +
+            'retryable exactly like a failed request',
+          timeout: 30_000,
+        },
+      )
+      .toBeGreaterThanOrEqual(2);
   });
 
   // The same degraded 200, one layer down: what it does to the fallback rather
@@ -504,14 +508,22 @@ test.describe('dashboard news request budget (#5376)', () => {
     // A reload is what makes this different from the in-page symptom: a fresh
     // DataLoader with an empty `lastGoodDigest` re-fetches, gets the degraded
     // body, and is exactly where the overwrite happened in production.
+    const secondDigest = page.waitForRequest(DIGEST_GLOB);
+    const degradedFallbackWarning = page.waitForEvent('console', {
+      predicate: (message) =>
+        message.text().includes('[News] Digest fetch failed, using fallback') &&
+        message.text().includes('digest returned 0 categories'),
+    });
     await page.reload();
     await page.waitForFunction(
       () => document.documentElement.dataset.wmEventHandlersReady === 'true',
     );
-    await page.waitForTimeout(SECOND_LOAD_SETTLE_MS);
+    await secondDigest;
+    await degradedFallbackWarning;
 
-    // The degraded response has to have actually been served, or nothing was
-    // asked to overwrite anything and the assertion below is vacuous.
+    // The degraded response and its rejection must both have landed before the
+    // persistent entry is read, or the assertion below can race the code path it
+    // is meant to protect.
     expect(
       log.digestUrls.length,
       `the reload must issue its own digest request for the degraded body to be delivered ` +
@@ -774,6 +786,13 @@ type ScrollMetrics = {
   viewportHeight: number;
 };
 
+type DashboardScrollResult = {
+  after: ScrollMetrics;
+  before: ScrollMetrics;
+  hydrationMarksBefore: number;
+  scrollCount: number;
+};
+
 const VIEWPORT_HYDRATION_MARK = 'wm:hydration:viewport-trigger';
 const INITIAL_FANOUT_COMPLETE_MARK = 'wm:data:initial-fanout-complete';
 
@@ -854,8 +873,8 @@ async function readScrollMetrics(page: Page): Promise<ScrollMetrics> {
   });
 }
 
-async function scrollTargetIntoView(page: Page): Promise<void> {
-  await page.evaluate(() => {
+async function scrollDashboardAndCollect(page: Page): Promise<DashboardScrollResult> {
+  return page.evaluate((hydrationMark) => {
     const main = document.querySelector('.main-content');
     const grid = document.querySelector('.panels-grid');
     const target = document.querySelector('[data-panel="stablecoins"]');
@@ -872,32 +891,35 @@ async function scrollTargetIntoView(page: Page): Promise<void> {
       grid.scrollHeight > grid.clientHeight
         ? grid
         : main;
-    const targetTopInScroller =
-      target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
-    scroller.scrollTop = Math.max(1, targetTopInScroller - scroller.clientHeight + 200);
-  });
-}
+    const metrics = (): ScrollMetrics => ({
+      clientHeight: scroller.clientHeight,
+      owner: scroller === grid ? 'panels-grid' : 'main-content',
+      scrollHeight: scroller.scrollHeight,
+      scrollTop: scroller.scrollTop,
+      targetTop: target.getBoundingClientRect().top,
+      viewportHeight: window.innerHeight,
+    });
+    const debug = (window as typeof window & {
+      __wmLcpDebug?: { getSnapshot?: () => { marks: Array<{ name: string }> } };
+    }).__wmLcpDebug;
+    const hydrationMarksBefore =
+      debug?.getSnapshot?.().marks.filter((mark) => mark.name === hydrationMark).length ?? 0;
+    const before = metrics();
 
-async function installDashboardScrollCounter(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const state = window as typeof window & { __wmDashboardScrollCount?: number };
-    state.__wmDashboardScrollCount = 0;
-    window.addEventListener('scroll', (event) => {
-      if (
-        event.target instanceof Element &&
-        event.target.matches('.main-content, .panels-grid')
-      ) {
-        state.__wmDashboardScrollCount = (state.__wmDashboardScrollCount ?? 0) + 1;
-      }
-    }, { capture: true });
-  });
-}
-
-async function waitForDashboardScroll(page: Page): Promise<void> {
-  await page.waitForFunction(
-    () => ((window as typeof window & { __wmDashboardScrollCount?: number })
-      .__wmDashboardScrollCount ?? 0) >= 1,
-  );
+    return new Promise<DashboardScrollResult>((resolve) => {
+      let scrollCount = 0;
+      const onScroll = (event: Event) => {
+        if (event.target !== scroller) return;
+        scrollCount += 1;
+        window.removeEventListener('scroll', onScroll, true);
+        resolve({ after: metrics(), before, hydrationMarksBefore, scrollCount });
+      };
+      window.addEventListener('scroll', onScroll, { capture: true });
+      const targetTopInScroller =
+        target.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+      scroller.scrollTop = Math.max(1, targetTopInScroller - scroller.clientHeight + 200);
+    });
+  }, VIEWPORT_HYDRATION_MARK);
 }
 
 async function lcpMarkCount(page: Page, name: string): Promise<number> {
@@ -1027,11 +1049,10 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
       ).toBe(hydrationMarksBeforeNestedScroll);
       expect(stablecoinRequests, 'a nested scroll must not fetch the deferred panel').toEqual([]);
 
-      await installDashboardScrollCounter(page);
-      await scrollTargetIntoView(page);
-      await waitForDashboardScroll(page);
+      const dashboardScroll = await scrollDashboardAndCollect(page);
+      expect(dashboardScroll.scrollCount, 'the real dashboard scroll event must fire').toBe(1);
 
-      const afterFirstScroll = await readScrollMetrics(page);
+      const afterFirstScroll = dashboardScroll.after;
       expect(afterFirstScroll.scrollTop, 'the dashboard scrollTop must change').toBeGreaterThan(0);
       expect(
         afterFirstScroll.targetTop,
@@ -1062,34 +1083,54 @@ test.describe('dashboard container scroll hydration (#5876)', () => {
     let released = false;
 
     try {
-      await page.goto('/');
+      // Start navigation without awaiting it: under parallel CI load even
+      // DOMContentLoaded can outlive the bounded slow-tier wait. The slow request
+      // is the causal signal that the gate is active, so scroll as soon as it is
+      // observed and only await navigation after releasing it.
+      const navigation = page.goto('/', { waitUntil: 'domcontentloaded' });
       await slowBootstrap.waitUntilRequested();
-      await page.waitForFunction(
-        () => document.documentElement.dataset.wmEventHandlersReady === 'true',
-      );
+      await page.waitForFunction(() => (
+        document.querySelector('.main-content') instanceof HTMLElement &&
+        document.querySelector('.panels-grid') instanceof HTMLElement &&
+        document.querySelector('[data-panel="stablecoins"]') instanceof HTMLElement
+      ));
 
       const stablecoins = page.locator('[data-panel="stablecoins"]');
-      await expect(stablecoins).toBeAttached();
-      await installDashboardScrollCounter(page);
-      await scrollTargetIntoView(page);
-      await waitForDashboardScroll(page);
+      const dashboardScroll = await scrollDashboardAndCollect(page);
+      expect(
+        dashboardScroll.before.scrollTop,
+        'the test must start before any dashboard scroll',
+      ).toBe(0);
+      expect(
+        dashboardScroll.before.targetTop,
+        'stablecoins must start outside the 400px viewport hydration margin',
+      ).toBeGreaterThan(dashboardScroll.before.viewportHeight + 400);
+      expect(dashboardScroll.scrollCount, 'the real dashboard scroll event must fire').toBe(1);
       await page.waitForFunction(() => {
         const target = document.querySelector('[data-panel="stablecoins"]');
         return target instanceof HTMLElement && target.dataset.deferredPanel !== 'true';
       });
-
-      expect(
-        await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK),
-        'the App viewport handler must stay dormant while the slow tier is pending',
-      ).toBe(0);
       expect(
         stablecoinRequests,
-        'post-mount panel priming must remain gated while the slow tier is pending',
+        'the mounted panel callback must remain gated while slow-tier readiness is pending',
       ).toEqual([]);
-
       slowBootstrap.release();
       released = true;
+      await navigation;
+
+      expect(
+        dashboardScroll.after.scrollTop,
+        'the dashboard scrollTop must change',
+      ).toBeGreaterThan(0);
+      expect(
+        dashboardScroll.after.targetTop,
+        'the target panel must enter the viewport after the real container scroll',
+      ).toBeLessThan(dashboardScroll.after.viewportHeight);
       await waitForLcpMark(page, INITIAL_FANOUT_COMPLETE_MARK);
+      expect(
+        await lcpMarkCount(page, VIEWPORT_HYDRATION_MARK),
+        'the early scroll must not schedule or replay a viewport trigger across readiness',
+      ).toBe(dashboardScroll.hydrationMarksBefore);
       await expect.poll(
         () => stablecoinRequests.length,
         { message: 'the readiness fan-out must hydrate the already-scrolled panel exactly once' },

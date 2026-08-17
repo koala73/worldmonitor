@@ -1,12 +1,13 @@
 import { isDesktopRuntime } from '../services/runtime';
 import { invokeTauri } from '../services/tauri-bridge';
 import { t } from '../services/i18n';
-import { h, replaceChildren, safeHtml as sanitizeHtmlFragment, setTrustedHtml, trustedHtml } from '../utils/dom-utils';
+import { type DomChild, h, replaceChildren, safeHtml as sanitizeHtmlFragment, setTrustedHtml, trustedHtml, type TrustedHtml } from '../utils/dom-utils';
 import { safeHtmlToString, type SafeHtml } from '@/utils/sanitize';
 import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
+import { openExternalUrl } from '@/services/external-navigation';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
 import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
 import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
@@ -140,6 +141,20 @@ export class Panel {
   private colSpanReconcileRaf: number | null = null;
   private readonly contentDebounceMs = 150;
   private pendingContentHtml: string | null = null;
+  /**
+   * The exact string last written by `setContentImmediate`, or `null` when the
+   * content was replaced by any other path (loading/error/locked states, clear,
+   * saved-content restore) and is therefore no longer a known string.
+   *
+   * Exists to keep the two content dirty-checks off `this.content.innerHTML`:
+   * reading that getter serializes the whole panel subtree to a string, and it
+   * was read twice per update — once to decide whether to schedule the write and
+   * again to decide whether to perform it. Panels re-render on every data tick,
+   * so that serialization was pure overhead on the render path. `null` compares
+   * unequal to any candidate, so an unknown state always falls through to a
+   * write — the safe direction.
+   */
+  private lastCommittedHtml: string | null = null;
   private contentDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingContentCallback: (() => void) | null = null;
   private retryCallback: (() => void) | null = null;
@@ -864,7 +879,7 @@ export class Panel {
     if (this._locked) return;
     this.setErrorState(false);
     this.clearRetryCountdown();
-    replaceChildren(this.content,
+    this.replaceContent(
       h('div', { className: 'panel-loading' },
         h('div', { className: 'panel-loading-radar' },
           h('div', { className: 'panel-radar-sweep' }),
@@ -908,7 +923,7 @@ export class Panel {
         countdownEl.textContent = `${t('common.retrying')} (${remaining}s)`;
       }, 1000);
     }
-    replaceChildren(this.content, h('div', { className: 'panel-error-state' }, ...children));
+    this.replaceContent(h('div', { className: 'panel-error-state' }, ...children));
   }
 
   public resetRetryBackoff(): void {
@@ -917,10 +932,15 @@ export class Panel {
 
   /**
    * Drop the error badge, the pending auto-retry countdown, and the backoff.
-   * `setContentHtml` does this implicitly, but panels that paint their content
-   * with `replaceChildren` bypass it — without this, a showError() countdown
-   * scheduled before a successful load keeps ticking and fires one redundant
-   * refresh after the panel has already recovered.
+   * The single owner of "this panel has recovered": `setContentHtml`,
+   * `setContentNodes` and `setTrustedContent` all clear through here, so the
+   * three pieces of state can never be cleared apart. Without it, a showError()
+   * countdown scheduled before a successful load keeps ticking and fires one
+   * redundant refresh after the panel has already recovered.
+   *
+   * Public because a panel may recover without replacing its content (an
+   * in-place row patch); a panel that DOES replace content should use the
+   * `setContent*` helpers instead, which clear as part of the write.
    */
   public clearErrorState(): void {
     this.setErrorState(false);
@@ -956,7 +976,9 @@ export class Panel {
 
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
     if (isDesktopRuntime()) {
-      ctaBtn.addEventListener('click', () => void invokeTauri<void>('open_url', { url: 'https://worldmonitor.app/pro' }).catch(() => window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer')));
+      ctaBtn.addEventListener('click', () => {
+        void openExternalUrl('https://worldmonitor.app/pro');
+      });
     } else {
       ctaBtn.addEventListener('click', () => {
         import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
@@ -966,7 +988,7 @@ export class Panel {
     }
     lockedChildren.push(ctaBtn);
 
-    replaceChildren(this.content, h('div', { className: 'panel-locked-state' }, ...lockedChildren));
+    this.replaceContent(h('div', { className: 'panel-locked-state' }, ...lockedChildren));
   }
 
   /**
@@ -1055,7 +1077,7 @@ export class Panel {
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, entry.cta);
     ctaBtn.addEventListener('click', onAction);
 
-    replaceChildren(this.content, h('div', { className: 'panel-locked-state' }, iconEl, descEl, ctaBtn));
+    this.replaceContent(h('div', { className: 'panel-locked-state' }, iconEl, descEl, ctaBtn));
   }
 
   public unlockPanel(): void {
@@ -1074,10 +1096,10 @@ export class Panel {
     // ChatAnalystPanel, …) that would otherwise end up with an empty body.
     // Fall back to the legacy empty-content behaviour if nothing was saved.
     if (this._savedContent !== null) {
-      replaceChildren(this.content, ...this._savedContent);
+      this.replaceContent(...this._savedContent);
       this._savedContent = null;
     } else {
-      replaceChildren(this.content);
+      this.replaceContent();
     }
   }
 
@@ -1089,13 +1111,25 @@ export class Panel {
    */
   protected clearSensitiveContent(): void {
     this._savedContent = null;
+    this.cancelPendingContentWrite();
+    if (!this._locked) this.replaceContent();
+  }
+
+  /**
+   * Drop a debounced `setContentHtml` write that has not committed yet.
+   *
+   * Any write that lands the content immediately must call this first: the
+   * queued string commits `contentDebounceMs` later regardless, so without it a
+   * `setSafeContent(old)` still in flight overwrites the render that just
+   * replaced it — 150ms after the panel already looked correct.
+   */
+  private cancelPendingContentWrite(): void {
     this.pendingContentHtml = null;
     this.pendingContentCallback = null;
     if (this.contentDebounceTimer) {
       clearTimeout(this.contentDebounceTimer);
       this.contentDebounceTimer = null;
     }
-    if (!this._locked) replaceChildren(this.content);
   }
 
   // Capture this.content's current child nodes so unlockPanel can put them
@@ -1137,7 +1171,7 @@ export class Panel {
       }, 1000);
     }
 
-    replaceChildren(this.content,
+    this.replaceContent(
       h('div', { className: 'panel-error-state' }, ...children),
     );
   }
@@ -1174,7 +1208,7 @@ export class Panel {
         }, t('components.panel.openSettings')),
       );
     }
-    replaceChildren(this.content, msgEl);
+    this.replaceContent(msgEl);
   }
 
   public setCount(count: number): void {
@@ -1198,20 +1232,96 @@ export class Panel {
     }
   }
 
+  /**
+   * The raw content primitive. It deliberately does NOT touch the error state:
+   * `showError` / `showRetrying` set the badge and then paint through here, so
+   * a clear inside this method would erase the state its own callers just set.
+   *
+   * Every such write invalidates `lastCommittedHtml`, so routing them through
+   * here makes that invariant structural instead of something each new call site
+   * has to remember. Do not call `replaceChildren(this.content, …)` directly —
+   * for a SUCCESSFUL render use `setContentNodes` / `setTrustedContent`, which
+   * add the error-state clear this method must not do.
+   */
+  private replaceContent(...children: DomChild[]): void {
+    // Structural, for the same reason `invalidateCommittedHtml` is: EVERY
+    // immediate write must drop a queued one, and `showError` / `showRetrying` /
+    // `showLoading` / `showLocked` / `showGatedCta` / `showConfigError` /
+    // `unlockPanel` all land content through here. Without it a `setSafeContent`
+    // queued moments earlier commits `contentDebounceMs` later and paints over
+    // the render that just replaced it — under a chip nothing then clears, which
+    // is #6557 reached from the other direction.
+    //
+    // This does not self-cancel the debounce: `setContentImmediate` writes via
+    // `setTrustedHtml` and never routes through here.
+    this.cancelPendingContentWrite();
+    replaceChildren(this.content, ...children);
+    this.invalidateCommittedHtml();
+  }
+
+  /**
+   * The content dirty-check is only sound while EVERY writer invalidates it, so
+   * it lives in one method rather than being repeated at each write path.
+   */
+  private invalidateCommittedHtml(): void {
+    this.lastCommittedHtml = null;
+  }
+
+  /**
+   * Commit a render as the panel's authoritative content — the `setSafeContent`
+   * of the DOM-node path, and a true twin of it: same lock bail, same
+   * error-state clear.
+   *
+   * `setContentHtml` drops the error badge, the pending auto-retry countdown and
+   * the backoff on every such write. A panel that calls
+   * `replaceChildren(this.content, …)` itself skips all three, so one transient
+   * `showError()` latches the red `Error` chip over correct data for the rest of
+   * the session and leaves a countdown ticking toward a redundant refresh
+   * (#6557: `cii` and `strategic-risk` in production).
+   *
+   * "Authoritative content" covers a settled empty/unavailable state as well as
+   * a recovery — both mean "this, not an error state". It does NOT cover a
+   * loading render: `showLoading` deliberately leaves `retryAttempt` alone, and
+   * resetting the backoff on every loading paint would flatten it to its floor.
+   */
+  protected setContentNodes(...children: DomChild[]): void {
+    if (this._locked) return;
+    this.clearErrorState();
+    this.cancelPendingContentWrite();
+    this.replaceContent(...children);
+  }
+
+  /**
+   * Trusted-HTML twin of `setContentNodes`, for panels that build their own
+   * markup string and cannot go through the debounced `setSafeContent` path.
+   */
+  protected setTrustedContent(html: TrustedHtml): void {
+    if (this._locked) return;
+    this.clearErrorState();
+    this.cancelPendingContentWrite();
+    setTrustedHtml(this.content, html);
+    this.invalidateCommittedHtml();
+  }
+
   public setSafeContent(html: SafeHtml, afterUpdate?: () => void): void {
     this.setContentHtml(safeHtmlToString(html), afterUpdate);
   }
 
   private setContentHtml(html: string, afterUpdate?: () => void): void {
     if (this._locked) return;
-    this.setErrorState(false);
-    this.clearRetryCountdown();
-    this.retryAttempt = 0;
+    this.clearErrorState();
     if (this.pendingContentHtml === html) {
       if (afterUpdate) this.pendingContentCallback = afterUpdate;
       return;
     }
-    if (this.content.innerHTML === html) {
+    if (this.lastCommittedHtml === html) {
+      // The DOM already shows `html`, but a DIFFERENT write may still be queued
+      // behind the debounce — and returning without cancelling it lets that
+      // stale write land afterwards, permanently. World Clock reproduces it:
+      // open settings, then close within the debounce window, and the settings
+      // markup commits after the clock has been asked to come back (which also
+      // strands the cached row handles, so the clock stops ticking).
+      this.cancelPendingContentWrite();
       afterUpdate?.();
       return;
     }
@@ -1230,6 +1340,15 @@ export class Panel {
   }
 
   private setContentImmediate(html: string): void {
+    // The lock is re-checked HERE, not only at schedule time in `setContentHtml`.
+    // A panel locked during the debounce window (showGatedCta / showLocked fire
+    // from the async entitlement pass) would otherwise have this timer paint the
+    // premium payload over the upgrade CTA, and no later writer repaints it
+    // because every other write path bails on `_locked`.
+    if (this._locked) {
+      this.cancelPendingContentWrite();
+      return;
+    }
     if (this.contentDebounceTimer) {
       clearTimeout(this.contentDebounceTimer);
       this.contentDebounceTimer = null;
@@ -1238,8 +1357,9 @@ export class Panel {
     this.pendingContentHtml = null;
     const afterUpdate = this.pendingContentCallback;
     this.pendingContentCallback = null;
-    if (this.content.innerHTML !== html) {
+    if (this.lastCommittedHtml !== html) {
       setTrustedHtml(this.content, trustedHtml(html, 'legacy direct innerHTML migration'));
+      this.lastCommittedHtml = html;
     }
     afterUpdate?.();
   }

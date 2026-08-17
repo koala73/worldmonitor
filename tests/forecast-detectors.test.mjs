@@ -1597,7 +1597,7 @@ describe('forecast llm overrides', () => {
     const options = getForecastLlmCallOptions('combined');
     const providers = resolveForecastLlmProviders(options);
 
-    assert.deepEqual(options.providerOrder, ['openrouter', 'groq']);
+    assert.deepEqual(options.providerOrder, ['openrouter', 'openrouter-free', 'openrouter-free-backup', 'groq']);
     assert.equal(providers[0]?.name, 'openrouter');
     assert.equal(providers[0]?.model, 'deepseek/deepseek-v4-flash');
     // Was 15_000: a 'stall cutoff' that treated the SYMPTOM of unrouted OpenRouter
@@ -1608,9 +1608,13 @@ describe('forecast llm overrides', () => {
     // every market_implications run wrote a SEED_ERROR. Flash now gets a completion
     // deadline that covers its measured distribution.
     assert.equal(providers[0]?.timeout, 40_000, 'Flash gets its measured completion deadline under pinned routing');
-    assert.equal(providers[1]?.name, 'groq');
-    assert.equal(providers[1]?.model, 'llama-3.3-70b-versatile');
-    assert.equal(providers[1]?.timeout, 20_000, 'the fallback keeps its provider-specific window');
+    assert.equal(providers[1]?.name, 'openrouter-free');
+    assert.equal(providers[1]?.model, 'google/gemma-4-26b-a4b-it:free');
+    assert.equal(providers[2]?.name, 'openrouter-free-backup');
+    assert.equal(providers[2]?.model, 'openai/gpt-oss-20b:free');
+    assert.equal(providers[3]?.name, 'groq');
+    assert.equal(providers[3]?.model, 'openai/gpt-oss-20b');
+    assert.equal(providers[3]?.timeout, 20_000, 'the fallback keeps its provider-specific window');
   });
 
   it('pins critical_signals to the pre-#4944 chain (probability-coupled stage)', () => {
@@ -1627,7 +1631,7 @@ describe('forecast llm overrides', () => {
 
     assert.deepEqual(options.providerOrder, ['groq', 'openrouter']);
     assert.equal(providers[0]?.name, 'groq');
-    assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
+    assert.equal(providers[0]?.model, 'openai/gpt-oss-20b');
     assert.equal(providers[1]?.name, 'openrouter');
     assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
     assert.equal(providers[1]?.timeout, 25_000, 'the DeepSeek stall cutoff must not change the pinned Gemini fallback');
@@ -1663,7 +1667,7 @@ describe('forecast llm overrides', () => {
     const providers = resolveForecastLlmProviders(options);
 
     assert.deepEqual(options.providerOrder, ['groq', 'openrouter']);
-    assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
+    assert.equal(providers[0]?.model, 'openai/gpt-oss-20b');
     assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
 
     delete process.env.FORECAST_LLM_PROVIDER_ORDER;
@@ -1680,7 +1684,7 @@ describe('forecast llm overrides', () => {
     const options = getForecastLlmCallOptions('critical_signals');
     const providers = resolveForecastLlmProviders(options);
 
-    assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
+    assert.equal(providers[0]?.model, 'openai/gpt-oss-20b');
     assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
     assert.deepEqual(providers[1]?.extraBody, { provider: OPENROUTER_PROVIDER_ROUTING });
 
@@ -1708,11 +1712,13 @@ describe('forecast llm overrides', () => {
     assert.equal(combinedProviders[0]?.model, 'google/gemini-2.5-pro');
     assert.equal(combinedProviders[0]?.timeout, 25_000, 'model overrides outside DeepSeek Flash keep the original timeout');
 
-    assert.deepEqual(scenarioOptions.providerOrder, ['openrouter', 'groq']);
+    assert.deepEqual(scenarioOptions.providerOrder, ['openrouter', 'openrouter-free', 'openrouter-free-backup', 'groq']);
     assert.equal(scenarioProviders[0]?.name, 'openrouter');
     assert.equal(scenarioProviders[0]?.model, 'deepseek/deepseek-v4-flash');
     assert.equal(scenarioProviders[0]?.timeout, 40_000, 'Flash completion deadline (see above); non-Flash overrides keep 25s');
-    assert.equal(scenarioProviders[1]?.model, 'llama-3.3-70b-versatile');
+    assert.equal(scenarioProviders[1]?.model, 'google/gemma-4-26b-a4b-it:free');
+    assert.equal(scenarioProviders[2]?.model, 'openai/gpt-oss-20b:free');
+    assert.equal(scenarioProviders[3]?.model, 'openai/gpt-oss-20b');
   });
 
   it('lets a global provider order and openrouter model apply to non-combined stages', () => {
@@ -1726,6 +1732,38 @@ describe('forecast llm overrides', () => {
     assert.equal(providers.length, 1);
     assert.equal(providers[0]?.name, 'openrouter');
     assert.equal(providers[0]?.model, 'google/gemini-2.5-flash-lite-preview');
+  });
+
+  it('migrates the production openrouter,groq order through both fixed free fallbacks', () => {
+    process.env.FORECAST_LLM_PROVIDER_ORDER = 'openrouter,groq';
+    delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
+    delete process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER;
+
+    assert.deepEqual(
+      getForecastLlmCallOptions('scenario').providerOrder,
+      ['openrouter', 'openrouter-free', 'openrouter-free-backup', 'groq'],
+    );
+    assert.deepEqual(
+      getForecastLlmCallOptions('critical_signals').providerOrder,
+      ['groq', 'openrouter'],
+      'probability-coupled critical signals keep their pinned chain',
+    );
+    assert.deepEqual(
+      getForecastLlmCallOptions('market_implications').providerOrder,
+      ['openrouter'],
+      'market implications keep their paid-only budgeted chain',
+    );
+  });
+
+  it('keeps stage-scoped provider orders exact', () => {
+    process.env.FORECAST_LLM_PROVIDER_ORDER = 'openrouter,groq';
+    process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER = 'openrouter,groq';
+
+    assert.deepEqual(
+      getForecastLlmCallOptions('combined').providerOrder,
+      ['openrouter', 'groq'],
+      'a stage-scoped operator override must not receive implicit providers',
+    );
   });
 
   it('falls through immediately after a DeepSeek Flash stall instead of retrying the hung provider', async () => {
@@ -1746,7 +1784,7 @@ describe('forecast llm overrides', () => {
           status: 200,
           headers: { get: () => null },
           json: async () => ({
-            model: 'llama-3.3-70b-versatile',
+            model: 'openai/gpt-oss-20b',
             choices: [{ message: { content: 'Groq fallback returned a complete narrative.' } }],
           }),
         };
@@ -1756,7 +1794,7 @@ describe('forecast llm overrides', () => {
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
     assert.equal(result?.provider, 'groq');
-    assert.equal(calls.filter((url) => url.includes('openrouter.ai')).length, 1);
+    assert.equal(calls.filter((url) => url.includes('openrouter.ai')).length, 3);
     assert.equal(calls.filter((url) => url.includes('api.groq.com')).length, 1);
   });
 
@@ -1979,7 +2017,7 @@ describe('forecast llm overrides', () => {
 
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'openrouter', 'groq']);
+    assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'openrouter', 'openrouter', 'openrouter', 'groq']);
     assert.deepEqual(result, {
       text: 'Groq fallback succeeded with enough narrative content.',
       model: 'groq/llama-test',
@@ -2017,7 +2055,7 @@ describe('forecast llm overrides', () => {
 
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['openrouter', 'groq']);
+    assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'groq']);
     assert.deepEqual(result, {
       text: 'Groq fallback after non retryable status has enough content.',
       model: 'groq/no-retry-test',

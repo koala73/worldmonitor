@@ -5,7 +5,9 @@ import {
   CHINA_COUNTRY_STOCK_INDEX_KEY,
   buildCountryStockIndexSnapshot,
   buildCountryStockIndexSnapshotFromCloses,
+  countryStockIndexKey,
 } from '../scripts/_country-stock-index.mjs';
+import { loadCountryStockIndexes } from '../scripts/_country-stock-index-registry.mjs';
 
 const FIXED_AT = '2026-07-14T12:00:00.000Z';
 
@@ -52,31 +54,25 @@ test('buildCountryStockIndexSnapshotFromCloses filters malformed closes before c
   assert.equal(buildCountryStockIndexSnapshotFromCloses([3200, 'broken', null], 'CNY', FIXED_AT), null);
 });
 
-test('the Railway market seed maintains the China cache alongside its public stock bootstrap contract', () => {
-  const source = readFileSync(new URL('../scripts/seed-market-quotes.mjs', import.meta.url), 'utf8');
-  const handlerSource = readFileSync(new URL('../server/worldmonitor/market/v1/get-country-stock-index.ts', import.meta.url), 'utf8');
-
-  assert.match(source, /CHINA_COUNTRY_STOCK_INDEX_KEY/);
-  assert.match(source, /writeChinaCountryStockIndex/);
-  assert.match(source, /preserveKeys:\s*\[CHINA_COUNTRY_STOCK_INDEX_KEY\]/);
-  assert.match(source, /China country index refresh failed/);
-  assert.match(source, /await extendExistingTtl\(\[CHINA_COUNTRY_STOCK_INDEX_KEY\], CACHE_TTL\)/);
-  assert.match(source, /await writeExtraKey\(CHINA_COUNTRY_STOCK_INDEX_KEY, snapshot, CACHE_TTL\)/);
-  assert.match(source, /extendExistingTtl\(\[CANONICAL_KEY, 'seed-meta:market:stocks', RPC_KEY, CHINA_COUNTRY_STOCK_INDEX_KEY\]/);
-  assert.match(handlerSource, /const REDIS_CACHE_KEY = 'market:stock-index:rpc:v1';/);
-  assert.match(handlerSource, /const RAILWAY_SEEDED_COUNTRY_INDEX_KEY = 'market:stock-index:v1:CN';/);
-  assert.match(handlerSource, /getCachedJson\(RAILWAY_SEEDED_COUNTRY_INDEX_KEY, true\)/);
+test('the per-country handler keeps no CN-only gate and no legacy single key', () => {
+  // #6235 replaced a CN-only branch and a single shared cache key with a
+  // per-country key prefix. Both removals are absence contracts — nothing
+  // executable can observe that a branch is gone — and the wiring assertions
+  // that used to sit alongside them are covered behaviourally by
+  // tests/country-stock-index-seed-all.test.mts.
+  const handlerSource = readFileSync(
+    new URL('../server/worldmonitor/market/v1/get-country-stock-index.ts', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(handlerSource, /if \(code === 'CN'\)/);
   assert.doesNotMatch(handlerSource, /const REDIS_CACHE_KEY = 'market:stock-index:v1';/);
 });
 
-test('the live AIS relay writes the China index only from a fresh one-month Yahoo chart', () => {
-  const source = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
 
-  assert.match(source, /import\('\.\/_country-stock-index\.mjs'\)/);
-  assert.match(source, /fetchYahooChartDirect\(CHINA_COUNTRY_STOCK_SYMBOL, '\?range=1mo&interval=1d'\)/);
-  assert.match(source, /freshQuotes\.some\(\(quote\) => quote\.symbol === CHINA_COUNTRY_STOCK_SYMBOL\)/);
-  assert.match(source, /upstashSet\(CHINA_COUNTRY_STOCK_INDEX_KEY, snapshot, MARKET_SEED_TTL\)/);
-  assert.match(source, /CHINA_COUNTRY_STOCK_INDEX_KEY,\s*\n\s*buildCountryStockIndexSnapshotFromCloses,/);
-  assert.doesNotMatch(source, /const CHINA_COUNTRY_STOCK_INDEX_KEY = 'market:stock-index:v1:CN';/);
-  assert.match(source, /preserveKeys:\s*\[CHINA_COUNTRY_STOCK_INDEX_KEY\]/);
+test('the whole-enum work-list is derived from the public country contract', () => {
+  const indexes = loadCountryStockIndexes();
+  assert.ok(indexes.length >= 45, `expected the full country enum, got ${indexes.length}`);
+  assert.ok(indexes.some(i => i.code === 'CN'), 'CN must remain in the seeded set');
+  assert.equal(new Set(indexes.map(i => i.code)).size, indexes.length, 'country codes must be unique');
+  assert.equal(countryStockIndexKey('DE'), 'market:stock-index:v1:DE');
 });

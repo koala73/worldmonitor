@@ -1,7 +1,11 @@
-import { MARKET_SYMBOLS } from '@/config';
+import { MARKET_SYMBOLS, STOCK_CATALOG } from '@/config';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { AnalyzeStockResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
-import { getMarketWatchlistEntries } from '@/services/market-watchlist';
+import {
+  getCatalogSelection,
+  getMarketWatchlistEntries,
+  resolveEffectiveMarketWatchlist,
+} from '@/services/market-watchlist';
 import { runThrottledTargetRequests } from '@/services/throttled-target-requests';
 import { premiumFetch } from '@/services/premium-fetch';
 import { isProUser } from '@/services/widget-store';
@@ -30,7 +34,20 @@ export type { StockAnalysisTarget } from '@/services/stock-analysis-targets';
  * already-resolved target list. See selectStockAnalysisTargets for the rules.
  */
 export function getStockAnalysisTargets(limitOverride?: number): StockAnalysisTarget[] {
-  return selectStockAnalysisTargets(getMarketWatchlistEntries(), MARKET_SYMBOLS, {
+  const resolved = resolveEffectiveMarketWatchlist(
+    STOCK_CATALOG,
+    MARKET_SYMBOLS,
+    getCatalogSelection(),
+    getMarketWatchlistEntries(),
+  );
+  // Searchable custom entries intentionally lead premium targets. A persisted
+  // catalog subset is also a user selection (and therefore sizes the PRO cap),
+  // while the untouched default universe preserves current-main's four-card
+  // baseline when the user has made no catalog choice.
+  const userPicks = resolved.usesCatalogSelection
+    ? [...resolved.customEntries, ...resolved.baseSymbols]
+    : resolved.customEntries;
+  return selectStockAnalysisTargets(userPicks, resolved.symbols, {
     isPro: isProUser(),
     limitOverride,
   });

@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { load as loadYaml } from 'js-yaml';
 
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+
 import {
   CHINA_DECISION_SIGNAL_GROUP_IDS,
   isChinaDecisionSignalSnapshot,
@@ -51,10 +53,7 @@ const specs = [
   ],
   [
     'unified YAML',
-    loadYaml(readFileSync(
-      resolve(root, 'docs/api/worldmonitor.openapi.yaml'),
-      'utf8',
-    )),
+    loadUnifiedOpenApiSpec(),
   ],
 ] as const;
 

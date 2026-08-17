@@ -3,6 +3,7 @@ import type {
   AnalyzeStockResponse,
   AnalystConsensus,
   EarningsEntry,
+  HeadlineAlignmentRule,
   PriceTarget,
   UpgradeDowngrade,
   ServerContext,
@@ -772,6 +773,101 @@ export function usEquityHoursApply(symbol: string, currency: string): boolean {
   return currency === 'USD' && !/\.[A-Za-z]+$/.test(symbol);
 }
 
+export type NewsAlignment = {
+  marketSessionAtPublish: UsEquitySession;
+  alignedTradingDate: string;
+  alignmentRule: HeadlineAlignmentRule;
+};
+
+function nyCalendarDate(date: Date): string {
+  const parts: Record<string, string> = {};
+  for (const part of ET_PARTS_FMT.formatToParts(date)) parts[part.type] = part.value;
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function addUtcDays(isoDate: string, days: number): string {
+  const next = new Date(`${isoDate}T12:00:00.000Z`);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next.toISOString().slice(0, 10);
+}
+
+/** Minutes since ET midnight for `date`. */
+function etMinutesOfDay(date: Date): number {
+  const parts: Record<string, string> = {};
+  for (const part of ET_PARTS_FMT.formatToParts(date)) parts[part.type] = part.value;
+  return Number(parts.hour) * 60 + Number(parts.minute);
+}
+
+/** True when `isoDate` (YYYY-MM-DD) is itself an NYSE/Nasdaq regular session date. */
+export function isUsEquityTradingDate(isoDate: string): boolean {
+  return getUsEquitySessionAt(new Date(`${isoDate}T16:00:00.000Z`)) === 'regular';
+}
+
+/** Next NYSE/Nasdaq regular session date after `fromDate` (YYYY-MM-DD). */
+export function nextUsEquityTradingDate(fromDate: string): string {
+  let candidate = fromDate;
+  for (let attempt = 0; attempt < 14; attempt += 1) {
+    candidate = addUtcDays(candidate, 1);
+    if (getUsEquitySessionAt(new Date(`${candidate}T16:00:00.000Z`)) === 'regular') return candidate;
+  }
+  return addUtcDays(fromDate, 1);
+}
+
+/**
+ * Map a headline timestamp onto the US equity session it belongs to.
+ * Bookkeeping only — not a claim that the article caused a later move.
+ */
+export function alignUsEquityNewsTimestamp(publishedAt: number): NewsAlignment | null {
+  if (!Number.isFinite(publishedAt) || publishedAt <= 0) return null;
+  const published = new Date(publishedAt);
+  if (Number.isNaN(published.getTime())) return null;
+  const localDate = nyCalendarDate(published);
+  const session = getUsEquitySessionAt(published);
+  // getUsEquitySessionAt reports 'closed' for two structurally different
+  // windows: after the post session ends (20:00-24:00 ET) and before pre-market
+  // opens (00:00-04:00 ET). Only the first belongs to the next trading day. An
+  // overnight publish precedes that same day's 04:00 pre-market by hours, so
+  // rolling it forward would skip the session it actually leads into — and
+  // nextUsEquityTradingDate can never return fromDate, since it increments
+  // before its first probe.
+  if (session === 'closed'
+    && etMinutesOfDay(published) < 4 * 60
+    && isUsEquityTradingDate(localDate)) {
+    return {
+      marketSessionAtPublish: session,
+      alignedTradingDate: localDate,
+      alignmentRule: 'HEADLINE_ALIGNMENT_RULE_OVERNIGHT_SAME_TRADING_DAY',
+    };
+  }
+  if (session === 'post' || session === 'closed') {
+    return {
+      marketSessionAtPublish: session,
+      alignedTradingDate: nextUsEquityTradingDate(localDate),
+      alignmentRule: session === 'post' ? 'HEADLINE_ALIGNMENT_RULE_AFTER_HOURS_NEXT_TRADING_DAY' : 'HEADLINE_ALIGNMENT_RULE_NON_SESSION_NEXT_TRADING_DAY',
+    };
+  }
+  return {
+    marketSessionAtPublish: session,
+    alignedTradingDate: localDate,
+    alignmentRule: session === 'regular' ? 'HEADLINE_ALIGNMENT_RULE_REGULAR_SESSION_SAME_TRADING_DAY' : 'HEADLINE_ALIGNMENT_RULE_PREMARKET_SAME_TRADING_DAY',
+  };
+}
+
+export function alignStockHeadlines(
+  headlines: StockAnalysisHeadline[],
+  applyUsHours: boolean,
+): StockAnalysisHeadline[] {
+  return headlines.map((headline) => {
+    const alignment = applyUsHours ? alignUsEquityNewsTimestamp(headline.publishedAt) : null;
+    return {
+      ...headline,
+      marketSessionAtPublish: alignment?.marketSessionAtPublish ?? '',
+      alignedTradingDate: alignment?.alignedTradingDate ?? '',
+      alignmentRule: alignment?.alignmentRule ?? 'HEADLINE_ALIGNMENT_RULE_UNSPECIFIED',
+    };
+  });
+}
+
 export type ExtendedHoursQuote = { price: number; changePercent: number };
 
 /**
@@ -1523,7 +1619,7 @@ async function buildAiOverlay(
     messages: [
       {
         role: 'system',
-        content: 'You are a disciplined stock analyst. Return strict JSON only with top-level keys technical, rating, and newsSentiment. technical and rating must each contain summary, action, confidence, whyNow, technicalSummary, newsSummary, bullishFactors, and riskFactors. The technical narrative must remain paired with technical.signal and technical.signalScore; do not change its stated rating, action, or confidence based on fundamentals. The rating narrative must remain paired with rating.signal and rating.compositeScore and weigh fundamentals alongside technicals and news. All margin, return, growth, and debtToEquity values are decimal ratios (0.25 means 25%; debtToEquity 1.5 means debt is 1.5x equity). totalCash, totalDebt, freeCashflow, and ebitda are denominated in fundamentals.financialCurrency. Treat missing values as unknown. newsSentiment is a signed number from -1 to 1 scoring how bullish the supplied news headlines are for the stock (-1 very bearish, 0 neutral or no material news, 1 very bullish); base it only on the supplied headlines. Keep both narratives concise, factual, and free of disclaimers.',
+        content: 'You are a disciplined stock analyst. Return strict JSON only with top-level keys technical, rating, and newsSentiment. technical and rating must each contain summary, action, confidence, whyNow, technicalSummary, newsSummary, bullishFactors, and riskFactors. The technical narrative must remain paired with technical.signal and technical.signalScore; do not change its stated rating, action, or confidence based on fundamentals. The rating narrative must remain paired with rating.signal and rating.compositeScore and weigh fundamentals alongside technicals and news. All margin, return, growth, and debtToEquity values are decimal ratios (0.25 means 25%; debtToEquity 1.5 means debt is 1.5x equity). totalCash, totalDebt, freeCashflow, and ebitda are denominated in fundamentals.financialCurrency. Treat missing values as unknown. newsSentiment is a signed number from -1 to 1 scoring how bullish the supplied news headlines are for the stock (-1 very bearish, 0 neutral or no material news, 1 very bullish); base it only on the supplied headlines. newsSentiment is a model overlay, not a cause of any price move; do not claim a headline drove or caused the tape. Keep both narratives concise, factual, and free of disclaimers.',
       },
       {
         role: 'user',
@@ -1887,7 +1983,7 @@ export async function analyzeStock(
     const marketSession = usEquityHoursApply(symbol, history.currency || 'USD')
       ? getUsEquitySessionAt(options.now)
       : '';
-    const [headlines, dividend, extendedQuote, earningsCalendar] = await Promise.all([
+    const [rawHeadlines, dividend, extendedQuote, earningsCalendar] = await Promise.all([
       includeNews ? searchRecentStockHeadlines(symbol, name, NEWS_LIMIT).then((r) => r.headlines) : Promise.resolve([]),
       fetchDividendProfile(symbol, technical.currentPrice),
       (marketSession === 'pre' || marketSession === 'post')
@@ -1895,6 +1991,7 @@ export async function analyzeStock(
         : Promise.resolve(null),
       fetchUpcomingEarnings(),
     ]);
+    const headlines = alignStockHeadlines(rawHeadlines, marketSession !== '');
     const overlays = await buildAiOverlay(
       symbol,
       name,

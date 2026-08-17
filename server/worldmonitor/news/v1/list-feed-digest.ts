@@ -14,6 +14,7 @@ import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import {
   isServerFeedReachableForLanguage,
+  orderServerFeedEntries,
   VARIANT_FEEDS,
   INTEL_SOURCES,
   type ServerFeed,
@@ -38,6 +39,8 @@ import {
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import diplomacyKeywordsData from '../../../../shared/diplomacy-keywords.json';
+// #6428: entity corroboration must count publishers, not feed labels.
+import { MIN_CORROBORATING_PUBLISHERS, publisherFamilyFor } from '../../../../shared/publisher-families.js';
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
@@ -54,6 +57,8 @@ const POST_FETCH_HEADROOM_MS = 15_000;
 const RESPONSE_GUARD_BAND_MS = 3_000;
 const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
 const BATCH_CONCURRENCY = 20;
+
+type DigestFeedEntry = { category: string; feed: ServerFeed };
 
 // U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
 // Items older than this are dropped before scoring. The 24h `recencyScore`
@@ -170,6 +175,14 @@ const DIPLOMACY_SEVERITY_PROMOTION_MIN_TIER12_SOURCES = 3;
 
 interface ParsedItem {
   source: string;
+  // Originating publisher from the RSS <source> element ('' when absent).
+  // Google News feeds — which back 154 of the 366 server digest labels —
+  // stamp it per item, naming the outlet that actually wrote the story.
+  // Corroboration counting prefers this over `source`: a Reuters wire
+  // arriving through the "Oil & Gas" keyword feed and through "Reuters
+  // Energy" is ONE publisher, not two (#6430). Internal to the digest
+  // build; `source` stays what the UI credits, links, and tiers.
+  originPublisher: string;
   title: string;
   link: string;
   publishedAt: number;
@@ -601,8 +614,17 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     const isAlert = threat.level === 'critical' || threat.level === 'high';
     const description = extractDescription(block, isAtom, title);
 
+    // RSS 2.0 <source url="...">Name</source> — the originating publisher,
+    // emitted per item by Google News. Atom's <source> is a metadata
+    // CONTAINER (nested elements, no text of its own), so only the RSS
+    // dialect is read; extractTag's [^<]* body would not match a container
+    // anyway, but skipping Atom keeps that an invariant rather than a
+    // regex accident.
+    const originPublisher = isAtom ? '' : extractTag(block, 'source');
+
     items.push({
       source: feed.name,
+      originPublisher,
       title,
       link,
       publishedAt,
@@ -969,16 +991,26 @@ function computeEntityCorroborationSignals(
         buckets.set(key, bucket);
       }
       bucket.items.push(item);
-      if (item.source) {
-        bucket.sources.add(item.source);
-        if (getSourceTier(item.source) <= 2) bucket.tier12Sources.add(item.source);
+      // #6428: bucket by publisher FAMILY. Keyed on the raw feed label, one
+      // newsroom's editions ("Reuters World" + "Reuters US") reached the
+      // >= 2 gate below on their own and manufactured an entity-corroboration
+      // signal that feeds importanceScore and the diplomacy severity
+      // promotion. The tier is a property of the LABEL, so a family joins
+      // tier12Sources when any of its labels is tier 1-2.
+      // #6430: the originating publisher (RSS <source>) outranks the feed
+      // label — a wire syndicated through a keyword feed corroborates as
+      // the wire, not as the query it arrived through.
+      const family = publisherFamilyFor(item.originPublisher || item.source);
+      if (family) {
+        bucket.sources.add(family);
+        if (getSourceTier(item.source) <= 2) bucket.tier12Sources.add(family);
       }
     }
   }
 
   const signals = new Map<string, EntityCorroborationSignal>();
   for (const bucket of buckets.values()) {
-    if (bucket.sources.size < 2) continue;
+    if (bucket.sources.size < MIN_CORROBORATING_PUBLISHERS) continue;
     for (const item of bucket.items) {
       const previous = signals.get(item.titleHash!);
       signals.set(item.titleHash!, {
@@ -1278,8 +1310,36 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
   await runRedisPipeline([['EXPIRE', accKey, DIGEST_ACCUMULATOR_TTL]]);
 }
 
-async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {
+function buildDigestFeedBatches(variant: string, lang: string): {
+  allEntries: DigestFeedEntry[];
+  batches: DigestFeedEntry[][];
+} {
   const feedsByCategory = VARIANT_FEEDS[variant] ?? {};
+  const allEntries: DigestFeedEntry[] = [];
+
+  for (const [category, feeds] of Object.entries(feedsByCategory)) {
+    const filtered = feeds.filter(f => isServerFeedReachableForLanguage(f, lang));
+    for (const feed of filtered) {
+      allEntries.push({ category, feed });
+    }
+  }
+
+  if (variant === 'full') {
+    const filteredIntel = INTEL_SOURCES.filter(f => isServerFeedReachableForLanguage(f, lang));
+    for (const feed of filteredIntel) {
+      allEntries.push({ category: 'intel', feed });
+    }
+  }
+
+  const orderedEntries = orderServerFeedEntries(allEntries);
+  const batches: DigestFeedEntry[][] = [];
+  for (let i = 0; i < orderedEntries.length; i += BATCH_CONCURRENCY) {
+    batches.push(orderedEntries.slice(i, i + BATCH_CONCURRENCY));
+  }
+  return { allEntries, batches };
+}
+
+async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {
   const feedStatuses: Record<string, string> = {};
   // #4920 coverage ledger: count every silent drop gate so "how much did
   // we NOT show" is a queryable number instead of a feeling.
@@ -1290,31 +1350,16 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
   const deadlineTimeout = setTimeout(() => deadlineController.abort(), OVERALL_DEADLINE_MS);
 
   try {
-    const allEntries: Array<{ category: string; feed: ServerFeed }> = [];
-
-    for (const [category, feeds] of Object.entries(feedsByCategory)) {
-      const filtered = feeds.filter(f => isServerFeedReachableForLanguage(f, lang));
-      for (const feed of filtered) {
-        allEntries.push({ category, feed });
-      }
-    }
-
-    if (variant === 'full') {
-      const filteredIntel = INTEL_SOURCES.filter(f => isServerFeedReachableForLanguage(f, lang));
-      for (const feed of filteredIntel) {
-        allEntries.push({ category: 'intel', feed });
-      }
-    }
+    const { allEntries, batches } = buildDigestFeedBatches(variant, lang);
 
     const results = new Map<string, ParsedItem[]>();
     // Track feeds that actually completed (with or without items) so we can
     // distinguish a genuine timeout (never ran) from a successful empty fetch.
     const completedFeeds = new Set<string>();
 
-    for (let i = 0; i < allEntries.length; i += BATCH_CONCURRENCY) {
+    for (const batch of batches) {
       if (deadlineController.signal.aborted) break;
 
-      const batch = allEntries.slice(i, i + BATCH_CONCURRENCY);
       const settled = await Promise.allSettled(
         batch.map(async ({ category, feed }) => {
           const result = await fetchAndParseRss(feed, variant, deadlineController.signal);
@@ -1591,6 +1636,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
 
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
+  buildDigestFeedBatches,
   parseRssXml,
   decodeXmlEntities,
   extractDescription,

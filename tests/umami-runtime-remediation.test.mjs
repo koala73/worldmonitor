@@ -174,7 +174,7 @@ describe('Umami runtime remediation (#6024)', () => {
 
     assert.match(
       dockerfile,
-      /^FROM postgres:17-alpine@sha256:[a-f0-9]{64}$/m,
+      /^FROM postgres:18-alpine@sha256:[a-f0-9]{64}$/m,
     );
     assert.match(
       dockerfile,
@@ -187,7 +187,10 @@ describe('Umami runtime remediation (#6024)', () => {
     );
     assert.doesNotMatch(dockerfile, /(?:sh|bash)\s+-c|\$\{?DATABASE_URL/i);
     assert.match(executableSql, /LIMIT 10000/);
-    assert.match(executableSql, /pg_advisory_xact_lock/);
+    // try-, not xact-: each delete commits on its own now, so the lock has to
+    // outlive one transaction, and an overlapping tick has to skip rather than
+    // block into lock_timeout and crash the cron (#6375).
+    assert.match(executableSql, /pg_try_advisory_lock/);
     assert.doesNotMatch(executableSql, /\bTRUNCATE\b/i);
   });
 
@@ -223,7 +226,20 @@ describe('Umami runtime remediation (#6024)', () => {
       dockerfile: 'Dockerfile.umami',
       service: 'umami',
       requiredEnv: ['APP_SECRET', 'DATABASE_URL'],
-      watchPatterns: [],
+      watchPatterns: [
+        '.dockerignore',
+        'Dockerfile.umami',
+        'docker/umami/21_update_session_data/migration.sql',
+        'docker/umami/runtime/21-update-session-data-prefix.sql',
+        'docker/umami/runtime/21-update-session-data-suffix.sql',
+        'docker/umami/runtime/package.json',
+        'docker/umami/runtime/pnpm-lock.yaml',
+        'docker/umami/runtime/pnpm-workspace.yaml',
+        'docker/umami/runtime/session-data-upsert.sql',
+        'docker/umami/runtime/upstream-23-update-session-data.sql',
+        'docker/umami/session-data-upsert.patch',
+        'docker/umami/v320-compat.patch',
+      ],
       cronSchedule: null,
       documentedAt: 'docs/analytics-collector-operations.md#patched-runtime-image',
     });
@@ -232,9 +248,10 @@ describe('Umami runtime remediation (#6024)', () => {
       deployMode: 'dockerfile',
       dockerfile: 'Dockerfile.umami-retention',
       service: 'umami-retention',
-      lifecycle: 'planned',
+      lifecycle: 'active',
       requiredEnv: ['PGHOST', 'PGPORT', 'PGDATABASE', 'PGUSER', 'PGPASSWORD'],
       watchPatterns: [
+        '.dockerignore',
         'scripts/umami-retention.sql',
         'Dockerfile.umami-retention',
       ],

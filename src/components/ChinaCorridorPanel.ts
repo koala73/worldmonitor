@@ -9,10 +9,12 @@ import {
 } from '@/services/supply-chain';
 import {
   CHINA_CORRIDOR_SIGNAL_FAMILIES,
+  COMTRADE_NATIONAL_FAMILIES,
   type ChinaCorridorSignalFamily,
   type ChinaLogisticsCorridorId,
 } from '../../shared/china-logistics-corridors';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
+import { CHINA_COMTRADE_NATIONAL_CAPTION } from '../../shared/china-factory-clusters';
 
 const FAMILY_LABELS: Record<ChinaCorridorSignalFamily, string> = {
   port: 'Ports',
@@ -132,20 +134,42 @@ export class ChinaCorridorPanel extends Panel {
   }
 
   public async fetchData(): Promise<boolean> {
-    this.showLoading();
+    // Re-entered by the scroll-driven loadAllData pass and the 15-min
+    // scheduler; the service has no client cache (cacheTtlMs: 0), so the
+    // loading radar must not replace rendered corridors for the whole RPC
+    // round-trip on every refresh.
+    if (!this.hasData()) this.showLoading();
     const response = await fetchChinaCorridorControlTowers();
     if (response.corridors.length === 0) {
-      this.showError('China corridor data unavailable', () => void this.fetchData());
+      // Fail-closed responses still carry all corridors marked unavailable and
+      // render normally; an empty payload on a populated panel keeps the last
+      // truthful render until the scheduler retries.
+      if (!this.hasData()) {
+        this.showError('China corridor data unavailable', () => void this.fetchData());
+      }
       return false;
     }
     this.setData(response);
     return true;
   }
 
+  public hasData(): boolean {
+    return this.response.corridors.length > 0;
+  }
+
   public setData(response: ChinaCorridorControlTowerResponse): void {
     this.response = response;
     this.selectedId ??= response.corridors[0]?.id ?? null;
     this.render();
+  }
+
+  /**
+   * True when any selected family is backed by national Comtrade data. Gating
+   * on 'trade' alone dropped the national-scope caption while the
+   * strategic_industry family — also comtrade:reporter:156 — stayed rendered.
+   */
+  private hasComtradeBackedSelection(): boolean {
+    return COMTRADE_NATIONAL_FAMILIES.some((family) => this.selectedFamilies.has(family));
   }
 
   private selectedCorridor(): ChinaCorridorControlTower | null {
@@ -229,6 +253,9 @@ export class ChinaCorridorPanel extends Panel {
           </div>
           ${this.showRendererHint
             ? `<p class="china-corridor-renderer-hint" role="status">${escapeHtml(RENDERER_HINT)}</p>`
+            : ''}
+          ${this.hasComtradeBackedSelection()
+            ? `<p class="china-corridor-comtrade-scope" data-comtrade-scope="national">${escapeHtml(CHINA_COMTRADE_NATIONAL_CAPTION)}</p>`
             : ''}
           <div class="china-corridor-conditions">${conditions || '<p class="china-corridor-missing">Select at least one signal family.</p>'}</div>
         </section>

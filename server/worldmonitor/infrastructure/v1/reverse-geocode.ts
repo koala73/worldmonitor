@@ -13,6 +13,7 @@ interface ReverseCacheEntry {
   country?: string;
   code?: string;
   displayName?: string;
+  error?: string;
 }
 
 interface NominatimResponse {
@@ -85,7 +86,7 @@ export const reverseGeocode: InfrastructureServiceHandler['reverseGeocode'] = as
     const code = (data.address?.country_code || '').toUpperCase();
     const displayName = data.display_name || country || '';
 
-    const result: ReverseCacheEntry = { country, code, displayName };
+    const result: ReverseCacheEntry = { country, code, displayName, error: '' };
     await setCachedJson(cacheKey, result, 604800);
 
     return { country, code, displayName, error: '' };

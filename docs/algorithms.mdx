@@ -9,9 +9,9 @@ description: "Detailed reference for World Monitor scoring formulas, detection a
 
 ### Country Instability Index (CII)
 
-Every Tier-1 country receives a live instability score (0-100). CII v8 tracks 31 Tier-1 countries with shared server/frontend `baselineRisk` and `eventMultiplier` coefficients plus signed 24-hour movement deltas: US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Cuba, Mexico, Brazil, UAE, South Korea, Iraq, Afghanistan, Lebanon, Egypt, Japan, and Qatar. Countries outside the curated Tier-1 set use the default editorial coefficients when they are scored by supporting systems (`DEFAULT_CII_BASELINE_RISK = 15`, `DEFAULT_CII_EVENT_MULTIPLIER = 1.0`).
+Every Tier-1 country receives a live instability score (0-100). CII v8 tracks 31 Tier-1 countries with server-side `baselineRisk` and `eventMultiplier` coefficients plus signed 24-hour movement deltas: US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Cuba, Mexico, Brazil, UAE, South Korea, Iraq, Afghanistan, Lebanon, Egypt, Japan, and Qatar. Countries outside the curated Tier-1 set use the default editorial coefficients when they are scored by supporting systems (`DEFAULT_CII_BASELINE_RISK = 15`, `DEFAULT_CII_EVENT_MULTIPLIER = 1.0`).
 
-Authoritative CII scores come from the server-side `GET /api/intelligence/v1/get-risk-scores` RPC (`server/worldmonitor/intelligence/v1/get-risk-scores.ts`) and are served to the browser through the cached risk-score feed. The frontend `country-instability.ts` path shares the published `baselineRisk` / `eventMultiplier` coefficients and v3 conflict curve constants, but it is a fallback/local renderer path after cached backend scores, not the source of truth for published scores:
+Authoritative CII scores come from the server-side `GET /api/intelligence/v1/get-risk-scores` RPC (`server/worldmonitor/intelligence/v1/get-risk-scores.ts`); the browser consumes them through the cached risk-score feed. The former `country-instability.ts` fallback/local renderer path after cached backend scores has been removed. The module now keeps selected raw per-country signals for country-detail surfaces and learning-state gating, but it does not compute or render CII scores.
 
 | Component            | Weight | Details |
 | -------------------- | ------ | ------- |
@@ -105,7 +105,7 @@ If an event falls outside the priority centroid table, the fallback density uses
 
 ### Strategic Theater Posture Assessment
 
-Nine operational theaters are continuously assessed for military posture escalation:
+The operational-theater registry is continuously assessed for military posture escalation:
 
 | Theater               | Key Trigger                                 |
 | --------------------- | ------------------------------------------- |
@@ -165,7 +165,7 @@ Enrichment queries are batched (up to 50 aircraft per request) and cached with a
 
 ### Undersea Cable Health Monitoring
 
-Beyond displaying static cable routes on the map, the system actively monitors cable health by cross-referencing two live data sources:
+Beyond displaying static cable routes on the map, the system actively monitors cable health by cross-referencing its live sources:
 
 1. **NGA Navigational Warnings** — the U.S. National Geospatial-Intelligence Agency publishes maritime safety broadcasts that frequently mention cable repair operations. The system filters these warnings for cable-related keywords (`CABLE`, `CABLESHIP`, `SUBMARINE CABLE`, `FIBER OPTIC`, etc.) and extracts structured data: vessel names, DMS/decimal coordinates, advisory severity, and repair ETAs. Each warning is matched to the nearest cataloged undersea cable within a 5° geographic radius.
 
@@ -268,7 +268,7 @@ Every RSS headline is tokenized into individual terms and tracked in per-term fr
 
 The tokenizer extracts CVE identifiers (`CVE-2024-xxxxx`), APT/FIN threat actor designators, and 16 tracked world-leader names, including multi-word names such as "Xi Jinping" and "Kim Jong Un" that would be lost by naive whitespace splitting. A configurable blocklist suppresses common noise terms.
 
-Detected spikes are auto-summarized via Groq (rate-limited to 5 summaries/hour) and emitted as `keyword_spike` signals into the correlation engine, where they compound with other signal types for convergence detection. The term registry is capped at 10,000 entries with LRU eviction to bound memory usage. All thresholds (spike multiplier, min count, cooldown, blocked terms) are configurable via the Settings panel.
+Detected spikes are auto-summarized via Groq (rate-limited to 5 summaries/hour) and emitted as `keyword_spike` signals into the correlation engine, where they compound with other signal types for convergence detection. Each emitted signal carries the evidence it was built from — the distinct source names behind its source count, and up to 6 contributing articles with their title, source, link and publication time when supplied by the feed — so the alert can be drilled into rather than only silenced. The term registry is capped at 10,000 entries with LRU eviction to bound memory usage. All thresholds (spike multiplier, min count, cooldown, blocked terms) are configurable via the Settings panel.
 
 ### Temporal Baseline Anomaly Detection
 

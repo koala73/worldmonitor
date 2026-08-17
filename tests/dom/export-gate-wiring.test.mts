@@ -162,7 +162,7 @@ describe('setupExportPanel — CTA routing through resolveGateAction', () => {
     trigger().click();
     cta().click();
 
-    expect(openSpy).toHaveBeenCalledWith(`${PRO_ORIGIN}/pro`, '_blank', 'noopener,noreferrer');
+    expect(openSpy).toHaveBeenCalledWith(`${PRO_ORIGIN}/pro`, '_blank');
     expect(authModalOpen).not.toHaveBeenCalled();
   });
 
@@ -176,7 +176,6 @@ describe('setupExportPanel — CTA routing through resolveGateAction', () => {
     expect(openSpy).toHaveBeenCalledWith(
       `${PRO_ORIGIN}/pro#pricing`,
       '_blank',
-      'noopener,noreferrer',
     );
   });
 
@@ -197,7 +196,6 @@ describe('setupExportPanel — CTA routing through resolveGateAction', () => {
     expect(openSpy).toHaveBeenCalledWith(
       `${PRO_ORIGIN}/pro#pricing`,
       '_blank',
-      'noopener,noreferrer',
     );
     expect(authModalOpen).not.toHaveBeenCalled();
   });

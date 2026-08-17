@@ -3,7 +3,7 @@
 //
 // The existing STALE_CONTENT branch keys off `newestItemAt`, which answers
 // "did the source publish anything recently". That question is useless for a
-// per-country corpus: one 98-hour-old decision-critical country hides behind
+// per-country corpus: one 170-hour-old decision-critical fixture hides behind
 // 173 fresh ones. This adds the per-entity half — the producer publishes a
 // `contentFreshness` block and health fails closed when it is absent.
 
@@ -20,16 +20,21 @@ const {
   healthResponseBody,
   STATUS_COUNTS,
   SEED_META,
+  ACTIVATION_MARKERS,
+  CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
 } = __testing__;
 
-const NOW = Date.parse('2026-08-02T14:42:58.000Z');
+const NOW = Date.parse('2026-08-03T14:42:58.000Z');
 const MINUTE_MS = 60_000;
+const PORTWATCH_CONTENT_BUDGET_MINUTES = 2 * 72 * 60;
 const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
 const PORTWATCH_DATA_KEY = 'supply_chain:portwatch-ports:v1:_countries';
+const PORTWATCH_ACTIVATION_KEY = ACTIVATION_MARKERS.portwatchContentFreshness;
+const CONTENT_FRESHNESS_ROLLOUT_UNTIL = CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS[PORTWATCH_ACTIVATION_KEY];
 
 function contentFreshnessOf(overrides = {}) {
   return {
-    budgetMinutes: 4320,
+    budgetMinutes: PORTWATCH_CONTENT_BUDGET_MINUTES,
     assessedAt: NOW,
     coveredCount: 174,
     freshCount: 174,
@@ -51,26 +56,31 @@ function contentFreshnessOf(overrides = {}) {
   };
 }
 
-function portwatchCtx(meta) {
+function portwatchCtx(meta, now = NOW) {
   return {
     keyStrens: new Map([[PORTWATCH_DATA_KEY, 4096]]),
     keyErrors: new Map(),
     keyMetaValues: new Map([[PORTWATCH_META_KEY, JSON.stringify(meta)]]),
     keyMetaErrors: new Map(),
-    now: NOW,
+    now,
   };
 }
 
 // Default context is post-activation: the producer has published the block at
 // least once, so a later absence is a real regression rather than a deploy lag.
-function classifyPortwatch(meta, { activated = true } = {}) {
+// `activated` is three-valued (#6095): true = marker read and present, false =
+// marker read and absent (the only state that earns grace), null = the marker
+// read failed, so its state is unknown and it is missing from the map entirely.
+function classifyPortwatch(meta, { activated = true, now = NOW } = {}) {
   return classifyKey(
     'portwatchPortActivity',
     PORTWATCH_DATA_KEY,
     {},
     {
-      ...portwatchCtx(meta),
-      activatedNames: new Set(activated ? ['portwatchContentFreshness'] : []),
+      ...portwatchCtx(meta, now),
+      activationStates: activated === null
+        ? new Map()
+        : new Map([['portwatchContentFreshness', activated]]),
     },
   );
 }
@@ -98,7 +108,7 @@ describe('readSeedMeta content-freshness parsing', () => {
   const seedCfg = {
     key: PORTWATCH_META_KEY,
     maxStaleMin: 2160,
-    requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 72 * 60 },
+    requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: PORTWATCH_CONTENT_BUDGET_MINUTES },
   };
 
   it('surfaces a bounded content-freshness block', () => {
@@ -108,9 +118,9 @@ describe('readSeedMeta content-freshness parsing', () => {
       staleCountries: ['CN'],
       criticalFreshCount: 1,
       criticalStaleCountries: ['CN'],
-      criticalOldestObservedAt: Date.parse('2026-07-29T12:02:43.475Z'),
+      criticalOldestObservedAt: Date.parse('2026-07-26T12:02:43.475Z'),
       criticalOldestObservedCountry: 'CN',
-      criticalOldestAgeMinutes: 5920,
+      criticalOldestAgeMinutes: 10_240,
     })));
     const meta = readSeedMeta(seedCfg, ctx.keyMetaValues, ctx.keyMetaErrors, ctx.now);
 
@@ -118,7 +128,10 @@ describe('readSeedMeta content-freshness parsing', () => {
     assert.equal(meta.contentFreshness.contentStale, true);
     assert.equal(meta.contentFreshness.staleCount, 1);
     assert.deepEqual(meta.contentFreshness.criticalStaleCountries, ['CN']);
-    assert.equal(meta.contentFreshness.criticalOldestAgeMinutes, 5920);
+    assert.equal(
+      meta.contentFreshness.criticalOldestAgeMinutes,
+      Math.round((NOW - Date.parse('2026-07-26T12:02:43.475Z')) / MINUTE_MS),
+    );
   });
 
   it('does not alarm on fleet-wide rotation lag outside the decision-critical set', () => {
@@ -156,7 +169,7 @@ describe('portwatchPortActivity classification', () => {
   it('is registered to require content freshness over a health-pinned scope and budget', () => {
     assert.deepEqual(
       SEED_META.portwatchPortActivity.requireContentFreshness,
-      { countries: ['CN', 'HK'], budgetMinutes: 4320 },
+      { countries: ['CN', 'HK'], budgetMinutes: PORTWATCH_CONTENT_BUDGET_MINUTES },
       'health pins both the alarm scope and its threshold, not just the scope',
     );
     assert.equal(SEED_META.portwatchPortActivity.minRecordCount, 174);
@@ -167,9 +180,9 @@ describe('portwatchPortActivity classification', () => {
   // count alone lets OK persist while the observation ages past budget — the
   // exact green-while-dead failure this alarm exists to prevent.
   it('re-ages the producer measurement instead of trusting a frozen count', () => {
-    // Seeder ran when CN was 71h old and counted it fresh. Health reads that
-    // same meta 12h later, by which time the observation is 83h old.
-    const observedAt = NOW - 83 * 60 * MINUTE_MS;
+    // Seeder measured CN just inside the 144h budget. Health reads that same
+    // meta after the observation crosses the pinned boundary at 145h.
+    const observedAt = NOW - 145 * 60 * MINUTE_MS;
     const entry = classifyPortwatch({
       fetchedAt: NOW - 12 * 60 * MINUTE_MS,
       recordCount: 174,
@@ -178,7 +191,7 @@ describe('portwatchPortActivity classification', () => {
         criticalStaleCountries: [],
         criticalOldestObservedAt: observedAt,
         criticalOldestObservedCountry: 'CN',
-        criticalOldestAgeMinutes: 71 * 60,
+        criticalOldestAgeMinutes: 143 * 60,
       }),
     });
 
@@ -189,7 +202,7 @@ describe('portwatchPortActivity classification', () => {
     );
     assert.equal(
       entry.contentFreshness.criticalOldestAgeMinutes,
-      83 * 60,
+      145 * 60,
       'the published age is recomputed against now, not echoed from the producer',
     );
   });
@@ -199,20 +212,20 @@ describe('portwatchPortActivity classification', () => {
       fetchedAt: NOW - 12 * 60 * MINUTE_MS,
       recordCount: 174,
       contentFreshness: contentFreshnessOf({
-        criticalOldestObservedAt: NOW - 71 * 60 * MINUTE_MS,
-        criticalOldestAgeMinutes: 59 * 60,
+        criticalOldestObservedAt: NOW - 143 * 60 * MINUTE_MS,
+        criticalOldestAgeMinutes: 142 * 60,
       }),
     });
     assert.equal(entry.status, 'OK');
-    assert.equal(entry.contentFreshness.criticalOldestAgeMinutes, 71 * 60);
+    assert.equal(entry.contentFreshness.criticalOldestAgeMinutes, 143 * 60);
   });
 
   it('uses the raw millisecond boundary when re-aging content', () => {
-    const budgetMs = 4320 * MINUTE_MS;
+    const budgetMs = PORTWATCH_CONTENT_BUDGET_MINUTES * MINUTE_MS;
     for (const extraMs of [0, 1]) {
       const entry = classifyPortwatch(completeRun(contentFreshnessOf({
         criticalOldestObservedAt: NOW - budgetMs - extraMs,
-        criticalOldestAgeMinutes: 4320,
+        criticalOldestAgeMinutes: PORTWATCH_CONTENT_BUDGET_MINUTES,
       })));
       assert.equal(
         entry.status,
@@ -224,14 +237,14 @@ describe('portwatchPortActivity classification', () => {
 
   it('ignores a producer-supplied budget in favour of the one health pins', () => {
     // A producer that widens its own budget to 30 days must not be able to
-    // certify a 98h-old observation as fresh.
+    // certify a 180h-old observation as fresh.
     const entry = classifyPortwatch(completeRun(contentFreshnessOf({
       budgetMinutes: 30 * 24 * 60,
-      criticalOldestObservedAt: NOW - 98 * 60 * MINUTE_MS,
-      criticalOldestAgeMinutes: 98 * 60,
+      criticalOldestObservedAt: NOW - 180 * 60 * MINUTE_MS,
+      criticalOldestAgeMinutes: 180 * 60,
     })));
     assert.equal(entry.status, 'STALE_CONTENT');
-    assert.equal(entry.contentFreshness.budgetMinutes, 4320, 'the pinned budget is published');
+    assert.equal(entry.contentFreshness.budgetMinutes, PORTWATCH_CONTENT_BUDGET_MINUTES, 'the pinned budget is published');
   });
 
   it('fails closed when an all-fresh claim carries no re-ageable timestamp', () => {
@@ -247,7 +260,7 @@ describe('portwatchPortActivity classification', () => {
 
   // Without this, the producer defines both the numerator and the denominator
   // of its own alarm: shrink PORTWATCH_DECISION_CRITICAL_COUNTRIES to ['HK']
-  // and health reports OK with CN 98h stale — precisely the #6060 failure.
+  // and health reports OK with CN 170h stale — precisely the #6060 failure.
   it('fails closed when the producer narrows the declared critical set', () => {
     const entry = classifyPortwatch(completeRun(contentFreshnessOf({
       criticalCountries: ['HK'],
@@ -340,12 +353,12 @@ describe('portwatchPortActivity classification', () => {
       criticalFreshCount: 1,
       criticalStaleCountries: ['CN'],
       criticalMissingCountries: 1,
-      criticalOldestObservedAt: Date.parse('2026-07-29T12:02:43.475Z'),
+      criticalOldestObservedAt: Date.parse('2026-07-26T12:02:43.475Z'),
     })));
     assert.equal(entry.contentFreshness.criticalMissingCountries, 1);
     assert.equal(
       entry.contentFreshness.criticalOldestObservedAt,
-      Date.parse('2026-07-29T12:02:43.475Z'),
+      Date.parse('2026-07-26T12:02:43.475Z'),
     );
   });
 
@@ -379,9 +392,9 @@ describe('portwatchPortActivity classification', () => {
       staleCountries: ['CN'],
       criticalFreshCount: 1,
       criticalStaleCountries: ['CN'],
-      criticalOldestObservedAt: Date.parse('2026-07-29T12:02:43.475Z'),
+      criticalOldestObservedAt: Date.parse('2026-07-26T12:02:43.475Z'),
       criticalOldestObservedCountry: 'CN',
-      criticalOldestAgeMinutes: 5920,
+      criticalOldestAgeMinutes: 10_240,
     })));
 
     assert.equal(entry.status, 'STALE_CONTENT');
@@ -392,7 +405,10 @@ describe('portwatchPortActivity classification', () => {
       'CN',
       'operators get the stale source family, not a generic warning',
     );
-    assert.equal(entry.contentFreshness.criticalOldestAgeMinutes, 5920);
+    assert.equal(
+      entry.contentFreshness.criticalOldestAgeMinutes,
+      Math.round((NOW - Date.parse('2026-07-26T12:02:43.475Z')) / MINUTE_MS),
+    );
   });
 
   it('alarms when a decision-critical country drops out of the run entirely', () => {
@@ -421,6 +437,38 @@ describe('portwatchPortActivity classification', () => {
       'COVERAGE_DEGRADED',
       'losing a block the producer proved it can write is a regression',
     );
+  });
+
+  // #6095/#6111 — the grace is earned by evidence, then bounded by the
+  // deployment window. A marker health could not read says nothing about
+  // whether the producer ever published; an evicted or renamed marker can only
+  // earn clean-absent grace until the compiled deadline.
+  it('refuses grace when the marker state is unknown rather than read-absent', () => {
+    const entry = classifyPortwatch(completeRun(undefined), { activated: null });
+    assert.equal(
+      entry.status,
+      'COVERAGE_DEGRADED',
+      'an unread marker must fail closed, not re-enter an expired grace',
+    );
+  });
+
+  it('bounds clean-absent grace and publishes its deadline', () => {
+    const pending = classifyPortwatch(completeRun(undefined), {
+      activated: false,
+      now: NOW,
+    });
+    assert.equal(pending.status, 'OK');
+    assert.equal(
+      pending.contentFreshnessPendingUntil,
+      new Date(CONTENT_FRESHNESS_ROLLOUT_UNTIL).toISOString(),
+    );
+
+    const expired = classifyPortwatch(completeRun(undefined), {
+      activated: false,
+      now: CONTENT_FRESHNESS_ROLLOUT_UNTIL,
+    });
+    assert.equal(expired.status, 'COVERAGE_DEGRADED');
+    assert.ok(expired.contentFreshness, 'the expired block is evaluated and published for diagnosis');
   });
 
   it('still evaluates a block that is present before activation is observed', () => {

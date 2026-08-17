@@ -2,9 +2,9 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates 500+ news feeds, 56 map layer types, and multiple AI models into a single dashboard. Used by 2M+ people across 190+ countries, as featured in WIRED. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
+World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. Used by 2M+ people across 190+ countries, as featured in WIRED. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
 
-A single codebase produces six specialized variants — geopolitical (World Monitor), technology (Tech Monitor), finance (Finance Monitor), commodities (Commodity Monitor), positive news (Happy Monitor), and energy (Energy Monitor) — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar.
+A single codebase produces specialized variants — geopolitical (World Monitor), technology (Tech Monitor), finance (Finance Monitor), commodities (Commodity Monitor), positive news (Happy Monitor), and energy (Energy Monitor) — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar.
 
 The project is built with TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, and Tauri. Browser-side clustering, local ML, and offline analysis run in the client; server-authoritative APIs publish CII/CRI scores, briefs, forecasts, MCP tools, and cached operational data with documented methodology and provenance.
 
@@ -23,10 +23,10 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 **How an agent should call it:**
 
-- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, 59 tools; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json · Registry entries: `app.worldmonitor/mcp` in the official MCP registry (registry.modelcontextprotocol.io) · https://smithery.ai/servers/worldmonitor/wm-mcp · https://mcp.so/server/world-monitor
+- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json · Registry entries: `app.worldmonitor/mcp` in the official MCP registry (registry.modelcontextprotocol.io) · https://smithery.ai/servers/worldmonitor/wm-mcp · https://mcp.so/server/world-monitor
 - **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — Streamable HTTP, public (no auth); search-and-retrieval tools over the documentation. Use it for "how do I…" questions about the platform; use the product MCP above for live data.
 - **REST API:** base `https://api.worldmonitor.app`; OpenAPI spec at https://worldmonitor.app/openapi.yaml; same `X-WorldMonitor-Key` header.
-- **CLI:** `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the `worldmonitor` command. A zero-dependency, MCP-first client for the tools and REST API above — pass `--api-key` for data calls. https://www.npmjs.com/package/worldmonitor
+- **CLI:** `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the `worldmonitor` command. A zero-dependency, MCP-first client for the tools and REST API above — `worldmonitor call get_sources` needs no key; pass `--api-key` for every other data tool. https://www.npmjs.com/package/worldmonitor
 - **SDKs:** official zero-dependency client libraries — Python `pip install worldmonitor-sdk` (https://pypi.org/project/worldmonitor-sdk/), Ruby `gem install worldmonitor` (https://rubygems.org/gems/worldmonitor), Go `go get github.com/koala73/worldmonitor/sdk/go` (https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go), JavaScript via the npm package above. Guide: https://www.worldmonitor.app/docs/sdks
 - **Agent Skills:** discovery manifest at https://worldmonitor.app/.well-known/agent-skills/index.json · install via `npx skills add koala73/worldmonitor` (https://skills.sh/koala73/worldmonitor)
 - **Keys, plans & limits:** https://worldmonitor.app/pricing.md (markdown) · live JSON catalog `GET https://www.worldmonitor.app/api/product-catalog` (public, no key) · auth matrix https://www.worldmonitor.app/docs/usage-auth · rate limits https://www.worldmonitor.app/docs/usage-rate-limits.md · issue a key at https://worldmonitor.app/pro
@@ -85,12 +85,12 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 
 ## Key Features
 
-- Interactive 3D WebGL globe with deck.gl rendering and 56 map layer types (conflicts, military bases, nuclear facilities, undersea cables, pipelines, datacenters, protests, disasters, cyber threats, and more)
+- Interactive 3D WebGL globe with deck.gl rendering and a shared map-layer catalog (conflicts, military bases, nuclear facilities, undersea cables, pipelines, datacenters, protests, disasters, cyber threats, and more)
 - AI-powered intelligence: source-attributed world briefs, hybrid threat classification, focal point detection, CII v8 instability scores for 31 Tier-1 countries, CRI resilience scores for the 196-country public rankable universe, trending keyword spike detection, and strategic posture assessment
-- 500+ curated RSS feeds across geopolitics, defense, energy, tech, and finance with domain-allowlisted proxy
-- 8 live news video streams (Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya)
-- 19 live webcams from geopolitical hotspots across 4 regions
-- Multilingual UI supporting 26 languages with RTL support
+- Curated RSS feeds across geopolitics, defense, energy, tech, and finance with a domain-allowlisted proxy
+- Live news video streams (Bloomberg, Sky News, Al Jazeera, Euronews, DW, France24, CNBC, Al Arabiya)
+- Live webcams from geopolitical hotspots across regions
+- Multilingual UI with RTL support
 - 7-signal macro market radar with composite BUY/CASH verdict, BTC ETF flow tracking, stablecoin peg monitoring, Fear & Greed Index
 - Country brief pages with AI-generated analysis, CII score ring, prediction markets, 7-day timeline, infrastructure exposure, and stock index
 - Geographic convergence detection — identifies when multiple signal types spike in the same area
@@ -98,7 +98,7 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 - Native desktop app (Tauri) with OS keychain integration, local API sidecar, and cloud fallback
 - Progressive Web App with offline map support (500 cached tiles)
 - Shareable intelligence stories with multi-platform social export and canvas-based image generation
-- Cmd+K fuzzy search across 20+ result types
+- Cmd+K fuzzy search across result types
 - Dark/light theme, panel drag-and-drop reordering, ultra-wide monitor layout (2000px+)
 
 ## Desktop App
@@ -113,10 +113,10 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 - **Frontend**: TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, Transformers.js (browser-side ML)
 - **Internationalization**: i18next with lazy-loaded language bundles and RTL support
 - **Desktop**: Tauri (Rust + Node.js sidecar) for macOS, Windows, Linux
-- **Backend**: 80+ Vercel Edge Functions, Railway relay server
+- **Backend**: Vercel Edge Functions, Railway relay server
 - **Data**: Upstash Redis caching, three-tier cache (in-memory, Redis, upstream)
 - **AI**: Groq (Llama 3.1), OpenRouter, browser-side T5 fallback
-- **Monitoring**: Sentry error tracking, data freshness tracker across 35 source groups
+- **Monitoring**: Sentry error tracking and a data-freshness tracker across source groups
 
 ## Blog Posts
 
@@ -154,7 +154,7 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 - [support.md](https://worldmonitor.app/support.md): Machine-readable support channels and contact routes
 - [ai-search.md](https://worldmonitor.app/ai-search.md): AI-search answer blocks for citation and extraction
 - [World Monitor Developer Portal](https://worldmonitor.app/developers.md): Developer resource hub — links the MCP server, OpenAPI spec, REST API, SDKs, CLI, and agent skills by name
-- [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): The MCP server surface — endpoint, 59 tools, auth (OAuth + API key), server card
+- [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): The MCP server surface — endpoint, live tool registry, auth (OAuth + API key), server card
 - [World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md): The REST API OpenAPI 3.1 contract — openapi.yaml / openapi.json
 - [World Monitor SDKs](https://worldmonitor.app/sdks.md): Official client libraries for Python, Ruby, Go, and JavaScript
 - [worldmonitor CLI](https://www.npmjs.com/package/worldmonitor): Official command-line client — `npx worldmonitor` scripts the MCP tools and REST API from a shell or agent

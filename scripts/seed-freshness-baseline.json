@@ -7,6 +7,11 @@
     "It does NOT mean the problem is acceptable forever -- expiresAt forces a re-review,",
     "and the gate fails outright once that date passes.",
     "",
+    "A temporary rollout entry may add an entry-level `expiresAt` bounded to the first",
+    "scheduled cron window. At or after that instant, its live problem blocks even when",
+    "the root expiresAt is later. A health-probe cutover requires either a completed",
+    "Railway-side pre-seed or this owner-bound, expiring acknowledgement.",
+    "",
     "Entries are matched on name:status exactly. A source that recovers is reported as",
     "'recovered' on the next run (prune it); a source that fails with a DIFFERENT status",
     "than the one baselined is treated as new and blocks, which is the point.",
@@ -20,16 +25,16 @@
   "expiresAt": "2026-08-27",
   "acknowledged": [
     {
-      "name": "crossStraitActivityJapanMod",
-      "status": "SEED_ERROR",
-      "issue": 5714,
-      "reason": "Japan MOD route returns proxy CONNECT 403; candidate country-specific routes return 407. Second cause independent of the #5689 Decodo exhaustion. No verified replacement endpoint installed."
-    },
-    {
-      "name": "humanitarianSummary",
-      "status": "SEED_ERROR",
-      "issue": 5769,
-      "reason": "HAPI returns 'Blocked due to bot activity' to Railway egress (same signature as #5713, which was closed). Recovers intermittently between health snapshots, so one green poll is not evidence of recovery."
+      "name": "mineralProduction",
+      "status": "EMPTY",
+      "issue": 6439,
+      "reason": "USGS/BGS mineral-production probe has never published. Root cause found in #6799: seed-bundle-static-ref admits a section only when its DECLARED worst case fits the budget left on the tick, and Arms-Suppliers burned 390s of the 570s budget before failing gracefully, so this section was deferred on every tick and never ran. The concurrency fix (#6807) brings Arms-Suppliers to ~277s, which leaves room for this 190s reservation. Re-anchored to the first 03:00 UTC tick after that deploy; EMPTY after it is a real problem.",
+      "expiresAt": "2026-08-18T03:00:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:supply-chain:mineral-production",
+        "activatedAt": "2026-08-17T04:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-18T03:00:00.000Z"
+      }
     }
   ]
 }

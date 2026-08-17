@@ -2,17 +2,19 @@
 // Pure-function + injectable-LLM unit tests; no network. Run via:
 //   npm run test:data
 
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 
 import {
   generateWeeklyBrief,
   buildBriefPrompt,
   parseBriefJson,
   emptyBrief,
+  __setWeeklyBriefTransportForTests,
 } from '../scripts/regional-snapshot/weekly-brief.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -24,6 +26,16 @@ const premiumPathsSrc = readFileSync(resolve(root, 'src/shared/premium-paths.ts'
 const gatewaySrc = readFileSync(resolve(root, 'server/gateway.ts'), 'utf-8');
 const protoSrc = readFileSync(resolve(root, 'proto/worldmonitor/intelligence/v1/get_regional_brief.proto'), 'utf-8');
 const serviceProtoSrc = readFileSync(resolve(root, 'proto/worldmonitor/intelligence/v1/service.proto'), 'utf-8');
+const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
+const originalGroqApiKey = process.env.GROQ_API_KEY;
+
+afterEach(() => {
+  __setWeeklyBriefTransportForTests(null);
+  if (originalOpenRouterApiKey === undefined) delete process.env.OPENROUTER_API_KEY;
+  else process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
+  if (originalGroqApiKey === undefined) delete process.env.GROQ_API_KEY;
+  else process.env.GROQ_API_KEY = originalGroqApiKey;
+});
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -120,7 +132,7 @@ describe('parseBriefJson', () => {
 // ── generateWeeklyBrief ─────────────────────────────────────────────────────
 
 describe('generateWeeklyBrief', () => {
-  function mockCall(text, provider = 'groq', model = 'llama-3.3-70b-versatile') {
+  function mockCall(text, provider = 'groq', model = 'openai/gpt-oss-20b') {
     return async () => ({ text, provider, model });
   }
 
@@ -133,6 +145,44 @@ describe('generateWeeklyBrief', () => {
     assert.ok(brief.period_start > 0);
     assert.equal(brief.situation_recap, 'Iran increased naval posture near Hormuz.');
     assert.equal(brief.provider, 'groq');
+  });
+
+  it('uses the fixed backup free model after paid and primary validation failures', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    const bodies = [];
+    __setWeeklyBriefTransportForTests({
+      fetch: async (url, init = {}) => {
+        if (!String(url).includes('openrouter.ai')) {
+          throw new Error(`Groq must not be reached: ${url}`);
+        }
+        const body = JSON.parse(String(init.body || '{}'));
+        bodies.push(body);
+        const isBackup = body.model === 'openai/gpt-oss-20b:free';
+        return {
+          ok: true,
+          json: async () => ({
+            model: isBackup ? 'openai/gpt-oss-20b:free:resolved' : body.model,
+            choices: [{ message: { content: isBackup ? validPayload : 'not valid JSON' } }],
+            usage: { total_tokens: 10 },
+          }),
+        };
+      },
+    });
+
+    const brief = await generateWeeklyBrief(mena, snapshotFixture, transitionsFixture);
+
+    assert.equal(brief.provider, 'openrouter-free-backup');
+    assert.equal(brief.model, 'openai/gpt-oss-20b:free:resolved');
+    assert.deepEqual(bodies.map(body => body.model), [
+      'deepseek/deepseek-v4-flash',
+      'google/gemma-4-26b-a4b-it:free',
+      'openai/gpt-oss-20b:free',
+    ]);
+    for (const body of bodies) {
+      assert.deepEqual(body.reasoning, { enabled: false });
+      assert.equal(body.provider?.sort, 'throughput');
+    }
   });
 
   it('skips global region', async () => {
@@ -213,7 +263,9 @@ describe('get-regional-brief handler', () => {
 
 describe('security wiring', () => {
   it('adds the endpoint to PREMIUM_RPC_PATHS', () => {
-    assert.match(premiumPathsSrc, /'\/api\/intelligence\/v1\/get-regional-brief'/);
+    // Membership in the real Set is what gates the route; a grep of the module
+    // text also matches a path sitting in a comment.
+    assert.ok(PREMIUM_RPC_PATHS.has('/api/intelligence/v1/get-regional-brief'));
   });
 
   it('has a RPC_CACHE_TIER entry for route-parity', () => {

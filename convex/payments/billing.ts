@@ -3930,6 +3930,9 @@ export const grantComplimentaryEntitlement = internalMutation({
       });
     }
 
+    // Company Monitoring is provisioned on first use, not from entitlement
+    // writes (#6256).
+
     console.log(
       `[billing] grantComplimentaryEntitlement userId=${args.userId} planKey=${args.planKey} days=${args.days} validUntil=${new Date(validUntil).toISOString()}${args.reason ? ` reason="${args.reason}"` : ""}`,
     );

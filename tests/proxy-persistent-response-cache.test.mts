@@ -266,4 +266,21 @@ describe('fetchWithProxy persistent response freshness', () => {
 
     assert.equal(await response.text(), '<rss>current</rss>');
   });
+
+  it('does not reuse or persist responses marked no-store', async () => {
+    const state = globalThis.__wmProxyPersistentResponseCacheTestState!;
+    state.cached = cachedResponse('<rss>stale-cache</rss>', 0, 'no-store');
+    state.networkOutcomes.push(new Response('<rss>live-stale</rss>', {
+      status: 200,
+      headers: {
+        'Cache-Control': 'no-store',
+        'Content-Type': 'application/xml',
+      },
+    }));
+
+    const response = await proxyModule.fetchWithProxy(API_PATH);
+
+    assert.equal(await response.text(), '<rss>live-stale</rss>');
+    assert.equal(state.writes.length, 0, 'no-store responses must not enter the API response cache');
+  });
 });

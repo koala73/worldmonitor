@@ -49,6 +49,14 @@ type CachedResponsePayload = {
   body: string;
 };
 
+export function hasNoStoreCacheDirective(headers: HeadersInit): boolean {
+  const cacheControl = new Headers(headers).get('cache-control');
+  return cacheControl?.split(',').some((directive) => {
+    const name = directive.trim().split('=', 1)[0]?.trim().toLowerCase();
+    return name === 'no-store';
+  }) ?? false;
+}
+
 // In production browser deployments, routes are handled by Vercel serverless functions.
 // In local dev, Vite proxy handles these routes.
 // In Tauri desktop mode, route requests need an absolute remote host.
@@ -113,6 +121,7 @@ function isPersistedResponseFresh(
   cached: { updatedAt: number; data: CachedResponsePayload },
   now = Date.now(),
 ): boolean {
+  if (hasNoStoreCacheDirective(cached.data.headers)) return false;
   const ageMs = now - cached.updatedAt;
   return Number.isFinite(ageMs)
     && ageMs >= 0
@@ -121,7 +130,7 @@ function isPersistedResponseFresh(
 
 async function fetchAndPersist(url: string): Promise<Response> {
   const response = await fetch(proxyUrl(url), { cache: 'no-store' });
-  if (response.ok && shouldPersistResponse(url)) {
+  if (response.ok && shouldPersistResponse(url) && !hasNoStoreCacheDirective(response.headers)) {
     try {
       const body = await response.clone().text();
       void setPersistentCache(buildResponseCacheKey(url), toCachedPayload(url, response, body));

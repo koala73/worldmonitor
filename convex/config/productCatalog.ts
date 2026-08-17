@@ -29,6 +29,22 @@ export const PUBLIC_PRODUCT_METADATA = {
   availability: "https://schema.org/InStock",
 } as const;
 
+/**
+ * Independent Company Monitoring rollout controls.
+ *
+ * U1 defines the gates but deliberately keeps every behavior dark. Later
+ * units may wire one gate at a time only after their owning promotion gate
+ * passes; no aggregate flag may silently enable the entire product.
+ */
+export const COMPANY_MONITORING_ROLLOUT_FLAGS = {
+  exaProvider: false,
+  xProvider: false,
+  publication: false,
+  restWrites: false,
+  ui: false,
+  alerts: false,
+} as const;
+
 export type PlanLimits = {
   /**
    * Daily REST/gateway request allowance. `null` means unlimited for plans
@@ -525,6 +541,15 @@ export const LEGACY_PRODUCT_ALIASES: Record<string, string> = {
   // 500-retry loop until this mapping was added (sub_0NeQV8vJI0fEwUEDjp3cA).
   // See scripts/audit-dodo-catalog.cjs to detect this class of drift early.
   "pdt_0NeRCJCIwZrExuE1kifHp": "api_starter",
+  // "5 × Standard Pro Annual Licenses" — created via Dodo dashboard 2026-07-30
+  // for the Legendary 5-seat annual deal ($1,596/yr list, sold with a 15%
+  // discount). The payer's subscription (sub_0NlFXgOXerG95LUzA09s4) carries
+  // the payer's own Pro entitlement; the other seats are complimentary
+  // entitlements aligned to the same period end. A matching productPlans row
+  // (isActive: false) was hand-inserted 2026-08-14 so attribution didn't wait
+  // on a deploy; this alias is the durable mapping the 2027 renewal resolves
+  // through even if that row is ever lost to a reseed.
+  "pdt_0NkKmaMPY3grWqiOGtyuG": "pro_annual",
 };
 
 // ---------------------------------------------------------------------------

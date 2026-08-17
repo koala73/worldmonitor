@@ -5,6 +5,12 @@ import {
   AGENT_BUS_ACTION_TYPES,
   parseAgentBusAction,
 } from '../shared/agent-bus-actions.ts';
+import {
+  DASHBOARD_MAP_MAX_LATITUDE,
+  DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN,
+  MAX_LAYER_ACTION_TARGET_ID_LENGTH,
+  MAX_LAYER_ACTION_TARGETS,
+} from '../shared/agent-bus-contract.ts';
 
 describe('agent bus action schema', () => {
   it('parses v1 dashboard control actions', () => {
@@ -74,8 +80,26 @@ describe('agent bus action schema', () => {
   it('bounds map view targets', () => {
     assert.equal(parseAgentBusAction({ type: 'set_view', view: 'eu', zoom: 4 }).ok, true);
     assert.equal(parseAgentBusAction({ type: 'set_view', lat: 34.5, lon: 39.0, zoom: 5 }).ok, true);
+    assert.equal(parseAgentBusAction({
+      type: 'set_view',
+      view: 'eu',
+      lat: 34.5,
+      lon: 39.0,
+    }).ok, false);
+    assert.equal(parseAgentBusAction({ type: 'set_view', view: 'eu', lat: 34.5 }).ok, false);
     assert.equal(parseAgentBusAction({ type: 'set_view', lat: 34.5 }).ok, false);
     assert.equal(parseAgentBusAction({ type: 'set_view', view: 'moon' }).ok, false);
+    assert.equal(parseAgentBusAction({
+      type: 'set_view',
+      lat: DASHBOARD_MAP_MAX_LATITUDE,
+      lon: 0,
+    }).ok, true);
+    assert.equal(parseAgentBusAction({
+      type: 'set_view',
+      lat: -DASHBOARD_MAP_MAX_LATITUDE,
+      lon: 0,
+    }).ok, true);
+    assert.equal(parseAgentBusAction({ type: 'set_view', lat: 89, lon: 0 }).ok, false);
     assert.equal(parseAgentBusAction({ type: 'set_view', lat: 120, lon: 39.0 }).ok, false);
     assert.equal(parseAgentBusAction({ type: 'set_view', lat: 34.5, lon: 39.0, zoom: 99 }).ok, false);
   });
@@ -84,5 +108,34 @@ describe('agent bus action schema', () => {
     assert.equal(parseAgentBusAction({ type: 'set_layers', layers: { conflicts: true } }).ok, true);
     assert.equal(parseAgentBusAction({ type: 'set_layers', layers: {} }).ok, false);
     assert.equal(parseAgentBusAction({ type: 'set_layers', layers: { conflicts: 'true' } }).ok, false);
+
+    const maximumLayers = Object.fromEntries(
+      Array.from({ length: MAX_LAYER_ACTION_TARGETS }, (_, index) => [`layer-${index}`, true]),
+    );
+    assert.equal(parseAgentBusAction({ type: 'set_layers', layers: maximumLayers }).ok, true);
+    assert.match('conflicts', new RegExp(DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN));
+    assert.equal(parseAgentBusAction({
+      type: 'set_layers',
+      layers: { ...maximumLayers, overflow: false },
+    }).ok, false);
+    assert.equal(parseAgentBusAction({
+      type: 'set_layers',
+      layers: { ['x'.repeat(MAX_LAYER_ACTION_TARGET_ID_LENGTH + 1)]: true },
+    }).ok, false);
+    for (const unsafeLayerId of [
+      `conflicts\u0000suffix`,
+      'conflicts"suffix',
+      'conflicts\\suffix',
+      'conflícts',
+      ' conflicts',
+      'conflicts ',
+      'conflicts\n',
+      'conflicts\u2028',
+    ]) {
+      assert.equal(parseAgentBusAction({
+        type: 'set_layers',
+        layers: { [unsafeLayerId]: true },
+      }).ok, false, JSON.stringify(unsafeLayerId));
+    }
   });
 });

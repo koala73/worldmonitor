@@ -57,6 +57,23 @@ message ShippingIndex {
   optional string prior_period_date = 12;
 }
 
+// Coverage basis behind a PortWatch-derived flow estimate: "portwatch-dwt"
+// when the rolling baseline window has DWT-majority coverage, otherwise
+// "portwatch-counts" for vessel-count coverage. FLOW_SOURCE_UNSPECIFIED means
+// the cached estimate carried a basis this taxonomy does not list, which the
+// endpoint reports rather than passing through undeclared.
+//
+// Carries the per-value semantics because an enum-typed field takes its
+// generated OpenAPI description from the enum, not from the field. The custom
+// JSON values preserve the strings seed-chokepoint-flows.mjs already writes to
+// energy:chokepoint-flows:v1, so promoting this taxonomy out of prose changes
+// no wire value.
+enum FlowSource {
+  FLOW_SOURCE_UNSPECIFIED = 0;
+  FLOW_SOURCE_PORTWATCH_DWT = 1 [(sebuf.http.enum_value) = "portwatch-dwt"];
+  FLOW_SOURCE_PORTWATCH_COUNTS = 2 [(sebuf.http.enum_value) = "portwatch-counts"];
+}
+
 message FlowEstimate {
   // Current estimated flow in million barrels/day. Computed as
   // baseline_mbd * flow_ratio.
@@ -71,10 +88,19 @@ message FlowEstimate {
   // rolling baseline window. Separate from the green/yellow/red status badge.
   bool disrupted = 4;
   // Flow source: "portwatch-dwt" when DWT-majority coverage is used,
-  // otherwise "portwatch-counts" for vessel-count coverage.
-  string source = 5;
+  // otherwise "portwatch-counts" for vessel-count coverage. Those are the only
+  // two the seeder emits; FLOW_SOURCE_UNSPECIFIED means the cached estimate
+  // carried a coverage basis this taxonomy does not list, which the endpoint
+  // reports rather than passing through undeclared.
+  FlowSource source = 5;
   // Nearest active GDACS hazard alert level within the configured radius:
   // "RED", "ORANGE", or empty string when no nearby alert applies.
+  //
+  // Deliberately an open string rather than a closed enum like source: the
+  // empty string is a real published value here, and the pinned sebuf codegen
+  // drops an empty (sebuf.http.enum_value), so "" cannot be expressed as an
+  // enum's JSON name. Verified at both the zero and a non-zero value; see
+  // #6106 before retrying.
   string hazard_alert_level = 6;
   // Name of the nearest active GDACS hazard event within the configured
   // radius, or empty string when no nearby alert applies.

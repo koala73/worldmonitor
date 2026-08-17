@@ -16,7 +16,7 @@
 import { strict as assert } from 'node:assert';
 import { after, describe, test } from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,7 +39,13 @@ after(() => rmSync(WORK, { recursive: true, force: true }));
 // argument containing a space from two separate arguments.
 const STUB_BODY = (name, log) =>
   `#!/bin/sh\necho "== ${name}" >> ${JSON.stringify(log)}\n` +
-  `for a in "$@"; do echo ">$a" >> ${JSON.stringify(log)}; done\nexit 0\n`;
+  `for a in "$@"; do echo ">$a" >> ${JSON.stringify(log)}; done\n` +
+  `if [ "${'$'}{WM_PREPUSH_STUB_REQUIRE_SLOT_FOR:-}" = "${name} ${'$'}1" ]; then\n` +
+  `  common=$(/usr/bin/git rev-parse --path-format=absolute --git-common-dir) || exit 86\n` +
+  `  [ -d "${'$'}common/wm-prepush-admission/slot-1" ] || [ -d "${'$'}common/wm-prepush-admission/slot-2" ] || exit 86\n` +
+  `fi\n` +
+  `[ "${'$'}{WM_PREPUSH_STUB_FAIL:-}" = "${name} $*" ] && exit 1\n` +
+  `exit 0\n`;
 
 /**
  * Stubs live OUTSIDE the fixture repo: an untracked `stub-bin/` inside it would
@@ -51,7 +57,12 @@ function makeStubs(auxDir) {
   mkdirSync(bin, { recursive: true });
   for (const name of ['npm', 'npx', 'node', 'gh', 'make']) {
     const stub = join(bin, name);
-    writeFileSync(stub, STUB_BODY(name, log));
+    const realScriptDispatch = name === 'node'
+      ? `case "$1" in\n` +
+        `  scripts/prepush-admission.mjs|*/scripts/prepush-admission.mjs) exec ${JSON.stringify(process.execPath)} "$@" ;;\n` +
+        `esac\n`
+      : '';
+    writeFileSync(stub, STUB_BODY(name, log).replace('#!/bin/sh\n', `#!/bin/sh\n${realScriptDispatch}`));
     chmodSync(stub, 0o755);
   }
   return { bin, log };
@@ -73,7 +84,7 @@ function hookEnv(bin) {
 
 let fixtureCount = 0;
 /**
- * A repo carrying the real hook and the two scripts it delegates to, with
+ * A repo carrying the real hook and its delegated scripts, with
  * `refs/remotes/origin/main` at the base commit so branch scoping resolves.
  */
 function makeFixture({ branchFiles = {}, scriptsCjs = true, failAttestMode = null } = {}) {
@@ -87,7 +98,7 @@ function makeFixture({ branchFiles = {}, scriptsCjs = true, failAttestMode = nul
     mkdirSync(join(root, dir), { recursive: true });
   }
   copyFileSync(HOOK, join(root, '.husky', 'pre-push'));
-  for (const script of ['prepush-attest.sh', 'prepush-changed-tests.sh']) {
+  for (const script of ['prepush-admission.mjs', 'prepush-attest.sh', 'prepush-changed-tests.sh']) {
     copyFileSync(join(REPO_ROOT, 'scripts', script), join(root, 'scripts', script));
   }
   // Fault injection: make one attest mode fail while its siblings still work,
@@ -169,6 +180,101 @@ function makeFixture({ branchFiles = {}, scriptsCjs = true, failAttestMode = nul
 }
 
 /**
+ * A real linked worktree whose shared config points at the main checkout's
+ * hook. The main hook has a poisoned body after the identity tripwire, so a
+ * successful push proves the tripwire handed off to the feature worktree's
+ * hook instead of continuing in the foreign copy.
+ */
+function pushWithPoisonedSharedHooksPath() {
+  const id = fixtureCount++;
+  const base = join(WORK, `poisoned-hooks-${id}`);
+  const main = join(base, 'main');
+  const worktree = join(base, 'feature');
+  const remote = join(base, 'remote.git');
+  const { bin, log } = makeStubs(join(base, 'aux'));
+  const env = hookEnv(bin);
+  delete env.WM_ALLOW_FOREIGN_HOOKS;
+
+  // Identity repair and admission must run their real helpers. Other node
+  // calls in the gate stay stubbed, as in makeFixture().
+  const nodeStub = join(bin, 'node');
+  writeFileSync(
+    nodeStub,
+    `#!/bin/sh\n` +
+      `case "$1" in\n` +
+      `  */scripts/bootstrap-worktree.mjs) exec ${JSON.stringify(process.execPath)} "$@" ;;\n` +
+      `  scripts/prepush-admission.mjs|*/scripts/prepush-admission.mjs) exec ${JSON.stringify(process.execPath)} "$@" ;;\n` +
+      `esac\n` +
+      STUB_BODY('node', log).replace('#!/bin/sh\n', ''),
+  );
+  chmodSync(nodeStub, 0o755);
+
+  const git = (cwd, args) => execFileSync('git', args, { cwd, env, encoding: 'utf8' }).trim();
+  mkdirSync(main, { recursive: true });
+  execFileSync('git', ['init', '--quiet', '--bare', remote], { env });
+  git(main, ['init', '--quiet', '--initial-branch=main', '.']);
+  git(main, ['config', 'user.email', 'prepush-hook@example.invalid']);
+  git(main, ['config', 'user.name', 'Prepush Hook Fixture']);
+  git(main, ['remote', 'add', 'origin', remote]);
+
+  for (const dir of ['.husky', 'scripts', 'node_modules']) {
+    mkdirSync(join(main, dir), { recursive: true });
+  }
+  copyFileSync(HOOK, join(main, '.husky', 'pre-push'));
+  for (const script of [
+    'bootstrap-worktree.mjs',
+    'check-local-secret-dumps.mjs',
+    'prepush-admission.mjs',
+    'prepush-attest.sh',
+    'prepush-changed-tests.sh',
+  ]) {
+    copyFileSync(join(REPO_ROOT, 'scripts', script), join(main, 'scripts', script));
+  }
+  writeFileSync(join(main, 'package.json'), '{"name":"fixture"}\n');
+  writeFileSync(join(main, 'README.md'), 'base\n');
+  git(main, ['add', '-A']);
+  git(main, ['commit', '--quiet', '-m', 'base']);
+  git(main, ['push', '--quiet', '--set-upstream', 'origin', 'main']);
+  git(main, ['worktree', 'add', '--quiet', '-b', 'feature', worktree]);
+  mkdirSync(join(worktree, 'node_modules'), { recursive: true });
+  writeFileSync(join(worktree, 'README.md'), 'feature\n');
+  git(worktree, ['add', 'README.md']);
+  git(worktree, ['commit', '--quiet', '-m', 'feature']);
+
+  const foreignHook = join(main, '.husky', 'pre-push');
+  const originalHook = readFileSync(foreignHook, 'utf8');
+  const poisonedHook = originalHook.replace(
+    '\necho "Checking for local environment dumps..."',
+    '\necho "FOREIGN HOOK BODY RAN"\nexit 97\n\necho "Checking for local environment dumps..."',
+  );
+  assert.notEqual(poisonedHook, originalHook, 'fixture must poison the foreign hook body');
+  writeFileSync(foreignHook, poisonedHook);
+  git(main, ['config', 'core.hooksPath', join(main, '.husky')]);
+
+  let status = 0;
+  let output = '';
+  try {
+    output = execFileSync('git', ['push', '--set-upstream', 'origin', 'HEAD:feature'], {
+      cwd: worktree,
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    status = error.status;
+    output = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+  }
+
+  return {
+    status,
+    output,
+    hooksPath: git(worktree, ['config', '--get', 'core.hooksPath']),
+    localHead: git(worktree, ['rev-parse', 'HEAD']),
+    remoteHead: git(worktree, ['ls-remote', '--heads', 'origin', 'feature']).split(/\s+/)[0] || '',
+  };
+}
+
+/**
  * The argument list of EVERY `npx tsx --test ...` the hook issued, in order.
  * All of them, not just the first: asserting one invocation cannot see a
  * second, duplicate dispatch — which is the failure the TESTS_CHANGED dedup
@@ -188,14 +294,65 @@ function tsxRuns(invocations) {
   return runs;
 }
 
+function admissionSlots(root) {
+  const admissionRoot = join(root, '.git', 'wm-prepush-admission');
+  try {
+    return readdirSync(admissionRoot).filter((entry) => /^slot-[1-9]\d*$/.test(entry));
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+describe('a poisoned shared hooksPath self-heals at push time (#6104)', () => {
+  test('repairs the shared value and runs this worktree hook in the same push', () => {
+    const result = pushWithPoisonedSharedHooksPath();
+
+    assert.equal(result.status, 0, result.output);
+    assert.equal(result.hooksPath, '.husky');
+    assert.equal(result.remoteHead, result.localHead);
+    assert.match(result.output, /repairing shared hooksPath/);
+    assert.doesNotMatch(result.output, /FOREIGN HOOK BODY RAN/);
+  });
+});
+
 describe('a clean push runs the changed tests and attests the tree', () => {
   test('dispatches the changed test and caches HEAD^{tree}', () => {
     const fixture = makeFixture({ branchFiles: { 'tests/alpha.test.mjs': 'x\n' } });
-    const { status, stdout, invocations } = fixture.run();
+    const { status, stdout, invocations } = fixture.run({
+      WM_PREPUSH_STUB_REQUIRE_SLOT_FOR: 'npx tsx',
+    });
 
     assert.equal(status, 0, stdout);
-    assert.deepEqual(tsxRuns(invocations), [['tsx', '--test', 'tests/alpha.test.mjs']]);
+    assert.deepEqual(tsxRuns(invocations), [
+      ['tsx', '--test', '--test-concurrency=2', 'tests/alpha.test.mjs'],
+    ]);
     assert.equal(fixture.cached(), fixture.tree(), 'a clean, resolved, green run is attestable');
+    assert.deepEqual(admissionSlots(fixture.root), [], 'EXIT cleanup releases the heavy-phase slot');
+  });
+
+  test('a heavy-phase failure still releases its admission slot', () => {
+    const fixture = makeFixture({ branchFiles: { 'scripts/failing-change.mjs': 'x\n' } });
+    const { status } = fixture.run({
+      WM_PREPUSH_STUB_FAIL: 'npm run typecheck',
+      WM_PREPUSH_STUB_REQUIRE_SLOT_FOR: 'npm run',
+    });
+
+    assert.equal(status, 1);
+    assert.deepEqual(admissionSlots(fixture.root), [], 'an || exit 1 path must not wedge later pushes');
+  });
+
+  test('a fresh worktree installs dependencies while holding an admission slot', () => {
+    const fixture = makeFixture({ branchFiles: { 'tests/alpha.test.mjs': 'x\n' } });
+    rmSync(join(fixture.root, 'node_modules'), { recursive: true });
+
+    const { status, stdout, invocations } = fixture.run({
+      WM_PREPUSH_STUB_REQUIRE_SLOT_FOR: 'npm ci',
+    });
+
+    assert.equal(status, 0, stdout);
+    assert.match(invocations, /== npm\n>ci\n/);
+    assert.deepEqual(admissionSlots(fixture.root), [], 'EXIT cleanup releases the install lease');
   });
 
   test('the second push of that tree skips the gates entirely', () => {
@@ -268,7 +425,9 @@ describe('worktree drift blocks the push (#5800 item 1)', () => {
 
     const { status, stdout, invocations } = fixture.run();
     assert.equal(status, 0, stdout);
-    assert.deepEqual(tsxRuns(invocations), [['tsx', '--test', 'tests/gamma.test.mjs']]);
+    assert.deepEqual(tsxRuns(invocations), [
+      ['tsx', '--test', '--test-concurrency=2', 'tests/gamma.test.mjs'],
+    ]);
     assert.match(stdout, /not byte-identical to HEAD/);
     assert.equal(fixture.cached(), null);
   });
@@ -300,7 +459,14 @@ describe('C-quoted and space-bearing paths still reach the runner (#5800 item 2)
     assert.equal(status, 0, stdout);
     assert.deepEqual(
       tsxRuns(invocations),
-      [['tsx', '--test', 'tests/back\\slash.test.mjs', 'tests/café.test.mjs', 'tests/with space.test.mjs']],
+      [[
+        'tsx',
+        '--test',
+        '--test-concurrency=2',
+        'tests/back\\slash.test.mjs',
+        'tests/café.test.mjs',
+        'tests/with space.test.mjs',
+      ]],
       'every path must arrive intact and as a single argument',
     );
   });

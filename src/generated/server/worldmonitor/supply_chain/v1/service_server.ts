@@ -102,7 +102,7 @@ export interface FlowEstimate {
   baselineMbd: number;
   flowRatio: number;
   disrupted: boolean;
-  source: string;
+  source: FlowSource;
   hazardAlertLevel: string;
   hazardAlertName: string;
 }
@@ -140,6 +140,63 @@ export interface MineralProducer {
   countryCode: string;
   productionTonnes: number;
   sharePct: number;
+}
+
+export interface GetMineralProductionRequest {
+  commodity: string;
+  iso2: string;
+  stage: string;
+}
+
+export interface GetMineralProductionResponse {
+  commodities: MineralProductionRecord[];
+  countries: MineralCountryPortfolio[];
+  fetchedAt: string;
+  upstreamUnavailable: boolean;
+  dataYear: number;
+}
+
+export interface MineralProductionRecord {
+  commodityId: string;
+  commodity: string;
+  year: number;
+  unit: string;
+  mine?: MineralStageSnapshot;
+  refinery?: MineralStageSnapshot;
+  sources: string[];
+}
+
+export interface MineralStageSnapshot {
+  year: number;
+  unit: string;
+  countries: MineralCountryShare[];
+  hhi: number;
+  worldTotal?: number;
+  withheldCount: number;
+}
+
+export interface MineralCountryShare {
+  iso2: string;
+  country: string;
+  output?: number;
+  share?: number;
+  withheld: boolean;
+  estimated: boolean;
+  residual: boolean;
+}
+
+export interface MineralCountryPortfolio {
+  iso2: string;
+  holdings: MineralCountryHolding[];
+}
+
+export interface MineralCountryHolding {
+  commodityId: string;
+  commodity: string;
+  stage: string;
+  output?: number;
+  share?: number;
+  withheld: boolean;
 }
 
 export interface GetShippingStressRequest {
@@ -650,6 +707,8 @@ export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_AC
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
 
+export type FlowSource = "FLOW_SOURCE_UNSPECIFIED" | "portwatch-dwt" | "portwatch-counts";
+
 export type PeriodChangeBasis = "PERIOD_CHANGE_BASIS_UNSPECIFIED" | "publisher_reported" | "derived_from_prior_period_level";
 
 export type WarRiskTier = "WAR_RISK_TIER_UNSPECIFIED" | "WAR_RISK_TIER_NORMAL" | "WAR_RISK_TIER_ELEVATED" | "WAR_RISK_TIER_HIGH" | "WAR_RISK_TIER_CRITICAL" | "WAR_RISK_TIER_WAR_ZONE";
@@ -703,6 +762,7 @@ export interface SupplyChainServiceHandler {
   getChokepointStatus(ctx: ServerContext, req: GetChokepointStatusRequest): Promise<GetChokepointStatusResponse>;
   getChokepointHistory(ctx: ServerContext, req: GetChokepointHistoryRequest): Promise<GetChokepointHistoryResponse>;
   getCriticalMinerals(ctx: ServerContext, req: GetCriticalMineralsRequest): Promise<GetCriticalMineralsResponse>;
+  getMineralProduction(ctx: ServerContext, req: GetMineralProductionRequest): Promise<GetMineralProductionResponse>;
   getShippingStress(ctx: ServerContext, req: GetShippingStressRequest): Promise<GetShippingStressResponse>;
   getCountryChokepointIndex(ctx: ServerContext, req: GetCountryChokepointIndexRequest): Promise<GetCountryChokepointIndexResponse>;
   getBypassOptions(ctx: ServerContext, req: GetBypassOptionsRequest): Promise<GetBypassOptionsResponse>;
@@ -864,6 +924,55 @@ export function createSupplyChainServiceRoutes(
 
           const result = await handler.getCriticalMinerals(ctx, body);
           return new Response(JSON.stringify(result as GetCriticalMineralsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/get-mineral-production",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetMineralProductionRequest = {
+            commodity: params.get("commodity") ?? "",
+            iso2: params.get("iso2") ?? "",
+            stage: params.get("stage") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getMineralProduction", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getMineralProduction(ctx, body);
+          return new Response(JSON.stringify(result as GetMineralProductionResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

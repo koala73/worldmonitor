@@ -159,15 +159,48 @@ export function getRedisCredentials() {
 }
 
 /**
+ * Convert successful EXISTS pipeline entries into a three-valued marker map.
+ * A key is added only when its entry explicitly has a result of 0 or 1 and
+ * has no error field. Missing, malformed, null-result, and per-command-error
+ * entries remain absent from the map, which callers interpret as unknown.
+ *
+ * @param {unknown} results
+ * @param {readonly string[]} keys
+ * @returns {Map<string, boolean>}
+ */
+export function readExistsFlags(results, keys) {
+  const states = new Map();
+  if (!Array.isArray(results) || results.length !== keys.length) return states;
+
+  for (let i = 0; i < keys.length; i++) {
+    const entry = results[i];
+    if (
+      !entry
+      || typeof entry !== 'object'
+      || Array.isArray(entry)
+      || Object.prototype.hasOwnProperty.call(entry, 'error')
+      || !Object.prototype.hasOwnProperty.call(entry, 'result')
+    ) {
+      continue;
+    }
+    if (entry.result === 1 || entry.result === '1') states.set(keys[i], true);
+    else if (entry.result === 0 || entry.result === '0') states.set(keys[i], false);
+  }
+  return states;
+}
+
+/**
  * Execute a batch of Redis commands via the Upstash pipeline endpoint.
- * Returns null on missing credentials, HTTP error, or timeout.
+ * Returns null on missing credentials, HTTP error, timeout, or a response body
+ * that is not an array with exactly one entry per command.
  * @param {Array<string[]>} commands - e.g. [['GET', 'key'], ['EXPIRE', 'key', '60']]
  * @param {number} [timeoutMs=5000]
- * @returns {Promise<Array<{ result: unknown }> | null>}
+ * @returns {Promise<Array<{ result?: unknown, error?: unknown }> | null>}
  */
 export async function redisPipeline(commands, timeoutMs = 5_000) {
   const creds = getRedisCredentials();
   if (!creds) return null;
+  if (!Array.isArray(commands)) return null;
   try {
     const resp = await fetch(`${creds.url}/pipeline`, {
       method: 'POST',
@@ -180,7 +213,9 @@ export async function redisPipeline(commands, timeoutMs = 5_000) {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!resp.ok) return null;
-    return await resp.json();
+    const entries = await resp.json();
+    if (!Array.isArray(entries) || entries.length !== commands.length) return null;
+    return entries;
   } catch {
     return null;
   }

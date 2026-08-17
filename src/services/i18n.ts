@@ -2,6 +2,7 @@ import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
+import { resolveLanguageTag } from '@/shared/language-tags';
 import { readQueryLanguage, stripQueryLanguage } from '@/utils/i18n-url';
 
 // Keep only first-paint English strings in the entry chunk. The full English
@@ -16,7 +17,7 @@ import enShellTranslation from '../locales/en.shell.json';
 // the moment they pick another language explicitly, that choice persists here.
 const EXPLICIT_LOCALE_KEY = 'wm-locale-explicit';
 
-const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi'] as const;
+const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi', 'sw'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 type TranslationDictionary = Record<string, unknown>;
 
@@ -41,16 +42,14 @@ const localeModules = import.meta.glob<TranslationDictionary>(
 const RTL_LANGUAGES = new Set(['ar', 'fa']);
 
 function normalizeLanguage(lng: string): SupportedLanguage {
-  const base = (lng || 'en').split('-')[0]?.toLowerCase() || 'en';
-  if (SUPPORTED_LANGUAGE_SET.has(base as SupportedLanguage)) {
-    return base as SupportedLanguage;
-  }
-  return 'en';
+  return resolveLanguageTag(lng, SUPPORTED_LANGUAGE_SET) as SupportedLanguage;
 }
 
 function applyDocumentDirection(lang: string): void {
   const base = lang.split('-')[0] || lang;
-  document.documentElement.setAttribute('lang', base === 'zh' ? 'zh-CN' : base);
+  const isTraditionalChinese = normalizeLanguage(lang) === 'zh-TW';
+  const documentLang = isTraditionalChinese ? 'zh-TW' : base === 'zh' ? 'zh-CN' : base;
+  document.documentElement.setAttribute('lang', documentLang);
   if (RTL_LANGUAGES.has(base)) {
     document.documentElement.setAttribute('dir', 'rtl');
   } else {
@@ -251,12 +250,29 @@ export function getCurrentLanguage(): string {
   return lang.split('-')[0]!;
 }
 
+/**
+ * The active language as a full catalogue tag — `zh-TW`, never collapsed to `zh`.
+ *
+ * `getCurrentLanguage()` strips the region because most callers want the FEED
+ * language, where Traditional and Simplified readers want the same thing: both
+ * read the same Chinese-language sources. Use this accessor instead where the
+ * caller is sensitive to the SCRIPT — which entry the language picker marks as
+ * selected, and how dates and numbers format, differ between the two even though
+ * the feeds do not.
+ */
+export function getCurrentLanguageTag(): string {
+  return normalizeLanguage(i18next.language || 'en');
+}
+
 export function isRTL(): boolean {
   return RTL_LANGUAGES.has(getCurrentLanguage());
 }
 
 export function getLocale(): string {
-  const lang = getCurrentLanguage();
+  // Script-sensitive: zh-TW formats dates, numbers and relative times differently
+  // from zh-CN. Tags that are already full BCP-47 locales fall through the map
+  // unchanged — it exists only to expand bare base codes.
+  const lang = getCurrentLanguageTag();
   const map: Record<string, string> = { en: 'en-US', bg: 'bg-BG', cs: 'cs-CZ', el: 'el-GR', fa: 'fa-IR', zh: 'zh-CN', pt: 'pt-BR', ja: 'ja-JP', ko: 'ko-KR', ro: 'ro-RO', tr: 'tr-TR', th: 'th-TH', vi: 'vi-VN', hi: 'hi-IN' };
   return map[lang] || lang;
 }
@@ -267,7 +283,8 @@ export const LANGUAGES = [
   { code: 'ar', label: 'العربية', flag: '🇸🇦' },
   { code: 'fa', label: 'فارسی', flag: '🇮🇷' },
   { code: 'cs', label: 'Čeština', flag: '🇨🇿' },
-  { code: 'zh', label: '中文', flag: '🇨🇳' },
+  { code: 'zh', label: '简体中文', flag: '🇨🇳' },
+  { code: 'zh-TW', label: '繁體中文', flag: '🇹🇼' },
   { code: 'fr', label: 'Français', flag: '🇫🇷' },
   { code: 'de', label: 'Deutsch', flag: '🇩🇪' },
   { code: 'el', label: 'Ελληνικά', flag: '🇬🇷' },
@@ -288,4 +305,5 @@ export const LANGUAGES = [
   { code: 'tr', label: 'Türkçe', flag: '🇹🇷' },
   { code: 'vi', label: 'Tiếng Việt', flag: '🇻🇳' },
   { code: 'hi', label: 'हिन्दी', flag: '🇮🇳' },
+  { code: 'sw', label: 'Kiswahili', flag: '🇹🇿' },
 ];

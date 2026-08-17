@@ -67,6 +67,19 @@
       "stable": "稳定"
     },
     "militaryActivity": "军事活动",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "经济指标",
     "ownFlights": "本国航班",
     "foreignFlights": "外国航班",
@@ -177,6 +190,23 @@
       "corridorConditions": "通道状况",
       "activityNowcast": "活动即时预测",
       "decisionSignalsUnavailable": "中国决策信号快照当前不可用。"
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "header": {
@@ -365,7 +395,8 @@
     "airlineIntel": "✈️ 航空公司情报",
     "consumerPrices": "消费者价格",
     "marketBreadth": "市场广度",
-    "climateNews": "气候新闻"
+    "climateNews": "气候新闻",
+    "fx": "外汇汇率"
   },
   "commands": {
     "prefixes": {
@@ -445,7 +476,9 @@
         "displacement": "切换流离失所流向",
         "climate": "切换气候异常",
         "outages": "切换互联网中断",
-        "tradeRoutes": "切换贸易路线"
+        "tradeRoutes": "切换贸易路线",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "切换到暗色模式",
@@ -607,7 +640,7 @@
         "URLHAUS_AUTH_KEY": "用于URLhaus和ThreatFox API。",
         "OTX_API_KEY": "网络威胁图层的可选增强数据源。",
         "ABUSEIPDB_API_KEY": "恶意IP信誉的可选增强数据源。",
-        "FINNHUB_API_KEY": "实时股票报价和市场数据。",
+        "FINNHUB_API_KEY": "延迟或预置的股票报价和市场数据。有密钥也不代表直连行情。",
         "NASA_FIRMS_API_KEY": "消防信息资源管理系统。",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -851,7 +884,12 @@
       "loadingHistory": "正在加载过境历史…",
       "historyUnavailable": "过境历史不可用",
       "transitDataUnavailable": "过境数据不可用（上游数据不完整）",
-      "infoTooltip": "<strong>供应链监控</strong> 全球物流与资源追踪：<ul><li><strong>战略要道</strong>：海上过境状态、中断评分和船舶数量</li><li><strong>航运</strong>：波罗的海干散货指数和运费趋势</li><li><strong>矿物</strong>：关键矿物浓度风险(HHI)和主要生产国</li></ul>点击要道卡片可展开过境历史图表。"
+      "infoTooltip": "<strong>供应链监控</strong> 全球物流与资源追踪：<ul><li><strong>战略要道</strong>：海上过境状态、中断评分和船舶数量</li><li><strong>航运</strong>：波罗的海干散货指数和运费趋势</li><li><strong>矿物</strong>：关键矿物浓度风险(HHI)和主要生产国</li></ul>点击要道卡片可展开过境历史图表。",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "关税",
@@ -895,6 +933,7 @@
       "noComtradeData": "无战略流动数据",
       "comtradeUnavailable": "联合国贸易数据库数据暂时不可用",
       "sourceComtrade": "联合国贸易数据库",
+      "comtradeNationalScope": "联合国 Comtrade 的记录是报告国的国家级官方统计，不是某镇、走廊、工厂、港口或船货的出口。",
       "anomalyBadge": "异常",
       "colReporter": "国家",
       "colCommodity": "商品",
@@ -1131,7 +1170,7 @@
         "ucdpEvents": "UCDP事件",
         "displacementFlows": "流离失所流向",
         "climateAnomalies": "气候异常",
-        "weatherAlerts": "天气预警",
+        "weatherAlerts": "美国与加拿大天气预警（NWS, ECCC）",
         "strategicWaterways": "战略水道",
         "economicCenters": "经济中心",
         "criticalMinerals": "关键矿产",
@@ -1151,7 +1190,9 @@
         "speciesRecovery": "物种恢复",
         "renewableInstallations": "清洁能源",
         "radiationSpike": "辐射峰值",
-        "radiationElevated": "辐射升高"
+        "radiationElevated": "辐射升高",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1212,7 +1253,7 @@
           "infraDatacenters": "AI算力集群 >=10,000 GPU",
           "infraOutages": "互联网中断和服务故障",
           "naturalEventsTech": "地震、风暴、火灾（可能影响数据中心）",
-          "weatherAlerts": "恶劣天气预警",
+          "weatherAlerts": "美国与加拿大恶劣天气预警（NWS, ECCC）",
           "economicCenters": "证券交易所和央行",
           "countriesOverlay": "国家名称叠加层",
           "financeExchanges": "按市场层级划分的全球主要交易所",
@@ -1224,7 +1265,7 @@
           "financeOutages": "可能影响市场运营的互联网中断",
           "financeCyberThreats": "金融基础设施周边的安全事件",
           "macroWaterways": "大宗商品航运的战略咽喉要道",
-          "weatherAlertsMarket": "与市场相关的恶劣天气事件",
+          "weatherAlertsMarket": "与市场相关的美国与加拿大恶劣天气事件（NWS, ECCC）",
           "naturalEventsMacro": "地震、火灾、洪水等自然灾害",
           "timeRecent": "按近几小时筛选时间数据",
           "timeExtended": "显示过去一周、一个月或所有时间的数据",
@@ -1257,7 +1298,9 @@
           "tradeRoutes": "连接港口并经过战略咽喉要道的全球主要航运通道",
           "dayNight": "实时太阳终结线显示昼夜区域",
           "geoBoundaries": "非军事区、停火线和争议边界",
-          "ciiChoropleth": "国家不稳定指数热力图 — 按CII评分为国家着色（绿色=稳定，红色=危急）"
+          "ciiChoropleth": "国家不稳定指数热力图 — 按CII评分为国家着色（绿色=稳定，红色=危急）",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "影响范围：地震、天气、抗议、中断"
@@ -1872,7 +1915,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2134,10 +2177,21 @@
       "infoTooltip": "<strong>灾难级联</strong> 检测汇聚的自然灾害和基础设施信号：<ul><li>关联地震、野火、洪灾和极端天气</li><li>追踪对基础设施和供应链的级联影响</li><li>突出具有复合灾难风险的地区</li></ul>点击卡片可在地图上放大到受影响区域。"
     },
     "markets": {
-      "infoTooltip": "<strong>市场</strong> 实时股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。",
+      "infoTooltip": "<strong>市场</strong> 延迟或预置的股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。",
       "chart": {
         "title": "{{symbol}} 价格图表",
         "close": "关闭图表"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2304,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "制裁与指定",
-      "infoTooltip": "来自 SDN 和综合名单的 OFAC 制裁指定。显示哪些国家面临最高指定压力、驱动因素以及自上次更新以来新增的内容。",
+      "infoTooltip": "OFAC 的 SDN 与综合名单，以及加拿大全球事务部 SEMA/JVCFOA 指定。 显示哪些国家面临最高指定压力、驱动因素以及自上次更新以来新增的内容。",
       "loading": "正在加载制裁数据...",
       "unavailable": "制裁数据不可用。",
       "summary": {
         "new": "新增",
         "vessels": "船舶",
-        "aircraft": "飞机"
+        "aircraft": "飞机",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "受制裁国家",
@@ -2325,11 +2380,12 @@
       "footer": {
         "updated": "更新于 {{time}}",
         "dataset": "数据集 {{date}}",
-        "source": "来源：OFAC"
+        "source": "来源：OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} 新增",
-        "new": "新增"
+        "new": "新增",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} 项指定",
       "designations_other": "{{count}} 项指定",
@@ -2522,6 +2578,38 @@
       "upgradeCta": "升级获取更多",
       "lockedAriaLabel": "添加标签页 — 已锁定。{{reason}}",
       "unlockedAnnouncement": "仪表板标签页限制已解除。"
+    },
+    "fx": {
+      "infoTooltip": "<strong>外汇汇率</strong> 货币压力测试和即期汇率：<ul><li>外汇压力测试根据过去24个月最大跌幅对45种货币进行排名，同时显示12个月涨跌幅</li><li>覆盖范围包括ARS、TRY、EGP、NGN、PKR和UAH——BIS和ECB参考集合中遗漏的货币</li><li>即期汇率分别列示美元和ECB欧元参考汇率，因为两者的报价基础不同</li><li>RUB — 俄罗斯央行汇率，每单位卢布</li></ul> 数据来源：Yahoo Finance、欧洲中央银行和俄罗斯央行。",
+      "tabs": {
+        "stress": "外汇压力测试",
+        "spot": "即期",
+        "rub": "RUB"
+      },
+      "currency": "货币",
+      "pair": "货币对",
+      "rate": "汇率",
+      "yoy": "12个月",
+      "drawdown": "24个月跌幅",
+      "peakToTrough": "峰值 → 谷值",
+      "change1d": "1天",
+      "perUsd": "每1美元",
+      "usdPerUnit": "每单位美元",
+      "usdBase": "兑美元",
+      "eurBase": "ECB欧元参考汇率",
+      "stressedCount": "{{total}}种货币中{{stressed}}种低于{{threshold}}",
+      "sourceYahoo": "数据来源：Yahoo Finance",
+      "sourceEcb": "数据来源：ECB",
+      "degraded": "暂时不可用：{{sources}}。即将重试。",
+      "source": {
+        "stress": "外汇压力",
+        "usd": "美元汇率",
+        "eur": "欧洲央行欧元汇率",
+        "rub": "俄罗斯央行汇率"
+      },
+      "rubBase": "俄罗斯央行 — 每 1 单位卢布",
+      "rubPerUnit": "每单位卢布",
+      "sourceCbr": "来源：俄罗斯央行"
     }
   },
   "popups": {
@@ -2743,6 +2831,7 @@
     "moreEvents": "更多事件",
     "monitoring": "监控中",
     "viewUSGS": "在USGS上查看",
+    "viewNRCan": "在Earthquakes Canada上查看",
     "expired": "已过期",
     "timeAgo": {
       "s": "{{count}}秒前",
@@ -2862,7 +2951,7 @@
       "heading": "航向",
       "hexCode": "HEX代码",
       "squawk": "应答机代码",
-      "attribution": "来源：OpenSky Network"
+      "attribution": "来源：adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS信号消失",

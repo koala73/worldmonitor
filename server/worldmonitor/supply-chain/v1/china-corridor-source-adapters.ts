@@ -248,7 +248,7 @@ function adaptPortwatch(
         retrievalTime,
         retrievalTimePrecision: retrievalTime ? 'instant' : 'unknown',
         transportFreshness: transport,
-        contentFreshness: contentFreshness(observedAt, 72 * 60, assessedAt),
+        contentFreshness: contentFreshness(observedAt, 2 * 72 * 60, assessedAt),
         summary: `PortWatch activity observation available for ${portName}.`,
         metrics: metrics([
           ['tankerCalls30d', numberValue(port.tankerCalls30d)],

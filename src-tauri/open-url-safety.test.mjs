@@ -22,6 +22,13 @@ const rendererSources = [
   new URL("../src/services/runtime.ts", import.meta.url),
   new URL("../src/services/runtime-config.ts", import.meta.url),
   new URL("../src/settings-main.ts", import.meta.url),
+  // #5911 moved the desktop detector into its own leaf and made
+  // external-navigation.ts the renderer-side owner of open_url for every
+  // billing/checkout/upgrade surface. This list is the GHSA-2x6r sweep's
+  // notion of "renderer code that reaches the native opener" — a new owner
+  // that is not listed here is swept by nothing.
+  new URL("../src/services/desktop-runtime.ts", import.meta.url),
+  new URL("../src/services/external-navigation.ts", import.meta.url),
 ].map((url) => readFileSync(url, "utf8"));
 
 test("open_in_shell never spawns cmd.exe (GHSA-2x6r)", () => {

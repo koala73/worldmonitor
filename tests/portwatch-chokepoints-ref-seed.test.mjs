@@ -1,103 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, '..');
+import { buildEntry, validateFn } from '../scripts/seed-portwatch-chokepoints-ref.mjs';
 
-const src = readFileSync(resolve(root, 'scripts/seed-portwatch-chokepoints-ref.mjs'), 'utf-8');
+// The export, Redis-key and ArcGIS-proxy assertions that used to open this file
+// restated the seeder's own declarations and call sites. buildEntry was also
+// re-implemented here and tested as a copy; it is now exported from the seeder
+// and imported, so these tests exercise the row adapter that actually runs.
 
-// ── seeder source assertions ──────────────────────────────────────────────────
-
-describe('seed-portwatch-chokepoints-ref.mjs exports', () => {
-  it('exports fetchAll', () => {
-    assert.match(src, /export\s+async\s+function\s+fetchAll/);
-  });
-
-  it('exports validateFn', () => {
-    assert.match(src, /export\s+function\s+validateFn/);
-  });
-
-  it('writes to portwatch:chokepoints:ref:v1', () => {
-    assert.match(src, /portwatch:chokepoints:ref:v1/);
-  });
-
-  it('uses ArcGIS PortWatch_chokepoints_database endpoint', () => {
-    assert.match(src, /PortWatch_chokepoints_database.*FeatureServer/);
-  });
-
-  it('has TTL of 604800 (7 days)', () => {
-    assert.match(src, /604[_\s]*800|7\s*\*\s*24\s*\*\s*3600/);
-  });
-
-  it('fetches lat, lon fields', () => {
-    assert.match(src, /'lat'/);
-    assert.match(src, /'lon'/);
-  });
-
-  it('fetches vesselCountTanker (vessel_count_tanker)', () => {
-    assert.match(src, /vessel_count_tanker/);
-  });
-
-  it('fetches share_country_maritime_import and share_country_maritime_export', () => {
-    assert.match(src, /share_country_maritime_import/);
-    assert.match(src, /share_country_maritime_export/);
-  });
-
-  it('fetches industry_top1, industry_top2, industry_top3', () => {
-    assert.match(src, /industry_top1/);
-    assert.match(src, /industry_top2/);
-    assert.match(src, /industry_top3/);
-  });
-
-  it('wraps runSeed in isMain guard', () => {
-    assert.match(src, /isMain.*=.*process\.argv/s);
-    assert.match(src, /if\s*\(isMain\)/);
-  });
-});
-
-describe('ArcGIS 429 proxy fallback', () => {
-  it('imports resolveProxyForConnect and httpsProxyFetchRaw', () => {
-    assert.match(src, /resolveProxyForConnect/);
-    assert.match(src, /httpsProxyFetchRaw/);
-  });
-
-  it('fetchAll checks resp.status === 429', () => {
-    assert.match(src, /resp\.status\s*===\s*429/);
-  });
-
-  it('calls resolveProxyForConnect() on 429', () => {
-    assert.match(src, /resolveProxyForConnect\(\)/);
-  });
-
-  it('calls httpsProxyFetchRaw with proxy auth on 429', () => {
-    assert.match(src, /httpsProxyFetchRaw\(.*proxyAuth/s);
-  });
-
-  it('throws if 429 and no proxy configured', () => {
-    assert.match(src, /429.*rate limited/);
-  });
-});
-
-// ── unit tests for chokepoint reference data building ─────────────────────────
-
-function buildEntry(a) {
-  const portId = String(a.portid);
-  const industries = [a.industry_top1, a.industry_top2, a.industry_top3].filter(Boolean);
-  return {
-    portId,
-    portName: String(a.portname || ''),
-    fullName: String(a.fullname || ''),
-    lat: Number(a.lat ?? 0),
-    lon: Number(a.lon ?? 0),
-    vesselCountTanker: Number(a.vessel_count_tanker ?? 0),
-    shareMaritimeImport: Number(a.share_country_maritime_import ?? 0),
-    shareMaritimeExport: Number(a.share_country_maritime_export ?? 0),
-    industries,
-  };
-}
 
 describe('buildEntry unit tests', () => {
   const sampleAttr = {
@@ -158,10 +68,6 @@ describe('buildEntry unit tests', () => {
 });
 
 // ── validateFn unit tests ─────────────────────────────────────────────────────
-
-function validateFn(data) {
-  return data != null && typeof data === 'object' && Object.keys(data).length === 28;
-}
 
 describe('validateFn', () => {
   it('returns true only when data has exactly 28 chokepoints', () => {

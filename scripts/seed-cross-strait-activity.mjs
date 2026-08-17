@@ -273,10 +273,11 @@ if (process.argv[1]?.endsWith('seed-cross-strait-activity.mjs')) {
     fetchPhaseTimeoutMs: CROSS_STRAIT_ACTIVITY_FETCH_PHASE_TIMEOUT_MS,
     validateFn: validatePublishableSnapshot,
     declareRecords: (snapshot) => snapshot.observations.length,
-    // Bumped with the #5904 discovery cutover: a merged PR is not proof the new
-    // adapter is running, and the published `_seed.sourceVersion` is what lets
-    // an operator tell a homepage-discovery run from a legacy English-index one.
-    sourceVersion: 'taiwan-mnd-html+japan-joint-staff-homepage-v2',
+    // Bumped with the #5904 discovery cutover and the bounded empty-content
+    // proxy fallback: a merged PR is not proof the new adapter is running, and
+    // the published `_seed.sourceVersion` is what lets an operator distinguish
+    // this resilient homepage-discovery run from an older deployed adapter.
+    sourceVersion: 'taiwan-mnd-html+japan-joint-staff-homepage-v3',
     schemaVersion: 1,
     maxStaleMin: CROSS_STRAIT_ACTIVITY_MAX_STALE_MIN,
     contentMeta: crossStraitActivityContentMeta,

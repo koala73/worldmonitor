@@ -1,12 +1,11 @@
 // #6060 — PortWatch transport/cardinality success is not per-country content
 // freshness.
 //
-// Production evidence (2026-08-02): the 12:03 UTC run reported status OK, 174
+// Regression shape from #6060: a 12:03 UTC run reports status OK, 174
 // countries seeded, 174/174 coverage complete and zero refreshFailures, while
-// `supply_chain:portwatch-ports:v1:CN` still carried fetchedAt
-// 2026-07-29T12:02:43.475Z — more than 98 hours old and therefore stale under
-// the corridor adapter's 72-hour content budget. Fresh transport metadata plus
-// complete country cardinality hid stale decision-critical country content.
+// `supply_chain:portwatch-ports:v1:CN` carries content that is more than 170
+// hours old — outside the widened 144-hour budget. Fresh transport metadata
+// plus complete country cardinality must not hide stale decision-critical data.
 //
 // These tests pin the seed-meta half of the split: the run publishes an
 // explicit per-country content-freshness report so a complete run can never
@@ -37,6 +36,15 @@ const HOUR_MS = 60 * MINUTE_MS;
 // Frozen to the audit hour in #6060 so ages are exact rather than clock-seeded.
 const NOW = Date.parse('2026-08-02T14:40:00.000Z');
 
+function parseProductExpression(expression) {
+  const terms = expression.replace(/\s/g, '').split('*').map(Number);
+  assert.ok(
+    terms.length > 0 && terms.every((term) => Number.isFinite(term)),
+    `expected a finite product expression, got ${expression}`,
+  );
+  return terms.reduce((product, term) => product * term, 1);
+}
+
 function payload(iso2, fetchedAt) {
   return {
     iso2,
@@ -52,8 +60,8 @@ function countryDataOf(entries) {
 }
 
 describe('buildContentFreshnessReport', () => {
-  it('matches the corridor adapter 72-hour content budget', () => {
-    assert.equal(PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES, 72 * 60);
+  it('matches the corridor adapter 144-hour content budget', () => {
+    assert.equal(PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES, 2 * 72 * 60);
   });
 
   it('declares exactly the countries the China corridor adapter consumes', () => {
@@ -61,10 +69,11 @@ describe('buildContentFreshnessReport', () => {
   });
 
   it('reproduces the #6060 audit: complete cardinality with stale China content', () => {
-    // The exact production observation: CN at 2026-07-29T12:02:43.475Z and HK
-    // at 2026-07-31T00:03:02.206Z, inside an otherwise fresh 174-country run.
+    // The exact shape of the production observation: CN is well beyond the
+    // two-rotation budget and HK remains fresh inside an otherwise complete
+    // 174-country run.
     const entries = [
-      payload('CN', '2026-07-29T12:02:43.475Z'),
+      payload('CN', '2026-07-26T12:02:43.475Z'),
       payload('HK', '2026-07-31T00:03:02.206Z'),
       ...Array.from({ length: 172 }, (_, index) =>
         payload(`X${index}`, new Date(NOW - HOUR_MS).toISOString())),
@@ -75,16 +84,16 @@ describe('buildContentFreshnessReport', () => {
     });
 
     assert.equal(report.coveredCount, 174, 'cardinality is still complete');
-    assert.equal(report.freshCount, 173, 'HK is 62h old — inside the 72h budget');
-    assert.equal(report.staleCount, 1, 'CN is 98h old — outside the 72h budget');
+    assert.equal(report.freshCount, 173, 'HK is 62h old — inside the 144h budget');
+    assert.equal(report.staleCount, 1, 'CN is 170h old — outside the 144h budget');
     assert.equal(report.unknownCount, 0);
     assert.deepEqual(report.staleCountries, ['CN']);
     assert.equal(report.staleCountriesTruncated, 0);
-    assert.equal(report.oldestObservedAt, Date.parse('2026-07-29T12:02:43.475Z'));
+    assert.equal(report.oldestObservedAt, Date.parse('2026-07-26T12:02:43.475Z'));
     assert.equal(report.oldestObservedCountry, 'CN');
     assert.equal(
       report.oldestAgeMinutes,
-      Math.round((NOW - Date.parse('2026-07-29T12:02:43.475Z')) / MINUTE_MS),
+      Math.round((NOW - Date.parse('2026-07-26T12:02:43.475Z')) / MINUTE_MS),
     );
     assert.equal(report.budgetMinutes, PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES);
     assert.equal(report.assessedAt, NOW);
@@ -96,7 +105,7 @@ describe('buildContentFreshnessReport', () => {
     assert.equal(report.criticalOldestObservedCountry, 'CN');
     assert.equal(
       report.criticalOldestAgeMinutes,
-      Math.round((NOW - Date.parse('2026-07-29T12:02:43.475Z')) / MINUTE_MS),
+      Math.round((NOW - Date.parse('2026-07-26T12:02:43.475Z')) / MINUTE_MS),
     );
   });
 
@@ -111,9 +120,9 @@ describe('buildContentFreshnessReport', () => {
       countryData: countryDataOf([
         payload('CN', new Date(NOW - HOUR_MS).toISOString()),
         payload('HK', new Date(NOW - HOUR_MS).toISOString()),
-        // Back of the rotation: refreshed ~5 days ago, entirely normal.
-        payload('BR', new Date(NOW - 120 * HOUR_MS).toISOString()),
-        payload('ZA', new Date(NOW - 100 * HOUR_MS).toISOString()),
+        // Back of the rotation: refreshed 6-7 days ago, entirely normal.
+        payload('BR', new Date(NOW - 170 * HOUR_MS).toISOString()),
+        payload('ZA', new Date(NOW - 150 * HOUR_MS).toISOString()),
       ]),
       now: NOW,
     });
@@ -202,7 +211,7 @@ describe('buildContentFreshnessReport', () => {
   });
 
   it('bounds the published stale-country list and reports what it dropped', () => {
-    const stale = new Date(NOW - 100 * HOUR_MS).toISOString();
+    const stale = new Date(NOW - 150 * HOUR_MS).toISOString();
     const overflow = PORTWATCH_MAX_REPORTED_STALE_COUNTRIES + 7;
     const report = buildContentFreshnessReport({
       countryData: countryDataOf(
@@ -239,20 +248,20 @@ describe('buildContentFreshnessReport', () => {
   });
 });
 
-// Without slot reservation the alarm this PR adds is chronically at its own
-// boundary rather than measuring an incident: MAX_COLD_FETCH_PER_RUN caps
-// refreshes at 30 of 174 per run on a 12h cron, so any given country waits
-// ceil(174/30) = 6 runs = 72h — exactly the content budget. CN and HK feed the
-// China corridor adapter and the activity-nowcast's maritime family, so they
-// must be refreshed every run they are a cache miss, not once per sweep.
+// The seeder reserves the first cold-fetch slots for CN/HK instead of letting
+// them follow the fleet rotation: MAX_COLD_FETCH_PER_RUN caps refreshes at 30
+// of 174 per run on a 12h cron, so a full sweep is ceil(174/30) = 6 runs = 72h,
+// one rotation inside the 144h content budget. CN and HK feed the China
+// corridor adapter and the activity-nowcast's maritime family, so they must be
+// refreshed every run they are due, not once per fleet sweep.
 // The alarm's clock must measure CONTENT, not retrieval. `fetchedAt` resets on
 // every successful fetch — including the forced refetch at MAX_CACHE_AGE_MS
 // (168h) that returns an UNCHANGED upstream `asof`. Ageing that would green the
-// alarm for 72h of every 168h during an indefinite upstream freeze, which is
+// alarm for 144h of every 168h during an indefinite upstream freeze, which is
 // the precise failure #6060 exists to end.
 describe('content clock survives a refetch that returns unchanged upstream data', () => {
   it('ages the upstream content date, not the retrieval timestamp', () => {
-    const frozenSince = NOW - 120 * HOUR_MS;
+    const frozenSince = NOW - 180 * HOUR_MS;
     const report = buildContentFreshnessReport({
       countryData: countryDataOf([
         {
@@ -261,7 +270,7 @@ describe('content clock survives a refetch that returns unchanged upstream data'
           // Just refetched — retrieval is seconds old ...
           fetchedAt: new Date(NOW - 60_000).toISOString(),
           cacheWrittenAt: NOW - 60_000,
-          // ... but upstream has not advanced since it froze 120h ago.
+          // ... but upstream has not advanced since it froze 180h ago.
           asof: '2026-07-28',
           contentAsOfChangedAt: frozenSince,
         },
@@ -277,7 +286,7 @@ describe('content clock survives a refetch that returns unchanged upstream data'
     );
     assert.equal(report.criticalFreshCount, 1);
     assert.equal(report.criticalOldestObservedAt, frozenSince);
-    assert.equal(report.criticalOldestAgeMinutes, 120 * 60);
+    assert.equal(report.criticalOldestAgeMinutes, 180 * 60);
   });
 
   it('counts content as fresh when the upstream date actually advanced', () => {
@@ -347,7 +356,7 @@ describe('content clock survives a refetch that returns unchanged upstream data'
     // Legacy payloads written before the content clock was introduced.
     const report = buildContentFreshnessReport({
       countryData: countryDataOf([
-        payload('CN', new Date(NOW - 100 * HOUR_MS).toISOString()),
+        payload('CN', new Date(NOW - 150 * HOUR_MS).toISOString()),
         payload('HK', new Date(NOW - HOUR_MS).toISOString()),
       ]),
       now: NOW,
@@ -413,7 +422,7 @@ describe('decision-critical cold-fetch priority', () => {
 });
 
 describe('decision-critical cache-hit refresh deadline', () => {
-  it('moves a critical cache hit into the cold queue before the 72h boundary', () => {
+  it('moves a critical cache hit into the cold queue before the 144h boundary', () => {
     const budgetMs = PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES * MINUTE_MS;
     const cadenceMs = 12 * HOUR_MS;
     const atDeadline = new Date(NOW - budgetMs + cadenceMs).toISOString();
@@ -434,6 +443,23 @@ describe('decision-critical cache-hit refresh deadline', () => {
         now: NOW,
       }),
       false,
+    );
+  });
+
+  it('uses the content clock when retrieval is recent but upstream is frozen', () => {
+    const budgetMs = PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES * MINUTE_MS;
+    const cadenceMs = 12 * HOUR_MS;
+    const prior = payload('CN', new Date(NOW - HOUR_MS).toISOString());
+    prior.contentAsOfChangedAt = NOW - budgetMs + cadenceMs;
+
+    assert.equal(
+      isCriticalContentRefreshDue({
+        iso2: 'CN',
+        prevPayload: prior,
+        now: NOW,
+      }),
+      true,
+      'a fresh retrieval must not hide content that is due for a refresh',
     );
   });
 
@@ -460,7 +486,7 @@ describe('decision-critical cache-hit refresh deadline', () => {
   });
 });
 
-// Three constants claim equality with sources they cannot import: the seeder is
+// These constants claim equality with sources they cannot import: the seeder is
 // a Railway script, api/health.js is an Edge function limited to api/_*.js, and
 // the corridor adapter is server-side TypeScript. Comments asserting "this
 // mirrors X" are exactly the kind of claim that rots silently — the same class
@@ -474,13 +500,55 @@ describe('content-freshness constant parity', () => {
     const budgets = [
       ...adapter.matchAll(/contentFreshness\(observedAt,\s*([\d\s*]+),\s*assessedAt\)/g),
     ]
-      // eslint-disable-next-line no-eval -- bounded to a digit/asterisk literal
-      .map(([, expression]) => Number(expression.replace(/\s/g, '').split('*')
-        .reduce((product, term) => product * Number(term), 1)));
+      .map(([, expression]) => parseProductExpression(expression));
 
     assert.ok(
       budgets.includes(PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES),
       `no corridor port budget equals ${PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES}; found ${JSON.stringify(budgets)}`,
+    );
+  });
+
+  it('keeps the content budget at two producer rotations', () => {
+    const seeder = read('scripts/seed-portwatch-port-activity.mjs');
+    const targetCountries = Number(
+      seeder.match(/PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES\s*=\s*(\d+)/)?.[1],
+    );
+    const coldFetchCap = Number(
+      seeder.match(/MAX_COLD_FETCH_PER_RUN\s*=\s*(\d+)/)?.[1],
+    );
+    const registry = JSON.parse(read('scripts/railway-services.json'));
+    const service = registry.find(
+      (entry) => entry.service === 'seed-bundle-portwatch-port-activity',
+    );
+    const cadenceHours = Number(service?.cronSchedule?.match(/\*\/(\d+)/)?.[1]);
+    const fullRotationMinutes = Math.ceil(targetCountries / coldFetchCap)
+      * cadenceHours * 60;
+    const minimumBudgetMinutes = 2 * fullRotationMinutes;
+
+    assert.ok(
+      Number.isFinite(fullRotationMinutes),
+      'producer target, cap, and cron cadence must remain machine-readable',
+    );
+    assert.ok(
+      PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES >= minimumBudgetMinutes,
+      `content budget ${PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES}min must cover `
+        + `two ${fullRotationMinutes}min producer rotations`,
+    );
+  });
+
+  it('matches the China activity nowcast PortWatch budget', () => {
+    const registry = read('shared/china-activity-nowcast-registry.ts');
+    const definition = registry.match(
+      /proxyDefinition\(\{\s*id:\s*'portwatch_tanker_calls_trend',([\s\S]*?)\n\s*\}\),/,
+    )?.[1];
+    const match = definition?.match(/freshnessBudgetMinutes:\s*([\d\s*]+)/);
+    assert.ok(match, 'nowcast registry must declare the PortWatch proxy budget');
+    const registryBudgetMinutes = parseProductExpression(match[1]);
+
+    assert.equal(
+      registryBudgetMinutes,
+      PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES,
+      'nowcast PortWatch must use the same content budget as health and the corridor adapter',
     );
   });
 
@@ -498,7 +566,7 @@ describe('content-freshness constant parity', () => {
     );
   });
 
-  // A shared threshold is not enough: the alarm and the gate can agree on 72h
+  // A shared threshold is not enough: the alarm and the gate can agree on 144h
   // while ageing different fields, which is exactly how the alarm can go red
   // with the nowcast still green. Pin that BOTH read the content clock, with
   // the same legacy fallback.
@@ -586,7 +654,7 @@ describe('buildPortActivityMetaPayload', () => {
   it('publishes content freshness alongside the transport/cardinality fields', () => {
     const meta = buildPortActivityMetaPayload({
       countryData: countryDataOf([
-        payload('CN', '2026-07-29T12:02:43.475Z'),
+        payload('CN', '2026-07-26T12:02:43.475Z'),
         ...Array.from({ length: 173 }, (_, index) =>
           payload(`X${index}`, new Date(NOW - HOUR_MS).toISOString())),
       ]),

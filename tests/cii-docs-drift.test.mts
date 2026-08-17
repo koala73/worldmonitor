@@ -403,7 +403,6 @@ describe('CII docs drift guards', () => {
       { label: 'public/llms-full.txt', text: readFileSync(resolve(root, 'public', 'llms-full.txt'), 'utf8') },
       { label: 'docs/PRESS_KIT.md', text: readFileSync(resolve(root, 'docs', 'PRESS_KIT.md'), 'utf8') },
       { label: 'docs/COMMUNITY-PROMOTION-GUIDE.md', text: readFileSync(resolve(root, 'docs', 'COMMUNITY-PROMOTION-GUIDE.md'), 'utf8') },
-      { label: 'AGENTS.md', text: readFileSync(resolve(root, 'AGENTS.md'), 'utf8') },
       { label: 'public/home.md', text: publicHome },
       { label: 'public/agent-view.json', text: agentViewText },
     ];
@@ -430,38 +429,46 @@ describe('CII docs drift guards', () => {
     const llmsFull = surfaces[1]!.text;
     const pressKit = surfaces[2]!.text;
     const communityGuide = surfaces[3]!.text;
-    const agentsGuide = surfaces[4]!.text;
 
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CII v8 has a versioned fixed country universe
     assert.match(llmsBrief, /CII v8[\s\S]{0,80}31 Tier-1 countries/i);
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CRI uses a closed public rankable universe
     assert.match(llmsBrief, /CRI[\s\S]{0,120}196-country public rankable universe/i);
-    assert.match(llmsBrief, /six specialized variants/i);
-    assert.match(llmsBrief, /56 map layer types/i);
-    assert.match(llmsBrief, /500\+ curated RSS feeds/i);
-    assert.match(llmsBrief, /26 languages/i);
+    assert.match(llmsBrief, /specialized variants/i);
+    assert.match(llmsBrief, /shared map-layer catalog/i);
+    assert.match(llmsBrief, /curated RSS feeds/i);
+    assert.match(llmsBrief, /Multilingual UI with RTL support/i);
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CII v8 has a versioned fixed country universe
     assert.match(llmsFull, /Country Instability Index \(CII v8\)[\s\S]{0,240}31 Tier-1 countries/i);
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: the CII event formula is a fixed behavioral contract
     assert.match(llmsFull, /eventScore = unrest \* 0\.25 \+ conflict \* 0\.30 \+ security \* 0\.20 \+ information \* 0\.25/i);
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CRI uses a closed public rankable universe
     assert.match(llmsFull, /Country Resilience Index \(CRI\)[\s\S]{0,160}196-country public rankable universe/i);
-    assert.match(llmsFull, /six specialized variants/i);
-    assert.match(llmsFull, /56 map layer types/i);
-    assert.match(llmsFull, /500\+ RSS feeds/i);
-    assert.match(llmsFull, /26 languages/i);
+    assert.match(llmsFull, /specialized variants/i);
+    assert.match(llmsFull, /shared map-layer catalog/i);
+    assert.match(llmsFull, /\*\*RSS feeds\*\* across categories/i);
+    assert.match(llmsFull, /Localization follows the runtime locale registry/i);
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CII v8 has a versioned fixed country universe
     assert.match(pressKit, /server-authoritative CII v8[\s\S]{0,120}31 Tier-1 countries/i);
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CRI uses a closed public rankable universe
     assert.match(pressKit, /Country Resilience Index[\s\S]{0,140}196-country public rankable universe/i);
-    assert.match(pressKit, /six thematic variants/i);
-    assert.match(pressKit, /56 map layer types/i);
-    assert.match(pressKit, /500\+ RSS feeds/i);
-    assert.match(pressKit, /26 \(including RTL\)/i);
-    assert.match(communityGuide, /six specialized views/i);
-    assert.match(agentsGuide, /`energy`:\s+Energy security/i);
+    assert.match(pressKit, /named thematic variants/i);
+    assert.match(pressKit, /registered map layer types/i);
+    assert.match(pressKit, /curated RSS feeds/i);
+    assert.match(pressKit, /Locale support follows the runtime registry/i);
+    assert.match(communityGuide, /specialized views/i);
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: both public algorithm universes are fixed contracts
     assert.match(
       publicHome,
-      /^- CII v8 for 31 Tier-1 countries, 196-country resilience scores, and global live conflict tracking$/m,
+      /^- CII v8 for 31 Tier-1 countries, resilience scores for the 196-country public rankable universe, and global live conflict tracking$/m,
     );
     assert.ok(Array.isArray(agentView.capabilities), 'public/agent-view.json capabilities must be an array');
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CII v8 has a versioned fixed country universe
     assert.ok(
       agentView.capabilities.includes('global live conflict events and CII v8 scores for 31 Tier-1 countries'),
       'public/agent-view.json must publish the current CII coverage',
     );
+    // inventory-contract: public-fixed-algorithm-claims; classification: exact; reason: CRI uses a closed public rankable universe
     assert.ok(
       agentView.capabilities.includes(
         'country resilience scores across the 196-country public rankable universe, with domain/pillar breakdown',
@@ -474,7 +481,7 @@ describe('CII docs drift guards', () => {
       'public surfaces must not attribute the 196-country CRI universe to CII',
     );
     assert.doesNotMatch(
-      `${llmsFull}\n${communityGuide}\n${agentsGuide}`,
+      `${llmsFull}\n${communityGuide}\n${readFileSync(resolve(root, 'AGENTS.md'), 'utf8')}`,
       /Tri-Variant Build System|Three Variant Dashboards|three specialized variants|tri-variant architecture|three specialized views/i,
     );
   });

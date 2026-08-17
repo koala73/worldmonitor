@@ -640,7 +640,8 @@ export class LiveWebcamsPanel extends Panel {
     this.destroyIframes();
 
     if (!this.isVisible || this.isIdle) {
-      setTrustedHtml(this.content, trustedHtml(`<div class="webcam-placeholder">${escapeHtml(t('components.webcams.paused'))}</div>`, "legacy direct innerHTML migration"));
+      // #6557: a paused/idle state is authoritative content.
+      this.setTrustedContent(trustedHtml(`<div class="webcam-placeholder">${escapeHtml(t('components.webcams.paused'))}</div>`, "legacy direct innerHTML migration"));
       return;
     }
 
@@ -844,7 +845,8 @@ export class LiveWebcamsPanel extends Panel {
         // Set isIdle before teardown so teardownPlayback skips its re-render; the placeholder is written below.
         this.isIdle = true;
         this.teardownPlayback('idle');
-        setTrustedHtml(this.content, trustedHtml(`<div class="webcam-placeholder">${escapeHtml(t('components.webcams.pausedIdle'))}</div>`, "legacy direct innerHTML migration"));
+        // #6557: a settled idle state is authoritative content.
+        this.setTrustedContent(trustedHtml(`<div class="webcam-placeholder">${escapeHtml(t('components.webcams.pausedIdle'))}</div>`, "legacy direct innerHTML migration"));
       }, ECO_IDLE_PAUSE_MS);
     };
 

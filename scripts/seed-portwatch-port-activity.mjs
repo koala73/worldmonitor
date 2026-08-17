@@ -214,12 +214,18 @@ const CONCURRENCY = 6;
 // run — negligible against the 570s bundle budget.
 const BATCH_BACKOFF_MS = 5_000;
 const BATCH_LOG_EVERY = 5;
+// A country-level ArcGIS request can be rate-limited even when the run has
+// ample bundle time left. Retry that country once after a short cooldown;
+// the outer per-country timeout remains the hard ceiling for the whole retry
+// sequence, so a slow upstream cannot extend the run indefinitely.
+const RATE_LIMIT_RETRY_DELAY_MS = 2_000;
+const MAX_RATE_LIMIT_RETRIES = 1;
 // Cache hygiene: force a full refetch if the cached payload is older than 7 days
 // even when upstream maxDate is unchanged. Protects against window-shift drift
 // (cached aggregates were computed against a window that's now 7+ days offset
 // from today's last30/prev30 cutoffs) and serves as a belt-and-braces refresh
 // if the maxDate check ever silently short-circuits.
-const MAX_CACHE_AGE_MS = 7 * 86_400_000;
+export const MAX_CACHE_AGE_MS = 7 * 86_400_000;
 // Cap how many countries can be cold-fetched in a single run. When upstream
 // advances its data (asof mismatch on a sync'd cache), all 174 countries
 // become "cache miss" at once. Cold-fetching 174 against ArcGIS exceeds the
@@ -235,7 +241,7 @@ const MAX_CACHE_AGE_MS = 7 * 86_400_000;
 // 30 is sized so the cold-fetch path (30 × ~3-5s/country with concurrency
 // 6 ≈ 15-25s, plus 20s of backoff) easily fits the 570s budget even when
 // ArcGIS is slow.
-const MAX_COLD_FETCH_PER_RUN = 30;
+export const MAX_COLD_FETCH_PER_RUN = 30;
 // Concurrency for the cheap per-country maxDate preflight. These are tiny
 // outStatistics queries (returns 1 row), so we can push harder than the
 // expensive fetch concurrency without tripping ArcGIS 429s in practice.
@@ -245,6 +251,12 @@ function epochToTimestamp(epochMs) {
   const d = new Date(epochMs);
   const p = (n) => String(n).padStart(2, '0');
   return `timestamp '${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}'`;
+}
+
+export function createArcgisProxyError(reason, errInfo) {
+  const error = new Error(`ArcGIS error (via proxy after ${reason}): ${errInfo}`);
+  error.refreshFailureCode = refreshFailureCode(errInfo);
+  return error;
 }
 
 // Retry an ArcGIS request through the Decodo proxy. Used as the fallback
@@ -268,7 +280,7 @@ async function arcgisProxyRetry(url, reason, { signal } = {}) {
     // with no message field. Fall back to code, then JSON.stringify so the
     // thrown error message stays informative on unexpected error shapes.
     const errInfo = proxied.error.message ?? proxied.error.code ?? JSON.stringify(proxied.error);
-    throw new Error(`ArcGIS error (via proxy after ${reason}): ${errInfo}`);
+    throw createArcgisProxyError(reason, errInfo);
   }
   return proxied;
 }
@@ -403,13 +415,6 @@ const MAX_BODY_CAPTURE_SUCCESSES = 1;
 // during the current Railway-throttled-direct + proxy-works mode.
 const MAX_BODY_CAPTURE_ATTEMPTS = 0;
 
-// Test-only helper: resets the capture counters so unit tests can
-// re-exercise the capture path with different mocked responses.
-export function _resetBodyCapturedFlag() {
-  _bodyCaptureSuccessCount = 0;
-  _bodyCaptureAttemptCount = 0;
-}
-
 // Best-effort body capture when the initial fetch times out at
 // FETCH_TIMEOUT. Used to surface the actual ArcGIS error body during
 // degradation episodes (see ERROR_BODY_CAPTURE_EXTRA_MS comment).
@@ -500,12 +505,6 @@ async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
     console.warn(`  [port-activity] retrying after "${msg}" (${_invalidParamsErrorCount}/${INVALID_PARAMS_RETRY_THRESHOLD}): ${url.slice(0, 80)}`);
     return await fetchWithTimeout(url, { signal });
   }
-}
-
-// Test-only helper: clears the module-level counter so unit tests can
-// re-exercise the threshold path with different inputs.
-export function _resetInvalidParamsErrorCount() {
-  _invalidParamsErrorCount = 0;
 }
 
 // Fetch ALL ports globally in one paginated pass, grouped by ISO3.
@@ -985,9 +984,75 @@ function refreshFailureCode(reason) {
   if (reason?.refreshFailureCode) return reason.refreshFailureCode;
   const text = `${reason?.code || ''} ${reason?.message || reason || ''}`;
   if (/invalid query parameters/i.test(text)) return 'invalid_query';
-  if (/\b429\b|rate.?limit/i.test(text)) return 'rate_limited';
+  if (/\b429\b|rate.?limit|too many requests/i.test(text)) return 'rate_limited';
   if (/timeout|timed out|abort/i.test(text)) return 'timeout';
   return 'fetch_error';
+}
+
+function waitForRetry(delayMs, signal) {
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, delayMs));
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason ?? new Error('aborted'));
+      return;
+    }
+    let timer;
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      reject(signal.reason ?? new Error('aborted'));
+    };
+    const done = () => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    };
+    timer = setTimeout(done, delayMs);
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+// Retry only the rate-limit failure class. Other ArcGIS errors (invalid query,
+// timeout, empty result) must retain their existing failure semantics so a
+// global upstream regression still reaches the circuit-breaker and coverage
+// gates without being hidden by a generic retry loop.
+export async function retryRateLimited(
+  operation,
+  {
+    signal,
+    delayMs = RATE_LIMIT_RETRY_DELAY_MS,
+    maxRetries = MAX_RATE_LIMIT_RETRIES,
+    sleepFn = waitForRetry,
+    label = 'country',
+  } = {},
+) {
+  let retries = 0;
+  while (true) {
+    const attemptController = new AbortController();
+    const attemptSignal = signal
+      ? AbortSignal.any([signal, attemptController.signal])
+      : attemptController.signal;
+    try {
+      return await operation(attemptSignal);
+    } catch (reason) {
+      // fetchCountryAccum runs its two windows in parallel. Abort the sibling
+      // window before retrying so one fast 429 cannot overlap a second full
+      // country attempt and amplify the upstream rate limit.
+      attemptController.abort(reason);
+      if (
+        retries >= maxRetries
+        || refreshFailureCode(reason) !== 'rate_limited'
+        || signal?.aborted
+      ) {
+        throw reason;
+      }
+      retries += 1;
+      console.warn(
+        `  [port-activity] ${label}: rate-limited — retrying ` +
+        `after ${delayMs}ms (${retries}/${maxRetries})`,
+      );
+      await sleepFn(delayMs, signal);
+    }
+  }
 }
 
 export function buildRefreshFailureState(item, reason, attemptedAt = Date.now()) {
@@ -1253,7 +1318,10 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
       // Falls back to Date.now() when preflight returned null.
       const anchorEpochMs = parseMaxDateToAnchor(upstreamMaxDate);
       const p = withPerCountryTimeout(
-        (childSignal) => fetchCountryAccum(iso3, { signal: childSignal, anchorEpochMs, dateField }),
+        (childSignal) => retryRateLimited(
+          (attemptSignal) => fetchCountryAccum(iso3, { signal: attemptSignal, anchorEpochMs, dateField }),
+          { signal: childSignal, label: iso3 },
+        ),
         iso3,
       );
       // Eager error flush so a SIGTERM mid-batch captures rejections that

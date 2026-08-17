@@ -12,10 +12,12 @@
  * none of them, so the dependency runs one way.
  */
 
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import type { AuthSession } from './auth-state';
 import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from './billing';
 import { deriveBillingUxState, getBillingGateOverride, getReactivationHref } from './billing-state';
 import { getEntitlementState } from './entitlements';
+import { openExternalUrl } from './external-navigation';
 import type { ClientEntitlementBelief } from './premium-denial';
 import { getSecretState } from './runtime-config';
 import { isProUser } from './widget-store';
@@ -132,12 +134,12 @@ export interface GateActionDeps {
   planKey?: string | null;
 }
 
-// Absolute origin: the desktop runtime's webview has no worldmonitor.app
-// origin, so a relative href would resolve against tauri://localhost.
-const PRO_PAGE_ORIGIN = 'https://worldmonitor.app';
-
+// Absolute origin (WEB_APP_ORIGIN): the desktop runtime's webview has no
+// worldmonitor.app origin, so a relative href would resolve against
+// tauri://localhost. `openExternalUrl` then routes it to the OS browser on
+// desktop rather than opening another WebView window (#5911).
 function openProPage(path: string): void {
-  window.open(`${PRO_PAGE_ORIGIN}${path}`, '_blank', 'noopener,noreferrer');
+  void openExternalUrl(`${WEB_APP_ORIGIN}${path}`);
 }
 
 /** Return the action callback for a given gate reason. */

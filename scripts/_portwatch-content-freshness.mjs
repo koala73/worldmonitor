@@ -2,12 +2,31 @@
 // this module owns the bounded report, critical refresh deadline, and queue
 // ordering so those contracts can be tested without loading the full runner.
 
-export const PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES = 72 * 60;
 export const PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES = 12 * 60;
+// One full cold-fetch rotation is six 12-hour runs (174 countries / 30 slots).
+// Keep two rotations of headroom so the health alarm measures a stalled source,
+// not the normal tail of the producer's bounded recovery queue. The parity test
+// derives the actual producer rotation and fails if either side drifts.
+export const PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES = 2 * 72 * 60;
 export const PORTWATCH_MAX_REPORTED_STALE_COUNTRIES = 40;
 export const PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY =
   'seed-activated:supply_chain:portwatch-ports:content-freshness';
 export const PORTWATCH_DECISION_CRITICAL_COUNTRIES = Object.freeze(['CN', 'HK']);
+
+// Age the CONTENT clock, not the retrieval one (#6060). `fetchedAt` resets on
+// every successful fetch, including the forced refetch once a country's cache
+// passes MAX_CACHE_AGE_MS — which returns an UNCHANGED upstream `asof`. Ageing
+// that would green this alarm for one budget window out of every cache lifetime
+// while upstream stays frozen. `contentAsOfChangedAt` advances only when
+// upstream's own max(date) advances; `fetchedAt` remains the fallback for
+// payloads written before that field existed.
+function contentObservedAt(payload) {
+  return Number.isFinite(payload?.contentAsOfChangedAt)
+    ? payload.contentAsOfChangedAt
+    : typeof payload?.fetchedAt === 'string'
+    ? Date.parse(payload.fetchedAt)
+    : Number.NaN;
+}
 
 export function isCriticalContentRefreshDue({
   iso2,
@@ -18,9 +37,7 @@ export function isCriticalContentRefreshDue({
   criticalCountries = PORTWATCH_DECISION_CRITICAL_COUNTRIES,
 }) {
   if (!new Set(criticalCountries).has(iso2)) return false;
-  const observedAt = typeof prevPayload?.fetchedAt === 'string'
-    ? Date.parse(prevPayload.fetchedAt)
-    : Number.NaN;
+  const observedAt = contentObservedAt(prevPayload);
   if (!Number.isFinite(observedAt)) return true;
   const ageMs = now - observedAt;
   if (ageMs < 0) return true;
@@ -28,7 +45,7 @@ export function isCriticalContentRefreshDue({
   const leadMs = Math.max(0, cadenceMinutes * 60_000);
   // Reserve the next scheduled run before the hard budget. This keeps a
   // cache-hit critical payload out of the seven-day cache path early enough
-  // that a normal 12h cadence still has a chance to refresh it before 72h.
+  // that a normal 12h cadence still has a chance to refresh it before budget.
   return ageMs >= Math.max(0, budgetMs - leadMs);
 }
 
@@ -79,18 +96,7 @@ export function buildContentFreshnessReport({
   for (const [iso2, payload] of entries) {
     const isCritical = critical.has(iso2);
     if (isCritical) criticalSeen++;
-    // Age the CONTENT clock, not the retrieval one (#6060). `fetchedAt` resets
-    // on every successful fetch, including the forced refetch once a country's
-    // cache passes MAX_CACHE_AGE_MS — which returns an UNCHANGED upstream
-    // `asof`. Ageing that greens this alarm for one budget window out of every
-    // cache lifetime while upstream stays frozen. `contentAsOfChangedAt`
-    // advances only when upstream's own max(date) advances; `fetchedAt` remains
-    // the fallback for payloads written before that field existed.
-    const observedAt = Number.isFinite(payload?.contentAsOfChangedAt)
-      ? payload.contentAsOfChangedAt
-      : typeof payload?.fetchedAt === 'string'
-      ? Date.parse(payload.fetchedAt)
-      : Number.NaN;
+    const observedAt = contentObservedAt(payload);
     if (!Number.isFinite(observedAt)) {
       unknownCount++;
       staleCountries.push(iso2);

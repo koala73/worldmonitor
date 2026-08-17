@@ -63,6 +63,7 @@ const {
   loadActiveReferral,
   clearReferralOnAttribution,
   appendRefToUrl,
+  isAffiliateCode,
   REFERRAL_CAPTURE_KEY,
   REFERRAL_TTL_MS,
 } = await import('../src/services/referral-capture.ts');
@@ -127,6 +128,116 @@ describe('captureReferralFromUrl', () => {
   it('accepts underscore and hyphen in codes', () => {
     setUrl('https://worldmonitor.app/?ref=some_code-v2');
     assert.equal(captureReferralFromUrl(), 'some_code-v2');
+  });
+});
+
+describe('internal source tags are never affiliate codes', () => {
+  it('strips ?ref=welcome-* without capturing it', () => {
+    setUrl('https://worldmonitor.app/dashboard?ref=welcome-hero');
+    assert.equal(captureReferralFromUrl(), null);
+    assert.equal(_localStorage.getItem(REFERRAL_CAPTURE_KEY), null);
+    assert.equal(_loc.href, 'https://worldmonitor.app/dashboard');
+  });
+
+  it('strips ?wm_referral=welcome-* without capturing it', () => {
+    setUrl('https://worldmonitor.app/dashboard?wm_referral=welcome-nav');
+    assert.equal(captureReferralFromUrl(), null);
+    assert.equal(_localStorage.getItem(REFERRAL_CAPTURE_KEY), null);
+  });
+
+  it('rejects the seo-* corpus namespace too', () => {
+    setUrl('https://worldmonitor.app/?ref=seo-country');
+    assert.equal(captureReferralFromUrl(), null);
+    assert.equal(_localStorage.getItem(REFERRAL_CAPTURE_KEY), null);
+  });
+
+  it('is case-insensitive so a hand-typed tag cannot slip through', () => {
+    setUrl('https://worldmonitor.app/?ref=Welcome-Hero');
+    assert.equal(captureReferralFromUrl(), null);
+  });
+
+  it('still captures a real code riding alongside an internal tag', () => {
+    setUrl('https://worldmonitor.app/dashboard?ref=welcome-hero&wm_referral=sharerA');
+    assert.equal(captureReferralFromUrl(), 'sharerA');
+    assert.equal(loadActiveReferral(), 'sharerA');
+  });
+
+  it('falls through to ref= when wm_referral carries the internal tag', () => {
+    setUrl('https://worldmonitor.app/dashboard?wm_referral=welcome-hero&ref=sharerB');
+    assert.equal(captureReferralFromUrl(), 'sharerB');
+    assert.equal(loadActiveReferral(), 'sharerB');
+  });
+
+  it('evicts a stored internal tag captured before this guard existed', () => {
+    // Real state on returning visitors: the welcome CTAs shipped `?ref=welcome-*`
+    // for months, so live localStorage carries poisoned codes with up to 7 days
+    // left on the clock. Reject them on read, not just on capture.
+    _localStorage.setItem(REFERRAL_CAPTURE_KEY, JSON.stringify({ code: 'welcome-depth-n3', capturedAt: Date.now() }));
+    assert.equal(loadActiveReferral(), null);
+    assert.equal(_localStorage.getItem(REFERRAL_CAPTURE_KEY), null);
+  });
+
+  it('refuses to forward an internal tag through appendRefToUrl', () => {
+    assert.equal(
+      appendRefToUrl('https://worldmonitor.app/dashboard', 'welcome-final'),
+      'https://worldmonitor.app/dashboard',
+    );
+  });
+
+  it('leaves affiliate codes that merely contain the namespace word', () => {
+    setUrl('https://worldmonitor.app/?ref=welcomehero');
+    assert.equal(captureReferralFromUrl(), 'welcomehero');
+    setUrl('https://worldmonitor.app/?ref=partner-welcome-x');
+    assert.equal(captureReferralFromUrl(), 'partner-welcome-x');
+  });
+
+  it('rejects the bare namespace, not just its hyphenated children', () => {
+    // `?ref=welcome` is a shape that already circulates (see the redirect
+    // fixture in tests/pro-welcome-auth-probe.test.mts) — reserving
+    // `welcome-` but not `welcome` would leave the plainest spelling open.
+    setUrl('https://worldmonitor.app/?ref=welcome');
+    assert.equal(captureReferralFromUrl(), null);
+    setUrl('https://worldmonitor.app/?ref=seo');
+    assert.equal(captureReferralFromUrl(), null);
+    assert.equal(_localStorage.getItem(REFERRAL_CAPTURE_KEY), null);
+  });
+
+  it('strips both params and stores nothing when each carries an internal tag', () => {
+    setUrl('https://worldmonitor.app/dashboard?ref=welcome-hero&wm_referral=seo-country');
+    assert.equal(captureReferralFromUrl(), null);
+    assert.equal(_localStorage.getItem(REFERRAL_CAPTURE_KEY), null);
+    assert.equal(_loc.href, 'https://worldmonitor.app/dashboard');
+  });
+
+  it('captures a real code that repeats the SAME param behind an internal tag', () => {
+    // Deleting the param drops every occurrence, so reading only the first
+    // value would silently discard the affiliate's code during the window
+    // where cached welcome HTML still emits `?ref=welcome-*`.
+    setUrl('https://worldmonitor.app/dashboard?ref=welcome-hero&ref=sharerC');
+    assert.equal(captureReferralFromUrl(), 'sharerC');
+    assert.equal(loadActiveReferral(), 'sharerC');
+    assert.equal(_loc.href, 'https://worldmonitor.app/dashboard');
+  });
+});
+
+describe('isAffiliateCode (the policy every checkout path must apply)', () => {
+  it('accepts a well-formed affiliate code', () => {
+    assert.equal(isAffiliateCode('sharerA'), true);
+    assert.equal(isAffiliateCode('some_code-v2'), true);
+  });
+
+  it('rejects internal source tags in either namespace, any case', () => {
+    for (const code of ['welcome-hero', 'Welcome-Hero', 'welcome', 'seo-country', 'SEO']) {
+      assert.equal(isAffiliateCode(code), false, `${code} must not be treated as an affiliate code`);
+    }
+  });
+
+  it('rejects malformed codes so callers that never went through capture are covered', () => {
+    // startCheckout merges a caller-passed code ahead of the stored one; the
+    // `?checkoutReferral=` URL param reaches it without any charset check.
+    assert.equal(isAffiliateCode('has spaces'), false);
+    assert.equal(isAffiliateCode('a'.repeat(65)), false);
+    assert.equal(isAffiliateCode(''), false);
   });
 });
 

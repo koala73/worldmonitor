@@ -24,7 +24,13 @@ const { execFile } = require('child_process');
 const crypto = require('crypto');
 const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
-const { parseProxyConfig, resolveProxyString } = require('./_proxy-utils.cjs');
+const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = require('./_proxy-utils.cjs');
+const {
+  GROQ_DEFAULT_MODEL,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
+  OPENROUTER_PROVIDER_ROUTING,
+} = require('./lib/llm-model-policy.cjs');
 const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
@@ -48,7 +54,24 @@ const {
 const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh } = require('./shared/market-quote-refresh.cjs');
+// ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
+// Same implementation the RPC handler scores with — see the module header for
+// why it lives in shared/ rather than beside the other scoring helpers.
+const { detectTrafficAnomaly } = require('../shared/chokepoint-traffic-anomaly.js');
+const { CHOKEPOINT_THREAT_LEVELS } = require('../shared/chokepoint-threat-levels.js');
+const { classifyVesselType } = require('../shared/ais-vessel-type.js');
+const { CORRIDOR_RISK_NAME_MAP, deriveCorridorRiskLevel } = require('../shared/corridor-risk.js');
 const chinaCountryStockIndexHelpersPromise = import('./_country-stock-index.mjs');
+// Terminal handler attached AT DECLARATION. This promise is created at module
+// load but not awaited until seedWeatherAlerts() runs, so without a .catch()
+// here a rejection is an UNHANDLED rejection: under Node's default
+// --unhandled-rejections=throw the relay exits 1 at container start, taking AIS,
+// market and RSS with it, rather than degrading one seed. seedWeatherAlerts()
+// turns the null into a loud, monitor-visible failure (see below).
+const weatherAlertSelectPromise = import('./_weather-alert-select.mjs').catch((e) => {
+  console.error('[Weather] location helper failed to load:', e?.message || e);
+  return null;
+});
 const parseProxyUrl = parseProxyConfig;
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
@@ -64,14 +87,16 @@ const RSS_ALLOWED_DOMAINS = new Set(requireShared('rss-allowed-domains.cjs'));
 const _heapStats = v8.getHeapStatistics();
 console.log(`[Relay] Heap limit: ${(_heapStats.heap_size_limit / 1024 / 1024).toFixed(0)}MB`);
 
-const AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
+const RELAY_TEST_MODE = process.env.RELAY_TEST_MODE === 'true';
+const AISSTREAM_URL = RELAY_TEST_MODE && process.env.AISSTREAM_URL
+  ? process.env.AISSTREAM_URL
+  : 'wss://stream.aisstream.io/v0/stream';
 const API_KEY = process.env.AISSTREAM_API_KEY || process.env.VITE_AISSTREAM_API_KEY;
 const PORT = process.env.PORT || 3004;
 // Actual bound port, resolved at listen time. Self-requests must use this:
 // with PORT=0 (ephemeral bind, used by tests) the env value is not the port
 // the server listens on, and `http://localhost:0` fails outright.
 let relayBoundPort = PORT;
-const RELAY_TEST_MODE = process.env.RELAY_TEST_MODE === 'true';
 
 if (!API_KEY) {
   console.warn('[Relay] AIS disabled: AISSTREAM_API_KEY is not set (other relay and seed services remain available)');
@@ -675,6 +700,11 @@ function deriveWeatherCoalesceKey(vtec) {
   return `nws:${m[1]}.${m[2]}.${m[3]}.${m[4]}`;
 }
 
+function nwsVtec(p) {
+  const vtec = Array.isArray(p?.parameters?.VTEC) ? p.parameters.VTEC[0] : undefined;
+  return vtec;
+}
+
 async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800 }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
@@ -718,9 +748,55 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
 let upstreamSocket = null;
 let upstreamReconnectTimer = null;
 let upstreamReconnectFailures = 0;
+let upstreamConsecutiveThrottles = 0;
+let upstreamReconnectAt = 0;
+let upstreamLastPositionAt = 0;
 let relayShuttingDown = false;
-const AIS_RECONNECT_BASE_MS = 5_000;
-const AIS_RECONNECT_MAX_MS = 5 * 60 * 1000;
+// Floors are deliberate: this change exists to stop the relay hammering a
+// provider that is rejecting it, so the tunables must not open a config path to
+// hammer harder. 50ms/100ms stay well below any production value while leaving
+// the ladder compressible under test.
+const AIS_RECONNECT_BASE_MS = safeInt(process.env.AIS_RECONNECT_BASE_MS, 5_000, 50);
+const AIS_RECONNECT_MAX_MS = safeInt(process.env.AIS_RECONNECT_MAX_MS, 5 * 60 * 1000, 100);
+// A 429 on the WebSocket upgrade means the provider is rate-limiting this egress
+// IP, not that the stream failed transiently: the rejection lands before the API
+// key is ever sent. Knocking every AIS_RECONNECT_MAX_MS keeps ~288 refused
+// requests/day inside the provider's sliding window, which can sustain the block
+// we are waiting out. Sustained throttling therefore escalates to a much longer
+// ceiling; any non-throttle outcome clears it so ordinary disconnects keep the
+// responsive schedule.
+//
+// Clamped at or above the ordinary ceiling: a smaller value would make
+// escalation *shorten* the wait and reconnect more aggressively while throttled,
+// which is the exact inverse of the intent.
+const AIS_THROTTLE_RECONNECT_MAX_MS = Math.max(
+  AIS_RECONNECT_MAX_MS,
+  safeInt(process.env.AIS_THROTTLE_RECONNECT_MAX_MS, 30 * 60 * 1000, 100),
+);
+const AIS_THROTTLE_ESCALATE_AFTER = safeInt(
+  process.env.AIS_THROTTLE_ESCALATE_AFTER,
+  5,
+  1,
+);
+const AIS_HANDSHAKE_TIMEOUT_MS = safeInt(
+  process.env.AIS_HANDSHAKE_TIMEOUT_MS,
+  30_000,
+  1_000,
+);
+const AIS_POSITION_FRESHNESS_MS = safeInt(
+  process.env.AIS_POSITION_FRESHNESS_MS,
+  5 * 60 * 1000,
+  1_000,
+);
+const aisUpstreamMetrics = {
+  connectionAttempts: 0,
+  success: 0,
+  throttle: 0,
+  terminalFailure: 0,
+  lastSuccessAt: 0,
+  lastFailureAt: 0,
+  lastFailure: null,
+};
 let upstreamPaused = false;
 let upstreamQueue = [];
 let upstreamQueueReadIndex = 0;
@@ -730,6 +806,22 @@ let messageCount = 0;
 let droppedMessages = 0;
 const requestRateBuckets = new Map(); // key: route:ip -> { count, resetAt }
 const logThrottleState = new Map(); // key: event key -> timestamp
+
+function isAisThrottleEscalated() {
+  return upstreamConsecutiveThrottles >= AIS_THROTTLE_ESCALATE_AFTER;
+}
+
+function getAisPositionFreshness(nowMs = Date.now()) {
+  const positionAgeMs = upstreamLastPositionAt
+    ? Math.max(0, nowMs - upstreamLastPositionAt)
+    : null;
+  return {
+    currentPositionReady: upstreamSocket?.readyState === WebSocket.OPEN
+      && positionAgeMs !== null
+      && positionAgeMs <= AIS_POSITION_FRESHNESS_MS,
+    positionAgeMs,
+  };
+}
 
 // Safe response: guard against "headers already sent" crashes
 function safeEnd(res, statusCode, headers, body) {
@@ -2126,6 +2218,10 @@ function fetchYahooChartDirect(symbol, query = '') {
 const _yahooQuoteSummaryClient = new YahooQuoteSummaryClient({
   userAgent: CHROME_UA,
   resolveProxyString,
+  // Yahoo's quote fundamentals cache is populated per residential exit IP, so a
+  // 200 response can omit trailingPE for a stable subset of ETFs no matter how
+  // often the same exit is retried. Rotation is the only recovery.
+  resolveProxyStringForAttempt,
   cooldownMs: _YAHOO_PROXY_COOLDOWN_MS,
   logger: {
     warn(message, { transport }) {
@@ -2272,10 +2368,14 @@ async function seedMarketQuotes() {
   const skipped = !FINNHUB_API_KEY && !coveredByYahoo;
   const payload = { quotes, finnhubSkipped: skipped, skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '', rateLimited: false };
   const redisKey = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
-  const ok = await envelopeWrite(redisKey, payload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-stocks' });
+  // Compute once and thread through every write below so the envelopes'
+  // _seed.fetchedAt and seed-meta.fetchedAt agree for this one publish,
+  // instead of each awaited round-trip sampling Date.now() independently.
+  const fetchedAt = Date.now();
+  const ok = await envelopeWrite(redisKey, payload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-stocks' });
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
-  const ok2 = await envelopeWrite('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-stocks' });
-  const ok3 = await upstashSet('seed-meta:market:stocks', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
+  const ok2 = await envelopeWrite('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-stocks' });
+  const ok3 = await upstashSet('seed-meta:market:stocks', { fetchedAt, recordCount: quotes.length }, 604800);
   if (freshQuotes.some((quote) => quote.symbol === CHINA_COUNTRY_STOCK_SYMBOL)) {
     try {
       await writeChinaCountryStockIndex();
@@ -2334,15 +2434,19 @@ async function seedCommodityQuotes() {
 
   const payload = { quotes };
   const redisKey = `market:commodities:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
-  const ok = await envelopeWrite(redisKey, payload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-commodities' });
+  // Compute once and thread through every write below so the envelopes'
+  // _seed.fetchedAt and seed-meta.fetchedAt agree for this one publish,
+  // instead of each awaited round-trip sampling Date.now() independently.
+  const fetchedAt = Date.now();
+  const ok = await envelopeWrite(redisKey, payload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-commodities' });
   // Also write under market:quotes:v1: key — the frontend routes commodities through
   // listMarketQuotes RPC, which constructs this key pattern (not market:commodities:v1:)
   const quotesKey = `market:quotes:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
   const quotesPayload = { quotes, finnhubSkipped: false, skipReason: '', rateLimited: false };
-  const ok2 = await envelopeWrite(quotesKey, quotesPayload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-commodities' });
+  const ok2 = await envelopeWrite(quotesKey, quotesPayload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-commodities' });
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
-  const ok3 = await envelopeWrite('market:commodities-bootstrap:v1', quotesPayload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-commodities' });
-  const ok4 = await upstashSet('seed-meta:market:commodities', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
+  const ok3 = await envelopeWrite('market:commodities-bootstrap:v1', quotesPayload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-commodities' });
+  const ok4 = await upstashSet('seed-meta:market:commodities', { fetchedAt, recordCount: quotes.length }, 604800);
   console.log(`[Market] Seeded ${quotes.length}/${COMMODITY_SYMBOLS.length} commodities (redis: ${ok && ok2 && ok3 && ok4 ? 'OK' : 'PARTIAL'})`);
   const movingCommodities = quotes.filter(q => Math.abs(q.change ?? 0) >= 5).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
   for (const q of movingCommodities.slice(0, 3)) {
@@ -2394,8 +2498,10 @@ async function seedSectorSummary() {
     valuationCount: valCount,
     unavailableSymbols,
     valuationDiagnostics,
+    currentValuationCount,
     lastGoodFetchedAt,
     lastGoodMetricsUsed,
+    lastGoodValuationSymbols,
   } = await collectSectorValuations({
     symbols: SECTOR_SYMBOLS,
     fetchValue: fetchYahooQuoteSummary,
@@ -2416,8 +2522,10 @@ async function seedSectorSummary() {
     sources: valuationSources,
     unavailableSymbols,
     valuationDiagnostics,
+    currentValuationCount,
     lastGoodFetchedAt,
     lastGoodMetricsUsed,
+    lastGoodValuationSymbols,
   });
   const { payload, meta: sectorMeta } = buildSectorValuationPublication({
     sectors,
@@ -2434,7 +2542,14 @@ async function seedSectorSummary() {
   const ok2 = await envelopeWrite(quotesKey, quotesPayload, MARKET_SEED_TTL, { recordCount: sectorQuotes.length, sourceVersion: 'market-sectors' });
   const persistedSectorMeta = buildSectorSeedMeta(sectorMeta, ok);
   const ok3 = await upstashSet('seed-meta:market:sectors', persistedSectorMeta, 604800);
-  console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors, ${valCount}/${SECTOR_SYMBOLS.length} valuations (${valuationCoverage.sourceStatus}; redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
+  // valCount includes records replayed from the last-good snapshot, so report
+  // the live count alongside it: "12/12 (partial)" during a total upstream
+  // outage reads as healthy coverage to anyone scanning the logs.
+  const liveCount = currentValuationCount == null ? valCount : currentValuationCount;
+  const valuationSummary = liveCount === valCount
+    ? `${valCount}/${SECTOR_SYMBOLS.length} valuations`
+    : `${valCount}/${SECTOR_SYMBOLS.length} valuations (${liveCount} live, ${valCount - liveCount} stale)`;
+  console.log(`[Market] Seeded ${sectors.length}/${SECTOR_SYMBOLS.length} sectors, ${valuationSummary} (${valuationCoverage.sourceStatus}; redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
   return sectors.length;
 }
 
@@ -2696,8 +2811,19 @@ async function seedCryptoQuotes() {
 }
 
 // Stablecoin Markets — CoinGecko → CoinPaprika fallback
-const STABLECOIN_IDS = 'tether,usd-coin,dai,first-digital-usd,ethena-usde';
-const STABLECOIN_PAPRIKA_MAP = { tether: 'usdt-tether', 'usd-coin': 'usdc-usd-coin', dai: 'dai-dai', 'first-digital-usd': 'fdusd-first-digital-usd', 'ethena-usde': 'usde-ethena-usde' };
+//
+// This is the BACKUP writer for market:stablecoins:v1; the standalone
+// scripts/seed-stablecoin-markets.mjs is the primary. Both, plus the RPC
+// handler that fills gaps the snapshot does not carry, now read one shared
+// config — private copies here meant the backup could seed a different coin
+// set, or classify the same price differently, than the primary. (#6308)
+const _stablecoinCfg = requireShared('stablecoins.json');
+const STABLECOIN_IDS = _stablecoinCfg.ids.join(',');
+const STABLECOIN_PAPRIKA_MAP = _stablecoinCfg.coinpaprika;
+// Row shaping and peg classification live in ONE module shared with the
+// primary seeder and the RPC gap path — a private variant here means the
+// stored value depends on which writer ran last. (#6319, extends #6308)
+const { classifyStablecoin } = requireShared('stablecoin-classifier.cjs');
 const STABLECOIN_SEED_TTL = 7200; // 2h — 1h buffer over 5min cron cadence (was 1h = 55min buffer)
 
 async function fetchStablecoinCoinPaprika() {
@@ -2725,12 +2851,7 @@ async function seedStablecoinMarkets() {
     console.warn(`[Stablecoin] CoinGecko failed: ${err.message} — trying CoinPaprika`);
     try { data = await fetchStablecoinCoinPaprika(); } catch (e2) { console.warn(`[Stablecoin] CoinPaprika also failed: ${e2.message} — skipping`); return 0; }
   }
-  const stablecoins = data.map((coin) => {
-    const price = coin.current_price || 0;
-    const deviation = Math.abs(price - 1.0);
-    const pegStatus = deviation <= 0.005 ? 'ON PEG' : deviation <= 0.01 ? 'SLIGHT DEPEG' : 'DEPEGGED';
-    return { id: coin.id, symbol: (coin.symbol || '').toUpperCase(), name: coin.name, price, deviation: +(deviation * 100).toFixed(3), pegStatus, marketCap: coin.market_cap || 0, volume24h: coin.total_volume || 0, change24h: coin.price_change_percentage_24h || 0, change7d: coin.price_change_percentage_7d_in_currency || 0, image: coin.image || '' };
-  });
+  const stablecoins = data.map((coin) => classifyStablecoin(coin));
   const totalMarketCap = stablecoins.reduce((s, c) => s + c.marketCap, 0);
   const totalVolume24h = stablecoins.reduce((s, c) => s + c.volume24h, 0);
   const depeggedCount = stablecoins.filter((c) => c.pegStatus === 'DEPEGGED').length;
@@ -3587,9 +3708,8 @@ function classifyCacheKey(title) {
 }
 
 // LLM provider fallback chain — mirrors seed-insights.mjs LLM_PROVIDERS
-// Order: ollama → openrouter → groq (canonical chain since #4944, mirrors
-// server/_shared/llm.ts: DeepSeek V4 Flash primary with reasoning disabled,
-// groq llama-3.3-70b-versatile as the free-tier/outage fallback).
+// Order mirrors server/_shared/llm.ts: paid OpenRouter, two fixed free
+// OpenRouter variants, then Groq.
 const CLASSIFY_LLM_PROVIDERS = [
   {
     name: 'ollama',
@@ -3611,14 +3731,32 @@ const CLASSIFY_LLM_PROVIDERS = [
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
     model: 'deepseek/deepseek-v4-flash',
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
-    extraBody: { reasoning: { enabled: false } },
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    timeout: 30000,
+  },
+  {
+    name: 'openrouter-free',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_PRIMARY_MODEL,
+    headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    timeout: 30000,
+  },
+  {
+    name: 'openrouter-free-backup',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_BACKUP_MODEL,
+    headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
     timeout: 30000,
   },
   {
     name: 'groq',
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.3-70b-versatile',
+    model: GROQ_DEFAULT_MODEL,
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
     timeout: 30000,
   },
@@ -4020,6 +4158,8 @@ function theaterDetectAircraftType(callsign) {
 }
 
 const WINGBITS_MAX_BOX_NM = 2000;
+const WINGBITS_VIEWPORT_TILE_DEGREES = 30;
+const WINGBITS_MAX_VIEWPORT_AREAS = 36;
 
 const POSTURE_THEATERS = [
   { id: 'iran-theater', bounds: { north: 42, south: 20, east: 65, west: 30 }, thresholds: { elevated: 8, critical: 20 }, strikeIndicators: { minTankers: 2, minAwacs: 1, minFighters: 5 } },
@@ -4031,11 +4171,6 @@ const POSTURE_THEATERS = [
   { id: 'east-med-theater', bounds: { north: 37, south: 33, east: 37, west: 25 }, thresholds: { elevated: 4, critical: 10 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
   { id: 'israel-gaza-theater', bounds: { north: 33, south: 29, east: 36, west: 33 }, thresholds: { elevated: 3, critical: 8 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
   { id: 'yemen-redsea-theater', bounds: { north: 22, south: 11, east: 54, west: 32 }, thresholds: { elevated: 4, critical: 10 }, strikeIndicators: { minTankers: 1, minAwacs: 1, minFighters: 3 } },
-];
-
-const THEATER_QUERY_REGIONS = [
-  { name: 'WESTERN', lamin: 10, lamax: 66, lomin: 9, lomax: 66 },
-  { name: 'PACIFIC', lamin: 4, lamax: 44, lomin: 104, lomax: 133 },
 ];
 
 // In-memory index of recently-seen Wingbits positions, keyed by ICAO24.
@@ -4067,6 +4202,34 @@ function wingbitsIndexLookupCallsign(callsign) {
     if (cs.includes(callsign)) results.push(position);
   }
   return results;
+}
+
+function buildWingbitsViewportAreas(south, west, north, east) {
+  const latTiles = Math.max(1, Math.ceil((north - south) / WINGBITS_VIEWPORT_TILE_DEGREES));
+  const lonTiles = Math.max(1, Math.ceil((east - west) / WINGBITS_VIEWPORT_TILE_DEGREES));
+  if (latTiles * lonTiles > WINGBITS_MAX_VIEWPORT_AREAS) return null;
+
+  const areas = [];
+  for (let latIndex = 0; latIndex < latTiles; latIndex += 1) {
+    const tileSouth = south + latIndex * WINGBITS_VIEWPORT_TILE_DEGREES;
+    const tileNorth = Math.min(north, tileSouth + WINGBITS_VIEWPORT_TILE_DEGREES);
+    for (let lonIndex = 0; lonIndex < lonTiles; lonIndex += 1) {
+      const tileWest = west + lonIndex * WINGBITS_VIEWPORT_TILE_DEGREES;
+      const tileEast = Math.min(east, tileWest + WINGBITS_VIEWPORT_TILE_DEGREES);
+      const centerLat = (tileSouth + tileNorth) / 2;
+      const centerLon = (tileWest + tileEast) / 2;
+      areas.push({
+        alias: `viewport-${latIndex}-${lonIndex}`,
+        by: 'box',
+        la: centerLat,
+        lo: centerLon,
+        w: Math.max(1, Math.min((tileEast - tileWest) * 60 * Math.cos(centerLat * Math.PI / 180), WINGBITS_MAX_BOX_NM)),
+        h: Math.max(1, Math.min((tileNorth - tileSouth) * 60, WINGBITS_MAX_BOX_NM)),
+        unit: 'nm',
+      });
+    }
+  }
+  return areas;
 }
 
 async function handleWingbitsTrackRequest(req, res) {
@@ -4179,11 +4342,17 @@ async function handleWingbitsTrackRequest(req, res) {
   const clampedLamax = Math.max(-90, Math.min(90, lamax));
   const clampedLomin = Math.max(-180, Math.min(180, lomin));
   const clampedLomax = Math.max(-180, Math.min(180, lomax));
-  const centerLat = (clampedLamin + clampedLamax) / 2;
-  const centerLon = (clampedLomin + clampedLomax) / 2;
-  const widthNm = Math.min(Math.abs(clampedLomax - clampedLomin) * 60 * Math.cos(centerLat * Math.PI / 180), WINGBITS_MAX_BOX_NM);
-  const heightNm = Math.min(Math.abs(clampedLamax - clampedLamin) * 60, WINGBITS_MAX_BOX_NM);
-  const areas = [{ alias: 'viewport', by: 'box', la: centerLat, lo: centerLon, w: widthNm, h: heightNm, unit: 'nm' }];
+  const south = Math.min(clampedLamin, clampedLamax);
+  const north = Math.max(clampedLamin, clampedLamax);
+  const west = Math.min(clampedLomin, clampedLomax);
+  const east = Math.max(clampedLomin, clampedLomax);
+  const areas = buildWingbitsViewportAreas(south, west, north, east);
+  if (!areas) {
+    return safeEnd(res, 422, { 'Content-Type': 'application/json' }, JSON.stringify({
+      error: `Viewport requires more than ${WINGBITS_MAX_VIEWPORT_AREAS} Wingbits areas`,
+      positions: [],
+    }));
+  }
 
   try {
     const resp = await fetch('https://customer-api.wingbits.com/v1/flights', {
@@ -4222,9 +4391,13 @@ async function handleWingbitsTrackRequest(req, res) {
           const cs = (f.f || f.callsign || f.flight || '').trim().toUpperCase();
           if (!cs.includes(callsignFilter)) continue;
         }
-        seenIds.add(icao24);
         const lat = f.la ?? f.latitude ?? f.lat ?? 0;
         const lon = f.lo ?? f.longitude ?? f.lon ?? f.lng ?? 0;
+        // Multi-area requests overlap at tile edges. Deduplicate and retain
+        // only positions inside the original viewport so a successful
+        // Wingbits response is complete and authoritative for that bbox.
+        if (lat < south || lat > north || lon < west || lon > east) continue;
+        seenIds.add(icao24);
         positions.push({
           icao24,
           callsign: (f.f || f.callsign || f.flight || '').trim(),
@@ -4254,34 +4427,49 @@ async function handleWingbitsTrackRequest(req, res) {
   }
 }
 
+// ONE global /states/all per cycle, not one query per theater region. OpenSky
+// bills by bounding-box area with a flat top tier — every bbox above 400 sq°
+// costs 4 credits, the same as a global query — so the previous WESTERN+PACIFIC
+// pair (3,192 and 1,160 sq°) spent 8 credits/cycle for less coverage than 4
+// buys. The proxy already treats a bbox-less request as a valid global query
+// (normalizeOpenSkyBbox returns the ',,,' cache key). See
+// docs/solutions/integration-issues/opensky-bbox-area-billing-flat-top-tier.md (#6222).
 async function fetchTheaterFlightsFromOpenSky() {
   const seenIds = new Set();
   const allFlights = [];
-  for (const region of THEATER_QUERY_REGIONS) {
-    const params = `lamin=${region.lamin}&lamax=${region.lamax}&lomin=${region.lomin}&lomax=${region.lomax}`;
-    const resp = await fetch(`http://localhost:${relayBoundPort}/opensky?${params}`, {
-      headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
-      signal: AbortSignal.timeout(20_000),
+  const resp = await fetch(`http://localhost:${relayBoundPort}/opensky`, {
+    headers: { 'User-Agent': CHROME_UA, ...(RELAY_SHARED_SECRET ? { 'x-relay-key': RELAY_SHARED_SECRET } : {}) },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!resp.ok) throw new Error(`OpenSky proxy ${resp.status} for GLOBAL`);
+  const data = await resp.json();
+  if (!data.states) return allFlights;
+  for (const state of data.states) {
+    const [icao24, callsign, , , , lon, lat, altitude, onGround, velocity, heading] = state;
+    if (lat == null || lon == null || onGround) continue;
+    if (!theaterIsMilCallsign(callsign)) continue;
+    // Filter to theater bounds, matching fetchTheaterFlightsFromAdsbLol. The
+    // query is global now, so without this the returned count would mean
+    // "military aircraft worldwide" for this source and "military aircraft in
+    // theater" for the other two — and seedTheaterPosture attributes the cycle
+    // on `flights.length > 0`, so OpenSky would claim cycles in which it fed
+    // no theater at all.
+    const inTheater = POSTURE_THEATERS.some((t) =>
+      lat >= t.bounds.south && lat <= t.bounds.north &&
+      lon >= t.bounds.west && lon <= t.bounds.east
+    );
+    if (!inTheater) continue;
+    if (seenIds.has(icao24)) continue;
+    seenIds.add(icao24);
+    allFlights.push({
+      id: icao24,
+      callsign: (callsign || '').trim(),
+      lat, lon,
+      altitude: altitude || 0,
+      heading: heading || 0,
+      speed: velocity || 0,
+      aircraftType: theaterDetectAircraftType(callsign),
     });
-    if (!resp.ok) throw new Error(`OpenSky proxy ${resp.status} for ${region.name}`);
-    const data = await resp.json();
-    if (!data.states) continue;
-    for (const state of data.states) {
-      const [icao24, callsign, , , , lon, lat, altitude, onGround, velocity, heading] = state;
-      if (lat == null || lon == null || onGround) continue;
-      if (!theaterIsMilCallsign(callsign)) continue;
-      if (seenIds.has(icao24)) continue;
-      seenIds.add(icao24);
-      allFlights.push({
-        id: icao24,
-        callsign: (callsign || '').trim(),
-        lat, lon,
-        altitude: altitude || 0,
-        heading: heading || 0,
-        speed: velocity || 0,
-        aircraftType: theaterDetectAircraftType(callsign),
-      });
-    }
   }
   return allFlights;
 }
@@ -4297,7 +4485,11 @@ async function fetchTheaterFlightsFromAdsbLol() {
       return null;
     }
     const data = await resp.json();
-    const aircraft = data.ac || [];
+    if (!Array.isArray(data.ac)) {
+      console.warn('[adsb.lol] Malformed response: missing ac array');
+      return null;
+    }
+    const aircraft = data.ac;
     const flights = [];
     const seenIds = new Set();
     for (const a of aircraft) {
@@ -4367,13 +4559,20 @@ async function fetchTheaterFlightsFromWingbits() {
       for (const f of flightList) {
         const icao24 = f.h || f.icao24 || f.id;
         if (!icao24 || seenIds.has(icao24)) continue;
-        seenIds.add(icao24);
         const callsign = (f.f || f.callsign || f.flight || '').trim();
         if (!theaterIsMilCallsign(callsign)) continue;
+        const lat = Number(f.la ?? f.latitude ?? f.lat);
+        const lon = Number(f.lo ?? f.longitude ?? f.lon ?? f.lng);
+        const inTheater = Number.isFinite(lat) && Number.isFinite(lon) && POSTURE_THEATERS.some(
+          (theater) => lat >= theater.bounds.south && lat <= theater.bounds.north &&
+            lon >= theater.bounds.west && lon <= theater.bounds.east,
+        );
+        if (!inTheater) continue;
+        seenIds.add(icao24);
         flights.push({
           id: icao24, callsign,
-          lat: f.la || f.latitude || f.lat,
-          lon: f.lo || f.longitude || f.lon || f.lng,
+          lat,
+          lon,
           altitude: f.ab || f.altitude || f.alt || 0,
           heading: f.th || f.heading || f.track || 0,
           speed: f.gs || f.groundSpeed || f.speed || f.velocity || 0,
@@ -4453,38 +4652,55 @@ const THEATER_POSTURE_SOURCE_COUNT_KEYS = Object.freeze({
   'vessel-only': 'vesselOnly',
 });
 const theaterPostureSourceCounts = { opensky: 0, adsbLol: 0, wingbits: 0, vesselOnly: 0 };
+let theaterPostureEmptyRejections = 0;
 let theaterPostureLastRun = null;
 
 async function seedTheaterPosture() {
   const t0 = Date.now();
   let flights = [];
   let flightSource = 'vessel-only';
-  try {
-    flights = await fetchTheaterFlightsFromOpenSky();
-    if (flights.length > 0) flightSource = 'opensky';
-  } catch (e) {
-    console.warn(`[TheaterPosture] OpenSky failed: ${e?.message || e}`);
-  }
-  if (flights.length === 0) {
-    const adsbLol = await fetchTheaterFlightsFromAdsbLol();
-    if (adsbLol !== null) {
-      // null = fetch error (fall through to Wingbits); [] = success, no theater traffic (stop here)
-      flights = adsbLol;
-      if (flights.length > 0) flightSource = 'adsb.lol';
+  const adsbLol = await fetchTheaterFlightsFromAdsbLol();
+  if (adsbLol !== null) {
+    // null = fetch error (fall through); [] = success, no theater traffic (stop here).
+    // adsb.lol is the normal theater source so this background loop does not
+    // independently consume the authenticated OpenSky daily credit pool.
+    flights = adsbLol;
+    if (flights.length > 0) flightSource = 'adsb.lol';
+  } else {
+    const wb = await fetchTheaterFlightsFromWingbits();
+    if (wb && wb.length > 0) {
+      flights = wb;
+      flightSource = 'wingbits';
     } else {
-      const wb = await fetchTheaterFlightsFromWingbits();
-      if (wb && wb.length > 0) {
-        flights = wb;
-        flightSource = 'wingbits';
+      try {
+        flights = await fetchTheaterFlightsFromOpenSky();
+        if (flights.length > 0) flightSource = 'opensky';
+      } catch (e) {
+        console.warn(`[TheaterPosture] OpenSky failed: ${e?.message || e}`);
       }
     }
   }
   if (flights.length === 0) {
-    console.warn('[TheaterPosture] No military flights from OpenSky, adsb.lol, or Wingbits — continuing with vessel-only posture');
+    console.warn('[TheaterPosture] No military flights from adsb.lol, OpenSky, or Wingbits — continuing with vessel-only posture');
   }
   const theaters = calculateTheaterPostures(flights);
   const totalVessels = theaters.reduce((sum, t) => sum + t.trackedVessels, 0);
-  const payload = { theaters };
+  const inputRecordCount = flights.length + totalVessels;
+  if (inputRecordCount === 0) {
+    theaterPostureEmptyRejections += 1;
+    theaterPostureLastRun = {
+      attemptedAt: new Date().toISOString(),
+      source: flightSource,
+      flightCount: 0,
+      vesselCount: 0,
+      published: false,
+      reason: 'no-input-records',
+    };
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    console.warn(`[TheaterPosture] Rejected empty publication: no military flights or vessels; preserving last-known-good data [${elapsed}s]`);
+    return;
+  }
+  const payload = { theaters, provider: flightSource };
   const publicationId = `ais-relay:${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   const lockResult = await upstashSetNx(THEATER_POSTURE_LOCK_KEY, publicationId, THEATER_POSTURE_LOCK_TTL_SECONDS);
   if (lockResult !== 'new') {
@@ -4508,22 +4724,29 @@ async function seedTheaterPosture() {
     // differ (the seeder's 'wingbits' is its Tier-1 normal path, ours is the
     // last-resort fallback). publicationId pairs this metadata with the
     // canonical envelope _seed.groupId for cross-producer consistency checks.
-    const seedMetaOk = await upstashSet('seed-meta:theater-posture', { fetchedAt: publishedAt, recordCount: flights.length + totalVessels, sourceVersion: flightSource, producer: 'ais-relay', publicationId }, 604800);
-    theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
+    // Do not advance the freshness marker when the canonical envelope failed:
+    // health must continue to describe the last readable canonical snapshot.
+    const seedMetaOk = ok1 && await upstashSet('seed-meta:theater-posture', { fetchedAt: publishedAt, recordCount: inputRecordCount, sourceVersion: flightSource, producer: 'ais-relay', publicationId }, 604800);
+    const redisOk = ok1 && ok2 && ok3;
+    const published = ok1 && seedMetaOk;
+    if (published) theaterPostureSourceCounts[THEATER_POSTURE_SOURCE_COUNT_KEYS[flightSource]] += 1;
+    const completedAt = new Date().toISOString();
     theaterPostureLastRun = {
-      seededAt: new Date().toISOString(),
+      ...(published ? { seededAt: completedAt } : { attemptedAt: completedAt }),
       source: flightSource,
       flightCount: flights.length,
       vesselCount: totalVessels,
-      redisOk: ok1 && ok2 && ok3,
+      published,
+      redisOk,
       // Reported separately from redisOk: health gates staleness on the
       // seed-meta key, so a failed attribution write must not hide behind
       // three green envelope writes.
       seedMetaOk,
+      ...(published ? {} : { reason: 'write-failed' }),
     };
     const elevated = theaters.filter((t) => t.postureLevel !== 'normal').length;
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-    console.log(`[TheaterPosture] Seeded ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${ok1 && ok2 && ok3 ? 'OK' : 'PARTIAL'}, seed-meta: ${seedMetaOk ? 'OK' : 'FAILED'} [${elapsed}s]`);
+    console.log(`[TheaterPosture] ${published ? 'Seeded' : 'Publication failed for'} ${flights.length} mil flights (source=${flightSource}), ${totalVessels} vessels, ${theaters.length} theaters (${elevated} elevated), redis: ${redisOk ? 'OK' : 'PARTIAL'}, seed-meta: ${seedMetaOk ? 'OK' : 'FAILED'} [${elapsed}s]`);
   } finally {
     await upstashReleaseLockIfOwner(THEATER_POSTURE_LOCK_KEY, publicationId);
   }
@@ -4693,7 +4916,9 @@ function startCableHealthWarmPingLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Weather Alerts Seed — NWS API → Redis every 15 min
+// Weather Alerts Seed — NWS + ECCC → weather:alerts:v1 every 15 min
+// Path A (ECCC direct) down-payment on WMO SWIC (#6271). Same key, not a
+// second weather pipeline. Mapping/merge live in _weather-alert-select.mjs.
 // ─────────────────────────────────────────────────────────────
 const WEATHER_SEED_INTERVAL_MS = 15 * 60 * 1000; // 15 min
 const WEATHER_REDIS_KEY = 'weather:alerts:v1';
@@ -4705,63 +4930,140 @@ async function seedWeatherAlerts() {
   weatherSeedInFlight = true;
   const t0 = Date.now();
   try {
-    const weatherUrl = 'https://api.weather.gov/alerts/active';
-    let data;
-    try {
-      const resp = await fetch(weatherUrl, {
-        headers: { Accept: 'application/geo+json', 'User-Agent': CHROME_UA },
-        signal: AbortSignal.timeout(15_000),
+    const {
+      ECCC_MAX_BYTES,
+      NWS_ALERTS_URL,
+      NWS_HOST,
+      WEATHER_ALERTS_SOURCE_VERSION,
+      fetchApprovedWeatherJson,
+      fetchEcccAlertFeatures,
+      mergeAlertSources,
+      rankEligibleAlerts,
+      requireAlertFeatures,
+      selectEcccAlerts,
+      // Used at the notification-publish step below. The ECCC rewrite of this
+      // block dropped it from the destructure while the call site stayed, which
+      // is a ReferenceError on every weather_alert publish.
+      weatherAlertNotifyLocation,
+    } = (await weatherAlertSelectPromise) || (() => {
+      throw new Error('weather alert select module unavailable');
+    })();
+
+    const fetchNwsFeatures = async () => {
+      const weatherUrl = NWS_ALERTS_URL;
+      try {
+        const data = await fetchApprovedWeatherJson(weatherUrl, {
+          allowedHosts: [NWS_HOST],
+          maxBytes: ECCC_MAX_BYTES,
+          userAgent: CHROME_UA,
+          fetchFn: fetch,
+        });
+        return requireAlertFeatures(data);
+      } catch (directErr) {
+        if (!PROXY_URL) throw directErr;
+        console.warn(`[Weather] NWS direct failed (${directErr.message}) — retrying via proxy`);
+        const { proxyFetch } = require('./_proxy-utils.cjs');
+        const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
+        const result = await proxyFetch(weatherUrl, proxy, { accept: 'application/geo+json', headers: { 'User-Agent': CHROME_UA }, timeoutMs: 15_000 });
+        if (!result.ok) throw new Error(`HTTP ${result.status}`);
+        return requireAlertFeatures(JSON.parse(result.buffer.toString('utf8')));
+      }
+    };
+
+    // A PARTIAL ECCC fetch is rejected here on purpose. This writer purges —
+    // it always overwrites so ended alerts clear — which is only correct when
+    // the source answered in full. Publishing `issued` without `continued`
+    // would DELETE every ongoing Canadian warning from the live key. Rejecting
+    // routes it into the same carry-forward path as a total ECCC outage below,
+    // which keeps the last-good Canadian slice until a complete fetch returns.
+    const fetchEcccFeatures = async () => {
+      const result = await fetchEcccAlertFeatures({
+        fetchFn: fetch,
+        userAgent: CHROME_UA,
+        maxBytes: ECCC_MAX_BYTES,
       });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      data = await resp.json();
-    } catch (directErr) {
-      if (!PROXY_URL) { console.warn(`[Weather] Seed failed: ${directErr.message}`); return; }
-      console.warn(`[Weather] Direct failed (${directErr.message}) — retrying via proxy`);
-      const { proxyFetch } = require('./_proxy-utils.cjs');
-      const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
-      const result = await proxyFetch(weatherUrl, proxy, { accept: 'application/geo+json', headers: { 'User-Agent': CHROME_UA }, timeoutMs: 15_000 });
-      if (!result.ok) { console.warn(`[Weather] Proxy also failed: HTTP ${result.status}`); return; }
-      data = JSON.parse(result.buffer.toString('utf8'));
+      if (result.partial) {
+        throw new Error(
+          `ECCC partial fetch — status ${result.failedStatuses.join(', ')} failed: ${result.failureDetail}`,
+        );
+      }
+      return result.features;
+    };
+
+    const [nwsResult, ecccResult] = await Promise.allSettled([
+      fetchNwsFeatures(),
+      fetchEcccFeatures(),
+    ]);
+    if (nwsResult.status === 'rejected') {
+      console.warn(`[Weather] NWS fetch failed: ${nwsResult.reason?.message || nwsResult.reason}`);
     }
-    const features = data.features || [];
-    const alerts = features
-      .filter((f) => f?.properties?.severity !== 'Unknown')
-      .slice(0, 50)
-      .map((f) => {
-        const p = f.properties;
-        let coords = [];
-        try {
-          const g = f.geometry;
-          if (g?.type === 'Polygon') coords = g.coordinates[0]?.map((c) => [c[0], c[1]]) || [];
-          else if (g?.type === 'MultiPolygon') coords = g.coordinates[0]?.[0]?.map((c) => [c[0], c[1]]) || [];
-        } catch { /* ignore */ }
-        const centroid = coords.length > 0
-          ? [coords.reduce((s, c) => s + c[0], 0) / coords.length, coords.reduce((s, c) => s + c[1], 0) / coords.length]
-          : undefined;
-        // Slot B: NWS VTEC string. NWS wraps VTEC in an array under
-        // properties.parameters.VTEC; pick the first entry (most alerts have one;
-        // multi-VTEC alerts use the primary). Used to derive a coalesce family key
-        // so adjacent-zone alerts for the same logical event collapse at the
-        // publisher and at the per-user dedup.
-        const vtec = Array.isArray(p?.parameters?.VTEC) ? p.parameters.VTEC[0] : undefined;
-        return {
-          id: f.id || '', event: p.event || '', severity: p.severity || 'Unknown',
-          headline: p.headline || '', description: (p.description || '').slice(0, 500),
-          areaDesc: p.areaDesc || '', onset: p.onset || '', expires: p.expires || '',
-          coordinates: coords, centroid, vtec,
-        };
-      });
-    if (alerts.length === 0) {
-      // NWS responded successfully but has no active alerts — valid quiet state.
-      // Still bump seed-meta so health.js knows the loop ran (avoids false STALE_SEED).
-      await upstashSet('seed-meta:weather:alerts', { fetchedAt: Date.now(), recordCount: 0 }, 604800);
-      console.log('[Weather] No active alerts — seed-meta refreshed, existing data preserved');
+    if (ecccResult.status === 'rejected') {
+      console.warn(`[Weather] ECCC fetch failed: ${ecccResult.reason?.message || ecccResult.reason}`);
+    }
+    if (nwsResult.status === 'rejected' && ecccResult.status === 'rejected') {
+      console.warn('[Weather] Seed failed: both NWS and ECCC fetches failed');
       return;
     }
+
+    const nwsFeatures = nwsResult.status === 'fulfilled' ? nwsResult.value : [];
+    const nwsAlerts = nwsResult.status === 'fulfilled'
+      ? rankEligibleAlerts(nwsFeatures).map((alert) => {
+          const feature = nwsFeatures.find((f) => (f.id || '') === alert.id);
+          const p = feature?.properties || {};
+          const vtec = nwsVtec(p);
+          return vtec ? { ...alert, vtec } : alert;
+        })
+      : [];
+    const ecccAlerts = ecccResult.status === 'fulfilled' ? selectEcccAlerts(ecccResult.value) : [];
+
+    // One source failing must not erase the other's coverage. The #6607 purge
+    // semantics — always overwrite so ended alerts clear — are only correct when
+    // BOTH sources actually answered. When one is down we carry its previous
+    // slice forward, so an NWS outage can no longer wipe every US alert off the
+    // map for the duration of the outage.
+    let carriedNws = [];
+    let carriedEccc = [];
+    if (nwsResult.status === 'rejected' || ecccResult.status === 'rejected') {
+      const prev = await envelopeRead(WEATHER_REDIS_KEY, () => null);
+      const prevAlerts = Array.isArray(prev?.alerts) ? prev.alerts : [];
+      if (nwsResult.status === 'rejected') carriedNws = prevAlerts.filter((a) => a?.source !== 'eccc');
+      if (ecccResult.status === 'rejected') carriedEccc = prevAlerts.filter((a) => a?.source === 'eccc');
+      if (carriedNws.length || carriedEccc.length) {
+        console.warn(`[Weather] carrying last-good forward (nws=${carriedNws.length} eccc=${carriedEccc.length})`);
+      }
+    }
+
+    const alerts = mergeAlertSources({
+      nws: nwsResult.status === 'fulfilled' ? nwsAlerts : carriedNws,
+      eccc: ecccResult.status === 'fulfilled' ? ecccAlerts : carriedEccc,
+    });
+
+    // Always write the merged active set (#6607 purge). Do not skip overwrite
+    // when a live source returns 0 — that would leave ended CA alerts cached.
     const payload = { alerts };
-    const ok1 = await envelopeWrite(WEATHER_REDIS_KEY, payload, WEATHER_CACHE_TTL, { recordCount: alerts.length, sourceVersion: 'nws-weather' });
-    const ok2 = await upstashSet('seed-meta:weather:alerts', { fetchedAt: Date.now(), recordCount: alerts.length }, 604800);
-    console.log(`[Weather] Seeded ${alerts.length} alerts (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    const ok1 = await envelopeWrite(WEATHER_REDIS_KEY, payload, WEATHER_CACHE_TTL, {
+      recordCount: alerts.length,
+      sourceVersion: WEATHER_ALERTS_SOURCE_VERSION,
+      zeroOk: true,
+    });
+    // A permanently dead source must be visible to /api/health. Without a
+    // sourceState the seed-meta stays fresh forever and the outage is invisible.
+    const failedSources = [
+      nwsResult.status === 'rejected' ? 'nws' : null,
+      ecccResult.status === 'rejected' ? 'eccc' : null,
+    ].filter(Boolean);
+    const ok2 = await upstashSet('seed-meta:weather:alerts', {
+      fetchedAt: Date.now(),
+      recordCount: alerts.length,
+      ...(failedSources.length > 0
+        ? {
+          sourceState: 'degraded',
+          errorCode: failedSources.includes('nws') ? 'NWS_SOURCE_FAILED' : 'ECCC_SOURCE_FAILED',
+          failedSources,
+        }
+        : { sourceState: 'ok' }),
+    }, 604800);
+    console.log(`[Weather] Seeded ${alerts.length} alerts (nws=${nwsAlerts.length} eccc=${ecccAlerts.length}, redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     const highSeverityAlerts = alerts.filter(a => a.severity === 'Extreme' || a.severity === 'Severe');
     // Pick up to 3 DISTINCT event families before publishing. The naive
     // `slice(0, 3)` would silently lose distinct families: if the first 3 raw
@@ -4775,8 +5077,8 @@ async function seedWeatherAlerts() {
     const distinctFamilyAlerts = [];
     for (const a of highSeverityAlerts) {
       // Family key: prefer VTEC-derived coalesce key; fall back to a stable
-      // identity from the alert (NWS feature.id, then headline/event) so
-      // VTEC-less alerts still deduplicate against themselves.
+      // identity from the alert so VTEC-less / ECCC alerts still deduplicate
+      // against themselves.
       const familyKey = deriveWeatherCoalesceKey(a.vtec)
         ?? `nws:fallback:${a.id || a.headline || a.event || ''}`;
       if (seenFamilyKeys.has(familyKey)) continue;
@@ -4788,15 +5090,16 @@ async function seedWeatherAlerts() {
       // Slot B: derive a coalesceKey from the NWS VTEC string (when present)
       // so adjacent-zone bulletins for the same logical event collapse to one
       // notification per user. Falls back to title-based dedup when VTEC is
-      // absent (rare advisory types or missing parameters).
+      // absent (ECCC, rare advisory types, or missing parameters).
       const coalesceKey = deriveWeatherCoalesceKey(a.vtec);
       publishNotificationEvent({
         eventType: 'weather_alert',
         payload: {
           title: a.headline || a.event || 'Weather alert',
-          source: 'NWS',
-          countryCode: 'US',
+          source: a.source === 'eccc' ? 'ECCC' : 'NWS',
+          countryCode: a.countryCode || (a.source === 'eccc' ? 'CA' : 'US'),
           ...(coalesceKey ? { coalesceKey } : {}),
+          ...weatherAlertNotifyLocation(a),
         },
         severity: a.severity === 'Extreme' ? 'critical' : 'high',
         variant: undefined,
@@ -5495,15 +5798,6 @@ const CORRIDOR_RISK_BASE_URL = 'https://corridorrisk.io/api/corridors';
 const CORRIDOR_RISK_REDIS_KEY = 'supply_chain:corridorrisk:v1';
 const CORRIDOR_RISK_TTL = 14400; // 4h (seed runs hourly, gives 3 retries before expiry)
 const CORRIDOR_RISK_SEED_INTERVAL_MS = 60 * 60 * 1000;
-// API name -> canonical chokepoint ID (partial substring match)
-const CORRIDOR_RISK_NAME_MAP = [
-  { pattern: 'hormuz', id: 'hormuz_strait' },
-  { pattern: 'bab-el-mandeb', id: 'bab_el_mandeb' },
-  { pattern: 'red sea', id: 'bab_el_mandeb' },
-  { pattern: 'suez', id: 'suez' },
-  { pattern: 'south china sea', id: 'taiwan_strait' },
-  { pattern: 'black sea', id: 'bosphorus' },
-];
 let corridorRiskSeedInFlight = false;
 let latestCorridorRiskData = null;
 
@@ -5542,7 +5836,7 @@ async function seedCorridorRisk() {
       const mapping = CORRIDOR_RISK_NAME_MAP.find(m => name.includes(m.pattern));
       if (!mapping) continue;
       const score = Number(corridor.score ?? 0);
-      const riskLevel = score >= 70 ? 'critical' : score >= 50 ? 'high' : score >= 30 ? 'elevated' : 'normal';
+      const riskLevel = deriveCorridorRiskLevel(score);
       result[mapping.id] = {
         riskLevel,
         riskScore: score,
@@ -6594,6 +6888,7 @@ const DODO_TIER_CONFIG = GENERATED_PRODUCT_CATALOG.tierConfig;
 const DODO_PUBLIC_TIER_GROUPS = GENERATED_PRODUCT_CATALOG.publicTierGroups;
 const DODO_FALLBACK_PRICES = GENERATED_PRODUCT_CATALOG.fallbackPrices;
 const DODO_PUBLIC_PRODUCT_FACTS = GENERATED_PRODUCT_CATALOG.facts;
+const DODO_PUBLIC_INVENTORY_FACTS = requireShared('inventory-facts.generated.json');
 
 let dodoPriceSeedInFlight = false;
 
@@ -6678,6 +6973,7 @@ async function seedDodoPrices() {
     const now = Date.now();
     const payload = {
       ...DODO_PUBLIC_PRODUCT_FACTS,
+      capabilities: DODO_PUBLIC_INVENTORY_FACTS.capabilities,
       tiers,
       fetchedAt: now,
       cachedUntil: now + DODO_PRICE_SEED_TTL * 1000,
@@ -6795,6 +7091,7 @@ function getRouteGroup(pathname) {
   if (pathname === '/notam') return 'notam';
   if (pathname === '/yahoo-chart') return 'yahoo-chart';
   if (pathname === '/aviationstack') return 'aviationstack';
+  if (pathname === '/crypto-quotes') return 'crypto-quotes';
   return 'other';
 }
 
@@ -7096,21 +7393,30 @@ function getRelayRollingMetrics() {
 
   const dedupCount = rollup.openskyDedup + rollup.openskyDedupNeg + rollup.openskyDedupEmpty;
   const cacheServedCount = rollup.openskyCacheHit + rollup.openskyNegativeHit + dedupCount;
-  const openskyCoverage = summarizeServedCoverage({
+  const nowMs = Date.now();
+  const aisPositionFreshness = getAisPositionFreshness(nowMs);
+  const openskyProviderBlocked = nowMs < openskyGlobal429Until;
+  const observedOpenSkyCoverage = summarizeServedCoverage({
     requests: rollup.openskyRequests,
     served: rollup.openskyServed,
     minimum: AVIATION_MIN_SERVED_COVERAGE,
   });
+  const openskyCoverage = openskyProviderBlocked
+    ? { ...observedOpenSkyCoverage, status: 'degraded' }
+    : observedOpenSkyCoverage;
   const googleFlightsCoverage = summarizeServedCoverage({
     requests: rollup.googleFlightsRequests,
     served: rollup.googleFlightsServed,
     minimum: AVIATION_MIN_SERVED_COVERAGE,
   });
-  const aviationCoverage = summarizeServedCoverage({
+  const observedAviationCoverage = summarizeServedCoverage({
     requests: rollup.openskyRequests + rollup.googleFlightsRequests,
     served: rollup.openskyServed + rollup.googleFlightsServed,
     minimum: AVIATION_MIN_SERVED_COVERAGE,
   });
+  const aviationCoverage = openskyProviderBlocked
+    ? { ...observedAviationCoverage, status: 'degraded' }
+    : observedAviationCoverage;
   const rssCoverage = summarizeServedCoverage({
     requests: rollup.rssRequests,
     served: rollup.rssServed,
@@ -7118,7 +7424,6 @@ function getRelayRollingMetrics() {
   });
   let rssBackoffActive = 0;
   let rssMaxBackoffRemainingMs = 0;
-  const nowMs = Date.now();
   for (const expiry of rssBackoffUntil.values()) {
     const remaining = Math.max(0, expiry - nowMs);
     if (remaining > 0) {
@@ -7147,10 +7452,34 @@ function getRelayRollingMetrics() {
       terminalFailure: rollup.openskyTerminalFailure,
       served: rollup.openskyServed,
       coverage: openskyCoverage,
-      global429CooldownRemainingMs: Math.max(0, openskyGlobal429Until - Date.now()),
+      global429CooldownRemainingMs: Math.max(0, openskyGlobal429Until - nowMs),
+      rateLimitRemaining: openskyRateLimitRemaining,
+      rateLimitRetryAt: openskyGlobal429Until ? new Date(openskyGlobal429Until).toISOString() : null,
+      lastSuccessAt: openskyLastSuccessAt ? new Date(openskyLastSuccessAt).toISOString() : null,
+      last429At: openskyLast429At ? new Date(openskyLast429At).toISOString() : null,
       requestSpacingMs: OPENSKY_REQUEST_SPACING_MS,
     },
     ais: {
+      enabled: !!API_KEY,
+      connected: upstreamSocket?.readyState === WebSocket.OPEN,
+      currentPositionReady: aisPositionFreshness.currentPositionReady,
+      positionAgeMs: aisPositionFreshness.positionAgeMs,
+      positionFreshnessMs: AIS_POSITION_FRESHNESS_MS,
+      connectionAttemptsSinceBoot: aisUpstreamMetrics.connectionAttempts,
+      successfulConnectionsSinceBoot: aisUpstreamMetrics.success,
+      throttlesSinceBoot: aisUpstreamMetrics.throttle,
+      terminalFailuresSinceBoot: aisUpstreamMetrics.terminalFailure,
+      reconnectFailures: upstreamReconnectFailures,
+      consecutiveThrottles: upstreamConsecutiveThrottles,
+      throttleEscalated: isAisThrottleEscalated(),
+      reconnectCooldownRemainingMs: Math.max(0, upstreamReconnectAt - nowMs),
+      lastSuccessAt: aisUpstreamMetrics.lastSuccessAt
+        ? new Date(aisUpstreamMetrics.lastSuccessAt).toISOString()
+        : null,
+      lastFailureAt: aisUpstreamMetrics.lastFailureAt
+        ? new Date(aisUpstreamMetrics.lastFailureAt).toISOString()
+        : null,
+      lastFailure: aisUpstreamMetrics.lastFailure,
       queueMax: rollup.queueMax,
       currentQueue: getUpstreamQueueSize(),
       drops: rollup.drops,
@@ -7166,16 +7495,18 @@ function getRelayRollingMetrics() {
       coverage: aviationCoverage,
       minimumServedCoverage: AVIATION_MIN_SERVED_COVERAGE,
     },
-    // Which upstream fed each theater-posture publication cycle. Kept separate
+    // Which upstream fed each theater-posture publication cycle, plus empty
+    // cycles that were rejected before publication. Kept separate
     // from the opensky route counters above so healthy fallback publication
     // (adsb.lol/Wingbits) is never read as OpenSky recovery (#5945). Unlike
     // the sibling sections these are NOT rolling-window: the seed cadence
     // (~10 min) exceeds the metrics window, so bucketed counts would read
     // all-zero — sourceCountsSinceBoot is process-lifetime and lastRun
-    // (with seededAt) is the current-state signal.
+    // (with seededAt or attemptedAt) is the current-state signal.
     theaterPosture: {
       lastRun: theaterPostureLastRun,
       sourceCountsSinceBoot: { ...theaterPostureSourceCounts },
+      emptyRejectionsSinceBoot: theaterPostureEmptyRejections,
     },
     googleFlights: {
       requests: rollup.googleFlightsRequests,
@@ -7343,12 +7674,6 @@ const CHOKEPOINTS = [
   { name: 'Lombok Strait', lat: -8.47, lon: 115.72, radius: 0.5 },
 ];
 
-function classifyVesselType(shipType) {
-  if (shipType >= 80 && shipType <= 89) return 'tanker';
-  if (shipType >= 70 && shipType <= 79) return 'cargo';
-  return 'other';
-}
-
 const chokepointCrossings = new Map();
 const transitCooldowns = new Map();
 const transitPendingEntry = new Map();
@@ -7503,19 +7828,20 @@ function processRawUpstreamMessage(raw) {
   messageCount++;
   if (messageCount % 5000 === 0) {
     const mem = process.memoryUsage();
-    console.log(`[Relay] ${messageCount} msgs, ${clients.size} ws-clients, ${vessels.size} vessels, queue=${getUpstreamQueueSize()}, dropped=${droppedMessages}, rss=${(mem.rss / 1024 / 1024).toFixed(0)}MB heap=${(mem.heapUsed / 1024 / 1024).toFixed(0)}MB, cache: opensky=${openskyResponseCache.size} opensky_neg=${openskyNegativeCache.size} rss_feed=${rssResponseCache.size} rss_backoff=${rssFailureCount.size}`);
+    console.log(`[Relay] ${messageCount} msgs, ${clients.size} ws-clients, ${vessels.size} vessels, queue=${getUpstreamQueueSize()}, dropped=${droppedMessages}, rss=${(mem.rss / 1024 / 1024).toFixed(0)}MB heap=${(mem.heapUsed / 1024 / 1024).toFixed(0)}MB, cache: opensky=${openskyResponseCache.size} opensky_neg=${openskyNegativeCache.size} rss_feed=${rssResponseCache.size} rss_neg=${rssNegativeCache.size} rss_backoff=${rssFailureCount.size}`);
   }
 
+  let acceptedType = null;
   try {
     const parsed = JSON.parse(raw);
     if (parsed?.MessageType === 'PositionReport') {
-      processPositionReportForSnapshot(parsed);
+      if (processPositionReportForSnapshot(parsed)) acceptedType = 'position';
     } else if (parsed?.MessageType === 'ShipStaticData') {
       // Cache ShipType + ShipName by MMSI so subsequent PositionReports
       // can classify the vessel as a tanker. AISStream broadcasts static
       // data ~every 6 min per vessel; in steady state the cache covers
       // most active MMSIs within minutes of relay startup.
-      processShipStaticDataForMeta(parsed);
+      if (processShipStaticDataForMeta(parsed)) acceptedType = 'static';
     }
   } catch {
     // Ignore malformed upstream payloads
@@ -7534,6 +7860,8 @@ function processRawUpstreamMessage(raw) {
       }
     }
   }
+
+  return acceptedType;
 }
 
 function processShipStaticDataForMeta(data) {
@@ -7541,14 +7869,14 @@ function processShipStaticDataForMeta(data) {
   // CallSign, dimensions. We only need ShipType + ShipName for classification.
   const meta = data?.MetaData;
   const sd = data?.Message?.ShipStaticData;
-  if (!meta || !sd) return;
+  if (!meta || !sd) return false;
   // MMSI fallback: AISStream's PositionReport wrapper puts MMSI under
   // MetaData.MMSI, but the ShipStaticData payload sample shows MMSI mirrored
   // as `UserID` on the message body itself. Read MetaData.MMSI first (the
   // documented wrapper field), then fall back to the message-body field so
   // a wrapper schema variant doesn't silently re-empty vesselMeta.
   const mmsi = String(meta.MMSI || sd.UserID || '');
-  if (!mmsi) return;
+  if (!mmsi) return false;
   // ShipType lives in the message body, not MetaData, on Type 5 frames.
   // Gate on `> 0` (not just `Number.isFinite`) so that Number(null) === 0
   // and AIS code 0 ("Not available" per ITU-R M.1371) don't overwrite a
@@ -7556,25 +7884,27 @@ function processShipStaticDataForMeta(data) {
   // {Type: 85} then later {Type: null} would be downgraded to non-tanker
   // because the second write replaces the first with shipType=0.
   const shipType = Number(sd.Type);
-  if (!Number.isFinite(shipType) || shipType <= 0) return;
+  if (!Number.isFinite(shipType) || shipType <= 0) return false;
   vesselMeta.set(mmsi, {
     shipType,
     shipName: (sd.Name || meta.ShipName || '').trim(),
     lastSeen: Date.now(),
   });
+  return true;
 }
 
 function processPositionReportForSnapshot(data) {
   const meta = data?.MetaData;
   const pos = data?.Message?.PositionReport;
-  if (!meta || !pos) return;
+  if (!meta || !pos) return false;
 
   const mmsi = String(meta.MMSI || '');
-  if (!mmsi) return;
+  if (!mmsi) return false;
 
   const lat = Number.isFinite(pos.Latitude) ? pos.Latitude : meta.latitude;
   const lon = Number.isFinite(pos.Longitude) ? pos.Longitude : meta.longitude;
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return false;
 
   const now = Date.now();
 
@@ -7662,6 +7992,7 @@ function processPositionReportForSnapshot(data) {
       timestamp: now,
     });
   }
+  return true;
 }
 
 function cleanupAggregates() {
@@ -7940,7 +8271,10 @@ function getTankerReportsSnapshot(bbox) {
 
 function buildSnapshot() {
   const now = Date.now();
-  if (lastSnapshot && now - lastSnapshotAt < Math.floor(SNAPSHOT_INTERVAL_MS / 2)) {
+  const aisPositionFreshness = getAisPositionFreshness(now);
+  if (lastSnapshot
+      && lastSnapshot.status.currentPositionReady === aisPositionFreshness.currentPositionReady
+      && now - lastSnapshotAt < Math.floor(SNAPSHOT_INTERVAL_MS / 2)) {
     return lastSnapshot;
   }
 
@@ -7952,6 +8286,7 @@ function buildSnapshot() {
     timestamp: new Date(now).toISOString(),
     status: {
       connected: upstreamSocket?.readyState === WebSocket.OPEN,
+      currentPositionReady: aisPositionFreshness.currentPositionReady,
       vessels: vessels.size,
       messages: messageCount,
       clients: clients.size,
@@ -7972,23 +8307,38 @@ function buildSnapshot() {
   // Pre-compress both variants asynchronously (zero CPU on request path)
   const baseBuf = Buffer.from(lastSnapshotJson);
   const candBuf = Buffer.from(lastSnapshotWithCandJson);
-  zlib.gzip(baseBuf, (err, buf) => { if (!err) lastSnapshotGzip = buf; });
-  zlib.gzip(candBuf, (err, buf) => { if (!err) lastSnapshotWithCandGzip = buf; });
-  zlib.brotliCompress(baseBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => { if (!err) lastSnapshotBrotli = buf; });
-  zlib.brotliCompress(candBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => { if (!err) lastSnapshotWithCandBrotli = buf; });
+  const compressionSequence = snapshotSequence;
+  lastSnapshotGzip = null;
+  lastSnapshotWithCandGzip = null;
+  lastSnapshotBrotli = null;
+  lastSnapshotWithCandBrotli = null;
+  zlib.gzip(baseBuf, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotGzip = buf;
+  });
+  zlib.gzip(candBuf, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotWithCandGzip = buf;
+  });
+  zlib.brotliCompress(baseBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotBrotli = buf;
+  });
+  zlib.brotliCompress(candBuf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } }, (err, buf) => {
+    if (!err && snapshotSequence === compressionSequence) lastSnapshotWithCandBrotli = buf;
+  });
 
   return lastSnapshot;
 }
 
 function recordAisSnapshotAvailability(snapshot) {
-  const connected = upstreamSocket?.readyState === WebSocket.OPEN;
-  const hasData = Number(snapshot?.status?.vessels) > 0 || Number(snapshot?.status?.messages) > 0;
-  if (connected && hasData) {
+  const connected = snapshot?.status?.connected === true;
+  // messageCount is process-lifetime telemetry, not current snapshot coverage.
+  // Only an actually served vessel set keeps the maritime surface available.
+  const hasData = Number(snapshot?.status?.vessels) > 0;
+  if (connected && snapshot?.status?.currentPositionReady === true && hasData) {
     recordRelayOutcome('aisSnapshot', 'success');
     incrementRelayMetric('aisSnapshotServed');
     return 'fresh';
   }
-  if (!connected && hasData) {
+  if (hasData) {
     recordRelayOutcome('aisSnapshot', 'fallback');
     incrementRelayMetric('aisSnapshotServed');
     return 'stale';
@@ -8038,18 +8388,6 @@ const TRANSIT_SUMMARY_HISTORY_KEY_PREFIX = 'supply_chain:transit-summaries:histo
 const TRANSIT_SUMMARY_TTL = 3600; // 1h — 6x interval; survives ~5 consecutive missed pings
 const TRANSIT_SUMMARY_INTERVAL_MS = 10 * 60 * 1000;
 
-// Threat levels for anomaly detection.
-// IMPORTANT: Must stay in sync with CHOKEPOINTS[].threatLevel in
-// server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts
-// Only war_zone and critical trigger anomaly signals.
-const CHOKEPOINT_THREAT_LEVELS = {
-  suez: 'high', malacca_strait: 'normal', hormuz_strait: 'war_zone',
-  bab_el_mandeb: 'critical', panama: 'normal', taiwan_strait: 'elevated',
-  cape_of_good_hope: 'normal', gibraltar: 'normal', bosphorus: 'elevated',
-  korea_strait: 'normal', dover_strait: 'normal', kerch_strait: 'war_zone',
-  lombok_strait: 'normal',
-};
-
 // ID mapping: relay geofence name -> canonical ID
 const RELAY_NAME_TO_ID = {
   'Suez Canal': 'suez', 'Malacca Strait': 'malacca_strait',
@@ -8061,21 +8399,6 @@ const RELAY_NAME_TO_ID = {
   'Lombok Strait': 'lombok_strait',
   'South China Sea': null, 'Black Sea': null, // area geofences, not chokepoints
 };
-
-// Duplicated from server/worldmonitor/supply-chain/v1/_scoring.mjs because
-// ais-relay.cjs is CJS and cannot import .mjs modules. Keep in sync.
-function detectTrafficAnomalyRelay(history, threatLevel) {
-  if (!history || history.length < 37) return { dropPct: 0, signal: false };
-  const sorted = [...history].sort((a, b) => b.date.localeCompare(a.date));
-  let recent7 = 0, baseline30 = 0;
-  for (let i = 0; i < 7 && i < sorted.length; i++) recent7 += sorted[i].total;
-  for (let i = 7; i < 37 && i < sorted.length; i++) baseline30 += sorted[i].total;
-  const baselineAvg7 = (baseline30 / Math.min(30, sorted.length - 7)) * 7;
-  if (baselineAvg7 < 14) return { dropPct: 0, signal: false };
-  const dropPct = Math.round(((baselineAvg7 - recent7) / baselineAvg7) * 100);
-  const isHighThreat = threatLevel === 'war_zone' || threatLevel === 'critical';
-  return { dropPct, signal: dropPct >= 50 && isHighThreat };
-}
 
 async function seedTransitSummaries() {
   let pwFailureReason = null;
@@ -8115,7 +8438,7 @@ async function seedTransitSummaries() {
     if (cpData) pwCovered++;
     const threatLevel = CHOKEPOINT_THREAT_LEVELS[cpId] || 'normal';
     const history = cpData?.history ?? [];
-    const anomaly = detectTrafficAnomalyRelay(history, threatLevel);
+    const anomaly = detectTrafficAnomaly(history, threatLevel);
 
     // Get relay transit counts for this chokepoint
     let relayTransit = null;
@@ -8394,7 +8717,8 @@ const OPENSKY_BBOX_DECIMALS = OPENSKY_BBOX_QUANT_STEP > 0
 const OPENSKY_DEDUP_EMPTY_RESPONSE_JSON = JSON.stringify({ states: [], time: 0 });
 const OPENSKY_DEDUP_EMPTY_RESPONSE_GZIP = gzipSyncBuffer(OPENSKY_DEDUP_EMPTY_RESPONSE_JSON);
 const OPENSKY_DEDUP_EMPTY_RESPONSE_BROTLI = brotliSyncBuffer(OPENSKY_DEDUP_EMPTY_RESPONSE_JSON);
-const rssResponseCache = new Map(); // key: feed URL → { data, contentType, timestamp, statusCode }
+const rssResponseCache = new Map(); // key: feed URL → last successful { data, contentType, timestamp, statusCode }
+const rssNegativeCache = new Map(); // key: feed URL → short-lived last non-2xx response
 const rssInFlight = new Map(); // key: feed URL → Promise (dedup concurrent requests)
 const rssFailureCount = new Map(); // key: feed URL → consecutive failure count (for exponential backoff)
 const rssBackoffUntil = new Map(); // key: feed URL → timestamp when backoff expires
@@ -8402,6 +8726,8 @@ const RSS_CACHE_TTL_MS = Math.max(1, Number(process.env.RELAY_TEST_RSS_CACHE_TTL
 const RSS_NEGATIVE_CACHE_TTL_MS = 60 * 1000; // 1 min base — scaled by 2^failures via backoff
 const RSS_MAX_NEGATIVE_CACHE_TTL_MS = 15 * 60 * 1000; // 15 min cap — stop hammering broken feeds
 const RSS_CACHE_MAX_ENTRIES = 200; // hard cap — ~20 allowed domains × ~5 paths max, with headroom
+const RSS_NEGATIVE_CACHE_MAX_ENTRIES = 64; // short-lived failures need less headroom than feed bodies
+const RSS_CACHE_CLEANUP_INTERVAL_MS = Math.max(1, Number(process.env.RELAY_TEST_RSS_CACHE_CLEANUP_INTERVAL_MS) || 60 * 1000);
 
 function rssRecordFailure(feedUrl) {
   const prev = rssFailureCount.get(feedUrl) || 0;
@@ -8503,9 +8829,13 @@ const OPENSKY_AUTH_COOLDOWN_MS = 60000; // 1 min cooldown after auth failure
 // Global OpenSky rate limiter — serializes upstream requests and enforces 429 cooldown
 let openskyGlobal429Until = 0; // timestamp: block ALL upstream requests until this time
 const OPENSKY_429_COOLDOWN_MS = Number(process.env.OPENSKY_429_COOLDOWN_MS) || 90 * 1000; // 90s cooldown after any 429
+const OPENSKY_MAX_429_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const OPENSKY_REQUEST_SPACING_MS = Number(process.env.OPENSKY_REQUEST_SPACING_MS) || 2000; // 2s minimum between consecutive upstream requests
 let openskyLastUpstreamTime = 0;
 let openskyUpstreamQueue = Promise.resolve(); // serial chain — only 1 upstream request at a time
+let openskyRateLimitRemaining = null;
+let openskyLastSuccessAt = 0;
+let openskyLast429At = 0;
 
 async function getOpenSkyToken() {
   const clientId = process.env.OPENSKY_CLIENT_ID;
@@ -8684,6 +9014,17 @@ function _collectDecompressed(response) {
   });
 }
 
+function _readOpenSkyRateLimitHeaders(response) {
+  const remaining = Number(response.headers['x-rate-limit-remaining']);
+  const retryAfterSeconds = Number(response.headers['x-rate-limit-retry-after-seconds']);
+  return {
+    rateLimitRemaining: Number.isFinite(remaining) && remaining >= 0 ? Math.floor(remaining) : null,
+    retryAfterSeconds: Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? Math.min(Math.ceil(retryAfterSeconds), OPENSKY_MAX_429_COOLDOWN_MS / 1000)
+      : null,
+  };
+}
+
 function _openskyRawFetch(url, token) {
   const parsed = new URL(url);
   const reqHeaders = {
@@ -8706,9 +9047,10 @@ function _openskyRawFetch(url, token) {
           headers: reqHeaders,
           timeout: 15000,
         }, (response) => {
+          const rateLimit = _readOpenSkyRateLimitHeaders(response);
           _collectDecompressed(response)
-            .then(data => resolve({ status: response.statusCode || 502, data }))
-            .catch(err => resolve({ status: 0, data: null, error: err }));
+            .then(data => resolve({ status: response.statusCode || 502, data, ...rateLimit }))
+            .catch(err => resolve({ status: response.statusCode || 502, data: null, error: err, ...rateLimit }));
         });
         request.on('error', (err) => resolve({ status: 0, data: null, error: err }));
         request.on('timeout', () => { request.destroy(); resolve({ status: 504, data: null, error: new Error('timeout') }); });
@@ -8723,9 +9065,10 @@ function _openskyRawFetch(url, token) {
       agent: httpsKeepAliveAgent,
       timeout: 15000,
     }, (response) => {
+      const rateLimit = _readOpenSkyRateLimitHeaders(response);
       _collectDecompressed(response)
-        .then(data => resolve({ status: response.statusCode || 502, data }))
-        .catch(err => resolve({ status: 0, data: null, error: err }));
+        .then(data => resolve({ status: response.statusCode || 502, data, ...rateLimit }))
+        .catch(err => resolve({ status: response.statusCode || 502, data: null, error: err, ...rateLimit }));
     });
     request.on('error', (err) => resolve({ status: 0, data: null, error: err }));
     request.on('timeout', () => { request.destroy(); resolve({ status: 504, data: null, error: new Error('timeout') }); });
@@ -8745,7 +9088,28 @@ function openskyQueuedFetch(url, token) {
       return { status: 429, data: JSON.stringify({ states: [], time: Date.now() }), rateLimited: true };
     }
     openskyLastUpstreamTime = Date.now();
-    return _openskyRawFetch(url, token);
+    incrementRelayMetric('openskyUpstreamFetches');
+    const result = await _openskyRawFetch(url, token);
+    const completedAt = Date.now();
+    if (result.rateLimitRemaining != null) {
+      openskyRateLimitRemaining = result.rateLimitRemaining;
+    }
+    if (result.status >= 200 && result.status < 300) {
+      openskyLastSuccessAt = completedAt;
+    }
+    if (result.status === 429) {
+      const providerCooldownMs = result.retryAfterSeconds == null
+        ? OPENSKY_429_COOLDOWN_MS
+        : result.retryAfterSeconds * 1000;
+      const cooldownMs = Math.min(
+        OPENSKY_MAX_429_COOLDOWN_MS,
+        Math.max(OPENSKY_429_COOLDOWN_MS, providerCooldownMs),
+      );
+      openskyGlobal429Until = Math.max(openskyGlobal429Until, completedAt + cooldownMs);
+      openskyLast429At = completedAt;
+      console.warn(`[Relay] OpenSky 429 — global cooldown ${Math.ceil(cooldownMs / 1000)}s (all bbox queries blocked)`);
+    }
+    return result;
   });
   openskyUpstreamQueue = job.catch(() => {});
   return job;
@@ -8885,8 +9249,6 @@ async function handleOpenSkyRequest(req, res, PORT) {
     }
 
     logThrottled('log', `opensky-miss:${cacheKey}`, '[Relay] OpenSky request (MISS):', openskyUrl);
-    incrementRelayMetric('openskyUpstreamFetches');
-
     // Serialized fetch — queued with spacing to prevent concurrent 429 storms
     const result = await openskyQueuedFetch(openskyUrl, token);
     const upstreamStatus = result.status || 502;
@@ -8898,11 +9260,6 @@ async function handleOpenSkyRequest(req, res, PORT) {
     if (upstreamStatus === 401) {
       openskyToken = null;
       openskyTokenExpiry = 0;
-    }
-
-    if (upstreamStatus === 429 && !result.rateLimited) {
-      openskyGlobal429Until = Date.now() + OPENSKY_429_COOLDOWN_MS;
-      console.warn(`[Relay] OpenSky 429 — global cooldown ${OPENSKY_429_COOLDOWN_MS / 1000}s (all bbox queries blocked)`);
     }
 
     if (upstreamStatus === 200 && result.data) {
@@ -9363,7 +9720,14 @@ setInterval(() => {
     if (now - entry.timestamp > OPENSKY_NEGATIVE_CACHE_TTL_MS * 2) openskyNegativeCache.delete(key);
   }
   for (const [key, entry] of rssResponseCache) {
-    if (now - entry.timestamp > RSS_CACHE_TTL_MS * 2) rssResponseCache.delete(key);
+    const backoffActive = (rssBackoffUntil.get(key) || 0) > now;
+    const negativeCacheActive = (rssNegativeCache.get(key)?.timestamp || 0) + RSS_NEGATIVE_CACHE_TTL_MS > now;
+    if (now - entry.timestamp > RSS_CACHE_TTL_MS * 2 && !backoffActive && !negativeCacheActive) {
+      rssResponseCache.delete(key);
+    }
+  }
+  for (const [key, entry] of rssNegativeCache) {
+    if (now - entry.timestamp > RSS_NEGATIVE_CACHE_TTL_MS * 2) rssNegativeCache.delete(key);
   }
   for (const [key, expiry] of rssBackoffUntil) {
     // Only clear backoff timer on expiry — preserve failureCount so
@@ -9374,7 +9738,9 @@ setInterval(() => {
   // Edge case: if cache is evicted (FIFO/age) right when backoff expires, failureCount
   // resets — next failure starts at 1min instead of re-escalating. Window is ~60s, acceptable.
   for (const key of rssFailureCount.keys()) {
-    if (!rssBackoffUntil.has(key) && !rssResponseCache.has(key)) rssFailureCount.delete(key);
+    if (!rssBackoffUntil.has(key) && !rssResponseCache.has(key) && !rssNegativeCache.has(key)) {
+      rssFailureCount.delete(key);
+    }
   }
   for (const [key, entry] of worldbankCache) {
     if (now - entry.timestamp > WORLDBANK_CACHE_TTL_MS * 2) worldbankCache.delete(key);
@@ -9391,7 +9757,7 @@ setInterval(() => {
   for (const [key, ts] of logThrottleState) {
     if (now - ts > RELAY_LOG_THROTTLE_MS * 6) logThrottleState.delete(key);
   }
-}, 60 * 1000).unref?.();
+}, RSS_CACHE_CLEANUP_INTERVAL_MS).unref?.();
 
 // ── Yahoo Finance Chart Proxy ──────────────────────────────────────
 const YAHOO_CHART_CACHE_TTL_MS = 300_000; // 5 min
@@ -9477,6 +9843,102 @@ function handleYahooChartRequest(req, res) {
     _tryProxy();
   });
 }
+
+// ── Crypto Quotes Gap Proxy ────────────────────────────────────────────
+// Resolves CoinGecko IDs on demand from the Railway egress IP (per-ID
+// CoinGecko -> CoinPaprika) for the edge handler's bounded gap path (#6306).
+// The edge handler serves seed hits from Redis and only sends cache-miss gap
+// ids here; this route performs the provider work and never writes Redis.
+const CRYPTO_QUOTES_MAX_IDS = 25;
+
+function handleCryptoQuotesRequest(req, res) {
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+  const idsParam = url.searchParams.get('ids') || '';
+  const ids = [...new Set(idsParam.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean))];
+  if (ids.length === 0) {
+    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Missing ids parameter' }));
+  }
+  if (ids.length > CRYPTO_QUOTES_MAX_IDS) {
+    return sendCompressed(req, res, 400, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: `At most ${CRYPTO_QUOTES_MAX_IDS} ids per request` }));
+  }
+  const reverseMap = new Map(Object.entries(CRYPTO_PAPRIKA_MAP).map(([g, p]) => [p, g]));
+  const byGeckoId = new Map();
+  (async () => {
+    // CoinGecko first (matches edge fetchGapQuotes), then paprika for still-missing.
+    try {
+      const { base, headers } = coingeckoEndpoint();
+      const geckoUrl = `${base}/coins/markets?vs_currency=usd&ids=${encodeURIComponent(ids.join(','))}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
+      const gecko = await cyberHttpGetJson(geckoUrl, headers, 15000);
+      if (Array.isArray(gecko)) {
+        for (const c of gecko) {
+          if (!c?.id) continue;
+          byGeckoId.set(c.id, {
+            id: c.id,
+            name: c.name,
+            symbol: (c.symbol || '').toLowerCase(),
+            quotes: { USD: { price: c.current_price || 0, percent_change_24h: c.price_change_percentage_24h || 0, percent_change_7d: c.price_change_percentage_7d_in_currency || 0 } },
+            sparkline_in_7d: c.sparkline_in_7d,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn(`[Relay][CryptoQuotes] CoinGecko failed: ${err.message}`);
+    }
+
+    const stillMissing = ids.filter((id) => !byGeckoId.has(id));
+    if (stillMissing.length > 0) {
+      const paprikaIds = stillMissing.map((id) => CRYPTO_PAPRIKA_MAP[id]).filter(Boolean);
+      if (paprikaIds.length > 0) {
+        try {
+          const data = await _fetchCoinPaprikaTickersById(paprikaIds);
+          if (Array.isArray(data)) {
+            for (const row of data) {
+              const geckoId = reverseMap.get(row.id) || stillMissing.find((id) => CRYPTO_PAPRIKA_MAP[id] === row.id);
+              if (!geckoId || byGeckoId.has(geckoId)) continue;
+              byGeckoId.set(geckoId, row);
+            }
+          }
+        } catch (err) {
+          console.warn(`[Relay][CryptoQuotes] CoinPaprika failed: ${err.message}`);
+        }
+      }
+    }
+
+    if (byGeckoId.size === 0) {
+      return sendCompressed(req, res, 502, { 'Content-Type': 'application/json' },
+        JSON.stringify({ error: 'All crypto providers failed' }));
+    }
+
+    const quotes = [];
+    const unresolved = [];
+    for (const id of ids) {
+      const row = byGeckoId.get(id);
+      if (!row) { unresolved.push(id); continue; }
+      const prices = row.sparkline_in_7d?.price;
+      quotes.push({
+        id,
+        name: row.name || id,
+        symbol: (row.symbol || id).toUpperCase(),
+        price: row.quotes?.USD?.price || 0,
+        change: row.quotes?.USD?.percent_change_24h || 0,
+        change7d: row.quotes?.USD?.percent_change_7d || 0,
+        sparkline: prices && prices.length > 24 ? prices.slice(-48) : (prices || []),
+      });
+    }
+    return sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=30',
+      'X-Crypto-Source': 'relay',
+    }, JSON.stringify({ quotes, unresolved }));
+  })().catch((err) => {
+    console.warn(`[Relay][CryptoQuotes] error: ${err.message}`);
+    return sendCompressed(req, res, 502, { 'Content-Type': 'application/json' },
+      JSON.stringify({ error: 'Crypto quotes proxy error' }));
+  });
+}
+
 
 // ── AviationStack Proxy ─────────────────────────────────────────────
 // Vercel handlers proxy flight queries through Railway to keep the API key
@@ -9895,10 +10357,28 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/health' || pathname === '/') {
     const mem = process.memoryUsage();
     const ingestion = getRelayRollingMetrics();
-    const aisSnapshotDegraded = ingestion.aisSnapshot.requests > 0 && ingestion.aisSnapshot.served === 0;
+    const {
+      enabled: aisEnabled,
+      connected: aisConnected,
+      currentPositionReady: aisCurrentPositionReady,
+    } = ingestion.ais;
+    const aisHasData = vessels.size > 0;
+    const aisSnapshotDegraded = aisEnabled && (
+      !aisConnected
+      || !aisCurrentPositionReady
+      || !aisHasData
+      || (ingestion.aisSnapshot.requests > 0 && ingestion.aisSnapshot.served === 0)
+    );
     const ingestionDegraded = ingestion.aviation.coverage.status === 'degraded'
       || ingestion.rss.coverage.status === 'degraded'
       || aisSnapshotDegraded;
+    const healthStatus = ingestionDegraded ? 'degraded' : 'ok';
+    let aisSnapshotStatus = 'disabled';
+    if (aisEnabled && aisSnapshotDegraded) {
+      aisSnapshotStatus = 'degraded';
+    } else if (aisEnabled) {
+      aisSnapshotStatus = 'ok';
+    }
     // ⚠ SECURITY — read before adding fields to this response.
     //
     // /health is in `isPublicRoute` (no auth check). Fields here are
@@ -9930,17 +10410,21 @@ const server = http.createServer(async (req, res) => {
     // response. The `ais-relay-health-no-secret-recon` test asserts the
     // removed fields don't reappear here.
     sendCompressed(req, res, 200, { 'Content-Type': 'application/json' }, JSON.stringify({
-      // Keep the historical liveness status stable for Railway probes; the
-      // ingestion verdict is explicit below so monitors can alert without
-      // turning an application-level coverage dip into a process outage.
-      status: 'ok',
+      // Keep HTTP 200 for Railway process-liveness probes, but never publish a
+      // false-green JSON verdict when configured AIS ingestion has no usable data.
+      status: healthStatus,
       ingestion: {
-        status: ingestionDegraded ? 'degraded' : 'ok',
+        status: healthStatus,
         aviation: ingestion.aviation,
         rss: ingestion.rss,
         aisSnapshot: {
           ...ingestion.aisSnapshot,
-          connected: upstreamSocket?.readyState === WebSocket.OPEN,
+          enabled: aisEnabled,
+          status: aisSnapshotStatus,
+          connected: aisConnected,
+          hasData: aisHasData,
+          currentPositionReady: aisCurrentPositionReady,
+          upstream: ingestion.ais,
         },
       },
       clients: clients.size,
@@ -9979,7 +10463,9 @@ const server = http.createServer(async (req, res) => {
       cache: {
         opensky: openskyResponseCache.size,
         opensky_neg: openskyNegativeCache.size,
-        rss: rssResponseCache.size,
+        rss: rssResponseCache.size + rssNegativeCache.size,
+        rss_positive: rssResponseCache.size,
+        rss_negative: rssNegativeCache.size,
         ucdp: ucdpCache.data ? 'warm' : 'cold',
         worldbank: worldbankCache.size,
         polymarket: polymarketCache.size,
@@ -10060,6 +10546,9 @@ const server = http.createServer(async (req, res) => {
     openskyTokenPromise = null;
     openskyAuthCooldownUntil = 0;
     openskyGlobal429Until = 0;
+    openskyRateLimitRemaining = null;
+    openskyLastSuccessAt = 0;
+    openskyLast429At = 0;
     openskyNegativeCache.clear();
     console.log('[Relay] OpenSky auth + rate-limit state reset via /opensky-reset');
     const tokenStart = Date.now();
@@ -10195,20 +10684,25 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ error: 'Domain not allowed on Railway proxy' }));
       }
 
+      const sendRssStale = (cacheEntry, cacheLabel = 'STALE', extraHeaders = {}) => sendCompressed(req, res, 200, {
+        'Content-Type': cacheEntry.contentType || 'application/xml',
+        'Cache-Control': 'no-store',
+        'CDN-Cache-Control': 'no-store',
+        'X-Cache': cacheLabel,
+        ...extraHeaders,
+        'X-Relay-Stale': '1',
+      }, cacheEntry.data);
+
       // Backoff guard: if feed is in exponential backoff, don't hit upstream
       const backoffExpiry = rssBackoffUntil.get(feedUrl);
       const backoffNow = Date.now();
       if (backoffExpiry && backoffNow < backoffExpiry) {
         const rssCachedForBackoff = rssResponseCache.get(feedUrl);
-        if (rssCachedForBackoff && rssCachedForBackoff.statusCode >= 200 && rssCachedForBackoff.statusCode < 300) {
+        if (rssCachedForBackoff) {
           recordRelayOutcome('rss', 'throttle');
           recordRelayOutcome('rss', 'fallback');
           incrementRelayMetric('rssServed');
-          return sendCompressed(req, res, 200, {
-            'Content-Type': rssCachedForBackoff.contentType || 'application/xml',
-            'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store',
-            'X-Cache': 'BACKOFF-STALE',
-          }, rssCachedForBackoff.data);
+          return sendRssStale(rssCachedForBackoff, 'BACKOFF-STALE');
         }
         const remainSec = Math.max(1, Math.round((backoffExpiry - backoffNow) / 1000));
         recordRelayOutcome('rss', 'throttle');
@@ -10218,26 +10712,36 @@ const server = http.createServer(async (req, res) => {
 
       // Two-layer negative caching:
       // 1. Backoff guard above: exponential (1→15min) for network errors (socket hang up, timeout)
-      // 2. This cache check: flat 1min TTL for non-2xx upstream responses (429, 503, etc.)
-      // Both layers work correctly together — backoff handles persistent failures,
-      // negative cache prevents thundering herd on transient upstream errors.
+      // 2. The negative cache below: flat 1min TTL for non-2xx upstream responses (429, 503, etc.)
+      // Keep negative responses separate from the positive cache so an upstream
+      // rejection cannot erase the last body that can be served stale.
       const rssCached = rssResponseCache.get(feedUrl);
-      if (rssCached) {
-        const ttl = (rssCached.statusCode && rssCached.statusCode >= 200 && rssCached.statusCode < 300)
-          ? RSS_CACHE_TTL_MS : RSS_NEGATIVE_CACHE_TTL_MS;
-        if (Date.now() - rssCached.timestamp < ttl) {
-          if (rssCached.statusCode < 200 || rssCached.statusCode >= 300) {
-            recordRelayOutcome('rss', classifyUpstreamOutcome({ status: rssCached.statusCode }));
-          } else {
+      const rssNegativeCached = rssNegativeCache.get(feedUrl);
+      if (rssCached && Date.now() - rssCached.timestamp < RSS_CACHE_TTL_MS) {
+        incrementRelayMetric('rssServed');
+        return sendCompressed(req, res, 200, {
+          'Content-Type': rssCached.contentType || 'application/xml',
+          'Cache-Control': 'public, max-age=300',
+          'CDN-Cache-Control': 'public, max-age=600, stale-while-revalidate=300',
+          'X-Cache': 'HIT',
+        }, rssCached.data);
+      }
+      if (rssNegativeCached) {
+        if (Date.now() - rssNegativeCached.timestamp < RSS_NEGATIVE_CACHE_TTL_MS) {
+          recordRelayOutcome('rss', classifyUpstreamOutcome({ status: rssNegativeCached.statusCode }));
+          if (rssCached) {
+            recordRelayOutcome('rss', 'fallback');
             incrementRelayMetric('rssServed');
+            return sendRssStale(rssCached, 'NEGATIVE-STALE');
           }
-          return sendCompressed(req, res, rssCached.statusCode || 200, {
-            'Content-Type': rssCached.contentType || 'application/xml',
-            'Cache-Control': rssCached.statusCode >= 200 && rssCached.statusCode < 300 ? 'public, max-age=300' : 'no-cache',
-            'CDN-Cache-Control': rssCached.statusCode >= 200 && rssCached.statusCode < 300 ? 'public, max-age=600, stale-while-revalidate=300' : 'no-store',
+          return sendCompressed(req, res, rssNegativeCached.statusCode || 502, {
+            'Content-Type': rssNegativeCached.contentType || 'application/xml',
+            'Cache-Control': 'no-cache',
+            'CDN-Cache-Control': 'no-store',
             'X-Cache': 'HIT',
-          }, rssCached.data);
+          }, rssNegativeCached.data);
         }
+        rssNegativeCache.delete(feedUrl);
       }
 
       // In-flight dedup: if another request for the same feed is already fetching,
@@ -10245,20 +10749,34 @@ const server = http.createServer(async (req, res) => {
       const existing = rssInFlight.get(feedUrl);
       if (existing) {
         try {
-          await existing;
+          const fetchResult = await existing;
           const deduped = rssResponseCache.get(feedUrl);
           if (deduped) {
-            if (deduped.statusCode < 200 || deduped.statusCode >= 300) {
-              recordRelayOutcome('rss', classifyUpstreamOutcome({ status: deduped.statusCode }));
-            } else {
-              incrementRelayMetric('rssServed');
+            const dedupedNegative = rssNegativeCache.get(feedUrl);
+            incrementRelayMetric('rssServed');
+            if (dedupedNegative || fetchResult?.stale) {
+              recordRelayOutcome('rss', dedupedNegative
+                ? classifyUpstreamOutcome({ status: dedupedNegative.statusCode })
+                : fetchResult.outcome);
+              recordRelayOutcome('rss', 'fallback');
+              return sendRssStale(deduped, 'DEDUP-STALE');
             }
-            return sendCompressed(req, res, deduped.statusCode || 200, {
+            return sendCompressed(req, res, 200, {
               'Content-Type': deduped.contentType || 'application/xml',
-              'Cache-Control': deduped.statusCode >= 200 && deduped.statusCode < 300 ? 'public, max-age=300' : 'no-cache',
-              'CDN-Cache-Control': deduped.statusCode >= 200 && deduped.statusCode < 300 ? 'public, max-age=600, stale-while-revalidate=300' : 'no-store',
+              'Cache-Control': 'public, max-age=300',
+              'CDN-Cache-Control': 'public, max-age=600, stale-while-revalidate=300',
               'X-Cache': 'DEDUP',
             }, deduped.data);
+          }
+          const dedupedNegative = rssNegativeCache.get(feedUrl);
+          if (dedupedNegative) {
+            recordRelayOutcome('rss', classifyUpstreamOutcome({ status: dedupedNegative.statusCode }));
+            return sendCompressed(req, res, dedupedNegative.statusCode || 502, {
+              'Content-Type': dedupedNegative.contentType || 'application/xml',
+              'Cache-Control': 'no-cache',
+              'CDN-Cache-Control': 'no-store',
+              'X-Cache': 'DEDUP',
+            }, dedupedNegative.data);
           }
           // In-flight completed but nothing cached — serve 502 instead of cascading
           recordRelayOutcome('rss', 'terminalFailure');
@@ -10282,7 +10800,9 @@ const server = http.createServer(async (req, res) => {
       const recordAttemptOutcome = (status, error) => {
         if (outcomeRecorded) return;
         outcomeRecorded = true;
-        recordRelayOutcome('rss', classifyUpstreamOutcome({ status, error }));
+        const outcome = classifyUpstreamOutcome({ status, error });
+        recordRelayOutcome('rss', outcome);
+        return outcome;
       };
 
       const recordFailure = () => {
@@ -10350,11 +10870,11 @@ const server = http.createServer(async (req, res) => {
 
           if (response.statusCode === 304 && rssCached) {
             responseHandled = true;
-            recordAttemptOutcome(200);
+            const outcome = recordAttemptOutcome(200);
             incrementRelayMetric('rssServed');
             rssCached.timestamp = Date.now();
             rssResetFailure(feedUrl);
-            resolveInFlight();
+            resolveInFlight({ outcome });
             logThrottled('log', `rss-revalidated:${feedUrl}`, '[Relay] RSS 304 revalidated:', feedUrl);
             sendCompressed(req, res, 200, {
               'Content-Type': rssCached.contentType || 'application/xml',
@@ -10377,34 +10897,43 @@ const server = http.createServer(async (req, res) => {
             if (responseHandled || res.headersSent) return;
             responseHandled = true;
             const data = Buffer.concat(chunks);
-            // Cache all responses: 2xx with full TTL, non-2xx with short TTL (negative cache)
-            // FIFO eviction: drop oldest-inserted entry if at capacity
-            if (rssResponseCache.size >= RSS_CACHE_MAX_ENTRIES && !rssResponseCache.has(feedUrl)) {
-              const oldest = rssResponseCache.keys().next().value;
-              if (oldest) rssResponseCache.delete(oldest);
-            }
-            rssResponseCache.set(feedUrl, {
+            const isSuccess = response.statusCode >= 200 && response.statusCode < 300;
+            const cacheEntry = {
               data, contentType: 'application/xml', statusCode: response.statusCode, timestamp: Date.now(),
-              etag: response.headers.etag || null,
-              lastModified: response.headers['last-modified'] || null,
-            });
+            };
+            if (isSuccess) {
+              cacheEntry.etag = response.headers.etag || null;
+              cacheEntry.lastModified = response.headers['last-modified'] || null;
+              setBoundedCacheEntry(rssResponseCache, feedUrl, cacheEntry, RSS_CACHE_MAX_ENTRIES);
+              rssNegativeCache.delete(feedUrl);
+            } else {
+              setBoundedCacheEntry(rssNegativeCache, feedUrl, cacheEntry, RSS_NEGATIVE_CACHE_MAX_ENTRIES);
+            }
             const responseHeaders = {
               'Content-Type': 'application/xml',
-              'Cache-Control': response.statusCode >= 200 && response.statusCode < 300 ? 'public, max-age=300' : 'no-cache',
-              'CDN-Cache-Control': response.statusCode >= 200 && response.statusCode < 300 ? 'public, max-age=600, stale-while-revalidate=300' : 'no-store',
+              'Cache-Control': isSuccess ? 'public, max-age=300' : 'no-cache',
+              'CDN-Cache-Control': isSuccess ? 'public, max-age=600, stale-while-revalidate=300' : 'no-store',
               'X-Cache': 'MISS',
             };
-            if (response.statusCode >= 200 && response.statusCode < 300) {
-              recordAttemptOutcome(response.statusCode);
+            let outcome;
+            if (isSuccess) {
+              outcome = recordAttemptOutcome(response.statusCode);
               incrementRelayMetric('rssServed');
               rssResetFailure(feedUrl);
             } else {
-              recordAttemptOutcome(response.statusCode);
+              outcome = recordAttemptOutcome(response.statusCode);
               const { failures, backoffSec } = recordFailure();
               logThrottled('warn', `rss-upstream:${feedUrl}:${response.statusCode}`, `[Relay] RSS upstream ${response.statusCode} for ${feedUrl} (backoff ${backoffSec}s, failures=${failures})`);
               responseHeaders['Retry-After'] = String(backoffSec);
+              if (rssCached) {
+                incrementRelayMetric('rssServed');
+                recordRelayOutcome('rss', 'fallback');
+                resolveInFlight({ stale: true, outcome });
+                sendRssStale(rssCached, 'STALE', { 'Retry-After': String(backoffSec) });
+                return;
+              }
             }
-            resolveInFlight();
+            resolveInFlight({ outcome });
             sendCompressed(req, res, response.statusCode, responseHeaders, data);
           });
           stream.on('error', (err) => {
@@ -10416,18 +10945,18 @@ const server = http.createServer(async (req, res) => {
         });
 
         request.on('error', (err) => {
-          recordAttemptOutcome(0, err);
+          const outcome = recordAttemptOutcome(0, err);
           const { failures, backoffSec } = recordFailure();
           logThrottled('error', `rss-error:${feedUrl}:${err.code || err.message}`, `[Relay] RSS error: ${err.message} (backoff ${backoffSec}s, failures=${failures})`);
           // Serve stale on error (only if we have previous successful data)
-          if (rssCached && rssCached.statusCode >= 200 && rssCached.statusCode < 300) {
+          if (rssCached) {
             if (!responseHandled && !res.headersSent) {
               responseHandled = true;
               incrementRelayMetric('rssServed');
               recordRelayOutcome('rss', 'fallback');
-              sendCompressed(req, res, 200, { 'Content-Type': 'application/xml', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'X-Cache': 'STALE' }, rssCached.data);
+              sendRssStale(rssCached);
             }
-            resolveInFlight();
+            resolveInFlight({ stale: true, outcome });
             return;
           }
           sendError(502, err.message);
@@ -10435,15 +10964,15 @@ const server = http.createServer(async (req, res) => {
 
         request.on('timeout', () => {
           request.destroy();
-          recordAttemptOutcome(504, new Error('timeout'));
+          const outcome = recordAttemptOutcome(504, new Error('timeout'));
           const { failures, backoffSec } = recordFailure();
           logThrottled('warn', `rss-timeout:${feedUrl}`, `[Relay] RSS timeout for ${feedUrl} (backoff ${backoffSec}s, failures=${failures})`);
-          if (rssCached && rssCached.statusCode >= 200 && rssCached.statusCode < 300 && !responseHandled && !res.headersSent) {
+          if (rssCached && !responseHandled && !res.headersSent) {
             responseHandled = true;
             incrementRelayMetric('rssServed');
             recordRelayOutcome('rss', 'fallback');
-            sendCompressed(req, res, 200, { 'Content-Type': 'application/xml', 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store', 'X-Cache': 'STALE' }, rssCached.data);
-            resolveInFlight();
+            sendRssStale(rssCached);
+            resolveInFlight({ stale: true, outcome });
             return;
           }
           sendError(504, 'Request timeout');
@@ -10515,6 +11044,8 @@ const server = http.createServer(async (req, res) => {
     handleYouTubeLiveRequest(req, res);
   } else if (pathname === '/yahoo-chart') {
     handleYahooChartRequest(req, res);
+  } else if (pathname === '/crypto-quotes') {
+    handleCryptoQuotesRequest(req, res);
   } else if (pathname === '/notam') {
     handleNotamProxyRequest(req, res);
   } else if (pathname === '/aviationstack') {
@@ -11941,33 +12472,76 @@ function switchTab(btn, key) {
 
 function scheduleUpstreamReconnect() {
   if (relayShuttingDown || upstreamReconnectTimer || !API_KEY) return;
-  const delayMs = nextBackoffMs(upstreamReconnectFailures, AIS_RECONNECT_BASE_MS, AIS_RECONNECT_MAX_MS);
+  const throttleEscalated = isAisThrottleEscalated();
+  const ceilingMs = throttleEscalated ? AIS_THROTTLE_RECONNECT_MAX_MS : AIS_RECONNECT_MAX_MS;
+  const delayMs = nextBackoffMs(upstreamReconnectFailures, AIS_RECONNECT_BASE_MS, ceilingMs);
   upstreamReconnectFailures++;
+  upstreamReconnectAt = Date.now() + delayMs;
   upstreamReconnectTimer = setTimeout(() => {
     upstreamReconnectTimer = null;
+    upstreamReconnectAt = 0;
     connectUpstream();
   }, delayMs);
   upstreamReconnectTimer.unref?.();
-  console.log(`[Relay] AIS reconnect scheduled in ${Math.ceil(delayMs / 1000)}s (attempt=${upstreamReconnectFailures})`);
+  const escalationNote = throttleEscalated
+    ? ` [throttle-escalated after ${upstreamConsecutiveThrottles} consecutive 429s]`
+    : '';
+  console.log(`[Relay] AIS reconnect scheduled in ${Math.ceil(delayMs / 1000)}s (attempt=${upstreamReconnectFailures})${escalationNote}`);
 }
 
 function connectUpstream() {
   if (!API_KEY) return;
+  // Snapshot and downstream WebSocket traffic may call this while a provider
+  // cooldown is active. Preserve the scheduled exponential backoff instead of
+  // letting request traffic turn one upstream 429 into a reconnect storm.
+  if (upstreamReconnectTimer) return;
 
-  if (upstreamReconnectTimer) {
-    clearTimeout(upstreamReconnectTimer);
-    upstreamReconnectTimer = null;
-  }
-
-  // Skip if already connected or connecting
-  if (upstreamSocket?.readyState === WebSocket.OPEN ||
-      upstreamSocket?.readyState === WebSocket.CONNECTING) return;
+  // The close handler owns socket release. Even CLOSING/CLOSED sockets remain
+  // current until that handler clears them, preventing request traffic from
+  // replacing a failed socket during the error-to-close gap.
+  if (upstreamSocket) return;
 
   console.log('[Relay] Connecting to aisstream.io...');
-  const socket = new WebSocket(AISSTREAM_URL);
+  aisUpstreamMetrics.connectionAttempts++;
+  const socket = new WebSocket(AISSTREAM_URL, {
+    handshakeTimeout: AIS_HANDSHAKE_TIMEOUT_MS,
+  });
+  let socketServedData = false;
+  let socketFailureRecorded = false;
+  let socketOpenedAt = 0;
+  let socketPositionTimedOut = false;
+  let positionWatchdogTimer = null;
   upstreamSocket = socket;
+  upstreamLastPositionAt = 0;
+  lastSnapshotAt = 0;
   clearUpstreamQueue();
   upstreamPaused = false;
+
+  const clearPositionWatchdog = () => {
+    if (!positionWatchdogTimer) return;
+    clearTimeout(positionWatchdogTimer);
+    positionWatchdogTimer = null;
+  };
+
+  const armPositionWatchdog = () => {
+    clearPositionWatchdog();
+    if (upstreamSocket !== socket || socket.readyState !== WebSocket.OPEN || !socketOpenedAt) return;
+    const lastPositionOrOpenAt = upstreamLastPositionAt || socketOpenedAt;
+    const remainingMs = Math.max(1, lastPositionOrOpenAt + AIS_POSITION_FRESHNESS_MS - Date.now());
+    positionWatchdogTimer = setTimeout(() => {
+      positionWatchdogTimer = null;
+      if (upstreamSocket !== socket || socket.readyState !== WebSocket.OPEN) return;
+      const latestPositionOrOpenAt = upstreamLastPositionAt || socketOpenedAt;
+      if (Date.now() - latestPositionOrOpenAt < AIS_POSITION_FRESHNESS_MS) {
+        armPositionWatchdog();
+        return;
+      }
+      socketPositionTimedOut = true;
+      console.warn(`[Relay] AIS position stream timed out after ${AIS_POSITION_FRESHNESS_MS}ms; reconnecting`);
+      socket.terminate();
+    }, remainingMs);
+    positionWatchdogTimer.unref?.();
+  };
 
   const scheduleUpstreamDrain = () => {
     if (upstreamDrainScheduled) return;
@@ -11991,7 +12565,26 @@ function connectUpstream() {
            Date.now() - startedAt < UPSTREAM_DRAIN_BUDGET_MS) {
       const raw = dequeueUpstreamMessage();
       if (!raw) break;
-      processRawUpstreamMessage(raw);
+      const acceptedType = processRawUpstreamMessage(raw);
+      if (acceptedType) {
+        // A successful WebSocket upgrade or arbitrary JSON frame is not AIS
+        // recovery. Only a validated frame accepted into relay state resets
+        // provider failure telemetry and reconnect backoff.
+        if (!socketServedData) {
+          socketServedData = true;
+          aisUpstreamMetrics.success++;
+          aisUpstreamMetrics.lastSuccessAt = Date.now();
+          aisUpstreamMetrics.lastFailure = null;
+        }
+        upstreamReconnectFailures = 0;
+        upstreamConsecutiveThrottles = 0;
+        if (acceptedType === 'position') {
+          const wasCurrentPositionReady = getAisPositionFreshness().currentPositionReady;
+          upstreamLastPositionAt = Date.now();
+          armPositionWatchdog();
+          if (!wasCurrentPositionReady) lastSnapshotAt = 0;
+        }
+      }
       processed++;
     }
 
@@ -12017,7 +12610,8 @@ function connectUpstream() {
       return;
     }
     console.log('[Relay] Connected to aisstream.io');
-    upstreamReconnectFailures = 0;
+    socketOpenedAt = Date.now();
+    armPositionWatchdog();
     socket.send(JSON.stringify({
       APIKey: API_KEY,
       BoundingBoxes: [[[-90, -180], [90, 180]]],
@@ -12052,7 +12646,19 @@ function connectUpstream() {
 
   socket.on('close', () => {
     if (upstreamSocket === socket) {
+      clearPositionWatchdog();
+      if (!relayShuttingDown && !socketFailureRecorded) {
+        aisUpstreamMetrics.terminalFailure++;
+        aisUpstreamMetrics.lastFailureAt = Date.now();
+        aisUpstreamMetrics.lastFailure = socketPositionTimedOut
+          ? 'position_timeout'
+          : (socketServedData ? 'disconnected' : 'closed_without_data');
+        // A close with no recorded error is by definition not a throttle.
+        upstreamConsecutiveThrottles = 0;
+      }
       upstreamSocket = null;
+      upstreamLastPositionAt = 0;
+      lastSnapshotAt = 0;
       clearUpstreamQueue();
       upstreamPaused = false;
       console.log('[Relay] Disconnected');
@@ -12061,6 +12667,16 @@ function connectUpstream() {
   });
 
   socket.on('error', (err) => {
+    if (!socketFailureRecorded) {
+      socketFailureRecorded = true;
+      const throttled = /\b429\b/.test(String(err?.message || ''));
+      aisUpstreamMetrics[throttled ? 'throttle' : 'terminalFailure']++;
+      aisUpstreamMetrics.lastFailureAt = Date.now();
+      aisUpstreamMetrics.lastFailure = throttled ? 'http_429' : 'connection_error';
+      // Only an unbroken run of 429s escalates the ceiling; a different failure
+      // means we are no longer being rate-limited and the ordinary schedule applies.
+      upstreamConsecutiveThrottles = throttled ? upstreamConsecutiveThrottles + 1 : 0;
+    }
     console.error('[Relay] Upstream error:', err.message);
   });
 }
@@ -12072,6 +12688,16 @@ server.listen(PORT, () => {
   relayBoundPort = listeningPort;
   console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky: ${OPENSKY_PROXY_ENABLED ? 'via proxy' : 'direct'})`);
   if (RELAY_TEST_MODE) {
+    if (process.env.RELAY_TEST_THEATER_VESSEL === '1') {
+      candidateReports.set('test-military-vessel', {
+        mmsi: 'test-military-vessel',
+        name: 'USS TEST',
+        lat: 30,
+        lon: 45,
+        shipType: 35,
+        timestamp: Date.now(),
+      });
+    }
     console.log('[Relay] Test mode enabled — background seed loops are disabled');
     return;
   }
@@ -12152,6 +12778,7 @@ setInterval(() => {
     openskyResponseCache.clear();
     openskyNegativeCache.clear();
     rssResponseCache.clear();
+    rssNegativeCache.clear();
     polymarketCache.clear();
     worldbankCache.clear();
     yahooChartCache.clear();
@@ -12167,6 +12794,7 @@ async function gracefulShutdown(signal) {
   if (upstreamReconnectTimer) {
     clearTimeout(upstreamReconnectTimer);
     upstreamReconnectTimer = null;
+    upstreamReconnectAt = 0;
   }
   console.log(`[Relay] ${signal} received — shutting down`);
   if (telegramState.client) {

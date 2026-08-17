@@ -400,7 +400,7 @@ test('operator seed-health matches the fail-closed Japan blocked classification'
   const operatorKey = 'cross-strait-source-health-test-key';
   const japanMetaKey = 'seed-meta:military:cross-strait-activity:japan-mod';
   const taiwanMetaKey = 'seed-meta:military:cross-strait-activity:taiwan-mnd';
-  const probeKey = 'resilience:intervals:v9:US';
+  const probeKey = 'resilience:intervals:v11:US';
 
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
@@ -442,7 +442,7 @@ test('operator seed-health matches the fail-closed Japan blocked classification'
             fetchedAt: Date.now(),
             recordCount: 10_000,
             sourceVersion: key === 'seed-meta:resilience:intervals'
-              ? 'resilience-intervals:resilience:intervals:v9:weight-perturbation-sensitivity-v3'
+              ? 'resilience-intervals:resilience:intervals:v11:weight-perturbation-sensitivity-v3'
               : 'test',
           }),
         };

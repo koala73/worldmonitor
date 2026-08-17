@@ -139,7 +139,7 @@ export const CROSS_STRAIT_SOURCE_CONTRACTS = Object.freeze({
     maxRequestsPerRun: 2,
     maxDirectRequestsPerRun: 1,
     maxProxyRequestsPerRun: 1,
-    fallbackPolicy: 'direct_then_proxy_on_transport_failure',
+    fallbackPolicy: 'direct_then_proxy_on_transport_or_empty_content',
     documentAdmission: 'manual_review_required',
     runtimePdfRequestsPerRun: 0,
     // A proxy CONNECT refusal is emitted before the tunnel reaches Japan MOD,
@@ -630,6 +630,23 @@ function htmlStackLastIndex(stack, name) {
   return stack.positions.get(name)?.at(-1) ?? -1;
 }
 
+/**
+ * True when a `<li>` start tag reopens the list item that already enclosed an
+ * open anchor, which is how a publisher that omits `</li>` separates two items.
+ * `anchorDepth - 1` is the anchor's immediate parent; a list container opened
+ * at or after `anchorDepth` means the new item belongs to a list the anchor
+ * itself opened, so it nests inside the anchor rather than ending it.
+ */
+function closesEnclosingListItem(stack, anchorDepth) {
+  if (stack.items[anchorDepth - 1] !== 'li') return false;
+  const innermostContainer = Math.max(
+    htmlStackLastIndex(stack, 'ul'),
+    htmlStackLastIndex(stack, 'ol'),
+    htmlStackLastIndex(stack, 'menu'),
+  );
+  return innermostContainer < anchorDepth;
+}
+
 function hasElementScopeBoundary(stack, startIndex = 0) {
   return (stack.elementScopeBoundaries.at(-1) ?? -1) >= startIndex;
 }
@@ -1048,6 +1065,13 @@ function* scanHtmlTags(value) {
 function scanHtmlAnchors(value) {
   const source = String(value);
   const anchors = [];
+  // Every open element is tracked, not only those inside an anchor, so an end
+  // tag can be told apart three ways: it closes a descendant, it closes an
+  // element that already enclosed the anchor, or it matches nothing at all.
+  // Only the middle case bounds an anchor. A stray `</div>` with no `<div>`
+  // open closes nothing — exactly how a browser treats it — and must never cut
+  // a well-formed anchor short of its own `</a>`.
+  const openElements = createHtmlStack();
   let current = null;
   let templateDepth = 0;
   for (const tag of scanHtmlTags(source)) {
@@ -1059,6 +1083,61 @@ function scanHtmlAnchors(value) {
       continue;
     }
     if (insideTemplate) continue;
+    if (isHtmlElementTag(tag) && tag.name !== 'a') {
+      // A void element has no content model and no end tag, so pushing one
+      // would add an entry nothing can ever pop — a page of `<img>` tags would
+      // carry a dead entry each. Skipping them keeps the stack bounded by
+      // nesting depth rather than by tag count, and matches the element stack
+      // `stripHtmlTags` keeps. Behaviour does not depend on it: a stray `</br>`
+      // matches nothing and is ignored by the unmatched-end-tag rule below.
+      if (HTML_VOID_ELEMENTS.has(tag.name)) continue;
+      if (!tag.isClosing) {
+        // A `<li>` that reopens the anchor's own enclosing list item means the
+        // publisher omitted that `</li>` as well as the `</a>`, so the anchor's
+        // content stops here. Without this the body would run to the `</ul>`
+        // and the row would report its SIBLING's `<time>` as its publication
+        // day — a release filed under another release's date, with nothing to
+        // show for it. Only `li` is recovered: `ul`/`ol`/`menu` make "sibling
+        // or nested item?" answerable from this stack alone, while dd/dt/tr/td
+        // need the table and definition-list scope rules a real tree builder
+        // owns — `startTagImplicitlyCloses` declines them for that reason, and
+        // neither publisher emits them.
+        if (current && tag.name === 'li' && closesEnclosingListItem(openElements, current.openDepth)) {
+          anchors.push({
+            openingTag: current.openingTag,
+            body: source.slice(current.bodyStart, tag.start),
+          });
+          // The enclosing item closed too, so drop it and anything the anchor
+          // left open inside it before the sibling opens. Hygiene, like the
+          // void skip above: leaving the stale item costs one dead entry per
+          // omitted `</li>`, but every bound is decided by relative index, so
+          // measured output is identical with and without this pop.
+          truncateHtmlStack(openElements, current.openDepth - 1);
+          current = null;
+        }
+        // Self-closing syntax has no effect on a non-void HTML element — the
+        // tag opens one — so `<span/>` is pushed like any other start tag,
+        // matching the stack `stripHtmlTags` keeps a few hundred lines up.
+        pushHtmlStack(openElements, tag.name);
+        continue;
+      }
+      const openedIndex = htmlStackLastIndex(openElements, tag.name);
+      if (openedIndex === -1) continue;
+      truncateHtmlStack(openElements, openedIndex);
+      // The element opened before the anchor did, so it encloses it and the
+      // anchor's content ends exactly here. That is the Japan MOD news list:
+      // every release `<a>` is opened and left open, and `</li>` is the only
+      // thing that bounds it (measured 2026-08-08). Stopping at that bound
+      // keeps the row's `<time>` and `<h5>` its own, not the next sibling's.
+      if (current && openedIndex < current.openDepth) {
+        anchors.push({
+          openingTag: current.openingTag,
+          body: source.slice(current.bodyStart, tag.start),
+        });
+        current = null;
+      }
+      continue;
+    }
     if (tag.name !== 'a') continue;
     if (tag.isClosing) {
       if (current) {
@@ -1069,11 +1148,14 @@ function scanHtmlAnchors(value) {
         current = null;
       }
     } else if (!tag.isSelfClosing) {
-      // Starting a new anchor also abandons an unterminated prior one, matching
-      // browser recovery while keeping malformed repeated tags linear.
+      // Starting a new anchor abandons an unterminated prior one. Nothing had
+      // bounded it: no `</a>`, and nothing enclosing it closed either, so where
+      // its body stops is unknowable. Dropping it also keeps repeated malformed
+      // tags linear.
       current = {
         openingTag: tag.openingTag,
         bodyStart: tag.end + 1,
+        openDepth: openElements.items.length,
       };
     }
   }
@@ -1539,6 +1621,12 @@ export function parseJapanModIndex(html) {
   return [...new Map(rows.map((row) => [row.sourceUrl, row])).values()];
 }
 
+function parseNonEmptyJapanModIndex(html) {
+  const rows = parseJapanModIndex(html);
+  if (rows.length === 0) throw new Error('JMOD_INDEX_EMPTY');
+  return rows;
+}
+
 function isUsableJapanEnglishIndex(html) {
   const contract = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod;
   return scanHtmlAnchors(html).some((anchor) => {
@@ -1609,7 +1697,7 @@ async function fetchBoundedText(fetchFn, url, sourceContract) {
 
 function shouldProxyJapanModFailure(error) {
   const code = errorCode(error);
-  if (code === 'SOURCE_ERROR' || code === 'TIMEOUT') return true;
+  if (code === 'SOURCE_ERROR' || code === 'TIMEOUT' || code === 'JMOD_INDEX_EMPTY') return true;
   const status = Number(/^HTTP_(\d{3})$/u.exec(code)?.[1]);
   return status === 403
     || status === 408
@@ -2302,11 +2390,22 @@ async function fetchJapanIndexOutcome(fetchFn, sleepFn, {
   let transportPath = 'direct';
   let fallbackReason = null;
   let proxyResponseDetail = null;
+  let rows;
+  let directFailure = null;
   try {
     await sleepFn(REQUEST_CADENCE_MS);
     html = await fetchBoundedText(fetchFn, contract.indexUrl, contract);
-  } catch (directError) {
-    if (!proxyFetchFn || !shouldProxyJapanModFailure(directError)) {
+    rows = parseNonEmptyJapanModIndex(html);
+    // A 200 carrying no allowlisted release is a discovery failure, not a
+    // success: it is how a relocated news list or a challenge page served with
+    // a 200 would otherwise be published as fresh. Treat it like a direct
+    // transport failure so the configured proxy gets its one bounded chance.
+  } catch (error) {
+    directFailure = error;
+  }
+
+  if (directFailure) {
+    if (!proxyFetchFn || !shouldProxyJapanModFailure(directFailure)) {
       return {
         ok: false,
         requestCount,
@@ -2314,10 +2413,10 @@ async function fetchJapanIndexOutcome(fetchFn, sleepFn, {
         transportMode: contract.transportMode,
         availableDocumentUrls: [],
         candidates: [],
-        errorCodes: [errorCode(directError)],
+        errorCodes: [errorCode(directFailure)],
       };
     }
-    fallbackReason = errorCode(directError);
+    fallbackReason = errorCode(directFailure);
     requestCount += 1;
     transportPath = 'proxy';
     try {
@@ -2373,42 +2472,28 @@ async function fetchJapanIndexOutcome(fetchFn, sleepFn, {
         errorCodes: [...new Set([fallbackReason, failureCode])],
       };
     }
-  }
-
-  let rows;
-  try {
-    rows = parseJapanModIndex(html);
-    // A 200 carrying no allowlisted release is a discovery failure, not a
-    // success: it is how a relocated news list or a challenge page served with
-    // a 200 would otherwise be published as fresh.
-    if (rows.length === 0) throw new Error('JMOD_INDEX_EMPTY');
-  } catch (error) {
-    const failureCode = errorCode(error);
-    return {
-      ok: false,
-      requestCount,
-      transportPath,
-      transportMode: contract.transportMode,
-      ...(fallbackReason ? { fallbackReason } : {}),
-      ...(transportPath === 'proxy'
-        ? { proxyFailureReason: failureCode }
-        : {}),
-      ...(transportPath === 'proxy'
-        ? {
-            proxyFailureDetail: buildProxyDiagnosticDetail({
-              ...proxyResponseDetail,
-              stage: 'parse',
-              errorCode: failureCode,
-              errorMessage: error?.message,
-            }),
-          }
-        : {}),
-      availableDocumentUrls: [],
-      candidates: [],
-      errorCodes: fallbackReason
-        ? [...new Set([fallbackReason, failureCode])]
-        : [failureCode],
-    };
+    try {
+      rows = parseNonEmptyJapanModIndex(html);
+    } catch (error) {
+      const failureCode = errorCode(error);
+      return {
+        ok: false,
+        requestCount,
+        transportPath,
+        transportMode: contract.transportMode,
+        fallbackReason,
+        proxyFailureReason: failureCode,
+        proxyFailureDetail: buildProxyDiagnosticDetail({
+          ...proxyResponseDetail,
+          stage: 'parse',
+          errorCode: failureCode,
+          errorMessage: error?.message,
+        }),
+        availableDocumentUrls: [],
+        candidates: [],
+        errorCodes: [...new Set([fallbackReason, failureCode])],
+      };
+    }
   }
 
   let shadowIndexProbe;

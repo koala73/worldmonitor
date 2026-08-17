@@ -122,6 +122,7 @@ const EVENTS = {
   'mcp-panel-add': true,
   // WebMCP (in-page agent tool surface)
   'webmcp-registered': true,
+  'webmcp-registration-failed': true,
   'webmcp-tool-invoked': true,
   // Route Explorer
   'route-explorer:opened': true,
@@ -197,12 +198,21 @@ export type UmamiEvent = keyof typeof EVENTS;
  *   origin engaged the request and may have written the event row before
  *   failing. The in-page retry already refuses to re-send it for exactly that
  *   reason; leaving the marker armed would let the next boot re-send it anyway.
+ * - a RACED failure -> the transport ignored our abort, so the collector
+ *   transport released its serialized slot while the request was still on the
+ *   wire (#6288). It may commit at any moment. `isRetryableCollectorFailure`
+ *   already refuses to re-send it in-page for that reason, and the boot replay
+ *   is the second door onto the same duplicate — so it settles too.
  * - queue-overflow / missing-receipt / network / timeout -> no row can exist
- *   (never dispatched, or accepted-and-discarded, or never answered), so the
- *   marker must survive and replay. These are recoveries, not duplicates.
+ *   (never dispatched, or accepted-and-discarded, or answered by nothing after
+ *   a cancellation the transport honored), so the marker must survive and
+ *   replay. These are recoveries, not duplicates.
  */
 function isDurableMarkerResolved(failure: CollectorOutcome['failure']): boolean {
   if (failure === null) return true;
+  // Checked BEFORE the `kind` gate: a raced failure is a `timeout`, which the
+  // rule below would otherwise treat as "never answered, safe to replay".
+  if (failure.raced) return true;
   if (failure.kind !== 'http') return false;
   return !isRetryableCollectorFailure(failure);
 }

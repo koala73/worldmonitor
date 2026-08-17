@@ -744,7 +744,9 @@ describe('App account-switch controller', () => {
       isCurrent: () => true,
       effects: {
         destroyEntitlementSubscription: () => events.push('destroy-entitlement'),
+        beginEntitlementVerification: () => events.push('begin-entitlement-verification'),
         resetEntitlementState: () => events.push('reset-entitlement'),
+        markEntitlementVerificationUnavailable: () => events.push('unavailable-entitlement-verification'),
         destroySubscriptionWatch: () => events.push('destroy-billing'),
         rebindConvexAuthForWatchHandoff: (isCurrent, attach) => {
           events.push('rebind');
@@ -766,6 +768,7 @@ describe('App account-switch controller', () => {
 
     assert.deepEqual(events, [
       'destroy-entitlement',
+      'begin-entitlement-verification',
       'reset-entitlement',
       'destroy-billing',
       'rebind',
@@ -781,6 +784,52 @@ describe('App account-switch controller', () => {
 
     completion.resolve(true);
     assert.equal(await handoff, true);
+    assert.equal(events.includes('unavailable-entitlement-verification'), false);
+  });
+
+  it('publishes unavailable only when the current account handoff exhausts retries', async () => {
+    const events: string[] = [];
+    let current = true;
+
+    const handoff = startAccountAuthHandoff({
+      userId: 'B',
+      isCurrent: () => current,
+      effects: {
+        destroyEntitlementSubscription: () => {},
+        beginEntitlementVerification: () => events.push('pending'),
+        resetEntitlementState: () => {},
+        markEntitlementVerificationUnavailable: () => events.push('unavailable'),
+        destroySubscriptionWatch: () => {},
+        rebindConvexAuthForWatchHandoff: async () => false,
+        initEntitlementSubscription: () => {},
+        initSubscriptionWatch: () => {},
+        cloudPrefsSignIn: () => {},
+      },
+    });
+
+    assert.equal(await handoff, false);
+    assert.deepEqual(events, ['pending', 'unavailable']);
+
+    current = false;
+    events.length = 0;
+    const staleHandoff = startAccountAuthHandoff({
+      userId: 'B',
+      isCurrent: () => current,
+      effects: {
+        destroyEntitlementSubscription: () => {},
+        beginEntitlementVerification: () => events.push('pending'),
+        resetEntitlementState: () => {},
+        markEntitlementVerificationUnavailable: () => events.push('unavailable'),
+        destroySubscriptionWatch: () => {},
+        rebindConvexAuthForWatchHandoff: async () => false,
+        initEntitlementSubscription: () => {},
+        initSubscriptionWatch: () => {},
+        cloudPrefsSignIn: () => {},
+      },
+    });
+
+    assert.equal(await staleHandoff, false);
+    assert.deepEqual(events, ['pending']);
   });
 
   it('wires App through the tested account-handoff controller', async () => {
