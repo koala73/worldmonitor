@@ -1,0 +1,2526 @@
+openapi: 3.1.0
+info:
+    title: CompanyMonitoringService API
+    version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
+paths:
+    /api/company-monitoring/v1/create-monitored-company:
+        post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
+            tags:
+                - CompanyMonitoringService
+            summary: CreateMonitoredCompany
+            description: 'Creates an account-scoped monitored-company record. Requires company_monitoring:write; runtime remains disabled until dependency #6003 passes.'
+            operationId: CreateMonitoredCompany
+            requestBody:
+                content:
+                    application/json:
+                        example:
+                            "clientRequestId": "example-id"
+                            "company":
+                                "aliases":
+                                    - "example"
+                                "customerReference": "example"
+                                "domains":
+                                    - "example.com"
+                                "domicileCountry": "DOMICILE_COUNTRY_US"
+                                "identifiers":
+                                    - "example-id"
+                                "locations":
+                                    - "example"
+                                "name": "WorldMonitor Analyst"
+                        schema:
+                            $ref: '#/components/schemas/CreateMonitoredCompanyRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
+                    content:
+                        application/json:
+                            example:
+                                "company":
+                                    "canonicalUrl": "https://example.com/worldmonitor"
+                                    "claims":
+                                        - "allowedUses":
+                                            - "COMPANY_CLAIM_ALLOWED_USE_DISCOVERY"
+                                          "claimId": "cm_claim_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                          "expiresAt": "2026-01-15T12:00:00Z"
+                                          "provenance": "example"
+                                          "trustState": "COMPANY_CLAIM_TRUST_STATE_DECLARED"
+                                    "companyId": "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                    "coverage": "COMPANY_COVERAGE_STATE_AWAITING_FIRST_SCAN"
+                                    "createdAt": "2026-01-15T12:00:00Z"
+                            schema:
+                                $ref: '#/components/schemas/CreateMonitoredCompanyResponse'
+                "400":
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/company-monitoring/v1/update-monitored-company:
+        post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
+            tags:
+                - CompanyMonitoringService
+            summary: UpdateMonitoredCompany
+            description: 'Applies a bounded patch to an account-scoped monitored-company record. Requires company_monitoring:write; runtime remains disabled until dependency #6003 passes.'
+            operationId: UpdateMonitoredCompany
+            requestBody:
+                content:
+                    application/json:
+                        example:
+                            "companyId": "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                            "patch":
+                                "addClaims":
+                                    - "type": "COMPANY_CLAIM_TYPE_ALIAS"
+                                      "value": "example"
+                                "customerReference": "example"
+                                "domicileCountry": "DOMICILE_COUNTRY_US"
+                                "name": "WorldMonitor Analyst"
+                                "removeClaimIds":
+                                    - "cm_claim_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                        schema:
+                            $ref: '#/components/schemas/UpdateMonitoredCompanyRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
+                    content:
+                        application/json:
+                            example:
+                                "company":
+                                    "canonicalUrl": "https://example.com/worldmonitor"
+                                    "claims":
+                                        - "allowedUses":
+                                            - "COMPANY_CLAIM_ALLOWED_USE_DISCOVERY"
+                                          "claimId": "cm_claim_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                          "expiresAt": "2026-01-15T12:00:00Z"
+                                          "provenance": "example"
+                                          "trustState": "COMPANY_CLAIM_TRUST_STATE_DECLARED"
+                                    "companyId": "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                    "coverage": "COMPANY_COVERAGE_STATE_AWAITING_FIRST_SCAN"
+                                    "createdAt": "2026-01-15T12:00:00Z"
+                            schema:
+                                $ref: '#/components/schemas/UpdateMonitoredCompanyResponse'
+                "400":
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/company-monitoring/v1/set-monitored-company-state:
+        post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
+            tags:
+                - CompanyMonitoringService
+            summary: SetMonitoredCompanyState
+            description: 'Transitions an account-scoped monitored company between active, paused, and removed states. Requires company_monitoring:write; runtime remains disabled until dependency #6003 passes.'
+            operationId: SetMonitoredCompanyState
+            requestBody:
+                content:
+                    application/json:
+                        example:
+                            "companyId": "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                            "targetLifecycle": "MONITORED_COMPANY_LIFECYCLE_ACTIVE"
+                        schema:
+                            $ref: '#/components/schemas/SetMonitoredCompanyStateRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
+                    content:
+                        application/json:
+                            example:
+                                "company":
+                                    "canonicalUrl": "https://example.com/worldmonitor"
+                                    "claims":
+                                        - "allowedUses":
+                                            - "COMPANY_CLAIM_ALLOWED_USE_DISCOVERY"
+                                          "claimId": "cm_claim_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                          "expiresAt": "2026-01-15T12:00:00Z"
+                                          "provenance": "example"
+                                          "trustState": "COMPANY_CLAIM_TRUST_STATE_DECLARED"
+                                    "companyId": "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                    "coverage": "COMPANY_COVERAGE_STATE_AWAITING_FIRST_SCAN"
+                                    "createdAt": "2026-01-15T12:00:00Z"
+                                "snapshotRequired": true
+                            schema:
+                                $ref: '#/components/schemas/SetMonitoredCompanyStateResponse'
+                "400":
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/company-monitoring/v1/import-monitored-company-batch:
+        post:
+            tags:
+                - CompanyMonitoringService
+            summary: ImportMonitoredCompanyBatch
+            description: 'Imports up to 100 normalized account-scoped company rows with deterministic per-row outcomes. Requires company_monitoring:write; runtime remains disabled until dependency #6003 passes.'
+            operationId: ImportMonitoredCompanyBatch
+            requestBody:
+                content:
+                    application/json:
+                        example:
+                            "clientImportId": "example-id"
+                            "contractVersion": "cm-import-v1"
+                            "rows":
+                                - "company":
+                                    "aliases":
+                                        - "example"
+                                    "customerReference": "example"
+                                    "domains":
+                                        - "example.com"
+                                    "domicileCountry": "DOMICILE_COUNTRY_US"
+                                    "identifiers":
+                                        - "example-id"
+                                    "locations":
+                                        - "example"
+                                    "name": "WorldMonitor Analyst"
+                                  "ordinal": 0
+                        schema:
+                            $ref: '#/components/schemas/ImportMonitoredCompanyBatchRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "createdCount": 1
+                                "rejectedCount": 1
+                                "replayedCount": 1
+                                "results":
+                                    - "companyId": "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                      "ordinal": 0
+                                      "outcome": "COMPANY_IMPORT_ROW_OUTCOME_CREATED"
+                                      "reasonCode": "example"
+                            schema:
+                                $ref: '#/components/schemas/ImportMonitoredCompanyBatchResponse'
+                "400":
+                    description: Validation error or malformed JSON request body
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/company-monitoring/v1/list-monitored-companies:
+        get:
+            tags:
+                - CompanyMonitoringService
+            summary: ListMonitoredCompanies
+            description: 'Lists account-scoped monitored companies at a signed snapshot boundary. Requires company_monitoring:read; runtime remains disabled until dependency #6003 passes.'
+            operationId: ListMonitoredCompanies
+            parameters:
+                - name: lifecycle
+                  in: query
+                  description: Accepted values are active, paused, and removed.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "active"
+                  schema:
+                    type: array
+                    items:
+                        type: "string"
+                        pattern: "^(?:active|paused|removed|MONITORED_COMPANY_LIFECYCLE_(?:ACTIVE|PAUSED|REMOVED))$"
+                        description: "Accepted values are active, paused, and removed."
+                - name: coverage
+                  in: query
+                  description: Accepted values are awaiting_first_scan, adequate, partial, stale, unavailable, and needs_confirmation.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "awaiting_first_scan"
+                  schema:
+                    type: array
+                    items:
+                        type: "string"
+                        pattern: "^(?:awaiting_first_scan|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$"
+                        description: "Accepted values are awaiting_first_scan, adequate, partial, stale, unavailable, and needs_confirmation."
+                - name: page_size
+                  in: query
+                  description: Maximum rows to return, from 1 through 100; zero requests the server default.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Signed opaque cursor bound to the account, filters, mode, expiry, and snapshot generation; never a storage identifier.
+                  required: false
+                  example: "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                  schema:
+                    type: string
+                    pattern: '^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "companies":
+                                    - "canonicalUrl": "https://example.com/worldmonitor"
+                                      "claims":
+                                          - "allowedUses":
+                                              - "COMPANY_CLAIM_ALLOWED_USE_DISCOVERY"
+                                            "claimId": "cm_claim_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                            "expiresAt": "2026-01-15T12:00:00Z"
+                                            "provenance": "example"
+                                            "trustState": "COMPANY_CLAIM_TRUST_STATE_DECLARED"
+                                      "companyId": "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                      "coverage": "COMPANY_COVERAGE_STATE_AWAITING_FIRST_SCAN"
+                                      "createdAt": "2026-01-15T12:00:00Z"
+                                "nextCursor": "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                                "snapshot":
+                                    "pollCursor": "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                                    "snapshotAsOf": "example"
+                                    "snapshotGeneration": "1717200000000"
+                            schema:
+                                $ref: '#/components/schemas/ListMonitoredCompaniesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/company-monitoring/v1/list-company-event-impacts:
+        get:
+            tags:
+                - CompanyMonitoringService
+            summary: ListCompanyEventImpacts
+            description: 'Lists account-scoped material impacts with independent direction, confidence, and lifecycle fields. Requires company_monitoring:read; runtime remains disabled until dependency #6003 passes.'
+            operationId: ListCompanyEventImpacts
+            parameters:
+                - name: company_id
+                  in: query
+                  description: Account-scoped logical company IDs to include; storage identifiers are not accepted.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                  schema:
+                    type: array
+                    items:
+                        type: "string"
+                        pattern: "^cm_company_[0-9A-HJKMNP-TV-Z]{26}$"
+                - name: direction
+                  in: query
+                  description: Accepted values are positive, negative, and mixed.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "positive"
+                  schema:
+                    type: array
+                    items:
+                        type: "string"
+                        pattern: "^(?:positive|negative|mixed|MATERIAL_IMPACT_DIRECTION_(?:POSITIVE|NEGATIVE|MIXED))$"
+                        description: "Accepted values are positive, negative, and mixed."
+                - name: lifecycle
+                  in: query
+                  description: Accepted values are admitted, corrected, and retracted.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "admitted"
+                  schema:
+                    type: array
+                    items:
+                        type: "string"
+                        pattern: "^(?:admitted|corrected|retracted|MATERIAL_IMPACT_LIFECYCLE_(?:ADMITTED|CORRECTED|RETRACTED))$"
+                        description: "Accepted values are admitted, corrected, and retracted."
+                - name: page_size
+                  in: query
+                  description: Maximum rows to return, from 1 through 100; zero requests the server default.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Signed opaque cursor bound to the account, filters, mode, expiry, and snapshot generation; never a storage identifier.
+                  required: false
+                  example: "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                  schema:
+                    type: string
+                    pattern: '^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "impacts":
+                                    - "canonicalUrl": "https://example.com/worldmonitor"
+                                      "changedAt": "2026-01-15T12:00:00Z"
+                                      "channels":
+                                          - "MATERIAL_IMPACT_CHANNEL_REPUTATION"
+                                      "companyId": "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                      "confidence":
+                                          "attribution": 1
+                                          "materialImpact": 1
+                                          "occurrenceTruth": 1
+                                          "overall": 1
+                                "nextCursor": "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                                "snapshot":
+                                    "pollCursor": "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                                    "snapshotAsOf": "example"
+                                    "snapshotGeneration": "1717200000000"
+                            schema:
+                                $ref: '#/components/schemas/ListCompanyEventImpactsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/company-monitoring/v1/list-company-event-changes:
+        get:
+            tags:
+                - CompanyMonitoringService
+            summary: ListCompanyEventChanges
+            description: 'Polls account-scoped material-impact changes from a signed opaque cursor. Requires company_monitoring:read; runtime remains disabled until dependency #6003 passes.'
+            operationId: ListCompanyEventChanges
+            parameters:
+                - name: cursor
+                  in: query
+                  description: Required signed opaque poll cursor bound to the account, mode, expiry, and snapshot generation; never a storage identifier.
+                  required: true
+                  example: "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                  schema:
+                    type: string
+                    pattern: '^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$'
+                - name: page_size
+                  in: query
+                  description: Maximum changes to return, from 1 through 100; zero requests the server default.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "impacts":
+                                    - "canonicalUrl": "https://example.com/worldmonitor"
+                                      "changedAt": "2026-01-15T12:00:00Z"
+                                      "channels":
+                                          - "MATERIAL_IMPACT_CHANNEL_REPUTATION"
+                                      "companyId": "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                      "confidence":
+                                          "attribution": 1
+                                          "materialImpact": 1
+                                          "occurrenceTruth": 1
+                                          "overall": 1
+                                "nextCursor": "cmc1.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                                "pollState": "COMPANY_EVENT_POLL_STATE_CURRENT"
+                            schema:
+                                $ref: '#/components/schemas/ListCompanyEventChangesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/company-monitoring/v1/get-company-material-event:
+        get:
+            tags:
+                - CompanyMonitoringService
+            summary: GetCompanyMaterialEvent
+            description: 'Returns one account-scoped material event, its impact, and bounded evidence references. Requires company_monitoring:read; runtime remains disabled until dependency #6003 passes.'
+            operationId: GetCompanyMaterialEvent
+            parameters:
+                - name: impact_id
+                  in: query
+                  description: Account-scoped logical impact ID; storage identifiers are not accepted.
+                  required: true
+                  example: "cm_impact_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                  schema:
+                    type: string
+                    pattern: '^cm_impact_[0-9A-HJKMNP-TV-Z]{26}$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "event":
+                                    "canonicalUrl": "https://example.com/worldmonitor"
+                                    "category": "cs.AI"
+                                    "eventId": "cm_event_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                    "lifecycle": "MATERIAL_IMPACT_LIFECYCLE_ADMITTED"
+                                    "occurredAt": "2026-01-15T12:00:00Z"
+                                "evidence":
+                                    - "authorityTier": "EVIDENCE_AUTHORITY_TIER_PRIMARY_VERIFIED"
+                                      "canonicalUrl": "https://example.com/worldmonitor"
+                                      "evidenceId": "cm_evidence_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                      "excerpt": "example"
+                                      "provider": "MONITORING_PROVIDER_EXA"
+                                "evidenceTotalCount": 1
+                                "evidenceTruncated": true
+                                "impact":
+                                    "canonicalUrl": "https://example.com/worldmonitor"
+                                    "changedAt": "2026-01-15T12:00:00Z"
+                                    "channels":
+                                        - "MATERIAL_IMPACT_CHANNEL_REPUTATION"
+                                    "companyId": "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                    "confidence":
+                                        "attribution": 1
+                                        "materialImpact": 1
+                                        "occurrenceTruth": 1
+                                        "overall": 1
+                            schema:
+                                $ref: '#/components/schemas/GetCompanyMaterialEventResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/company-monitoring/v1/get-company-coverage:
+        get:
+            tags:
+                - CompanyMonitoringService
+            summary: GetCompanyCoverage
+            description: 'Returns the current coverage state for one account-scoped monitored company. Requires company_monitoring:read; runtime remains disabled until dependency #6003 passes.'
+            operationId: GetCompanyCoverage
+            parameters:
+                - name: company_id
+                  in: query
+                  description: Account-scoped logical company ID; storage identifiers are not accepted.
+                  required: true
+                  example: "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                  schema:
+                    type: string
+                    pattern: '^cm_company_[0-9A-HJKMNP-TV-Z]{26}$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "companyId": "cm_company_01ARZ3NDEKTSV4RRFFQ69G5FAV"
+                                "coverage":
+                                    "assessmentReady": true
+                                    "changedAt": "2026-01-15T12:00:00Z"
+                                    "observation": "COMPANY_OBSERVATION_STATE_EVENTS_OBSERVED"
+                                    "providers":
+                                        - "capped": true
+                                          "fresh": true
+                                          "provider": "MONITORING_PROVIDER_EXA"
+                                          "reasonCode": "example"
+                                          "returnedWindowEnd": "example"
+                                    "state": "COMPANY_COVERAGE_STATE_AWAITING_FIRST_SCAN"
+                            schema:
+                                $ref: '#/components/schemas/GetCompanyCoverageResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/company-monitoring/v1/get-company-monitoring-status:
+        get:
+            tags:
+                - CompanyMonitoringService
+            summary: GetCompanyMonitoringStatus
+            description: 'Returns account-scoped limits, snapshot generation, access state, and independent feature flags. Requires company_monitoring:read; runtime remains disabled until dependency #6003 passes.'
+            operationId: GetCompanyMonitoringStatus
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "accessState": "COMPANY_MONITORING_ACCESS_STATE_DISABLED"
+                                "companyCount": 1
+                                "companyLimit": 500
+                                "featureFlags":
+                                    "alerts": false
+                                    "exaProvider": false
+                                    "publication": false
+                                    "restWrites": false
+                                    "ui": false
+                                "snapshotGeneration": "1717200000000"
+                            schema:
+                                $ref: '#/components/schemas/GetCompanyMonitoringStatusResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
+    schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        BillingVerificationError:
+            type: object
+            description: "Returned with HTTP 503 when paid access cannot be confirmed right now: the billing provider is re-verifying a recently expired subscription, or the entitlement backend is unreachable. Retryable — honor Retry-After."
+            properties:
+                error:
+                    type: string
+                    description: Human-readable billing-verification failure reason.
+                code:
+                    type: string
+                    enum:
+                        - renewal_verification_pending
+                        - renewal_verification_failed
+                        - entitlement_verification_unavailable
+                    description: Machine-readable billing-verification state, mirrored in the X-Billing-Verification response header.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint, when the denial came from a tier gate.
+            required:
+                - error
+                - code
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                code:
+                    type: string
+                    enum:
+                        - subscription_lapsed
+                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        CreateMonitoredCompanyRequest:
+            type: object
+            properties:
+                company:
+                    $ref: '#/components/schemas/MonitoredCompanyInput'
+                clientRequestId:
+                    type: string
+            required:
+                - company
+        MonitoredCompanyInput:
+            type: object
+            properties:
+                name:
+                    type: string
+                    minLength: 1
+                domicileCountry:
+                    type: string
+                    enum:
+                        - DOMICILE_COUNTRY_UNSPECIFIED
+                        - DOMICILE_COUNTRY_US
+                        - DOMICILE_COUNTRY_GB
+                    description: DomicileCountry is the closed v1 company-domicile set. Event geography is unrestricted.
+                aliases:
+                    type: array
+                    items:
+                        type: "string"
+                        minLength: 1
+                        x-max-utf8-bytes: 256
+                    maxItems: 20
+                domains:
+                    type: array
+                    items:
+                        type: "string"
+                        minLength: 1
+                        maxLength: 253
+                        pattern: "^(?:www\\.)?(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\\.?$"
+                    maxItems: 10
+                identifiers:
+                    type: array
+                    items:
+                        type: "string"
+                        minLength: 1
+                        x-max-utf8-bytes: 512
+                    maxItems: 20
+                xHandles:
+                    type: array
+                    items:
+                        type: "string"
+                        maxLength: 16
+                        pattern: "^@?[A-Za-z0-9_]{1,15}$"
+                    maxItems: 5
+                locations:
+                    type: array
+                    items:
+                        type: "string"
+                        minLength: 1
+                        x-max-utf8-bytes: 256
+                    maxItems: 20
+                customerReference:
+                    type: string
+            required:
+                - name
+                - domicileCountry
+            description: MonitoredCompanyInput is the bounded create/import company shape.
+        CreateMonitoredCompanyResponse:
+            type: object
+            properties:
+                company:
+                    $ref: '#/components/schemas/MonitoredCompany'
+        MonitoredCompany:
+            type: object
+            properties:
+                companyId:
+                    type: string
+                    pattern: ^cm_company_[0-9A-HJKMNP-TV-Z]{26}$
+                    description: Stable WorldMonitor logical ID; never a storage-layer document ID.
+                name:
+                    type: string
+                domicileCountry:
+                    type: string
+                    enum:
+                        - DOMICILE_COUNTRY_UNSPECIFIED
+                        - DOMICILE_COUNTRY_US
+                        - DOMICILE_COUNTRY_GB
+                    description: DomicileCountry is the closed v1 company-domicile set. Event geography is unrestricted.
+                lifecycle:
+                    type: string
+                    enum:
+                        - MONITORED_COMPANY_LIFECYCLE_UNSPECIFIED
+                        - MONITORED_COMPANY_LIFECYCLE_ACTIVE
+                        - MONITORED_COMPANY_LIFECYCLE_PAUSED
+                        - MONITORED_COMPANY_LIFECYCLE_REMOVED
+                    description: MonitoredCompanyLifecycle is the customer-visible company lifecycle.
+                claims:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CompanyClaim'
+                    maxItems: 81
+                coverage:
+                    type: string
+                    enum:
+                        - COMPANY_COVERAGE_STATE_UNSPECIFIED
+                        - COMPANY_COVERAGE_STATE_AWAITING_FIRST_SCAN
+                        - COMPANY_COVERAGE_STATE_ADEQUATE
+                        - COMPANY_COVERAGE_STATE_PARTIAL
+                        - COMPANY_COVERAGE_STATE_STALE
+                        - COMPANY_COVERAGE_STATE_UNAVAILABLE
+                        - COMPANY_COVERAGE_STATE_NEEDS_CONFIRMATION
+                    description: CompanyCoverageState reports source and assessment readiness, not event count.
+                observation:
+                    type: string
+                    enum:
+                        - COMPANY_OBSERVATION_STATE_UNSPECIFIED
+                        - COMPANY_OBSERVATION_STATE_EVENTS_OBSERVED
+                        - COMPANY_OBSERVATION_STATE_NO_EVENTS_OBSERVED
+                        - COMPANY_OBSERVATION_STATE_UNKNOWN
+                    description: CompanyObservationState is independent of coverage completeness.
+                createdAt:
+                    type: string
+                updatedAt:
+                    type: string
+                canonicalUrl:
+                    type: string
+            description: MonitoredCompany is a compact account-scoped portfolio row.
+        CompanyClaim:
+            type: object
+            properties:
+                claimId:
+                    type: string
+                    pattern: ^cm_claim_[0-9A-HJKMNP-TV-Z]{26}$
+                    description: Stable WorldMonitor logical ID; never a storage-layer document ID.
+                type:
+                    type: string
+                    enum:
+                        - COMPANY_CLAIM_TYPE_UNSPECIFIED
+                        - COMPANY_CLAIM_TYPE_ALIAS
+                        - COMPANY_CLAIM_TYPE_DOMAIN
+                        - COMPANY_CLAIM_TYPE_LEGAL_IDENTIFIER
+                        - COMPANY_CLAIM_TYPE_X_ACCOUNT_ID
+                        - COMPANY_CLAIM_TYPE_X_HANDLE
+                        - COMPANY_CLAIM_TYPE_LOCATION
+                        - COMPANY_CLAIM_TYPE_CUSTOMER_REFERENCE
+                    description: CompanyClaimType identifies one independently trusted company claim.
+                value:
+                    type: string
+                provenance:
+                    type: string
+                trustState:
+                    type: string
+                    enum:
+                        - COMPANY_CLAIM_TRUST_STATE_UNSPECIFIED
+                        - COMPANY_CLAIM_TRUST_STATE_DECLARED
+                        - COMPANY_CLAIM_TRUST_STATE_VERIFIED
+                        - COMPANY_CLAIM_TRUST_STATE_EXPIRED
+                        - COMPANY_CLAIM_TRUST_STATE_REJECTED
+                    description: CompanyClaimTrustState is scoped to the individual claim, not the legal subject.
+                allowedUses:
+                    type: array
+                    items:
+                        type: string
+                        enum:
+                            - COMPANY_CLAIM_ALLOWED_USE_UNSPECIFIED
+                            - COMPANY_CLAIM_ALLOWED_USE_DISCOVERY
+                            - COMPANY_CLAIM_ALLOWED_USE_ATTRIBUTION
+                            - COMPANY_CLAIM_ALLOWED_USE_PRIMARY_EVIDENCE
+                        description: CompanyClaimAllowedUse states what a claim may support.
+                    maxItems: 3
+                expiresAt:
+                    type: string
+            description: CompanyClaim is one independently attributed and expiring claim.
+        UpdateMonitoredCompanyRequest:
+            type: object
+            properties:
+                companyId:
+                    type: string
+                    pattern: ^cm_company_[0-9A-HJKMNP-TV-Z]{26}$
+                patch:
+                    $ref: '#/components/schemas/MonitoredCompanyPatch'
+            required:
+                - companyId
+                - patch
+        MonitoredCompanyPatch:
+            type: object
+            properties:
+                name:
+                    type: string
+                    minLength: 1
+                    description: |-
+                        Present-but-empty is rejected, matching MonitoredCompanyInput.name. A patch must not
+                         be able to blank a field the response models as non-optional; clearing a name would
+                         need an explicit clear mask, which this contract does not define.
+                domicileCountry:
+                    type: string
+                    enum:
+                        - DOMICILE_COUNTRY_UNSPECIFIED
+                        - DOMICILE_COUNTRY_US
+                        - DOMICILE_COUNTRY_GB
+                    description: DomicileCountry is the closed v1 company-domicile set. Event geography is unrestricted.
+                addClaims:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CompanyClaimInput'
+                    maxItems: 81
+                removeClaimIds:
+                    type: array
+                    items:
+                        type: "string"
+                        pattern: "^cm_claim_[0-9A-HJKMNP-TV-Z]{26}$"
+                    maxItems: 81
+                customerReference:
+                    type: string
+        CompanyClaimInput:
+            type: object
+            properties:
+                type:
+                    type: string
+                    enum:
+                        - COMPANY_CLAIM_TYPE_UNSPECIFIED
+                        - COMPANY_CLAIM_TYPE_ALIAS
+                        - COMPANY_CLAIM_TYPE_DOMAIN
+                        - COMPANY_CLAIM_TYPE_LEGAL_IDENTIFIER
+                        - COMPANY_CLAIM_TYPE_X_ACCOUNT_ID
+                        - COMPANY_CLAIM_TYPE_X_HANDLE
+                        - COMPANY_CLAIM_TYPE_LOCATION
+                        - COMPANY_CLAIM_TYPE_CUSTOMER_REFERENCE
+                    description: CompanyClaimType identifies one independently trusted company claim.
+                value:
+                    type: string
+                    minLength: 1
+            required:
+                - type
+                - value
+            description: CompanyClaimInput is normalized before storage or fingerprinting.
+        UpdateMonitoredCompanyResponse:
+            type: object
+            properties:
+                company:
+                    $ref: '#/components/schemas/MonitoredCompany'
+        SetMonitoredCompanyStateRequest:
+            type: object
+            properties:
+                companyId:
+                    type: string
+                    pattern: ^cm_company_[0-9A-HJKMNP-TV-Z]{26}$
+                targetLifecycle:
+                    type: string
+                    enum:
+                        - MONITORED_COMPANY_LIFECYCLE_UNSPECIFIED
+                        - MONITORED_COMPANY_LIFECYCLE_ACTIVE
+                        - MONITORED_COMPANY_LIFECYCLE_PAUSED
+                        - MONITORED_COMPANY_LIFECYCLE_REMOVED
+                    description: MonitoredCompanyLifecycle is the customer-visible company lifecycle.
+            required:
+                - companyId
+                - targetLifecycle
+        SetMonitoredCompanyStateResponse:
+            type: object
+            properties:
+                company:
+                    $ref: '#/components/schemas/MonitoredCompany'
+                snapshotRequired:
+                    type: boolean
+        ImportMonitoredCompanyBatchRequest:
+            type: object
+            properties:
+                contractVersion:
+                    type: string
+                    const: cm-import-v1
+                clientImportId:
+                    type: string
+                    minLength: 1
+                rows:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MonitoredCompanyImportRow'
+                    maxItems: 100
+                    minItems: 1
+            required:
+                - contractVersion
+                - clientImportId
+        MonitoredCompanyImportRow:
+            type: object
+            properties:
+                ordinal:
+                    type: integer
+                    maximum: 99
+                    minimum: 0
+                    format: int32
+                company:
+                    $ref: '#/components/schemas/MonitoredCompanyInput'
+            required:
+                - company
+        ImportMonitoredCompanyBatchResponse:
+            type: object
+            properties:
+                results:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CompanyImportRowResult'
+                    maxItems: 100
+                createdCount:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                replayedCount:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                rejectedCount:
+                    type: integer
+                    minimum: 0
+                    format: int32
+        CompanyImportRowResult:
+            type: object
+            properties:
+                ordinal:
+                    type: integer
+                    format: int32
+                outcome:
+                    type: string
+                    enum:
+                        - COMPANY_IMPORT_ROW_OUTCOME_UNSPECIFIED
+                        - COMPANY_IMPORT_ROW_OUTCOME_CREATED
+                        - COMPANY_IMPORT_ROW_OUTCOME_REPLAYED
+                        - COMPANY_IMPORT_ROW_OUTCOME_CONFLICT
+                        - COMPANY_IMPORT_ROW_OUTCOME_REJECTED
+                        - COMPANY_IMPORT_ROW_OUTCOME_NO_OP
+                companyId:
+                    type: string
+                    pattern: ^cm_company_[0-9A-HJKMNP-TV-Z]{26}$
+                reasonCode:
+                    type: string
+        ListMonitoredCompaniesRequest:
+            type: object
+            properties:
+                lifecycles:
+                    type: array
+                    items:
+                        type: "string"
+                        pattern: "^(?:active|paused|removed|MONITORED_COMPANY_LIFECYCLE_(?:ACTIVE|PAUSED|REMOVED))$"
+                        description: "Accepted values are active, paused, and removed."
+                    maxItems: 3
+                coverageStates:
+                    type: array
+                    items:
+                        type: "string"
+                        pattern: "^(?:awaiting_first_scan|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$"
+                        description: "Accepted values are awaiting_first_scan, adequate, partial, stale, unavailable, and needs_confirmation."
+                    maxItems: 6
+                pageSize:
+                    type: integer
+                    maximum: 100
+                    minimum: 1
+                    format: int32
+                    description: Maximum rows to return, from 1 through 100; zero requests the server default.
+                cursor:
+                    type: string
+                    pattern: ^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$
+                    description: Signed opaque cursor bound to the account, filters, mode, expiry, and snapshot generation; never a storage identifier.
+        ListMonitoredCompaniesResponse:
+            type: object
+            properties:
+                companies:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MonitoredCompany'
+                    maxItems: 100
+                nextCursor:
+                    type: string
+                    pattern: ^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$
+                snapshot:
+                    $ref: '#/components/schemas/SnapshotBoundary'
+        SnapshotBoundary:
+            type: object
+            properties:
+                snapshotAsOf:
+                    type: string
+                snapshotGeneration:
+                    type: string
+                    minimum: 0
+                    format: int64
+                pollCursor:
+                    type: string
+                    pattern: ^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$
+                    description: |-
+                        Signed mode=poll cursor for ListCompanyEventChanges. The raw watermark is
+                         private cursor state and is never exposed as an independently editable field.
+            description: SnapshotBoundary closes initialization gaps before latest-state polling begins.
+        ListCompanyEventImpactsRequest:
+            type: object
+            properties:
+                companyIds:
+                    type: array
+                    items:
+                        type: "string"
+                        pattern: "^cm_company_[0-9A-HJKMNP-TV-Z]{26}$"
+                    maxItems: 100
+                directions:
+                    type: array
+                    items:
+                        type: "string"
+                        pattern: "^(?:positive|negative|mixed|MATERIAL_IMPACT_DIRECTION_(?:POSITIVE|NEGATIVE|MIXED))$"
+                        description: "Accepted values are positive, negative, and mixed."
+                    maxItems: 3
+                lifecycles:
+                    type: array
+                    items:
+                        type: "string"
+                        pattern: "^(?:admitted|corrected|retracted|MATERIAL_IMPACT_LIFECYCLE_(?:ADMITTED|CORRECTED|RETRACTED))$"
+                        description: "Accepted values are admitted, corrected, and retracted."
+                    maxItems: 3
+                pageSize:
+                    type: integer
+                    maximum: 100
+                    minimum: 1
+                    format: int32
+                    description: Maximum rows to return, from 1 through 100; zero requests the server default.
+                cursor:
+                    type: string
+                    pattern: ^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$
+                    description: Signed opaque cursor bound to the account, filters, mode, expiry, and snapshot generation; never a storage identifier.
+        ListCompanyEventImpactsResponse:
+            type: object
+            properties:
+                impacts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CompanyMaterialImpact'
+                    maxItems: 100
+                nextCursor:
+                    type: string
+                    pattern: ^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$
+                snapshot:
+                    $ref: '#/components/schemas/SnapshotBoundary'
+        CompanyMaterialImpact:
+            type: object
+            properties:
+                impactId:
+                    type: string
+                    pattern: ^cm_impact_[0-9A-HJKMNP-TV-Z]{26}$
+                    description: Stable WorldMonitor logical IDs; never storage-layer document IDs.
+                eventId:
+                    type: string
+                    pattern: ^cm_event_[0-9A-HJKMNP-TV-Z]{26}$
+                companyId:
+                    type: string
+                    pattern: ^cm_company_[0-9A-HJKMNP-TV-Z]{26}$
+                eventRevision:
+                    type: integer
+                    minimum: 1
+                    format: int32
+                impactRevision:
+                    type: integer
+                    minimum: 1
+                    format: int32
+                isCurrent:
+                    type: boolean
+                direction:
+                    type: string
+                    enum:
+                        - MATERIAL_IMPACT_DIRECTION_UNSPECIFIED
+                        - MATERIAL_IMPACT_DIRECTION_POSITIVE
+                        - MATERIAL_IMPACT_DIRECTION_NEGATIVE
+                        - MATERIAL_IMPACT_DIRECTION_MIXED
+                    description: MaterialImpactDirection is independent of category and impact channel.
+                channels:
+                    type: array
+                    items:
+                        type: string
+                        enum:
+                            - MATERIAL_IMPACT_CHANNEL_UNSPECIFIED
+                            - MATERIAL_IMPACT_CHANNEL_REPUTATION
+                            - MATERIAL_IMPACT_CHANNEL_FINANCES
+                        description: MaterialImpactChannel records which customer outcome is affected.
+                    maxItems: 2
+                magnitude:
+                    type: string
+                    enum:
+                        - MATERIAL_IMPACT_MAGNITUDE_UNSPECIFIED
+                        - MATERIAL_IMPACT_MAGNITUDE_LOW
+                        - MATERIAL_IMPACT_MAGNITUDE_MEDIUM
+                        - MATERIAL_IMPACT_MAGNITUDE_HIGH
+                    description: MaterialImpactMagnitude is a bounded customer-facing magnitude vocabulary.
+                confidence:
+                    $ref: '#/components/schemas/ConfidenceAxes'
+                rationale:
+                    type: string
+                lifecycle:
+                    type: string
+                    enum:
+                        - MATERIAL_IMPACT_LIFECYCLE_UNSPECIFIED
+                        - MATERIAL_IMPACT_LIFECYCLE_ADMITTED
+                        - MATERIAL_IMPACT_LIFECYCLE_CORRECTED
+                        - MATERIAL_IMPACT_LIFECYCLE_RETRACTED
+                    description: MaterialImpactLifecycle exposes only admitted current truth and its replacements.
+                occurredAt:
+                    type: string
+                changedAt:
+                    type: string
+                evidenceReferenceCount:
+                    type: integer
+                    maximum: 20
+                    minimum: 0
+                    format: int32
+                evidenceTotalCount:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                evidenceTruncated:
+                    type: boolean
+                canonicalUrl:
+                    type: string
+            description: CompanyMaterialImpact is the latest company-specific state for one occurrence.
+        ConfidenceAxes:
+            type: object
+            properties:
+                attribution:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                occurrenceTruth:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                materialImpact:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                overall:
+                    type: number
+                    maximum: 1
+                    minimum: 0
+                    format: double
+                    description: Overall confidence must equal the minimum of the three independent axes.
+            description: ConfidenceAxes keeps attribution, occurrence truth, and company impact independent.
+        ListCompanyEventChangesRequest:
+            type: object
+            properties:
+                cursor:
+                    type: string
+                    minLength: 1
+                    pattern: ^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$
+                    description: Required signed opaque poll cursor bound to the account, mode, expiry, and snapshot generation; never a storage identifier.
+                pageSize:
+                    type: integer
+                    maximum: 100
+                    minimum: 1
+                    format: int32
+                    description: Maximum changes to return, from 1 through 100; zero requests the server default.
+            required:
+                - cursor
+        ListCompanyEventChangesResponse:
+            type: object
+            properties:
+                impacts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CompanyMaterialImpact'
+                    maxItems: 100
+                nextCursor:
+                    type: string
+                    pattern: ^cmc1\.[A-Za-z0-9_-]{16,1000}[A-Za-z0-9_-]{0,536}\.[A-Za-z0-9_-]{43}$
+                pollState:
+                    type: string
+                    enum:
+                        - COMPANY_EVENT_POLL_STATE_UNSPECIFIED
+                        - COMPANY_EVENT_POLL_STATE_CURRENT
+                        - COMPANY_EVENT_POLL_STATE_SNAPSHOT_REQUIRED
+                    description: CompanyEventPollState tells a client whether it may continue or must resnapshot.
+        GetCompanyMaterialEventRequest:
+            type: object
+            properties:
+                impactId:
+                    type: string
+                    pattern: ^cm_impact_[0-9A-HJKMNP-TV-Z]{26}$
+                    description: Account-scoped logical impact ID; storage identifiers are not accepted.
+            required:
+                - impactId
+        GetCompanyMaterialEventResponse:
+            type: object
+            properties:
+                event:
+                    $ref: '#/components/schemas/MaterialEvent'
+                impact:
+                    $ref: '#/components/schemas/CompanyMaterialImpact'
+                evidence:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CompanyEvidenceReference'
+                    maxItems: 20
+                evidenceTotalCount:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                evidenceTruncated:
+                    type: boolean
+        MaterialEvent:
+            type: object
+            properties:
+                eventId:
+                    type: string
+                    pattern: ^cm_event_[0-9A-HJKMNP-TV-Z]{26}$
+                    description: Stable WorldMonitor logical ID; never a storage-layer document ID.
+                revision:
+                    type: integer
+                    minimum: 1
+                    format: int32
+                lifecycle:
+                    type: string
+                    enum:
+                        - MATERIAL_IMPACT_LIFECYCLE_UNSPECIFIED
+                        - MATERIAL_IMPACT_LIFECYCLE_ADMITTED
+                        - MATERIAL_IMPACT_LIFECYCLE_CORRECTED
+                        - MATERIAL_IMPACT_LIFECYCLE_RETRACTED
+                    description: MaterialImpactLifecycle exposes only admitted current truth and its replacements.
+                title:
+                    type: string
+                summary:
+                    type: string
+                occurredAt:
+                    type: string
+                category:
+                    type: string
+                canonicalUrl:
+                    type: string
+            description: MaterialEvent is the neutral occurrence revision pinned by every impact.
+        CompanyEvidenceReference:
+            type: object
+            properties:
+                evidenceId:
+                    type: string
+                    pattern: ^cm_evidence_[0-9A-HJKMNP-TV-Z]{26}$
+                    description: Stable WorldMonitor logical ID; never a storage-layer document ID.
+                provider:
+                    type: string
+                    enum:
+                        - MONITORING_PROVIDER_UNSPECIFIED
+                        - MONITORING_PROVIDER_EXA
+                        - MONITORING_PROVIDER_X
+                    description: MonitoringProvider is the closed provider set for the production-shaped v1 tracer.
+                sourceId:
+                    type: string
+                canonicalUrl:
+                    type: string
+                publisher:
+                    type: string
+                publishedAt:
+                    type: string
+                authorityTier:
+                    type: string
+                    enum:
+                        - EVIDENCE_AUTHORITY_TIER_UNSPECIFIED
+                        - EVIDENCE_AUTHORITY_TIER_PRIMARY_VERIFIED
+                        - EVIDENCE_AUTHORITY_TIER_INDEPENDENT_AUTHORITATIVE
+                        - EVIDENCE_AUTHORITY_TIER_ORDINARY
+                    description: EvidenceAuthorityTier preserves the source authority used by admission policy.
+                excerpt:
+                    type: string
+            description: CompanyEvidenceReference is a bounded public evidence record.
+        GetCompanyCoverageRequest:
+            type: object
+            properties:
+                companyId:
+                    type: string
+                    pattern: ^cm_company_[0-9A-HJKMNP-TV-Z]{26}$
+                    description: Account-scoped logical company ID; storage identifiers are not accepted.
+            required:
+                - companyId
+        GetCompanyCoverageResponse:
+            type: object
+            properties:
+                companyId:
+                    type: string
+                    pattern: ^cm_company_[0-9A-HJKMNP-TV-Z]{26}$
+                coverage:
+                    $ref: '#/components/schemas/CompanyCoverage'
+        CompanyCoverage:
+            type: object
+            properties:
+                state:
+                    type: string
+                    enum:
+                        - COMPANY_COVERAGE_STATE_UNSPECIFIED
+                        - COMPANY_COVERAGE_STATE_AWAITING_FIRST_SCAN
+                        - COMPANY_COVERAGE_STATE_ADEQUATE
+                        - COMPANY_COVERAGE_STATE_PARTIAL
+                        - COMPANY_COVERAGE_STATE_STALE
+                        - COMPANY_COVERAGE_STATE_UNAVAILABLE
+                        - COMPANY_COVERAGE_STATE_NEEDS_CONFIRMATION
+                    description: CompanyCoverageState reports source and assessment readiness, not event count.
+                observation:
+                    type: string
+                    enum:
+                        - COMPANY_OBSERVATION_STATE_UNSPECIFIED
+                        - COMPANY_OBSERVATION_STATE_EVENTS_OBSERVED
+                        - COMPANY_OBSERVATION_STATE_NO_EVENTS_OBSERVED
+                        - COMPANY_OBSERVATION_STATE_UNKNOWN
+                    description: CompanyObservationState is independent of coverage completeness.
+                providers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ProviderCoverage'
+                    maxItems: 2
+                assessmentReady:
+                    type: boolean
+                changedAt:
+                    type: string
+            description: CompanyCoverage separates source completeness, assessment readiness, and observation.
+        ProviderCoverage:
+            type: object
+            properties:
+                provider:
+                    type: string
+                    enum:
+                        - MONITORING_PROVIDER_UNSPECIFIED
+                        - MONITORING_PROVIDER_EXA
+                        - MONITORING_PROVIDER_X
+                    description: MonitoringProvider is the closed provider set for the production-shaped v1 tracer.
+                state:
+                    type: string
+                    enum:
+                        - PROVIDER_COVERAGE_STATE_UNSPECIFIED
+                        - PROVIDER_COVERAGE_STATE_COMPLETE
+                        - PROVIDER_COVERAGE_STATE_PARTIAL
+                        - PROVIDER_COVERAGE_STATE_FAILED
+                    description: ProviderCoverageState preserves incomplete and failed provider work.
+                capped:
+                    type: boolean
+                fresh:
+                    type: boolean
+                returnedWindowStart:
+                    type: string
+                returnedWindowEnd:
+                    type: string
+                reasonCode:
+                    type: string
+            description: ProviderCoverage reports one required provider's last complete obligation.
+        GetCompanyMonitoringStatusRequest:
+            type: object
+        GetCompanyMonitoringStatusResponse:
+            type: object
+            properties:
+                accessState:
+                    type: string
+                    enum:
+                        - COMPANY_MONITORING_ACCESS_STATE_UNSPECIFIED
+                        - COMPANY_MONITORING_ACCESS_STATE_DISABLED
+                        - COMPANY_MONITORING_ACCESS_STATE_ENTITLED
+                        - COMPANY_MONITORING_ACCESS_STATE_ENTITLEMENT_LAPSED
+                        - COMPANY_MONITORING_ACCESS_STATE_DENIED
+                    description: CompanyMonitoringAccessState describes account access without enabling a product surface.
+                companyCount:
+                    type: integer
+                    maximum: 500
+                    minimum: 0
+                    format: int32
+                companyLimit:
+                    type: integer
+                    format: int32
+                    const: 500
+                snapshotGeneration:
+                    type: string
+                    minimum: 0
+                    format: int64
+                featureFlags:
+                    $ref: '#/components/schemas/CompanyMonitoringFeatureFlags'
+        CompanyMonitoringFeatureFlags:
+            type: object
+            properties:
+                exaProvider:
+                    type: boolean
+                xProvider:
+                    type: boolean
+                publication:
+                    type: boolean
+                restWrites:
+                    type: boolean
+                ui:
+                    type: boolean
+                alerts:
+                    type: boolean
+            description: CompanyMonitoringFeatureFlags exposes independent rollout state without an aggregate switch.

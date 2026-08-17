@@ -66,7 +66,6 @@ export const DIGEST_ACCUMULATOR_TTL = 172800; // 48h — lookback window for dig
  */
 export const SIMULATION_OUTCOME_LATEST_KEY = 'forecast:simulation-outcome:latest';
 export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest';
-export const REGULATORY_ACTIONS_KEY = 'regulatory:actions:v1';
 
 /**
  * CII risk-score payload key family. Keep runtime-local mirrors in
@@ -91,6 +90,8 @@ export const CHINA_CORRIDOR_CONTROL_TOWERS_KEY =
   'supply_chain:china-corridor-control-towers:v1';
 export const CHINA_ACTIVITY_NOWCAST_KEY =
   'economic:china:activity-nowcast:v1';
+export const CHINA_CORRIDOR_DIRECTIONAL_HISTORY_KEY =
+  'economic:china:corridor-directional-history:v1';
 
 export const ENERGY_MIX_KEY_PREFIX = 'energy:mix:v1:';
 export const ENERGY_EXPOSURE_INDEX_KEY = 'energy:exposure:v1:index';

@@ -13,6 +13,10 @@ export type DataSourceId =
   | 'outages'
   | 'cyber_threats'
   | 'weather'
+  | 'ontario_511'
+  | 'alberta_511'
+  | 'toronto_roads'
+  | 'bc_open511'
   | 'economic'
   | 'oil'
   | 'spending'
@@ -73,7 +77,8 @@ export interface Feed {
   region?: string;
   propagandaRisk?: PropagandaRisk;
   stateAffiliated?: string;  // e.g., "Russia", "China", "Iran"
-  lang?: string;             // ISO 2-letter code for filtering
+  lang?: string;             // ISO 2-letter code for filtering (locale boost)
+  strategicDefault?: boolean; // always default-on regardless of UI language
 }
 
 export type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
@@ -160,7 +165,14 @@ export interface ClusteredEvent {
   primaryTitle: string;
   primarySource: string;
   primaryLink: string;
+  /** Articles in the cluster — a volume signal, not a corroboration signal. */
   sourceCount: number;
+  /**
+   * Distinct PUBLISHERS behind those articles (#6428). Any "N sources"
+   * corroboration claim shown to a user reads this, never sourceCount:
+   * one newsroom's editions are one publisher.
+   */
+  uniquePublisherCount: number;
   topSources: Array<{ name: string; tier: number; url: string }>;
   allItems: NewsItem[];
   firstSeen: Date;
@@ -627,6 +639,16 @@ export interface PanelConfig {
   enabled: boolean;
   priority?: number;
   premium?: 'locked' | 'enhanced';
+  /** Absolute panel text scale. When absent, the panel follows the global scale. */
+  fontScale?: 0.9 | 1 | 1.1 | 1.25 | 1.5 | 2;
+  /**
+   * Set by `enforceFreePanelLimit` when the free-tier pro gate — not the user —
+   * is what turned this panel off. Distinguishes "hidden because you aren't Pro"
+   * from "you hid it in settings", so the gate can be reversed on upgrade
+   * without overriding a deliberate choice. Used for both `cw-*` panels and
+   * ordinary panels disabled by the free panel-count cap.
+   */
+  proGated?: boolean;
 }
 
 export interface MapLayers {
@@ -641,6 +663,10 @@ export interface MapLayers {
   radiationWatch?: boolean;
   sanctions: boolean;
   weather: boolean;
+  /** Official Canada road events and conditions from Ontario, Alberta, Toronto, and British Columbia. */
+  canadaRoads: boolean;
+  /** Alberta Emergency Alert (and later provincial siblings) (#6610). */
+  canadaAlerts: boolean;
   economic: boolean;
   waterways: boolean;
   outages: boolean;
@@ -875,6 +901,7 @@ export type MilitaryOperator =
 
 export interface MilitaryFlight {
   id: string;
+  source?: string;
   callsign: string;
   hexCode: string;             // ICAO 24-bit address
   registration?: string;
@@ -1466,6 +1493,8 @@ export interface GulfInvestment {
 
 export interface MapProtestCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;
@@ -1484,6 +1513,8 @@ export interface MapProtestCluster {
 
 export interface MapTechHQCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;
@@ -1500,6 +1531,8 @@ export interface MapTechHQCluster {
 
 export interface MapTechEventCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;
@@ -1514,6 +1547,8 @@ export interface MapTechEventCluster {
 
 export interface MapDatacenterCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;

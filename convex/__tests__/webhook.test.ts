@@ -1,7 +1,11 @@
 import { convexTest } from "convex-test";
 import { afterEach, expect, test, describe, vi } from "vitest";
 import { getFeaturesForPlan } from "../lib/entitlements";
-import { signUserId } from "../lib/identitySigning";
+import {
+  CHECKOUT_LOGIN_EMAIL_MAX_AGE_MS,
+  signCheckoutLoginEmail,
+  signUserId,
+} from "../lib/identitySigning";
 import schema from "../schema";
 import { internal } from "../_generated/api";
 
@@ -143,6 +147,71 @@ async function processEvent(
 // Tests
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Customers no-op rewrite skip (OCC write-avoidance)
+//
+// Convex Insights (2026-08): processWebhookEvent produced OCC write conflicts
+// on `customers` because Dodo delivers related events for one purchase in a
+// burst (subscription.active + subscription.updated within milliseconds) and
+// every subscription event unconditionally re-patched the same customers row
+// with identical userId/email — pure conflict fuel, since no consumer reads
+// customers.updatedAt (verified repo-wide). An identical upsert must be
+// read-only; a real identity change must still write.
+// ---------------------------------------------------------------------------
+
+describe("processWebhookEvent — customers no-op rewrite skip", () => {
+  async function readCustomer(t: ReturnType<typeof convexTest>) {
+    return t.run(async (ctx) =>
+      await ctx.db
+        .query("customers")
+        .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", "cust_test_001"))
+        .unique(),
+    );
+  }
+
+  test("second subscription event with identical customer identity does not rewrite the row", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    await processEvent(t, "wh_occ_1", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
+    const first = await readCustomer(t);
+    expect(first).not.toBeNull();
+
+    // Different delivery (new webhookId, later timestamp), same identity —
+    // the Dodo burst shape that produced the conflicts.
+    await processEvent(
+      t,
+      "wh_occ_2",
+      "subscription.active",
+      makeSubscriptionPayload(),
+      BASE_TIMESTAMP + 60_000,
+    );
+    const second = await readCustomer(t);
+    expect(second?.updatedAt).toBe(first?.updatedAt);
+  });
+
+  test("changed customer email still rewrites the row", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    await processEvent(t, "wh_occ_3", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
+
+    const changed = makeSubscriptionPayload({
+      customer: {
+        customer_id: "cust_test_001",
+        email: "renamed@example.com",
+        name: "Test User",
+      },
+    });
+    await processEvent(t, "wh_occ_4", "subscription.active", changed, BASE_TIMESTAMP + 60_000);
+
+    const row = await readCustomer(t);
+    expect(row?.email).toBe("renamed@example.com");
+    expect(row?.normalizedEmail).toBe("renamed@example.com");
+    expect(row?.updatedAt).toBe(BASE_TIMESTAMP + 60_000);
+  });
+});
+
 describe("webhook processWebhookEvent", () => {
   test("subscription.active creates new subscription", async () => {
     const t = convexTest(schema, modules);
@@ -218,6 +287,177 @@ describe("webhook processWebhookEvent", () => {
     });
     expect(subs).toHaveLength(1);
     expect(subs[0].status).toBe("active");
+  });
+
+  test("subscription.active reactivation clears leftover cancelledAt/onHoldAt (#6769)", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    // A sub that was cancelled (and had earlier been on hold) still carries the
+    // episode stamps. Reactivation must wipe them so downstream classifiers —
+    // esp. the refund-alert `already-cancelled` short-circuit — don't read a
+    // stale cancellation as current.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_test_001",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "cancelled",
+        currentPeriodStart: BASE_TIMESTAMP - 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP,
+        cancelledAt: BASE_TIMESTAMP - 3600000,
+        onHoldAt: BASE_TIMESTAMP - 7200000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_reactivate_clear_stamps",
+      "subscription.active",
+      makeSubscriptionPayload(),
+      BASE_TIMESTAMP,
+    );
+
+    const subs = await t.run(async (ctx) => ctx.db.query("subscriptions").collect());
+    expect(subs).toHaveLength(1);
+    expect(subs[0].status).toBe("active");
+    expect(subs[0].cancelledAt).toBeUndefined();
+    expect(subs[0].onHoldAt).toBeUndefined();
+  });
+
+  test("full refund after reactivation still fires the refund-alert (#6769 — stale cancelledAt no longer silences it)", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    // Cancelled sub carrying a stale cancelledAt stamp.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_test_001",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "cancelled",
+        currentPeriodStart: BASE_TIMESTAMP - 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP,
+        cancelledAt: BASE_TIMESTAMP - 3600000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    // Reactivate. The activation payload carries the recurring price so the
+    // refund-alert can classify a full refund — reactivation overwrites
+    // rawPayload, so the price must ride on THIS event.
+    await processEvent(
+      t,
+      "wh_reactivate_before_refund",
+      "subscription.active",
+      makeSubscriptionPayload({ recurring_pre_tax_amount: 1999 }),
+      BASE_TIMESTAMP,
+    );
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // Full refund on the now-active sub. Before the fix the leftover
+    // cancelledAt short-circuited classifyRefundAlert to `already-cancelled`
+    // and no alert fired.
+    await processEvent(
+      t,
+      "wh_full_refund_after_reactivate",
+      "refund.succeeded",
+      // processEvent's eventType arg drives dispatch; the payload's own `type`
+      // is inert, so reuse makePaymentPayload the way the dispute.lost tests do.
+      makePaymentPayload("payment.succeeded", {
+        payload_type: "Refund",
+        payment_id: "pay_refund_001",
+        subscription_id: "sub_test_001",
+        total_amount: 1999,
+      }),
+      BASE_TIMESTAMP + 300000,
+    );
+
+    const refundAlerts = errorSpy.mock.calls
+      .map((call) => String(call[0]))
+      .filter((msg) => msg.includes("[refund-alert]"));
+    expect(refundAlerts).toHaveLength(1);
+    expect(refundAlerts[0]).toContain("full refund without prior cancellation");
+  });
+
+  test("partial refund after reactivation does NOT fire the refund-alert (#6769 over-fire guard)", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_test_001",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "cancelled",
+        currentPeriodStart: BASE_TIMESTAMP - 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP,
+        cancelledAt: BASE_TIMESTAMP - 3600000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_reactivate_before_partial_refund",
+      "subscription.active",
+      makeSubscriptionPayload({ recurring_pre_tax_amount: 1999 }),
+      BASE_TIMESTAMP,
+    );
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // A partial refund (well under 99% of 1999) must still no-op. Clearing the
+    // stamp removed the `already-cancelled` short-circuit, so the amount check
+    // in classifyRefundAlert is now the ONLY guard against over-firing.
+    await processEvent(
+      t,
+      "wh_partial_refund_after_reactivate",
+      "refund.succeeded",
+      makePaymentPayload("payment.succeeded", {
+        payload_type: "Refund",
+        payment_id: "pay_partial_refund_001",
+        subscription_id: "sub_test_001",
+        total_amount: 500,
+      }),
+      BASE_TIMESTAMP + 300000,
+    );
+
+    const refundAlerts = errorSpy.mock.calls
+      .map((call) => String(call[0]))
+      .filter((msg) => msg.includes("[refund-alert]"));
+    expect(refundAlerts).toHaveLength(0);
+  });
+
+  test("subscription.active reactivation clears onHoldAt with no prior cancellation (#6769)", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    // Drive the full lifecycle through real webhook events (no hand-seeded row):
+    // active -> on_hold -> active. onHoldAt is set on hold, then must be cleared
+    // on reactivation, with cancellation never involved.
+    await processEvent(t, "wh_oh_active", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
+    await processEvent(t, "wh_oh_hold", "subscription.on_hold", makeSubscriptionPayload(), BASE_TIMESTAMP + 1000);
+
+    const held = await t.run(async (ctx) => ctx.db.query("subscriptions").collect());
+    expect(held[0].status).toBe("on_hold");
+    expect(held[0].onHoldAt).toBeDefined();
+    expect(held[0].cancelledAt).toBeUndefined();
+
+    await processEvent(t, "wh_oh_reactivate", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP + 2000);
+
+    const reactivated = await t.run(async (ctx) => ctx.db.query("subscriptions").collect());
+    expect(reactivated[0].status).toBe("active");
+    expect(reactivated[0].onHoldAt).toBeUndefined();
+    expect(reactivated[0].cancelledAt).toBeUndefined();
   });
 
   test("subscription.active reactivation sends a welcome-back email", async () => {
@@ -403,6 +643,1330 @@ describe("webhook processWebhookEvent", () => {
     expect(welcome?.html).toContain("WM Analyst");
     // The generic fallback grid must not appear.
     expect(welcome?.html).not.toContain("Full API Access");
+  });
+
+  // #6330: lifecycle emails must target (and name) the account's login email.
+  // The checkout email is unauthenticated and may be a different alias — a
+  // welcome sent there steers the buyer into "account not known" at sign-in.
+  test("welcome email targets the account login email when checkout email differs", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_login_email_divergence",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+        html: string;
+      });
+
+    // Exactly three sends: welcome, pointer, admin. Pins against double-sends.
+    expect(sends).toHaveLength(3);
+
+    // Welcome goes to the address that can actually sign in, and names it.
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["login@example.com"]);
+    expect(welcome?.html).toContain("login@example.com");
+
+    // The checkout inbox gets a sign-in pointer instead of silence — that is
+    // the inbox the buyer demonstrably watches (they typed it at checkout).
+    // The login address is MASKED there: the checkout inbox is unverified
+    // (a typo'd address reaches a stranger), so it gets a recognizable hint,
+    // never the full account address.
+    const pointer = sends.find((send) => send.to[0] === "checkout@example.com");
+    expect(pointer).toBeDefined();
+    expect(pointer?.html).toContain("l•••@example.com");
+    expect(pointer?.html).not.toContain("login@example.com");
+    expect(pointer?.subject).toContain("sign in");
+
+    // Admin notification names both identities so ops can find the customer
+    // from either address.
+    const admin = sends.find((send) => send.subject.startsWith("[WM] New User Subscribed"));
+    expect(admin?.html).toContain("login@example.com");
+    expect(admin?.html).toContain("checkout@example.com");
+  });
+
+  test("welcome email flow is unchanged when login and checkout emails match", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "test@example.com",
+        normalizedEmail: "test@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_login_email_match",
+      "subscription.active",
+      makeSubscriptionPayload(),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    // Exactly the historical pair: user welcome + admin notification. No
+    // pointer email, no duplicate sends.
+    expect(sends).toHaveLength(2);
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["test@example.com"]);
+  });
+
+  test("welcome email still sends via login email when checkout email is empty", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_login_email_empty_checkout",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: { customer_id: "cust_test_001", email: "", name: "Test User" },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["login@example.com"]);
+    // Welcome + admin only — the empty checkout email must not produce a
+    // pointer send.
+    expect(sends).toHaveLength(2);
+  });
+
+  test("a rejected sign-in pointer send does not swallow the admin notification", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (_url, init) => {
+        const body = JSON.parse(String((init as RequestInit).body)) as { to: string[] };
+        // The buyer-typed checkout address is one Resend rejects outright.
+        if (body.to[0] === "checkout@example.com") {
+          return new Response('{"message":"invalid to"}', { status: 422 });
+        }
+        return new Response("{}", { status: 200 });
+      });
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_pointer_send_rejected",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    // The pointer WAS attempted (guards against the "remove the pointer"
+    // mutant — without this, the test passes vacuously when no pointer is
+    // ever sent), and despite its rejection the welcome and the admin
+    // notification both fired.
+    expect(sends.some((send) => send.to[0] === "checkout@example.com")).toBe(true);
+    expect(sends.some((send) => send.subject.startsWith("Welcome to World Monitor"))).toBe(true);
+    expect(sends.some((send) => send.subject.startsWith("[WM] New User Subscribed"))).toBe(true);
+  });
+
+  test("reactivation email targets the account login email when checkout email differs", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_test_001",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "expired",
+        currentPeriodStart: BASE_TIMESTAMP - 31 * 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP - 86400000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_reactivation_login_email",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcomeBack = sends.find((send) => send.subject.includes("Welcome back"));
+    expect(welcomeBack?.to).toEqual(["login@example.com"]);
+    // The reactivation path gets the same #6330 treatment as the first
+    // purchase: the welcome-back names the sign-in address, and the checkout
+    // inbox receives a pointer (masked login) instead of silence.
+    expect(welcomeBack?.html).toContain("login@example.com");
+    const pointer = sends.find((send) => send.to[0] === "checkout@example.com");
+    expect(pointer).toBeDefined();
+    expect(pointer?.html).toContain("l•••@example.com");
+    expect(sends).toHaveLength(2);
+  });
+
+  test("case- and whitespace-only checkout differences stay on the no-pointer path", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_login_email_case_only",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: " LOGIN@Example.com ",
+          name: "Test User",
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    // Same inbox in different casing is NOT a divergence: welcome + admin
+    // only, no pointer, no third email into the user's own inbox.
+    expect(sends).toHaveLength(2);
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["login@example.com"]);
+  });
+
+  test("a users row without an email falls back to the checkout address", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      // Phone-only signup shape: row exists, email absent.
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_users_row_no_email",
+      "subscription.active",
+      makeSubscriptionPayload(),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    expect(sends).toHaveLength(2);
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["test@example.com"]);
+  });
+
+  // #6335: the users row is refreshed once per page load per userId
+  // (src/services/convex-client.ts short-circuits on a module-level
+  // lastEnsuredUserId), so a user who changes their primary email in the Clerk
+  // portal and subscribes in the same long-lived tab leaves a STALE
+  // users.email. The checkout carries the login email as it was at checkout
+  // time, HMAC-signed — that is the fresher of the two, so it wins.
+  test("a signed checkout login email outranks a stale users row", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      // The address the user abandoned in the Clerk portal, mirrored here by
+      // the last ensureRecord call before the change.
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "stale@example.com",
+        normalizedEmail: "stale@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_signed_login_email_fresh",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "fresh@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "fresh@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+        html: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["fresh@example.com"]);
+    expect(welcome?.html).toContain("fresh@example.com");
+    // The abandoned address receives nothing at all.
+    expect(sends.every((send) => send.to[0] !== "stale@example.com")).toBe(true);
+    // The checkout inbox still gets the pointer, and it names the FRESH login
+    // address (masked) — pointing at the stale one is the same dead end.
+    const pointer = sends.find((send) => send.to[0] === "checkout@example.com");
+    expect(pointer?.html).toContain("f•••@example.com");
+    expect(pointer?.html).not.toContain("s•••@example.com");
+  });
+
+  // The inverse of the #6335 bug, and just as real: change the email AFTER
+  // checking out, then load a page (refreshing the users row) before the
+  // activation webhook lands. Now the STAMP is the stale one. A fixed
+  // "stamp wins" rule would send to the abandoned address — the very failure
+  // #6335 set out to fix, with the two sources swapped.
+  test("a users row refreshed after checkout outranks the stamped email", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    const checkoutIssuedAt = BASE_TIMESTAMP - 3600_000;
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        // Confirmed against Clerk AFTER the checkout was stamped.
+        email: "newest@example.com",
+        normalizedEmail: "newest@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: checkoutIssuedAt + 60_000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_users_row_fresher_than_stamp",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          // Valid signature, inside the age window — but superseded.
+          wm_login_email: "abandoned@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "abandoned@example.com",
+            checkoutIssuedAt,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["newest@example.com"]);
+    expect(sends.every((send) => send.to[0] !== "abandoned@example.com")).toBe(true);
+  });
+
+  // The boundary between the two rules: a users row last confirmed BEFORE the
+  // checkout is the stale one, so the stamp wins. Same fixture as above with
+  // only the timestamps' order flipped, which is what makes the comparison
+  // itself — not some other difference — the thing under test.
+  test("a users row last confirmed before checkout loses to the stamped email", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    const checkoutIssuedAt = BASE_TIMESTAMP - 3600_000;
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "abandoned@example.com",
+        normalizedEmail: "abandoned@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: checkoutIssuedAt - 60_000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_users_row_older_than_stamp",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "newest@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "newest@example.com",
+            checkoutIssuedAt,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["newest@example.com"]);
+    expect(sends.every((send) => send.to[0] !== "abandoned@example.com")).toBe(true);
+  });
+
+  test("a signed login email equal to the checkout address suppresses the pointer", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      // Stale row that DIVERGES from the checkout address: without the signed
+      // value the run would emit a pointer, so this pins that the divergence
+      // verdict is recomputed against the signed email, not just the recipient.
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "stale@example.com",
+        normalizedEmail: "stale@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_signed_login_email_matches_checkout",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "checkout@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "checkout@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    // Welcome + admin only — one inbox, so no sign-in pointer.
+    expect(sends).toHaveLength(2);
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["checkout@example.com"]);
+  });
+
+  test.each([
+    [
+      "a signature minted for a different account",
+      async () => ({
+        wm_login_email: "attacker@example.com",
+        wm_login_email_sig: await signCheckoutLoginEmail(
+          "user_someone_else",
+          "attacker@example.com",
+          BASE_TIMESTAMP - 60_000,
+        ),
+      }),
+    ],
+    [
+      "an email swapped after signing",
+      async () => ({
+        wm_login_email: "attacker@example.com",
+        wm_login_email_sig: await signCheckoutLoginEmail(
+          "test-user-001",
+          "fresh@example.com",
+          BASE_TIMESTAMP - 60_000,
+        ),
+      }),
+    ],
+    [
+      "a token older than the checkout window",
+      async () => ({
+        wm_login_email: "expired@example.com",
+        wm_login_email_sig: await signCheckoutLoginEmail(
+          "test-user-001",
+          "expired@example.com",
+          BASE_TIMESTAMP - CHECKOUT_LOGIN_EMAIL_MAX_AGE_MS - 1,
+        ),
+      }),
+    ],
+    [
+      "an unsigned login email",
+      async () => ({ wm_login_email: "unsigned@example.com" }),
+    ],
+    [
+      // Producible only by hand: the stamping side trims before signing. The
+      // signature here genuinely covers the padding, so this is the one shape
+      // where "verify then trim" would have sent to bytes nobody proved.
+      "a padded login email whose signature covers the padding",
+      async () => ({
+        wm_login_email: "  padded@example.com  ",
+        wm_login_email_sig: await signCheckoutLoginEmail(
+          "test-user-001",
+          "  padded@example.com  ",
+          BASE_TIMESTAMP - 60_000,
+        ),
+      }),
+    ],
+    [
+      // The mirror tamper shape: strip the address, keep the signature. Both
+      // halves are stamped together, so either half alone is an anomaly.
+      "a signature with the address stripped",
+      async () => ({
+        wm_login_email_sig: await signCheckoutLoginEmail(
+          "test-user-001",
+          "stripped@example.com",
+          BASE_TIMESTAMP - 60_000,
+        ),
+      }),
+    ],
+  ])("%s never displaces the users row", async (_label, buildMetadata) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      `wh_login_email_rejected_${_label.replace(/\W+/g, "_")}`,
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          ...(await buildMetadata()),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["login@example.com"]);
+    // Whitelist rather than blacklist: every recipient must be one of the three
+    // legitimate inboxes (login, checkout pointer, admin alert), so no
+    // unverifiable metadata value can reach ANY send regardless of the shape it
+    // arrived in (padding included).
+    expect([...new Set(sends.map((send) => send.to[0]))].sort()).toEqual([
+      "checkout@example.com",
+      "elie@worldmonitor.app",
+      "login@example.com",
+    ]);
+  });
+
+  // The steady state, not an anomaly: Dodo re-delivers the ORIGINAL checkout's
+  // metadata on every later `subscription.updated`, so a mature subscription
+  // ages its stamped token out on each one. That must be quiet (console.log)
+  // and must not spend the tamper warning, which is reserved for a token that
+  // did not come from us.
+  test("an aged-out replay on a mature subscription falls back without a warning", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "current@example.com",
+        normalizedEmail: "current@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 400 * 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_mature_sub_aged_replay",
+      "subscription.updated",
+      makeSubscriptionPayload({
+        status: "active",
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "year-old@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "year-old@example.com",
+            BASE_TIMESTAMP - 365 * 86400000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    // The year-old stamped address loses to the users row, which a page load
+    // has refreshed many times since that checkout.
+    const sends = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls
+      .filter(([url]: [unknown]) => String(url).includes("api.resend.com"))
+      .map(([, init]: [unknown, RequestInit]) => JSON.parse(String(init.body)) as {
+        to: string[];
+        subject: string;
+      });
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["current@example.com"]);
+
+    // And it did so silently. Pinning the ABSENCE of the tamper warning is the
+    // point: without the expired/invalid split this fires on every mature
+    // subscription and the real signal drowns.
+    const loginEmailWarnings = warn.mock.calls
+      .map((call) => String(call[0]))
+      .filter((line) => line.includes("wm_login_email"));
+    expect(loginEmailWarnings).toEqual([]);
+  });
+
+  // Rotating DODO_IDENTITY_SIGNING_SECRET invalidates every in-flight stamped
+  // token at once. The recipient must degrade to the users row rather than the
+  // send failing or addressing an unverified value.
+  test("a rotated signing secret degrades to the users row, it does not break the send", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    // Stamped under the old secret...
+    const metadata = {
+      wm_user_id: "test-user-001",
+      wm_user_id_sig: await signUserId("test-user-001"),
+      wm_login_email: "fresh@example.com",
+      wm_login_email_sig: await signCheckoutLoginEmail(
+        "test-user-001",
+        "fresh@example.com",
+        BASE_TIMESTAMP - 60_000,
+      ),
+    };
+    // ...delivered after the rotation. `wm_user_id_sig` is rotated in lockstep,
+    // so attribution falls through to the customers row seeded by processEvent.
+    process.env.DODO_IDENTITY_SIGNING_SECRET = "rotated-secret-value";
+
+    await processEvent(
+      t,
+      "wh_rotated_secret",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata,
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["login@example.com"]);
+  });
+
+  test("a rejected signature on the reactivation path still reaches the users row", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_prior_lapsed_reject",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "expired",
+        currentPeriodStart: BASE_TIMESTAMP - 31 * 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP - 86400000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_reactivation_rejected_sig",
+      "subscription.active",
+      makeSubscriptionPayload({
+        subscription_id: "sub_returning_reject",
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "attacker@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "somethingelse@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    // The reactivation path gets the same fallback as the first-purchase path.
+    const welcomeBack = sends.find((send) => send.subject.includes("Welcome back"));
+    expect(welcomeBack?.to).toEqual(["login@example.com"]);
+    expect(sends.every((send) => send.to[0] !== "attacker@example.com")).toBe(true);
+  });
+
+  test("a tampered login email still spends the warning", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_tampered_login_email_warns",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "attacker@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "fresh@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const loginEmailWarnings = warn.mock.calls
+      .map((call) => String(call[0]))
+      .filter((line) => line.includes("wm_login_email"));
+    expect(loginEmailWarnings).toHaveLength(1);
+    expect(loginEmailWarnings[0]).toContain("failed signature verification");
+  });
+
+  // Every metadata shape that CANNOT have come from our own stamping side is an
+  // anomaly and must warn — otherwise a corruption or tampering signal is
+  // invisible. Reported by presence only: the address must never reach a
+  // Sentry-forwarded string.
+  test.each([
+    [
+      "a pair with the signature stripped",
+      { wm_login_email: "half@example.com" },
+      "email=present, signature=absent",
+    ],
+    [
+      "a pair with the address stripped",
+      { wm_login_email_sig: "v1.1.deadbeef" },
+      "email=absent, signature=present",
+    ],
+    [
+      // The stamping side always trims before signing, so padding here is
+      // corruption or tampering even though the fallback is graceful.
+      "a padded address",
+      {
+        wm_login_email: "  padded@example.com  ",
+        wm_login_email_sig: "v1.1.deadbeef",
+      },
+      "Padded wm_login_email",
+    ],
+  ])("%s warns", async (_label, half, expectedShape) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "login@example.com",
+        normalizedEmail: "login@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await processEvent(
+      t,
+      `wh_half_present_${expectedShape.replace(/\W+/g, "_")}`,
+      "subscription.active",
+      makeSubscriptionPayload({
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          ...half,
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const loginEmailWarnings = warn.mock.calls
+      .map((call) => String(call[0]))
+      .filter((line) => line.includes("wm_login_email"));
+    expect(loginEmailWarnings).toHaveLength(1);
+    expect(loginEmailWarnings[0]).toContain(expectedShape);
+    // Presence only — the address itself never reaches the log line.
+    expect(loginEmailWarnings[0]).not.toContain("@example.com");
+  });
+
+  // resolveSignedCheckoutLoginEmail's docstring claims the signature is checked
+  // against the userId the handler ACTUALLY resolved, not the one the metadata
+  // claims — so a token minted for an anonymous checkout id cannot follow the
+  // subscription after preferExistingCustomerOwner reassigns it to the real
+  // account that owns the Dodo customer. Nothing tested that claim.
+  test("an anon-signed login email does not survive owner reassignment", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    const anonId = "33333333-3333-4333-8333-333333333333";
+    const realUserId = "user_real_owner_6335";
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      // The Dodo customer already belongs to a real account...
+      await ctx.db.insert("customers", {
+        userId: realUserId,
+        dodoCustomerId: "cust_reassign_6335",
+        email: "checkout@example.com",
+        normalizedEmail: "checkout@example.com",
+        createdAt: BASE_TIMESTAMP - 86400000,
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+      // ...whose users row carries the address that must win.
+      await ctx.db.insert("users", {
+        userId: realUserId,
+        email: "realowner@example.com",
+        normalizedEmail: "realowner@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP,
+      });
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_anon_signed_reassigned",
+      eventType: "subscription.active",
+      rawPayload: makeSubscriptionPayload({
+        subscription_id: "sub_reassign_6335",
+        customer: {
+          customer_id: "cust_reassign_6335",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        // Signed correctly — but for the ANONYMOUS id, which
+        // preferExistingCustomerOwner discards in favour of the real owner.
+        metadata: {
+          wm_user_id: anonId,
+          wm_user_id_sig: await signUserId(anonId),
+          wm_login_email: "anon-typed@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            anonId,
+            "anon-typed@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      timestamp: BASE_TIMESTAMP,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    // The subscription landed on the real owner...
+    const sub = await t.run(async (ctx) =>
+      ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) =>
+          q.eq("dodoSubscriptionId", "sub_reassign_6335"),
+        )
+        .unique(),
+    );
+    expect(sub?.userId).toBe(realUserId);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    // ...and so did the welcome. The anon-signed address never verifies against
+    // the reassigned userId, so it cannot redirect a real account's mail.
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["realowner@example.com"]);
+    expect(sends.every((send) => send.to[0] !== "anon-typed@example.com")).toBe(true);
+  });
+
+  test("a signed login email is used even when no users row exists", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    await processEvent(
+      t,
+      "wh_signed_login_email_no_users_row",
+      "subscription.active",
+      makeSubscriptionPayload({
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "fresh@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "fresh@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["fresh@example.com"]);
+  });
+
+  test("reactivation targets the signed login email over a stale users row", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
+    process.env.RESEND_API_KEY = "re_test";
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: "test-user-001",
+        email: "stale@example.com",
+        normalizedEmail: "stale@example.com",
+        firstSeenAt: BASE_TIMESTAMP - 86400000,
+        lastSeenAt: BASE_TIMESTAMP - 86400000,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_prior_lapsed",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "expired",
+        currentPeriodStart: BASE_TIMESTAMP - 31 * 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP - 86400000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_reactivation_signed_login_email",
+      "subscription.active",
+      makeSubscriptionPayload({
+        subscription_id: "sub_returning_001",
+        customer: {
+          customer_id: "cust_test_001",
+          email: "checkout@example.com",
+          name: "Test User",
+        },
+        metadata: {
+          wm_user_id: "test-user-001",
+          wm_user_id_sig: await signUserId("test-user-001"),
+          wm_login_email: "fresh@example.com",
+          wm_login_email_sig: await signCheckoutLoginEmail(
+            "test-user-001",
+            "fresh@example.com",
+            BASE_TIMESTAMP - 60_000,
+          ),
+        },
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+        html: string;
+      });
+
+    const welcomeBack = sends.find((send) => send.subject.includes("Welcome back"));
+    expect(welcomeBack?.to).toEqual(["fresh@example.com"]);
+    expect(welcomeBack?.html).toContain("fresh@example.com");
+  });
+
+  test("email templates escape HTML in interpolated addresses", async () => {
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await t.action(internal.payments.subscriptionEmails.sendSubscriptionEmails, {
+      userEmail: 'login<script>alert(1)</script>@example.com',
+      planKey: "pro_monthly",
+      userId: "test-user-001",
+      checkoutEmail: 'checkout<img src=x>@example.com',
+    });
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        html: string;
+      });
+
+    expect(sends.length).toBeGreaterThan(0);
+    for (const send of sends) {
+      expect(send.html).not.toContain("<script>");
+      expect(send.html).not.toContain("<img src=x>");
+    }
+    expect(sends.some((send) => send.html.includes("&lt;script&gt;"))).toBe(true);
   });
 
   test.each([
@@ -697,6 +2261,112 @@ describe("webhook processWebhookEvent", () => {
     });
     expect(paymentEvents).toHaveLength(1);
     expect(paymentEvents[0].status).toBe("failed");
+  });
+
+  // WORLDMONITOR-YA — every other test in this file routes through `processEvent`,
+  // which pre-seeds a `customers` row, so the production shape (no customer row,
+  // unsigned metadata) was never exercised. These two dispatch the mutation
+  // directly to cover it.
+  test("payment.failed resolves the userId from a known subscription when no customer row exists", async () => {
+    const t = convexTest(schema, modules);
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "user_known_via_sub",
+        dodoSubscriptionId: "sub_no_customer_row",
+        dodoCustomerId: "cust_never_recorded",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: BASE_TIMESTAMP,
+        currentPeriodEnd: BASE_TIMESTAMP + 86_400_000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP,
+      });
+    });
+
+    // Unsigned metadata is ignored by resolveUserId, and no `customers` row
+    // exists — the subscription row is the only identity source.
+    const payload = makePaymentPayload("payment.failed", {
+      payment_id: "pay_no_customer_row",
+      subscription_id: "sub_no_customer_row",
+      customer: { customer_id: "cust_never_recorded", email: "nobody@example.com" },
+      metadata: {},
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_ya_sub_fallback",
+      eventType: "payment.failed",
+      rawPayload: payload,
+      timestamp: BASE_TIMESTAMP,
+    });
+
+    const paymentEvents = await t.run(async (ctx) => {
+      return ctx.db.query("paymentEvents").collect();
+    });
+    expect(paymentEvents).toHaveLength(1);
+    expect(paymentEvents[0].userId).toBe("user_known_via_sub");
+    expect(paymentEvents[0].status).toBe("failed");
+  });
+
+  // Previously this asserted the mutation threw. That was wrong in production:
+  // the identity lookup is deterministic, so every one of Dodo's 8 retries
+  // failed identically and a buyer abandoning 3DS raised a "delivery
+  // permanently failed" alert. No charge settled, so there is nothing to
+  // record — acknowledge it. See isChargedEventType in unattributedPayments.ts.
+  test("payment.failed for a wholly unknown customer is acknowledged, not dead-lettered", async () => {
+    const t = convexTest(schema, modules);
+
+    const payload = makePaymentPayload("payment.failed", {
+      payment_id: "pay_unattributable",
+      subscription_id: "sub_unattributable",
+      customer: { customer_id: "cust_unattributable", email: "nobody@example.com" },
+      metadata: {},
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_ya_unattributable",
+      eventType: "payment.failed",
+      rawPayload: payload,
+      timestamp: BASE_TIMESTAMP,
+    });
+
+    // Still records nothing — there is no user to attribute the row to.
+    const paymentEvents = await t.run(async (ctx) => {
+      return ctx.db.query("paymentEvents").collect();
+    });
+    expect(paymentEvents).toHaveLength(0);
+  });
+
+  test("payment.succeeded for a wholly unknown customer is captured for attribution", async () => {
+    const t = convexTest(schema, modules);
+
+    // Money moved. It must never be silently discarded — but throwing only
+    // burned Dodo's retries and lost it, so it is captured durably instead and
+    // flagged `charged` for the ops alert. See unattributed-payments.test.ts.
+    const payload = makePaymentPayload("payment.succeeded", {
+      payment_id: "pay_unattributable_paid",
+      subscription_id: "sub_unattributable_paid",
+      customer: { customer_id: "cust_unattributable", email: "nobody@example.com" },
+      metadata: {},
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_ya_unattributable_paid",
+      eventType: "payment.succeeded",
+      rawPayload: payload,
+      timestamp: BASE_TIMESTAMP,
+    });
+
+    const { paymentEvents, unattributed } = await t.run(async (ctx) => ({
+      paymentEvents: await ctx.db.query("paymentEvents").collect(),
+      unattributed: await ctx.db.query("unattributedPaymentEvents").collect(),
+    }));
+    // No paymentEvents row — it requires a userId we do not have.
+    expect(paymentEvents).toHaveLength(0);
+    expect(unattributed).toHaveLength(1);
+    expect(unattributed[0].charged).toBe(true);
+    expect(unattributed[0].dodoCustomerId).toBe("cust_unattributable");
   });
 
   // #5056 — entitlement lifecycle integrity across claim, active webhook, and dispute races.

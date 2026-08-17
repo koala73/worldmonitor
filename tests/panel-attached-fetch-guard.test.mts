@@ -64,4 +64,17 @@ describe('self-starting panel fetches wait for attachment', () => {
       /getRegionalSnapshot\(/,
     );
   });
+
+  // StrategicPosturePanel is the strictest case in this list: `init()` starts
+  // the fetch from the CONSTRUCTOR, which panel-layout runs before it inserts
+  // the element. A warm posture cache resolves in a microtask, so the old
+  // post-await `isConnected` bail discarded the render and left the panel on
+  // "Scanning Theaters" until the 15-minute scheduled refresh.
+  it('StrategicPosturePanel fetchAndRender waits for connection before the posture fetch', () => {
+    assertGuardBefore(
+      read('src/components/StrategicPosturePanel.ts'),
+      'fetchAndRender',
+      /fetchCachedTheaterPosture\(/,
+    );
+  });
 });

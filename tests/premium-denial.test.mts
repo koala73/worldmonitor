@@ -243,13 +243,15 @@ describe('classifyPremiumDenial — 403 that means "authenticate", not "upgrade"
 });
 
 describe('classifyPremiumDenial — 403 that is not about entitlement', () => {
-  it("api/latest-brief's 'Origin not allowed' is access_denied, not an upsell", () => {
-    for (const belief of [UNKNOWN, FREE, PRO, CLERK_PRO]) {
-      assert.equal(
-        classifyPremiumDenial({ status: 403, errorCode: 'Origin not allowed', belief }),
-        'access_denied',
-        'a rejected origin must never be rendered as a missing plan',
-      );
+  it('origin and generic access denials stay access_denied for every belief', () => {
+    for (const errorCode of ['Origin not allowed', 'Forbidden']) {
+      for (const belief of [UNKNOWN, FREE, PRO, CLERK_PRO]) {
+        assert.equal(
+          classifyPremiumDenial({ status: 403, errorCode, belief }),
+          'access_denied',
+          `${errorCode} must never be rendered as a missing plan`,
+        );
+      }
     }
   });
 
@@ -445,6 +447,64 @@ describe('premium panels route their denials through the classifier', () => {
       preceding,
       /case 'upgrade_required':/,
       'the upsell string must sit under the upgrade_required case',
+    );
+  });
+
+  it('reports the only three client-side entitlement-desync decision sites', () => {
+    const expectedCalls = new Map([
+      ['src/components/LatestBriefPanel.ts', "if (verdict === 'entitlement_desync') reportEntitlementDesync('latest-brief');"],
+      ['src/components/ChatAnalystPanel.ts', "if (verdict === 'entitlement_desync') reportEntitlementDesync('chat-analyst');"],
+      ['src/components/WidgetChatModal.ts', "if (verdict === 'entitlement_desync') reportEntitlementDesync('widget-chat');"],
+    ]);
+    for (const [rel, expectedCall] of expectedCalls) {
+      assert.match(
+        readSource(rel),
+        new RegExp(expectedCall.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+        `${rel} must make its client-side desync decision observable`,
+      );
+    }
+  });
+
+  it('classifies widget preflight denials from the account belief, not the widget tier', () => {
+    const source = readSource('src/components/WidgetChatModal.ts');
+    assert.match(
+      source,
+      /function reportWidgetEntitlementDesync\([\s\S]*?if \(usedTesterKey \|\| \(getAuthState\(\)\.user\?\.id \?\? null\) !== requestUserId\) return;[\s\S]*?const verdict = classifyPremiumDenial\(\{\s*status,\s*errorCode: payload\?\.error \?\? null,\s*belief: requestBelief,\s*\}\);[\s\S]*?if \(verdict === 'entitlement_desync'\) reportEntitlementDesync\('widget-chat'\);/,
+      'widget telemetry must classify the request-time account belief and reject responses from another account',
+    );
+    assert.match(
+      source,
+      /const requestAuthState = getAuthState\(\);[\s\S]*?const requestUserId = requestAuthState\.user\?\.id \?\? null;[\s\S]*?const requestBelief = readClientEntitlementBelief\(requestAuthState\);[\s\S]*?const res = await fetch\(widgetAgentHealthUrl\(\)[\s\S]*?resolvePreflightMessage\([\s\S]*?requestBelief,[\s\S]*?requestUserId,[\s\S]*?\);/,
+      'widget preflight must carry its request account snapshot into denial telemetry',
+    );
+    assert.match(
+      source,
+      /const res = await fetch\(widgetAgentUrl\(\),[\s\S]*?if \(!res\.ok\) \{[\s\S]*?reportWidgetEntitlementDesync\(\s*res\.status,\s*payload,\s*auth\.usedTesterKey,\s*requestBelief,\s*requestUserId,\s*\);/,
+      'widget POST denials must classify and report with their request account snapshot',
+    );
+    assert.equal(
+      [...source.matchAll(/reportWidgetEntitlementDesync\(/g)].length,
+      3,
+      'the widget telemetry helper must be declared once and called from both preflight and POST',
+    );
+  });
+
+  it('binds Chat Analyst denial telemetry to the account that made the request', () => {
+    const source = readSource('src/components/ChatAnalystPanel.ts');
+    assert.match(
+      source,
+      /const requestAuthState = getAuthState\(\);[\s\S]*?const requestUserId = requestAuthState\.user\?\.id \?\? null;[\s\S]*?const requestBelief = readClientEntitlementBelief\(requestAuthState\);/,
+      'Chat Analyst must snapshot the request account and its entitlement belief',
+    );
+    assert.match(
+      source,
+      /if \(requestIdentityChanged\(\)\) throw[\s\S]*?const verdict = await classifyDenialResponse\(res, requestBelief\);[\s\S]*?if \(requestIdentityChanged\(\)\) throw[\s\S]*?if \(verdict === 'entitlement_desync'\) reportEntitlementDesync\('chat-analyst'\);/,
+      'Chat Analyst must reject account changes both before and after consuming the denial body',
+    );
+    assert.match(
+      source,
+      /describeDenial\(res, requestBelief, requestUserId\)/,
+      'Chat Analyst must pass the request-time account snapshot into denial classification',
     );
   });
 });

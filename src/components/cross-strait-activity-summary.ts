@@ -1,5 +1,9 @@
 import {
   CROSS_STRAIT_BLOCKED_SOURCE_REASONS,
+  CROSS_STRAIT_COMPANION_RESOLUTIONS,
+  CROSS_STRAIT_INDEX_COVERAGE_VALUES,
+  CROSS_STRAIT_INDEX_PRESENCE_VALUES,
+  CROSS_STRAIT_TRANSPORT_MODES,
   type CrossStraitActivitySourceHealth,
   type CrossStraitActivitySnapshot,
   type CrossStraitBaselineWindow,
@@ -102,8 +106,18 @@ function isNullableDateString(value: unknown): boolean {
   return value === null || isDateString(value);
 }
 
+function isDateOnlyString(value: unknown): boolean {
+  return typeof value === 'string'
+    && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(Date.parse(`${value}T00:00:00.000Z`));
+}
+
 function isNullableString(value: unknown): boolean {
   return value === null || typeof value === 'string';
+}
+
+function isAllowedStringValue(values: readonly string[], value: unknown): value is string {
+  return typeof value === 'string' && values.includes(value);
 }
 
 function isProxyFailureDetail(value: unknown): boolean {
@@ -121,6 +135,34 @@ function isProxyFailureDetail(value: unknown): boolean {
     && isNullableString(value.bodyPrefix)
     && isNullableString(value.errorCode)
     && isNullableString(value.errorMessage);
+}
+
+function isJapanModCandidate(value: unknown): boolean {
+  return isRecord(value)
+    && typeof value.sourceUrl === 'string'
+    && typeof value.documentId === 'string'
+    && typeof value.title === 'string'
+    && isDateOnlyString(value.publicationDay);
+}
+
+function isShadowIndexProbe(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (
+    value.httpStatus !== undefined
+    && value.httpStatus !== null
+    && (
+      !Number.isInteger(value.httpStatus)
+      || Number(value.httpStatus) < 100
+      || Number(value.httpStatus) > 599
+    )
+  ) return false;
+  return typeof value.url === 'string'
+    && isDateString(value.checkedAt)
+    && (
+      value.status === undefined
+      || ['reachable', 'blocked', 'error'].includes(String(value.status))
+    )
+    && (value.errorCode === undefined || isNullableString(value.errorCode));
 }
 
 function isStringRecord(value: unknown): boolean {
@@ -199,9 +241,11 @@ function isObservation(value: unknown): boolean {
       && JAPAN_CATEGORY_KEYS.every((key) => isNullableNonNegativeInteger(categories[key]))
       && (
         value.indexPresence === undefined
-        || value.indexPresence === 'present'
-        || value.indexPresence === 'not_observed_in_current_index'
-        || value.indexPresence === 'unknown'
+        || isAllowedStringValue(CROSS_STRAIT_INDEX_PRESENCE_VALUES, value.indexPresence)
+      )
+      && (
+        value.indexCoverage === undefined
+        || isAllowedStringValue(CROSS_STRAIT_INDEX_COVERAGE_VALUES, value.indexCoverage)
       );
   }
   return false;
@@ -233,6 +277,22 @@ function isSourceHealth(value: unknown): boolean {
       value.proxyControlProbe === undefined
       || value.proxyControlProbe === 'reachable'
       || value.proxyControlProbe === 'unreachable'
+    )
+    && (
+      value.transportMode === undefined
+      || isAllowedStringValue(CROSS_STRAIT_TRANSPORT_MODES, value.transportMode)
+    )
+    && (
+      value.companionResolution === undefined
+      || isAllowedStringValue(CROSS_STRAIT_COMPANION_RESOLUTIONS, value.companionResolution)
+    )
+    && (
+      value.candidates === undefined
+      || (Array.isArray(value.candidates) && value.candidates.every(isJapanModCandidate))
+    )
+    && (
+      value.shadowIndexProbe === undefined
+      || isShadowIndexProbe(value.shadowIndexProbe)
     )
     && (
       value.fallbackReason === undefined

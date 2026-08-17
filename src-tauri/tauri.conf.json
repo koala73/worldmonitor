@@ -42,8 +42,8 @@
       "appimage"
     ],
     "category": "Productivity",
-    "shortDescription": "World Monitor desktop app (supports World and Tech variants)",
-    "longDescription": "World Monitor desktop app for real-time global intelligence. Build with VITE_VARIANT=tech to package Tech Monitor branding and dataset defaults.",
+    "shortDescription": "World Monitor desktop app (all variants switchable in-app)",
+    "longDescription": "World Monitor desktop app for real-time global intelligence. Tech, finance, commodity, energy, and happy variants are selected in-app — one binary serves all of them.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

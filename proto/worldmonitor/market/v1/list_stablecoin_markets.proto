@@ -8,6 +8,16 @@ import "sebuf/http/annotations.proto";
 // ListStablecoinMarketsRequest specifies which stablecoins to retrieve.
 message ListStablecoinMarketsRequest {
   // CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
+  //
+  // Repeated (`?coins=tether&coins=dai`) and comma-joined
+  // (`?coins=tether,dai`) forms are equivalent. IDs are trimmed, lowercased,
+  // and de-duplicated; the request is capped at 25 IDs. An ID that is not
+  // shaped like a CoinGecko ID, that overflows the cap, or that no provider
+  // can resolve is reported in `unresolved` rather than dropped.
+  //
+  // The empty (default) request is served from the seeded snapshot alone and
+  // never reaches an upstream provider. Naming IDs explicitly opts into a
+  // bounded, cached provider lookup for any ID the snapshot does not carry.
   repeated string coins = 1 [(sebuf.http.query) = { name: "coins" }];
 }
 
@@ -57,12 +67,35 @@ message StablecoinSummary {
   string health_status = 5;
 }
 
+// UnresolvedStablecoin explains why a requested ID is absent from the response.
+message UnresolvedStablecoin {
+  // The requested ID, after trimming and lowercasing. Malformed IDs are
+  // reported as sent (normalized and truncated) so the caller can spot the typo.
+  string id = 1;
+  // Bounded vocabulary — anything outside this list is a contract violation:
+  //   "INVALID_ID"     — not shaped like a CoinGecko ID.
+  //   "OVER_CAP"       — beyond the per-request ID cap; never looked up.
+  //   "NOT_FOUND"      — the provider answered, and has no such coin.
+  //   "PROVIDER_ERROR" — the lookup failed, so the ID is unknown, not absent.
+  string reason = 2;
+}
+
 // ListStablecoinMarketsResponse contains stablecoin market data.
 message ListStablecoinMarketsResponse {
   // Timestamp of the data fetch (ISO 8601).
   string timestamp = 1;
-  // Aggregate summary.
+  // Aggregate summary, recomputed over exactly the `stablecoins` returned here
+  // — not over the seeded default set.
   StablecoinSummary summary = 2;
-  // Individual stablecoin data.
+  // Individual stablecoin data, in request order for an explicit request.
   repeated Stablecoin stablecoins = 3;
+  // Requested IDs missing from `stablecoins`, each with its reason. Always
+  // empty for the default (empty `coins`) request.
+  repeated UnresolvedStablecoin unresolved = 4;
+  // Coverage of THIS response, distinct from `summary.health_status` (which
+  // reports peg health, not data availability):
+  //   "OK"          — every requested coin was returned.
+  //   "PARTIAL"     — at least one coin returned, at least one unresolved.
+  //   "UNAVAILABLE" — no coin data available.
+  string data_status = 5;
 }

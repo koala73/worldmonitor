@@ -11,9 +11,24 @@ import type { AdapterContext } from './types.js';
 
 const RETAILERS = ['carrefour_ae', 'spinneys_ae', 'lulu_ae', 'noon_grocery_ae'];
 const ITEMS = [
-  { id: 'eggs', canonicalName: 'Eggs Fresh 12 Pack', category: 'dairy-eggs' },
-  { id: 'milk', canonicalName: 'Full Fat Fresh Milk 1L', category: 'dairy-eggs' },
-  { id: 'tomatoes', canonicalName: 'Tomatoes Fresh 1kg', category: 'produce' },
+  {
+    id: 'eggs',
+    canonicalName: 'Eggs Fresh 12 Pack',
+    category: 'dairy-eggs',
+    itemConstraints: { baseUnit: 'ct', minBaseQty: 12, maxBaseQty: 12 },
+  },
+  {
+    id: 'milk',
+    canonicalName: 'Full Fat Fresh Milk 1L',
+    category: 'dairy-eggs',
+    itemConstraints: { baseUnit: 'ml', minBaseQty: 500, maxBaseQty: 1500 },
+  },
+  {
+    id: 'tomatoes',
+    canonicalName: 'Tomatoes Fresh 1kg',
+    category: 'produce',
+    itemConstraints: { baseUnit: 'g', minBaseQty: 500, maxBaseQty: 1500 },
+  },
 ];
 
 const exaKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(/[\n,]+/)[0].trim();
@@ -23,8 +38,6 @@ if (!exaKey || !fcKey) {
   console.error('Missing EXA_API_KEYS or FIRECRAWL_API_KEY');
   process.exit(1);
 }
-
-const adapter = new SearchAdapter(new ExaProvider(exaKey), new FirecrawlProvider(fcKey));
 
 const logger = {
   info: (msg: string) => console.log(msg),
@@ -39,6 +52,9 @@ let failed = 0;
 for (const slug of RETAILERS) {
   const retailerCfg = loadRetailerConfig(slug);
   const domain = new URL(retailerCfg.baseUrl).hostname;
+  // Provider cooldowns are scoped to one retailer scrape. A fresh adapter
+  // keeps an outage in one retailer from suppressing another retailer's probes.
+  const adapter = new SearchAdapter(new ExaProvider(exaKey), new FirecrawlProvider(fcKey));
 
   const ctx: AdapterContext = {
     config: retailerCfg,
@@ -61,6 +77,8 @@ for (const slug of RETAILERS) {
         domain,
         basketSlug: 'essentials_ae',
         currency: retailerCfg.currencyCode,
+        itemConstraints: item.itemConstraints,
+        direct: false,
       },
     };
 

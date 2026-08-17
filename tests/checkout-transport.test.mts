@@ -12,7 +12,7 @@
  *   1. Every attempt carries the SAME Idempotency-Key (server dedupe).
  *   2. Retryable statuses (502/503/504) get exactly ONE retry after a
  *      delay; the second response is returned as-is.
- *   3. Non-retryable statuses (400/401/403/409) return immediately.
+ *   3. Non-retryable statuses (including application/provider 500s) return immediately.
  *   4. Fast network failures (fetch rejects with TypeError) retry once.
  *   5. Timeout/abort failures do NOT retry — the user already waited a
  *      full attempt budget; rethrow so the caller classifies it.
@@ -125,6 +125,20 @@ describe('postCreateCheckout transport', () => {
 
     assert.equal(resp.status, 502);
     assert.equal(calls.length, 2);
+  });
+
+  it('does NOT browser-retry an application/provider timeout surfaced as HTTP 500', async () => {
+    const providerTimeout = new Response(
+      JSON.stringify({ error: 'Checkout failed: Request timed out.' }),
+      { status: 500 },
+    );
+    const { deps, calls, delays } = makeDeps([{ response: providerTimeout }]);
+
+    const resp = await postCreateCheckout(deps, ARGS);
+
+    assert.equal(resp.status, 500);
+    assert.equal(calls.length, 1, 'one logical create call must reach the edge');
+    assert.deepEqual(delays, []);
   });
 
   it('retryable set is exactly {502, 503, 504} — pinned, not read back from the code', () => {

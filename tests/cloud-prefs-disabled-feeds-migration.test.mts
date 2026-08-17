@@ -1,9 +1,58 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { migrateDisabledFeedsV2, applyMigrationChain, buildMigrations } from '../src/utils/cloud-prefs-migrations';
+import {
+  migrateDisabledFeedsV2,
+  migrateFrontlineEuropeDefaultsV3,
+  migrateStrategicDefaultsV4,
+  migrateRegionalFeedRolloutDefaultsV5,
+  migrateCanadaArcticOptInsV6,
+  migrateCanadaDepthOptInsV7,
+  migrateCrisisDeskOptInsV8,
+  applyMigrationChain,
+  applyMigrationChainWithSchemaVersion,
+  buildMigrations,
+  isRegionalFeedRolloutMigrationAmbiguous,
+} from '../src/utils/cloud-prefs-migrations';
 
 const F = (...names: string[]) => names.map((name) => ({ name }));
+const FRONTLINE = ['Kyiv Independent', 'TVN24', 'Rzeczpospolita', 'Meduza', 'Moscow Times'] as const;
+const STRATEGIC = ['Polsat News', 'MIIT (China)'] as const;
+const REGIONAL_DEFAULTS = ['Civil.ge', 'Focus Taiwan'] as const;
+const REGIONAL_OPT_INS = ['JAMnews', 'Taipei Times'] as const;
+const CANADA_ARCTIC_OPT_INS = [
+  'Globe and Mail',
+  'Global News',
+  'Yle News',
+  'NRK',
+  'Aftenposten',
+  'DR Nyheder',
+  'Arctic Today',
+] as const;
+const CANADA_DEPTH_OPT_INS = [
+  'National Post',
+  'Financial Post',
+  'iPolitics',
+  'The Narwhal',
+  'The Tyee',
+  "Maclean's",
+  'Radio-Canada',
+  'La Presse',
+  'Le Devoir',
+  'TVA Nouvelles',
+  'Vancouver Sun',
+  'Calgary Herald',
+  'Winnipeg Free Press',
+  'Edmonton Journal',
+  'Ottawa Citizen',
+  'The Province',
+] as const;
+const CRISIS_DESK_OPT_INS = [
+  "Sana'a Center",
+  'Enab Baladi English',
+  'WAFA English',
+  'AyiboPost',
+] as const;
 
 describe('cloud-prefs schema-2 migration: re-enable fully-disabled categories', () => {
   // The poisoned-state shape that triggered this migration: free-tier v1
@@ -107,6 +156,82 @@ describe('cloud-prefs schema-2 migration: re-enable fully-disabled categories', 
     assert.equal(blob['worldmonitor-disabled-feeds'], inputJson, 'input blob must not be mutated');
   });
 
+  it('REGRESSION (#5963): migrates only an untouched legacy default set', () => {
+    const legacy = new Set(['legacy-default-a', 'legacy-default-b', ...FRONTLINE]);
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...legacy]),
+    };
+    const result = migrateFrontlineEuropeDefaultsV3(blob, legacy, new Set(FRONTLINE));
+    const disabled = JSON.parse(result['worldmonitor-disabled-feeds'] as string) as string[];
+    assert.deepEqual(disabled, ['legacy-default-a', 'legacy-default-b']);
+  });
+
+  it('REGRESSION (#5963): preserves customized disabled source sets', () => {
+    const legacy = new Set(['legacy-default-a', 'legacy-default-b', ...FRONTLINE]);
+    const customized = ['legacy-default-a', 'legacy-default-b', ...FRONTLINE, 'user-choice'];
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify(customized) };
+    const result = migrateFrontlineEuropeDefaultsV3(blob, legacy, new Set(FRONTLINE));
+    assert.equal(result, blob, 'customized source preferences must not be rewritten');
+  });
+
+  it('REGRESSION (#5966): recovers an untouched pre-protected-cap result', () => {
+    const legacy = new Set(['legacy-default-a', ...FRONTLINE]);
+    const legacyCap = new Set([...legacy, 'auto-disabled-by-cap']);
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...legacyCap]),
+    };
+    const result = migrateFrontlineEuropeDefaultsV3(
+      blob,
+      legacy,
+      new Set(FRONTLINE),
+      legacyCap,
+    );
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['legacy-default-a', 'auto-disabled-by-cap'],
+    );
+  });
+
+  it('REGRESSION (#6000): re-enables strategic defaults from an untouched legacy default set', () => {
+    const legacy = new Set(['legacy-default-a', ...STRATEGIC]);
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...legacy]),
+    };
+    const result = migrateStrategicDefaultsV4(blob, legacy, new Set(STRATEGIC));
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['legacy-default-a'],
+    );
+  });
+
+  it('REGRESSION (#6000): re-enables strategic defaults from an untouched legacy cap result', () => {
+    const legacyDefault = new Set(['legacy-default-a', ...STRATEGIC]);
+    const legacyCap = new Set([...legacyDefault, 'auto-disabled-by-cap']);
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...legacyCap]),
+    };
+    const result = migrateStrategicDefaultsV4(
+      blob,
+      legacyDefault,
+      new Set(STRATEGIC),
+      legacyCap,
+    );
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['legacy-default-a', 'auto-disabled-by-cap'],
+    );
+  });
+
+  it('REGRESSION (#6000): preserves customized strategic source preferences', () => {
+    const legacy = new Set(['legacy-default-a', ...STRATEGIC]);
+    const customized = [...legacy, 'user-choice'];
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify(customized),
+    };
+    const result = migrateStrategicDefaultsV4(blob, legacy, new Set(STRATEGIC));
+    assert.equal(result, blob, 'customized source preferences must not be rewritten');
+  });
+
   it('REGRESSION (PR #3524 review): the same migration applied to LOCAL blob produces clean data', () => {
     // The reviewer-flagged scenario: a user with poisoned local data and
     // local syncVersion == cloud syncVersion would skip Branch A's inbound
@@ -144,6 +269,305 @@ describe('cloud-prefs schema-2 migration: re-enable fully-disabled categories', 
     // Product Hunt is recovered; the malformed entries pass through untouched.
     // (We don't try to clean them — that's not this migration's job.)
     assert.equal(newDisabled.includes('Product Hunt'), false);
+  });
+});
+
+describe('cloud-prefs schema-5 migration: regional feed rollout intent', () => {
+  const untouchedDefault = new Set(['old-opt-in-a', 'old-opt-in-b']);
+  const untouchedCap = new Set(['old-opt-in-a', 'old-opt-in-b', 'Civil.ge', 'Focus Taiwan']);
+  const migrationTarget = (
+    legacyDisabled: ReadonlySet<string>,
+    defaultNames: ReadonlySet<string> = new Set(REGIONAL_DEFAULTS),
+    optInNames: ReadonlySet<string> = new Set(REGIONAL_OPT_INS),
+  ) => ({ legacyDisabled, defaultNames, optInNames });
+  const recognizedTargets = [
+    migrationTarget(untouchedDefault),
+    migrationTarget(untouchedCap),
+  ];
+
+  it('disables new opt-ins and enables declared defaults for an untouched pre-rollout profile', () => {
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...untouchedDefault]),
+      'worldmonitor-panels': '{"keep":true}',
+    };
+    const result = migrateRegionalFeedRolloutDefaultsV5(
+      blob,
+      recognizedTargets,
+    );
+    const disabled = new Set(JSON.parse(result['worldmonitor-disabled-feeds'] as string));
+
+    assert.deepEqual(
+      disabled,
+      new Set(['old-opt-in-a', 'old-opt-in-b', ...REGIONAL_OPT_INS]),
+    );
+    assert.equal(result['worldmonitor-panels'], '{"keep":true}');
+  });
+
+  it('recovers defaults stripped by the cap while retaining unrelated cap disables', () => {
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...untouchedCap, 'old-auto-disabled']),
+    };
+    const targets = [
+      ...recognizedTargets,
+      migrationTarget(new Set([...untouchedCap, 'old-auto-disabled'])),
+    ];
+    const result = migrateRegionalFeedRolloutDefaultsV5(
+      blob,
+      targets,
+    );
+    assert.deepEqual(
+      new Set(JSON.parse(result['worldmonitor-disabled-feeds'] as string)),
+      new Set(['old-opt-in-a', 'old-opt-in-b', 'old-auto-disabled', ...REGIONAL_OPT_INS]),
+    );
+  });
+
+  it('preserves any customized set, including an explicit post-rollout default disable', () => {
+    const customized = new Set([...untouchedDefault, 'Civil.ge']);
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify([...customized]) };
+    const result = migrateRegionalFeedRolloutDefaultsV5(
+      blob,
+      recognizedTargets,
+    );
+    assert.equal(result, blob, 'an unrecognized set must be returned untouched by reference');
+  });
+
+  it('keeps a locale-matched rollout source enabled when that locale marker already ran', () => {
+    const localeTarget = migrationTarget(
+      untouchedDefault,
+      new Set([...REGIONAL_DEFAULTS, 'NewsMaker']),
+      new Set(REGIONAL_OPT_INS),
+    );
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...untouchedDefault]),
+    };
+    const result = migrateRegionalFeedRolloutDefaultsV5(blob, [localeTarget]);
+    const disabled = new Set(JSON.parse(result['worldmonitor-disabled-feeds'] as string));
+
+    assert.equal(disabled.has('NewsMaker'), false, 'the RU rollout default must remain enabled');
+    assert.ok(disabled.has('JAMnews'), 'unrelated regional opt-ins remain disabled');
+  });
+
+  it('preserves a locale-less cloud row when one exact fingerprint has conflicting outcomes', () => {
+    const ambiguousLegacy = new Set([...untouchedDefault, 'NewsMaker']);
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify([...ambiguousLegacy]),
+    };
+    const targets = [
+      migrationTarget(
+        ambiguousLegacy,
+        new Set(REGIONAL_DEFAULTS),
+        new Set([...REGIONAL_OPT_INS, 'NewsMaker']),
+      ),
+      migrationTarget(
+        ambiguousLegacy,
+        new Set([...REGIONAL_DEFAULTS, 'NewsMaker']),
+        new Set(REGIONAL_OPT_INS),
+      ),
+    ];
+
+    assert.equal(
+      migrateRegionalFeedRolloutDefaultsV5(blob, targets),
+      blob,
+      'the migration must fail closed instead of guessing the cloud row locale',
+    );
+    assert.equal(isRegionalFeedRolloutMigrationAmbiguous(blob, targets), true);
+
+    const migrations = buildMigrations({}, {
+      regionalRollout: { targets },
+      canadaArctic: { optInSources: CANADA_ARCTIC_OPT_INS },
+      canadaDepth: { optInSources: CANADA_DEPTH_OPT_INS },
+      crisisDesk: { optInSources: CRISIS_DESK_OPT_INS },
+    });
+    const applied = applyMigrationChainWithSchemaVersion(
+      blob,
+      4,
+      5,
+      migrations,
+      (version, data) => (
+        version === 5 && isRegionalFeedRolloutMigrationAmbiguous(data, targets)
+      ),
+    );
+    assert.equal(applied.schemaVersion, 4, 'ambiguous rows must remain retryable at schema 4');
+    assert.equal(applied.data, blob);
+
+    const independentlyApplied = applyMigrationChainWithSchemaVersion(
+      blob,
+      4,
+      8,
+      migrations,
+      (version, data) => (
+        version === 5 && isRegionalFeedRolloutMigrationAmbiguous(data, targets)
+      ),
+      true,
+    );
+    assert.equal(
+      independentlyApplied.schemaVersion,
+      4,
+      'independent later migrations must not mark the blocked schema-5 step complete',
+    );
+    assert.deepEqual(
+      JSON.parse(independentlyApplied.data['worldmonitor-disabled-feeds'] as string),
+      [
+        ...ambiguousLegacy,
+        ...CANADA_ARCTIC_OPT_INS,
+        ...CANADA_DEPTH_OPT_INS,
+        ...CRISIS_DESK_OPT_INS,
+      ],
+      'schema 6/7/8 must still protect opt-ins while schema 5 remains retryable',
+    );
+  });
+
+  it('rejects malformed, duplicate, and non-string disabled sets instead of guessing intent', () => {
+    for (const raw of [
+      'not-json',
+      JSON.stringify(['old-opt-in-a', 'old-opt-in-a']),
+      JSON.stringify(['old-opt-in-a', 42]),
+    ]) {
+      const blob = { 'worldmonitor-disabled-feeds': raw };
+      assert.equal(
+        migrateRegionalFeedRolloutDefaultsV5(
+          blob,
+          recognizedTargets,
+        ),
+        blob,
+      );
+    }
+  });
+});
+
+describe('cloud-prefs schema-6 migration: Canada/Arctic opt-in boundary', () => {
+  it('adds each companion source once while preserving the existing order', () => {
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify(['user-choice', 'Globe and Mail']),
+      'worldmonitor-panels': '{"keep":true}',
+    };
+    const result = migrateCanadaArcticOptInsV6(blob, CANADA_ARCTIC_OPT_INS);
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['user-choice', 'Globe and Mail', 'Global News', 'Yle News', 'NRK', 'Aftenposten', 'DR Nyheder', 'Arctic Today'],
+    );
+    assert.equal(result['worldmonitor-panels'], '{"keep":true}');
+    assert.equal(
+      migrateCanadaArcticOptInsV6(result, CANADA_ARCTIC_OPT_INS),
+      result,
+      'a completed migration must be idempotent and preserve object identity',
+    );
+  });
+
+  it('leaves empty, malformed, and non-string states untouched', () => {
+    for (const raw of [
+      '[]',
+      'not-json',
+      JSON.stringify(['user-choice', 42]),
+    ]) {
+      const blob = { 'worldmonitor-disabled-feeds': raw };
+      assert.equal(migrateCanadaArcticOptInsV6(blob, CANADA_ARCTIC_OPT_INS), blob);
+    }
+  });
+});
+
+describe('cloud-prefs schema-7 migration: Canada depth opt-in boundary', () => {
+  it('adds each companion source once while preserving the existing order', () => {
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify(['user-choice', 'National Post']),
+      'worldmonitor-panels': '{"keep":true}',
+    };
+    const result = migrateCanadaDepthOptInsV7(blob, CANADA_DEPTH_OPT_INS);
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['user-choice', 'National Post', ...CANADA_DEPTH_OPT_INS.filter((n) => n !== 'National Post')],
+    );
+    assert.equal(result['worldmonitor-panels'], '{"keep":true}');
+    assert.equal(
+      migrateCanadaDepthOptInsV7(result, CANADA_DEPTH_OPT_INS),
+      result,
+      'a completed migration must be idempotent and preserve object identity',
+    );
+  });
+
+  it('leaves empty, malformed, and non-string states untouched', () => {
+    for (const raw of [
+      '[]',
+      'not-json',
+      JSON.stringify(['user-choice', 42]),
+    ]) {
+      const blob = { 'worldmonitor-disabled-feeds': raw };
+      assert.equal(migrateCanadaDepthOptInsV7(blob, CANADA_DEPTH_OPT_INS), blob);
+    }
+  });
+
+  it('does not insert default-on CBC/CTV/Toronto Star into a pre-pack denylist', () => {
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify(['user-choice']) };
+    const result = migrateCanadaDepthOptInsV7(blob, CANADA_DEPTH_OPT_INS);
+    const disabled = JSON.parse(result['worldmonitor-disabled-feeds'] as string) as string[];
+    for (const name of ['CBC News', 'CTV News', 'Toronto Star']) {
+      assert.equal(disabled.includes(name), false, `${name} must stay absent from disabled`);
+    }
+    for (const name of CANADA_DEPTH_OPT_INS) {
+      assert.ok(disabled.includes(name), `${name} must be present in disabled`);
+    }
+  });
+
+  it('keeps Globe/Global disabled for a user who already had the arctic migration', () => {
+    const prePack = [
+      'user-choice',
+      ...CANADA_ARCTIC_OPT_INS,
+    ];
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify(prePack) };
+    const result = migrateCanadaDepthOptInsV7(blob, CANADA_DEPTH_OPT_INS);
+    const disabled = JSON.parse(result['worldmonitor-disabled-feeds'] as string) as string[];
+    assert.ok(disabled.includes('Globe and Mail'));
+    assert.ok(disabled.includes('Global News'));
+    for (const name of ['CBC News', 'CTV News', 'Toronto Star']) {
+      assert.equal(disabled.includes(name), false, `${name} must stay absent from disabled`);
+    }
+    for (const name of CANADA_DEPTH_OPT_INS) {
+      assert.ok(disabled.includes(name), `${name} must be present in disabled`);
+    }
+  });
+});
+
+describe('cloud-prefs schema-8 migration: crisis-desk opt-in boundary', () => {
+  it('adds each reviewed opt-in once while preserving the existing order', () => {
+    const blob = {
+      'worldmonitor-disabled-feeds': JSON.stringify(['user-choice', "Sana'a Center"]),
+      'worldmonitor-panels': '{"keep":true}',
+    };
+    const result = migrateCrisisDeskOptInsV8(blob, CRISIS_DESK_OPT_INS);
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['user-choice', "Sana'a Center", ...CRISIS_DESK_OPT_INS.filter((name) => name !== "Sana'a Center")],
+    );
+    assert.equal(result['worldmonitor-panels'], '{"keep":true}');
+    assert.equal(
+      migrateCrisisDeskOptInsV8(result, CRISIS_DESK_OPT_INS),
+      result,
+      'a completed migration must be idempotent and preserve object identity',
+    );
+  });
+
+  it('leaves empty, malformed, and non-string states untouched', () => {
+    for (const raw of [
+      '[]',
+      'not-json',
+      JSON.stringify(['user-choice', 42]),
+    ]) {
+      const blob = { 'worldmonitor-disabled-feeds': raw };
+      assert.equal(migrateCrisisDeskOptInsV8(blob, CRISIS_DESK_OPT_INS), blob);
+    }
+  });
+
+  it('does not insert global English or strategic defaults into the denylist', () => {
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify(['user-choice']) };
+    const result = migrateCrisisDeskOptInsV8(blob, CRISIS_DESK_OPT_INS);
+    const disabled = JSON.parse(result['worldmonitor-disabled-feeds'] as string) as string[];
+
+    for (const name of ['Yemen Online', 'Studio Tamani']) {
+      assert.equal(disabled.includes(name), false, `${name} must stay globally enabled`);
+    }
+    for (const name of CRISIS_DESK_OPT_INS) {
+      assert.ok(disabled.includes(name), `${name} must be present in disabled`);
+    }
   });
 });
 
@@ -201,5 +625,83 @@ describe('applyMigrationChain', () => {
     const cleaned = JSON.parse(result['worldmonitor-disabled-feeds'] as string);
     // Layoffs sources recovered; BBC World preserved (partial-disable safety)
     assert.deepEqual(cleaned, ['BBC World']);
+  });
+
+  it('integrates the frontline migration as schema 3', () => {
+    const legacy = new Set(['legacy-default-a', ...FRONTLINE]);
+    const migrations = buildMigrations({}, {
+      frontline: { legacyDefaultDisabled: legacy, names: new Set(FRONTLINE) },
+    });
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify([...legacy]) };
+    const result = applyMigrationChain(blob, 2, 3, migrations);
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['legacy-default-a'],
+    );
+  });
+
+  it('integrates the strategic migration as schema 4', () => {
+    const legacy = new Set(['legacy-default-a', ...STRATEGIC]);
+    const migrations = buildMigrations({}, {
+      strategic: { legacyDefaultDisabled: legacy, names: new Set(STRATEGIC) },
+    });
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify([...legacy]) };
+    const result = applyMigrationChain(blob, 3, 4, migrations);
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['legacy-default-a'],
+    );
+  });
+
+  it('integrates the regional rollout migration as schema 5', () => {
+    const legacy = new Set(['old-opt-in']);
+    const migrations = buildMigrations({}, {
+      regionalRollout: {
+        targets: [{
+          legacyDisabled: legacy,
+          defaultNames: new Set(REGIONAL_DEFAULTS),
+          optInNames: new Set(REGIONAL_OPT_INS),
+        }],
+      },
+    });
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify([...legacy]) };
+    const result = applyMigrationChain(blob, 4, 5, migrations);
+    assert.deepEqual(
+      new Set(JSON.parse(result['worldmonitor-disabled-feeds'] as string)),
+      new Set(['old-opt-in', ...REGIONAL_OPT_INS]),
+    );
+  });
+
+  it('integrates the Canada/Arctic opt-in migration as schema 6', () => {
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify(['user-choice']) };
+    const result = applyMigrationChain(blob, 5, 6, buildMigrations({}, {
+      canadaArctic: { optInSources: CANADA_ARCTIC_OPT_INS },
+    }));
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['user-choice', ...CANADA_ARCTIC_OPT_INS],
+    );
+  });
+
+  it('integrates the Canada depth opt-in migration as schema 7', () => {
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify(['user-choice']) };
+    const result = applyMigrationChain(blob, 6, 7, buildMigrations({}, {
+      canadaDepth: { optInSources: CANADA_DEPTH_OPT_INS },
+    }));
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['user-choice', ...CANADA_DEPTH_OPT_INS],
+    );
+  });
+
+  it('integrates the crisis-desk opt-in migration as schema 8', () => {
+    const blob = { 'worldmonitor-disabled-feeds': JSON.stringify(['user-choice']) };
+    const result = applyMigrationChain(blob, 7, 8, buildMigrations({}, {
+      crisisDesk: { optInSources: CRISIS_DESK_OPT_INS },
+    }));
+    assert.deepEqual(
+      JSON.parse(result['worldmonitor-disabled-feeds'] as string),
+      ['user-choice', ...CRISIS_DESK_OPT_INS],
+    );
   });
 });

@@ -3,15 +3,39 @@
 
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 import { getRelayBaseUrl, getRelayHeaders } from '../_relay.js';
+import { checkRateLimit } from '../_rate-limit.js';
 
 export const config = { runtime: 'edge' };
 
-export default async function handler(request) {
+// Mirrors ENDPOINT_RATE_POLICIES['/api/youtube/live'] in
+// server/_shared/rate-limit.ts. api/*.js cannot import ../server/ (AGENTS.md),
+// so the budget is duplicated here and tests/rate-limit.test.mts fails if the
+// two copies drift. (#6234)
+const RATE_LIMIT_SCOPE = 'youtube-live';
+const RATE_LIMIT_PER_MINUTE = 30;
+
+export default async function handler(request, ctx) {
   const cors = getCorsHeaders(request);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
   if (isDisallowedOrigin(request)) {
     return new Response(JSON.stringify({ error: 'Origin not allowed' }), { status: 403, headers: cors });
   }
+
+  // Metered before the parameter check so malformed requests are not a free
+  // unlimited path. Availability-first on purpose: this is a read proxy for
+  // the live-stream panel, and checkRateLimit already returns null when
+  // Upstash is unconfigured, so a Redis blip degrades to today's behaviour
+  // instead of blanking the panel. (#6234)
+  // `ctx` is forwarded so the degraded-path Sentry envelope survives isolate
+  // teardown, matching api/reverse-geocode.js. (#6412 review)
+  const limited = await checkRateLimit(request, cors, {
+    ctx,
+    scope: RATE_LIMIT_SCOPE,
+    limit: RATE_LIMIT_PER_MINUTE,
+    window: '60 s',
+  });
+  if (limited) return limited;
+
   const url = new URL(request.url);
   const channel = url.searchParams.get('channel');
   const videoIdParam = url.searchParams.get('videoId');

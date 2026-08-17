@@ -134,7 +134,7 @@ Example payload (Pro variant — env_key clients get the same envelope shape wit
 }
 ```
 
-**Pro/OAuth daily cap — HTTP 429 + `Retry-After`.** Hard daily cap (default **50 quota-consuming calls / UTC day**) enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** (the auth-symmetric resources path) count. `wm_…` API-key MCP callers do not enter this MCP daily reservation path; they are protected here by the 60 requests/minute/key limiter, while broader REST/API plan allowances are enforced outside the MCP handler. **Exempt from the Pro/OAuth daily cap:** `describe_tool`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`, and `resources/read` of a **public** (concrete, metadata-only) resource such as `worldmonitor://seed-meta/freshness`. (These methods still count toward the per-minute limit above — daily and per-minute exemption sets are different.)
+**Daily cap — HTTP 429 + `Retry-After`.** A hard daily cap (default **50 quota-consuming calls / UTC day**) is enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** (the auth-symmetric resources path) count. Dashboard-issued `wm_…` API-key callers use the 50/day default. OAuth allowances are plan-resolved; API Starter and API Business currently use that same default, while enterprise OAuth can be unlimited. Legacy deployment-allowlisted operator keys are the only authenticated class outside the daily reservation path. **Exempt from the daily cap:** `describe_tool`, `get_sources`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`, and `resources/read` of a **public** (concrete, metadata-only) resource such as `worldmonitor://seed-meta/freshness`. (These methods still count toward the authenticated per-minute limit, except anonymous `get_sources`, which uses its separate 10/minute/IP fail-closed limit.)
 
 ```json
 {
@@ -153,7 +153,7 @@ Retry-After: 41200
 Content-Type: application/json
 ```
 
-**What to do.** For HTTP 200 / per-minute: back off ~1 second and retry. The limiter is a sliding window, not a token bucket — sustained 60 rpm is fine; bursts above 60 in any 60-second window reject. For HTTP 429 / daily: honour `Retry-After` (the value is `seconds-until-UTC-midnight`). If the Pro/OAuth daily cap is the binding constraint for batch work, use the API-key or REST/API path where appropriate, or contact Enterprise for a custom MCP limit.
+**What to do.** For HTTP 200 / per-minute: back off ~1 second and retry. The limiter is a sliding window, not a token bucket — sustained 60 rpm is fine; bursts above 60 in any 60-second window reject. For HTTP 429 / daily: honour `Retry-After` (the value is `seconds-until-UTC-midnight`). If the MCP daily cap is the binding constraint for batch work, use the REST/API path where appropriate, or contact Enterprise for a custom MCP limit.
 
 Paid-plan customers also receive account notices and bounded-cadence email when sustained usage crosses a plan threshold. These notices never imply an automatic upgrade, automatic overage charge, or automatic move into API Business; support or checkout action is explicit.
 

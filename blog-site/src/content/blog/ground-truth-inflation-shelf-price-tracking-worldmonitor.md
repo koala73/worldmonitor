@@ -31,7 +31,7 @@ Basket definitions for additional countries — the US, UK, Australia, India, Br
 
 Shelf-price truth is most useful next to its slower official cousins, so the platform keeps them adjacent:
 
-- **IMF WEO official CPI** for ~195 countries — the world-inflation reference layer.
+- **IMF WEO official CPI** with broad country coverage — the world-inflation reference layer.
 - The **Big Mac Index** — the classic purchasing-power shorthand.
 - The **FAO Food Price Index** — global food-commodity pressure upstream of your grocery store.
 - **Retail fuel prices** — the other price everyone feels weekly.
@@ -54,7 +54,7 @@ Compare shelf-price observations with official benchmarks such as the FAO [Food 
 
 **Which countries have live shelf-price tracking?**
 
-The UAE, across Carrefour, Spinneys, Lulu, and Noon. Basket configurations for the US, UK, Australia, India, Brazil, Singapore, Switzerland, Kenya, and others are staged for expansion. Official IMF CPI context covers ~195 countries today.
+The UAE, across Carrefour, Spinneys, Lulu, and Noon. Basket configurations for the US, UK, Australia, India, Brazil, Singapore, Switzerland, Kenya, and others are staged for expansion. Official IMF CPI context provides broad country coverage.
 
 **How is this different from official inflation statistics?**
 

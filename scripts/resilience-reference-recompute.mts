@@ -146,16 +146,49 @@ export async function recomputeReferenceCountry(
   };
 }
 
+/**
+ * A frozen manifest is a snapshot of the construct AS CAPTURED. `education`
+ * became a fail-closed dimension after the historical v18 capture was taken, so
+ * scoring that manifest under today's default (#6460 flipped it on) makes
+ * `scoreEducation` throw on the manifest reader's deliberate
+ * "missing Redis key" guard — the key genuinely was not in the world when the
+ * freeze ran.
+ *
+ * Recomputing a pre-education manifest with the dimension ENABLED would also be
+ * wrong even if the keys were backfilled: it would compare a five-dimension
+ * social-governance domain against published values produced by a
+ * four-dimension one, which is a cross-construct comparison, not drift.
+ *
+ * So the recompute reproduces the captured construct. Detection is by evidence
+ * — the presence of the dimension's seed-meta key in the frozen capture —
+ * rather than by a date or version string, so a re-freeze that includes the key
+ * automatically scores with education on and needs no change here.
+ */
+const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
+
+export function manifestPredatesEducation(manifest: ResilienceReferenceManifest): boolean {
+  return !hasOwn(manifest.redis.values, EDUCATION_META_KEY);
+}
+
 export async function recomputeReferenceManifest(
   manifest: ResilienceReferenceManifest,
 ): Promise<Record<string, ReferenceComputedCountry>> {
-  const entries = await Promise.all(
-    manifest.sample.countries.map(async (countryCode) => [
-      countryCode,
-      await recomputeReferenceCountry(manifest, countryCode),
-    ] as const),
-  );
-  return Object.fromEntries(entries);
+  const priorEducationFlag = process.env.RESILIENCE_EDUCATION_ENABLED;
+  if (manifestPredatesEducation(manifest)) {
+    process.env.RESILIENCE_EDUCATION_ENABLED = 'false';
+  }
+  try {
+    const entries = await Promise.all(
+      manifest.sample.countries.map(async (countryCode) => [
+        countryCode,
+        await recomputeReferenceCountry(manifest, countryCode),
+      ] as const),
+    );
+    return Object.fromEntries(entries);
+  } finally {
+    if (priorEducationFlag == null) delete process.env.RESILIENCE_EDUCATION_ENABLED;
+    else process.env.RESILIENCE_EDUCATION_ENABLED = priorEducationFlag;
+  }
 }
 
 function compareNumber(

@@ -13,6 +13,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { __testing__ } from '../api/health.js';
 
@@ -23,6 +24,8 @@ const {
   BOOTSTRAP_KEYS,
   STANDALONE_KEYS,
   SEED_META,
+  ON_DEMAND_KEYS,
+  ZERO_RECORD_DATA_OK_KEYS,
 } = __testing__;
 
 const NOW = 1_700_000_000_000;
@@ -44,6 +47,15 @@ function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {} } 
 }
 
 const seedMeta = (over = {}) => JSON.stringify({ fetchedAt: NOW - ONE_MIN_MS, recordCount: 5, ...over });
+const classifyNewsInsights = (over = {}) => classifyKey(
+  'newsInsights',
+  BOOTSTRAP_KEYS.newsInsights,
+  { allowOnDemand: false },
+  makeCtx({
+    strens: { [BOOTSTRAP_KEYS.newsInsights]: 4096 },
+    metaValues: { [SEED_META.newsInsights.key]: seedMeta(over) },
+  }),
+);
 
 // Mirror of the handler's overall-status computation (api/health.js ~850-859).
 // The handler computes this inline; these tests exercise the LOCAL replica —
@@ -82,6 +94,415 @@ test('classifyKey: fresh seed + data → OK', () => {
   assert.equal(entry.status, 'OK');
 });
 
+test('classifyKey: non-empty failedDatasets surfaces a partial static seed as SEED_ERROR', () => {
+  const entry = classifyKey(
+    'resilienceStaticIndex',
+    STANDALONE_KEYS.resilienceStaticIndex,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.resilienceStaticIndex]: 4096 },
+      metaValues: {
+        [SEED_META.resilienceStaticIndex.key]: seedMeta({
+          status: 'ok',
+          recordCount: 196,
+          failedDatasets: ['wgi'],
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.deepEqual(entry.failedDatasets, ['wgi']);
+  const snapshot = {
+    status: 'WARNING',
+    summary: { total: 1, ok: 0, warn: 1, crit: 0 },
+    checkedAt: new Date(NOW).toISOString(),
+    checks: { resilienceStaticIndex: entry },
+  };
+  assert.deepEqual(
+    healthResponseBody(snapshot, true).problems.resilienceStaticIndex.failedDatasets,
+    ['wgi'],
+  );
+  assert.deepEqual(
+    healthResponseBody(healthResponseBody(snapshot, true), true).problems.resilienceStaticIndex.failedDatasets,
+    ['wgi'],
+    'the cached compact snapshot preserves the failed adapter projection',
+  );
+
+  const siblingEntry = classifyKey(
+    'resilienceStaticFao',
+    STANDALONE_KEYS.resilienceStaticFao,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.resilienceStaticFao]: 4096 },
+      metaValues: {
+        [SEED_META.resilienceStaticFao.key]: seedMeta({
+          status: 'ok',
+          recordCount: 196,
+          failedDatasets: ['wgi'],
+        }),
+      },
+    }),
+  );
+  assert.equal(siblingEntry.status, 'OK');
+  assert.equal(siblingEntry.failedDatasets, undefined);
+});
+
+test('classifyKey: failedDatasets projection validates, deduplicates, and stops at 50 entries', () => {
+  const valid = Array.from({ length: 60 }, (_, index) => `dataset-${index}`);
+  const entry = classifyKey(
+    'resilienceStaticIndex',
+    STANDALONE_KEYS.resilienceStaticIndex,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.resilienceStaticIndex]: 4096 },
+      metaValues: {
+        [SEED_META.resilienceStaticIndex.key]: seedMeta({
+          status: 'ok',
+          recordCount: 196,
+          failedDatasets: [null, '', 'x'.repeat(101), valid[0], valid[0], ...valid.slice(1)],
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.deepEqual(entry.failedDatasets, valid.slice(0, 50));
+});
+
+test('classifyKey: resilience ranking and interval metadata must match the active cache state', () => {
+  const original = {
+    RESILIENCE_PILLAR_COMBINE_ENABLED: process.env.RESILIENCE_PILLAR_COMBINE_ENABLED,
+    RESILIENCE_SCHEMA_V2_ENABLED: process.env.RESILIENCE_SCHEMA_V2_ENABLED,
+    RESILIENCE_EDUCATION_ENABLED: process.env.RESILIENCE_EDUCATION_ENABLED,
+  };
+  process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+  process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
+  process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
+
+  const expected = {
+    recordCount: 196,
+    _formula: 'd6',
+    _educationState: 'education-on',
+    _intervalMethodology: 'weight-perturbation-sensitivity-v3',
+  };
+
+  try {
+    for (const name of ['resilienceRanking', 'resilienceIntervals']) {
+      const dataKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+      assert.ok(dataKey, `${name} must have a registered data key`);
+      const classify = (tags) => classifyKey(
+        name,
+        dataKey,
+        { allowOnDemand: false },
+        makeCtx({
+          strens: { [dataKey]: 2048 },
+          metaValues: { [SEED_META[name].key]: seedMeta(tags) },
+        }),
+      );
+
+      const healthy = classify(expected);
+      assert.equal(healthy.status, 'OK', `${name} current cache state must be healthy`);
+      assert.equal(healthy.cacheState.ok, true);
+
+      for (const staleTags of [
+        {},
+        { ...expected, _formula: 'pc' },
+        { ...expected, _educationState: 'education-off' },
+        { ...expected, _intervalMethodology: 'weight-perturbation-sensitivity-v2' },
+      ]) {
+        const stale = classify(staleTags);
+        assert.equal(stale.status, 'STALE_SEED', `${name} must reject stale or missing cache-state tags`);
+        assert.equal(stale.cacheState.ok, false);
+        assert.equal(stale.cacheState.requiredFormula, 'd6');
+        assert.equal(stale.cacheState.requiredEducationState, 'education-on');
+        assert.equal(stale.cacheState.requiredIntervalMethodology, 'weight-perturbation-sensitivity-v3');
+      }
+    }
+  } finally {
+    for (const [key, value] of Object.entries(original)) {
+      if (value == null) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('classifyKey: resilience formula defaults active and only explicit false selects rollback', () => {
+  const originalPillar = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+  const originalSchema = process.env.RESILIENCE_SCHEMA_V2_ENABLED;
+  const originalEducation = process.env.RESILIENCE_EDUCATION_ENABLED;
+  process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
+  process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
+
+  try {
+    for (const { raw, formula } of [
+      { raw: undefined, formula: 'pc' },
+      { raw: 'true', formula: 'pc' },
+      { raw: 'false', formula: 'd6' },
+    ]) {
+      if (raw === undefined) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+      else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = raw;
+      const dataKey = BOOTSTRAP_KEYS.resilienceRanking ?? STANDALONE_KEYS.resilienceRanking;
+      assert.ok(dataKey);
+      const tags = {
+        _formula: formula,
+        _educationState: 'education-on',
+        _intervalMethodology: 'weight-perturbation-sensitivity-v3',
+      };
+      const entry = classifyKey(
+        'resilienceRanking',
+        dataKey,
+        { allowOnDemand: false },
+        makeCtx({
+          strens: { [dataKey]: 2048 },
+          metaValues: { [SEED_META.resilienceRanking.key]: seedMeta(tags) },
+        }),
+      );
+      assert.equal(entry.status, 'OK', `pillar=${String(raw)} must require ${formula}`);
+      assert.equal(entry.cacheState.requiredFormula, formula);
+    }
+  } finally {
+    if (originalPillar == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+    else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalPillar;
+    if (originalSchema == null) delete process.env.RESILIENCE_SCHEMA_V2_ENABLED;
+    else process.env.RESILIENCE_SCHEMA_V2_ENABLED = originalSchema;
+    if (originalEducation == null) delete process.env.RESILIENCE_EDUCATION_ENABLED;
+    else process.env.RESILIENCE_EDUCATION_ENABLED = originalEducation;
+  }
+});
+
+test('classifyKey: resilience interval metadata below the publication floor is partial', () => {
+  const dataKey = STANDALONE_KEYS.resilienceIntervals;
+  const entry = classifyKey(
+    'resilienceIntervals',
+    dataKey,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [dataKey]: 2048 },
+      metaValues: {
+        [SEED_META.resilienceIntervals.key]: seedMeta({
+          recordCount: 179,
+          _formula: 'pc',
+          _educationState: 'education-on',
+          _intervalMethodology: 'weight-perturbation-sensitivity-v3',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.records, 179);
+  assert.equal(entry.minRecordCount, 180);
+});
+
+test('classifyKey: resilience interval coverage fails closed on missing or malformed counts', () => {
+  const dataKey = STANDALONE_KEYS.resilienceIntervals;
+  const malformedCounts = [undefined, null, 'invalid', Infinity, {}, []];
+
+  for (const recordCount of malformedCounts) {
+    const entry = classifyKey(
+      'resilienceIntervals',
+      dataKey,
+      { allowOnDemand: false },
+      makeCtx({
+        strens: { [dataKey]: 2048 },
+        metaValues: {
+          [SEED_META.resilienceIntervals.key]: seedMeta({
+            recordCount,
+            _formula: 'pc',
+            _educationState: 'education-on',
+            _intervalMethodology: 'weight-perturbation-sensitivity-v3',
+          }),
+        },
+      }),
+    );
+
+    assert.equal(entry.status, 'COVERAGE_PARTIAL', `recordCount=${String(recordCount)}`);
+    assert.equal(entry.minRecordCount, 180);
+  }
+});
+
+test('classifyKey: consumer-price coverage below the declared completion floor degrades', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverage.key]: seedMeta({
+        recordCount: 4,
+        coverage: { completedPages: 4, failedPages: 8, completionRatio: 0.3333, rejectedCount: 2 },
+      }),
+    },
+  }));
+
+  assert.equal(entry.status, 'COVERAGE_DEGRADED');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: consumer-price coverage at the floor remains healthy', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverage.key]: seedMeta({
+        recordCount: 4,
+        coverage: { completedPages: 6, failedPages: 6, completionRatio: 0.5, rejectedCount: 0 },
+      }),
+    },
+  }));
+
+  assert.equal(entry.status, 'OK');
+});
+
+test('classifyKey: a healthy market rollup keeps failed-retailer diagnostics without paging', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverageGB;
+  const entry = classifyKey('consumerPricesCoverageGB', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverageGB.key]: seedMeta({
+        recordCount: 2,
+        coverage: {
+          status: 'healthy',
+          completedPages: 12,
+          failedPages: 12,
+          completionRatio: 0.5,
+          rejectedCount: 0,
+          retailers: [
+            { slug: 'ocado-gb', coverageStatus: 'healthy', pagesAttempted: 12, pagesSucceeded: 12 },
+            { slug: 'tesco-gb', coverageStatus: 'failed', pagesAttempted: 12, pagesSucceeded: 0 },
+          ],
+        },
+      }),
+    },
+  }));
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.coverage.status, 'healthy');
+  assert.equal(entry.coverage.retailers[1].coverageStatus, 'failed');
+});
+
+test('classifyKey: consumer-price coverage requires diagnostics and exposes retailer rejection state', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverage.key]: seedMeta({
+        recordCount: 4,
+        coverage: {
+          status: 'partial',
+          completedPages: 8,
+          failedPages: 2,
+          completionRatio: 0.8,
+          rejectedCount: 3,
+          retailers: [{
+            slug: 'retailer-a',
+            name: 'Retailer A',
+            coverageStatus: 'failed',
+            pagesAttempted: 2,
+            pagesSucceeded: 0,
+            failedPages: 2,
+            rejectedCount: 1,
+            completionRatio: 0,
+          }],
+        },
+      }),
+    },
+  }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.coverage.status, 'partial');
+  assert.equal(entry.coverage.rejectedCount, 3);
+  assert.equal(entry.coverage.retailers[0].coverageStatus, 'failed');
+});
+
+// #6182: COVERAGE_PARTIAL is the same status whether the pages never loaded or
+// a price was extracted and the validator refused it, and those need opposite
+// fixes. The reason map is the only thing that separates them, so health must
+// relay it — under a closed vocabulary, like every other producer code.
+test('classifyKey: consumer-price coverage relays bounded failure reasons and drops unknown codes', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverage.key]: seedMeta({
+        recordCount: 4,
+        coverage: {
+          status: 'partial',
+          completedPages: 8,
+          failedPages: 2,
+          completionRatio: 0.8,
+          rejectedCount: 3,
+          failureReasons: {
+            'missing-price': 2,
+            'validator-rejected': 1,
+            'not-a-real-reason': 9,
+            'provider-error': -4,
+          },
+          retailers: [{
+            slug: 'retailer-a',
+            name: 'Retailer A',
+            coverageStatus: 'failed',
+            pagesAttempted: 2,
+            pagesSucceeded: 0,
+            failedPages: 2,
+            rejectedCount: 1,
+            completionRatio: 0,
+            failureReasons: { 'missing-price': 2, 'bogus-code': 1 },
+          }],
+        },
+      }),
+    },
+  }));
+
+  assert.deepEqual(entry.coverage.failureReasons, {
+    'missing-price': 2,
+    'validator-rejected': 1,
+  });
+  assert.deepEqual(entry.coverage.retailers[0].failureReasons, { 'missing-price': 2 });
+});
+
+test('classifyKey: consumer-price coverage without failure reasons reports an empty map', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: {
+      [SEED_META.consumerPricesCoverage.key]: seedMeta({
+        recordCount: 4,
+        coverage: {
+          status: 'partial',
+          completedPages: 8,
+          failedPages: 2,
+          completionRatio: 0.8,
+          rejectedCount: 3,
+          retailers: [{ slug: 'retailer-a', coverageStatus: 'partial' }],
+        },
+      }),
+    },
+  }));
+
+  assert.deepEqual(entry.coverage.failureReasons, {});
+  assert.deepEqual(entry.coverage.retailers[0].failureReasons, {});
+});
+
+test('classifyKey: missing consumer-price coverage metadata fails closed', () => {
+  const key = BOOTSTRAP_KEYS.consumerPricesCoverage;
+  const entry = classifyKey('consumerPricesCoverage', key, { allowOnDemand: false }, makeCtx({
+    strens: { [key]: 2048 },
+    metaValues: { [SEED_META.consumerPricesCoverage.key]: seedMeta({ recordCount: 4 }) },
+  }));
+
+  assert.equal(entry.status, 'COVERAGE_DEGRADED');
+  assert.equal(entry.coverage, null);
+});
+
+test('health registers every currently enabled consumer-price market coverage key', () => {
+  for (const market of ['ae', 'au', 'br', 'gb', 'in', 'sa', 'sg', 'us']) {
+    const name = market === 'ae' ? 'consumerPricesCoverage' : `consumerPricesCoverage${market.toUpperCase()}`;
+    assert.equal(BOOTSTRAP_KEYS[name], `consumer-prices:coverage:${market}`);
+    assert.equal(SEED_META[name].key, `seed-meta:consumer-prices:coverage:${market}`);
+    assert.equal(SEED_META[name].requireCoverage, true);
+  }
+});
+
 test('classifyKey: present-but-stale seed → STALE_SEED (warn), data still present', () => {
   const entry = classifyKey('earthquakes', BOOTSTRAP_KEYS.earthquakes, { allowOnDemand: false },
     makeCtx({
@@ -91,6 +512,718 @@ test('classifyKey: present-but-stale seed → STALE_SEED (warn), data still pres
     }));
   assert.equal(entry.status, 'STALE_SEED');
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: repeated insights synthesis rejection warns while the LKG remains present', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - 5 * ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - 2 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 45 * ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-01T06:30:39.268Z',
+    consecutiveFailures: 2,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_PARSE',
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.records, 8);
+  assert.equal(entry.consecutiveFailures, 2);
+  assert.equal(entry.lastSynthesisFailureCode, 'INSIGHTS_SYNTHESIS_PARSE');
+  assert.equal(entry.servedGeneratedAt, '2026-08-01T06:30:39.268Z');
+  assert.equal(entry.lastSuccessAt, NOW - 45 * ONE_MIN_MS);
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: one recent insights synthesis failure stays OK within the warning bounds', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - 5 * ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - 2 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 5 * ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-01T08:25:39.268Z',
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_GATE',
+  });
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+  assert.equal(entry.consecutiveFailures, 1);
+  assert.equal(entry.lastSynthesisFailureCode, 'INSIGHTS_SYNTHESIS_GATE');
+});
+
+test('classifyKey: an old single insights synthesis failure warns by age', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - 5 * ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - 25 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 10 * ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-01T06:30:39.268Z',
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_GATE',
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.synthesisFailureAgeMin, 25);
+});
+
+test('classifyKey: a fresh successful insights publication clears synthesis warning state', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - ONE_MIN_MS,
+    lastSuccessAt: NOW - ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-01T08:30:39.268Z',
+    consecutiveFailures: 0,
+    lastSynthesisFailureCode: null,
+  });
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.consecutiveFailures, 0);
+  assert.equal(entry.servedGeneratedAt, '2026-08-01T08:30:39.268Z');
+});
+
+test('classifyKey: no-LKG synthesis failure warns even on the first attempted publication', () => {
+  const entry = classifyNewsInsights({
+    fetchedAt: NOW - ONE_MIN_MS,
+    recordCount: 8,
+    lastAttemptAt: NOW - ONE_MIN_MS,
+    lastSuccessAt: null,
+    servedGeneratedAt: '2026-08-01T08:30:39.268Z',
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_MISSING_CLUSTER',
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.consecutiveFailures, 1);
+  assert.equal(entry.lastSuccessAt, null);
+});
+
+// ── marketImplications: the hourly tail LLM stage ────────────────────────────
+// Same bounded-degradation contract as newsInsights, sized to an hourly cron:
+// the panel serves published cards for hours, so ONE missed generation while
+// fresh cards are still being served is not an incident. Two consecutive
+// misses (~2h, the maxStaleMin budget) is.
+const classifyMarketImplications = (over = {}) => classifyKey(
+  'marketImplications',
+  STANDALONE_KEYS.marketImplications,
+  { allowOnDemand: false },
+  makeCtx({
+    strens: { [STANDALONE_KEYS.marketImplications]: 4096 },
+    metaValues: {
+      [SEED_META.marketImplications.key]: JSON.stringify({
+        fetchedAt: NOW - 94 * ONE_MIN_MS,
+        recordCount: 5,
+        status: 'ok',
+        ...over,
+      }),
+    },
+  }),
+);
+
+test('classifyKey: one market-implications LLM miss over fresh served cards stays OK', () => {
+  // The reported production state: three of five hourly attempts published,
+  // the latest attempt timed out, five valid cards still served.
+  const entry = classifyMarketImplications({
+    lastAttemptAt: NOW - 4 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 94 * ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-05T17:02:30.133Z',
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+  });
+
+  assert.equal(entry.status, 'OK', 'a single transient LLM miss must not warn while five cards are being served');
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+  assert.equal(entry.records, 5);
+  assert.equal(entry.consecutiveFailures, 1, 'the miss is still reported, it just is not an alarm yet');
+  assert.equal(entry.lastSynthesisFailureCode, 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE');
+});
+
+test('classifyKey: two consecutive market-implications misses warn with the reason attached', () => {
+  const entry = classifyMarketImplications({
+    lastAttemptAt: NOW - 4 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 154 * ONE_MIN_MS,
+    servedGeneratedAt: '2026-08-05T17:02:30.133Z',
+    consecutiveFailures: 2,
+    lastSynthesisFailureCode: 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  assert.equal(entry.consecutiveFailures, 2);
+  assert.equal(entry.lastSynthesisFailureCode, 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE');
+  assert.equal(entry.servedGeneratedAt, '2026-08-05T17:02:30.133Z');
+});
+
+test('classifyKey: every market-implications failure code reaches health', () => {
+  for (const code of [
+    'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+    'MARKET_IMPLICATIONS_NO_PARSEABLE_CARDS',
+    'MARKET_IMPLICATIONS_VALIDATION',
+    'MARKET_IMPLICATIONS_UNKNOWN',
+  ]) {
+    const entry = classifyMarketImplications({
+      lastAttemptAt: NOW - 4 * ONE_MIN_MS,
+      consecutiveFailures: 2,
+      lastSynthesisFailureCode: code,
+    });
+    assert.equal(entry.lastSynthesisFailureCode, code, `${code} must survive validation`);
+  }
+});
+
+test('classifyKey: a foreign failure code is rejected on the market-implications key', () => {
+  // The code vocabulary is per-key. A newsInsights code appearing here would
+  // mean the pattern degenerated into "any string", which would let a
+  // malformed producer write arbitrary text into the health response.
+  const entry = classifyMarketImplications({
+    lastAttemptAt: NOW - 4 * ONE_MIN_MS,
+    consecutiveFailures: 2,
+    lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_PARSE',
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR', 'the streak still escalates');
+  assert.equal(entry.lastSynthesisFailureCode, undefined, 'but a foreign code is not echoed');
+});
+
+test('classifyKey: a stalled market-implications cron warns by attempt age, not silently', () => {
+  // A single miss followed by no further attempt for over two hours: the
+  // served cards are past the staleness budget, so this would classify as a
+  // bare STALE_SEED. The failure contract upgrades it to SEED_ERROR so the
+  // operator gets the reason, not just the age.
+  const entry = classifyMarketImplications({
+    fetchedAt: NOW - 190 * ONE_MIN_MS,
+    lastAttemptAt: NOW - 125 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 190 * ONE_MIN_MS,
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.synthesisFailureAgeMin, 125);
+});
+
+test('classifyKey: market-implications age escalation still fires with no failure recorded', () => {
+  // A budget starve records no failure at all, so the streak contract must not
+  // be the only thing that can escalate — the served vintage aging past
+  // maxStaleMin (120) still has to surface on its own.
+  const entry = classifyMarketImplications({
+    fetchedAt: NOW - 200 * ONE_MIN_MS,
+    lastAttemptAt: NOW - 200 * ONE_MIN_MS,
+    lastSuccessAt: NOW - 200 * ONE_MIN_MS,
+    consecutiveFailures: 0,
+  });
+
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('every synthesisFailure key declares its own failure-code vocabulary', () => {
+  // readSeedMeta falls back to the insights pattern when a key omits
+  // failureCodePattern, which would silently DROP every code a third producer
+  // writes — its streak would still escalate, but the reason would vanish.
+  // The fallback stays for safety; this is the guard that stops a new key
+  // from depending on it.
+  const withContract = Object.entries(SEED_META).filter(([, cfg]) => cfg?.synthesisFailure);
+  assert.ok(withContract.length >= 2, 'guard against this passing because the mechanism disappeared');
+  for (const [name, cfg] of withContract) {
+    assert.ok(
+      cfg.synthesisFailure.failureCodePattern instanceof RegExp,
+      `${name} must declare its own failureCodePattern, not inherit the insights default`,
+    );
+    assert.ok(
+      !cfg.synthesisFailure.failureCodePattern.global,
+      `${name}'s pattern must not be /g — a stateful lastIndex makes .test() alternate between true and false`,
+    );
+  }
+});
+
+test('classifyKey: a failure streak must not downgrade a vanished panel from EMPTY to a warn', () => {
+  // The canonical key holds 180min; the seed-meta holds 7 days. So a cron that
+  // dies right after a miss leaves a failure-bearing meta pointing at a panel
+  // that emptied hours ago. A producer-failure warning describes
+  // degraded-but-serving — when nothing is served at all, the stronger
+  // absence verdict has to win, or a blank homepage panel reports warn
+  // instead of crit for the rest of the week.
+  const entry = classifyKey(
+    'marketImplications',
+    STANDALONE_KEYS.marketImplications,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {}, // canonical key expired -> panel is blank
+      metaValues: {
+        [SEED_META.marketImplications.key]: JSON.stringify({
+          fetchedAt: NOW - 190 * ONE_MIN_MS,
+          recordCount: 5,
+          status: 'ok',
+          lastAttemptAt: NOW - 185 * ONE_MIN_MS,
+          lastSuccessAt: NOW - 190 * ONE_MIN_MS,
+          consecutiveFailures: 1,
+          lastSynthesisFailureCode: 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(STATUS_COUNTS[entry.status], 'crit', 'an absent homepage panel is a crit, per the ON_DEMAND_KEYS policy block');
+  assert.equal(
+    entry.lastSynthesisFailureCode,
+    'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+    'the recorded reason survives the escalation — a bare crit with no cause makes the operator re-read seed-meta by hand',
+  );
+});
+
+test('classifyKey: an insights failure streak likewise cannot mask a vanished LKG', () => {
+  // Same precedence, asserted on the other key that carries this contract, so
+  // the fix is not silently market-implications-only.
+  const entry = classifyKey(
+    'newsInsights',
+    BOOTSTRAP_KEYS.newsInsights,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.newsInsights.key]: seedMeta({
+          lastAttemptAt: NOW - 2 * ONE_MIN_MS,
+          consecutiveFailures: 2,
+          lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_PARSE',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'EMPTY');
+});
+
+test('classifyKey: a market-implications run with nothing servable still errors immediately', () => {
+  // The producer's fail-closed branch: no last-good cards to hold a content
+  // clock against, so it writes the zero-record error meta and health must
+  // warn on the FIRST occurrence.
+  const entry = classifyMarketImplications({
+    fetchedAt: NOW - ONE_MIN_MS,
+    recordCount: 0,
+    status: 'error',
+    errorReason: 'llm_no_response',
+  });
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+// ── Producer fault vs. missing data, fleet-wide (#6263) ──────────────────────
+// The synthesisFailure arm above learned to yield to the absence verdict. The
+// `seedError` and `sourceBlocked` arms sit on the same seam and apply to EVERY
+// SEED_META key, so the rule has to be stated once for all of them: a
+// producer-fault verdict says WHY the producer is unhappy, the absence verdict
+// says WHETHER anything is being served, and when both are true the STRONGER
+// one wins.
+//
+// That is deliberately not the one-word `&& hasData` guard the issue proposed.
+// Four key classes resolve an absent data key to something SOFTER than
+// SEED_ERROR — EMPTY_DATA_OK_KEYS (OK/STALE_SEED), cascade coverage
+// (OK_CASCADE), on-demand (EMPTY_ON_DEMAND) and rollout (ROLLOUT_PENDING) — so
+// a bare guard would demote or silence those instead of escalating them. Each
+// class gets a lock below.
+
+test('classifyKey: an error seed-meta must not downgrade a vanished panel from EMPTY to a warn', () => {
+  // The fleet-wide twin of the synthesisFailure case above. seed-meta holds 7
+  // days, the canonical key 180min, so a producer that errored once and then
+  // stopped leaves a blank homepage panel reporting warn for the rest of the
+  // week.
+  const entry = classifyKey(
+    'marketImplications',
+    STANDALONE_KEYS.marketImplications,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {}, // canonical key expired -> panel is blank
+      metaValues: {
+        [SEED_META.marketImplications.key]: JSON.stringify({
+          fetchedAt: NOW - 190 * ONE_MIN_MS,
+          recordCount: 0,
+          status: 'error',
+          errorReason: 'llm_no_response',
+          errorCode: 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(STATUS_COUNTS[entry.status], 'crit');
+  assert.equal(
+    entry.errorCode,
+    'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+    'escalating the severity must not cost the operator the cause the producer recorded',
+  );
+});
+
+test('classifyKey: a degraded sourceState likewise cannot mask a vanished panel', () => {
+  // seedError has two producers: `status:'error'` (above) and any non-ok
+  // `sourceState` (here). The second reaches classifyKey with a FRESH
+  // fetchedAt — seedStale stays false — so it is the arm that can hide an
+  // absence behind an otherwise healthy-looking meta.
+  const entry = classifyKey(
+    'marketImplications',
+    STANDALONE_KEYS.marketImplications,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.marketImplications.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 5,
+          sourceState: 'error',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(STATUS_COUNTS[entry.status], 'crit');
+});
+
+test('classifyKey: a blocked source with no data escalates like every other fault', () => {
+  // The `sourceBlocked` arm has the same shape and today produces the fleet's
+  // one self-contradiction: crossStraitActivityJapanMod is excluded from it, so
+  // that key ALREADY reports EMPTY for a blocked-and-absent state while every
+  // other key reports SEED_ERROR. One state, two verdicts. Assert both agree.
+  const blockedAndAbsent = (name) => classifyKey(
+    name,
+    STANDALONE_KEYS[name],
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META[name].key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 0,
+          sourceState: 'blocked',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(blockedAndAbsent('humanitarianSummary').status, 'EMPTY');
+  assert.equal(blockedAndAbsent('crossStraitActivityJapanMod').status, 'EMPTY');
+
+  // Both landing on EMPTY proves they AGREE, but not that the blocked fault
+  // still fires at all — a guard that dropped it entirely would produce the
+  // same pair. Pin the other direction on the same key: with data present, the
+  // non-Japan blocked arm still yields its fault.
+  const blockedWithData = classifyKey(
+    'humanitarianSummary',
+    STANDALONE_KEYS.humanitarianSummary,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.humanitarianSummary]: 2048 },
+      metaValues: {
+        [SEED_META.humanitarianSummary.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 4,
+          sourceState: 'blocked',
+        }),
+      },
+    }),
+  );
+  assert.equal(blockedWithData.status, 'SEED_ERROR');
+});
+
+test('classifyKey: a collapsed forecast funnel keeps SEED_ERROR when its payload is absent', () => {
+  // forecastFunnel is in EMPTY_DATA_OK_KEYS, so its absence branch resolves to
+  // OK/STALE_SEED — softer than the fault. api/health.js's own comment on the
+  // set entry states the dependency: "A COLLAPSED funnel still surfaces via
+  // seed-meta status:'error' → SEED_ERROR, which classifyKey checks before this
+  // branch." A bare `&& hasData` guard would demote the collapse to a generic
+  // STALE_SEED and drop the reason.
+  const entry = classifyKey(
+    'forecastFunnel',
+    STANDALONE_KEYS.forecastFunnel,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.forecastFunnel.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 0,
+          status: 'error',
+          errorReason: 'funnel_collapsed',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: a fresh degraded funnel source is not silently OK when its payload is absent', () => {
+  // The sharpest edge of the same class: `sourceState` degradation leaves
+  // seedStale false, so EMPTY_DATA_OK_KEYS resolves the absence to plain OK. A
+  // bare `&& hasData` guard would turn a reported producer fault into a green
+  // check — the exact softening #6263 exists to remove.
+  const entry = classifyKey(
+    'forecastFunnel',
+    STANDALONE_KEYS.forecastFunnel,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.forecastFunnel.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 0,
+          sourceState: 'error',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  // The absence verdict this beat, asserted directly: with the fault removed
+  // the very same fixture resolves to a green OK, so the fault is doing all the
+  // work here and a guard that skipped it would ship a silent pass.
+  const withoutFault = classifyKey(
+    'forecastFunnel',
+    STANDALONE_KEYS.forecastFunnel,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.forecastFunnel.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 0,
+        }),
+      },
+    }),
+  );
+  assert.equal(withoutFault.status, 'OK');
+});
+
+test('classifyKey: cascade coverage does not hide a producer error on the covered key', () => {
+  // militaryFlights cascades onto militaryFlightsStale. Cascade answers "is the
+  // panel being served from a sibling", which is true here — but the live
+  // producer still reported a fault, and OK_CASCADE would erase it. Absence
+  // resolves to `ok`, softer than the fault, so the fault holds.
+  const entry = classifyKey(
+    'militaryFlights',
+    STANDALONE_KEYS.militaryFlights,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.militaryFlightsStale]: 2048 },
+      metaValues: {
+        [SEED_META.militaryFlights.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 0,
+          status: 'error',
+          errorReason: 'opensky_auth_failed',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'SEED_ERROR');
+});
+
+test('classifyKey: a compact projection that must always publish is EMPTY when it errors with no payload', () => {
+  // MISSING_DATA_IS_FAILURE_KEYS members publish a canonical payload on every
+  // successful cycle, so a vanished payload is a real publish failure. The set
+  // is also a subset of EMPTY_DATA_OK_KEYS, whose absence verdict is only
+  // STALE_SEED — so if the strict arm is skipped, the fault ties the softer
+  // verdict and wins, and the key reports warn.
+  //
+  // The arm is skipped exactly when `seedStale === true`, and readSeedMeta
+  // SYNTHESIZES that on the `status:'error'` return as a fault marker rather
+  // than measuring it. Reading a fault marker as "the meta aged out" is what
+  // let #6263's own headline case — a `status:'error'` seed-meta over a
+  // vanished panel — survive on all eight of these keys.
+  const entry = classifyKey(
+    'crossStraitActivityBootstrap',
+    STANDALONE_KEYS.crossStraitActivityBootstrap,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.crossStraitActivityBootstrap.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 0,
+          status: 'error',
+          errorReason: 'publish_failed',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(STATUS_COUNTS[entry.status], 'crit');
+});
+
+test('classifyKey: both fault paths agree for one physical state on a strict projection', () => {
+  // The parity that finding above turns on. `status:'error'` and a non-ok
+  // `sourceState` are two ways to say "the producer is failing", and
+  // readSeedMeta treats them differently — the first forces seedStale true, the
+  // second measures it. Same key, same absent payload, same fault: the verdict
+  // must not depend on which dialect the producer used.
+  const classifyWith = (meta) => classifyKey(
+    'wildfiresBootstrap',
+    STANDALONE_KEYS.wildfiresBootstrap,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.wildfiresBootstrap.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 0,
+          ...meta,
+        }),
+      },
+    }),
+  );
+
+  assert.equal(
+    classifyWith({ status: 'error', errorReason: 'publish_failed' }).status,
+    classifyWith({ sourceState: 'error' }).status,
+    'a producer reporting failure via status:error must classify like one reporting it via sourceState',
+  );
+});
+
+test('classifyKey: a strict projection that has never published keeps its STALE_SEED grace', () => {
+  // The other side of the same guard, and the reason it cannot simply be
+  // deleted: before the producer's first run the payload is absent with no
+  // fault recorded, and EMPTY (crit) would be a false alarm on a key that is
+  // merely new. Only a REPORTED fault revokes the grace — absence alone does
+  // not.
+  const entry = classifyKey(
+    'wildfiresBootstrap',
+    STANDALONE_KEYS.wildfiresBootstrap,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.wildfiresBootstrap.key]: JSON.stringify({
+          fetchedAt: NOW - 10_000 * ONE_MIN_MS, // long past maxStaleMin
+          recordCount: 0,
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: an unconfigured adapter raises no fault and publishes no errorCode', () => {
+  // NOT_CONFIGURED means "this deployment never opted into the adapter", so
+  // there is nothing to be degraded ABOUT — the fault is skipped entirely
+  // rather than merely losing the verdict. Without the `!sourceUnavailable`
+  // guard the fault still fires, and a green NOT_CONFIGURED entry ships an
+  // errorCode for a producer this deployment does not run.
+  //
+  // Asserted on `errorCode` only. `lastSynthesisFailureCode` is deliberately
+  // ungated upstream — it rides with consecutiveFailures/lastAttemptAt, which
+  // publish on every status — so its presence here is correct, not a leak.
+  const entry = classifyKey(
+    'marketImplications',
+    STANDALONE_KEYS.marketImplications,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.marketImplications]: 4096 },
+      metaValues: {
+        [SEED_META.marketImplications.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 5,
+          sourceState: 'unavailable',
+          errorCode: 'PRODUCER_FAILED',
+          lastAttemptAt: NOW - ONE_MIN_MS,
+          lastSuccessAt: NOW - 200 * ONE_MIN_MS,
+          consecutiveFailures: 3,
+          lastSynthesisFailureCode: 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'NOT_CONFIGURED');
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+  assert.equal(Object.hasOwn(entry, 'errorCode'), false, 'an unconfigured adapter has no fault to explain');
+});
+
+test('classifyKey: a fault outranks every served-data verdict it precedes', () => {
+  // The refactor hoisted the fault arms out of the status if/else chain into a
+  // precomputed `fault`, and only the placement of `else if (fault)` keeps them
+  // ahead of the records===0 / staleness / coverage arms. Nothing else pins
+  // that ordering, so a reordering would go unnoticed — most visibly as
+  // EMPTY_DATA, which is what a mis-ordered fault arm produces for the
+  // zero-record case.
+  const withData = (over) => classifyKey(
+    'gdeltIntel',
+    BOOTSTRAP_KEYS.gdeltIntel,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.gdeltIntel]: 4096 },
+      metaValues: {
+        'seed-meta:intelligence:gdelt-intel': JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 5,
+          ...over,
+        }),
+      },
+    }),
+  );
+
+  assert.equal(withData({ status: 'error' }).status, 'SEED_ERROR', 'fault beats a healthy served payload');
+  assert.equal(
+    withData({ status: 'error', recordCount: 0 }).status,
+    'SEED_ERROR',
+    'fault beats EMPTY_DATA — a zero-record payload under a reported fault is the fault, not a separate finding',
+  );
+  assert.equal(
+    withData({ sourceState: 'error', fetchedAt: NOW - 10_000 * ONE_MIN_MS }).status,
+    'SEED_ERROR',
+    'fault beats STALE_SEED',
+  );
+});
+
+test('classifyKey: an on-demand key with an error seed-meta keeps the error verdict', () => {
+  // EMPTY_ON_DEMAND and SEED_ERROR are both warn, so severity alone does not
+  // separate them — the tie goes to the fault, which is the only one of the two
+  // that carries a cause.
+  const entry = classifyKey(
+    'macroSignals',
+    STANDALONE_KEYS.macroSignals,
+    { allowOnDemand: true },
+    makeCtx({
+      strens: {},
+      metaValues: {
+        [SEED_META.macroSignals.key]: JSON.stringify({
+          fetchedAt: NOW - ONE_MIN_MS,
+          recordCount: 0,
+          status: 'error',
+          errorReason: 'macro_publish_failed',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.equal(entry.onDemand, true);
+});
+
+test('compact health problem projection retains insights synthesis diagnostics', () => {
+  const snapshot = {
+    status: 'WARNING',
+    summary: { total: 1, ok: 0, warn: 1, crit: 0 },
+    checkedAt: '2026-08-01T08:31:00.000Z',
+    checks: {
+      newsInsights: {
+        status: 'SEED_ERROR',
+        records: 8,
+        maxStaleMin: 30,
+        consecutiveFailures: 2,
+        lastSynthesisFailureCode: 'INSIGHTS_SYNTHESIS_PARSE',
+        servedGeneratedAt: '2026-08-01T06:30:39.268Z',
+      },
+    },
+  };
+
+  assert.deepEqual(healthResponseBody(snapshot, true).problems.newsInsights, snapshot.checks.newsInsights);
 });
 
 test('classifyKey: riskScores partial realtime family coverage → COVERAGE_PARTIAL', () => {
@@ -106,6 +1239,49 @@ test('classifyKey: riskScores partial realtime family coverage → COVERAGE_PART
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: sector valuation partial/total loss degrades despite 12 price rows', () => {
+  for (const valuationState of [
+    { sourceState: 'partial', valuationRecordCount: 3 },
+    { sourceState: 'error', valuationRecordCount: 0 },
+  ]) {
+    const entry = classifyKey('sectors', BOOTSTRAP_KEYS.sectors, { allowOnDemand: false },
+      makeCtx({
+        strens: { [BOOTSTRAP_KEYS.sectors]: 1234 },
+        metaValues: {
+          'seed-meta:market:sectors': seedMeta({
+            recordCount: 12,
+            sectorRecordCount: 12,
+            expectedValuationRecordCount: 12,
+            ...valuationState,
+          }),
+        },
+      }));
+
+    assert.equal(entry.status, 'SEED_ERROR');
+    assert.equal(entry.records, 12, 'price coverage remains visible');
+    assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  }
+});
+
+test('classifyKey: sector valuation recovery returns health to OK', () => {
+  const entry = classifyKey('sectors', BOOTSTRAP_KEYS.sectors, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.sectors]: 1234 },
+      metaValues: {
+        'seed-meta:market:sectors': seedMeta({
+          recordCount: 12,
+          sectorRecordCount: 12,
+          valuationRecordCount: 12,
+          expectedValuationRecordCount: 12,
+          sourceState: 'ok',
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.records, 12);
+});
+
 test('classifyKey: portwatchPortActivity below 174 countries → COVERAGE_PARTIAL', () => {
   const entry = classifyKey('portwatchPortActivity', STANDALONE_KEYS.portwatchPortActivity, { allowOnDemand: true },
     makeCtx({
@@ -117,6 +1293,72 @@ test('classifyKey: portwatchPortActivity below 174 countries → COVERAGE_PARTIA
   assert.equal(entry.records, 139);
   assert.equal(entry.minRecordCount, 174);
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: predictionMarkets with one empty pool → COVERAGE_PARTIAL', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({
+          recordCount: 38,
+          poolCounts: { geopolitical: 18, tech: 0, finance: 20 },
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.records, 38);
+  assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
+  assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: stale prediction snapshot outranks per-pool coverage', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({
+          fetchedAt: NOW - 100 * ONE_MIN_MS,
+          recordCount: 38,
+          poolCounts: { geopolitical: 18, tech: 0, finance: 20 },
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.deepEqual(entry.poolCounts, { geopolitical: 18, tech: 0, finance: 20 });
+});
+
+test('classifyKey: predictionMarkets requires valid per-pool metadata', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({ recordCount: 38 }),
+      },
+    }));
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(Object.hasOwn(entry, 'poolCounts'), false);
+  assert.deepEqual(entry.minPoolCounts, { geopolitical: 1, tech: 1, finance: 1 });
+});
+
+test('classifyKey: predictionMarkets is OK when every pool meets its floor', () => {
+  const entry = classifyKey('predictionMarkets', BOOTSTRAP_KEYS.predictionMarkets, { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.predictionMarkets]: 1234 },
+      metaValues: {
+        'seed-meta:prediction:markets': seedMeta({
+          recordCount: 20,
+          poolCounts: { geopolitical: 1, tech: 1, finance: 18 },
+        }),
+      },
+    }));
+
+  assert.equal(entry.status, 'OK');
+  assert.deepEqual(entry.poolCounts, { geopolitical: 1, tech: 1, finance: 18 });
 });
 
 test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is preserved', () => {
@@ -355,6 +1597,75 @@ test('issue #5055: validated seed-meta writers are registered in /api/health', (
   }
 });
 
+const ISSUE_6125_MILITARY_DOWNSTREAM_REGISTRATIONS = [
+  ['militaryForecastInputs', 'military:forecast-inputs:stale:v1', 'seed-meta:military-forecast-inputs'],
+  ['militarySurges', 'military:surges:stale:v1', 'seed-meta:military-surges'],
+];
+
+test('issue #6125: downstream military publish keys have strict 10-minute-cron budgets', () => {
+  for (const [name, dataKey, metaKey] of ISSUE_6125_MILITARY_DOWNSTREAM_REGISTRATIONS) {
+    assert.equal(STANDALONE_KEYS[name], dataKey, `${name} data key`);
+    assert.deepEqual(SEED_META[name], { key: metaKey, maxStaleMin: 30 }, `${name} health budget`);
+    assert.equal(ON_DEMAND_KEYS.has(name), false, `${name} must not be softened as on-demand`);
+  }
+});
+
+test('issue #6125: a mid-publish crash after the headline write makes downstream health non-OK', () => {
+  // Simulate the observed publish order: the headline flight snapshot and its
+  // health metadata advance, then the process dies before forecast-input and
+  // surge publication. The downstream checks must still alarm independently.
+  const headline = classifyKey(
+    'militaryFlights',
+    STANDALONE_KEYS.militaryFlights,
+    { allowOnDemand: true },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.militaryFlights]: 4096 },
+      metaValues: { [SEED_META.militaryFlights.key]: seedMeta() },
+    }),
+  );
+  assert.equal(headline.status, 'OK');
+
+  for (const [name, dataKey] of ISSUE_6125_MILITARY_DOWNSTREAM_REGISTRATIONS) {
+    const missing = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx());
+    assert.equal(missing.status, 'EMPTY', `${name} must alarm when the late write never happened`);
+
+    const stale = classifyKey(
+      name,
+      dataKey,
+      { allowOnDemand: true },
+      makeCtx({
+        strens: { [dataKey]: 4096 },
+        metaValues: {
+          [SEED_META[name].key]: seedMeta({ fetchedAt: NOW - 31 * ONE_MIN_MS }),
+        },
+      }),
+    );
+    assert.equal(stale.status, 'STALE_SEED', `${name} must alarm when its prior snapshot ages past 30min`);
+  }
+});
+
+test('issue #6125: a fresh zero-surge snapshot is healthy, but a stale one still warns', () => {
+  const name = 'militarySurges';
+  const dataKey = STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+
+  assert.equal(ZERO_RECORD_DATA_OK_KEYS.has(name), true);
+
+  const fresh = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({
+    strens: { [dataKey]: 256 },
+    metaValues: { [metaKey]: seedMeta({ recordCount: 0 }) },
+  }));
+  assert.equal(fresh.status, 'OK');
+  assert.equal(fresh.records, 0);
+
+  const stale = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({
+    strens: { [dataKey]: 256 },
+    metaValues: { [metaKey]: seedMeta({ recordCount: 0, fetchedAt: NOW - 31 * ONE_MIN_MS }) },
+  }));
+  assert.equal(stale.status, 'STALE_SEED');
+  assert.equal(stale.records, 0);
+});
+
 test('HKO warning snapshots are classified through their matching seed-meta key', () => {
   assert.equal(STANDALONE_KEYS.hkoWarnings, 'weather:hko-warnings:v1');
   assert.deepEqual(SEED_META.hkoWarnings, {
@@ -431,6 +1742,45 @@ test('classifyKey: webcams active pointer is registered with seed-meta freshness
   assert.equal(entry.maxStaleMin, 1440);
 });
 
+test('classifyKey: staticRefBundleTick heartbeat goes EMPTY when the cron never fired and STALE when it freezes', () => {
+  const name = 'staticRefBundleTick';
+  const dataKey = STANDALONE_KEYS[name];
+  const seedCfg = SEED_META[name];
+  assert.equal(dataKey, 'bundle:heartbeat:static-ref');
+  assert.equal(seedCfg.key, 'bundle:heartbeat:static-ref');
+  assert.equal(seedCfg.maxStaleMin, 2880, 'daily cron 0 3 * * *; 48h = 2× cadence');
+  assert.equal(ON_DEMAND_KEYS.has(name), false);
+
+  const missing = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({}));
+  assert.equal(missing.status, 'EMPTY');
+  assert.equal(STATUS_COUNTS[missing.status], 'crit');
+
+  const stale = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({
+    strens: { [dataKey]: 128 },
+    metaValues: { [seedCfg.key]: seedMeta({ fetchedAt: NOW - 2881 * ONE_MIN_MS, recordCount: 1 }) },
+  }));
+  assert.equal(stale.status, 'STALE_SEED');
+  assert.equal(stale.maxStaleMin, 2880);
+  assert.equal(STATUS_COUNTS[stale.status], 'warn');
+
+  const fresh = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({
+    strens: { [dataKey]: 128 },
+    metaValues: { [seedCfg.key]: seedMeta({ recordCount: 1 }) },
+  }));
+  assert.equal(fresh.status, 'OK');
+});
+
+test('static-ref tick heartbeat TTL outlives the 48h health gate and the producer label is locked', async () => {
+  const { BUNDLE_HEARTBEAT_TTL_SECONDS, bundleHeartbeatKey } = await import('../scripts/_bundle-runner.mjs');
+  assert.ok(
+    BUNDLE_HEARTBEAT_TTL_SECONDS > SEED_META.staticRefBundleTick.maxStaleMin * 60,
+    'TTL must outlive maxStaleMin so a late tick is STALE_SEED, not EMPTY',
+  );
+  const bundle = readFileSync(new URL('../scripts/seed-bundle-static-ref.mjs', import.meta.url), 'utf8');
+  assert.match(bundle, /runBundle\(\s*'static-ref'\s*,/);
+  assert.equal(STANDALONE_KEYS.staticRefBundleTick, bundleHeartbeatKey('static-ref'));
+});
+
 test('classifyKey: digestNotifications heartbeat goes stale when the cron stops', () => {
   const entry = classifyKey('digestNotifications', STANDALONE_KEYS.digestNotifications, { allowOnDemand: true },
     makeCtx({
@@ -449,14 +1799,34 @@ test('classifyKey: digestNotifications heartbeat goes stale when the cron stops'
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
-test('classifyKey: digestNotifications missing before first cron run is transitional warn', () => {
-  const entry = classifyKey('digestNotifications', STANDALONE_KEYS.digestNotifications, { allowOnDemand: true },
-    makeCtx({}));
+test('classifyKey: expired transitional producers fail closed when missing or empty', () => {
+  const graduatedNames = [
+    'fxYoy',
+    'hyperliquidFlow',
+    'chokepointFlowsRelayHeartbeat',
+    'climateNewsRelayHeartbeat',
+    'eiaPetroleum',
+    'digestNotifications',
+  ];
 
-  assert.equal(entry.status, 'EMPTY_ON_DEMAND');
-  assert.equal(entry.records, 0);
-  assert.equal(entry.maxStaleMin, 90);
-  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+  for (const name of graduatedNames) {
+    const dataKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+    const seedCfg = SEED_META[name];
+    assert.ok(dataKey, `${name}: data key remains registered`);
+    assert.ok(seedCfg, `${name}: freshness metadata remains registered`);
+    assert.equal(ON_DEMAND_KEYS.has(name), false, `${name}: expired softening must be retired`);
+
+    const missing = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({}));
+    assert.equal(missing.status, 'EMPTY', `${name}: a vanished producer output is critical`);
+    assert.equal(STATUS_COUNTS[missing.status], 'crit');
+
+    const empty = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({
+      strens: { [dataKey]: 128 },
+      metaValues: { [seedCfg.key]: seedMeta({ recordCount: 0 }) },
+    }));
+    assert.equal(empty.status, 'EMPTY_DATA', `${name}: zero records are critical`);
+    assert.equal(STATUS_COUNTS[empty.status], 'crit');
+  }
 });
 
 test('classifyKey: suppressed retailer-spread (present key, 0 records) while fresh → OK, not EMPTY_DATA', () => {

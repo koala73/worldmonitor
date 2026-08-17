@@ -162,8 +162,7 @@ describe('China official policy adapters (#5576)', () => {
     assert.equal(parsed.effectiveDate, '2026-08-01');
   });
 
-  it('parses bounded hostile markup without superlinear rescans', () => {
-    const startedAt = performance.now();
+  it('parses bounded hostile markup correctly', () => {
     assert.equal(__testing__.stripHtml('<script '.repeat(16_000)), '');
     assert.deepEqual(parseAgencyListing('CAC', '<a >'.repeat(16_000)), []);
     const nested = parsePolicyDocumentHtml(
@@ -176,9 +175,50 @@ describe('China official policy adapters (#5576)', () => {
       ).originalText,
       '',
     );
-    const elapsedMs = performance.now() - startedAt;
+  });
 
-    assert.ok(elapsedMs < 1_000, `hostile markup parsing took ${elapsedMs.toFixed(1)}ms`);
+  it('parses hostile markup without superlinear rescans', () => {
+    // Scaling, not wall-clock: an absolute millisecond ceiling measures the
+    // runner's load as much as the parser and flakes on a busy CI box while
+    // passing in isolation.
+    //
+    // The size step is 4x, not 2x, on purpose. A 2x step puts linear (~2x) and
+    // quadratic (~4x) close enough together that GC noise can straddle the
+    // gate — the larger input allocates proportionally more string, so
+    // collection cost rides along with the measurement and best-of-N does not
+    // remove it (GC is allocation-driven, not scheduler-driven). At 4x the
+    // bands are ~4x versus ~16x, so an 8x gate sits far from both.
+    const timeAtSize = (repeat: number): number => {
+      const openers = '<div class="content">'.repeat(repeat);
+      const closers = '</div>'.repeat(repeat);
+      const nested = `<body>${openers}正文内容足够长且必须保留${closers}</body>`;
+      const unbalanced = `${'<div>'.repeat(repeat)}${'</span>'.repeat(repeat)}`;
+      const script = '<script '.repeat(repeat);
+      const anchors = '<a >'.repeat(repeat);
+
+      // Inputs are built once, outside the timed region: allocating them is
+      // linear bookkeeping, not parser work, and including it would flatter a
+      // superlinear parser at large sizes.
+      let best = Number.POSITIVE_INFINITY;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const startedAt = performance.now();
+        __testing__.stripHtml(script);
+        parseAgencyListing('CAC', anchors);
+        parsePolicyDocumentHtml(nested);
+        parsePolicyDocumentHtml(unbalanced);
+        best = Math.min(best, performance.now() - startedAt);
+      }
+      return best;
+    };
+
+    const base = timeAtSize(4_000);
+    const quadrupled = timeAtSize(16_000);
+    const ratio = quadrupled / base;
+
+    assert.ok(
+      quadrupled <= base * 8 + 2,
+      `quadrupling the input scaled cost ${ratio.toFixed(1)}x — linear is ~4x, catastrophic backtracking ~16x (${base.toFixed(1)}ms → ${quadrupled.toFixed(1)}ms)`,
+    );
   });
 
   it('starts all independent agency listing requests concurrently', async () => {

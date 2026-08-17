@@ -31,6 +31,8 @@ const WORLD_TOPOLOGY = {
   ],
 };
 
+const WEBMCP_MIN_CHROME_MAJOR = 149;
+
 async function stubWorldAtlas(page: Page): Promise<void> {
   await page.route('**/data/countries-50m.json', async (route) => {
     await route.fulfill({
@@ -70,7 +72,11 @@ async function expectCurrentMapRendererInFrame(frame: FrameLocator, page: Page):
 
 async function serveThirdPartyHostPage(html: string): Promise<{ url: string; close: () => Promise<void> }> {
   const server: Server = createServer((_req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.writeHead(200, {
+      'Content-Type': 'text/html',
+      'Origin-Agent-Cluster': '?1',
+      'Permissions-Policy': 'tools=(self)',
+    });
     res.end(html);
   });
 
@@ -138,8 +144,17 @@ test.describe('public map embed', () => {
     await testInfo.attach('embed-direct', { path: screenshotPath, contentType: 'image/png' });
   });
 
-  test('loads inside a third-party iframe host page', async ({ page, baseURL }, testInfo) => {
+  test('loads inside a third-party iframe host page', async ({ page, baseURL, browser }, testInfo) => {
     await stubWorldAtlas(page);
+    const requireWebMcp = process.env.WM_REQUIRE_WEBMCP === '1';
+    if (requireWebMcp) {
+      const browserVersion = browser.version();
+      const browserMajor = Number.parseInt(browserVersion.split('.')[0] ?? '', 10);
+      expect(
+        Number.isFinite(browserMajor) && browserMajor >= WEBMCP_MIN_CHROME_MAJOR,
+        `WM_REQUIRE_WEBMCP requires Chrome ${WEBMCP_MIN_CHROME_MAJOR}+; launched ${browserVersion}`,
+      ).toBe(true);
+    }
     const localBaseUrl = baseURL ?? 'http://127.0.0.1:4173';
     const embedUrl = new URL(embedPath, localBaseUrl).toString();
     const embedOrigin = new URL(embedUrl).origin;
@@ -197,13 +212,84 @@ test.describe('public map embed', () => {
     `);
 
     try {
+      const embedResponsePromise = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === '/embed' && response.request().resourceType() === 'document';
+      });
       await page.goto(host.url);
+      const embedResponse = await embedResponsePromise;
+      const embedHeaders = await embedResponse.allHeaders();
 
       const frame = page.frameLocator('#wm');
       await expect(frame.locator('.wm-embed-attribution')).toHaveText('Live map by World Monitor');
       await expectCurrentMapRendererInFrame(frame, page);
       await expect(frame.locator('.map-controls, .time-slider, .layer-toggles, .map-legend')).toHaveCount(0);
       await expect(frame.locator('body')).toHaveAttribute('data-embed-ready', 'true');
+      expect(embedHeaders['origin-agent-cluster']).toBe('?1');
+      expect(embedHeaders['permissions-policy']).toContain('tools=()');
+      await expect(page.locator('#wm')).not.toHaveAttribute('allow', /\btools\b/);
+
+      const embeddedFrame = page.frames().find((candidate) => candidate.url().includes('/embed?'));
+      expect(embeddedFrame, 'cross-origin embed frame must be available for the WebMCP denial probe').toBeTruthy();
+      const hostHasModelContext = await page.evaluate(() => Boolean(document.modelContext));
+      const embedProbe = await embeddedFrame!.evaluate(async () => {
+        type PolicyProbe = { allowsFeature?: (feature: string) => boolean };
+        const policyDocument = document as Document & {
+          featurePolicy?: PolicyProbe;
+          permissionsPolicy?: PolicyProbe;
+        };
+        const policy = policyDocument.permissionsPolicy ?? policyDocument.featurePolicy;
+        const policyAllowsTools = policy?.allowsFeature?.('tools') ?? null;
+        const provider = document.modelContext;
+        if (!provider) {
+          return {
+            modelContextAvailable: false,
+            policyAllowsTools,
+            registration: 'unavailable' as const,
+            toolNames: [] as string[],
+          };
+        }
+
+        let registration: 'fulfilled' | 'rejected' = 'fulfilled';
+        try {
+          await provider.registerTool({
+            name: 'wmEmbedDeniedProbe',
+            description: 'Must never register inside the public World Monitor embed.',
+            inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+            execute: () => 'unexpected-success',
+          });
+        } catch {
+          registration = 'rejected';
+        }
+
+        const tools = await provider.getTools().catch(() => []);
+        return {
+          modelContextAvailable: true,
+          policyAllowsTools,
+          registration,
+          toolNames: tools.map((tool) => tool.name),
+        };
+      });
+
+      expect(embedProbe.policyAllowsTools).not.toBe(true);
+      expect(embedProbe.registration).not.toBe('fulfilled');
+      expect(embedProbe.toolNames).not.toContain('wmEmbedDeniedProbe');
+
+      if (requireWebMcp) {
+        expect(
+          hostHasModelContext,
+          'WM_REQUIRE_WEBMCP requires Chrome with #enable-webmcp-testing or an active origin trial',
+        ).toBe(true);
+        expect(embedProbe.policyAllowsTools).toBe(false);
+        const crossOriginTools = await page.evaluate(async (origin) => {
+          const provider = document.modelContext;
+          if (!provider) return null;
+          const tools = await provider.getTools({ fromOrigins: [origin] });
+          return tools.map((tool) => tool.name);
+        }, embedOrigin);
+        expect(crossOriginTools).toEqual([]);
+      }
+
       await expect.poll(() => publicEmbedApiPaths.filter((path) => statuses.has(path)).sort()).toEqual([...publicEmbedApiPaths].sort());
       const mapClass = await frame.locator('.wm-embed-map').getAttribute('class') ?? '';
       if (/\bsvg-mode\b/.test(mapClass)) {

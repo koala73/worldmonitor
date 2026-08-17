@@ -1,0 +1,205 @@
+name: Railway Deploy Trigger Watchdog (Manual Rollback Only)
+run-name: Manual Railway rollback watchdog (${{ inputs.mode }})
+
+# Transitional rollback surface only. It may inspect or dispatch recovery only
+# after an explicit manual invocation; do not add a schedule or dispatcher.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Read raw status, classify only, or exercise the guarded dispatch decision'
+        required: true
+        type: choice
+        default: classify
+        options:
+          - status
+          - classify
+          - dispatch
+
+concurrency:
+  group: railway-deploy-trigger-watchdog
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  reject_non_main:
+    if: github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Reject non-main watchdog invocation
+        run: |
+          echo "::error::Railway deploy trigger watchdog must run from refs/heads/main"
+          exit 1
+
+  classify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: ingestion-acceptance-production-watchdog
+      deployment: false
+    permissions:
+      actions: read
+      contents: read
+      statuses: read
+    outputs:
+      dispatch_authorized: ${{ steps.controller.outputs.dispatch_authorized }}
+      expected_head_sha: ${{ steps.controller.outputs.expected_head_sha }}
+      recovery_attempt_id: ${{ steps.controller.outputs.recovery_attempt_id }}
+      prior_id: ${{ steps.controller.outputs.prior_id }}
+      outcome: ${{ steps.controller.outputs.outcome }}
+      read_failure: ${{ steps.controller.outputs.read_failure }}
+      read_failure_code: ${{ steps.controller.outputs.read_failure_code }}
+    steps:
+      - name: Check out the watchdog classifier
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+          ref: refs/heads/main
+
+      - name: Read or classify reconciliation control state
+        id: controller
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          RAILWAY_RECONCILE_WATCHDOG_HMAC: ${{ secrets.RAILWAY_RECONCILE_WATCHDOG_HMAC }}
+          WATCHDOG_PHASE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'status' && 'status' || 'classify' }}
+          AUTO_RECOVERY_ENABLED: ${{ vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true' && vars.RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED == 'true' && github.event_name == 'workflow_dispatch' && inputs.mode == 'dispatch' }}
+        run: >-
+          node scripts/dispatch-stale-railway-reconcile.mjs
+          --phase "$WATCHDOG_PHASE"
+          --auto-recovery-enabled "$AUTO_RECOVERY_ENABLED"
+
+      # This step records why the current manual classifier failed. Success
+      # means this invocation could not read GitHub; skipped means it could.
+      # The step name is pinned to WATCHDOG_READ_FAILURE_STEP_NAME by tests.
+      # `always()` is load-bearing because the controller deliberately fails
+      # the current job on its first unreadable GitHub result.
+      - name: Record watchdog read-path failure
+        if: always() && steps.controller.outputs.read_failure == 'true'
+        env:
+          READ_FAILURE_CODE: ${{ steps.controller.outputs.read_failure_code }}
+        run: echo "::warning::The watchdog could not read GitHub ($READ_FAILURE_CODE)."
+
+  dispatch:
+    name: Dispatch authorized recovery
+    needs: classify
+    if: github.ref == 'refs/heads/main' && github.run_attempt == 1 && needs.classify.outputs.dispatch_authorized == 'true' && vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      statuses: read
+    outputs:
+      outcome: ${{ steps.dispatch.outputs.outcome }}
+      workflow_run_id: ${{ steps.dispatch.outputs.workflow_run_id }}
+      run_attempt: ${{ steps.dispatch.outputs.run_attempt }}
+      rejection: ${{ steps.dispatch.outputs.rejection }}
+    steps:
+      # This write-capable job has no control credential or Railway secret.
+      - name: Check out the exact authorized dispatch helper
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.classify.outputs.expected_head_sha }}
+
+      - name: Dispatch exact Railway deploy-trigger run
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD_SHA: ${{ needs.classify.outputs.expected_head_sha }}
+          RECOVERY_ATTEMPT_ID: ${{ needs.classify.outputs.recovery_attempt_id }}
+        run: >-
+          node scripts/dispatch-stale-railway-reconcile.mjs
+          --phase dispatch
+          --expected-head-sha "$EXPECTED_HEAD_SHA"
+          --recovery-attempt-id "$RECOVERY_ATTEMPT_ID"
+      - name: Record definitive pre-dispatch rejection
+        if: steps.dispatch.outputs.outcome == 'PRE_DISPATCH_NOT_STARTED'
+        run: echo "Definitive pre-dispatch rejection recorded for watchdog recovery."
+      - name: Record definitive GitHub dispatch rejection
+        if: steps.dispatch.outputs.outcome == 'DISPATCH_CONFIRMED_REJECTED'
+        run: echo "Definitive GitHub dispatch rejection recorded for watchdog recovery."
+
+  reject:
+    name: Close definitively rejected dispatch hold
+    needs: [classify, dispatch]
+    if: >-
+      always()
+      && github.ref == 'refs/heads/main'
+      && needs.dispatch.result == 'success'
+      && (needs.dispatch.outputs.outcome == 'PRE_DISPATCH_NOT_STARTED'
+        || needs.dispatch.outputs.outcome == 'DISPATCH_CONFIRMED_REJECTED')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: ingestion-acceptance-production-watchdog
+      deployment: false
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the exact authorized rejection helper
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.classify.outputs.expected_head_sha }}
+      - name: Close the exact durable dispatch hold
+        env:
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          RAILWAY_RECONCILE_WATCHDOG_HMAC: ${{ secrets.RAILWAY_RECONCILE_WATCHDOG_HMAC }}
+          EXPECTED_HEAD_SHA: ${{ needs.classify.outputs.expected_head_sha }}
+          RECOVERY_ATTEMPT_ID: ${{ needs.classify.outputs.recovery_attempt_id }}
+          REJECTION: ${{ needs.dispatch.outputs.rejection }}
+        run: >-
+          node scripts/dispatch-stale-railway-reconcile.mjs
+          --phase reject
+          --expected-head-sha "$EXPECTED_HEAD_SHA"
+          --recovery-attempt-id "$RECOVERY_ATTEMPT_ID"
+          --rejection "$REJECTION"
+      - name: Report definitive dispatch rejection
+        run: |
+          echo "::error::GitHub definitively rejected the authorized recovery dispatch. The durable hold was closed."
+          exit 1
+
+  bind:
+    name: Bind exact dispatched run to recovery hold
+    needs: [classify, dispatch]
+    if: >-
+      github.ref == 'refs/heads/main'
+      && needs.dispatch.outputs.outcome == 'RECOVERY_DISPATCH_ACCEPTED'
+      && vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: ingestion-acceptance-production-watchdog
+      deployment: false
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the exact authorized revision for binding
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ needs.classify.outputs.expected_head_sha }}
+
+      - name: Bind exact dispatched run to durable hold
+        env:
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          RAILWAY_RECONCILE_WATCHDOG_HMAC: ${{ secrets.RAILWAY_RECONCILE_WATCHDOG_HMAC }}
+          EXPECTED_HEAD_SHA: ${{ needs.classify.outputs.expected_head_sha }}
+          RECOVERY_ATTEMPT_ID: ${{ needs.classify.outputs.recovery_attempt_id }}
+          WORKFLOW_RUN_ID: ${{ needs.dispatch.outputs.workflow_run_id }}
+          RUN_ATTEMPT: ${{ needs.dispatch.outputs.run_attempt }}
+        run: >-
+          node scripts/dispatch-stale-railway-reconcile.mjs
+          --phase bind
+          --expected-head-sha "$EXPECTED_HEAD_SHA"
+          --recovery-attempt-id "$RECOVERY_ATTEMPT_ID"
+          --workflow-run-id "$WORKFLOW_RUN_ID"
+          --run-attempt "$RUN_ATTEMPT"

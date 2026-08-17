@@ -20,6 +20,7 @@ export type CheckoutErrorCode =
   | 'duplicate_subscription'
   | 'payment_in_progress'
   | 'invalid_product'
+  | 'rate_limited'
   | 'service_unavailable'
   | 'unknown';
 
@@ -30,6 +31,8 @@ export interface CheckoutError {
   serverMessage?: string;
   /** HTTP status, if the error came from an HTTP response. */
   httpStatus?: number;
+  /** Server-requested checkout cooldown, bounded to the edge contract. */
+  retryAfterSeconds?: number;
   retryable: boolean;
 }
 
@@ -39,6 +42,7 @@ const USER_COPY: Record<CheckoutErrorCode, string> = {
   duplicate_subscription: "You already have an active subscription. Let's open the billing portal instead.",
   payment_in_progress: 'You have a payment in progress. Finish it, or start a new checkout.',
   invalid_product: "That product isn't available. Please refresh and try again.",
+  rate_limited: 'Checkout is temporarily rate limited. Please wait a moment and try again.',
   service_unavailable: 'Checkout is temporarily unavailable. Please try again in a moment.',
   unknown: "Something went wrong. Please try again or contact support if it keeps happening.",
 };
@@ -51,12 +55,14 @@ const RETRYABLE: Record<CheckoutErrorCode, boolean> = {
   // network retry — so the generic retry affordance stays off (#4438).
   payment_in_progress: false,
   invalid_product: false,
+  rate_limited: true,
   service_unavailable: true,
   unknown: true,
 };
 
 const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
 const PAYMENT_IN_PROGRESS = 'PAYMENT_IN_PROGRESS';
+export const DEFAULT_CHECKOUT_RETRY_AFTER_SECONDS = 10;
 
 /** Body shape we've observed from `/api/create-checkout` failures. */
 export interface CheckoutErrorBody {
@@ -84,10 +90,24 @@ function extractServerMessage(body: CheckoutErrorBody | undefined): string | und
   return undefined;
 }
 
+/**
+ * The edge gateway exposes only a numeric 1-4 digit Retry-After value. Mirror
+ * that closed contract here so browser state never trusts an unbounded or
+ * date-shaped header when calculating the checkout cooldown.
+ */
+export function parseCheckoutRetryAfterSeconds(value: string | null | undefined): number | undefined {
+  if (!value || !/^\d{1,4}$/.test(value)) return undefined;
+  return Number(value);
+}
+
 function statusToCode(status: number, body: CheckoutErrorBody | undefined): CheckoutErrorCode {
   if (status === 401) return 'unauthorized';
   if (status === 409 && body?.error === ACTIVE_SUBSCRIPTION_EXISTS) return 'duplicate_subscription';
   if (status === 409 && body?.error === PAYMENT_IN_PROGRESS) return 'payment_in_progress';
+  // Dodo can rate-limit checkout-session creation. The relay preserves 429 so
+  // the transport does not auto-retry it as a generic 502 and amplify the
+  // provider cooldown. This remains a temporary, user-retryable failure.
+  if (status === 429) return 'rate_limited';
   // 403 from /api/create-checkout is infrastructure (Vercel firewall / WAF / edge
   // bot-protection) — neither the edge gateway nor the Convex relay handler
   // ever emits 403 on this route. Treat as retryable service unavailability so
@@ -108,13 +128,23 @@ function statusToCode(status: number, body: CheckoutErrorBody | undefined): Chec
 export function classifyHttpCheckoutError(
   status: number,
   body?: CheckoutErrorBody,
+  retryAfter?: string | null,
 ): CheckoutError {
   const code = statusToCode(status, body);
+  const retryAfterSeconds = code === 'rate_limited'
+    ? parseCheckoutRetryAfterSeconds(retryAfter) ?? DEFAULT_CHECKOUT_RETRY_AFTER_SECONDS
+    : undefined;
+  const userMessage = retryAfterSeconds === undefined
+    ? pickUserMessage(code)
+    : `Checkout is temporarily rate limited. Please wait ${retryAfterSeconds} ${
+        retryAfterSeconds === 1 ? 'second' : 'seconds'
+      } and try again.`;
   return {
     code,
-    userMessage: pickUserMessage(code),
+    userMessage,
     serverMessage: extractServerMessage(body),
     httpStatus: status,
+    ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
     retryable: RETRYABLE[code],
   };
 }

@@ -1,0 +1,136 @@
+name: Prepare Desktop Release
+
+# The tagged Build Desktop App workflow already owns the expensive five-platform
+# build and its draft-then-atomic-publish gate. This small workflow owns the
+# missing link: turn a checked-in version bump into the exact tag that workflow
+# expects, then dispatch it explicitly. A GITHUB_TOKEN tag push does not start a
+# second push-triggered workflow, so the dispatch is deliberate.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-desktop.yml'
+      - '.github/workflows/desktop-release-train.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/resolve-desktop-release.mjs'
+      - 'src-tauri/Cargo.lock'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/tauri.conf.json'
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: desktop-release-train
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the default branch
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_NAME" != "${{ github.event.repository.default_branch }}" ]; then
+            echo "::error::Desktop release preparation must run from the default branch, not $GITHUB_REF_NAME."
+            exit 1
+          fi
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pending release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+
+          # A 404 means the repository has no published release yet. Every
+          # other GitHub/API error is a blocker; treating an outage as "no
+          # release" could create a tag from incomplete live state.
+          set +e
+          LATEST_RESPONSE=$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>&1)
+          LATEST_STATUS=$?
+          set -e
+          if [ "$LATEST_STATUS" -ne 0 ]; then
+            if [[ "$LATEST_RESPONSE" == *"HTTP 404"* || "$LATEST_RESPONSE" == *"Not Found"* ]]; then
+              LATEST_TAG=""
+            else
+              printf '%s\n' "$LATEST_RESPONSE" >&2
+              exit "$LATEST_STATUS"
+            fi
+          else
+            LATEST_TAG="$LATEST_RESPONSE"
+            if [ -z "$LATEST_TAG" ]; then
+              echo "::error::GitHub returned an empty latest release tag."
+              exit 1
+            fi
+          fi
+
+          RESOLUTION=$(node scripts/resolve-desktop-release.mjs "$VERSION" "$LATEST_TAG")
+          printf '%s\n' \
+            "package_version=$VERSION" \
+            "latest_release_tag=$LATEST_TAG" \
+            "$RESOLUTION" >> "$GITHUB_OUTPUT"
+          echo "Resolved package $VERSION against ${LATEST_TAG:-no published release}."
+
+      - name: Create or verify release tag
+        if: steps.release.outputs.action == 'release'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          TARGET_VERSION: ${{ steps.release.outputs.package_version }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force --tags origin
+
+          if git ls-remote --exit-code --refs origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            TAG_SHA=$(git rev-list -n 1 "$TAG")
+            if ! git merge-base --is-ancestor "$TAG_SHA" "$RELEASE_SHA"; then
+              echo "::error::Remote tag $TAG points to $TAG_SHA, which is not an ancestor of current main $RELEASE_SHA. Refusing to rebuild an unrelated commit."
+              exit 1
+            fi
+            TAG_VERSION=$(git show "$TAG_SHA:package.json" | node -p "JSON.parse(require('fs').readFileSync(0, 'utf8')).version")
+            if [ "$TAG_VERSION" != "$TARGET_VERSION" ]; then
+              echo "::error::Remote tag $TAG contains package version $TAG_VERSION, not the pending version $TARGET_VERSION."
+              exit 1
+            fi
+            echo "Tag $TAG already points to compatible main history at $TAG_SHA."
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "$TAG" "$RELEASE_SHA" -m "Release $TAG"
+          git push origin "refs/tags/$TAG"
+          echo "Created release tag $TAG at $RELEASE_SHA."
+
+      - name: Dispatch desktop build
+        if: steps.release.outputs.action == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run build-desktop.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$TAG" \
+            -f draft=false
+          echo "::notice::Dispatched Build Desktop App for $TAG."
+
+      - name: Report no pending release
+        if: steps.release.outputs.action == 'noop'
+        env:
+          REASON: ${{ steps.release.outputs.reason }}
+        run: echo "::notice::$REASON"

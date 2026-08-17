@@ -17,6 +17,12 @@ message CotInstrument {
   int64 dealer_long = 8;
   int64 dealer_short = 9;
   double net_pct = 10;
+  // Non-reportable positions are the CFTC series closest to small traders.
+  // They are a residual category, not a direct measurement of all retail flow.
+  int64 small_trader_long = 11;
+  int64 small_trader_short = 12;
+  // False for cache rows written before the non-reportable fields were added.
+  bool small_trader_available = 13;
 }
 
 message GetCotPositioningResponse {

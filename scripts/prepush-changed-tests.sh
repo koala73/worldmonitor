@@ -48,6 +48,13 @@
 # the runner fails. An empty list is a no-op, not a failure.
 
 TEST_TIMEOUT="${WM_PREPUSH_TEST_TIMEOUT:-120}"
+TEST_CONCURRENCY="${WM_PREPUSH_TEST_CONCURRENCY:-2}"
+case "$TEST_CONCURRENCY" in
+  '' | 0 | *[!0-9]*)
+    echo "ERROR: WM_PREPUSH_TEST_CONCURRENCY must be a positive integer." >&2
+    exit 2
+    ;;
+esac
 
 mode="${1:-}"
 case "$mode" in
@@ -118,7 +125,7 @@ case "$mode" in
     echo "Running changed test files only..."
     # Quoted expansion, not word-splitting: a test path containing a space is
     # one argument, not two nonexistent ones.
-    timeout "$TEST_TIMEOUT" npx tsx --test "${selected[@]}" || exit 1
+    timeout "$TEST_TIMEOUT" npx tsx --test --test-concurrency="$TEST_CONCURRENCY" "${selected[@]}" || exit 1
     ;;
 
   run-dom)

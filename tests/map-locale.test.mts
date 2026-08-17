@@ -9,10 +9,14 @@ async function loadMapLocale(defaultLang = 'en') {
   const __dirname = dirname(fileURLToPath(import.meta.url));
   const sourcePath = resolve(__dirname, '..', 'src', 'utils', 'map-locale.ts');
   const source = readFileSync(sourcePath, 'utf-8');
-  const patched = source.replace(
-    "import { getCurrentLanguage } from '@/services/i18n';",
-    `const getCurrentLanguage = () => '${defaultLang}';`,
-  );
+  const importLine = "import { getCurrentLanguageTag } from '@/services/i18n';";
+  const patched = source.replace(importLine, `const getCurrentLanguageTag = () => '${defaultLang}';`);
+  // A silent no-match would leave the '@/services/i18n' alias in a data: URL
+  // import, which fails to resolve — but say which line moved rather than
+  // making the next reader work that back from a module-resolution error.
+  if (patched === source) {
+    throw new Error(`[map-locale test] stub target not found in map-locale.ts: ${importLine}`);
+  }
   const transformed = transformSync(patched, {
     loader: 'ts',
     format: 'esm',
@@ -27,43 +31,93 @@ const enMod = await loadMapLocale('en');
 const arMod = await loadMapLocale('ar');
 
 const {
-  getLocalizedNameField,
+  getLocalizedNameFields,
   getLocalizedNameExpression,
   isLocalizableTextField,
   localizeMapLabels,
 } = enMod;
 
-// ── getLocalizedNameField ───────────────────────────────────────────
+// ── getLocalizedNameFields ──────────────────────────────────────────
 
-describe('getLocalizedNameField', () => {
+describe('getLocalizedNameFields', () => {
   it('returns mapped tile field for supported language', () => {
-    assert.equal(getLocalizedNameField('ko'), 'name:ko');
+    assert.deepEqual(getLocalizedNameFields('ko'), ['name:ko']);
   });
 
   it('falls back to name:en for unsupported language', () => {
-    assert.equal(getLocalizedNameField('xx'), 'name:en');
+    assert.deepEqual(getLocalizedNameFields('xx'), ['name:en']);
   });
 
   it('falls back to name:en for Vietnamese (no CARTO tile field)', () => {
-    assert.equal(getLocalizedNameField('vi'), 'name:en');
+    assert.deepEqual(getLocalizedNameFields('vi'), ['name:en']);
   });
 
   it('returns correct field for every mapped language', () => {
-    const expected: Record<string, string> = {
-      en: 'name:en', bg: 'name:bg', cs: 'name:cs', fr: 'name:fr',
-      de: 'name:de', el: 'name:el', es: 'name:es', hr: 'name:hr',
-      hi: 'name:hi', it: 'name:it',
-      pl: 'name:pl', pt: 'name:pt', nl: 'name:nl', sv: 'name:sv',
-      ru: 'name:ru', ar: 'name:ar', zh: 'name:zh', ja: 'name:ja',
-      ko: 'name:ko', ro: 'name:ro', tr: 'name:tr', th: 'name:th',
+    const expected: Record<string, string[]> = {
+      en: ['name:en'], bg: ['name:bg'], cs: ['name:cs'], fr: ['name:fr'],
+      de: ['name:de'], el: ['name:el'], es: ['name:es'], hr: ['name:hr'],
+      hi: ['name:hi'], it: ['name:it'],
+      pl: ['name:pl'], pt: ['name:pt'], nl: ['name:nl'], sv: ['name:sv'],
+      ru: ['name:ru'], ar: ['name:ar'], ja: ['name:ja'],
+      ko: ['name:ko'], ro: ['name:ro'], tr: ['name:tr'], th: ['name:th'],
+      zh: ['name:zh-Hans', 'name:zh'], 'zh-TW': ['name:zh-Hant', 'name:zh'],
     };
-    for (const [lang, field] of Object.entries(expected)) {
-      assert.equal(getLocalizedNameField(lang), field, `lang=${lang}`);
+    for (const [lang, fields] of Object.entries(expected)) {
+      assert.deepEqual(getLocalizedNameFields(lang), fields, `lang=${lang}`);
     }
   });
 
   it('falls back to name:en for empty string', () => {
-    assert.equal(getLocalizedNameField(''), 'name:en');
+    assert.deepEqual(getLocalizedNameFields(''), ['name:en']);
+  });
+});
+
+// ── Chinese: script-tagged tile fields ──────────────────────────────
+
+describe('Chinese tile fields', () => {
+  // Measured on 2026-08-14 against the TileJSON of each source this app loads,
+  // and confirmed on a decoded z10 tile: Protomaps — the DEFAULT basemap — has
+  // name:zh-Hans and name:zh-Hant and no name:zh at all, so the plain `name:zh`
+  // this table used to hold was resolving to name:en, i.e. English labels for
+  // Chinese readers. CARTO is the mirror image: name:zh only.
+  it('asks for the Traditional field first when the catalogue is zh-TW', () => {
+    assert.deepEqual(getLocalizedNameFields('zh-TW'), ['name:zh-Hant', 'name:zh']);
+  });
+
+  it('asks for the Simplified field first when the catalogue is zh', () => {
+    assert.deepEqual(getLocalizedNameFields('zh'), ['name:zh-Hans', 'name:zh']);
+  });
+
+  it('never offers one script the other script’s field', () => {
+    assert.ok(!getLocalizedNameFields('zh-TW').includes('name:zh-Hans'));
+    assert.ok(!getLocalizedNameFields('zh').includes('name:zh-Hant'));
+  });
+
+  it('keeps name:zh as the second hop for CARTO, ahead of English', () => {
+    for (const lang of ['zh', 'zh-TW']) {
+      const expr = getLocalizedNameExpression(lang);
+      const fields = expr.slice(1).map((get: unknown) => (get as [string, string])[1]);
+      assert.deepEqual(fields.slice(-2), ['name:en', 'name'], `lang=${lang}`);
+      assert.equal(fields[1], 'name:zh', `lang=${lang}`);
+    }
+  });
+});
+
+// ── The tile source carries the fields this table names ─────────────
+
+describe('Protomaps field names', () => {
+  // The Chinese rows are only correct while the default basemap spells the
+  // fields this way. @protomaps/basemaps ships that list, so the assertion
+  // reads the source of truth rather than a copy of it: if upstream renames or
+  // drops a script variant, this reds instead of the labels silently going
+  // English.
+  it('declares zh-Hant and zh-Hans as separate languages', async () => {
+    const { language_script_pairs } = await import('@protomaps/basemaps');
+    const langs = new Set(language_script_pairs.map((p: { lang: string }) => p.lang));
+
+    assert.ok(langs.has('zh-Hant'), 'Protomaps no longer declares zh-Hant');
+    assert.ok(langs.has('zh-Hans'), 'Protomaps no longer declares zh-Hans');
+    assert.ok(!langs.has('zh'), 'Protomaps now declares a plain zh — the second hop can be reconsidered');
   });
 });
 
@@ -85,7 +139,9 @@ describe('getLocalizedNameExpression', () => {
   });
 
   it('returns 3-element coalesce for CJK languages', () => {
-    for (const lang of ['zh', 'ja', 'ko']) {
+    // zh and zh-TW are the exception — they carry a second script-tagged field
+    // and are covered in the Chinese block below.
+    for (const lang of ['ja', 'ko']) {
       const expr = getLocalizedNameExpression(lang);
       assert.equal(expr.length, 4, `lang=${lang} should have coalesce + 3 gets`);
       assert.deepEqual(expr[1], ['get', `name:${lang}`]);

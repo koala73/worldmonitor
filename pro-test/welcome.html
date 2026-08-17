@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <!-- WebMCP — in-page agent tools on the homepage (worldmonitor.app).
-         Registers a small tool set via navigator.modelContext.registerTool so
+         Registers a small tool set via document.modelContext.registerTool so
          browser-based AI agents (Chrome/Edge WebMCP, agent-readiness scanners)
          that land on the apex page can act on and discover World Monitor
          WITHOUT executing the dashboard SPA — the SPA registers its own richer
@@ -13,17 +13,14 @@
          https://webmachinelearning.github.io/webmcp/. Registers synchronously at
          parse time when the provider is already present (native WebMCP), and
          retries once on DOMContentLoaded/load for a provider installed later
-         (e.g. a scanner polyfill); the `registered` guard keeps it idempotent, and
-         it is a no-op in browsers without navigator.modelContext. The MCP server is
+         (e.g. a scanner polyfill); the registration guard keeps it idempotent, and
+         it is a no-op in browsers without document.modelContext. The MCP server is
          the remote HTTP (Streamable HTTP) transport at https://worldmonitor.app/mcp
          — getWorldMonitorMcpEndpoint hands agents that endpoint. The nonce is added
          by Vite (html.cspNonce) at build time, so this inline script needs no CSP
          script-src hash (deploy-config.test). -->
     <script>
       (function () {
-        function text(t, isError) {
-          return { content: [{ type: 'text', text: t }], isError: !!isError };
-        }
         var MONITORS = {
           world: 'https://www.worldmonitor.app/dashboard',
           tech: 'https://tech.worldmonitor.app/dashboard',
@@ -35,6 +32,7 @@
         var tools = [
           {
             name: 'launchWorldMonitor',
+            title: 'Launch World Monitor',
             description: 'Open the live World Monitor intelligence dashboard in this tab. Optionally choose a specialized monitor variant (world, tech, finance, commodity, energy, happy). Navigates to the real-time map — conflicts, markets, shipping chokepoints, flights and cyber on one surface.',
             inputSchema: {
               type: 'object',
@@ -47,6 +45,7 @@
               },
               additionalProperties: false
             },
+            annotations: { readOnlyHint: false },
             execute: function (args) {
               var key = args && typeof args.monitor === 'string' ? args.monitor.toLowerCase() : 'world';
               // Own-property lookup only — self-validate here rather than trust the
@@ -58,50 +57,62 @@
               try {
                 window.location.assign(url);
               } catch (e) {
-                return Promise.resolve(text('Could not open the dashboard: ' + ((e && e.message) || e), true));
+                throw new Error('World Monitor could not open the dashboard.');
               }
-              return Promise.resolve(text('Opening the ' + key + ' monitor: ' + url));
+              return 'Opening the ' + key + ' monitor: ' + url;
             }
           },
           {
             name: 'getWorldMonitorMcpEndpoint',
+            title: 'Get World Monitor MCP Endpoint',
             description: "Return connection details for World Monitor's remote MCP server so an agent can pull live geopolitical, market, maritime, aviation, cyber and economic intelligence directly. Includes the Streamable HTTP endpoint, the discovery server card, and supported auth modes.",
             inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+            annotations: { readOnlyHint: true },
             execute: function () {
               // No tool count here — the live server card is the source of truth
               // (a hardcoded number would drift). Agents read the catalog from it.
-              return Promise.resolve(text(JSON.stringify({
+              return {
                 endpoint: 'https://worldmonitor.app/mcp',
                 transport: 'streamableHttp',
                 serverCard: 'https://worldmonitor.app/.well-known/mcp/server-card.json',
                 auth: ['OAuth 2.1 bearer (Authorization: Bearer <token>)', 'API key (X-WorldMonitor-Key: wm_...)'],
                 publicDiscovery: 'initialize, tools/list and notifications/initialized are servable without credentials'
-              }, null, 2)));
+              };
             }
           }
         ];
+        var registrationStarted = false;
         var registered = false;
         function register() {
-          if (registered) return;
-          var provider = typeof navigator !== 'undefined' ? navigator.modelContext : null;
-          if (!provider) return;
+          if (registrationStarted || registered) return;
+          var provider = null;
           try {
-            if (typeof provider.registerTool === 'function') {
-              for (var i = 0; i < tools.length; i++) provider.registerTool(tools[i]);
-              registered = true;
-            } else if (typeof provider.provideContext === 'function') {
-              provider.provideContext({ tools: tools });
-              registered = true;
-            }
+            provider = typeof document !== 'undefined' ? document.modelContext : null;
           } catch (e) {
-            /* Progressive enhancement — never break page load for an optional API. */
+            return;
           }
+          if (!provider || typeof provider.registerTool !== 'function') return;
+          registrationStarted = true;
+          var registrations = [];
+          for (var i = 0; i < tools.length; i++) {
+            try {
+              registrations.push(Promise.resolve(provider.registerTool(tools[i])).then(
+                function () { return true; },
+                function () { return false; }
+              ));
+            } catch (e) {
+              registrations.push(Promise.resolve(false));
+            }
+          }
+          Promise.all(registrations).then(function (accepted) {
+            registered = accepted.some(function (value) { return value; });
+          });
         }
         register();
         // Retry once for a provider installed after this head script runs (e.g. a
-        // scanner polyfill injected around DOMContentLoaded). The `registered`
+        // scanner polyfill injected around DOMContentLoaded). The registration
         // guard keeps it idempotent — a present-at-parse provider never re-registers.
-        if (!registered && typeof document !== 'undefined' && document.addEventListener) {
+        if (!registrationStarted && typeof document !== 'undefined' && document.addEventListener) {
           document.addEventListener('DOMContentLoaded', register, { once: true });
           if (typeof window !== 'undefined' && window.addEventListener) {
             window.addEventListener('load', register, { once: true });
@@ -135,7 +146,7 @@
     <meta name="twitter:site" content="@worldmonitorai" />
     <meta name="twitter:creator" content="@worldmonitorai" />
     <meta name="twitter:title" content="World Monitor — By the time it's news, you already knew." />
-    <meta name="twitter:description" content="500+ live feeds, conflict tracking, markets, chokepoints, satellites and AI analysis in one free real-time dashboard. No signup." />
+    <meta name="twitter:description" content="Curated live feeds, conflict tracking, markets, chokepoints, satellites and AI analysis in one free real-time dashboard. No signup." />
     <link rel="icon" type="image/png" href="https://www.worldmonitor.app/favico/favicon-32x32.png" />
     <link rel="alternate" type="application/json" href="https://www.worldmonitor.app/?mode=agent" title="World Monitor agent-mode view (machine-readable)" />
     <script type="application/ld+json">
@@ -146,7 +157,7 @@
       "applicationCategory": "FinanceApplication",
       "operatingSystem": "Web, Windows, macOS, Linux, Android TV",
       "url": "https://worldmonitor.app",
-      "description": "Free real-time global intelligence dashboard. 500+ news feeds, conflict tracking, market data, shipping chokepoints, satellite passes and cyber signals fused into one live map of the world, with AI analysis layered on top.",
+      "description": "Free real-time global intelligence dashboard. Curated news feeds, conflict tracking, market data, shipping chokepoints, satellite passes and cyber signals fused into one live map of the world, with AI analysis layered on top.",
       "sameAs": [
         "https://github.com/koala73/worldmonitor",
         "https://www.npmjs.com/package/worldmonitor",
@@ -197,20 +208,20 @@
         {
           "@type": "Offer",
           "name": "Pro Annual",
-          "price": "399.99",
+          "price": "359.99",
           "priceCurrency": "USD",
           "availability": "https://schema.org/InStock",
           "url": "https://www.worldmonitor.app/pro#pricing",
           "description": "",
           "priceSpecification": {
             "@type": "UnitPriceSpecification",
-            "price": "399.99",
+            "price": "359.99",
             "priceCurrency": "USD",
             "billingDuration": "P1Y"
           }
         }
       ],
-      "featureList": "Real-time global map with 56 data layers, 500+ curated news feeds, Country Instability Index across 196 countries, live conflict tracking, market quotes and sector heatmaps, 13 shipping chokepoints with vessel transit intelligence, real-time satellite tracking, GPS jamming zones, submarine cable map, AI datacenter map, daily AI brief, Scenario Engine, custom monitors and alerts, 59-tool MCP server, desktop apps, Android TV app, 25 language support"
+      "featureList": "Real-time global map with registry-backed data layers, curated news feeds, Country Instability Index for the Tier-1 registry, live conflict tracking, market quotes and sector heatmaps, shipping chokepoints with vessel transit intelligence, real-time satellite tracking, GPS jamming zones, submarine cable map, AI datacenter map, daily AI brief, Scenario Engine, custom monitors and alerts, MCP server, desktop apps, Android TV app, and localized interfaces"
     }
     </script>
     <script type="application/ld+json">
@@ -243,7 +254,7 @@
         {
           "@type": "Question",
           "name": "Is World Monitor really free?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The full live map — every layer, 500+ feeds, country briefs, breaking alerts, all six monitors — is free with no signup and no trial clock. Pro pays for the feeds: it adds WM Analyst, the scenario engine, Route Explorer, scheduled digests and MCP access for AI clients. No ads, and no account means there's no user data to sell." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. The live map — every layer except Resilience, curated feeds, country briefs, breaking alerts, and monitoring surfaces — is free with no signup and no trial clock. Pro pays for the feeds: it adds WM Analyst, the scenario engine, Route Explorer, scheduled digests, MCP access for AI clients and the Resilience map layer. No ads, and no account means there's no user data to sell." }
         },
         {
           "@type": "Question",
@@ -253,17 +264,17 @@
         {
           "@type": "Question",
           "name": "Where does the data come from?",
-          "acceptedAnswer": { "@type": "Answer", "text": "65+ providers, named: ACLED and UCDP for conflict, AISStream for live vessels, OpenSky for aircraft, NASA FIRMS for fires, USGS for earthquakes, IMF, BIS, FRED and Finnhub for markets and macro — plus 500+ curated news feeds. Every panel cites its sources and timestamps inline." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Named providers include ACLED and UCDP for conflict, AISStream for live vessels, OpenSky for aircraft, NASA FIRMS for fires, USGS for earthquakes, IMF, BIS, FRED and Finnhub for markets and macro — plus curated news feeds. Every panel cites its sources and timestamps inline." }
         },
         {
           "@type": "Question",
           "name": "Can I watch chokepoints like Hormuz or Bab el-Mandeb in real time?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. 13 chokepoints are tracked with live AIS vessel counts, week-over-week transit change and disruption scoring — and density anomalies are flagged against each strait's rolling baseline." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Chokepoints are tracked with live AIS vessel counts, week-over-week transit change and disruption scoring — and density anomalies are flagged against each strait's rolling baseline." }
         },
         {
           "@type": "Question",
           "name": "How is this different from a conflict map like Liveuamap?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Conflict is one layer out of 56. World Monitor fuses conflicts with shipping, military flights, infrastructure, markets and cyber — then AI scores the convergence: instability indices, hotspot escalation, corroborated breaking alerts and daily briefs." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Conflict is one map layer. World Monitor fuses conflicts with shipping, military flights, infrastructure, markets and cyber — then AI scores the convergence: instability indices, hotspot escalation, corroborated breaking alerts and daily briefs." }
         },
         {
           "@type": "Question",
@@ -273,7 +284,7 @@
         {
           "@type": "Question",
           "name": "Can AI agents like Claude or GPT use it?",
-          "acceptedAnswer": { "@type": "Answer", "text": "Yes. World Monitor ships a 59-tool MCP server, so Claude, GPT or any MCP-compatible agent can query live risk scores, chokepoint status, conflicts, markets and briefs — with JMESPath projection so agents fetch exactly what they need." }
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. World Monitor ships an MCP server with a live tool registry, so Claude, GPT or any MCP-compatible agent can query live risk scores, chokepoint status, conflicts, markets and briefs — with JMESPath projection so agents fetch exactly what they need." }
         },
         {
           "@type": "Question",
@@ -344,12 +355,12 @@
         <h2>World Monitor — By the time it's news, you already knew.</h2>
         <p>Headlines are the lag. World Monitor is a free, real-time global intelligence dashboard that streams the world's raw signals — ships, jets, sirens, cables, markets — onto one live map, with AI that flags when they converge into something that matters. Free, no signup required.</p>
         <p><a href="https://www.worldmonitor.app/dashboard" style="color:#4ade80;">Launch the dashboard</a> or explore the specialized variants: <a href="https://tech.worldmonitor.app/dashboard" style="color:#4ade80;">Tech Monitor</a>, <a href="https://finance.worldmonitor.app/dashboard" style="color:#4ade80;">Finance Monitor</a>, <a href="https://commodity.worldmonitor.app/dashboard" style="color:#4ade80;">Commodity Monitor</a>, <a href="https://energy.worldmonitor.app/dashboard" style="color:#4ade80;">Energy Monitor</a>, and <a href="https://happy.worldmonitor.app/dashboard" style="color:#4ade80;">Happy Monitor</a>.</p>
-        <p>Data comes from <a href="https://acleddata.com/" style="color:#4ade80;" rel="noopener noreferrer">ACLED</a>, <a href="https://ucdp.uu.se/" style="color:#4ade80;" rel="noopener noreferrer">UCDP</a>, <a href="https://firms.modaps.eosdis.nasa.gov/" style="color:#4ade80;" rel="noopener noreferrer">NASA FIRMS</a>, <a href="https://finnhub.io/" style="color:#4ade80;" rel="noopener noreferrer">Finnhub</a>, <a href="https://fred.stlouisfed.org/" style="color:#4ade80;" rel="noopener noreferrer">FRED</a>, <a href="https://aisstream.io/" style="color:#4ade80;" rel="noopener noreferrer">AISStream</a>, <a href="https://opensky-network.org/" style="color:#4ade80;" rel="noopener noreferrer">OpenSky</a>, and 60+ other live providers. Full source on <a href="https://github.com/koala73/worldmonitor" style="color:#4ade80;" rel="noopener noreferrer">GitHub (AGPL-3.0)</a>.</p>
+        <p>Named providers include <a href="https://acleddata.com/" style="color:#4ade80;" rel="noopener noreferrer">ACLED</a>, <a href="https://ucdp.uu.se/" style="color:#4ade80;" rel="noopener noreferrer">UCDP</a>, <a href="https://firms.modaps.eosdis.nasa.gov/" style="color:#4ade80;" rel="noopener noreferrer">NASA FIRMS</a>, <a href="https://finnhub.io/" style="color:#4ade80;" rel="noopener noreferrer">Finnhub</a>, <a href="https://fred.stlouisfed.org/" style="color:#4ade80;" rel="noopener noreferrer">FRED</a>, <a href="https://aisstream.io/" style="color:#4ade80;" rel="noopener noreferrer">AISStream</a>, and <a href="https://opensky-network.org/" style="color:#4ade80;" rel="noopener noreferrer">OpenSky</a>. Full source on <a href="https://github.com/koala73/worldmonitor" style="color:#4ade80;" rel="noopener noreferrer">GitHub (AGPL-3.0)</a>.</p>
         <h3>What you can do</h3>
         <ul>
-          <li><strong>See</strong> — 56 map layers across a dual 3D-globe/WebGL map: conflicts, vessels, flights, satellites, pipelines, submarine cables, AI datacenters.</li>
-          <li><strong>Understand</strong> — daily AI brief, Country Instability Index across 196 countries, cross-source correlation, Scenario Engine.</li>
-          <li><strong>Act</strong> — custom monitors and alerts, Route Explorer, 59-tool MCP server and API for Claude, GPT and custom agents.</li>
+          <li><strong>See</strong> — registry-backed layers across a dual 3D-globe/WebGL map: conflicts, vessels, flights, satellites, pipelines, submarine cables, AI datacenters.</li>
+          <li><strong>Understand</strong> — daily AI brief, Country Instability Index across its Tier-1 registry, cross-source correlation, Scenario Engine.</li>
+          <li><strong>Act</strong> — custom monitors and alerts, Route Explorer, MCP server and API for Claude, GPT and custom agents.</li>
         </ul>
         <p>Upgrade to <a href="https://www.worldmonitor.app/pro" style="color:#4ade80;">World Monitor Pro</a> for the AI analyst, Scenario Engine and Route Explorer, personal intelligence digest, custom widget builder, and MCP/API access — from $39.99/month.</p>
       </div>

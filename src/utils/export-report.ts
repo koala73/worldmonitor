@@ -138,7 +138,8 @@ function clusterRows(clusters: ClusteredEvent[]): string[][] {
   return clusters.slice(0, MAX_CLUSTER_ROWS).map((cluster) => [
     linkCell(cluster.primaryTitle, cluster.primaryLink),
     textOrDash(cluster.primarySource),
-    textOrDash(cluster.sourceCount),
+    // #6428: the column is headed "Sources" — publishers, not articles.
+    textOrDash(cluster.uniquePublisherCount),
     textOrDash(isoOrEmpty(cluster.lastUpdated)),
     textOrDash([cluster.threat?.level, cluster.threat?.category].filter(Boolean).join(' / ')),
   ]);

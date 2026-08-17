@@ -231,24 +231,24 @@ export class EnergyDisruptionsPanel extends Panel {
       </div>
       ${ATTRIBUTION_FOOTER_CSS}
       <style>
-        .ed-wrap { font-size: 11px; }
-        .ed-summary { font-size: 10px; color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 6px 0; }
+        .ed-wrap { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
+        .ed-summary { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 6px 0; }
         .ed-filters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
-        .ed-chip { background: rgba(255,255,255,0.04); color: var(--text-dim, #aaa); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 2px 8px; font-size: 10px; cursor: pointer; }
+        .ed-chip { background: rgba(255,255,255,0.04); color: var(--text-dim, #aaa); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 2px 8px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); cursor: pointer; }
         .ed-chip:hover { background: rgba(255,255,255,0.08); color: var(--text, #eee); }
         .ed-chip-active { background: #2980b9; border-color: #2980b9; color: #fff; }
         .ed-chip-active:hover { background: #2471a3; }
         .ed-table { width: 100%; border-collapse: collapse; }
-        .ed-table th { text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .ed-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .ed-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: top; }
         .ed-row { cursor: pointer; }
         .ed-row:hover td { background: rgba(255,255,255,0.03); }
         .ed-event { font-weight: 600; color: var(--text, #eee); }
-        .ed-sub { font-size: 9px; color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
-        .ed-asset-type { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.08); color: var(--text-dim, #aaa); margin-right: 4px; }
-        .ed-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
+        .ed-sub { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
+        .ed-asset-type { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: calc(8px * var(--wm-panel-effective-scale, 1)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.08); color: var(--text-dim, #aaa); margin-right: 4px; }
+        .ed-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .ed-empty { text-align: center; color: var(--text-dim, #888); padding: 20px; font-style: italic; }
-        .ed-offline { font-family: monospace; font-size: 10px; color: var(--text, #eee); }
+        .ed-offline { font-family: monospace; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); }
       </style>
     `, 'legacy Panel.setContent() migration'));
 

@@ -3,10 +3,33 @@
 // bet-family is split into a dedicated geopolitical slice (long horizon, top
 // ensemble priority) and a general slice — and the split is driven by the
 // market TEXT, deliberately NOT by the bootstrap feed's geopolitical/tech/
-// finance pools. Those pools are unreliable: the same market appears in all
-// three and the "geopolitical" pool is dominated by crypto/finance titles
-// (#5733). Classifying from the title keeps this robust to the broken producer
-// labels.
+// finance pools.
+//
+// Originally that was a workaround: the pools were near-duplicates and the
+// "geopolitical" pool was dominated by crypto/finance titles. The producer now
+// assigns exactly one primary pool per market (see _prediction-classify.mjs,
+// which reuses isGeopoliticalMarket below as its title signal), so the labels
+// are trustworthy — but the bet families still classify from the title, for two
+// reasons that outlive the fix:
+//   1. the feed's 3h TTL means a pre-fix payload can still be served for hours
+//      after a deploy, and the partition must not depend on when Redis last
+//      refreshed;
+//   2. the two families read the UNION of all three pools anyway (they need
+//      every market, partitioned by their own horizon), so pool membership is
+//      not the axis they split on.
+//
+// THE TWO CLASSIFICATIONS ARE NOT IDENTICAL, and that is deliberate. The
+// producer treats a market as geopolitical when the TITLE matches (this
+// predicate) OR the venue tags do; the bet families use the title signal only.
+// So a market that is geopolitical purely by tag — "Will AfD win the most seats
+// in the 2026 Berlin state elections?" (tags: elections/global-elections/
+// world-elections), or a bilateral trade-deal line tagged `geopolitics` — lands
+// in the producer's geopolitical POOL but in the GENERAL bet family, not the
+// long-horizon geo one. That is an accepted consequence of this predicate being
+// precision-first (a false geo tag would steal a flagship ensemble slot, which
+// is worse than a missed one), not a bug to fix by importing the tag rescue.
+// What the shared predicate does guarantee is that the two can never disagree
+// about a TITLE — the axis both actually key on.
 //
 // Precision over recall: a FALSE geopolitical tag pollutes the flagship slice
 // (a company/crypto market stealing a geo ensemble slot), which is worse than a

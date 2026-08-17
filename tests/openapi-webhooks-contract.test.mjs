@@ -4,7 +4,7 @@ import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { load as loadYaml } from 'js-yaml';
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 import {
   injectYamlWebhooks,
@@ -27,7 +27,7 @@ const bundlePath = resolve(root, 'docs/api/worldmonitor.openapi.yaml');
 const deliverPath = resolve(root, 'server/worldmonitor/shipping/v2/deliver-webhook.ts');
 
 const bundleRaw = readFileSync(bundlePath, 'utf8');
-const bundle = loadYaml(bundleRaw);
+const bundle = loadUnifiedOpenApiSpec();
 const deliverSrc = readFileSync(deliverPath, 'utf8');
 
 const webhook = bundle.webhooks?.[WEBHOOK_EVENT]?.post;

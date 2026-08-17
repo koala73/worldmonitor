@@ -23,7 +23,7 @@ Each forecast row shows the prediction text, the event probability, the domain (
 
 ## Calibration & Projection Notes
 
-Forecast probabilities come from deterministic, rule-based signal detectors in `scripts/seed-forecasts.mjs`, with an optional prediction-market blend when a matching market anchor exists. LLM calls do not set the numeric probability. They generate the narrative scenario, case-file, branches, and perspective text around the already-scored forecast. The default source-backed LLM routes in the seeder are OpenRouter `deepseek/deepseek-v4-flash` (primary, reasoning disabled) and Groq `llama-3.3-70b-versatile` (fallback). One tracked exception: the critical-signals extraction stage contributes signal strength/confidence into the deterministic scoring of state-derived (market/supply-chain) forecasts, so that stage stays pinned to its legacy models until the calibration question is settled (see issue #4963).
+Forecast probabilities come from deterministic, rule-based signal detectors in `scripts/seed-forecasts.mjs`, with an optional prediction-market blend when a matching market anchor exists. LLM calls do not set the numeric probability. They generate the narrative scenario, case-file, branches, and perspective text around the already-scored forecast. The default source-backed LLM routes in the seeder are OpenRouter `deepseek/deepseek-v4-flash` (primary, reasoning disabled), fixed free OpenRouter fallbacks `google/gemma-4-26b-a4b-it:free` and `openai/gpt-oss-20b:free`, then Groq `openai/gpt-oss-20b`. One tracked exception: the critical-signals extraction stage contributes signal strength/confidence into the deterministic scoring of state-derived (market/supply-chain) forecasts, so that stage keeps its existing provider-host order while its decommissioned Groq model moves to `openai/gpt-oss-20b` (see issue #4963).
 
 Forecast probabilities are market-calibrated only when the seeder can match the forecast to a prediction-market anchor. In those cases the `calibration` object includes the market title, market price, drift, and source, and the displayed probability is blended with that market anchor. Forecasts with `calibration: null` are internal/legacy estimates derived from WorldMonitor signal rules rather than externally market-calibrated probabilities.
 
@@ -104,6 +104,22 @@ Probability projections are expanded to 24h, 7d, and 30d with domain curves. Mar
 
 Trend is serialized as a string, not an enum. The current values are `rising`, `falling`, and `stable`, based on a +/- `0.05` probability delta versus the prior forecast snapshot.
 
+## Shadow bet-engine evaluation lane
+
+World Monitor also runs a **shadow-only** forecasting lane at `forecast:bets:history:v1`. It never writes `forecast:predictions:v2`, so its bets do not appear in the AI Forecasts panel. The purpose is to measure candidate generation methods against resolved outcomes before allowing them into the user-facing forecast stream.
+
+The lane now includes a dedicated geopolitical prediction-market family:
+
+- It selects liquid geopolitical markets whose settlement is 2–210 days away. The general market family retains the shorter 2–45 day window.
+- The two families form a disjoint partition by market slug, so the same venue market cannot become two separate bets.
+- Geopolitical candidates rank first for the optional ensemble stage, but the attempt budget reserves room for faster-resolving energy, commodity, general-market, and macro families.
+- Identity and settlement use the venue slug rather than the mutable title. The hard resolution spec reads the settlement feed at the market deadline and resolves whether the YES price crossed 50%.
+- Results remain tagged `generationOrigin: "bet_engine"` so the scorecard can compare that lane with the canonical forecast generator instead of mixing their records.
+
+Each shadow bet retains its empirical or thin-history `baselineProbability`. When `FORECAST_BETS_ENSEMBLE=1` is explicitly enabled, a bounded three-pass LLM ensemble may replace the working probability for top-ranked new attempts while leaving the baseline attached for Brier-score comparison. The ensemble is off by default; partial passes are labeled `ensemble_partial` and are eligible for a later upgrade rather than being treated as a completed ensemble.
+
+This separation is deliberate: prediction-market liquidity is useful calibration evidence, but shipping a new family directly into the panel before it accumulates settlement history would confuse implementation completeness with demonstrated forecast skill.
+
 ## Resolution spec
 
 Every published forecast carries a **resolution spec** — a machine-checkable contract that defines what "came true" means at resolution time. The spec is either `hard` (auto-resolvable by comparing a metric from the same WorldMonitor feed the detector scored from) or `judged` (a resolution question for a later LLM judge, still with a hard deadline). The deadline is always present, encoded in epoch milliseconds: emission time plus the forecast's stated horizon — except prediction-market forecasts, which resolve at the market's own end date when it has one.
@@ -142,5 +158,5 @@ On **web**, AI Forecasts is currently in **trial** — free to anyone, including
 
 ## API reference
 
-- [Forecast service](/api/ForecastService.openapi.yaml) — covers `get-forecasts`, `get-forecast-scorecard`, `get-simulation-outcome`, `get-simulation-package`, and `trigger-simulation`.
+- [Forecast service](https://github.com/koala73/worldmonitor/blob/main/docs/api/ForecastService.openapi.yaml) — covers `get-forecasts`, `get-forecast-scorecard`, `get-simulation-outcome`, `get-simulation-package`, and `trigger-simulation`.
 - For **programmatic prediction generation** (fresh probabilities outside the cached cron output), see the [MCP `generate_forecasts` tool](/mcp-overview#ai-intelligence-live-llm).

@@ -88,6 +88,21 @@ export function extractConvexErrorKind(err, msg) {
   // pattern (`transport_timeout` vs `convex_service_unavailable`).
   const errName = /** @type {{ name?: string } | null | undefined} */ (err)?.name;
   if (errName === 'TimeoutError' || errName === 'AbortError') return 'SERVICE_UNAVAILABLE';
+  // Convex response-body JSON parse failure: the HTTP client's
+  // `response.json()` throws a raw SyntaxError when the body arrives
+  // truncated (connection dropped mid-body) or corrupted by an intermediary
+  // — `.data` is undefined because no parseable Convex response ever
+  // existed. Same transient retry-with-back-off remediation as the platform
+  // 503. WORLDMONITOR-YV: `Unterminated string in JSON at position 12997`
+  // was falling through to the 'unknown' error_shape bucket at error level
+  // and returning a hard 500 instead of 503 + Retry-After. Keyed on the
+  // error NAME plus a JSON mention (every V8 JSON.parse message contains
+  // "JSON") — inside these catch blocks a raw SyntaxError can only come
+  // from the SDK's response parsing, since server-side function throws
+  // arrive as ConvexError data or the opaque request-id wrapper. Sentry's
+  // classifier tags these `transport_malformed_response` so they stay
+  // queryable apart from timeouts and socket resets.
+  if (errName === 'SyntaxError' && /\bJSON\b/.test(msg)) return 'SERVICE_UNAVAILABLE';
   // Vercel edge runtime transient: the upstream connection dropped mid-flight
   // (Cloudflare Workers / Vercel edge surface `TypeError: Network connection
   // lost.` from the inner `fetch` when the socket is reset during an in-flight

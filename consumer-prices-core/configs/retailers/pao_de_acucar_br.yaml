@@ -8,9 +8,35 @@ retailer:
   enabled: true
 
   searchConfig:
-    numResults: 5
+    # Exa's draws for this domain are unstable: the 2026-08-08 02:00 scrape
+    # drew store-flyer PDFs (/img/uploads/*.pdf) and content.paodeacucar.com
+    # marketing pages for 7 of 11 items — 0 in-policy URLs each — while the
+    # identical queries minutes later drew 4-5/5 live /produto/ pages. Search
+    # wide so one bad ranking can't zero the item; extraction stays bounded.
+    numResults: 10
+    maxExtractionCandidates: 4
     urlPathContains: /produto/
     queryTemplate: "{canonicalName} supermercado Brasil {currency} preço"
+    # This storefront hydrates product data late, the same shape carrefour_sa
+    # documents. At the default settle Firecrawl returns a shell and extracts
+    # productName AND price as null — not a price-selector miss but an empty
+    # page — which surfaced as missing-price on 11/11 items and dragged BR to a
+    # 0.45 completion ratio (COVERAGE_DEGRADED, #6841).
+    #
+    # Probed live 2026-08-17 on two product URLs:
+    #   waitFor=0      -> {"productName":null,"price":null}
+    #   waitFor=8000   -> "Leite Pasteurizado ... Xandô Garrafa 1l"  R$ 9.49
+    #   waitFor=15000  -> identical
+    #
+    # Necessary but NOT sufficient: the full basket goes 0/11 -> 3/11, so 8 items
+    # still miss. A 15000 comparison run scored 2/11 — do not read that as 8000
+    # being better. This retailer's draws are unstable (see above), so a 3-vs-2
+    # difference across single runs is inside that variance. 8000 is kept as the
+    # cheaper settle with no evidence the longer one helps; the remaining
+    # failures are tracked in #6841 and are more likely discovery or basket
+    # matching than hydration (a 15000 run matched Água Mineral to a 12-pack at
+    # R$44.28 instead of the single 1,5L bottle at R$2.89).
+    renderWaitMs: 8000
 
   rateLimit:
     requestsPerMinute: 10

@@ -12,8 +12,10 @@ const DISRUPTIONS_KEY = 'portwatch:disruptions:active:v1';
 const TTL = 259_200; // 3d — upstream seeder runs every 6h
 const HAZARD_RADIUS_KM = 500;
 
-// 7 chokepoints with EIA baseline mb/d figures + coordinates for hazard matching
-const CHOKEPOINT_MAP = [
+// 7 chokepoints with EIA baseline mb/d figures + coordinates for hazard matching.
+// Exported so the pairing can be checked against the baselines seeder's own
+// CHOKEPOINTS table — greping the two ids separately cannot catch a shuffle.
+export const CHOKEPOINT_MAP = [
   { canonicalId: 'hormuz_strait',  baselineId: 'hormuz',  lat: 26.56, lon: 56.25 },
   { canonicalId: 'malacca_strait', baselineId: 'malacca', lat: 2.5,   lon: 101.5 },
   { canonicalId: 'suez',           baselineId: 'suez',    lat: 30.45, lon: 32.35 },
@@ -23,7 +25,8 @@ const CHOKEPOINT_MAP = [
   { canonicalId: 'panama',         baselineId: 'panama',  lat: 9.08,  lon: -79.68 },
 ];
 
-function haversineKm(lat1, lon1, lat2, lon2) {
+/** Great-circle distance in kilometres. */
+export function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371;
   const toRad = d => d * Math.PI / 180;
   const dLat = toRad(lat2 - lat1);
@@ -32,7 +35,14 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function findNearestHazard(events, cpLat, cpLon) {
+/**
+ * Nearest active RED/ORANGE GDACS hazard within HAZARD_RADIUS_KM, or null.
+ *
+ * Annotation only — the caller must not let this influence `currentMbd`,
+ * `flowRatio`, or `disrupted`. Exported so the radius and the alert-level
+ * filter are exercised directly instead of re-implemented in a test.
+ */
+export function findNearestHazard(events, cpLat, cpLon) {
   if (!Array.isArray(events)) return null;
   let best = null;
   let bestDist = HAZARD_RADIUS_KM;
@@ -61,6 +71,76 @@ function avg(arr) {
   return arr.reduce((s, v) => s + v, 0) / arr.length;
 }
 
+/**
+ * Coverage basis for a flow estimate, as the FlowSource proto enum's custom
+ * JSON names (#6101). Exported so the taxonomy gate can EXECUTE this decision
+ * rather than pattern-match the source text: a regex over the two literals
+ * extracts the same set whether the mapping is correct or inverted, so it
+ * cannot tell `useDwt -> dwt` from `useDwt -> counts`.
+ */
+export function resolveFlowSource(useDwt) {
+  return useDwt ? 'portwatch-dwt' : 'portwatch-counts';
+}
+
+/**
+ * Per-chokepoint flow estimate from a PortWatch daily history and an EIA
+ * baseline, or `null` when the history is too thin to be meaningful.
+ *
+ * Pure and exported for the same reason as `resolveFlowSource`: the window
+ * arithmetic, the DWT-majority rule, and the 3-day disruption rule are the
+ * behaviour worth testing, and a test that re-implements them proves nothing
+ * about this function. Hazard annotation stays in `fetchAll` — it is metadata
+ * that must not influence `currentMbd`, `flowRatio`, or `disrupted`.
+ */
+export function computeFlowEstimate(rawHistory, baselineMbd) {
+  if (!Array.isArray(rawHistory) || !baselineMbd) return null;
+
+  const history = [...rawHistory].sort((a, b) => a.date.localeCompare(b.date));
+
+  // Require at least 40 days of data to compute a meaningful baseline
+  if (history.length < 40) return null;
+
+  const last7 = history.slice(-7);
+  const prev90 = history.slice(-97, -7); // days [-97..-7], up to 90 days
+  if (last7.length < 3 || prev90.length < 20) return null;
+
+  // Prefer DWT (capTanker) when the baseline window has majority DWT coverage.
+  // Decision is based on the 90-day baseline, NOT the recent window — zero
+  // recent capTanker is the disruption signal, not a reason to abandon DWT.
+  // Majority guard: partial DWT roll-out (1-2 days non-zero) should not
+  // activate DWT mode and pull down the baseline average via zero-filled gaps.
+  const dwtBaselineDays = prev90.filter(d => (d.capTanker ?? 0) > 0).length;
+  const useDwt = dwtBaselineDays >= Math.ceil(prev90.length / 2);
+
+  const current7d = useDwt
+    ? avg(last7.map(d => d.capTanker ?? 0))
+    : avg(last7.map(d => d.tanker ?? 0));
+
+  const baseline90d = useDwt
+    ? avg(prev90.map(d => d.capTanker ?? 0))
+    : avg(prev90.map(d => d.tanker ?? 0));
+
+  // Skip if baseline is too thin to be meaningful
+  if (baseline90d < (useDwt ? 1 : 0.5)) return null;
+
+  const flowRatio = Math.min(1.5, Math.max(0, current7d / baseline90d));
+
+  // Disrupted = each of last 3 individual days has day_ratio < 0.85
+  const last3 = history.slice(-3);
+  const disrupted = last3.length === 3 && last3.every(d => {
+    const dayVal = useDwt ? (d.capTanker ?? 0) : (d.tanker ?? 0);
+    return baseline90d > 0 && (dayVal / baseline90d) < 0.85;
+  });
+
+  return {
+    currentMbd: Math.round(baselineMbd * flowRatio * 10) / 10,
+    baselineMbd,
+    flowRatio: Math.round(flowRatio * 1000) / 1000,
+    disrupted,
+    source: resolveFlowSource(useDwt),
+  };
+}
+
 export async function fetchAll() {
   const { url, token } = getRedisCredentials();
 
@@ -83,52 +163,13 @@ export async function fetchAll() {
     const baseline = baselines?.chokepoints?.find(b => b.id === cp.baselineId);
     if (!baseline?.mbd) continue;
 
-    const history = [...pw.history].sort((a, b) => a.date.localeCompare(b.date));
-
-    // Require at least 40 days of data to compute a meaningful baseline
-    if (history.length < 40) continue;
-
-    const last7 = history.slice(-7);
-    const prev90 = history.slice(-97, -7); // days [-97..-7], up to 90 days
-    if (last7.length < 3 || prev90.length < 20) continue;
-
-    // Prefer DWT (capTanker) when the baseline window has majority DWT coverage.
-    // Decision is based on the 90-day baseline, NOT the recent window — zero
-    // recent capTanker is the disruption signal, not a reason to abandon DWT.
-    // Majority guard: partial DWT roll-out (1-2 days non-zero) should not
-    // activate DWT mode and pull down the baseline average via zero-filled gaps.
-    const dwtBaselineDays = prev90.filter(d => (d.capTanker ?? 0) > 0).length;
-    const useDwt = dwtBaselineDays >= Math.ceil(prev90.length / 2);
-
-    const current7d = useDwt
-      ? avg(last7.map(d => d.capTanker ?? 0))
-      : avg(last7.map(d => d.tanker ?? 0));
-
-    const baseline90d = useDwt
-      ? avg(prev90.map(d => d.capTanker ?? 0))
-      : avg(prev90.map(d => d.tanker ?? 0));
-
-    // Skip if baseline is too thin to be meaningful
-    if (baseline90d < (useDwt ? 1 : 0.5)) continue;
-
-    const flowRatio = Math.min(1.5, Math.max(0, current7d / baseline90d));
-    const currentMbd = Math.round(baseline.mbd * flowRatio * 10) / 10;
-
-    // Disrupted = each of last 3 individual days has day_ratio < 0.85
-    const last3 = history.slice(-3);
-    const disrupted = last3.length === 3 && last3.every(d => {
-      const dayVal = useDwt ? (d.capTanker ?? 0) : (d.tanker ?? 0);
-      return baseline90d > 0 && (dayVal / baseline90d) < 0.85;
-    });
+    const estimate = computeFlowEstimate(pw.history, baseline.mbd);
+    if (!estimate) continue;
 
     const hazard = findNearestHazard(disruptions?.events, cp.lat, cp.lon);
 
     result[cp.canonicalId] = {
-      currentMbd,
-      baselineMbd: baseline.mbd,
-      flowRatio: Math.round(flowRatio * 1000) / 1000,
-      disrupted,
-      source: useDwt ? 'portwatch-dwt' : 'portwatch-counts',
+      ...estimate,
       hazardAlertLevel: hazard?.alertLevel ?? null,
       hazardAlertName: hazard?.eventName ?? null,
     };

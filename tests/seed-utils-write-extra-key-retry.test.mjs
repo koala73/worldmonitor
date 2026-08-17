@@ -17,9 +17,19 @@ process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
 const { writeExtraKey } = await import('../scripts/_seed-utils.mjs');
 
 const originalFetch = globalThis.fetch;
+const originalSetTimeout = globalThis.setTimeout;
 
-beforeEach(() => { globalThis.fetch = originalFetch; });
-afterEach(() => { globalThis.fetch = originalFetch; });
+beforeEach(() => {
+  globalThis.fetch = originalFetch;
+  globalThis.setTimeout = (callback, _delay, ...args) => {
+    queueMicrotask(() => callback(...args));
+    return 0;
+  };
+});
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  globalThis.setTimeout = originalSetTimeout;
+});
 
 function buildResponse({ ok = true, status = 200, body = { result: 'OK' }, headers = {} }) {
   return { ok, status, json: async () => body, headers };
@@ -105,4 +115,18 @@ test('writeExtraKey: still throws after exhausting retries', async () => {
     /HTTP 503/,
   );
   assert.equal(calls, 3, 'default retry count should be 2 (3 total attempts)');
+});
+
+test('writeExtraKey: HTTP-200 command errors retry and then fail with the key context', async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return buildResponse({ body: { error: 'ERR injected command rejection' } });
+  };
+
+  await assert.rejects(
+    () => writeExtraKey('gdelt:intel:tone:military', { data: [] }, 600),
+    /Extra key gdelt:intel:tone:military rejected by Upstash: ERR injected command rejection/,
+  );
+  assert.equal(calls, 3, 'command-level failures must use the same bounded retry contract as HTTP failures');
 });

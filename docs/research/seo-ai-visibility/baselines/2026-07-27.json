@@ -107,7 +107,35 @@
         }
       ],
       "queryRows": [],
-      "pageFamilyRows": []
+      "pageFamilyRows": [],
+      "aiPerformance": {
+        "status": "unavailable",
+        "reason": "No Bing AI Performance export or property access was available. Citation totals, cited pages, and grounding queries remain null rather than being inferred.",
+        "windows": [
+          {
+            "label": "28d",
+            "startDate": "2026-06-30",
+            "endDate": "2026-07-27",
+            "metrics": {
+              "totalCitations": null,
+              "averageCitedPages": null
+            },
+            "groundingQueries": [],
+            "citedPages": []
+          },
+          {
+            "label": "90d",
+            "startDate": "2026-04-29",
+            "endDate": "2026-07-27",
+            "metrics": {
+              "totalCitations": null,
+              "averageCitedPages": null
+            },
+            "groundingQueries": [],
+            "citedPages": []
+          }
+        ]
+      }
     }
   },
   "referrals": {
@@ -202,6 +230,7 @@
           "pricingViews": null,
           "signUps": null,
           "proConversions": null,
+          "activations": null,
           "apiActions": null,
           "mcpActions": null
         }
@@ -216,6 +245,7 @@
           "pricingViews": null,
           "signUps": null,
           "proConversions": null,
+          "activations": null,
           "apiActions": null,
           "mcpActions": null
         }

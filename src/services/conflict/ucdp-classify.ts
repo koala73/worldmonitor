@@ -1,4 +1,5 @@
 import type { UcdpViolenceEvent as ProtoUcdpEvent } from '@/generated/client/worldmonitor/conflict/v1/service_client';
+import type { UcdpGeoEvent } from '@/types';
 
 export type ConflictIntensity = 'none' | 'minor' | 'war';
 
@@ -8,6 +9,32 @@ export interface UcdpConflictStatus {
   year: number;
   sideA?: string;
   sideB?: string;
+}
+
+const CONFLICT_HISTORY_RADIUS_DEG = 3;
+
+/**
+ * Derive the figures shown in a conflict zone's "Historical Profile" popup.
+ * The static start date is authoritative because the UCDP feed is only a
+ * trailing window, not a record of the conflict's beginning.
+ */
+export function deriveConflictHistory(
+  zone: { center: [number, number]; startDate?: string },
+  events: Array<Pick<UcdpGeoEvent, 'latitude' | 'longitude' | 'deaths_best'>>,
+): { conflictSince: string | null; recordedFatalities: number } {
+  const [centerLongitude, centerLatitude] = zone.center;
+  const longitudeScale = Math.cos((centerLatitude * Math.PI) / 180);
+  const recordedFatalities = events.reduce((sum, event) => {
+    const latitudeDelta = event.latitude - centerLatitude;
+    const longitudeDelta = (event.longitude - centerLongitude) * longitudeScale;
+    if (Math.hypot(latitudeDelta, longitudeDelta) >= CONFLICT_HISTORY_RADIUS_DEG) return sum;
+    return sum + (event.deaths_best ?? 0);
+  }, 0);
+
+  return {
+    conflictSince: zone.startDate?.match(/\b(\d{4})\b/)?.[1] ?? null,
+    recordedFatalities,
+  };
 }
 
 // Leaf module by design: it imports nothing at runtime, so tests can load it

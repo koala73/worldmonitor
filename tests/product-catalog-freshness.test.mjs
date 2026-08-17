@@ -124,9 +124,17 @@ describe('Product catalog freshness', () => {
 
   // Extract product IDs from generated TS (regex since we can't import TS in node:test)
   const generatedProductIds = [...generatedProductsSrc.matchAll(/'(pdt_[^']+)'/g)].map(m => m[1]);
+  const generatedCatalog = JSON.parse(readFileSync(join(ROOT, 'shared/product-catalog.generated.json'), 'utf8'));
+  const tierGroupToLocaleKey = {
+    free: 'free', pro: 'pro', pro_business: 'proBusiness', api_starter: 'api', api_business: 'apiBusiness', enterprise: 'enterprise',
+  };
 
   it('generated products.ts contains valid product IDs', () => {
-    assert.ok(generatedProductIds.length >= 4, `Expected at least 4 product IDs, got ${generatedProductIds.length}`);
+    assert.deepEqual(
+      [...new Set(generatedProductIds)].sort(),
+      Object.keys(generatedCatalog.products).sort(),
+      'products.generated.ts IDs must match the generated catalog exactly',
+    );
     for (const id of generatedProductIds) {
       assert.match(id, /^pdt_/, `Product ID should start with pdt_: ${id}`);
     }
@@ -134,7 +142,11 @@ describe('Product catalog freshness', () => {
 
   it('generated tiers.json has expected tier structure', () => {
     assert.ok(Array.isArray(tiersJson), 'tiers.json should be an array');
-    assert.ok(tiersJson.length >= 3, `Expected at least 3 tiers, got ${tiersJson.length}`);
+    assert.deepEqual(
+      tiersJson.map((tier) => tier.localeKey).sort(),
+      generatedCatalog.publicTierGroups.map((group) => tierGroupToLocaleKey[group]).sort(),
+      'tiers.json must match the public generated tier groups exactly',
+    );
 
     const names = tiersJson.map(t => t.name);
     assert.ok(names.includes('Free'), 'Missing Free tier');
@@ -171,8 +183,11 @@ describe('Product catalog freshness', () => {
     const ent = tiersJson.find(t => t.name === 'Enterprise');
 
     assert.equal(pro?.planLimits?.mcpCallsPerDay, 50, 'Pro MCP daily limit should be visible');
+    assert.equal(pro?.planLimits?.dashboardAiCallsPerDay, 500, 'Pro dashboard-AI daily limit should be visible');
     assert.equal(api?.planLimits?.apiRequestsPerDay, 1000, 'API Starter daily limit should be visible');
+    assert.equal(api?.planLimits?.dashboardAiCallsPerDay, 1000, 'API Starter dashboard-AI daily limit should be visible');
     assert.equal(ent?.planLimits?.apiRequestsPerDay, null, 'Enterprise daily limit should be unlimited');
+    assert.equal(ent?.planLimits?.dashboardAiCallsPerDay, null, 'Enterprise dashboard-AI limit should be unlimited');
   });
 
   it('Enterprise tier is custom with contact CTA', () => {
@@ -293,9 +308,6 @@ describe('Product catalog freshness', () => {
       'generated Pro MCP feature changed unexpectedly',
     );
 
-    const generatedCatalog = JSON.parse(
-      readFileSync(join(ROOT, 'shared/product-catalog.generated.json'), 'utf8'),
-    );
     assert.ok(generatedCatalog.tierConfig.pro.features.includes(expectedFeature));
     assert.deepEqual(
       generatedCatalog.publicTierGroups,
@@ -305,9 +317,31 @@ describe('Product catalog freshness', () => {
     const edgeSrc = readFileSync(join(ROOT, 'api/product-catalog.js'), 'utf8');
     const relaySrc = readFileSync(join(ROOT, 'scripts/ais-relay.cjs'), 'utf8');
     assert.match(edgeSrc, /from '\.\/_product-catalog\.generated\.js'/);
+    assert.match(edgeSrc, /from '\.\/_inventory-facts\.generated\.js'/);
     assert.match(relaySrc, /requireShared\('product-catalog\.generated\.json'\)/);
+    assert.match(relaySrc, /requireShared\('inventory-facts\.generated\.json'\)/);
     assert.doesNotMatch(edgeSrc, /MANUAL MIRROR/);
     assert.doesNotMatch(relaySrc, /MANUAL MIRROR/);
+
+    const dockerfile = readFileSync(join(ROOT, 'Dockerfile.relay'), 'utf8');
+    assert.match(dockerfile, /^RUN node scripts\/generate-inventory-facts\.mjs$/m);
+    assert.match(
+      dockerfile,
+      /^COPY --from=inventory-builder \/workspace\/scripts\/shared\/inventory-facts\.generated\.json \.\/scripts\/shared\/inventory-facts\.generated\.json$/m,
+    );
+    const dockerignore = readFileSync(join(ROOT, '.dockerignore'), 'utf8');
+    assert.match(dockerignore, /^\.env\*$/m, 'Docker build context must exclude local environment files');
+
+    const relayService = JSON.parse(
+      readFileSync(join(ROOT, 'scripts/railway-services.json'), 'utf8'),
+    ).find((entry) => entry.entry === 'scripts/ais-relay.cjs');
+    for (const requiredWatch of [
+      'scripts/generate-inventory-facts.mjs',
+      'shared/source-attribution-manifest.json',
+      'public/.well-known/mcp/server-card.json',
+    ]) {
+      assert.ok(relayService.watchPatterns.includes(requiredWatch), `ais-relay must watch ${requiredWatch}`);
+    }
   });
 
   // The license chips are the whole point of the Pro Business release, and
@@ -321,15 +355,16 @@ describe('Product catalog freshness', () => {
     // from, so it is the single mirror to check. en.json stays hand-edited —
     // the generator does not sync highlightFeatures into the locales, which
     // is exactly the drift this test exists to catch.
-    const bundle = JSON.parse(
-      readFileSync(join(ROOT, 'shared/product-catalog.generated.json'), 'utf8'),
-    );
+    const bundle = generatedCatalog;
     const bundleHighlights = {};
     for (const [group, config] of Object.entries(bundle.tierConfig)) {
       if (Array.isArray(config.highlightFeatures)) bundleHighlights[group] = config.highlightFeatures;
     }
-    assert.ok(Object.keys(bundleHighlights).length >= 4,
-      'generated bundle: expected >=4 tier highlightFeature lists');
+    assert.deepEqual(
+      Object.keys(bundleHighlights).sort(),
+      ['api_business', 'api_starter', 'pro', 'pro_business'],
+      'the four sellable paid tier groups must retain their named license-chip contracts',
+    );
 
     // The edge module is a second emitted artifact of the same generator run;
     // a partial regen could leave it stale, so pin each chip string into it.
@@ -366,6 +401,7 @@ describe('Product catalog freshness', () => {
     assert.equal(typeof proBusiness.monthlyPrice, 'number', 'Pro Business should have monthlyPrice');
     assert.equal(typeof proBusiness.annualPrice, 'number', 'Pro Business should have annualPrice');
     assert.equal(proBusiness.planLimits?.mcpCallsPerDay, 250, 'Pro Business MCP daily limit should be visible');
+    assert.equal(proBusiness.planLimits?.dashboardAiCallsPerDay, 2500, 'Pro Business dashboard-AI daily limit should be visible');
   });
 
   it('generated files and pro locale placeholders are fresh (re-running generator produces same output)', () => {
@@ -378,6 +414,8 @@ describe('Product catalog freshness', () => {
     const currentRelayCatalog = readFileSync(join(ROOT, 'scripts/shared/product-catalog.generated.json'), 'utf8');
     const currentPublicFacts = readFileSync(join(ROOT, 'public/product-facts.json'), 'utf8');
     const currentRelayFacts = readFileSync(join(ROOT, 'scripts/shared/product-facts.generated.json'), 'utf8');
+    const currentRelayInventory = readFileSync(join(ROOT, 'scripts/shared/inventory-facts.generated.json'), 'utf8');
+    const currentEdgeInventory = readFileSync(join(ROOT, 'api/_inventory-facts.generated.js'), 'utf8');
     const currentLocales = readProLocaleFiles();
 
     // Re-run generator
@@ -392,6 +430,8 @@ describe('Product catalog freshness', () => {
     const freshRelayCatalog = readFileSync(join(ROOT, 'scripts/shared/product-catalog.generated.json'), 'utf8');
     const freshPublicFacts = readFileSync(join(ROOT, 'public/product-facts.json'), 'utf8');
     const freshRelayFacts = readFileSync(join(ROOT, 'scripts/shared/product-facts.generated.json'), 'utf8');
+    const freshRelayInventory = readFileSync(join(ROOT, 'scripts/shared/inventory-facts.generated.json'), 'utf8');
+    const freshEdgeInventory = readFileSync(join(ROOT, 'api/_inventory-facts.generated.js'), 'utf8');
     const freshLocales = readProLocaleFiles();
 
     assert.equal(currentProducts, freshProducts, 'products.generated.ts is stale — run: npm run product:facts');
@@ -403,6 +443,8 @@ describe('Product catalog freshness', () => {
     assert.equal(currentRelayCatalog, freshRelayCatalog, 'scripts/shared product catalog is stale — run: npm run product:facts');
     assert.equal(currentPublicFacts, freshPublicFacts, 'product-facts.json is stale — run: npm run product:facts');
     assert.equal(currentRelayFacts, freshRelayFacts, 'scripts/shared product facts are stale — run: npm run product:facts');
+    assert.equal(currentRelayInventory, freshRelayInventory, 'Railway inventory facts are stale — run: npm run inventory:facts');
+    assert.equal(currentEdgeInventory, freshEdgeInventory, 'Edge inventory facts are stale — run: npm run inventory:facts');
     assert.deepEqual(currentLocales, freshLocales, 'pro locale pricing feature placeholders are stale — run: npm run product:facts');
   });
 
@@ -454,9 +496,6 @@ describe('Product catalog freshness', () => {
   });
 
   it('generated fallback prices have entries for all self-serve products', () => {
-    const generatedCatalog = JSON.parse(
-      readFileSync(join(ROOT, 'shared/product-catalog.generated.json'), 'utf8'),
-    );
     const fallbackIds = Object.keys(generatedCatalog.fallbackPrices);
 
     // Every self-serve product with a price should have a fallback

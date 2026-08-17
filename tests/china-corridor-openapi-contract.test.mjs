@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { load as loadYaml } from 'js-yaml';
+
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 import {
   provenanceValueSchema,
   readChinaCorridorWireContract,
@@ -20,7 +22,7 @@ const provenanceDimensions = [...provenanceContract.dimensions].sort();
 const specs = [
   ['SupplyChainService JSON', JSON.parse(readFileSync(resolve(root, 'docs/api/SupplyChainService.openapi.json'), 'utf8'))],
   ['SupplyChainService YAML', loadYaml(readFileSync(resolve(root, 'docs/api/SupplyChainService.openapi.yaml'), 'utf8'))],
-  ['unified YAML', loadYaml(readFileSync(resolve(root, 'docs/api/worldmonitor.openapi.yaml'), 'utf8'))],
+  ['unified YAML', loadUnifiedOpenApiSpec()],
 ];
 
 function resolveRef(spec, schema) {

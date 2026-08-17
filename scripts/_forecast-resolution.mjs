@@ -306,7 +306,18 @@ function getInputsIndex(inputs) {
   // truncated title lets the lookup be an exact Map.get on pred.title, which
   // subsumes the exact + prefix match cases (FIX 7). First writer wins.
   const endDateByTitle = new Map();
-  const markets = inputs.predictionMarkets?.geopolitical || [];
+  // All three pools (#5733): settlement endDates must be resolvable for every
+  // market-anchored forecast, not just the geopolitical ones. Reading only
+  // `.geopolitical` was equivalent to "all markets" until the producer's pools
+  // became a disjoint partition. Inlined rather than importing
+  // allBootstrapMarkets from _prediction-classify.mjs so this module stays
+  // import-free (see the header contract); tests/forecast-resolution.test.mjs
+  // pins that both this and seed-forecasts read all three pools.
+  const markets = [
+    inputs.predictionMarkets?.geopolitical,
+    inputs.predictionMarkets?.tech,
+    inputs.predictionMarkets?.finance,
+  ].filter(Array.isArray).flat();
   for (const m of markets) {
     const mt = String(m?.title ?? '');
     if (!mt) continue;

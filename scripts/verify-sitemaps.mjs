@@ -9,6 +9,7 @@ import { getHtmlAttribute } from './discover-content-corpus-pages.mjs';
 const DEFAULT_ORIGIN = 'https://www.worldmonitor.app';
 const DEFAULT_TIMEOUT_MS = 15_000;
 const EXPECTED_PAGE_HOSTS = new Set([
+  'worldmonitor.app',
   'www.worldmonitor.app',
   'tech.worldmonitor.app',
   'finance.worldmonitor.app',
@@ -48,6 +49,7 @@ export function parseSitemapDocument(source) {
 export function classifySitemapUrl(value) {
   const url = new URL(value);
   const { pathname } = url;
+  if (url.hostname === 'worldmonitor.app' && pathname === '/mcp') return 'mcp';
   if (pathname === '/blog' || pathname.startsWith('/blog/')) return 'blog';
   if (pathname === '/docs' || pathname.startsWith('/docs/')) return 'docs';
   if (url.hostname !== 'www.worldmonitor.app' && pathname === '/dashboard') {
@@ -182,7 +184,14 @@ function validatePageLocation(value) {
   ) {
     return `sitemap page URL is not an allowed canonical WorldMonitor URL: ${value}`;
   }
-  if (url.hostname !== 'www.worldmonitor.app' && url.pathname !== '/dashboard') {
+  if (url.hostname === 'worldmonitor.app' && url.pathname !== '/mcp') {
+    return `apex sitemap URL must be the canonical MCP endpoint: ${value}`;
+  }
+  if (
+    url.hostname !== 'www.worldmonitor.app'
+    && url.hostname !== 'worldmonitor.app'
+    && url.pathname !== '/dashboard'
+  ) {
     return `variant sitemap URL must be its canonical dashboard: ${value}`;
   }
   if (classifySitemapUrl(value) === 'other') {
