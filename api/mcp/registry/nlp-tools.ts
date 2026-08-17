@@ -57,6 +57,7 @@ const KEYWORD_SPIKE_BASELINE_MS = 48 * 60 * 60 * 1000; // digest:accumulator ret
 const KEYWORD_SPIKE_CACHE_TTL_S = 600;
 const KEYWORD_SPIKE_MAX_STORIES = 800;
 const KEYWORD_SPIKE_MAX_STORED = 25;
+const KEYWORD_SPIKE_LINK_MAX_BYTES = 384;
 const DIGEST_ACCUMULATOR_KEY_MCP = 'digest:accumulator:v1:full:en';
 
 // Agent-addressable digest variants and their category keys. Kept as local
@@ -178,7 +179,7 @@ async function fetchNlpDigestItems(
     headers: { ...auth, 'User-Agent': NLP_UA },
     signal: AbortSignal.timeout(NLP_DIGEST_TIMEOUT_MS),
   });
-  assertToolFetchOk(res, 'list-feed-digest');
+  await assertToolFetchOk(res, 'list-feed-digest');
   const body = await res.json() as {
     categories?: Record<string, NlpDigestCategoryGroup>;
     feedStatuses?: Record<string, string>;
@@ -345,7 +346,7 @@ export const NLP_TOOLS: ToolDef[] = [
         // slow-but-successful cache-miss classifications the handler completes.
         signal: AbortSignal.timeout(25_000),
       });
-      assertToolFetchOk(res, 'classify-event');
+      await assertToolFetchOk(res, 'classify-event');
       const result = await res.json() as {
         classification?: { category?: string; subcategory?: string; severity?: string; confidence?: number };
       };
@@ -650,8 +651,8 @@ export const NLP_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_keyword_spikes',
-    _outputBudgetBytes: 16384,
-    description: 'Trending keyword, CVE, and APT/FIN threat-group spikes versus baseline, using the same term-candidacy and spike-decision math as the dashboard. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard\'s incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM.',
+    _outputBudgetBytes: 32768,
+    description: 'Keyword/CVE/APT spikes vs baseline, each with sourceNames and {title, source, link}. Uses the dashboard term-candidacy and spike-decision math. sourceNames are curated publisher names, or the original feed label when unmapped. sampleHeadlines are up to 3 newest recent-window stories; sourceNames is the complete publisher set. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard\'s incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -668,14 +669,31 @@ export const NLP_TOOLS: ToolDef[] = [
         spikes: {
           type: 'array',
           items: { type: 'object', required: [
-            'term', 'count', 'baseline', 'multiplier', 'uniqueSources', 'sampleHeadlines',
+            'term', 'count', 'baseline', 'multiplier', 'uniqueSources', 'sourceNames', 'sampleHeadlines',
           ], properties: {
             term: { type: 'string' },
             count: { type: 'number', description: 'Distinct stories mentioning the term inside the recent window.' },
             baseline: { type: 'number', description: 'Per-window story rate over the exact sampled pre-window duration (see baseline_hours). 0 means this term was absent from the available baseline cohort.' },
             multiplier: { type: 'number', description: 'count / baseline; 0 when the term has no baseline mentions.' },
-            uniqueSources: { type: 'number' },
-            sampleHeadlines: { type: 'array', items: { type: 'string' } },
+            uniqueSources: { type: 'number', description: 'Distinct publisher families in the recent window. Explained by sourceNames.' },
+            sourceNames: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Publisher names matching uniqueSources: curated masthead, otherwise the original feed label.',
+            },
+            sampleHeadlines: {
+              type: 'array',
+              description: 'Up to 3 newest recent-window stories by lastSeen. Not the full count; sourceNames is the complete publisher set.',
+              items: {
+                type: 'object',
+                required: ['title', 'source', 'link'],
+                properties: {
+                  title: { type: 'string' },
+                  source: { type: 'string', description: 'Publisher(s) that carried this collapsed title. Empty when the story has no usable feed labels. Not necessarily the outlet of link.' },
+                  link: { type: 'string', description: 'Canonical story URL from story:track:v1.link. Empty when the row has no link.' },
+                },
+              },
+            },
           } },
         },
         window_hours: { type: 'number' },
@@ -692,9 +710,8 @@ export const NLP_TOOLS: ToolDef[] = [
       const minCount = nlpClampInt(params.min_count, 2, 20, DEFAULT_MIN_SPIKE_COUNT);
       const limit = nlpClampInt(params.limit, 1, 25, 10);
 
-      // v2 invalidates v1 payloads computed without an independently sampled
-      // pre-window cohort (and before sample_truncated became required).
-      const cacheKey = `intelligence:keyword-spikes:mcp:v2:${windowHours}h:${minCount}`;
+      // v3 invalidates v2 title-only sampleHeadlines (no source/link/sourceNames).
+      const cacheKey = `intelligence:keyword-spikes:mcp:v3:${windowHours}h:${minCount}`;
       // A cache-read failure must degrade to live computation, not surface as a
       // tool error: readJsonFromUpstash throws on network failure (unlike
       // redisPipeline, which returns null).
@@ -797,10 +814,11 @@ export const NLP_TOOLS: ToolDef[] = [
       };
 
       const titles = new Map<string, string>();
+      const links = new Map<string, string>();
       const HMGET_CHUNK = 200;
       const hmgetChunks = chunkInto(entries, HMGET_CHUNK);
       const hmgetResults = await Promise.all(hmgetChunks.map(chunk => redisPipeline(
-        chunk.map(entry => ['HMGET', `story:track:v1:${entry.hash}`, 'title']),
+        chunk.map(entry => ['HMGET', `story:track:v1:${entry.hash}`, 'title', 'link']),
       ) as Promise<Array<{ result?: unknown }> | null>));
       hmgetChunks.forEach((chunk, chunkIdx) => {
         const res = hmgetResults[chunkIdx];
@@ -809,7 +827,7 @@ export const NLP_TOOLS: ToolDef[] = [
           const reply = res?.[idx];
           const fields = reply?.result;
           if (!reply || Object.prototype.hasOwnProperty.call(reply, 'error')
-            || !Array.isArray(fields) || fields.length !== 1) {
+            || !Array.isArray(fields) || fields.length !== 2) {
             degraded = true;
             return;
           }
@@ -819,6 +837,8 @@ export const NLP_TOOLS: ToolDef[] = [
             return;
           }
           titles.set(entry.hash, title);
+          const link = fields[1];
+          if (typeof link === 'string' && link) links.set(entry.hash, link);
         });
       });
 
@@ -852,6 +872,7 @@ export const NLP_TOOLS: ToolDef[] = [
           title: titles.get(entry.hash) as string,
           lastSeenMs: entry.lastSeenMs,
           sources: sourcesByHash.get(entry.hash) ?? [],
+          link: links.get(entry.hash) ?? '',
         }));
 
       const spikes = computeKeywordSpikesFromStories(stories, {
@@ -866,7 +887,12 @@ export const NLP_TOOLS: ToolDef[] = [
         baseline: Math.round(spike.baseline * 100) / 100,
         multiplier: Math.round(spike.multiplier * 100) / 100,
         uniqueSources: spike.uniqueSources,
-        sampleHeadlines: spike.sampleHeadlines,
+        sourceNames: spike.sourceNames,
+        sampleHeadlines: spike.sampleHeadlines.map((sample) => ({
+          title: sample.title,
+          source: sample.source,
+          link: nlpTruncateUtf8(sample.link, KEYWORD_SPIKE_LINK_MAX_BYTES),
+        })),
       }));
 
       const payload = {

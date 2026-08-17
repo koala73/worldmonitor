@@ -66,6 +66,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/bounded-body.ts",
+      "category": "internal-helper",
+      "reason": "Bounded sibling-response body reader shared by MCP billing-denial and downstream error classification (#6559). Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/downstream.ts",
       "category": "internal-helper",
       "reason": "Canonical sibling-request routing and credential-safe downstream error classification for MCP RPC tools (#5514). Pure helper module for the external-protocol MCP handler family above — exports no route.",
