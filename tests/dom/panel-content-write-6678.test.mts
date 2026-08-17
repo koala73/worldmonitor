@@ -441,8 +441,8 @@ describe('locked-panel error-state clear (#6714)', () => {
     flags(panel).loading = false;
     flags(panel).error = 'source down';
     (panel as unknown as { render(): void }).render();
-    expect(countdownText(panel)).not.toBeNull('precondition: the error state is visible');
-    expect(internals(panel).retryAttempt).toBeGreaterThan(0, 'precondition: the backoff rung advanced');
+    expect(countdownText(panel), 'precondition: the error state is visible').not.toBeNull();
+    expect(internals(panel).retryAttempt, 'precondition: the backoff rung advanced').toBeGreaterThan(0);
 
     // 2. Lock the panel (the fail -> lock half of the sequence).
     panel.showLocked(['Premium feature']);
@@ -454,9 +454,9 @@ describe('locked-panel error-state clear (#6714)', () => {
     flags(panel).error = null;
     (panel as unknown as { render(): void }).render();
 
-    expect(lockedCta(panel)).not.toBeNull('the write still bails on the lock');
-    expect(internals(panel).retryAttempt).toBe(0, 'the backoff rung is cleared, not stranded');
-    expect(countdownText(panel)).toBeNull('the error chip is cleared, not latched over the CTA');
+    expect(lockedCta(panel), 'the write still bails on the lock').not.toBeNull();
+    expect(internals(panel).retryAttempt, 'the backoff rung is cleared, not stranded').toBe(0);
+    expect(countdownText(panel), 'the error chip is cleared, not latched over the CTA').toBeNull();
 
     panel.destroy();
   });
