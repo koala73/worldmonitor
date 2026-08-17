@@ -75,7 +75,10 @@ export class DeductionPanel extends Panel {
             this.resultContainer
         );
 
-        replaceChildren(this.content, container);
+        // Route through the sanctioned helper (#6557): the form IS the
+        // panel's authoritative content — the atomic replace (with error
+        // clear and pending-write cancel) is the correct semantic.
+        this.setContentNodes(container);
 
         /* Styles moved to panels.css (PERF-012) */
 
