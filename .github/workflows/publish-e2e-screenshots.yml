@@ -23,6 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Download chrome gallery artifact
+        id: download-gallery
         continue-on-error: true
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
@@ -30,6 +31,10 @@ jobs:
           path: gallery
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: ${{ vars.E2E_SCREENSHOT_BUCKET != '' && secrets.E2E_SCREENSHOT_S3_ACCESS_KEY_ID != '' }}
+        with:
+          node-version: '24'
       - name: Sync gallery to object storage
         id: sync
         if: ${{ vars.E2E_SCREENSHOT_BUCKET != '' && secrets.E2E_SCREENSHOT_S3_ACCESS_KEY_ID != '' }}
@@ -40,15 +45,46 @@ jobs:
           AWS_EC2_METADATA_DISABLED: 'true'
           S3_BUCKET: ${{ vars.E2E_SCREENSHOT_BUCKET }}
           S3_ENDPOINT: ${{ vars.E2E_SCREENSHOT_ENDPOINT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
         run: |
+          set -euo pipefail
+          if [ -z "${S3_ENDPOINT:-}" ]; then
+            echo "E2E_SCREENSHOT_ENDPOINT is unset while bucket and access key are configured."
+            exit 1
+          fi
+
+          chrome_conclusion="$(
+            curl -fsS \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GH_REPO}/actions/runs/${WORKFLOW_RUN_ID}/jobs?per_page=100" \
+            | node -e '
+              const payload = JSON.parse(require("fs").readFileSync(0, "utf8"));
+              const job = (payload.jobs || []).find((item) => item.name === "chrome-gallery");
+              process.stdout.write(job ? String(job.conclusion || job.status || "") : "absent");
+            '
+          )"
+
           if [ ! -f gallery/index.html ]; then
-            echo "No gallery artifact on this run; skipping publish."
+            if [ "$chrome_conclusion" = "success" ]; then
+              echo "chrome-gallery succeeded but the gallery artifact is missing."
+              exit 1
+            fi
+            echo "No gallery artifact (chrome-gallery=${chrome_conclusion}); skipping publish."
             exit 0
           fi
-          if [ -z "$S3_ENDPOINT" ]; then
-            echo "E2E_SCREENSHOT_ENDPOINT is unset; skipping publish."
+
+          png_count="$(find gallery/screenshots/images -type f -name '*.png' 2>/dev/null | wc -l | tr -d ' ')"
+          if [ "$png_count" -lt 1 ]; then
+            echo "Gallery has no PNG captures; not overwriting the live album."
             exit 0
           fi
+
+          aws s3 cp "s3://${S3_BUCKET}/playwright/history.json" gallery/previous-history.json \
+            --endpoint-url "$S3_ENDPOINT" || true
+          node scripts/playwright-screenshot-gallery.mjs --merge-history gallery/previous-history.json gallery
           aws s3 sync gallery/ "s3://${S3_BUCKET}/playwright/" --endpoint-url "$S3_ENDPOINT"
           echo "Published screenshot gallery to s3://${S3_BUCKET}/playwright/"
       - name: Note when object storage is not configured

@@ -4,9 +4,11 @@
  *
  * Usage:
  *   node scripts/playwright-screenshot-gallery.mjs <results-dir> <output-dir>
+ *   node scripts/playwright-screenshot-gallery.mjs --merge-history <existing-history.json> <output-dir>
  */
-import { copyFile, mkdir, readdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const MAX_HISTORY = 100;
 
@@ -156,7 +158,7 @@ export function renderDashboard(history) {
       card.append(labelEl, valueEl);
       summary.append(card);
     }
-    for (const run of history) {
+    for (const [index, run] of history.entries()) {
       const row = document.createElement("tr");
       const result = document.createElement("td");
       const status = document.createElement("span");
@@ -176,9 +178,10 @@ export function renderDashboard(history) {
       published.textContent = new Date(run.createdAt).toLocaleString();
       const links = document.createElement("td");
       links.className = "links";
-      if (run.screenshotsUrl) {
+      const screenshotsHref = run.screenshotsUrl || (index === 0 ? "screenshots/index.html" : "");
+      if (screenshotsHref) {
         const a = document.createElement("a");
-        a.href = run.screenshotsUrl;
+        a.href = screenshotsHref;
         a.textContent = "Screenshots";
         links.append(a);
       }
@@ -336,6 +339,28 @@ export async function buildGallery({ resultsDir, outputDir, history = [], meta }
   return { screenshots, history: nextHistory };
 }
 
+async function readJsonFile(filePath, fallback) {
+  try {
+    return JSON.parse(await readFile(filePath, 'utf8'));
+  } catch (error) {
+    if (error && (error.code === 'ENOENT' || error instanceof SyntaxError)) return fallback;
+    throw error;
+  }
+}
+
+export async function mergePublishedHistory({ outputDir, existingHistoryPath }) {
+  const currentHistory = await readJsonFile(path.join(outputDir, 'history.json'), []);
+  const currentRun = Array.isArray(currentHistory) ? currentHistory[0] : null;
+  if (!isPublishedRun(currentRun)) {
+    throw new Error('gallery/history.json does not contain a publishable current run');
+  }
+  const existing = existingHistoryPath ? await readJsonFile(existingHistoryPath, []) : [];
+  const nextHistory = updateRunHistory(existing, currentRun);
+  await writeFile(path.join(outputDir, 'history.json'), `${JSON.stringify(nextHistory, null, 2)}\n`);
+  await writeFile(path.join(outputDir, 'index.html'), renderDashboard(nextHistory));
+  return { history: nextHistory };
+}
+
 function readMetaFromEnv() {
   const now = new Date().toISOString();
   return {
@@ -353,16 +378,29 @@ function readMetaFromEnv() {
   };
 }
 
-const invokedDirectly = import.meta.url === `file://${process.argv[1]}`;
+const invokedDirectly = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (invokedDirectly) {
-  const [resultsDir, outputDir] = process.argv.slice(2);
-  if (!resultsDir || !outputDir) {
-    throw new Error('Usage: node scripts/playwright-screenshot-gallery.mjs <results-dir> <output-dir>');
+  const args = process.argv.slice(2);
+  if (args[0] === '--merge-history') {
+    const existingHistoryPath = args[1];
+    const outputDir = args[2];
+    if (!existingHistoryPath || !outputDir) {
+      throw new Error(
+        'Usage: node scripts/playwright-screenshot-gallery.mjs --merge-history <existing-history.json> <output-dir>',
+      );
+    }
+    const { history } = await mergePublishedHistory({ outputDir, existingHistoryPath });
+    console.log(`Merged ${history.length} runs into ${outputDir}`);
+  } else {
+    const [resultsDir, outputDir] = args;
+    if (!resultsDir || !outputDir) {
+      throw new Error('Usage: node scripts/playwright-screenshot-gallery.mjs <results-dir> <output-dir>');
+    }
+    const { screenshots } = await buildGallery({
+      resultsDir,
+      outputDir,
+      meta: readMetaFromEnv(),
+    });
+    console.log(`Wrote ${screenshots.length} screenshots to ${outputDir}`);
   }
-  const { screenshots } = await buildGallery({
-    resultsDir,
-    outputDir,
-    meta: readMetaFromEnv(),
-  });
-  console.log(`Wrote ${screenshots.length} screenshots to ${outputDir}`);
 }

@@ -71,14 +71,25 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
       - run: npx playwright install-deps chromium
         if: steps.playwright-cache.outputs.cache-hit == 'true'
-      - name: Run committed map goldens
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'visual-goldens' }}
-        run: npm run test:e2e:visual
-      - name: Upload visual-goldens Playwright artifacts
+      - name: Run committed full map goldens
+        if: ${{ !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'visual-goldens') }}
+        run: npm run test:e2e:visual:full
+      - name: Upload full visual-goldens Playwright artifacts
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: playwright-visual-goldens-${{ github.run_id }}-${{ github.run_attempt }}
+          name: playwright-visual-goldens-full-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Run committed tech map goldens
+        if: ${{ !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'visual-goldens') }}
+        run: npm run test:e2e:visual:tech
+      - name: Upload tech visual-goldens Playwright artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-visual-goldens-tech-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14

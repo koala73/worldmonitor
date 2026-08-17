@@ -48,7 +48,8 @@ describe('E2E visual workflow contract', () => {
     assert.equal(typeof packageJson.scripts['test:e2e:chrome'], 'string');
     assert.match(packageJson.scripts['test:e2e:chrome'], /e2e\/visual-chrome\.spec\.ts/);
     assert.match(visualWorkflowSource, /npm run test:e2e:chrome/);
-    assert.match(visualWorkflowSource, /npm run test:e2e:visual/);
+    assert.match(visualWorkflowSource, /npm run test:e2e:visual:full/);
+    assert.match(visualWorkflowSource, /npm run test:e2e:visual:tech/);
   });
 
   it('path-filters pull requests so unrelated PRs do not boot Playwright', () => {
@@ -108,10 +109,17 @@ describe('E2E visual workflow contract', () => {
   it('publishes to object storage only when the screenshot bucket is configured', () => {
     assert.deepEqual(publish.on.workflow_run.workflows, ['E2E Visual']);
     const job = publish.jobs.publish;
-    assert.ok(job.if.includes("head_branch == 'main'") || job.if.includes('schedule'));
+    assert.match(String(job.if), /head_branch == 'main'/);
+    assert.match(String(job.if), /event != 'pull_request'/);
+    assert.match(String(job.if), /conclusion != 'cancelled'/);
     const sync = jobSteps(job).find((step) => step.id === 'sync' || /aws s3 sync/.test(String(step.run ?? '')));
     assert.ok(sync, 'publish job must define an S3 sync step');
     assert.match(String(sync.if ?? job.if), /E2E_SCREENSHOT_BUCKET|secrets/);
+    assert.match(String(sync.run), /E2E_SCREENSHOT_ENDPOINT is unset/);
+    assert.match(String(sync.run), /exit 1/);
+    assert.match(String(sync.run), /no PNG captures/);
+    assert.match(String(sync.run), /--merge-history/);
+    assert.match(String(sync.run), /chrome-gallery succeeded but the gallery artifact is missing/);
   });
 
   it('apt-groups visual scene enables cyberThreats so the lazy layer can mount', () => {
@@ -134,9 +142,12 @@ describe('E2E visual workflow contract', () => {
     const missing = [];
     for (const [, id, variant] of scenes) {
       if (skipped.has(variant)) continue;
-      const screenshotVariant = variant === 'both' || variant === 'energy' ? 'full' : variant;
-      const name = `layer-${screenshotVariant}-${id}.png`;
-      if (!existsSync(resolve(snapDir, name))) missing.push(name);
+      const screenshotVariants =
+        variant === 'both' ? ['full', 'tech'] : variant === 'energy' ? ['full'] : [variant];
+      for (const screenshotVariant of screenshotVariants) {
+        const name = `layer-${screenshotVariant}-${id}.png`;
+        if (!existsSync(resolve(snapDir, name))) missing.push(name);
+      }
     }
     assert.deepEqual(missing, [], `missing committed goldens: ${missing.join(', ')}`);
   });

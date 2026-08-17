@@ -1,16 +1,22 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   buildGallery,
   escapeHtml,
+  mergePublishedHistory,
+  renderDashboard,
   renderScreenshotGallery,
   titleFromFileName,
   updateRunHistory,
 } from '../scripts/playwright-screenshot-gallery.mjs';
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const PNG_BYTES = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -105,6 +111,84 @@ describe('playwright screenshot gallery', () => {
       assert.match(gallery, /07-mobile-harness/);
       assert.match(readFileSync(join(output, 'index.html'), 'utf8'), /World Monitor/);
       assert.match(readFileSync(join(output, 'history.json'), 'utf8'), /"id": "315"/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('links the latest run to the sibling screenshot page when screenshotsUrl is empty', () => {
+    const html = renderDashboard([
+      {
+        attempt: 1,
+        branch: 'main',
+        createdAt: '2026-08-17T12:00:00.000Z',
+        event: 'schedule',
+        id: '315',
+        reportUrl: '',
+        result: 'success',
+        runNumber: 12,
+        runUrl: '',
+        screenshotCount: 2,
+        screenshotsUrl: '',
+        sha: 'deadbeefcafebabe',
+      },
+    ]);
+    assert.match(html, /screenshots\/index\.html/);
+  });
+
+  it('writes a gallery when invoked as a relative CLI path', () => {
+    const root = mkdtempSync(join(tmpdir(), 'wm-gallery-cli-'));
+    try {
+      const results = join(root, 'test-results');
+      const output = join(root, 'gallery');
+      mkdirSync(results, { recursive: true });
+      writeFileSync(join(results, '01-harness-ready.png'), PNG_BYTES);
+
+      const spawned = spawnSync(
+        process.execPath,
+        ['scripts/playwright-screenshot-gallery.mjs', results, output],
+        { cwd: repoRoot, encoding: 'utf8' },
+      );
+      assert.equal(spawned.status, 0, spawned.stderr || spawned.stdout);
+      assert.ok(existsSync(join(output, 'index.html')));
+      assert.ok(existsSync(join(output, 'screenshots', 'index.html')));
+      assert.match(spawned.stdout, /Wrote 1 screenshots/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('merges a prior history.json into the published dashboard', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'wm-gallery-merge-'));
+    try {
+      const output = join(root, 'gallery');
+      mkdirSync(output, { recursive: true });
+      const current = {
+        attempt: 1,
+        branch: 'main',
+        createdAt: '2026-08-17T12:00:00.000Z',
+        event: 'schedule',
+        id: '200',
+        reportUrl: '',
+        result: 'success',
+        runNumber: 9,
+        runUrl: '',
+        screenshotCount: 2,
+        screenshotsUrl: '',
+        sha: '2222222',
+      };
+      const previous = { ...current, id: '100', runNumber: 8, sha: '1111111', createdAt: '2026-08-16T10:00:00.000Z' };
+      writeFileSync(join(output, 'history.json'), `${JSON.stringify([current], null, 2)}\n`);
+      writeFileSync(join(root, 'previous-history.json'), `${JSON.stringify([previous], null, 2)}\n`);
+
+      const { history } = await mergePublishedHistory({
+        outputDir: output,
+        existingHistoryPath: join(root, 'previous-history.json'),
+      });
+      assert.equal(history[0]?.id, '200');
+      assert.equal(history[1]?.id, '100');
+      assert.match(readFileSync(join(output, 'index.html'), 'utf8'), /screenshots\/index\.html/);
+      assert.match(readFileSync(join(output, 'history.json'), 'utf8'), /"id": "100"/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
