@@ -1267,35 +1267,6 @@ const ACTIVATION_MARKERS = {
   fredRatesSeeder: 'seed-activated:economic:fred-rates:v1',
 };
 
-// #6059 — consumer-price coverage rollout handshake.
-//
-// The coverage schema ships to Vercel the moment the PR merges, but the keys it
-// reads can only exist after consumer-prices-core's next daily
-// scrape(02:00)→aggregate(02:15)→publish(02:30 UTC) window. #6022 merged at
-// 2026-08-02 10:55 UTC — after that day's window — so all eight markets read
-// EMPTY (crit) and global health went UNHEALTHY for ~15h while the underlying
-// consumer-price data was fine. This is the deployment-order bridge for that.
-//
-// Two independent gates, both required, so the softened state can never become
-// permanent and can never come back once a market has published:
-//
-//   1. ACTIVATION (one-way, durable). consumer-prices-core/src/jobs/publish.ts
-//      SETs the marker below — no TTL — only after it writes a coverage
-//      snapshot that actually attempted pages for that market. Once the marker
-//      exists the market is strict forever: absent/empty/stale/below-threshold
-//      coverage classifies exactly as it would without this block.
-//   2. DEADLINE (bounded). Softening also stops at a wall-clock timestamp
-//      compiled into this file, whether or not the producer ever ran. A missed
-//      or failed first tick therefore escalates to EMPTY (crit) on its own.
-//
-// The marker key carries the schema version, so a future coverage-schema change
-// bumps `v1` and gets its own separately-reviewed rollout window instead of
-// inheriting activation earned by the old shape.
-const CONSUMER_PRICE_COVERAGE_SCHEMA_VERSION = 1;
-const consumerPriceCoverageActivationKey = (market) => (
-  `seed-activated:consumer-prices:coverage:v${CONSUMER_PRICE_COVERAGE_SCHEMA_VERSION}:${market}`
-);
-
 // #6182 — the terminal failure class behind a partial market's counts.
 //
 // The vocabulary is per-producer and CLOSED, like every other code health
@@ -1327,47 +1298,6 @@ function sanitizeCoverageFailureReasons(raw) {
     if (Number.isSafeInteger(count) && count > 0) clean[reason] = count;
   }
   return clean;
-}
-
-// Per-market and deliberately not a shared constant: adding a ninth market
-// later must open a fresh, separately-reviewed window for THAT market only.
-// A single shared deadline would silently re-soften the eight that already
-// shipped if one of their activation markers had failed to write.
-//
-// 06:00Z is 3.5h after the publish job starts — one complete scrape/aggregate/
-// publish window plus slack, and still ~20h before the following tick, so a
-// missed first run cannot hide behind the window for a second day.
-// `from` is the deploy that introduced the market's coverage schema; `until` is
-// when its softening stops. Both are recorded so the "one complete daily window"
-// bound is checkable per market forever — anchoring the check to a single
-// historical deploy constant instead would make a ninth market added months from
-// now unable to declare a valid window at all.
-// The 2026-08-02 eight-market window closed 2026-08-03T06:00:00Z and was
-// pruned after its 14-day grace. Add a new market with its own { from, until }.
-// Do not revive the closed eight-market dates — that would re-soften live keys.
-const CONSUMER_PRICE_COVERAGE_ROLLOUT = Object.freeze({});
-const CONSUMER_PRICE_COVERAGE_NAMES = new Set(
-  CONSUMER_PRICE_HEALTH_MARKETS.map(consumerPriceCoverageHealthName),
-);
-
-// name -> epoch ms after which ROLLOUT_PENDING softening is no longer offered.
-// Absent name = no rollout window; the key is strict from the first sweep.
-const ROLLOUT_PENDING_UNTIL_MS = {};
-const ROLLOUT_PENDING_FROM_MS = {};
-for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
-  const name = consumerPriceCoverageHealthName(market);
-  // Probe every coverage market even after its window is pruned so `activated`
-  // can still tell "published, then broke" from "never ran".
-  ACTIVATION_MARKERS[name] = consumerPriceCoverageActivationKey(market);
-  const window = CONSUMER_PRICE_COVERAGE_ROLLOUT[market];
-  const until = Date.parse(window?.until ?? '');
-  const from = Date.parse(window?.from ?? '');
-  if (Number.isFinite(until)) ROLLOUT_PENDING_UNTIL_MS[name] = until;
-  if (Number.isFinite(from)) ROLLOUT_PENDING_FROM_MS[name] = from;
-}
-
-function resolveRolloutPendingUntil(name, ctx, registry = ROLLOUT_PENDING_UNTIL_MS) {
-  return ctx.rolloutPendingUntilMs?.get(name) ?? registry[name];
 }
 
 function fredRatesRolloutCommands(now, vercelEnv = process.env.VERCEL_ENV) {
@@ -1949,16 +1879,13 @@ function classifyKey(name, redisKey, opts, ctx) {
   // takes the opposite policy on the same unknown state.
   const isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
     && ctx.activationStates?.get(name) !== true;
-  // #6059 rollout bridge — see ROLLOUT_PENDING_UNTIL_MS. Unlike ON_DEMAND this
-  // needs no per-registry opt-in (`allowOnDemand`): the window is bounded by a
-  // deadline and revoked by a durable marker, so it cannot rot into a silent
-  // permanent exemption the way a registry-wide soften could. Most deadlines
-  // are compiled historical values; a new producer can instead supply a
-  // deployment-relative deadline through ctx.rolloutPendingUntilMs.
+  // Unlike ON_DEMAND, runtime rollout windows need no per-registry opt-in
+  // (`allowOnDemand`): each window is bounded by a deployment-relative deadline
+  // supplied through ctx.rolloutPendingUntilMs and revoked by a durable marker.
   // Soft on an unreadable marker for the same reasons as ON_DEMAND above, plus
   // the deadline: an unknown state can delay strictness only until
   // `rolloutPendingUntil`, so it can never grant a grace that never expires.
-  const rolloutPendingUntil = resolveRolloutPendingUntil(name, ctx);
+  const rolloutPendingUntil = ctx.rolloutPendingUntilMs?.get(name);
   const isRolloutPending = rolloutPendingUntil != null
     && now < rolloutPendingUntil
     && ctx.activationStates?.get(name) !== true;
@@ -2226,17 +2153,16 @@ function classifyKey(name, redisKey, opts, ctx) {
   if (contentFreshnessActivationWindow) {
     entry.contentFreshnessPendingUntil = new Date(contentFreshnessActivationWindow.untilMs).toISOString();
   }
-  // Activation is emitted for EVERY status on a consumer-price coverage key
-  // (and on any other key that still has an open rollout window). The field
-  // must survive after the window is pruned — `rolloutPendingUntil` exists
-  // precisely when the market has NOT activated, so on its own it can never
-  // answer "which markets have gone live?". Without this, telling
-  // "activated-then-broke" apart from "never ran" means EXISTS-probing Redis
-  // by hand. ctx.activationStates already holds the answer at classify time.
+  // Activation is emitted for EVERY status on a rollout-registered key, not just
+  // the pending one — `rolloutPendingUntil` exists precisely when the market has
+  // NOT activated, so on its own it can never answer "which markets have gone
+  // live?". Without this, auditing rollout progress (or telling
+  // "activated-then-broke" apart from "never ran") means EXISTS-probing Redis by
+  // hand. ctx.activationStates already holds the answer at classify time.
   // Reported as "read AND present", so an unreadable marker publishes `false` —
   // the same soft-on-unknown reading `isRolloutPending` takes above, kept
   // aligned so this flag can never contradict the status it accompanies.
-  if (rolloutPendingUntil != null || CONSUMER_PRICE_COVERAGE_NAMES.has(name)) {
+  if (rolloutPendingUntil != null) {
     entry.activated = ctx.activationStates?.get(name) === true;
   }
   if (seedAge !== null) entry.seedAgeMin = seedAge;
@@ -2547,13 +2473,6 @@ function hasExpiredActivationGrace(snapshot, now, { includeRollout = true, inclu
     }
   }
   return false;
-}
-
-// Retained as a named test seam: tests/consumer-prices-coverage-rollout.test.mjs
-// asserts the rollout-only half of the shared predicate. Production reads the
-// general function directly, so both graces are checked on every cache hit.
-function hasExpiredRolloutPending(snapshot, now) {
-  return hasExpiredActivationGrace(snapshot, now, { includeContent: false });
 }
 
 /**
@@ -3174,22 +3093,15 @@ export const __testing__ = {
   collectFailureLogProblems,
   ACTIVATION_MARKERS,
   CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
-  ROLLOUT_PENDING_UNTIL_MS,
-  ROLLOUT_PENDING_FROM_MS,
-  CONSUMER_PRICE_COVERAGE_ROLLOUT,
-  CONSUMER_PRICE_COVERAGE_NAMES,
-  resolveRolloutPendingUntil,
   RUNTIME_ROLLOUT_PENDING_POLICIES,
   FRED_RATES_ROLLOUT_DEADLINE_KEY,
   FRED_RATES_ROLLOUT_DURATION_MS,
   fredRatesRolloutCommands,
   parseFredRatesRolloutUntil,
   computeOverallStatus,
-  hasExpiredRolloutPending,
   hasExpiredActivationGrace,
   snapshotTtlSeconds,
   CONSUMER_PRICE_HEALTH_MARKETS,
-  consumerPriceCoverageActivationKey,
   consumerPriceCoverageHealthName,
   STATUS_COUNTS,
   // List-typed data keys + the command builder that measures them with LLEN
