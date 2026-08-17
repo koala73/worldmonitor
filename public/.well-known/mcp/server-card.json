@@ -282,7 +282,7 @@
     },
     {
       "name": "get_keyword_spikes",
-      "description": "Trending keyword, CVE, and APT/FIN threat-group spikes versus baseline, using the same term-candidacy and spike-decision math as the dashboard. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard's incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM."
+      "description": "Keyword/CVE/APT spikes vs baseline, each with sourceNames and {title, source, link}. Uses the dashboard term-candidacy and spike-decision math. sourceNames are curated publisher names, or the original feed label when unmapped. sampleHeadlines are up to 3 newest recent-window stories; sourceNames is the complete publisher set. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard's incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM."
     },
     {
       "name": "get_sources",
