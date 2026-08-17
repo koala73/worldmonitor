@@ -113,4 +113,15 @@ describe('E2E visual workflow contract', () => {
     assert.ok(sync, 'publish job must define an S3 sync step');
     assert.match(String(sync.if ?? job.if), /E2E_SCREENSHOT_BUCKET|secrets/);
   });
+
+  it('apt-groups visual scene enables cyberThreats so the lazy layer can mount', () => {
+    const harness = read('src/e2e/map-harness.ts');
+    const scene = harness.match(/id: 'apt-groups-z5',[\s\S]*?enabledLayers: \[([^\]]*)\]/);
+    assert.ok(scene, 'apt-groups-z5 scenario must exist');
+    assert.match(
+      scene[1],
+      /cyberThreats/,
+      'apt-groups-layer is only created when cyberThreats is on',
+    );
+  });
 });
