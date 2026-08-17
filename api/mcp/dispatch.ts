@@ -3,7 +3,7 @@ import { readExistsFlags, readJsonFromUpstash, redisPipeline } from '../_upstash
 import { captureSilentError } from '../_sentry-edge.js';
 import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
 import { getMcpBillingVerificationDenial } from './auth';
-import { BillingDenialError } from './billing-denial';
+import { BillingDenialError, RpcValidationError } from './billing-denial';
 import {
   BothSourcesFailedError,
   createMcpToolExecutionContext,
@@ -441,6 +441,15 @@ export async function dispatchToolsCall(
           failed_inputs: err.failedInputs,
         },
       );
+    }
+    // #6559: proto/sebuf ValidationError 400s keep their field/detail pairs as
+    // structured JSON-RPC error data (`error.data.violations`). This is NOT a
+    // tools/call result envelope (`result.content` / `isError`) — agents read
+    // `error.code === -32602` and `error.data.violations[]`.
+    if (err instanceof RpcValidationError) {
+      return rpcError(id, -32602, 'Invalid params', corsHeaders, {
+        violations: err.violations,
+      });
     }
     return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders);
   }
