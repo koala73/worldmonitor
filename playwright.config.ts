@@ -1,8 +1,20 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const requireWebMcp = process.env.WM_REQUIRE_WEBMCP === '1';
+const webMcpChromeChannel = process.env.WM_WEBMCP_CHROME_CHANNEL?.trim() || 'chrome';
+const webMcpChromeExecutablePath = process.env.WM_WEBMCP_CHROME_EXECUTABLE_PATH?.trim();
+
 export default defineConfig({
   testDir: './e2e',
-  workers: 1,
+  // CI: the smoke specs are dominated by fixed settle windows (eight 8 s
+  // waits in dashboard-news-request-budget alone), so running them serially
+  // just stacks idle sleeps — 4 workers overlap them. Tests already isolate
+  // via per-test contexts and fresh seeded profiles. Locally stay at 1 so a
+  // dev run keeps deterministic ordering and predictable machine load.
+  // fullyParallel lets tests WITHIN a file spread across workers; with 1
+  // worker (local) it changes nothing.
+  workers: process.env.CI ? 4 : 1,
+  fullyParallel: true,
   timeout: 90000,
   expect: {
     timeout: 30000,
@@ -37,8 +49,19 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        // The bundled Playwright Chromium can lag the WebMCP origin-trial
+        // milestone. Strict smoke runs deliberately use an installed Chrome
+        // channel and the command-line equivalent of
+        // chrome://flags/#enable-webmcp-testing. If Chrome is absent or too
+        // old, the smoke fails instead of silently exercising the no-op path.
+        ...(requireWebMcp && !webMcpChromeExecutablePath ? { channel: webMcpChromeChannel } : {}),
         launchOptions: {
-          args: ['--use-angle=swiftshader', '--use-gl=swiftshader'],
+          ...(webMcpChromeExecutablePath ? { executablePath: webMcpChromeExecutablePath } : {}),
+          args: [
+            '--use-angle=swiftshader',
+            '--use-gl=swiftshader',
+            ...(requireWebMcp ? ['--enable-features=WebMCPTesting'] : []),
+          ],
         },
       },
     },

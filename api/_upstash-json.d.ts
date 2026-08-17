@@ -31,10 +31,15 @@ export declare function getRedisCredentials(): {
   token: string;
 } | null;
 
+export declare function readExistsFlags(
+  results: unknown,
+  keys: readonly string[],
+): Map<string, boolean>;
+
 export declare function redisPipeline(
   commands: Array<Array<string | number>>,
   timeoutMs?: number,
-): Promise<Array<{ result: unknown }> | null>;
+): Promise<Array<{ result?: unknown; error?: unknown }> | null>;
 
 export declare function setCachedData(
   key: string,

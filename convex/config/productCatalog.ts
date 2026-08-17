@@ -29,6 +29,22 @@ export const PUBLIC_PRODUCT_METADATA = {
   availability: "https://schema.org/InStock",
 } as const;
 
+/**
+ * Independent Company Monitoring rollout controls.
+ *
+ * U1 defines the gates but deliberately keeps every behavior dark. Later
+ * units may wire one gate at a time only after their owning promotion gate
+ * passes; no aggregate flag may silently enable the entire product.
+ */
+export const COMPANY_MONITORING_ROLLOUT_FLAGS = {
+  exaProvider: false,
+  xProvider: false,
+  publication: false,
+  restWrites: false,
+  ui: false,
+  alerts: false,
+} as const;
+
 export type PlanLimits = {
   /**
    * Daily REST/gateway request allowance. `null` means unlimited for plans
@@ -45,6 +61,12 @@ export type PlanLimits = {
    * has a Pro daily counter; API-tier counters need scanner/source support.
    */
   mcpCallsPerDay: number | null;
+  /**
+   * Daily dashboard-AI/REST LLM allowance. This is deliberately separate from
+   * `mcpCallsPerDay`: MCP clients and dashboard/API callers have different
+   * workloads and must not share the same product limit by accident.
+   */
+  dashboardAiCallsPerDay: number | null;
   /**
    * Per-minute MCP burst allowance. Notices stay disabled until limiter-hit
    * telemetry is durable enough to scan.
@@ -66,13 +88,11 @@ export type PlanFeatures = {
   planLimits?: PlanLimits;
   prioritySupport: boolean;
   /**
-   * Display metadata ONLY — the formats a tier ADVERTISES. As of #4974 NO
-   * code consumes this array to gate any behavior, and formats listed here
-   * are not guaranteed to have exporters ("xlsx" was advertised for months
-   * with zero implementation). The enforcement field for data export is
-   * `dataExport` below: gate on that, never on this array's contents or
-   * length. Keep the two in agreement — a tier with `dataExport: false`
-   * advertises nothing.
+   * Format allowlist for an entitled export surface. `dataExport` below is
+   * the first-stage lock: when it is false the entire surface is unavailable.
+   * Once that gate is open, consumers expose only supported CSV/JSON/PDF
+   * values declared here and ignore unknown values. Keep the two fields in
+   * agreement — a tier with `dataExport: false` advertises no formats.
    */
   exportFormats: string[];
   /**
@@ -102,10 +122,11 @@ export type PlanFeatures = {
    */
   apiDailyAllowance?: number;
   /**
-   * Data-export entitlement — the ENFORCEMENT field for CSV/JSON/PDF export
-   * (plan 2026-07-25-001). Distinct from `exportFormats`, which only says
-   * what a tier advertises. `tier` cannot stand in for it: Pro Business
-   * shares `tier: 1` with Pro but exports, and Pro does not.
+   * First-stage data-export entitlement for CSV/JSON/PDF export (plan
+   * 2026-07-25-001). Once this gate is open, `exportFormats` narrows the
+   * actions exposed by each export surface. `tier` cannot stand in for this
+   * field: Pro Business shares `tier: 1` with Pro but exports, and Pro does
+   * not.
    *
    * Optional for the same reason as `apiDailyAllowance`: rows written before
    * the field existed omit it. Consumers treat `undefined` on a `tier >= 2`
@@ -158,6 +179,7 @@ const FREE_FEATURES: PlanFeatures = {
     apiRequestsPerDay: 0,
     apiBurstRequestsPerMinute: 0,
     mcpCallsPerDay: 0,
+    dashboardAiCallsPerDay: 0,
     mcpBurstRequestsPerMinute: 0,
   },
   prioritySupport: false,
@@ -176,6 +198,7 @@ const PRO_FEATURES: PlanFeatures = {
     apiRequestsPerDay: 0,
     apiBurstRequestsPerMinute: 0,
     mcpCallsPerDay: 50,
+    dashboardAiCallsPerDay: 500,
     mcpBurstRequestsPerMinute: 60,
   },
   prioritySupport: false,
@@ -205,6 +228,7 @@ const PRO_BUSINESS_FEATURES: PlanFeatures = {
     apiRequestsPerDay: 0,
     apiBurstRequestsPerMinute: 0,
     mcpCallsPerDay: 250,
+    dashboardAiCallsPerDay: 2_500,
     mcpBurstRequestsPerMinute: 60,
   },
   prioritySupport: true,
@@ -223,6 +247,7 @@ const API_STARTER_FEATURES: PlanFeatures = {
     apiRequestsPerDay: 1_000,
     apiBurstRequestsPerMinute: 60,
     mcpCallsPerDay: 1_000,
+    dashboardAiCallsPerDay: 1_000,
     mcpBurstRequestsPerMinute: 60,
   },
   prioritySupport: false,
@@ -241,6 +266,7 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
     apiRequestsPerDay: 10_000,
     apiBurstRequestsPerMinute: 300,
     mcpCallsPerDay: 10_000,
+    dashboardAiCallsPerDay: 10_000,
     mcpBurstRequestsPerMinute: 300,
   },
   prioritySupport: true,
@@ -260,6 +286,7 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
     apiRequestsPerDay: null,
     apiBurstRequestsPerMinute: 1000,
     mcpCallsPerDay: null,
+    dashboardAiCallsPerDay: null,
     mcpBurstRequestsPerMinute: 1000,
   },
   prioritySupport: true,
@@ -324,7 +351,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0NbttMIfjLWC10jHQWYgJ",
     planKey: "pro_annual",
     displayName: "Pro Annual",
-    priceCents: 39999,
+    priceCents: 35999,
     billingPeriod: "annual",
     tierGroup: "pro",
     features: PRO_FEATURES,
@@ -371,7 +398,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0Nk072fxPUcHWivZRtlQW",
     planKey: "pro_business_annual",
     displayName: "Pro Business Annual",
-    priceCents: 49900,
+    priceCents: 44999,
     billingPeriod: "annual",
     tierGroup: "pro_business",
     features: PRO_BUSINESS_FEATURES,
@@ -410,7 +437,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0Nbu2lawHYE3dv2THgSEV",
     planKey: "api_starter_annual",
     displayName: "API Starter Annual",
-    priceCents: 99900,
+    priceCents: 89999,
     billingPeriod: "annual",
     tierGroup: "api_starter",
     features: API_STARTER_FEATURES,
@@ -460,6 +487,21 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     publicVisible: true,
   },
 
+  api_business_annual: {
+    dodoProductId: "pdt_0NkHjzMhGp3m45sZLQ7BQ",
+    planKey: "api_business_annual",
+    displayName: "API Business Annual",
+    priceCents: 269999,
+    billingPeriod: "annual",
+    tierGroup: "api_business",
+    features: API_BUSINESS_FEATURES,
+    marketingFeatures: [],
+    selfServe: true,
+    highlighted: false,
+    currentForCheckout: true,
+    publicVisible: true,
+  },
+
   enterprise: {
     dodoProductId: "pdt_0Nbttnqrfh51cRqhMdVLx",
     planKey: "enterprise",
@@ -499,6 +541,15 @@ export const LEGACY_PRODUCT_ALIASES: Record<string, string> = {
   // 500-retry loop until this mapping was added (sub_0NeQV8vJI0fEwUEDjp3cA).
   // See scripts/audit-dodo-catalog.cjs to detect this class of drift early.
   "pdt_0NeRCJCIwZrExuE1kifHp": "api_starter",
+  // "5 × Standard Pro Annual Licenses" — created via Dodo dashboard 2026-07-30
+  // for the Legendary 5-seat annual deal ($1,596/yr list, sold with a 15%
+  // discount). The payer's subscription (sub_0NlFXgOXerG95LUzA09s4) carries
+  // the payer's own Pro entitlement; the other seats are complimentary
+  // entitlements aligned to the same period end. A matching productPlans row
+  // (isActive: false) was hand-inserted 2026-08-14 so attribution didn't wait
+  // on a deploy; this alias is the durable mapping the 2027 renewal resolves
+  // through even if that row is ever lost to a reseed.
+  "pdt_0NkKmaMPY3grWqiOGtyuG": "pro_annual",
 };
 
 // ---------------------------------------------------------------------------
@@ -534,6 +585,7 @@ export const PLAN_PRECEDENCE: Record<string, number> = {
   api_starter: 20,
   api_starter_annual: 21,
   api_business: 30, // higher capability than api_starter at same tier 2
+  api_business_annual: 31,
   enterprise: 40,
 };
 

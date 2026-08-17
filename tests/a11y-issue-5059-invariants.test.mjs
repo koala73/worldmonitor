@@ -143,6 +143,12 @@ describe('keyboard — roving tablist', () => {
       'mcp-clients',
     );
   });
+
+  it('renders Plan & billing as its own signed-in tab and panel', () => {
+    assert.match(settings, /data-tab="billing"[\s\S]*?>Plan &amp; billing<\/button>/);
+    assert.match(settings, /data-panel-id="billing"[\s\S]*?id="us-tab-panel-billing"/);
+    assert.match(settings, /See your current plan and manage payment details, invoices, or cancellation\./);
+  });
 });
 
 describe('keyboard — toggle focus continuity', () => {

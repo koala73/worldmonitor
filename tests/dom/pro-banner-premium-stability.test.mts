@@ -180,11 +180,13 @@ function installAppEntitlementResetListener(
         isCurrent: () => session.user?.id === userId,
         effects: {
           destroyEntitlementSubscription: () => {},
+          beginEntitlementVerification: () => {},
           resetEntitlementState: () => {
             entitlementSnapshot = null;
             const state = entitlement();
             for (const listener of entitlementListeners) listener(state);
           },
+          markEntitlementVerificationUnavailable: () => {},
           destroySubscriptionWatch: () => {},
           rebindConvexAuthForWatchHandoff: async () => false,
           initEntitlementSubscription: () => {},

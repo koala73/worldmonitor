@@ -51,6 +51,8 @@ el.style.display = isPro ? '' : 'none';
 
 **After**, in three commits.
 
+> **Paths below are as-of #5632.** [#5813](https://github.com/koala73/worldmonitor/issues/5813) later moved these modules without changing behaviour: `src/services/playback-gate.ts` → `src/services/gates/playback-resolver.ts`, and `readPlaybackGateInputs` → `src/services/gates/playback.ts`, where it is now module-private (`evaluatePlaybackGate` was always its only caller). The snippets are left as they shipped.
+
 **1. The gate itself** — a zero-import pure leaf, `src/services/playback-gate.ts`, wired through `src/services/panel-gating.ts`:
 
 ```ts

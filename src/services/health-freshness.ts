@@ -46,11 +46,15 @@ export interface RefreshHealthFreshnessOptions {
   urlResolver?: (path: string) => string;
 }
 
+// Ranks are ordinal severity for "pick the worst status of a source". They mirror
+// the server's ok/warn/crit buckets (api/health.js STATUS_COUNTS): crit statuses
+// rank highest, warn statuses in the middle, ok statuses at 0.
 function statusRank(status: string): number {
   switch (status) {
     case 'SEED_ERROR':
     case 'REDIS_DOWN':
     case 'REDIS_PARTIAL':
+    case 'CHINA_UNAVAILABLE': // server: crit
       return 5;
     case 'EMPTY':
     case 'EMPTY_DATA':
@@ -58,19 +62,26 @@ function statusRank(status: string): number {
     case 'STALE_SEED':
     case 'STALE_CONTENT':
     case 'COVERAGE_PARTIAL':
+    case 'COVERAGE_DEGRADED': // server: warn
+    case 'CHINA_DEGRADED':    // server: warn
+    case 'ROLLOUT_PENDING':   // server: warn
       return 3;
     case 'EMPTY_ON_DEMAND':
       return 2;
     case 'OK_CASCADE':
       return 1;
     case 'OK':
-    // An optional source adapter this deployment never configured. Ranks with OK
-    // on purpose: it is not a degradation, so it must never outrank a real signal
-    // when picking the worst status for a data source.
+    // An optional source adapter this deployment never configured, or a source
+    // intentionally blocked in this build. Rank with OK on purpose: neither is a
+    // degradation, so it must never outrank a real signal.
     case 'NOT_CONFIGURED':
+    case 'SOURCE_BLOCKED': // server: ok
       return 0;
     default:
-      return 0;
+      // An unrecognized status must never be treated as OK when picking the worst
+      // status of a source — mirror the server's `?? 'warn'` fallback and rank it
+      // as a degradation so a new status surfaces instead of silently passing.
+      return 3;
   }
 }
 

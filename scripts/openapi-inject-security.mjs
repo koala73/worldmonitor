@@ -45,6 +45,7 @@ import {
   readEndpointEntitlements,
   readPremiumRpcPaths,
   PUBLIC_FORBIDDEN_GATES,
+  LAPSED_BILLING_STATUS,
 } from './lib/openapi-codegen.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -156,6 +157,11 @@ const FORBIDDEN_SCHEMA = {
     'Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.',
   properties: {
     error: { type: 'string', description: 'Human-readable entitlement failure reason.' },
+    code: {
+      type: 'string',
+      enum: [LAPSED_BILLING_STATUS],
+      description: 'Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).',
+    },
     requiredTier: {
       type: 'integer',
       format: 'int32',
@@ -171,8 +177,21 @@ const FORBIDDEN_SCHEMA = {
   required: ['error'],
 };
 
+// Provider-confirmed subscription lapses answer any authenticated route with a
+// 403 whose X-Billing-Verification header mirrors the body `code`
+// (entitlement-check.ts getBillingVerificationDenial / gateway wm_-key branch),
+// so every ForbiddenError-backed 403 on an authed op declares the header as
+// optional. The public Turnstile 403 gates never carry it.
+const LAPSE_403_HEADERS = {
+  'X-Billing-Verification': {
+    description: `Present when the 403 is a billing-provider-confirmed subscription lapse (value ${LAPSED_BILLING_STATUS}, matching the body \`code\`).`,
+    schema: { type: 'string' },
+  },
+};
+
 const FORBIDDEN_RESPONSE = {
   description: 'PRO entitlement access denied.',
+  headers: LAPSE_403_HEADERS,
   content: {
     'application/json': {
       schema: { $ref: '#/components/schemas/ForbiddenError' },
@@ -194,6 +213,7 @@ const PREMIUM_FORBIDDEN_NOTE = 'PRO-gated. Requires an active Pro subscription.'
 
 const PREMIUM_FORBIDDEN_RESPONSE = {
   description: 'Pro subscription required.',
+  headers: LAPSE_403_HEADERS,
   content: {
     'application/json': {
       schema: { $ref: '#/components/schemas/ForbiddenError' },
@@ -209,6 +229,7 @@ const PREMIUM_FORBIDDEN_RESPONSE = {
 // authed ops that carry no more-specific 403. Reuses ForbiddenError ({ error }).
 const INACTIVE_ACCESS_FORBIDDEN_RESPONSE = {
   description: 'API access requires an active subscription (the API key\'s subscription is inactive or expired).',
+  headers: LAPSE_403_HEADERS,
   content: {
     'application/json': {
       schema: { $ref: '#/components/schemas/ForbiddenError' },
@@ -459,9 +480,18 @@ function ensureYamlSecuritySchemes(lines, hasBearer) {
 // ── Service/bundle YAML entitlement insertion (formatting-preserving) ────────
 const YAML_METHOD_LINE_RE = /^ {8}(get|post|put|delete|patch|options|head):$/;
 
+const YAML_LAPSE_403_HEADERS = [
+  '                    headers:',
+  '                        X-Billing-Verification:',
+  `                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value ${LAPSED_BILLING_STATUS}, matching the body \`code\`).`,
+  '                            schema:',
+  '                                type: string',
+];
+
 const YAML_FORBIDDEN_RESPONSE = [
   '                "403":',
   '                    description: PRO entitlement access denied.',
+  ...YAML_LAPSE_403_HEADERS,
   '                    content:',
   '                        application/json:',
   '                            schema:',
@@ -484,6 +514,7 @@ function yamlPublicForbiddenResponse(gate) {
 const YAML_PREMIUM_FORBIDDEN_RESPONSE = [
   '                "403":',
   '                    description: Pro subscription required.',
+  ...YAML_LAPSE_403_HEADERS,
   '                    content:',
   '                        application/json:',
   '                            schema:',
@@ -493,6 +524,7 @@ const YAML_PREMIUM_FORBIDDEN_RESPONSE = [
 const YAML_INACTIVE_ACCESS_FORBIDDEN_RESPONSE = [
   '                "403":',
   "                    description: API access requires an active subscription (the API key's subscription is inactive or expired).",
+  ...YAML_LAPSE_403_HEADERS,
   '                    content:',
   '                        application/json:',
   '                            schema:',
@@ -506,6 +538,11 @@ const YAML_FORBIDDEN_SCHEMA = [
   '                error:',
   '                    type: string',
   '                    description: Human-readable entitlement failure reason.',
+  '                code:',
+  '                    type: string',
+  '                    enum:',
+  `                        - ${LAPSED_BILLING_STATUS}`,
+  '                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).',
   '                requiredTier:',
   '                    type: integer',
   '                    format: int32',

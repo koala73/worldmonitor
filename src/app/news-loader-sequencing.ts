@@ -54,6 +54,40 @@ export interface RunNewsLoadPassResult<TDigest, TItem> {
 
 type Delay = (ms: number) => Promise<void>;
 
+/**
+ * Order-independent signature of a resolved news work-list.
+ *
+ * `loadAllData()` uses it to tell a trigger that genuinely changes WHAT news to
+ * load (tab switch, mission preset, panel toggle, source toggle) from one that
+ * changes nothing (viewport entry, scroll, playback exit). Nothing about the news
+ * load is viewport-gated, so re-running it on every trigger only re-fetched the
+ * digest — twice per page load in production, because loadAllData's drain loop
+ * re-runs the whole task list when a second call arrives while the first is in
+ * flight (#5376).
+ *
+ * It must cover EVERY input the load filters on, or a change the signature can't
+ * see becomes a change the user can't get. Both inputs are here: the category set,
+ * and the disabled-source set that `loadNewsCategory` filters each category's feeds
+ * by. Nothing in the settings source toggle reloads news itself, so leaving sources
+ * out meant a source switched off stayed on screen until the 20-minute refresh.
+ *
+ * The two are serialized as separate arrays rather than concatenated, so a
+ * category key can never combine with a source name to spoof a different pair.
+ *
+ * `disabledSources` is REQUIRED, with no empty default: a caller that forgets it
+ * would silently rebuild the source-blind signature this exists to replace, and
+ * that failure is invisible at runtime.
+ */
+export function newsWorkListSignature(
+  categories: readonly { key: string }[],
+  disabledSources: Iterable<string>,
+): string {
+  return JSON.stringify([
+    [...new Set(categories.map(category => category.key))].sort(),
+    [...new Set(disabledSources)].sort(),
+  ]);
+}
+
 const defaultDelay: Delay = (ms) => new Promise(resolve => {
   setTimeout(resolve, Math.max(0, ms));
 });

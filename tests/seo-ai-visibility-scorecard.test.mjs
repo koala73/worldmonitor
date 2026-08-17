@@ -137,6 +137,149 @@ describe('SEO and AI visibility baseline', () => {
     );
   });
 
+  it('validates Bing AI Performance citations as bounded first-party evidence', () => {
+    const available = structuredClone(baseline);
+    available.search.bingWebmaster.aiPerformance = {
+      status: 'available',
+      reason: null,
+      windows: available.search.bingWebmaster.aiPerformance.windows.map((window) => ({
+        ...window,
+        metrics: { totalCitations: 12, averageCitedPages: 2 },
+        groundingQueries: [{ phrase: 'geopolitical risk API', citationCount: 3 }],
+        citedPages: [{ url: 'https://www.worldmonitor.app/docs/api-reference', citationCount: 4 }],
+      })),
+    };
+    assert.doesNotThrow(() => validateBaseline(available, querySet));
+
+    const external = structuredClone(available);
+    external.search.bingWebmaster.aiPerformance.windows[0].citedPages[0].url =
+      'https://example.com/not-world-monitor';
+    assert.throws(
+      () => validateBaseline(external, querySet),
+      /must be a World Monitor HTTPS URL/,
+    );
+
+    const insecure = structuredClone(available);
+    insecure.search.bingWebmaster.aiPerformance.windows[0].citedPages[0].url =
+      'http://worldmonitor.app/docs/api-reference';
+    assert.throws(
+      () => validateBaseline(insecure, querySet),
+      /must be a World Monitor HTTPS URL/,
+    );
+  });
+
+  it('rejects unavailable Bing detail, incomplete counts, and duplicate detail entries', () => {
+    const unavailable = structuredClone(baseline);
+    unavailable.search.bingWebmaster.aiPerformance.windows[0].groundingQueries = [
+      { phrase: 'geopolitical risk API', citationCount: 1 },
+    ];
+    assert.throws(
+      () => validateBaseline(unavailable, querySet),
+      /groundingQueries must be empty when unavailable/,
+    );
+
+    const unavailablePages = structuredClone(baseline);
+    unavailablePages.search.bingWebmaster.aiPerformance.windows[0].citedPages = [{
+      url: 'https://www.worldmonitor.app/docs/api-reference',
+      citationCount: 1,
+    }];
+    assert.throws(
+      () => validateBaseline(unavailablePages, querySet),
+      /citedPages must be empty when unavailable/,
+    );
+
+    const available = structuredClone(baseline);
+    available.search.bingWebmaster.aiPerformance = {
+      status: 'available',
+      reason: null,
+      windows: available.search.bingWebmaster.aiPerformance.windows.map((window) => ({
+        ...window,
+        metrics: { totalCitations: 12, averageCitedPages: 2 },
+        groundingQueries: [{ phrase: 'geopolitical risk API', citationCount: 3 }],
+        citedPages: [{
+          url: 'https://www.worldmonitor.app/docs/api-reference',
+          citationCount: 4,
+        }],
+      })),
+    };
+
+    const missingCount = structuredClone(available);
+    delete missingCount.search.bingWebmaster.aiPerformance.windows[0]
+      .groundingQueries[0].citationCount;
+    assert.throws(
+      () => validateBaseline(missingCount, querySet),
+      /citationCount must be a finite non-negative number or null/,
+    );
+
+    const nullCount = structuredClone(available);
+    nullCount.search.bingWebmaster.aiPerformance.windows[0]
+      .citedPages[0].citationCount = null;
+    assert.throws(
+      () => validateBaseline(nullCount, querySet),
+      /citationCount must be finite when available/,
+    );
+
+    const duplicatePhrase = structuredClone(available);
+    duplicatePhrase.search.bingWebmaster.aiPerformance.windows[0]
+      .groundingQueries.push({ phrase: 'geopolitical risk API', citationCount: 1 });
+    assert.throws(
+      () => validateBaseline(duplicatePhrase, querySet),
+      /duplicate grounding phrase/,
+    );
+
+    const duplicateUrl = structuredClone(available);
+    duplicateUrl.search.bingWebmaster.aiPerformance.windows[0]
+      .citedPages.push({
+        url: 'https://www.worldmonitor.app/docs/api-reference',
+        citationCount: 1,
+      });
+    assert.throws(
+      () => validateBaseline(duplicateUrl, querySet),
+      /duplicate cited page/,
+    );
+
+    const credentialUrl = structuredClone(available);
+    credentialUrl.search.bingWebmaster.aiPerformance.windows[0]
+      .citedPages[0].url = 'https://operator:secret@worldmonitor.app/docs/api-reference';
+    assert.throws(
+      () => validateBaseline(credentialUrl, querySet),
+      /World Monitor HTTPS URL/,
+    );
+  });
+
+  it('renders partial Bing detail per window and keeps missing detail unavailable', () => {
+    const measured = structuredClone(baseline);
+    measured.search.bingWebmaster.aiPerformance = {
+      status: 'partial',
+      reason: 'Detail exports were only available for one window and field.',
+      windows: [
+        {
+          label: '28d',
+          startDate: '2026-06-30',
+          endDate: '2026-07-27',
+          metrics: { totalCitations: 12, averageCitedPages: 2 },
+          groundingQueries: [{ phrase: 'geopolitical risk API', citationCount: null }],
+          citedPages: [{
+            url: 'https://www.worldmonitor.app/docs/api-reference',
+            citationCount: null,
+          }],
+        },
+        {
+          label: '90d',
+          startDate: '2026-04-29',
+          endDate: '2026-07-27',
+          metrics: { totalCitations: null, averageCitedPages: null },
+          groundingQueries: [],
+        },
+      ],
+    };
+
+    const markdown = formatScorecardMarkdown(buildScorecard(querySet, measured));
+
+    assert.match(markdown, /\| 28d \| 12 \| 2 \| 1 \| 1 \|/);
+    assert.match(markdown, /\| 90d \| Unavailable \| Unavailable \| 0 \| Unavailable \|/);
+  });
+
   it('distinguishes an AI brand mention from a direct citation', () => {
     const invalid = structuredClone(baseline);
     invalid.aiObservations[0].directCitation = true;
@@ -181,7 +324,7 @@ describe('SEO and AI visibility baseline', () => {
 
   it('rejects committed property IDs, malformed guardrails, and invalid priorities', () => {
     const property = structuredClone(baseline);
-    property.search.googleSearchConsole.property = 'sc-domain:worldmonitor.app';
+    property.search.googleSearchConsole.property = 'operator-only-property-id';
     assert.throws(
       () => validateBaseline(property, querySet),
       /property must remain null/,
@@ -361,6 +504,7 @@ describe('scorecard computation', () => {
       null,
     );
     assert.equal(scorecard.referrals.status, 'unavailable');
+    assert.equal(scorecard.search.bingWebmaster.aiPerformance.status, 'unavailable');
     assert.equal(Object.keys(scorecard.byIntent).length, 5);
     assert.equal(
       Object.keys(scorecard.byPageFamily).length,
@@ -454,6 +598,7 @@ describe('scorecard computation', () => {
             pricingViews: 3,
             signUps: 2,
             proConversions: 1,
+            activations: 1,
             apiActions: 1,
             mcpActions: 1,
           },
@@ -470,6 +615,7 @@ describe('scorecard computation', () => {
             pricingViews: 2,
             signUps: 1,
             proConversions: 1,
+            activations: 1,
             apiActions: 0,
             mcpActions: 0,
           },
@@ -484,6 +630,7 @@ describe('scorecard computation', () => {
             pricingViews: 1,
             signUps: 1,
             proConversions: 0,
+            activations: 0,
             apiActions: 1,
             mcpActions: 1,
           },
@@ -521,6 +668,65 @@ describe('scorecard computation', () => {
       scorecard.referrals.byPageFamily.homepage.windows[0].metrics.sessions,
       12,
     );
+  });
+
+  it('renders aggregate-only referral windows without fabricating family slices', () => {
+    const measured = structuredClone(baseline);
+    measured.referrals = {
+      ...measured.referrals,
+      status: 'available',
+      reason: null,
+      windows: [
+        {
+          label: '28d',
+          startDate: '2026-06-30',
+          endDate: '2026-07-27',
+          metrics: {
+            sessions: 100,
+            dashboardLaunches: 20,
+            pricingViews: 15,
+            signUps: 5,
+            proConversions: 2,
+            activations: 1,
+            apiActions: 3,
+            mcpActions: 4,
+          },
+        },
+        {
+          label: '90d',
+          startDate: '2026-04-29',
+          endDate: '2026-07-27',
+          metrics: {
+            sessions: 300,
+            dashboardLaunches: 50,
+            pricingViews: 40,
+            signUps: 15,
+            proConversions: 6,
+            activations: 4,
+            apiActions: 8,
+            mcpActions: 10,
+          },
+        },
+      ],
+      segments: [],
+    };
+
+    const scorecard = buildScorecard(querySet, measured);
+    assert.equal(scorecard.referrals.windows[0].metrics.sessions, 100);
+    assert.equal(
+      scorecard.referrals.byReferrerFamily.chatgpt.windows[0].metrics.sessions,
+      null,
+    );
+    assert.equal(
+      scorecard.referrals.byPageFamily.homepage.windows[0].metrics.sessions,
+      null,
+    );
+
+    const markdown = formatScorecardMarkdown(scorecard);
+    assert.match(markdown, /Aggregate referral totals are shown by window/);
+    assert.match(markdown, /\| 28d \| 100 \| 20 \| 15 \| 5 \| 2 \| 1 \| 3 \| 4 \|/);
+    assert.match(markdown, /\| 90d \| 300 \| 50 \| 40 \| 15 \| 6 \| 4 \| 8 \| 10 \|/);
+    assert.match(markdown, /\| ChatGPT \| Unavailable \| Unavailable \|/);
   });
 
   it('finds new/lost citations and meaningful search changes between periods', () => {
@@ -714,6 +920,45 @@ describe('scorecard computation', () => {
 
     assert.equal(comparison.search.googleSearchConsole.metrics.impressions.absolute, 150);
     assert.equal(comparison.search.googleSearchConsole.metrics.indexedPages, null);
+  });
+
+  it('compares and renders Bing AI Performance metrics only across advancing windows', () => {
+    const [previous, current] = buildComparableScorecards();
+    previous.search.bingWebmaster.aiPerformance = {
+      status: 'partial',
+      reason: 'Grounding phrase export is incomplete.',
+      windows: [{
+        label: '28d',
+        startDate: '2026-06-30',
+        endDate: '2026-07-27',
+        metrics: { totalCitations: 20, averageCitedPages: 2 },
+        groundingQueries: [],
+        citedPages: [],
+      }],
+    };
+    current.search.bingWebmaster.aiPerformance = {
+      status: 'partial',
+      reason: 'Grounding phrase export is incomplete.',
+      windows: [{
+        label: '28d',
+        startDate: '2026-07-31',
+        endDate: '2026-08-27',
+        metrics: { totalCitations: 35, averageCitedPages: 3.5 },
+        groundingQueries: [],
+        citedPages: [],
+      }],
+    };
+
+    const comparison = compareScorecards(previous, current);
+    assert.equal(comparison.search.bingAiPerformance.windowLabel, '28d');
+    assert.equal(comparison.search.bingAiPerformance.metrics.totalCitations.absolute, 15);
+    assert.equal(comparison.search.bingAiPerformance.metrics.totalCitations.meaningful, true);
+    assert.equal(comparison.search.bingAiPerformance.metrics.averageCitedPages.absolute, 1.5);
+    current.comparison = comparison;
+    const markdown = formatScorecardMarkdown(current);
+    assert.match(markdown, /## Bing AI Performance/);
+    assert.match(markdown, /Meaningful search changes: .*bingAiPerformance\.totalCitations/);
+    assert.match(markdown, /\| 28d \| 35 \| 3\.5 \|/);
   });
 
   it('prefers the 28d window for comparisons regardless of authored window order', () => {

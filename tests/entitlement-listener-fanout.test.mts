@@ -17,7 +17,15 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { onEntitlementChange, resetEntitlementState } from '@/services/entitlements';
+import {
+  beginEntitlementVerification,
+  markEntitlementVerificationUnavailable,
+  onEntitlementChange,
+  onEntitlementVerificationChange,
+  resetEntitlementState,
+  resetEntitlementVerification,
+  type EntitlementVerificationStatus,
+} from '@/services/entitlements';
 
 /** Unsubscribers for every listener a test registers. */
 let cleanup: Array<() => void> = [];
@@ -33,6 +41,7 @@ beforeEach(() => {
 afterEach(() => {
   for (const off of cleanup) off();
   cleanup = [];
+  resetEntitlementVerification();
 });
 
 describe('entitlement listener fan-out', () => {
@@ -98,5 +107,19 @@ describe('entitlement listener fan-out', () => {
     resetEntitlementState();
 
     assert.equal(healthy, 2);
+  });
+});
+
+describe('entitlement verification lifecycle', () => {
+  it('publishes pending and unavailable as distinct account-resolution states', () => {
+    resetEntitlementState();
+    resetEntitlementVerification();
+    const statuses: EntitlementVerificationStatus[] = [];
+    cleanup.push(onEntitlementVerificationChange((status) => statuses.push(status)));
+
+    beginEntitlementVerification();
+    markEntitlementVerificationUnavailable();
+
+    assert.deepEqual(statuses, ['idle', 'pending', 'unavailable']);
   });
 });

@@ -409,14 +409,14 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
     // ============================================================
     // U4: Version bump + SERVER_INSTRUCTIONS + server-card sync
     // ============================================================
-    it('serverInfo.version === "1.15.0"', async () => {
+    it('serverInfo.version === "1.16.0"', async () => {
       const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
       }));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.15.0');
+      assert.equal(body.result?.serverInfo?.version, '1.16.0');
     });
 
     it('initialize.result.instructions mentions describe_tool AND the TOOL_DESCRIPTION_MAX_BYTES cap value', async () => {
@@ -433,9 +433,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'instructions should mention the TOOL_DESCRIPTION_MAX_BYTES cap');
     });
 
-    it('server-card.json version matches SERVER_VERSION (1.15.0) and tools[] matches the registry count', () => {
+    it('server-card.json version matches SERVER_VERSION (1.16.0) and tools[] matches the registry count', () => {
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.15.0');
+      assert.equal(card.serverInfo.version, '1.16.0');
       // orank (ora.ai) agent-readiness scanner reads the card's `tools` as an
       // ARRAY (tools[]) for pre-connection preview — not the old {count,categories}
       // object. Keep it an array; the count now derives from the length.
@@ -450,7 +450,7 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
     // static file; this guard fails loudly if the registry adds/removes/renames
     // a tool or edits a description without regenerating the card, so scanners
     // never preview a stale tool inventory. Regenerate with:
-    //   npx tsx -e "import('./api/mcp/registry/index.ts').then(m=>console.log(JSON.stringify(m.TOOL_REGISTRY.map(t=>({name:t.name,description:t.description})),null,2)))"
+    //   npm run product:facts
     it('server-card.json exposes the orank-required top-level fields AND tools[] mirrors the registry', () => {
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
 
@@ -470,8 +470,12 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.equal(card.name, card.serverInfo.name, 'top-level name must mirror serverInfo.name');
 
       // tools[] must be a name+description projection of the live registry,
-      // in the same order.
-      const expected = TOOL_REGISTRY.map((t) => ({ name: t.name, description: t.description }));
+      // plus the registry-derived free-access marker, in the same order.
+      const expected = TOOL_REGISTRY.map((t) => ({
+        name: t.name,
+        description: t.description,
+        ...(t._freeTier === true ? { _meta: { 'worldmonitor/access': 'free' } } : {}),
+      }));
       assert.deepEqual(
         card.tools,
         expected,

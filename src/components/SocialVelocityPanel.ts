@@ -66,19 +66,19 @@ export class SocialVelocityPanel extends Panel {
 
       return `<div style="border-bottom:1px solid var(--border);padding:8px 0">
         <div style="display:flex;gap:8px;align-items:flex-start">
-          <span style="flex-shrink:0;font-size:10px;font-weight:700;color:var(--text-dim);min-width:18px;text-align:right;margin-top:2px">${i + 1}</span>
+          <span style="flex-shrink:0;font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;color:var(--text-dim);min-width:18px;text-align:right;margin-top:2px">${i + 1}</span>
           <div style="flex:1;min-width:0">
-            <a href="${escapeHtml(sanitizeUrl(p.url))}" target="_blank" rel="noopener noreferrer" style="font-size:12px;font-weight:500;color:var(--text);text-decoration:none;line-height:1.35;display:block">${escapeHtml(p.title)}</a>
+            <a href="${escapeHtml(sanitizeUrl(p.url))}" target="_blank" rel="noopener noreferrer" style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:500;color:var(--text);text-decoration:none;line-height:1.35;display:block">${escapeHtml(p.title)}</a>
             <div style="display:flex;gap:8px;margin-top:4px;align-items:center;flex-wrap:wrap">
-              <span style="font-size:9px;padding:1px 6px;border-radius:3px;background:rgba(255,255,255,0.06);color:var(--text-dim)">r/${escapeHtml(p.subreddit)}</span>
-              <span style="font-size:9px;color:var(--text-dim)">&#9650; ${escapeHtml(formatScore(p.score))}</span>
-              <span style="font-size:9px;color:var(--text-dim)">&#128172; ${escapeHtml(formatScore(p.numComments))}</span>
-              <span style="font-size:9px;color:var(--text-dim)">${ratio}% up</span>
-              ${age ? `<span style="font-size:9px;color:var(--text-dim)">${escapeHtml(age)}</span>` : ''}
+              <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));padding:1px 6px;border-radius:3px;background:rgba(255,255,255,0.06);color:var(--text-dim)">r/${escapeHtml(p.subreddit)}</span>
+              <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">&#9650; ${escapeHtml(formatScore(p.score))}</span>
+              <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">&#128172; ${escapeHtml(formatScore(p.numComments))}</span>
+              <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${ratio}% up</span>
+              ${age ? `<span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(age)}</span>` : ''}
             </div>
           </div>
           <div style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:2px">
-            <span style="font-size:11px;font-weight:700;color:${vColor}">${Math.round(p.velocityScore)}</span>
+            <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:700;color:${vColor}">${Math.round(p.velocityScore)}</span>
             <div style="width:32px;height:3px;border-radius:2px;background:rgba(255,255,255,0.08)">
               <div style="height:100%;width:${barWidth}%;max-width:100%;border-radius:2px;background:${vColor}"></div>
             </div>
@@ -89,9 +89,9 @@ export class SocialVelocityPanel extends Panel {
 
     this.setSafeContent(unsafeRawHtml(`
       <div style="overflow-y:auto;max-height:440px">
-        ${rows || '<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:12px">No signals</div>'}
+        ${rows || '<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">No signals</div>'}
       </div>
-      <div style="margin-top:6px;font-size:9px;color:var(--text-dim)">Reddit · velocity = recency × score × ratio</div>
+      <div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Reddit · velocity = recency × score × ratio</div>
     `, 'legacy Panel.setContent() migration'));
   }
 }

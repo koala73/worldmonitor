@@ -528,8 +528,7 @@ export interface QueryRegion {
 }
 
 export const MILITARY_QUERY_REGIONS: QueryRegion[] = [
-  { name: 'PACIFIC', lamin: 10, lamax: 46, lomin: 107, lomax: 143 },
-  { name: 'WESTERN', lamin: 13, lamax: 85, lomin: -10, lomax: 57 },
+  { name: 'GLOBAL', lamin: -90, lamax: 90, lomin: -180, lomax: 180 },
 ];
 
 if (import.meta.env.DEV) {

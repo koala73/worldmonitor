@@ -9,8 +9,11 @@
 // never spend in-run retries on a 429.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { createServer } from 'node:net';
+import { Readable } from 'node:stream';
 
-import { fetchGlobalTenders, fetchSam, fetchTed } from '../scripts/seed-global-tenders.mjs';
+import { __testing__, fetchGlobalTenders, fetchSam, fetchTed } from '../scripts/seed-global-tenders.mjs';
 
 const NOW = Date.parse('2026-07-22T12:00:00Z');
 const OPEN_TENDER = {
@@ -35,6 +38,25 @@ function samSnapshot(lastSuccessfulAt) {
       },
     ],
   };
+}
+
+function stubHttpsGet({ status = 200, body = '', headers = {} } = {}) {
+  const calls = [];
+  const responses = [];
+  const httpsGetFn = (url, options, onResponse) => {
+    calls.push({ url: String(url), options });
+    const request = new EventEmitter();
+    request.destroy = (error) => request.emit('error', error);
+    queueMicrotask(() => {
+      const response = Readable.from(body ? [Buffer.from(body)] : []);
+      response.statusCode = status;
+      response.headers = headers;
+      responses.push(response);
+      onResponse(response);
+    });
+    return request;
+  };
+  return { calls, responses, httpsGetFn };
 }
 
 test('fetchGlobalTenders does not promote a paced stale/error SAM snapshot to healthy', async (t) => {
@@ -101,8 +123,8 @@ test('fetchSam skips the request while the previous success is inside the budget
 
 test('fetchSam fetches again once the previous success is older than the interval', async () => {
   const calls = [];
-  const fetchJsonFn = async (url) => {
-    calls.push(String(url));
+  const fetchJsonFn = async (url, options) => {
+    calls.push({ url: String(url), options });
     return { opportunitiesData: [] };
   };
   const lastSuccessfulAt = new Date(NOW - 200 * 60_000).toISOString();
@@ -129,28 +151,154 @@ test('fetchSam without a previous snapshot fetches (first run unchanged)', async
   assert.equal(calls.length, 1);
 });
 
-test('a SAM 429 is not retried in-run (no quota burn)', async (t) => {
-  const realFetch = globalThis.fetch;
-  t.after(() => {
-    globalThis.fetch = realFetch;
+test('fetchSam default transport uses IPv4 and streams a successful JSON response', async () => {
+  const { calls, httpsGetFn } = stubHttpsGet({
+    body: JSON.stringify({ opportunitiesData: [] }),
   });
+
+  const result = await fetchSam({
+    apiKey: 'test-key',
+    now: NOW,
+    httpsGetFn,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.family, 4, 'SAM must avoid Railway\'s unreachable IPv6 route');
+  assert.ok(calls[0].options.signal instanceof AbortSignal, 'SAM must retain an absolute request deadline');
+  assert.equal(result.status.state, 'ok');
+});
+
+test('the SAM native transport rejects request semantics it cannot preserve without opening a socket', async (t) => {
+  for (const [name, options] of [
+    ['non-GET method', { method: 'POST' }],
+    ['non-null body', { body: 'payload' }],
+  ]) {
+    await t.test(name, async () => {
+      const { calls, httpsGetFn } = stubHttpsGet();
+
+      await assert.rejects(
+        () => __testing__.createSamFetchJson(httpsGetFn)('https://api.sam.gov/opportunities/v2/search', options),
+        (error) => {
+          assert.equal(error.nonRetryable, true);
+          return true;
+        },
+      );
+      assert.equal(calls.length, 0);
+    });
+  }
+});
+
+test('the SAM transport retries a transient native request error', async () => {
   const calls = [];
-  globalThis.fetch = async (url) => {
-    calls.push(String(url));
-    return {
-      ok: false,
-      status: 429,
-      headers: { get: () => null },
-      text: async () => '',
-      json: async () => ({}),
-    };
+  const httpsGetFn = (url, options, onResponse) => {
+    calls.push({ url: String(url), options });
+    const request = new EventEmitter();
+    queueMicrotask(() => {
+      if (calls.length === 1) {
+        request.emit('error', Object.assign(new Error('socket reset'), { code: 'ECONNRESET' }));
+        return;
+      }
+      const response = Readable.from([Buffer.from(JSON.stringify({ opportunitiesData: [] }))]);
+      response.statusCode = 200;
+      response.headers = {};
+      onResponse(response);
+    });
+    return request;
   };
 
+  const result = await fetchSam({
+    apiKey: 'test-key',
+    now: NOW,
+    fetchJsonFn: __testing__.createSamFetchJson(httpsGetFn),
+  });
+
+  assert.equal(calls.length, 2);
+  assert.equal(result.status.state, 'ok');
+});
+
+test('the SAM transport deadline also covers connection setup', async (t) => {
+  const sockets = new Set();
+  const server = createServer((socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+  });
+  t.after(async () => {
+    for (const socket of sockets) socket.destroy();
+    if (server.listening) await new Promise((resolve) => server.close(resolve));
+  });
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const { port } = server.address();
+
   await assert.rejects(
-    () => fetchSam({ apiKey: 'test-key', now: NOW }),
+    () => __testing__.createSamFetchJson()(`https://127.0.0.1:${port}/opportunities/v2/search`, {
+      maxRetries: 0,
+      timeoutMs: 50,
+    }),
+    (error) => {
+      assert.equal(error.name, 'AbortError');
+      assert.equal(error.code, 'ABORT_ERR');
+      return true;
+    },
+  );
+});
+
+test('SAM no-content responses do not retry after Response construction', async (t) => {
+  for (const status of [204, 205, 304]) {
+    await t.test(String(status), async () => {
+      const { calls, httpsGetFn } = stubHttpsGet({ status });
+
+      await assert.rejects(
+        () => fetchSam({ apiKey: 'test-key', now: NOW, httpsGetFn }),
+        status === 304 ? /HTTP 304/ : SyntaxError,
+      );
+      assert.equal(calls.length, 1);
+    });
+  }
+});
+
+test('an invalid SAM status destroys the response and is not retried', async () => {
+  const { calls, responses, httpsGetFn } = stubHttpsGet({ status: 700 });
+
+  await assert.rejects(
+    () => fetchSam({ apiKey: 'test-key', now: NOW, httpsGetFn }),
+    (error) => {
+      assert.equal(error.nonRetryable, true);
+      return true;
+    },
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(responses[0].destroyed, true);
+});
+
+test('a SAM redirect stays visible and is not followed or retried', async () => {
+  const { calls, httpsGetFn } = stubHttpsGet({
+    status: 302,
+    headers: { location: 'https://example.com/redirected' },
+  });
+
+  await assert.rejects(
+    () => fetchSam({ apiKey: 'test-key', now: NOW, httpsGetFn }),
+    /HTTP 302/,
+  );
+  assert.equal(calls.length, 1);
+});
+
+test('a SAM 429 is not retried in-run (no quota burn)', async () => {
+  const { calls, httpsGetFn } = stubHttpsGet({ status: 429 });
+
+  await assert.rejects(
+    () => fetchSam({
+      apiKey: 'test-key',
+      now: NOW,
+      fetchJsonFn: __testing__.createSamFetchJson(httpsGetFn),
+    }),
     /HTTP 429/,
   );
   assert.equal(calls.length, 1, '429 must fail fast instead of burning retry attempts');
+  assert.equal(calls[0].options.family, 4);
 });
 
 test('a non-SAM adapter still retries HTTP 429 through the default fetch path', async (t) => {

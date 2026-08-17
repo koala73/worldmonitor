@@ -250,6 +250,9 @@ describe('watchlist tickers — client save + re-sync plumbing (#4922 U3)', () =
       /hasTier\(1\)/,
       're-sync must be gated on PRO tier client-side before hitting the API',
     );
+    assert.match(watchlistModalSrc, /setMarketWatchlistPreferences/, 'catalog and custom layers must save atomically');
+    assert.match(watchlistModalSrc, /setAttribute\('role', 'checkbox'\)/, 'catalog items must be keyboard-operable controls');
+    assert.match(watchlistModalSrc, /document\.removeEventListener\('keydown'/, 'modal teardown must remove Escape handling');
   });
 
   /**

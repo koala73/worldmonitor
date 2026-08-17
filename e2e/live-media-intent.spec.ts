@@ -103,6 +103,69 @@ test.describe('live media intent gating', () => {
     await expect.poll(() => liveNewsTransportCount(page), { timeout: 30_000 }).toBe(1);
   });
 
+  test('fits the natural webcam wall in a short desktop viewport and resizes from its two-row baseline', async ({ page }) => {
+    await page.setViewportSize({ width: 1296, height: 607 });
+    await installCleanLiveMediaPrefs(page, {
+      regionFilter: 'europe',
+      viewMode: 'grid',
+      activeFeedId: 'kyiv',
+    });
+
+    await page.goto('/dashboard?liveWebcamLayout=1', { waitUntil: 'domcontentloaded' });
+    const webcams = page.locator('.panel[data-panel="live-webcams"]');
+    // The dashboard replaces deferred shells with real panels while the page
+    // is settling. Scroll the current node directly, then wait for the real
+    // panel before taking geometry measurements so this regression test does
+    // not race that intentional shell→panel replacement.
+    await page.evaluate(() => {
+      document.querySelector('.panel[data-panel="live-webcams"]')?.scrollIntoView({ block: 'center' });
+    });
+    await page.waitForFunction(() => {
+      const panel = document.querySelector<HTMLElement>('.panel[data-panel="live-webcams"]');
+      return panel !== null && panel.dataset.deferredPanel !== 'true';
+    });
+    await page.evaluate(() => {
+      document.querySelector('.panel[data-panel="live-webcams"]')?.scrollIntoView({ block: 'center' });
+    });
+    await expect(webcams.locator('.webcam-cell')).toHaveCount(4, { timeout: 60_000 });
+
+    const layout = await webcams.evaluate((panel) => {
+      const panelRect = panel.getBoundingClientRect();
+      const grid = panel.querySelector('.webcam-grid');
+      const cells = Array.from(panel.querySelectorAll<HTMLElement>('.webcam-cell')).map((cell) => {
+        const rect = cell.getBoundingClientRect();
+        return { top: rect.top, bottom: rect.bottom, height: rect.height };
+      });
+      return {
+        viewportHeight: window.innerHeight,
+        panelBottom: panelRect.bottom,
+        panelHeight: panelRect.height,
+        gridHeight: grid?.getBoundingClientRect().height ?? 0,
+        cells,
+      };
+    });
+
+    expect(layout.panelHeight, JSON.stringify(layout)).toBeLessThanOrEqual(layout.viewportHeight);
+    expect(layout.gridHeight, JSON.stringify(layout)).toBeGreaterThan(0);
+    expect(layout.cells.every((cell) => cell.height > 0), JSON.stringify(layout)).toBe(true);
+    expect(layout.cells[3]?.bottom, JSON.stringify(layout)).toBeLessThanOrEqual(layout.panelBottom + 2);
+    expect(layout.cells[3]?.bottom, JSON.stringify(layout)).toBeLessThanOrEqual(layout.viewportHeight + 2);
+
+    const handle = webcams.locator('.panel-resize-handle');
+    await handle.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+    const box = await handle.boundingBox();
+    expect(box, 'webcam resize handle should be reachable after fitting the panel').not.toBeNull();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2 + 100);
+    await page.mouse.up();
+
+    await expect(webcams).toHaveClass(/span-3/);
+    await expect(webcams).toHaveClass(/resized/);
+    const resizedHeight = await webcams.evaluate((panel) => panel.getBoundingClientRect().height);
+    expect(resizedHeight, `natural=${layout.panelHeight}, resized=${resizedHeight}`).toBeGreaterThan(layout.panelHeight + 50);
+  });
+
   test('the play-all cascade does not start media in a collapsed live panel', async ({ page }) => {
     await installCleanLiveMediaPrefs(page);
 

@@ -2,7 +2,73 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
+import { readRawJsonFromUpstash, setCachedData } from './_upstash-json.js';
 export const config = { runtime: 'edge' };
+
+// The archive URL is fixed, so every CDN miss was re-scraping the same page.
+// Cache the parsed items — not the rendered RSS, whose lastBuildDate must stay
+// current — for the same window the response already advertises.
+const CACHE_KEY = 'fwdstart:archive-items:v1';
+const CACHE_TTL_SECONDS = 1800;
+
+/** Fetch the archive page and extract post items. Throws on upstream failure. */
+async function scrapeArchiveItems() {
+  const response = await fetch('https://www.fwdstart.me/archive', {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': 'text/html,application/xhtml+xml',
+    },
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const html = await response.text();
+  const items = [];
+  const seenUrls = new Set();
+
+  // Split by embla__slide to get each post block
+  const slideBlocks = html.split('embla__slide');
+
+  for (const block of slideBlocks) {
+    // Extract URL
+    const urlMatch = block.match(/href="(\/p\/[^"]+)"/);
+    if (!urlMatch) continue;
+
+    const url = `https://www.fwdstart.me${urlMatch[1]}`;
+    if (seenUrls.has(url)) continue;
+    seenUrls.add(url);
+
+    // Extract title from alt attribute
+    const altMatch = block.match(/alt="([^"]+)"/);
+    const title = altMatch ? altMatch[1] : '';
+    if (!title || title.length < 5) continue;
+
+    // Extract date - look for "Mon DD, YYYY" pattern
+    const dateMatch = block.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),?\s+(\d{4})/i);
+    let pubDate = new Date();
+    if (dateMatch) {
+      const dateStr = `${dateMatch[1]} ${dateMatch[2]}, ${dateMatch[3]}`;
+      const parsed = new Date(dateStr);
+      if (!Number.isNaN(parsed.getTime())) {
+        pubDate = parsed;
+      }
+    }
+
+    // Extract subtitle/description if available
+    let description = '';
+    const subtitleMatch = block.match(/line-clamp-3[^>]*>.*?<span[^>]*>([^<]{20,})<\/span>/s);
+    if (subtitleMatch) {
+      description = subtitleMatch[1].trim();
+    }
+
+    items.push({ title, link: url, date: pubDate.toISOString(), description });
+  }
+
+  return items;
+}
 
 // Scrape FwdStart newsletter archive and return as RSS
 export default async function handler(req, ctx) {
@@ -11,58 +77,28 @@ export default async function handler(req, ctx) {
     return jsonResponse({ error: 'Origin not allowed' }, 403, cors);
   }
   try {
-    const response = await fetch('https://www.fwdstart.me/archive', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-      signal: AbortSignal.timeout(15000),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    // Redis is a load shield, not a dependency: a cache outage must still
+    // serve the feed, so every failure here falls through to the live scrape.
+    let items = null;
+    try {
+      const cached = await readRawJsonFromUpstash(CACHE_KEY);
+      if (Array.isArray(cached) && cached.length > 0) items = cached;
+    } catch {
+      // fall through to the live scrape
     }
 
-    const html = await response.text();
-    const items = [];
-    const seenUrls = new Set();
-
-    // Split by embla__slide to get each post block
-    const slideBlocks = html.split('embla__slide');
-
-    for (const block of slideBlocks) {
-      // Extract URL
-      const urlMatch = block.match(/href="(\/p\/[^"]+)"/);
-      if (!urlMatch) continue;
-
-      const url = `https://www.fwdstart.me${urlMatch[1]}`;
-      if (seenUrls.has(url)) continue;
-      seenUrls.add(url);
-
-      // Extract title from alt attribute
-      const altMatch = block.match(/alt="([^"]+)"/);
-      const title = altMatch ? altMatch[1] : '';
-      if (!title || title.length < 5) continue;
-
-      // Extract date - look for "Mon DD, YYYY" pattern
-      const dateMatch = block.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2}),?\s+(\d{4})/i);
-      let pubDate = new Date();
-      if (dateMatch) {
-        const dateStr = `${dateMatch[1]} ${dateMatch[2]}, ${dateMatch[3]}`;
-        const parsed = new Date(dateStr);
-        if (!Number.isNaN(parsed.getTime())) {
-          pubDate = parsed;
+    if (!items) {
+      items = await scrapeArchiveItems();
+      // An empty extraction means the upstream markup changed, not that the
+      // newsletter is empty — caching that would hide a broken parser for the
+      // full TTL and serve a hollow feed.
+      if (items.length > 0) {
+        try {
+          await setCachedData(CACHE_KEY, items, CACHE_TTL_SECONDS);
+        } catch {
+          // A failed write must not fail the request that already has its answer.
         }
       }
-
-      // Extract subtitle/description if available
-      let description = '';
-      const subtitleMatch = block.match(/line-clamp-3[^>]*>.*?<span[^>]*>([^<]{20,})<\/span>/s);
-      if (subtitleMatch) {
-        description = subtitleMatch[1].trim();
-      }
-
-      items.push({ title, link: url, date: pubDate.toISOString(), description });
     }
 
     // Build RSS XML

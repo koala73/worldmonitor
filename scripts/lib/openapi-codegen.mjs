@@ -447,6 +447,69 @@ export function readPremiumRpcPaths() {
   return [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
 
+// ── Billing-verification wire contract (#5447) ──────────────────────────────
+// The gateway and entitlement gates answer paid-access checks with a shared
+// billing-verification contract: a retryable 503 (Retry-After 1-60s +
+// X-Billing-Verification header + {error, code} body) while a renewal is being
+// re-confirmed or the entitlement backend is unreachable, and a hard 403 whose
+// body carries code `subscription_lapsed` once the lapse is provider-confirmed.
+// The status union is parsed from the exported BillingVerificationStatus type
+// so the published enum can never drift from runtime (fail-closed like the
+// parsers above).
+export function readBillingVerificationStatuses() {
+  const src = readFileSync(resolve(root, 'server/_shared/entitlement-check.ts'), 'utf8');
+  const block = src.match(/export type BillingVerificationStatus\s*=([\s\S]*?);/);
+  if (!block) throw new Error('could not locate BillingVerificationStatus in server/_shared/entitlement-check.ts');
+  const statuses = [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  if (statuses.length === 0) throw new Error('BillingVerificationStatus parsed as empty — refusing to run');
+  return statuses;
+}
+
+// The provider-confirmed lapse is the one union member answered with a 403
+// instead of the retryable 503 (entitlement-check.ts getBillingVerificationDenial).
+export const LAPSED_BILLING_STATUS = 'subscription_lapsed';
+
+// Transient backend-unreachable denials reuse the same wire shape but their
+// code is not part of the persisted status union — assert it still exists in
+// the gateway sources so a rename cannot silently orphan the published enum.
+export function readEntitlementUnavailableCode() {
+  for (const file of ['server/_shared/entitlement-check.ts', 'server/gateway.ts']) {
+    const src = readFileSync(resolve(root, file), 'utf8');
+    const match = src.match(/code:\s*'(entitlement_verification_unavailable)'/);
+    if (match) return match[1];
+  }
+  throw new Error('could not locate the entitlement_verification_unavailable code in gateway sources — refusing to run');
+}
+
+// Retryable-503 code enum, derived: every union status except the hard-403
+// lapse, plus the transient backend-unreachable code.
+export function readRetryableBillingCodes() {
+  const statuses = readBillingVerificationStatuses();
+  if (!statuses.includes(LAPSED_BILLING_STATUS)) {
+    throw new Error(`BillingVerificationStatus no longer contains ${LAPSED_BILLING_STATUS} — the 403/503 split needs review`);
+  }
+  return [...statuses.filter((s) => s !== LAPSED_BILLING_STATUS), readEntitlementUnavailableCode()];
+}
+
+/**
+ * Routes the gateway excludes from generic idempotency replay, read from the runtime's
+ * own Set so the published spec cannot claim an Idempotency-Key contract the runtime
+ * does not honour (or vice versa). Consumed by openapi-inject-idempotency.mjs (whether
+ * to inject the parameter), openapi-inject-rate-limit-errors.mjs (whether the 400
+ * mentions the header), and tests/openapi-idempotency-contract.test.mjs.
+ *
+ * Unlike the parsers above this one may legitimately be EMPTY, so it fails closed only
+ * on a parse miss — an empty Set means "no route is exempt", which is a valid state.
+ */
+export function readIdempotencyExemptPaths() {
+  const src = readFileSync(resolve(root, 'server/_shared/idempotency.ts'), 'utf8');
+  const block = src.match(/IDEMPOTENCY_EXEMPT_RPC_PATHS\s*=\s*new Set<string>\(\[([\s\S]*?)\]\)/);
+  if (!block) {
+    throw new Error('could not locate IDEMPOTENCY_EXEMPT_RPC_PATHS in server/_shared/idempotency.ts');
+  }
+  return new Set([...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+}
+
 function readConstStringArray(src, name) {
   const block = src.match(new RegExp(`${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as const`));
   return block ? [...block[1].matchAll(/'([^']+)'/g)].map((match) => match[1]) : [];

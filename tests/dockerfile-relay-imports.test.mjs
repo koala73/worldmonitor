@@ -46,6 +46,10 @@ describe('Dockerfile.relay — transitive-import closure', () => {
     assert.ok(copied.has('scripts/_country-stock-index.mjs'));
   });
 
+  it('copies the weather-alert helper that ais-relay loads dynamically', () => {
+    assert.ok(copied.has('scripts/_weather-alert-select.mjs'));
+  });
+
   it('scanner catches both ESM imports and CJS require/createRequire', () => {
     // Regression guard for the scanner itself: _seed-utils.mjs has both
     // `import { ... } from './_seed-envelope-source.mjs'` (ESM) AND

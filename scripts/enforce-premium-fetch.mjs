@@ -147,7 +147,7 @@ function checkFile(filePath, clientClassMap, premiumPaths) {
 
   const instances = [];
 
-  function recordInstance(varName, newExpr, posNode) {
+  function recordInstance(varName, newExpr, posNode, accessorNames) {
     const className = newExpr.expression.getText();
     if (!clientClassMap.has(className)) return;
     const optionsArg = newExpr.arguments?.[1] ?? null;
@@ -156,26 +156,65 @@ function checkFile(filePath, clientClassMap, premiumPaths) {
       varName,
       className,
       optionsArg,
+      accessorNames,
       line: lc.line + 1,
       column: lc.character + 1,
     });
   }
 
+  /**
+   * Names that hand this instance to a caller, for the two lazy shapes that
+   * dominate src/ and that a bare identifier match cannot see:
+   *
+   *   const getClient = createLazyClient(() => new XServiceClient(...))
+   *   let _client; function getClient() { _client ??= new XServiceClient(...); }
+   *
+   * Both are reached as `getClient().method()`, so the receiver is a
+   * CallExpression rather than the bound identifier. resilience.ts shipped two
+   * PREMIUM_RPC_PATHS methods on a bare globalThis.fetch through exactly this
+   * hole — the lint reported "clean" the whole time.
+   *
+   * Walking every enclosing declaration is deliberately generous: an extra name
+   * can only cause this lint to attribute MORE calls to an instance, which is
+   * the fail-safe direction for a guard whose whole job is catching a missing
+   * premiumFetch.
+   */
+  function findAccessorNames(newExpr) {
+    const names = new Set();
+    for (let cur = newExpr.parent; cur; cur = cur.parent) {
+      if (ts.isVariableDeclaration(cur) && ts.isIdentifier(cur.name)) {
+        names.add(cur.name.text);
+      } else if (ts.isFunctionDeclaration(cur) && cur.name) {
+        names.add(cur.name.text);
+      } else if (
+        (ts.isMethodDeclaration(cur) || ts.isGetAccessorDeclaration(cur)) &&
+        cur.name && ts.isIdentifier(cur.name)
+      ) {
+        names.add(cur.name.text);
+      }
+    }
+    return names;
+  }
+
   function visit(node) {
-    if (
-      ts.isVariableDeclaration(node) &&
-      node.initializer &&
-      ts.isNewExpression(node.initializer) &&
-      ts.isIdentifier(node.name)
-    ) {
-      recordInstance(node.name.text, node.initializer, node);
-    } else if (
-      ts.isBinaryExpression(node) &&
-      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      ts.isNewExpression(node.right)
-    ) {
-      const lhs = node.left.getText();
-      recordInstance(lhs, node.right, node);
+    if (ts.isNewExpression(node) && clientClassMap.has(node.expression.getText())) {
+      // The direct binding, when there is one. A `createLazyClient(() => new X())`
+      // has none — it is reached only through its accessor.
+      let varName = null;
+      let posNode = node;
+      const parent = node.parent;
+      if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
+        varName = parent.name.text;
+        posNode = parent;
+      } else if (
+        ts.isBinaryExpression(parent) &&
+        parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        parent.right === node
+      ) {
+        varName = parent.left.getText();
+        posNode = parent;
+      }
+      recordInstance(varName, node, posNode, findAccessorNames(node));
     }
     ts.forEachChild(node, visit);
   }
@@ -200,9 +239,15 @@ function checkFile(filePath, clientClassMap, premiumPaths) {
         ts.isCallExpression(node) &&
         ts.isPropertyAccessExpression(node.expression)
       ) {
-        const objText = node.expression.expression.getText();
+        const receiver = node.expression.expression;
         const methodName = node.expression.name.text;
-        if (objText === inst.varName) calledMethods.add(methodName);
+        // `client.method()` — the bound identifier.
+        let matches = inst.varName !== null && receiver.getText() === inst.varName;
+        // `getClient().method()` — the accessor shapes above.
+        if (!matches && ts.isCallExpression(receiver) && ts.isIdentifier(receiver.expression)) {
+          matches = inst.accessorNames.has(receiver.expression.text);
+        }
+        if (matches) calledMethods.add(methodName);
       }
       ts.forEachChild(node, findCalls);
     }
@@ -222,6 +267,7 @@ function checkFile(filePath, clientClassMap, premiumPaths) {
       line: inst.line,
       column: inst.column,
       varName: inst.varName,
+      accessorNames: inst.accessorNames,
       className: inst.className,
       fetchText: fetchText ?? '<no fetch option — defaults to globalThis.fetch>',
       premiumCalls,
@@ -247,7 +293,14 @@ async function main() {
     for (const v of violations) {
       const rel = relative(ROOT, v.file);
       console.error(`  ${rel}:${v.line}:${v.column}`);
-      console.error(`    new ${v.className}(...) bound to \`${v.varName}\``);
+      // A lazily-constructed client has no binding at all — it is reached only
+      // through its accessor, so name that instead of printing `null`.
+      const reachedBy = v.varName !== null
+        ? `bound to \`${v.varName}\``
+        : v.accessorNames.size > 0
+          ? `reached via \`${[...v.accessorNames].map((n) => `${n}()`).join('` / `')}\``
+          : 'unbound';
+      console.error(`    new ${v.className}(...) ${reachedBy}`);
       console.error(`    fetch option: ${v.fetchText}`);
       console.error(`    premium method(s) called: ${v.premiumCalls.join(', ')}`);
       console.error('');

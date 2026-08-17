@@ -105,7 +105,8 @@
     "consumerPrices": "Consumentenprijzen",
     "fearGreed": "Angst & Hebzucht",
     "marketBreadth": "Marktbreedte",
-    "climateNews": "Klimaatnieuws"
+    "climateNews": "Klimaatnieuws",
+    "fx": "Wisselkoersen"
   },
   "commands": {
     "prefixes": {
@@ -185,7 +186,9 @@
         "displacement": "Verplaatsingsstromen in-/uitschakelen",
         "climate": "Klimaatanomalieën in-/uitschakelen",
         "outages": "Internetstoringen in-/uitschakelen",
-        "tradeRoutes": "Handelsroutes in-/uitschakelen"
+        "tradeRoutes": "Handelsroutes in-/uitschakelen",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Naar donkere modus",
@@ -332,7 +335,7 @@
         "URLHAUS_AUTH_KEY": "Gebruikt voor de URLhaus- en ThreatFox-API's.",
         "OTX_API_KEY": "Optionele verrijkingsbron voor de cyberdreigingslaag.",
         "ABUSEIPDB_API_KEY": "Optionele verrijkingsbron voor reputatie van kwaadaardige IP-adressen.",
-        "FINNHUB_API_KEY": "Realtime aandelenkoersen en marktgegevens.",
+        "FINNHUB_API_KEY": "Vertraagde of voorgeladen aandelenkoersen en marktgegevens. Een sleutel is geen live ticker.",
         "NASA_FIRMS_API_KEY": "Brandinformatiesysteem voor Resourcebeheer.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -569,7 +572,7 @@
         "ucdpEvents": "UCDP-evenementen",
         "displacementFlows": "Verplaatsingsstromen",
         "climateAnomalies": "Klimaatafwijkingen",
-        "weatherAlerts": "Weerwaarschuwingen",
+        "weatherAlerts": "Weerwaarschuwingen voor de VS en Canada (NWS, ECCC)",
         "strategicWaterways": "Strategische waterwegen",
         "economicCenters": "Economische Centra",
         "criticalMinerals": "Kritieke mineralen",
@@ -589,7 +592,9 @@
         "speciesRecovery": "Soortenherstel",
         "renewableInstallations": "Schone energie",
         "radiationSpike": "Stralingspiek",
-        "radiationElevated": "Verhoogde straling"
+        "radiationElevated": "Verhoogde straling",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Lagen",
       "layerSearch": "Lagen zoeken...",
@@ -657,7 +662,7 @@
           "infraDatacenters": "AI-rekenclusters >=10.000 GPU's",
           "infraOutages": "Internetstoringen en serviceonderbrekingen",
           "naturalEventsTech": "Aardbevingen, stormen, branden (kan datacenters treffen)",
-          "weatherAlerts": "Waarschuwingen voor zwaar weer",
+          "weatherAlerts": "Waarschuwingen voor zwaar weer in de VS en Canada (NWS, ECCC)",
           "economicCenters": "Beurzen en centrale banken",
           "countriesOverlay": "Overlays met landnamen",
           "financeExchanges": "Belangrijke mondiale beurzen per marktniveau",
@@ -669,7 +674,7 @@
           "financeOutages": "Internetverstoringen die de marktactiviteiten kunnen beïnvloeden",
           "financeCyberThreats": "Beveiligingsgebeurtenissen rond financiële infrastructuur",
           "macroWaterways": "Strategische knelpunten voor de goederenscheepvaart",
-          "weatherAlertsMarket": "Zware weersomstandigheden met marktrelevantie",
+          "weatherAlertsMarket": "Marktrelevante zware weersomstandigheden in de VS en Canada (NWS, ECCC)",
           "naturalEventsMacro": "Aardbevingen, branden, overstromingen en andere natuurlijke verstoringen",
           "timeRecent": "Filter op tijd gebaseerde gegevens naar recente uren",
           "timeExtended": "Toon gegevens van de afgelopen week, maand of altijd",
@@ -702,7 +707,9 @@
           "techEvents": "Grote techconferenties en evenementen",
           "techFires": "Actieve bosbranden nabij technische infrastructuur",
           "geoBoundaries": "Gedemilitariseerde zones, staakt-het-vuren-lijnen en betwiste grenzen",
-          "ciiChoropleth": "Country Instability Index heatmap — kleurt landen op basis van CII-score (groen=stabiel, rood=kritiek)"
+          "ciiChoropleth": "Country Instability Index heatmap — kleurt landen op basis van CII-score (groen=stabiel, rood=kritiek)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Beïnvloedt: aardbevingen, weer, protesten, stroomstoringen"
@@ -730,6 +737,8 @@
       "relatedAssetsNear": "Gerelateerde activa in de buurt van {{location}}",
       "summaryError": "Samenvatting kon niet worden gemaakt",
       "summaryFailed": "Samenvatting mislukt",
+      "sourceCoverage": "{{covered}}/{{total}} bronnen",
+      "sourceCoverageHint": "Toont {{covered}} van {{total}} ingeschakelde bronnen — dit paneel wisselt bij elke verversing van bron",
       "sortBy": "Sorteren op",
       "sortNewest": "Nieuwste",
       "sortRelevance": "Relevantie"
@@ -1019,7 +1028,7 @@
       "fytdLabel": "FY{{year}} YTD",
       "vsPriorFy": "vs FY{{year}}",
       "sourceWto": "WTO",
-      "sourceTreasury": "US Treasury",
+      "sourceTreasury": "Amerikaans ministerie van Financiën",
       "colDate": "Datum",
       "colMonthly": "Maandelijks",
       "colFytd": "FY YTD",
@@ -1027,6 +1036,7 @@
       "noComtradeData": "Geen strategische stroomgegevens beschikbaar",
       "comtradeUnavailable": "UN Comtrade-gegevens tijdelijk niet beschikbaar",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomalie",
       "colReporter": "Land",
       "colCommodity": "Grondstof",
@@ -1083,8 +1093,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "gedegradeerd",
+        "stale": "verouderd"
       }
     },
     "gdeltIntel": {
@@ -1193,10 +1203,10 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Gecachede CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "gedegradeerd",
+        "stale": "verouderd"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1277,7 +1287,8 @@
       "newsSignals": "{{news}} nieuws • {{signals}} signalen",
       "provenanceTitle": "Dekking herkomst: hoeveel opgenomen verhalen en verschillende bronnen deze samenvatting is geselecteerd uit",
       "compiledFrom": "Samengesteld uit {{stories}} verhalen uit {{sources}} bronnen",
-      "briefFreshness": "Gegenereerd {{minutes}}m geleden · nieuwste bron {{hours}}h oud"
+      "briefFreshness": "Gegenereerd {{minutes}}m geleden · nieuwste bron {{hours}}h oud",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "techHubs": {
       "infoTooltip": "<strong>Tech Hub-activiteit</strong><br>Toont tech-hubs met de meeste nieuwsactiviteit.<br><br><em>Activiteitsniveaus:</em><br>• <span style=\"color: {{highColor}}\">Hoog</span> — Breaking news of 50+ score<br>• <span style=\"color: {{elevatedColor}}\">Verhoogd</span> — Score 20-49<br>• <span style=\"color: {{lowColor}}\">Laag</span> — Score lager dan 20<br><br>Klik op een hub om naar de locatie ervan te zoomen."
@@ -1516,25 +1527,25 @@
       "trending": "TREND",
       "velocity": "Snelheid",
       "wallets": "Wallets",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Wereldwijde schenkingsbenchmarks",
+      "benchmarkInfoTooltip": "<strong>Wereldwijde schenkingsbenchmarks</strong> Gepubliceerde platform- en institutionele claims met bronperioden en verificatiestatus. Geannualiseerde cijfers zijn schattingen, geen live-activiteit.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Gepubliceerde benchmarks met geverifieerde brondekking.",
+        "partial": "Gepubliceerde benchmarks met gedeeltelijke brondekking.",
+        "legacy": "Oude momentopname; brondetails niet beschikbaar.",
+        "cached": "Gecachede momentopname tonen; vernieuwen niet beschikbaar."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Bijgehouden platformschenkingen — geannualiseerde schatting",
+      "annualizedDaily": "Dagelijkse geannualiseerde schatting",
+      "atLeast": "Minstens",
+      "about": "Ongeveer",
+      "sourceNotVerified": "Bron niet geverifieerd",
+      "reportedCumulative": "Gerapporteerd cumulatief totaal",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Gepubliceerde benchmark",
+      "sourcesMethodology": "Bronnen en methodologie",
+      "methodologyIntro": "Alleen geverifieerde jaarlijkse of verdedigbaar geannualiseerde platformclaims komen in de kop. Cumulatieve en institutionele cijfers blijven afzonderlijke context.",
+      "partialEstimate": "Gedeeltelijk geverifieerde schatting"
     },
     "supplyChain": {
       "chokepoints": "Knelpunten",
@@ -1565,7 +1576,12 @@
       "loadingHistory": "Laadpassagesgeschiedenis laden…",
       "historyUnavailable": "Passagesgeschiedenis niet beschikbaar",
       "transitDataUnavailable": "Passagesgegevens niet beschikbaar (upstream gedeeltelijk)",
-      "infoTooltip": "<strong>Supply Chain Monitor</strong> Wereldwijde logistiek en resourcetracking:<ul><li><strong>Chokepoints</strong>: Maritieme transittoestand, verstoringsscores en scheepsaantallen</li><li><strong>Scheepvaart</strong>: Baltic Dry Index en vrachtratumtrends</li><li><strong>Mineralen</strong>: Kritieke mineralenconcentratierisico (HHI) en topproducenten</li></ul>Klik op een chokepoint-kaart om de transitgeschiedenis-grafiek uit te breiden."
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Wereldwijde logistiek en resourcetracking:<ul><li><strong>Chokepoints</strong>: Maritieme transittoestand, verstoringsscores en scheepsaantallen</li><li><strong>Scheepvaart</strong>: Baltic Dry Index en vrachtratumtrends</li><li><strong>Mineralen</strong>: Kritieke mineralenconcentratierisico (HHI) en topproducenten</li></ul>Klik op een chokepoint-kaart om de transitgeschiedenis-grafiek uit te breiden.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "positiveNewsFeed": {
       "noStories": "Nog geen verhalen in deze categorie"
@@ -1609,7 +1625,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -1871,10 +1887,21 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Detecteert convergerende natuurramp- en infrastructuursignalen:<ul><li>Correleert aardbevingen, bosbranden, overstromingen en weerextremen</li><li>Volgt cascadische effecten op infrastructuur en toeleveringsketens</li><li>Markeert regio's met samengesteld risicorisico</li></ul>Klik op een kaart om naar de getroffen regio in te zoomen."
     },
     "markets": {
-      "infoTooltip": "<strong>Markten</strong> Real-time aandelenindices, aandelen en cryptoprijzen. Pas uw watchlist aan met de knop Watchlist. Sparklines tonen recente prijstrend.",
+      "infoTooltip": "<strong>Markten</strong> Seeded aandelenindices, aandelen en cryptoprijzen. Pas uw watchlist aan met de knop Watchlist. Sparklines tonen recente prijstrend.",
       "chart": {
-        "title": "{{symbol}} price chart",
-        "close": "Close chart"
+        "title": "{{symbol}} prijsgrafiek",
+        "close": "Grafiek sluiten"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2041,13 +2068,14 @@
     },
     "sanctionsPressure": {
       "title": "Sancties & Aanwijzingen",
-      "infoTooltip": "OFAC-sanctiesaanwijzingen uit de SDN- en Geconsolideerde Lijsten. Toont welke landen het meeste druk van aanwijzingen ervaren, welke programma's dit veroorzaken, en wat sinds de laatste update is toegevoegd.",
+      "infoTooltip": "OFAC SDN- en Geconsolideerde Lijsten plus SEMA/JVCFOA-aanwijzingen van Global Affairs Canada. Toont welke landen het meeste druk van aanwijzingen ervaren, welke programma's dit veroorzaken, en wat sinds de laatste update is toegevoegd.",
       "loading": "Sanctiegegevens laden...",
       "unavailable": "Sanctiegegevens niet beschikbaar.",
       "summary": {
         "new": "Nieuw",
         "vessels": "Schepen",
-        "aircraft": "Luchtvaartuigen"
+        "aircraft": "Luchtvaartuigen",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Gesanctioneerde landen",
@@ -2062,11 +2090,12 @@
       "footer": {
         "updated": "Bijgewerkt {{time}}",
         "dataset": "dataset {{date}}",
-        "source": "Bron: OFAC"
+        "source": "Bron: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nieuw",
-        "new": "nieuw"
+        "new": "nieuw",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} aanwijzing",
       "designations_other": "{{count}} aanwijzingen",
@@ -2206,59 +2235,91 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Panelcategorieën"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Actueel",
+        "stale": "Verouderd",
+        "veryStale": "Zeer verouderd",
+        "noData": "Geen gegevens",
+        "disabled": "Uitgeschakeld",
+        "error": "Fout"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Gegevensversheid: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "laatst bijgewerkt {{time}}",
+      "neverUpdated": "nooit bijgewerkt",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "gedeeltelijke dekking",
+        "contentStale": "inhoud verouderd",
+        "seedStale": "seed verouderd",
+        "noSourceData": "geen brongegevens",
+        "sourceErrorReported": "bronfout gemeld",
+        "freshnessStoreUnavailable": "versheidsopslag niet beschikbaar",
+        "freshnessStoreDegraded": "versheidsopslag gedegradeerd"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "nooit",
+        "justNow": "zojuist",
+        "minutesAgo": "{{count}}m geleden",
+        "hoursAgo": "{{count}}u geleden",
+        "daysAgo": "{{count}}d geleden",
+        "compactNow": "nu",
         "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
+        "compactHours": "{{count}}u",
         "compactDays": "{{count}}d"
       }
     },
     "exportGate": {
-      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
-      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
-      "upgradeCta": "Upgrade to Pro Business",
-      "lockedAriaLabel": "Export data — locked. {{reason}}",
-      "unlockedAnnouncement": "Data export unlocked.",
-      "preparingPdf": "Preparing PDF…",
-      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+      "signedOutDesc": "Meld u aan om dashboardgegevens te exporteren als CSV, JSON of PDF.",
+      "upgradeDesc": "Gegevensexport (CSV, JSON, PDF) is inbegrepen bij Pro Business.",
+      "upgradeCta": "Upgraden naar Pro Business",
+      "lockedAriaLabel": "Gegevens exporteren — vergrendeld. {{reason}}",
+      "unlockedAnnouncement": "Gegevensexport ontgrendeld.",
+      "preparingPdf": "PDF voorbereiden…",
+      "pdfFailed": "Het PDF-rapport kon niet worden gegenereerd. Probeer het opnieuw of gebruik de JSON-export."
     },
     "tabCap": {
-      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
-      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
-      "upgradeCta": "Upgrade for more",
-      "lockedAriaLabel": "Add tab — locked. {{reason}}",
-      "unlockedAnnouncement": "Dashboard tab limit lifted."
+      "signedOutDesc": "Werkruimten zonder aanmelding zijn beperkt tot {{cap}} dashboardtabbladen. Meld u aan om meer toe te voegen.",
+      "upgradeDesc": "U heeft uw limiet van {{cap}} dashboardtabbladen bereikt.",
+      "upgradeCta": "Upgraden voor meer",
+      "lockedAriaLabel": "Tabblad toevoegen — vergrendeld. {{reason}}",
+      "unlockedAnnouncement": "Limiet voor dashboardtabbladen opgeheven."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Wisselkoersen</strong> Valutastress en spotkoersen:<ul><li>FX Stress rangschikt 45 valuta's op basis van hun ergste piek-tot-dal-daling in de afgelopen 24 maanden, samen met de verandering over 12 maanden</li><li>De dekking omvat ARS, TRY, EGP, NGN, PKR en UAH — valuta's die de referentieversameling van de BIS en ECB niet omvat</li><li>Spot geeft koersen tegen de Amerikaanse dollar en de ECB-euroreferentiekoersen afzonderlijk, omdat deze twee uit verschillende bases worden geciteerd</li><li>RUB — koersen van de Centrale Bank van Rusland, roebel per eenheid</li></ul> Bronnen: Yahoo Finance, de Europese Centrale Bank en de Centrale Bank van Rusland.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "Valuta",
+      "pair": "Paar",
+      "rate": "Koers",
+      "yoy": "12m",
+      "drawdown": "24m Daling",
+      "peakToTrough": "Piek → Dal",
+      "change1d": "1d",
+      "perUsd": "Per 1 USD",
+      "usdPerUnit": "USD per eenheid",
+      "usdBase": "Tegen de Amerikaanse dollar",
+      "eurBase": "ECB-euroreferentiekoersen",
+      "stressedCount": "{{stressed}} van {{total}} valuta's onder {{threshold}}",
+      "sourceYahoo": "Bron: Yahoo Finance",
+      "sourceEcb": "Bron: ECB",
+      "degraded": "Momenteel niet beschikbaar: {{sources}}. Wordt binnenkort opnieuw geprobeerd.",
+      "source": {
+        "stress": "FX-stress",
+        "usd": "Koersen Amerikaanse dollar",
+        "eur": "ECB eurodeelnemers",
+        "rub": "Koersen van de Centrale Bank van Rusland"
+      },
+      "rubBase": "Centrale Bank van Rusland — roebel per 1 eenheid",
+      "rubPerUnit": "Roebel per eenheid",
+      "sourceCbr": "Bron: Centrale Bank van Rusland"
     }
   },
   "popups": {
@@ -2471,6 +2532,7 @@
     "moreEvents": "meer gebeurtenissen",
     "monitoring": "Toezicht",
     "viewUSGS": "Bekijk op USGS",
+    "viewNRCan": "Bekijk op Earthquakes Canada",
     "expired": "Verlopen",
     "timeAgo": {
       "s": "{{count}}s geleden",
@@ -2591,7 +2653,7 @@
       "heading": "RUBRIEK",
       "hexCode": "HEX-CODE",
       "squawk": "SQUAWK",
-      "attribution": "Bron: OpenSky-netwerk"
+      "attribution": "Bron: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS DONKER",
@@ -2990,7 +3052,7 @@
     "panelCatCommodityEcon": "Economie & Handel",
     "panelCatHappyNews": "Goed Nieuws",
     "panelCatHappyPlanet": "Planeet & Geven",
-    "embed": "Embed"
+    "embed": "Insluiten"
   },
   "countryBrief": {
     "identifying": "Land identificeren...",
@@ -3067,6 +3129,19 @@
       "activeStrikes": "{{count}} actieve stakingen gedetecteerd"
     },
     "militaryActivity": "Militaire activiteit",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Economische indicatoren",
     "ownFlights": "Eigen vluchten",
     "foreignFlights": "Buitenlandse vluchten",
@@ -3122,20 +3197,20 @@
     "geocodeFailed": "Kon geen land op deze locatie identificeren",
     "retryBtn": "Opnieuw proberen",
     "closeBtn": "Sluiten",
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Veerkrachtscore laden…",
+    "resilienceScoreUnavailable": "Veerkrachtscore niet beschikbaar.",
     "china": {
       "title": "Landenoverzicht China",
       "description": "Actuele macro-, markt-, handels-, energie- en operationele beschikbaarheid uit bestaande publieke datacontracten.",
-      "policyEvents": "Policy & Enforcement",
+      "policyEvents": "Beleid en handhaving",
       "energy": "Energie",
       "availability": "Gevaren & luchtvaart",
       "observed": "Per:",
-      "published": "Published:",
-      "effective": "Effective:",
-      "sectors": "Sectors:",
-      "entities": "Entities:",
-      "translation": "Translation:",
+      "published": "Gepubliceerd:",
+      "effective": "Van kracht:",
+      "sectors": "Sectoren:",
+      "entities": "Entiteiten:",
+      "translation": "Vertaling:",
       "source": "Bron:",
       "imfGrowth": "IMF-groeiprognose",
       "creditGdp": "Krediet t.o.v. bbp",
@@ -3164,12 +3239,29 @@
         "stale": "Verouderd",
         "unavailable": "Niet beschikbaar"
       },
-      "macroSignals": "Macro Signals",
-      "crossStraitActivity": "Cross-Strait Activity",
-      "corporateDisclosures": "Corporate Disclosures",
-      "corridorConditions": "Corridor Conditions",
-      "activityNowcast": "Activity Nowcast",
-      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
+      "macroSignals": "Macrosignalen",
+      "crossStraitActivity": "Activiteit over de straat",
+      "corporateDisclosures": "Bedrijfsbekendmakingen",
+      "corridorConditions": "Corridoromstandigheden",
+      "activityNowcast": "Activiteit nowcast",
+      "decisionSignalsUnavailable": "De momentopname van beslissingssignalen van China is momenteel niet beschikbaar."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "preferences": {
@@ -3322,16 +3414,42 @@
     "visualizationFailed": "Visualisatie mislukt"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Dashboardtabbladen",
+    "defaultName": "Hoofd",
+    "newTabName": "Nieuw tabblad",
+    "newTabCreated": "Nieuw tabblad aangemaakt",
+    "tabDeleted": "Tabblad \"{{name}}\" verwijderd",
+    "addTab": "Tabblad toevoegen",
+    "addTabTitle": "Nieuw tabblad (begint met de standaardpanelen)",
+    "renameHint": "{{name}} — dubbelklik om te hernoemen",
+    "deleteTab": "Tabblad verwijderen",
+    "deleteTabAria": "Tabblad {{name}} verwijderen",
+    "tabNameAria": "Tabbladnaam"
+  },
+  "theaterPresets": {
+    "label": "Dekkingspresets",
+    "applied": "Preset {{preset}} toegepast: {{count}} bronnen ingeschakeld",
+    "alreadyApplied": "Preset {{preset}} is al toegepast",
+    "ukraineWar": {
+      "label": "Oorlog in Oekraïne",
+      "description": "Oekraïense hoofdmedia, onafhankelijke Russische pers en bronnen voor frontbeoordeling inschakelen"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Veiligheidsbronnen over Taiwan, Pakistan en Zuidoost-Azië inschakelen"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel en West-Afrika",
+      "description": "Lokale bronnen uit de Sahel, Nigeria en West-Afrika inschakelen"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukasus en Centraal-Azië",
+      "description": "Regionale bronnen uit de Zuidelijke Kaukasus en Centraal-Azië inschakelen"
+    },
+    "middleEastFlashpoints": {
+      "label": "Spanningshaarden in het Midden-Oosten",
+      "description": "Bronnen over Iran, Israël, de Golf en Koerdische regio's inschakelen"
+    },
+    "unavailable": "Preset {{preset}} is niet beschikbaar met je huidige panelen"
   }
 }

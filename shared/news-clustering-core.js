@@ -18,6 +18,10 @@
  */
 
 import { SIMILARITY_THRESHOLD, SUPPRESSED_TRENDING_TERMS, jaccardSimilarity, tokenize } from './text-analysis-core.js';
+// #6428: `sourceCount` is the ARTICLE count and stays that way — ranking,
+// velocity and ISQ all read it as volume. Corroboration badges need a
+// publisher count, which is a different question and gets its own field.
+import { countPublisherFamilies } from './publisher-families.js';
 
 export const MAX_CLUSTER_NEWS_ITEMS = 1000;
 
@@ -237,6 +241,7 @@ export function clusterNewsCore(items, getSourceTier) {
       primarySource: primary.source,
       primaryLink: primary.link,
       sourceCount: cluster.length,
+      uniquePublisherCount: countPublisherFamilies(cluster.map(i => i.source)),
       topSources,
       allItems: cluster,
       firstSeen: new Date(dates.reduce((min, d) => d < min ? d : min)),

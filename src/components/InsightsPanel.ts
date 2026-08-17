@@ -5,7 +5,6 @@ import { parallelAnalysis, type AnalyzedHeadline } from '@/services/parallel-ana
 import { signalAggregator, type RegionalConvergence } from '@/services/signal-aggregator';
 import { focalPointDetector } from '@/services/focal-point-detector';
 import { stripOrefLabels } from '@/services/oref-alerts';
-import { ingestNewsForCII } from '@/services/country-instability';
 import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { getCachedPosture } from '@/services/cached-theater-posture';
@@ -144,7 +143,7 @@ export class InsightsPanel extends Panel {
     this.setDataBadge('cached');
     this.setSafeContent(unsafeRawHtml(
       this.renderWorldBrief(this.cachedBrief, this.cachedBriefSources),
-      'renderWorldBrief escapes the cached summary (#4890 early brief paint)',
+      'renderWorldBrief formats and links the cached summary (#4890 early brief paint)',
     ));
   }
 
@@ -277,8 +276,6 @@ export class InsightsPanel extends Panel {
       this.setProgress(1, totalSteps, t('components.insights.loadingServerInsights'));
 
       let signalSummary: ReturnType<typeof signalAggregator.getSummary>;
-      let focalSummary: ReturnType<typeof focalPointDetector.analyze>;
-
       if (SITE_VARIANT === 'full') {
         const _cp = getCachedPosture()?.postures;
         const theaterPostures = _cp?.length
@@ -289,12 +286,7 @@ export class InsightsPanel extends Panel {
         }
         signalSummary = signalAggregator.getSummary();
         this.lastConvergenceZones = signalSummary.convergenceZones;
-        focalSummary = focalPointDetector.analyze(clusters, signalSummary);
-        this.lastFocalPoints = focalSummary.focalPoints;
-        if (focalSummary.focalPoints.length > 0) {
-          ingestNewsForCII(clusters);
-          window.dispatchEvent(new CustomEvent('focal-points-ready'));
-        }
+        this.lastFocalPoints = focalPointDetector.analyze(clusters, signalSummary).focalPoints;
       } else {
         this.lastConvergenceZones = [];
         this.lastFocalPoints = [];
@@ -383,10 +375,6 @@ export class InsightsPanel extends Panel {
         this.lastConvergenceZones = signalSummary.convergenceZones;
         focalSummary = focalPointDetector.analyze(clusters, signalSummary);
         this.lastFocalPoints = focalSummary.focalPoints;
-        if (focalSummary.focalPoints.length > 0) {
-          ingestNewsForCII(clusters);
-          window.dispatchEvent(new CustomEvent('focal-points-ready'));
-        }
       } else {
         signalSummary = {
           timestamp: new Date(),
@@ -595,10 +583,15 @@ export class InsightsPanel extends Panel {
 
       const badges: string[] = [];
 
-      if (story.sourceCount >= 3) {
-        badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: story.sourceCount })}</span>`);
-      } else if (story.sourceCount >= 2) {
-        badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: story.sourceCount })}</span>`);
+      // #6428: the "✓ N sources" badge is a corroboration claim, so it counts
+      // PUBLISHERS. story.sourceCount is the article count — nine reprints of
+      // one wire across one newsroom's feeds rendered "✓ 9 sources". Fail
+      // closed on a pre-#6428 cached payload rather than fall back to it.
+      const storyPublishers = story.uniqueSourceCount ?? 0;
+      if (storyPublishers >= 3) {
+        badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: storyPublishers })}</span>`);
+      } else if (storyPublishers >= 2) {
+        badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: storyPublishers })}</span>`);
       }
 
       if (story.isAlert) {
@@ -656,18 +649,21 @@ export class InsightsPanel extends Panel {
     `;
   }
 
-  /** #4921: cited per-story lines + staleness footer for the World Brief. */
+  /** #4921: cited per-story lines behind a disclosure + staleness footer. */
   private renderBriefExtras(insights: ServerInsights): string {
     const lines = Array.isArray(insights.briefStoryLines) ? insights.briefStoryLines : [];
     const sources = insights.worldBriefSources ?? [];
     const linesHtml = lines.length > 0
-      ? `<ol class="insights-brief-lines">${lines
-          .map((line) => `<li>${formatIntelBrief(line.text, { sources })
-            .replace(/^<div class="brief-para">/, '')
-            .replace(/<\/div>$/, '')
-            .replace(/^<p>/, '')
-            .replace(/<\/p>$/, '')}</li>`)
-          .join('')}</ol>`
+      ? `<details class="insights-brief-details">
+          <summary>${escapeHtml(t('components.insights.briefStoryDetails', { count: String(lines.length) }))}</summary>
+          <ol class="insights-brief-lines">${lines
+            .map((line) => `<li>${formatIntelBrief(line.text, { sources })
+              .replace(/^<div class="brief-para">/, '')
+              .replace(/<\/div>$/, '')
+              .replace(/^<p>/, '')
+              .replace(/<\/p>$/, '')}</li>`)
+            .join('')}</ol>
+        </details>`
       : '';
     let footer = '';
     const generatedMs = new Date(insights.generatedAt).getTime();
@@ -694,7 +690,7 @@ export class InsightsPanel extends Panel {
     return `
       <div class="insights-brief">
         <div class="insights-section-title">${heading}</div>
-        <div class="insights-brief-text">${escapeHtml(brief)}</div>
+        <div class="insights-brief-text">${formatIntelBrief(brief, { sources })}</div>
         ${extrasHtml}
         ${renderBriefSourcesFooter(sources, { className: 'insights-brief-sources', maxSources: Math.max(6, sources.length) })}
       </div>
@@ -721,10 +717,12 @@ export class InsightsPanel extends Panel {
         badges.push(`<span class="insight-badge ${cls}">${isq.tier.toUpperCase()}</span>`);
       }
 
-      if (cluster.sourceCount >= 3) {
-        badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: cluster.sourceCount })}</span>`);
-      } else if (cluster.sourceCount >= 2) {
-        badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: cluster.sourceCount })}</span>`);
+      // #6428: publishers, not articles — see renderServerStories above.
+      const clusterPublishers = cluster.uniquePublisherCount ?? 0;
+      if (clusterPublishers >= 3) {
+        badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: clusterPublishers })}</span>`);
+      } else if (clusterPublishers >= 2) {
+        badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: clusterPublishers })}</span>`);
       }
 
       if (cluster.velocity && cluster.velocity.level !== 'normal') {
@@ -790,7 +788,10 @@ export class InsightsPanel extends Panel {
   }
 
   private renderStats(clusters: ClusteredEvent[]): string {
-    const multiSource = clusters.filter(c => c.sourceCount >= 2).length;
+    // #6428: "MULTI-SOURCE" counts clusters carried by 2+ PUBLISHERS. Keyed
+    // on sourceCount it counted 2+ ARTICLES, so one outlet publishing a story
+    // twice — or two of its own feeds carrying it — read as multi-source.
+    const multiSource = clusters.filter(c => (c.uniquePublisherCount ?? 0) >= 2).length;
     const fastMoving = clusters.filter(c => c.velocity && c.velocity.level !== 'normal').length;
     const alerts = clusters.filter(c => c.isAlert).length;
 

@@ -7,9 +7,8 @@ import { describe, it } from 'node:test';
 // Brief only paints after clusters + hydration + sentiment complete. For
 // repeat visitors the previous brief is already in the persistent cache, so
 // the panel must paint it at construction time (shell paint, ~600ms) and let
-// the first real update pass overwrite it. These are source-pattern guards
-// (InsightsPanel is DOM-heavy; repo convention — see
-// insights-brief-sources-static.test.mts).
+// the first real update pass overwrite it. InsightsPanel is DOM-heavy, so this
+// suite keeps a focused source guard for the paint-order contract.
 const source = readFileSync(new URL('../src/components/InsightsPanel.ts', import.meta.url), 'utf8');
 
 const sliceBetween = (start: string, end: string): string => {
@@ -50,7 +49,7 @@ describe('InsightsPanel early cached-brief paint (#4890)', () => {
     assert.match(
       method,
       /this\.renderWorldBrief\(this\.cachedBrief, this\.cachedBriefSources\)/,
-      'the early paint must reuse renderWorldBrief (it escapes the cached summary)',
+      'the early paint must reuse renderWorldBrief (it formats and links the cached summary)',
     );
   });
 

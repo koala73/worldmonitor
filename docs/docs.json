@@ -85,6 +85,7 @@
                 "pages": [
                   "overview",
                   "features",
+                  "data-sources",
                   "global-procurement-intelligence",
                   "hotspots"
                 ]
@@ -94,6 +95,10 @@
                 "pages": [
                   "signal-intelligence",
                   "ai-intelligence",
+                  "china-data-coverage",
+                  "china-official-macro-policy",
+                  "china-corporate-disclosures",
+                  "china-logistics-corridors",
                   "methodology/china-activity-nowcast",
                   "methodology/news-digest-and-briefing",
                   "country-instability-index",
@@ -234,7 +239,7 @@
                   "relay-parameters",
                   "decision-signal-provenance",
                   "china-decision-signals",
-                  "data-sources"
+                  "source-attribution"
                 ]
               },
               {
@@ -256,6 +261,7 @@
           },
           {
             "tab": "API Reference",
+            "openapi": "api/worldmonitor.openapi.yaml",
             "groups": [
               {
                 "group": "Overview",
@@ -546,6 +552,7 @@
                 "pages": [
                   "zh/overview",
                   "zh/features",
+                  "zh/data-sources",
                   "zh/hotspots"
                 ]
               },
@@ -554,6 +561,10 @@
                 "pages": [
                   "zh/signal-intelligence",
                   "zh/ai-intelligence",
+                  "zh/china-data-coverage",
+                  "zh/china-official-macro-policy",
+                  "zh/china-corporate-disclosures",
+                  "zh/china-logistics-corridors",
                   "zh/methodology/china-activity-nowcast",
                   "zh/methodology/news-digest-and-briefing",
                   "zh/country-instability-index",
@@ -693,7 +704,8 @@
                   "zh/health-endpoints",
                   "zh/relay-parameters",
                   "zh/decision-signal-provenance",
-                  "zh/data-sources"
+                  "zh/china-decision-signals",
+                  "zh/source-attribution"
                 ]
               },
               {
@@ -715,6 +727,7 @@
           },
           {
             "tab": "API 参考",
+            "openapi": "api/worldmonitor.openapi.yaml",
             "groups": [
               {
                 "group": "概览",

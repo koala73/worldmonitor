@@ -133,80 +133,83 @@ describe('resolveNewsCategories', () => {
   });
 });
 
+// `newsCategoryPanelKeys` is the registry panel-layout fills as it registers
+// NewsPanels: categoryKey → the panel key that NewsPanel actually took. A
+// category key already claimed by a non-news panel never lands in it.
 describe('enabledNewsCategoryKeys', () => {
   // App.ts seeds panelSettings with EVERY ALL_PANELS key (cross-variant ones
-  // enabled:false) and panel creation keys on presence — so ctx.newsPanels
-  // holds disabled panels too. Only enabled ones may become custom categories.
+  // enabled:false) and panel registration keys on presence, not on `.enabled` —
+  // so the registry holds disabled categories too. Only enabled ones may become
+  // custom categories.
   test('includes enabled panels, excludes disabled ones', () => {
-    const politics = {};
-    const startups = {};
-    const newsPanels = { politics, startups };
-    const panels = { politics, startups };
-    const panelSettings = {
-      politics: { enabled: true },
-      startups: { enabled: false }, // cross-variant panel, disabled in this variant
-    };
+    const registry = new Map([['politics', 'politics'], ['startups', 'startups']]);
     assert.deepStrictEqual(
-      enabledNewsCategoryKeys(newsPanels, panels, panelSettings),
+      enabledNewsCategoryKeys(registry, {
+        politics: { enabled: true },
+        startups: { enabled: false }, // cross-variant panel, disabled in this variant
+      }),
       ['politics'],
     );
   });
 
-  test('excludes a panel with no settings entry', () => {
-    const orphan = {};
+  test('excludes a registered category with no settings entry', () => {
     assert.deepStrictEqual(
-      enabledNewsCategoryKeys({ orphan }, { orphan }, {}),
+      enabledNewsCategoryKeys(new Map([['orphan', 'orphan']]), {}),
       [],
     );
   });
 
-  test('includes enabled configured categories before lazy news panels register', () => {
+  // #5376 REPRO: `commodities`, `supply-chain` and `live-news` are CANONICAL_FEEDS
+  // category keys whose panel key is owned by a NON-news panel on every variant
+  // (CommoditiesPanel market prices, SupplyChainPanel, LiveNewsPanel 24/7 video),
+  // so panel-layout's NewsPanel registration for them is a no-op and they are
+  // absent from the registry. Their DATA panel's `enabled: true` must not make
+  // them news categories: with no NewsPanel to render into, every feed fetched is
+  // pure waste — 19 uncapped /api/rss-proxy calls per dashboard load.
+  test('a category key owned by a non-news panel is never a news category (#5376)', () => {
     assert.deepStrictEqual(
-      enabledNewsCategoryKeys({}, {}, {
-        startups: { enabled: true },
-        'markets-news': { enabled: true },
-        markets: { enabled: true },
-      }, ['startups', 'markets']),
-      ['startups', 'markets'],
+      enabledNewsCategoryKeys(new Map([['politics', 'politics']]), {
+        politics: { enabled: true },
+        commodities: { enabled: true },    // CommoditiesPanel (market prices)
+        'supply-chain': { enabled: true }, // SupplyChainPanel
+        'live-news': { enabled: true },    // LiveNewsPanel (24/7 video)
+      }),
+      ['politics'],
     );
   });
 
-  test('configured colliding categories ignore enabled data panels before lazy news panels register', () => {
+  // A category whose NewsPanel took its own key reads enablement from that key.
+  // Unrelated `${key}-news` settings entries (another variant's remapped panel,
+  // or a stale one left in a user's persisted settings) must not suppress it.
+  test('reads enablement from the registered key, ignoring stale ${key}-news entries', () => {
+    const registry = new Map([
+      ['commodities', 'commodities'],
+      ['climate', 'climate'],
+      ['mining', 'mining'],
+    ]);
     assert.deepStrictEqual(
-      enabledNewsCategoryKeys({}, {}, {
-        markets: { enabled: true },
-        'markets-news': { enabled: false },
-      }, ['markets']),
-      [],
-    );
-  });
-
-  test('configured non-colliding categories ignore stale disabled ${key}-news settings', () => {
-    assert.deepStrictEqual(
-      enabledNewsCategoryKeys({}, {}, {
+      enabledNewsCategoryKeys(registry, {
         commodities: { enabled: true },
         'commodities-news': { enabled: false },
         climate: { enabled: true },
         'climate-news': { enabled: false },
         mining: { enabled: true },
         'mining-news': { enabled: false },
-      }, ['commodities', 'climate', 'mining']),
+      }),
       ['commodities', 'climate', 'mining'],
     );
   });
 
-  // Collision case: `markets` key is occupied by a non-news DATA panel, so the
-  // news panel registered under `markets-news`. Enablement must be read from
-  // panelSettings['markets-news'] — NOT panelSettings['markets'] (the data panel).
+  // Collision case: `markets` is occupied by a non-news DATA panel, so the news
+  // panel registered under `markets-news` and the registry maps
+  // markets → markets-news. Enablement must be read from panelSettings
+  // ['markets-news'] — NOT panelSettings['markets'] (the data panel).
   test('collision: reads the remapped ${key}-news settings entry, not the data panel', () => {
-    const marketsNews = {};
-    const marketsData = {};
-    const newsPanels = { markets: marketsNews };
-    const panels = { markets: marketsData, 'markets-news': marketsNews };
+    const registry = new Map([['markets', 'markets-news']]);
 
     // data panel enabled, news panel enabled → included
     assert.deepStrictEqual(
-      enabledNewsCategoryKeys(newsPanels, panels, {
+      enabledNewsCategoryKeys(registry, {
         markets: { enabled: true },
         'markets-news': { enabled: true },
       }),
@@ -215,11 +218,21 @@ describe('enabledNewsCategoryKeys', () => {
 
     // data panel enabled, news panel DISABLED → excluded (data state must not leak)
     assert.deepStrictEqual(
-      enabledNewsCategoryKeys(newsPanels, panels, {
+      enabledNewsCategoryKeys(registry, {
         markets: { enabled: true },
         'markets-news': { enabled: false },
       }),
       [],
+    );
+  });
+
+  test('duplicate registry entries do not produce duplicate keys', () => {
+    assert.deepStrictEqual(
+      enabledNewsCategoryKeys(
+        [['startups', 'startups'], ['startups', 'startups']],
+        { startups: { enabled: true } },
+      ),
+      ['startups'],
     );
   });
 });

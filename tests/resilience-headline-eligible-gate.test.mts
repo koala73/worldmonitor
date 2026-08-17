@@ -28,6 +28,7 @@ import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
 
 const D6_RANKING_CACHE_TAG = {
   _formula: 'd6',
+  _educationState: 'education-on',
   _intervalMethodology: RESILIENCE_INTERVAL_METHODOLOGY,
 } as const;
 

@@ -115,6 +115,24 @@ describe('notification webhook SSRF guard', () => {
     }
   });
 
+  test('script classifier blocks local-use NAT64 and discard-only IPv6 prefixes at their boundaries', () => {
+    for (const address of [
+      '64:ff9b:1::',
+      '64:ff9b:1:ffff:ffff:ffff:ffff:ffff',
+      '100::',
+      '100::ffff:ffff:ffff:ffff',
+    ]) {
+      assert.equal(scriptSsrf.isBlockedResolvedAddress(address), true, `script helper must block ${address}`);
+    }
+
+    for (const address of [
+      '64:ff9b:2::',
+      '100:0:0:1::',
+    ]) {
+      assert.equal(scriptSsrf.isBlockedResolvedAddress(address), false, `script helper must allow ${address}`);
+    }
+  });
+
   test('delivery rejects DNS rebinding to link-local and reserved addresses', async () => {
     await assert.rejects(
       () => scriptSsrf.assertNotificationWebhookDeliveryUrlSafe(

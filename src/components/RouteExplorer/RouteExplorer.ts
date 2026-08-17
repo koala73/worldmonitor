@@ -6,6 +6,8 @@
  * panels, and drives map overlays via `MapContainer` primitives.
  */
 
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { openExternalUrl } from '@/services/external-navigation';
 import { CountryPicker } from './CountryPicker';
 import { Hs2Picker } from './Hs2Picker';
 import { CargoTypeDropdown } from './CargoTypeDropdown';
@@ -358,7 +360,7 @@ export class RouteExplorer {
         });
         void import('@/services/checkout')
           .then((m) => m.startCheckout('pro_monthly'))
-          .catch(() => window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer'));
+          .catch(() => openExternalUrl(`${WEB_APP_ORIGIN}/pro`));
       }, { once: true });
     }
   }

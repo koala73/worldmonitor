@@ -4,6 +4,7 @@ import {
   clusterItems,
   computeEntityCorroboration,
   isBriefLeadEligible,
+  publisherFamilyCount,
   scoreImportance,
   selectTopStories,
 } from '../scripts/_clustering.mjs';
@@ -226,6 +227,326 @@ describe('_clustering.mjs', () => {
       ]);
       computeEntityCorroboration(clusters, now);
       assert.equal(clusters.some(c => c.entityCorroboration), false);
+    });
+  });
+
+  // #5947: production ran 35 consecutive INSIGHTS_SYNTHESIS_MISSING_CLUSTER
+  // rejections while 11 corroborated clusters sat in the corpus. The brief's
+  // lead requires a corroborated cluster, but selection admits single-source
+  // alerts (isAlert / score > 100) and ranks by score * recencyWeight — and
+  // corroborated clusters are inherently OLDER (a second source takes time to
+  // arrive), so recency systematically pushes them out. On an alert-heavy news
+  // cycle every top-8 slot went to a single-source alert and the brief could
+  // never publish. Selection must guarantee the brief's own precondition
+  // whenever the corpus can satisfy it.
+  describe('brief-lead reservation (#5947)', () => {
+    const now = Date.now();
+    const ageISO = (hours) => new Date(now - hours * 3600_000).toISOString();
+    // Fresh, high-intensity single-source alerts — the Iran/Ukraine cycle that
+    // swept production's top-8 (effective scores ~145-170 here).
+    const alertClusters = Array.from({ length: 12 }, (_, i) => ({
+      primaryTitle: `Iran war latest: missile attack kills troops in massive airstrike on base ${i}`,
+      primarySource: `Alert Wire ${i}`,
+      primaryLink: `http://alert-${i}`,
+      sources: [`Alert Wire ${i}`],
+      sourceCount: 1,
+      isAlert: true,
+      pubDate: ageISO(0.1),
+      lastUpdated: ageISO(0.1),
+    }));
+    // Corroborated but lower-intensity and older, so score * recencyWeight
+    // ranks it below every alert (effective score ~81) — production's
+    // 4-source avalanche story sat at rank 9+ for the same reason.
+    const corroborated = {
+      primaryTitle: 'Mountaineer killed in Pakistan avalanche, his company confirms',
+      primarySource: 'BBC World',
+      primaryLink: 'http://corroborated',
+      sources: ['BBC World', 'CNN', 'Sky News', 'CBS News'],
+      sourceCount: 4,
+      isAlert: false,
+      pubDate: ageISO(6),
+      lastUpdated: ageISO(6),
+    };
+
+    it('keeps a corroborated cluster in top stories when alerts sweep the ranking', () => {
+      const stats = {};
+      const top = selectTopStories([...alertClusters, corroborated], 8, stats);
+      assert.equal(top.length, 8);
+      // Assert the premise too: if scoring drifts so the corroborated cluster
+      // ranks top-8 on merit, this test would still pass while silently no
+      // longer exercising the reservation.
+      assert.equal(stats.briefEligiblePromoted, true, 'fixture must still force the reservation path');
+      assert.ok(
+        top.some(isBriefLeadEligible),
+        'top stories must retain a brief-eligible cluster when one exists in the corpus',
+      );
+    });
+
+    it('yields a usable brief lead instead of MISSING_CLUSTER', () => {
+      const stats = {};
+      const top = selectTopStories([...alertClusters, corroborated], 8, stats);
+      assert.equal(stats.briefEligiblePromoted, true, 'fixture must still force the reservation path');
+      const lead = pickBriefCluster(top);
+      assert.notEqual(lead, null, 'pickBriefCluster must not return null when the corpus has a corroborated cluster');
+      assert.equal(lead.primarySource, 'BBC World');
+    });
+
+    it('reserves the highest-ranked eligible candidate, not just any', () => {
+      const weaker = {
+        ...corroborated,
+        primaryTitle: 'Local council approves a new footpath in a quiet village',
+        primarySource: 'Village Gazette',
+        primaryLink: 'http://weaker',
+        sources: ['Village Gazette', 'County Wire'],
+        pubDate: ageISO(14),
+        lastUpdated: ageISO(14),
+      };
+      const stats = {};
+      const top = selectTopStories([...alertClusters, weaker, corroborated], 8, stats);
+      assert.equal(stats.briefEligibleConsidered, 2);
+      assert.equal(stats.briefEligiblePromoted, true);
+      const eligible = top.filter(isBriefLeadEligible);
+      assert.equal(eligible.length, 1, 'exactly one slot is reserved');
+      assert.equal(
+        eligible[0].primarySource,
+        'BBC World',
+        'the better-ranked eligible cluster must win the reserved slot',
+      );
+    });
+
+    it('reports the reservation in selection stats', () => {
+      const stats = {};
+      selectTopStories([...alertClusters, corroborated], 8, stats);
+      assert.equal(stats.briefEligibleConsidered, 1);
+      assert.equal(stats.briefEligiblePromoted, true);
+    });
+
+    it('does not promote when the top stories already carry a corroborated cluster', () => {
+      const stats = {};
+      const top = selectTopStories([corroborated, ...alertClusters.slice(0, 3)], 8, stats);
+      assert.ok(top.some(isBriefLeadEligible));
+      assert.equal(stats.briefEligiblePromoted, false);
+    });
+
+    it('leaves a genuinely uncorroborated corpus degraded', () => {
+      const stats = {};
+      const top = selectTopStories(alertClusters, 8, stats);
+      assert.equal(top.length, 8);
+      assert.equal(stats.briefEligibleConsidered, 0);
+      assert.equal(stats.briefEligiblePromoted, false);
+      assert.equal(pickBriefCluster(top), null);
+    });
+
+    it('respects the per-source cap while promoting', () => {
+      // 5 same-source candidates against 8 slots: the cap must bind and drop
+      // 2, otherwise this asserts nothing (the slots would run out first).
+      const capped = Array.from({ length: 5 }, (_, i) => ({
+        primaryTitle: `Iran war latest: missile attack kills troops in airstrike variant ${i}`,
+        primarySource: 'Capped Wire',
+        primaryLink: `http://capped-${i}`,
+        sources: ['Capped Wire', 'Second Wire'],
+        sourceCount: 2,
+        isAlert: true,
+        pubDate: ageISO(0.1),
+        lastUpdated: ageISO(0.1),
+      }));
+      const stats = {};
+      const top = selectTopStories([...alertClusters.slice(0, 3), ...capped], 8, stats);
+      const fromCapped = top.filter(s => s.primarySource === 'Capped Wire').length;
+      assert.equal(fromCapped, 3, 'per-source cap must admit exactly MAX_PER_SOURCE');
+      assert.ok(stats.sourceCapDropped >= 2, `cap must actually bind, got ${stats.sourceCapDropped}`);
+      assert.ok(top.some(isBriefLeadEligible));
+    });
+
+    it('does not claim a promotion when no slot exists', () => {
+      const stats = {};
+      const top = selectTopStories([...alertClusters, corroborated], 0, stats);
+      assert.deepEqual(top, []);
+      assert.equal(stats.briefEligiblePromoted, false, 'no slot means no promotion to report');
+    });
+
+    it('gives the single available slot to the corroborated cluster', () => {
+      const stats = {};
+      const top = selectTopStories([...alertClusters, corroborated], 1, stats);
+      assert.equal(top.length, 1);
+      assert.equal(stats.briefEligiblePromoted, true);
+      assert.equal(top[0].primarySource, 'BBC World');
+    });
+
+    it('reserves a slot for an entity-corroborated single-source cluster', () => {
+      // isBriefLeadEligible has two arms; the >=2-sources arm is covered above.
+      // Corroboration must be EARNED through computeEntityCorroboration (which
+      // selectTopStories recomputes, resetting any hand-set flag), so these two
+      // single-source clusters share the iran+deal bigram inside the 24h window.
+      const entityPair = [
+        {
+          primaryTitle: 'Iran deal talks resume in Geneva',
+          primarySource: 'Wire Desk',
+          primaryLink: 'http://entity-a',
+          sources: ['Wire Desk'],
+          sourceCount: 1,
+          isAlert: false,
+          pubDate: ageISO(6),
+          lastUpdated: ageISO(6),
+          memberTitles: ['Iran deal talks resume in Geneva'],
+        },
+        {
+          primaryTitle: 'Officials say Iran deal framework is close',
+          primarySource: 'Second Desk',
+          primaryLink: 'http://entity-b',
+          sources: ['Second Desk'],
+          sourceCount: 1,
+          isAlert: false,
+          pubDate: ageISO(6),
+          lastUpdated: ageISO(6),
+          memberTitles: ['Officials say Iran deal framework is close'],
+        },
+      ];
+      const stats = {};
+      const top = selectTopStories([...alertClusters, ...entityPair], 8, stats);
+      assert.equal(stats.briefEligiblePromoted, true);
+      const lead = pickBriefCluster(top);
+      assert.notEqual(lead, null, 'entity corroboration alone must satisfy the reservation');
+      assert.equal(lead.entityCorroboration, true);
+      assert.equal(lead.sources.length, 1, 'this arm covers single-source entity corroboration');
+    });
+  });
+
+  // #6428: every corroboration gate counted FEED LABELS. One publisher's own
+  // editions — nine BBC feeds, eight Reuters feeds — read as that many
+  // independent sources, so a single story reprinted across one newsroom's
+  // own labels cleared a gate whose stated intent is independent sourcing.
+  describe('publisher-family corroboration', () => {
+    const ONE_WIRE_MANY_LABELS = [
+      'Reuters World',
+      'Reuters US',
+      'Reuters Business',
+      'Reuters Asia',
+      'Reuters Energy',
+      'Reuters Commodities',
+    ];
+
+    const wireCluster = (overrides = {}) => ({
+      primaryTitle: 'Missile attack kills troops in border strike, officials say',
+      primarySource: 'Reuters World',
+      primaryLink: 'http://wire',
+      sources: ONE_WIRE_MANY_LABELS,
+      sourceCount: ONE_WIRE_MANY_LABELS.length,
+      sourceTier: 1,
+      isAlert: false,
+      ...overrides,
+    });
+
+    it('counts many labels of one wire as a single publisher', () => {
+      assert.equal(publisherFamilyCount(wireCluster()), 1);
+    });
+
+    it('resolves uniquePublisherCount onto the cluster itself', () => {
+      // seed-insights reads this field for uniqueSourceCount and
+      // multiSourceCount rather than recomputing, so it is load-bearing:
+      // if clusterItems stopped setting it, both published numbers would
+      // silently fail closed to 0 instead of erroring.
+      const oneWire = clusterItems([
+        { title: 'Missile attack kills troops in border strike officials say', source: 'Reuters World', link: 'http://a' },
+        { title: 'Missile attack kills troops in border strike officials say more', source: 'Reuters US', link: 'http://b' },
+      ]);
+      assert.equal(oneWire.length, 1, 'fixture must cluster or this asserts nothing');
+      assert.equal(oneWire[0].sourceCount, 2, 'sourceCount stays the article count');
+      assert.equal(oneWire[0].uniquePublisherCount, 1);
+
+      const twoPublishers = clusterItems([
+        { title: 'Missile attack kills troops in border strike officials say', source: 'Reuters World', link: 'http://a' },
+        { title: 'Missile attack kills troops in border strike officials say more', source: 'BBC World', link: 'http://b' },
+      ]);
+      assert.equal(twoPublishers.length, 1);
+      assert.equal(twoPublishers[0].uniquePublisherCount, 2);
+    });
+
+    it('denies brief-lead eligibility to a cluster carried by one publisher only', () => {
+      assert.equal(isBriefLeadEligible(wireCluster()), false);
+    });
+
+    it('keeps a genuinely multi-publisher cluster eligible', () => {
+      const multi = wireCluster({
+        sources: ['Reuters World', 'BBC World', 'Al Jazeera'],
+        sourceCount: 3,
+      });
+      assert.equal(publisherFamilyCount(multi), 3);
+      assert.equal(isBriefLeadEligible(multi), true);
+    });
+
+    it('still admits an unmapped label as its own publisher (fails closed, never merges)', () => {
+      const fresh = wireCluster({ sources: ['Brand New Feed', 'Another Brand New Feed'], sourceCount: 2 });
+      assert.equal(publisherFamilyCount(fresh), 2);
+      assert.equal(isBriefLeadEligible(fresh), true);
+    });
+
+    it('does not pay the source-breadth ranking boost for one publisher repeated', () => {
+      const oneWire = wireCluster();
+      const sixPublishers = wireCluster({
+        sources: ['Reuters World', 'BBC World', 'Al Jazeera', 'AP News', 'AFP', 'Le Monde'],
+      });
+      assert.ok(
+        scoreImportance(sixPublishers) > scoreImportance(oneWire),
+        'six publishers must outscore six labels of one publisher',
+      );
+      // And the collapsed cluster must score as the single publisher it is.
+      const singleLabel = wireCluster({ sources: ['Reuters World'], sourceCount: 1 });
+      assert.equal(scoreImportance(oneWire), scoreImportance(singleLabel));
+    });
+
+    it('takes the most generous of the three counts, but only among family counts', () => {
+      // publisherFamilyCount keeps Math.max over the cluster's own sources, the
+      // entity-bucket count, and the digest's story-identity count: each measures
+      // a different corpus, so the max is the best available breadth evidence.
+      // What #6428 removed is the label basis under all three.
+      const withUpstream = wireCluster({ corroborationCount: 4, corroborationSourceCount: 2 });
+      assert.equal(publisherFamilyCount(withUpstream), 4);
+      assert.equal(publisherFamilyCount(wireCluster({ corroborationCount: 0 })), 1);
+    });
+
+    it('never reports fewer than one publisher', () => {
+      assert.equal(publisherFamilyCount({ sources: [] }), 1);
+      assert.equal(publisherFamilyCount({}), 1);
+    });
+
+    it('does not let one publisher entity-corroborate itself across clusters', () => {
+      const nowMs = Date.now();
+      const iso = (hoursAgo) => new Date(nowMs - hoursAgo * 3600000).toISOString();
+      const selfCorroborating = [
+        {
+          primaryTitle: 'Iran deal talks resume in Geneva',
+          primarySource: 'Reuters World',
+          sources: ['Reuters World'],
+          sourceCount: 1,
+          lastUpdated: iso(2),
+          memberTitles: ['Iran deal talks resume in Geneva'],
+        },
+        {
+          primaryTitle: 'Officials say Iran deal framework is close',
+          primarySource: 'Reuters US',
+          sources: ['Reuters US'],
+          sourceCount: 1,
+          lastUpdated: iso(2),
+          memberTitles: ['Officials say Iran deal framework is close'],
+        },
+      ];
+      computeEntityCorroboration(selfCorroborating, nowMs);
+      assert.equal(selfCorroborating[0].entityCorroboration, false);
+      assert.equal(selfCorroborating[1].entityCorroboration, false);
+      assert.equal(selfCorroborating[0].corroborationSourceCount, 0);
+
+      // Premise check: the same pair under two genuinely different publishers
+      // must still corroborate, or the assertion above proves only that the
+      // bigram never matched.
+      const genuine = selfCorroborating.map((c, i) => ({
+        ...c,
+        primarySource: i === 0 ? 'Reuters World' : 'BBC World',
+        sources: [i === 0 ? 'Reuters World' : 'BBC World'],
+      }));
+      computeEntityCorroboration(genuine, nowMs);
+      assert.equal(genuine[0].entityCorroboration, true);
+      assert.equal(genuine[0].corroborationSourceCount, 2);
     });
   });
 });

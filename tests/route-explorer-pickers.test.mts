@@ -7,6 +7,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   filterCountries,
@@ -17,14 +18,17 @@ import {
 } from '../src/components/RouteExplorer/RouteExplorer.utils.ts';
 
 describe('getAllCountries', () => {
-  it('returns at least 190 entries (197 port-clustered countries)', () => {
+  it('matches the authoritative port-cluster country registry exactly', () => {
     const list = getAllCountries();
-    assert.ok(list.length >= 190, `expected ≥190 countries, got ${list.length}`);
+    const clusters = JSON.parse(readFileSync(new URL('../scripts/shared/country-port-clusters.json', import.meta.url), 'utf8'));
+    const expectedIso2 = Object.keys(clusters).filter((key) => /^[A-Z]{2}$/.test(key)).sort();
+    assert.deepEqual(list.map((country) => country.iso2).sort(), expectedIso2);
+    assert.equal(new Set(list.map((country) => country.iso2)).size, list.length, 'country ISO2 identities must be unique');
   });
 
   it('every entry has iso2 + name + flag + searchKey', () => {
     const list = getAllCountries();
-    for (const c of list.slice(0, 20)) {
+    for (const c of list) {
       assert.match(c.iso2, /^[A-Z]{2}$/);
       assert.ok(c.name.length > 0);
       assert.ok(c.flag.length > 0);

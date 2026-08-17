@@ -50,7 +50,7 @@ Two Convex actions at `convex/payments/checkout.ts`:
 Both share `_createCheckoutSession()` which:
 
 1. Validates `returnUrl` against an allow-listed set of worldmonitor.app origins.
-2. Builds metadata: `wm_user_id` (HMAC-signed via `convex/lib/identitySigning.ts`) + optional `affonso_referral`.
+2. Builds metadata: `wm_user_id` (HMAC-signed via `convex/lib/identitySigning.ts`), `wm_login_email` + `wm_login_email_sig` (the Clerk login email authenticated for this checkout, signed as a **separate** field so the `wm_user_id_sig` payload stays `userId` alone and pre-existing sessions keep verifying), + optional `affonso_referral`.
 3. Calls `checkout()` from `convex/lib/dodo.ts`.
 4. Returns `{ checkout_url }` for overlay open or full-page redirect.
 
@@ -66,6 +66,8 @@ Before creating a session, `getCheckoutBlockingSubscription` checks for active/o
 ### Webhook → subscription lifecycle
 
 `convex/payments/subscriptionHelpers.ts` handles Dodo webhook events (`subscription.active`, `subscription.renewed`, `subscription.updated`, `payment.succeeded`, refunds). On first `subscription.active`, writes `subscriptions` row, recomputes `entitlements`, and credits referral attribution if `metadata.affonso_referral` matches a `userReferralCodes` row.
+
+**Lifecycle-email recipient** (`subscription.active` only). Resolved in this order: the signed `wm_login_email` from checkout metadata, verified against the finally-resolved `userId` and aged against the event clock (`CHECKOUT_LOGIN_EMAIL_MAX_AGE_MS`, 7 days); then `users.email`; then the Dodo checkout email. The `users` row is only as fresh as the buyer's last page load for that userId, so a Clerk portal email change made in a long-lived tab leaves it stale — the stamped value is as fresh as the checkout itself. Every rejection at the first rung is a silent fall-through to the next, never a failure to send. The `customers` row keeps the checkout email regardless; it mirrors Dodo's record for portal lookups.
 
 ## Entitlements — Convex
 

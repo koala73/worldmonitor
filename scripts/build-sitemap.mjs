@@ -65,6 +65,11 @@ export const STATIC_ROUTE_MANIFEST = Object.freeze([
     'pro-test/src/locales',
     'src/config/products.ts',
   ]),
+  route('https://worldmonitor.app/mcp', 'mcp', [
+    'api/mcp.ts',
+    'api/mcp',
+    'public/mcp-server.md',
+  ]),
   route(`${SITE_ORIGIN}/pricing.md`, 'machine-readable-product', ['public/pricing.md']),
   route(`${SITE_ORIGIN}/support.md`, 'machine-readable-product', ['public/support.md']),
   route(`${SITE_ORIGIN}/ai-search.md`, 'machine-readable-product', ['public/ai-search.md']),

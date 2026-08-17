@@ -46,7 +46,11 @@ export function validateChinaDecisionSignalSnapshot(value) {
       candidate?.id === CHINA_DECISION_SIGNAL_GROUP_IDS[index]
       && ['available', 'partial', 'stale', 'unavailable'].includes(candidate?.state)
       && Array.isArray(candidate?.items)
-      && candidate.items.length <= 4
+      // An unavailable source cannot expose an item. Every other state asserts
+      // that at least one bounded public item is available.
+      && (candidate.state === 'unavailable'
+        ? candidate.items.length === 0
+        : candidate.items.length >= 1 && candidate.items.length <= 4)
       && candidate.items.every((item) => (
         typeof item?.id === 'string'
         && typeof item?.lineageId === 'string'
@@ -84,10 +88,75 @@ export async function fetchChinaDecisionSignals({
   return snapshot;
 }
 
+// #6060: a healthy quiet window is not an operational source failure. The
+// exchanges answered and simply had nothing qualifying to report, so the group
+// is covered even though its public state stays `unavailable` with zero items —
+// no disclosure event is invented and the product surface is unchanged.
+//
+// Every other unavailable cause (insufficient_data, provenance_rejected,
+// upstream_unavailable, unknown) IS a real failure and stays uncovered. The
+// comparison is deliberately strict-equality against the canonical cause
+// string: an absent, malformed, or differently-cased cause has not PROVEN a
+// healthy window, and unproven must never be the branch that certifies
+// coverage.
+export const CHINA_DECISION_SIGNAL_COVERED_UNAVAILABLE_CAUSE = 'healthy_quiet_window';
+
+function unavailableCauseOf(group) {
+  const cause = group?.metadata?.unavailableCause;
+  return typeof cause === 'string' && cause.length > 0 ? cause : 'unknown';
+}
+
+export function isChinaDecisionGroupOperationallyCovered(group) {
+  if (!group) return false;
+  if (group.state !== 'unavailable') return true;
+  return unavailableCauseOf(group) === CHINA_DECISION_SIGNAL_COVERED_UNAVAILABLE_CAUSE;
+}
+
 export function declareChinaDecisionSignalRecords(snapshot) {
   return Array.isArray(snapshot?.groups)
-    ? snapshot.groups.filter((group) => group?.state !== 'unavailable').length
+    ? snapshot.groups.filter(isChinaDecisionGroupOperationallyCovered).length
     : 0;
+}
+
+export function summarizeChinaDecisionGroups(groups) {
+  const candidates = Array.isArray(groups) ? groups : [];
+  const unavailable = candidates.filter((group) => group?.state === 'unavailable');
+  return {
+    populated: candidates.filter((group) => Array.isArray(group?.items) && group.items.length > 0).length,
+    partial: candidates.filter((group) => group?.state === 'partial').length,
+    stale: candidates.filter((group) => group?.state === 'stale').length,
+    // The raw public state, unchanged — a quiet group is still `unavailable`
+    // on the wire. `healthyQuiet` breaks out the subset of those that are
+    // operationally covered, so operators can tell a quiet window from an
+    // outage without either count lying about the other.
+    unavailable: unavailable.length,
+    healthyQuiet: unavailable.filter(
+      (group) => unavailableCauseOf(group) === CHINA_DECISION_SIGNAL_COVERED_UNAVAILABLE_CAUSE,
+    ).length,
+    operationallyCovered: candidates.filter(isChinaDecisionGroupOperationallyCovered).length,
+  };
+}
+
+export function chinaDecisionSignalGroupDiagnostics(snapshot) {
+  const groups = Array.isArray(snapshot?.groups) ? snapshot.groups : [];
+  const byId = (groupId) => groups.find((group) => group?.id === groupId);
+  return {
+    groupStates: Object.fromEntries(
+      CHINA_DECISION_SIGNAL_GROUP_IDS.map((groupId) => [
+        groupId,
+        byId(groupId)?.state ?? 'unavailable',
+      ]),
+    ),
+    // Cause per unavailable group so health names the stale or quiet source
+    // family instead of emitting a generic N/6 warning. A group the snapshot
+    // omits entirely defaults to `unknown` rather than dropping out of the map.
+    unavailableCauses: Object.fromEntries(
+      CHINA_DECISION_SIGNAL_GROUP_IDS
+        .filter((groupId) => (byId(groupId)?.state ?? 'unavailable') === 'unavailable')
+        .map((groupId) => [groupId, unavailableCauseOf(byId(groupId))]),
+    ),
+    groupCounts: summarizeChinaDecisionGroups(groups),
+  };
 }
 
 export async function publishChinaDecisionSignalAlerts(
@@ -152,8 +221,33 @@ export async function deliverChinaDecisionSignalAlertOutbox(
   return result;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+/**
+ * Diagnostics are returned from afterPublish so runSeed can write them with
+ * seed-meta before alert delivery. Delivery remains durable and visible: an
+ * outbox error rejects afterFreshness rather than silently swallowing it.
+ */
+export function createChinaDecisionSignalSeedHooks({
+  prepareAlerts = prepareChinaDecisionSignalAlertEvents,
+  deliverAlerts = deliverChinaDecisionSignalAlertOutbox,
+  diagnosticsFor = chinaDecisionSignalGroupDiagnostics,
+  log = console.log,
+} = {}) {
   let preparedAlertEvents = [];
+  return {
+    beforePublish: async (snapshot) => {
+      preparedAlertEvents = await prepareAlerts(snapshot);
+    },
+    afterPublish: async (snapshot) => {
+      const diagnostics = diagnosticsFor(snapshot);
+      log(`[china-decision-signals] group diagnostics ${JSON.stringify(diagnostics)}`);
+      return { freshnessMetaPatch: diagnostics };
+    },
+    afterFreshness: async () => deliverAlerts(preparedAlertEvents),
+  };
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+  const hooks = createChinaDecisionSignalSeedHooks();
   runSeed(
     'intelligence',
     'china-decision-signals',
@@ -172,15 +266,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
       // Prepare against the previous canonical value without sending anything.
       // runSeed publishes the validated snapshot between this callback and
       // afterPublish, preventing phantom alerts for a state that never landed.
-      beforePublish: async (snapshot) => {
-        preparedAlertEvents = await prepareChinaDecisionSignalAlertEvents(snapshot);
-      },
-      // Delivery is post-commit and durable: failures remain in a bounded
-      // outbox and are retried on the next seed even though canonical state has
-      // advanced.
-      afterPublish: async () => {
-        await deliverChinaDecisionSignalAlertOutbox(preparedAlertEvents);
-      },
+      ...hooks,
     },
   ).catch((error) => {
     console.error(`FATAL: ${error instanceof Error ? error.message : String(error)}`);

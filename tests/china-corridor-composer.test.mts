@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { validateDecisionSignalProvenance } from '../shared/decision-signal-provenance';
-import { validateChinaCorridorProvenanceForSurface } from '../shared/china-corridor-control-towers.ts';
+import {
+  parseChinaCorridorWirePayload,
+  validateChinaCorridorProvenanceForSurface,
+} from '../shared/china-corridor-control-towers.ts';
 import {
   composeChinaCorridorControlTowers,
   type ChinaCorridorSourceBundle,
@@ -119,6 +122,36 @@ function sourceBundle(): ChinaCorridorSourceBundle {
       },
     },
   };
+}
+
+type MutableCorroborationPayload = {
+  corridors: Array<{
+    id: string;
+    conditions: Array<{
+      family: string;
+      sourceSignals: Array<{ id: string; publisher: { id: string } }>;
+      provenance: {
+        claims: {
+          corroboration: {
+            status: string;
+            value: { state: string; sourceSignalIds: string[] };
+          };
+        };
+      } | null;
+    }>;
+  }>;
+};
+
+function cloneMutableCorroborationPayload(response: unknown): MutableCorroborationPayload {
+  return JSON.parse(JSON.stringify(response)) as MutableCorroborationPayload;
+}
+
+function yrdPortCondition(payload: MutableCorroborationPayload) {
+  const condition = payload.corridors
+    .find((corridor) => corridor.id === 'china-yangtze-river-delta')
+    ?.conditions.find((item) => item.family === 'port');
+  if (condition === undefined) throw new Error('Expected Yangtze River Delta port condition');
+  return condition;
 }
 
 describe('China corridor control-tower composition (#5578)', () => {
@@ -282,6 +315,104 @@ describe('China corridor control-tower composition (#5578)', () => {
     assert.equal(corroboration?.status === 'known' ? corroboration.value.state : null, 'single_source');
     assert.equal(corroboration?.status === 'known' ? corroboration.value.sourceSignalIds.length : 0, 1);
     assert.equal(condition?.sourceSignals.length, 2);
+  });
+
+  it('keeps same-publisher multi-record payloads valid at the UI boundary', () => {
+    const bundle = sourceBundle();
+    bundle.families.port.signals.push(
+      signal({
+        id: 'signal:portwatch:ningbo-zhoushan',
+        family: 'port',
+        selectorId: 'port2027',
+      }),
+    );
+
+    const response = composeChinaCorridorControlTowers(bundle);
+    const parsed = parseChinaCorridorWirePayload(JSON.stringify(response));
+    const condition = parsed.corridors
+      .find((corridor) => corridor.id === 'china-yangtze-river-delta')
+      ?.conditions.find((item) => item.family === 'port');
+
+    assert.equal(condition?.sourceSignals.length, 2);
+    assert.equal(condition?.availability, 'available');
+  });
+
+  it('rejects single-source corroboration across distinct publishers', () => {
+    const bundle = sourceBundle();
+    bundle.families.port.signals.push(
+      signal({
+        id: 'signal:portwatch:ningbo-zhoushan-other',
+        family: 'port',
+        selectorId: 'port2027',
+        publisher: {
+          id: 'publisher:other-source',
+          name: 'Other source',
+          type: 'unknown',
+        },
+      }),
+    );
+
+    const response = composeChinaCorridorControlTowers(bundle);
+    const malformed = cloneMutableCorroborationPayload(response);
+    const condition = yrdPortCondition(malformed);
+    assert.equal(condition.sourceSignals.length, 2);
+    assert.deepEqual(
+      new Set(condition.sourceSignals.map((item) => item.publisher.id)),
+      new Set(['publisher:test-source', 'publisher:other-source']),
+    );
+    assert.ok(condition.provenance);
+    assert.equal(condition.provenance.claims.corroboration.status, 'known');
+    condition.provenance.claims.corroboration.value.state = 'single_source';
+    condition.provenance.claims.corroboration.value.sourceSignalIds = [
+      condition.sourceSignals[0]!.id,
+    ];
+
+    assert.throws(
+      () => parseChinaCorridorWirePayload(JSON.stringify(malformed)),
+      /Invalid China corridor control-tower response/,
+    );
+  });
+
+  it('rejects multi-source corroboration that cites one publisher only', () => {
+    const bundle = sourceBundle();
+    bundle.families.port.signals.push(
+      signal({
+        id: 'signal:portwatch:ningbo-zhoushan',
+        family: 'port',
+        selectorId: 'port2027',
+      }),
+      signal({
+        id: 'signal:portwatch:ningbo-zhoushan-other',
+        family: 'port',
+        selectorId: 'port2027',
+        publisher: {
+          id: 'publisher:other-source',
+          name: 'Other source',
+          type: 'unknown',
+        },
+      }),
+    );
+
+    const response = composeChinaCorridorControlTowers(bundle);
+    const malformed = cloneMutableCorroborationPayload(response);
+    const condition = yrdPortCondition(malformed);
+    assert.equal(condition.sourceSignals.length, 3);
+    assert.deepEqual(
+      new Set(condition.sourceSignals.map((item) => item.publisher.id)),
+      new Set(['publisher:test-source', 'publisher:other-source']),
+    );
+    assert.ok(condition.provenance);
+    assert.equal(condition.provenance.claims.corroboration.status, 'known');
+    assert.equal(condition.provenance.claims.corroboration.value.state, 'multi_source');
+    condition.provenance.claims.corroboration.value.sourceSignalIds =
+      condition.sourceSignals
+        .filter((item) => item.publisher.id === 'publisher:test-source')
+        .map((item) => item.id);
+
+    assert.throws(
+      () => parseChinaCorridorWirePayload(JSON.stringify(malformed)),
+      /Invalid China corridor control-tower response/,
+    );
   });
 
   it('preserves the selected source observation precision in composed provenance', () => {

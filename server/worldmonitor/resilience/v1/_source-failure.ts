@@ -8,8 +8,9 @@
 // dimension scorers stay oblivious.
 
 import type { ResilienceDimensionId, ResilienceSeedReader } from './_dimension-scorers';
-import { resolveSeedMetaKey } from './_dimension-freshness';
-import { INDICATOR_REGISTRY, getIndicatorSourceKeys, type IndicatorSpec } from './_indicator-registry';
+import { getEffectiveIndicatorSourceKeys, resolveSeedMetaKey } from './_dimension-freshness';
+import { INDICATOR_REGISTRY, type IndicatorSpec } from './_indicator-registry';
+import type { StatcanOverlayUsed } from './_canada-national-overlay';
 import { STANDALONE_SOURCE_META_MAX_STALE_MIN } from './_standalone-source-thresholds';
 export { STANDALONE_SOURCE_META_MAX_STALE_MIN } from './_standalone-source-thresholds';
 
@@ -57,6 +58,14 @@ export const DATASET_TO_DIMENSIONS: Readonly<Record<string, ReadonlyArray<Resili
   appliedTariffRate: ['tradePolicy'],
 };
 
+// Country/source pairs that are permanently outside an upstream's political
+// or statistical universe. Their missing rows are structural absences, not
+// adapter outages. Keep this narrow and evidence-backed: Taiwan is structurally
+// absent from WGI while remaining in the CRI universe.
+const STRUCTURAL_DATASET_ABSENCES: Readonly<Record<string, ReadonlySet<string>>> = {
+  wgi: new Set(['TW']),
+};
+
 /**
  * Read the resilience-static seed-meta and extract the failed dataset
  * adapter keys. Returns an empty array when the seed-meta is missing,
@@ -84,9 +93,14 @@ export async function readFailedDatasets(
  */
 export function failedDimensionsFromDatasets(
   failedDatasets: ReadonlyArray<string>,
+  countryCode?: string,
 ): Set<ResilienceDimensionId> {
   const out = new Set<ResilienceDimensionId>();
+  const normalizedCountryCode = countryCode?.trim().toUpperCase();
   for (const key of failedDatasets) {
+    if (normalizedCountryCode && STRUCTURAL_DATASET_ABSENCES[key]?.has(normalizedCountryCode)) {
+      continue;
+    }
     const dims = DATASET_TO_DIMENSIONS[key];
     if (!dims) continue;
     for (const dim of dims) out.add(dim);
@@ -118,8 +132,14 @@ const IGNORED_STANDALONE_SOURCE_META_KEYS = new Set([
 export async function readStandaloneSourceFailureDimensions(
   reader: ResilienceSeedReader,
   nowMs?: number,
+  countryCode?: string,
+  statcanUsed?: StatcanOverlayUsed,
 ): Promise<StandaloneSourceFailureResult> {
-  const metaKeyToIndicators = buildStandaloneMetaKeyToIndicators(INDICATOR_REGISTRY);
+  const metaKeyToIndicators = buildStandaloneMetaKeyToIndicators(
+    INDICATOR_REGISTRY,
+    countryCode,
+    statcanUsed,
+  );
 
   const dimensions = new Set<ResilienceDimensionId>();
   const failedMetaKeys: string[] = [];
@@ -158,10 +178,12 @@ export async function readStandaloneSourceFailureDimensions(
 
 export function buildStandaloneMetaKeyToIndicators(
   indicators: readonly IndicatorSpec[],
+  countryCode?: string,
+  statcanUsed?: StatcanOverlayUsed,
 ): Map<string, IndicatorSpec[]> {
   const metaKeyToIndicators = new Map<string, IndicatorSpec[]>();
   for (const indicator of indicators) {
-    for (const sourceKey of getIndicatorSourceKeys(indicator)) {
+    for (const sourceKey of getEffectiveIndicatorSourceKeys(indicator, countryCode, statcanUsed)) {
       const metaKey = resolveSeedMetaKey(sourceKey);
       if (metaKey === RESILIENCE_STATIC_META_KEY) continue;
       if (IGNORED_STANDALONE_SOURCE_META_KEYS.has(metaKey)) continue;

@@ -11,18 +11,39 @@ const root = resolve(import.meta.dirname, '..');
 const stubs: Record<string, string> = {
   '@/services/runtime': 'export const isDesktopRuntime = () => false;',
   '@/services/clerk': 'export const getClerkToken = async () => globalThis.__cloudPrefsToken;',
-  '@/config/feeds': 'export const FEEDS = {};',
+  '@/config/feeds': [
+    "export const CANADA_ARCTIC_OPT_IN_SOURCES = ['Globe and Mail', 'Global News', 'Yle News', 'NRK', 'Aftenposten', 'DR Nyheder', 'Arctic Today'];",
+    "export const CANADA_DEPTH_OPT_IN_SOURCES = [];",
+    "export const CRISIS_FLOOR_OPT_IN_SOURCES = ['WAFA English'];",
+    'export const FEEDS = {};',
+    'export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [];',
+    'export const INTEL_SOURCES = [];',
+    'export const computeDefaultDisabledSources = () => [];',
+    'export const computePreStrategicDefaultDisabledSources = () => [];',
+    'export const computeLegacyDefaultDisabledSources = () => [];',
+    'export const getStrategicDefaultSources = () => new Set();',
+  ].join('\n'),
+  '@/config/panels': 'export const FREE_MAX_SOURCES = 80;',
   '@/utils/dom-utils': [
     'export const trustedHtml = (value) => value;',
     'export const setTrustedHtml = (element, value) => { element.innerHTML = value; };',
   ].join('\n'),
-  '@/services/source-cap': 'export const findFullyDisabledCategories = () => [];',
+  '@/services/source-cap': [
+    'export const computeCapDisabledSources = () => [];',
+    'export const findFullyDisabledCategories = () => [];',
+  ].join('\n'),
+  '@/services/regional-feed-rollout': [
+    'export const buildPreStrategicDefaultDisabledStates = () => [];',
+    'export const buildRegionalFeedRolloutMigrationTargets = () => [];',
+  ].join('\n'),
 };
 
 interface HarnessResult {
   acceptedDataByToken: Record<string, Record<string, string>>;
+  acceptedSchemaVersionsByToken: Record<string, number[]>;
   conflictCount: number;
   localSyncVersion: number;
+  localSchemaVersion: number;
   postCount: number;
   serverSyncVersion: number;
   state: string | null;
@@ -36,22 +57,29 @@ interface HeldRequest {
 
 interface HarnessControls {
   dispatchHidden: () => void;
+  events: Array<{ detail: unknown; type: string }>;
+  failNextGetTemporarily: () => void;
+  fireSignInRetry: () => void;
+  holdNextGet: () => HeldRequest;
   holdNextPost: () => HeldRequest;
-  seedRow: (token: string, data: Record<string, string>, syncVersion: number) => void;
+  seedRow: (token: string, data: Record<string, string>, syncVersion: number, schemaVersion?: number) => void;
   setToken: (token: string) => void;
   stateHistory: string[];
   timeoutNextRequest: () => void;
 }
 
 let harnessSequence = 0;
-let bundledSourcePromise: Promise<string> | null = null;
+const bundledSourcePromises = new Map<boolean, Promise<string>>();
 
 after(() => {
   stop();
 });
 
-async function getBundledSource(): Promise<string> {
-  bundledSourcePromise ??= build({
+async function getBundledSource(enabled = true): Promise<string> {
+  let bundledSourcePromise = bundledSourcePromises.get(enabled);
+  if (bundledSourcePromise) return bundledSourcePromise;
+
+  bundledSourcePromise = build({
     absWorkingDir: root,
     entryPoints: ['src/utils/cloud-prefs-sync.ts'],
     bundle: true,
@@ -59,7 +87,7 @@ async function getBundledSource(): Promise<string> {
     platform: 'browser',
     write: false,
     define: {
-      'import.meta.env.VITE_CLOUD_PREFS_ENABLED': '"true"',
+      'import.meta.env.VITE_CLOUD_PREFS_ENABLED': enabled ? '"true"' : '"false"',
     },
     plugins: [{
       name: 'cloud-prefs-test-stubs',
@@ -79,11 +107,12 @@ async function getBundledSource(): Promise<string> {
       },
     }],
   }).then((bundled) => bundled.outputFiles[0]!.text);
+  bundledSourcePromises.set(enabled, bundledSourcePromise);
   return bundledSourcePromise;
 }
 
-async function loadCloudPrefsModule() {
-  const source = await getBundledSource();
+async function loadCloudPrefsModule(enabled = true) {
+  const source = await getBundledSource(enabled);
   const encoded = Buffer.from(source).toString('base64');
   harnessSequence += 1;
   return import(`data:text/javascript;base64,${encoded}#harness-${harnessSequence}`);
@@ -94,6 +123,7 @@ async function runHarness(
     cloudPrefs: Awaited<ReturnType<typeof loadCloudPrefsModule>>,
     controls: HarnessControls,
   ) => Promise<void>,
+  { enabled = true }: { enabled?: boolean } = {},
 ): Promise<HarnessResult> {
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   const originalCloudPrefsToken = Object.getOwnPropertyDescriptor(globalThis, '__cloudPrefsToken');
@@ -106,7 +136,9 @@ async function runHarness(
     localStorage: globalThis.localStorage,
     window: globalThis.window,
   };
+  const originalSetTimeout = globalThis.setTimeout;
   const stateHistory: string[] = [];
+  const events: Array<{ detail: unknown; type: string }> = [];
   class TestStorage extends MiniStorage {
     override setItem(key: string, value: string): void {
       super.setItem(key, value);
@@ -153,7 +185,14 @@ async function runHarness(
 
   Object.assign(globalThis, {
     __cloudPrefsToken: 'test-token',
-    CustomEvent: class TestCustomEvent {},
+    CustomEvent: class TestCustomEvent {
+      detail: unknown;
+      type: string;
+      constructor(type: string, init?: { detail?: unknown }) {
+        this.type = type;
+        this.detail = init?.detail;
+      }
+    },
     Storage: TestStorage,
     document: documentStub,
     localStorage: storage,
@@ -163,7 +202,12 @@ async function runHarness(
         listeners.push(listener);
         windowListeners.set(type, listeners);
       },
-      dispatchEvent() {},
+      dispatchEvent(event: { detail?: unknown; type?: string }) {
+        const type = event.type ?? '';
+        events.push({ type, detail: event.detail });
+        for (const listener of windowListeners.get(type) ?? []) listener();
+        return true;
+      },
     },
   });
   Object.defineProperty(globalThis, 'navigator', {
@@ -173,9 +217,11 @@ async function runHarness(
 
   interface ServerRow {
     data: Record<string, string>;
+    schemaVersion: number;
     syncVersion: number;
   }
   const rows = new Map<string, ServerRow>();
+  const acceptedSchemaVersionsByToken: Record<string, number[]> = {};
   let postCount = 0;
   let conflictCount = 0;
   let pendingHold: {
@@ -184,6 +230,25 @@ async function runHarness(
     resolveStarted: () => void;
   } | null = null;
   let timeoutNextRequest = false;
+  let failNextGetTemporarily = false;
+  let captureSignInRetryTimer = false;
+  let pendingSignInRetry: (() => void) | null = null;
+  let pendingGetHold: {
+    releasePromise: Promise<void>;
+    resolveRelease: () => void;
+    resolveStarted: () => void;
+  } | null = null;
+
+  globalThis.setTimeout = ((callback: TimerHandler, delay?: number, ...args: unknown[]) => {
+    if (captureSignInRetryTimer && (delay ?? 0) >= 1000) {
+      captureSignInRetryTimer = false;
+      pendingSignInRetry = () => {
+        if (typeof callback === 'function') callback(...args);
+      };
+      return 987_654 as unknown as ReturnType<typeof setTimeout>;
+    }
+    return originalSetTimeout(callback, delay, ...args);
+  }) as typeof setTimeout;
 
   AbortSignal.timeout = ((_delay: number) => {
     const controller = new AbortController();
@@ -200,11 +265,25 @@ async function runHarness(
     const method = init.method ?? 'GET';
     const authorization = new Headers(init.headers).get('Authorization') ?? '';
     const token = authorization.replace(/^Bearer\s+/, '') || 'anonymous';
-    const row = rows.get(token) ?? { data: {}, syncVersion: 0 };
+    const row = rows.get(token) ?? { data: {}, schemaVersion: 2, syncVersion: 0 };
     if (method === 'GET') {
+      if (failNextGetTemporarily) {
+        failNextGetTemporarily = false;
+        captureSignInRetryTimer = true;
+        return Response.json(
+          { error: 'SERVICE_UNAVAILABLE' },
+          { status: 503, headers: { 'Retry-After': '1' } },
+        );
+      }
+      const held = pendingGetHold;
+      if (held) {
+        pendingGetHold = null;
+        held.resolveStarted();
+        await held.releasePromise;
+      }
       return Response.json({
         data: row.data,
-        schemaVersion: 2,
+        schemaVersion: row.schemaVersion,
         syncVersion: row.syncVersion,
       });
     }
@@ -220,7 +299,7 @@ async function runHarness(
     }
 
     await new Promise<void>((resolveDelay, rejectDelay) => {
-      const timer = setTimeout(resolveDelay, 5);
+      const timer = originalSetTimeout(resolveDelay, 5);
       const signal = init.signal;
       signal?.addEventListener('abort', () => {
         clearTimeout(timer);
@@ -238,8 +317,12 @@ async function runHarness(
 
     const nextRow = {
       data: body.data as Record<string, string>,
+      schemaVersion: body.schemaVersion as number,
       syncVersion: row.syncVersion + 1,
     };
+    const acceptedVersions = acceptedSchemaVersionsByToken[token] ?? [];
+    acceptedVersions.push(nextRow.schemaVersion);
+    acceptedSchemaVersionsByToken[token] = acceptedVersions;
     rows.set(token, nextRow);
     return Response.json({ syncVersion: nextRow.syncVersion });
   };
@@ -248,6 +331,28 @@ async function runHarness(
     dispatchHidden: () => {
       documentStub.visibilityState = 'hidden';
       for (const listener of documentListeners.get('visibilitychange') ?? []) listener();
+    },
+    events,
+    failNextGetTemporarily: () => {
+      failNextGetTemporarily = true;
+    },
+    fireSignInRetry: () => {
+      const retry = pendingSignInRetry;
+      pendingSignInRetry = null;
+      if (!retry) throw new Error('no sign-in retry is pending');
+      retry();
+    },
+    holdNextGet: () => {
+      let resolveRelease!: () => void;
+      let resolveStarted!: () => void;
+      const releasePromise = new Promise<void>((resolveReleasePromise) => {
+        resolveRelease = resolveReleasePromise;
+      });
+      const started = new Promise<void>((resolveStartedPromise) => {
+        resolveStarted = resolveStartedPromise;
+      });
+      pendingGetHold = { releasePromise, resolveRelease, resolveStarted };
+      return { release: resolveRelease, started };
     },
     holdNextPost: () => {
       let resolveRelease!: () => void;
@@ -261,8 +366,8 @@ async function runHarness(
       pendingHold = { releasePromise, resolveRelease, resolveStarted };
       return { release: resolveRelease, started };
     },
-    seedRow: (token, data, syncVersion) => {
-      rows.set(token, { data: { ...data }, syncVersion });
+    seedRow: (token, data, syncVersion, schemaVersion = 2) => {
+      rows.set(token, { data: { ...data }, schemaVersion, syncVersion });
     },
     setToken: (token) => {
       Object.assign(globalThis, { __cloudPrefsToken: token });
@@ -274,16 +379,20 @@ async function runHarness(
   };
 
   try {
-    const cloudPrefs = await loadCloudPrefsModule();
+    const cloudPrefs = await loadCloudPrefsModule(enabled);
     await invoke(cloudPrefs, controls);
     const activeToken = String(Reflect.get(globalThis, '__cloudPrefsToken'));
-    const activeRow = rows.get(activeToken) ?? { data: {}, syncVersion: 0 };
+    const activeRow = rows.get(activeToken) ?? { data: {}, schemaVersion: 2, syncVersion: 0 };
     return {
       acceptedDataByToken: Object.fromEntries(
         [...rows].map(([token, row]) => [token, { ...row.data }]),
       ),
+      acceptedSchemaVersionsByToken: Object.fromEntries(
+        Object.entries(acceptedSchemaVersionsByToken).map(([token, versions]) => [token, [...versions]]),
+      ),
       conflictCount,
       localSyncVersion: Number(localStorage.getItem('wm-cloud-sync-version') ?? 0),
+      localSchemaVersion: Number(localStorage.getItem('wm-cloud-prefs-local-schema-version') ?? 0),
       postCount,
       serverSyncVersion: activeRow.syncVersion,
       state: localStorage.getItem('wm-cloud-sync-state'),
@@ -291,6 +400,7 @@ async function runHarness(
     };
   } finally {
     globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
     AbortSignal.timeout = originalAbortSignalTimeout;
     Object.assign(globalThis, originals);
     if (originalNavigator) {
@@ -360,6 +470,20 @@ describe('cloud preference write serialization', () => {
     assert.equal(result.postCount, 2);
     assert.equal(result.localSyncVersion, result.serverSyncVersion);
     assert.equal(result.state, 'synced');
+  });
+
+  it('migrates the local blob before a sign-out keepalive upload', async () => {
+    const result = await runHarness(async (cloudPrefs) => {
+      await cloudPrefs.onSignIn('user-1', 'full');
+      cloudPrefs.install('full');
+      localStorage.setItem('wm-cloud-prefs-local-schema-version', '4');
+      localStorage.setItem('wm-market-watchlist-v1', 'save-before-sign-out');
+      cloudPrefs.onSignOut();
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+    });
+
+    assert.equal(result.localSchemaVersion, 8);
+    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [8, 8]);
   });
 
   it('preserves edits made for a new account while its sign-in waits in the queue', async () => {
@@ -437,5 +561,109 @@ describe('cloud preference write serialization', () => {
     assert.equal(result.conflictCount, 0);
     assert.equal(result.postCount, 2);
     assert.equal(result.serverSyncVersion, 1);
+  });
+
+  it('keeps a sign-in retry pending after its timer fires until the request settles', async () => {
+    await runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('test-token', {}, 1, 7);
+      controls.failNextGetTemporarily();
+
+      await cloudPrefs.onSignIn('user-1', 'full', { handoffGeneration: 41 });
+      assert.equal(cloudPrefs.hasPendingCloudPrefsRetry(), true);
+
+      const heldGet = controls.holdNextGet();
+      controls.fireSignInRetry();
+      await heldGet.started;
+      assert.equal(
+        cloudPrefs.hasPendingCloudPrefsRetry(),
+        true,
+        'firing the timer must not expose an idle gap while the retry fetch is unresolved',
+      );
+      assert.equal(
+        controls.events.filter((event) => event.type === cloudPrefs.CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT).length,
+        0,
+      );
+
+      heldGet.release();
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+      assert.equal(cloudPrefs.hasPendingCloudPrefsRetry(), false);
+      const terminalEvents = controls.events.filter(
+        (event) => event.type === cloudPrefs.CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT,
+      );
+      assert.deepEqual(terminalEvents.map((event) => event.detail), [{
+        accountId: 'user-1',
+        authGeneration: 1,
+        handoffGeneration: 41,
+        origin: 'sign-in',
+        outcome: 'synced',
+      }]);
+    });
+  });
+
+  it('emits a scoped terminal event even when cloud apply changes no keys', async () => {
+    await runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('test-token', {}, 1, 7);
+      await cloudPrefs.onSignIn('user-1', 'full', { handoffGeneration: 73 });
+
+      assert.equal(
+        controls.events.filter((event) => event.type === cloudPrefs.CLOUD_PREFS_APPLIED_EVENT).length,
+        0,
+        'unchanged apply has no generic change event',
+      );
+      const terminal = controls.events.find(
+        (event) => event.type === cloudPrefs.CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT,
+      );
+      assert.deepEqual(terminal?.detail, {
+        accountId: 'user-1',
+        authGeneration: 1,
+        handoffGeneration: 73,
+        origin: 'sign-in',
+        outcome: 'synced',
+      });
+    });
+  });
+
+  it('releases the scoped handoff immediately when cloud sync is disabled', async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      await cloudPrefs.onSignIn('user-1', 'full', { handoffGeneration: 89 });
+
+      const terminal = controls.events.find(
+        (event) => event.type === cloudPrefs.CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT,
+      );
+      assert.deepEqual(terminal?.detail, {
+        accountId: 'user-1',
+        authGeneration: 0,
+        handoffGeneration: 89,
+        origin: 'sign-in',
+        outcome: 'skipped',
+      });
+    }, { enabled: false });
+
+    assert.equal(result.postCount, 0);
+    assert.equal(result.state, null);
+  });
+
+  it('does not retain account A ownership for account B legacy cloud rows', async () => {
+    await runHarness(async (cloudPrefs, controls) => {
+      const sourceOwnership = 'worldmonitor-free-tier-source-ownership';
+      const layerOwnership = 'worldmonitor-free-tier-layer-ownership';
+      controls.seedRow('user-a-token', {
+        [sourceOwnership]: '["source-a"]',
+        [layerOwnership]: '["resilienceScore"]',
+      }, 1, 7);
+      controls.setToken('user-a-token');
+      await cloudPrefs.onSignIn('user-a', 'full');
+      assert.equal(localStorage.getItem(sourceOwnership), '["source-a"]');
+      assert.equal(localStorage.getItem(layerOwnership), '["resilienceScore"]');
+
+      cloudPrefs.onSignOut();
+      controls.seedRow('user-b-token', { 'worldmonitor-theme': 'light' }, 1, 7);
+      controls.setToken('user-b-token');
+      await cloudPrefs.onSignIn('user-b', 'full');
+
+      assert.equal(localStorage.getItem(sourceOwnership), null);
+      assert.equal(localStorage.getItem(layerOwnership), null);
+      assert.equal(localStorage.getItem('worldmonitor-theme'), 'light');
+    });
   });
 });

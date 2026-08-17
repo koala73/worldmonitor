@@ -35,7 +35,7 @@ const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
 const SECRET_MANAGEMENT_WINDOWS: [&str; 2] = ["main", "settings"];
 const DESKTOP_SHARED_SECRET_KEY: &str = "WM_DESKTOP_SHARED_SECRET";
 const BUILD_TIME_SIDECAR_ENV_KEYS: [&str; 2] = ["CONVEX_URL", DESKTOP_SHARED_SECRET_KEY];
-const SUPPORTED_SECRET_KEYS: [&str; 29] = [
+const SUPPORTED_SECRET_KEYS: [&str; 30] = [
     "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
     "EXA_API_KEYS",
@@ -56,6 +56,7 @@ const SUPPORTED_SECRET_KEYS: [&str; 29] = [
     "AISSTREAM_API_KEY",
     "VITE_WS_RELAY_URL",
     "FINNHUB_API_KEY",
+    "ALPHA_VANTAGE_API_KEY",
     "NASA_FIRMS_API_KEY",
     "UCDP_ACCESS_TOKEN",
     "OLLAMA_API_URL",
@@ -1128,6 +1129,11 @@ mod sanitize_path_tests {
     #[test]
     fn supports_desktop_shared_secret_for_packaged_sidecar_env() {
         assert!(BUILD_TIME_SIDECAR_ENV_KEYS.contains(&DESKTOP_SHARED_SECRET_KEY));
+    }
+
+    #[test]
+    fn supports_alpha_vantage_for_keychain_injection() {
+        assert!(SUPPORTED_SECRET_KEYS.contains(&"ALPHA_VANTAGE_API_KEY"));
     }
 
     #[test]

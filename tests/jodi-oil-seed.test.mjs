@@ -8,12 +8,18 @@ import {
   parseObsValue,
   extractCountryData,
   buildAllCountries,
+  assessOilDemandChange,
+  computeOilDemandChange,
+  jodiSourceYears,
+  jodiCsvCandidates,
+  fetchYearCsv,
   validateCoverage,
   mergeSourceRows,
   CANONICAL_KEY,
   COUNTRY_KEY_PREFIX,
   JODI_TTL,
 } from '../scripts/seed-jodi-oil.mjs';
+import { monthPeriodEnd } from '../scripts/shared/jodi-demand-change.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = resolve(__dirname, 'fixtures');
@@ -288,6 +294,277 @@ describe('extractCountryData schema', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Observed year-over-year oil-product demand change (#6067)
+// ---------------------------------------------------------------------------
+
+describe('monthPeriodEnd', () => {
+  it('returns the last instant of the observation period in UTC', () => {
+    assert.equal(monthPeriodEnd('2026-04'), '2026-04-30T23:59:59.999Z');
+    assert.equal(monthPeriodEnd('2026-12'), '2026-12-31T23:59:59.999Z');
+    assert.equal(monthPeriodEnd('2024-02'), '2024-02-29T23:59:59.999Z', 'leap February');
+    assert.equal(monthPeriodEnd('2025-02'), '2025-02-28T23:59:59.999Z');
+  });
+
+  it('rejects malformed or out-of-range periods', () => {
+    assert.equal(monthPeriodEnd('2026-13'), null);
+    assert.equal(monthPeriodEnd('2026-00'), null);
+    assert.equal(monthPeriodEnd('2026'), null);
+    assert.equal(monthPeriodEnd('0001-01'), null);
+    assert.equal(monthPeriodEnd(null), null);
+  });
+});
+
+describe('jodiSourceYears', () => {
+  it('covers the year-over-year comparison month across the calendar rollover', () => {
+    // In January the newest usable China month is still in the prior year, so
+    // its comparison month sits two calendar files back. Downloading only the
+    // current and prior years would make the change unpublishable for months.
+    assert.deepEqual(jodiSourceYears(new Date('2026-01-15T00:00:00.000Z')), {
+      currentYear: 2026,
+      priorYear: 2025,
+      lookbackYear: 2024,
+    });
+    assert.deepEqual(jodiSourceYears(new Date('2026-09-15T00:00:00.000Z')), {
+      currentYear: 2026,
+      priorYear: 2025,
+      lookbackYear: 2024,
+    });
+  });
+});
+
+describe('computeOilDemandChange', () => {
+  function demandRows(iso2, month, values, code = '1') {
+    return Object.entries(values).map(([product, value]) => makeRow({
+      REF_AREA: iso2,
+      TIME_PERIOD: month,
+      ENERGY_PRODUCT: product,
+      FLOW_BREAKDOWN: 'TOTDEMO',
+      OBS_VALUE: String(value),
+      ASSESSMENT_CODE: code,
+    }));
+  }
+
+  it('publishes a same-month year-over-year change with its own period end', () => {
+    const rows = [
+      ...demandRows('CN', '2026-04', { GASDIES: 600, GASOLINE: 400, JETKERO: 200 }),
+      ...demandRows('CN', '2025-04', { GASDIES: 550, GASOLINE: 450, JETKERO: 200 }),
+    ];
+    const change = computeOilDemandChange(rows, 'CN', '2026-04');
+    assert.ok(change !== null);
+    assert.equal(change.basis, 'year_over_year');
+    assert.equal(change.observationPeriod, '2026-04');
+    assert.equal(change.priorObservationPeriod, '2025-04');
+    assert.equal(change.periodEnd, '2026-04-30T23:59:59.999Z');
+    assert.equal(change.priorPeriodEnd, '2025-04-30T23:59:59.999Z');
+    assert.deepEqual(change.products, ['diesel', 'gasoline', 'jet']);
+    assert.equal(change.unit, '% change');
+    assert.equal(change.currentDemandKbd, 1200);
+    assert.equal(change.priorDemandKbd, 1200);
+    assert.equal(change.percentChange, 0);
+  });
+
+  it('signs the change in the direction of demand', () => {
+    const up = computeOilDemandChange([
+      ...demandRows('CN', '2026-04', { GASDIES: 1100, GASOLINE: 1100, JETKERO: 1100 }),
+      ...demandRows('CN', '2025-04', { GASDIES: 1000, GASOLINE: 1000, JETKERO: 1000 }),
+    ], 'CN', '2026-04');
+    assert.equal(up.percentChange, 10);
+
+    const down = computeOilDemandChange([
+      ...demandRows('CN', '2026-04', { GASDIES: 900, GASOLINE: 900, JETKERO: 900 }),
+      ...demandRows('CN', '2025-04', { GASDIES: 1000, GASOLINE: 1000, JETKERO: 1000 }),
+    ], 'CN', '2026-04');
+    assert.equal(down.percentChange, -10);
+  });
+
+  it('refuses a change when the product set differs between vintages', () => {
+    // Fuel oil is reported only in the current month: a widening product set
+    // must not read as a demand surge.
+    const widened = computeOilDemandChange([
+      ...demandRows('CN', '2026-04', {
+        GASDIES: 600, GASOLINE: 600, JETKERO: 600, RESFUEL: 600,
+      }),
+      ...demandRows('CN', '2025-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }),
+    ], 'CN', '2026-04');
+    assert.equal(widened, null);
+
+    // ...and a narrowing set must not read as a collapse.
+    const narrowed = computeOilDemandChange([
+      ...demandRows('CN', '2026-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }),
+      ...demandRows('CN', '2025-04', {
+        GASDIES: 600, GASOLINE: 600, JETKERO: 600, RESFUEL: 600,
+      }),
+    ], 'CN', '2026-04');
+    assert.equal(narrowed, null);
+
+    // Same cardinality, different membership: a swapped product is not a
+    // comparable basket either.
+    const swapped = computeOilDemandChange([
+      ...demandRows('CN', '2026-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }),
+      ...demandRows('CN', '2025-04', { GASDIES: 600, GASOLINE: 600, RESFUEL: 600 }),
+    ], 'CN', '2026-04');
+    assert.equal(swapped, null);
+  });
+
+  it('refuses a change when the comparison month is absent or not twelve months back', () => {
+    assert.equal(
+      computeOilDemandChange(demandRows('CN', '2026-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }), 'CN', '2026-04'),
+      null,
+      'no comparison month at all',
+    );
+    assert.equal(
+      computeOilDemandChange([
+        ...demandRows('CN', '2026-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }),
+        ...demandRows('CN', '2026-03', { GASDIES: 500, GASOLINE: 500, JETKERO: 500 }),
+      ], 'CN', '2026-04'),
+      null,
+      'an adjacent month is a seasonal comparison, not the published basis',
+    );
+  });
+
+  it('refuses a change built on unusable observations', () => {
+    assert.equal(
+      computeOilDemandChange([
+        ...demandRows('CN', '2026-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }),
+        ...demandRows('CN', '2025-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }, '3'),
+      ], 'CN', '2026-04'),
+      null,
+      'assessment code 3 is not an observation',
+    );
+    assert.equal(
+      computeOilDemandChange([
+        ...demandRows('CN', '2026-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }),
+        ...demandRows('CN', '2025-04', { GASDIES: 15000, GASOLINE: 600, JETKERO: 600 }),
+      ], 'CN', '2026-04'),
+      null,
+      'anomaly-capped prior demand is not an observation',
+    );
+    assert.equal(
+      computeOilDemandChange([
+        ...demandRows('CN', '2026-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }),
+        ...demandRows('CN', '2025-04', { GASDIES: 0, GASOLINE: 0, JETKERO: 0 }),
+      ], 'CN', '2026-04'),
+      null,
+      'a zero prior gives no defined percentage change',
+    );
+  });
+
+  it('refuses a basket too narrow to be a national direction', () => {
+    // A single surviving product is that product's move, not the country's.
+    for (const basket of [
+      { GASDIES: 1100 },
+      { GASDIES: 1100, GASOLINE: 1100 },
+    ]) {
+      const prior = Object.fromEntries(Object.keys(basket).map((k) => [k, 1000]));
+      assert.equal(
+        computeOilDemandChange([
+          ...demandRows('CN', '2026-04', basket),
+          ...demandRows('CN', '2025-04', prior),
+        ], 'CN', '2026-04'),
+        null,
+        `${Object.keys(basket).length} product(s) is not a national basket`,
+      );
+    }
+
+    // Three products clear the bar.
+    assert.equal(
+      computeOilDemandChange([
+        ...demandRows('CN', '2026-04', { GASDIES: 1100, GASOLINE: 1100, JETKERO: 1100 }),
+        ...demandRows('CN', '2025-04', { GASDIES: 1000, GASOLINE: 1000, JETKERO: 1000 }),
+      ], 'CN', '2026-04').percentChange,
+      10,
+    );
+  });
+
+  it('refuses a physically implausible move the per-product cap let through', () => {
+    // Each product stays under ANOMALY_DEMAND_KBD, but the national move is a
+    // tripling — a unit or reporting glitch, not an activity direction.
+    assert.equal(
+      computeOilDemandChange([
+        ...demandRows('CN', '2026-04', { GASDIES: 3000, GASOLINE: 3000, JETKERO: 3000 }),
+        ...demandRows('CN', '2025-04', { GASDIES: 1000, GASOLINE: 1000, JETKERO: 1000 }),
+      ], 'CN', '2026-04'),
+      null,
+      'a +200% year-over-year move is not a real national demand change',
+    );
+    assert.equal(
+      computeOilDemandChange([
+        ...demandRows('CN', '2026-04', { GASDIES: 1, GASOLINE: 1, JETKERO: 1 }),
+        ...demandRows('CN', '2025-04', { GASDIES: 1000, GASOLINE: 1000, JETKERO: 1000 }),
+      ], 'CN', '2026-04'),
+      null,
+      'a near-total collapse is not a real national demand change',
+    );
+
+    // A large but plausible move is still published, in both directions.
+    assert.equal(
+      computeOilDemandChange([
+        ...demandRows('CN', '2026-04', { GASDIES: 1400, GASOLINE: 1400, JETKERO: 1400 }),
+        ...demandRows('CN', '2025-04', { GASDIES: 1000, GASOLINE: 1000, JETKERO: 1000 }),
+      ], 'CN', '2026-04').percentChange,
+      40,
+    );
+    assert.equal(
+      computeOilDemandChange([
+        ...demandRows('CN', '2026-04', { GASDIES: 600, GASOLINE: 600, JETKERO: 600 }),
+        ...demandRows('CN', '2025-04', { GASDIES: 1000, GASOLINE: 1000, JETKERO: 1000 }),
+      ], 'CN', '2026-04').percentChange,
+      -40,
+    );
+  });
+
+  it('explains why a refused comparison was not published', () => {
+    const assessment = assessOilDemandChange([
+      ...demandRows('CN', '2026-04', { GASDIES: 3000, GASOLINE: 3000, JETKERO: 3000 }),
+      ...demandRows('CN', '2025-04', { GASDIES: 1000, GASOLINE: 1000, JETKERO: 1000 }),
+    ], 'CN', '2026-04');
+    assert.equal(assessment.change, null);
+    assert.match(assessment.reason, /exceeds ±50%/);
+
+    const missingPrior = assessOilDemandChange(
+      demandRows('CN', '2026-04', { GASDIES: 1100, GASOLINE: 1100, JETKERO: 1100 }),
+      'CN',
+      '2026-04',
+    );
+    assert.equal(missingPrior.change, null);
+    assert.match(missingPrior.reason, /baskets differ/);
+  });
+
+  it('ignores other countries and non-KBD rows', () => {
+    const change = computeOilDemandChange([
+      ...demandRows('CN', '2026-04', { GASDIES: 1100, GASOLINE: 1100, JETKERO: 1100 }),
+      ...demandRows('CN', '2025-04', { GASDIES: 1000, GASOLINE: 1000, JETKERO: 1000 }),
+      ...demandRows('DE', '2026-04', { GASDIES: 9999, GASOLINE: 9999, JETKERO: 9999 }),
+      makeRow({
+        REF_AREA: 'CN',
+        TIME_PERIOD: '2025-04',
+        ENERGY_PRODUCT: 'RESFUEL',
+        FLOW_BREAKDOWN: 'TOTDEMO',
+        UNIT_MEASURE: 'KB',
+        OBS_VALUE: '400',
+      }),
+    ], 'CN', '2026-04');
+    assert.equal(change.percentChange, 10);
+    assert.deepEqual(change.products, ['diesel', 'gasoline', 'jet']);
+  });
+
+  it('attaches the change to the seeded country payload, or null when unobservable', () => {
+    const withChange = extractCountryData([
+      ...demandRows('CN', '2026-04', { GASDIES: 1100, GASOLINE: 1100, JETKERO: 1100 }),
+      ...demandRows('CN', '2025-04', { GASDIES: 1000, GASOLINE: 1000, JETKERO: 1000 }),
+    ], 'CN');
+    assert.equal(withChange.dataMonth, '2026-04');
+    assert.equal(withChange.demandChange.percentChange, 10);
+
+    const withoutChange = extractCountryData(
+      demandRows('CN', '2026-04', { GASDIES: 1100, GASOLINE: 1100, JETKERO: 1100 }),
+      'CN',
+    );
+    assert.equal(withoutChange.demandChange, null);
+  });
+});
+
 describe('buildAllCountries', () => {
   it('returns array with one entry per country', () => {
     const rows = [
@@ -345,6 +622,34 @@ describe('mergeSourceRows', () => {
     const rows = mergeSourceRows('', '', secondaryCsv, '');
     assert.equal(rows.length, 1);
     assert.equal(rows[0].UNIT_MEASURE, 'KBD');
+  });
+
+  it('merges the lookback-year secondary file so a year-over-year comparison survives the calendar rollover', () => {
+    // Early in a calendar year the newest usable month still sits in the prior
+    // year, and its comparison month lives one file further back. Without that
+    // file the demand change is structurally unpublishable for months.
+    const currentYear = makeCsv([
+      makeRow({ REF_AREA: 'CN', TIME_PERIOD: '2025-10', ENERGY_PRODUCT: 'GASDIES', OBS_VALUE: '1100' }),
+      makeRow({ REF_AREA: 'CN', TIME_PERIOD: '2025-10', ENERGY_PRODUCT: 'GASOLINE', OBS_VALUE: '1100' }),
+      makeRow({ REF_AREA: 'CN', TIME_PERIOD: '2025-10', ENERGY_PRODUCT: 'JETKERO', OBS_VALUE: '1100' }),
+    ]);
+    const lookbackYear = makeCsv([
+      makeRow({ REF_AREA: 'CN', TIME_PERIOD: '2024-10', ENERGY_PRODUCT: 'GASDIES', OBS_VALUE: '1000' }),
+      makeRow({ REF_AREA: 'CN', TIME_PERIOD: '2024-10', ENERGY_PRODUCT: 'GASOLINE', OBS_VALUE: '1000' }),
+      makeRow({ REF_AREA: 'CN', TIME_PERIOD: '2024-10', ENERGY_PRODUCT: 'JETKERO', OBS_VALUE: '1000' }),
+    ]);
+
+    const withoutLookback = extractCountryData(mergeSourceRows('', '', currentYear, ''), 'CN');
+    assert.equal(withoutLookback.dataMonth, '2025-10');
+    assert.equal(withoutLookback.demandChange, null, 'no comparison month is reachable');
+
+    const withLookback = extractCountryData(
+      mergeSourceRows('', '', currentYear, '', lookbackYear),
+      'CN',
+    );
+    assert.equal(withLookback.dataMonth, '2025-10');
+    assert.equal(withLookback.demandChange.priorObservationPeriod, '2024-10');
+    assert.equal(withLookback.demandChange.percentChange, 10);
   });
 });
 
@@ -413,5 +718,64 @@ describe('golden fixture (JODI Oil CSV)', () => {
         assert.ok(val === null || typeof val === 'number', `${prod}.${field} should be number|null, got ${typeof val}`);
       }
     }
+  });
+});
+
+describe('JODI current-year source resolution (#6799)', () => {
+  // JODI publishes every past year as `<kind>/<year>.csv`, but named the 2026
+  // files `<kind>/<kind>year<year>.csv`. The seeder asked only for the first
+  // shape, got a 404, and its `.catch(() => '')` turned that into "publish from
+  // last year's file" — so production served December 2025 oil data from
+  // January to August 2026 while reporting recordCount 50 and a fresh
+  // fetchedAt. Nothing on the seed clock could see it; only the content clock
+  // added in #6395 eventually surfaced it.
+
+  it('offers both published filename conventions, plain name first', () => {
+    assert.deepEqual(jodiCsvCandidates('primary', 2026), [
+      'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv/primary/2026.csv',
+      'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv/primary/primaryyear2026.csv',
+    ]);
+    assert.deepEqual(jodiCsvCandidates('secondary', 2026), [
+      'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv/secondary/2026.csv',
+      'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv/secondary/secondaryyear2026.csv',
+    ]);
+  });
+
+  it('falls through to the second convention when the first 404s', async () => {
+    const asked = [];
+    const fetchCsv = async (url) => {
+      asked.push(url);
+      if (url.endsWith('/2026.csv')) throw new Error('HTTP 404');
+      return 'REF_AREA,TIME_PERIOD\nDE,2026-05\n';
+    };
+    const result = await fetchYearCsv('primary', 2026, { fetchCsv, retries: 0 });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.text, 'REF_AREA,TIME_PERIOD\nDE,2026-05\n');
+    assert.match(result.url, /primaryyear2026\.csv$/);
+    assert.equal(asked.length, 2, 'must try the plain name before the prefixed one');
+  });
+
+  it('stops at the first convention that answers', async () => {
+    const asked = [];
+    const fetchCsv = async (url) => { asked.push(url); return 'rows'; };
+    const result = await fetchYearCsv('secondary', 2025, { fetchCsv, retries: 0 });
+
+    assert.equal(result.ok, true);
+    assert.match(result.url, /secondary\/2025\.csv$/);
+    assert.equal(asked.length, 1, 'a working plain name must not trigger a second request');
+  });
+
+  it('reports a total miss instead of silently returning an empty string', async () => {
+    // The silent-empty return is the actual defect: a year that cannot be
+    // fetched AT ALL must be distinguishable from a year that is legitimately
+    // empty, or the next rename degrades to stale data just as quietly.
+    const fetchCsv = async () => { throw new Error('HTTP 404'); };
+    const result = await fetchYearCsv('primary', 2026, { fetchCsv, retries: 0 });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.text, '');
+    assert.match(result.error, /404/);
+    assert.deepEqual(result.attempted, jodiCsvCandidates('primary', 2026));
   });
 });

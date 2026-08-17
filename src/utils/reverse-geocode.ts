@@ -28,7 +28,12 @@ export async function reverseGeocode(lat: number, lon: number, signal?: AbortSig
       signal: controller.signal,
     });
     if (!res.ok) {
-      cache.set(key, null);
+      // Never memoize a retryable status. `cache` has no TTL and is consulted
+      // before every fetch, so caching a 429 (the route is rate-limited since
+      // #6234) or a 503 would mark this 0.1-degree cell "no country here" for
+      // the rest of the page session — a transient throttle turned permanent.
+      // Genuine negative results still cache exactly as before. (#6412 review)
+      if (res.status !== 429 && res.status !== 503) cache.set(key, null);
       return null;
     }
 

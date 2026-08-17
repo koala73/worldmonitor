@@ -50,7 +50,7 @@ WorldMonitor is an open-source, real-time intelligence platform that turns publi
 
 It doesn't merely put dots on a map. The map answers *where* something is happening. Panels and briefs explain *what changed*. Country indices, timelines, and cross-stream correlation help assess *how significant it may be*. Route Explorer, the Scenario Engine, and WM Analyst help investigate *what it affects* and *what could happen next*. The same data spine supports six focused dashboards; software and agents can query it through the REST API, MCP server, CLI, and official SDKs.
 
-UCDP conflict events, IMF PortWatch ship transits, EIA petroleum stocks, OFAC designations, UNHCR displacement, USGS earthquakes, Eurostat series, prediction-market odds, and 500+ curated news feeds all enter that system. The important product is not any single event, price, or headline. It is the ability to see signals that normally live in separate systems together, while retaining enough source and freshness information to judge them.
+UCDP conflict events, IMF PortWatch ship transits, EIA petroleum stocks, OFAC designations, UNHCR displacement, USGS earthquakes, Eurostat series, prediction-market odds, and curated news feeds all enter that system. The important product is not any single event, price, or headline. It is the ability to see signals that normally live in separate systems together, while retaining enough source and freshness information to judge them.
 
 ## What you can do with it
 
@@ -71,9 +71,9 @@ Here's the sanctions layer, queried live while writing this (July 22, 2026): **2
 
 ## The structural difference: open at the layers that matter
 
-- **The product is open**: six dashboards, free, no signup, right now.
+- **The product is open**: specialized dashboards, free, no signup, right now.
 - **The source is open**: the entire platform is AGPL-3.0 — [read it, fork it, self-host it](/blog/posts/self-host-worldmonitor-open-source-osint-dashboard/).
-- **The interfaces are open**: a versioned REST API built on 35 typed proto services, an [MCP server with 59 tools](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/) whose catalog is publicly discoverable while data calls authenticate through OAuth or an API key, an [embeddable live map](/blog/posts/embed-live-global-map-worldmonitor/), 25 UI languages.
+- **The interfaces are open**: a versioned REST API built on typed proto services, an [MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/) whose live tool catalog is publicly discoverable while data calls authenticate through OAuth or an API key, an [embeddable live map](/blog/posts/embed-live-global-map-worldmonitor/), and localized UI languages.
 - **The pricing is open**: [published on the site](/blog/posts/free-vs-paid-real-time-intelligence-dashboards/), $0 to flat monthly tiers, no "contact sales."
 
 And, in fairness, what WorldMonitor is **not**: it is not fully free at every layer — WM Analyst, the Scenario Engine, Route Explorer, scheduled AI digests, custom widgets, authenticated MCP data calls, and full REST API access are paid, and they fund the free rest. Public REST routes still expose health, discovery, and the data needed by the free dashboards without an API key. WorldMonitor has no classified feeds and no private ontology for your internal data — if you need *your* data integrated, that's genuinely Palantir's job, not ours. And public data has gaps; where sensors don't exist, WorldMonitor shows the gap rather than interpolating confidence.

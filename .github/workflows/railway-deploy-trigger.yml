@@ -1,0 +1,319 @@
+name: Railway Deploy Trigger (Manual Rollback Only)
+run-name: >-
+  Manual Railway rollback reconcile ${{ inputs.recovery_attempt_id }}
+  @ ${{ inputs.expected_head_sha }}
+
+# Transitional rollback surface only. Native Railway GitHub autodeploy owns the
+# normal path; do not add a schedule or another automatic event here.
+on:
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: 'Report what would be deployed without deploying it'
+        type: boolean
+        default: false
+      recovery_attempt_id:
+        description: 'Durable watchdog recovery ID, or none for an ordinary manual run'
+        type: string
+        required: true
+        default: 'none'
+      expected_head_sha:
+        description: 'Exact current green main SHA authorized for this run'
+        type: string
+        required: true
+
+# Runner-less runs own no production serialization primitive. Only admission
+# uses GitHub concurrency, and it contains no Railway or control-plane secret.
+# The protected mutation job is serialized by the fixed 30-minute Durable
+# Object lease and global uncertainty barrier.
+permissions:
+  contents: read
+  statuses: read
+  actions: read
+
+jobs:
+  admission:
+    name: cancel-safe admission
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    concurrency:
+      group: >-
+        railway-reconcile-admission-${{
+          github.event_name == 'workflow_dispatch' && inputs.dryRun && 'preview'
+          || github.event_name == 'workflow_dispatch' && inputs.recovery_attempt_id != 'none' && 'recovery'
+          || 'normal'
+        }}
+      cancel-in-progress: true
+    outputs:
+      eligible: ${{ steps.resolve.outputs.eligible }}
+      dry_run: ${{ steps.resolve.outputs.dry_run }}
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+      recovery_attempt_id: ${{ steps.resolve.outputs.recovery_attempt_id }}
+      gate: ${{ steps.resolve.outputs.gate }}
+    steps:
+      - name: Resolve exact current green main
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_HEAD: ${{ github.event_name == 'workflow_dispatch' && inputs.expected_head_sha || '' }}
+          RECOVERY_ATTEMPT_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.recovery_attempt_id || 'none' }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dryRun }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF" != 'refs/heads/main' ]; then
+            echo "::error::Railway reconciliation is restricted to refs/heads/main."
+            exit 1
+          fi
+          head_sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')
+          if [[ ! "$head_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::GitHub did not return an exact lowercase main SHA."
+            exit 1
+          fi
+          if [ -n "$REQUESTED_HEAD" ] && [ "$REQUESTED_HEAD" != "$head_sha" ]; then
+            echo "::error::Requested head is not current main."
+            exit 1
+          fi
+          if [ "$RECOVERY_ATTEMPT_ID" != 'none' ] \
+            && [[ ! "$RECOVERY_ATTEMPT_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$ ]]; then
+            echo "::error::Recovery attempt ID is invalid."
+            exit 1
+          fi
+          gate=$(
+            gh api --paginate --slurp \
+              "repos/$GITHUB_REPOSITORY/commits/$head_sha/statuses?per_page=100" |
+              jq -r 'flatten | map(select(.context == "gate")) | first | .state // "missing"'
+          )
+          eligible=false
+          if [ "$gate" = 'success' ] || [ "${DRY_RUN:-false}" = 'true' ]; then
+            eligible=true
+          else
+            echo "::notice::Current main gate is $gate; this admission performs no production work."
+          fi
+          echo "eligible=$eligible" >> "$GITHUB_OUTPUT"
+          echo "dry_run=${DRY_RUN:-false}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "recovery_attempt_id=$RECOVERY_ATTEMPT_ID" >> "$GITHUB_OUTPUT"
+          echo "gate=$gate" >> "$GITHUB_OUTPUT"
+
+  preview:
+    name: non-mutating preview
+    needs: admission
+    if: needs.admission.outputs.eligible == 'true' && needs.admission.outputs.dry_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    environment:
+      name: ingestion-acceptance-production-verification
+      deployment: false
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.admission.outputs.head_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install pinned Railway CLI
+        run: npm install --global @railway/cli@5.30.1
+      - name: Preview what would be deployed
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_RECONCILE_VIEWER_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+        run: node scripts/trigger-railway-deploys.mjs --dry-run --head "${{ needs.admission.outputs.head_sha }}"
+
+  mutation:
+    name: leased production mutation
+    needs: admission
+    if: >-
+      needs.admission.outputs.eligible == 'true'
+      && needs.admission.outputs.dry_run != 'true'
+      && vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 13
+    environment:
+      name: ingestion-acceptance-production
+      deployment: false
+    outputs:
+      manifest_ready: ${{ steps.evidence.outputs.manifest_ready }}
+      artifact_name: ${{ steps.evidence.outputs.artifact_name }}
+      producer_run_attempt: ${{ steps.evidence.outputs.producer_run_attempt }}
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.admission.outputs.head_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Trigger lease-fenced deploys for the exact green head
+        id: mutate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_RECONCILE_DEPLOY_TOKEN_V2 }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          RAILWAY_RECONCILE_MUTATION_HMAC: ${{ secrets.RAILWAY_RECONCILE_MUTATION_HMAC }}
+          RAILWAY_RECONCILE_CUTOVER_ACTIVE: ${{ vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE }}
+        run: |
+          set +e
+          node scripts/trigger-railway-deploys.mjs \
+            --workflow-authorized \
+            --head "${{ needs.admission.outputs.head_sha }}" \
+            --recovery-attempt-id "${{ needs.admission.outputs.recovery_attempt_id }}" \
+            --result-manifest "$RUNNER_TEMP/railway-reconcile-result.json" \
+            --status-file "$RUNNER_TEMP/railway-reconcile-status.json"
+          command_status=$?
+          echo "command_status=$command_status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Record immutable result evidence
+        id: evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          ready=false
+          mutation_started=true
+          manual_required=true
+          if [ -f "$RUNNER_TEMP/railway-reconcile-result.json" ]; then
+            ready=true
+          fi
+          if [ -f "$RUNNER_TEMP/railway-reconcile-status.json" ]; then
+            outcome=$(jq -r '.outcome // ""' "$RUNNER_TEMP/railway-reconcile-status.json")
+            case "$outcome" in
+              NO_MUTATION|DURABLE_ADMISSION_DEFERRED)
+                mutation_started=false
+                manual_required=false
+                ;;
+              MUTATION_COMPLETED)
+                mutation_started=true
+                manual_required=false
+                ;;
+              MUTATION_PARTIAL|MUTATION_AMBIGUOUS|MUTATION_FAILED)
+                mutation_started=true
+                manual_required=true
+                ;;
+            esac
+          fi
+          echo "manifest_ready=$ready" >> "$GITHUB_OUTPUT"
+          echo "mutation_started=$mutation_started" >> "$GITHUB_OUTPUT"
+          echo "manual_required=$manual_required" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=railway-reconcile-result-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+          echo "producer_run_attempt=${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+      - name: Mark Railway mutation started
+        if: always() && steps.evidence.outputs.mutation_started == 'true'
+        run: echo 'The immutable result proves that this run crossed the Railway mutation boundary.'
+      - name: Record manual-required reconciliation state
+        if: always() && steps.evidence.outputs.manual_required == 'true'
+        run: echo 'The immutable result requires protected operator recovery.'
+      - name: Upload reconciliation result manifest
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ${{ steps.evidence.outputs.artifact_name }}
+          path: ${{ runner.temp }}/railway-reconcile-result.json
+          if-no-files-found: ignore
+          retention-days: 2
+      - name: Report mutation phase outcome
+        if: always()
+        run: |
+          echo '### Railway reconciliation mutation' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/railway-reconcile-status.json" ]; then
+            jq -r '"Outcome: `\(.outcome)`"' "$RUNNER_TEMP/railway-reconcile-status.json" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Outcome: **failed before structured status was available**' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Enforce structured mutation outcome
+        if: always() && steps.mutate.outputs.command_status != '0'
+        run: |
+          echo '::error::The protected mutation command did not complete successfully.'
+          exit 1
+
+  verifier:
+    name: terminal exact-head verifier
+    needs: [admission, mutation]
+    if: always() && needs.mutation.outputs.manifest_ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    environment:
+      name: ingestion-acceptance-production-verification
+      deployment: false
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.admission.outputs.head_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install pinned Railway CLI
+        run: npm install --global @railway/cli@5.30.1
+      - name: Download immutable reconciliation result
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: ${{ needs.mutation.outputs.artifact_name }}
+          path: ${{ runner.temp }}/railway-reconcile-result
+      - name: Finalize exact Railway reconciliation acceptance
+        id: acceptance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_RECONCILE_VIEWER_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          RAILWAY_RECONCILE_VERIFIER_HMAC: ${{ secrets.RAILWAY_RECONCILE_VERIFIER_HMAC }}
+        run: >-
+          node scripts/finalize-railway-reconcile.mjs
+          --manifest "$RUNNER_TEMP/railway-reconcile-result/railway-reconcile-result.json"
+          --head "${{ needs.admission.outputs.head_sha }}"
+          --producer-run-attempt "${{ needs.mutation.outputs.producer_run_attempt }}"
+      - name: Report terminal acceptance
+        if: always()
+        env:
+          ACCEPTANCE_OUTCOME: ${{ steps.acceptance.outcome }}
+          HEAD_SHA: ${{ needs.admission.outputs.head_sha }}
+        run: |
+          echo '### Railway reconciliation acceptance' >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ACCEPTANCE_OUTCOME" = 'success' ]; then
+            echo "Exact head \`${HEAD_SHA:0:9}\` reached terminal Railway convergence and strict zero drift." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**Terminal acceptance failed** for exact head \`${HEAD_SHA:0:9}\`; automatic mutation remains fenced by durable state." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  liveness:
+    name: fail-closed reconciliation liveness
+    needs: [admission, mutation, verifier]
+    if: >-
+      always()
+      && needs.admission.result == 'success'
+      && needs.admission.outputs.dry_run != 'true'
+      && needs.verifier.result != 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ needs.admission.outputs.head_sha }}
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Enforce reconciliation liveness
+        env:
+          CUTOVER_ACTIVE: ${{ vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$CUTOVER_ACTIVE" != 'true' ]; then
+            echo '::warning::Railway reconciliation cutover is disabled; no protected mutation path ran.'
+            echo 'Railway reconciliation cutover remains disabled; this run intentionally made no production change.' >> "$GITHUB_STEP_SUMMARY"
+            if ! node scripts/check-railway-reconcile-age.mjs --warn-only; then
+              echo '::warning::Railway reconciliation age could not be read while cutover is disabled.'
+            fi
+            exit 0
+          fi
+          node scripts/check-railway-reconcile-age.mjs

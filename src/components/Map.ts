@@ -60,10 +60,11 @@ import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import {
   getLayerExplanation,
-  getLayersForVariant,
   hasCuratedLayerExplanation,
+  isLayerExecutable,
+  isSunsetLayer,
+  LAYER_REGISTRY,
   resolveLayerLabel,
-  type MapVariant,
 } from '@/config/map-layer-definitions';
 import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import {
@@ -73,6 +74,7 @@ import {
   startCountryClickGesture,
   updateCountryClickGestureDrag,
 } from './map-interaction-guard';
+import { resolveClusterGlContext } from './map-cluster-gl';
 
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -89,6 +91,8 @@ export interface MapState {
 export interface MapComponentOptions {
   chrome?: boolean;
   isMobile?: boolean;
+  /** App-owned entitlement guard; omitted for the public embed renderer. */
+  canToggleLayer?: (layer: keyof MapLayers, currentlyEnabled: boolean | undefined) => boolean;
 }
 
 interface HotspotWithBreaking extends Hotspot {
@@ -217,6 +221,7 @@ export class MapComponent {
   private destroyed = false;
   // Mobile loads the lighter 110m country topology (U6); passed in from MapContainer.
   private readonly isMobile: boolean;
+  private readonly canToggleLayer: NonNullable<MapComponentOptions['canToggleLayer']>;
   private overlayAppendTarget: ParentNode | null = null;
   private labelVisibilityScheduled = false;
   private pendingLabelVisibilityZoom = 1;
@@ -241,6 +246,7 @@ export class MapComponent {
     this.hotspots = [...INTEL_HOTSPOTS];
     const chrome = options.chrome ?? true;
     this.isMobile = options.isMobile ?? false;
+    this.canToggleLayer = options.canToggleLayer ?? (() => true);
     this.mobileLabelVisibilityArmed = !this.isMobile;
 
     this.wrapper = document.createElement('div');
@@ -472,7 +478,10 @@ export class MapComponent {
   private getLayerControlLabel(layer: keyof MapLayers): string {
     if (layer === 'sanctions') return t('components.deckgl.layerHelp.labels.sanctions');
 
-    const def = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat').find(item => item.key === layer);
+    // Labels are renderer-independent, so resolve straight from the registry.
+    // (The old `getLayersForVariant(v, 'flat')` lookup dropped ciiChoropleth
+    // once it stopped being an SVG layer, regressing its label to the raw key.)
+    const def = LAYER_REGISTRY[layer];
     return def ? resolveLayerLabel(def, t) : String(layer);
   }
 
@@ -492,12 +501,13 @@ export class MapComponent {
       // storageFacilities + fuelShortages are also DeckGL-only — this file has no
       // SVG render path for them (see grep for existing 'pipelines' render at :1100).
       // Adding them here would surface a toggle that produces zero output. They're
-      // already restricted to ['flat'] in LAYER_REGISTRY to hide from globe mode too.
+      // already restricted to renderers: ['deck'] in LAYER_REGISTRY, which keeps
+      // them out of the globe picker too.
       'ais', 'flights', 'gpsJamming',                      // transport/interference
       'natural', 'weather',                               // natural
       'economic',                                         // economic
       'waterways',                                        // labels
-      'ciiChoropleth',                                    // CII heat-map (DeckGL only, shown as disabled toggle)
+      'ciiChoropleth',                                    // Candidate only; SVG capability filter below omits it.
     ];
     const techLayers: (keyof MapLayers)[] = [
       'cables', 'datacenters', 'outages',                // tech infrastructure
@@ -530,11 +540,13 @@ export class MapComponent {
       'weather', 'fires',                     // operational risk
       'economic',                             // infrastructure context
     ];
-    const layers = SITE_VARIANT === 'tech' ? techLayers
+    // Filter sunset and renderer-incompatible layers so the SVG/mobile picker
+    // cannot expose a toggle whose layer has no SVG paint path.
+    const layers = (SITE_VARIANT === 'tech' ? techLayers
                  : SITE_VARIANT === 'finance' ? financeLayers
                  : SITE_VARIANT === 'happy' ? happyLayers
                  : SITE_VARIANT === 'energy' ? energyLayers
-                 : fullLayers;
+                 : fullLayers).filter((key) => !isSunsetLayer(key) && isLayerExecutable(key, 'svg'));
     const MAX_SVG_LAYERS = 9;
     const enforceLayerLimit = () => {
       const allBtns = Array.from(toggles.querySelectorAll<HTMLButtonElement>('.layer-toggle'));
@@ -732,6 +744,8 @@ export class MapComponent {
       helpItem(label('economicCenters'), 'economicCenters'),
       helpItem(label('strategicWaterways'), 'macroWaterways'),
       helpItem(label('weatherAlerts'), 'weatherAlertsMarket'),
+      helpItem(label('canadaRoads'), 'canadaRoads'),
+      helpItem(label('canadaAlerts'), 'canadaAlerts'),
       helpItem(label('naturalEvents'), 'naturalEventsMacro'),
     ])}
       </div>
@@ -774,6 +788,8 @@ export class MapComponent {
       helpItem(label('naturalEvents'), 'naturalEventsFull'),
       helpItem(label('fires'), 'firesFull'),
       helpItem(label('weatherAlerts'), 'weatherAlerts'),
+      helpItem(label('canadaRoads'), 'canadaRoads'),
+      helpItem(label('canadaAlerts'), 'canadaAlerts'),
       helpItem(label('climateAnomalies'), 'climateAnomalies'),
       helpItem(label('economicCenters'), 'economicCenters'),
       helpItem(label('criticalMinerals'), 'mineralsFull'),
@@ -1120,10 +1136,11 @@ export class MapComponent {
   }
 
   private initClusterRenderer(): void {
-    // WebGL clustering disabled - just get context for clearing canvas
-    const gl = this.clusterCanvas.getContext('webgl');
-    if (!gl) return;
-    this.clusterGl = gl;
+    // WebGL clustering disabled - just get context for clearing canvas.
+    // resolveClusterGlContext() rejects the truthy-but-method-less stub that
+    // canvas fingerprint blockers return, which used to crash the whole
+    // dynamic-layer render pass from clearClusterCanvas() (WORLDMONITOR-YG/YH).
+    this.clusterGl = resolveClusterGlContext(this.clusterCanvas);
   }
 
   private clearClusterCanvas(): void {
@@ -3221,7 +3238,7 @@ export class MapComponent {
       'border:1px solid rgba(60,120,60,0.6)',
       'padding:8px 12px',
       'border-radius:3px',
-      'font-size:11px',
+      'font-size:calc(11px * var(--wm-panel-effective-scale, 1))',
       'font-family:var(--font-mono)',
       'color:#d4d4d4',
       'max-width:240px',
@@ -3230,7 +3247,7 @@ export class MapComponent {
       'line-height:1.5',
     ].join(';');
     const closeBtn = document.createElement('button');
-    closeBtn.style.cssText = 'position:absolute;top:4px;right:4px;background:none;border:none;color:#888;cursor:pointer;font-size:14px;line-height:1;padding:2px 4px;';
+    closeBtn.style.cssText = 'position:absolute;top:4px;right:4px;background:none;border:none;color:#888;cursor:pointer;font-size:calc(14px * var(--wm-panel-effective-scale, 1));line-height:1;padding:2px 4px;';
     closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.textContent = '×';
     closeBtn.addEventListener('click', () => tooltip.remove());
@@ -3259,14 +3276,14 @@ export class MapComponent {
     tooltip.appendChild(title);
 
     const meta = document.createElement('div');
-    meta.style.cssText = 'opacity:0.7;font-size:10px;margin-top:2px;';
+    meta.style.cssText = 'opacity:0.7;font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin-top:2px;';
     meta.textContent = [cam.country, cam.category].filter(Boolean).join(' \u00B7 ');
     if (meta.textContent) tooltip.appendChild(meta);
 
     const previewDiv = document.createElement('div');
     previewDiv.style.marginTop = '6px';
     const loadingSpan = document.createElement('span');
-    loadingSpan.style.cssText = 'opacity:0.5;font-size:10px;';
+    loadingSpan.style.cssText = 'opacity:0.5;font-size:calc(10px * var(--wm-panel-effective-scale, 1));';
     loadingSpan.textContent = 'Loading preview...';
     previewDiv.appendChild(loadingSpan);
     tooltip.appendChild(previewDiv);
@@ -3276,7 +3293,7 @@ export class MapComponent {
       link.href = `https://www.windy.com/webcams/${cam.webcamId}`;
       link.target = '_blank';
       link.rel = 'noopener';
-      link.style.cssText = 'display:block;margin-top:4px;color:#00d4ff;font-size:11px;text-decoration:none;';
+      link.style.cssText = 'display:block;margin-top:4px;color:#00d4ff;font-size:calc(11px * var(--wm-panel-effective-scale, 1));text-decoration:none;';
       link.textContent = 'Open on Windy \u2197';
       tooltip.appendChild(link);
     }
@@ -3296,7 +3313,7 @@ export class MapComponent {
             previewDiv.appendChild(imgEl);
           } else {
             const span = document.createElement('span');
-            span.style.cssText = 'opacity:0.5;font-size:10px;';
+            span.style.cssText = 'opacity:0.5;font-size:calc(10px * var(--wm-panel-effective-scale, 1));';
             span.textContent = 'Preview unavailable';
             previewDiv.appendChild(span);
           }
@@ -3365,7 +3382,7 @@ export class MapComponent {
           item.appendChild(nameSpan);
           if (webcam.country) {
             const cc = document.createElement('span');
-            cc.style.cssText = 'float:right;opacity:0.4;font-size:10px;margin-left:6px;';
+            cc.style.cssText = 'float:right;opacity:0.4;font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin-left:6px;';
             cc.textContent = webcam.country;
             item.appendChild(cc);
           }
@@ -3710,6 +3727,7 @@ export class MapComponent {
   ]);
 
   public toggleLayer(layer: keyof MapLayers, source: 'user' | 'programmatic' = 'user'): void {
+    if (!this.canToggleLayer(layer, this.state.layers[layer])) return;
     console.log(`[Map.toggleLayer] ${layer}: ${this.state.layers[layer]} -> ${!this.state.layers[layer]}`);
     this.state.layers[layer] = !this.state.layers[layer];
     if (this.state.layers[layer]) {
@@ -3976,6 +3994,7 @@ export class MapComponent {
   }
 
   public enableLayer(layer: keyof MapLayers): void {
+    if (!this.canToggleLayer(layer, this.state.layers[layer])) return;
     if (!this.state.layers[layer]) {
       this.state.layers[layer] = true;
       const thresholds = MapComponent.LAYER_ZOOM_THRESHOLDS[layer];

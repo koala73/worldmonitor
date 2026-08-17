@@ -17,7 +17,7 @@ async function expectDashboardBooted(page: import('@playwright/test').Page): Pro
   await expect(page.locator('#mapSection')).toBeVisible({ timeout: 45_000 });
   await expect(page.locator('#panelsGrid')).toBeVisible({ timeout: 45_000 });
   await expect(page.locator('#panelsGrid > .panel[data-panel]:not(.hidden)').first()).toBeVisible({ timeout: 45_000 });
-  await expect(page.locator('#mapSection')).not.toHaveClass(/collapsed/);
+  await expect(page.locator('#mapSection')).toHaveClass(/collapsed/);
 }
 
 declare global {

@@ -63,7 +63,7 @@ World Monitor maps nuclear facilities worldwide. Satellite imagery adds visual v
 
 ## Cross-Layer Integration
 
-The orbital layer becomes most powerful when combined with World Monitor's other 44 data layers:
+The orbital layer becomes most powerful when combined with World Monitor's other registered data layers:
 
 | Situation | Intelligence Layers | + Satellite Adds |
 |-----------|-------------------|------------------|
@@ -104,7 +104,7 @@ The orbital surveillance layer is available across all platforms, with the deskt
 
 Commercial satellite constellations are growing rapidly. More satellites mean more frequent revisits, higher resolution, and faster delivery. As this data becomes more accessible, tools like World Monitor that integrate imagery into multi-source intelligence workflows will become essential.
 
-The days of satellite intelligence being locked in classified systems are ending. World Monitor puts orbital surveillance alongside 44 other intelligence layers, in your browser, for free.
+The days of satellite intelligence being locked in classified systems are ending. World Monitor puts orbital surveillance alongside the rest of its intelligence-layer registry, in your browser, for free.
 
 ## Frequently Asked Questions
 

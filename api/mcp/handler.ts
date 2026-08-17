@@ -2,10 +2,12 @@
 import { getPublicCorsHeaders } from '../_cors.js';
 import {
   applyAnonDiscoveryLimit,
+  applyFreeTierLimit,
   applyPerMinuteLimit,
   PRODUCTION_DEPS,
   resolveAuthContext,
   runContextPreChecks,
+  validateProMcpAuthorization,
   wwwAuthHeader,
 } from './auth';
 import {
@@ -17,7 +19,7 @@ import {
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
 import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
-import { TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
+import { TOOL_LIST_BYTES, TOOL_LIST_RESPONSE, TOOL_REGISTRY } from './registry/index';
 import {
   buildPublicResourceResponse,
   buildResourceResponse,
@@ -54,9 +56,19 @@ import type { McpAuthContext, McpHandlerDeps } from './types';
 // a PUBLIC resource (a concrete, metadata-only freshness/health probe — see
 // PUBLIC_RESOURCE_REGISTRY) is ALSO anonymously servable + quota-exempt; it
 // is promoted to the public path per-request via `isPublicResourceUri` below
-// because it carries no billable data. Everything that returns DATA or spends
-// quota (`tools/call`, and `resources/read` of a data-bearing TEMPLATE
-// instantiation) still requires credentials. `notifications/initialized`
+// because it carries no billable data.
+//
+// U7 narrowed the old blanket rule ("everything returning DATA requires
+// credentials"): a `tools/call` naming a tool flagged `_freeTier` in the
+// registry is ALSO promoted per-request, and runs under an explicit
+// `{ kind: 'free' }` principal with no identity and no quota. The narrowing is
+// bounded three ways — the roster is the registry flag itself (no second
+// list), `dispatchToolsCall` re-checks that flag so promotion and
+// authorisation are not one line of code, and the free path takes a
+// fail-CLOSED ceiling rather than the fail-open discovery limiter. Everything
+// else that returns DATA or spends quota (every non-roster `tools/call`, and
+// `resources/read` of a data-bearing TEMPLATE instantiation) still requires
+// credentials. `notifications/initialized`
 // is the client's post-`initialize` handshake notification (carries no data);
 // leaving it public lets a strict MCP client complete the handshake before
 // calling `tools/list`.
@@ -634,45 +646,87 @@ async function mcpHandlerInner(
   const isPublicResourceRead = typeof resourceReadUri === 'string' && isPublicResourceUri(resourceReadUri);
   const isAnonResourceRead = uiResourceReadUri !== null || isPublicResourceRead;
 
+  // U7 (R7, R9): a `tools/call` naming a tool in the always-free subset is
+  // promoted to the anonymous path per-request, the same shape
+  // `isPublicResourceUri` already uses for metadata-only resource reads.
+  // Exact-matched against the registry's own `_freeTier` flag, so a tool
+  // outside the roster is never promoted and stays fully gated.
+  const toolCallName = method === 'tools/call'
+    ? ((body.params as { name?: unknown } | null)?.name)
+    : undefined;
+  const isFreeTierToolCall = typeof toolCallName === 'string'
+    && TOOL_REGISTRY.some((t) => t.name === toolCallName && t._freeTier === true);
+
   // Auth gate. `context` is null only on the anonymous discovery path; every
   // data/quota method below runs the full protected path and always sets it.
   let context: McpAuthContext | null = null;
   // Set alongside `context` by the gated branch's pre-check. Stays undefined on
   // the public/anon branch — which never reaches a metered dispatch anyway.
   let mcpDailyLimit: number | null | undefined;
-  if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead) {
+  if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
       // present-but-invalid key surfaces a 401 instead of a silent anon
       // downgrade; a valid principal is attributed for telemetry + limits.
-      const auth = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders);
+      const auth = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders, id);
       if (!auth.ok) {
         usage.phase = 'auth';
         return auth.response;
       }
       context = auth.context;
       setUsageContext(usage, context);
+      // A bearer-derived Pro context is not authoritative revocation proof.
+      // Validate the durable grant before assigning the larger credentialed
+      // per-user bucket on any public method. Free tools and metadata methods
+      // remain entitlement- and daily-quota-exempt after this identity check.
+      if (context.kind === 'pro') {
+        const validation = await validateProMcpAuthorization(
+          context,
+          deps,
+          resourceMetadataUrl,
+          corsHeaders,
+          ctx,
+          id,
+        );
+        if (!validation.ok) {
+          usage.phase = 'precheck';
+          return validation.response;
+        }
+      }
       const limited = await applyPerMinuteLimit(context, corsHeaders);
       if (limited) {
         usage.phase = 'limit';
         return limited;
       }
     } else {
-      const anonLimited = await applyAnonDiscoveryLimit(req, corsHeaders);
+      // A free-tier tool call returns DATA, so it takes the tighter
+      // fail-CLOSED ceiling instead of the discovery limiter, whose fail-OPEN
+      // is justified only by carrying no data. Metadata methods keep the
+      // existing limiter unchanged.
+      const anonLimited = isFreeTierToolCall
+        ? await applyFreeTierLimit(req, corsHeaders, id)
+        : await applyAnonDiscoveryLimit(req, corsHeaders);
       if (anonLimited) {
         usage.phase = 'limit';
         return anonLimited;
       }
+      // The free-tier caller dispatches as an explicit `free` principal: no
+      // identity, no quota, and `buildAuthHeaders` throws if a tool tries to
+      // reach a credentialed downstream with it.
+      if (isFreeTierToolCall) {
+        context = { kind: 'free' };
+        setUsageContext(usage, context);
+      }
     }
   } else {
-    const auth = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders);
+    const auth = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders, id);
     if (!auth.ok) {
       usage.phase = 'auth';
       return auth.response;
     }
     context = auth.context;
     setUsageContext(usage, context);
-    const preCheck = await runContextPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx);
+    const preCheck = await runContextPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx, id);
     if (!preCheck.ok) {
       usage.phase = preCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
       return preCheck.response;
@@ -741,7 +795,9 @@ async function mcpHandlerInner(
     case 'tools/list':
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { tools: TOOL_LIST_RESPONSE }, corsHeaders));
     case 'tools/call': {
-      // context is always set here — tools/call is never a PUBLIC_MCP_METHOD.
+      // context is always set here. tools/call is never a PUBLIC_MCP_METHOD, and
+      // since U7 a free-tier call takes the anon branch above but still sets an
+      // explicit `{ kind: 'free' }` principal rather than leaving context null.
       // The guard narrows the type and hard-fails closed if that ever changes.
       if (!context) {
         usage.phase = 'auth';

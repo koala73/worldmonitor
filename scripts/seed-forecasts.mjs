@@ -7,14 +7,18 @@ import { readFileSync } from 'node:fs';
 import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs, getResponseHeader, isRetryableHttpStatus } from './_seed-utils.mjs';
 import { compactForecastDashboardPayload } from './_forecast-dashboard.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { allBootstrapMarkets } from './_prediction-classify.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { attachResolutionSpecs } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity } from './_forecast-funnel.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
 import {
+  GROQ_DEFAULT_MODEL,
   getLlmAttemptTimeoutMs,
   isDeepseekV4FlashModel,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
   DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS,
 } from './_llm-model-timeouts.mjs';
@@ -833,6 +837,32 @@ async function redisGet(url, token, key) {
   const data = await resp.json();
   if (!data?.result) return null;
   try { return unwrapEnvelope(JSON.parse(data.result)).data; } catch { return null; }
+}
+
+// redisGet collapses "key absent" and "read failed" into the same null — a
+// non-ok HTTP response returns null and only a transport error throws. That is
+// right for best-effort cache reads, but wrong for any caller that DERIVES
+// STATE FROM ABSENCE: the market_implications failure writer resets its miss
+// streak when it sees no previous meta, so a transient Upstash 5xx would read
+// as "no misses recorded" and quietly restart the count — suppressing the
+// escalation exactly when Redis is unhealthy too. This variant returns null
+// only for a PROVEN miss and throws on everything else.
+async function redisGetOrThrow(url, token, key) {
+  if (_testRedisStore) return _testRedisStore[key] ?? null;
+  const raw = await redisCommand(url, token, ['GET', key]); // throws on non-ok
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)
+    || !Object.prototype.hasOwnProperty.call(raw, 'result')) {
+    throw new Error(`Redis GET ${key} returned a malformed response`);
+  }
+  if (raw.result === null) return null;
+  if (typeof raw.result !== 'string') {
+    throw new Error(`Redis GET ${key} returned a malformed result`);
+  }
+  try {
+    return unwrapEnvelope(JSON.parse(raw.result)).data;
+  } catch (err) {
+    throw new Error(`Redis GET ${key} returned unparseable JSON: ${err.message}`);
+  }
 }
 
 async function redisDel(url, token, key) {
@@ -2437,7 +2467,10 @@ function capMarketCalibrationProbability(domain, probability) {
 
 function detectFromPredictionMarkets(inputs) {
   const predictions = [];
-  const markets = inputs.predictionMarkets?.geopolitical || [];
+  // All three pools (#5733). This detector scores any market whose title tags a
+  // region, so it wants the whole universe; `.geopolitical` only meant that
+  // while the producer's pools were near-duplicates.
+  const markets = allBootstrapMarkets(inputs.predictionMarkets);
 
   for (const m of markets) {
     if (!Number.isFinite(m?.yesPrice)) continue;
@@ -2607,7 +2640,11 @@ function computeProjections(predictions) {
 }
 
 function calibrateWithMarkets(predictions, markets) {
-  if (!markets?.geopolitical) return;
+  // All three pools (#5733): a prediction is calibrated against whichever market
+  // best matches its region and title, and the best anchor is often a macro,
+  // rates, or commodity line that now lives outside the geopolitical pool.
+  const marketUniverse = allBootstrapMarkets(markets);
+  if (marketUniverse.length === 0) return;
   const stats = {
     applied: 0,
     noPrice: 0,
@@ -2624,7 +2661,7 @@ function calibrateWithMarkets(predictions, markets) {
     const titleTokens = extractMeaningfulTokens(pred.title, regionTerms);
     const predictionDeEscalatoryOutcome = predictionYesOutcomeLooksDeEscalatory(pred);
     if (keywords.length === 0 && regionTerms.length === 0) continue;
-    const candidates = markets.geopolitical
+    const candidates = marketUniverse
       .map(m => {
         const mRegions = tagRegions(m.title);
         const sameMacroRegion = keywords.length > 0 && mRegions.some(r => keywords.includes(r));
@@ -14626,10 +14663,10 @@ function selectForecastsForEnrichment(predictions, options = {}) {
 }
 
 // ── Phase 2: LLM Scenario Enrichment ───────────────────────
-// openrouter-first since #4944 U6: forecast NARRATIVE (never probabilities —
-// detectors own those) runs DeepSeek V4 Flash with reasoning disabled; groq
-// llama-3.3-70b-versatile is the free-tier/outage fallback. Per-stage
-// FORECAST_LLM_*_PROVIDER_ORDER env still overrides.
+// Forecast narrative calls try the paid OpenRouter model, two fixed free
+// OpenRouter variants, then Groq. Separate entries let application validation
+// advance after malformed/empty content; do not replace them with the random
+// `openrouter/free` router. Per-stage FORECAST_LLM_*_PROVIDER_ORDER still overrides.
 const FORECAST_LLM_PROVIDERS = [
   // `provider.sort: 'throughput'` makes OpenRouter dispatch to its fastest backend
   // instead of free-routing. Without it the SAME model lands on backends spanning
@@ -14641,7 +14678,9 @@ const FORECAST_LLM_PROVIDERS = [
   // same entry onto google/gemini-2.5-flash and must keep its 25s window). Flash uses
   // its own completion deadline via getLlmAttemptTimeoutMs — see _llm-model-timeouts.
   { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'deepseek/deepseek-v4-flash', timeout: 25_000, extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING } },
-  { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile', timeout: 20_000 },
+  { name: 'openrouter-free', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: OPENROUTER_FREE_PRIMARY_MODEL, timeout: 25_000, maxRetries: 0, extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING } },
+  { name: 'openrouter-free-backup', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: OPENROUTER_FREE_BACKUP_MODEL, timeout: 25_000, maxRetries: 0, extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING } },
+  { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: GROQ_DEFAULT_MODEL, timeout: 20_000 },
 ];
 
 // market_implications does NOT fall back to groq. Groq's free tier caps at 100k
@@ -14705,26 +14744,45 @@ function parseForecastProviderOrder(raw) {
   return providers.length > 0 ? providers : null;
 }
 
+function migrateLegacyGlobalProviderOrder(providerOrder) {
+  if (providerOrder.length !== 2
+    || providerOrder[0] !== 'openrouter'
+    || providerOrder[1] !== 'groq') return providerOrder;
+  const paidIndex = providerOrder.indexOf('openrouter');
+  const groqIndex = providerOrder.indexOf('groq');
+  if (paidIndex < 0 || groqIndex < 0 || paidIndex > groqIndex) return providerOrder;
+  const freeProviders = ['openrouter-free', 'openrouter-free-backup'];
+  return providerOrder.flatMap(provider => provider === 'groq'
+    ? [...freeProviders.filter(freeProvider => !providerOrder.includes(freeProvider)), provider]
+    : [provider]);
+}
+
 function getForecastLlmCallOptions(stage = 'default') {
   const defaultProviderOrder = FORECAST_LLM_PROVIDERS.map(provider => provider.name);
   const globalProviderOrder = parseForecastProviderOrder(process.env.FORECAST_LLM_PROVIDER_ORDER);
+  // Production carries the historical global `openrouter,groq` value. Migrate
+  // only that exact legacy default; stage-scoped operator overrides stay exact.
+  const effectiveGlobalProviderOrder = globalProviderOrder
+    ? migrateLegacyGlobalProviderOrder(globalProviderOrder)
+    : null;
   const combinedProviderOrder = parseForecastProviderOrder(process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER);
   const criticalProviderOrder = parseForecastProviderOrder(process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER);
   const impactProviderOrder = parseForecastProviderOrder(process.env.FORECAST_LLM_IMPACT_PROVIDER_ORDER);
   const marketImplicationsProviderOrder = parseForecastProviderOrder(process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER);
-  const providerOrder = stage === 'combined'
-    ? (combinedProviderOrder || globalProviderOrder || defaultProviderOrder)
+  const configuredProviderOrder = stage === 'combined'
+    ? (combinedProviderOrder || effectiveGlobalProviderOrder || defaultProviderOrder)
     : stage === 'critical_signals'
-      ? (criticalProviderOrder || globalProviderOrder || defaultProviderOrder)
+      ? (criticalProviderOrder || effectiveGlobalProviderOrder || defaultProviderOrder)
       : stage === 'impact_expansion'
-        ? (impactProviderOrder || globalProviderOrder || defaultProviderOrder)
+        ? (impactProviderOrder || effectiveGlobalProviderOrder || defaultProviderOrder)
       // Deliberately does NOT fall through to globalProviderOrder: that env is set
       // to `openrouter,groq` in production, which would re-add the groq fallback
       // this stage must not depend on (see MARKET_IMPLICATIONS_DEFAULT_PROVIDER_ORDER).
       // Its own stage env still overrides.
       : stage === 'market_implications'
         ? (marketImplicationsProviderOrder || MARKET_IMPLICATIONS_DEFAULT_PROVIDER_ORDER)
-      : (globalProviderOrder || defaultProviderOrder);
+      : (effectiveGlobalProviderOrder || defaultProviderOrder);
+  const providerOrder = configuredProviderOrder;
 
   const openrouterModel = stage === 'combined'
     ? (process.env.FORECAST_LLM_COMBINED_MODEL_OPENROUTER || process.env.FORECAST_LLM_MODEL_OPENROUTER)
@@ -14740,16 +14798,16 @@ function getForecastLlmCallOptions(stage = 'default') {
   // strength/confidence flow into state-derived (market/supply_chain)
   // forecast probabilities and publish selection (frames → world signals →
   // pressure/confirmation scores → buildStateDerivedForecast probability).
-  // Hold this stage on the pre-#4944 models so the DeepSeek narrative
-  // migration cannot move probabilities before the #4930 resolver baseline
-  // exists. ONLY the stage-scoped FORECAST_LLM_CRITICAL_PROVIDER_ORDER
+  // Hold this stage on the same provider hosts and OpenRouter fallback. Groq's
+  // decommissioned 8B model moves to its official gpt-oss-20b replacement.
+  // ONLY the stage-scoped FORECAST_LLM_CRITICAL_PROVIDER_ORDER
   // unpins it — a global FORECAST_LLM_PROVIDER_ORDER must not move a
   // probability-coupled stage as a side effect (review finding on #4965).
   if (stage === 'critical_signals' && !criticalProviderOrder) {
     return {
       providerOrder: ['groq', 'openrouter'],
       modelOverrides: {
-        groq: 'llama-3.1-8b-instant',
+        groq: GROQ_DEFAULT_MODEL,
         // ONLY the stage-scoped model env may change the pinned fallback —
         // a global FORECAST_LLM_MODEL_OPENROUTER must not move the
         // probability-coupled stage either (review finding on #4965).
@@ -15233,7 +15291,7 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
                 Authorization: `Bearer ${apiKey}`,
                 'Content-Type': 'application/json',
                 'User-Agent': CHROME_UA,
-                ...(provider.name === 'openrouter' ? { 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor' } : {}),
+                ...(provider.name.startsWith('openrouter') ? { 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor' } : {}),
               },
               body: JSON.stringify({
                 model: provider.model,
@@ -15289,7 +15347,7 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
             }
             throw err;
           }
-        }, providerMaxRetries, retryDelayMs);
+        }, provider.maxRetries ?? providerMaxRetries, retryDelayMs);
 
         let json;
         try {
@@ -17016,6 +17074,29 @@ function validateMarketImplications(cards, allowedTickers = ALL_ALLOWED_TICKERS)
   return valid;
 }
 
+// The canonical producer validates against a runtime-expanded ticker allowlist
+// before publishing. Retention cannot repeat that Redis read, so it validates
+// the same semantic card fields while accepting the same ticker syntax used to
+// admit live equity symbols. This keeps a valid dynamic ticker retainable while
+// failing closed on a corrupt canonical payload.
+function isRetainableMarketImplicationCard(card) {
+  if (!card || typeof card !== 'object' || Array.isArray(card)) return false;
+  const ticker = typeof card.ticker === 'string' ? card.ticker.trim().toUpperCase() : '';
+  if (!/^[A-Z]{1,6}(?:-[A-Z])?$/.test(ticker)) return false;
+  const direction = typeof card.direction === 'string' ? card.direction.trim().toUpperCase() : '';
+  if (!['LONG', 'SHORT', 'HEDGE'].includes(direction)) return false;
+  const timeframe = typeof card.timeframe === 'string' ? card.timeframe.trim().toUpperCase() : '';
+  if (!['1W', '2W', '1M', '3M'].includes(timeframe)) return false;
+  const confidence = typeof card.confidence === 'string' ? card.confidence.trim().toUpperCase() : '';
+  if (!['HIGH', 'MEDIUM', 'LOW'].includes(confidence)) return false;
+  const title = typeof card.title === 'string' ? card.title.trim().slice(0, 120) : '';
+  if (title.length < 5) return false;
+  const narrative = typeof card.narrative === 'string' ? card.narrative.trim().slice(0, 600) : '';
+  return narrative.length >= 20;
+}
+
+const MARKET_IMPLICATIONS_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
+
 const MARKET_IMPLICATIONS_META_KEY = 'seed-meta:intelligence:market-implications';
 const MARKET_IMPLICATIONS_META_TTL = 86400 * 7;
 // v2 (2026-07-06, #4944 U6): narrative moved to deepseek-v4-flash — the
@@ -17062,25 +17143,155 @@ function marketImplicationsMetaErrorReason(reason) {
   return String(reason || 'unknown').replace(/\s+/g, ' ').slice(0, 240);
 }
 
-// Surface a producer-side LLM failure to /api/health instead of silently
-// returning. Without this the success-only seed-meta write freezes at the
-// last-good fetchedAt; the canonical key then TTLs out and health reports
-// `marketImplications: EMPTY` — indistinguishable from a stopped cron. Writing
-// a `status:'error'` seed-meta makes api/health.js classifyKey emit SEED_ERROR
-// (warn: producer failing) per the socialVelocity precedent (PR #4084). We also
-// re-EXPIRE the canonical key so the last-good cards survive while the LLM step
-// retries on the next cron, rather than expiring to EMPTY mid-outage.
+// Closed failure vocabulary surfaced to /api/health as
+// seed-meta.lastSynthesisFailureCode. api/health.js validates against a
+// matching pattern, so a code added here needs the pattern widened there.
+// Exported so that coupling is enforced by a test rather than by this comment
+// (see tests/market-implications-seed-health.test.mjs).
+export const MARKET_IMPLICATIONS_FAILURE_CODES = Object.freeze({
+  llm_no_response: 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+  no_parseable_cards: 'MARKET_IMPLICATIONS_NO_PARSEABLE_CARDS',
+  all_cards_failed_validation: 'MARKET_IMPLICATIONS_VALIDATION',
+});
+export const MARKET_IMPLICATIONS_UNKNOWN_FAILURE_CODE = 'MARKET_IMPLICATIONS_UNKNOWN';
+// Matches INSIGHTS_MAX_CONSECUTIVE_FAILURES and api/health.js's own clamp: the
+// streak is a signal, not a counter anyone reads past the warn threshold.
+const MARKET_IMPLICATIONS_MAX_CONSECUTIVE_FAILURES = 100;
+
+/**
+ * Decide what a failed attempt does to seed-meta.
+ *
+ * This stage is ALLOWED to miss — it is one 2,500-token completion per hour
+ * against a panel whose cards stay useful for hours. Writing
+ * `{recordCount: 0, status: 'error'}` on every miss (the original behavior)
+ * meant a single transient provider timeout flipped /api/health to SEED_ERROR
+ * while the canonical key still served five valid cards, and — because that
+ * write also advanced `fetchedAt` to now — a chronic outage refreshed its own
+ * freshness clock forever and could never age into STALE_SEED.
+ *
+ * So a miss with usable last-good becomes a BOUNDED degraded state: the
+ * content clock holds at the served vintage (age escalation still works), the
+ * record count describes what is actually being served, and the miss is
+ * recorded as a streak + reason for api/health.js's synthesisFailure contract
+ * to escalate on the second consecutive miss. A miss with nothing servable
+ * keeps the immediate `status:'error'` — there the panel really is broken.
+ */
+export function buildMarketImplicationsFailureMeta({
+  previousMeta,
+  lastGoodPayload,
+  reason,
+  nowMs = Date.now(),
+} = {}) {
+  const now = Number.isFinite(nowMs) && nowMs > 0 ? Math.floor(nowMs) : Date.now();
+  const previous = previousMeta && typeof previousMeta === 'object' ? previousMeta : {};
+  const cards = Array.isArray(lastGoodPayload?.cards) ? lastGoodPayload.cards : [];
+  const servedGeneratedAt = typeof lastGoodPayload?.generatedAt === 'string'
+    && lastGoodPayload.generatedAt.length <= 64
+    ? lastGoodPayload.generatedAt
+    : null;
+  const servedMs = servedGeneratedAt == null ? Number.NaN : Date.parse(servedGeneratedAt);
+  const cardsAreUsable = cards.length > 0 && cards.every(isRetainableMarketImplicationCard);
+
+  // Fail closed. No cards, or no parseable content clock to hold `fetchedAt`
+  // at, means we cannot prove anything usable is being served — and softening
+  // the alarm on an unproven assumption is how a real outage goes unnoticed.
+  if (!cardsAreUsable || !Number.isFinite(servedMs)
+    || servedMs > now + MARKET_IMPLICATIONS_MAX_FUTURE_SKEW_MS) {
+    return {
+      fetchedAt: now,
+      recordCount: 0,
+      status: 'error',
+      errorReason: marketImplicationsMetaErrorReason(reason),
+    };
+  }
+
+  const previousFailures = Number.isInteger(previous.consecutiveFailures) && previous.consecutiveFailures > 0
+    ? previous.consecutiveFailures
+    // A pre-contract meta carries no streak field, but `status:'error'` is
+    // itself the record of a prior miss. Counting it as zero would undercount
+    // the streak across the deploy boundary and delay the first escalation by
+    // a full cron tick.
+    : (previous.status === 'error' ? 1 : 0);
+  const previousSuccessAt = Number.isFinite(previous.lastSuccessAt) && previous.lastSuccessAt > 0
+    ? previous.lastSuccessAt
+    : null;
+  return {
+    // Held at the served vintage, NOT advanced to now: this is the clock
+    // /api/health ages against, and the served cards are what it describes.
+    fetchedAt: servedMs,
+    recordCount: cards.length,
+    status: 'ok',
+    lastAttemptAt: now,
+    // The payload being served is itself proof of an earlier publish, so a
+    // pre-contract meta (no lastSuccessAt field) still reports one.
+    lastSuccessAt: previousSuccessAt ?? servedMs,
+    servedGeneratedAt,
+    consecutiveFailures: Math.min(MARKET_IMPLICATIONS_MAX_CONSECUTIVE_FAILURES, previousFailures + 1),
+    lastSynthesisFailureCode: MARKET_IMPLICATIONS_FAILURE_CODES[reason] || MARKET_IMPLICATIONS_UNKNOWN_FAILURE_CODE,
+  };
+}
+
+// A successful publish must clear the diagnostics it may be recovering from:
+// a stale `consecutiveFailures` left behind would keep health warning long
+// after the provider came back.
+function buildMarketImplicationsSuccessMeta(payload, recordCount, nowMs = Date.now()) {
+  return {
+    fetchedAt: nowMs,
+    recordCount,
+    status: 'ok',
+    lastAttemptAt: nowMs,
+    lastSuccessAt: nowMs,
+    servedGeneratedAt: typeof payload?.generatedAt === 'string' ? payload.generatedAt : null,
+    consecutiveFailures: 0,
+    lastSynthesisFailureCode: null,
+  };
+}
+
+// Record a producer-side LLM failure for /api/health. Without any write the
+// success-only seed-meta freezes at the last-good fetchedAt, the canonical key
+// TTLs out, and health reports `marketImplications: EMPTY` — indistinguishable
+// from a stopped cron. What the write says depends on whether anything is
+// still servable (see buildMarketImplicationsFailureMeta). Either way we
+// re-EXPIRE the canonical key so the last-good cards survive while the LLM
+// step retries on the next cron, rather than expiring to EMPTY mid-outage.
 async function writeMarketImplicationsFailureMeta(reason) {
   const { url, token } = getRedisCredentials();
-  const meta = {
-    fetchedAt: Date.now(),
-    recordCount: 0,
-    status: 'error',
-    errorReason: marketImplicationsMetaErrorReason(reason),
-  };
+  let previousMeta = null;
+  let lastGoodPayload = null;
+  try {
+    // Concurrent, not sequential: the two reads are independent, and this runs
+    // at the tail of a run already bounded by the 240s seed lock. Serializing
+    // them doubles the worst case to ~20s when Redis is degraded — which is
+    // precisely the case where the LLM has probably just failed too.
+    [previousMeta, lastGoodPayload] = await Promise.all([
+      redisGetOrThrow(url, token, MARKET_IMPLICATIONS_META_KEY),
+      redisGetOrThrow(url, token, MARKET_IMPLICATIONS_KEY),
+    ]);
+  } catch (err) {
+    // Fail closed: an unread last-good is an unproven last-good, and an unread
+    // streak is not a cleared streak. Both degrade into the immediate-error
+    // branch rather than softening the alarm on an unverified assumption —
+    // hence redisGetOrThrow, which does not disguise a read failure as a miss.
+    console.warn(`  [MarketImplications] last-good read failed during failure write: ${err.message}`);
+    previousMeta = null;
+    lastGoodPayload = null;
+  }
+
+  const meta = buildMarketImplicationsFailureMeta({ previousMeta, lastGoodPayload, reason });
   await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, meta, MARKET_IMPLICATIONS_META_TTL);
+  if (meta.status === 'error') {
+    console.warn(`  [MarketImplications] ${reason}: nothing servable — writing error seed-meta`);
+  } else {
+    console.warn(`  [MarketImplications] ${reason}: serving ${meta.recordCount} last-good cards from ${meta.servedGeneratedAt} (consecutive misses: ${meta.consecutiveFailures})`);
+  }
+  console.log(JSON.stringify({
+    event: 'llm_market_implications',
+    failed: reason,
+    degraded: meta.status !== 'error',
+    consecutiveFailures: meta.consecutiveFailures ?? null,
+  }));
   // EXPIRE is a best-effort last-good preservation hint — failure here only
-  // shortens how long stale cards linger, it never loses the error signal above.
+  // shortens how long stale cards linger, it never loses the signal above.
   try {
     await redisCommand(url, token, ['EXPIRE', MARKET_IMPLICATIONS_KEY, String(MARKET_IMPLICATIONS_TTL)]);
   } catch (err) {
@@ -17142,7 +17353,7 @@ async function buildAndSeedMarketImplications(inputs) {
     if (Array.isArray(cachedStage?.cards) && cachedStage.cards.length > 0) {
       const payload = { cards: cachedStage.cards, generatedAt: new Date().toISOString(), model: cachedStage.model || '' };
       await redisSet(url, token, MARKET_IMPLICATIONS_KEY, payload, MARKET_IMPLICATIONS_TTL);
-      const meta = { fetchedAt: Date.now(), recordCount: cachedStage.cards.length, status: 'ok' };
+      const meta = buildMarketImplicationsSuccessMeta(payload, cachedStage.cards.length);
       await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, meta, MARKET_IMPLICATIONS_META_TTL);
       console.log(JSON.stringify({ event: 'llm_market_implications', cached: true, hash: fingerprint, count: cachedStage.cards.length }));
       console.log(`  [MarketImplications] Republished ${cachedStage.cards.length} cached cards (inputs unchanged, ${Math.round(Date.now() - startMs)}ms)`);
@@ -17192,7 +17403,7 @@ async function buildAndSeedMarketImplications(inputs) {
       await preserveMarketImplicationsLastGoodOnStarve();
       return;
     }
-    console.warn('  [MarketImplications] LLM returned no response — writing error seed-meta');
+    console.warn('  [MarketImplications] LLM returned no response');
     await writeMarketImplicationsFailureMeta('llm_no_response');
     return;
   }
@@ -17227,7 +17438,7 @@ async function buildAndSeedMarketImplications(inputs) {
 
   const cards = validateMarketImplications(rawCards, effectiveTickers);
   if (cards.length === 0) {
-    console.warn('  [MarketImplications] All cards failed validation — writing error seed-meta');
+    console.warn('  [MarketImplications] All cards failed validation');
     await writeMarketImplicationsFailureMeta('all_cards_failed_validation');
     return;
   }
@@ -17238,7 +17449,7 @@ async function buildAndSeedMarketImplications(inputs) {
   const payload = { cards, generatedAt: new Date().toISOString(), model: result.model || '' };
   await redisSet(url, token, MARKET_IMPLICATIONS_KEY, payload, MARKET_IMPLICATIONS_TTL);
 
-  const meta = { fetchedAt: Date.now(), recordCount: cards.length, status: 'ok' };
+  const meta = buildMarketImplicationsSuccessMeta(payload, cards.length);
   await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, meta, MARKET_IMPLICATIONS_META_TTL);
 
   // Only validated live generations feed the input-hash guard; failures above

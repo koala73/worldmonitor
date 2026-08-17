@@ -11,7 +11,7 @@ description: "World Monitor API 中的按端点、按密钥、按 IP 三层速�
 |-------|-------|--------|
 | 按 IP（默认） | **600 次请求** | 60 秒 |
 
-适用于所有没有更严格覆盖规则的 `/api/*` 路由。由 `api/_rate-limit.js` / `api/_ip-rate-limit.js` 实现。
+适用于所有没有更严格覆盖规则的 `/api/*` 路由。由 `api/_rate-limit.js`（遗留 `api/*.js` 边缘函数）和 `server/_shared/rate-limit.ts`（网关与 `.ts` 边缘函数）实现。
 
 ## MCP 服务器
 
@@ -36,6 +36,23 @@ description: "World Monitor API 中的按端点、按密钥、按 IP 三层速�
 - 每分钟突发、每日额度和上限均为**按账户**（在一个账户的所有 `wm_…` 密钥间共享），因此签发更多密钥不会提高你的限制。（运维签发的 Enterprise 密钥是例外 —— 每个密钥独立限流。）
 - 需要更高限制？**联系支持团队**提升你套餐的额度。
 
+## 仪表盘 AI 配额
+
+仪表盘与直接 REST AI 操作使用独立于 MCP 的每日额度。计数器在 **00:00 UTC** 重置。
+
+| 套餐 | 每日仪表盘 AI 请求数 |
+|------|----------------------|
+| **Free / 未登录** | **0** —— 受保护的 AI 路由需要 Pro 认证 |
+| **Pro** | **500** |
+| **Pro Business** | **2,500** |
+| **API Starter** | **1,000** |
+| **API Business** | **10,000** |
+| **Enterprise** | 不限 |
+
+Free 与未登录的仪表盘用户在信息流增强上仍可使用常规的关键词/缓存回退；他们不会消耗付费的直接 AI 额度。这些限制与上文的 MCP 额度相互独立。
+
+未登录的调用会被直接拒绝，受 Pro 保护的 AI 路由也会在产生任何花费之前拒绝免费账户。除上述套餐额度之外，对于在请求时无法确认其付费权益的调用方（订阅已失效，或权益查询出现暂时性故障），另有一个**每天 50 次请求**的非套餐安全下限。它的作用是让故障优雅降级，而不是拒绝付费客户；它不属于任何套餐包含的额度，且永远不会大于最小的付费额度。
+
 ## OAuth 端点
 
 | 端点 | 限制 | 窗口 | 范围 |
@@ -49,6 +66,19 @@ description: "World Monitor API 中的按端点、按密钥、按 IP 三层速�
 对于 `/api/oauth/token`，限流器键在 `client_credentials` 下为 `client_secret` 哈希，其次为 `client_id`（若存在），仅当两个凭证标识均不可用时才回退到调用方 IP。
 
 在 OAuth 流程中超过以上任一限制都会导致 MCP 客户端连接握手失败 — 请等待 60 秒后重试。
+
+## 提供方代理
+
+代表我们抓取第三方主机的路由拥有各自的按 IP 额度，以免单个脚本化调用方向我们无法控制的提供方发出无限流量。这些额度按 IP 计算而非总量：它们限制任意单个调用方，但不限制所有调用方的总出口流量。
+
+| 端点 | 限制 | 窗口 | 范围 |
+|----------|-------|--------|-------|
+| `POST /api/skills/fetch-agentskills` | 30 | 60 秒 | 按 IP |
+| `GET /api/youtube/live` | 30 | 60 秒 | 按 IP |
+| `GET /api/reverse-geocode` | 60 | 60 秒 | 按 IP |
+| `GET /api/infrastructure/v1/reverse-geocode` | 60 | 60 秒 | 按 IP |
+
+两个边缘处理函数（`/api/skills/fetch-agentskills`、`/api/youtube/live`）通过 `checkScopedRateLimit`/`checkRateLimit` 在处理函数内部执行其额度；`/api/reverse-geocode` 根据 `api/*.js` 约束将其额度镜像为字面常量；`/api/infrastructure/v1/reverse-geocode` 是网关 RPC，由网关通过 `checkEndpointRateLimit` 执行（Redis 故障时默认失败关闭）。两条 reverse-geocode 路由都会访问 Nominatim，其使用政策是本技术栈中最严格的，且以封禁出口 IP 的方式执行，因此应将这些额度视为上限而非目标；本次变更未实现聚合总量配套额度，后续仍需补充。
 
 ## 写入端点
 
@@ -65,7 +95,7 @@ description: "World Monitor API 中的按端点、按密钥、按 IP 三层速�
 
 这些端点大多使用默认公开 API 限制。缓存头因端点而异：
 
-- `GET /api/bootstrap` — 只有显式标记的 `?...&public=1` URL 可被共享缓存。`?tier=fast&public=1` / `?tier=slow&public=1` 使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。单键公开 URL：on-demand 键（`?keys=<onDemandName>&public=1`）在未声明自有配置时继承 slow 配置 —— 浏览器 `max-age=300`、CDN `s-maxage=7200`；目前仅 `chinaDecisionSignals` 声明了自有配置（浏览器 `max-age=60`、CDN `s-maxage=900`）；`?keys=weatherAlerts&public=1` 使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 并配合 fast 层 CDN 屏蔽。其余所有形态 —— 密钥认证、会话认证、未标记的 `?tier=...` URL，以及匿名 `?keys=weatherAlerts` 路径 —— 均使用 `Cache-Control: no-store` 且不发出 CDN 缓存头，因此凭据 URL 永远不会由共享缓存应答。用户 API 密钥校验还有一个故障关闭的固定 60 秒按 IP 预校验限制，最多 600 次尝试。
+- `GET /api/bootstrap` — 只有显式标记的 `?...&public=1` URL 可被共享缓存。`?tier=fast&public=1` / `?tier=slow&public=1` 使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。单键公开 URL：on-demand 键（`?keys=<onDemandName>&public=1`）在未声明自有配置时继承 slow 配置 —— 浏览器 `max-age=300`、CDN `s-maxage=7200`；发布频率高于该缓存时长的键均声明了自有配置：`chinaDecisionSignals`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`canadaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`albertaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`marketCorrelationSeries`（浏览器 `max-age=60`、CDN `s-maxage=900`）和 `bcOpen511`（浏览器 `max-age=60`、CDN `s-maxage=1800`）；`?keys=weatherAlerts&public=1` 使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 并配合 fast 层 CDN 屏蔽。其余所有形态 —— 密钥认证、会话认证、未标记的 `?tier=...` URL，以及匿名 `?keys=weatherAlerts` 路径 —— 均使用 `Cache-Control: no-store` 且不发出 CDN 缓存头，因此凭据 URL 永远不会由共享缓存应答。用户 API 密钥校验还有一个故障关闭的固定 60 秒按 IP 预校验限制，最多 600 次尝试。
 - `GET /api/health` — `private, no-store, max-age=0` 加上 `CDN-Cache-Control: no-store`。
 - `GET /api/version` — `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`。
 

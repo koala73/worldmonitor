@@ -1,5 +1,6 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
+import sovereignStatus from '../scripts/shared/sovereign-status.json' with { type: 'json' };
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
@@ -8,6 +9,7 @@ const originalEnv = {
   WORLDMONITOR_VALID_KEYS: process.env.WORLDMONITOR_VALID_KEYS,
   RESILIENCE_PILLAR_COMBINE_ENABLED: process.env.RESILIENCE_PILLAR_COMBINE_ENABLED,
   RESILIENCE_SCHEMA_V2_ENABLED: process.env.RESILIENCE_SCHEMA_V2_ENABLED,
+  RESILIENCE_EDUCATION_ENABLED: process.env.RESILIENCE_EDUCATION_ENABLED,
 };
 
 process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
@@ -15,13 +17,16 @@ process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
 process.env.WORLDMONITOR_VALID_KEYS = 'test-key';
 process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
 process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
+process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
 
 const { default: handler } = await import('../api/seed-health.js');
 
 const META_KEY = 'seed-meta:resilience:intervals';
-const PROBE_KEY = 'resilience:intervals:v9:US';
+const PROBE_KEY = 'resilience:intervals:v11:US';
+const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
+const EDUCATION_DATA_KEY = 'resilience:education-attainment:v1';
 const METHODOLOGY = 'weight-perturbation-sensitivity-v3';
-const SOURCE_VERSION = `resilience-intervals:resilience:intervals:v9:${METHODOLOGY}`;
+const SOURCE_VERSION = `resilience-intervals:resilience:intervals:v11:${METHODOLOGY}`;
 
 function intervalMeta(overrides = {}) {
   return {
@@ -37,9 +42,21 @@ function intervalPayload(overrides = {}) {
     p05: 65.2,
     p95: 72.8,
     _formula: 'pc',
+    _educationState: 'education-on',
     computedAt: '2026-06-04T18:03:20.983Z',
     methodology: METHODOLOGY,
     ...overrides,
+  };
+}
+
+function educationPayload(count = 180) {
+  return {
+    countries: Object.fromEntries(
+      sovereignStatus.entries.slice(0, count).map((entry, index) => [
+        entry.iso2,
+        { value: 20 + (index % 75), year: 2024 },
+      ]),
+    ),
   };
 }
 
@@ -71,6 +88,10 @@ function installPipelineMock(values) {
       assert.equal(op, 'GET');
       const value = values.has(key)
         ? values.get(key)
+        : key === EDUCATION_META_KEY
+          ? { fetchedAt: Date.now(), recordCount: 187, rankableRecordCount: 180, sourceVersion: 'test' }
+        : key === EDUCATION_DATA_KEY
+          ? educationPayload()
         : String(key).startsWith('seed-meta:')
           ? { fetchedAt: Date.now(), recordCount: 1, sourceVersion: 'test' }
           : null;
@@ -83,6 +104,88 @@ function installPipelineMock(values) {
   };
 }
 
+test('seed-health enforces the active education rankable coverage floor', async () => {
+  installPipelineMock(new Map([
+    [META_KEY, intervalMeta()],
+    [PROBE_KEY, intervalPayload()],
+    [EDUCATION_META_KEY, {
+      fetchedAt: Date.now(),
+      recordCount: 187,
+      rankableRecordCount: 179,
+      sourceVersion: 'wb-education-2026',
+    }],
+  ]));
+
+  const { body } = await readSeedHealth();
+  const entry = body.seeds['resilience:education-attainment'];
+  assert.equal(body.overall, 'warning');
+  assert.equal(entry.status, 'coverage_partial');
+  assert.equal(entry.stale, true);
+  assert.equal(entry.rankableRecordCount, 179);
+  assert.equal(entry.minRankableRecordCount, 180);
+
+  installPipelineMock(new Map([
+    [META_KEY, intervalMeta()],
+    [PROBE_KEY, intervalPayload()],
+    [EDUCATION_META_KEY, {
+      fetchedAt: Date.now(),
+      recordCount: 187,
+      rankableRecordCount: 180,
+      sourceVersion: 'wb-education-2026',
+    }],
+  ]));
+  const healthy = await readSeedHealth();
+  assert.equal(healthy.body.seeds['resilience:education-attainment'].status, 'ok');
+});
+
+test('seed-health applies strict countrySet transition coverage', async () => {
+  const codes = sovereignStatus.entries.map((entry) => entry.iso2);
+  const readWithCountrySet = async (countrySet) => {
+    installPipelineMock(new Map([
+      [META_KEY, intervalMeta()],
+      [PROBE_KEY, intervalPayload()],
+      [EDUCATION_META_KEY, {
+        fetchedAt: Date.now(),
+        recordCount: 187,
+        countrySet,
+        sourceVersion: 'wb-education-transition',
+      }],
+    ]));
+    return readSeedHealth();
+  };
+
+  const healthy = await readWithCountrySet(codes.slice(0, 180).join(','));
+  assert.equal(healthy.body.seeds['resilience:education-attainment'].status, 'ok');
+
+  const duplicated = await readWithCountrySet([...codes.slice(0, 179), codes[0]].join(','));
+  assert.equal(duplicated.body.seeds['resilience:education-attainment'].status, 'coverage_partial');
+  assert.equal(duplicated.body.seeds['resilience:education-attainment'].rankableRecordCount, 179);
+
+  const lowercase = await readWithCountrySet(`${codes.slice(0, 179).join(',')},fr`);
+  assert.equal(lowercase.body.seeds['resilience:education-attainment'].status, 'coverage_partial');
+  assert.equal(lowercase.body.seeds['resilience:education-attainment'].rankableRecordCount, null);
+});
+
+test('seed-health trusts canonical education payload coverage over stale metadata', async () => {
+  installPipelineMock(new Map([
+    [META_KEY, intervalMeta()],
+    [PROBE_KEY, intervalPayload()],
+    [EDUCATION_META_KEY, {
+      fetchedAt: Date.now() - 60_000,
+      recordCount: 187,
+      rankableRecordCount: 180,
+      sourceVersion: 'old-healthy-meta',
+    }],
+    [EDUCATION_DATA_KEY, educationPayload(179)],
+  ]));
+
+  const { body } = await readSeedHealth();
+  const entry = body.seeds['resilience:education-attainment'];
+  assert.equal(entry.status, 'coverage_partial');
+  assert.equal(entry.dataProbe.rankableRecordCount, 179);
+  assert.equal(entry.dataProbe.minRankableRecordCount, 180);
+});
+
 async function readSeedHealth() {
   const req = new Request('https://api.worldmonitor.app/api/seed-health', {
     headers: { 'X-WorldMonitor-Key': 'test-key' },
@@ -92,7 +195,7 @@ async function readSeedHealth() {
   return { res, body };
 }
 
-test('seed-health flags fresh resilience interval meta when the current v9 data probe is absent', async () => {
+test('seed-health flags fresh resilience interval meta when the current v11 data probe is absent', async () => {
   installPipelineMock(new Map([
     [META_KEY, intervalMeta()],
   ]));
@@ -111,6 +214,7 @@ test('seed-health flags fresh resilience interval meta when the current v9 data 
     requiredMethodology: METHODOLOGY,
     requiredSourceVersion: SOURCE_VERSION,
     requiredFormula: 'pc',
+    requiredEducationState: 'education-on',
   });
 });
 
@@ -131,6 +235,47 @@ test('seed-health keeps resilience intervals green when fresh meta matches the c
   assert.equal(body.seeds['resilience:intervals'].dataProbe.methodology, METHODOLOGY);
   assert.equal(body.seeds['resilience:intervals'].dataProbe.formula, 'pc');
   assert.equal(body.seeds['resilience:intervals'].dataProbe.requiredFormula, 'pc');
+  assert.equal(body.seeds['resilience:intervals'].dataProbe.requiredEducationState, 'education-on');
+});
+
+test('seed-health resilience formula defaults active and only explicit false selects rollback', async () => {
+  const original = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+  try {
+    for (const { raw, formula } of [
+      { raw: undefined, formula: 'pc' },
+      { raw: 'true', formula: 'pc' },
+      { raw: 'false', formula: 'd6' },
+    ]) {
+      if (raw === undefined) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+      else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = raw;
+      installPipelineMock(new Map([
+        [META_KEY, intervalMeta()],
+        [PROBE_KEY, intervalPayload({ _formula: formula })],
+      ]));
+
+      const { body } = await readSeedHealth();
+      const interval = body.seeds['resilience:intervals'];
+      assert.equal(interval.status, 'ok', `pillar=${String(raw)} must accept ${formula}`);
+      assert.equal(interval.dataProbe.requiredFormula, formula);
+    }
+  } finally {
+    if (original == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+    else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = original;
+  }
+});
+
+test('seed-health flags resilience interval metadata below the publication floor', async () => {
+  installPipelineMock(new Map([
+    [META_KEY, intervalMeta({ recordCount: 179 })],
+    [PROBE_KEY, intervalPayload()],
+  ]));
+
+  const { body } = await readSeedHealth();
+  const interval = body.seeds['resilience:intervals'];
+  assert.equal(interval.status, 'coverage_partial');
+  assert.equal(interval.stale, true);
+  assert.equal(interval.recordCount, 179);
+  assert.equal(interval.minRecordCount, 180);
 });
 
 test('seed-health flags resilience interval methodology mismatches', async () => {
@@ -154,6 +299,8 @@ test('seed-health flags resilience interval methodology mismatches', async () =>
     requiredMethodology: METHODOLOGY,
     requiredSourceVersion: SOURCE_VERSION,
     requiredFormula: 'pc',
+    educationState: 'education-on',
+    requiredEducationState: 'education-on',
   });
 });
 
@@ -175,6 +322,60 @@ test('seed-health flags resilience interval formula mismatches even when meta is
     key: PROBE_KEY,
     formula: 'd6',
     requiredFormula: 'pc',
+    educationState: 'education-on',
+    requiredEducationState: 'education-on',
+    methodology: METHODOLOGY,
+    requiredMethodology: METHODOLOGY,
+    requiredSourceVersion: SOURCE_VERSION,
+  });
+});
+
+test('seed-health flags resilience interval education-state mismatches', async () => {
+  installPipelineMock(new Map([
+    [META_KEY, intervalMeta()],
+    [PROBE_KEY, intervalPayload({ _educationState: 'education-off' })],
+  ]));
+
+  const { res, body } = await readSeedHealth();
+
+  assert.equal(res.status, 200);
+  assert.equal(body.overall, 'warning');
+  assert.equal(body.seeds['resilience:intervals'].status, 'construct_mismatch');
+  assert.equal(body.seeds['resilience:intervals'].stale, true);
+  assert.deepEqual(body.seeds['resilience:intervals'].dataProbe, {
+    ok: false,
+    status: 'construct_mismatch',
+    key: PROBE_KEY,
+    formula: 'pc',
+    requiredFormula: 'pc',
+    educationState: 'education-off',
+    requiredEducationState: 'education-on',
+    methodology: METHODOLOGY,
+    requiredMethodology: METHODOLOGY,
+    requiredSourceVersion: SOURCE_VERSION,
+  });
+});
+
+test('seed-health rejects untagged resilience interval construct state', async () => {
+  installPipelineMock(new Map([
+    [META_KEY, intervalMeta()],
+    [PROBE_KEY, intervalPayload({ _educationState: undefined })],
+  ]));
+
+  const { res, body } = await readSeedHealth();
+
+  assert.equal(res.status, 200);
+  assert.equal(body.overall, 'warning');
+  assert.equal(body.seeds['resilience:intervals'].status, 'construct_mismatch');
+  assert.equal(body.seeds['resilience:intervals'].stale, true);
+  assert.deepEqual(body.seeds['resilience:intervals'].dataProbe, {
+    ok: false,
+    status: 'construct_mismatch',
+    key: PROBE_KEY,
+    formula: 'pc',
+    requiredFormula: 'pc',
+    educationState: null,
+    requiredEducationState: 'education-on',
     methodology: METHODOLOGY,
     requiredMethodology: METHODOLOGY,
     requiredSourceVersion: SOURCE_VERSION,
@@ -208,6 +409,8 @@ test('seed-health flags malformed resilience interval payloads even when meta is
       key: PROBE_KEY,
       formula: 'pc',
       requiredFormula: 'pc',
+      educationState: 'education-on',
+      requiredEducationState: 'education-on',
       methodology: METHODOLOGY,
       requiredMethodology: METHODOLOGY,
       requiredSourceVersion: SOURCE_VERSION,
