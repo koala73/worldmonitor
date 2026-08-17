@@ -160,6 +160,77 @@ describe('keyword-spike-core', () => {
     assert.equal(spike.count, 5);
     assert.equal(spike.uniqueSources, 3);
     assert.ok(spike.sampleHeadlines.length > 0 && spike.sampleHeadlines.length <= 3);
+    assert.deepEqual(
+      [...spike.sourceNames].sort(),
+      ['source-0', 'source-1', 'source-2'],
+      'sourceNames must name the publishers uniqueSources counts',
+    );
+    assert.equal(spike.sourceNames.length, spike.uniqueSources);
+    for (const sample of spike.sampleHeadlines) {
+      assert.equal(typeof sample, 'object', 'sample headlines must be attributed objects, not title strings');
+      assert.equal(typeof sample.title, 'string');
+      assert.equal(typeof sample.source, 'string');
+      assert.equal(typeof sample.link, 'string');
+      assert.match(sample.source, /^source-[012]$/);
+      assert.equal(sample.link, '');
+    }
+  });
+
+  it('attributes sample headlines with publisher name and link', () => {
+    const HOUR = 60 * 60 * 1000;
+    const nowMs = 1_800_000_000_000;
+    const windowMs = 2 * HOUR;
+    const stories = [
+      {
+        title: 'Zaporizhzhia plant shelling escalates (0)',
+        lastSeenMs: nowMs - 10 * 60 * 1000,
+        sources: ['Reuters World'],
+        link: 'https://example.test/reuters-0',
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (1)',
+        lastSeenMs: nowMs - 20 * 60 * 1000,
+        sources: ['BBC World'],
+        link: 'https://example.test/bbc-1',
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (2)',
+        lastSeenMs: nowMs - 30 * 60 * 1000,
+        sources: ['Al Jazeera'],
+        link: 'https://example.test/aj-2',
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (3)',
+        lastSeenMs: nowMs - 40 * 60 * 1000,
+        sources: ['Reuters US'],
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (4)',
+        lastSeenMs: nowMs - 50 * 60 * 1000,
+        sources: ['BBC Africa'],
+        link: 'https://example.test/bbc-4',
+      },
+    ];
+    for (let i = 0; i < 30; i++) {
+      stories.push({
+        title: `Weather outlook stays calm (${i})`,
+        lastSeenMs: nowMs - windowMs - (i * 90 * 60 * 1000),
+        sources: ['weather-wire'],
+      });
+    }
+
+    const spikes = computeKeywordSpikesFromStories(stories, {
+      nowMs, windowMs, baselineDurationMs: 46 * HOUR,
+    });
+    const spike = spikes.find((s) => s.term === 'zaporizhzhia');
+    assert.ok(spike, `expected zaporizhzhia spike, got: ${spikes.map((s) => s.term).join(', ')}`);
+    assert.equal(spike.uniqueSources, 3);
+    assert.deepEqual(spike.sourceNames, ['Al Jazeera', 'BBC', 'Reuters']);
+    assert.deepEqual(spike.sampleHeadlines, [
+      { title: 'Zaporizhzhia plant shelling escalates (0)', source: 'Reuters', link: 'https://example.test/reuters-0' },
+      { title: 'Zaporizhzhia plant shelling escalates (1)', source: 'BBC', link: 'https://example.test/bbc-1' },
+      { title: 'Zaporizhzhia plant shelling escalates (2)', source: 'Al Jazeera', link: 'https://example.test/aj-2' },
+    ]);
   });
 
   // #6428: `uniqueSources` gates the spike alert and is surfaced to agents by

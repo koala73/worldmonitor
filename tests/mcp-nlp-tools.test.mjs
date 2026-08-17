@@ -77,9 +77,9 @@ function upstashPipelineResponder(commands, state) {
   }
   if (first === 'HMGET') {
     return commands.map((cmd) => {
-      assert.deepEqual(cmd.slice(2), ['title'], 'HMGET must request exactly the title field');
+      assert.deepEqual(cmd.slice(2), ['title', 'link'], 'HMGET must request title and link');
       const hash = String(cmd[1]).replace('story:track:v1:', '');
-      return { result: [state.titlesByHash.get(hash) ?? null] };
+      return { result: [state.titlesByHash.get(hash) ?? null, state.linksByHash.get(hash) ?? null] };
     });
   }
   if (first === 'SMEMBERS') {
@@ -111,6 +111,7 @@ describe('#5697 NLP MCP tools', () => {
     upstashState = {
       zrangeFlat: [],
       titlesByHash: new Map(),
+      linksByHash: new Map(),
       sourcesByHash: new Map(),
       storedPayloads: new Map(),
       // Command verbs whose pipelines should fail (partial-outage simulation).
@@ -262,7 +263,23 @@ describe('#5697 NLP MCP tools', () => {
       'sample_truncated must be required on every get_keyword_spikes response',
     );
     assert.deepEqual(spikeOutput.properties.spikes.items.required,
-      ['term', 'count', 'baseline', 'multiplier', 'uniqueSources', 'sampleHeadlines']);
+      ['term', 'count', 'baseline', 'multiplier', 'uniqueSources', 'sourceNames', 'sampleHeadlines']);
+    const sampleSchema = spikeOutput.properties.spikes.items.properties.sampleHeadlines;
+    assert.equal(sampleSchema.items.type, 'object');
+    assert.deepEqual(sampleSchema.items.required, ['title', 'source', 'link']);
+    assert.equal(spikeOutput.properties.spikes.items.properties.sourceNames.type, 'array');
+    assert.equal(spikeOutput.properties.spikes.items.properties.sourceNames.items.type, 'string');
+    const { result: described } = await callTool('describe_tool', { tool_name: 'get_keyword_spikes' });
+    assert.match(
+      described?.description ?? '',
+      /sourceNames/,
+      'uncompressed description must mention the attributed sourceNames field',
+    );
+    assert.match(
+      described?.description ?? '',
+      /title, source, link/,
+      'uncompressed description must describe the attributed sample headline shape',
+    );
   });
 
   describe('classify_event', () => {
@@ -914,6 +931,7 @@ describe('#5697 NLP MCP tools', () => {
         const lastSeen = now - i * 10 * 60 * 1000;
         flat.push(hash, String(lastSeen));
         upstashState.titlesByHash.set(hash, `Zaporizhzhia plant shelling escalates (${i})`);
+        upstashState.linksByHash.set(hash, `https://example.test/spike-${i}`);
         upstashState.sourcesByHash.set(hash, [`source-${i % 3}`]);
       }
       for (let i = 0; i < 30; i++) {
@@ -924,6 +942,45 @@ describe('#5697 NLP MCP tools', () => {
       }
       upstashState.zrangeFlat = flat;
     }
+
+    it('returns attributed sample headlines and source names, not title-only counts', async () => {
+      seedAccumulator();
+      const { response, result } = await callTool('get_keyword_spikes', {});
+      assert.equal(response.status, 200);
+      const spike = result.spikes.find((s) => s.term === 'zaporizhzhia');
+      assert.ok(spike, 'expected zaporizhzhia spike');
+      assert.equal(spike.uniqueSources, 3);
+      assert.deepEqual([...spike.sourceNames].sort(), ['source-0', 'source-1', 'source-2']);
+      assert.ok(Array.isArray(spike.sampleHeadlines) && spike.sampleHeadlines.length > 0);
+      assert.ok(
+        spike.sampleHeadlines.every((sample) => typeof sample !== 'string'),
+        'sampleHeadlines must not remain title-only strings',
+      );
+      assert.deepEqual(
+        spike.sampleHeadlines.map((sample) => ({
+          title: sample.title,
+          source: sample.source,
+          link: sample.link,
+        })),
+        [
+          {
+            title: 'Zaporizhzhia plant shelling escalates (0)',
+            source: 'source-0',
+            link: 'https://example.test/spike-0',
+          },
+          {
+            title: 'Zaporizhzhia plant shelling escalates (1)',
+            source: 'source-1',
+            link: 'https://example.test/spike-1',
+          },
+          {
+            title: 'Zaporizhzhia plant shelling escalates (2)',
+            source: 'source-2',
+            link: 'https://example.test/spike-2',
+          },
+        ],
+      );
+    });
 
     it('computes spikes from the story accumulator and caches the result', async () => {
       seedAccumulator();
@@ -940,6 +997,7 @@ describe('#5697 NLP MCP tools', () => {
       const spike = first.result.spikes.find((s) => s.term === 'zaporizhzhia');
       assert.equal(spike.count, 5);
       assert.equal(spike.uniqueSources, 3);
+      assert.equal(spike.sourceNames.length, spike.uniqueSources);
       assert.ok(upstashState.storedPayloads.size === 1, 'result must be cached');
       assert.ok(pipelineCalls > 0);
 
@@ -977,7 +1035,7 @@ describe('#5697 NLP MCP tools', () => {
       assert.equal(result.window_hours, 2, 'non-integer window falls back to the default');
       // The cache key embeds the clamped minCount, so it proves the clamp
       // applied rather than the raw -3 reaching the spike math.
-      assert.deepEqual([...upstashState.storedPayloads.keys()], ['intelligence:keyword-spikes:mcp:v2:2h:2'],
+      assert.deepEqual([...upstashState.storedPayloads.keys()], ['intelligence:keyword-spikes:mcp:v3:2h:2'],
         'out-of-range integer min_count clamps to the schema minimum (2); the raw -3 must never reach the spike math');
       assert.ok(result.spikes.length <= 10, 'non-integer limit falls back to the default 10');
     });
