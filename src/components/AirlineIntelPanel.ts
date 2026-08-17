@@ -479,7 +479,7 @@ export class AirlineIntelPanel extends Panel {
             ${f.delayMinutes > 0 ? `<div style="color:#f97316;font-size:calc(12px * var(--wm-panel-effective-scale, 1))">+${f.delayMinutes}m delay</div>` : ''}
           </div>`;
             }).join('');
-            setTrustedHtml(this.content, trustedHtml(`${searchBar}<div>${rows}</div>`, "legacy direct innerHTML migration"));
+            this.setTrustedContent(trustedHtml(`${searchBar}<div>${rows}</div>`, "legacy direct innerHTML migration"));
             return;
         }
 
@@ -492,14 +492,14 @@ export class AirlineIntelPanel extends Panel {
           <div class="track-spd">${fmt(p.groundSpeedKts)} kts</div>
           <div class="track-pos">${p.lat.toFixed(2)}, ${p.lon.toFixed(2)}</div>
         </div>`).join('');
-            setTrustedHtml(this.content, trustedHtml(`${searchBar}<div class="tracking-list">${rows}</div>`, "legacy direct innerHTML migration"));
+            this.setTrustedContent(trustedHtml(`${searchBar}<div class="tracking-list">${rows}</div>`, "legacy direct innerHTML migration"));
             return;
         }
 
         const emptyMsg = this.trackingQuery
             ? `<div class="no-data">No results for <strong>${escapeHtml(this.trackingQuery)}</strong>.</div>`
             : `<div class="no-data">${t('components.airlineIntel.noTrackingData')}</div>`;
-        setTrustedHtml(this.content, trustedHtml(`${searchBar}${emptyMsg}`, "legacy direct innerHTML migration"));
+        this.setTrustedContent(trustedHtml(`${searchBar}${emptyMsg}`, "legacy direct innerHTML migration"));
     }
 
     // ---- News tab ----
@@ -513,7 +513,7 @@ export class AirlineIntelPanel extends Panel {
         <a href="${sanitizeUrl(n.url)}" target="_blank" rel="noopener" class="news-link">${escapeHtml(n.title)}</a>
         <div class="news-meta" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim,#888);margin-top:2px">${escapeHtml(n.sourceName)} · ${n.publishedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
       </div>`).join('');
-        setTrustedHtml(this.content, trustedHtml(`<div class="news-list" style="padding:0 4px">${items}</div>`, "legacy direct innerHTML migration"));
+        this.setTrustedContent(trustedHtml(`<div class="news-list" style="padding:0 4px">${items}</div>`, "legacy direct innerHTML migration"));
     }
 
     // ---- Prices tab ----
@@ -577,7 +577,7 @@ export class AirlineIntelPanel extends Panel {
             } else {
                 body = `<div class="no-data">${escapeHtml(t('components.airlineIntel.enterRouteAndDate'))}</div>`;
             }
-            setTrustedHtml(this.content, trustedHtml(`${toggle}${form}${degradedBanner}${body}`, "legacy direct innerHTML migration"));
+            this.setTrustedContent(trustedHtml(`${toggle}${form}${degradedBanner}${body}`, "legacy direct innerHTML migration"));
         } else {
             const form = `
         <div class="price-controls">
@@ -624,7 +624,7 @@ export class AirlineIntelPanel extends Panel {
             } else {
                 body = `<div class="no-data">${escapeHtml(t('components.airlineIntel.enterDateRange'))}</div>`;
             }
-            setTrustedHtml(this.content, trustedHtml(`${toggle}${form}${degradedBanner}${body}`, "legacy direct innerHTML migration"));
+            this.setTrustedContent(trustedHtml(`${toggle}${form}${degradedBanner}${body}`, "legacy direct innerHTML migration"));
         }
     }
 
