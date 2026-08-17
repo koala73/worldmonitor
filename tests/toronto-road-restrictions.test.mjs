@@ -23,6 +23,7 @@ import {
   selectTorontoRoadRecords,
   validateTorontoRoadEnvelope,
 } from '../scripts/lib/toronto-road-restrictions.mjs';
+import { CANADA_ROAD_SOURCES } from '../src/services/canada-roads-core.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FIXTURE_PATH = join(root, 'tests/fixtures/toronto-road-restrictions.json');
@@ -287,21 +288,19 @@ test('fetchTorontoRoadRestrictions rejects a foreign host and a non-list 200', a
   );
 });
 
-test('seeder is a standalone nixpacks job and does not loop ais-relay or reuse 511', () => {
-  assert.match(SEEDER_SOURCE, /fetchTorontoRoadRestrictions/);
-  assert.match(SEEDER_SOURCE, /zeroIsValid:\s*true/);
-  assert.match(SEEDER_SOURCE, /infra:toronto-roads:v1/);
-  assert.match(SEEDER_SOURCE, /toronto-roads-v1/);
-  assert.doesNotMatch(SEEDER_SOURCE, /from ['"].*provincial-511/);
-  assert.doesNotMatch(SEEDER_SOURCE, /acquire511Slot/);
-  assert.doesNotMatch(SEEDER_SOURCE, /fetch\.bind/);
-  assert.doesNotMatch(LIB_SOURCE, /_511-rate-limit/);
-  assert.doesNotMatch(LIB_SOURCE, /from ['"].*provincial-511/);
-  assert.doesNotMatch(LIB_SOURCE, /511on\.ca/);
+test('Toronto roads stay isolated from the relay and the 511 rate limiter', () => {
+  // Isolation policy: absence of a reference is the contract, and no
+  // executable test can observe it. Toronto ships as a standalone nixpacks job
+  // so a relay incident cannot take it down, and its fetch must not inherit the
+  // shared 511 limiter — that coupling is what stalled this feed before.
+  // The seeder's own config values (zeroIsValid, the key names) used to be
+  // echoed here too; those restated the object literal inside the seeder.
+  assert.doesNotMatch(SEEDER_SOURCE, /from ['"].*provincial-511|acquire511Slot|fetch\.bind/);
+  assert.doesNotMatch(LIB_SOURCE, /_511-rate-limit|from ['"].*provincial-511|511on\.ca/);
+  assert.doesNotMatch(RELAY_SOURCE, /toronto\.ca|toronto-roads|secure\.toronto\.ca/);
+
+  // And it reaches only its own upstream host.
   assert.match(LIB_SOURCE, new RegExp(TORONTO_ROADS_HOST.replace(/\./g, '\\.')));
-  assert.doesNotMatch(RELAY_SOURCE, /toronto\.ca/);
-  assert.doesNotMatch(RELAY_SOURCE, /toronto-roads/);
-  assert.doesNotMatch(RELAY_SOURCE, /secure\.toronto\.ca/);
 });
 
 test("this test file does not import the seeder module", () => {
@@ -317,11 +316,26 @@ test("toronto restrictions share canadaRoads and do not invent a second MapLayer
   assert.doesNotMatch(types, /torontoRoads\?: boolean/);
   assert.match(layers, /canadaRoads:\s+def\('canadaRoads'/);
   assert.doesNotMatch(layers, /torontoRoads:\s+def\(/);
-  assert.match(client, /getHydratedData\('canadaRoads'\)/);
-  assert.match(client, /key: 'torontoRoads'/);
   assert.match(client, /unionCanadaRoadRecords/);
-  assert.match(client, /ontario-511/);
-  assert.match(client, /toronto-roads/);
+
+  // Read the real descriptors instead of grepping canada-roads.ts for their
+  // literals: #6763 moved the list into canada-roads-core.ts so tests could
+  // import it, and derived both loader maps from it — so the per-key strings
+  // this used to match no longer exist anywhere in the client.
+  assert.deepEqual(
+    CANADA_ROAD_SOURCES.map(({ key, source }) => `${key}:${source}`),
+    [
+      'canadaRoads:ontario-511',
+      'albertaRoads:alberta-511',
+      'torontoRoads:toronto-roads',
+      'bcOpen511:bc-open511',
+    ],
+    'Toronto is one source of the shared canadaRoads layer, not its own layer key',
+  );
+  // Derived, so a source cannot be added without a loader and read as
+  // permanently unavailable.
+  assert.match(client, /HYDRATED_LOADERS[\s\S]{0,200}CANADA_ROAD_SOURCES\.map/);
+  assert.match(client, /ON_DEMAND_LOADERS[\s\S]{0,200}CANADA_ROAD_SOURCES\.map/);
 });
 
 test("toronto roads runs as a bundle member, not its own */15 service", () => {
@@ -337,34 +351,45 @@ test("toronto roads runs as a bundle member, not its own */15 service", () => {
   );
 });
 
-test("bootstrap keeps Ontario and Alberta fast but fetches Toronto roads on demand", () => {
+test("bootstrap fetches every Canada road feed on demand, including Toronto", () => {
+  // Was: "keeps Ontario and Alberta fast but fetches Toronto roads on demand".
+  // That split was the #6763 bug. A tier is not layer-gated, so keeping the two
+  // 511 feeds fast shipped 507,639 B to every visitor on every variant while
+  // this file's own subject — the 2 MB Toronto snapshot — was correctly held
+  // back. All four are on-demand now.
+  //
+  // The layer-level invariant (an on-demand-backed layer must not ship enabled)
+  // lives in tests/canada-roads-startup-cost.test.mts; this only pins Toronto's
+  // neighbourhood of it.
   const src = readFileSync(join(root, "shared/bootstrap-tier-keys.js"), "utf8");
   assert.match(src, /canadaRoads: 'infra:ontario-511:v1'/);
   assert.match(src, /torontoRoads: 'infra:toronto-roads:v1'/);
   const fast = src.slice(src.indexOf("const FAST_KEY_NAMES"), src.indexOf("const ON_DEMAND_KEY_NAMES"));
-  assert.match(fast, /'canadaRoads'/);
-  assert.match(fast, /'albertaRoads'/);
-  assert.doesNotMatch(fast, /'torontoRoads'/);
-  assert.doesNotMatch(fast, /'bcOpen511'/);
   const onDemand = src.slice(src.indexOf("const ON_DEMAND_KEY_NAMES"));
-  assert.match(onDemand, /'torontoRoads'/);
-  assert.match(onDemand, /'bcOpen511'/);
+  for (const key of ["canadaRoads", "albertaRoads", "torontoRoads", "bcOpen511"]) {
+    assert.doesNotMatch(fast, new RegExp(`'${key}'`), `${key} must not ride the fast tier`);
+    assert.match(onDemand, new RegExp(`'${key}'`), `${key} must be on-demand`);
+  }
 });
 
-test("seed-freshness-baseline acknowledges the Toronto roads cutover", () => {
+test("Toronto roads is live, so it carries no freshness acknowledgement", () => {
+  // Was: pinned the expiring-ack window for a probe that had never published.
+  // The bundle is provisioned and torontoRoads reads healthy, so the ack was
+  // removed as SATISFIED rather than re-anchored. Asserting its absence keeps
+  // it from being reinstated — a suppression outliving its problem would
+  // silently absorb a future Toronto outage.
   const baseline = JSON.parse(readFileSync(join(root, "scripts/seed-freshness-baseline.json"), "utf8"));
   const row = baseline.acknowledged.find((a) => a.issue === 6609 || a.name === "torontoRoads");
-  assert.ok(row);
-  assert.equal(row.status, "EMPTY");
-  assert.equal(row.issue, 6609);
-  assert.equal(row.cutover.probeKey, "seed-meta:infra:toronto-roads");
-  // The window has to outlast the member's own gate. Toronto runs on
-  // intervalMs 2h, so the first publish can land up to two hours after the
-  // bundle is provisioned — an expiry pinned to the provisioning instant would
-  // red the monitor while the seeder is working correctly. activatedAt moved
-  // with it to stay inside the 24h MAX_ROLLOUT_WINDOW_MS cap.
-  assert.equal(row.expiresAt, "2026-08-16T22:15:00.000Z");
-  assert.equal(row.cutover.firstScheduledRunAt, "2026-08-16T22:15:00.000Z");
-  const gapMs = Date.parse(row.cutover.firstScheduledRunAt) - Date.parse(row.cutover.activatedAt);
-  assert.ok(gapMs > 0 && gapMs < 24 * 60 * 60 * 1000, "rollout window must stay under the 24h cap");
+  assert.equal(row, undefined, "torontoRoads publishes now; it must not be acknowledged as known-empty");
+
+  // The staleness budget must still cover the 2h bundle cadence. This is the
+  // pairing that broke once already: the interval moved to 2h while the probe
+  // kept a 45min budget, so a healthy publisher read STALE_SEED permanently.
+  const health = readFileSync(join(root, "api/health.js"), "utf8");
+  const probe = /torontoRoads:\s*\{[\s\S]{0,200}?maxStaleMin:\s*(\d+)/.exec(health);
+  assert.ok(probe, "torontoRoads must still have a health probe");
+  assert.ok(
+    Number(probe[1]) * 60_000 >= 2 * 60 * 60 * 1000,
+    `maxStaleMin ${probe[1]}min must cover the 2h seed-bundle-canada interval`,
+  );
 });

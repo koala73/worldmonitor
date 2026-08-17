@@ -201,29 +201,13 @@ describe('seed freshness workflow control plane', () => {
     assert.deepEqual(success.requested, [HEAD_SHA]);
   });
 
-  it('fails closed when the gate DECIDED against the checked-out main SHA', () => {
-    for (const state of ['failure', 'error']) {
-      const result = runScheduledGate(state, [
-        { sha: 'aaaaaaaaaaaaaaaa', state: 'success', ageSeconds: 900 },
-      ]);
-      assert.notEqual(
-        result.status,
-        0,
-        `${state} must fail the workflow instead of falling back to an older revision`,
-      );
-      assert.match(`${result.stdout}\n${result.stderr}`, new RegExp(`main gate is ${state}`));
-      assert.doesNotMatch(result.output, /sha=aaaaaaaaaaaaaaaa/);
-      // A red main is a verdict, not a race. Walking past it would retire the
-      // alarm this step exists to raise.
-      assert.deepEqual(result.requested, [HEAD_SHA]);
-    }
-  });
-
-  it('falls back to the newest gated ancestor while the head gate is undecided', () => {
-    // The deploy gate posts about 6 minutes after a merge and this monitor runs
-    // every 15, so an undecided head is the normal state right after a merge —
-    // it made every merge produce at least one red run.
-    for (const state of ['missing', 'pending']) {
+  it('falls back to the newest gated ancestor when the head gate is not success', () => {
+    // pending/missing: deploy gate posts ~6 minutes after a merge and this
+    // monitor runs every 15, so an undecided head is the normal post-merge
+    // state — failing on it made every merge produce at least one red run.
+    // failure/error: the `gate` status already owns that verdict. Failing
+    // this job too reds the ingestion monitor without looking at seeds.
+    for (const state of ['missing', 'pending', 'failure', 'error']) {
       const result = runScheduledGate(state, [
         { sha: 'bbbbbbbbbbbbbbbb', state: 'pending', ageSeconds: 300 },
         { sha: 'cccccccccccccccc', state: 'success', ageSeconds: 1800 },
@@ -233,17 +217,23 @@ describe('seed freshness workflow control plane', () => {
       assert.match(result.output, /sha=cccccccccccccccc/, 'must take the NEWEST gated ancestor');
       assert.doesNotMatch(result.output, /sha=dddddddddddddddd/);
       assert.match(`${result.stdout}`, new RegExp(`Head gate is ${state}`));
+      assert.ok(
+        result.requested.includes('cccccccccccccccc'),
+        `${state} must walk past the head to the newest gated ancestor`,
+      );
     }
   });
 
   it('fails closed when no revision in the window has a successful gate', () => {
-    const result = runScheduledGate('pending', [
-      { sha: 'bbbbbbbbbbbbbbbb', state: 'pending', ageSeconds: 300 },
-      { sha: 'cccccccccccccccc', state: 'failure', ageSeconds: 900 },
-    ]);
-    assert.notEqual(result.status, 0, 'an ungated window must not produce a green acceptance');
-    assert.match(`${result.stdout}\n${result.stderr}`, /none of the last 25 main revisions/);
-    assert.equal(result.output.includes('sha='), false);
+    for (const state of ['pending', 'failure']) {
+      const result = runScheduledGate(state, [
+        { sha: 'bbbbbbbbbbbbbbbb', state: 'pending', ageSeconds: 300 },
+        { sha: 'cccccccccccccccc', state: 'failure', ageSeconds: 900 },
+      ]);
+      assert.notEqual(result.status, 0, `${state} head with an ungated window must not produce a green acceptance`);
+      assert.match(`${result.stdout}\n${result.stderr}`, /none of the last 25 main revisions/);
+      assert.equal(result.output.includes('sha='), false);
+    }
   });
 
   it('fails closed when the newest gated ancestor is older than the age bound', () => {

@@ -1,17 +1,17 @@
 ---
 title: "Sanctions Pressure"
-description: "OFAC SDN + Consolidated List designations surfaced as country-level pressure scores, with new-entry / vessel / aircraft counts and program-level breakdowns."
+description: "OFAC SDN + Consolidated and Global Affairs Canada SEMA/JVCFOA designations surfaced as country-level pressure scores, with new-entry / SEMA / vessel / aircraft counts and program-level breakdowns."
 ---
 
-The **Sanctions Pressure** panel (internal id `sanctions-pressure`) turns the OFAC SDN and Consolidated sanctions lists into an actionable overview: which countries are under the most designation pressure right now, what programs are driving it, and what has changed since the last update.
+The **Sanctions Pressure** panel (internal id `sanctions-pressure`) turns the OFAC SDN and Consolidated lists plus Global Affairs Canada SEMA/JVCFOA designations into an actionable overview: which countries are under the most designation pressure right now, what programs are driving it, and what has changed since the last update.
 
 ## What the panel shows
 
 The panel is a compact, analyst-oriented surface (`defaultRowSpan: 2`):
 
-- **Summary bar** — three cards at the top: **New** (new designations since the last update — highlighted when `> 0`), **Vessels** (designated vessels in the current set), **Aircraft** (designated aircraft).
+- **Summary bar** — cards at the top: **New** (new designations since the last update — highlighted when `> 0`), **SEMA** (`semaCount` from the GAC list; `0` if that fetch failed), **Vessels**, **Aircraft**.
 - **Country rows** — top 8 countries by sanctions designation pressure, each row showing the country label, total designation count, and the program mix.
-- **Program rows** — designations grouped by OFAC program (e.g. sectoral, counter-terrorism).
+- **Program rows** — designations grouped by program (OFAC programs plus SEMA, JVCFOR, HAMAS, SETTLER).
 
 The panel tracks activity (`trackActivity: true`) so newly arrived designations get the standard new-item visual treatment.
 
@@ -28,8 +28,9 @@ Panel id is `sanctions-pressure`; canonical component is `src/components/Sanctio
 
 - **OFAC Specially Designated Nationals (SDN) list**
 - **OFAC Consolidated List**
+- **Global Affairs Canada SEMA / JVCFOA consolidated list** (`sema-ca`)
 
-The seeder pulls both, normalises the country attribution, counts vessels and aircraft, and diffs against the previous snapshot to compute `newEntryCount`.
+The seeder pulls each list independently, concatenates OFAC and SEMA (SEMA may attach onto OFAC only), and diffs against the previous snapshot to compute `newEntryCount`. SEMA `<Country>` is the regulation, not nationality, so it is stored on `programs` / the note rather than `countryCodes`.
 
 ## Refresh cadence
 

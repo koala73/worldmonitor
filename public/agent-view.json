@@ -9,8 +9,7 @@
       "url": "https://worldmonitor.app/mcp",
       "transport": "streamable-http",
       "serverCard": "https://worldmonitor.app/.well-known/mcp/server-card.json",
-      "tools": 63,
-      "note": "tools/list, prompts/list, resources/list and describe_tool are anonymous; data calls need auth."
+      "note": "Call tools/list or read the server card for the live tool inventory. tools/list, prompts/list and resources/list are anonymous. get_sources is the sole credential-free, daily-quota-free data tool and has a separate fail-closed 10/min/IP anonymous limit; describe_tool and all other tool calls need subscription auth."
     },
     "rest": {
       "base": "https://api.worldmonitor.app",
@@ -69,7 +68,12 @@
     "mcp": "curl -X POST https://worldmonitor.app/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}'"
   },
   "authentication": {
-    "summary": "Authentication: OAuth2 (scope=mcp) or an API key header. Discovery surfaces (tools/list, describe_tool, prompts/list, resources/list, /a2a, /ask) are anonymous — no authentication required.",
+    "summary": "Authentication: OAuth2 (scope=mcp) or an API key header for subscription data. Discovery surfaces (tools/list, prompts/list, resources/list, /a2a, /ask) are anonymous. get_sources is the sole credential-free, daily-quota-free data tool; describe_tool and all other tool calls are subscription-gated.",
+    "freeDataTool": {
+      "name": "get_sources",
+      "dailyQuota": false,
+      "anonymousRateLimit": "10 requests/min per IP, fail closed"
+    },
     "oauth2": {
       "authorizationServer": "https://worldmonitor.app/.well-known/oauth-authorization-server",
       "protectedResource": "https://worldmonitor.app/.well-known/oauth-protected-resource",
@@ -84,8 +88,8 @@
     "plansAndLimits": "https://worldmonitor.app/pricing.md"
   },
   "rateLimits": {
-    "anonymous": "60 requests/min per IP on public MCP methods, /a2a and /ask",
-    "authenticated": "per-plan daily quotas — see https://worldmonitor.app/pricing.md"
+    "anonymous": "60 requests/min per IP on public MCP metadata methods, /a2a and /ask; get_sources uses a separate fail-closed 10 requests/min per IP ceiling",
+    "authenticated": "60 requests/minute per user for OAuth and dashboard-issued wm_ keys. Subscription data calls reserve a per-user daily quota (50/day default; plan-resolved OAuth exceptions); get_sources and metadata calls are daily-quota-free — see https://worldmonitor.app/pricing.md"
   },
   "documentation": "https://www.worldmonitor.app/docs/documentation",
   "capabilities": [
@@ -113,6 +117,7 @@
     "agentSkills": "https://worldmonitor.app/.well-known/agent-skills/index.json",
     "apiCatalog": "https://worldmonitor.app/.well-known/api-catalog",
     "aiCatalog": "https://worldmonitor.app/.well-known/ai-catalog.json",
+    "productFacts": "https://worldmonitor.app/product-facts.json",
     "docs": "https://www.worldmonitor.app/docs/documentation"
   },
   "instances": {

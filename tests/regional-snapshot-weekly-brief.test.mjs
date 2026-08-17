@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 
 import {
   generateWeeklyBrief,
@@ -262,7 +263,9 @@ describe('get-regional-brief handler', () => {
 
 describe('security wiring', () => {
   it('adds the endpoint to PREMIUM_RPC_PATHS', () => {
-    assert.match(premiumPathsSrc, /'\/api\/intelligence\/v1\/get-regional-brief'/);
+    // Membership in the real Set is what gates the route; a grep of the module
+    // text also matches a path sitting in a comment.
+    assert.ok(PREMIUM_RPC_PATHS.has('/api/intelligence/v1/get-regional-brief'));
   });
 
   it('has a RPC_CACHE_TIER entry for route-parity', () => {

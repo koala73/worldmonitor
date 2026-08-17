@@ -24,16 +24,26 @@ Why Python rather than `opencc-js`:
 Two kinds of override, because two kinds of error:
     PHRASE_OVERRIDES  Applied to every value. Only for terms whose replacement
                       is unconditional in this product's vocabulary.
-    KEY_OVERRIDES     Applied to one catalogue entry, before the phrase rules,
-                      so an entry can opt out of a global rule. Needed where the
+    KEY_OVERRIDES     Applied to one catalogue entry BEFORE the phrase rules,
+                      which pre-empts them: the per-entry rule rewrites the
+                      substring first, so the global rule finds nothing left to
+                      match. It is not an opt-out flag — there is no way to say
+                      "skip the global rule here", only to spell out the
+                      replacement this entry wants instead, and that replacement
+                      must not itself contain a phrase-rule source or the global
+                      rule would fire on it anyway (asserted in
+                      tests/i18n-zh-tw-catalogue.test.mts). Needed where the
                       correct Traditional form depends on the sentence: `訪問` is
                       both "access" (存取) and "visit" (造訪), and only the string
                       itself says which.
 
 Usage:
-    pip install opencc-python-reimplemented
+    pip install opencc-python-reimplemented==0.1.7
     python3 scripts/convert-zh-tw.py            # rewrite both catalogues
     python3 scripts/convert-zh-tw.py --check    # exit 1 if either is stale
+
+    npm run locales:zh-tw                       # the same two, as repo scripts
+    npm run locales:zh-tw:check
 
 Output is byte-identical to the committed catalogues, so `--check` is a real
 staleness gate rather than a formatting diff. Verified against
@@ -43,6 +53,7 @@ no override pins, which `--check` will surface.
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -147,8 +158,31 @@ def render(data) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2) + "\n"
 
 
-def main() -> int:
-    check_only = "--check" in sys.argv[1:]
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse the command line, rejecting anything not defined here.
+
+    Membership tests over `sys.argv` accept typos silently: `--chek` was not
+    `--check`, so the script took the write path, rewrote both catalogues and
+    exited 0 — a staleness gate turning into a writer on a one-character slip,
+    reported as success. argparse exits 2 on an unrecognised argument instead.
+    """
+    parser = argparse.ArgumentParser(
+        prog="scripts/convert-zh-tw.py",
+        description=(
+            "Regenerate the Traditional Chinese catalogues from the Simplified "
+            "ones with OpenCC s2twp plus the Taiwan phrasing overrides."
+        ),
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="write nothing; exit 1 if either catalogue differs from this script's output",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    check_only = parse_args(argv).check
     converter = OpenCC("s2twp")
     stale = []
 

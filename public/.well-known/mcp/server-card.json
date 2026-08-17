@@ -50,7 +50,7 @@
     },
     {
       "name": "get_natural_disasters",
-      "description": "Recent earthquakes (USGS), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, and threat severity."
+      "description": "Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, source, and threat severity."
     },
     {
       "name": "get_military_posture",
@@ -283,6 +283,13 @@
     {
       "name": "get_keyword_spikes",
       "description": "Trending keyword, CVE, and APT/FIN threat-group spikes versus baseline, using the same term-candidacy and spike-decision math as the dashboard. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard's incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM."
+    },
+    {
+      "name": "get_sources",
+      "description": "WorldMonitor's live source inventory, for deciding whether and how far to trust what the other tools return. Two separate populations: `providers` are the upstream hosts data is fetched from (with licence and attribution status), and `outlets` are named news organisations carrying an editorial tier plus propaganda-risk and source-type provenance. They are keyed differently and are not merged — a provider is a host, an outlet is a masthead. Defaults to `summary` (counts only); pass a view to enumerate. Static registry read — no network, no cache, always current with the deployed build.",
+      "_meta": {
+        "worldmonitor/access": "free"
+      }
     }
   ],
   "toolCategories": [
@@ -324,11 +331,11 @@
     "perMinute": 60,
     "dailyByPlan": {
       "pro": 50,
-      "apiStarter": null,
-      "apiBusiness": null,
+      "apiStarter": 50,
+      "apiBusiness": 50,
       "enterprise": null
     },
-    "notes": "MCP hard daily reservation is currently enforced for Pro/OAuth contexts only: tools/call and resources/read of a data-bearing URI-template instantiation reserve against the 50/day Pro counter, except describe_tool. API-key (env_key, wm_...) MCP callers do not use this MCP daily reservation path; they are protected here by the 60/min per-key limiter, while broader REST/API plan allowances are enforced outside the MCP handler. Exempt Pro/OAuth daily-quota methods: initialize, tools/list, prompts/list, prompts/get, resources/list, resources/templates/list, logging/setLevel, notifications/initialized, and ping. The describe_tool tools/call is also exempt (v1.5.0 metadata escape hatch; SERVER_INSTRUCTIONS encourages calling it freely while exploring). resources/read of a public (concrete, metadata-only) resource such as worldmonitor://seed-meta/freshness is also exempt and anonymously readable; resources/read of a template instantiation intentionally counts toward the Pro/OAuth cap symmetrically with the equivalent tools/call. Per-minute (60/min, per-user on OAuth contexts, per-key on API-key contexts) counts ALL methods, so a tight discovery probe loop on tools/list or logging/setLevel will still trip the throttle."
+    "notes": "Subscription-gated tools/call and resources/read of a data-bearing URI-template instantiation reserve against a per-user daily counter before dispatch. Dashboard-issued wm_ API keys use the 50/day default. OAuth contexts use the plan-resolved allowance, with API Starter and API Business currently held to the same 50/day default; enterprise OAuth can be unlimited. Legacy operator keys explicitly allowlisted in WORLDMONITOR_VALID_KEYS are the only authenticated class outside this daily reservation path. get_sources is the sole credential-free, daily-quota-free data tool; its anonymous path has a separate fail-closed ceiling of 10 calls/minute/IP. Daily-quota exemptions: initialize, tools/list, prompts/list, prompts/get, resources/list, resources/templates/list, logging/setLevel, notifications/initialized, ping, describe_tool, and get_sources. describe_tool is the v1.5.0 metadata escape hatch; SERVER_INSTRUCTIONS encourages calling it freely while exploring. resources/read of a public (concrete, metadata-only) resource such as worldmonitor://seed-meta/freshness is also exempt and anonymously readable; resources/read of a template instantiation intentionally counts toward the daily cap symmetrically with the equivalent tools/call. Per-minute authenticated 60/min limiting (per-user on OAuth and dashboard-key contexts, per-key on legacy operator-key contexts) counts ALL methods; anonymous get_sources calls use the separate 10/min/IP ceiling."
   },
   "tags": [
     "geopolitical-intelligence",

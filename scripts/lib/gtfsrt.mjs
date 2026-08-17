@@ -349,3 +349,26 @@ export async function gtfsrtAdapter(feedUrl, options = {}) {
   cache?.set(cacheKey, snapshot);
   return snapshot;
 }
+
+/**
+ * Content clock for a GTFS-RT snapshot, from the feed header's own timestamp
+ * (a GTFS-RT spec field, so this serves any GTFS-RT producer).
+ *
+ * A frozen feed still serves 200s with well-formed protobuf, so every
+ * fetch-time signal keeps reporting healthy: the request succeeds, the snapshot
+ * validates, and fetchedAt is always now. Freshness has to come from what the
+ * producer says about ITSELF, or a dead feed is indistinguishable from a quiet
+ * network with no service alerts. That matters most under zeroIsValid, where an
+ * empty alerts array is a legitimate quiet period and record count can never
+ * tell the two apart.
+ */
+export function gtfsRtHeaderContentMeta(snapshot, nowMs = Date.now()) {
+  const stamped = Date.parse(snapshot?.header?.timestamp ?? '');
+  // Never substitute now() for a missing stamp — that substitution is precisely
+  // what makes a frozen feed look fresh. No stamp means no content clock.
+  if (!Number.isFinite(stamped) || stamped <= 0) return null;
+  // A feed stamped in the future cannot bound staleness. Ignore beyond an hour
+  // of clock skew rather than letting a producer mask a freeze.
+  if (stamped > nowMs + 60 * 60 * 1000) return null;
+  return { newestItemAt: stamped, oldestItemAt: stamped };
+}

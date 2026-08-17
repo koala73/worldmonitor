@@ -14,7 +14,7 @@ The disease outbreaks seeder is solid (WHO DON API + CDC + Outbreak News Today +
 
 ---
 
-## Target State: 6 Data Layers
+## Target State: Complete Data-Layer Set
 
 ### Layer 1: Disease Outbreaks (EXISTING — enhance only)
 

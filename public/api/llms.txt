@@ -2,7 +2,7 @@
 
 > Machine-readable entry point for the World Monitor developer surface — the MCP server, REST API, CLI, SDKs, and agent skills that expose the platform's real-time global-intelligence tools as structured JSON.
 
-World Monitor's data is available to agents and applications through five interchangeable surfaces that share one auth model and one tool inventory: an MCP server (Streamable HTTP), a versioned REST API, a zero-dependency CLI, official SDKs (Python, Ruby, Go, JavaScript), and a set of published agent skills. Every surface returns source-attributed structured JSON and supports server-side JMESPath projection to cut response size 80–95%.
+World Monitor's data is available to agents and applications through interchangeable surfaces that share one auth model and one tool inventory: an MCP server (Streamable HTTP), a versioned REST API, a zero-dependency CLI, official SDKs (Python, Ruby, Go, JavaScript), and published agent skills. Every surface returns source-attributed structured JSON and supports server-side JMESPath projection to cut response size 80–95%.
 
 This is the API-section companion to the site-wide briefing at https://worldmonitor.app/llms.txt and the human documentation at https://worldmonitor.app/docs/llms.txt.
 
@@ -19,7 +19,8 @@ This is the API-section companion to the site-wide briefing at https://worldmoni
 
 ## Authentication
 
-- **API key:** send header `X-WorldMonitor-Key: wm_<40-hex>` on both MCP and REST data calls. Issue a key at https://worldmonitor.app/pro
+- **API key:** send header `X-WorldMonitor-Key: wm_<40-hex>` on subscription-gated MCP and REST data calls. Issue a key at https://worldmonitor.app/pro
+- **Free MCP data exception:** `get_sources` is the sole credential-free, daily-quota-free data tool. Anonymous calls use a separate fail-closed limit of 10/minute/IP. All other data tools are subscription-gated.
 - **OAuth 2.1:** the MCP server supports OAuth (`scope=mcp`). Authorization-server metadata: https://worldmonitor.app/.well-known/oauth-authorization-server · protected-resource metadata: https://worldmonitor.app/.well-known/oauth-protected-resource
 - **Auth matrix, plans & limits:** https://www.worldmonitor.app/docs/usage-auth · machine-readable pricing: https://worldmonitor.app/pricing.md · human auth guide: https://worldmonitor.app/auth.md
 
@@ -32,6 +33,7 @@ This is the API-section companion to the site-wide briefing at https://worldmoni
 - **Commodity & supply-chain disruption** — `get_supply_chain_data`, `get_energy_intelligence`, `get_commodity_geo`, `get_maritime_activity`.
 - **Forecasting & prediction markets** — `generate_forecasts`, `get_forecast_predictions`, `get_prediction_markets`.
 - **Tool discovery** — `describe_tool` returns the full uncompressed definition for any tool name (quota-exempt).
+- **Source discovery & trust** — `get_sources` reports what the data is drawn from and how far to trust it: upstream providers with licence and attribution status, and named outlets with editorial tier plus propaganda-risk provenance. It needs no credentials, consumes no daily quota, and has a separate fail-closed anonymous limit of 10/minute/IP. An undeclared tier reports `null`, never a defaulted number.
 - **Bulk reads (batch)** — `POST https://api.worldmonitor.app/api/batch/v1/execute` with `{"operations": [{"id": "a", "path": "/api/market/v1/get-fear-greed-index"}]}` runs up to 20 documented GET operations concurrently in one request; add per-operation `?jmespath=` projections to keep each body small.
 
 ## Response Shaping
@@ -43,7 +45,7 @@ This is the API-section companion to the site-wide briefing at https://worldmoni
 ## Rate Limits & Quota
 
 - Discovery methods (`tools/list`, `prompts/list`, `describe_tool`) are quota-exempt but rate-limited to 60 requests/minute.
-- Data calls consume the plan's daily quota. Free, Pro, API, and Enterprise tier details: https://worldmonitor.app/pricing.md
+- `get_sources` is the sole data call that consumes no daily quota. All other data calls are subscription-gated and use the applicable plan limits. Details: https://worldmonitor.app/pricing.md
 
 ## Developer Resource Pages
 

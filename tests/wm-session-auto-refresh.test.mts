@@ -2025,20 +2025,42 @@ describe('wm-session route-scoped recovery failures (#5674)', () => {
 // two routes before it may black out the tab.
 // ---------------------------------------------------------------------------
 
-describe('wm-session mint failure cause (WORLDMONITOR-WG)', () => {
-  function captureSink() {
-    const captures: Array<{ msg: string; ctx: { level?: string; tags?: Record<string, string> } }> = [];
-    mod.__setWmSessionSentryEnqueueForTests(((fn: (s: unknown) => void) => {
-      fn({
-        captureMessage: (msg: string, ctx: { level?: string; tags?: Record<string, string> }) => {
-          captures.push({ msg, ctx });
-        },
-        addBreadcrumb: () => {},
-      });
-    }) as Parameters<typeof mod.__setWmSessionSentryEnqueueForTests>[0]);
-    return captures;
-  }
+// Exceptions the module sent via Sentry's captureException, most recent last.
+// Reset by every captureSink() call.
+let capturedExceptions: unknown[] = [];
+// Breadcrumbs the module added, most recent last. Reset by every captureSink()
+// call. The breadcrumb carries the same route/reason/mint_cause fields as the
+// event and is the only record that survives when the capture itself is
+// suppressed, so it needs its own assertions rather than being discarded.
+let capturedCrumbs: Array<{ message?: string; data?: Record<string, string> }> = [];
 
+// Shared Sentry sink for the dead-session capture tests.
+//
+// `onCapture` runs SYNCHRONOUSLY inside markWmSessionDead, after it has already
+// pushed sessionDeadUntil out and before it returns. That is the one seam where
+// a test can advance the clock between one verdict and the next, which is what
+// makes "a second, redundant verdict re-armed the cooldown" observable at all —
+// both calls otherwise land on the same millisecond and extend it by zero.
+function captureSink(onCapture?: () => void) {
+  const captures: Array<{ msg: string; ctx: { level?: string; tags?: Record<string, string> } }> = [];
+  capturedExceptions = [];
+  capturedCrumbs = [];
+  mod.__setWmSessionSentryEnqueueForTests(((fn: (s: unknown) => void) => {
+    fn({
+      captureMessage: (msg: string, ctx: { level?: string; tags?: Record<string, string> }) => {
+        captures.push({ msg, ctx });
+        onCapture?.();
+      },
+      captureException: (err: unknown) => { capturedExceptions.push(err); },
+      addBreadcrumb: (crumb: { message?: string; data?: Record<string, string> }) => {
+        capturedCrumbs.push(crumb);
+      },
+    });
+  }) as Parameters<typeof mod.__setWmSessionSentryEnqueueForTests>[0]);
+  return captures;
+}
+
+describe('wm-session mint failure cause (WORLDMONITOR-WG)', () => {
   function isDegraded(resp: Response): boolean {
     return resp.status === 503 && resp.headers.get('X-Wm-Session-Degraded') === '1';
   }
@@ -2539,6 +2561,350 @@ describe('wm-session cookie-persistence detection — concurrent mints', () => {
       captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead').length,
       0,
       'an in-flight overlap must not report a dead session',
+    );
+  });
+});
+
+describe('wm-session mint cause provenance (#6804)', () => {
+  // A response the test releases by hand, so a request can still be in flight
+  // at the exact moment an unrelated route declares the session dead. That is
+  // the only way into recovery while the cooldown is already engaged — every
+  // request that STARTS after the blackout is short-circuited far earlier.
+  function deferredResponse(): { promise: Promise<Response>; resolve: (r: Response) => void } {
+    let resolve!: (r: Response) => void;
+    const promise = new Promise<Response>((res) => { resolve = res; });
+    return { promise, resolve };
+  }
+
+  function urlOf(input: RequestInfo | URL): string {
+    if (typeof input === 'string') return input;
+    return input instanceof URL ? input.href : input.url;
+  }
+
+  it('does not re-arm the cooldown from a recovery that attempted no mint', async () => {
+    // The session is already suppressed, so ensureWmSession() returns false
+    // from its very first line without asking the server for anything. Reading
+    // that as `mint_failed` runs markWmSessionDead again, and markWmSessionDead
+    // pushes sessionDeadUntil out by a fresh 15 minutes BEFORE its
+    // already-dead early return — so every request that happened to be in
+    // flight when the blackout landed silently lengthens it.
+    memoryStorage.clear();
+    const captures = captureSink();
+    const gate = deferredResponse();
+    let bystanderSent = 0;
+
+    currentFetchHandler = (input) => {
+      const url = urlOf(input);
+      if (url.includes('/api/wm-session')) {
+        return Promise.resolve(new Response('mint unavailable', { status: 503 }));
+      }
+      if (url.includes('get-vessel-snapshot')) {
+        bystanderSent += 1;
+        return gate.promise;
+      }
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const realNow = Date.now;
+    let skewMs = 0;
+    Date.now = () => realNow.call(Date) + skewMs;
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const bystander = wrappedFetch('https://api.worldmonitor.app/api/maritime/v1/get-vessel-snapshot');
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(bystanderSent, 1, 'the bystander must be in flight before the blackout is declared');
+
+      await wrappedFetch('https://api.worldmonitor.app/api/economic/v1/get-bls-series');
+      assert.equal(mod.isWmSessionDead(), true, 'a server refusal blacks out immediately');
+
+      // Ten minutes into the 15-minute cooldown, the bystander's answer lands.
+      skewMs = 10 * 60 * 1000;
+      gate.resolve(new Response('unauthorized', { status: 401 }));
+      const resp = await bystander;
+      assert.equal(resp.status, 401, "an in-flight request still gets the server's own answer");
+
+      // One minute past the cooldown the blackout actually earned.
+      skewMs = 16 * 60 * 1000;
+      assert.equal(
+        mod.isWmSessionDead(),
+        false,
+        'a suppressed call attempted no mint, so it must not extend the blackout it was suppressed by',
+      );
+    } finally {
+      console.warn = originalWarn;
+      Date.now = realNow;
+    }
+
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(dead.length, 1, 'one blackout, reported once');
+  });
+
+  it('does not strike a bystander route for a mint that was never attempted', async () => {
+    // Same suppressed path, transport flavour. `lastMintFailureCause` still
+    // holds `network` from the mints that produced the blackout, so the
+    // bystander's non-attempt inherits a cause it never earned and is filed as
+    // corroborating evidence — suppressing an innocent route for 15 minutes.
+    memoryStorage.clear();
+    const captures = captureSink();
+    const gate = deferredResponse();
+    let bystanderSent = 0;
+
+    currentFetchHandler = (input) => {
+      const url = urlOf(input);
+      if (url.includes('/api/wm-session')) return Promise.reject(new TypeError('Failed to fetch'));
+      if (url.includes('get-vessel-snapshot')) {
+        bystanderSent += 1;
+        return gate.promise;
+      }
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const bystander = wrappedFetch('https://api.worldmonitor.app/api/maritime/v1/get-vessel-snapshot');
+      await new Promise((r) => setTimeout(r, 0));
+      assert.equal(bystanderSent, 1, 'the bystander must be in flight before the blackout is declared');
+
+      await wrappedFetch('https://api.worldmonitor.app/api/infrastructure/v1/get-cable-health');
+      await wrappedFetch('https://api.worldmonitor.app/api/economic/v1/get-bls-series');
+      assert.equal(mod.isWmSessionDead(), true, 'two corroborating transport failures justify the blackout');
+
+      gate.resolve(new Response('unauthorized', { status: 401 }));
+      assert.equal((await bystander).status, 401);
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.deepEqual(
+      mod.getStruckRoutes(),
+      [],
+      'a route that merely happened to be in flight must not be struck by a mint nobody attempted',
+    );
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(dead.length, 1, 'one blackout, reported once');
+  });
+
+  it('tags a retry_401 blackout with an explicit mint_cause', async () => {
+    // The tag was written conditionally, so "this episode had no mint cause"
+    // and "the tag was dropped" produced the same blank bucket in Sentry and
+    // could not be told apart. Emit it always.
+    memoryStorage.clear();
+    const captures = captureSink();
+
+    currentFetchHandler = (input) => {
+      const url = urlOf(input);
+      if (url.includes('/api/wm-session')) {
+        return Promise.resolve(new Response(JSON.stringify({
+          exp: FAR_FUTURE,
+          hadSession: true,
+          token: 'wms_retry-quorum-token',
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await wrappedFetch('https://api.worldmonitor.app/api/infrastructure/v1/get-cable-health');
+      await wrappedFetch('https://api.worldmonitor.app/api/economic/v1/get-bls-series');
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(dead.length, 1);
+    assert.equal(dead[0].ctx.tags?.reason, 'retry_401');
+    assert.equal(
+      dead[0].ctx.tags?.mint_cause,
+      'none',
+      'a route denial has no mint cause, and saying so is not the same as saying nothing',
+    );
+    // The breadcrumb carries the same fields for the same reason, and is what
+    // survives when a later capture is suppressed. Locked separately: the tag
+    // and the crumb were changed in lockstep, so one assertion cannot hold both.
+    const crumb = capturedCrumbs.filter((c) => c.message === 'wm-session recovery failed').at(-1);
+    assert.equal(crumb?.data?.mint_cause, 'none', 'the breadcrumb states it too');
+  });
+
+  it('keeps cookie_not_persisted as its own verdict rather than a causeless mint_failed', async () => {
+    // The mint SUCCEEDED here — the browser then refused to keep the cookie.
+    // markWmSessionDead already recorded that verdict, so the recovery caller
+    // must not relabel the same episode `mint_failed` on its way out.
+    //
+    // Asserting the tags alone would NOT prove that: markWmSessionDead's
+    // already-dead early return swallows a second capture, and one route cannot
+    // reach the corroboration quorum, so every tag assertion stays green with
+    // the guard removed. Two observables have teeth here and both are checked
+    // below — the cooldown must not be re-armed (the clock is advanced inside
+    // the first capture so a second verdict would land 10 minutes later), and
+    // the route whose 401 triggered recovery must not be struck by a mint that
+    // succeeded.
+    memoryStorage.clear();
+    const realNow = Date.now;
+    let skewMs = 0;
+    Date.now = () => realNow.call(Date) + skewMs;
+    const captures = captureSink(() => { skewMs = 10 * 60 * 1000; });
+
+    currentFetchHandler = (input) => {
+      const url = urlOf(input);
+      if (url.includes('/api/wm-session')) {
+        // Every mint answers normally and reports no incoming cookie, with no
+        // header token to fall back to.
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE, hadSession: false }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      }
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const resp = await wrappedFetch('https://api.worldmonitor.app/api/maritime/v1/get-vessel-snapshot');
+      assert.equal(resp.status, 401);
+
+      // One minute past the cooldown the cookie_not_persisted verdict earned.
+      // A relabel would have re-armed it from the skewed clock, to t+25min.
+      skewMs = 16 * 60 * 1000;
+      assert.equal(
+        mod.isWmSessionDead(),
+        false,
+        'a second, redundant verdict for the same episode must not extend the blackout',
+      );
+    } finally {
+      console.warn = originalWarn;
+      Date.now = realNow;
+    }
+
+    assert.deepEqual(
+      mod.getStruckRoutes(),
+      [],
+      'a mint that SUCCEEDED must not strike the route whose 401 triggered recovery',
+    );
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(dead.length, 1, 'one episode, one verdict');
+    assert.equal(dead[0].ctx.tags?.reason, 'cookie_not_persisted');
+    assert.equal(
+      dead[0].ctx.tags?.mint_cause,
+      'none',
+      'a mint that succeeded has no failure cause, and the tag must say so',
+    );
+  });
+
+  it('reports a thrown attempt as mint_cause unknown, and does not black out on it', async () => {
+    // `new AbortController()` and the timeout setTimeout sit OUTSIDE
+    // mintSession's try — on the old WebView / Smart-TV engines the
+    // AbortSignal.timeout comment names, a throw there rejects the whole
+    // attempt. The old code read the stale (usually null) module-scoped cause,
+    // failed the transport test, and blacked out every anonymous call for 15
+    // minutes over a client-side throw. It must now take the same corroboration
+    // route a transport blip does, and say `unknown` rather than nothing.
+    memoryStorage.clear();
+    const captures = captureSink();
+    const realAbortController = globalThis.AbortController;
+    const boom = new Error('AbortController is not a constructor');
+    // A class, not a function expression: `new AbortController()` needs a
+    // constructible, and an arrow would throw the engine's own TypeError
+    // instead of the sentinel the exception assertion below looks for.
+    (globalThis as unknown as { AbortController: unknown }).AbortController = class {
+      constructor() { throw boom; }
+    };
+
+    currentFetchHandler = () => Promise.resolve(new Response('unauthorized', { status: 401 }));
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const first = await wrappedFetch('https://api.worldmonitor.app/api/infrastructure/v1/get-cable-health');
+      assert.equal(first.status, 401, "the server's own answer is handed back");
+      assert.equal(
+        mod.isWmSessionDead(),
+        false,
+        'one client-side throw is not a server verdict and must not black out the tab',
+      );
+      assert.deepEqual(
+        mod.getStruckRoutes(),
+        ['/api/infrastructure/v1/get-cable-health'],
+        'it still counts as evidence against its own route',
+      );
+
+      // A second distinct route inside the corroboration window is what earns
+      // the blackout — the same rule a transport failure follows.
+      await wrappedFetch('https://api.worldmonitor.app/api/economic/v1/get-bls-series');
+      assert.equal(mod.isWmSessionDead(), true, 'two corroborating routes do justify it');
+    } finally {
+      console.warn = originalWarn;
+      (globalThis as unknown as { AbortController: typeof AbortController }).AbortController = realAbortController;
+    }
+
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(dead.length, 1, 'exactly one capture per degraded episode');
+    assert.equal(dead[0].ctx.tags?.reason, 'mint_failed');
+    assert.equal(
+      dead[0].ctx.tags?.mint_cause,
+      'unknown',
+      'a throw is a distinct cause, not a blank tag and not a server refusal',
+    );
+    assert.ok(
+      capturedExceptions.includes(boom),
+      'the exception itself must be reported — `unknown` alone tells on-call nothing',
+    );
+  });
+
+  it('leaves session state alone when a key-session mint is refused', async () => {
+    // establishWmKeySession moved from the deleted fetchNewSession wrapper to
+    // mintSession. Its failure path touches none of the identity/state resets.
+    memoryStorage.clear();
+    captureSink();
+    currentFetchHandler = () => Promise.resolve(new Response('mint unavailable', { status: 503 }));
+
+    assert.equal(await mod.establishWmKeySession({ proKey: 'legacy-pro-key' }), false);
+    assert.equal(mod.isWmSessionDead(), false, 'a refused key mint is not a blackout');
+    assert.deepEqual(mod.getStruckRoutes(), [], 'and it strikes no route');
+  });
+
+  it('names the mint cause when a burst blackout is tipped by a cookie-less replay', async () => {
+    // The modal WORLDMONITOR-WG shape: a dashboard boot burst plus a flaky
+    // transport. The leader's mint fails, records strike #1 and stops below
+    // quorum; the follower then replays with NO cookie (none was ever minted),
+    // so its 401 is guaranteed rather than evidential, and IT tips the quorum —
+    // with a retry_401 verdict that carries no cause of its own.
+    //
+    // The episode was caused entirely by failed mints, so tagging it
+    // `mint_cause: none` would assert something false and send triage looking
+    // at a bystander panel for a cookie problem that does not exist. `none` is
+    // a positive claim now, and it has to be earned.
+    memoryStorage.clear();
+    const captures = captureSink();
+
+    currentFetchHandler = (input) => {
+      const url = urlOf(input);
+      if (url.includes('/api/wm-session')) return Promise.reject(new TypeError('Failed to fetch'));
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await Promise.all([
+        wrappedFetch('https://api.worldmonitor.app/api/infrastructure/v1/get-cable-health'),
+        wrappedFetch('https://api.worldmonitor.app/api/economic/v1/get-bls-series'),
+      ]);
+      assert.equal(mod.isWmSessionDead(), true, 'the burst does black out');
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(dead.length, 1, 'exactly one capture per degraded episode');
+    assert.equal(
+      dead[0].ctx.tags?.mint_cause,
+      'network',
+      'every mint in this episode failed at the transport level — the tag must say so',
     );
   });
 });

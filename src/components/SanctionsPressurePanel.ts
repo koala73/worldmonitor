@@ -35,6 +35,11 @@ export class SanctionsPressurePanel extends Panel {
     const summaryHtml = `
       <div class="sanctions-summary">
         ${this.renderSummaryCard(t('components.sanctionsPressure.summary.new'), data.newEntryCount, data.newEntryCount > 0 ? 'highlight' : '')}
+        ${this.renderSummaryCard(
+          t('components.sanctionsPressure.summary.sema'),
+          data.semaError ? `${data.semaCount} · ${data.semaError}` : data.semaCount,
+          data.semaError ? 'highlight' : '',
+        )}
         ${this.renderSummaryCard(t('components.sanctionsPressure.summary.vessels'), data.vesselCount)}
         ${this.renderSummaryCard(t('components.sanctionsPressure.summary.aircraft'), data.aircraftCount)}
       </div>
@@ -121,10 +126,13 @@ export class SanctionsPressurePanel extends Panel {
   }
 
   private renderEntryRow(entry: SanctionsEntry): string {
-    const location = entry.countryNames[0] || entry.countryCodes[0] || t('components.sanctionsPressure.fallbacks.unattributed');
+    const jurisdiction = entry.countryNames[0] || entry.countryCodes[0] || entry.note.split(' · ')[0] || t('components.sanctionsPressure.fallbacks.unattributed');
     const program = entry.programs[0] || t('components.sanctionsPressure.fallbacks.program');
     const note = entry.note ? `<div class="sanctions-entry-note">${escapeHtml(entry.note)}</div>` : '';
     const effective = entry.effectiveAt ? entry.effectiveAt.toISOString().slice(0, 10) : t('components.sanctionsPressure.fallbacks.undated');
+    const sources = (entry.sourceLists || []).map((source) => (
+      `<span class="sanctions-pill">${escapeHtml(source)}</span>`
+    )).join('');
 
     return `
       <div class="sanctions-entry">
@@ -132,8 +140,9 @@ export class SanctionsPressurePanel extends Panel {
           <span class="sanctions-entry-name">${escapeHtml(entry.name)}</span>
           <span class="sanctions-pill sanctions-pill-type">${escapeHtml(entry.entityType)}</span>
           ${entry.isNew ? `<span class="sanctions-pill sanctions-pill-new">${escapeHtml(t('components.sanctionsPressure.pills.new'))}</span>` : ''}
+          ${sources}
         </div>
-        <div class="sanctions-entry-meta">${escapeHtml(location)} · ${escapeHtml(program)} · ${escapeHtml(effective)}</div>
+        <div class="sanctions-entry-meta">${escapeHtml(jurisdiction)} · ${escapeHtml(program)} · ${escapeHtml(effective)}</div>
         ${note}
       </div>
     `;

@@ -7,11 +7,11 @@ description: "Tauri desktop architecture for World Monitor — sidecar process m
 
 ### Desktop Application (Tauri)
 
-- **Native desktop app** for macOS, Windows, and Linux — packages the full dashboard with a local Node.js sidecar that runs all 60+ API handlers locally
+- **Native desktop app** for macOS, Windows, and Linux — packages the full dashboard with a local Node.js sidecar that runs the supported API handler catalog locally
 - **OS keychain integration** — API keys stored in the system credential manager (macOS Keychain, Windows Credential Manager), never in plaintext files
 - **Token-authenticated sidecar** — a unique session token prevents other local processes from accessing the sidecar on localhost. Generated per launch using randomized hashing
 - **Cloud fallback** — when a local API handler fails or is missing, requests transparently fall through to the cloud deployment (worldmonitor.app) with origin headers stripped
-- **Settings window** — dedicated configuration UI (Cmd+,) with three tabs: **LLMs** (Ollama endpoint, model selection, Groq, OpenRouter), **API Keys** (12+ data source credentials with per-key validation), and **Debug & Logs** (traffic log, verbose mode, log files). Each tab runs an independent verification pipeline — saving in the LLMs tab doesn't block API Keys validation
+- **Settings window** — dedicated configuration UI (Cmd+,) with three tabs: **LLMs** (Ollama endpoint, model selection, Groq, OpenRouter), **API Keys** (the supported data-source credential catalog with per-key validation), and **Debug & Logs** (traffic log, verbose mode, log files). Each tab runs an independent verification pipeline — saving in the LLMs tab doesn't block API Keys validation
 - **Automatic model discovery** — when you set an Ollama or LM Studio endpoint URL in the LLMs tab, the settings panel immediately queries it for available models (tries Ollama native `/api/tags` first, then OpenAI-compatible `/v1/models`) and populates a dropdown. Embedding models are filtered out. If discovery fails, a manual text input appears as fallback
 - **Cross-window secret sync** — the main dashboard and settings window run in separate webviews with independent JS contexts. Saving a secret in Settings writes to the OS keychain and broadcasts a `localStorage` change event. The main window listens for this event and hot-reloads all secrets without requiring an app restart
 - **Consolidated keychain vault** — all secrets are stored as a single JSON blob in one keychain entry (`secrets-vault`) rather than individual entries per key. This reduces macOS Keychain authorization prompts from 20+ to exactly 1 on each app launch. A one-time migration reads any existing individual entries, consolidates them, and cleans up the old format
@@ -21,13 +21,13 @@ description: "Tauri desktop architecture for World Monitor — sidecar process m
 
 ## Multi-Platform Architecture
 
-All six variants run on three platforms that work together:
+All published variants run on three platforms that work together:
 
 ```
 ┌─────────────────────────────────────┐
 │          Vercel (Edge)              │
-│  60+ edge functions · static SPA    │
-│  Proto gateway (24 typed services)  │
+│  edge functions · static SPA        │
+│  Proto gateway (typed services)     │
 │  CORS allowlist · Redis cache       │
 │  AI pipeline · market analytics     │
 │  CDN caching (s-maxage) · PWA host  │
@@ -37,7 +37,7 @@ All six variants run on three platforms that work together:
            │  ┌───────────────────────────────────┐
            │  │     Tauri Desktop (Rust + Node)   │
            │  │  OS keychain · Token-auth sidecar │
-           │  │  60+ local API handlers · br/gzip    │
+           │  │  local API handlers · br/gzip        │
            │  │  Cloud fallback · Traffic logging │
            │  └───────────────────────────────────┘
            │
@@ -47,7 +47,7 @@ All six variants run on three platforms that work together:
 ┌──────────────────────────────────────────┐
 │        Railway (Relay Server)            │
 │  AIS WebSocket · OpenSky OAuth2          │
-│  Telegram MTProto (26 OSINT channels)    │
+│  Telegram MTProto (reviewed channels)    │
 │  OREF rocket alerts (residential proxy)  │
 │  Polymarket proxy (queue backpressure)   │
 │  ICAO NOTAM · RSS proxy · gzip all resp │
@@ -58,7 +58,7 @@ All six variants run on three platforms that work together:
 
 - **AIS vessel tracking** — maintains a persistent WebSocket connection to AISStream.io and multiplexes it to all connected browser clients, avoiding per-user connection limits
 - **OpenSky aircraft data** — authenticates via OAuth2 client credentials flow (Vercel IPs get 403'd by OpenSky without auth tokens)
-- **Telegram intelligence** — a GramJS MTProto client polls 26 OSINT channels on a 60-second cycle with per-channel timeouts and FLOOD_WAIT handling
+- **Telegram intelligence** — a GramJS MTProto client polls the reviewed OSINT channel registry on a 60-second cycle with per-channel timeouts and FLOOD_WAIT handling
 - **OREF rocket alerts** — polls Israel's Home Front Command alert system via `curl` through a residential proxy (Akamai WAF blocks datacenter TLS fingerprints)
 - **Polymarket proxy** — fetches from Gamma API with concurrent upstream limiting (max 3 simultaneous, queue backpressure at 20), in-flight deduplication, and 10-minute caching to prevent stampedes from 11 parallel tag queries
 - **ICAO NOTAM proxy** — routes NOTAM closure queries through the relay for MENA airports, bypassing Vercel IP restrictions on ICAO's API
@@ -84,7 +84,7 @@ The Tauri desktop app wraps the dashboard in a native window (macOS, Windows, Li
                       ▼
 ┌─────────────────────────────────────────────────┐
 │      Node.js Sidecar (dynamic port)             │
-│  60+ API handlers · Local RSS proxy             │
+│  API handler catalog · Local RSS proxy          │
 │  Brotli/Gzip compression · Cloud fallback       │
 │  Traffic logging · Verbose debug mode           │
 └─────────────────────┬───────────────────────────┘
@@ -189,7 +189,7 @@ The sidecar defaults to port 46123 but handles `EADDRINUSE` gracefully — if th
 
 ### Local RSS Proxy
 
-The sidecar includes a built-in RSS proxy handler that fetches news feeds directly from source domains, bypassing the cloud RSS proxy entirely. This means the desktop app can load all 500+ RSS feeds without any cloud dependency — the same domain allowlist used by the Vercel edge proxy is enforced locally. Combined with the local API handlers, this enables the desktop app to operate as a fully self-contained intelligence aggregation platform.
+The sidecar includes a built-in RSS proxy handler that fetches the registered news feeds directly from source domains, bypassing the cloud RSS proxy entirely. This means the desktop app can load the complete feed catalog without any cloud dependency — the same domain allowlist used by the Vercel edge proxy is enforced locally. Combined with the local API handlers, this enables the desktop app to operate as a fully self-contained intelligence aggregation platform.
 
 ### Sidecar Resilience
 

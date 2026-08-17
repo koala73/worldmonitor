@@ -116,7 +116,15 @@ describe('withRetry', () => {
       );
       const elapsed = Date.now() - t0;
       assert.equal(attempts, 3, 'the cap must not change the attempt count');
-      assert.ok(elapsed < 400, `capped backoff must not idle: got ${elapsed}ms`);
+      // Uncapped this would sleep 500ms + 1000ms. The bound is set against the
+      // sleep being avoided, not against a stopwatch reading of the work —
+      // a tight absolute ceiling measures the runner's load and flakes under a
+      // parallel suite while passing in isolation.
+      const uncappedBackoffMs = 500 + 1000;
+      assert.ok(
+        elapsed < uncappedBackoffMs / 2,
+        `capped backoff must not idle: got ${elapsed}ms against an uncapped ${uncappedBackoffMs}ms`,
+      );
     } finally {
       if (prior === undefined) delete process.env.WM_SEED_RETRY_DELAY_MS;
       else process.env.WM_SEED_RETRY_DELAY_MS = prior;
@@ -294,9 +302,10 @@ describe('atomicPublish retry-on-transient (WM 2026-05-10 incident fix)', () => 
         atomicPublish('test:key:v1', { hello: 'world' }, null, 60),
         /HTTP 401/,
       );
-      const elapsed = Date.now() - t0;
+      // `calls === 1` already proves the retry ladder never ran, which is the
+      // whole content of "fast-fail" — the elapsed-time assertion that used to
+      // sit here added nothing and measured the runner's load.
       assert.equal(calls, 1, 'no retries on permanent 401');
-      assert.ok(elapsed < 500, `expected fast-fail, got ${elapsed}ms`);
     } finally {
       teardown();
     }

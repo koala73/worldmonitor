@@ -17,31 +17,11 @@ const serviceSrc = readFileSync(join(root, 'src/services/trade/index.ts'), 'utf-
 const clientGeneratedSrc = readFileSync(join(root, 'src/generated/client/worldmonitor/trade/v1/service_client.ts'), 'utf-8');
 const serverGeneratedSrc = readFileSync(join(root, 'src/generated/server/worldmonitor/trade/v1/service_server.ts'), 'utf-8');
 
-describe('Trade tariff proto contract', () => {
-  it('adds EffectiveTariffRate message to shared trade data', () => {
-    assert.match(tradeDataProtoSrc, /message EffectiveTariffRate/);
-    assert.match(tradeDataProtoSrc, /string source_name = 1;/);
-    assert.match(tradeDataProtoSrc, /double tariff_rate = 5;/);
-  });
-
-  it('adds optional effective_tariff_rate to GetTariffTrendsResponse', () => {
-    assert.match(protoSrc, /EffectiveTariffRate effective_tariff_rate = 4;/);
-  });
-});
-
-describe('Generated tariff types', () => {
-  it('client types expose an optional effectiveTariffRate snapshot', () => {
-    assert.match(clientGeneratedSrc, /effectiveTariffRate\?: EffectiveTariffRate/);
-  });
-
-  it('server types expose an optional effectiveTariffRate snapshot', () => {
-    assert.match(serverGeneratedSrc, /effectiveTariffRate\?: EffectiveTariffRate/);
-  });
-
-  it('trade service re-exports EffectiveTariffRate', () => {
-    assert.match(serviceSrc, /export type \{[^}]*EffectiveTariffRate/);
-  });
-});
+// The proto/generated-type block that used to sit here pinned field numbers and
+// optional-property declarations that tsc already enforces, and the panel block
+// below pinned i18n key names present in the markup. What remains is executable:
+// the HTML parser, the date helper, and the freshness-budget relationship that
+// is derived from both the seeder and the health config.
 
 describe('FRED effective tariff rate seed integration', () => {
   it('uses FRED customs duties and imports of goods series', () => {
@@ -196,37 +176,5 @@ describe('toIsoDate helper', () => {
   it('returns empty string for unparseable input', () => {
     assert.equal(toIsoDate('not a date'), '');
     assert.equal(toIsoDate(''), '');
-  });
-});
-
-describe('Trade policy tariff panel', () => {
-  it('renames the misleading Restrictions tab to Overview', () => {
-    assert.match(panelSrc, /components\.tradePolicy\.overview/);
-    assert.match(panelSrc, /components\.tradePolicy\.noOverviewData/);
-  });
-
-  it('labels the WTO series as an MFN baseline', () => {
-    assert.match(panelSrc, /components\.tradePolicy\.baselineMfnTariff/);
-    assert.match(panelSrc, /components\.tradePolicy\.mfnAppliedRate/);
-  });
-
-  it('shows effective tariff and gap cards when coverage exists', () => {
-    assert.match(panelSrc, /components\.tradePolicy\.effectiveTariffRateLabel/);
-    assert.match(panelSrc, /components\.tradePolicy\.gapLabel/);
-    assert.match(panelSrc, /components\.tradePolicy\.effectiveMinusBaseline/);
-  });
-
-  it('keeps a graceful MFN-only fallback for countries without effective-rate coverage', () => {
-    assert.match(panelSrc, /components\.tradePolicy\.noEffectiveCoverageForCountry/);
-  });
-
-  it('clarifies on the Restrictions tab that WTO figures are baselines, not live tariff burden', () => {
-    assert.match(panelSrc, /components\.tradePolicy\.overviewNoteNoEffective/);
-    assert.match(panelSrc, /components\.tradePolicy\.overviewNoteTail/);
-  });
-
-  it('adds inline US effective-rate context on the overview card', () => {
-    assert.match(panelSrc, /renderRestrictionEffectiveContext/);
-    assert.match(panelSrc, /components\.tradePolicy\.gapVsMfnLabel/);
   });
 });

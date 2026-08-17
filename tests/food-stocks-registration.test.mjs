@@ -9,6 +9,13 @@ import { normalizeFoodStocksCountry } from '../server/worldmonitor/resilience/v1
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
+function supportedLocaleFiles() {
+  const source = read('src/services/i18n.ts');
+  const declaration = source.match(/const SUPPORTED_LANGUAGES = \[([^\]]+)\]/);
+  assert.ok(declaration, 'SUPPORTED_LANGUAGES declaration must be extractable');
+  return [...declaration[1].matchAll(/'([^']+)'/g)].map((match) => `${match[1]}.json`).sort();
+}
+
 describe('food stocks production registration (#6440)', () => {
   it('pairs the Redis data key with seed-meta and a 60-day fetch window', () => {
     assert.equal(__testing__.STANDALONE_KEYS.foodStocks, 'resilience:food-stocks:v1');
@@ -57,7 +64,7 @@ describe('food stocks i18n + normalizer parity', () => {
     // scan cannot see it. Adding a seventh commodity without a locale key would
     // silently degrade the card to the raw slug.
     const slugs = Object.keys(PSD_COMMODITIES);
-    assert.ok(slugs.length >= 6);
+    assert.ok(slugs.includes('wheat'), 'the critical wheat commodity must remain registered');
     for (const slug of slugs) {
       assert.equal(
         typeof en.countryBrief?.commodities?.[slug],
@@ -75,7 +82,7 @@ describe('food stocks i18n + normalizer parity', () => {
     ];
     const locales = readdirSync(new URL('../src/locales/', import.meta.url))
       .filter((f) => f.endsWith('.json') && !f.endsWith('.shell.json'));
-    assert.ok(locales.length >= 26, `expected the full locale set, saw ${locales.length}`);
+    assert.deepEqual(locales.sort(), supportedLocaleFiles(), 'food-stocks locale sweep must match SUPPORTED_LANGUAGES exactly');
     for (const file of locales) {
       const cb = JSON.parse(read(`src/locales/${file}`)).countryBrief;
       for (const key of required) {

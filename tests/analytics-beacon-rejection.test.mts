@@ -1451,10 +1451,20 @@ describe('collector latch release is module-owned (#6288)', () => {
     let settleLate: ((response: Response) => void) | undefined;
     let failLate: ((error: unknown) => void) | undefined;
     let calls = 0;
+    // #6708: the fetch stub must return a SECOND deferred on calls === 2,
+    // so the late-rejection half below drives a request that was genuinely
+    // abandoned by the latch deadline while still outstanding. The old stub
+    // returned a resolved promise on calls >= 2, so `failLate` was a no-op
+    // on the already-settled first deferred — rejecting a resolved promise
+    // does nothing, and the assertion was structurally true for any code.
+    let failSecond: ((error: unknown) => void) | undefined;
     window.fetch = (() => {
       calls += 1;
       if (calls === 1) {
         return new Promise<Response>((resolve, reject) => { settleLate = resolve; failLate = reject; });
+      }
+      if (calls === 2) {
+        return new Promise<Response>((_resolve, reject) => { failSecond = reject; });
       }
       return Promise.resolve(collectorResponse(true, 200));
     }) as typeof window.fetch;
@@ -1482,14 +1492,27 @@ describe('collector latch release is module-owned (#6288)', () => {
       );
 
       // And the other shape: a late REJECTION must not escape as an unhandled
-      // rejection just because the race already settled.
+      // rejection just because the race already settled (#6708). The second
+      // write gets its own deferred (see the stub above), is abandoned by
+      // the latch deadline while still outstanding, and only THEN rejects.
       const secondAbandoned = window.fetch(UMAMI_SEND_URL, collectorEventInit());
       void secondAbandoned.catch(() => {});
       await drainPromiseHandlers();
-      failLate?.(new TypeError('Failed to fetch'));
+
+      // Drive the second write's latch deadline so the request is genuinely
+      // raced out before the rejection lands.
+      const secondLatchDeadline = findLatchDeadline(fakeTimers.timers);
+      assert.ok(secondLatchDeadline, 'the second write must also own a latch deadline');
+      secondLatchDeadline.callback();
+      await assert.rejects(secondAbandoned, { name: 'TimeoutError' });
+      await drainPromiseHandlers();
+
+      // Now the abandoned request rejects — this is the production shape.
+      failSecond?.(new TypeError('Failed to fetch'));
       await drainPromiseHandlers();
       await new Promise((resolve) => globalThis.queueMicrotask(() => resolve(null)));
 
+      assert.ok(failSecond !== undefined, 'the second deferred was driven, not a resolved stub');
       assert.deepEqual(leaked, [], `late settlement leaked: ${leaked.map(String).join(', ')}`);
     } finally {
       process.off('unhandledRejection', onUnhandled);
