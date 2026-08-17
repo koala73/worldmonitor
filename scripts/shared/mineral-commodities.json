@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "note": "USGS Mineral Commodity Summaries names are canonical. BGS aliases fill commodities MCS lacks (notably uranium and germanium world tables). A usgsChapters key must be claimed by at most ONE commodity -- indexVocab throws on a duplicate, because the chapter index is the fallback when the Commodity cell misses usgsNames and a silent last-write-wins would attribute one commodity's rows to another. 'BAUXITE AND ALUMINA' covers two commodities, so it stays on bauxite only; alumina is matched by its usgsNames entry.",
+  "commodities": [
+    {
+      "id": "ree",
+      "label": "Rare Earths",
+      "usgsNames": ["Rare Earths"],
+      "usgsChapters": ["RARE EARTHS"],
+      "bgsNames": ["Rare earths", "Rare earth metals"],
+      "bgsStageHints": { "mine": ["Rare earths"] }
+    },
+    {
+      "id": "lithium",
+      "label": "Lithium",
+      "usgsNames": ["Lithium"],
+      "usgsChapters": ["LITHIUM"],
+      "bgsNames": ["Lithium"]
+    },
+    {
+      "id": "cobalt",
+      "label": "Cobalt",
+      "usgsNames": ["Cobalt"],
+      "usgsChapters": ["COBALT"],
+      "bgsNames": ["Cobalt"]
+    },
+    {
+      "id": "copper",
+      "label": "Copper",
+      "usgsNames": ["Copper"],
+      "usgsChapters": ["COPPER"],
+      "bgsNames": ["Copper"]
+    },
+    {
+      "id": "nickel",
+      "label": "Nickel",
+      "usgsNames": ["Nickel"],
+      "usgsChapters": ["NICKEL"],
+      "bgsNames": ["Nickel"]
+    },
+    {
+      "id": "graphite",
+      "label": "Graphite",
+      "usgsNames": ["Graphite (Natural)"],
+      "usgsChapters": ["GRAPHITE (NATURAL)"],
+      "bgsNames": ["Graphite", "Natural graphite"]
+    },
+    {
+      "id": "tungsten",
+      "label": "Tungsten",
+      "usgsNames": ["Tungsten"],
+      "usgsChapters": ["TUNGSTEN"],
+      "bgsNames": ["Tungsten"]
+    },
+    {
+      "id": "gallium",
+      "label": "Gallium",
+      "usgsNames": ["Gallium"],
+      "usgsChapters": ["GALLIUM"],
+      "bgsNames": ["Gallium"]
+    },
+    {
+      "id": "germanium",
+      "label": "Germanium",
+      "usgsNames": ["Germanium"],
+      "usgsChapters": ["GERMANIUM"],
+      "bgsNames": ["Germanium"]
+    },
+    {
+      "id": "helium",
+      "label": "Helium",
+      "usgsNames": ["Helium"],
+      "usgsChapters": ["HELIUM AND RARE GASES"],
+      "bgsNames": ["Helium"]
+    },
+    {
+      "id": "aluminum",
+      "label": "Aluminum",
+      "usgsNames": ["Aluminum"],
+      "usgsChapters": ["ALUMINUM"],
+      "bgsNames": ["Aluminium", "Aluminum"]
+    },
+    {
+      "id": "bauxite",
+      "label": "Bauxite",
+      "usgsNames": ["Bauxite"],
+      "usgsChapters": ["BAUXITE AND ALUMINA"],
+      "bgsNames": ["Bauxite"]
+    },
+    {
+      "id": "alumina",
+      "label": "Alumina",
+      "usgsNames": ["Alumina"],
+      "bgsNames": ["Alumina"]
+    },
+    {
+      "id": "uranium",
+      "label": "Uranium",
+      "usgsNames": ["Uranium"],
+      "usgsChapters": [],
+      "bgsNames": ["Uranium"],
+      "mcsGap": "USGS MCS does not publish a uranium chapter (fuel mineral). Filled from BGS World Mineral Production when available."
+    }
+  ]
+}

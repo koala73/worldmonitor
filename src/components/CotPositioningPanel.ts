@@ -21,6 +21,9 @@ interface CotInstrumentData {
   assetManagerShort: string;
   leveragedFundsLong: string;
   leveragedFundsShort: string;
+  smallTraderLong: string;
+  smallTraderShort: string;
+  smallTraderAvailable: boolean;
   dealerLong: string;
   dealerShort: string;
   netPct: number;
@@ -38,7 +41,7 @@ function renderPositionBar(netPct: number, label: string): string {
   const sign = clamped >= 0 ? '+' : '';
   return `
     <div style="margin:3px 0">
-      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim);margin-bottom:2px">
+      <div style="display:flex;justify-content:space-between;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:2px">
         <span>${escapeHtml(label)}</span>
         <span style="color:${color};font-weight:600">${sign}${clamped.toFixed(1)}%</span>
       </div>
@@ -52,17 +55,21 @@ function renderPositionBar(netPct: number, label: string): string {
 function renderInstrument(item: CotInstrumentData): string {
   const levLong = toNum(item.leveragedFundsLong);
   const levShort = toNum(item.leveragedFundsShort);
+  const smallLong = toNum(item.smallTraderLong);
+  const smallShort = toNum(item.smallTraderShort);
   const amNetPct = item.netPct;
   const levNetPct = ((levLong - levShort) / Math.max(levLong + levShort, 1)) * 100;
+  const smallNetPct = ((smallLong - smallShort) / Math.max(smallLong + smallShort, 1)) * 100;
 
   return `
     <div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-        <span style="font-size:12px;font-weight:600">${escapeHtml(item.name)}</span>
-        <span style="font-size:9px;color:var(--text-dim)">${escapeHtml(item.code)}</span>
+        <span style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600">${escapeHtml(item.name)}</span>
+        <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(item.code)}</span>
       </div>
       ${renderPositionBar(amNetPct, 'Asset Managers')}
       ${renderPositionBar(levNetPct, 'Leveraged Funds')}
+      ${item.smallTraderAvailable ? renderPositionBar(smallNetPct, 'Small Traders (non-reportable)') : ''}
     </div>`;
 }
 
@@ -93,12 +100,17 @@ export class CotPositioningPanel extends Panel {
 
   private render(instruments: CotInstrumentData[], reportDate: string): void {
     const rows = instruments.map(renderInstrument).join('');
+    const hasSmallTraderData = instruments.some((item) => item.smallTraderAvailable);
+    const smallTraderCaveat = hasSmallTraderData
+      ? 'Small traders use the CFTC non-reportable residual category. This seed stores the latest weekly snapshot, not historical releases, so a retail trend line is not shown.'
+      : 'Small-trader positioning is unavailable until the next CFTC seed refresh. No retail trend line is shown.';
     const dateFooter = reportDate
-      ? `<div style="font-size:9px;color:var(--text-dim);margin-top:8px;text-align:right">Report date: ${escapeHtml(reportDate)}</div>`
+      ? `<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:8px;text-align:right">Report date: ${escapeHtml(reportDate)}</div>`
       : '';
     const html = `
       <div style="padding:10px 14px">
         ${rows}
+        <div style="margin-top:8px;padding:7px 8px;border:1px solid rgba(255,255,255,0.08);border-radius:4px;color:var(--text-dim);font-size:calc(9px * var(--wm-panel-effective-scale, 1));line-height:1.4">${escapeHtml(smallTraderCaveat)}</div>
         ${dateFooter}
       </div>`;
     this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));

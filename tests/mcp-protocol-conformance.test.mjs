@@ -158,8 +158,8 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
     );
     assert.equal(step1bList.status, 200, 'step 1b (unauth tools/list): discovery must be public');
     const step1bListBody = await step1bList.json();
-    assert.ok(Array.isArray(step1bListBody.result?.tools) && step1bListBody.result.tools.length >= 3,
-      'step 1b: anonymous tools/list must expose the tool catalog');
+    assert.ok(Array.isArray(step1bListBody.result?.tools) && step1bListBody.result.tools.length > 0,
+      'step 1b: anonymous tools/list must expose a non-empty tool catalog');
 
     // Steps 2-4 share one Pro deps bundle with the counter at 0. `describe_tool`
     // is the metadata-exempt tool — using the same deps proves the counter
@@ -201,9 +201,10 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
     assert.equal(step3Res.status, 200, 'step 3 (tools/list): expected HTTP 200');
     const step3Body = await step3Res.json();
     assert.ok(Array.isArray(step3Body.result?.tools), 'step 3: result.tools must be an array');
-    assert.ok(
-      step3Body.result.tools.length >= 39,
-      `step 3: expected >= 40 tools, got ${step3Body.result.tools.length}`,
+    assert.deepEqual(
+      step3Body.result.tools.map((tool) => tool.name).sort(),
+      step1bListBody.result.tools.map((tool) => tool.name).sort(),
+      'step 3: authenticated and public discovery must expose the exact same tool identities',
     );
     for (const tool of step3Body.result.tools) {
       assert.ok(

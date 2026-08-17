@@ -185,11 +185,19 @@ async function main() {
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
-  main().catch(async (err) => {
-    console.error('[bundle] Fatal:', err);
-    await flushPendingLlmEvents();
-    process.exit(1);
-  });
+  // Terminal success marker. Emitted from .then() so it can ONLY print after main() has fully
+  // resolved — a throw anywhere inside, including a late publish step, skips it. Any marker
+  // written INSIDE main() would print before later work and could vouch for a run that then
+  // died (exactly how #6092 stayed invisible). Format mirrors runSeed() so the crash
+  // diagnostic recognises it; without it a clean run is indistinguishable from a silent death.
+  const __runStartedAt = Date.now();
+  main()
+    .then(() => console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`))
+    .catch(async (err) => {
+      console.error('[bundle] Fatal:', err);
+      await flushPendingLlmEvents();
+      process.exit(1);
+    });
 }
 
 export { shouldRunBriefs, BRIEF_COOLDOWN_MS, BRIEF_META_KEY };

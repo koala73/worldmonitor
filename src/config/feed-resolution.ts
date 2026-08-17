@@ -60,8 +60,6 @@ export interface ResolvedCategory {
   isCustom: boolean;
 }
 
-const COLLIDING_NEWS_CATEGORY_KEYS = new Set(['markets', 'crypto', 'economic']);
-
 /**
  * Resolve every news category that should be loaded for the current session:
  * the active variant's preset categories, PLUS any extra categories required
@@ -106,38 +104,35 @@ export function resolveNewsCategories(
 /**
  * The feed-category keys whose news panel the user actually has ENABLED.
  *
- * `ctx.newsPanels` holds an instantiated panel for EVERY news category, not
- * just enabled ones: App.ts seeds `panelSettings` with every `ALL_PANELS` key
- * (cross-variant ones `enabled: false`) and panel creation keys on presence,
- * not `.enabled`. Passing the raw `Object.keys(ctx.newsPanels)` to
- * `resolveNewsCategories` would treat every disabled cross-variant panel as a
- * custom category and fan out RSS fetches for every user — exactly the
- * blast-radius this design is meant to avoid.
+ * `newsCategoryPanelKeys` is the registry panel-layout fills as it registers
+ * NewsPanels: `categoryKey → the panel key that NewsPanel actually took`. It is
+ * the single source of truth for "this category has somewhere to render", and
+ * reading it is what keeps two failure modes out:
  *
- * A news panel registers under `key`, or under the remapped `${key}-news`
- * when `key` collided with a non-news data panel already occupying
- * `ctx.panels[key]` (e.g. `markets`/`crypto`/`economic` in the full variant).
- * We detect the collision by reference identity — `ctx.panels[key]` is a
- * *different* object than the news panel — rather than by re-deriving naming
- * conventions, so this stays correct regardless of which keys exist.
+ *  • A category key claimed by a NON-news panel never enters the registry, so
+ *    that data panel's own `enabled: true` cannot promote the category into the
+ *    work-list. `commodities` (CommoditiesPanel prices), `supply-chain`
+ *    (SupplyChainPanel) and `live-news` (LiveNewsPanel 24/7 video) all own their
+ *    key on every variant while ALSO being CANONICAL_FEEDS categories — reading
+ *    `panelSettings[key]` directly fetched 19 feeds per load with no panel to
+ *    render them into (#5376).
+ *  • A category whose NewsPanel was remapped to `${key}-news` because a data
+ *    panel already occupied `key` (`markets`/`crypto`/`economic` in the full
+ *    variant) is registered under the remapped key, so enablement is read from
+ *    the news panel's settings entry and never from the data panel's.
+ *
+ * Enablement is still read at call time, because panel-layout registers a
+ * NewsPanel for every category present in `panelSettings` — including the
+ * cross-variant ones seeded `enabled: false` — so a user can enable one
+ * mid-session without a reload.
  */
 export function enabledNewsCategoryKeys(
-  newsPanels: Record<string, unknown>,
-  panels: Record<string, unknown>,
+  newsCategoryPanelKeys: Iterable<readonly [string, string]>,
   panelSettings: Record<string, { enabled?: boolean } | undefined>,
-  configuredCategoryKeys: Iterable<string> = [],
 ): string[] {
   const result = new Set<string>();
-  for (const [key, newsPanel] of Object.entries(newsPanels)) {
-    const collided = panels[key] !== undefined && panels[key] !== newsPanel;
-    const panelKey = collided ? `${key}-news` : key;
-    if (panelSettings[panelKey]?.enabled === true) result.add(key);
-  }
-  for (const key of configuredCategoryKeys) {
-    const settingsKey = COLLIDING_NEWS_CATEGORY_KEYS.has(key) ? `${key}-news` : key;
-    if (panelSettings[settingsKey]?.enabled === true) {
-      result.add(key);
-    }
+  for (const [categoryKey, panelKey] of newsCategoryPanelKeys) {
+    if (panelSettings[panelKey]?.enabled === true) result.add(categoryKey);
   }
   return [...result];
 }

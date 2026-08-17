@@ -35,7 +35,7 @@ export const disasterAdapter: DomainAdapter = {
 
       signals.push({
         type: 'earthquake',
-        source: 'usgs',
+        source: q.source || 'usgs',
         severity,
         lat: q.location.latitude,
         lon: q.location.longitude,

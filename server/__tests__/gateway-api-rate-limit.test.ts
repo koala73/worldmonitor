@@ -72,6 +72,7 @@ vi.mock("../_shared/user-api-key", () => ({
 }));
 
 import { createDomainGateway } from "../gateway";
+import { hashKeySync } from "../_shared/usage-identity";
 
 function makeGateway() {
   return createDomainGateway([
@@ -91,6 +92,16 @@ function userKeyRequest() {
   return new Request("https://www.worldmonitor.app/api/news/v1/list-feed-digest", {
     method: "GET",
     headers: { "X-Api-Key": "wm_test_starter_key" },
+  });
+}
+
+function mixedEnterpriseRequest(sessionToken: string) {
+  return new Request("https://www.worldmonitor.app/api/news/v1/list-feed-digest", {
+    method: "GET",
+    headers: {
+      "X-WorldMonitor-Key": sessionToken,
+      Cookie: "wm-pro-key=enterprise-browser-key",
+    },
   });
 }
 
@@ -119,6 +130,24 @@ afterEach(() => {
 });
 
 describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
+  test("mixed browser auth keeps the enterprise burst identity stable across wms_ rotation", async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = "enterprise-browser-key";
+    process.env.API_RATE_LIMIT_ENFORCE = "true";
+    const gateway = makeGateway();
+
+    const first = await gateway(mixedEnterpriseRequest("wms_first-anonymous-session"), ctx);
+    const second = await gateway(mixedEnterpriseRequest("wms_second-anonymous-session"), ctx);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(checkBurst).toHaveBeenCalledTimes(2);
+    expect(checkBurst.mock.calls.map(([, identity]) => identity)).toEqual([
+      hashKeySync("enterprise-browser-key"),
+      hashKeySync("enterprise-browser-key"),
+    ]);
+    expect(checkRateLimit).not.toHaveBeenCalled();
+  });
+
   test("eligible Starter wm_ key engages the per-account layer (isUserApiKey discriminator)", async () => {
     const res = await makeGateway()(userKeyRequest(), ctx);
     expect(res.status).toBe(200);

@@ -8,27 +8,15 @@
 // week-old declining trend would keep emitting "media tone deterioration"
 // cross-source signals stamped as freshly detected for days. The extractor
 // must skip payloads it cannot date or that are older than the signal-grade
-// window, falling through to the bundled-canonical fallback.
+// window.
+//
+// (#5870 removed the bundled-canonical fallback this used to fall through to:
+// it read topic.avgTone/tone, which intelligence:gdelt-intel:v1 has never
+// published, so it could not fire even once the envelope was unwrapped.)
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
-import { CII_RISK_SCORE_CACHE_KEYS } from '../scripts/_cii-risk-cache-keys.mjs';
-
-const seedSrc = readFileSync('scripts/seed-cross-source-signals.mjs', 'utf8');
-
-const pureSrc = seedSrc
-  .replace(/^import\s.*$/gm, '')
-  .replace(/loadEnvFile\([^)]+\);\r?\n/, '')
-  .replace(/async function readAllSourceKeys[\s\S]*?\r?\n}\r?\n\r?\n\/\/ ── Signal extractors/m, '// readAllSourceKeys removed for unit test\n\n// ── Signal extractors')
-  .replace(/runSeed\('intelligence'[\s\S]*$/m, '')
-  .replace(/^export\s+(function\s+declareRecords)/m, '$1');
-
-const ctx = vm.createContext({ console, Date, Math, Number, Array, Map, Set, String, RegExp, CII_RISK_SCORE_CACHE_KEYS });
-vm.runInContext(`${pureSrc}\n;globalThis.__exports = { extractMediaToneDeterioration };`, ctx);
-
-const { extractMediaToneDeterioration } = ctx.__exports;
+import { extractMediaToneDeterioration } from '../scripts/seed-cross-source-signals.mjs';
 
 const DECLINING_SERIES = [
   { date: '2026-07-18', value: -0.5 },
@@ -62,5 +50,41 @@ describe('extractMediaToneDeterioration staleness guard', () => {
       'gdelt:intel:tone:military': { data: DECLINING_SERIES }, // no fetchedAt
     });
     assert.equal(signals.length, 0, 'undatable payloads are not signal-grade');
+  });
+});
+
+// #5863 review: the bulk materializer publishes one tone point per 15-minute
+// cohort, so three ADJACENT points can span 45 minutes. A deterioration signal
+// must require a real multi-day span, or dense series mint noise as signal.
+describe('extractMediaToneDeterioration trend-span guard (#5863 review)', () => {
+  const at = (msAgo, value) => ({ date: new Date(Date.now() - msAgo).toISOString(), value });
+  const HOUR = 3600 * 1000;
+
+  it('ignores a decline that spans only minutes of 15-minute cohorts', () => {
+    const dense = [
+      at(45 * 60 * 1000, -0.5),
+      at(30 * 60 * 1000, -1.2),
+      at(15 * 60 * 1000, -2.4),
+    ];
+    const signals = extractMediaToneDeterioration({
+      'gdelt:intel:tone:military': { data: dense, fetchedAt: new Date().toISOString() },
+    });
+    assert.deepEqual(signals, [], '45 minutes of small-sample tone is not a deterioration trend');
+  });
+
+  it('still emits when a dense series covers a real multi-day decline', () => {
+    // 15-minute cadence, but sampled anchors span >24h in total.
+    const series = [];
+    for (let i = 0; i < 200; i++) {
+      const msAgo = (48 * HOUR) - (i * 15 * 60 * 1000);
+      if (msAgo < 0) break;
+      // monotonic decline across the whole window
+      series.push(at(msAgo, -0.5 - (i * 0.01)));
+    }
+    const signals = extractMediaToneDeterioration({
+      'gdelt:intel:tone:military': { data: series, fetchedAt: new Date().toISOString() },
+    });
+    assert.equal(signals.length, 1, 'a genuine multi-day decline must still signal');
+    assert.match(signals[0].summary, /Media tone deterioration/);
   });
 });

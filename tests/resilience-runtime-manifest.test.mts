@@ -12,6 +12,7 @@ const originalSchemaV2 = process.env.RESILIENCE_SCHEMA_V2_ENABLED;
 const originalPillarCombine = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
 const originalEnergyV2 = process.env.RESILIENCE_ENERGY_V2_ENABLED;
 const originalFinSysExposure = process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED;
+const originalEducation = process.env.RESILIENCE_EDUCATION_ENABLED;
 const originalValidKeys = process.env.WORLDMONITOR_VALID_KEYS;
 const originalApiKey = process.env.WORLDMONITOR_API_KEY;
 
@@ -30,6 +31,7 @@ afterEach(async () => {
   restoreEnv('RESILIENCE_PILLAR_COMBINE_ENABLED', originalPillarCombine);
   restoreEnv('RESILIENCE_ENERGY_V2_ENABLED', originalEnergyV2);
   restoreEnv('RESILIENCE_FIN_SYS_EXPOSURE_ENABLED', originalFinSysExposure);
+  restoreEnv('RESILIENCE_EDUCATION_ENABLED', originalEducation);
   restoreEnv('WORLDMONITOR_VALID_KEYS', originalValidKeys);
   restoreEnv('WORLDMONITOR_API_KEY', originalApiKey);
   const { __resetKeyPrefixCacheForTests } = await import('../server/_shared/redis.ts');
@@ -52,6 +54,7 @@ describe('resilience runtime manifest', () => {
     process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
     process.env.RESILIENCE_ENERGY_V2_ENABLED = 'false';
     process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED = 'true';
+    process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
     process.env.VERCEL_GIT_COMMIT_SHA = '0123456789abcdef0123456789abcdef01234567';
     process.env.VERCEL_ENV = 'production';
 
@@ -66,10 +69,11 @@ describe('resilience runtime manifest', () => {
       [modules.RESILIENCE_INTERVALS_META_KEY]: {
         fetchedAt: Date.parse('2026-05-29T11:45:00.000Z'),
       },
-      'resilience:intervals:v9:US': {
+      'resilience:intervals:v11:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'pc',
+        _educationState: 'education-on',
         computedAt: '2026-05-29T12:15:00.000Z',
         methodology: 'weight-perturbation-sensitivity-v3',
       },
@@ -78,13 +82,13 @@ describe('resilience runtime manifest', () => {
     const request = new Request('https://worldmonitor.app/api/resilience/v1/get-runtime-manifest');
     const response = await modules.getResilienceRuntimeManifest({ request } as never);
 
-    assert.equal(response.manifestVersion, 4);
+    assert.equal(response.manifestVersion, 5);
     assert.match(response.generatedAt, /^\d{4}-\d{2}-\d{2}T/);
     assert.equal(response.deployedCommitSha, '');
     assert.equal(response.vercelEnv, '');
     assert.equal(response.formulaTag, 'pc');
     assert.equal(response.dataVersion, '2026-05-28');
-    assert.deepEqual(response.constructVersions, { energy: 'legacy' });
+    assert.deepEqual(response.constructVersions, { energy: 'legacy', education: 'active' });
     assert.deepEqual(response.flags, []);
     assert.deepEqual(response.cache, {
       scorePrefix: '',
@@ -108,6 +112,19 @@ describe('resilience runtime manifest', () => {
     assert.deepEqual(modules.drainResponseHeaders(request), { 'X-No-Cache': '1' });
   });
 
+  it('reports the explicit education rollback state', async () => {
+    const modules = await loadRuntimeManifestModules();
+    process.env.RESILIENCE_EDUCATION_ENABLED = 'false';
+    installRedis({}, { keepVercelEnv: true });
+
+    const response = await modules.getResilienceRuntimeManifest({
+      request: new Request('https://worldmonitor.app/api/resilience/v1/get-runtime-manifest'),
+    } as never);
+
+    assert.deepEqual(response.constructVersions, { energy: 'legacy', education: 'rollback' });
+    assert.deepEqual(response.flags, []);
+  });
+
   it('returns safe empty/zero metadata when Redis keys are absent', async () => {
     const modules = await loadRuntimeManifestModules();
     process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
@@ -123,7 +140,7 @@ describe('resilience runtime manifest', () => {
     assert.equal(response.vercelEnv, '');
     assert.equal(response.formulaTag, 'd6');
     assert.equal(response.dataVersion, '');
-    assert.deepEqual(response.constructVersions, { energy: 'legacy' });
+    assert.deepEqual(response.constructVersions, { energy: 'legacy', education: 'active' });
     assert.deepEqual(response.rankingCache, { fetchedAt: '', count: 0, scored: 0, total: 0 });
     assert.deepEqual(response.intervals, {
       available: false,
@@ -140,7 +157,7 @@ describe('resilience runtime manifest', () => {
       [modules.RESILIENCE_INTERVALS_META_KEY]: {
         fetchedAt: Date.parse('2026-05-30T10:00:00.000Z'),
       },
-      'resilience:intervals:v9:US': {
+      'resilience:intervals:v11:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'd6',
@@ -168,7 +185,7 @@ describe('resilience runtime manifest', () => {
       [modules.RESILIENCE_INTERVALS_META_KEY]: {
         fetchedAt: Date.parse('2026-05-30T10:00:00.000Z'),
       },
-      'resilience:intervals:v9:US': {
+      'resilience:intervals:v11:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'pc',
@@ -206,7 +223,7 @@ describe('resilience runtime manifest', () => {
     } as never);
     const serialized = JSON.stringify(response);
 
-    assert.deepEqual(response.constructVersions, { energy: 'v2' });
+    assert.deepEqual(response.constructVersions, { energy: 'v2', education: 'active' });
     assert.deepEqual(response.intervals, {
       available: false,
       methodology: 'weight-perturbation-sensitivity-v3',
@@ -272,12 +289,13 @@ describe('resilience runtime manifest gateway auth', () => {
     const body = await manifest.json() as {
       manifestVersion: number;
       formulaTag: string;
-      constructVersions?: { energy?: string };
+      constructVersions?: { energy?: string; education?: string };
       intervals?: { available?: boolean; methodology?: string; sampleCountry?: string; lastObservedAt?: string };
     };
-    assert.equal(body.manifestVersion, 4);
+    assert.equal(body.manifestVersion, 5);
     assert.equal(body.formulaTag, 'pc');
     assert.equal(body.constructVersions?.energy, 'legacy');
+    assert.equal(body.constructVersions?.education, 'active');
     assert.deepEqual(body.intervals, {
       available: false,
       methodology: 'weight-perturbation-sensitivity-v3',

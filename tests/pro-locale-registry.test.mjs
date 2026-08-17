@@ -30,10 +30,13 @@ const EXPECTED_OG_LOCALE = {
   ro: 'ro_RO',
   ru: 'ru_RU',
   sv: 'sv_SE',
+  sw: 'sw_TZ',
   th: 'th_TH',
   tr: 'tr_TR',
+  uk: 'uk_UA',
   vi: 'vi_VN',
   zh: 'zh_CN',
+  'zh-TW': 'zh_TW',
 };
 
 function parseStringArrayConst(source, name) {
@@ -45,7 +48,9 @@ function parseStringArrayConst(source, name) {
 function parseRecord(source, name) {
   const match = source.match(new RegExp(String.raw`const\s+${name}:\s*Record<string, string>\s*=\s*{([\s\S]*?)\n\s*};`));
   assert.ok(match, 'expected ' + name + ' declaration');
-  return Object.fromEntries([...match[1].matchAll(/(?:^|[,{])\s*([a-z]{2}):\s*'([^']+)'/g)].map((entry) => [entry[1], entry[2]]));
+  // Keys carrying a region subtag (zh-TW) must be quoted in a JS object
+  // literal, so accept both the bare `zh:` and the quoted `'zh-TW':` forms.
+  return Object.fromEntries([...match[1].matchAll(/(?:^|[,{])\s*'?([a-z]{2}(?:-[A-Za-z]{2,4})?)'?:\s*'([^']+)'/g)].map((entry) => [entry[1], entry[2]]));
 }
 
 function flattenKeys(value, prefix = '') {

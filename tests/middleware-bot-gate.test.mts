@@ -16,6 +16,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import middleware from '../middleware';
+import { WEB_DASHBOARD_VARIANTS } from '../src/config/variant-dashboard-html';
+import { VARIANT_META } from '../src/config/variant-meta';
 
 const TELEGRAM_BOT_UA = 'TelegramBot (like TwitterBot)';
 const SLACKBOT_UA = 'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)';
@@ -49,6 +51,23 @@ function call(pathOrUrl: string, ua: string, headers: Record<string, string> = {
   });
   return middleware(req) as Response | void;
 }
+
+describe('middleware AI crawler variant stub', () => {
+  it('links every web-served variant dashboard', async () => {
+    const res = call('https://tech.worldmonitor.app/', 'Mozilla/5.0 GPTBot/1.1');
+    assert.ok(res instanceof Response);
+    assert.equal(res.status, 200);
+
+    const html = await res.text();
+    for (const variant of WEB_DASHBOARD_VARIANTS) {
+      const { siteName: name, url: dashboardUrl } = VARIANT_META[variant];
+      assert.ok(
+        html.includes(`<li><a href="${dashboardUrl}">${name}</a></li>`),
+        `AI crawler stub must link the ${variant} dashboard`,
+      );
+    }
+  });
+});
 
 describe('middleware bot gate / keyed API clients', () => {
   const KEYED_API_PATH = '/api/forecast/v1/get-forecast-scorecard';

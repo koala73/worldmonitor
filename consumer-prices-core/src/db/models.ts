@@ -80,6 +80,7 @@ export interface ScrapeRun {
   pagesAttempted: number;
   pagesSucceeded: number;
   errorsCount: number;
+  rejectedCount: number;
   configVersion: string;
 }
 

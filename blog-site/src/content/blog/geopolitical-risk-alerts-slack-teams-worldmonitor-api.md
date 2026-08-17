@@ -207,7 +207,7 @@ WorldMonitor exposes freshness through cache fields and health endpoints. Use th
 ## Rollout plan
 
 1. Start with one Slack or Teams channel.
-2. Pick five countries and three chokepoints.
+2. Pick a focused set of countries and chokepoints.
 3. Run the worker silently for one week.
 4. Review would-have-fired alerts with analysts.
 5. Add cooldowns and suppress noisy rules.

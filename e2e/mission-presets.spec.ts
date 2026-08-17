@@ -148,8 +148,9 @@ test.describe('mission presets', () => {
 
   test('mobile mission picker stays in viewport and applies from the mobile menu', async ({ page }) => {
     await setupMissionPage(page, { width: 390, height: 844 });
-    await expect(page.locator('#hamburgerBtn')).toBeVisible({ timeout: 30_000 });
-    await page.locator('#hamburgerBtn').click();
+    const moreTab = page.locator('[data-mobile-tab="more"]');
+    await expect(moreTab).toBeVisible({ timeout: 30_000 });
+    await moreTab.click();
     await expect(page.locator('#mobileMenu')).toHaveClass(/open/);
     await waitForMobileMenuSettled(page);
     const mobileMission = page.locator('#mobileMenuMission');
@@ -181,7 +182,7 @@ test.describe('mission presets', () => {
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1))
       .toBe(true);
 
-    await page.locator('#hamburgerBtn').click();
+    await moreTab.click();
     await page.locator('#mobileMenuMission').click();
     await page.locator('[data-mission-reset]').click();
     await expect.poll(() => readLocalStorage(page, PRESET_KEY)).toBeNull();

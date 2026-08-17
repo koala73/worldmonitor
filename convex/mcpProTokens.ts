@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import { requireUserId, resolveUserId } from "./lib/auth";
 import { getFeaturesForPlan } from "./lib/entitlements";
 
@@ -16,8 +17,9 @@ import { getFeaturesForPlan } from "./lib/entitlements";
 /** Maximum number of active (non-revoked) Pro MCP tokens per user. */
 const MAX_TOKENS_PER_USER = 5;
 
-/** Debounce window for touchProMcpTokenLastUsed (matches apiKeys). */
-const TOUCH_DEBOUNCE_MS = 5 * 60 * 1000;
+// The touch debounce window is imported from apiKeys.ts — the comment above
+// says "matches apiKeys", and a shared constant is what makes that true by
+// construction (http.ts gates BOTH validate routes on the same window).
 
 // ---------------------------------------------------------------------------
 // Internal (service-to-service) — called from edge/HTTP actions
@@ -130,7 +132,10 @@ export const validateProMcpToken = internalQuery({
   handler: async (ctx, args) => {
     const row = await ctx.db.get(args.tokenId);
     if (!row || row.revokedAt) return null;
-    return { userId: row.userId };
+    // lastUsedAt is consumed ONLY by the validate route's touch-scheduling
+    // gate (http.ts) and stripped before the response — the wire contract
+    // stays exactly `{ userId }` (pinned by mcpProTokens.test.ts).
+    return { userId: row.userId, lastUsedAt: row.lastUsedAt };
   },
 });
 

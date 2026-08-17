@@ -18,7 +18,10 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execSync } from 'node:child_process';
 import { RESILIENCE_COHORTS } from '../tests/helpers/resilience-cohorts.mts';
-import { MATCHED_PAIRS } from '../tests/helpers/resilience-matched-pairs.mts';
+import {
+  MATCHED_PAIRS,
+  evaluateWholeIndexMatchedPairs,
+} from '../tests/helpers/resilience-matched-pairs.mts';
 import {
   EXTRACTION_RULES,
   buildIndicatorExtractionPlan,
@@ -380,26 +383,18 @@ function buildGateResults({ baselineScores, postFlipScores, extractionCoverage }
     { cohortShiftVsBaseline },
   );
 
-  const matchedPairSummary = MATCHED_PAIRS.map((pair) => {
-    const higher = postFlipScores[pair.higherExpected];
-    const lower = postFlipScores[pair.lowerExpected];
-    const minGap = pair.minGap ?? 3;
-    if (typeof higher !== 'number' || typeof lower !== 'number') {
-      return {
-        pairId: pair.id,
-        skipped: true,
-        reason: 'pair endpoint missing from post-flip snapshot',
-      };
-    }
-    const gap = round2(higher - lower);
+  const matchedPairEvaluations = evaluateWholeIndexMatchedPairs(postFlipScores, MATCHED_PAIRS);
+  const matchedPairSummary = matchedPairEvaluations.map((evaluation, index) => {
+    const pair = MATCHED_PAIRS[index];
     return {
-      pairId: pair.id,
+      pairId: evaluation.pairId,
       axis: pair.axis,
-      higherExpected: pair.higherExpected,
-      lowerExpected: pair.lowerExpected,
-      minGap,
-      gap,
-      status: gap >= minGap ? 'pass' : 'fail',
+      higherExpected: evaluation.higherExpected,
+      lowerExpected: evaluation.lowerExpected,
+      minGap: evaluation.minGap,
+      gap: evaluation.gap == null ? null : round2(evaluation.gap),
+      status: evaluation.status,
+      reason: evaluation.status === 'missing' ? 'pair endpoint missing from post-flip snapshot' : undefined,
     };
   });
   const matchedPairFailures = matchedPairSummary.filter((pair) => pair.status !== 'pass');

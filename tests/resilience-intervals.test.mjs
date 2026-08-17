@@ -112,6 +112,7 @@ describe('formula-aware resilience score intervals', () => {
     const payload = buildScoreIntervalPayload({
       countryCode: 'PC',
       _formula: 'pc',
+      _educationState: 'education-on',
       overallScore,
       domains: liveStyleDomains,
       pillars: liveStylePillars,
@@ -123,6 +124,7 @@ describe('formula-aware resilience score intervals', () => {
 
     assert.ok(payload, 'expected interval payload');
     assert.equal(payload._formula, 'pc');
+    assert.equal(payload._educationState, 'education-on');
     assert.equal(payload.methodology, RESILIENCE_INTERVAL_METHODOLOGY);
     assert.ok(payload.p05 <= overallScore && overallScore <= payload.p95, `pc score ${overallScore} must be inside ${payload.p05}-${payload.p95}`);
     const center = (payload.p05 + payload.p95) / 2;

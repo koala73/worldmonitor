@@ -12,10 +12,13 @@ missing source cannot silently become a zero or a site-wide vanity score.
   windows, manual AI observations, the exact query-contract digest,
   reproduction context, and the prioritized opportunity queue.
 - `scorecards/<date>.md` — deterministic human report generated from a baseline.
+- `scripts/seo-ai-visibility-collector.mjs` — secure local importer for bounded
+  first-party exports; it emits only the normalized baseline contract.
 - `scripts/seo-ai-visibility-scorecard.mjs` — validator, scorecard renderer, and
   monthly comparison.
-- `tests/seo-ai-visibility-scorecard.test.mjs` — schema, missingness, aggregation,
-  comparison, and reproducibility coverage.
+- `tests/seo-ai-visibility-collector.test.mjs` and
+  `tests/seo-ai-visibility-scorecard.test.mjs` — importer, schema, missingness,
+  aggregation, comparison, and reproducibility coverage.
 
 The committed initial period is `2026-07-27`. It contains a four-platform manual
 observation for `q01`. Search Console, Bing Webmaster, and referral values are
@@ -51,6 +54,61 @@ start a new baseline series with the digest computed by
 `computeQuerySetDigest()` in the scorecard module. Existing baselines must keep
 their original ID and digest; the validator rejects silently reinterpreting
 historical observations with a newer query definition.
+
+## First-party collection and secure import
+
+`scripts/seo-ai-visibility-collector.mjs` turns a local source manifest into a
+dated baseline. It does not authenticate to providers, scrape result pages, or
+write raw exports. Operators should obtain read-only exports through the
+provider UI/API, keep credentials and raw files outside the repository, and
+pass only the bounded manifest to the collector:
+
+```bash
+node scripts/seo-ai-visibility-collector.mjs \
+  --queries docs/research/seo-ai-visibility/query-set.json \
+  --template docs/research/seo-ai-visibility/baselines/2026-07-27.json \
+  --sources "$SEO_VISIBILITY_SOURCE_MANIFEST" \
+  --observed-at "$SEO_VISIBILITY_OBSERVED_AT" \
+  --output "$SEO_VISIBILITY_RUN_DIR/baseline.json"
+```
+
+The manifest is intentionally narrow:
+
+- `googleSearchConsole` and `bingWebmaster.search` contain trailing `28d` and
+  `90d` windows with aggregate metrics, exact reviewed `query`/`queryId` rows,
+  and `page`/`pageFamily` rows. Query text must exactly match `query-set.json`;
+  unknown queries and page families fail closed. The normalized artifact drops
+  property IDs and tokens.
+- `bingWebmaster.aiPerformance` contains the same two windows plus provider-
+  reported `totalCitations`, `averageCitedPages`, `groundingQueries`, and
+  `citedPages`. Cited pages must be HTTPS `worldmonitor.app` URLs. Citation
+  totals describe observed source usage, not ranking or authority.
+- `referrals` contains bounded aggregate `metrics` or event `rows` grouped only
+  by the reviewed `referrerFamily` and `landingPageFamily`. Supported events are
+  sessions, dashboard launches, pricing views, sign-ups, checkout success,
+  completed `pro-activation-exit`, successful API-key actions, and successful
+  MCP connections. Attempt events are not counted as successful outcomes.
+- `collectionContext`, `aiSurfaces`, and `aiObservations` are copied through a
+  whitelist. Unknown provider fields and raw prompt, account/session, key, and
+  user-level payload fields are never written to the baseline; keep personal
+  prompt content out of the reviewed summary fields as well.
+
+For every source, use `status: "partial"` when only some windows/metrics are
+supported and `status: "unavailable"` with a reason when access is missing.
+The collector preserves provider-reported zeroes and emits `null` for omitted
+metrics. It requires two trailing windows for search and Bing AI Performance;
+missing referral dimensions remain partial rather than being inferred. Validate
+the generated file before rendering the report:
+
+```bash
+node scripts/seo-ai-visibility-collector.mjs \
+  --queries docs/research/seo-ai-visibility/query-set.json \
+  --template docs/research/seo-ai-visibility/baselines/2026-07-27.json \
+  --sources "$SEO_VISIBILITY_SOURCE_MANIFEST" \
+  --observed-at "$SEO_VISIBILITY_OBSERVED_AT" \
+  --output "$SEO_VISIBILITY_RUN_DIR/baseline.json" \
+  --check
+```
 
 ## Weekly collection
 
@@ -132,8 +190,9 @@ The normalized outcome fields are:
 | `pricingViews` | `/pro` pricing pageviews |
 | `signUps` | `sign-up` |
 | `proConversions` | `checkout-success`, reconciled to aggregate commerce totals |
-| `apiActions` | Bounded API-reference/key-management actions when available |
-| `mcpActions` | `mcp-connect-attempt` / `mcp-connect-success` |
+| `activations` | Completed `pro-activation-exit` events only |
+| `apiActions` | Successful, bounded API-key lifecycle actions when available |
+| `mcpActions` | `mcp-connect-success` only; attempts remain separate telemetry |
 
 Put aggregate totals in `referrals.windows`. Put bounded cross-sections in
 `referrals.segments`, keyed by `windowLabel`, `referrerFamily`, and
@@ -181,7 +240,9 @@ starting a new baseline series instead of presenting incomparable audits as
 month-over-month movement.
 
 Thresholds are diagnostics, not causal claims. A single answer, citation, or
-traffic change never proves uplift.
+traffic change never proves uplift. Sparse observations, a missing provider, or
+a citation-only change cannot be presented as causal traffic, sign-up,
+conversion, activation, API, or MCP uplift.
 
 ## Secure configuration
 

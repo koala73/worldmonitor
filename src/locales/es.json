@@ -77,6 +77,19 @@
       "activeStrikes": "{{count}} huelgas activas detectadas"
     },
     "militaryActivity": "Actividad militar",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Indicadores económicos",
     "ownFlights": "Vuelos propios",
     "foreignFlights": "Vuelos extranjeros",
@@ -129,20 +142,20 @@
       "currencies": "Monedas",
       "area": "Superficie"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Cargando puntuación de resiliencia…",
+    "resilienceScoreUnavailable": "Puntuación de resiliencia no disponible.",
     "china": {
       "title": "Panorama de país: China",
       "description": "Situación actual de macro, mercado, comercio, energía y disponibilidad operativa a partir de los contratos de datos públicos existentes.",
-      "policyEvents": "Policy & Enforcement",
+      "policyEvents": "Política y aplicación",
       "energy": "Energía",
       "availability": "Riesgos y aviación",
       "observed": "A fecha de:",
-      "published": "Published:",
-      "effective": "Effective:",
-      "sectors": "Sectors:",
-      "entities": "Entities:",
-      "translation": "Translation:",
+      "published": "Publicado:",
+      "effective": "Vigente:",
+      "sectors": "Sectores:",
+      "entities": "Entidades:",
+      "translation": "Traducción:",
       "source": "Fuente:",
       "imfGrowth": "Previsión de crecimiento del FMI",
       "creditGdp": "Crédito sobre PIB",
@@ -173,12 +186,29 @@
         "stale": "Desactualizado",
         "unavailable": "No disponible"
       },
-      "macroSignals": "Macro Signals",
-      "crossStraitActivity": "Cross-Strait Activity",
-      "corporateDisclosures": "Corporate Disclosures",
-      "corridorConditions": "Corridor Conditions",
-      "activityNowcast": "Activity Nowcast",
-      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
+      "macroSignals": "Señales macro",
+      "crossStraitActivity": "Actividad trans-estrecho",
+      "corporateDisclosures": "Divulgaciones corporativas",
+      "corridorConditions": "Condiciones del corredor",
+      "activityNowcast": "Previsión de actividad",
+      "decisionSignalsUnavailable": "El resumen de señales de decisión de China no está disponible actualmente."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "header": {
@@ -259,7 +289,7 @@
     "panelCatCommodityEcon": "Economía y Comercio",
     "panelCatHappyNews": "Buenas Noticias",
     "panelCatHappyPlanet": "Planeta y Donaciones",
-    "embed": "Embed"
+    "embed": "Insertar"
   },
   "panels": {
     "liveNews": "Noticias en vivo",
@@ -367,7 +397,8 @@
     "airlineIntel": "✈️ Inteligencia Aeroportuaria",
     "consumerPrices": "Precios al Consumidor",
     "marketBreadth": "Amplitud de Mercado",
-    "climateNews": "Noticias de Clima"
+    "climateNews": "Noticias de Clima",
+    "fx": "Tipos de Cambio"
   },
   "commands": {
     "prefixes": {
@@ -447,7 +478,9 @@
         "displacement": "Alternar flujos de desplazamiento",
         "climate": "Alternar anomalías climáticas",
         "outages": "Alternar cortes de internet",
-        "tradeRoutes": "Alternar rutas comerciales"
+        "tradeRoutes": "Alternar rutas comerciales",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Cambiar a modo oscuro",
@@ -609,7 +642,7 @@
         "URLHAUS_AUTH_KEY": "Se utiliza para las APIs de URLhaus y ThreatFox.",
         "OTX_API_KEY": "Fuente de enriquecimiento opcional para la capa de ciberamenazas.",
         "ABUSEIPDB_API_KEY": "Fuente de enriquecimiento opcional para reputación de IPs maliciosas.",
-        "FINNHUB_API_KEY": "Cotizaciones bursátiles en tiempo real y datos de mercado.",
+        "FINNHUB_API_KEY": "Cotizaciones bursátiles retrasadas o precargadas y datos de mercado. Una clave no es un flujo en directo.",
         "NASA_FIRMS_API_KEY": "Sistema de detección de incendios para gestión de recursos.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -841,7 +874,12 @@
       "loadingHistory": "Cargando historial de tránsitos…",
       "historyUnavailable": "Historial de tránsitos no disponible",
       "transitDataUnavailable": "Datos de tránsito no disponibles (parcial en origen)",
-      "infoTooltip": "<strong>Monitor de cadena de suministro</strong> Seguimiento global de logística y recursos:<ul><li><strong>Puntos críticos</strong>: estado de tránsito marítimo, puntuaciones de disrupción y conteos de buques</li><li><strong>Transporte</strong>: Índice Báltico Seco y tendencias de tarifas de flete</li><li><strong>Minerales</strong>: riesgo de concentración de minerales críticos (HHI) y principales productores</li></ul>Haz clic en una tarjeta de punto crítico para expandir el gráfico de historial de tránsitos."
+      "infoTooltip": "<strong>Monitor de cadena de suministro</strong> Seguimiento global de logística y recursos:<ul><li><strong>Puntos críticos</strong>: estado de tránsito marítimo, puntuaciones de disrupción y conteos de buques</li><li><strong>Transporte</strong>: Índice Báltico Seco y tendencias de tarifas de flete</li><li><strong>Minerales</strong>: riesgo de concentración de minerales críticos (HHI) y principales productores</li></ul>Haz clic en una tarjeta de punto crítico para expandir el gráfico de historial de tránsitos.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "Aranceles",
@@ -877,7 +915,7 @@
       "fytdLabel": "Año fiscal {{year}} hasta la fecha",
       "vsPriorFy": "vs Año fiscal {{year}}",
       "sourceWto": "OMC",
-      "sourceTreasury": "Tesoro de EE.UU.",
+      "sourceTreasury": "Tesoro de EE. UU.",
       "colDate": "Fecha",
       "colMonthly": "Mensual",
       "colFytd": "Año fiscal hasta la fecha",
@@ -885,6 +923,7 @@
       "noComtradeData": "Datos de flujo estratégico no disponibles",
       "comtradeUnavailable": "Datos de Comtrade de la ONU temporalmente no disponibles",
       "sourceComtrade": "Comtrade de la ONU",
+      "comtradeNationalScope": "Las filas de UN Comtrade son estadísticas oficiales a nivel nacional del país informante, no exportaciones de un pueblo, corredor, fábrica, puerto o envío.",
       "anomalyBadge": "Anomalía",
       "colReporter": "País",
       "colCommodity": "Producto",
@@ -980,7 +1019,7 @@
         "ucdpEvents": "Eventos de la UCDP",
         "displacementFlows": "Flujos de desplazamiento",
         "climateAnomalies": "Anomalías climáticas",
-        "weatherAlerts": "Alertas meteorológicas",
+        "weatherAlerts": "Alertas meteorológicas de EE. UU. y Canadá (NWS, ECCC)",
         "strategicWaterways": "Vías navegables estratégicas",
         "economicCenters": "Centros Económicos",
         "criticalMinerals": "Minerales críticos",
@@ -1000,7 +1039,9 @@
         "speciesRecovery": "Recuperación de especies",
         "renewableInstallations": "Energía limpia",
         "radiationSpike": "Pico de radiación",
-        "radiationElevated": "Radiación elevada"
+        "radiationElevated": "Radiación elevada",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "capas",
       "layerSearch": "Buscar capas...",
@@ -1068,7 +1109,7 @@
           "infraDatacenters": "Clústeres de computación de IA >=10 000 GPU",
           "infraOutages": "Apagones de Internet e interrupciones del servicio.",
           "naturalEventsTech": "Terremotos, tormentas, incendios (pueden afectar a los centros de datos)",
-          "weatherAlerts": "Alertas de clima severo",
+          "weatherAlerts": "Alertas de clima severo en EE. UU. y Canadá (NWS, ECCC)",
           "economicCenters": "Bolsas de valores y bancos centrales",
           "countriesOverlay": "Superposiciones de nombres de países",
           "financeExchanges": "Principales intercambios globales por nivel de mercado",
@@ -1080,7 +1121,7 @@
           "financeOutages": "Interrupciones de Internet que pueden afectar las operaciones del mercado",
           "financeCyberThreats": "Eventos de seguridad en torno a la infraestructura financiera",
           "macroWaterways": "Puntos de estrangulamiento estratégicos para el transporte de mercancías",
-          "weatherAlertsMarket": "Eventos climáticos severos con relevancia para el mercado",
+          "weatherAlertsMarket": "Eventos climáticos severos en EE. UU. y Canadá con relevancia para el mercado (NWS, ECCC)",
           "naturalEventsMacro": "Terremotos, incendios, inundaciones y otras perturbaciones naturales",
           "timeRecent": "Filtrar datos basados en el tiempo a horas recientes",
           "timeExtended": "Mostrar datos de la semana pasada, el mes o todo el tiempo",
@@ -1113,7 +1154,9 @@
           "techFires": "Incendios forestales activos cerca de infraestructura tecnológica",
           "financeGulfInvestments": "Inversiones de fondos soberanos del CCG e inversión extranjera directa",
           "geoBoundaries": "Zonas desmilitarizadas, líneas de alto el fuego y fronteras en disputa",
-          "ciiChoropleth": "Mapa térmico del índice de inestabilidad — colorea los países según la puntuación CII (verde=estable, rojo=crítico)"
+          "ciiChoropleth": "Mapa térmico del índice de inestabilidad — colorea los países según la puntuación CII (verde=estable, rojo=crítico)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Afecta: terremotos, clima, protestas, apagones"
@@ -1141,6 +1184,8 @@
       "relatedAssetsNear": "Activos relacionados cerca de {{location}}",
       "summaryError": "No se pudo generar el resumen",
       "summaryFailed": "Resumen fallido",
+      "sourceCoverage": "{{covered}}/{{total}} fuentes",
+      "sourceCoverageHint": "Mostrando {{covered}} de {{total}} fuentes activas — este panel va rotando sus fuentes en cada actualización",
       "sortBy": "Ordenar por",
       "sortNewest": "Más reciente",
       "sortRelevance": "Relevancia"
@@ -1424,25 +1469,25 @@
       "candidGrants": "Subvenciones Candid",
       "dataLag": "Retraso de datos",
       "infoTooltip": "<strong>Índice de actividad de donaciones globales</strong> Índice compuesto que rastrea donaciones personales a través de plataformas de crowdfunding y billeteras cripto.<ul><li><strong>Plataformas</strong>: GoFundMe, GlobalGiving, JustGiving muestreo de campañas</li><li><strong>Cripto</strong>: Ingresos a billeteras de caridad on-chain (Endaoment, Giving Block)</li><li><strong>Institucional</strong>: OCDE AOD, CAF World Giving Index, subvenciones Candid</li></ul>El índice es direccional (no montos exactos en dólares). Combina muestreo en vivo con informes anuales publicados.",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Referencias globales de donaciones",
+      "benchmarkInfoTooltip": "<strong>Referencias globales de donaciones</strong> Declaraciones publicadas de plataformas e instituciones con períodos de fuente y estado de verificación. Las cifras anualizadas son estimaciones, no actividad en tiempo real.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Referencias publicadas con cobertura de fuente verificada.",
+        "partial": "Referencias publicadas con cobertura de fuente parcial.",
+        "legacy": "Instantánea heredada; detalles de la fuente no disponibles.",
+        "cached": "Mostrando una instantánea en caché; actualización no disponible."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Donaciones de plataforma rastreadas — estimación anualizada",
+      "annualizedDaily": "Estimación diaria anualizada",
+      "atLeast": "Al menos",
+      "about": "Aproximadamente",
+      "sourceNotVerified": "Fuente no verificada",
+      "reportedCumulative": "Total acumulado reportado",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Referencia publicada",
+      "sourcesMethodology": "Fuentes y metodología",
+      "methodologyIntro": "Solo las declaraciones anuales verificadas o anualiz adas de forma defendible entran en el titular. Las cifras acumulativas e institucionales permanecen como contexto separado.",
+      "partialEstimate": "Estimación parcialmente verificada"
     },
     "displacement": {
       "refugees": "Refugiados",
@@ -1479,8 +1524,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "degradado",
+        "stale": "obsoleto"
       }
     },
     "gdeltIntel": {
@@ -1589,10 +1634,10 @@
         "minutesAgo": "{{count}}m ago",
         "hoursAgo": "{{count}}h ago"
       },
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "CII en caché {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "degradado",
+        "stale": "obsoleto"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1674,7 +1719,8 @@
       "sources_many": "{{count}} fuentes",
       "provenanceTitle": "Procedencia de cobertura: cuántas historias ingeridas y fuentes distintas se seleccionaron para este resumen",
       "compiledFrom": "Compilado de {{stories}} historias en {{sources}} fuentes",
-      "briefFreshness": "Generado hace {{minutes}}m · fuente más reciente con {{hours}}h de antigüedad"
+      "briefFreshness": "Generado hace {{minutes}}m · fuente más reciente con {{hours}}h de antigüedad",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "etfFlows": {
       "unavailable": "Datos ETF temporalmente no disponibles",
@@ -1872,7 +1918,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2140,10 +2186,21 @@
       "infoTooltip": "<strong>Cascada de Desastres</strong> Detecta señales convergentes de desastres naturales e infraestructura:<ul><li>Correlaciona terremotos, incendios forestales, inundaciones y fenómenos meteorológicos extremos</li><li>Rastrea efectos en cascada sobre infraestructura y cadenas de suministro</li><li>Destaca regiones con riesgo de desastres compuesto</li></ul>Haz clic en una tarjeta para ampliar la región afectada."
     },
     "markets": {
-      "infoTooltip": "<strong>Mercados</strong> Índices bursátiles en tiempo real, acciones y precios de criptomonedas. Personaliza tu lista de seguimiento con el botón Lista de Seguimiento. Los gráficos de chispa muestran la tendencia reciente de precios.",
+      "infoTooltip": "<strong>Mercados</strong> Índices bursátiles retrasados o precargados, acciones y precios de criptomonedas. Personaliza tu lista de seguimiento con el botón Lista de Seguimiento. Los gráficos de chispa muestran la tendencia reciente de precios.",
       "chart": {
-        "title": "{{symbol}} price chart",
-        "close": "Close chart"
+        "title": "Gráfico de precios {{symbol}}",
+        "close": "Cerrar gráfico"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2310,13 +2367,14 @@
     },
     "sanctionsPressure": {
       "title": "Sanciones y Designaciones",
-      "infoTooltip": "Designaciones de sanciones OFAC de las Listas SDN y Consolidada. Muestra qué países enfrentan la mayor presión de designación, qué programas la impulsan y qué se ha añadido recientemente desde la última actualización.",
+      "infoTooltip": "Listas SDN y Consolidada de OFAC más las designaciones SEMA/JVCFOA de Asuntos Mundiales Canadá. Muestra qué países enfrentan la mayor presión de designación, qué programas la impulsan y qué se ha añadido recientemente desde la última actualización.",
       "loading": "Cargando datos de sanciones...",
       "unavailable": "Datos de sanciones no disponibles.",
       "summary": {
         "new": "Nuevo",
         "vessels": "Buques",
-        "aircraft": "Aeronaves"
+        "aircraft": "Aeronaves",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Países sancionados",
@@ -2331,11 +2389,12 @@
       "footer": {
         "updated": "Actualizado {{time}}",
         "dataset": "conjunto de datos {{date}}",
-        "source": "Fuente: OFAC"
+        "source": "Fuente: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nuevos",
-        "new": "nuevo"
+        "new": "nuevo",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} designación",
       "designations_other": "{{count}} designaciones",
@@ -2484,59 +2543,91 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Categorías de paneles"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
+        "fresh": "Reciente",
+        "stale": "Desactualizado",
+        "veryStale": "Muy desactualizado",
+        "noData": "Sin datos",
+        "disabled": "Desactivado",
         "error": "Error"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Actualidad de datos: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "última actualización {{time}}",
+      "neverUpdated": "nunca actualizado",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "cobertura parcial",
+        "contentStale": "contenido desactualizado",
+        "seedStale": "seed desactualizado",
+        "noSourceData": "sin datos de fuente",
+        "sourceErrorReported": "error de fuente reportado",
+        "freshnessStoreUnavailable": "almacén de actualidad no disponible",
+        "freshnessStoreDegraded": "almacén de actualidad degradado"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
+        "never": "nunca",
+        "justNow": "ahora mismo",
+        "minutesAgo": "hace {{count}}m",
+        "hoursAgo": "hace {{count}}h",
+        "daysAgo": "hace {{count}}d",
+        "compactNow": "ahora",
         "compactMinutes": "{{count}}m",
         "compactHours": "{{count}}h",
         "compactDays": "{{count}}d"
       }
     },
     "exportGate": {
-      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
-      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
-      "upgradeCta": "Upgrade to Pro Business",
-      "lockedAriaLabel": "Export data — locked. {{reason}}",
-      "unlockedAnnouncement": "Data export unlocked.",
-      "preparingPdf": "Preparing PDF…",
-      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+      "signedOutDesc": "Inicia sesión para exportar datos del panel en CSV, JSON o PDF.",
+      "upgradeDesc": "La exportación de datos (CSV, JSON, PDF) está incluida con Pro Business.",
+      "upgradeCta": "Actualizar a Pro Business",
+      "lockedAriaLabel": "Exportar datos — bloqueado. {{reason}}",
+      "unlockedAnnouncement": "Exportación de datos desbloqueada.",
+      "preparingPdf": "Preparando PDF…",
+      "pdfFailed": "No se pudo generar el informe PDF. Inténtalo de nuevo o usa la exportación JSON."
     },
     "tabCap": {
-      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
-      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
-      "upgradeCta": "Upgrade for more",
-      "lockedAriaLabel": "Add tab — locked. {{reason}}",
-      "unlockedAnnouncement": "Dashboard tab limit lifted."
+      "signedOutDesc": "Los espacios de trabajo sin sesión están limitados a {{cap}} pestañas. Inicia sesión para agregar más.",
+      "upgradeDesc": "Has alcanzado tu límite de {{cap}} pestañas del panel.",
+      "upgradeCta": "Actualizar para obtener más",
+      "lockedAriaLabel": "Agregar pestaña — bloqueado. {{reason}}",
+      "unlockedAnnouncement": "Límite de pestañas del panel eliminado."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Tipos de Cambio</strong> Estrés cambiario y tipos spot:<ul><li>FX Stress clasifica 45 monedas por su mayor caída acumulada en los últimos 24 meses, junto con el cambio en 12 meses</li><li>La cobertura incluye ARS, TRY, EGP, NGN, PKR y UAH — monedas que los conjuntos de referencia del BIS y BCE omiten</li><li>Spot lista los tipos frente al dólar estadounidense y los tipos de referencia del euro del BCE por separado, porque se cotizan desde bases diferentes</li><li>RUB — tipos del Banco de Rusia, rublos por unidad</li></ul> Fuentes: Yahoo Finance, el Banco Central Europeo y el Banco de Rusia.",
+      "tabs": {
+        "stress": "Estrés Cambiario",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "Moneda",
+      "pair": "Par",
+      "rate": "Tipo",
+      "yoy": "12m",
+      "drawdown": "Caída 24m",
+      "peakToTrough": "Máximo → Mínimo",
+      "change1d": "1d",
+      "perUsd": "Por 1 USD",
+      "usdPerUnit": "USD por unidad",
+      "usdBase": "Frente al dólar estadounidense",
+      "eurBase": "Tipos de referencia del euro BCE",
+      "stressedCount": "{{stressed}} de {{total}} monedas por debajo de {{threshold}}",
+      "sourceYahoo": "Fuente: Yahoo Finance",
+      "sourceEcb": "Fuente: BCE",
+      "degraded": "No disponible en este momento: {{sources}}. Reintentando en breve.",
+      "source": {
+        "stress": "Estrés del tipo de cambio",
+        "usd": "Tipos de cambio del dólar estadounidense",
+        "eur": "Tipos de cambio del euro del BCE",
+        "rub": "Tipos de cambio del Banco de Rusia"
+      },
+      "rubBase": "Banco de Rusia — rublos por 1 unidad",
+      "rubPerUnit": "Rublos por unidad",
+      "sourceCbr": "Fuente: Banco de Rusia"
     }
   },
   "popups": {
@@ -2749,6 +2840,7 @@
     "moreEvents": "más eventos",
     "monitoring": "Monitoreo",
     "viewUSGS": "Ver en USGS",
+    "viewNRCan": "Ver en Earthquakes Canada",
     "expired": "Expirado",
     "timeAgo": {
       "s": "{{count}}s atrás",
@@ -2869,7 +2961,7 @@
       "heading": "TÍTULO",
       "hexCode": "CÓDIGO HEXAGONAL",
       "squawk": "GRAZNIDO",
-      "attribution": "Fuente: Red OpenSky"
+      "attribution": "Fuente: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS OSCURO",
@@ -3340,16 +3432,42 @@
     "visualizationFailed": "Error en la visualización"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Pestañas del panel",
+    "defaultName": "Principal",
+    "newTabName": "Nueva pestaña",
+    "newTabCreated": "Nueva pestaña creada",
+    "tabDeleted": "Pestaña \"{{name}}\" eliminada",
+    "addTab": "Agregar pestaña",
+    "addTabTitle": "Nueva pestaña (comienza con los paneles predeterminados)",
+    "renameHint": "{{name}} — doble clic para renombrar",
+    "deleteTab": "Eliminar pestaña",
+    "deleteTabAria": "Eliminar pestaña {{name}}",
+    "tabNameAria": "Nombre de pestaña"
+  },
+  "theaterPresets": {
+    "label": "Paquetes de cobertura",
+    "applied": "Paquete {{preset}} aplicado: {{count}} fuentes activadas",
+    "alreadyApplied": "El paquete {{preset}} ya está aplicado",
+    "ukraineWar": {
+      "label": "Guerra de Ucrania",
+      "description": "Activar medios ucranianos principales, prensa rusa independiente y fuentes de evaluación del frente"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacífico / Taiwán",
+      "description": "Activar fuentes de seguridad de Taiwán, Pakistán y el Sudeste Asiático"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel y África Occidental",
+      "description": "Activar fuentes locales del Sahel, Nigeria y África Occidental"
+    },
+    "caucasusCentralAsia": {
+      "label": "Cáucaso y Asia Central",
+      "description": "Activar fuentes regionales del Cáucaso Sur y Asia Central"
+    },
+    "middleEastFlashpoints": {
+      "label": "Focos de tensión en Oriente Medio",
+      "description": "Activar fuentes de Irán, Israel, el Golfo y las regiones kurdas"
+    },
+    "unavailable": "El paquete {{preset}} no está disponible con tus paneles actuales"
   }
 }

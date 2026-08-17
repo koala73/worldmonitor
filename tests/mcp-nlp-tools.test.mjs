@@ -31,11 +31,12 @@ const classifyResponse = {
 
 const digestResponse = {
   generatedAt: '2026-07-28T12:00:00.000Z',
+  feedStatuses: { Reuters: 'ok', 'AP News': 'ok', BleepingComputer: 'ok' },
   categories: {
     politics: {
       items: [
         { source: 'Reuters', title: 'Iran closes Strait of Hormuz to all tanker traffic', link: 'https://n/1', publishedAt: 1785405600000, isAlert: true, threat: { level: 'THREAT_LEVEL_CRITICAL', category: 'conflict', confidence: 0.9, source: 'llm' } },
-        { source: 'AP', title: 'Iran closes Strait of Hormuz, tanker traffic halted', link: 'https://n/2', publishedAt: 1785405900000, isAlert: false, threat: { level: 'THREAT_LEVEL_HIGH', category: 'conflict', confidence: 0.8, source: 'keyword' } },
+        { source: 'AP News', title: 'Iran closes Strait of Hormuz, tanker traffic halted', link: 'https://n/2', publishedAt: 1785405900000, isAlert: false, threat: { level: 'THREAT_LEVEL_HIGH', category: 'conflict', confidence: 0.8, source: 'keyword' } },
       ],
     },
     tech: {
@@ -170,6 +171,27 @@ describe('#5697 NLP MCP tools', () => {
     return { response, body, result, pipe };
   }
 
+  async function withDigestCategories(categories, run, feedStatuses = { fixture: 'empty' }) {
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init = {}) => {
+      const url = String(input);
+      if (url.includes('/api/news/v1/list-feed-digest')) {
+        requests.push({ url, init });
+        return Response.json({
+          generatedAt: '2026-07-28T12:00:00.000Z',
+          feedStatuses,
+          categories,
+        });
+      }
+      return previousFetch(input, init);
+    };
+    try {
+      return await run();
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  }
+
   it('lists all four tools with their caps in tools/list', async () => {
     const listed = await mcpHandler(new Request('https://worldmonitor.app/mcp', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -180,7 +202,49 @@ describe('#5697 NLP MCP tools', () => {
     assert.equal(byName.get('classify_event')?.inputSchema.properties.text.maxLength, 500);
     assert.deepEqual(byName.get('classify_event')?.inputSchema.required, ['text']);
     assert.equal(byName.get('extract_entities')?.inputSchema.properties.text.maxLength, 2048);
+    assert.equal(byName.get('extract_entities')?.inputSchema.properties.category.type, 'string');
+    assert.ok(
+      byName.get('extract_entities')?.inputSchema.properties.category.enum?.includes('commodities'),
+      'extract_entities category enum must include commodities',
+    );
+    assert.ok(
+      byName.get('extract_entities')?.inputSchema.properties.category.enum?.includes('intel'),
+      'extract_entities category enum must include intel',
+    );
+    assert.deepEqual(
+      byName.get('extract_entities')?.inputSchema.properties.variant.enum,
+      ['full', 'tech'],
+    );
+    assert.ok(
+      byName.get('extract_entities')?.inputSchema.properties.category.enum?.includes('vcblogs'),
+      'extract_entities category enum must include Tech-only buckets',
+    );
     assert.equal(byName.get('get_news_clusters')?.inputSchema.properties.limit.maximum, 25);
+    assert.equal(byName.get('get_news_clusters')?.inputSchema.properties.category.type, 'string');
+    assert.ok(
+      byName.get('get_news_clusters')?.inputSchema.properties.category.enum?.includes('commodities'),
+      'get_news_clusters category enum must include commodities',
+    );
+    assert.ok(
+      byName.get('get_news_clusters')?.inputSchema.properties.category.enum?.includes('intel'),
+      'get_news_clusters category enum must include intel',
+    );
+    assert.deepEqual(
+      byName.get('get_news_clusters')?.inputSchema.properties.variant.enum,
+      ['full', 'tech'],
+    );
+    assert.ok(
+      byName.get('get_news_clusters')?.inputSchema.properties.category.enum?.includes('accelerators'),
+      'get_news_clusters category enum must include Tech-only buckets',
+    );
+    const clusterSchema = byName.get('get_news_clusters')?.outputSchema.properties.clusters.items;
+    assert.ok(clusterSchema.required.includes('primarySourceProvenance'));
+    assert.ok(clusterSchema.required.includes('sourceProvenance'));
+    assert.equal(clusterSchema.properties.primarySourceProvenance.type, 'object');
+    assert.equal(clusterSchema.properties.sourceProvenance.type, 'array');
+    assert.equal(clusterSchema.properties.sourceProvenance.items.properties.source.type, 'string');
+    assert.equal(clusterSchema.properties.sourceProvenance.items.properties.risk.type, 'string');
+    assert.equal(clusterSchema.properties.sourceProvenance.items.properties.stateAffiliated.type, 'string');
     assert.equal(byName.get('get_keyword_spikes')?.inputSchema.properties.window_hours.maximum, 12);
     const classifyOutput = byName.get('classify_event')?.outputSchema;
     assert.deepEqual(classifyOutput.properties.classification.required,
@@ -338,6 +402,163 @@ describe('#5697 NLP MCP tools', () => {
       const cve = result.patternEntities.find((p) => p.kind === 'cve');
       assert.equal(cve?.value, 'CVE-2026-12345');
     });
+
+    it('can restrict digest aggregation to the commodities category', async () => {
+      await withDigestCategories({
+        politics: {
+          items: [
+            { source: 'AP', title: 'CVE-2026-9999 prompts emergency cyber summit', link: 'https://n/politics', publishedAt: 1785405600000 },
+          ],
+        },
+        commodities: {
+          items: [
+            { source: 'Gold & Metals', title: 'Gold and copper futures rise on supply concerns', link: 'https://n/commodities', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('extract_entities', { category: 'commodities' });
+        assert.equal(result.headlineCount, 1);
+        assert.equal(result.category, 'commodities');
+        assert.equal(result.note, undefined, 'known category must not emit a corrective note');
+        assert.ok(result.entities.some((entity) => entity.entityId === 'GC=F'));
+        assert.ok(result.entities.some((entity) => entity.entityId === 'HG=F'));
+        assert.equal(
+          result.patternEntities.some((entity) => entity.value === 'CVE-2026-9999'),
+          false,
+          'entities from sibling digest categories must not leak through the filter',
+        );
+      });
+    });
+
+    it('can aggregate a Tech-only digest category through the bounded variant input', async () => {
+      await withDigestCategories({
+        accelerators: {
+          items: [
+            { source: 'YC News', title: 'Y Combinator startups build on Microsoft cloud', link: 'https://n/yc', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('extract_entities', {
+          variant: 'tech',
+          category: 'accelerators',
+        });
+        const requestUrl = new URL(requests.at(-1).url);
+        assert.equal(requestUrl.searchParams.get('variant'), 'tech');
+        assert.equal(result.variant, 'tech');
+        assert.equal(result.category, 'accelerators');
+        assert.equal(result.headlineCount, 1);
+        assert.ok(result.entities.some((entity) => entity.entityId === 'MSFT'));
+      });
+    });
+
+    it('rejects an unknown digest variant without fetching', async () => {
+      const requestCount = requests.length;
+      const { result } = await callTool('extract_entities', { variant: 'finance' });
+      assert.equal(result.mode, 'headlines');
+      assert.equal(result.headlineCount, 0);
+      assert.match(result.error, /variant must be one of: full, tech/);
+      assert.equal(requests.length, requestCount);
+    });
+
+    it('can restrict digest aggregation to the intel category', async () => {
+      await withDigestCategories({
+        politics: {
+          items: [
+            { source: 'AP', title: 'CVE-2026-9999 prompts an emergency regional summit', link: 'https://n/politics', publishedAt: 1785405600000 },
+          ],
+        },
+        intel: {
+          items: [
+            { source: 'Defense One', title: 'CVE-2026-7777 tracked by APT28 in military networks', link: 'https://n/intel', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('extract_entities', { category: 'intel' });
+        assert.equal(result.headlineCount, 1);
+        assert.equal(result.category, 'intel');
+        assert.equal(result.note, undefined);
+        assert.ok(result.patternEntities.some((entity) => entity.value === 'CVE-2026-7777'));
+        assert.equal(
+          result.patternEntities.some((entity) => entity.value === 'CVE-2026-9999'),
+          false,
+        );
+      });
+    });
+
+    it('keeps a present but empty category distinct from an unknown category', async () => {
+      await withDigestCategories({ commodities: { items: [] } }, async () => {
+        const { result } = await callTool('extract_entities', { category: 'commodities' });
+        assert.equal(result.headlineCount, 0);
+        assert.equal(result.category, 'commodities');
+        assert.equal(result.note, undefined);
+        assert.deepEqual(result.entities, []);
+        assert.deepEqual(result.patternEntities, []);
+      });
+    });
+
+    it('lists the static category inventory when the digest has no buckets', async () => {
+      await withDigestCategories({}, async () => {
+        const { result } = await callTool('extract_entities', { category: 'commodities' });
+        assert.equal(result.headlineCount, 0);
+        assert.equal(result.category, 'commodities');
+        assert.match(result.note, /Unknown digest category "commodities"/);
+        assert.match(result.note, /intel/);
+        assert.deepEqual(result.entities, []);
+        assert.deepEqual(result.patternEntities, []);
+      });
+    });
+
+    it('lists the selected Tech inventory when its digest has no buckets', async () => {
+      await withDigestCategories({}, async () => {
+        const { result } = await callTool('extract_entities', {
+          variant: 'tech',
+          category: 'commodities',
+        });
+        const requestUrl = new URL(requests.at(-1).url);
+        assert.equal(requestUrl.searchParams.get('variant'), 'tech');
+        assert.equal(result.variant, 'tech');
+        assert.equal(result.headlineCount, 0);
+        assert.match(result.note, /accelerators/);
+        assert.doesNotMatch(result.note, /intel/);
+      });
+    });
+
+    it('returns a retryable source outage when the Tech digest has no fallback', async () => {
+      await withDigestCategories({}, async () => {
+        const { body, result } = await callTool('extract_entities', {
+          variant: 'tech',
+          category: 'accelerators',
+        });
+        assert.equal(result, null);
+        assert.equal(body.error?.code, -32003);
+        assert.equal(body.error?.data?.retryable, true);
+        assert.deepEqual(body.error?.data?.unavailable_inputs, ['news:digest:v1:tech:en']);
+      }, {});
+    });
+
+    it('returns a corrective note when category is unknown', async () => {
+      await withDigestCategories({
+        politics: {
+          items: [
+            { source: 'AP', title: 'Summit talks resume in Geneva', link: 'https://n/politics', publishedAt: 1785405600000 },
+          ],
+        },
+        commodities: {
+          items: [
+            { source: 'Oil & Gas', title: 'Crude oil futures rise on supply concerns', link: 'https://n/commodities', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('extract_entities', { category: 'commodity' });
+        assert.equal(result.mode, 'headlines');
+        assert.equal(result.headlineCount, 0);
+        assert.equal(result.category, 'commodity');
+        assert.match(result.note, /Unknown digest category "commodity"/);
+        assert.match(result.note, /commodities/);
+        assert.match(result.note, /politics/);
+        assert.deepEqual(result.entities, []);
+      });
+    });
   });
 
   describe('get_news_clusters', () => {
@@ -347,11 +568,115 @@ describe('#5697 NLP MCP tools', () => {
       assert.equal(result.totalClusters, 2);
       const hormuz = result.clusters.find((c) => c.memberCount === 2);
       assert.ok(hormuz, 'the two Hormuz headlines must form one cluster');
-      assert.deepEqual(new Set(hormuz.sources), new Set(['Reuters', 'AP']));
+      assert.deepEqual(new Set(hormuz.sources), new Set(['Reuters', 'AP News']));
+      assert.equal(hormuz.primarySourceProvenance.riskReviewed, true);
+      assert.equal(hormuz.primarySourceProvenance.typeReviewed, true);
+      assert.deepEqual(
+        new Set(hormuz.sourceProvenance.map((source) => source.source)),
+        new Set(['Reuters', 'AP News']),
+      );
       assert.ok(hormuz.topKeywords.includes('hormuz'));
       assert.equal(hormuz.threatLevel, 'critical');
       assert.equal(hormuz.isAlert, true);
       assert.ok(hormuz.firstSeen.endsWith('Z') && hormuz.lastUpdated.endsWith('Z'));
+    });
+
+    it('surfaces state affiliation and fail-closed review state for every projected source', async () => {
+      await withDigestCategories({
+        asia: {
+          items: [
+            { source: 'The Astana Times', title: 'Kazakhstan expands regional rail corridor', link: 'https://n/astana', publishedAt: 1785405600000 },
+            { source: 'Unreviewed Local Desk', title: 'Kazakhstan regional rail corridor expands', link: 'https://n/local', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'asia' });
+        const cluster = result.clusters[0];
+        const provenanceBySource = new Map(
+          cluster.sourceProvenance.map((entry) => [entry.source, entry]),
+        );
+        assert.equal(provenanceBySource.get('The Astana Times').stateAffiliated, 'Kazakhstan');
+        assert.equal(provenanceBySource.get('The Astana Times').riskReviewed, true);
+        assert.equal(provenanceBySource.get('Unreviewed Local Desk').risk, 'unknown');
+        assert.equal(provenanceBySource.get('Unreviewed Local Desk').riskReviewed, false);
+        assert.equal(provenanceBySource.get('Unreviewed Local Desk').typeReviewed, false);
+      });
+    });
+
+    it('stays inside the dispatcher budget at the maximum provenance-rich shape', async () => {
+      const sources = Array.from(
+        { length: 8 },
+        (_, sourceIndex) => `source${sourceIndex}-${'s'.repeat(5_000)}`,
+      );
+      const items = Array.from({ length: 25 }, (_, clusterIndex) => (
+        sources.map((source, sourceIndex) => ({
+          source,
+          title: `theater${clusterIndex} region${clusterIndex} corridor${clusterIndex} ${`topic${clusterIndex}`.repeat(1_000)}`,
+          link: `https://example.test/story/${clusterIndex}/${sourceIndex}/${'x'.repeat(5_000)}`,
+          publishedAt: 1785405600000 + clusterIndex * 1000 + sourceIndex,
+        }))
+      )).flat();
+
+      await withDigestCategories({ politics: { items } }, async () => {
+        const { result } = await callTool('get_news_clusters', { limit: 25 });
+        assert.equal(result._budget_exceeded, undefined, JSON.stringify(result));
+        assert.equal(result.clusters.length, 25);
+        assert.ok(
+          Buffer.byteLength(JSON.stringify(result), 'utf8') <= 262144,
+          'the supported max shape must fit the declared 256 KiB budget',
+        );
+        assert.ok(
+          result.clusters.every((cluster) => cluster.sourceProvenance.length === 8),
+          'the fixture must actually exercise all eight provenance slots',
+        );
+        for (const cluster of result.clusters) {
+          assert.ok(Buffer.byteLength(cluster.title, 'utf8') <= 512);
+          assert.ok(Buffer.byteLength(cluster.link, 'utf8') <= 2_048);
+          for (const source of cluster.sources) {
+            assert.ok(Buffer.byteLength(source, 'utf8') <= 160);
+          }
+        }
+      });
+    });
+
+    it('truncates multi-byte UTF-8 strings correctly at byte boundaries', async () => {
+      // 2-byte UTF-8 character: 'ñ' (U+00F1) = 2 bytes
+      // 3-byte UTF-8 character: '本' (U+672C) = 3 bytes
+      // 4-byte UTF-8 character: '𒀀' (U+12000) = 4 bytes
+      const multiByteSources = Array.from(
+        { length: 8 },
+        (_, sourceIndex) => `src${sourceIndex}-${'ñ'.repeat(26)}${'本'.repeat(17)}${'𒀀'.repeat(13)}`,
+      );
+      const items = [{
+        source: multiByteSources[0],
+        title: `Alert: ${'ñ'.repeat(85)}${'本'.repeat(57)}${'𒀀'.repeat(43)}`,
+        link: `https://example.test/${'ñ'.repeat(340)}/${'本'.repeat(227)}/${'𒀀'.repeat(170)}`,
+        publishedAt: 1785405600000,
+      }];
+
+      await withDigestCategories({ politics: { items } }, async () => {
+        const { result } = await callTool('get_news_clusters', { limit: 1 });
+        assert.equal(result.clusters.length, 1);
+        const cluster = result.clusters[0];
+        // Every field must be truncated to fit its byte budget without splitting
+        // a multi-byte character. The truncation function must not produce
+        // replacement characters or partially-encoded code points.
+        assert.ok(Buffer.byteLength(cluster.title, 'utf8') <= 512,
+          `title must be ≤512 UTF-8 bytes, got ${Buffer.byteLength(cluster.title, 'utf8')}`);
+        assert.ok(Buffer.byteLength(cluster.link, 'utf8') <= 2_048,
+          `link must be ≤2048 UTF-8 bytes, got ${Buffer.byteLength(cluster.link, 'utf8')}`);
+        for (const source of cluster.sources) {
+          assert.ok(Buffer.byteLength(source, 'utf8') <= 160,
+            `source must be ≤160 UTF-8 bytes, got ${Buffer.byteLength(source, 'utf8')}`);
+        }
+        // Verify no partial multi-byte sequences survived truncation
+        const decoder = new TextDecoder('utf8', { fatal: true });
+        decoder.decode(new TextEncoder().encode(cluster.title));
+        decoder.decode(new TextEncoder().encode(cluster.link));
+        for (const source of cluster.sources) {
+          decoder.decode(new TextEncoder().encode(source));
+        }
+      });
     });
 
     it('applies min_sources and limit filters', async () => {
@@ -360,6 +685,121 @@ describe('#5697 NLP MCP tools', () => {
       assert.equal(result.clusters[0].memberCount, 2);
       assert.equal(result.clusters[0].distinctSourceCount, 2);
       assert.equal(result.totalClusters, 2, 'totalClusters reports the pre-filter count');
+    });
+
+    it('can restrict clustering to the commodities category', async () => {
+      await withDigestCategories({
+        politics: {
+          items: [
+            { source: 'AP', title: 'Diplomatic talks resume after regional summit', link: 'https://n/politics', publishedAt: 1785405600000 },
+          ],
+        },
+        commodities: {
+          items: [
+            { source: 'Oil & Gas', title: 'Crude oil futures rise as OPEC supply tightens', link: 'https://n/commodities', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'commodities' });
+        assert.equal(result.headlineCount, 1);
+        assert.equal(result.totalClusters, 1);
+        assert.equal(result.category, 'commodities');
+        assert.equal(result.note, undefined);
+        assert.match(result.clusters[0].title, /Crude oil/);
+      });
+    });
+
+    it('can cluster a Tech-only digest category through the bounded variant input', async () => {
+      await withDigestCategories({
+        vcblogs: {
+          items: [
+            { source: 'First Round Review', title: 'Startup founders improve product retention', link: 'https://n/vc', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', {
+          variant: 'tech',
+          category: 'vcblogs',
+        });
+        const requestUrl = new URL(requests.at(-1).url);
+        assert.equal(requestUrl.searchParams.get('variant'), 'tech');
+        assert.equal(result.variant, 'tech');
+        assert.equal(result.category, 'vcblogs');
+        assert.equal(result.headlineCount, 1);
+        assert.equal(result.totalClusters, 1);
+      });
+    });
+
+    it('rejects an unknown clustering variant without fetching', async () => {
+      const requestCount = requests.length;
+      const { result } = await callTool('get_news_clusters', { variant: 'finance' });
+      assert.deepEqual(result.clusters, []);
+      assert.equal(result.headlineCount, 0);
+      assert.match(result.error, /variant must be one of: full, tech/);
+      assert.equal(requests.length, requestCount);
+    });
+
+    it('can restrict clustering to the intel category', async () => {
+      await withDigestCategories({
+        politics: {
+          items: [
+            { source: 'AP', title: 'Diplomatic talks resume after regional summit', link: 'https://n/politics', publishedAt: 1785405600000 },
+          ],
+        },
+        intel: {
+          items: [
+            { source: 'Defense One', title: 'Military networks targeted by APT28 operators', link: 'https://n/intel', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'intel' });
+        assert.equal(result.headlineCount, 1);
+        assert.equal(result.totalClusters, 1);
+        assert.equal(result.category, 'intel');
+        assert.equal(result.note, undefined);
+        assert.match(result.clusters[0].title, /Military networks/);
+      });
+    });
+
+    it('keeps a present but empty category distinct from an unknown category', async () => {
+      await withDigestCategories({ commodities: { items: [] } }, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'commodities' });
+        assert.equal(result.headlineCount, 0);
+        assert.equal(result.totalClusters, 0);
+        assert.equal(result.category, 'commodities');
+        assert.equal(result.note, undefined);
+        assert.deepEqual(result.clusters, []);
+      });
+    });
+
+    it('lists the static category inventory when the digest has no buckets', async () => {
+      await withDigestCategories({}, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'commodities' });
+        assert.equal(result.headlineCount, 0);
+        assert.equal(result.totalClusters, 0);
+        assert.equal(result.category, 'commodities');
+        assert.match(result.note, /Unknown digest category "commodities"/);
+        assert.match(result.note, /intel/);
+        assert.deepEqual(result.clusters, []);
+      });
+    });
+
+    it('returns a corrective note when category is unknown', async () => {
+      await withDigestCategories({
+        finance: {
+          items: [
+            { source: 'CNBC', title: 'Markets open higher on rate-cut bets', link: 'https://n/finance', publishedAt: 1785405600000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', { category: 'markets' });
+        assert.equal(result.headlineCount, 0);
+        assert.equal(result.totalClusters, 0);
+        assert.equal(result.category, 'markets');
+        assert.deepEqual(result.clusters, []);
+        assert.match(result.note, /Unknown digest category "markets"/);
+        assert.match(result.note, /finance/);
+      });
     });
 
     it('filters min_sources on distinct outlets, not repeat headlines from one outlet', async () => {
@@ -388,6 +828,77 @@ describe('#5697 NLP MCP tools', () => {
         assert.equal(result.totalClusters, 1, 'the two near-identical headlines cluster together');
         assert.equal(result.clusters.length, 0,
           'one outlet filing twice is not two-source corroboration');
+      } finally {
+        globalThis.fetch = originalFetchImpl;
+      }
+    });
+
+    // #6428: the case above only exercises the SAME label twice, which a plain
+    // Set already collapses. The bug this guards is one publisher arriving
+    // under several of its OWN feed labels — the tool's documented promise is
+    // "distinct outlets ... real corroboration, not one outlet filing twice",
+    // and a label count cannot keep it.
+    it('counts one publisher once across its own feed labels', async () => {
+      const originalFetchImpl = globalThis.fetch;
+      const digest = (sources) => ({
+        generatedAt: '2026-07-28T12:00:00.000Z',
+        categories: {
+          politics: {
+            items: sources.map((source, i) => ({
+              source,
+              title: `Sanctions package advances through committee ${'vote '.repeat(i)}`.trim(),
+              link: `https://s/${i}`,
+              publishedAt: 1785405600000 + i * 1000,
+              isAlert: false,
+            })),
+          },
+        },
+      });
+      const serve = (sources) => {
+        globalThis.fetch = async (input, init = {}) => {
+          const url = String(input);
+          if (url.includes('/api/news/v1/list-feed-digest')) {
+            requests.push({ url, init });
+            return Response.json(digest(sources));
+          }
+          return originalFetchImpl(input, init);
+        };
+      };
+
+      try {
+        serve(['Reuters World', 'Reuters US', 'Reuters Business']);
+        const oneWire = await callTool('get_news_clusters', { min_sources: 1 });
+        assert.equal(oneWire.result.totalClusters, 1, 'fixture must cluster into one story');
+        assert.equal(
+          oneWire.result.clusters[0].distinctSourceCount,
+          1,
+          'three Reuters feed labels are one publisher',
+        );
+        assert.equal(
+          oneWire.result.clusters[0].memberCount,
+          3,
+          'memberCount stays the article count — it is a volume signal, not corroboration',
+        );
+        assert.deepEqual(
+          oneWire.result.clusters[0].sources,
+          ['Reuters World', 'Reuters US', 'Reuters Business'],
+          'the label list stays intact for attribution',
+        );
+
+        serve(['Reuters World', 'Reuters US', 'Reuters Business']);
+        const filtered = await callTool('get_news_clusters', { min_sources: 2 });
+        assert.equal(
+          filtered.result.clusters.length,
+          0,
+          'min_sources filters on publishers, so one wire cannot satisfy min_sources: 2',
+        );
+
+        // Premise check: three real publishers must still pass, or the two
+        // assertions above would hold on a clustering failure instead.
+        serve(['Reuters World', 'BBC World', 'Al Jazeera']);
+        const genuine = await callTool('get_news_clusters', { min_sources: 2 });
+        assert.equal(genuine.result.clusters.length, 1);
+        assert.equal(genuine.result.clusters[0].distinctSourceCount, 3);
       } finally {
         globalThis.fetch = originalFetchImpl;
       }

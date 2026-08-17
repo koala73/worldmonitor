@@ -80,7 +80,7 @@ Each refresh cycle compares current state to previous snapshot, applying thresho
 
 ### Entity-Aware Correlation
 
-The signal engine uses a **knowledge base of 66 entities** to intelligently correlate market movements with news coverage. Rather than simple keyword matching, the system understands that "AVGO" (the ticker) relates to "Broadcom" (the company), "AI chips" (the sector), and entities like "Nvidia" (a competitor).
+The signal engine uses a **registry-backed entity knowledge base** to intelligently correlate market movements with news coverage. Rather than simple keyword matching, the system understands that "AVGO" (the ticker) relates to "Broadcom" (the company), "AI chips" (the sector), and entities like "Nvidia" (a competitor).
 
 #### Entity Knowledge Base
 
@@ -153,7 +153,7 @@ This broad coverage enables correlation detection across diverse geopolitical an
 
 ### Entity Registry Architecture
 
-The entity registry is a knowledge base of 66 entities with rich metadata for intelligent correlation:
+The entity registry is a knowledge base with rich metadata for intelligent correlation:
 
 ```typescript
 {
@@ -336,7 +336,7 @@ When a market symbol moves significantly, the system searches news clusters for 
 
 This enables signals like:
 
-- **Explained**: "AVGO +5.2% — Broadcom mentioned in 3 news clusters (AI chip demand)"
+- **Explained**: "AVGO +5.2% — Broadcom mentioned across news clusters (AI chip demand)"
 - **Silent**: "AVGO +5.2% — No correlated news after entity search"
 
 ---

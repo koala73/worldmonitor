@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, httpsProxyFetchRaw, resolveProxyForConnect, describeErr, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, httpsProxyFetchRaw, resolveProxyForConnect, describeErr, readSeedSnapshot, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
 import { getAcledToken } from './shared/acled-oauth.mjs';
+import { GDELT_BULK_UNREST_KEY } from './_gdelt-bulk-contract.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -19,6 +20,11 @@ const ACLED_PAGE_DELAY_MS = 250;
 const MAX_SOURCE_URLS = 5;
 const GDELT_THEME_MIN_DELAY_MS = 5_500;
 const GDELT_THEME_JITTER_MS = 1_000;
+// The 15-minute bulk materializer can miss several cycles without forcing an
+// immediate failover, but a preserved snapshot older than 3h must not be
+// republished as fresh unrest data.
+export const GDELT_BULK_UNREST_MAX_AGE_MS = 3 * 60 * 60 * 1000;
+export const GDELT_BULK_MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 // ---------- ACLED Event Type Mapping (from _shared.ts) ----------
 
@@ -433,6 +439,36 @@ export async function fetchGdeltEvents(opts = {}) {
   return events;
 }
 
+export async function readMaterializedGdeltEvents({
+  _readSnapshot = () => readSeedSnapshot(GDELT_BULK_UNREST_KEY, { strict: true }),
+  _now = Date.now,
+} = {}) {
+  const snapshot = await _readSnapshot();
+  if (!snapshot || !Array.isArray(snapshot.events)) {
+    throw new Error(`${GDELT_BULK_UNREST_KEY} missing or malformed`);
+  }
+  const fetchedAtMs = typeof snapshot.fetchedAt === 'number'
+    ? snapshot.fetchedAt
+    : Date.parse(snapshot.fetchedAt);
+  if (!Number.isFinite(fetchedAtMs)) {
+    throw new Error(`${GDELT_BULK_UNREST_KEY} fetchedAt is unparseable: ${snapshot.fetchedAt}`);
+  }
+  const ageMs = _now() - fetchedAtMs;
+  if (ageMs > GDELT_BULK_UNREST_MAX_AGE_MS) {
+    throw new Error(
+      `${GDELT_BULK_UNREST_KEY} stale snapshot`
+      + ` (${Math.round(ageMs / 60000)}min old; max ${GDELT_BULK_UNREST_MAX_AGE_MS / 60000}min)`,
+    );
+  }
+  if (ageMs < -GDELT_BULK_MAX_FUTURE_SKEW_MS) {
+    throw new Error(
+      `${GDELT_BULK_UNREST_KEY} future snapshot`
+      + ` (${Math.round(-ageMs / 60000)}min ahead; max ${GDELT_BULK_MAX_FUTURE_SKEW_MS / 60000}min)`,
+    );
+  }
+  return snapshot;
+}
+
 // ---------- Main Fetch ----------
 
 async function fetchUnrestEvents() {
@@ -445,13 +481,14 @@ async function fetchUnrestEvents() {
       maxPages: UNREST_RESOLUTION_MAX_PAGES,
       label: 'ACLED resolution',
     }),
-    fetchGdeltEvents(),
+    readMaterializedGdeltEvents(),
   ]);
 
   const acled = results[0].status === 'fulfilled' ? results[0].value : null;
   const acledResolution = results[1].status === 'fulfilled' ? results[1].value : null;
   const acledEvents = acled?.events ?? [];
-  const gdeltEvents = results[2].status === 'fulfilled' ? results[2].value : [];
+  const gdeltSnapshot = results[2].status === 'fulfilled' ? results[2].value : null;
+  const gdeltEvents = gdeltSnapshot?.events ?? [];
 
   if (results[0].status === 'rejected') console.log(`  ACLED failed: ${describeErr(results[0].reason)}`);
   if (results[1].status === 'rejected') console.log(`  ACLED resolution failed: ${describeErr(results[1].reason)}`);
@@ -472,7 +509,13 @@ async function fetchUnrestEvents() {
 
   console.log(`  Merged: ${acledEvents.length} ACLED + ${gdeltEvents.length} GDELT = ${sorted.length} deduplicated`);
 
-  return { events: sorted, clusters: [], pagination: undefined };
+  return {
+    events: sorted,
+    clusters: [],
+    pagination: gdeltSnapshot
+      ? { gdeltFetchedAt: gdeltSnapshot.fetchedAt }
+      : undefined,
+  };
 }
 
 function validate(data) {

@@ -251,7 +251,7 @@ const faqLd = extractFaqLd(rawBody);
     )}
     <div class="cta-banner">
       <h3>Put the Intelligence to Work</h3>
-      <p>Open the live dashboard free, or explore Pro for deeper analyst workflows, alerts, and AI research.</p>
+      <p>Move from the research to the surface that matches your intent: the live dashboard, Pro workflows, the REST API, or MCP.</p>
       <div class="cta-actions">
         <TrackedProductLink
           destination="dashboard"
@@ -268,6 +268,22 @@ const faqLd = extractFaqLd(rawBody);
           class="btn btn-secondary"
         >
           Explore Pro
+        </TrackedProductLink>
+        <TrackedProductLink
+          destination="api"
+          placement="article-cta-api"
+          campaign={slug}
+          class="btn btn-secondary"
+        >
+          API Reference
+        </TrackedProductLink>
+        <TrackedProductLink
+          destination="mcp"
+          placement="article-cta-mcp"
+          campaign={slug}
+          class="btn btn-secondary"
+        >
+          MCP Quickstart
         </TrackedProductLink>
       </div>
     </div>

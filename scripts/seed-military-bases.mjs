@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { loadEnvFile } from './_seed-utils.mjs';
 
@@ -12,13 +12,44 @@ const R2_BUCKET_URL = 'https://api.cloudflare.com/client/v4/accounts/{acct}/r2/b
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
 const PROGRESS_INTERVAL = 5000;
-const GRACE_PERIOD_MS = 5 * 60 * 1000;
-const VALIDATION_SAMPLE_SIZE = 10;
+// Window between publishing a new version and deleting the superseded one, so a
+// reader that resolved `military:bases:active` just before the switch can still
+// GET the old geo/meta keys.
+//
+// 30s, not 300s (#6806). This wait runs INSIDE the bundle section's slot but
+// AFTER `atomicSwitch` has already made the new version live, so every second of
+// it is budget the section reserves to do nothing. At 5 minutes it was 55% of
+// the 540s reservation, which is what made `Military-Bases` need 565s of
+// `seed-bundle-static-ref`'s 570s budget and starve every other due section.
+// The window it actually has to cover is one in-flight HTTP request, which is
+// seconds; 30s is an order of magnitude over that.
+export const GRACE_PERIOD_MS = 30 * 1000;
+const VALIDATION_BATCH_SIZE = 500;
+const USER_AGENT = 'worldmonitor-military-bases-seeder/1.0';
 
-function parseArgs() {
+const PUBLISH_ACTIVE_AND_META_SCRIPT = `
+redis.call('SET', KEYS[1], ARGV[1])
+redis.call('SET', KEYS[2], ARGV[2])
+return ARGV[1]
+`.trim();
+
+const BACKFILL_META_IF_ACTIVE_SCRIPT = `
+local current = redis.call('GET', KEYS[1])
+if current ~= ARGV[1] then
+  return {0, current or ''}
+end
+redis.call('SET', KEYS[2], ARGV[2])
+return {1, current}
+`.trim();
+
+export function parseArgs() {
   const args = process.argv.slice(2);
   let env = 'production';
   let sha = '';
+  // Bypass the missing-seed-meta repair short-circuit and reseed unconditionally.
+  // Without this an operator who runs the seeder by hand while the freshness
+  // marker is absent gets the cheap repair instead of the reseed they asked for.
+  let force = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--env' && args[i + 1]) {
@@ -29,6 +60,13 @@ function parseArgs() {
       env = args[i].split('=')[1];
     } else if (args[i].startsWith('--sha=')) {
       sha = args[i].split('=')[1];
+    } else if (args[i] === '--force' || args[i] === '--force=true') {
+      force = true;
+    } else if (args[i].startsWith('--force=')) {
+      // `--env=`/`--sha=` accept the `=` form, so an operator reaching for
+      // `--force=1` must not silently get the repair path instead of the reseed
+      // they asked for. Anything other than an explicit false-y value enables it.
+      force = !['false', '0', 'no'].includes(args[i].split('=')[1].toLowerCase());
     }
   }
 
@@ -42,7 +80,7 @@ function parseArgs() {
     sha = 'dev';
   }
 
-  return { env, sha };
+  return { env, sha, force };
 }
 
 function getKeyPrefix(env, sha) {
@@ -55,15 +93,15 @@ function maskToken(token) {
   return token.slice(0, 4) + '***' + token.slice(-4);
 }
 
-async function pipelineRequest(url, token, commands, attempt = 1) {
-  const body = JSON.stringify(commands);
-  const resp = await fetch(`${url}/pipeline`, {
+async function redisRequest(url, token, path, body, label, attempt = 1) {
+  const resp = await fetch(`${url}${path}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
+      'User-Agent': USER_AGENT,
     },
-    body,
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
   });
 
@@ -71,14 +109,50 @@ async function pipelineRequest(url, token, commands, attempt = 1) {
     const text = await resp.text().catch(() => '');
     if (attempt < MAX_RETRIES) {
       const delay = RETRY_BASE_MS * 2 ** (attempt - 1);
-      console.warn(`  Pipeline failed (HTTP ${resp.status}), retry ${attempt}/${MAX_RETRIES} in ${delay}ms...`);
+      console.warn(`  ${label} failed (HTTP ${resp.status}), retry ${attempt}/${MAX_RETRIES} in ${delay}ms...`);
       await sleep(delay);
-      return pipelineRequest(url, token, commands, attempt + 1);
+      return redisRequest(url, token, path, body, label, attempt + 1);
     }
-    throw new Error(`Pipeline failed after ${MAX_RETRIES} attempts: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+    throw new Error(`${label} failed after ${MAX_RETRIES} attempts: HTTP ${resp.status} — ${text.slice(0, 200)}`);
   }
 
-  return resp.json();
+  try {
+    return await resp.json();
+  } catch (err) {
+    throw new Error(`${label} returned invalid JSON: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+function commandFailure(result) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return 'invalid response cell';
+  if (result.error != null) return String(result.error);
+  if (!Object.hasOwn(result, 'result')) return 'missing result field';
+  if (result.result === 'ERR') return 'ERR';
+  return null;
+}
+
+async function pipelineRequest(url, token, commands) {
+  const results = await redisRequest(url, token, '/pipeline', commands, 'Pipeline');
+  if (!Array.isArray(results) || results.length !== commands.length) {
+    throw new Error(`Pipeline returned ${Array.isArray(results) ? results.length : 'an invalid response'} for ${commands.length} commands`);
+  }
+
+  for (let i = 0; i < results.length; i++) {
+    const failure = commandFailure(results[i]);
+    if (failure) {
+      throw new Error(`Pipeline command ${i + 1}/${commands.length} ${commands[i]?.[0] || 'UNKNOWN'} failed: ${failure}`);
+    }
+  }
+  return results;
+}
+
+async function commandRequest(url, token, command) {
+  const response = await redisRequest(url, token, '/', command, 'Redis command');
+  const failure = commandFailure(response);
+  if (failure) {
+    throw new Error(`Redis command ${command[0] || 'UNKNOWN'} failed: ${failure}`);
+  }
+  return response.result;
 }
 
 function sleep(ms) {
@@ -125,7 +199,15 @@ async function seedMeta(url, token, metaKey, entries) {
   return seeded;
 }
 
-async function validate(url, token, prefix, version, expectedCount) {
+/**
+ * @param {{ deep?: boolean }} [opts] `deep: false` stops after the ZCARD/HLEN
+ *   agreement check and skips the per-member walk. The walk costs one round
+ *   trip per 500 records (~250 for the current corpus), which is affordable
+ *   once per real reseed but not for the cheap seed-meta repair path, which has
+ *   to finish inside a section slot that no longer reserves ten minutes (#6806).
+ */
+async function validate(url, token, prefix, version, expectedCount, opts = {}) {
+  const { deep = true } = opts;
   const geoKey = `${prefix}military:bases:geo:${version}`;
   const metaKey = `${prefix}military:bases:meta:${version}`;
 
@@ -136,55 +218,221 @@ async function validate(url, token, prefix, version, expectedCount) {
     ['HLEN', metaKey],
   ]);
 
-  const geoCount = zcardResult.result;
-  const metaCount = hlenResult.result;
+  const geoCount = Number(zcardResult.result);
+  const metaCount = Number(hlenResult.result);
 
   console.log(`  ZCARD ${geoKey} = ${geoCount} (expected >= ${expectedCount})`);
   console.log(`  HLEN  ${metaKey} = ${metaCount} (expected == ZCARD)`);
 
-  if (geoCount < expectedCount) {
+  if (!Number.isSafeInteger(geoCount) || geoCount < expectedCount) {
     throw new Error(`GEO count ${geoCount} < expected ${expectedCount}`);
   }
 
-  if (metaCount !== geoCount) {
+  if (!Number.isSafeInteger(metaCount) || metaCount !== geoCount) {
     throw new Error(`META count ${metaCount} != GEO count ${geoCount}`);
   }
 
-  const membersResult = await pipelineRequest(url, token, [
-    ['ZRANDMEMBER', geoKey, String(VALIDATION_SAMPLE_SIZE)],
-  ]);
-
-  const sampleIds = membersResult[0].result;
-  if (!sampleIds || sampleIds.length === 0) {
-    throw new Error('ZRANDMEMBER returned no members');
+  if (!deep) {
+    console.log(`  Shallow check only — ZCARD == HLEN == ${geoCount}; per-member walk skipped.`);
+    return geoCount;
   }
 
-  const hmgetResult = await pipelineRequest(url, token, [
-    ['HMGET', metaKey, ...sampleIds],
-  ]);
+  let validatedCount = 0;
+  for (let offset = 0; offset < geoCount; offset += VALIDATION_BATCH_SIZE) {
+    const end = Math.min(offset + VALIDATION_BATCH_SIZE, geoCount) - 1;
+    const membersResult = await pipelineRequest(url, token, [
+      ['ZRANGE', geoKey, String(offset), String(end)],
+    ]);
+    const memberIds = membersResult[0].result;
+    const expectedBatchSize = end - offset + 1;
+    if (!Array.isArray(memberIds) || memberIds.length !== expectedBatchSize) {
+      throw new Error(`ZRANGE returned ${Array.isArray(memberIds) ? memberIds.length : 'an invalid response'} members for range ${offset}-${end}`);
+    }
 
-  const values = hmgetResult[0].result;
-  let parseOk = 0;
-  for (let i = 0; i < values.length; i++) {
-    if (!values[i]) {
-      throw new Error(`Sample ID "${sampleIds[i]}" missing from META hash`);
+    const hmgetResult = await pipelineRequest(url, token, [
+      ['HMGET', metaKey, ...memberIds],
+    ]);
+    const values = hmgetResult[0].result;
+    if (!Array.isArray(values) || values.length !== memberIds.length) {
+      throw new Error(`HMGET returned ${Array.isArray(values) ? values.length : 'an invalid response'} values for ${memberIds.length} members`);
     }
-    try {
-      JSON.parse(values[i]);
-      parseOk++;
-    } catch {
-      throw new Error(`Sample ID "${sampleIds[i]}" has invalid JSON in META hash`);
+
+    for (let i = 0; i < values.length; i++) {
+      if (!values[i]) {
+        throw new Error(`ID "${memberIds[i]}" missing from META hash`);
+      }
+      try {
+        JSON.parse(values[i]);
+      } catch {
+        throw new Error(`ID "${memberIds[i]}" has invalid JSON in META hash`);
+      }
     }
+    validatedCount += memberIds.length;
   }
 
-  console.log(`  Sampled ${parseOk}/${sampleIds.length} entries — all valid JSON`);
+  const [finalZcardResult, finalHlenResult] = await pipelineRequest(url, token, [
+    ['ZCARD', geoKey],
+    ['HLEN', metaKey],
+  ]);
+  if (Number(finalZcardResult.result) !== geoCount || Number(finalHlenResult.result) !== metaCount) {
+    throw new Error('GEO or META counts changed during validation');
+  }
+
+  console.log(`  Validated ${validatedCount}/${geoCount} entries — all present with valid JSON`);
   console.log('  Validation passed.');
+  return geoCount;
 }
 
-async function atomicSwitch(url, token, prefix, version) {
+// `durationMs` is the measured seed+validate wall time. It is published rather
+// than only logged because this seeder runs as a Railway cron section: its
+// stdout is not retrievable after the fact, so the seed-meta record is the only
+// durable measurement available to size the section's `timeoutMs` against real
+// runtime instead of a worst-case guess (#6806).
+function buildSeedMetaPayload(version, recordCount, fetchedAt, durationMs) {
+  return JSON.stringify({
+    fetchedAt,
+    recordCount,
+    sourceVersion: String(version),
+    ...(Number.isFinite(durationMs) ? { durationMs } : {}),
+  });
+}
+
+export async function atomicSwitch(
+  url,
+  token,
+  prefix,
+  version,
+  recordCount,
+  fetchedAt = Date.now(),
+  durationMs = undefined,
+) {
   const activeKey = `${prefix}military:bases:active`;
-  await pipelineRequest(url, token, [['SET', activeKey, String(version)]]);
+  const seedMetaKey = `${prefix}seed-meta:military:bases`;
+  const publishedVersion = await commandRequest(url, token, [
+    'EVAL',
+    PUBLISH_ACTIVE_AND_META_SCRIPT,
+    '2',
+    activeKey,
+    seedMetaKey,
+    String(version),
+    buildSeedMetaPayload(version, recordCount, fetchedAt, durationMs),
+  ]);
+  if (String(publishedVersion) !== String(version)) {
+    throw new Error(`Atomic switch returned unexpected version "${publishedVersion}"`);
+  }
   console.log(`\nAtomic switch: SET ${activeKey} = ${version}`);
+  console.log(`Freshness meta: SET ${seedMetaKey}`);
+}
+
+/**
+ * Rebuild `seed-meta:military:bases` from whatever `military:bases:active`
+ * already points at, without reseeding.
+ *
+ * That key is the section's ONLY freshness signal — it declares no
+ * `canonicalKey`, so `_bundle-runner.mjs` falls through to the legacy
+ * `seed-meta:<key>` read. While it is absent the runner sees "never seeded" and
+ * marks the section due on EVERY daily tick instead of every 30 days, which is
+ * what turned an occasionally-expensive section into a permanently-due one
+ * (#6806).
+ *
+ * @param {{ deep?: boolean }} [opts] `deep: false` trusts ZCARD/HLEN agreement
+ *   instead of walking every member. Use it for the repair path, where the
+ *   published data is already live and the goal is to restore the marker
+ *   cheaply rather than to re-audit a corpus that has not changed.
+ */
+export async function backfillSeedMetaFromActiveVersion(url, token, prefix, opts = {}) {
+  const { deep = true } = opts;
+  const activeKey = `${prefix}military:bases:active`;
+  const activeResult = await pipelineRequest(url, token, [['GET', activeKey]]);
+  const rawVersion = activeResult[0]?.result;
+  if (rawVersion == null || rawVersion === '') {
+    throw new Error('Data file not found locally or on R2, and no existing active version in Redis');
+  }
+
+  const version = String(rawVersion);
+  const fetchedAt = Number(version);
+  if (!/^\d+$/.test(version) || !Number.isSafeInteger(fetchedAt) || fetchedAt <= 0) {
+    throw new Error(`Active version "${version}" is not a valid millisecond timestamp`);
+  }
+
+  const recordCount = await validate(url, token, prefix, version, 1, { deep });
+
+  const seedMetaKey = `${prefix}seed-meta:military:bases`;
+  const writeResult = await commandRequest(url, token, [
+    'EVAL',
+    BACKFILL_META_IF_ACTIVE_SCRIPT,
+    '2',
+    activeKey,
+    seedMetaKey,
+    version,
+    buildSeedMetaPayload(version, recordCount, fetchedAt),
+  ]);
+  if (!Array.isArray(writeResult) || Number(writeResult[0]) !== 1) {
+    const currentVersion = Array.isArray(writeResult) ? writeResult[1] : null;
+    throw new Error(`Active version changed during validation (${version} -> ${currentVersion || 'missing'})`);
+  }
+  // Deliberately does not name a reason: there are two callers (no data file to
+  // seed from, and the #6806 missing-marker repair) and each logs its own before
+  // calling. Naming one here mislabels the other in the Railway log.
+  console.log(`Restored ${seedMetaKey} from active version ${version} (${recordCount.toLocaleString()} records).`);
+  return { version, fetchedAt, recordCount };
+}
+
+function isRedisTransportError(err) {
+  if (!(err instanceof Error)) return false;
+  const message = err.message;
+  return (
+    message.startsWith('Redis command ')
+    || message.startsWith('Pipeline ')
+    || message.includes(' failed after ')
+  );
+}
+
+function isActiveVersionCasConflict(err) {
+  return err instanceof Error && err.message.startsWith('Active version changed during validation');
+}
+
+/**
+ * Cheap missing-marker repair. Returns `repaired` only when seed-meta was
+ * rewritten from a live active version; every other action means `main()`
+ * should continue into the file/R2 reseed path.
+ *
+ * A validate/data-shape failure on the published pointer must not abort the
+ * section: that used to fall through to a rewrite, and exiting 1 here would
+ * leave seed-meta absent so every later tick retries the same dead repair.
+ * A compare-and-swap miss means another writer already published — rethrow.
+ * Redis transport errors also rethrow; a 1,000-round-trip reseed would fail
+ * the same way.
+ */
+export async function maybeRepairMissingSeedMeta(url, token, prefix, { force = false } = {}) {
+  if (force) return { action: 'skipped-force' };
+
+  const seedMetaKey = `${prefix}seed-meta:military:bases`;
+  const existingSeedMeta = await commandRequest(url, token, ['GET', seedMetaKey]);
+  if (existingSeedMeta != null && existingSeedMeta !== '') {
+    return { action: 'skipped-present' };
+  }
+
+  const activeVersion = await commandRequest(url, token, [
+    'GET',
+    `${prefix}military:bases:active`,
+  ]);
+  if (!activeVersion) {
+    return { action: 'fallthrough-no-active' };
+  }
+
+  console.log(`${seedMetaKey} is missing while an active version (${activeVersion}) is published.`);
+  console.log('Restoring the freshness marker without reseeding...');
+  try {
+    const repaired = await backfillSeedMetaFromActiveVersion(url, token, prefix, { deep: false });
+    return { action: 'repaired', ...repaired };
+  } catch (err) {
+    if (isActiveVersionCasConflict(err) || isRedisTransportError(err)) throw err;
+    console.warn(
+      `Shallow repair failed (${err instanceof Error ? err.message : err}); falling through to reseed.`,
+    );
+    return { action: 'fallthrough-invalid-active' };
+  }
 }
 
 async function cleanupOldVersion(url, token, prefix, newVersion) {
@@ -204,7 +452,7 @@ async function cleanupOldVersion(url, token, prefix, newVersion) {
 async function main() {
   loadEnvFile(import.meta.url);
 
-  const { env, sha } = parseArgs();
+  const { env, sha, force } = parseArgs();
   const prefix = getKeyPrefix(env, sha);
 
   const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -217,6 +465,22 @@ async function main() {
   if (!redisToken) {
     console.error('Missing UPSTASH_REDIS_REST_TOKEN. Set it in .env.local or as an env var.');
     process.exit(1);
+  }
+
+  // Everything from here on bills against the bundle section's slot, so this is
+  // where the published `durationMs` has to start. Measuring only the write loop
+  // would omit the R2 download (up to 60s), the JSON.parse of ~125k entries and
+  // the post-publish grace — and the whole point of publishing the number is to
+  // size `timeoutMs` in seed-bundle-static-ref.mjs against it (#6806).
+  const runStartedAt = Date.now();
+
+  // Missing seed-meta with a live active version: restore the marker and stop.
+  // `--force`, a present marker, no active pointer, or a broken active corpus
+  // all fall through to the file/R2 reseed. A successful repair costs at most
+  // one tick if the restored timestamp is already past the 30-day interval.
+  const repair = await maybeRepairMissingSeedMeta(redisUrl, redisToken, prefix, { force });
+  if (repair.action === 'repaired') {
+    return;
   }
 
   const volumePath = '/data/military-bases-final.json';
@@ -252,15 +516,9 @@ async function main() {
   }
 
   if (!dataPath) {
-    const activeKey = `${prefix}military:bases:active`;
-    const check = await pipelineRequest(redisUrl, redisToken, [['GET', activeKey]]);
-    const existing = check[0]?.result;
-    if (existing) {
-      console.log(`No data file found — Redis already has active version ${existing}, skipping.`);
-      process.exit(0);
-    }
-    console.error(`Data file not found locally or on R2, and no existing data in Redis.`);
-    process.exit(1);
+    console.log('No data file found locally or on R2 — falling back to the published active version.');
+    await backfillSeedMetaFromActiveVersion(redisUrl, redisToken, prefix);
+    return;
   }
 
   const raw = readFileSync(dataPath, 'utf8');
@@ -312,7 +570,13 @@ async function main() {
 
   await validate(redisUrl, redisToken, prefix, version, entries.length);
 
-  await atomicSwitch(redisUrl, redisToken, prefix, version);
+  // Measured from `runStartedAt`, not `t0`: the per-member walk is roughly half
+  // the round trips and data acquisition can add another minute, so a duration
+  // scoped to the write loop would under-report the slot requirement it exists
+  // to size. Still excludes the grace below — the config comment adds it back
+  // rather than this number pretending to be the whole slot (#6806).
+  const durationMs = Date.now() - runStartedAt;
+  await atomicSwitch(redisUrl, redisToken, prefix, version, entries.length, Date.now(), durationMs);
 
   if (oldInfo) {
     console.log(`\nScheduling cleanup of old version ${oldInfo.oldVersion} in ${GRACE_PERIOD_MS / 1000}s...`);
@@ -332,7 +596,10 @@ async function main() {
   console.log(`  Total entries:  ${entries.length.toLocaleString()}`);
 }
 
-main().catch(err => {
-  console.error('\nFATAL:', err.message || err);
-  process.exit(1);
-});
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isMain) {
+  main().catch(err => {
+    console.error('\nFATAL:', err.message || err);
+    process.exit(1);
+  });
+}

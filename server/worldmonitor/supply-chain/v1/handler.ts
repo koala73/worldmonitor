@@ -4,6 +4,7 @@ import { getShippingRates } from './get-shipping-rates';
 import { getChokepointStatus } from './get-chokepoint-status';
 import { getChokepointHistory } from './get-chokepoint-history';
 import { getCriticalMinerals } from './get-critical-minerals';
+import { getMineralProduction } from './get-mineral-production';
 import { getShippingStress } from './get-shipping-stress';
 import { getCountryChokepointIndex } from './get-country-chokepoint-index';
 import { getBypassOptions } from './get-bypass-options';
@@ -27,6 +28,7 @@ export const supplyChainHandler: SupplyChainServiceHandler = {
   getChokepointStatus,
   getChokepointHistory,
   getCriticalMinerals,
+  getMineralProduction,
   getShippingStress,
   getCountryChokepointIndex,
   getBypassOptions,

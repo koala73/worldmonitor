@@ -141,6 +141,29 @@ function runPrepaintBootScript(mapCollapsed) {
   return classes;
 }
 
+function runMapPreferencePrepaintScript({ storageThrows = false } = {}) {
+  const script = html.match(/<script data-wm-map-prepaint>([\s\S]*?)<\/script>/);
+  assert.ok(script, 'Expected the isolated mobile map pre-paint script in index.html');
+  const classes = new Set();
+  runInNewContext(script[1], {
+    document: {
+      documentElement: {
+        classList: {
+          add: (name) => classes.add(name),
+          remove: (name) => classes.delete(name),
+        },
+      },
+    },
+    localStorage: {
+      getItem: () => {
+        if (storageThrows) throw new Error('storage blocked');
+        return null;
+      },
+    },
+  });
+  return classes;
+}
+
 describe('#4580 boot skeleton <-> app footprint parity', () => {
   it('mobile skeleton map reserves the same height as the real .map-section', () => {
     // Source of truth: the full-viewport mobile map rule in main.css.
@@ -210,6 +233,10 @@ describe('#4580 boot skeleton <-> app footprint parity', () => {
       !runPrepaintBootScript(false).has('wm-map-collapsed'),
       'the inline pre-paint script must leave the expanded-map cohort unchanged',
     );
+    assert.ok(
+      runMapPreferencePrepaintScript({ storageThrows: true }).has('wm-map-collapsed'),
+      'blocked storage must keep the feed-first collapsed default on the first paint',
+    );
 
     const mobileMapToggle = classMethodBody(panelLayout, 'private setupMobileMapToggle()');
     assert.match(
@@ -276,11 +303,11 @@ describe('#4580 boot skeleton <-> app footprint parity', () => {
     // #5205 review P1: this read runs BEFORE the shell installs — a bare
     // localStorage access throws under blocked storage (SecurityError) and
     // would strand users on the boot skeleton. The helper must route through
-    // the try/catch-guarded loadFromStorage with an expanded default.
+    // the try/catch-guarded loadFromStorage with the feed-first collapsed default.
     assert.match(
       panelLayout,
-      /private static isMobileMapCollapsedPreferred\(\): boolean \{\s*return loadFromStorage<boolean>\('mobile-map-collapsed', false\) === true;/,
-      'the collapse-pref read must use guarded loadFromStorage, defaulting to expanded',
+      /private static isMobileMapCollapsedPreferred\(\): boolean \{\s*return loadFromStorage<boolean>\('mobile-map-collapsed', true\) === true;/,
+      'the collapse-pref read must use guarded loadFromStorage, defaulting to the mobile Today state',
     );
     assert.doesNotMatch(
       panelLayout,

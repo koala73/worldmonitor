@@ -28,6 +28,7 @@
 //      scripts/seed-portwatch-port-activity.mjs,
 //      scripts/seed-bundle-portwatch-port-activity.mjs,
 //      scripts/_seed-utils.mjs,
+//      scripts/_portwatch-content-freshness.mjs,
 //      scripts/_proxy-utils.cjs,
 //      scripts/_country-resolver.mjs,
 //      scripts/_bundle-runner.mjs,

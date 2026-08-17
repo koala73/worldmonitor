@@ -1,0 +1,338 @@
+{
+  "firstDiscoveredAt": 1786406400000,
+  "cases": [
+    {
+      "name": "positive contract award publishes from verified first-party X",
+      "nowOffsetHours": 1,
+      "evidence": [
+        {
+          "id": "e-contract-x",
+          "provider": "x",
+          "origin": "x-company-account",
+          "sourceAuthority": "verified_first_party",
+          "independence": "first_party",
+          "queryVersion": "cm-x-query-v1"
+        }
+      ],
+      "classification": {
+        "attributionTruth": "confirmed",
+        "attributionConfidence": 0.98,
+        "occurrenceTruth": "confirmed",
+        "occurrenceConfidence": 0.96,
+        "materialityTruth": "material",
+        "materialityConfidence": 0.91,
+        "evidenceIds": ["e-contract-x"],
+        "direction": "positive",
+        "channels": ["financial", "reputation"],
+        "magnitude": "high",
+        "category": "contract_award",
+        "title": "Company wins a material contract",
+        "neutralSummary": "The company announced a material customer contract.",
+        "positiveRationale": "The award adds contracted revenue and validates demand.",
+        "negativeRationale": "",
+        "conflict": false
+      },
+      "expected": { "decision": "publish", "reasonCodes": ["policy_gates_satisfied"] }
+    },
+    {
+      "name": "negative safety incident publishes with two independent origins",
+      "nowOffsetHours": 2,
+      "evidence": [
+        {
+          "id": "e-safety-a",
+          "provider": "exa",
+          "origin": "origin-wire-a",
+          "sourceAuthority": "independent_source",
+          "independence": "independent",
+          "queryVersion": "cm-exa-query-v3"
+        },
+        {
+          "id": "e-safety-b",
+          "provider": "exa",
+          "origin": "origin-regulator-b",
+          "sourceAuthority": "independent_source",
+          "independence": "independent",
+          "queryVersion": "cm-exa-query-v2"
+        }
+      ],
+      "classification": {
+        "attributionTruth": "confirmed",
+        "attributionConfidence": 0.97,
+        "occurrenceTruth": "confirmed",
+        "occurrenceConfidence": 0.94,
+        "materialityTruth": "material",
+        "materialityConfidence": 0.88,
+        "evidenceIds": ["e-safety-a", "e-safety-b"],
+        "direction": "negative",
+        "channels": ["financial", "reputation"],
+        "magnitude": "critical",
+        "category": "safety_incident",
+        "title": "Regulators investigate a serious safety incident",
+        "neutralSummary": "Two independent sources report a serious operational safety incident.",
+        "positiveRationale": "",
+        "negativeRationale": "The incident can cause operational, legal, and reputation costs.",
+        "conflict": false
+      },
+      "expected": { "decision": "publish", "reasonCodes": ["policy_gates_satisfied"] }
+    },
+    {
+      "name": "mixed restructuring publishes with both rationales",
+      "nowOffsetHours": 3,
+      "evidence": [
+        {
+          "id": "e-restructure-x",
+          "provider": "x",
+          "origin": "x-company-account",
+          "sourceAuthority": "verified_first_party",
+          "independence": "first_party",
+          "queryVersion": "cm-x-query-v1"
+        }
+      ],
+      "classification": {
+        "attributionTruth": "confirmed",
+        "attributionConfidence": 0.96,
+        "occurrenceTruth": "confirmed",
+        "occurrenceConfidence": 0.92,
+        "materialityTruth": "material",
+        "materialityConfidence": 0.85,
+        "evidenceIds": ["e-restructure-x"],
+        "direction": "mixed",
+        "channels": ["financial", "reputation"],
+        "magnitude": "high",
+        "category": "restructuring",
+        "title": "Company announces a broad restructuring",
+        "neutralSummary": "The company will reduce costs and eliminate positions.",
+        "positiveRationale": "The program can improve efficiency and cash generation.",
+        "negativeRationale": "Job losses and execution risk can damage operations and reputation.",
+        "conflict": false
+      },
+      "expected": { "decision": "publish", "reasonCodes": ["policy_gates_satisfied"] }
+    },
+    {
+      "name": "weak X rumor holds",
+      "nowOffsetHours": 4,
+      "evidence": [
+        {
+          "id": "e-rumor-x",
+          "provider": "x",
+          "origin": "x-ordinary-account",
+          "sourceAuthority": "low_authority",
+          "independence": "unknown",
+          "queryVersion": "cm-x-query-v1"
+        }
+      ],
+      "classification": {
+        "attributionTruth": "confirmed",
+        "attributionConfidence": 0.93,
+        "occurrenceTruth": "confirmed",
+        "occurrenceConfidence": 0.86,
+        "materialityTruth": "material",
+        "materialityConfidence": 0.78,
+        "evidenceIds": ["e-rumor-x"],
+        "direction": "negative",
+        "channels": ["reputation"],
+        "magnitude": "medium",
+        "category": "rumor",
+        "title": "Unverified account reports a possible incident",
+        "neutralSummary": "An ordinary social account reports an unconfirmed incident.",
+        "positiveRationale": "",
+        "negativeRationale": "If confirmed, the report could affect reputation.",
+        "conflict": false
+      },
+      "expected": { "decision": "hold", "reasonCodes": ["insufficient_source_authority"] }
+    },
+    {
+      "name": "wrong subsidiary rejects",
+      "nowOffsetHours": 5,
+      "evidence": [
+        {
+          "id": "e-wrong-subsidiary",
+          "provider": "x",
+          "origin": "x-company-account",
+          "sourceAuthority": "verified_first_party",
+          "independence": "first_party",
+          "queryVersion": "cm-x-query-v2"
+        }
+      ],
+      "classification": {
+        "attributionTruth": "wrong_company",
+        "attributionConfidence": 0.99,
+        "occurrenceTruth": "confirmed",
+        "occurrenceConfidence": 0.95,
+        "materialityTruth": "material",
+        "materialityConfidence": 0.81,
+        "evidenceIds": ["e-wrong-subsidiary"],
+        "direction": "negative",
+        "channels": ["reputation"],
+        "magnitude": "high",
+        "category": "subsidiary_event",
+        "title": "A different subsidiary reports an incident",
+        "neutralSummary": "The reported event concerns a different legal entity.",
+        "positiveRationale": "",
+        "negativeRationale": "The event is negative for the other subsidiary.",
+        "conflict": false
+      },
+      "expected": { "decision": "reject", "reasonCodes": ["wrong_company"] }
+    },
+    {
+      "name": "conflicting evidence holds",
+      "nowOffsetHours": 7,
+      "evidence": [
+        {
+          "id": "e-conflict-a",
+          "provider": "exa",
+          "origin": "origin-a",
+          "sourceAuthority": "independent_source",
+          "independence": "independent",
+          "queryVersion": "cm-exa-query-v2"
+        },
+        {
+          "id": "e-conflict-b",
+          "provider": "exa",
+          "origin": "origin-b",
+          "sourceAuthority": "independent_source",
+          "independence": "independent",
+          "queryVersion": "cm-exa-query-v3"
+        }
+      ],
+      "classification": {
+        "attributionTruth": "confirmed",
+        "attributionConfidence": 0.96,
+        "occurrenceTruth": "confirmed",
+        "occurrenceConfidence": 0.84,
+        "materialityTruth": "material",
+        "materialityConfidence": 0.74,
+        "evidenceIds": ["e-conflict-a", "e-conflict-b"],
+        "direction": "mixed",
+        "channels": ["financial", "reputation"],
+        "magnitude": "high",
+        "category": "conflicting_report",
+        "title": "Sources disagree about the reported event",
+        "neutralSummary": "Independent sources provide materially different accounts.",
+        "positiveRationale": "One account indicates a favorable outcome.",
+        "negativeRationale": "Another account indicates a damaging outcome.",
+        "conflict": true
+      },
+      "expected": { "decision": "hold", "reasonCodes": ["conflicting_evidence"] }
+    },
+    {
+      "name": "high-impact weak attribution rejects",
+      "nowOffsetHours": 8,
+      "evidence": [
+        {
+          "id": "e-weak-attribution-a",
+          "provider": "exa",
+          "origin": "origin-a",
+          "sourceAuthority": "independent_source",
+          "independence": "independent",
+          "queryVersion": "cm-exa-query-v3"
+        },
+        {
+          "id": "e-weak-attribution-b",
+          "provider": "exa",
+          "origin": "origin-b",
+          "sourceAuthority": "independent_source",
+          "independence": "independent",
+          "queryVersion": "cm-exa-query-v3"
+        }
+      ],
+      "classification": {
+        "attributionTruth": "confirmed",
+        "attributionConfidence": 0.89,
+        "occurrenceTruth": "confirmed",
+        "occurrenceConfidence": 0.99,
+        "materialityTruth": "material",
+        "materialityConfidence": 0.99,
+        "evidenceIds": ["e-weak-attribution-a", "e-weak-attribution-b"],
+        "direction": "negative",
+        "channels": ["financial", "reputation"],
+        "magnitude": "critical",
+        "category": "major_incident",
+        "title": "Reports allege a major company incident",
+        "neutralSummary": "The event appears serious, but company attribution is weak.",
+        "positiveRationale": "",
+        "negativeRationale": "The alleged incident could have a critical effect.",
+        "conflict": false
+      },
+      "expected": { "decision": "reject", "reasonCodes": ["attribution_confidence_below_floor"] }
+    },
+    {
+      "name": "held candidate publishes at retry after corroboration",
+      "nowOffsetHours": 6,
+      "initialEvidenceCount": 1,
+      "evidence": [
+        {
+          "id": "e-retry-a",
+          "provider": "exa",
+          "origin": "origin-a",
+          "sourceAuthority": "independent_source",
+          "independence": "independent",
+          "queryVersion": "cm-exa-query-v2"
+        },
+        {
+          "id": "e-retry-b",
+          "provider": "exa",
+          "origin": "origin-b",
+          "sourceAuthority": "independent_source",
+          "independence": "independent",
+          "queryVersion": "cm-exa-query-v3"
+        }
+      ],
+      "classification": {
+        "attributionTruth": "confirmed",
+        "attributionConfidence": 0.95,
+        "occurrenceTruth": "confirmed",
+        "occurrenceConfidence": 0.9,
+        "materialityTruth": "material",
+        "materialityConfidence": 0.8,
+        "evidenceIds": ["e-retry-a", "e-retry-b"],
+        "direction": "positive",
+        "channels": ["financial"],
+        "magnitude": "medium",
+        "category": "customer_win",
+        "title": "Company secures a new customer",
+        "neutralSummary": "Two independent sources report a material customer win.",
+        "positiveRationale": "The win can add revenue.",
+        "negativeRationale": "",
+        "conflict": false
+      },
+      "expected": { "decision": "publish", "reasonCodes": ["policy_gates_satisfied"] }
+    },
+    {
+      "name": "held candidate expires by 72 hours",
+      "nowOffsetHours": 72,
+      "evidence": [
+        {
+          "id": "e-expiry-a",
+          "provider": "exa",
+          "origin": "origin-a",
+          "sourceAuthority": "independent_source",
+          "independence": "independent",
+          "queryVersion": "cm-exa-query-v4"
+        }
+      ],
+      "classification": {
+        "attributionTruth": "confirmed",
+        "attributionConfidence": 0.95,
+        "occurrenceTruth": "confirmed",
+        "occurrenceConfidence": 0.9,
+        "materialityTruth": "material",
+        "materialityConfidence": 0.8,
+        "evidenceIds": ["e-expiry-a"],
+        "direction": "positive",
+        "channels": ["financial"],
+        "magnitude": "medium",
+        "category": "customer_win",
+        "title": "Uncorroborated customer report reaches expiry",
+        "neutralSummary": "One independent source reports a material customer win.",
+        "positiveRationale": "The reported win could add revenue.",
+        "negativeRationale": "",
+        "conflict": false
+      },
+      "expected": {
+        "decision": "expire",
+        "reasonCodes": ["candidate_expired", "insufficient_source_authority"]
+      }
+    }
+  ]
+}

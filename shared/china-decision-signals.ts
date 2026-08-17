@@ -25,6 +25,13 @@ export type ChinaDecisionSignalState =
   | 'stale'
   | 'unavailable';
 
+export type ChinaDecisionSignalUnavailableCause =
+  | 'healthy_quiet_window'
+  | 'insufficient_data'
+  | 'provenance_rejected'
+  | 'upstream_unavailable'
+  | 'unknown';
+
 export interface ChinaDecisionSignalItem {
   id: string;
   lineageId: string;
@@ -229,11 +236,38 @@ function group(
   id: ChinaDecisionSignalGroupId,
   candidates: Array<ChinaDecisionSignalItem | null>,
   upstreamState: string | null,
-  metadata: Record<string, unknown> = {},
+  {
+    metadata = {},
+    unavailableDiagnostic,
+  }: {
+    metadata?: Record<string, unknown>;
+    unavailableDiagnostic?: {
+      cause: Exclude<ChinaDecisionSignalUnavailableCause, 'provenance_rejected' | 'unknown'>;
+      reason: string;
+    };
+  } = {},
 ): ChinaDecisionSignalGroup {
   const items = candidates.filter((item): item is ChinaDecisionSignalItem => item !== null);
   const rejected = candidates.length - items.length;
   const state = stateFor(items, upstreamState, rejected);
+  const upstreamUnavailable = ['unavailable', 'degraded'].includes(upstreamState ?? '');
+  const unavailable = state === 'unavailable'
+    ? unavailableDiagnostic
+      ?? (rejected > 0
+        ? {
+            cause: 'provenance_rejected' as const,
+            reason: `provenance_rejected: ${rejected} candidate signal${rejected === 1 ? '' : 's'} failed the launch/provenance boundary.`,
+          }
+        : upstreamUnavailable
+          ? {
+              cause: 'upstream_unavailable' as const,
+              reason: 'upstream_unavailable: The upstream snapshot explicitly reports unavailable or degraded state.',
+            }
+        : {
+            cause: 'unknown' as const,
+            reason: 'No launched, provenance-valid signal is currently available.',
+          })
+    : null;
   const omittedItemCount = Math.max(
     0,
     items.length - CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP,
@@ -242,13 +276,17 @@ function group(
     id,
     state,
     reason: state === 'unavailable'
-      ? 'No launched, provenance-valid signal is currently available.'
+      ? unavailable?.reason ?? 'No launched, provenance-valid signal is currently available.'
       : rejected > 0
         ? `${rejected} signal${rejected === 1 ? '' : 's'} failed the launch/provenance boundary.`
         : null,
     items: items.slice(0, CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP),
     metadata: {
       ...metadata,
+      ...(unavailable ? { unavailableCause: unavailable.cause } : {}),
+      ...(rejected > 0 && (state === 'partial' || unavailable?.cause === 'provenance_rejected')
+        ? { rejectedItemCount: rejected }
+        : {}),
       totalValidItems: items.length,
       omittedItemCount,
     },
@@ -274,6 +312,11 @@ function compactGroupMetadata(
     group.metadata.serializationOmittedItemCount,
     0,
   );
+  const missingInputs = boundedNowcastMissingInputs(
+    Array.isArray(group.metadata.missingInputs)
+      ? { missingInputs: group.metadata.missingInputs }
+      : null,
+  );
   return {
     totalValidItems: nonNegativeInteger(
       group.metadata.totalValidItems,
@@ -286,6 +329,15 @@ function compactGroupMetadata(
     ...(serializationOmittedItemCount > 0
       ? { serializationOmittedItemCount }
       : {}),
+    ...(typeof group.metadata.unavailableCause === 'string'
+      ? { unavailableCause: group.metadata.unavailableCause }
+      : {}),
+    ...(Array.isArray(group.metadata.missingInputFamilies)
+      ? { missingInputFamilies: group.metadata.missingInputFamilies }
+      : {}),
+    ...(Array.isArray(group.metadata.missingInputs)
+      ? { missingInputs }
+      : {}),
     metadataOmittedForSerialization: true,
   };
 }
@@ -296,6 +348,9 @@ function isCompactGroupMetadata(metadata: Record<string, unknown>): boolean {
       'totalValidItems',
       'omittedItemCount',
       'serializationOmittedItemCount',
+      'unavailableCause',
+      'missingInputFamilies',
+      'missingInputs',
       'metadataOmittedForSerialization',
     ].includes(key));
 }
@@ -420,6 +475,34 @@ function summarizeValues(value: unknown): string {
     .slice(0, 4)
     .map(([key, candidate]) => `${key}: ${String(candidate)}`);
   return parts.length > 0 ? parts.join(' · ') : 'Reviewed activity record';
+}
+
+function boundedNowcastMissingInputs(nowcast: UnknownRecord | null): UnknownRecord[] {
+  const missingInputs: UnknownRecord[] = [];
+  const candidates = Array.isArray(nowcast?.missingInputs) ? nowcast.missingInputs : [];
+  for (const value of candidates) {
+    const candidate = record(value);
+    if (candidate === null) continue;
+    const family = text(candidate.family)?.slice(0, 80);
+    if (!family) continue;
+    missingInputs.push({
+      family,
+      seriesId: text(candidate.seriesId)?.slice(0, 120) ?? 'unknown',
+      reason: text(candidate.reason)?.slice(0, 120) ?? 'unspecified',
+    });
+    if (missingInputs.length === 16) break;
+  }
+  return missingInputs;
+}
+
+function missingInputReason(missingInputs: UnknownRecord[]): string {
+  if (missingInputs.length === 0) {
+    return 'insufficient_data: Deterministic input requirements are not currently met.';
+  }
+  const details = missingInputs
+    .map((candidate) => `${String(candidate.family)} (${String(candidate.reason)})`)
+    .join(', ');
+  return `insufficient_data: Missing or stale input families: ${details}.`;
 }
 
 function buildDerivedNowcastProvenance(
@@ -561,6 +644,14 @@ export function composeChinaDecisionSignals(
       },
     })),
     bool(macro?.unavailable) ? 'unavailable' : null,
+    {
+      unavailableDiagnostic: input.macro === null
+        ? {
+            cause: 'upstream_unavailable',
+            reason: 'upstream_unavailable: The macro upstream snapshot is unavailable.',
+          }
+        : undefined,
+    },
   );
 
   const policyGroup = group(
@@ -582,6 +673,14 @@ export function composeChinaDecisionSignals(
     Object.values(record(policy?.agencies) ?? {}).some((agency) => record(agency)?.status !== 'ok')
       ? 'degraded'
       : null,
+    {
+      unavailableDiagnostic: input.policy === null
+        ? {
+            cause: 'upstream_unavailable',
+            reason: 'upstream_unavailable: The policy-enforcement upstream snapshot is unavailable.',
+          }
+        : undefined,
+    },
   );
 
   const crossStraitGroup = group(
@@ -598,9 +697,17 @@ export function composeChinaDecisionSignals(
     })),
     text(crossStrait?.status),
     {
-      baselineSemantics: text(record(crossStrait?.baselines)?.semantics),
-      baselineBands: distillBaselineBands(crossStrait),
-      coverage: record(crossStrait?.coverage),
+      metadata: {
+        baselineSemantics: text(record(crossStrait?.baselines)?.semantics),
+        baselineBands: distillBaselineBands(crossStrait),
+        coverage: record(crossStrait?.coverage),
+      },
+      unavailableDiagnostic: input.crossStrait === null
+        ? {
+            cause: 'upstream_unavailable',
+            reason: 'upstream_unavailable: The cross-Strait upstream snapshot is unavailable.',
+          }
+        : undefined,
     },
   );
 
@@ -627,6 +734,20 @@ export function composeChinaDecisionSignals(
       });
     }),
     text(corporate?.status),
+    {
+      unavailableDiagnostic: corporate === null
+        || ['unavailable', 'degraded'].includes(text(corporate.status) ?? '')
+        ? {
+            cause: 'upstream_unavailable',
+            reason: 'upstream_unavailable: The corporate-disclosure upstream snapshot is unavailable or degraded.',
+          }
+        : text(corporate.status) === 'healthy' && corporateEvents.length === 0
+          ? {
+              cause: 'healthy_quiet_window',
+              reason: 'healthy_quiet_window: Healthy exchange queries contained no qualifying disclosure events.',
+            }
+          : undefined,
+    },
   );
 
   const corridorGroup = group(
@@ -649,6 +770,10 @@ export function composeChinaDecisionSignals(
   const nowcastProvenance = nowcast === null
     ? null
     : buildDerivedNowcastProvenance(nowcast, input.generatedAt);
+  const nowcastMissingInputs = boundedNowcastMissingInputs(nowcast);
+  const nowcastMissingInputFamilies = [
+    ...new Set(nowcastMissingInputs.map((candidate) => String(candidate.family))),
+  ];
   const nowcastGroup = group(
     'activity-nowcast',
     [itemFromProvenance({
@@ -667,10 +792,26 @@ export function composeChinaDecisionSignals(
     })],
     text(record(nowcast?.confidence)?.level),
     {
-      methodVersion: text(nowcast?.methodVersion),
-      comparisonWindow: record(nowcast?.comparisonWindow),
-      deterministic: record(nowcast?.audit)?.deterministic === true,
-      llmNumericComputation: record(nowcast?.audit)?.llmNumericComputation === true,
+      metadata: {
+        methodVersion: text(nowcast?.methodVersion),
+        comparisonWindow: record(nowcast?.comparisonWindow),
+        confidence: record(nowcast?.confidence),
+        missingInputs: nowcastMissingInputs,
+        missingInputFamilies: nowcastMissingInputFamilies,
+        deterministic: record(nowcast?.audit)?.deterministic === true,
+        llmNumericComputation: record(nowcast?.audit)?.llmNumericComputation === true,
+      },
+      unavailableDiagnostic: nowcast === null
+        ? {
+            cause: 'upstream_unavailable',
+            reason: 'upstream_unavailable: The activity-nowcast upstream snapshot is unavailable.',
+          }
+        : text(nowcast.state) === 'insufficient_data'
+          ? {
+              cause: 'insufficient_data',
+              reason: missingInputReason(nowcastMissingInputs),
+            }
+          : undefined,
     },
   );
 

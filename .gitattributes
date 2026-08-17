@@ -1,0 +1,2 @@
+# Preserve the byte-identical upstream Umami patch, including its indented blank lines.
+docker/umami/session-data-upsert.patch -whitespace

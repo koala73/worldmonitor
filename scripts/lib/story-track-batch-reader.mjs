@@ -7,15 +7,27 @@
  * unit-tested without dragging the cron's top-level side effects
  * (Upstash creds check, main() entry-point) into the test runtime.
  *
- * Why chunked:
+ * Why chunked — timeout and memory, NOT Upstash's size limit:
  *   Per-language `digest:accumulator:v1:full:<lang>` ZSETs hold
  *   17K-21K hashes today, bounded only by ingest volume ×
  *   DIGEST_ACCUMULATOR_TTL. Each story:track:v1 hash averages ~380B
- *   but reaches ~1.2KB. An unbatched pipeline RESPONSE for the
+ *   but reaches ~1.2KB. An unbatched pipeline response for the
  *   largest accumulator already crosses 7MB and grows linearly with
- *   ingest. 500 commands × ~1.2KB = ~600KB per chunk keeps each
- *   /pipeline call's response well under Upstash's per-request
- *   limit (50MB on our plan) and inside the 10-15s pipeline timeout.
+ *   ingest, which is a latency and heap problem well before it is
+ *   anything else: 500 commands × ~1.2KB = ~600KB per chunk keeps
+ *   each call inside the 10-15s pipeline timeout.
+ *
+ *   This comment used to justify the chunking with Upstash's 50MiB
+ *   max-request-size. That reason was WRONG and is corrected here so
+ *   the next reader doesn't inherit it. Measured against production
+ *   2026-08-02: the limit applies PER COMMAND, in both directions,
+ *   and never to a pipeline's aggregate. A pipeline of 8 GETs
+ *   returning 71.7MB in total succeeds; a pipeline of 60 commands
+ *   totalling a 60MB request body succeeds; only an individual
+ *   command whose own request or result crosses 50MiB is rejected.
+ *   No single HGETALL here returns more than ~1.2KB, so the limit
+ *   cannot bind on this path at any chunk size. See
+ *   docs/solutions/integration-issues/upstash-max-request-size-counts-one-command-and-answers-http-200.md
  *
  * Why bail-on-failure (return null):
  *   The caller pairs `trackResults[i]` with `hashes[i]` (see

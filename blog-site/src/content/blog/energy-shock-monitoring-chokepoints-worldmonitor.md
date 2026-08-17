@@ -19,7 +19,7 @@ This is a practical workflow for monitoring energy-shock risk.
 
 Energy shock monitoring is the process of tracking the signals that can disrupt oil, gas, electricity, fuel distribution, or energy-linked commodities before the disruption fully appears in price or inventory data.
 
-A useful monitor combines five layers:
+A useful monitor combines these layers:
 
 | Layer | Example signals |
 |---|---|

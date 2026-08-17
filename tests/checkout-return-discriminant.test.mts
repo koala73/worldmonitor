@@ -39,6 +39,7 @@ const LAST_CHECKOUT_ATTEMPT_KEY = 'wm-last-checkout-attempt';
 let _loc: MutableLocation;
 let _history: MutableHistory;
 let _sessionStorage: MemoryStorage;
+let _localStorage: MemoryStorage;
 
 function setUrl(href: string): void {
   const url = new URL(href);
@@ -51,6 +52,7 @@ function setUrl(href: string): void {
 before(() => {
   _loc = { href: BASE_URL, pathname: '/', search: '', hash: '' };
   _sessionStorage = new MemoryStorage();
+  _localStorage = new MemoryStorage();
   _history = {
     replaceState: (_state, _unused, url) => {
       if (url !== undefined && url !== null) setUrl(new URL(String(url), _loc.href).toString());
@@ -64,6 +66,10 @@ before(() => {
     configurable: true,
     value: _sessionStorage,
   });
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: _localStorage,
+  });
 });
 
 after(() => {
@@ -71,14 +77,43 @@ after(() => {
   delete (globalThis as any).window;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   delete (globalThis as any).sessionStorage;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  delete (globalThis as any).localStorage;
 });
 
 beforeEach(() => {
   setUrl(BASE_URL);
   _sessionStorage.clear();
+  _localStorage.clear();
 });
 
-const { handleCheckoutReturn } = await import('../src/services/checkout-return.ts');
+const { handleCheckoutReturn, resolveCheckoutReturnRouting } = await import('../src/services/checkout-return.ts');
+
+describe('resolveCheckoutReturnRouting', () => {
+  it('keeps desktop acknowledgements account-agnostic (kind: desktop)', () => {
+    // desktop → not account (waitForEntitlement:false, accountAgnostic:true).
+    assert.deepEqual(
+      resolveCheckoutReturnRouting({ kind: 'success', source: 'desktop' }, true),
+      { kind: 'desktop' },
+    );
+  });
+
+  it('routes a non-desktop URL success to account checkout', () => {
+    assert.deepEqual(resolveCheckoutReturnRouting({ kind: 'success' }, false), { kind: 'account' });
+  });
+
+  it('accepts an overlay flag only when the URL had no checkout outcome', () => {
+    assert.deepEqual(resolveCheckoutReturnRouting({ kind: 'none' }, true), { kind: 'overlay' });
+    assert.deepEqual(resolveCheckoutReturnRouting({ kind: 'none' }, false), { kind: 'none' });
+  });
+
+  it('lets a failed URL result beat a stale overlay flag (kind: none, never overlay)', () => {
+    assert.deepEqual(
+      resolveCheckoutReturnRouting({ kind: 'failed', rawStatus: 'cancelled' }, true),
+      { kind: 'none' },
+    );
+  });
+});
 
 describe('handleCheckoutReturn', () => {
   it('returns { kind: "none" } when no checkout params present', () => {
@@ -194,6 +229,36 @@ describe('handleCheckoutReturn — /pro overlay-success marker (?wm_checkout=)',
   it('strips wm_checkout=return alone without a saved attempt but does not trigger success', () => {
     setUrl(`${BASE_URL}?wm_checkout=return`);
     assert.deepEqual(handleCheckoutReturn(), { kind: 'none' });
+    assert.equal(_loc.href, BASE_URL);
+  });
+
+  it('acknowledges a desktop return without requiring browser session storage', () => {
+    setUrl(`${BASE_URL}?wm_checkout=return&wm_src=desktop`);
+    assert.deepEqual(handleCheckoutReturn(), { kind: 'success', source: 'desktop' });
+    assert.equal(_loc.href, BASE_URL);
+    assert.equal(
+      _localStorage.getItem('wm-entitlement-hint'),
+      null,
+      'an account-agnostic desktop return must not seed the browser entitlement hint',
+    );
+  });
+
+  it('keeps the desktop source and hint policy when Dodo includes a success ID', () => {
+    setUrl(`${BASE_URL}?wm_checkout=return&wm_src=desktop&subscription_id=sub_X&status=active`);
+    assert.deepEqual(handleCheckoutReturn(), { kind: 'success', source: 'desktop' });
+    assert.equal(_loc.href, BASE_URL);
+    assert.equal(_localStorage.getItem('wm-entitlement-hint'), null);
+  });
+
+  it('cleans an unknown return source without acknowledging it', () => {
+    setUrl(`${BASE_URL}?wm_checkout=return&wm_src=mobile`);
+    assert.deepEqual(handleCheckoutReturn(), { kind: 'none' });
+    assert.equal(_loc.href, BASE_URL);
+  });
+
+  it('preserves Dodo cancellation over the desktop acknowledgement marker', () => {
+    setUrl(`${BASE_URL}?wm_checkout=return&wm_src=desktop&payment_id=pay_X&status=cancelled`);
+    assert.deepEqual(handleCheckoutReturn(), { kind: 'failed', rawStatus: 'cancelled' });
     assert.equal(_loc.href, BASE_URL);
   });
 

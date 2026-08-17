@@ -81,13 +81,14 @@ export interface CachedEntitlements {
      * `null` on a member means **unlimited**; a MISSING member (or a missing
      * `planLimits` altogether) means unknown, and consumers resolve unknown
      * toward cost protection — never toward the higher allowance. The MCP
-     * daily quota (plan 2026-07-25-001 U3) is the first consumer.
+     * daily quota (plan 2026-07-25-001 U3) and dashboard-AI quota are consumers.
      */
     planLimits?: {
       apiRequestsPerDay?: number | null;
       apiBurstRequestsPerMinute?: number | null;
       mcpCallsPerDay?: number | null;
       mcpBurstRequestsPerMinute?: number | null;
+      dashboardAiCallsPerDay?: number | null;
     };
   };
   validUntil: number;
@@ -168,6 +169,7 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/supply-chain/v1/get-sector-dependency': 1,
   '/api/trade/v1/list-comtrade-flows': 1,
   '/api/trade/v1/get-tariff-trends': 1,
+  '/api/resilience/v1/get-food-stocks': 1,
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';
@@ -530,9 +532,17 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
       // post-U10 layout. Self-healing, bounded to one extra Convex
       // round-trip per affected user during the migration window.
       // Reviewer round-2 P2 (cache layer).
+      //
+      // The same trap re-opened for `planLimits.dashboardAiCallsPerDay`: a
+      // cache entry written before that dimension shipped already satisfies the
+      // mcpAccess check, so it would be served as fresh WITHOUT the new member
+      // and every paid tier above Pro would silently resolve to the Pro default
+      // (Pro Business 2,500 -> 500, API Business 10,000 -> 500). Require the
+      // member the same way, so those rows self-heal through Convex instead.
       if (
         ent.validUntil >= Date.now() &&
-        typeof (ent.features as { mcpAccess?: boolean }).mcpAccess === 'boolean'
+        typeof (ent.features as { mcpAccess?: boolean }).mcpAccess === 'boolean' &&
+        ent.features.planLimits?.dashboardAiCallsPerDay !== undefined
       ) {
         return ent;
       }

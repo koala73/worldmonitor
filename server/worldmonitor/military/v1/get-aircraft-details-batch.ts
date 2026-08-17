@@ -6,6 +6,7 @@ import type {
 
 import { getCachedJsonBatch, cachedFetchJson } from '../../../_shared/redis';
 import { toUniqueSortedLimited } from '../../../_shared/normalize-list';
+import { AIRCRAFT_DETAILS_BATCH_LIMIT } from '../../../_shared/aircraft-details-batch';
 import {
   AIRCRAFT_DETAILS_CACHE_KEY,
   AIRCRAFT_DETAILS_CACHE_TTL,
@@ -24,7 +25,7 @@ export async function getAircraftDetailsBatch(
     const normalized = req.icao24s
       .map((id) => id.trim().toLowerCase())
       .filter((id) => id.length > 0);
-    const limitedList = toUniqueSortedLimited(normalized, 10);
+    const limitedList = toUniqueSortedLimited(normalized, AIRCRAFT_DETAILS_BATCH_LIMIT);
 
     // Redis shared cache — batch GET all keys in a single pipeline round-trip
     const results: Record<string, NonNullable<CachedAircraftDetails['details']>> = {};

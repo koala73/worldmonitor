@@ -280,27 +280,27 @@ export class FuelShortagePanel extends Panel {
       </div>
       ${ATTRIBUTION_FOOTER_CSS}
       <style>
-        .fs-wrap { position: relative; font-size: 11px; }
-        .fs-summary { font-size: 10px; color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 6px 0; }
+        .fs-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
+        .fs-summary { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 6px 0; }
         .fs-table { width: 100%; border-collapse: collapse; }
-        .fs-table th { text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .fs-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .fs-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .fs-table tr.fs-row { cursor: pointer; }
         .fs-table tr.fs-row:hover td { background: rgba(255,255,255,0.03); }
         .fs-name { font-weight: 600; color: var(--text, #eee); }
-        .fs-sub  { font-size: 9px; color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
-        .fs-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
-        .fs-quality { font-family: monospace; font-size: 10px; color: var(--text-dim, #888); }
+        .fs-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
+        .fs-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
+        .fs-quality { font-family: monospace; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); }
         .fs-drawer { position: absolute; inset: 0; background: var(--panel-bg, #0f1218); padding: 12px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; }
-        .fs-drawer-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; color: var(--text-dim, #888); cursor: pointer; font-size: 14px; }
-        .fs-drawer h3 { margin: 0 0 6px 0; font-size: 13px; color: var(--text, #eee); }
-        .fs-drawer .fs-kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; font-size: 10px; margin-bottom: 10px; }
-        .fs-drawer .fs-kv-key { color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; font-size: 9px; padding-top: 2px; }
+        .fs-drawer-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; color: var(--text-dim, #888); cursor: pointer; font-size: calc(14px * var(--wm-panel-effective-scale, 1)); }
+        .fs-drawer h3 { margin: 0 0 6px 0; font-size: calc(13px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); }
+        .fs-drawer .fs-kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin-bottom: 10px; }
+        .fs-drawer .fs-kv-key { color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); padding-top: 2px; }
         .fs-source-list { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); }
-        .fs-src-item { font-size: 10px; color: var(--text, #eee); margin-bottom: 6px; }
+        .fs-src-item { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); margin-bottom: 6px; }
         .fs-src-item a { color: #4ade80; text-decoration: none; }
         .fs-src-item a:hover { text-decoration: underline; }
-        .fs-src-type { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.08); color: var(--text-dim, #aaa); margin-right: 4px; }
+        .fs-src-type { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: calc(8px * var(--wm-panel-effective-scale, 1)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.08); color: var(--text-dim, #aaa); margin-right: 4px; }
         .fs-src-type-regulator { background: #2980b9; color: #fff; }
         .fs-src-type-operator { background: #27ae60; color: #fff; }
         .fs-src-type-press { background: #555; color: #ccc; }

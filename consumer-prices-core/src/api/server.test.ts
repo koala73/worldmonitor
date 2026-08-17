@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockHealthQuery = vi.fn().mockResolvedValue({ rows: [{ '?column?': 1 }] });
 const mockBuildOverviewSnapshot = vi.fn().mockResolvedValue({ marketCode: 'ae', coveragePct: 100 });
+const mockBuildCoverageSnapshot = vi.fn().mockResolvedValue({ marketCode: 'ke', status: 'partial', retailers: [] });
 
 vi.mock('../db/client.js', () => ({
   getPool: () => ({ query: mockHealthQuery }),
@@ -16,10 +17,15 @@ vi.mock('../snapshots/worldmonitor.js', () => ({
   buildRetailerSpreadSnapshot: vi.fn(),
 }));
 
+vi.mock('../snapshots/coverage.js', () => ({
+  buildCoverageSnapshot: mockBuildCoverageSnapshot,
+}));
+
 const { createServer, isHealthCheckPath } = await import('./server.js');
 
 beforeEach(() => {
   mockBuildOverviewSnapshot.mockClear();
+  mockBuildCoverageSnapshot.mockClear();
   mockHealthQuery.mockClear();
 });
 
@@ -75,6 +81,24 @@ describe('consumer-prices-core Fastify server', () => {
     }
   });
 
+  it('exposes per-market coverage through the authenticated snapshot API', async () => {
+    const server = createServer({ apiKey: 'secret', logger: false });
+
+    try {
+      const response = await server.inject({
+        method: 'GET',
+        url: '/wm/consumer-prices/v1/coverage?market=ke',
+        headers: { 'x-api-key': 'secret' },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ marketCode: 'ke', status: 'partial', retailers: [] });
+      expect(mockBuildCoverageSnapshot).toHaveBeenCalledWith('ke');
+    } finally {
+      await server.close();
+    }
+  });
+
   it('rejects snapshot routes before handlers run when the API key is absent or wrong', async () => {
     const server = createServer({ apiKey: 'secret', logger: false });
 
@@ -90,7 +114,11 @@ describe('consumer-prices-core Fastify server', () => {
       });
       expect(wrong.statusCode).toBe(401);
       expect(wrong.json()).toEqual({ error: 'unauthorized' });
+      const coverage = await server.inject({ method: 'GET', url: '/wm/consumer-prices/v1/coverage?market=ke' });
+      expect(coverage.statusCode).toBe(401);
+      expect(coverage.json()).toEqual({ error: 'unauthorized' });
       expect(mockBuildOverviewSnapshot).not.toHaveBeenCalled();
+      expect(mockBuildCoverageSnapshot).not.toHaveBeenCalled();
     } finally {
       await server.close();
     }

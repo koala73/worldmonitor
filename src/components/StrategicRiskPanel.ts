@@ -20,7 +20,7 @@ import {
 import type { CountryScore } from '@/services/country-instability';
 import { fetchCachedRiskScores, isElevatedCiiScore, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
 import { getCachedPosture } from '@/services/cached-theater-posture';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { trustedHtml } from '@/utils/dom-utils';
 
 type StrategicRiskDisplayLevel = 'critical' | 'high' | 'elevated' | 'normal' | 'low';
 type StrategicRiskDisplayBand = {
@@ -487,7 +487,7 @@ export class StrategicRiskPanel extends Panel {
         return;
       }
 
-      setTrustedHtml(this.content, trustedHtml(this.renderFullData(), "legacy direct innerHTML migration"));
+      this.setTrustedContent(trustedHtml(this.renderFullData(), "legacy direct innerHTML migration"));
       this.attachEventListeners();
     } catch (e: unknown) {
       console.error('[StrategicRiskPanel] Render error:', e);

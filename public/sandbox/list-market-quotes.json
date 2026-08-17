@@ -34,7 +34,13 @@
         }
       ],
       "rateLimited": true,
-      "skipReason": "example"
+      "skipReason": "example",
+      "unavailableSymbols": [
+        {
+          "reason": "MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND",
+          "symbol": "AAPL"
+        }
+      ]
     }
   }
 }

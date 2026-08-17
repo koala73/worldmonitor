@@ -129,8 +129,17 @@ function ipv4FromIpv6(value) {
 
 function isBlockedResolvedAddress(address) {
   const normalized = String(address).trim().toLowerCase().replace(/^\[|\]$/g, '');
+  const ipv6Hextets = ipv6ToHextets(normalized);
   const mappedIpv4 = ipv4FromIpv6(normalized);
   const addr = mappedIpv4 || normalized;
+
+  if (ipv6Hextets) {
+    const [h0, h1, h2, h3] = ipv6Hextets;
+    // RFC 8215 local-use NAT64 prefix 64:ff9b:1::/48.
+    if (h0 === 0x0064 && h1 === 0xff9b && h2 === 0x0001) return true;
+    // RFC 6666 discard-only prefix 100::/64.
+    if (h0 === 0x0100 && h1 === 0 && h2 === 0 && h3 === 0) return true;
+  }
 
   if (addr === '::' || addr === '::1') return true;
   if (/^f[cd][0-9a-f]{2}:/i.test(addr)) return true;

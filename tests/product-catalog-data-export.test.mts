@@ -1,7 +1,7 @@
 // U1 (plan 2026-07-25-001) — Pro Business catalog entries + the `dataExport`
-// entitlement flag. `dataExport` is the ENFORCEMENT field for data export
-// (KTD1); `exportFormats` stays display metadata that gates nothing. These
-// assertions are the source-of-truth guard for both, mirroring the
+// entitlement flag. `dataExport` controls the locked state and
+// `exportFormats` controls the unlocked export actions. These assertions are
+// the source-of-truth guard for both, mirroring the
 // apiDailyAllowance guard in product-catalog-api-allowance.test.mts.
 
 import { describe, it } from 'node:test';
@@ -31,6 +31,7 @@ describe('U1 — Pro Business catalog entries', () => {
       apiBurstRequestsPerMinute: 0,
       mcpCallsPerDay: 250,
       mcpBurstRequestsPerMinute: 60,
+      dashboardAiCallsPerDay: 2_500,
     });
     assert.deepEqual(features.exportFormats, ['csv', 'json', 'pdf']);
   });
@@ -42,9 +43,9 @@ describe('U1 — Pro Business catalog entries', () => {
     );
   });
 
-  it('prices the tier at $49.99/mo and $499/yr', () => {
+  it('prices the tier at $49.99/mo and $449.99/yr', () => {
     assert.equal(PRODUCT_CATALOG.pro_business_monthly.priceCents, 4999);
-    assert.equal(PRODUCT_CATALOG.pro_business_annual.priceCents, 49900);
+    assert.equal(PRODUCT_CATALOG.pro_business_annual.priceCents, 44999);
   });
 
   it('is purchasable and published on /pro (U7 flipped visibility)', () => {
@@ -89,7 +90,7 @@ describe('U1 — dataExport is the export enforcement field', () => {
     assert.equal(getEntitlementFeatures('enterprise').dataExport, true);
   });
 
-  it('exportFormats stays display metadata that agrees with dataExport', () => {
+  it('exportFormats agrees with dataExport and the menu capabilities it grants', () => {
     for (const [planKey, entry] of Object.entries(PRODUCT_CATALOG)) {
       const { dataExport, exportFormats } = entry.features;
       assert.deepEqual(

@@ -97,19 +97,19 @@ export class BusinessSeatsSection {
       const statusLabel = seat.status === 'accepted' ? 'Accepted' : seat.status === 'expired' ? 'Expired' : 'Pending';
       const statusColor = seat.status === 'accepted' ? '#22c55e' : seat.status === 'expired' ? '#666' : '#eab308';
       const expires = seat.status === 'pending'
-        ? `<div style="font-size:11px;color:#666;">Expires ${new Date(seat.expiresAt).toLocaleDateString()}</div>`
+        ? `<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#666;">Expires ${new Date(seat.expiresAt).toLocaleDateString()}</div>`
         : '';
       return `
         <div class="business-seat-item" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid #1a1a1a;border-radius:6px;margin-bottom:8px;background:#0d0d0d;">
           <div>
-            <div style="font-size:13px;color:#fff;">${escapeHtml(seat.inviteeEmail)}</div>
+            <div style="font-size:calc(13px * var(--wm-panel-effective-scale, 1));color:#fff;">${escapeHtml(seat.inviteeEmail)}</div>
             <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
               <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${statusColor};"></span>
-              <span style="font-size:11px;color:${statusColor};">${statusLabel}</span>
+              <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:${statusColor};">${statusLabel}</span>
             </div>
             ${expires}
           </div>
-          <button class="btn btn-ghost business-seat-remove-btn" data-grant-id="${escapeHtml(seat.grantId)}" style="font-size:12px;" ${this.removingGrantIds.has(seat.grantId) ? 'disabled' : ''}>${this.removingGrantIds.has(seat.grantId) ? 'Removing...' : 'Remove'}</button>
+          <button class="btn btn-ghost business-seat-remove-btn" data-grant-id="${escapeHtml(seat.grantId)}" style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));" ${this.removingGrantIds.has(seat.grantId) ? 'disabled' : ''}>${this.removingGrantIds.has(seat.grantId) ? 'Removing...' : 'Remove'}</button>
         </div>
       `;
     };
@@ -121,20 +121,20 @@ export class BusinessSeatsSection {
     return `
       <div class="business-seats-section" style="margin-top:16px;padding:14px 16px;border:1px solid #1a1a1a;border-radius:6px;background:#0d0d0d;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-          <div style="font-size:13px;font-weight:600;color:#fff;">Business Seats</div>
-          <div style="font-size:11px;color:#888;">${seatCount} / 4 used</div>
+          <div style="font-size:calc(13px * var(--wm-panel-effective-scale, 1));font-weight:600;color:#fff;">Business Seats</div>
+          <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:#888;">${seatCount} / 4 used</div>
         </div>
-        <div style="font-size:12px;color:#999;margin-bottom:12px;">${escapeHtml(inviteHint)}</div>
-        ${!isCorporateDomain ? `<div style="font-size:12px;color:#ef4444;margin-bottom:12px;">Free or disposable email domains cannot invite teammates. Add a company email to use this feature.</div>` : ''}
+        <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:#999;margin-bottom:12px;">${escapeHtml(inviteHint)}</div>
+        ${!isCorporateDomain ? `<div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:#ef4444;margin-bottom:12px;">Free or disposable email domains cannot invite teammates. Add a company email to use this feature.</div>` : ''}
         ${isCorporateDomain ? `
           <div class="business-seats-invite-form" style="display:flex;gap:8px;margin-bottom:12px;">
-            <input type="email" class="business-seats-email-input" placeholder="teammate@${escapeHtml(ownerDomain)}" style="flex:1;padding:8px 10px;background:#111;border:1px solid #1a1a1a;border-radius:4px;color:#fff;font-size:13px;" ${seatCount >= 4 ? 'disabled' : ''} />
+            <input type="email" class="business-seats-email-input" placeholder="teammate@${escapeHtml(ownerDomain)}" style="flex:1;padding:8px 10px;background:#111;border:1px solid #1a1a1a;border-radius:4px;color:#fff;font-size:calc(13px * var(--wm-panel-effective-scale, 1));" ${seatCount >= 4 ? 'disabled' : ''} />
             <button class="btn btn-primary business-seats-invite-btn" ${seatCount >= 4 ? 'disabled' : ''}>Invite</button>
           </div>
         ` : ''}
-        ${this.error ? `<div style="font-size:12px;color:#ef4444;margin-bottom:12px;">${escapeHtml(this.error)}</div>` : ''}
+        ${this.error ? `<div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:#ef4444;margin-bottom:12px;">${escapeHtml(this.error)}</div>` : ''}
         <div id="usBusinessSeatsList">
-          ${seats.length === 0 ? `<div style="font-size:12px;color:#666;padding:12px;text-align:center;">No seats invited yet.</div>` : seats.map(renderSeat).join('')}
+          ${seats.length === 0 ? `<div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:#666;padding:12px;text-align:center;">No seats invited yet.</div>` : seats.map(renderSeat).join('')}
         </div>
       </div>
     `;

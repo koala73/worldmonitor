@@ -41,7 +41,9 @@ service MarketService {
     option (sebuf.http.config) = {path: "/list-crypto-quotes", method: HTTP_METHOD_GET};
   }
 
-  // ListCommodityQuotes retrieves commodity price quotes from Yahoo Finance.
+  // ListCommodityQuotes retrieves commodity price quotes. Reads the seeded
+  // commodity snapshot; only symbols in the configured commodity set
+  // (shared/commodities.json) are supported.
   rpc ListCommodityQuotes(ListCommodityQuotesRequest) returns (ListCommodityQuotesResponse) {
     option (sebuf.http.config) = {path: "/list-commodity-quotes", method: HTTP_METHOD_GET};
   }

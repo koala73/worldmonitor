@@ -35,6 +35,24 @@ export const IDEMPOTENCY_HEADER = 'Idempotency-Key';
 /** Header echoed on the response indicating whether it was replayed. */
 export const IDEMPOTENT_REPLAYED_HEADER = 'Idempotent-Replayed';
 
+/**
+ * Routes that OWN their retry semantics and must never get generic whole-response replay.
+ *
+ * This is the single source of truth for the exemption. The gateway consults it before
+ * engaging the idempotency machinery, and `scripts/lib/openapi-codegen.mjs`
+ * (`readIdempotencyExemptPaths`) parses this literal so the published OpenAPI — which
+ * omits the Idempotency-Key parameter and the "invalid Idempotency-Key header" clause in
+ * the 400 for these paths — cannot drift from what the runtime actually does.
+ *
+ * `import-monitored-company-batch` returns per-row outcomes (CREATED / REPLAYED /
+ * CONFLICT / REJECTED / NO_OP). Replaying the whole response would freeze REJECTED and
+ * NO_OP rows instead of recomputing them against current state, which is exactly the
+ * tuple-level contract the import promises.
+ */
+export const IDEMPOTENCY_EXEMPT_RPC_PATHS = new Set<string>([
+  '/api/company-monitoring/v1/import-monitored-company-batch',
+]);
+
 // Printable-ASCII, 1..255 chars — matches the `maxLength: 255` we publish in
 // the OpenAPI spec (scripts/openapi-inject-idempotency.mjs). UUIDs, ULIDs, and
 // opaque tokens all fit; control chars / whitespace / oversized keys are

@@ -22,6 +22,7 @@ import {
   settleAccountOperation,
 } from './account-operation';
 import { extractBillingErrorKind } from './_billing-error';
+import { openExternalUrl, prereserveExternalTab } from './external-navigation';
 import type { Id } from '../../convex/_generated/dataModel';
 
 export interface SubscriptionInfo {
@@ -183,6 +184,17 @@ export function getSubscription(): SubscriptionInfo | null {
   return currentSubscription;
 }
 
+/**
+ * Whether the subscription watch has produced a value at least once (including
+ * a legitimate `null` — no row, or a query error). Callers use this to tell an
+ * unresolved watch apart from a settled "no subscription": `getSubscription()`
+ * returns `null` in both cases, but only the settled null means the user truly
+ * has no own subscription row (e.g. a Business Pro grant invitee).
+ */
+export function isSubscriptionLoaded(): boolean {
+  return subscriptionLoaded;
+}
+
 export type ProActivationClaimOutcome =
   | 'claimed'
   | 'not_eligible'
@@ -334,13 +346,23 @@ const DODO_PORTAL_FALLBACK_URL = 'https://customer.dodopayments.com';
  * is spent and window.open() returns null (blocked). Callers MUST call
  * this synchronously BEFORE awaiting anything, then pass the returned
  * handle into openBillingPortal.
+ *
+ * Returns null on desktop, where the portal opens in the OS browser and
+ * there is no popup to reserve (#5911).
  */
 export function prereserveBillingPortalTab(): Window | null {
-  return window.open('', '_blank', 'noopener,noreferrer');
+  return prereserveExternalTab();
 }
 
 export type OpenBillingPortalOutcome =
   | { outcome: 'opened'; url: string }
+  /**
+   * The portal session exists but nothing opened — the native handoff failed
+   * and the browser fallback was blocked too. Distinct from `opened` because
+   * a caller with a toast surface must not point the user at a window that
+   * was never created (#6137).
+   */
+  | { outcome: 'open-failed'; url: string }
   | { outcome: 'no-customer' }
   | { outcome: 'account-changed' };
 
@@ -348,14 +370,18 @@ export async function openBillingPortal(
   preopened?: Window | null,
 ): Promise<OpenBillingPortalOutcome> {
   const reservedWin = preopened ?? null;
-  const navigate = (url: string): { outcome: 'opened'; url: string } => {
-    if (reservedWin && !reservedWin.closed) {
-      reservedWin.location.href = url;
-    } else {
-      const fresh = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!fresh) window.location.assign(url);
-    }
-    return { outcome: 'opened', url };
+  // Desktop routes the portal to the OS browser via `open_url` instead of
+  // navigating the WebView, which would replace the whole app with Dodo's
+  // portal and strand the user with no chrome to get back (#5911).
+  const navigate = async (url: string): Promise<OpenBillingPortalOutcome> => {
+    // Branch on the outcome rather than assuming success. `openExternalUrl`
+    // documents this as its contract: a swallowed failure that still claims
+    // "opened" is worse than no message, because the caller then tells the
+    // user to look at a window that does not exist.
+    const navOutcome = await openExternalUrl(url, reservedWin);
+    return navOutcome === 'failed'
+      ? { outcome: 'open-failed', url }
+      : { outcome: 'opened', url };
   };
 
   // NO_CUSTOMER means the user is entitled (comp grant, recently-restored
@@ -379,13 +405,13 @@ export async function openBillingPortal(
     const client = await getConvexClient();
     assertAccountStillCurrent(userId, 'opening the billing portal');
     if (!client) {
-      return navigate(DODO_PORTAL_FALLBACK_URL);
+      return await navigate(DODO_PORTAL_FALLBACK_URL);
     }
 
     const api = await getConvexApi();
     assertAccountStillCurrent(userId, 'opening the billing portal');
     if (!api) {
-      return navigate(DODO_PORTAL_FALLBACK_URL);
+      return await navigate(DODO_PORTAL_FALLBACK_URL);
     }
 
     await requireCurrentConvexUser(userId, 'opening the billing portal');
@@ -396,7 +422,11 @@ export async function openBillingPortal(
     );
     assertAccountStillCurrent(userId, 'opening the billing portal');
     const url = (result?.portal_url as string | undefined) ?? DODO_PORTAL_FALLBACK_URL;
-    return navigate(url);
+    // `return await` is load-bearing inside this try: `try { return p }` never
+    // routes p's rejection to the catch below, so without it a throw from the
+    // now-async navigate escapes openBillingPortal entirely — and two callers
+    // invoke it as bare `void openBillingPortal(...)` with no .catch.
+    return await navigate(url);
   } catch (err) {
     if (!isAccountStillCurrent(userId)) {
       closeReserved();

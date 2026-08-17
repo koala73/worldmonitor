@@ -2094,6 +2094,17 @@ describe("payments stuck-pending reconciliation", () => {
       /crons\.interval\(\s*"payments-stuck-pending-reconciliation",\s*\{\s*hours:\s*6\s*\}/,
     );
   });
+
+  test("registers Company Monitoring recovery crons with their exact hourly bindings", () => {
+    const source = readFileSync("convex/crons.ts", "utf8");
+
+    expect(source).toMatch(
+      /crons\.hourly\(\s*"company-monitoring-stalled-purge-reaper",\s*\{\s*minuteUTC:\s*37\s*\},\s*internal\.companyMonitoring\.accounts\.reapStalledAccountPurges,\s*\{\s*\},?\s*\);/,
+    );
+    expect(source).toMatch(
+      /crons\.hourly\(\s*"company-monitoring-entitlement-reconciler",\s*\{\s*minuteUTC:\s*47\s*\},\s*internal\.companyMonitoring\.accounts\.reconcileAccountEntitlements,\s*\{\s*\},?\s*\);/,
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

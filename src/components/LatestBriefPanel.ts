@@ -31,6 +31,7 @@ import {
   shouldSkipDoomedFetch,
   type PremiumDenialVerdict,
 } from '@/services/premium-denial';
+import { reportEntitlementDesync } from '@/services/entitlement-desync-telemetry';
 import { trackBriefThreadOpen } from '@/services/analytics';
 import { h, rawHtml, replaceChildren, clearChildren, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 
@@ -375,6 +376,7 @@ export class LatestBriefPanel extends Panel {
       // this, that abort would surface as a denial render instead of the
       // no-op the abort was asking for.
       if (signal.aborted) throw new DOMException('aborted while reading denial body', 'AbortError');
+      if (verdict === 'entitlement_desync') reportEntitlementDesync('latest-brief');
       throw new BriefAccessError(verdict);
     }
     if (!res.ok) {
@@ -403,12 +405,9 @@ export class LatestBriefPanel extends Panel {
    * this is an error state.
    */
   private renderSignInRequired(): void {
-    // Terminal state — retire any auto-retry a prior transient denial armed.
-    this.clearErrorState();
-    clearChildren(this.content);
     const logo = h('div', { className: 'latest-brief-logo' });
     logo.appendChild(rawHtml(WM_LOGO_SVG));
-    this.content.appendChild(
+    this.setContentNodes(
       h('div', { className: 'latest-brief-card latest-brief-card--composing' },
         logo,
         h('div', { className: 'latest-brief-empty-title' }, 'Sign in to view your brief.'),
@@ -427,12 +426,9 @@ export class LatestBriefPanel extends Panel {
    * contradicts does NOT land here; see classifyPremiumDenial (#5608).
    */
   private renderUpgradeRequired(): void {
-    // Terminal state — retire any auto-retry a prior transient denial armed.
-    this.clearErrorState();
-    clearChildren(this.content);
     const logo = h('div', { className: 'latest-brief-logo' });
     logo.appendChild(rawHtml(WM_LOGO_SVG));
-    this.content.appendChild(
+    this.setContentNodes(
       h('div', { className: 'latest-brief-card latest-brief-card--composing' },
         logo,
         h('div', { className: 'latest-brief-empty-title' }, 'Pro required.'),
@@ -451,11 +447,10 @@ export class LatestBriefPanel extends Panel {
    * polling. Returning to the tab re-runs refresh() via visibilitychange.
    */
   private renderDesyncExhausted(): void {
-    this.clearErrorState();
-    clearChildren(this.content);
+    // setContentNodes below handles clearErrorState and the content replace.
     const logo = h('div', { className: 'latest-brief-logo' });
     logo.appendChild(rawHtml(WM_LOGO_SVG));
-    this.content.appendChild(
+    this.setContentNodes(
       h('div', { className: 'latest-brief-card latest-brief-card--composing' },
         logo,
         h('div', { className: 'latest-brief-empty-title' }, 'We couldn’t confirm your plan.'),
@@ -483,7 +478,7 @@ export class LatestBriefPanel extends Panel {
   }
 
   private renderComposing(data: LatestBriefComposing): void {
-    clearChildren(this.content);
+    // setContentNodes below replaces all content — no manual clear needed.
     // While we're stuck on composing, re-poll every minute so the
     // panel transitions to ready on the next cron tick without
     // requiring a full page reload.
@@ -494,7 +489,7 @@ export class LatestBriefPanel extends Panel {
     // DocumentFragment.
     const logoDiv = h('div', { className: 'latest-brief-logo' });
     logoDiv.appendChild(rawHtml(WM_LOGO_SVG));
-    this.content.appendChild(
+    this.setContentNodes(
       h('div', { className: 'latest-brief-card latest-brief-card--composing' },
         logoDiv,
         h('div', { className: 'latest-brief-empty-title' }, 'Your brief is composing.'),

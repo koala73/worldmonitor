@@ -46,7 +46,9 @@ import {
   FREE_TIER_FOLLOW_LIMIT,
   type FollowMutationResult,
 } from '@/services/followed-countries';
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { onEntitlementChange } from '@/services/entitlements';
+import { openExternalUrl } from '@/services/external-navigation';
 import { escapeHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -94,6 +96,19 @@ export interface FollowButtonHandle {
 
 type UpgradeTrigger = (source: string) => void;
 
+/**
+ * Last-resort upgrade destination when the lazy checkout path is
+ * unavailable. Absolute, and routed through `openExternalUrl`: the bare
+ * relative `/pro#pricing` this replaced resolved against `tauri://localhost`
+ * in the desktop WebView, where no such route exists (#5911). Never throws —
+ * every call site here is already a fallback.
+ */
+function openProPricingPage(): void {
+  void openExternalUrl(`${WEB_APP_ORIGIN}/pro#pricing`).catch(() => {
+    /* swallow — non-browser env, or the OS opener refused */
+  });
+}
+
 let _upgradeTrigger: UpgradeTrigger = (source) => {
   // Match the notifications-settings.ts pattern: try sign-in first if no
   // user, otherwise drop into checkout. If anything fails we fall back
@@ -119,17 +134,17 @@ let _upgradeTrigger: UpgradeTrigger = (source) => {
                 product as Parameters<typeof checkout.startCheckout>[0],
               );
             } else {
-              window.open('/pro#pricing', '_blank', 'noopener,noreferrer');
+              openProPricingPage();
             }
           }),
         )
         .catch(() => {
-          window.open('/pro#pricing', '_blank', 'noopener,noreferrer');
+          openProPricingPage();
         });
     });
   } catch {
     try {
-      window.open('/pro#pricing', '_blank', 'noopener,noreferrer');
+      openProPricingPage();
     } catch {
       /* swallow — non-browser env */
     }
@@ -148,7 +163,7 @@ export function _setUpgradeTriggerForTests(fn: UpgradeTrigger | null): void {
   _upgradeTrigger = fn ?? ((source) => {
     void source;
     try {
-      window.open('/pro#pricing', '_blank', 'noopener,noreferrer');
+      openProPricingPage();
     } catch {
       /* swallow */
     }

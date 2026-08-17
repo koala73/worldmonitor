@@ -1,61 +1,91 @@
 /**
- * Shared DodoPayments Convex component SDK configuration.
+ * Dodo checkout-session creation via the direct REST SDK ("dodopayments").
  *
- * This file initializes the @dodopayments/convex component SDK, which handles
- * the checkout overlay lifecycle and webhook signature verification via the
- * Convex component system. It is the SDK used by checkout.ts and the HTTP
- * webhook action.
+ * HISTORY (#6027): session creation previously went through the
+ * @dodopayments/convex component (still mounted in convex.config.ts). That
+ * path was retired for checkout because the component constructs its REST
+ * client with the SDK's DEFAULT retry policy — maxRetries=2, 429s retried,
+ * Retry-After honored VERBATIM with no cap (dodopayments client.js) — which:
+ *   (a) composed with our action-level retry ladder in
+ *       payments/checkoutRateLimit.ts into up to 9 raw provider requests per
+ *       checkout during a shared-key rate limit,
+ *   (b) made an in-flight attempt unboundable (an internal Retry-After sleep
+ *       can be minutes — the same hazard billing.ts pins maxRetries: 0 for),
+ *   (c) reported every provider 429 as an uncaught component-action error in
+ *       Sentry (WORLDMONITOR-WP) even when the caller handled it gracefully.
+ * The direct client pins maxRetries: 0 and a per-attempt timeout so the
+ * bounded ladder in payments/checkoutRateLimit.ts owns ALL retry policy.
  *
- * DUAL SDK NOTE: billing.ts uses the direct dodopayments REST SDK
- * (npm: "dodopayments") for customer portal and plan-change API calls.
- * These are two separate packages with different responsibilities:
- *   - @dodopayments/convex (this file): checkout + webhook component
- *   - dodopayments (billing.ts): REST API for subscriptions/customers
+ * DUAL SDK NOTE: billing.ts builds its own direct REST client for customer
+ * portal / subscription calls; webhook signature verification lives in
+ * payments/webhookHandlers.ts against @dodopayments/core. This module is only
+ * the checkout-session seam (checkout.ts mocks it in tests via vi.mock).
  *
- * Config is read lazily (on first use) rather than at module scope,
- * so missing env vars fail at the action boundary with a clear error
- * instead of silently capturing empty values at import time.
- *
+ * Config is read lazily (on first use) so missing env vars fail at the action
+ * boundary with a clear error instead of at import time.
  * Canonical env var: DODO_API_KEY (set in Convex dashboard).
  */
 
-import { DodoPayments } from "@dodopayments/convex";
-import { components } from "../_generated/api";
+import { DodoPayments } from "dodopayments";
 
-let _instance: DodoPayments | null = null;
+/**
+ * Per-attempt cap on one provider round-trip. The retry ladder makes up to
+ * CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS attempts inside an 8s wall-clock budget
+ * (see payments/checkoutRateLimit.ts), so each attempt must be individually
+ * bounded or a hung/slow provider call would blow through the budget the
+ * deadline check can only enforce BETWEEN attempts.
+ */
+export const CHECKOUT_PROVIDER_ATTEMPT_TIMEOUT_MS = 3_500;
 
-function getDodoInstance(): DodoPayments {
-  if (_instance) return _instance;
+export type CheckoutSessionPayload = Parameters<
+  DodoPayments["checkoutSessions"]["create"]
+>[0];
 
-  const apiKey = process.env.DODO_API_KEY;
-  if (!apiKey) {
+export interface CheckoutSessionResult {
+  checkout_url: string;
+}
+
+/**
+ * Client options for the checkout-session client, exported as a pure function
+ * so tests can assert the retry contract without network access. maxRetries: 0
+ * is load-bearing — see the module header; deleting it reintroduces nested
+ * provider retries under the action ladder.
+ */
+export function buildCheckoutClientOptions(env: {
+  DODO_API_KEY?: string;
+  DODO_PAYMENTS_ENVIRONMENT?: string;
+}): ConstructorParameters<typeof DodoPayments>[0] {
+  if (!env.DODO_API_KEY) {
     throw new Error(
       "[dodo] DODO_API_KEY is not set. " +
         "Set it in the Convex dashboard environment variables.",
     );
   }
-
-  _instance = new DodoPayments(components.dodopayments, {
-    identify: async () => null, // Stub until real auth integration
-    apiKey,
-    environment: (process.env.DODO_PAYMENTS_ENVIRONMENT ?? "test_mode") as
-      | "test_mode"
-      | "live_mode",
-  });
-
-  return _instance;
+  const isLive = env.DODO_PAYMENTS_ENVIRONMENT === "live_mode";
+  return {
+    bearerToken: env.DODO_API_KEY,
+    ...(isLive ? {} : { environment: "test_mode" as const }),
+    maxRetries: 0,
+    timeout: CHECKOUT_PROVIDER_ATTEMPT_TIMEOUT_MS,
+  };
 }
 
 /**
- * Lazily-initialized Dodo API accessors.
- * Throws immediately if DODO_API_KEY is missing, so callers get a clear
- * error at the action boundary rather than a cryptic SDK failure later.
+ * Create one checkout session — exactly one HTTP request (no SDK-internal
+ * retries). Throws the SDK's typed APIError on failure (status 429 for rate
+ * limits, classified by payments/checkoutRateLimit.ts).
  */
-export function getDodoApi() {
-  return getDodoInstance().api();
-}
-
-/** Shorthand for checkout API. */
-export function checkout(...args: Parameters<ReturnType<DodoPayments['api']>['checkout']>) {
-  return getDodoApi().checkout(...args);
+export async function createDodoCheckoutSession(
+  payload: CheckoutSessionPayload,
+): Promise<CheckoutSessionResult> {
+  const client = new DodoPayments(buildCheckoutClientOptions(process.env));
+  const session = await client.checkoutSessions.create(payload);
+  if (!session.checkout_url) {
+    // Session created but no redirect URL — surface as a hard (non-429)
+    // failure on the existing error channel rather than returning a dead link.
+    throw new Error(
+      `Dodo checkout session ${session.session_id} has no checkout_url`,
+    );
+  }
+  return { checkout_url: session.checkout_url };
 }

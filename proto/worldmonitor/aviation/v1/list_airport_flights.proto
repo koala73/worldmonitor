@@ -32,6 +32,7 @@ message ListAirportFlightsRequest {
   // Maximum number of flights to return (1-100).
   int32 limit = 3 [
     (sebuf.http.query) = { name: "limit" },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
     (buf.validate.field).int32.gte = 1,
     (buf.validate.field).int32.lte = 100
   ];

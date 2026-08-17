@@ -1,5 +1,6 @@
 // Pure helpers for composing a WorldMonitor Brief envelope from the
-// upstream news:insights:v1 cache + a user's alert-rule preferences.
+// digest-derived, upstream-normalized story rows + a user's alert-rule
+// preferences. Rows can retain legacy/non-clustered fields during migration.
 //
 // Split into its own module so Phase 3a (stubbed digest text) and
 // Phase 3b (LLM-generated digest) can share the same filter + shape
@@ -68,7 +69,7 @@ export type OrderMetricsFn = (event: {
 }) => void;
 
 /**
- * Filters the upstream `topStories` array against a user's
+ * Filters digest-derived, upstream-normalized story rows against a user's
  * `alertRules.sensitivity` setting and caps at `maxStories`. Stories
  * with an unknown upstream severity are dropped.
  *
@@ -182,8 +183,8 @@ export interface UpstreamTopStory {
    */
   entityCorroboration?: unknown;
   /**
-   * Legacy upstream score alias retained for callers that still feed
-   * raw news:insights:v1 rows directly into filterTopStories.
+   * Legacy score alias retained for non-clustered rows that have not yet
+   * been normalized to `importanceScore`.
    */
   currentScore?: unknown;
   /**
@@ -191,7 +192,7 @@ export interface UpstreamTopStory {
    * (digestStoryToUpstreamTopStory at scripts/lib/brief-compose.mjs).
    * Used by `filterTopStories` when `rankedStoryHashes` is supplied
    * to re-order stories before the cap. Falls back to titleHash when
-   * the upstream digest path didn't materialise a primary `hash`.
+   * a legacy/non-clustered row did not materialise a primary `hash`.
    */
   hash?: unknown;
   /**

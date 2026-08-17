@@ -39,7 +39,7 @@ const INSTRUCTIONS = [
   'World Monitor is a live, machine-readable global-intelligence API and MCP server. Reach for it when a task needs fresh, correlated, structured data about the state of the world — JSON to reason over, not prose to re-parse.',
   '',
   'When to use these skills:',
-  '- Use `fetch-news-digest` when the user asks what’s in the news right now — the aggregated, categorized, threat-classified output of 500+ curated feeds in one call.',
+  '- Use `fetch-news-digest` when the user asks what’s in the news right now — the aggregated, categorized, threat-classified output of the curated feed catalog in one call.',
   '- Use `fetch-country-brief` when the user asks for a strategic read on one country’s geopolitical, economic, or security situation (a source-attributed narrative brief).',
   '- Use `fetch-resilience-score` when the user asks how resilient a country is, or wants its composite 0–100 resilience score, 30-day trend, or per-domain/pillar breakdown.',
   '- Use `check-chokepoint-status` when the user asks whether a maritime chokepoint (Suez, Hormuz, Malacca…) is disrupted, congested, or safe right now.',

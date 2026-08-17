@@ -4,9 +4,11 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, extname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { guardBuiltOutput, shouldSkipBuiltOutput } from './_lib/built-output-guard.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
+const dashboardHtml = resolve(repoRoot, 'dist/dashboard.html');
 
 function src(relPath) {
   return readFileSync(resolve(repoRoot, relPath), 'utf8');
@@ -306,7 +308,10 @@ describe('dashboard critical CSS graph', () => {
     );
   });
 
-  it('does not link or merge the settings-only stylesheet into built dashboard.html', () => {
+  describe('built dashboard output', { skip: shouldSkipBuiltOutput(dashboardHtml) }, () => {
+    guardBuiltOutput(dashboardHtml);
+
+    it('does not link or merge the settings-only stylesheet into built dashboard.html', () => {
     const dashboardHtml = builtSrc('dist/dashboard.html');
     const hrefs = stylesheetHrefs(dashboardHtml);
     const settingsStylesheets = hrefs.filter((href) =>
@@ -394,5 +399,6 @@ describe('dashboard critical CSS graph', () => {
         `Deferred dashboard stylesheet ${href} must keep a no-JS stylesheet fallback (rel=stylesheet, any attribute order).`,
       );
     }
+  });
   });
 });

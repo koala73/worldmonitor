@@ -112,12 +112,14 @@ generate: clean ## Generate code from proto definitions
 		done && \
 		BUF_BIN=$$(command -v buf) && \
 		PATH="$$PLUGIN_DIR:$$PATH" "$$BUF_BIN" generate
+	@node scripts/generate-request-validation.mjs
 	@# protoc-gen-openapiv3 still misses WorldMonitor-specific contract details:
 	@# auth/security (#4599 root cause #1), filter parameter schemas,
 	@# query parameter requiredness (#4599 root cause #3 / #4604), and
 	@# examples. Apply byte-/format-preserving injectors before deriving
 	@# examples so examples reflect the final schemas.
 	@node scripts/openapi-inject-security.mjs
+	@node scripts/openapi-inject-company-monitoring-contract.mjs
 	@node scripts/apply-openapi-filter-param-schemas.mjs
 	@node scripts/openapi-inject-required.mjs
 	@node scripts/openapi-inject-examples.mjs
@@ -127,13 +129,17 @@ generate: clean ## Generate code from proto definitions
 	@node scripts/openapi-inject-webhooks.mjs
 	@node scripts/openapi-inject-idempotency.mjs
 	@node scripts/openapi-inject-rate-limit-errors.mjs
+	@node scripts/openapi-inject-billing-verification.mjs
 	@node scripts/openapi-inject-async-jobs.mjs
 	@node scripts/openapi-inject-china-corridors.mjs
 	@node scripts/openapi-inject-china-decision-signals.mjs
+	@# Product-only provider values must be removed after every schema/example
+	@# injector so a later generator step cannot reintroduce them.
+	@node scripts/openapi-restrict-provider-redistribution.mjs
 	@echo "Code generation complete!"
 
 breaking: ## Check for breaking changes against main
-	cd $(PROTO_DIR) && buf breaking --against '.git#branch=main,subdir=proto'
+	cd $(PROTO_DIR) && buf breaking --against '../.git#branch=origin/main,subdir=proto'
 
 format: ## Format protobuf files
 	cd $(PROTO_DIR) && buf format -w

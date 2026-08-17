@@ -84,7 +84,7 @@ Public API entry points validate and clamp all parameters:
 | Endpoint | Validation |
 |----------|------------|
 | `GET /api/market/v1/list-market-quotes` | Stock/index `symbols` list; empty returns defaults |
-| `GET /api/market/v1/list-crypto-quotes` | CoinGecko `ids` list; empty returns defaults |
+| `GET /api/market/v1/list-crypto-quotes` | CoinGecko `ids` list (max 25); empty returns defaults; seed-first, gap resolved via provider |
 | `GET /api/polymarket` | Legacy Polymarket proxy: order field allowlist, limit clamped 1-100 |
 
 This prevents upstream API abuse and rate limit exhaustion from malformed requests.
