@@ -11,9 +11,11 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 
 <Info>
 **Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** Pro 订阅者只需在授权页点击 _"Sign in with WorldMonitor Pro"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。Free 套餐用户在 OAuth 步骤会看到 `403 INSUFFICIENT_TIER`。
+
+`get_sources` 不需要 OAuth：它是唯一无需凭据且不消耗每日配额的数据工具。匿名调用使用独立的失败关闭限额：每个 IP 每分钟 10 次。其他所有数据工具仍需订阅。
 </Info>
 
-所有付费套餐共享同一个 MCP 服务器和同样的 60 个工具。当前的硬性 MCP 每日预留仅针对 OAuth 上下文在 Pro 计数器上强制执行：**每个 UTC 日 50 次消耗配额的 `tools/call` / `resources/read` 调用**。使用 API key（`wm_…`）的 MCP 客户端受本 handler 中 **60 次请求/分钟/key** 限流器的保护；更宽松的 API Starter / Business REST 额度在 MCP 每日预留路径之外强制执行。（`describe_tool`，即 v1.5.0 的元数据查询辅助工具，不计入 Pro 每日配额。）
+所有付费套餐共享同一个 MCP 服务器和同样的实时工具目录。当前的硬性 MCP 每日预留仅针对 OAuth 上下文在 Pro 计数器上强制执行：**每个 UTC 日 50 次消耗配额的 `tools/call` / `resources/read` 调用**。使用 API key（`wm_…`）的 MCP 客户端受本 handler 中 **60 次请求/分钟/key** 限流器的保护；更宽松的 API Starter / Business REST 额度在 MCP 每日预留路径之外强制执行。（`describe_tool`，即 v1.5.0 的元数据查询辅助工具，不计入 Pro 每日配额。）
 
 Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / claude.ai —— 参见下方的 [Pro 登录流程](#pro-sign-in-flow)。API Starter+ 用户可继续在授权页粘贴 `wm_…` key（原始流程），也可使用与 Pro 相同的 OAuth 路径。
 
@@ -57,14 +59,14 @@ WorldMonitor 支持 Streamable HTTP POST 流程，可返回 JSON 或 SSE 响应�
 
 ## 认证
 
-**发现是公开的。** `initialize`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`ping`、`logging/setLevel` 以及 `notifications/initialized` 握手都可**无需凭据**提供服务，因此任何 agent（或 agent 就绪性扫描器）都可以连接到 `https://worldmonitor.app/mcp`、读取服务器身份，并在认证之前枚举完整的工具、prompt 和资源目录 —— 这与静态[服务器卡片](https://worldmonitor.app/.well-known/mcp/server-card.json)中已发布的元数据相同。这些方法只返回公开的目录元数据（名称、描述、URI / URI 模板、静态工作流模板文案 —— 不含数据，不计配额）；匿名 `initialize` 所声明的每一项能力都可匿名调用，因此严格的 MCP 客户端（Claude Desktop、`mcp-remote`、参考 SDK）能够完成其连接后的完整枚举，而不会卡在认证墙上。对**公开**资源的 `resources/read`（由 `resources/list` 暴露的具体的、仅含元数据的新鲜度/健康探针，例如 `worldmonitor://seed-meta/freshness`）**同样是公开且不计配额的** —— 匿名 agent 可以顺畅读取它。匿名发现按每个客户端 IP 限流为 60 次请求/分钟。所有返回数据或消耗配额的操作（`tools/call`，以及对承载数据的 **URI 模板实例化**的 `resources/read` —— 国家风险、咽喉要道状态、市场报价）仍需使用下方两种认证模式之一。在发现方法上出示的凭据仍会被校验（错误的 key 会返回 `401`，绝不会静默降级为匿名）。
+**发现是公开的。** `initialize`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`ping`、`logging/setLevel` 以及 `notifications/initialized` 握手都可**无需凭据**提供服务，因此任何 agent（或 agent 就绪性扫描器）都可以连接到 `https://worldmonitor.app/mcp`、读取服务器身份，并在认证之前枚举完整的工具、prompt 和资源目录 —— 这与静态[服务器卡片](https://worldmonitor.app/.well-known/mcp/server-card.json)中已发布的元数据相同。这些方法只返回公开的目录元数据（名称、描述、URI / URI 模板、静态工作流模板文案 —— 不含数据，不计配额）；匿名 `initialize` 所声明的每一项能力都可匿名调用，因此严格的 MCP 客户端（Claude Desktop、`mcp-remote`、参考 SDK）能够完成其连接后的完整枚举，而不会卡在认证墙上。对**公开**资源的 `resources/read`（由 `resources/list` 暴露的具体的、仅含元数据的新鲜度/健康探针，例如 `worldmonitor://seed-meta/freshness`）**同样是公开且不计配额的** —— 匿名 agent 可以顺畅读取它。匿名发现按每个客户端 IP 限流为 60 次请求/分钟。`get_sources` 是唯一无需凭据且不消耗每日配额的数据工具；其匿名路径使用独立的失败关闭上限：每个 IP 每分钟 10 次。其他所有承载数据的 `tools/call`，以及对承载数据的 **URI 模板实例化**的 `resources/read`（国家风险、咽喉要道状态、市场报价），仍需使用下方两种订阅认证模式之一。在 `tools/list` 中，`get_sources` 带有 `_meta["worldmonitor/access"]: "free"`；没有该访问标记表示工具需要订阅。在发现方法上出示的凭据仍会被校验（错误的 key 会返回 `401`，绝不会静默降级为匿名）。
 
 MCP handler 按优先级顺序接受两种认证模式：
 
 1. **OAuth 2.1 bearer** —— `Authorization: Bearer <token>`，其中 `<token>` 由 `/api/oauth/token` 颁发。这是 Claude Desktop、claude.ai、Cursor 和 MCP Inspector 自动使用的方式。任何从浏览器源访问 MCP 的客户端都必须使用此方式。
 2. **直接 API key** —— 对于用户颁发的 key 使用 `X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567`，或使用由运营方颁发的不透明企业 key。适用于服务端脚本、`curl` 和自定义集成。**不要**把 API key 当作 `Bearer` token 发送 —— 它会通过 OAuth 解析失败并返回 `401 invalid_token`。
 
-OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户绑定和有效权益，因此订阅降级会在下一次请求时撤销 OAuth MCP 访问权限。直接的 `X-WorldMonitor-Key` 请求会校验所配置的 API key，然后使用按 key 的限流器；它们的 REST/API 套餐额度在 Pro/OAuth MCP 每日预留路径之外强制执行。
+OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户绑定和有效权益，因此订阅降级会在下一次请求时撤销 OAuth MCP 访问权限。控制面板签发的 `X-WorldMonitor-Key: wm_…` 请求会校验密钥所有者和有效权益，然后使用与 OAuth 路径相同的按用户分钟桶和每日 50 次默认值。部署许可名单中的旧版运营方密钥使用按密钥分钟桶，并跳过每日预留。
 
 ### Redirect URI 允许列表
 
@@ -110,12 +112,12 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 ### 每日额度（Pro 套餐）
 
 - **每个 UTC 日 50 次消耗配额的调用**，在 UTC 00:00 重置。
-- `tools/call` 以及对承载数据的 **URI 模板实例化**的 `resources/read` 会消耗 Pro 每日配额，元数据辅助工具 `describe_tool` 除外。
-- `initialize`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`logging/setLevel`、`notifications/initialized`、`ping` 和 `describe_tool` **不**计入每日上限。对**公开**资源的 `resources/read`（仅含元数据的新鲜度/健康探针，例如 `worldmonitor://seed-meta/freshness`）同样豁免 —— 它不承载任何可计费的数据。
+- 承载数据的 `tools/call` 以及对承载数据的 **URI 模板实例化**的 `resources/read` 会消耗 Pro 每日配额，`get_sources` 和元数据辅助工具 `describe_tool` 除外。
+- `initialize`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`logging/setLevel`、`notifications/initialized`、`ping`、`describe_tool` 和 `get_sources` **不**计入每日上限。对**公开**资源的 `resources/read`（仅含元数据的新鲜度/健康探针，例如 `worldmonitor://seed-meta/freshness`）同样豁免 —— 它不承载任何可计费的数据。
 - 达到上限会返回 JSON-RPC 错误 `-32029` 以及 HTTP `429`，并附带指向下一个 UTC 午夜的 `Retry-After` 头。
 - 该上限是硬性限制：接近边界时的并发 `tools/call` 或 `resources/read` 请求使用原子 Redis 预留，因此恰好跨越 50 的那次调用会被拒绝。
 
-需要更高吞吐量的脚本化访问？**API Starter** 和 **API Business** 增加了 `wm_…` key 选项以及 REST/API 套餐额度，但 `wm_…` MCP 调用不由 MCP 每日预留计数器计量；它们仍受 60 次/分钟/key 的 MCP 限流。对于批量或高吞吐量工作流，请优先使用 REST/API 端点或联系 Enterprise —— 参见[套餐与限制](#plans--limits)。
+需要更高吞吐量的脚本化访问？**API Starter** 和 **API Business** 增加了 `wm_…` key 选项以及更高的 REST/API 套餐额度。它们的 MCP 调用仍使用每日 50 次默认值和共享的每用户每分钟 60 次限流。对于批量或高吞吐量工作流，请优先使用 REST/API 端点或联系 Enterprise —— 参见[套餐与限制](#plans--limits)。
 
 ### 已连接的 MCP 客户端
 
@@ -130,17 +132,17 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 
 | 套餐 | MCP 访问 | 认证模式 | MCP 每日预留 | 备注 |
 |------|------------|------------|-----------------------|-------|
-| **Free** | ❌ 否 | — | — | OAuth 流程返回 `403 INSUFFICIENT_TIER`。请在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 升级。 |
+| **Free** | 仅 `get_sources` | 无 | 无每日配额 | 匿名 `get_sources` 调用超过每个 IP 每分钟 10 次时失败关闭。其他数据工具的 OAuth 流程返回 `403 INSUFFICIENT_TIER`。 |
 | **Pro** | ✅ 是 | 仅 OAuth | **50 次消耗配额的调用 / UTC 日** | 经由 apex Clerk 登录跳转。无需或存储 `wm_…` key。 |
-| **API Starter** | ✅ 是 | OAuth **或** `wm_…` key | OAuth 上下文使用 Pro 计数器；`wm_…` MCP 调用**无 MCP 每日预留** | 标准开发者层 REST/API 访问。 |
-| **API Business** | ✅ 是 | OAuth **或** `wm_…` key | OAuth 上下文使用 Pro 计数器；`wm_…` MCP 调用**无 MCP 每日预留** | 更高的 REST/API 吞吐量。 |
-| **Enterprise** | ✅ 是 | OAuth **或** `wm_…` key | 自定义；`wm_…` MCP 调用**无默认 MCP 每日预留** | 可提供自定义 SLA。 |
+| **API Starter** | ✅ 是 | OAuth **或** `wm_…` key | **每个 UTC 日 50 次消耗配额的调用** | 标准开发者层 REST/API 访问。 |
+| **API Business** | ✅ 是 | OAuth **或** `wm_…` key | **每个 UTC 日 50 次消耗配额的调用** | 更高的 REST/API 吞吐量。 |
+| **Enterprise** | ✅ 是 | OAuth **或** `wm_…` key | OAuth 可以不设上限；`wm_…` key 使用**每日 50 次默认值** | 可提供自定义 SLA。 |
 
-所有付费套餐都通过每分钟 60 次调用/分钟/key（API key 客户端）或 60/分钟/用户（OAuth 上下文）的限流来防御突发流量风暴。**每分钟限流器在方法分发之前运行，因此每个方法（包括 `initialize`、`tools/list`、`prompts/list`、`resources/list`、`describe_tool` 等）都计入 60/分钟。** 只有 Pro/OAuth 每日配额上限是有选择性的 —— 它仅由 `tools/call` 和 `resources/read` 预留消耗（参见上方的[每日额度（Pro 套餐）](#daily-limit-pro-tier)，以及[错误目录](/zh/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily)中关于两种限制的完整方法豁免表）。
+所有付费套餐都通过每分钟 60 次调用的限流来防御突发流量风暴；OAuth 和控制面板签发的 `wm_…` key 按用户计数，旧版运营方密钥按密钥计数。**每分钟限流器在方法分发之前运行，因此每个已认证方法（包括 `initialize`、`tools/list`、`prompts/list`、`resources/list`、`describe_tool` 等）都计入 60/分钟。** 匿名 `get_sources` 调用改用独立的失败关闭上限：每个 IP 每分钟 10 次。每日配额上限仅由需要订阅且承载数据的 `tools/call` 和 `resources/read` 预留消耗，适用于 OAuth 和控制面板签发的 `wm_…` key（参见上方的[每日额度（Pro 套餐）](#daily-limit-pro-tier)，以及[错误目录](/zh/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily)中关于两种限制的完整方法豁免表）。
 
-OAuth 的 60/分钟是按用户计算（一个拥有 3 个 Claude 安装的用户共享一个 60/分钟池）；API key 的 60/分钟是按 key 计算（多个 key = 更高吞吐量）。
+OAuth 和控制面板签发的 key 的 60/分钟均按用户计算（一个拥有 3 个 Claude 安装或多个 `wm_…` key 的用户共享一个 60/分钟池）；旧版运营方密钥按 key 计算。
 
-达到 Pro/OAuth 每日配额会返回 JSON-RPC 错误 `-32029` 以及 HTTP `429`，并附带指向下一个 UTC 午夜的 `Retry-After` 头。达到每分钟限制会返回相同的错误码，但 `Retry-After` 较短。
+达到 MCP 每日配额会返回 JSON-RPC 错误 `-32029` 以及 HTTP `429`，并附带指向下一个 UTC 午夜的 `Retry-After` 头。达到每分钟限制会返回相同的错误码，但 `Retry-After` 较短。
 
 WorldMonitor 还会在 Settings 中显示当前的 MCP 套餐限额通知，并在付费用户接近或超出其套餐额度时以受限频率发送邮件。这些通知以信息告知和行动引导为目的：它们提供重试/重置指引、在下一套餐可自助购买时提供结账入口，或在不可自助时提供支持联系方式。它们不会自动升级账户，也不会产生超额费用。
 
@@ -199,7 +201,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## 工具目录
 
-服务器暴露 60 个工具。大多数是对预填充 Redis key 的缓存读取（亚秒级）。较慢的非缓存路径包括六个实时 LLM/外部 API 工具（`get_country_brief`、`analyze_situation`、`generate_forecasts`、`search_flights`、`search_flight_prices_by_date`、`classify_event`）、实时地理 RPC 工具（`get_airspace`、`get_maritime_activity`）、受预算约束的规范采购代理（`get_procurement_opportunities`）、企业情报代理（`get_company_intelligence`）、规范化中国决策信号 RPC（`get_china_decision_signals`），以及三个持久化历史 RPC（`search_intel_history`、`get_intel_timeline`、`get_similar_events`）。`get_world_brief` 读取仪表板使用的预计算、有引用依据的 `news:insights:v1` 快照，不会在请求时调用 LLM。按需 NLP 实用工具（`classify_event`、`extract_entities`、`get_news_clusters`、`get_keyword_spikes`）接受有严格上限的调用方文本或基于实时种子数据计算；除 `classify_event` 外全部为确定性计算。有一个工具（`describe_tool`，v1.5.0 新增）返回任何其他工具的完整未压缩定义 —— 在压缩后的 `tools/list` 描述含糊不清时很有用；不计入 Pro 每日配额。
+服务器暴露实时工具目录。大多数是对预填充 Redis key 的缓存读取（亚秒级）。较慢的非缓存路径包括六个实时 LLM/外部 API 工具（`get_country_brief`、`analyze_situation`、`generate_forecasts`、`search_flights`、`search_flight_prices_by_date`、`classify_event`）、实时地理 RPC 工具（`get_airspace`、`get_maritime_activity`）、受预算约束的规范采购代理（`get_procurement_opportunities`）、企业情报代理（`get_company_intelligence`）、规范化中国决策信号 RPC（`get_china_decision_signals`），以及三个持久化历史 RPC（`search_intel_history`、`get_intel_timeline`、`get_similar_events`）。`get_world_brief` 读取仪表板使用的预计算、有引用依据的 `news:insights:v1` 快照，不会在请求时调用 LLM。按需 NLP 实用工具（`classify_event`、`extract_entities`、`get_news_clusters`、`get_keyword_spikes`）接受有严格上限的调用方文本或基于实时种子数据计算；除 `classify_event` 外全部为确定性计算。有一个工具（`describe_tool`，v1.5.0 新增）返回任何其他工具的完整未压缩定义 —— 在压缩后的 `tools/list` 描述含糊不清时很有用；不计入 Pro 每日配额。
 
 <Tip>
 如需各工具的参数、新鲜度预算、超时以及具体的 `curl` 示例，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。关于 payload 投影 —— 每个工具都接受一个可选的 `jmespath` 参数，通常可将响应大小缩减 80-95% —— 请参阅 [JMESPath 指南](/zh/mcp-jmespath)。
@@ -224,6 +226,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_procurement_opportunities` | 仅限 Pro 的规范全球采购搜索；紧凑输出默认 10 条、最多 25 条。关键词相关性绝不表示投标资格。 |
 | `get_company_intelligence` | 经 SEC 身份验证的逐公司情报：丰富化、带时间戳的信号、申报搜索与全市场重大 8-K 事件。 |
 | `get_commodity_geo` | 全球 71 个主要矿场（金、银、铜、锂、铀、煤）。 |
+| `get_mineral_production` | 各国矿产开采/冶炼份额与 HHI（USGS MCS，BGS 补缺）。 |
 
 ### 能源
 
@@ -393,11 +396,11 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 - [#4525](https://github.com/koala73/worldmonitor/issues/4525) —— 延后的纯读取 MCP 覆盖候选项。
 - [#4526](https://github.com/koala73/worldmonitor/issues/4526) —— 手动映射和 fetch-on-miss 分诊。
 
-有关完整的 60 个工具列表，请参见上方的[工具目录](#tool-catalog)；有关各工具详情，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。
+有关完整的实时工具目录，请参见上方的[工具目录](#tool-catalog)；有关各工具详情，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。
 
 ## Prompt 与资源
 
-除了 60 个工具之外，WorldMonitor 还暴露 MCP prompt 和资源，使客户端无需从零编排工具计划即可发现常见工作流并寻址稳定的数据切片。
+除实时工具目录外，WorldMonitor 还暴露 MCP prompt 和资源，使客户端无需从零编排工具计划即可发现常见工作流并寻址稳定的数据切片。
 
 ### Prompt
 

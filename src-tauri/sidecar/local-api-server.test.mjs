@@ -12,6 +12,11 @@ import path from 'node:path';
 import test from 'node:test';
 import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
 
+test('keeps seed-owned defense snapshots cloud-preferred regardless of relay configuration', () => {
+  assert.equal(__testing__.isCloudPreferred('/api/bootstrap'), true);
+  assert.equal(__testing__.isCloudPreferred('/api/military/v1/get-defense-industrial-base'), true);
+});
+
 // The sidecar default-denies when LOCAL_API_TOKEN is unset (security fix:
 // previously "unset" meant "auth disabled", which made any standalone run
 // an open local-HTTP proxy). Set a stable test token + an authFetch helper
@@ -533,6 +538,54 @@ test('replaces browser origin with localhost origin for local handlers', async (
     await app.close();
     await localApi.cleanup();
     await remote.close();
+  }
+});
+
+test('injects the desktop product key into the product-only OpenSky local handler', async () => {
+  const originalProductKey = process.env.WORLDMONITOR_API_KEY;
+  process.env.WORLDMONITOR_API_KEY = 'desktop-product-key';
+  const remote = await setupRemoteServer();
+  const localApi = await setupApiDir({
+    'opensky.js': `
+      export default async function handler(req) {
+        return new Response(JSON.stringify({
+          origin: req.headers.get('origin'),
+          productKey: req.headers.get('x-worldmonitor-key'),
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/opensky`, {
+      headers: {
+        Origin: 'https://tauri.localhost',
+        'X-WorldMonitor-Key': 'renderer-supplied-key',
+      },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      origin: `http://127.0.0.1:${port}`,
+      productKey: 'desktop-product-key',
+    });
+    assert.equal(remote.hits.length, 0);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+    if (originalProductKey === undefined) delete process.env.WORLDMONITOR_API_KEY;
+    else process.env.WORLDMONITOR_API_KEY = originalProductKey;
   }
 });
 

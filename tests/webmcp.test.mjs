@@ -4,14 +4,36 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  DashboardBindingError,
   buildWebMcpTools,
   registerWebMcpTools,
 } from '../src/services/webmcp.ts';
+import {
+  DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN,
+  DASHBOARD_MAP_MAX_LATITUDE,
+} from '../shared/agent-bus-contract.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
 const WEBMCP_PATH = resolve(ROOT, 'src/services/webmcp.ts');
 const src = readFileSync(WEBMCP_PATH, 'utf-8');
+const homepageSrc = readFileSync(resolve(ROOT, 'pro-test/welcome.html'), 'utf-8');
+const dashboardBindingSrc = readFileSync(
+  resolve(ROOT, 'src/app/webmcp-dashboard.ts'),
+  'utf-8',
+);
+const dashboardActionBindingSrc = readFileSync(
+  resolve(ROOT, 'src/app/dashboard-action-binding.ts'),
+  'utf-8',
+);
+const DASHBOARD_TOOL_NAMES = [
+  'openCountryBrief',
+  'openSearch',
+  'get_dashboard_context',
+  'open_dashboard_panel',
+  'set_map_view',
+  'set_map_layers',
+];
 
 const settlePromises = async () => {
   await Promise.resolve();
@@ -24,6 +46,27 @@ function createBindings(overrides = {}) {
     openCountryBriefByCode: async () => {},
     resolveCountryName: (code) => `Country ${code}`,
     openSearch: async () => {},
+    getDashboardContext: async () => ({
+      variant: 'full',
+      map: {
+        view: 'global',
+        center: { lat: 1.25, lon: 2.5 },
+        zoom: 3,
+        timeRange: '7d',
+        enabledLayers: ['conflicts'],
+      },
+      panels: {
+        mounted: ['map', 'markets'],
+        enabled: ['map', 'markets'],
+      },
+    }),
+    applyDashboardAction: async (action) => ({
+      ok: true,
+      status: 'applied',
+      actionType: action.type,
+      message: 'Applied dashboard action.',
+      targets: [],
+    }),
     ...overrides,
   };
 }
@@ -60,6 +103,21 @@ describe('webmcp.ts: current API contract', () => {
     assert.doesNotMatch(src, /provideContext/);
   });
 
+  it('keeps every registration same-origin and never delegates tools to an iframe', () => {
+    assert.doesNotMatch(`${src}\n${homepageSrc}`, /\bexposedTo\b|\bfromOrigins\b/);
+    for (const htmlPath of [
+      'index.html',
+      'embed.html',
+      'settings.html',
+      'live-channels.html',
+      'mcp-grant.html',
+      'pro-test/welcome.html',
+    ]) {
+      const html = readFileSync(resolve(ROOT, htmlPath), 'utf-8');
+      assert.doesNotMatch(html, /<iframe\b[^>]*\ballow=["'][^"']*\btools\b/i, htmlPath);
+    }
+  });
+
   it('uses the official ambient WebMCP declarations', () => {
     const pkg = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf-8'));
     const tsconfig = JSON.parse(readFileSync(resolve(ROOT, 'tsconfig.json'), 'utf-8'));
@@ -71,13 +129,16 @@ describe('webmcp.ts: current API contract', () => {
 
   it('ships bounded current-API metadata and explicit annotations', () => {
     const tools = buildWebMcpTools(createBindings(), () => {});
-    assert.ok(tools.length >= 2);
+    assert.deepEqual(tools.map((tool) => tool.name), DASHBOARD_TOOL_NAMES);
     for (const tool of tools) {
       assert.ok(tool.name.length <= 30, `${tool.name}: name exceeds Chrome guidance`);
       assert.ok(tool.description.length <= 500, `${tool.name}: description exceeds Chrome guidance`);
       assert.equal(typeof tool.title, 'string');
       assert.ok(tool.title.length > 0);
-      assert.equal(tool.annotations?.readOnlyHint, false);
+      assert.equal(
+        tool.annotations?.readOnlyHint,
+        tool.name === 'get_dashboard_context',
+      );
       const properties = tool.inputSchema?.properties ?? {};
       for (const property of Object.values(properties)) {
         if (property && typeof property === 'object' && 'description' in property) {
@@ -85,6 +146,43 @@ describe('webmcp.ts: current API contract', () => {
         }
       }
     }
+  });
+
+  it('advertises mutually exclusive named-view and coordinate inputs', () => {
+    const tools = buildWebMcpTools(createBindings(), () => {});
+    const schema = tools.find((tool) => tool.name === 'set_map_view').inputSchema;
+
+    assert.equal('anyOf' in schema, false);
+    assert.deepEqual(schema.oneOf, [
+      {
+        required: ['view'],
+        not: {
+          anyOf: [
+            { required: ['lat'] },
+            { required: ['lon'] },
+          ],
+        },
+      },
+      {
+        required: ['lat', 'lon'],
+        not: { required: ['view'] },
+      },
+    ]);
+    assert.equal(schema.properties.lat.minimum, -DASHBOARD_MAP_MAX_LATITUDE);
+    assert.equal(schema.properties.lat.maximum, DASHBOARD_MAP_MAX_LATITUDE);
+  });
+
+  it('publishes the same bounded layer batch contract as the agent bus', () => {
+    const tools = buildWebMcpTools(createBindings(), () => {});
+    const schema = tools.find((tool) => tool.name === 'set_map_layers').inputSchema;
+    const layers = schema.properties.layers;
+
+    assert.equal(layers.minProperties, 1);
+    assert.equal(layers.maxProperties, 10);
+    assert.equal(layers.propertyNames.minLength, 1);
+    assert.equal(layers.propertyNames.maxLength, 30);
+    assert.equal(layers.propertyNames.pattern, DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN);
+    assert.deepEqual(layers.additionalProperties, { type: 'boolean' });
   });
 });
 
@@ -139,6 +237,161 @@ describe('webmcp.ts: native tool execution and telemetry', () => {
       data: { tool: 'openSearch', outcome: 'failure' },
     }]);
   });
+
+  it('preserves closed dashboard availability reasons', async () => {
+    const tools = buildWebMcpTools(createBindings({
+      getDashboardContext: async () => {
+        throw new DashboardBindingError('map_unavailable', 'Map is not available.');
+      },
+    }), () => {});
+
+    await assert.rejects(
+      tools.find((tool) => tool.name === 'get_dashboard_context').execute({}),
+      (error) => error.name === 'WebMcpToolError'
+        && error.message === 'Dashboard unavailable: Map is not available. Reason: map_unavailable.',
+    );
+  });
+
+  it('returns bounded live dashboard context without DOM inspection', async () => {
+    const manyIds = Array.from({ length: 200 }, (_, index) => (
+      `panel-${String(index).padStart(3, '0')}-${'x'.repeat(80)}`
+    ));
+    const tools = buildWebMcpTools(createBindings({
+      getDashboardContext: async () => ({
+        variant: 'finance',
+        map: {
+          view: 'america',
+          center: { lat: 40.7128, lon: -74.006 },
+          zoom: 4,
+          timeRange: '24h',
+          enabledLayers: manyIds,
+        },
+        panels: { mounted: manyIds, enabled: manyIds },
+      }),
+    }), () => {});
+
+    const result = await tools
+      .find((tool) => tool.name === 'get_dashboard_context')
+      .execute({});
+
+    assert.equal(result.variant, 'finance');
+    assert.equal(result.map.view, 'america');
+    assert.equal(result.panels.mountedCount, 200);
+    assert.equal(result.panels.mountedTruncated, true);
+    assert.ok(JSON.stringify(result).length <= 1_500);
+  });
+
+  it('routes every dashboard action tool through the narrow agent-bus binding', async () => {
+    const actions = [];
+    const tools = buildWebMcpTools(createBindings({
+      applyDashboardAction: async (action) => {
+        actions.push(action);
+        return {
+          ok: true,
+          status: 'applied',
+          actionType: action.type,
+          message: 'Applied.',
+          targets: [{ target: 'live-target', status: 'applied' }],
+        };
+      },
+    }), () => {});
+
+    await tools.find((tool) => tool.name === 'open_dashboard_panel')
+      .execute({ panelId: 'markets' });
+    await tools.find((tool) => tool.name === 'set_map_view')
+      .execute({ view: 'mena', zoom: 4 });
+    const layerResult = await tools.find((tool) => tool.name === 'set_map_layers')
+      .execute({ layers: { conflicts: true, resilienceScore: false } });
+
+    assert.deepEqual(actions, [
+      { type: 'open_panel', panelId: 'markets' },
+      { type: 'set_view', view: 'mena', lat: undefined, lon: undefined, zoom: 4 },
+      { type: 'set_layers', layers: { conflicts: true, resilienceScore: false } },
+    ]);
+    assert.equal(layerResult.status, 'applied');
+    assert.deepEqual(layerResult.targets, [{ target: 'live-target', status: 'applied' }]);
+  });
+
+  it('returns denied dashboard actions with the applier reason and target outcome', async () => {
+    const events = [];
+    const tools = buildWebMcpTools(createBindings({
+      applyDashboardAction: async () => ({
+        ok: false,
+        status: 'denied',
+        reason: 'panel_not_entitled',
+        message: 'Panel is not available on this plan.',
+        targets: [{
+          target: 'daily-market-brief',
+          status: 'denied',
+          reason: 'panel_not_entitled',
+        }],
+      }),
+    }), (event, data) => events.push({ event, data }));
+
+    const result = await tools.find((tool) => tool.name === 'open_dashboard_panel')
+      .execute({ panelId: 'daily-market-brief' });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'panel_not_entitled');
+    assert.deepEqual(result.targets, [{
+      target: 'daily-market-brief',
+      status: 'denied',
+      reason: 'panel_not_entitled',
+    }]);
+    assert.deepEqual(events, [{
+      event: 'webmcp-tool-invoked',
+      data: { tool: 'open_dashboard_panel', outcome: 'success' },
+    }]);
+  });
+
+  it('preserves every partial layer outcome and keeps the result bounded', async () => {
+    const targets = Array.from({ length: 10 }, (_, index) => ({
+      target: `layer-${index}-${'x'.repeat(22)}`,
+      status: index === 0 ? 'applied' : 'denied',
+      ...(index === 0 ? {} : { reason: 'variant_disallowed' }),
+    }));
+    const layers = Object.fromEntries(targets.map(({ target }) => [target, true]));
+    const tools = buildWebMcpTools(createBindings({
+      applyDashboardAction: async () => ({
+        ok: true,
+        status: 'applied',
+        actionType: 'set_layers',
+        message: 'Updated map layers.',
+        targets,
+      }),
+    }), () => {});
+
+    const result = await tools.find((tool) => tool.name === 'set_map_layers')
+      .execute({ layers });
+    assert.equal(result.targetCount, 10);
+    assert.equal(result.targetsTruncated, false);
+    assert.deepEqual(result.targets, targets);
+    assert.ok(JSON.stringify(result).length <= 1_500);
+  });
+
+  it('reports every denied layer target as a structured outcome', async () => {
+    const targets = Array.from({ length: 10 }, (_, index) => ({
+      target: `layer-${index}-${'x'.repeat(22)}`,
+      status: 'denied',
+      reason: 'layer_not_entitled',
+    }));
+    const layers = Object.fromEntries(targets.map(({ target }) => [target, true]));
+    const tools = buildWebMcpTools(createBindings({
+      applyDashboardAction: async () => ({
+        ok: false,
+        status: 'denied',
+        actionType: 'set_layers',
+        reason: 'no_allowed_layers',
+        message: 'No requested layers can be applied.',
+        targets,
+      }),
+    }), () => {});
+
+    const result = await tools.find((tool) => tool.name === 'set_map_layers').execute({ layers });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'no_allowed_layers');
+    assert.deepEqual(result.targets, targets);
+    assert.ok(JSON.stringify(result).length <= 1_500);
+  });
 });
 
 describe('webmcp.ts: promise registration lifecycle', () => {
@@ -154,14 +407,14 @@ describe('webmcp.ts: promise registration lifecycle', () => {
     const controller = registerWebMcpTools(createBindings(), harness.runtime);
 
     assert.ok(controller);
-    assert.deepEqual(registrations.map(({ tool }) => tool.name), ['openCountryBrief', 'openSearch']);
+    assert.deepEqual(registrations.map(({ tool }) => tool.name), DASHBOARD_TOOL_NAMES);
     assert.ok(registrations.every(({ signal }) => signal === controller.signal));
     assert.deepEqual(harness.events, [], 'registration must not be reported before fulfillment');
 
     await settlePromises();
     assert.deepEqual(harness.events, [{
       event: 'webmcp-registered',
-      data: { toolCount: 2, api: 'registerTool' },
+      data: { toolCount: 6, api: 'registerTool' },
     }]);
 
     controller.abort();
@@ -188,7 +441,7 @@ describe('webmcp.ts: promise registration lifecycle', () => {
       },
       {
         event: 'webmcp-registered',
-        data: { toolCount: 1, api: 'registerTool' },
+        data: { toolCount: 5, api: 'registerTool' },
       },
     ]);
     assert.ok(!JSON.stringify(harness.events).includes('raw duplicate detail'));
@@ -210,7 +463,7 @@ describe('webmcp.ts: promise registration lifecycle', () => {
     );
     assert.equal(
       harness.events.filter(({ event }) => event === 'webmcp-registration-failed').length,
-      2,
+      DASHBOARD_TOOL_NAMES.length,
     );
   });
 
@@ -227,7 +480,7 @@ describe('webmcp.ts: promise registration lifecycle', () => {
     await settlePromises();
     assert.deepEqual(
       harness.events.map(({ data }) => data.reason),
-      ['unknown', 'unknown'],
+      DASHBOARD_TOOL_NAMES.map(() => 'unknown'),
     );
   });
 
@@ -266,14 +519,14 @@ describe('webmcp.ts: promise registration lifecycle', () => {
     const first = createRegistrationRuntime(provider);
     const firstController = registerWebMcpTools(createBindings(), first.runtime);
     await settlePromises();
-    assert.deepEqual([...liveTools], ['openCountryBrief', 'openSearch']);
+    assert.deepEqual([...liveTools], DASHBOARD_TOOL_NAMES);
     firstController.abort();
     assert.deepEqual([...liveTools], []);
 
     const second = createRegistrationRuntime(provider);
     registerWebMcpTools(createBindings(), second.runtime);
     await settlePromises();
-    assert.deepEqual([...liveTools], ['openCountryBrief', 'openSearch']);
+    assert.deepEqual([...liveTools], DASHBOARD_TOOL_NAMES);
     assert.equal(
       second.events.some(({ event }) => event === 'webmcp-registration-failed'),
       false,
@@ -295,9 +548,9 @@ describe('webmcp.ts: promise registration lifecycle', () => {
     };
     harness.listeners.get('DOMContentLoaded')();
     harness.windowListeners.get('load')();
-    assert.deepEqual(registrations, ['openCountryBrief', 'openSearch']);
+    assert.deepEqual(registrations, DASHBOARD_TOOL_NAMES);
     await settlePromises();
-    assert.equal(harness.events.at(-1).data.toolCount, 2);
+    assert.equal(harness.events.at(-1).data.toolCount, DASHBOARD_TOOL_NAMES.length);
   });
 
   it('ignores a provider that exposes only the removed batch API', () => {
@@ -470,7 +723,9 @@ describe('homepage WebMCP registration', () => {
 
 describe('webmcp App.ts binding: readiness + teardown', () => {
   const appSrc = readFileSync(resolve(ROOT, 'src/App.ts'), 'utf-8');
-  const bindingBlock = appSrc.match(/registerWebMcpTools\(\{[\s\S]+?\}\);/);
+  const bindingBlock = appSrc.match(
+    /registerWebMcpTools\(\{[\s\S]+?\n {4}\}\);(?=\n\n {4}window\.addEventListener)/,
+  );
 
   it('is imported statically and called before the first init await', () => {
     assert.ok(bindingBlock);
@@ -506,6 +761,45 @@ describe('webmcp App.ts binding: readiness + teardown', () => {
     );
   });
 
+  it('binds context and actions behind UI readiness and the shared lazy applier', () => {
+    assert.match(
+      bindingBlock[0],
+      /getDashboardContext:[\s\S]+?await this\.waitForDashboardReady\(\)[\s\S]+?getWebMcpDashboardContext/,
+    );
+    assert.match(
+      bindingBlock[0],
+      /applyDashboardAction:[\s\S]+?runDashboardActionBinding/,
+    );
+    assert.match(dashboardBindingSrc, /await import\('\.\/agent-bus-applier'\)/);
+    assert.doesNotMatch(appSrc, /from '@\/app\/agent-bus-applier'/);
+    assert.match(
+      bindingBlock[0],
+      /waitForUiReady:\s*\(\)\s*=>\s*this\.waitForDashboardReady\(false\)/,
+    );
+    assert.match(
+      bindingBlock[0],
+      /waitForMapReady:\s*\(\)\s*=>\s*this\.waitForDashboardReady\(\)/,
+    );
+    assert.match(
+      bindingBlock[0],
+      /isPanelEntitled\(panelId, config, hasPremiumAccess\(getAuthState\(\)\)\)/,
+    );
+    assert.match(
+      bindingBlock[0],
+      /this\.eventHandlers\.applyMapLayerChange\(layer, enabled, source\)/,
+    );
+    assert.match(
+      bindingBlock[0],
+      /applyViewChange:[\s\S]+?trackMapViewChange\(viewAction\.view\)/,
+    );
+    assert.match(bindingBlock[0], /syncUrlStateNow:\s*\(\)\s*=>\s*this\.eventHandlers\.syncUrlStateNow\(\)/);
+    assert.match(
+      dashboardActionBindingSrc,
+      /await options\.waitForUiReady\(\)[\s\S]+?await import\('\.\.\/\.\.\/shared\/agent-bus-actions'\)[\s\S]+?parsed\.action\.type === 'set_view'[\s\S]+?await options\.waitForMapReady\(\)[\s\S]+?await applyWebMcpDashboardAction[\s\S]+?result\.actionType === 'set_view'[\s\S]+?options\.syncUrlStateNow\(\)/,
+      'the testable binding should flush URL state only after the applier has awaited settlement',
+    );
+  });
+
   it('keeps the first-load search epoch state machine intact', () => {
     assert.match(appSrc, /private openSearchEpoch = 0;/);
     assert.match(appSrc, /private searchToggleDesiredOpen = false;/);
@@ -523,7 +817,21 @@ describe('webmcp App.ts binding: readiness + teardown', () => {
     );
     assert.match(
       appSrc,
-      /private async waitForUiReady\(timeoutMs = [\d_]+\)[\s\S]+?Promise\.race\(\[this\.uiReady/,
+      /private async waitForUiReady\(timeoutMs = [\d_]+\)[\s\S]+?waitForWebMcpUiReady\(this\.uiReady, this\.appDestroyed, timeoutMs\)/,
+    );
+    assert.match(
+      appSrc,
+      /private async waitForDashboardReady\(requireMapRenderer = true\)[\s\S]+?await this\.waitForUiReady\(\)[\s\S]+?if \(!requireMapRenderer\) return;[\s\S]+?map\.whenRendererReady\(\)[\s\S]+?'Map renderer'/,
+      'dashboard tools should wait for the concrete renderer, not only Phase-4 UI setup',
+    );
+  });
+
+  it('wakes startup waits on destroy and lets dashboard bindings return closed reasons', () => {
+    assert.match(appSrc, /private appDestroyed!:/);
+    assert.match(appSrc, /this\.resolveAppDestroyed\(\)/);
+    assert.match(
+      appSrc,
+      /private async waitForDashboardReady\(requireMapRenderer = true\)[\s\S]+?await this\.waitForUiReady\(\)[\s\S]+?if \(!this\.state\.isDestroyed\) throw error;/,
     );
   });
 

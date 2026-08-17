@@ -82,6 +82,17 @@ export function findOperationalProblems(payload, now = Date.now()) {
       ...(Number.isFinite(problem?.maxStaleMin)
         ? { maxStaleMin: problem.maxStaleMin }
         : {}),
+      // The content clock, carried so the report can name the pair that
+      // actually fired. Without these a STALE_CONTENT line could only print
+      // the SEED pair, which is by definition inside budget for that status —
+      // the reader sees `age=1200m max=5760m` on a problem row and reasonably
+      // concludes the monitor is broken.
+      ...(Number.isFinite(problem?.contentAgeMin)
+        ? { contentAgeMin: problem.contentAgeMin }
+        : {}),
+      ...(Number.isFinite(problem?.maxContentAgeMin)
+        ? { maxContentAgeMin: problem.maxContentAgeMin }
+        : {}),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -142,6 +153,15 @@ export function validateAcceptanceBaseline(baseline) {
       && !isUtcIsoInstant(entry.expiresAt)
     ) {
       throw new Error(`Acknowledged baseline entry ${entry.name} needs a valid UTC ISO expiresAt instant`);
+    }
+    // Optional rejection cohort: when present it must be a non-empty list of
+    // non-empty strings, or the cohort guard in applyAcceptanceBaseline would
+    // silently scope the acknowledgment to nothing.
+    if (Object.hasOwn(entry, 'rejectedShas')
+      && (!Array.isArray(entry.rejectedShas)
+        || entry.rejectedShas.length === 0
+        || entry.rejectedShas.some((sha) => typeof sha !== 'string' || sha.length === 0))) {
+      throw new Error(`Acknowledged baseline entry ${entry.name} needs rejectedShas to be a non-empty array of commit SHAs`);
     }
     if (Object.hasOwn(entry, 'cutover')) {
       if (!entry.cutover || typeof entry.cutover !== 'object' || Array.isArray(entry.cutover)) {
@@ -223,10 +243,23 @@ export function applyAcceptanceBaseline(problems, baseline, now = Date.now()) {
     const entry = accepted.get(key);
     if (entry) {
       seen.add(key);
-      if (!Object.hasOwn(entry, 'expiresAt') || now < Date.parse(entry.expiresAt)) {
+      // An entry may scope its acknowledgment to an explicit rejection cohort
+      // (entry.rejectedShas). A problem carrying any SHA outside that cohort
+      // is NEW information wearing the acknowledged name:status — the exact
+      // shape a recovered service's next, unrelated rejection takes — and must
+      // block (#6483 cross-model review, verified by execution). Additive:
+      // callers whose problems or entries carry no rejectedShas are unchanged.
+      const novelRejections = Array.isArray(entry.rejectedShas) && Array.isArray(problem.rejectedShas)
+        ? problem.rejectedShas.filter((sha) => !entry.rejectedShas.includes(sha))
+        : [];
+      if (novelRejections.length > 0) {
+        blocking.push({ ...problem, novelRejections, issue: entry.issue });
+      } else if (!Object.hasOwn(entry, 'expiresAt') || now < Date.parse(entry.expiresAt)) {
         acknowledged.push({ ...problem, issue: entry.issue });
       } else {
-        blocking.push(problem);
+        // Carry the expired entry's identity so the report can attribute the
+        // red line to a scheduled re-page instead of a fresh outage.
+        blocking.push({ ...problem, expiredEntry: entry.expiresAt, issue: entry.issue });
       }
     } else {
       blocking.push(problem);
@@ -252,10 +285,36 @@ function readAcceptanceBaseline() {
   return JSON.parse(readFileSync(BASELINE_URL, 'utf8'));
 }
 
+/**
+ * Health runs TWO independent clocks and this line has to print the one that
+ * actually fired.
+ *
+ *   seed    seedAgeMin vs maxStaleMin        "is the seeder running"  -> STALE_SEED
+ *   content contentAgeMin vs maxContentAgeMin "is the data advancing"  -> STALE_CONTENT
+ *
+ * This printed the seed pair unconditionally, so every STALE_CONTENT line read
+ * as a contradiction: euFsi showed `age=1200m max=5760m` — comfortably inside
+ * budget — while the breach was contentAgeMin 19230 against maxContentAgeMin
+ * 14400. A reader can only conclude the monitor is wrong, and the numbers that
+ * would explain it are already on the wire and simply were not printed.
+ */
 function describeProblem(problem) {
-  const freshness = Number.isFinite(problem.seedAgeMin)
-    ? ` age=${problem.seedAgeMin}m max=${problem.maxStaleMin ?? 'unknown'}m`
-    : '';
+  // A content budget with no readable content age is its OWN failure mode:
+  // health scores `contentAgeMin == null` as stale (fail-closed), so the source
+  // is flagged because the clock could not be read, not because it ran out.
+  // jodiGas reads exactly this way. Printing the seed pair there reproduces the
+  // original bug on the other branch, so name the unreadable clock instead.
+  const contentClock = problem.status === 'STALE_CONTENT'
+    && Number.isFinite(problem.maxContentAgeMin);
+  const contentAge = Number.isFinite(problem.contentAgeMin)
+    ? `${problem.contentAgeMin}m`
+    : 'unknown (no dated item; scored stale)';
+  const freshness = contentClock
+    ? ` contentAge=${contentAge} maxContentAge=${problem.maxContentAgeMin}m`
+      + (Number.isFinite(problem.seedAgeMin) ? ` (seed age=${problem.seedAgeMin}m ok)` : '')
+    : Number.isFinite(problem.seedAgeMin)
+      ? ` age=${problem.seedAgeMin}m max=${problem.maxStaleMin ?? 'unknown'}m`
+      : '';
   return `${problem.name}: status=${problem.status} records=${problem.records ?? 'unknown'}${freshness}`;
 }
 

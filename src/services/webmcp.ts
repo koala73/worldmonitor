@@ -6,13 +6,18 @@
 // inherit every auth/entitlement gate a browser user is subject to — they are
 // not a backdoor around the paywall.
 //
-// Current tools mirror the static Agent Skills set (#3310) for consistency:
+// Current tools mirror the static Agent Skills set (#3310) and add bounded
+// live-dashboard context/actions through the existing agent-bus seam (#6211):
 //   1. openCountryBrief({ iso2 }) — opens the country deep-dive panel.
 //   2. openSearch()               — opens the global command palette.
+//   3. get_dashboard_context()    — reads bounded visible dashboard state.
+//   4. open_dashboard_panel()     — opens an already-live panel.
+//   5. set_map_view()             — moves the visible map.
+//   6. set_map_layers()           — changes allowed visible map layers.
 //
-// The two v1 tools don't branch on auth state, so a single registration at
-// init time is correct. Any future Pro-only tool MUST re-register on
-// sign-in/sign-out (see feedback_reactive_listeners_must_be_symmetric.md).
+// No tool is conditionally registered. Live controls re-check auth and
+// entitlement through the agent-bus applier on every invocation, so a single
+// registration remains correct across sign-in/sign-out.
 //
 // Scanner compatibility: WebMCP scanners probe for
 // `document.modelContext.registerTool` invocations during initial page load.
@@ -20,6 +25,13 @@
 // awaits) so the probe finds the tools before it gives up.
 
 import { track, type UmamiEvent } from './analytics';
+import {
+  DASHBOARD_MAP_MAX_LATITUDE,
+  DASHBOARD_MAP_VIEWS,
+  DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN,
+  MAX_LAYER_ACTION_TARGET_ID_LENGTH,
+  MAX_LAYER_ACTION_TARGETS,
+} from '../../shared/agent-bus-contract';
 
 export interface WebMcpAppBindings {
   openCountryBriefByCode(code: string, country: string): Promise<void>;
@@ -29,9 +41,61 @@ export interface WebMcpAppBindings {
   // dispatching. Tool executes must `await` it so rejections surface to
   // withInvocationLogging's catch path.
   openSearch(): void | Promise<void>;
+  getDashboardContext(): DashboardContextSnapshot | Promise<DashboardContextSnapshot>;
+  applyDashboardAction(action: unknown): DashboardActionResult | Promise<DashboardActionResult>;
 }
 
-type DashboardWebMcpToolName = 'openCountryBrief' | 'openSearch';
+export interface DashboardContextSnapshot {
+  variant: string;
+  map: {
+    view: string;
+    center: { lat: number; lon: number } | null;
+    zoom: number;
+    timeRange: string;
+    enabledLayers: string[];
+  };
+  panels: {
+    mounted: string[];
+    enabled: string[];
+  };
+}
+
+export type DashboardActionStatus = 'applied' | 'denied' | 'invalid' | 'skipped';
+
+export interface DashboardActionTargetResult {
+  target: string;
+  status: DashboardActionStatus;
+  reason?: string;
+}
+
+export interface DashboardActionResult {
+  ok: boolean;
+  status: DashboardActionStatus;
+  actionType?: 'open_panel' | 'set_view' | 'set_layers';
+  reason?: string;
+  message: string;
+  targets: DashboardActionTargetResult[];
+}
+
+export type DashboardBindingFailureReason = 'app_destroyed' | 'map_unavailable';
+
+export class DashboardBindingError extends Error {
+  public constructor(
+    public readonly reason: DashboardBindingFailureReason,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'DashboardBindingError';
+  }
+}
+
+type DashboardWebMcpToolName =
+  | 'openCountryBrief'
+  | 'openSearch'
+  | 'get_dashboard_context'
+  | 'open_dashboard_panel'
+  | 'set_map_view'
+  | 'set_map_layers';
 type WebMcpAnalytics = (event: UmamiEvent, data?: Record<string, unknown>) => void;
 type RegistrationFailureReason =
   | 'invalid-state'
@@ -52,9 +116,15 @@ interface WebMcpRegistrationRuntime {
 }
 
 const ISO2 = /^[A-Z]{2}$/;
+const MAX_OUTPUT_CHARS = 1_500;
+const TARGET_OUTPUT_CHARS = 1_400;
 const TOOL_FAILURE_MESSAGES: Record<DashboardWebMcpToolName, string> = {
   openCountryBrief: 'World Monitor could not open that country brief.',
   openSearch: 'World Monitor could not open search.',
+  get_dashboard_context: 'World Monitor could not read dashboard context.',
+  open_dashboard_panel: 'World Monitor could not open that dashboard panel.',
+  set_map_view: 'World Monitor could not move the map.',
+  set_map_layers: 'World Monitor could not update map layers.',
 };
 
 class SafeWebMcpError extends Error {
@@ -95,9 +165,116 @@ function withInvocationLogging(
         outcome: 'failure',
       });
       if (error instanceof SafeWebMcpError) throw error;
+      if (error instanceof DashboardBindingError) {
+        throw new SafeWebMcpError(
+          `Dashboard unavailable: ${boundedText(error.message, 160)} Reason: ${error.reason}.`,
+        );
+      }
       throw new SafeWebMcpError(TOOL_FAILURE_MESSAGES[name]);
     }
   };
+}
+
+function boundedText(value: unknown, maxLength: number): string {
+  return typeof value === 'string' ? value.slice(0, maxLength) : '';
+}
+
+function boundedNumber(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function normalizeIdentifiers(values: unknown, maxLength: number): string[] {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => value.slice(0, maxLength))
+    .filter(Boolean))]
+    .sort();
+}
+
+function boundDashboardContext(snapshot: DashboardContextSnapshot): Record<string, unknown> {
+  const enabledLayers = normalizeIdentifiers(snapshot.map?.enabledLayers, 80);
+  const mounted = normalizeIdentifiers(snapshot.panels?.mounted, 96);
+  const enabled = normalizeIdentifiers(snapshot.panels?.enabled, 96);
+  const result = {
+    variant: boundedText(snapshot.variant, 32),
+    map: {
+      view: boundedText(snapshot.map?.view, 32),
+      center: snapshot.map?.center
+        ? {
+            lat: boundedNumber(snapshot.map.center.lat),
+            lon: boundedNumber(snapshot.map.center.lon),
+          }
+        : null,
+      zoom: boundedNumber(snapshot.map?.zoom),
+      timeRange: boundedText(snapshot.map?.timeRange, 32),
+      enabledLayers,
+      enabledLayerCount: enabledLayers.length,
+      layersTruncated: false,
+    },
+    panels: {
+      mounted,
+      enabled,
+      mountedCount: mounted.length,
+      enabledCount: enabled.length,
+      mountedTruncated: false,
+      enabledTruncated: false,
+    },
+  };
+
+  const collections = [enabled, mounted, enabledLayers];
+  while (JSON.stringify(result).length > TARGET_OUTPUT_CHARS) {
+    const candidate = collections
+      .filter((collection) => collection.length > 0)
+      .sort((left, right) => (
+        right.reduce((sum, item) => sum + item.length, 0)
+        - left.reduce((sum, item) => sum + item.length, 0)
+      ))[0];
+    if (!candidate) break;
+    candidate.pop();
+  }
+
+  result.map.layersTruncated = enabledLayers.length < result.map.enabledLayerCount;
+  result.panels.mountedTruncated = mounted.length < result.panels.mountedCount;
+  result.panels.enabledTruncated = enabled.length < result.panels.enabledCount;
+  return result;
+}
+
+function boundDashboardActionResult(result: DashboardActionResult): Record<string, unknown> & {
+  ok: boolean;
+  status: DashboardActionStatus;
+} {
+  const targets = (Array.isArray(result.targets) ? result.targets : []).map((target) => ({
+    target: boundedText(target?.target, 96),
+    status: target?.status,
+    ...(target?.reason ? { reason: boundedText(target.reason, 64) } : {}),
+  }));
+  const bounded = {
+    ok: result.ok === true,
+    status: result.status,
+    ...(result.actionType ? { actionType: result.actionType } : {}),
+    ...(result.reason ? { reason: boundedText(result.reason, 64) } : {}),
+    message: boundedText(result.message, 240),
+    targets,
+    targetCount: targets.length,
+    targetsTruncated: false,
+  };
+
+  if (JSON.stringify(bounded).length > MAX_OUTPUT_CHARS) {
+    throw new SafeWebMcpError('Dashboard action result exceeded the safe output limit.');
+  }
+  return bounded;
+}
+
+async function applyDashboardAction(
+  action: unknown,
+  app: WebMcpAppBindings,
+): Promise<Record<string, unknown>> {
+  // Denied and invalid actions are expected, structured control outcomes—not
+  // transport failures. Preserve the narrow applier result so agents can branch
+  // on stable reasons and per-target statuses. Runtime/binding faults still
+  // reject through withInvocationLogging's safe error boundary.
+  return boundDashboardActionResult(await app.applyDashboardAction(action));
 }
 
 export function buildWebMcpTools(
@@ -150,6 +327,141 @@ export function buildWebMcpTools(
         await app.openSearch();
         return 'Opened search palette.';
       }, trackEvent),
+    },
+    {
+      name: 'get_dashboard_context',
+      title: 'Get Dashboard Context',
+      description:
+        'Read a bounded snapshot of the visible dashboard: active variant, map view, center, zoom, time range, enabled layers, and mounted or enabled panel IDs.',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true },
+      execute: withInvocationLogging('get_dashboard_context', async () => (
+        boundDashboardContext(await app.getDashboardContext())
+      ), trackEvent),
+    },
+    {
+      name: 'open_dashboard_panel',
+      title: 'Open Dashboard Panel',
+      description:
+        'Open and scroll to an already-live dashboard panel through the same entitlement-aware control path used by World Monitor.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          panelId: {
+            type: 'string',
+            description: 'Dashboard panel ID, such as "markets" or "strategic-risk".',
+            minLength: 1,
+            maxLength: 96,
+            pattern: '^[a-z0-9][a-z0-9@_-]*$',
+          },
+        },
+        required: ['panelId'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging('open_dashboard_panel', async (args) => (
+        applyDashboardAction({
+          type: 'open_panel',
+          panelId: args.panelId,
+        }, app)
+      ), trackEvent),
+    },
+    {
+      name: 'set_map_view',
+      title: 'Set Map View',
+      description:
+        'Move the visible map to a named world region or a bounded latitude/longitude pair, with an optional zoom level.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          view: {
+            type: 'string',
+            description: 'Named map region.',
+            enum: [...DASHBOARD_MAP_VIEWS],
+          },
+          lat: {
+            type: 'number',
+            description: 'Web Mercator latitude; provide with lon.',
+            minimum: -DASHBOARD_MAP_MAX_LATITUDE,
+            maximum: DASHBOARD_MAP_MAX_LATITUDE,
+          },
+          lon: {
+            type: 'number',
+            description: 'Longitude from -180 to 180; provide with lat.',
+            minimum: -180,
+            maximum: 180,
+          },
+          zoom: {
+            type: 'number',
+            description: 'Optional map zoom from 1 to 10.',
+            minimum: 1,
+            maximum: 10,
+          },
+        },
+        oneOf: [
+          {
+            required: ['view'],
+            not: {
+              anyOf: [
+                { required: ['lat'] },
+                { required: ['lon'] },
+              ],
+            },
+          },
+          {
+            required: ['lat', 'lon'],
+            not: { required: ['view'] },
+          },
+        ],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging('set_map_view', async (args) => (
+        applyDashboardAction({
+          type: 'set_view',
+          view: args.view,
+          lat: args.lat,
+          lon: args.lon,
+          zoom: args.zoom,
+        }, app)
+      ), trackEvent),
+    },
+    {
+      name: 'set_map_layers',
+      title: 'Set Map Layers',
+      description:
+        'Enable or disable explicit visible map layers through World Monitor’s variant, renderer, and entitlement-aware control path.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          layers: {
+            type: 'object',
+            description: 'Map layer IDs mapped to true (enable) or false (disable).',
+            minProperties: 1,
+            maxProperties: MAX_LAYER_ACTION_TARGETS,
+            propertyNames: {
+              type: 'string',
+              minLength: 1,
+              maxLength: MAX_LAYER_ACTION_TARGET_ID_LENGTH,
+              pattern: DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN,
+            },
+            additionalProperties: { type: 'boolean' },
+          },
+        },
+        required: ['layers'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging('set_map_layers', async (args) => (
+        applyDashboardAction({
+          type: 'set_layers',
+          layers: args.layers,
+        }, app)
+      ), trackEvent),
     },
   ];
 }

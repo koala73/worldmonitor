@@ -75,6 +75,7 @@ async function seedAccountWithCompany(
       value: `Alias ${suffix}`,
       provenance: "customer",
       trustState: "unverified",
+      allowedUses: ["attribution", "discovery"],
       createdAt: NOW,
       updatedAt: NOW,
     });
@@ -97,6 +98,69 @@ async function seedAccountWithCompany(
     });
   }
   return { ownerAccountId, companyId, ...scheduled };
+}
+
+async function seedAccountWithAliasCollision(
+  t: ReturnType<typeof convexTest>,
+  suffix: string,
+) {
+  const ownerAccountId = `cm_account_${suffix}`;
+  const companyIds = [0, 1].map((index) =>
+    `cm_company_${`${suffix}_${index}`.padStart(26, "0").slice(-26)}`
+  );
+  await t.run(async (ctx) => {
+    await ctx.db.insert("companyMonitoringAccounts", {
+      logicalAccountId: ownerAccountId,
+      ownerUserId: `user_${suffix}`,
+      ownerFenceHash: `fence_${suffix}`,
+      lifecycle: "entitled",
+      lifecycleSequence: 1,
+      companyCount: companyIds.length,
+      companyLimit: 500,
+      snapshotGeneration: 1,
+      purgeGeneration: 0,
+      purgePhase: "none",
+      destructivePurgeStarted: false,
+      pendingReactivation: false,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    for (const [index, companyId] of companyIds.entries()) {
+      await ctx.db.insert("companyMonitoringCompanies", {
+        ownerAccountId,
+        companyId,
+        name: `Collision Company ${index}`,
+        sortName: `collision company ${index}`,
+        domicileCountry: "US",
+        lifecycle: "active",
+        coverageState: "awaiting_first_scan",
+        observationState: "unknown",
+        snapshotGeneration: 1,
+        purgeGeneration: 0,
+        purgePhase: "none",
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      await ctx.db.insert("companyMonitoringClaims", {
+        ownerAccountId,
+        companyId,
+        claimId: `cm_claim_${`${suffix}_${index}`.padStart(26, "0").slice(-26)}`,
+        type: "alias",
+        value: "Shared Collision Brand",
+        provenance: "customer",
+        trustState: "unverified",
+        allowedUses: ["attribution", "discovery"],
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+    }
+  });
+  await t.mutation(ORCHESTRATION.scheduleAccountWork, {
+    ownerAccountId,
+    source: "exa",
+    companyIds,
+  });
+  return { ownerAccountId, companyIds };
 }
 
 async function claimForTest(t: ReturnType<typeof convexTest>, workerId = "worker-a") {
@@ -124,6 +188,19 @@ async function finalizeComplete(
       checkpoint: `checkpoint-${claim.work.workId}`,
       emptyValidated: false,
       costUsdMicros: 125,
+      exaIngestion: {
+        candidates: [{
+          providerResultId: `exa-${claim.work.workId}`,
+          providerRank: 1,
+          url: `https://independent.example/${claim.work.workId}`,
+          title: `${claim.work.obligations[0].company.claims[0].value} update`,
+          publishedAt: claim.work.windowEnd - 1,
+          retrievedAt: NOW,
+          candidateCompanyIds: claim.work.obligations.map(
+            (obligation: { companyId: string }) => obligation.companyId,
+          ),
+        }],
+      },
       ...overrides,
     },
   });
@@ -194,7 +271,19 @@ describe("Company Monitoring durable scan orchestration", () => {
         .query("companyMonitoringScanReceiptLinks")
         .withIndex("by_workId", (q) => q.eq("workId", claim.work.workId))
         .collect();
-      return { work, obligation, nextWork, account, receiptLinks };
+      const evidence = await ctx.db
+        .query("companyMonitoringEvidence")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", seeded.ownerAccountId).eq("companyId", seeded.companyId),
+        )
+        .collect();
+      const candidates = await ctx.db
+        .query("companyMonitoringCandidates")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", seeded.ownerAccountId).eq("companyId", seeded.companyId),
+        )
+        .collect();
+      return { work, obligation, nextWork, account, receiptLinks, evidence, candidates };
     });
     expect(state.work).toMatchObject({
       state: "complete",
@@ -222,6 +311,13 @@ describe("Company Monitoring durable scan orchestration", () => {
       companyId: seeded.companyId,
       workId: claim.work.workId,
     }]);
+    expect(state.evidence).toHaveLength(1);
+    expect(state.evidence[0]).toMatchObject({ sourceAuthority: "low_authority" });
+    expect(state.candidates).toMatchObject([{
+      state: "pending_classification",
+      referenceCount: 1,
+      observationBlocking: false,
+    }]);
 
     vi.setSystemTime(NOW + 1_000);
     await expect(t.mutation(ORCHESTRATION.scheduleAccountWork, {
@@ -233,6 +329,44 @@ describe("Company Monitoring durable scan orchestration", () => {
       workItems: (await ctx.db.query("companyMonitoringScanWorkItems").collect()).length,
       obligations: (await ctx.db.query("companyMonitoringScanObligations").collect()).length,
     }))).toEqual({ workItems: 2, obligations: 1 });
+  });
+
+  test("rejects an Exa candidate that omits a colliding company from its leased cohort", async () => {
+    const t = convexTest(schema, modules);
+    const seeded = await seedAccountWithAliasCollision(t, "exa_alias_collision");
+    const claim = await claimForTest(t);
+    expect(claim.work.obligations.map((obligation: { companyId: string }) => obligation.companyId))
+      .toEqual(seeded.companyIds);
+
+    const finalized = await finalizeComplete(t, claim, {
+      exaIngestion: {
+        candidates: [{
+          providerResultId: "exa-ambiguous-subset",
+          providerRank: 1,
+          url: "https://independent.example/shared-collision-brand-update",
+          title: "Shared Collision Brand update",
+          publishedAt: claim.work.windowEnd - 1,
+          retrievedAt: NOW,
+          candidateCompanyIds: [seeded.companyIds[0]],
+        }],
+      },
+    });
+
+    expect(finalized).toMatchObject({ status: "non_reassuring", reason: "malformed" });
+    const state = await t.run(async (ctx) => ({
+      evidence: await ctx.db.query("companyMonitoringEvidence").collect(),
+      candidates: await ctx.db.query("companyMonitoringCandidates").collect(),
+      terminalWork: await ctx.db
+        .query("companyMonitoringScanWorkItems")
+        .withIndex("by_workId", (q) => q.eq("workId", claim.work.workId))
+        .unique(),
+    }));
+    expect(state.evidence).toEqual([]);
+    expect(state.candidates).toEqual([]);
+    expect(state.terminalWork).toMatchObject({
+      state: "non_reassuring",
+      terminalReceipt: { reason: "malformed" },
+    });
   });
 
   test("projects the strongest bounded Exa claims and leaves X obligations unchanged", async () => {
@@ -450,6 +584,11 @@ describe("Company Monitoring durable scan orchestration", () => {
   test.each([
     ["capped", { itemCount: 25, hasMore: false }, "capped"],
     ["partial", { coverage: "partial" }, "partial"],
+    [
+      "partial payload count mismatch",
+      { coverage: "partial", exaIngestion: { candidates: [] } },
+      "malformed",
+    ],
     ["malformed range", { returnedRange: { startAt: NOW, endAt: NOW - 1 } }, "malformed"],
     ["invalid empty", { itemCount: 0, emptyValidated: false }, "invalid_empty"],
   ])("%s results preserve the previous checkpoint and remain non-reassuring", async (_label, overrides, reason) => {
@@ -458,8 +597,26 @@ describe("Company Monitoring durable scan orchestration", () => {
       initialCheckpoint: "checkpoint-before",
     });
     const claim = await claimForTest(t);
+    const resultOverrides = reason === "capped"
+      ? {
+          ...overrides,
+          exaIngestion: {
+            candidates: Array.from({ length: 25 }, (_, index) => ({
+              providerResultId: `exa-capped-${index}`,
+              providerRank: index + 1,
+              url: `https://independent.example/capped-${index}`,
+              title: `${claim.work.obligations[0].company.claims[0].value} update`,
+              publishedAt: claim.work.windowEnd - 1,
+              retrievedAt: NOW,
+              candidateCompanyIds: [seeded.companyId],
+            })),
+          },
+        }
+      : reason === "invalid_empty"
+        ? { ...overrides, exaIngestion: { candidates: [] } }
+        : overrides;
 
-    expect(await finalizeComplete(t, claim, overrides)).toMatchObject({
+    expect(await finalizeComplete(t, claim, resultOverrides)).toMatchObject({
       status: "non_reassuring",
       reason,
     });

@@ -15,6 +15,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'White House': 'gov', 'White House Actions': 'gov', 'State Dept': 'gov', 'Pentagon': 'gov',
   'Treasury': 'gov', 'DOJ': 'gov', 'DHS': 'gov', 'CDC': 'gov',
   'FEMA': 'gov', 'Federal Reserve': 'gov', 'SEC': 'gov',
+  'U.S. Trade Representative': 'gov',
   'UN News': 'gov', 'CISA': 'gov',
   // Direct official military publishers. Their claims remain publisher claims,
   // not independent ADS-B/AIS observations.
@@ -55,6 +56,8 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'El País': 'mainstream', 'El Mundo': 'mainstream', 'BBC Mundo': 'mainstream',
   'Tagesschau': 'mainstream', 'Der Spiegel': 'mainstream', 'Die Zeit': 'mainstream', 'DW News': 'mainstream',
   'ANSA': 'wire', 'Corriere della Sera': 'mainstream', 'Repubblica': 'mainstream',
+  'Handelsblatt': 'market', 'Welt': 'mainstream', 'Telegraph': 'mainstream',
+  'Interfax RU': 'wire', 'Interfax EN': 'wire',
   'NOS Nieuws': 'mainstream', 'NRC': 'mainstream', 'De Telegraaf': 'mainstream',
   // Croatian (HR)
   'N1 Croatia': 'mainstream', 'Index.hr': 'mainstream', 'Jutarnji list': 'mainstream',
@@ -76,8 +79,18 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   '444.hu': 'mainstream', '24.hu': 'mainstream', 'Híradó': 'mainstream',
   'ATV': 'mainstream', 'Portfolio.hu': 'market',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
-  // Canada + Arctic/Nordic pack (#5960)
+  // Canada + Arctic/Nordic pack (#5960) + depth pack (#6604/#6605)
   'CBC News': 'mainstream', 'Globe and Mail': 'mainstream', 'Global News': 'mainstream',
+  'Toronto Star': 'mainstream', 'National Post': 'mainstream',
+  'Financial Post': 'market', 'iPolitics': 'mainstream',
+  'The Narwhal': 'mainstream', 'The Tyee': 'mainstream', "Maclean's": 'mainstream',
+  'Radio-Canada': 'mainstream', 'La Presse': 'mainstream', 'Le Devoir': 'mainstream',
+  'TVA Nouvelles': 'mainstream',
+  'Vancouver Sun': 'mainstream', 'Calgary Herald': 'mainstream',
+  'Winnipeg Free Press': 'mainstream', 'Edmonton Journal': 'mainstream',
+  'Ottawa Citizen': 'mainstream', 'The Province': 'mainstream',
+  'CTV News': 'mainstream', 'CP24': 'mainstream',
+  'Montreal Gazette': 'mainstream',
   'Yle News': 'mainstream', 'NRK': 'mainstream', 'Aftenposten': 'mainstream',
   'DR Nyheder': 'mainstream', 'Arctic Today': 'mainstream',
   // Brazilian Addition
@@ -86,12 +99,17 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   // Market/Finance
   'CNBC': 'market', 'MarketWatch': 'market', 'Yahoo Finance': 'market',
   'Financial Times': 'market',
+  'Fox Business': 'market', 'Business Insider': 'market', 'Jin10': 'market',
+  'Coinbase Blog': 'market', 'Binance Announcements': 'market',
+  // Press-release distribution is publisher-submitted content. Do not label
+  // these feeds as independent wire reporting.
+  'GlobeNewswire': 'other', 'Business Wire': 'other', 'PR Newswire': 'other', 'Chainwire': 'other',
   'Shanghai Stock Exchange': 'market', 'Shenzhen Stock Exchange': 'market',
 
   // Tech
   'Hacker News': 'tech', 'Ars Technica': 'tech', 'The Verge': 'tech',
   'The Verge AI': 'tech', 'MIT Tech Review': 'tech', 'TechCrunch Layoffs': 'tech',
-  'AI News': 'tech', 'ArXiv AI': 'tech', 'VentureBeat AI': 'tech',
+  'AI News': 'tech', 'ArXiv AI': 'tech', 'VentureBeat AI': 'tech', 'Wired': 'tech',
   'Layoffs.fyi': 'tech', 'Layoffs News': 'tech',
 
   // Regional Tech Startups
@@ -137,6 +155,22 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Focus Taiwan': 'wire', 'Taipei Times': 'mainstream', 'Taiwan News': 'mainstream',
   'Dawn': 'mainstream', 'Geo News': 'mainstream',
   'Jakarta Post': 'mainstream', 'Rappler': 'mainstream', 'The Star (Malaysia)': 'mainstream', 'Irrawaddy': 'mainstream',
+  // Validated crisis desks (#6813-#6830)
+  'Yemen Online': 'mainstream', "Sana'a Center": 'intel',
+  'Syria Direct': 'mainstream', 'Enab Baladi English': 'mainstream',
+  '+972 Magazine': 'mainstream', 'WAFA English': 'gov',
+  'HaitiLibre English': 'mainstream', 'AyiboPost': 'mainstream',
+  'Amu TV': 'mainstream', 'Pajhwok Afghan News': 'wire',
+  'Naharnet Lebanon': 'mainstream', "L'Orient Today": 'mainstream',
+  'Studio Tamani': 'mainstream', 'leFaso.net': 'mainstream',
+  'ActuNiger': 'mainstream', 'Aïr Info': 'mainstream',
+  'Caracas Chronicles': 'mainstream', 'Efecto Cocuyo': 'mainstream',
+  'Havana Times': 'mainstream', '14ymedio': 'mainstream',
+  'Libya Herald': 'mainstream', 'Egypt Independent': 'mainstream',
+  'Mada Masr': 'mainstream', 'The Daily Star': 'mainstream',
+  'Dhaka Tribune': 'mainstream', 'Daily Nation': 'mainstream',
+  'The Guardian Post': 'mainstream', 'Tchadinfos': 'mainstream',
+  'Alwihda Info': 'mainstream', 'Radio Ndeke Luka': 'mainstream',
 };
 
 export function getSourceType(sourceName: string): SourceType {
@@ -252,6 +286,11 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
     stateAffiliated: 'China',
     note: 'General Administration of Customs of China official data release',
   },
+  'U.S. Trade Representative': {
+    risk: 'high',
+    stateAffiliated: 'USA',
+    note: 'Official U.S. government trade-policy publication; treat statements as primary government claims',
+  },
 
   // Medium risk - State-affiliated or known bias
   'Al Jazeera': { risk: 'medium', stateAffiliated: 'Qatar', note: 'Qatari state-funded, independent editorial' },
@@ -277,8 +316,50 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'ZN.UA': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Dzerkalo Tyzhnia — Ukrainian weekly analytical newspaper' },
   'ISW': { risk: 'low', note: 'Institute for the Study of War, nonpartisan research nonprofit, daily frontline assessments' },
   'Moscow Times': { risk: 'medium', knownBiases: ['Anti-Kremlin'], note: 'Independent English-language Russian outlet, critical of Kremlin' },
+  'Interfax RU': { risk: 'medium', note: 'Russian private news agency operating under domestic media restrictions; Russian-language feed' },
+  'Interfax EN': { risk: 'medium', note: 'Russian private news agency operating under domestic media restrictions; English-language edition' },
+  'GlobeNewswire': { risk: 'medium', note: 'Publisher-submitted press releases; not independent reporting' },
+  'Business Wire': { risk: 'medium', note: 'Publisher-submitted press releases; not independent reporting' },
+  'PR Newswire': { risk: 'medium', note: 'Publisher-submitted press releases; not independent reporting' },
+  'Chainwire': { risk: 'medium', note: 'Paid crypto press-release distribution; not independent reporting' },
+  'Coinbase Blog': { risk: 'medium', note: 'Coinbase first-party company publication; treat statements as issuer claims' },
+  'Binance Announcements': { risk: 'medium', note: 'Binance first-party announcement channel; treat statements as issuer claims' },
+  'Jin10': { risk: 'medium', note: 'Chinese financial-news and market-data publisher; limited English editorial transparency' },
   // Independent RU exile press — not state media; eligible for EN defaults (#5950)
   'Meduza': { risk: 'low', knownBiases: ['Anti-Kremlin'], note: 'Independent Russian exile outlet (Riga); English + Russian RSS' },
+
+  // Validated crisis desks (#6813-#6830). These declarations are editorial
+  // provenance, not endorsements of every publisher claim.
+  'Yemen Online': { risk: 'medium', note: 'Independent English-language Yemeni platform; exile and conflict-reporting context' },
+  "Sana'a Center": { risk: 'low', note: 'Independent Yemeni policy and analysis center' },
+  'Syria Direct': { risk: 'low', note: 'Independent nonprofit Syria newsroom' },
+  'Enab Baladi English': { risk: 'medium', knownBiases: ['Syrian opposition perspective'], note: 'Independent Syrian newsroom founded by citizen journalists' },
+  '+972 Magazine': { risk: 'medium', knownBiases: ['Israeli-Palestinian human-rights perspective'], note: 'Independent Israeli-Palestinian magazine' },
+  'WAFA English': { risk: 'high', stateAffiliated: 'Palestine', note: 'Official Palestinian news agency; treat statements as government claims' },
+  'HaitiLibre English': { risk: 'medium', note: 'Translated Haiti-focused desk; retain explicit publisher attribution' },
+  'AyiboPost': { risk: 'low', note: 'Independent Haitian investigative newsroom' },
+  'Amu TV': { risk: 'medium', note: 'Independent Afghan exile newsroom with reporters inside Afghanistan' },
+  'Pajhwok Afghan News': { risk: 'medium', note: 'Independent Kabul-based news agency operating under domestic restrictions' },
+  'Naharnet Lebanon': { risk: 'low', note: 'Independent Lebanese digital outlet' },
+  "L'Orient Today": { risk: 'low', note: 'Independent English-language Lebanese newsroom' },
+  'Studio Tamani': { risk: 'low', note: 'Mali newsroom operated by Fondation Hirondelle; Journalism Trust Initiative certified' },
+  'leFaso.net': { risk: 'low', note: 'Independent Burkina Faso digital newsroom' },
+  'ActuNiger': { risk: 'medium', note: 'Niger-focused independent newsroom' },
+  'Aïr Info': { risk: 'low', note: 'Independent northern Niger and Agadez newsroom' },
+  'Caracas Chronicles': { risk: 'medium', knownBiases: ['Opposition-leaning Venezuela analysis'], note: 'Independent English-language Venezuela analysis outlet' },
+  'Efecto Cocuyo': { risk: 'low', note: 'Independent Venezuelan newsroom' },
+  'Havana Times': { risk: 'medium', knownBiases: ['Independent Cuban perspective'], note: 'Independent English-language Cuba-focused publication' },
+  '14ymedio': { risk: 'medium', knownBiases: ['Cuban opposition perspective'], note: 'Independent Cuban digital newspaper' },
+  'Libya Herald': { risk: 'medium', note: 'Independent English-language Libya newsroom in a polarized media environment' },
+  'Egypt Independent': { risk: 'medium', note: 'Independent English-language Egypt newsroom operating under domestic restrictions' },
+  'Mada Masr': { risk: 'medium', note: 'Independent Egyptian newsroom operating under domestic restrictions' },
+  'The Daily Star': { risk: 'low', note: 'Independent English-language Bangladesh newspaper' },
+  'Dhaka Tribune': { risk: 'low', note: 'Independent English-language Bangladesh newspaper' },
+  'Daily Nation': { risk: 'low', note: 'Kenyan newspaper published by Nation Media Group' },
+  'The Guardian Post': { risk: 'medium', note: 'Independent Cameroon English-language newspaper' },
+  'Tchadinfos': { risk: 'medium', note: 'Chad-focused French-language newsroom' },
+  'Alwihda Info': { risk: 'medium', note: 'Pan-African French-language publisher with Chad coverage; source mapping is not article geolocation' },
+  'Radio Ndeke Luka': { risk: 'low', note: 'CAR-focused newsroom; Journalism Trust Initiative certified' },
 
   // Low risk - Independent with editorial standards (explicit)
   'Jerusalem Post': { risk: 'low', knownBiases: ['Israeli centre-right'], note: 'English-language Israeli daily of record' },
@@ -290,10 +371,30 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'ERR News': { risk: 'low', note: 'Estonian Public Broadcasting English service' },
   'LRT English': { risk: 'low', note: 'Lithuanian Public Broadcasting English service' },
   'LSM English': { risk: 'low', note: 'Latvian Public Broadcasting English service' },
-  // Canada + Arctic/Nordic pack (#5960)
+  // Canada + Arctic/Nordic pack (#5960) + depth pack (#6604/#6605)
   'CBC News': { risk: 'medium', stateAffiliated: 'Canada', note: 'Canadian public broadcaster (CBC/Radio-Canada), editorially independent charter' },
   'Globe and Mail': { risk: 'low', note: 'Canadian newspaper of record' },
   'Global News': { risk: 'low', note: 'Canadian national news network (Corus Entertainment)' },
+  'Toronto Star': { risk: 'low', note: 'Canadian metropolitan daily newspaper of record (Toronto)' },
+  'National Post': { risk: 'low', note: 'Canadian national newspaper (Postmedia)' },
+  'Financial Post': { risk: 'low', note: 'Canadian business newspaper (Postmedia)' },
+  'iPolitics': { risk: 'low', note: 'Canadian political news outlet' },
+  'The Narwhal': { risk: 'low', note: 'Canadian independent environmental investigative outlet' },
+  'The Tyee': { risk: 'low', note: 'Canadian independent British Columbia news magazine' },
+  "Maclean's": { risk: 'low', note: 'Canadian national news magazine' },
+  'Radio-Canada': { risk: 'medium', stateAffiliated: 'Canada', note: 'CBC/Radio-Canada French service, editorially independent charter' },
+  'La Presse': { risk: 'low', note: 'Quebec French-language daily newspaper' },
+  'Le Devoir': { risk: 'low', note: 'Quebec French-language newspaper of record' },
+  'TVA Nouvelles': { risk: 'low', note: 'Quebec private television news (Quebecor); not state-affiliated' },
+  'Vancouver Sun': { risk: 'low', note: 'Vancouver daily newspaper (Postmedia)' },
+  'Calgary Herald': { risk: 'low', note: 'Calgary daily newspaper (Postmedia)' },
+  'Winnipeg Free Press': { risk: 'low', note: 'Winnipeg daily newspaper' },
+  'Edmonton Journal': { risk: 'low', note: 'Edmonton daily newspaper (Postmedia)' },
+  'Ottawa Citizen': { risk: 'low', note: 'Ottawa daily newspaper (Postmedia)' },
+  'The Province': { risk: 'low', note: 'Vancouver daily tabloid (Postmedia)' },
+  'CTV News': { risk: 'low', note: 'Canadian national television news (Bell Media); GNews site: fallback, no native RSS' },
+  'CP24': { risk: 'low', note: 'Toronto 24-hour news channel (Bell Media); GNews site: fallback, no native RSS' },
+  'Montreal Gazette': { risk: 'low', note: 'Montreal English daily (Postmedia); GNews site: fallback, native RSS dead' },
   'Yle News': { risk: 'medium', stateAffiliated: 'Finland', note: 'Finnish public broadcaster English service (Yle)' },
   'NRK': { risk: 'medium', stateAffiliated: 'Norway', note: 'Norwegian public broadcaster' },
   'Aftenposten': { risk: 'low', note: 'Norwegian newspaper of record (Schibsted)' },
@@ -308,6 +409,12 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'BBC Middle East': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
   'Guardian World': { risk: 'low', knownBiases: ['Center-left'], note: 'Scott Trust ownership, no shareholders' },
   'Financial Times': { risk: 'low', note: 'Business focus, Nikkei-owned' },
+  'Fox Business': { risk: 'low', note: 'Commercial U.S. business-news publisher' },
+  'Business Insider': { risk: 'low', note: 'Commercial business-news publisher with editorial standards' },
+  'Wired': { risk: 'low', note: 'Technology publication with editorial standards' },
+  'Handelsblatt': { risk: 'low', note: 'German business newspaper with editorial standards' },
+  'Welt': { risk: 'low', note: 'German national newspaper with editorial standards' },
+  'Telegraph': { risk: 'low', note: 'British national newspaper with editorial standards' },
   'Bellingcat': { risk: 'low', note: 'Open-source investigations, methodology transparent' },
   'Brasil Paralelo': { risk: 'low', note: 'Independent media company: no political ties, no public funding, 100% subscriber-funded.' },
   // Periphery packs (#5953) — Caucasus

@@ -250,7 +250,7 @@ describe('parseNarrativeJson', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('generateRegionalNarrative', () => {
-  function mockCall(text, providerName = 'groq', modelName = 'llama-3.3-70b-versatile') {
+  function mockCall(text, providerName = 'groq', modelName = 'openai/gpt-oss-20b') {
     return async () => ({ text, provider: providerName, model: modelName });
   }
 
@@ -271,7 +271,7 @@ describe('generateRegionalNarrative', () => {
       { callLlm: mockCall(JSON.stringify(validPayload)) },
     );
     assert.equal(result.provider, 'groq');
-    assert.equal(result.model, 'llama-3.3-70b-versatile');
+    assert.equal(result.model, 'openai/gpt-oss-20b');
     assert.equal(result.narrative.situation.text, 'Iran flexes naval posture near Hormuz.');
     assert.deepEqual(result.narrative.situation.evidence_ids, ['ev1']);
   });
@@ -542,7 +542,7 @@ describe('narrative_model records actual provider output (P3 fix)', () => {
   it('passes the model value the default caller returned through to the meta', async () => {
     // Simulate the default caller picking up json.model (which may resolve
     // to a different concrete model than the one requested).
-    const actualModel = 'llama-3.3-70b-versatile-0325';
+    const actualModel = 'openai/gpt-oss-20b-build-1';
     const payload = JSON.stringify({
       situation: { text: 'Test.', evidence_ids: [] },
       balance_assessment: { text: '', evidence_ids: [] },

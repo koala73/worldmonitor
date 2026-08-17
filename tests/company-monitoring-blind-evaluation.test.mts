@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
+import { runBlindEvaluationCli } from '../scripts/company-monitoring-blind-evaluation.mts';
 import {
   BlindEvaluationError,
   canonicalReportJson,
@@ -41,6 +42,7 @@ const versions = {
   protocolVersion: 'cm_eval_v1',
   policyVersion: 'cm_policy_v1',
   modelVersion: 'deepseek_v4_flash_2026_08_05',
+  classifierRuntimeSha256: syntheticDigest('classifier-runtime'),
   queryVersion: 'cm_query_v1',
 };
 const directions = ['positive', 'negative', 'mixed'] as const;
@@ -1355,15 +1357,17 @@ describe('Company Monitoring cumulative continuation', () => {
 });
 
 describe('Company Monitoring blind evaluation CLI', () => {
+  const protocolPath = fileURLToPath(
+    new URL('./fixtures/company-monitoring-evaluation/protocol.json', import.meta.url),
+  );
+
   it('requires the independently retained pilot digest for forecast', () => {
     const result = spawnSync(
       fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url)),
       [
         fileURLToPath(new URL('../scripts/company-monitoring-blind-evaluation.mts', import.meta.url)),
         'forecast',
-        '--protocol', fileURLToPath(
-          new URL('./fixtures/company-monitoring-evaluation/protocol.json', import.meta.url),
-        ),
+        '--protocol', protocolPath,
         '--approved-threshold-digest', APPROVED_THRESHOLD_DIGEST,
         '--pilot-corpus', 'unused.json',
         '--pilot-gold', 'unused.json',
@@ -1378,23 +1382,13 @@ describe('Company Monitoring blind evaluation CLI', () => {
   });
 
   it('refuses to seal an artifact under the wrong digest command', () => {
-    const result = spawnSync(
-      fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url)),
-      [
-        fileURLToPath(new URL('../scripts/company-monitoring-blind-evaluation.mts', import.meta.url)),
-        'digest-corpus',
-        fileURLToPath(new URL('./fixtures/company-monitoring-evaluation/protocol.json', import.meta.url)),
-      ],
-      { encoding: 'utf8' },
-    );
-    assert.equal(result.status, 1);
+    const result = runBlindEvaluationCli(['digest-corpus', protocolPath]);
+    assert.equal(result.exitCode, 1);
     assert.match(result.stderr, /digest-corpus input schema invalid/);
   });
 
   it('rejects incomplete and nested-field artifacts in every digest command', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'cm-blind-digest-cli-'));
-    const cli = fileURLToPath(new URL('../scripts/company-monitoring-blind-evaluation.mts', import.meta.url));
-    const tsx = fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url));
     const bundle = lockedBundle({ namespace: 'digest-shapes' });
     const expansion = examples('digest-expansion', 2, 180_000);
     const cases = [
@@ -1444,18 +1438,18 @@ describe('Company Monitoring blind evaluation CLI', () => {
     const run = (command: string, value: unknown, name: string) => {
       const path = join(workspace, `${name}.json`);
       writeFileSync(path, JSON.stringify(value));
-      return spawnSync(tsx, [cli, command, path], { encoding: 'utf8' });
+      return runBlindEvaluationCli([command, path]);
     };
 
     try {
       for (const testCase of cases) {
         const incomplete = structuredClone(testCase.value);
         testCase.remove(incomplete);
-        assert.equal(run(testCase.command, incomplete, `${testCase.command}-missing`).status, 1);
+        assert.equal(run(testCase.command, incomplete, `${testCase.command}-missing`).exitCode, 1);
 
         const nested = structuredClone(testCase.value);
         testCase.nest(nested);
-        assert.equal(run(testCase.command, nested, `${testCase.command}-nested`).status, 1);
+        assert.equal(run(testCase.command, nested, `${testCase.command}-nested`).exitCode, 1);
       }
     } finally {
       rmSync(workspace, { recursive: true, force: true });
@@ -1464,20 +1458,15 @@ describe('Company Monitoring blind evaluation CLI', () => {
 
   it('separates a passing gate, a rejected gate, and an engine error by exit code', () => {
     const workspace = mkdtempSync(join(tmpdir(), 'cm-blind-cli-'));
-    const cli = fileURLToPath(new URL('../scripts/company-monitoring-blind-evaluation.mts', import.meta.url));
-    const tsx = fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url));
-    const protocolPath = fileURLToPath(
-      new URL('./fixtures/company-monitoring-evaluation/protocol.json', import.meta.url),
-    );
 
-    const runScore = (bundle: ReturnType<typeof lockedBundle>): { status: number | null; stdout: string } => {
+    const scoreArgs = (bundle: ReturnType<typeof lockedBundle>): string[] => {
       const write = (name: string, value: unknown): string => {
         const path = join(workspace, name);
         writeFileSync(path, JSON.stringify(value));
         return path;
       };
-      const result = spawnSync(tsx, [
-        cli, 'score',
+      return [
+        'score',
         '--protocol', protocolPath,
         '--approved-threshold-digest', APPROVED_THRESHOLD_DIGEST,
         '--corpus', write('corpus.json', bundle.corpus),
@@ -1485,44 +1474,67 @@ describe('Company Monitoring blind evaluation CLI', () => {
         '--gold', write('gold.json', bundle.gold),
         '--predictions', write('predictions.json', bundle.predictions),
         '--forecast', write('forecast.json', bundle.forecast),
-      ], { encoding: 'utf8' });
-      return { status: result.status, stdout: result.stdout };
+      ];
     };
+    const runScore = (bundle: ReturnType<typeof lockedBundle>) =>
+      runBlindEvaluationCli(scoreArgs(bundle));
 
     try {
       const passing = runScore(lockedBundle({ namespace: 'cli-pass' }));
-      assert.equal(passing.status, 0);
+      assert.equal(passing.exitCode, 0);
       assert.equal((JSON.parse(passing.stdout) as ScoreReport).outcome, 'pass');
 
       // A rejected gate must NOT look like success to a wrapper checking $?.
-      const rejected = runScore(lockedBundle({
+      const rejectedArgs = scoreArgs(lockedBundle({
         namespace: 'cli-fail',
         eligibleCount: 200,
         mistakes: 60,
       }));
-      assert.equal(rejected.status, 2);
+      const rejected = runBlindEvaluationCli(rejectedArgs);
+      assert.equal(rejected.exitCode, 2);
       assert.equal((JSON.parse(rejected.stdout) as ScoreReport).outcome, 'fail');
+
+      // Keep one real process-level witness for the executable adapter. The
+      // in-process matrix avoids repeated tsx startup, while this pins the
+      // import.meta.url guard, stdout serialization, and actual exit status 2.
+      const rejectedProcess = spawnSync(
+        fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url)),
+        [
+          fileURLToPath(new URL('../scripts/company-monitoring-blind-evaluation.mts', import.meta.url)),
+          ...rejectedArgs,
+        ],
+        // Hang guard, not a latency budget: this spawns a cold `tsx`, whose
+        // startup is dominated by whatever else the runner is doing. A 30s
+        // ceiling SIGTERM'd the child under a loaded parallel suite and failed
+        // the signal assertion below, while passing in isolation.
+        { encoding: 'utf8', timeout: 120_000 },
+      );
+      assert.ifError(rejectedProcess.error);
+      assert.equal(
+        rejectedProcess.signal,
+        null,
+        `child was killed by ${rejectedProcess.signal} instead of exiting on its own`,
+      );
+      assert.equal(rejectedProcess.status, 2);
+      assert.equal((JSON.parse(rejectedProcess.stdout) as ScoreReport).outcome, 'fail');
 
       const shortfall = runScore(lockedBundle({
         namespace: 'cli-incomplete',
         publishLimit: 90,
         mistakes: 20,
       }));
-      assert.equal(shortfall.status, 2);
+      assert.equal(shortfall.exitCode, 2);
       assert.equal((JSON.parse(shortfall.stdout) as ScoreReport).outcome, 'incomplete');
 
-      const usageError = spawnSync(tsx, [cli, 'score', '--corpus'], { encoding: 'utf8' });
-      assert.equal(usageError.status, 1);
+      const usageError = runBlindEvaluationCli(['score', '--corpus']);
+      assert.equal(usageError.exitCode, 1);
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }
   });
 
   it('requires all five continuation inputs together', () => {
-    const result = spawnSync(
-      fileURLToPath(new URL('../node_modules/.bin/tsx', import.meta.url)),
-      [
-        fileURLToPath(new URL('../scripts/company-monitoring-blind-evaluation.mts', import.meta.url)),
+    const result = runBlindEvaluationCli([
         'score',
         '--protocol', 'unused.json',
         '--approved-threshold-digest', APPROVED_THRESHOLD_DIGEST,
@@ -1535,10 +1547,8 @@ describe('Company Monitoring blind evaluation CLI', () => {
         '--previous-gold', 'unused.json',
         '--previous-predictions', 'unused.json',
         '--previous-report', 'unused.json',
-      ],
-      { encoding: 'utf8' },
-    );
-    assert.equal(result.status, 1);
+    ]);
+    assert.equal(result.exitCode, 1);
     assert.match(result.stderr, /continuation requires all five previous inputs/);
   });
 });

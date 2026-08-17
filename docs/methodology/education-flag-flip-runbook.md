@@ -1,5 +1,17 @@
 # Education dimension flag-flip runbook
 
+> **PRE-DEPLOY IMPLEMENTATION READY (#6460 / PR #6473).** The proposed code
+> defaults `RESILIENCE_EDUCATION_ENABLED` to `true`, promotes the indicator to
+> `tier='core'`, and rotates cache generations to score `v27` / ranking `v27` /
+> history `v21` / intervals `v10`. The explicit `false` rollback remains dark
+> through the triple-zero discriminator. This document does not claim that PR
+> #6473 is merged, deployed, or accepted in production. Completion still needs
+> the first post-deploy refresh and one genuine post-flip artifact from step 5.
+>
+> One deviation from the procedure as written, recorded rather than waived: the
+> flip is expressed as a **code default** rather than a production env var. See
+> "Why the default and not an env var" in the pre-deploy validation section.
+
 Operational procedure for activating the `education` dimension of the Country
 Resilience Index — moving `RESILIENCE_EDUCATION_ENABLED` from off (shipped
 default) to on.
@@ -32,12 +44,14 @@ All must be green before flipping:
    run in production:
    ```bash
    redis-cli --url $REDIS_URL GET seed-meta:resilience:education-attainment
-   # fetchedAt within the last 8 days, recordCount >= 180
+   # fetchedAt within the last 8 days, rankableRecordCount >= 180
    ```
    The validation floor in the seeder is 150, deliberately lower than the
    measured 181 so a transient World Bank dip does not poison seed-meta. The
    flip gate is the stricter **180** — a payload between 150 and 180 is healthy
-   enough to publish but not healthy enough to activate on.
+   enough to retain as last-good data, but both health surfaces report
+   `COVERAGE_PARTIAL` and the active scorer fails closed until rankable coverage
+   recovers. Total `recordCount` includes territories and cannot prove this gate.
 
    **180 is not a round number, it is a CI invariant.**
    `tests/resilience-indicator-tiering.test.mts` sets `CORE_MIN_COVERAGE = 180`
@@ -45,23 +59,68 @@ All must be green before flipping:
    176–179 would pass a laxer runbook check and then fail CI inside the
    publication PR. The gate and the invariant must be the same number.
 
-2. **Register the health probe, then confirm it green.** The probe is
-   deliberately **not** registered in the scaffold PR. `scripts/check-health-probe-cutovers.mts`
-   requires a new strict probe to carry machine-readable pre-seed evidence, or
-   an acknowledgement expiring by the producer's first scheduled run within 24
-   hours — neither is obtainable before the seeder has ever run, and the second
-   would require knowing the merge time in advance.
+2. **Register the health probe, then confirm it green.** ✅ **Done and accepted in #6452**
+   (2026-08-11). The probe was deliberately **not** registered in the scaffold PR,
+   because `scripts/check-health-probe-cutovers.mts` requires a new strict probe to
+   carry machine-readable pre-seed evidence, or an acknowledgement expiring by the
+   producer's first scheduled run within 24 hours — neither is obtainable before the
+   seeder has ever run, and the second would require knowing the merge time in advance.
 
-   So the order is: seeder ships → `seed-bundle-macro` publishes once → add the
-   `educationAttainment` SEED_META entry on the **pre-seed evidence** path,
-   citing the Railway service, `probeKey`, a real `compactHealthStatus: OK`,
-   and an HTTPS reference → then confirm `/api/health` reports OK.
+   The order was: seeder ships → `seed-bundle-macro` publishes once → add the
+   `educationAttainment` entry on the **pre-seed evidence** path, citing the Railway
+   service, `probeKey`, a real `compactHealthStatus: OK`, and an HTTPS reference →
+   then confirm `/api/health` reports OK.
 
-   Two allowlist entries exist only to bridge that gap and must be removed in
-   the same follow-up: `seed-meta:resilience:education-attainment` in
-   `KNOWN_SEEDS_NOT_IN_HEALTH` (`tests/resilience-dimension-freshness.test.mts`)
-   and in `TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH`
-   (`tests/resilience-source-failure.test.mts`). Owned by #6452.
+   Post-deploy acceptance proved all three conditions on production:
+
+   ```
+   checks.educationAttainment = { "status": "OK", "records": 189,
+                                  "seedAgeMin": 338, "maxStaleMin": 11520 }
+   summary = { "total": 261, ..., "crit": 0 }
+   ```
+
+   **Keep these three conditions as the standard for the next probe** — the deployed SHA
+   carries the registration, the probed-key total moved to its new value, and the probe
+   itself reports `OK`. Two traps sit on that check, and they fail in **opposite**
+   directions, so neither one covers the other:
+
+   - **A stale CDN read looks like a failure that is not real.** `/api/health?compact=1`
+     served the *old* `total: 259` for several minutes after the deploy had completed; a
+     cache-busted request returned `260` with `x-vercel-cache: MISS`. Use the endpoint's
+     own registry size as the deploy signal rather than the Vercel commit status, and
+     bust the cache — otherwise you read a pre-deploy snapshot and conclude a landed
+     registration never landed.
+   - **A compact-only read looks like a pass that is not real.** The compact surface
+     carries `problems`, not a per-check map, so a probe is absent from it both when it
+     is healthy *and when it was never registered at all*. Confirming `OK` from absence
+     would green-light a probe that does not exist. Read the explicit
+     `checks.<probe>.status` on the operator surface.
+
+   **The publish did not happen on its own.** Railway refused the #6450 merge commit
+   because its post-merge check suite was red on two unrelated tests, so the service
+   kept running an image with no education script, and the reconciler that would
+   normally compensate is dormant pending #6378. The service had to be deployed to a
+   green head by hand before any tick could publish. Budget for that check rather than
+   assuming a merged seeder is a running seeder — and note that a `seed-meta` key can
+   be present and fresh without the Railway producer ever having run, so verify
+   provenance by sibling co-movement plus
+   `git cat-file -e <runningSha>:scripts/seed-education-attainment.mjs`.
+
+   Registration touches **five** sites, not the two the old text listed — both halves
+   of the probe, the sequencing test that asserts it is absent, and both bridging
+   allowlist entries:
+
+   - `STANDALONE_KEYS.educationAttainment` and `SEED_META.educationAttainment`
+     (`api/health.js`); registering only the latter leaves no canonical data key to probe
+   - `education health-probe rollout sequencing` (`tests/resilience-source-failure.test.mts`),
+     inverted from "not yet registered" to "registered on both halves"
+   - `KNOWN_SEEDS_NOT_IN_HEALTH` (`tests/resilience-dimension-freshness.test.mts`)
+   - `TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH` (`tests/resilience-source-failure.test.mts`)
+
+   Two gates also move with it: `EXCLUDED_FROM_MCP` in
+   `tests/mcp-bootstrap-parity.test.mjs` needs the new canonical key, and the probed-key
+   total in `docs/{,zh/}api-platform.mdx` and `docs/{,zh/}health-endpoints.mdx` goes
+   259 → 260.
 
 3. **Registry tier promoted.** Change the `femaleUpperSecondaryAttainment` entry
    in `_indicator-registry.ts` from `tier: 'experimental'` to `tier: 'core'`.
@@ -111,13 +170,21 @@ All must be green before flipping:
    **At flip, rotate all numeric generations**: score `v26`→`v27`, ranking
    `v26`→`v27`, history `v20`→`v21`, and intervals `v9`→`v10`. The flip
    changes scores, and mixing pre- and post-flip history points or sensitivity
-   bands would manufacture false trends and stale `rankStable` verdicts. Use
-   this grep, then re-run it against the new values:
+   bands would manufacture false trends and stale `rankStable` verdicts.
+
+   **DONE 2026-08-11** — 39 replacements across 21 code and test files. The grep
+   below now names the CURRENT generation, so a future rotation starts from
+   truth rather than from this flip's already-rotated values:
    ```bash
-   grep -rln "resilience:score:v26\|resilience:ranking:v26\|resilience:history:v20\|resilience:intervals:v9" \
+   grep -rln "resilience:score:v28\|resilience:ranking:v28\|resilience:history:v22\|resilience:intervals:v11" \
      --include='*.mjs' --include='*.ts' --include='*.js' --include='*.mts' \
      --include='*.mdx' --include='*.md' . | grep -v node_modules
    ```
+   Expect hits in the two methodology `.mdx` cache-key tables and their prose, plus the current finance activation references.
+   The historical bump-chain paragraph and
+   `docs/solutions/conventions/verification-grep-must-cover-every-file-type-it-claims.md`
+   deliberately retain OLD generations — they are history, not live references,
+   so do not rewrite them.
    **The `.mdx`/`.md` includes are load-bearing — do not drop them.** An earlier
    version of this runbook omitted them, and the v25→v26 rotation consequently
    missed the cache-key table in `docs/zh/methodology/country-resilience-index.mdx`
@@ -132,19 +199,24 @@ All must be green before flipping:
    produce the acceptance evidence, so a stale prefix there reads an abandoned
    namespace and returns a green verdict with no signal.
 
-6. **Ship the coverage-drop warning.** The 150 validation floor does not catch a
+6. **Ship the coverage-drop warning and active floor.** The 150 validation floor does not catch a
    partial fetch: 161 countries clears it while silently moving ~20 onto the
-   `unmonitored` imputation. While the dimension is dark that moves nothing
-   published; at flip it moves real scores. The design (sized to this seeder's
-   cadence, warn-not-fail, set-diff rather than count-only) is specified in
-   `scripts/seed-education-attainment.mjs` above `MIN_COUNTRIES`. Build it
-   before flipping, not after.
+   `unmonitored` imputation. The seeder remains warn-not-fail so a legitimate
+   World Bank revision cannot overwrite seed-meta with an error, but it writes
+   numeric `rankableRecordCount`. Both health surfaces enforce 180, and the
+   active scorer accepts only current meta that proves the same floor (with the
+   prior `countrySet` field as a transition fallback). Both health surfaces also
+   count usable rankable records in the canonical payload, so stale metadata
+   cannot conceal a partial publish. The set-diff warning remains useful because
+   it names which reporters changed. Build all parts before flipping, not after.
 
-7. **Remove the dark allow-list entry.** Drop `'education'` from
-   `FLAG_GATED_DARK_DIMENSIONS` in `tests/resilience-release-gate.test.mts` and
-   from `RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE` in `_dimension-scorers.ts`.
-   Leaving them in place would keep a live dimension excluded from the
-   confidence mean, understating real coverage gaps.
+7. **Split the active gate from rollback coverage semantics.** Remove
+   `'education'` from `FLAG_GATED_DARK_DIMENSIONS` in
+   `tests/resilience-release-gate.test.mts`, so the default-on release fixture
+   must carry real education coverage. Keep it in
+   `RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE` and the client mirror: those sets
+   exclude only the explicit false rollback's triple-zero shape. Active rows
+   and source failures carry observed or imputed weight and remain counted.
 
 ## Acceptance gates
 
@@ -184,7 +256,8 @@ anchors through an endpoint requiring `WORLDMONITOR_API_KEY`.
    locally on. Every gate must pass. If one fails, STOP and debug — do not waive.
 
 3. **Land the promotion PR**: tier `experimental`→`core`, EXTRACTION_RULES
-   implemented, cache prefixes bumped, dark allow-list entries removed.
+   implemented, cache prefixes bumped, active release gate enforced, and
+   triple-zero rollback coverage semantics retained.
 
 4. **Flip the flag** (owner): set `RESILIENCE_EDUCATION_ENABLED=true` in
    production and deploy.
@@ -207,3 +280,80 @@ prefixes backward — let the new prefix accumulate flag-off scores. The scorer
 returns the empty-data shape regardless of prefix, so rolling back creates a
 second cache migration for no benefit. Capture a rollback snapshot for the
 post-mortem.
+
+Score, ranking, and interval payloads carry `_educationState` metadata, and
+history members carry the same state in their suffix. Readers reject the active
+state after rollback, so a `false` deployment cannot reuse active scores,
+rankings, sensitivity bands, or trend points while the new state warms.
+The interval publisher also refuses generations below 180 records. An accepted
+generation replaces the full rankable-country keyspace atomically, deleting
+omitted keys so old-state intervals cannot survive a partial refresh. It also
+requires the `US` interval used by public and seed health as the fixed data
+probe; a generation cannot advance metadata while that probe is absent.
+
+## Pre-deploy validation — 2026-08-11
+
+### Why the default and not an env var
+
+Energy v2 and `financialSystemExposure` both keep a `?? 'false'` code default
+and flip through the production environment. Education uses a code default
+because activation changes the committed methodology and CI coverage contract
+together. The explicit rollback remains safe without removing `education` from
+`RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE`: the set excludes only the unique
+`coverage=0`, `observedWeight=0`, `imputedWeight=0` placeholder. Active rows and
+source failures carry weight and remain visible in coverage calculations.
+
+Keeping the default at `false` would therefore have required the env var in
+**both** the CI workflow and Vercel, splitting "is education on" across two
+config surfaces that can silently disagree. The default is now `true` and the
+env var is the rollback kill switch — the same rollback story, inverted in which
+direction needs the explicit setting.
+
+### Measured acceptance
+
+Harness: `scripts/dry-run-resilience-education-flip.mjs` (read-only, CI-guarded,
+196 countries against production seeds, one shared read cache across both passes
+so baseline and proposed see byte-identical inputs).
+
+| Gate | Threshold | Measured (pillar-combined) |
+|---|---|---|
+| `gate-1-spearman` | >= 0.85 | 1.00 |
+| `gate-2-country-drift` | &lt;= 15 | 3.45 (VU) |
+| `gate-6-cohort-median` | &lt;= 10 | −1.08 (fragile-states) |
+| `gate-7-matched-pair` | all hold | 9/9 hold after audited `in-vs-za` rebaseline; gap 1.77, min 1 |
+| `gate-9-effective-influence` | >= 80% Core | 92.16% (47/51) |
+
+Education pairs post-flip: `pt-vs-uz` 5.84 (min 3), `es-vs-by` 9.01 (min 3),
+`ch-vs-tm` 28.28 (min 5). Southern-Europe cohort: PT −0.55, ES −0.29, IT −0.29,
+MT −0.43, GR +0.12 — inside the ~1.5-point taste bound.
+
+### Matched-pair rebaseline and weight fallback
+
+The pre-agreed fallback (halve 0.5 → 0.25 if a flip causes a gate failure) was
+measured and was not applied. The 2026-08-11 flag-off audit already put
+`in-vs-za` below its old 3-point floor at 2.54; education moved it to 1.77. The
+threshold, not the education scorer, was stale. #6466 rebaselines the pair to a
+1-point positive floor, matching other deliberately narrow whole-index peers.
+This is not a current-value waiver: the measured proposal keeps 0.77 points of
+headroom, and a near-tie or inversion still fails. The rationale and measured
+baseline/proposal are pinned in `tests/resilience-cohort-config.test.mts`.
+
+A fresh read-only rerun on 2026-08-12 was correctly rejected before verdict
+because unrelated `socialCohesion` and `stateContinuity` source-failure states
+made the absolute matched-pair gate invalid. No new acceptance artifact was
+created from that degraded run. Re-run after source health recovers; step 5
+remains the authoritative post-deploy completion gate.
+
+### A trap this runbook did not anticipate
+
+Step 1 says to confirm the seeder is publishing via `seed-meta` freshness. **A
+fresh `seed-meta` key is not proof its Railway producer ran.** This exact key was
+hand-primed by a local run at 05:32:23Z on 2026-08-11 and read as a satisfied
+precondition; the genuine bundle publish came later, at 08:03:25Z. Worse, the
+primed key *suppressed* the real producer, because `_bundle-runner.mjs` skips a
+section when `elapsed < intervalMs * 0.8` — 5.6 days at a 7-day interval.
+
+Prove a publish three ways instead: sibling parity across the bundle's other
+members, `git cat-file -e <runningSha>:scripts/<seeder>.mjs` against the
+service's running commit, and a TTL cross-check that dates the write
+independently of the payload's own claims.

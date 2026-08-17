@@ -67,6 +67,19 @@
       "stable": "Sabit"
     },
     "militaryActivity": "Askeri Faaliyet",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Ekonomik Göstergeler",
     "ownFlights": "Kendi Uçuşları",
     "foreignFlights": "Yabancı Uçuşlar",
@@ -177,6 +190,23 @@
       "corridorConditions": "Koridor Koşulları",
       "activityNowcast": "Aktivite Nowcast",
       "decisionSignalsUnavailable": "Çin karar sinyali anlık görüntüsü şu anda kullanılamıyor."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "header": {
@@ -446,7 +476,9 @@
         "displacement": "Yerinden edilme akışlarını aç/kapat",
         "climate": "İklim anomalilerini aç/kapat",
         "outages": "İnternet kesintilerini aç/kapat",
-        "tradeRoutes": "Ticaret yollarını aç/kapat"
+        "tradeRoutes": "Ticaret yollarını aç/kapat",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Karanlık moda geç",
@@ -608,7 +640,7 @@
         "URLHAUS_AUTH_KEY": "Hem URLhaus hem ThreatFox API'leri icin kullanilir.",
         "OTX_API_KEY": "Siber tehdit katmani icin opsiyonel zenginlestirme kaynagi.",
         "ABUSEIPDB_API_KEY": "Kotu amacli IP itibar bilgisi icin opsiyonel zenginlestirme kaynagi.",
-        "FINNHUB_API_KEY": "Anlik hisse senedi fiyatlari ve piyasa verileri.",
+        "FINNHUB_API_KEY": "Gecikmeli veya önceden yüklenmiş hisse fiyatları ve piyasa verileri. Anahtar canlı yayın değildir.",
         "NASA_FIRMS_API_KEY": "Kaynak Yonetimi icin Yangin Bilgi Sistemi.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -852,7 +884,12 @@
       "loadingHistory": "Geçiş geçmişi yükleniyor…",
       "historyUnavailable": "Geçiş geçmişi kullanılamıyor",
       "transitDataUnavailable": "Geçiş verileri kullanılamıyor (upstream kısmi)",
-      "infoTooltip": "<strong>Tedarik Zinciri İzleyicisi</strong> Küresel lojistik ve kaynak izleme:<ul><li><strong>Darboğazlar</strong>: Deniz geçişi durumu, kesinti puanları ve gemi sayıları</li><li><strong>Nakliye</strong>: Baltic Kuru İndeksi ve nakliye tarifeleri eğilimleri</li><li><strong>Mineraller</strong>: Kritik maden yoğunlaşma riski (HHI) ve en büyük üreticiler</li></ul>Geçiş geçmişi grafiğini genişletmek için bir darboğaz kartına tıklayın."
+      "infoTooltip": "<strong>Tedarik Zinciri İzleyicisi</strong> Küresel lojistik ve kaynak izleme:<ul><li><strong>Darboğazlar</strong>: Deniz geçişi durumu, kesinti puanları ve gemi sayıları</li><li><strong>Nakliye</strong>: Baltic Kuru İndeksi ve nakliye tarifeleri eğilimleri</li><li><strong>Mineraller</strong>: Kritik maden yoğunlaşma riski (HHI) ve en büyük üreticiler</li></ul>Geçiş geçmişi grafiğini genişletmek için bir darboğaz kartına tıklayın.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "Gümrük Tarifeleri",
@@ -896,6 +933,7 @@
       "noComtradeData": "Stratejik akış verisi yok",
       "comtradeUnavailable": "BM Comtrade verileri geçici olarak kullanılamıyor",
       "sourceComtrade": "BM Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomali",
       "colReporter": "Ülke",
       "colCommodity": "Mal",
@@ -1132,7 +1170,7 @@
         "ucdpEvents": "UCDP Olaylari",
         "displacementFlows": "Yerinden Edilme Akislari",
         "climateAnomalies": "Iklim Anomalileri",
-        "weatherAlerts": "ABD hava durumu uyarıları (NWS)",
+        "weatherAlerts": "ABD ve Kanada hava durumu uyarıları (NWS, ECCC)",
         "strategicWaterways": "Stratejik Suyollari",
         "economicCenters": "Ekonomik Merkezler",
         "criticalMinerals": "Kritik Mineraller",
@@ -1152,7 +1190,9 @@
         "speciesRecovery": "Tür Kurtarma",
         "renewableInstallations": "Temiz Enerji",
         "radiationSpike": "Radyasyon artışı",
-        "radiationElevated": "Yükseltilmiş radyasyon"
+        "radiationElevated": "Yükseltilmiş radyasyon",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -1213,7 +1253,7 @@
           "infraDatacenters": "10.000+ GPU'lu yapay zeka islem kumeleri",
           "infraOutages": "Internet kesintileri ve hizmet aksamalari",
           "naturalEventsTech": "Depremler, firtinalar, yanginlar (veri merkezlerini etkileyebilir)",
-          "weatherAlerts": "ABD'deki şiddetli hava durumu uyarıları (NWS)",
+          "weatherAlerts": "ABD ve Kanada'daki şiddetli hava durumu uyarıları (NWS, ECCC)",
           "economicCenters": "Borsalar ve merkez bankalari",
           "countriesOverlay": "Ulke adi katmanlari",
           "financeExchanges": "Piyasa katmanlarina gore buyuk kuresel borsalar",
@@ -1225,7 +1265,7 @@
           "financeOutages": "Piyasa operasyonlarini etkileyebilecek internet aksamalari",
           "financeCyberThreats": "Finansal altyapi cevresindeki guvenlik olaylari",
           "macroWaterways": "Emtia tasimaciligi icin stratejik darbogazlar",
-          "weatherAlertsMarket": "ABD'de piyasayla ilgili şiddetli hava olayları (NWS)",
+          "weatherAlertsMarket": "ABD ve Kanada'da piyasayla ilgili şiddetli hava olayları (NWS, ECCC)",
           "naturalEventsMacro": "Depremler, yanginlar, seller ve diger dogal afetler",
           "timeRecent": "Zamana bagli verileri son saatlere filtrele",
           "timeExtended": "Gecmis hafta, ay veya tum zamanlarin verilerini goster",
@@ -1258,7 +1298,9 @@
           "tradeRoutes": "Limanları stratejik darboğazlar üzerinden bağlayan başlıca küresel deniz yolları",
           "dayNight": "Gündüz ve gece bölgelerini gösteren gerçek zamanlı güneş terminatörü",
           "geoBoundaries": "Silahsızlandırılmış bölgeler, ateşkes hatları ve tartışmalı sınırlar",
-          "ciiChoropleth": "Ülke istikrarsızlık endeksi ısı haritası — CII puanına göre renklendirme (yeşil=istikrarlı, kırmızı=kritik)"
+          "ciiChoropleth": "Ülke istikrarsızlık endeksi ısı haritası — CII puanına göre renklendirme (yeşil=istikrarlı, kırmızı=kritik)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Etkiler: Depremler, Hava Durumu, Protestolar, Kesintiler"
@@ -1873,7 +1915,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2135,7 +2177,7 @@
       "infoTooltip": "<strong>Felaket Kaskadı</strong> Yakınlaşan doğal afet ve altyapı sinyallerini tespit eder:<ul><li>Depremleri, orman yangınlarını, seller ve hava aşırılıklarını ilişkilendirir</li><li>Altyapı ve tedarik zincirlerine ilişkin basamaklı etkileri izler</li><li>Bileşik afet riski olan bölgeleri vurgular</li></ul>Etkilenen bölgeyi haritada yakınlaştırmak için bir kartı tıklayın."
     },
     "markets": {
-      "infoTooltip": "<strong>Piyasalar</strong> Gerçek zamanlı borsa endeksleri, hisse senetleri ve kripto fiyatları. Watchlist düğmesi ile izleme listenizi özelleştirin. Sparkline'lar son fiyat eğilimini gösterir.",
+      "infoTooltip": "<strong>Piyasalar</strong> Gecikmeli veya önceden yüklenmiş borsa endeksleri, hisse senetleri ve kripto fiyatları. Watchlist düğmesi ile izleme listenizi özelleştirin. Sparkline'lar son fiyat eğilimini gösterir.",
       "chart": {
         "title": "{{symbol}} fiyat grafiği",
         "close": "Grafiği kapat"
@@ -2316,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "Yaptırımlar ve Tanımlamalar",
-      "infoTooltip": "SDN ve Birleşik Listelerden OFAC yaptırım tanımlamaları. Hangi ülkelerin en yüksek tanımlama baskısı altında olduğunu, hangi programların bunu yönlendirdiğini ve son güncellemeden bu yana neler yeni eklendiğini gösterir.",
+      "infoTooltip": "OFAC SDN ve Birleşik Listeler ile Kanada Küresel İşler SEMA/JVCFOA tanımlamaları. Hangi ülkelerin en yüksek tanımlama baskısı altında olduğunu, hangi programların bunu yönlendirdiğini ve son güncellemeden bu yana neler yeni eklendiğini gösterir.",
       "loading": "Yaptırım verileri yükleniyor...",
       "unavailable": "Yaptırım verileri kullanılamıyor.",
       "summary": {
         "new": "Yeni",
         "vessels": "Gemiler",
-        "aircraft": "Uçaklar"
+        "aircraft": "Uçaklar",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Yaptırım altındaki ülkeler",
@@ -2337,11 +2380,12 @@
       "footer": {
         "updated": "Güncelleme: {{time}}",
         "dataset": "veri seti {{date}}",
-        "source": "Kaynak: OFAC"
+        "source": "Kaynak: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} yeni",
-        "new": "yeni"
+        "new": "yeni",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} tanımlama",
       "designations_other": "{{count}} tanımlama",
@@ -2787,6 +2831,7 @@
     "moreEvents": "daha fazla olay",
     "monitoring": "Izleme",
     "viewUSGS": "USGS'de Goruntule",
+    "viewNRCan": "Earthquakes Canada'de Goruntule",
     "expired": "Suresi Dolmus",
     "timeAgo": {
       "s": "{{count}}sn once",

@@ -107,7 +107,7 @@ test.describe('panel font scaling', () => {
     await expect(select).toHaveValue('1');
 
     const peer = await context.newPage();
-    await peer.goto('/robots.txt', { waitUntil: 'domcontentloaded' });
+    await peer.goto('/robots.www.txt', { waitUntil: 'domcontentloaded' });
     await peer.evaluate(key => localStorage.setItem(key, '2'), GLOBAL_STORAGE_KEY);
 
     await expect.poll(() => page.evaluate(() =>

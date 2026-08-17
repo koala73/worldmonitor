@@ -270,6 +270,9 @@ export interface StockAnalysisHeadline {
   source: string;
   link: string;
   publishedAt: number;
+  marketSessionAtPublish: string;
+  alignedTradingDate: string;
+  alignmentRule: HeadlineAlignmentRule;
 }
 
 export interface AnalystConsensus {
@@ -511,6 +514,9 @@ export interface CotInstrument {
   dealerLong: string;
   dealerShort: string;
   netPct: number;
+  smallTraderLong: string;
+  smallTraderShort: string;
+  smallTraderAvailable: boolean;
 }
 
 export interface GetInsiderTransactionsRequest {
@@ -698,6 +704,8 @@ export interface HyperliquidAssetFlow {
   missingPolls: number;
   alerts: string[];
 }
+
+export type HeadlineAlignmentRule = "HEADLINE_ALIGNMENT_RULE_UNSPECIFIED" | "HEADLINE_ALIGNMENT_RULE_REGULAR_SESSION_SAME_TRADING_DAY" | "HEADLINE_ALIGNMENT_RULE_PREMARKET_SAME_TRADING_DAY" | "HEADLINE_ALIGNMENT_RULE_AFTER_HOURS_NEXT_TRADING_DAY" | "HEADLINE_ALIGNMENT_RULE_NON_SESSION_NEXT_TRADING_DAY" | "HEADLINE_ALIGNMENT_RULE_OVERNIGHT_SAME_TRADING_DAY";
 
 export type MarketQuoteUnavailableReason = "MARKET_QUOTE_UNAVAILABLE_REASON_UNSPECIFIED" | "MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_ERROR" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_RATE_LIMITED" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_NOT_CONFIGURED" | "MARKET_QUOTE_UNAVAILABLE_REASON_REQUEST_LIMIT_EXCEEDED" | "MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED" | "MARKET_QUOTE_UNAVAILABLE_REASON_SEED_UNAVAILABLE";
 

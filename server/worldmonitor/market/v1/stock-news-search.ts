@@ -108,7 +108,10 @@ function relativeDateToTimestamp(value: unknown): number {
   return now - (amount * unitMs);
 }
 
-function dedupeHeadlines(headlines: StockAnalysisHeadline[], maxResults: number): StockAnalysisHeadline[] {
+function dedupeHeadlines(
+  headlines: Array<Pick<StockAnalysisHeadline, 'title' | 'source' | 'link' | 'publishedAt'>>,
+  maxResults: number,
+): StockAnalysisHeadline[] {
   const seen = new Set<string>();
   const normalized = headlines
     .filter(item => item.title.trim() && item.link.trim())
@@ -119,7 +122,12 @@ function dedupeHeadlines(headlines: StockAnalysisHeadline[], maxResults: number)
       return true;
     })
     .sort((a, b) => (b.publishedAt || 0) - (a.publishedAt || 0));
-  return normalized.slice(0, maxResults);
+  return normalized.slice(0, maxResults).map((item) => ({
+    ...item,
+    marketSessionAtPublish: '',
+    alignedTradingDate: '',
+    alignmentRule: 'HEADLINE_ALIGNMENT_RULE_UNSPECIFIED',
+  }));
 }
 
 function getSearchDays(now = new Date()): number {

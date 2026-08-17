@@ -111,7 +111,7 @@ const lastRateLimitSentryCaptureAt = new Map<string, number>();
 // Failure-mode suffixes worth their own Sentry issue. These are a closed set —
 // unlike a route or scope, they describe HOW the limiter failed, not who called
 // it, so they never grow with traffic.
-const RATE_LIMIT_FINGERPRINT_SUFFIXES = new Set(['missing-config', 'timeout']);
+const RATE_LIMIT_FINGERPRINT_SUFFIXES = new Set(['missing-config', 'timeout', 'edge-proof']);
 
 /**
  * Collapse a limiter stage to the low-cardinality token Sentry should GROUP on.
@@ -137,7 +137,11 @@ export function rateLimitFingerprintStage(stage: string): string {
   return RATE_LIMIT_FINGERPRINT_SUFFIXES.has(last) ? `${head}:${last}` : head;
 }
 
-function logRateLimitDegraded(stage: string, err: unknown): void {
+export function reportRateLimitDegraded(
+  stage: string,
+  err: unknown,
+  surface: 'api' | 'server' = 'server',
+): void {
   const msg = err instanceof Error ? err.message : String(err);
   console.error(`[rate-limit] redis-error stage=${stage} msg=${msg}`);
   // Keep every occurrence in provider logs, but emit at most one Sentry event
@@ -151,7 +155,7 @@ function logRateLimitDegraded(stage: string, err: unknown): void {
   if (lastCaptureAt !== undefined && now - lastCaptureAt < RATE_LIMIT_SENTRY_DEDUP_MS) return;
   lastRateLimitSentryCaptureAt.set(stage, now);
   captureSilentError(err, {
-    tags: { surface: 'server', component: 'rate-limit', stage },
+    tags: { surface, component: 'rate-limit', stage },
     fingerprint: ['rate-limit', 'redis-error', rateLimitFingerprintStage(stage)],
     level: rateLimitErrorLevel(stage, msg),
   });
@@ -163,7 +167,7 @@ function logScopedRateLimitMissingConfig(scope: string): void {
   const stage = `checkScopedRateLimit:${scope}:missing-config`;
   if (scopedMissingConfigStages.has(stage)) return;
   scopedMissingConfigStages.add(stage);
-  logRateLimitDegraded(stage, new Error('UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN missing'));
+  reportRateLimitDegraded(stage, new Error('UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN missing'));
 }
 
 // Marker header set on every degraded (fail-closed) response so observability
@@ -244,7 +248,7 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
   const rl = getRatelimit();
   if (!rl) {
     if (opts.failClosed) {
-      logRateLimitDegraded('checkRateLimit:missing-config', new Error('Upstash Redis is not configured'));
+      reportRateLimitDegraded('checkRateLimit:missing-config', new Error('Upstash Redis is not configured'));
       return rateLimitDegradedResponse(corsHeaders);
     }
     return null;
@@ -272,7 +276,7 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
 
     return null;
   } catch (err) {
-    logRateLimitDegraded('checkRateLimit', err);
+    reportRateLimitDegraded('checkRateLimit', err);
     if (opts.failClosed) return rateLimitDegradedResponse(corsHeaders);
     return null;
   }
@@ -678,7 +682,7 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
   if (!rl) {
     const failClosed = opts.failClosed ?? true;
     if (failClosed) {
-      logRateLimitDegraded(`checkEndpointRateLimit:${pathname}:missing-config`, new Error('Upstash Redis is not configured'));
+      reportRateLimitDegraded(`checkEndpointRateLimit:${pathname}:missing-config`, new Error('Upstash Redis is not configured'));
       return rateLimitDegradedResponse(corsHeaders);
     }
     return null;
@@ -709,7 +713,7 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
 
     return null;
   } catch (err) {
-    logRateLimitDegraded(`checkEndpointRateLimit:${pathname}`, err);
+    reportRateLimitDegraded(`checkEndpointRateLimit:${pathname}`, err);
     // Per-endpoint policies exist precisely because the limit IS the abuse
     // defence — an LLM endpoint or a 3/hr lead-capture endpoint is the
     // worst place to silently fall through during a Redis outage. Default
@@ -787,7 +791,7 @@ export async function checkScopedRateLimit(scope: string, limit: number, window:
     // callers gating on `degraded` can escalate and the bypass window is
     // visible in logs. Mirrors checkEndpointRateLimit's handling above.
     if (result.reason === 'timeout') {
-      logRateLimitDegraded(`checkScopedRateLimit:${scope}`, new Error('Upstash scoped rate-limit decision timed out'));
+      reportRateLimitDegraded(`checkScopedRateLimit:${scope}`, new Error('Upstash scoped rate-limit decision timed out'));
       return { allowed: true, limit, reset: 0, degraded: true };
     }
     return {
@@ -797,7 +801,7 @@ export async function checkScopedRateLimit(scope: string, limit: number, window:
       degraded: false,
     };
   } catch (err) {
-    logRateLimitDegraded(`checkScopedRateLimit:${scope}`, err);
+    reportRateLimitDegraded(`checkScopedRateLimit:${scope}`, err);
     return { allowed: true, limit, reset: 0, degraded: true };
   }
 }

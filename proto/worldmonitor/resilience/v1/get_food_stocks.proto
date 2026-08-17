@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package worldmonitor.resilience.v1;
+
+import "sebuf/http/annotations.proto";
+
+// One country (or WORLD) × commodity production/stocks balance from the seeded snapshot.
+message FoodStockRecord {
+  // ISO 3166-1 alpha-2, or "WORLD" for the global balance sheet.
+  string country_code = 1;
+  // Commodity slug: wheat, corn, rice, soybeans, barley, palmOil.
+  string commodity = 2;
+  // Marketing year label stored verbatim, e.g. "2025/26". Never a calendar year.
+  string marketing_year = 3;
+  // Ending stocks divided by total use (0.18 = 18%). Read has_stocks_to_use
+  // BEFORE this value: proto3 has no presence for a bare double, so an unknown
+  // ratio and a genuine 0% are the same wire value. USDA/PSD estimates ending
+  // stocks only for selected countries, so a minor producer routinely reports
+  // real production and consumption with no stocks series at all — and 0.0% on
+  // a food-security surface reads as famine, not as "not measured".
+  double stocks_to_use = 4;
+  // False when stocks_to_use is a placeholder rather than a measurement.
+  bool has_stocks_to_use = 13;
+  // Ending stocks in thousand metric tons. Read has_ending_stocks first, for
+  // the same reason as stocks_to_use above.
+  double ending_stocks_tmt = 5;
+  // False when ending_stocks_tmt is a placeholder rather than a measurement.
+  bool has_ending_stocks = 14;
+  // Total use (consumption + exports) in thousand metric tons.
+  double total_use_tmt = 6;
+  // Production in thousand metric tons. Zero when unknown.
+  double production_tmt = 7;
+  // Domestic consumption in thousand metric tons. Zero when unknown.
+  double consumption_tmt = 8;
+  // Imports in thousand metric tons. Zero when unknown.
+  double imports_tmt = 9;
+  // Exports in thousand metric tons. Zero when unknown.
+  double exports_tmt = 10;
+  // Unit the raw quantities are stored in, typically "1000 MT".
+  string unit = 11;
+  // Provenance: "psd" or "faostat". FAOSTAT rows never carry stocks.
+  string source = 12;
+}
+
+// GetFoodStocksRequest filters the seeded USDA-style food-stocks snapshot.
+message GetFoodStocksRequest {
+  // ISO 3166-1 alpha-2, or WORLD. Empty returns the unfiltered snapshot.
+  string country_code = 1 [(sebuf.http.query) = { name: "countryCode" }];
+  // Commodity slug (wheat, corn, rice, soybeans, barley, palmOil). Empty = all.
+  string commodity = 2 [(sebuf.http.query) = { name: "commodity" }];
+}
+
+// GetFoodStocksResponse is the filtered seed snapshot.
+message GetFoodStocksResponse {
+  // Matching country (and/or WORLD) commodity rows.
+  repeated FoodStockRecord records = 1;
+  // ISO-8601 time the seeder wrote resilience:food-stocks:v1. Empty when unavailable.
+  string fetched_at = 2;
+  // True when the seed is missing or unreadable (not a confirmed zero).
+  bool unavailable = 3;
+  // Calorie-weighted stocks-to-use for the requested country, or 0 when unknown / unfiltered.
+  double calorie_weighted_stocks_to_use = 4;
+}

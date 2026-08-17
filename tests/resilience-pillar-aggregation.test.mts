@@ -108,7 +108,7 @@ describe('buildPillarList — flag-dark dimension invariance', () => {
   const structural = (pillars: ReturnType<typeof buildPillarList>) =>
     pillars.find((pillar) => pillar.id === 'structural-readiness')!;
 
-  it('keeps pillar score and coverage identical when education is flag-dark', () => {
+  it('excludes a triple-zero education rollback row from the pillar denominator', () => {
     const before = structural(buildPillarList(baselineDomains(), true));
     const domains = baselineDomains();
     domains[1]!.dimensions.push({
@@ -122,7 +122,7 @@ describe('buildPillarList — flag-dark dimension invariance', () => {
     });
     const after = structural(buildPillarList(domains, true));
 
-    assert.equal(after.coverage, before.coverage);
+    assert.equal(after.coverage, before.coverage, 'the explicit false rollback shape must not reduce pillar coverage');
     assert.equal(after.score, before.score);
   });
 

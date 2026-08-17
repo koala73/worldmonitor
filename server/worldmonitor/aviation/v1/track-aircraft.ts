@@ -6,6 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
 import { cachedFetchJson } from '../../../_shared/redis';
+import { isOpenSkyProvider, requiresRedistributableProviders } from '../../../_shared/provider-redistribution';
 
 // 120s. This TTL was originally sized for the anonymous OpenSky tier's ~10 req/min
 // ceiling; that tier was removed in #6222, so the binding constraint is now the shared
@@ -72,10 +73,11 @@ function buildCacheKey(req: TrackAircraftRequest): string {
 //   'wingbits'          — data from Wingbits via relay
 //   'none'              — all real sources returned empty or failed; positions = []
 export async function trackAircraft(
-    _ctx: ServerContext,
+    ctx: ServerContext,
     req: TrackAircraftRequest,
 ): Promise<TrackAircraftResponse> {
-    const cacheKey = buildCacheKey(req);
+    const redistributableOnly = requiresRedistributableProviders(ctx.request);
+    const cacheKey = `${buildCacheKey(req)}${redistributableOnly ? ':redistributable' : ''}`;
 
     let result: { positions: PositionSample[]; source: string } | null = null;
     try {
@@ -132,21 +134,23 @@ export async function trackAircraft(
                         console.warn(`[Aviation] Wingbits bbox relay failed: ${err instanceof Error ? err.message : err}`);
                     }
 
-                    try {
-                        const osUrl = `${relayBase}/opensky/states/all?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
-                        const osResp = await fetch(osUrl, {
-                            headers: getRelayHeaders({}),
-                            signal: AbortSignal.timeout(BBOX_RELAY_TIMEOUT_MS),
-                        });
-                        if (osResp.ok) {
-                            const osData = await osResp.json() as OpenSkyResponse;
-                            const osPositions = parseOpenSkyStates(osData.states ?? []);
-                            if (osPositions.length > 0) return { positions: osPositions, source: 'opensky' };
+                    if (!redistributableOnly) {
+                        try {
+                            const osUrl = `${relayBase}/opensky/states/all?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
+                            const osResp = await fetch(osUrl, {
+                                headers: getRelayHeaders({}),
+                                signal: AbortSignal.timeout(BBOX_RELAY_TIMEOUT_MS),
+                            });
+                            if (osResp.ok) {
+                                const osData = await osResp.json() as OpenSkyResponse;
+                                const osPositions = parseOpenSkyStates(osData.states ?? []);
+                                if (osPositions.length > 0) return { positions: osPositions, source: 'opensky' };
+                            }
+                        } catch (err) {
+                            // sentry-coverage-ok: relay failure degrades to an empty viewport by design;
+                            // there is no further provider tier that can succeed from shared egress.
+                            console.warn(`[Aviation] OpenSky bbox relay failed: ${err instanceof Error ? err.message : err}`);
                         }
-                    } catch (err) {
-                        // sentry-coverage-ok: relay failure degrades to an empty viewport by design;
-                        // there is no further provider tier that can succeed from shared egress.
-                        console.warn(`[Aviation] OpenSky bbox relay failed: ${err instanceof Error ? err.message : err}`);
                     }
 
                     // Both relay paths exhausted. A bbox-only request now spends at most
@@ -155,7 +159,7 @@ export async function trackAircraft(
                 }
 
                 // For icao24-only queries, try the OpenSky relay
-                if (!isCallsignOnly && relayBase && req.icao24) {
+                if (!redistributableOnly && !isCallsignOnly && relayBase && req.icao24) {
                     try {
                         const osUrl = `${relayBase}/opensky/states/all?icao24=${req.icao24}`;
                         const resp = await fetch(osUrl, { headers: getRelayHeaders({}), signal: AbortSignal.timeout(8_000) });
@@ -178,9 +182,17 @@ export async function trackAircraft(
 
     if (result) {
         let positions = result.positions;
+        let source = result.source;
+        if (redistributableOnly) {
+            positions = positions.filter((position) => position.source !== 'POSITION_SOURCE_OPENSKY');
+            if (isOpenSkyProvider(source)) {
+                positions = [];
+                source = 'none';
+            }
+        }
         if (req.icao24) positions = positions.filter(p => p.icao24 === req.icao24);
         if (req.callsign) positions = positions.filter(p => p.callsign.includes(req.callsign.toUpperCase()));
-        return { positions, source: result.source, updatedAt: Date.now() };
+        return { positions, source, updatedAt: Date.now() };
     }
 
     return { positions: [], source: 'none', updatedAt: Date.now() };

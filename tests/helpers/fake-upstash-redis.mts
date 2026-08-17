@@ -106,7 +106,7 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
       throw new Error(`Unexpected POST / command: ${verb}`);
     }
 
-    if (parsed.pathname === '/pipeline') {
+    if (parsed.pathname === '/pipeline' || parsed.pathname === '/multi-exec') {
       const commands = JSON.parse(typeof init?.body === 'string' ? init.body : '[]') as Array<Array<string | number>>;
       const result = commands.map((command) => {
         const [verb, key = '', ...args] = command;
@@ -147,6 +147,49 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
           return { result: next };
         }
 
+        if (normalizedVerb === 'EVAL') {
+          const keyCount = Number(command[2] ?? 0);
+          const script = String(command[1] ?? '');
+          if (Number.isInteger(keyCount) && keyCount > 0 && script.includes("ARGV[i] == ''")) {
+            const keys = command.slice(3, 3 + keyCount).map(String);
+            const argv = command.slice(3 + keyCount);
+            const dataKeyCount = keyCount - 1;
+            const dataTtl = Number(argv[keyCount] ?? 0);
+            const metaTtl = Number(argv[keyCount + 1] ?? 0);
+            for (let index = 0; index < dataKeyCount; index++) {
+              const value = String(argv[index] ?? '');
+              if (value === '') {
+                redis.delete(keys[index]!);
+                expires.delete(keys[index]!);
+              } else {
+                redis.set(keys[index]!, value);
+                expires.set(keys[index]!, dataTtl);
+              }
+            }
+            redis.set(keys[dataKeyCount]!, String(argv[dataKeyCount] ?? ''));
+            expires.set(keys[dataKeyCount]!, metaTtl);
+            return { result: keyCount };
+          }
+          if (
+            !Number.isInteger(keyCount)
+            || keyCount < 0
+            || !script.includes("ARGV[#KEYS + i]")
+          ) {
+            throw new Error('Unexpected pipeline EVAL script');
+          }
+          const keys = command.slice(3, 3 + keyCount).map(String);
+          const values = command.slice(3 + keyCount, 3 + keyCount * 2).map(String);
+          const ttls = command.slice(3 + keyCount * 2, 3 + keyCount * 3).map(Number);
+          if (keys.length !== keyCount || values.length !== keyCount || ttls.length !== keyCount) {
+            throw new Error('Malformed atomic cache publish command');
+          }
+          for (let index = 0; index < keyCount; index++) {
+            redis.set(keys[index]!, values[index]!);
+            expires.set(keys[index]!, ttls[index]!);
+          }
+          return { result: keyCount };
+        }
+
         if (normalizedVerb === 'EVALSHA' || normalizedVerb === 'EVALSHA_RO') {
           const numericArgs = args.map(Number).filter((value) => Number.isFinite(value));
           const limit = numericArgs.length > 0 ? Math.max(...numericArgs) : 600;
@@ -179,6 +222,16 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
           return {
             result: items.flatMap((item) => [item.member, String(item.score)]),
           };
+        }
+
+        if (normalizedVerb === 'ZREM') {
+          const members = new Set(args.map(String));
+          const before = (sortedSets.get(redisKey) ?? []).length;
+          sortedSets.set(
+            redisKey,
+            (sortedSets.get(redisKey) ?? []).filter((entry) => !members.has(entry.member)),
+          );
+          return { result: before - (sortedSets.get(redisKey) ?? []).length };
         }
 
         if (normalizedVerb === 'ZREMRANGEBYRANK') {

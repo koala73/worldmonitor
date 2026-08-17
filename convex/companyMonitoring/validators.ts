@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { COMPANY_MONITORING_IMPORT_VERSION } from "../../shared/company-monitoring-contract";
 
 const monitoredCompanyInputFields = {
@@ -160,6 +160,147 @@ export const companyMonitoringXStorageStateValidator = v.union(
   v.literal("tombstone"),
 );
 
+export const companyMonitoringEvidenceProviderValidator = v.union(
+  v.literal("exa"),
+  v.literal("x"),
+);
+
+export const companyMonitoringEvidenceAuthorityValidator = v.union(
+  v.literal("verified_first_party"),
+  v.literal("independent_source"),
+  v.literal("low_authority"),
+);
+
+export const companyMonitoringEvidenceIndependenceValidator = v.union(
+  v.literal("first_party"),
+  v.literal("independent"),
+  v.literal("syndicated"),
+  v.literal("unknown"),
+);
+
+export const companyMonitoringEvidenceStateValidator = v.union(
+  v.literal("active"),
+  v.literal("deleted"),
+  v.literal("expired"),
+  v.literal("authority_lost"),
+  v.literal("unavailable"),
+);
+
+export const companyMonitoringCandidateStateValidator = v.union(
+  v.literal("pending_classification"),
+  v.literal("held"),
+  v.literal("terminal"),
+);
+
+export const companyMonitoringCandidateTerminalReasonValidator = v.union(
+  v.literal("admitted"),
+  v.literal("rejected"),
+  v.literal("evidence_deleted"),
+  v.literal("evidence_expired"),
+  v.literal("authority_lost"),
+  v.literal("evidence_unavailable"),
+  v.literal("hold_expired"),
+  v.literal("company_removed"),
+);
+
+// Defense-in-depth guard for the flat candidate state product (#6778 / R16).
+// `companyMonitoringCandidates` encodes its lifecycle as `state` plus two
+// optional siblings (`holdUntil`, `terminalReason`) rather than a Convex tagged
+// union, so the schema alone permits illegal combinations — a `held` row with
+// no `holdUntil`, or a `terminalReason` stranded on a live candidate. Every
+// writer already clears the sibling it must not carry, but an out-of-band
+// `ctx.db.patch` could persist an illegal row. Call this at every candidate
+// write boundary and on every row `candidateLifecycle` reads so an illegal
+// combination fails closed instead of silently degrading. Bound checks
+// (`holdUntil > now`, `holdUntil <= expiresAt`) stay with their writers; this
+// asserts only presence/consistency of the state trio.
+export function assertValidCandidateState(candidate: {
+  state: "pending_classification" | "held" | "terminal";
+  holdUntil?: number;
+  terminalReason?: string;
+}) {
+  const hasHoldUntil = candidate.holdUntil !== undefined;
+  const hasTerminalReason = candidate.terminalReason !== undefined;
+  if (candidate.state === "held" ? !hasHoldUntil : hasHoldUntil) {
+    throw new ConvexError("COMPANY_MONITORING_CANDIDATE_STATE_INVALID");
+  }
+  if (candidate.state === "terminal" ? !hasTerminalReason : hasTerminalReason) {
+    throw new ConvexError("COMPANY_MONITORING_CANDIDATE_STATE_INVALID");
+  }
+}
+
+const companyMonitoringAdmissionAxisFields = {
+  confidence: v.number(),
+  rationale: v.string(),
+  evidenceIds: v.array(v.string()),
+};
+
+export const companyMonitoringAdmissionClassificationValidator = v.object({
+  attribution: v.object({
+    truth: v.union(
+      v.literal("confirmed"),
+      v.literal("wrong_company"),
+      v.literal("uncertain"),
+    ),
+    ...companyMonitoringAdmissionAxisFields,
+  }),
+  occurrence: v.object({
+    truth: v.union(v.literal("confirmed"), v.literal("false"), v.literal("uncertain")),
+    ...companyMonitoringAdmissionAxisFields,
+  }),
+  materiality: v.object({
+    truth: v.union(v.literal("material"), v.literal("not_material"), v.literal("uncertain")),
+    ...companyMonitoringAdmissionAxisFields,
+  }),
+  direction: v.union(v.literal("positive"), v.literal("negative"), v.literal("mixed")),
+  channels: v.array(v.union(v.literal("financial"), v.literal("reputation"))),
+  magnitude: v.union(
+    v.literal("low"),
+    v.literal("medium"),
+    v.literal("high"),
+    v.literal("critical"),
+  ),
+  category: v.string(),
+  title: v.string(),
+  neutralSummary: v.string(),
+  positiveRationale: v.string(),
+  negativeRationale: v.string(),
+  conflict: v.boolean(),
+});
+
+export const companyMonitoringAdmissionAuthorityValidator = v.object({
+  hasVerifiedFirstPartyPrimary: v.boolean(),
+  independentOriginCount: v.number(),
+  satisfiesAuthority: v.boolean(),
+  qualifyingEvidenceIds: v.array(v.string()),
+});
+
+export const companyMonitoringAdmissionConfidenceFloorsValidator = v.object({
+  attribution: v.number(),
+  eventTruth: v.number(),
+  materialImpact: v.number(),
+  overall: v.literal("minimum_axis"),
+});
+
+export const companyMonitoringProviderEvidenceValidator = v.object({
+  provider: companyMonitoringEvidenceProviderValidator,
+  providerLocator: v.string(),
+  // Optional only for rows written before #6011. Admission fails closed when
+  // a referenced row has no query version; every live ingestion path sets it.
+  queryVersion: v.optional(v.string()),
+  url: v.optional(v.string()),
+  title: v.optional(v.string()),
+  text: v.optional(v.string()),
+  author: v.optional(v.string()),
+  authorAccountId: v.optional(v.string()),
+  publishedAt: v.number(),
+  observedAt: v.number(),
+  expiresAt: v.optional(v.number()),
+  candidateCompanyIds: v.array(v.string()),
+  verifiedCompanyIds: v.optional(v.array(v.string())),
+  sourceAuthority: companyMonitoringEvidenceAuthorityValidator,
+});
+
 export const companyMonitoringXPostObservationValidator = v.object({
   companyId: v.string(),
   postId: v.string(),
@@ -198,6 +339,22 @@ export const companyMonitoringXReceiptValidator = v.object({
   postCount: v.number(),
 });
 
+export const companyMonitoringExaCandidateValidator = v.object({
+  providerResultId: v.string(),
+  providerRequestId: v.optional(v.string()),
+  providerRank: v.number(),
+  url: v.string(),
+  title: v.optional(v.string()),
+  author: v.optional(v.string()),
+  publishedAt: v.number(),
+  retrievedAt: v.number(),
+  candidateCompanyIds: v.array(v.string()),
+});
+
+export const companyMonitoringExaIngestionValidator = v.object({
+  candidates: v.array(companyMonitoringExaCandidateValidator),
+});
+
 export const companyMonitoringFinalizeResultValidator = v.union(
   v.object({
     type: v.literal("result"),
@@ -208,6 +365,7 @@ export const companyMonitoringFinalizeResultValidator = v.union(
     checkpoint: v.optional(v.string()),
     emptyValidated: v.boolean(),
     costUsdMicros: v.number(),
+    exaIngestion: v.optional(companyMonitoringExaIngestionValidator),
     xIngestion: v.optional(companyMonitoringXIngestionValidator),
   }),
   v.object({

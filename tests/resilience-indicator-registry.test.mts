@@ -36,10 +36,8 @@ describe('indicator registry', () => {
     for (const dimId of RESILIENCE_DIMENSION_ORDER) {
       assert.ok(coveredDimensions.has(dimId), `${dimId} has no indicators in registry`);
     }
-    // Plan 2026-04-25-004 Phase 2: 22 dims = 20 active + 2 retired
-    // (19 active in Phase 1 + financialSystemExposure added in Phase 2).
-    // 2026-08-10: +1 for `education` (female upper-secondary attainment),
-    // shipped flag-dark at tier='experimental'.
+    // Plan 2026-04-25-004 Phase 2 had 22 dimensions: 20 active + 2 retired.
+    // Education adds the 21st active dimension.
     assert.equal(coveredDimensions.size, 23);
   });
 

@@ -1,7 +1,7 @@
 import type { MapLayers } from '@/types';
 import { CURATED_COUNTRIES } from '@/config/countries';
 // boundary-ignore: commands are built lazily at runtime via getAllCommands()
-import { getCurrentLanguage, t } from '@/services/i18n';
+import { getCurrentLanguage, getCurrentLanguageTag, t } from '@/services/i18n';
 import { toFlagEmoji } from '@/utils/country-flag';
 
 export interface Command {
@@ -118,6 +118,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:polymarket', keywords: ['predictions', 'polymarket', 'forecasts'], label: 'Panel: Predictions', icon: '\u{1F52E}', category: 'panels' },
   { id: 'panel:commodities', keywords: ['commodities', 'gold', 'silver'], label: 'Panel: Commodities', icon: '\u{1F4E6}', category: 'panels' },
   { id: 'panel:markets', keywords: ['markets', 'stocks', 'indices'], label: 'Panel: Markets', icon: '\u{1F4C8}', category: 'panels' },
+  { id: 'panel:news-market-correlation', keywords: ['news market correlation', 'gdelt markets', 'lead lag', 'market returns'], label: 'Panel: News ↔ Markets', icon: '\u{1F4C8}', category: 'panels' },
   { id: 'panel:economic', keywords: ['economic', 'economy', 'fred'], label: 'Panel: Economic Indicators', icon: '\u{1F4CA}', category: 'panels' },
   { id: 'panel:global-procurement', keywords: ['procurement', 'tenders', 'contracts', 'rfp', 'opportunities', 'government bids'], label: 'Panel: Global Procurement', icon: '\u{1F4CB}', category: 'panels' },
   { id: 'panel:trade-policy', keywords: ['trade', 'tariffs', 'wto', 'trade policy', 'sanctions', 'restrictions'], label: 'Panel: Trade Policy', icon: '\u{1F4CA}', category: 'panels' },
@@ -343,7 +344,12 @@ function injectLocalizedKeywords(commands: Command[]): Command[] {
 }
 
 function buildCountryCommands(): Command[] {
-  const lang = getCurrentLanguage();
+  // Script-sensitive, so the full tag: Intl.DisplayNames renders `zh` as
+  // Simplified — 美国, and 韩国 where Traditional readers say 南韓, a different
+  // word rather than a different character. The memo key reads the same
+  // accessor on purpose; keying it on the stripped code would let whichever
+  // catalogue built first answer for both.
+  const lang = getCurrentLanguageTag();
   if (lang === _cachedLang && _cachedCountryCommands.length > 0) {
     return _cachedCountryCommands;
   }

@@ -56,11 +56,11 @@ const entitled = {
 };
 
 describe('agent bus applier', () => {
-  it('opens only live, entitled panels', () => {
+  it('opens only live, enabled, entitled panels', () => {
     const panel = makePanel();
     const ctx = makeCtx({
       panels: { forecast: panel.panel as never },
-      panelSettings: { forecast: { name: 'Forecasts', enabled: false, premium: 'locked' } },
+      panelSettings: { forecast: { name: 'Forecasts', enabled: true, premium: 'locked' } },
     });
     const result = applyAgentBusAction(ctx, { type: 'open_panel', panelId: 'forecast' }, entitled);
 
@@ -68,18 +68,48 @@ describe('agent bus applier', () => {
     assert.equal(result.status, 'applied');
     assert.equal(panel.showCalls, 1);
     assert.equal(panel.scrollCalls, 1);
-    assert.equal(ctx.panelSettings.forecast.enabled, false, 'open_panel must not persistently enable settings');
+    assert.equal(ctx.panelSettings.forecast.enabled, true);
   });
 
-  it('rejects unknown or lazy-not-live panels before mutation', () => {
+  it('denies configured disabled lazy panels before requiring a live instance', () => {
+    const panel = makePanel();
     const ctx = makeCtx({
       panels: {},
-      panelSettings: { forecast: { name: 'Forecasts', enabled: true } },
+      panelSettings: { forecast: { name: 'Forecasts', enabled: false } },
     });
     const result = applyAgentBusAction(ctx, { type: 'open_panel', panelId: 'forecast' }, entitled);
 
     assert.equal(result.ok, false);
-    assert.equal(result.reason, 'panel_not_live');
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'panel_disabled');
+    assert.deepEqual(result.targets, [
+      { target: 'forecast', status: 'denied', reason: 'panel_disabled' },
+    ]);
+    assert.equal(panel.showCalls, 0);
+    assert.equal(panel.scrollCalls, 0);
+    assert.equal(ctx.panelSettings.forecast.enabled, false);
+  });
+
+  it('rejects unknown or lazy-not-live panels before mutation', () => {
+    const lazyCtx = makeCtx({
+      panels: {},
+      panelSettings: { forecast: { name: 'Forecasts', enabled: true } },
+    });
+    const lazyResult = applyAgentBusAction(
+      lazyCtx,
+      { type: 'open_panel', panelId: 'forecast' },
+      entitled,
+    );
+    const unknownResult = applyAgentBusAction(
+      makeCtx({ panels: {}, panelSettings: {} }),
+      { type: 'open_panel', panelId: 'not-known' },
+      entitled,
+    );
+
+    assert.equal(lazyResult.ok, false);
+    assert.equal(lazyResult.reason, 'panel_not_live');
+    assert.equal(unknownResult.ok, false);
+    assert.equal(unknownResult.reason, 'panel_not_live');
   });
 
   it('enforces premium panel entitlement in the applier', () => {
@@ -98,13 +128,87 @@ describe('agent bus applier', () => {
     assert.equal(panel.showCalls, 0);
   });
 
+  it('uses canonical security metadata instead of stale saved panel config', () => {
+    const panel = makePanel();
+    const ctx = makeCtx({
+      panels: { forecast: panel.panel as never },
+      panelSettings: { forecast: { name: 'Saved Forecasts', enabled: true } },
+    });
+    let checkedConfig: PanelConfig | undefined;
+    const result = applyAgentBusAction(ctx, { type: 'open_panel', panelId: 'forecast' }, {
+      ...entitled,
+      getPanelConfig: () => ({
+        name: 'AI Forecasts',
+        enabled: true,
+        premium: 'locked',
+      }),
+      isPanelAllowed: (_panelId, config) => {
+        checkedConfig = config;
+        return config.premium !== 'locked';
+      },
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'panel_not_entitled');
+    assert.equal(checkedConfig?.premium, 'locked');
+    assert.equal(panel.showCalls, 0);
+    assert.equal(panel.scrollCalls, 0);
+  });
+
+  it('keeps dynamic custom-widget and MCP panels Pro-only without canonical metadata', () => {
+    for (const panelId of ['cw-risk-chart', 'mcp-risk-feed']) {
+      const deniedPanel = makePanel();
+      const freeCtx = makeCtx({
+        panels: { [panelId]: deniedPanel.panel as never },
+        panelSettings: { [panelId]: { name: 'Dynamic panel', enabled: true } },
+      });
+      const deniedResult = applyAgentBusAction(
+        freeCtx,
+        { type: 'open_panel', panelId },
+        {
+          ...entitled,
+          getPanelConfig: (id) => ({ name: id, enabled: false }),
+          isPanelAllowed: () => true,
+          hasPremiumAccess: () => false,
+        },
+      );
+
+      assert.equal(deniedResult.ok, false, panelId);
+      assert.equal(deniedResult.reason, 'panel_not_entitled', panelId);
+      assert.equal(deniedPanel.showCalls, 0, panelId);
+    }
+
+    const allowedPanel = makePanel();
+    const proCtx = makeCtx({
+      panels: { 'cw-risk-chart': allowedPanel.panel as never },
+      panelSettings: { 'cw-risk-chart': { name: 'Risk chart', enabled: true } },
+    });
+    const allowedResult = applyAgentBusAction(
+      proCtx,
+      { type: 'open_panel', panelId: 'cw-risk-chart' },
+      {
+        ...entitled,
+        getPanelConfig: (panelId) => ({ name: panelId, enabled: false }),
+        hasPremiumAccess: () => true,
+      },
+    );
+
+    assert.equal(allowedResult.ok, true);
+    assert.equal(allowedPanel.showCalls, 1);
+  });
+
   it('moves the map only after action validation', () => {
     const ctx = makeCtx();
-    const result = applyAgentBusAction(ctx, { type: 'set_view', view: 'mena', zoom: 4 }, entitled);
+    const viewChanges: Array<[string | undefined, 'programmatic']> = [];
+    const result = applyAgentBusAction(ctx, { type: 'set_view', view: 'mena', zoom: 4 }, {
+      ...entitled,
+      applyViewChange: (action, source) => { viewChanges.push([action.view, source]); },
+    });
     const mapCalls = (ctx.map as never as { _calls: { setViewCalls: Array<[string, number | undefined]> } })._calls;
 
     assert.equal(result.ok, true);
     assert.deepEqual(mapCalls.setViewCalls, [['mena', 4]]);
+    assert.deepEqual(viewChanges, [['mena', 'programmatic']]);
     assert.equal(applyAgentBusAction(ctx, { type: 'set_view', lat: 91, lon: 0 }, entitled).status, 'invalid');
   });
 
@@ -146,7 +250,18 @@ describe('agent bus applier', () => {
   });
 
   it('allows free enhanced layers and clears stale locked layers', () => {
-    const ctx = makeCtx();
+    // DeckGL-active context (kind 'deck'): the enhanced CII choropleth renders
+    // on deck + globe, so it must be executable here. The default makeCtx mock
+    // models the SVG fallback (kind 'svg'), where CII has no paint path.
+    const ctx = makeCtx({
+      map: {
+        setCenter: () => {},
+        setView: () => {},
+        setLayers: () => {},
+        isDeckGLActive: () => true,
+        isGlobeMode: () => false,
+      } as never,
+    });
     ctx.mapLayers.resilienceScore = true;
     const layerChanges: Array<[keyof MapLayers, boolean, 'programmatic']> = [];
     const result = applyAgentBusAction(ctx, {
@@ -247,6 +362,43 @@ describe('agent bus applier', () => {
     assert.deepEqual(layerChanges, [
       ['ciiChoropleth', false, 'programmatic'],
       ['resilienceScore', true, 'programmatic'],
+    ]);
+  });
+
+  it('reports a normalized-off requested choropleth as an exclusive conflict', () => {
+    const layerChanges: Array<[keyof MapLayers, boolean, 'programmatic']> = [];
+    const ctx = makeCtx({
+      map: {
+        setCenter: () => {},
+        setView: () => {},
+        setLayers: () => {},
+        isDeckGLActive: () => true,
+        isGlobeMode: () => false,
+      } as never,
+    });
+
+    const result = applyAgentBusAction(ctx, {
+      type: 'set_layers',
+      layers: { ciiChoropleth: true, resilienceScore: true },
+    }, {
+      ...entitled,
+      hasPremiumAccess: () => true,
+      applyLayerChange: (layer, enabled, source) => { layerChanges.push([layer, enabled, source]); },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(ctx.mapLayers.ciiChoropleth, true);
+    assert.equal(ctx.mapLayers.resilienceScore, false);
+    assert.deepEqual(result.targets, [
+      { target: 'ciiChoropleth', status: 'applied' },
+      {
+        target: 'resilienceScore',
+        status: 'denied',
+        reason: 'exclusive_layer_conflict',
+      },
+    ]);
+    assert.deepEqual(layerChanges, [
+      ['ciiChoropleth', true, 'programmatic'],
     ]);
   });
 });

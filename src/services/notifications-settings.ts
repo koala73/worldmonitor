@@ -486,7 +486,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
         html += `<div class="ai-flow-section-label" style="margin-top:8px">Delivery Mode</div>
           ${!DIGEST_CRON_ENABLED ? '<div class="ai-flow-toggle-desc" style="margin-bottom:4px">Digest delivery is not yet active.</div>' : ''}
-          <select class="unified-settings-select" id="usDigestMode"${!DIGEST_CRON_ENABLED ? ' disabled' : ''}>
+          <select class="unified-settings-select" id="usDigestMode" aria-label="Delivery mode"${!DIGEST_CRON_ENABLED ? ' disabled' : ''}>
             <option value="realtime"${isRealtime ? ' selected' : ''}>Real-time (immediate)</option>
             ${DIGEST_CRON_ENABLED ? `<option value="daily"${digestMode === 'daily' ? ' selected' : ''}>Daily digest</option>
             <option value="twice_daily"${digestMode === 'twice_daily' ? ' selected' : ''}>Twice daily</option>
@@ -499,7 +499,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             docs/archive/plans/forbid-realtime-all-events.md §2a.
           -->
           <div class="ai-flow-section-label" style="margin-top:8px">Sensitivity</div>
-          <select class="unified-settings-select" id="usNotifSensitivity">
+          <select class="unified-settings-select" id="usNotifSensitivity" aria-label="Notification sensitivity">
             <option value="all"${isRealtime ? ' disabled' : ''}${sensitivity === 'all' && !isRealtime ? ' selected' : ''}>All events${isRealtime ? ' (digest only)' : ''}</option>
             <option value="high"${isRealtime ? ' disabled' : ''}${sensitivity === 'high' && !isRealtime ? ' selected' : ''}>High &amp; critical${isRealtime ? ' (digest only)' : ''}</option>
             <option value="critical"${sensitivity === 'critical' || ((sensitivity === 'all' || sensitivity === 'high') && isRealtime) ? ' selected' : ''}>Critical only</option>
@@ -543,15 +543,15 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <div class="ai-flow-toggle-label-wrap" style="min-width:60px">
                   <div class="ai-flow-toggle-label">From</div>
                 </div>
-                <select class="unified-settings-select" id="usQhStart" style="width:auto">${hourOptions}</select>
+                <select class="unified-settings-select" id="usQhStart" aria-label="Quiet hours start" style="width:auto">${hourOptions}</select>
                 <div class="ai-flow-toggle-label-wrap" style="min-width:30px">
                   <div class="ai-flow-toggle-label">To</div>
                 </div>
-                <select class="unified-settings-select" id="usQhEnd" style="width:auto">${hourOptionsEnd}</select>
+                <select class="unified-settings-select" id="usQhEnd" aria-label="Quiet hours end" style="width:auto">${hourOptionsEnd}</select>
               </div>
               <div style="margin-top:4px">
                 <div class="ai-flow-toggle-label" style="margin-bottom:4px">During quiet hours</div>
-                <select class="unified-settings-select" id="usQhOverride">
+                <select class="unified-settings-select" id="usQhOverride" aria-label="During quiet hours">
                   <option value="critical_only"${qhOverride === 'critical_only' ? ' selected' : ''}>Critical only (suppress others)</option>
                   <option value="silence_all"${qhOverride === 'silence_all' ? ' selected' : ''}>Silence all</option>
                   ${QUIET_HOURS_BATCH_ENABLED ? `<option value="batch_on_wake"${qhOverride === 'batch_on_wake' ? ' selected' : ''}>Batch — deliver on wake</option>` : ''}
@@ -564,7 +564,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               <div class="ai-flow-toggle-label-wrap" style="min-width:60px">
                 <div class="ai-flow-toggle-label">Send at</div>
               </div>
-              <select class="unified-settings-select" id="usDigestHour" style="width:auto">${hourOptionsDigest}</select>
+              <select class="unified-settings-select" id="usDigestHour" aria-label="Digest send hour" style="width:auto">${hourOptionsDigest}</select>
             </div>
             <div id="usTwiceDailyHint" class="ai-flow-toggle-desc" style="margin-top:4px;${digestMode === 'twice_daily' ? '' : 'display:none'}">Also sends at ${((digestHour + 12) % 24) === 0 ? '12 AM' : ((digestHour + 12) % 24) < 12 ? `${(digestHour + 12) % 24} AM` : ((digestHour + 12) % 24) === 12 ? '12 PM' : `${((digestHour + 12) % 24) - 12} PM`}</div>
             <div class="ai-flow-toggle-row" style="margin-top:8px">
@@ -573,7 +573,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <div class="ai-flow-toggle-desc">Prepend a personalized intelligence brief tailored to your watchlist and interests</div>
               </div>
               <label class="ai-flow-switch">
-                <input type="checkbox" id="usAiDigestEnabled"${aiDigestEnabled ? ' checked' : ''}>
+                <input type="checkbox" id="usAiDigestEnabled" aria-label="AI executive summary"${aiDigestEnabled ? ' checked' : ''}>
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
@@ -582,7 +582,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Restrict alerts to specific countries (ISO-3166 alpha-2). Leave empty to receive alerts from all countries. When set, global alerts without a country (markets, shipping) are excluded; breaking-news alerts are still delivered.</div>
           <div id="usNotifCountryPicker"></div>
           <div class="ai-flow-section-label" style="margin-top:8px">Timezone</div>
-          <select class="unified-settings-select" id="usSharedTimezone" style="width:100%">${makeTzOptions(sharedTz)}</select>`;
+          <select class="unified-settings-select" id="usSharedTimezone" aria-label="Timezone" style="width:100%">${makeTzOptions(sharedTz)}</select>`;
         return html;
       }
 

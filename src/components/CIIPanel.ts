@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import { getCSSColor } from '@/utils';
 import type { CountryScore } from '@/services/country-instability';
 import { t } from '../services/i18n';
-import { h, replaceChildren, rawHtml, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
+import { h, rawHtml, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 import type { CachedRiskScores } from '@/services/cached-risk-scores';
 import { toCountryScore } from '@/services/cached-risk-scores';
 import { renderFollowButton } from '@/utils/follow-button';
@@ -24,7 +24,7 @@ export class CIIPanel extends Panel {
   private onCountryClick?: (code: string) => void;
   // Per-row FollowButton teardowns. Keyed by ISO code so we can tear
   // down each one before the row is re-rendered (refresh / renderFromCached
-  // both call replaceChildren on this.content). Without this the
+  // both replace this.content wholesale). Without this the
   // FollowButton's watchlist + entitlement subscriptions leak each
   // refresh tick — CIIPanel re-renders very frequently.
   private followButtonTeardowns = new Map<string, () => void>();
@@ -259,7 +259,7 @@ export class CIIPanel extends Panel {
     const withData = this.scores.filter((s) => s.score > 0);
     if (withData.length === 0) return;
     this.tearDownFollowButtons();
-    replaceChildren(this.content, this.buildList(withData), this.buildMethodologyFooter());
+    this.setContentNodes(this.buildList(withData), this.buildMethodologyFooter());
     this.bindShareButtons();
   }
 
@@ -287,14 +287,19 @@ export class CIIPanel extends Panel {
     });
   }
 
+  /**
+   * A settled "no data" state, not a recovery — but still the panel's
+   * authoritative content rather than an error state, so it commits through
+   * `setContentNodes` and drops the chip (as it always did). Cancelling a
+   * pending auto-retry here is safe: CII's refresh cadence is owned by
+   * `data-loader.refreshCiiAndBrief`, never by the panel's own countdown.
+   */
   public renderUnavailable(): void {
     this.scores = [];
     this.setCount(0);
-    this.setErrorState(false);
     this.setDataBadge('unavailable');
     this.tearDownFollowButtons();
-    replaceChildren(
-      this.content,
+    this.setContentNodes(
       h('div', { className: 'empty-state' }, t('common.failedCII')),
       this.buildMethodologyFooter(),
     );
@@ -306,10 +311,9 @@ export class CIIPanel extends Panel {
     this.scores = scores;
     this.updateSourceBadge(cached);
     this.setCount(scores.length);
-    this.setErrorState(false);
     // Tear down previous FollowButtons before mounting the new batch.
     this.tearDownFollowButtons();
-    replaceChildren(this.content, this.buildList(scores), this.buildMethodologyFooter());
+    this.setContentNodes(this.buildList(scores), this.buildMethodologyFooter());
     this.bindShareButtons();
     console.log(`[CIIPanel] Rendered ${scores.length} countries from cached/bootstrap data`);
   }

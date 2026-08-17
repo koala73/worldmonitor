@@ -3,6 +3,7 @@ import type {
   GetShippingRatesResponse,
   GetChokepointStatusResponse,
   GetCriticalMineralsResponse,
+  GetMineralProductionResponse,
   GetShippingStressResponse,
 } from '@/services/supply-chain';
 import { fetchBypassOptions, fetchChokepointHistory } from '@/services/supply-chain';
@@ -29,6 +30,8 @@ export class SupplyChainPanel extends Panel {
   private shippingData: GetShippingRatesResponse | null = null;
   private chokepointData: GetChokepointStatusResponse | null = null;
   private mineralsData: GetCriticalMineralsResponse | null = null;
+  private mineralProductionData: GetMineralProductionResponse | null = null;
+  private mineralsStage: 'mine' | 'refinery' = 'mine';
   private stressData: GetShippingStressResponse | null = null;
   private activeTab: TabId = 'chokepoints';
   private expandedChokepoint: string | null = null;
@@ -50,10 +53,19 @@ export class SupplyChainPanel extends Panel {
   constructor() {
     super({ id: 'supply-chain', title: t('panels.supplyChain'), defaultRowSpan: 2, infoTooltip: t('components.supplyChain.infoTooltip') });
     this.content.addEventListener('click', (e) => {
+      const stageBtn = (e.target as HTMLElement).closest('[data-mineral-stage]') as HTMLElement | null;
+      if (stageBtn?.dataset.mineralStage === 'mine' || stageBtn?.dataset.mineralStage === 'refinery') {
+        const next = stageBtn.dataset.mineralStage as 'mine' | 'refinery';
+        if (next !== this.mineralsStage) {
+          this.mineralsStage = next;
+          this.render();
+        }
+        return;
+      }
       const tab = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
-      if (tab) {
+      if (tab?.dataset.tab) {
         const tabId = tab.dataset.tab as TabId;
-        if (tabId && tabId !== this.activeTab) {
+        if (tabId !== this.activeTab) {
           this.clearTransitChart();
           this.activeTab = tabId;
           this.render();
@@ -100,6 +112,11 @@ export class SupplyChainPanel extends Panel {
     this.render();
   }
 
+  public updateMineralProduction(data: GetMineralProductionResponse): void {
+    this.mineralProductionData = data;
+    this.render();
+  }
+
   public updateShippingStress(data: GetShippingStressResponse): void {
     this.stressData = data;
     this.render();
@@ -136,11 +153,14 @@ export class SupplyChainPanel extends Panel {
           ? (this.shippingData?.indices?.length ?? 0) > 0
           : this.activeTab === 'stress'
             ? (this.stressData?.carriers?.length ?? 0) > 0
-            : (this.mineralsData?.minerals?.length ?? 0) > 0;
+            : (this.mineralProductionData?.commodities?.length ?? 0) > 0
+              || (this.mineralsData?.minerals?.length ?? 0) > 0;
     const activeData = this.activeTab === 'chokepoints' ? this.chokepointData
       : (this.activeTab === 'shipping' || this.activeTab === 'indicators') ? this.shippingData
       : this.activeTab === 'stress' ? this.stressData
-      : this.mineralsData;
+      : this.mineralProductionData?.commodities?.length
+        ? this.mineralProductionData
+        : this.mineralsData;
     const unavailableBanner = !activeHasData && activeData?.upstreamUnavailable
       ? `<div class="economic-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
       : '';
@@ -695,6 +715,64 @@ export class SupplyChainPanel extends Panel {
   }
 
   private renderMinerals(): string {
+    const production = this.mineralProductionData;
+    if (production?.commodities?.length) {
+      const stage = this.mineralsStage;
+      const rows = production.commodities.map((item) => {
+        const snap = stage === 'refinery' ? item.refinery : item.mine;
+        if (!snap) {
+          return `<tr>
+            <td>${escapeHtml(item.commodity)}</td>
+            <td colspan="2">${escapeHtml(t('components.supplyChain.stageUnavailable'))}</td>
+          </tr>`;
+        }
+        // `residual` is the USGS "Other countries" bucket -- an aggregate, not a
+        // producer. Without this it outranks real countries and occupies a named
+        // slot (copper mine renders it 3rd at 13%, displacing Peru).
+        const top3 = snap.countries.filter((c) => !c.withheld && !c.residual && c.share != null).slice(0, 3)
+          .map((p) => `${escapeHtml(p.country)} ${(p.share ?? 0).toFixed(0)}%`)
+          .join(', ');
+        const residual = snap.countries.find((c) => c.residual && c.share != null);
+        // Uses the upstream label ("Other countries") rather than a new i18n key,
+        // matching the untranslated country names already rendered in this table.
+        const residualNote = residual
+          ? ` <span class="sc-mineral-residual">+${(residual.share ?? 0).toFixed(0)}% ${escapeHtml(residual.country || 'other')}</span>`
+          : '';
+        const withheld = snap.withheldCount > 0
+          ? ` <span class="sc-risk-moderate">${escapeHtml(t('components.supplyChain.withheldNote'))}</span>`
+          : '';
+        // Each commodity-stage picks its own year, so a BGS-filled commodity can
+        // be years older than the caption's global max. Label the row when it
+        // differs rather than letting the caption imply one vintage for all.
+        const rowYear = snap.year && snap.year !== production.dataYear
+          ? ` <span class="sc-mineral-vintage">(${escapeHtml(String(snap.year))})</span>`
+          : '';
+        return `<tr>
+          <td>${escapeHtml(item.commodity)}${rowYear}</td>
+          <td>${top3 || '—'}${residualNote}${withheld}</td>
+          <td>${snap.hhi.toFixed(0)}</td>
+        </tr>`;
+      }).join('');
+      const year = production.dataYear ? String(production.dataYear) : '';
+      return `<div class="trade-tariffs-table">
+        <div class="panel-tabs" style="margin-bottom:8px">
+          <button class="panel-tab ${stage === 'mine' ? 'active' : ''}" data-mineral-stage="mine">${t('components.supplyChain.mineStage')}</button>
+          <button class="panel-tab ${stage === 'refinery' ? 'active' : ''}" data-mineral-stage="refinery">${t('components.supplyChain.refineryStage')}</button>
+        </div>
+        <p class="sc-mineral-caption">${t('components.supplyChain.productionCaption')}${year ? ` (${escapeHtml(year)})` : ''}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>${t('components.supplyChain.mineral')}</th>
+              <th>${t('components.supplyChain.topProducers')}</th>
+              <th>HHI</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    }
+
     if (!this.mineralsData || !this.mineralsData.minerals?.length) {
       return `<div class="economic-empty">${t('components.supplyChain.noMinerals')}</div>`;
     }

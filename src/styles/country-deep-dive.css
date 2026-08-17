@@ -441,6 +441,33 @@
   border-bottom: none;
 }
 
+.cdp-food-stocks {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+}
+
+.cdp-food-stocks th {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cdp-food-stocks td {
+  padding: 5px 6px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cdp-food-stocks tbody tr:last-child td {
+  border-bottom: none;
+}
+
 .cdp-maritime-port {
   font-weight: 500;
   color: var(--text);
@@ -845,6 +872,15 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.cdp-defense-industrial {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
 }
 
 .cdp-base-item {

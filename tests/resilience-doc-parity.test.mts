@@ -14,7 +14,7 @@
 // We assert the few facts that are most likely to silently rot:
 //
 // 1. Cache prefixes named in the changelog match `_shared.ts`.
-// 2. The "6 domains × 20 active dimensions" claim matches
+// 2. The "6 domains × 21 active dimensions" claim matches
 //    `RESILIENCE_DOMAIN_ORDER` and `RESILIENCE_DIMENSION_ORDER − retired`.
 // 3. Each domain's weight in the Domains table matches
 //    `getResilienceDomainWeight(...)`.
@@ -78,6 +78,7 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DOC_PATH = resolve(here, '../docs/methodology/country-resilience-index.mdx');
+const ZH_DOC_PATH = resolve(here, '../docs/zh/methodology/country-resilience-index.mdx');
 const INDICATOR_SOURCE_CATALOG_PATH = resolve(here, '../docs/methodology/indicator-sources.yaml');
 const DOCUMENTATION_PATH = resolve(here, '../docs/documentation.mdx');
 const FEATURES_PATH = resolve(here, '../docs/features.mdx');
@@ -90,6 +91,7 @@ const RESILIENCE_OPENAPI_YAML_PATH = resolve(here, '../docs/api/ResilienceServic
 const RESILIENCE_OPENAPI_JSON_PATH = resolve(here, '../docs/api/ResilienceService.openapi.json');
 const BUNDLED_OPENAPI_YAML_PATH = resolve(here, '../docs/api/worldmonitor.openapi.yaml');
 const docText = readFileSync(DOC_PATH, 'utf8');
+const zhDocText = readFileSync(ZH_DOC_PATH, 'utf8');
 const sharedText = readFileSync(resolve(here, '../server/worldmonitor/resilience/v1/_shared.ts'), 'utf8');
 const dimensionScorerText = readFileSync(resolve(here, '../server/worldmonitor/resilience/v1/_dimension-scorers.ts'), 'utf8');
 const indicatorSourceCatalogText = readFileSync(INDICATOR_SOURCE_CATALOG_PATH, 'utf8');
@@ -209,6 +211,13 @@ interface IndicatorSourceCatalogRow {
 }
 
 describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
+  it('Chinese methodology documents the active education construct and live count', () => {
+    assert.match(zhDocText, /21 个活跃维度/, 'Chinese methodology must state the live 21-dimension count');
+    assert.doesNotMatch(zhDocText, /20 个活跃维度|20 个维度/, 'Chinese methodology must not retain the pre-education count');
+    assert.match(zhDocText, /### 教育（Education）/);
+    assert.match(zhDocText, /SE\.SEC\.CUAT\.UP\.FE\.ZS/);
+    assert.match(zhDocText, /RESILIENCE_EDUCATION_ENABLED=false/);
+  });
   it('cache prefixes named in the changelog match the live constants', () => {
     // The v17 changelog narrates the bumps. We don't require every
     // historical version to appear in the doc, only that the CURRENT
@@ -312,14 +321,14 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
   });
 
   it('active dimension count claimed in prose matches (ORDER − RETIRED) AND no stale counts persist', () => {
-    // The doc says "20 active dimensions" — i.e. ACTIVE dimensions,
+    // The doc states the active dimension count, excluding
     // excluding structurally-retired ones (fuelStockDays,
     // reserveAdequacy) that remain in RESILIENCE_DIMENSION_ORDER for
     // schema continuity but pin at coverage=0 / imputationClass=null.
     // The right denominator for the doc's headline claim is
     // (total − retired).
     const activeCount = RESILIENCE_DIMENSION_ORDER.length - RESILIENCE_RETIRED_DIMENSIONS.size;
-    // Allow "20 dimensions" or "20 active dimensions" — both mean the same thing.
+    // Allow either "N dimensions" or "N active dimensions".
     const re = new RegExp(`${activeCount}\\s+(?:active\\s+)?dimensions?`);
     assert.ok(
       re.test(docText),

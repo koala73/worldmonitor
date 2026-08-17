@@ -8,6 +8,30 @@ import { __testing__ as health } from '../api/health.js';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const registry = JSON.parse(readFileSync(resolve(repoRoot, 'scripts/railway-services.json'), 'utf8'));
+const workerRedisKey = 'company-monitoring:worker-health:v1';
+const workerMetaKey = 'seed-meta:company-monitoring:worker';
+const workerNow = 1_800_000_000_000;
+
+function projectWorkerControl(meta) {
+  return health.classifyKey(
+    'companyMonitoringWorker',
+    workerRedisKey,
+    { allowOnDemand: true },
+    {
+      keyStrens: new Map([[workerRedisKey, 120]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[workerMetaKey, JSON.stringify({
+        fetchedAt: workerNow,
+        recordCount: 1,
+        sourceState: meta.status === 'error' ? 'error' : 'ok',
+        ...meta,
+      })]]),
+      keyMetaErrors: new Map(),
+      activationStates: new Map([['companyMonitoringWorker', true]]),
+      now: workerNow,
+    },
+  ).workerControl ?? null;
+}
 
 describe('company monitoring worker deployment registration', () => {
   it('registers an always-on scripts-root Railway service with its full dependency closure', () => {
@@ -22,10 +46,17 @@ describe('company monitoring worker deployment registration', () => {
       'COMPANY_MONITORING_WORKER_SECRET',
       'UPSTASH_REDIS_REST_URL',
       'UPSTASH_REDIS_REST_TOKEN',
+      'EXA_API_KEYS',
       'X_BEARER_TOKEN',
+      'OPENROUTER_API_KEY',
+      'COMPANY_MONITORING_CLASSIFIER_MODEL',
+      'COMPANY_MONITORING_CLASSIFIER_PROVIDER_ROUTE',
+      'COMPANY_MONITORING_CLASSIFIER_RESOLVED_PROVIDER',
     ]);
     for (const dependency of [
       'scripts/company-monitoring-worker.mjs',
+      'scripts/lib/company-monitoring-classification.mjs',
+      'scripts/lib/company-monitoring-classifier-client.mjs',
       'scripts/lib/company-monitoring-exa.mjs',
       'scripts/lib/company-monitoring-x-provider.mjs',
       'scripts/_proxy-utils.cjs',
@@ -116,8 +147,76 @@ describe('company monitoring worker deployment registration', () => {
         executorErrors: 0,
         claimErrors: 0,
         finalizeErrors: 0,
+        admissionClaims: 0,
+        admissionRecorded: 0,
+        admissionReplayed: 0,
+        admissionTransportFailures: 0,
+        admissionClaimErrors: 0,
+        admissionFinalizeErrors: 0,
       },
     });
     assert.equal(JSON.stringify(entry).includes('must-not-project'), false);
+  });
+
+  it('projects every admission outcome, subsystem, and counter', () => {
+    const counterNames = [
+      'loops', 'claims', 'completed', 'nonReassuring', 'fenced', 'replayed',
+      'executorErrors', 'claimErrors', 'finalizeErrors',
+      'admissionClaims', 'admissionRecorded', 'admissionReplayed',
+      'admissionTransportFailures', 'admissionClaimErrors', 'admissionFinalizeErrors',
+    ];
+    const counters = Object.fromEntries(counterNames.map((name, index) => [name, index + 1]));
+    const outcomes = [
+      ['disabled', 'ok'],
+      ['idle', 'ok'],
+      ['admission_recorded', 'ok'],
+      ['admission_replayed', 'ok'],
+      ['admission_transport_failure', 'error'],
+      ['admission_claim_error', 'error'],
+      ['admission_finalize_error', 'error'],
+    ];
+
+    for (const [outcome, status] of outcomes) {
+      assert.deepEqual(projectWorkerControl({
+        status,
+        outcome,
+        subsystems: {
+          scan: { status: 'ok', outcome: 'idle', secret: 'must-not-project' },
+          admission: { status, outcome, secret: 'must-not-project' },
+          secret: 'must-not-project',
+        },
+        counters: { ...counters, unexpected: 99 },
+      }), {
+        status,
+        outcome,
+        subsystems: {
+          scan: { status: 'ok', outcome: 'idle' },
+          admission: { status, outcome },
+        },
+        counters,
+      }, outcome);
+    }
+  });
+
+  it('fails closed on unknown worker or subsystem status and outcome values', () => {
+    const valid = {
+      status: 'ok',
+      outcome: 'idle',
+      subsystems: {
+        scan: { status: 'ok', outcome: 'idle' },
+        admission: { status: 'ok', outcome: 'idle' },
+      },
+    };
+    const invalid = [
+      { ...valid, status: 'warning' },
+      { ...valid, outcome: 'admission_unknown' },
+      { ...valid, subsystems: { ...valid.subsystems, scan: { status: 'warning', outcome: 'idle' } } },
+      { ...valid, subsystems: { ...valid.subsystems, scan: { status: 'ok', outcome: 'admission_recorded' } } },
+      { ...valid, subsystems: { ...valid.subsystems, admission: { status: 'warning', outcome: 'idle' } } },
+      { ...valid, subsystems: { ...valid.subsystems, admission: { status: 'ok', outcome: 'completed' } } },
+      { ...valid, subsystems: { admission: valid.subsystems.admission } },
+    ];
+
+    for (const meta of invalid) assert.equal(projectWorkerControl(meta), null);
   });
 });

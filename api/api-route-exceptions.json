@@ -122,6 +122,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/source-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY source-discovery tool entry (get_sources). Reads the committed shared/ source-attribution manifest and source-tiers registry to report coverage, licensing status, editorial tier, and provenance; exports no JSON data route and performs no network I/O. Same external-protocol constraint as its sibling registry modules.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/index.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY merge + buildPublicTool + SUMMARY_SCHEMA + TOOL_LIST_RESPONSE precompute + collision guard. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
@@ -441,7 +448,7 @@
     {
       "path": "api/opensky.js",
       "category": "upstream-proxy",
-      "reason": "Transparent proxy to OpenSky Network API. Shape is OpenSky's; we don't remodel it.",
+      "reason": "Desktop-product-only OpenSky relay. It requires the Tauri origin plus an enterprise product key and is not part of the public API offering.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

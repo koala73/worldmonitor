@@ -1052,6 +1052,13 @@ export async function handleSubscriptionActive(
       reconcileNotFoundCount: undefined,
       renewalVerificationState: undefined,
       renewalVerificationAttemptAt: undefined,
+      // Clear the prior episode stamps too. A reactivated sub that still
+      // carried `cancelledAt` read as "already cancelled" to
+      // classifyRefundAlert, silencing a genuine full-refund alert after
+      // reactivate (#6769). The cancel/on-hold handlers re-anchor these on the
+      // next status transition, so wiping them here is safe.
+      cancelledAt: undefined,
+      onHoldAt: undefined,
     });
   } else {
     await ctx.db.insert("subscriptions", {
@@ -1117,12 +1124,25 @@ export async function handleSubscriptionActive(
 
   if (incomingDodoCustomerId) {
     if (existingCustomer) {
-      await ctx.db.patch(existingCustomer._id, {
-        userId,
-        email,
-        normalizedEmail,
-        updatedAt: eventTimestamp,
-      });
+      // Skip the rewrite when nothing changes. Dodo delivers related events
+      // for one purchase in a burst (subscription.active + payment.succeeded
+      // + subscription.updated within milliseconds), and re-patching the same
+      // customers row with identical values was pure OCC-conflict fuel —
+      // Convex Insights recorded these as processWebhookEvent write conflicts
+      // on `customers`. Safe to skip: no consumer reads customers.updatedAt
+      // (verified repo-wide, 2026-08-13); it's a bookkeeping stamp only.
+      const customerUnchanged =
+        existingCustomer.userId === userId &&
+        existingCustomer.email === email &&
+        existingCustomer.normalizedEmail === normalizedEmail;
+      if (!customerUnchanged) {
+        await ctx.db.patch(existingCustomer._id, {
+          userId,
+          email,
+          normalizedEmail,
+          updatedAt: eventTimestamp,
+        });
+      }
     } else {
       await ctx.db.insert("customers", {
         userId,

@@ -7,7 +7,14 @@ export const CHINA_MACRO_SCHEMA_VERSION = 2;
 export const CHINA_MACRO_CACHE_KEY = 'economic:china:macro:v2';
 export const CHINA_MACRO_PROVENANCE_FAMILY = 'china_macro_official_numeric_observation';
 export const CHINA_MACRO_MAX_TRANSPORT_AGE_MIN = 3 * 24 * 60;
-export const CHINA_MACRO_MAX_CONTENT_AGE_MIN = 45 * 24 * 60;
+// 60 days, not 45. NBS publishes monthly with a roughly two-week lag, so the
+// newest official observation is a month-END that ages until the next release:
+// measured 2026-08-17 it stood at 2026-06-30, 47.2 days old, and the natural
+// peak just before a release is ~51 days. A 45-day budget therefore sits BELOW
+// the cycle's own maximum and reports CHINA_DEGRADED every month on a publisher
+// behaving normally. 60 clears the peak and still leaves a genuinely skipped
+// release visible (#6799).
+export const CHINA_MACRO_MAX_CONTENT_AGE_MIN = 60 * 24 * 60;
 
 export const CHINA_MACRO_REQUIRED_SERIES = Object.freeze([
   'nbs_industrial_value_added_yoy',

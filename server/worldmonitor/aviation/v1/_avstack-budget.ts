@@ -29,7 +29,10 @@ export function aviationStackBudgetMonth(now = new Date()): string {
   return ym;
 }
 
-function avstackBudgetKey(now = new Date()): string {
+// Exported so a test can prove this agrees with the seeder's avstackBudgetKey:
+// a drift between the two splits the shared monthly ceiling into two counters
+// and silently doubles AviationStack spend.
+export function avstackBudgetKey(now = new Date()): string {
   return `aviation:avstack:calls:${aviationStackBudgetMonth(now)}`;
 }
 

@@ -1,7 +1,7 @@
 ---
-title: "Watch the World Live: 31 Webcam Streams from Geopolitical Hotspots"
-description: "Stream 31 live webcams from Tehran, Kyiv, Jerusalem, Taipei, and beyond. Get real-time situational awareness from 6 global regions on World Monitor, free."
-metaTitle: "31 Live Webcams from Geopolitical Hotspots | World Monitor"
+title: "Watch the World Live: Webcam Streams from Geopolitical Hotspots"
+description: "Stream live webcams from Tehran, Kyiv, Jerusalem, Taipei, and beyond. Get real-time situational awareness from global regions on World Monitor, free."
+metaTitle: "Live Webcams from Geopolitical Hotspots | World Monitor"
 keywords: "live webcams geopolitical hotspots, real-time city cameras, live stream world capitals, OSINT live video, global situation awareness webcams"
 audience: "OSINT analysts, journalists, security professionals, curious global citizens"
 heroImage: "/blog/images/blog/live-webcams-from-geopolitical-hotspots.jpg"
@@ -11,7 +11,7 @@ modifiedDate: "2026-07-22"
 
 When news breaks in a foreign capital, your first instinct is to look. Not at a headline. Not at a map. You want to see what's happening on the ground, right now.
 
-World Monitor streams **31 live webcams** from geopolitical hotspots across 6 regions, directly inside the intelligence dashboard. No tab switching. No searching for reliable streams. Just click and watch.
+World Monitor streams live webcams from geopolitical hotspots across its regional catalog, directly inside the intelligence dashboard. No tab switching. No searching for reliable streams. Just click and watch.
 
 ## Why Live Video Changes Intelligence Analysis
 
@@ -21,7 +21,7 @@ During the early hours of major events, live webcams have consistently provided 
 
 World Monitor puts these feeds alongside your intelligence data so you can cross-reference what you're reading with what you're seeing. Learn more about how the platform brings together [real-time conflict tracking](/blog/posts/track-global-conflicts-in-real-time/) with live video.
 
-## 6 Regions, 31 Streams
+## Regional Webcam and News Streams
 
 ### Iran & Conflict Zone
 
@@ -62,7 +62,7 @@ World Monitor doesn't just embed video. The webcam panel includes intelligence-o
 
 **Grid View vs. Single View:** Toggle between a surveillance-style grid showing multiple feeds simultaneously and a single expanded view for detailed observation. On mobile, single view is forced for performance.
 
-**Eco-Idle Pause:** When you switch to another panel or minimize the browser, streams automatically pause to save bandwidth and CPU. They resume when you return. This matters when you're running 31 video feeds alongside a 3D globe with 56 map layers.
+**Eco-Idle Pause:** When you switch to another panel or minimize the browser, streams automatically pause to save bandwidth and CPU. They resume when you return. This matters when you're running video feeds alongside a 3D globe with map layers.
 
 **Fallback Retry Logic:** Streams go down. Governments block them. CDNs throttle them. World Monitor's player automatically retries failed streams with backoff, and the desktop app routes YouTube embeds through a custom relay to bypass origin restrictions.
 
@@ -93,7 +93,7 @@ The webcam becomes a ground-truth check against the signals.
 
 ## Live Video Streams Beyond Webcams
 
-World Monitor also integrates **30+ live news video streams** from major broadcasters:
+World Monitor also integrates **live news video streams** from major broadcasters:
 
 - **[Bloomberg TV](https://www.bloomberg.com/live)** for real-time financial coverage
 - **[Sky News](https://news.sky.com/)** for UK/international breaking news
@@ -146,4 +146,4 @@ Yes. The Tauri desktop app includes staggered iframe loading and a custom sideca
 
 ---
 
-**See the world in real time at [worldmonitor.app](https://www.worldmonitor.app). 31 live webcams, 30+ news streams, zero login required.**
+**See the world in real time at [worldmonitor.app](https://www.worldmonitor.app). Live webcams and news streams, zero login required.**

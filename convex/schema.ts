@@ -9,6 +9,15 @@ import {
 } from "./constants";
 import {
   companyMonitoringCompleteReceiptValidator,
+  companyMonitoringCandidateStateValidator,
+  companyMonitoringCandidateTerminalReasonValidator,
+  companyMonitoringAdmissionAuthorityValidator,
+  companyMonitoringAdmissionClassificationValidator,
+  companyMonitoringAdmissionConfidenceFloorsValidator,
+  companyMonitoringEvidenceAuthorityValidator,
+  companyMonitoringEvidenceIndependenceValidator,
+  companyMonitoringEvidenceProviderValidator,
+  companyMonitoringEvidenceStateValidator,
   companyMonitoringNonReassuringReasonValidator,
   companyMonitoringNonReassuringReceiptValidator,
   companyMonitoringScanSourceValidator,
@@ -116,7 +125,13 @@ export default defineSchema({
     windowStart: v.number(),
     count: v.number(),
     updatedAt: v.number(),
-  }).index("by_user_window", ["userId", "windowStart"]),
+  })
+    .index("by_user_window", ["userId", "windowStart"])
+    // Retention scan for `pruneStaleWriteRateLimits` (#6706). Expired-window
+    // rows are garbage-collected off the write path, so the sweep needs a
+    // cross-user range on age alone; without it the prune would be a full
+    // table scan whose read set collides with every live counter.
+    .index("by_windowStart", ["windowStart"]),
 
   notificationChannels: defineTable(
     v.union(
@@ -1051,6 +1066,29 @@ export default defineSchema({
     .index("by_dodoPaymentId", ["dodoPaymentId"])
     .index("by_reconciledAt", ["reconciledAt"]),
 
+  // One row per checkout that exhausted the #6027 provider-429 retry ladder
+  // and returned a terminal CHECKOUT_RATE_LIMITED to the buyer (#6698). This
+  // is the rate signal the alarm in `payments/checkoutRateLimitAlarm.ts`
+  // measures; the browser-side Sentry event is corroboration, not the source,
+  // because it is ad-blockable and fires at level `info`.
+  //
+  // Deliberately payload-free and self-pruning: each insert deletes a bounded
+  // batch of rows older than CHECKOUT_RATE_LIMIT_EVENT_RETENTION_MS, so a
+  // storm drains over the inserts that follow it rather than accumulating for
+  // the lifetime of the deployment. Rows left behind when 429s stop entirely
+  // are inert — every count is window-relative, so a stale row can never
+  // inflate a verdict.
+  checkoutRateLimitEvents: defineTable({
+    userId: v.string(),
+    productId: v.string(),
+    occurredAt: v.number(),
+    // Stamped on the row whose insert crossed a threshold and emitted the ops
+    // signal. This doubles as the alert cooldown clock, which is why the alarm
+    // needs no pre-seeded singleton document — there is no state row whose
+    // absence could silently disarm it.
+    alertedAt: v.optional(v.number()),
+  }).index("by_occurredAt", ["occurredAt"]),
+
   productPlans: defineTable({
     dodoProductId: v.string(),
     planKey: v.string(),
@@ -1089,6 +1127,10 @@ export default defineSchema({
     ),
     destructivePurgeStarted: v.boolean(),
     pendingReactivation: v.boolean(),
+    // Legacy accounts remain unstamped until every company page has had its
+    // customer claim policy and current-name alias repaired. Provider rollout
+    // gates fail closed on a missing or older version.
+    claimPolicyVersion: v.optional(v.number()),
     // Durable orchestration cursors. Claims always begin from these indexed
     // account fields and read only a fixed page; work/company tables are never
     // scanned globally to discover due customer work.
@@ -1134,6 +1176,8 @@ export default defineSchema({
     purgePhase: v.union(
       v.literal("none"),
       v.literal("scan"),
+      v.literal("evidence"),
+      v.literal("candidates"),
       v.literal("payload"),
       v.literal("complete"),
     ),
@@ -1254,6 +1298,160 @@ export default defineSchema({
   })
     .index("by_account_postId", ["ownerAccountId", "postId"])
     .index("by_account_company", ["ownerAccountId", "companyId"]),
+
+  // Provider locators are copied into account + company rows. No unscoped
+  // locator or fingerprint index exists, so identical provider results in two
+  // portfolios remain separate customer evidence.
+  companyMonitoringEvidence: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    evidenceId: v.string(),
+    provider: companyMonitoringEvidenceProviderValidator,
+    providerLocator: v.string(),
+    queryVersion: v.optional(v.string()),
+    providerLocatorHash: v.string(),
+    providerOrigin: v.string(),
+    providerOriginFingerprint: v.string(),
+    contentFingerprint: v.string(),
+    evidenceFingerprint: v.string(),
+    occurrenceDedupeKey: v.string(),
+    matchedClaimIds: v.array(v.string()),
+    sourceAuthority: companyMonitoringEvidenceAuthorityValidator,
+    independence: companyMonitoringEvidenceIndependenceValidator,
+    state: companyMonitoringEvidenceStateValidator,
+    url: v.optional(v.string()),
+    title: v.optional(v.string()),
+    text: v.optional(v.string()),
+    author: v.optional(v.string()),
+    authorAccountId: v.optional(v.string()),
+    publishedAt: v.number(),
+    observedAt: v.number(),
+    expiresAt: v.optional(v.number()),
+    firstSeenAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account_company", ["ownerAccountId", "companyId"])
+    .index("by_account_company_locator", [
+      "ownerAccountId",
+      "companyId",
+      "provider",
+      "providerLocatorHash",
+    ])
+    .index("by_account_company_fingerprint", [
+      "ownerAccountId",
+      "companyId",
+      "evidenceFingerprint",
+    ])
+    .index("by_account_company_occurrence", [
+      "ownerAccountId",
+      "companyId",
+      "occurrenceDedupeKey",
+    ])
+    .index("by_account_company_occurrence_state", [
+      "ownerAccountId",
+      "companyId",
+      "occurrenceDedupeKey",
+      "state",
+    ])
+    .index("by_account_company_provider_state", [
+      "ownerAccountId",
+      "companyId",
+      "provider",
+      "state",
+    ])
+    .index("by_account_company_state_expiresAt", [
+      "ownerAccountId",
+      "companyId",
+      "state",
+      "expiresAt",
+    ]),
+
+  // One account/company occurrence is the classifier handoff. References are
+  // bounded snapshots; referenceCount preserves the full active evidence size.
+  companyMonitoringCandidates: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    candidateId: v.string(),
+    occurrenceDedupeKey: v.string(),
+    state: companyMonitoringCandidateStateValidator,
+    firstDiscoveredAt: v.number(),
+    firstDiscoveredPath: v.string(),
+    attemptCount: v.number(),
+    holdUntil: v.optional(v.number()),
+    expiresAt: v.number(),
+    observationBlocking: v.boolean(),
+    referenceEvidenceFingerprints: v.array(v.string()),
+    referenceCount: v.number(),
+    referencesTruncated: v.boolean(),
+    selectionPolicyVersion: v.string(),
+    terminalReason: v.optional(companyMonitoringCandidateTerminalReasonValidator),
+    evidenceRevision: v.number(),
+    evidenceSnapshotDigest: v.optional(v.string()),
+    lastAdmissionDecisionId: v.optional(v.id("companyMonitoringAdmissionDecisions")),
+    classificationWorkerId: v.optional(v.string()),
+    classificationLeaseToken: v.optional(v.string()),
+    classificationLeaseExpiresAt: v.optional(v.number()),
+    classificationRunId: v.optional(v.string()),
+    classificationRequestedModelVersion: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_account_company", ["ownerAccountId", "companyId"])
+    .index("by_account_company_occurrence", [
+      "ownerAccountId",
+      "companyId",
+      "occurrenceDedupeKey",
+    ])
+    .index("by_account_state_updatedAt", ["ownerAccountId", "state", "updatedAt"])
+    .index("by_state_updatedAt", ["state", "updatedAt"]),
+
+  // Append-only outcome ledger. Model output is never stored directly: only
+  // the strict normalized classification and deterministic policy result are
+  // durable. The replay index fences one classification run to one evidence
+  // revision while preserving every later retry as a separate row.
+  companyMonitoringAdmissionDecisions: defineTable({
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    candidateId: v.string(),
+    occurrenceDedupeKey: v.string(),
+    evidenceRevision: v.number(),
+    classificationRunId: v.string(),
+    submissionDigest: v.string(),
+    decision: v.union(
+      v.literal("publish"),
+      v.literal("hold"),
+      v.literal("reject"),
+      v.literal("expire"),
+    ),
+    reasonCodes: v.array(v.string()),
+    referenceEvidenceFingerprints: v.array(v.string()),
+    confidenceFloors: companyMonitoringAdmissionConfidenceFloorsValidator,
+    classification: v.optional(companyMonitoringAdmissionClassificationValidator),
+    overallConfidence: v.optional(v.number()),
+    authority: v.optional(companyMonitoringAdmissionAuthorityValidator),
+    queryVersions: v.array(v.string()),
+    classificationSchemaVersion: v.string(),
+    admissionPolicyVersion: v.string(),
+    sourcePolicyVersion: v.string(),
+    retryPolicyVersion: v.string(),
+    evidenceSelectionPolicyVersion: v.string(),
+    modelVersion: v.string(),
+    requestedModelVersion: v.optional(v.string()),
+    evidenceSnapshotDigest: v.optional(v.string()),
+    retryAt: v.optional(v.number()),
+    terminalAt: v.number(),
+    decidedAt: v.number(),
+    previousDecisionId: v.optional(v.id("companyMonitoringAdmissionDecisions")),
+  })
+    .index("by_account_company", ["ownerAccountId", "companyId"])
+    .index("by_account_candidate", ["ownerAccountId", "candidateId", "decidedAt"])
+    .index("by_replay_fence", [
+      "ownerAccountId",
+      "companyId",
+      "occurrenceDedupeKey",
+      "evidenceRevision",
+      "classificationRunId",
+    ]),
 
   // One durable company/source obligation. The closed state variants keep a
   // single uniqueness row while a work item's terminal receipt preserves the

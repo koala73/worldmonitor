@@ -6,10 +6,17 @@ provider ingestion, classifier runtime, portfolio persistence, publication, or
 customer-visible behavior.
 
 The current `cm_eval_v1` Stage 0 decision remains **STOP**. No empirical company
-corpus, sealed gold labels, pilot predictions, or passing score is committed in
-this repository. The implementation and its generated test data are synthetic
-contract proof only. A real 100-example tracer corpus and a real Stage 3 corpus
-of at least 200 examples remain external evidence gates.
+corpus, sealed gold labels, predictions, or passing score is committed in this
+repository. The implementation and its generated test data are synthetic
+contract proof only.
+
+As of 2026-08-12, sealed external custody contains 400 genuine public-source
+candidates: a 100-example pilot, a disjoint 100-example tracer, and a disjoint
+200-example Stage 3 candidate set. The three sets pass the occurrence, content,
+corporate-family, and source-origin disjointness audit. They remain draft corpus
+inputs. No gold labels or predictions exist, and the current protocol does not
+permit provider capture or classifier inference. These external artifacts do not
+change the Stage 0 decision.
 
 ## Authority and failure boundary
 
@@ -46,6 +53,217 @@ Private manifests, gold labels, predictions, customer information, source URLs,
 and raw content must remain outside the repository. Only aggregate forecasts,
 score reports, and their digests are eligible to be recorded here after the
 applicable approval.
+
+## Public-evidence curation
+
+The curation compiler validates genuine public-source provenance before it is
+reduced to the opaque blind-corpus format. It performs no web requests and writes
+no files. Keep its inputs and redirected outputs in a sealed path outside the
+repository. Invalid or unreadable inputs emit only stable error codes; the CLI
+does not echo sealed source text or paths to stderr.
+
+Each `cm_public_evidence_curation_v1` manifest records the collection, corpus,
+protocol, policy, model, query, and curator-access versions. Its custody block
+records the collector tool, model, run, `sealed_external` storage class, and the
+false `labelsVisibleToPolicyAuthors` boundary. Every researched candidate records:
+
+- its included or excluded disposition and a machine-readable exclusion reason;
+- exact legal, stable company, and corporate-family identities, US or GB
+  geography, and public proof that the company is private;
+- an exact occurrence identity, time, and geography; and
+- one or more sources with the exact URL, publisher and matching hostname,
+  title, bounded excerpt of at most 600 characters, published/observed/retrieved
+  timestamps, evidence authority, and syndication relationship. Publication and
+  occurrence timestamps declare `day` or `second` precision, so an official
+  date-only record is never padded with an invented time. Official government
+  records have their own evidence-authority value and are not represented as
+  company-authored evidence.
+
+Included candidates also have an opaque `cm_example_` ID and a declared primary
+source. The compiler rejects missing provenance, time travel, duplicate
+occurrences or primary content, source-URL reuse, raw schema additions, and a
+custody block that exposes labels to policy authors. Its output has only opaque
+IDs and domain-separated SHA-256 identities. `audit-split` rejects overlap among
+pilot, tracer, and Stage 3 inputs by opaque ID, occurrence, content, corporate
+family, or primary source origin.
+
+The separate `cm_gold_curation_v1` input contains only the opaque ID,
+publication eligibility, materiality, direction, and an optional real customer
+judgment. Use `null` for `customerUseful` unless a genuine external customer
+provided that judgment. The compiler derives the corporate-family digest from
+the evidence manifest and requires one label for every included row. It does not
+make or infer a label.
+
+```bash
+npm run --silent company-monitoring:curation -- audit-manifest \
+  /private/path/pilot-curation.json \
+  > /private/path/pilot-curation-audit.json
+
+npm run --silent company-monitoring:curation -- audit-split \
+  /private/path/pilot-curation.json \
+  /private/path/tracer-curation.json \
+  /private/path/stage3-curation.json
+
+npm run --silent company-monitoring:curation -- compile-corpus \
+  /private/path/pilot-curation.json \
+  > /private/path/pilot-corpus.json
+
+npm run --silent company-monitoring:curation -- compile-gold \
+  /private/path/pilot-curation.json \
+  /private/path/pilot-gold-curation.json \
+  > /private/path/pilot-gold.json
+```
+
+Create classifier predictions while the evidence manifest is frozen and before
+the policy author can inspect the sealed gold input. The merged admission policy
+must remain unchanged for the complete pilot, tracer, and Stage 3 sequence.
+
+## Sealed provider capture and predictions
+
+Provider capture and classifier predictions use a second external manifest. A
+`cm_offline_provider_observations_v1` artifact binds every opaque example to:
+
+- the exact corpus digest, protocol, policy, model, and query versions;
+- one frozen Exa query version and one frozen X query version;
+- the requested classifier model, exact provider route, and expected resolved
+  provider identity;
+- complete or not-applicable coverage, latency, and cost for each provider;
+- provider result locators, receipt digests, published/observed/expiry times,
+  bounded content, authority, and verified-account status; and
+- the `sealed_external` custody boundary with labels hidden from the runtime and
+  curator reference evidence hidden from providers.
+
+The validator rejects missing examples, incomplete Exa coverage, reused provider
+results, query drift, observations after the capture timestamp, and runtime
+model or route drift. The retained curation manifest binds the exact requested
+model, configured route, and expected resolved provider through
+`classifierRuntimeSha256`; a self-consistent observation manifest cannot change
+that triple while keeping the frozen model version. The classifier receives the company identity required for
+attribution and only the captured provider observations. It does not receive
+curator reference URLs, reference excerpts, occurrence identities, or gold
+labels. Output contains only opaque prediction rows.
+
+The dedicated client also pins one OpenRouter provider route, disables fallback
+and reasoning, requests zero-data-retention and no data collection, requires
+supported parameters, and validates router metadata, resolved model, direct
+single-attempt routing, absence of transformations, and request cost.
+
+Run protocol preflight before provider capture or prediction work:
+
+```bash
+npm run --silent company-monitoring:offline-predictions -- preflight \
+  --protocol tests/fixtures/company-monitoring-evaluation/protocol.json \
+  --approved-threshold-digest "$APPROVED_DIGEST"
+```
+
+The checked-in protocol currently exits `1` with
+`offline_runtime_protocol_stop`. This happens before credentials are loaded and
+before a provider request is possible.
+
+After an approved protocol continuation and independent provider capture, keep
+all inputs and redirected output in the sealed path:
+
+```bash
+npm run --silent company-monitoring:offline-predictions -- \
+  digest-observations \
+  --corpus /private/path/pilot-corpus.json \
+  --observations /private/path/pilot-provider-observations.json \
+  > /private/path/pilot-provider-observations.sha256
+
+npm run --silent company-monitoring:offline-predictions -- run \
+  --protocol tests/fixtures/company-monitoring-evaluation/protocol.json \
+  --approved-threshold-digest "$APPROVED_DIGEST" \
+  --curation /private/path/pilot-curation.json \
+  --expected-curation-digest "$(jq -r '.manifestSha256' /private/path/pilot-curation-audit.json)" \
+  --corpus /private/path/pilot-corpus.json \
+  --observations /private/path/pilot-provider-observations.json \
+  --expected-observations-digest "$(tr -d '\n' < /private/path/pilot-provider-observations.sha256)" \
+  --checkpoint-directory /private/path/pilot-prediction-checkpoints \
+  --output /private/path/pilot-prediction-bundle.json
+
+npm run --silent company-monitoring:offline-predictions -- \
+  extract-predictions \
+  --bundle /private/path/pilot-prediction-bundle.json \
+  --bundle-verification-public-key /private/path/offline-bundle-signing-public.pem \
+  --protocol tests/fixtures/company-monitoring-evaluation/protocol.json \
+  --approved-threshold-digest "$APPROVED_DIGEST" \
+  --curation /private/path/pilot-curation.json \
+  --expected-curation-digest "$(jq -r '.manifestSha256' /private/path/pilot-curation-audit.json)" \
+  --corpus /private/path/pilot-corpus.json \
+  --observations /private/path/pilot-provider-observations.json \
+  --expected-observations-digest "$(tr -d '\n' < /private/path/pilot-provider-observations.sha256)" \
+  --output /private/path/pilot-predictions.json
+```
+
+The runtime requires `OPENROUTER_API_KEY`,
+`COMPANY_MONITORING_CLASSIFIER_MODEL`, and
+`COMPANY_MONITORING_CLASSIFIER_PROVIDER_ROUTE`. The independent runtime custodian
+must also supply `COMPANY_MONITORING_OFFLINE_CHECKPOINT_HMAC_KEY` as canonical
+base64 for at least 32 random bytes; do not share it with the curator or policy
+author. The runtime custodian must also supply an
+Ed25519 `COMPANY_MONITORING_OFFLINE_BUNDLE_SIGNING_PRIVATE_KEY` and retain its
+public key separately for the extraction command. The signed bundle binds every
+prediction and the complete run receipt; editing either makes extraction fail
+closed. Never give the private signing key to the curator, scorer, or policy
+author. A continuation additionally requires
+`COMPANY_MONITORING_CONTINUATION_PUBLIC_KEY` and a signed
+`cm_offline_continuation_authorization_v1` file from scoring custody. That signed
+file binds the reproducible incomplete report, parent corpus/prediction/gold
+digests, approved threshold anchor, child corpus, and precommitted expansion;
+the prediction runtime receives only the public verification key. Do not put
+these values, provider
+observations, gold labels, or predictions in Git.
+
+The provider-observation manifest binds the retained curation digest and one
+capture-receipt digest per provider and example. A genuine zero-result search is
+still `complete` only when its provider receipt exists; `not_applicable` requires
+a null receipt. Each observation also retains its provider-owned publisher
+origin, official-company-domain binding when applicable, and syndication
+relationship, upstream URL, and group identity. Rewritten copies from one
+syndication group therefore do not count as independent corroboration. Each run
+checks every claimed official domain or verified X account against the separate
+identity bindings retained in the curation manifest. It then
+checks the retained curation and observation digests before it schedules
+classifier work. The command creates one sealed `0600`
+bundle without overwriting an existing artifact. The bundle contains the
+prediction set and its versioned receipt, which binds the corpus, curation,
+provider observations, prediction digest, capture version, and attested model
+route. Its runtime-custody signature is verified with the independently retained
+public key before extraction.
+Each completed opaque prediction also has an immutable, anchor-validated
+checkpoint in the sealed checkpoint directory. A retry loads those checkpoints
+and calls the provider only for missing IDs; one late provider failure therefore
+does not repeat successful paid classifications. An unmatched `.started.json`
+contains an authenticated attempt ID that is also sent as OpenRouter request
+and trace metadata. The retry stops with
+`offline_checkpoint_reconciliation_required` before any new call. Retrieve the
+retained response for that attempt, create a sealed reconciliation, and supply
+its directory to the resumed run:
+
+```bash
+npm run --silent company-monitoring:offline-predictions -- reconcile \
+  --checkpoint /private/path/pilot-prediction-checkpoints/cm_example_000001.started.json \
+  --retained-provider-response /private/path/openrouter-attempt-response.json \
+  --expected-provider-response-digest "$RETAINED_RESPONSE_SHA256" \
+  --output /private/path/pilot-prediction-reconciliations/cm_example_000001.reconciliation.json
+
+# Add this option to the resumed `run` command.
+--reconciliation-directory /private/path/pilot-prediction-reconciliations
+```
+
+The retained response wrapper includes the authenticated attempt ID, provider
+response ID, original provider latency, and raw provider response. The runtime
+custodian must retain and approve its digest independently. The reconcile
+command authenticates the started checkpoint, verifies the retained digest and
+attempt/response-ID binding, validates the recovered response against the
+checkpoint's pinned model and provider, and HMAC-authenticates the complete
+reconciliation. The resumed run preserves the original provider latency and
+creates the completed checkpoint without a second paid request. Never delete
+the started marker merely to force a retry.
+Completed checkpoints are authenticated with the separate runtime-custody key;
+editing their prediction bytes or copied anchors makes the retry fail closed.
+A started and completed checkpoint for one opaque example must carry the same
+attempt ID.
 
 ## Progressive lifecycle
 
@@ -101,7 +319,7 @@ The CLI writes canonical JSON to stdout and errors to stderr. It never writes a
 corpus or report file itself.
 
 ```bash
-npm run company-monitoring:blind-evaluation -- forecast \
+npm run --silent company-monitoring:blind-evaluation -- forecast \
   --protocol tests/fixtures/company-monitoring-evaluation/protocol.json \
   --approved-threshold-digest "$APPROVED_DIGEST" \
   --pilot-corpus /private/path/pilot-corpus.json \
@@ -124,7 +342,7 @@ provide the previous corpus, its independently retained digest, gold labels,
 predictions, and report.
 
 ```bash
-npm run company-monitoring:blind-evaluation -- score \
+npm run --silent company-monitoring:blind-evaluation -- score \
   --protocol tests/fixtures/company-monitoring-evaluation/protocol.json \
   --approved-threshold-digest "$APPROVED_DIGEST" \
   --corpus /private/path/stage3-corpus.json \

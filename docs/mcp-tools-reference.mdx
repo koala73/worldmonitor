@@ -515,6 +515,79 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_food_stocks`
+
+USDA PSD cereal stocks-to-use by marketing year. Ask for a country plus optional commodity (`wheat`, `corn`, `rice`, `soybeans`, `barley`, `palmOil`), or `country_code=WORLD` for the global balance. Marketing years are stored verbatim and must not be treated as calendar years.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | yes | ISO 3166-1 alpha-2, or `WORLD` for the global balance. |
+| `commodity` | string | no | `wheat`, `corn`, `rice`, `soybeans`, `barley`, or `palmOil` (note the camelCase). Empty = all six. |
+
+- **API endpoints:** `GET /api/resilience/v1/get-food-stocks`
+- **Kind:** RPC proxy — the handler owns WORLD vs ISO-2 and commodity filtering.
+- **Freshness budget:** oldest world marketing year present (WASDE monthly cycle; 60-day fetch-age / 120-day content-age).
+
+**Reading a zero.** Check `hasStocksToUse` before reporting `stocksToUse`, and
+`hasEndingStocks` before reporting `endingStocksTmt`. Proto3 has no presence for a
+bare number, so an unmeasured value arrives as `0` — and USDA estimates ending
+stocks for selected countries only, so a real producer routinely reports
+production and consumption with no stocks series at all. When the flag is `false`
+the zero is a placeholder; treat it as "not measured", never as 0%.
+
+`totalUseTmt` is consumption + exports for a country, but consumption only for
+`WORLD`, because world exports are internal transfers already counted in the
+importing country's consumption. Rows with `source: "faostat"` are production-only
+gap fill and always carry both flags `false`.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_food_stocks","arguments":{"country_code":"EG","commodity":"wheat"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_mineral_production`
+
+Country shares of mine and refinery production, plus HHI, from the annual USGS Mineral Commodity Summaries seed (BGS fills commodities MCS lacks, notably uranium). Use this for "who refines X" / "what does country Y produce". Deposit locations stay on `get_commodity_geo`.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `commodity` | string | no | Commodity id or label (`cobalt`, `lithium`, `ree`, …) |
+| `iso2` | string | no | ISO 3166-1 alpha-2 producer filter |
+| `stage` | string: mine / refinery | no | Restrict to one stage |
+
+- **API endpoints:** `GET /api/supply-chain/v1/get-mineral-production`
+- **Kind:** cache read — Redis seed `supply-chain:mineral-production:v1`.
+- **Freshness budget:** annual MCS edition. Withheld USGS values stay flagged and are never treated as zero.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_mineral_production","arguments":{"commodity":"cobalt","stage":"mine"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_commodity_geo`
 
 Global mining sites with coordinates, operator, mineral type, and production status. Covers 71 major mines spanning gold, silver, copper, lithium, uranium, coal, and other minerals worldwide.
@@ -670,6 +743,37 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_defense_industrial_base`
+
+Returns a country's latest World Bank military expenditure, armed-forces
+personnel, and arms import/export TIV observations together with SIPRI-derived
+supplier shares and a five-year supplier HHI. Use it to answer questions such
+as “who supplies Ukraine's major weapons, and how concentrated is that
+dependency?” TIV is a transfer-volume indicator, not a financial value.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code, for example `UA`, `DE`, or `IN`. |
+
+- **API endpoint:** `GET /api/military/v1/get-defense-industrial-base`
+- **Kind:** live RPC backed by two annual Redis snapshots.
+- **Freshness:** `industrialFetchedAt` and `supplierFetchedAt` report the two source clocks separately. `supplierRetained` identifies an importer row preserved after a partial SIPRI failure; `fetchedAt` is the older clock among the values served. Seeder liveness alarms after 28 days, and source observation years are checked separately against the annual content-age budget.
+- **Mapping:** `supplierMappingCoverage` reports the share of positive supplier TIV mapped to ISO2 suppliers. Supplier shares and HHI keep unmapped positive TIV in the denominator.
+- **Licensing:** the response contains derived SIPRI aggregates only and identifies SIPRI as the source. It does not reproduce the full database.
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_defense_industrial_base","arguments":{"country_code":"UA"}}
+  }'
+```
+
 ### `get_country_brief`
 
 AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses.
@@ -713,7 +817,9 @@ AI-classified geopolitical threat news summaries, GDELT intelligence signals, cr
 | `category` | string | Filter top news stories to one category (e.g. "conflict", "economy"; fallback is "general"). |
 | `country` | string | Filter top stories and travel advisories to one ISO 3166-1 alpha-2 country code (case-insensitive). |
 | `alerts_only` | boolean | Keep only top stories flagged as alerts. |
-| `limit` | number | Cap each list (top stories, signals, advisories) to at most this many items (default 30, pass 0 for no cap). |
+| `query` | string | Keep only top stories whose headline, primary source, or any clustered member headline contains this text (case-insensitive substring). This filters the LIVE news window only — it is not a historical index, so an event older than the current digest will not be found here. Use search_intel_history for that. |
+| `min_importance` | number | Keep only top stories whose effectiveImportanceScore is at least this value. 0 is honoured as a real floor rather than treated as absent; a story carrying no score is excluded when this is set, never treated as scoring zero. |
+| `limit` | number | Cap each list (top stories, signals, advisories) to at most this many items (default 30, pass 0 for no cap). Applied AFTER query and min_importance, so a capped list is drawn from the matches. |
 
 - **API endpoints:** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -747,7 +853,7 @@ Classify a supplied news headline or short text into a threat category and sever
 
 - **API endpoint:** `GET /api/intelligence/v1/classify-event`
 - **Kind:** bounded canonical-route proxy over an LLM classifier. This op was previously parity-excluded as `llm-passthrough`; the 24h per-title cache absorbs repeats and the classifier is capped at 50 output tokens.
-- **Quota:** standard — every call consumes the MCP daily reservation for OAuth (Pro) and dashboard-key contexts (50/UTC day). Environment API-key (`wm_…`) callers are not subject to that daily reservation; they remain bounded by the 60 requests/minute/key limiter, as with every other MCP tool.
+- **Quota:** standard — every call consumes the MCP daily reservation for OAuth and dashboard-issued `wm_…` key contexts (50/UTC day by default). Only legacy operator keys explicitly allowlisted by the deployment skip that daily reservation; every authenticated context remains bounded by the 60 requests/minute limiter.
 
 <CodeGroup>
 
@@ -806,6 +912,7 @@ Current topic clusters computed over the live headline digest with the same Jacc
 | `limit` | integer | Maximum clusters returned (1-25). Defaults to 10. |
 | `min_sources` | integer | Only return clusters carrying at least this many **distinct outlets** (1-10) — real corroboration, not one outlet filing twice. Defaults to 1. |
 | `category` | string (enum) | Restrict clustering to one full-digest category (`politics`, `us`, `europe`, `middleeast`, `tech`, `ai`, `finance`, `commodities`, `gov`, `africa`, `latam`, `asia`, `energy`, `thinktanks`, `crisis`, `layoffs`, `intel`). Echoed as `category` in the result (`null` when omitted). An unknown value yields `headlineCount: 0` and a `note` listing categories present in the current digest. |
+| `query` | string | Keep only clusters whose primary headline or any member headline contains this text (case-insensitive substring). Member headlines are matched too, because the primary is recency-picked — the searched term often sits on a sibling headline. Filters the LIVE digest window only, not a historical index. Applied before `limit`, so a capped list is drawn from the matches. |
 
 - **API endpoint:** `GET /api/news/v1/list-feed-digest`
 - **Kind:** deterministic local compute — clustering runs per call over the ~150-200 digest headlines (CDN/Redis-cached upstream, 15-min cadence).
@@ -1295,7 +1402,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_chokepoint_status`
 
-Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.
+Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.
 
 **Parameters (tool-specific):**
 
@@ -1509,7 +1616,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_airspace`
 
-Live ADS-B aircraft over a country. Returns civilian flights (OpenSky) and identified military aircraft with callsigns, positions, altitudes, and headings. Answers questions like "how many planes are over the UAE right now?" or "are there military aircraft over Taiwan?"
+Live ADS-B aircraft over a country. Returns Wingbits-backed civilian flights and identified military aircraft from redistributable providers, with callsigns, positions, altitudes, and headings. Answers questions like "how many planes are over the UAE right now?" or "are there military aircraft over Taiwan?"
 
 **Parameters:**
 
@@ -1733,7 +1840,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_natural_disasters`
 
-Recent earthquakes (USGS), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, and threat severity.
+Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, source, and threat severity.
 
 **Parameters (tool-specific):**
 
@@ -2040,6 +2147,35 @@ curl -s https://worldmonitor.app/mcp \
 </CodeGroup>
 
 ## Meta
+
+### `get_sources`
+
+WorldMonitor's live source inventory — what the data is drawn from and how far to trust it. Reads the committed attribution manifest and source-tier registry, so it is always current with the deployed build; no network call, no cache.
+
+Two **separate** populations, deliberately not merged:
+
+- **`providers`** — upstream hosts data is fetched from, keyed by host (`acleddata.com`), carrying `kind` (feed / structured / feed+structured / operational-status), attribution-review `status`, and `license`.
+- **`outlets`** — named news organisations, keyed by masthead (`Reuters`), carrying an editorial `tier` and the same `provenance` block the news tools attach to stories (propaganda risk, source type, whether each was declared or reviewed, state affiliation).
+
+A provider is a host; an outlet is a masthead. Only 3 of 536 active provider records share a key with the outlet table, so a single merged list would mean inventing attribution for the other 533.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `view` | string (enum) | `summary` (default) returns counts only and is small. `providers` and `outlets` enumerate. |
+| `kind` | string | `providers` view only — restrict to one kind. |
+| `tier` | integer 1-4 | `outlets` view only — restrict to one editorial tier. Outlets with no declared tier are never returned by this filter. |
+| `risk` | string (enum) | `outlets` view only — `low` / `medium` / `high` / `unknown`. |
+| `query` | string | Case-insensitive substring: host and provider in the providers view, outlet name in the outlets view. Applied before `limit`. |
+| `limit` | integer | Rows in an enumerated view. Defaults to 50, capped at 200. Ignored by `summary`. |
+
+- **`tier: null` means undeclared, never "tier 4."** WorldMonitor's internal tier helper defaults unknown names to 4; this tool does not, so a caller can distinguish a declared low-tier outlet from one that was never rated.
+- **Excluded manifest rows are reported, not dropped.** `summary.excludedProviderCount` counts local transports and development-only URLs kept out of the provider count.
+- **Truncation is visible.** Enumerated views return `matched` alongside `returned`; the full provider inventory does not fit one response.
+- **API endpoints:** none — committed-registry read, no upstream call.
+- **Kind:** deterministic local compute. No LLM, no freshness budget.
+- **Access: free.** This is the one tool callable with **no credentials at all**, so an agent can see what WorldMonitor covers before anyone signs up. It consumes no quota for any principal and carries `_meta["worldmonitor/access"]: "free"` in `tools/list`, which is how a client that reads schemas rather than prose can tell. Uncredentialed calls take their own per-IP ceiling, tighter than the discovery limit, and that ceiling fails closed — if it can't be reached, the call is refused rather than served. Every other tool still requires a subscription.
+
+---
 
 ### `describe_tool`
 

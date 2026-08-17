@@ -132,6 +132,35 @@ func TestListToolsIsKeyless(t *testing.T) {
 	}
 }
 
+func TestGetSourcesIsKeyless(t *testing.T) {
+	client, calls := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"jsonrpc":"2.0","id":1,"result":{"sources":[]}}`)
+	})
+	result, err := client.CallTool(context.Background(), "get_sources", Args{"view": "summary"})
+	if err != nil {
+		t.Fatalf("CallTool: %v", err)
+	}
+	if string(result) != `{"sources":[]}` {
+		t.Fatalf("result = %s", result)
+	}
+	call := (*calls)[0]
+	if got := call.headers.Get(APIKeyHeader); got != "" {
+		t.Fatalf("unexpected API key header %q", got)
+	}
+	var rpc struct {
+		Params struct {
+			Name      string         `json:"name"`
+			Arguments map[string]any `json:"arguments"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(call.body, &rpc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if rpc.Params.Name != "get_sources" || rpc.Params.Arguments["view"] != "summary" {
+		t.Fatalf("params = %+v", rpc.Params)
+	}
+}
+
 func TestMCPErrorWinsOverHTTP200(t *testing.T) {
 	client, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintf(w, `{"jsonrpc":"2.0","id":1,"error":{"code":%d,"message":"auth required"}}`, MCPAuthErrorCode)

@@ -124,6 +124,9 @@ describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
         // would force a rebuild and test the build-path instead of
         // the backfill-path). 'd6' is the default flag-off tag.
         _formula: 'd6',
+        // Education is active by default. The legacy fixture predates only
+        // headlineEligible, not the current construct generation.
+        _educationState: 'education-on',
         // headlineEligible deliberately omitted — at v17 (PR 6 / §U7),
         // every legitimate writer stamps the field. Missing-from-cache
         // is anomalous, so the conservative backfill default is `false`

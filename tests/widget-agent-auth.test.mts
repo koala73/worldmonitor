@@ -131,6 +131,31 @@ describe('widget-agent unified tester key auth', () => {
     });
   });
 
+  it('keeps an enterprise tester cookie authoritative over the automatic wms_ header', async () => {
+    const res = await handler(new Request('https://www.worldmonitor.app/api/widget-agent', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://www.worldmonitor.app',
+        'Content-Type': 'application/json',
+        'X-WorldMonitor-Key': 'wms_automatic-anonymous-session',
+        Cookie: `wm-pro-key=${encodeURIComponent('browser-test-key')}`,
+      },
+      body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'basic' }),
+    }));
+
+    assert.equal(res.status, 200);
+    assert.equal(fetchMock.mock.calls.length, 1);
+
+    const init = fetchMock.mock.calls[0].arguments[1] as RequestInit;
+    const headers = new Headers(init.headers);
+    assert.equal(headers.get('X-Pro-Key'), 'server-pro-key');
+    assert.deepEqual(JSON.parse(String(init.body)), {
+      prompt: 'Build a widget',
+      mode: 'create',
+      tier: 'pro',
+    });
+  });
+
   it('rejects disallowed origins before cookie-backed auth reaches the relay', async () => {
     const res = await handler(new Request('https://www.worldmonitor.app/api/widget-agent', {
       method: 'POST',

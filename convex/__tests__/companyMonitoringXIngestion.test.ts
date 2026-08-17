@@ -283,6 +283,18 @@ describe("Company Monitoring compliant X ingestion", () => {
           q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("postId", "1912345678901234567"),
         )
         .unique(),
+      normalizedEvidence: await ctx.db
+        .query("companyMonitoringEvidence")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique(),
+      candidate: await ctx.db
+        .query("companyMonitoringCandidates")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique(),
       work: await ctx.db
         .query("companyMonitoringScanWorkItems")
         .withIndex("by_workId", (q) => q.eq("workId", claim.work.workId))
@@ -300,6 +312,21 @@ describe("Company Monitoring compliant X ingestion", () => {
       contentState: "active",
       storageState: "full_text",
       text: "Official Stripe update",
+    });
+    expect(stored.normalizedEvidence).toMatchObject({
+      provider: "x",
+      providerLocator: "1912345678901234567",
+      sourceAuthority: "verified_first_party",
+      independence: "first_party",
+      state: "active",
+      authorAccountId: ACCOUNT_ID,
+    });
+    expect(stored.candidate).toMatchObject({
+      state: "pending_classification",
+      observationBlocking: true,
+      referenceCount: 1,
+      referencesTruncated: false,
+      selectionPolicyVersion: "cm-evidence-selection-v1",
     });
     expect(stored.work).toMatchObject({
       state: "complete",
@@ -416,6 +443,27 @@ describe("Company Monitoring compliant X ingestion", () => {
         demotionReason: "official_link_lost",
         allowedUses: [],
       },
+    });
+    const normalized = await t.run(async (ctx) => ({
+      evidence: await ctx.db
+        .query("companyMonitoringEvidence")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique(),
+      candidate: await ctx.db
+        .query("companyMonitoringCandidates")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique(),
+    }));
+    expect(normalized.evidence).toMatchObject({ state: "authority_lost" });
+    expect(normalized.candidate).toMatchObject({
+      state: "terminal",
+      terminalReason: "authority_lost",
+      observationBlocking: false,
+      referenceCount: 0,
     });
   });
 
@@ -590,6 +638,18 @@ describe("Company Monitoring compliant X ingestion", () => {
           q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
         )
         .unique(),
+      normalizedEvidence: await ctx.db
+        .query("companyMonitoringEvidence")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique(),
+      candidate: await ctx.db
+        .query("companyMonitoringCandidates")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique(),
     }));
     expect(stored.evidence).toMatchObject({
       contentState,
@@ -599,6 +659,13 @@ describe("Company Monitoring compliant X ingestion", () => {
     expect(stored.evidence?.text).toBeUndefined();
     expect(stored.company?.evidenceRevision).toBeUndefined();
     expect(stored.company?.recomputeRequiredAt).toBeUndefined();
+    expect(stored.normalizedEvidence).toMatchObject({ state: "unavailable" });
+    expect(stored.candidate).toMatchObject({
+      state: "terminal",
+      terminalReason: "evidence_unavailable",
+      observationBlocking: false,
+      referenceCount: 0,
+    });
   });
 
   test.each([
@@ -864,6 +931,18 @@ describe("Company Monitoring compliant X ingestion", () => {
           q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
         )
         .unique(),
+      normalizedEvidence: await ctx.db
+        .query("companyMonitoringEvidence")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique(),
+      candidate: await ctx.db
+        .query("companyMonitoringCandidates")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique(),
     }));
     expect(rows.identities).toEqual([]);
     expect(rows.evidence).toEqual([]);
@@ -871,6 +950,8 @@ describe("Company Monitoring compliant X ingestion", () => {
     expect(rows.company).toMatchObject({ purgePhase: "complete" });
     expect(rows.company?.evidenceRevision).toBeUndefined();
     expect(rows.company?.recomputeRequiredAt).toBeUndefined();
+    expect(rows.normalizedEvidence).toBeNull();
+    expect(rows.candidate).toBeNull();
   });
 
   test("removes remaining edit aliases when company evidence is already absent", async () => {
@@ -987,6 +1068,18 @@ describe("Company Monitoring compliant X ingestion", () => {
           q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
         )
         .unique(),
+      normalizedEvidence: await ctx.db
+        .query("companyMonitoringEvidence")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique(),
+      candidate: await ctx.db
+        .query("companyMonitoringCandidates")
+        .withIndex("by_account_company", (q) =>
+          q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+        )
+        .unique(),
     }));
     expect(state.evidence).toMatchObject({
       contentState: "deleted",
@@ -996,6 +1089,13 @@ describe("Company Monitoring compliant X ingestion", () => {
     expect(state.company).toMatchObject({
       evidenceRevision: 1,
       recomputeRequiredAt: NOW + DAY_MS,
+    });
+    expect(state.normalizedEvidence).toMatchObject({ state: "deleted" });
+    expect(state.candidate).toMatchObject({
+      state: "terminal",
+      terminalReason: "evidence_deleted",
+      observationBlocking: false,
+      referenceCount: 0,
     });
 
     vi.setSystemTime(NOW + 2 * DAY_MS);

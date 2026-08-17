@@ -1,4 +1,4 @@
-// AUTO-GENERATED from convex/config/productCatalog.ts and the MCP registry.
+// AUTO-GENERATED from convex/config/productCatalog.ts.
 // Do not edit manually. Run: npm run product:facts
 // @ts-check
 
@@ -163,17 +163,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "dashboardAiCallsPerDay": null,
       "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option"
     }
-  ],
-  "capabilities": {
-    "mcpTools": 60,
-    "locales": 26,
-    "variants": 6,
-    "mapLayers": 56,
-    "feedDefinitions": 632,
-    "freshnessTrackedSourceGroups": 35,
-    "sourceAttributionHosts": 531,
-    "sourceAttributionProviders": 529
-  }
+  ]
 };
 
 export const PRODUCT_CATALOG = {

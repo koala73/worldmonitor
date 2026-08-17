@@ -426,6 +426,26 @@ describe('premiumFetch', () => {
     assert.equal(tokenCalls, 2, 'retried once, then gives up — no infinite loop');
     assert.equal(sentHeaders().get('Authorization'), null);
   });
+
+  it('a rejected Clerk-authenticated fetch still falls through to the unauthenticated path', async () => {
+    // The Bearer attempt lives inside a try whose catch falls through to the
+    // anonymous request. Pinned because routing that attempt through a shared
+    // helper makes it easy to `return` the promise unawaited, which escapes the
+    // catch and turns a fall-through into a propagated rejection.
+    let n = 0;
+    setup({
+      clerkToken: 'clerk-jwt',
+      fetchImpl: () =>
+        n++ === 0 ? Promise.reject(new Error('boom')) : Promise.resolve(fakeRes(200)),
+    });
+
+    const res = await premiumFetch(TARGET);
+    assert.equal(res.status, 200);
+    assert.equal(fetchMock.mock.calls.length, 2, 'fell through rather than propagating');
+    assert.equal(sentHeaders(0).get('Authorization'), 'Bearer clerk-jwt');
+    assert.equal(sentHeaders(1).get('Authorization'), null);
+  });
+
 });
 
 // ---------------------------------------------------------------------------

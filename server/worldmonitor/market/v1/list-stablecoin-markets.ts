@@ -24,13 +24,16 @@ import type {
   StablecoinSummary,
   UnresolvedStablecoin,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
-import stablecoinConfig from '../../../../shared/stablecoins.json';
+// The same row shaping the two Railway seeders apply when writing the seed
+// snapshot — a gap coin and a seeded coin sitting in one response must not be
+// labelled on different rules. Thresholds default to shared/stablecoins.json
+// inside the module. (#6308, #6319)
+import { classifyStablecoin } from '../../../../shared/stablecoin-classifier.cjs';
 import { cachedFetchJson, readCachedJson, setCachedJson } from '../../../_shared/redis';
 import { sha256Hex } from '../../../_shared/hash';
 import {
   fetchCryptoMarketsWithSource,
   parseStringArray,
-  type CoinGeckoMarketItem,
   type CryptoMarketsSource,
 } from './_shared';
 
@@ -62,9 +65,6 @@ const MAX_ECHOED_ID_LENGTH = 64;
 // CoinGecko IDs are lowercase alphanumerics and hyphens. Anchored, with no
 // nested quantifier or alternation, so it is linear on any input.
 const COINGECKO_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
-
-const { onPegMaxDeviation: ON_PEG_MAX, slightDepegMaxDeviation: SLIGHT_DEPEG_MAX } =
-  stablecoinConfig.pegThresholds;
 
 /**
  * Closed vocabularies, exported so tests can pin them against the proto
@@ -125,12 +125,6 @@ function isGapPayload(value: unknown): value is GapPayload {
   return Array.isArray(payload.coins)
     && (payload.source === 'coingecko' || payload.source === 'coinpaprika')
     && typeof payload.fetchedAt === 'string';
-}
-
-/** Provider numerics arrive as JSON of unknown shape; a string price must not become NaN. */
-function toFiniteNumber(value: unknown): number {
-  const n = typeof value === 'number' ? value : Number(value);
-  return Number.isFinite(n) ? n : 0;
 }
 
 function unavailableResponse(unresolved: UnresolvedStablecoin[]): ListStablecoinMarketsResponse {
@@ -223,33 +217,6 @@ function normalizeRequestedCoins(raw: unknown): {
 }
 
 /**
- * Mirrors the classification scripts/seed-stablecoin-markets.mjs applies, off
- * the same shared thresholds — a gap coin and a seeded coin sitting in one
- * response must not be labelled on different rules.
- */
-function toStablecoin(item: CoinGeckoMarketItem): Stablecoin {
-  const price = toFiniteNumber(item.current_price);
-  const deviation = Math.abs(price - 1.0);
-  return {
-    id: item.id,
-    symbol: String(item.symbol || '').toUpperCase(),
-    name: String(item.name || ''),
-    price,
-    deviation: +(deviation * 100).toFixed(3),
-    pegStatus: deviation <= ON_PEG_MAX
-      ? 'ON PEG'
-      : deviation <= SLIGHT_DEPEG_MAX
-        ? 'SLIGHT DEPEG'
-        : 'DEPEGGED',
-    marketCap: toFiniteNumber(item.market_cap),
-    volume24h: toFiniteNumber(item.total_volume),
-    change24h: toFiniteNumber(item.price_change_percentage_24h),
-    change7d: toFiniteNumber(item.price_change_percentage_7d_in_currency),
-    image: String(item.image || ''),
-  };
-}
-
-/**
  * Resolves IDs the snapshot does not carry, in ONE batched provider call.
  *
  * Keyed on the exact ID SET, so reuse is per request shape, not per coin:
@@ -320,7 +287,7 @@ async function resolveGapCoins(ids: string[]): Promise<{
           return null;
         }
         incompleteFallback = source === 'coinpaprika' && usable.length < ids.length;
-        return { coins: usable.map(toStablecoin), source, fetchedAt: new Date().toISOString() };
+        return { coins: usable.map((item) => classifyStablecoin(item)), source, fetchedAt: new Date().toISOString() };
       },
       GAP_NEGATIVE_TTL,
       { timeoutMs: GAP_FETCH_TIMEOUT_MS, cacheFetcherErrors: false },

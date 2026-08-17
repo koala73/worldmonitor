@@ -146,4 +146,32 @@ describe('Frontend bootstrap runtime behavior', () => {
     assert.equal(callbackCount, 1);
     assert.equal(getBootstrapHydrationState().tiers.slow.source, 'none');
   });
+
+  it('hands each hydrated key to exactly one reader', async () => {
+    // Consume-once is what stops a second panel from rendering the boot
+    // payload instead of fetching live data — the hydrated value is a
+    // one-shot handoff, not a cache.
+    const requests = installFetchStub();
+    const boot = fetchBootstrapData(() => {});
+    await tick();
+    tierRequests(requests, 'fast')[0]!.deferred.resolve(jsonResponse({ fastKey: 'once' }));
+    await boot;
+
+    assert.equal(getHydratedData('fastKey'), 'once');
+    assert.equal(
+      getHydratedData('fastKey'),
+      undefined,
+      'a second read must not re-serve the boot payload',
+    );
+  });
+
+  it('reports null for a key the payload never carried', async () => {
+    const requests = installFetchStub();
+    const boot = fetchBootstrapData(() => {});
+    await tick();
+    tierRequests(requests, 'fast')[0]!.deferred.resolve(jsonResponse({ fastKey: 'value' }));
+    await boot;
+
+    assert.equal(getHydratedData('neverSeeded'), undefined);
+  });
 });

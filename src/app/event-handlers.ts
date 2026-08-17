@@ -292,13 +292,14 @@ export class EventHandlerManager implements AppModule {
   private clockIntervalId: ReturnType<typeof setInterval> | null = null;
 
   private readonly idlePauseMs = IDLE_PAUSE_MS;
-  private readonly debouncedUrlSync = debounce(() => {
+  private readonly writeUrlState = (): void => {
     const shareUrl = this.getShareUrl();
     if (!shareUrl) return;
     // Preserve the shared mobile-overlay marker while syncing map URL state;
     // replacing it with null makes Android Back skip the open sheet.
     try { history.replaceState(history.state, '', shareUrl); } catch { }
-  }, 250);
+  };
+  private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
 
   private readonly debouncedWebcamReload = debounce(() => {
     if (this.ctx.mapLayers?.webcams) {
@@ -982,10 +983,12 @@ export class EventHandlerManager implements AppModule {
   }
 
   private filterMissionLayersForCurrentRenderer(layers: MapLayers): MapLayers {
-    const renderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
     const isDeckGLActive = this.ctx.map?.isDeckGLActive?.() ?? !this.ctx.isMobile;
+    const kind = this.ctx.map?.isGlobeMode?.()
+      ? 'globe'
+      : (isDeckGLActive ? 'deck' : 'svg');
     let filtered = this.filterMissionLayersForAvailableServices(
-      filterMissionLayersForRenderer(layers, renderer, isDeckGLActive, this.getMissionDefaultLayers()),
+      filterMissionLayersForRenderer(layers, kind, this.getMissionDefaultLayers()),
     );
     // #6045 — mission presets (e.g. Supply-Chain Risk) include resilienceScore.
     // Free users must not persist or apply locked layers through this path.
@@ -1189,10 +1192,9 @@ export class EventHandlerManager implements AppModule {
     //
     // view is intentionally excluded: all renderers set this.state.view
     // synchronously at the top of setView(), so the debounced read is always
-    // correct regardless of renderer. GlobeMap.onStateChanged is a no-op and
-    // SVG Map fires emitStateChange before the listener is installed — neither
-    // can rely on a later onStateChanged to drive the URL write, so they must
-    // use the immediate debounce path.
+    // correct regardless of renderer. The initial Globe/SVG view is applied
+    // before this listener is installed, so neither can rely on that earlier
+    // state change to drive the URL write; they need the immediate debounce.
     const { view, lat, lon, zoom, chokepoint } = this.ctx.initialUrlState ?? {};
     const urlHasAsyncFlyTo =
       (lat !== undefined && lon !== undefined) ||   // setCenter → flyTo (requires both)
@@ -1205,6 +1207,11 @@ export class EventHandlerManager implements AppModule {
 
   syncUrlState(): void {
     this.debouncedUrlSync();
+  }
+
+  syncUrlStateNow(): void {
+    this.debouncedUrlSync.cancel();
+    this.writeUrlState();
   }
 
   applyMapLayerChange(layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic'): void {

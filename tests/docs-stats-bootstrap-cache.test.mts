@@ -64,8 +64,25 @@ const ON_DEMAND_CACHE_PROFILES = {
     browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
     cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
   },
+  canadaRoads: {
+    browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
+    cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
+  },
+  albertaRoads: {
+    browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
+    cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
+  },
+  bcOpen511: {
+    browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=1800',
+    cdn: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=1800',
+  },
+  marketCorrelationSeries: {
+    browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
+    cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
+  },
 };
-function successCacheHeaders(tier, authKind, cors, onDemandKey = null) {
+function successCacheHeaders(requestedTier, authKind, cors, onDemandKey = null) {
+  const tier = requestedTier ?? (authKind === 'public-on-demand' ? 'slow' : null);
   if (!isPublicBootstrapKind(authKind)) {
     return { ...cors, 'Cache-Control': 'no-store' };
   }
@@ -85,8 +102,7 @@ function successCacheHeaders(tier, authKind, cors, onDemandKey = null) {
       || TIER_CDN_CACHE.fast,
   };
 }
-const cacheTier = tier ?? (auth.kind === 'public-on-demand' ? 'slow' : null);
-const response = jsonResponse({ data, missing }, 200, successCacheHeaders(cacheTier, auth.kind, cors, onDemandKey));
+const response = jsonResponse({ data, missing }, 200, successCacheHeaders(tier, auth.kind, cors, onDemandKey));
 `;
 
 describe('parseBootstrapCacheContract', () => {
@@ -174,15 +190,16 @@ describe('parseBootstrapCacheContract', () => {
 
   it('throws when the on-demand default tier moves', () => {
     const source = SYNTHETIC_BOOTSTRAP.replace(
-      "const cacheTier = tier ?? (auth.kind === 'public-on-demand' ? 'slow' : null);",
-      'const cacheTier = tier ?? null;',
+      "const tier = requestedTier ?? (authKind === 'public-on-demand' ? 'slow' : null);",
+      'const tier = requestedTier ?? null;',
     );
+    assert.notEqual(source, SYNTHETIC_BOOTSTRAP, 'fixture drift: on-demand default not found');
     assert.throws(() => parseBootstrapCacheContract(source), /public-on-demand default cache tier/);
   });
 
   it('throws when the on-demand default names a tier that does not exist', () => {
     const source = SYNTHETIC_BOOTSTRAP.replace("? 'slow' : null)", "? 'medium' : null)");
-    assert.notEqual(source, SYNTHETIC_BOOTSTRAP, 'fixture drift: cacheTier ternary not found');
+    assert.notEqual(source, SYNTHETIC_BOOTSTRAP, 'fixture drift: on-demand default ternary not found');
     assert.throws(() => parseBootstrapCacheContract(source), /public-on-demand default cache tier/);
   });
 
@@ -229,10 +246,17 @@ describe('parseBootstrapCacheContract', () => {
   // Parsing a constant proves it is COMPUTED, never that it reaches the
   // emitter. Both mutations below leave every parsed value byte-identical
   // while the handler stops emitting what all four pages publish.
-  it('throws when the emitter stops receiving the computed cache tier', () => {
+  // Was: swapping the computed `cacheTier` for the raw `tier` at the call site.
+  // #6763 moved the on-demand default INSIDE successCacheHeaders, so passing the
+  // raw tier is now the correct call and that mutation is no longer a defect —
+  // there is one resolution path and no call-site variant that can drop
+  // inheritance. What still has to bite is the handler routing its success
+  // response somewhere other than the emitter, so mutate the argument the
+  // emitter needs instead.
+  it('throws when the emitter stops receiving the requested tier', () => {
     const source = SYNTHETIC_BOOTSTRAP.replace(
-      'successCacheHeaders(cacheTier, auth.kind, cors, onDemandKey)',
       'successCacheHeaders(tier, auth.kind, cors, onDemandKey)',
+      'successCacheHeaders(null, auth.kind, cors, onDemandKey)',
     );
     assert.notEqual(source, SYNTHETIC_BOOTSTRAP, 'fixture drift: call site not found');
     assert.throws(() => parseBootstrapCacheContract(source), /no longer calls successCacheHeaders/);
@@ -501,7 +525,13 @@ describe('validateBootstrapCacheDocs', () => {
   it('catches a page publishing an own-profile that api/bootstrap.js no longer declares', () => {
     const cache = { ...REAL_CACHE, onDemandProfiles: {} };
     const failures = validateBootstrapCacheDocs({ bootstrapCache: cache }, REAL_DOCS, REAL_TIERS);
-    assert.equal(failures.length, BOOTSTRAP_CACHE_DOC_FILES.length);
+    // One failure per documented profile per page, derived rather than pinned at
+    // one file each: #6763 took the published set from one key to five, and a
+    // hardcoded count would have had to be re-guessed instead of following it.
+    assert.equal(
+      failures.length,
+      BOOTSTRAP_CACHE_DOC_FILES.length * Object.keys(REAL_CACHE.onDemandProfiles).length,
+    );
     assert.ok(hit(failures, 'publishes an own cache profile for `chinaDecisionSignals`, but api/bootstrap.js declares none'));
   });
 
@@ -524,7 +554,7 @@ describe('validateBootstrapCacheDocs', () => {
   it('catches a declared on-demand profile whose published values are stale', () => {
     const failures = validateBootstrapCacheDocs(
       REAL_STATS,
-      mutate(EN_PAGE, '`chinaDecisionSignals` does (browser `max-age=60`, CDN `s-maxage=900`)', '`chinaDecisionSignals` does (browser `max-age=60`, CDN `s-maxage=7200`)'),
+      mutate(EN_PAGE, '`chinaDecisionSignals` (browser `max-age=60`, CDN `s-maxage=900`)', '`chinaDecisionSignals` (browser `max-age=60`, CDN `s-maxage=7200`)'),
     );
     assert.ok(hit(failures, '`chinaDecisionSignals` CDN-Cache-Control documented as `s-maxage=7200`'));
   });

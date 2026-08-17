@@ -154,12 +154,12 @@ export function ownerIndexKey(ownerHash: string): string {
   return `webhook:owner:${ownerHash}:v1`;
 }
 
-/** SHA-256 hash of the caller's API key — used as ownerTag and owner index key. Never secret. */
-export async function callerFingerprint(req: Request): Promise<string> {
-  const key =
-    req.headers.get('X-WorldMonitor-Key') ??
-    req.headers.get('X-Api-Key') ??
-    '';
+/** SHA-256 hash of the resolved API credential — used as ownerTag and owner index key. Never secret. */
+export async function callerFingerprint(req: Request, resolvedCredential?: string): Promise<string> {
+  const key = resolvedCredential
+    ?? req.headers.get('X-WorldMonitor-Key')
+    ?? req.headers.get('X-Api-Key')
+    ?? '';
   if (!key) return 'anon';
   const encoded = new TextEncoder().encode(key);
   const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);

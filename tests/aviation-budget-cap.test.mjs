@@ -18,6 +18,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  aviationStackBudgetMonth,
+  avstackBudgetKey as serverAvstackBudgetKey,
+} from '../server/worldmonitor/aviation/v1/_avstack-budget.ts';
+import { avstackBudgetKey as seederAvstackBudgetKey } from '../scripts/seed-aviation.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -146,23 +151,37 @@ describe('aviation budget: call sites are wired to the cap', () => {
     assert.match(src, /aviation:avstack:calls:\$\{ym\}/);
   });
 
-  it('server budget helper uses the same key format + UTC month math as the seeder', () => {
-    // Cross-file drift would split the counter and silently defeat the shared
-    // ceiling — pin both halves so a future edit to either fails the test.
-    const srv = read('server/worldmonitor/aviation/v1/_avstack-budget.ts');
-    assert.match(srv, /aviation:avstack:calls:/);
-    assert.match(srv, /getUTCFullYear\(\)/);
-    assert.match(srv, /getUTCMonth\(\)/);
-    const seeder = read('scripts/seed-aviation.mjs');
-    assert.match(seeder, /getUTCFullYear\(\)/);
-    assert.match(seeder, /getUTCMonth\(\)/);
+  it('server and seeder count against the identical monthly budget key', () => {
+    // Drift here splits the shared ceiling into two independent counters and
+    // silently doubles AviationStack spend. Run both key builders over the same
+    // instants instead of grepping both files for `getUTCMonth()` — which
+    // passes even if one side computes a different key from it.
+    for (const iso of [
+      '2026-01-01T00:00:00Z',
+      '2026-08-16T12:34:56Z',
+      '2026-12-31T23:59:59Z',
+    ]) {
+      const at = new Date(iso);
+      assert.equal(serverAvstackBudgetKey(at), seederAvstackBudgetKey(at), iso);
+    }
   });
 
-  it('request cache keys include the UTC budget month so budget denials expire across month rollover', () => {
-    const srv = read('server/worldmonitor/aviation/v1/_avstack-budget.ts');
-    assert.match(srv, /export function aviationStackBudgetMonth/);
-    assert.match(srv, /getUTCFullYear\(\)/);
-    assert.match(srv, /getUTCMonth\(\)/);
+  it('rolls the budget key over on the UTC month boundary, not the local one', () => {
+    // A local-time boundary would roll early or late for the deployment region
+    // and hand a fresh month's quota to the tail of the previous month.
+    const lastInstantOfJan = new Date('2026-01-31T23:59:59.999Z');
+    const firstInstantOfFeb = new Date('2026-02-01T00:00:00.000Z');
+    assert.equal(serverAvstackBudgetKey(lastInstantOfJan), 'aviation:avstack:calls:2026-01');
+    assert.equal(serverAvstackBudgetKey(firstInstantOfFeb), 'aviation:avstack:calls:2026-02');
+    assert.equal(seederAvstackBudgetKey(lastInstantOfJan), 'aviation:avstack:calls:2026-01');
+    assert.equal(seederAvstackBudgetKey(firstInstantOfFeb), 'aviation:avstack:calls:2026-02');
+  });
+
+  it('zero-pads single-digit months so keys sort chronologically', () => {
+    assert.equal(aviationStackBudgetMonth(new Date('2026-09-15T00:00:00Z')), '2026-09');
+  });
+
+  it('request cache keys carry the budget month so denials expire at rollover', () => {
     assert.match(read('server/worldmonitor/aviation/v1/list-airport-flights.ts'), /aviationStackBudgetMonth\(\)/);
     assert.match(read('server/worldmonitor/aviation/v1/get-flight-status.ts'), /aviationStackBudgetMonth\(\)/);
   });

@@ -18,6 +18,12 @@ import {
   findLeakedPrePublishFields,
   MAX_SEEDED_VALUE_BYTES,
 } from '../scripts/_seed-utils.mjs';
+import {
+  buildIndex,
+  buildOilStocksAnalysis,
+  COUNTRY_EXTRA_KEYS,
+  parseRecord,
+} from '../scripts/seed-iea-oil-stocks.mjs';
 
 // The real thing: seed-forecasts' raw fetcher output vs its published projection.
 const RAW = {
@@ -93,16 +99,49 @@ test('a sub-object extra key is not flagged (seed-sanctions-pressure)', () => {
   assert.deepEqual(findLeakedPrePublishFields(raw, published, raw._state), []);
 });
 
-test('a from-scratch extra key is not flagged (seed-iea-oil-stocks)', () => {
-  // raw {members, dataMonth, seededAt}; canonical buildIndex → {dataMonth, updatedAt, members}.
-  // The only flaggable field is `seededAt`, and no extra-key payload carries it.
-  const raw = { members: [{ iso2: 'DE' }], dataMonth: '2026-06', seededAt: 123 };
-  const published = { dataMonth: '2026-06', updatedAt: 123, members: [{ iso2: 'DE' }] };
-  const analysis = { updatedAt: 123, dataMonth: '2026-06', ieaMembers: [], belowObligation: [], regionalSummary: {}, shockScenario: null };
+// #6489: this test used to build its member by hand as `{ iso2: 'DE' }` and assert
+// "the only flaggable field is `seededAt`, and no extra-key payload carries it".
+// That claim was false in production: parseRecord stamps `seededAt` on EVERY member,
+// so the real country transform leaked it, the guard exited 1, and the bundle went
+// red — while this test stayed green, because a hand-written stub cannot exhibit the
+// bug. Build the fixture from the REAL parseRecord/buildIndex/COUNTRY_EXTRA_KEYS.
+test('the real country extra key carries seededAt, and only the allowlist clears it (seed-iea-oil-stocks)', () => {
+  const seededAt = '2026-08-12T07:32:58.000Z';
+  // A real IEA CSV row for the country named in the production violation.
+  const member = parseRecord({
+    countryName: 'Australia',
+    yearMonth: '202605',
+    total: '58',
+    industry: '40',
+    publicData: '10',
+    abroadIndustry: '5',
+    abroadPublic: '3',
+  }, seededAt);
 
+  // The fixture must be ABLE to exhibit the bug, or the assertions below are vacuous.
+  assert.equal(member.seededAt, seededAt, 'parseRecord must stamp seededAt on the member');
+
+  const raw = { members: [member], dataMonth: member.dataMonth, seededAt };
+  const published = buildIndex(raw.members, raw.dataMonth, raw.seededAt);
+  assert.ok(!('seededAt' in published), 'buildIndex must strip seededAt (it renames it to updatedAt)');
+
+  const ek = COUNTRY_EXTRA_KEYS.find(k => k.key === 'energy:iea-oil-stocks:v1:AU');
+  assert.ok(ek, 'expected an AU country extra key');
+  const ekData = ek.transform(raw);
+
+  // Guard is live: WITHOUT the opt-out the real payload leaks exactly [seededAt].
+  // If this ever returns [], the guard has stopped seeing this shape.
+  assert.deepEqual(findLeakedPrePublishFields(raw, published, ekData, {}), ['seededAt']);
+
+  // And the shipped key declares the opt-out, so the seeder publishes. Deleting
+  // `allowPrePublishFields` from COUNTRY_EXTRA_KEYS turns this line red.
+  assert.deepEqual(findLeakedPrePublishFields(raw, published, ekData, ek), []);
+
+  // The analysis keys are unaffected: buildOilStocksAnalysis returns `updatedAt`.
+  const analysis = buildOilStocksAnalysis(raw.members, raw.dataMonth, raw.seededAt);
+  assert.ok(!('seededAt' in analysis));
   assert.deepEqual(findLeakedPrePublishFields(raw, published, analysis), []);
   assert.deepEqual(findLeakedPrePublishFields(raw, published, { fetchedAt: 1, recordCount: 0 }), []);
-  assert.deepEqual(findLeakedPrePublishFields(raw, published, raw.members[0]), []);
 });
 
 test('a null/non-object extra-key payload never throws', () => {

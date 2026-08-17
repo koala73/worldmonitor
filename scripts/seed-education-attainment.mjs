@@ -31,9 +31,13 @@
 // structural absence, not a fetch failure — the practical ceiling for any
 // World Bank series against this universe is 195/196.
 
-import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import {
+  loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw,
+  getRedisCredentials, redisCommand,
+} from './_seed-utils.mjs';
 import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
+import sovereignStatus from './shared/sovereign-status.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
 
@@ -41,6 +45,8 @@ const WB_BASE = 'https://api.worldbank.org/v2';
 const _proxyAuth = resolveProxyForConnect();
 const CANONICAL_KEY = 'resilience:education-attainment:v1';
 const CACHE_TTL = 35 * 24 * 3600; // 35 days; the series publishes annually
+const SEED_META_KEY = 'seed-meta:resilience:education-attainment';
+const COUNTRY_SET_BASELINE_KEY = 'seed-baseline:resilience:education-attainment:v1';
 
 // Content-age budget. Educational attainment of the 25+ population is a
 // slow-moving stock published on an irregular survey cadence — 39 of the
@@ -84,34 +90,103 @@ const EDUCATION_SECTION_TIMEOUT_MS = 300_000;
 // so promotion clears that floor by one country. See
 // `docs/methodology/education-flag-flip-runbook.md`.
 const MIN_COUNTRIES = 150;
+const ACTIVATION_MIN_COUNTRIES = 180;
+const RANKABLE_COUNTRY_CODES = new Set(sovereignStatus.entries.map((entry) => entry.iso2));
 
-// FOLLOW-UP, required before the flag flips (not before this ships — the
-// dimension is dark, so a silent drop moves nothing published yet).
+// Coverage-drop warning (#6460), shipped before the flag flip as the runbook
+// requires. While the dimension is dark a silent drop moves nothing published;
+// once it is live the same drop shifts real scores, so this has to exist first.
 //
 // The floor alone leaves a real gap: a fetch that returns 161 countries clears
 // both it and any naive percentage delta check, while silently moving ~20
-// countries onto the 50/0.3 `unmonitored` imputation with no alarm. Post-flip
-// that shifts published scores for those countries.
+// countries onto the 50/0.3 `unmonitored` imputation with no alarm.
 //
-// Size the check to CADENCE, not to a percentage borrowed from a volatile feed.
-// A 15% delta is nearly a no-op here: 181 x 0.85 = 154, and validate() already
+// Sized to CADENCE, not to a percentage borrowed from a volatile feed. A 15%
+// delta is nearly a no-op here: 181 x 0.85 = 154, and validate() already
 // rejects below 150, so it would only fire in the 4-country band between them.
 // This seeder runs weekly against a series that republishes annually, so the
-// expected week-over-week delta is exactly ZERO — which buys a much tighter
-// trigger than a daily feed could afford: ~3-5 countries, with a near-zero
-// false-positive rate.
+// expected week-over-week delta is exactly ZERO — which buys a far tighter
+// trigger than a daily feed could afford.
+const MAX_EXPECTED_COUNTRY_DROP = 2; // warn from the 3rd disappearance onward
+
+// Count is a weak proxy: 181 -> 181 with three countries swapped is invisible
+// to any count check. The previous run's sorted RANKABLE ISO2 set is persisted
+// so the comparison is a true set-diff and the log names the codes.
+// "Which countries did we lose" is the question an operator actually has to
+// answer; "did the number move" is not, and this feeds a public 196-country
+// ranking.
 //
-// Two constraints on the implementation:
-//   - WARN (log + Sentry), never a hard fail. A legitimate World Bank
-//     republication does move the set, and hard-failing would poison seed-meta
-//     on a real revision — reintroducing at a tighter threshold exactly the
-//     failure the low 150 floor exists to avoid.
-//   - Count is a weak proxy. 181 -> 181 with three countries swapped is
-//     invisible to any count check. Store the sorted ISO2 set (or its hash)
-//     alongside recordCount in seed-meta and log which codes appeared and
-//     disappeared. That turns "did the number move" into "which countries did
-//     we lose", which is the question an operator actually has to answer, and
-//     it matters here because this feeds a public 196-country ranking.
+// Stored as a comma-joined string rather than a hash: a hash proves only THAT
+// the set changed, and the whole point is to say WHICH codes went missing
+// without a second round-trip for the previous payload. The dedicated baseline
+// key is updated only after a successful read-and-compare. That keeps the last
+// confirmed set intact when Redis has a transient read failure, while seed-meta
+// still carries the latest diagnostic for operators.
+export const COUNTRY_SET_META_FIELD = 'countrySet';
+
+export function rankableCountryCodes(codes) {
+  return [...new Set(codes ?? [])]
+    .filter((cc) => RANKABLE_COUNTRY_CODES.has(cc))
+    .sort();
+}
+
+export function diffCountrySets(previousCodes, currentCodes) {
+  const prev = new Set(previousCodes ?? []);
+  const curr = new Set(currentCodes ?? []);
+  return {
+    dropped: [...prev].filter((cc) => !curr.has(cc)).sort(),
+    added: [...curr].filter((cc) => !prev.has(cc)).sort(),
+  };
+}
+
+export function parseCountrySetMeta(raw) {
+  if (typeof raw !== 'string' || raw.length === 0) return null;
+  const codes = raw.split(',').map((cc) => cc.trim()).filter((cc) => /^[A-Z]{2}$/.test(cc));
+  return codes.length > 0 ? codes : null;
+}
+
+/**
+ * Pure decision half, exported so the threshold and the first-run behavior are
+ * testable without Redis. WARN-only by contract: a legitimate World Bank
+ * republication does move the set, and hard-failing would poison seed-meta on a
+ * real revision — reintroducing, at a tighter threshold, exactly the failure the
+ * deliberately-low 150 floor exists to avoid.
+ */
+export function buildCoverageDropReport(
+  previousCodes,
+  currentCodes,
+  activationMinCountries = ACTIVATION_MIN_COUNTRIES,
+) {
+  const countrySet = [...currentCodes].sort().join(',');
+  const belowActivationFloor = currentCodes.length < activationMinCountries;
+  // No previous set: the first run after this ships, or after a seed-meta
+  // reset. A missing prior is not evidence of a drop, but a baseline below the
+  // binding activation floor still has to warn.
+  if (previousCodes == null) {
+    return {
+      countrySet,
+      countryCount: currentCodes.length,
+      baseline: true,
+      belowActivationFloor,
+      dropExceeded: false,
+      warn: belowActivationFloor,
+      dropped: [],
+      added: [],
+    };
+  }
+  const { dropped, added } = diffCountrySets(previousCodes, currentCodes);
+  const dropExceeded = dropped.length > MAX_EXPECTED_COUNTRY_DROP;
+  return {
+    countrySet,
+    countryCount: currentCodes.length,
+    baseline: false,
+    belowActivationFloor,
+    dropExceeded,
+    warn: dropExceeded || belowActivationFloor,
+    dropped,
+    added,
+  };
+}
 
 // Pure record reducer, exported so the parsing traps below are testable
 // without network. Folds a page of World Bank rows into `out`, keeping the
@@ -134,7 +209,7 @@ export function reduceAttainmentRecords(records, out = {}) {
     // upstream corruption, not a real reading.
     if (value < 0 || value > 100) continue;
     const year = Number(record?.date);
-    if (!Number.isFinite(year)) continue;
+    if (!Number.isSafeInteger(year) || year < 1900 || year > 2200) continue;
 
     const existing = out[iso2];
     if (!existing || year > existing.year) {
@@ -186,6 +261,128 @@ async function fetchEducationAttainment() {
   };
 }
 
+/**
+ * Reads the last successfully compared rankable-country set. Missing state is a
+ * real first run; Redis and parse failures are separate so they cannot silently
+ * replace the confirmed baseline with the current payload.
+ */
+export async function readPreviousCountrySet({
+  credentials = getRedisCredentials(),
+  command = redisCommand,
+} = {}) {
+  if (!credentials?.url || !credentials?.token) {
+    return { status: 'error', reason: 'redis-credentials-missing' };
+  }
+  try {
+    const body = await command(
+      credentials.url,
+      credentials.token,
+      ['GET', COUNTRY_SET_BASELINE_KEY],
+      { label: 'education-attainment coverage baseline', timeoutMs: 5_000 },
+    );
+    if (body?.result == null) return { status: 'missing', codes: null };
+    const codes = parseCountrySetMeta(body.result);
+    return codes == null
+      ? { status: 'error', reason: 'coverage-baseline-malformed' }
+      : { status: 'ok', codes };
+  } catch (error) {
+    return { status: 'error', reason: error?.message ?? 'coverage-baseline-read-failed' };
+  }
+}
+
+export async function writeCountrySetBaseline(countrySet, {
+  credentials = getRedisCredentials(),
+  command = redisCommand,
+} = {}) {
+  if (!credentials?.url || !credentials?.token) {
+    return { status: 'error', reason: 'redis-credentials-missing' };
+  }
+  try {
+    await command(
+      credentials.url,
+      credentials.token,
+      ['SET', COUNTRY_SET_BASELINE_KEY, countrySet, 'EX', String(CACHE_TTL)],
+      { label: 'education-attainment coverage baseline write', timeoutMs: 5_000 },
+    );
+    return { status: 'ok' };
+  } catch (error) {
+    return { status: 'error', reason: error?.message ?? 'coverage-baseline-write-failed' };
+  }
+}
+
+export async function afterPublish(data, context = {}) {
+  const currentCodes = rankableCountryCodes(Object.keys(data?.countries ?? {}));
+  const readBaseline = context.readCountrySetBaseline ?? readPreviousCountrySet;
+  const writeBaseline = context.writeCountrySetBaseline ?? writeCountrySetBaseline;
+  const previous = await readBaseline();
+  const comparisonUnavailable = previous.status === 'error' ? previous.reason : null;
+  const report = buildCoverageDropReport(previous.status === 'ok' ? previous.codes : null, currentCodes);
+
+  let baselineWriteError = null;
+  if (previous.status !== 'error') {
+    const writeResult = await writeBaseline(report.countrySet);
+    if (writeResult.status === 'error') baselineWriteError = writeResult.reason;
+  }
+
+  if (comparisonUnavailable) {
+    console.warn(
+      `  WARN education-attainment coverage comparison unavailable: ${comparisonUnavailable}. `
+      + 'The last confirmed baseline was not replaced; the next clean run will compare against it.',
+    );
+  } else if (report.warn) {
+    const reasons = [
+      ...(report.dropExceeded
+        ? [`${report.dropped.length} rankable countries disappeared (threshold ${MAX_EXPECTED_COUNTRY_DROP})`]
+        : []),
+      ...(report.belowActivationFloor
+        ? [`rankable coverage ${report.countryCount} is below activation floor ${ACTIVATION_MIN_COUNTRIES}`]
+        : []),
+    ];
+    // Stable leading marker so a log scanner groups every occurrence as one
+    // condition; the varying detail rides in the payload, not the marker.
+    console.warn(
+      `  WARN education-attainment coverage: ${reasons.join('; ')}. This series republishes ANNUALLY, `
+      + `so the expected week-over-week delta is zero. dropped=[${report.dropped.join(',')}] `
+      + `added=[${report.added.join(',')}] rankableCount ${report.countryCount}. Not a publish failure: `
+      + 'a real World Bank revision can move the set, and failing here would poison seed-meta.',
+    );
+  } else if (report.baseline) {
+    console.log(`  coverage baseline recorded: ${report.countryCount} countries (no previous set to compare)`);
+  } else if (report.dropped.length > 0 || report.added.length > 0) {
+    console.log(
+      `  coverage churn within tolerance: dropped=[${report.dropped.join(',')}] `
+      + `added=[${report.added.join(',')}] count ${report.countryCount}`,
+    );
+  }
+
+  if (baselineWriteError) {
+    console.warn(
+      `  WARN education-attainment coverage baseline write failed: ${baselineWriteError}. `
+      + 'The prior baseline remains authoritative and will be compared again next run.',
+    );
+  }
+
+  // Keep total recordCount and rankableRecordCount distinct. The World Bank
+  // payload includes territories outside the 196-country headline universe,
+  // while the active Core contract requires at least 180 rankable countries.
+  // countrySet remains the exact diagnostic and transition fallback.
+  return {
+    freshnessMetaPatch: {
+      [COUNTRY_SET_META_FIELD]: report.countrySet,
+      rankableRecordCount: report.countryCount,
+      // Persisted so an operator reading seed-meta after the fact sees the same
+      // verdict the run logged, without needing the Railway log retained.
+      ...(report.dropExceeded ? { coverageDropped: report.dropped.join(',') } : {}),
+      ...(report.belowActivationFloor
+        ? { rankableCoverageBelowFloor: `${report.countryCount}/${ACTIVATION_MIN_COUNTRIES}` }
+        : {}),
+      ...(comparisonUnavailable || baselineWriteError
+        ? { coverageComparisonUnavailable: comparisonUnavailable ?? baselineWriteError }
+        : {}),
+    },
+  };
+}
+
 export function validate(data) {
   return typeof data?.countries === 'object' && Object.keys(data.countries).length >= MIN_COUNTRIES;
 }
@@ -198,6 +395,10 @@ export {
   CANONICAL_KEY,
   CACHE_TTL,
   MIN_COUNTRIES,
+  ACTIVATION_MIN_COUNTRIES,
+  MAX_EXPECTED_COUNTRY_DROP,
+  SEED_META_KEY,
+  COUNTRY_SET_BASELINE_KEY,
   ATTAINMENT_INDICATOR,
   OBSERVATION_WINDOW_YEARS,
   WB_PAGE_SIZE,
@@ -238,6 +439,9 @@ if (process.argv[1]?.endsWith('seed-education-attainment.mjs')) {
     maxContentAgeMin: MAX_CONTENT_AGE_MIN,
     fetchPhaseTimeoutMs: EDUCATION_FETCH_PHASE_TIMEOUT_MS,
     lockTtlMs: EDUCATION_LOCK_TTL_MS,
+    // Coverage-drop set-diff. Runs before the seed-meta write, so it can still
+    // read the previous run's country set from seed-meta to diff against.
+    afterPublish,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

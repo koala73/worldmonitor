@@ -136,6 +136,19 @@
       "stable": "Stabil"
     },
     "militaryActivity": "Katonai tevékenység",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Gazdasági mutatók",
     "ownFlights": "Saját repülések",
     "foreignFlights": "Külföldi repülések",
@@ -246,6 +259,23 @@
       "corridorConditions": "Folyosó feltételek",
       "activityNowcast": "Tevékenység nowcast",
       "decisionSignalsUnavailable": "Kína döntési jeleinek pillanatképe jelenleg nem érhető el."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "header": {
@@ -515,7 +545,9 @@
         "displacement": "Menekülési folyamatok be/ki",
         "climate": "Klímabeli anomáliák be/ki",
         "outages": "Internetkiesések be/ki",
-        "tradeRoutes": "Kereskedelmi útvonalak be/ki"
+        "tradeRoutes": "Kereskedelmi útvonalak be/ki",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Váltás sötét módra",
@@ -678,7 +710,7 @@
         "URLHAUS_AUTH_KEY": "Az URLhaus és a ThreatFox API-khoz egyaránt használható.",
         "OTX_API_KEY": "Opcionális bővítési forrás a kiberbiztonsági fenyegetési réteghez.",
         "ABUSEIPDB_API_KEY": "Opcionális bővítési forrás a rosszindulatú IP-reputációhoz.",
-        "FINNHUB_API_KEY": "Valós idejű részvényárak és piaci adatok.",
+        "FINNHUB_API_KEY": "Késleltetett vagy előre betöltött részvényárak és piaci adatok. A kulcs nem élő adatfolyam.",
         "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System.",
         "OLLAMA_API_URL": "pl. http://127.0.0.1:11434 (Ollama) vagy http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-kompatibilis végpont.",
         "OLLAMA_MODEL": "pl. llama3.1:8b — összegzéshez használandó modelltag."
@@ -953,7 +985,12 @@
       "mineral": "Ásvány",
       "topProducers": "Legnagyobb termelők",
       "risk": "Kockázat",
-      "infoTooltip": "<strong>Ellátási lánc monitor</strong> Globális logisztika és erőforrások nyomon követése:<ul><li><strong>Szoros pontok</strong>: Tengeri szállítás állapota, zavarpontszámok és hajók száma</li><li><strong>Szállítás</strong>: Balti száraz index és szállítási díjtrends</li><li><strong>Ásványok</strong>: Kritikus ásvány koncentrációs kockázat (HHI) és legnagyobb termelők</li></ul>Kattintson egy szoros pont kártyára a tranzitztorik diagram kibontásához."
+      "infoTooltip": "<strong>Ellátási lánc monitor</strong> Globális logisztika és erőforrások nyomon követése:<ul><li><strong>Szoros pontok</strong>: Tengeri szállítás állapota, zavarpontszámok és hajók száma</li><li><strong>Szállítás</strong>: Balti száraz index és szállítási díjtrends</li><li><strong>Ásványok</strong>: Kritikus ásvány koncentrációs kockázat (HHI) és legnagyobb termelők</li></ul>Kattintson egy szoros pont kártyára a tranzitztorik diagram kibontásához.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "overview": "Áttekintés",
@@ -997,6 +1034,7 @@
       "noComtradeData": "Nincs stratégiai folyamat adat",
       "comtradeUnavailable": "UN Comtrade adatai ideiglenesen nem érhetők el",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomália",
       "colReporter": "Ország",
       "colCommodity": "Áru",
@@ -1275,7 +1313,7 @@
         "ucdpEvents": "Fegyveres konfliktus események",
         "displacementFlows": "Kényszermigrációs áramlások",
         "climateAnomalies": "Éghajlati anomáliák",
-        "weatherAlerts": "Egyesült államokbeli időjárási riasztások (NWS)",
+        "weatherAlerts": "Egyesült államokbeli és kanadai időjárási riasztások (NWS, ECCC)",
         "strategicWaterways": "Szűk átjárók",
         "economicCenters": "Gazdasági központok",
         "criticalMinerals": "Kritikus ásványok",
@@ -1293,7 +1331,9 @@
         "kindness": "Kedvességi cselekmények",
         "happiness": "Világboldogság",
         "speciesRecovery": "Fajmegmentés",
-        "renewableInstallations": "Tiszta energia"
+        "renewableInstallations": "Tiszta energia",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Földrengés",
@@ -1354,7 +1394,7 @@
           "infraDatacenters": "AI számítási fürtök >=10 000 GPU-val",
           "infraOutages": "Internet leállások és szolgáltatáskiesések",
           "naturalEventsTech": "Földrengések, viharok, tüzek (adatközpontokat érinthetnek)",
-          "weatherAlerts": "Súlyos időjárási figyelmeztetések az Egyesült Államokban (NWS)",
+          "weatherAlerts": "Súlyos időjárási figyelmeztetések az Egyesült Államokban és Kanadában (NWS, ECCC)",
           "economicCenters": "Értéktőzsdék és központi bankok",
           "countriesOverlay": "Ország név átfedések",
           "financeExchanges": "Fő globális tőzsdék piaci szint szerint",
@@ -1366,7 +1406,7 @@
           "financeOutages": "Internet-kiesések, amelyek hatással lehetnek a piaci működésre",
           "financeCyberThreats": "Biztonsági incidensek a pénzügyi infrastruktúra körül",
           "macroWaterways": "Stratégiai szűk keresztmetszetek az áruszállításhoz",
-          "weatherAlertsMarket": "Piaci jelentőségű súlyos időjárási események az Egyesült Államokban (NWS)",
+          "weatherAlertsMarket": "Piaci jelentőségű súlyos időjárási események az Egyesült Államokban és Kanadában (NWS, ECCC)",
           "naturalEventsMacro": "Földrengések, tüzek, árvizek és egyéb természeti katasztrófák",
           "timeRecent": "Időalapú adatok szűrése az utóbbi órákra",
           "timeExtended": "Adatok megjelenítése az elmúlt hétből, hónapból vagy minden időből",
@@ -1399,7 +1439,9 @@
           "tradeRoutes": "Fő globális szállítási útvonalak portokat stratégiai szűk keresztmetszeteken keresztül összekötve",
           "dayNight": "Valós idejű napenergia terminátor nap és éj zónákat mutatja",
           "geoBoundaries": "Demilitarizált zónák, tűzszünet vonalak és vitatott határok",
-          "ciiChoropleth": "Országinstabilitási Index hőtérkép — országokat CII pontszám szerint színezi (zöld=stabil, piros=kritikus)"
+          "ciiChoropleth": "Országinstabilitási Index hőtérkép — országokat CII pontszám szerint színezi (zöld=stabil, piros=kritikus)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Érintett: Földrengések, Időjárás, Tüntetések, Leállások"
@@ -1923,7 +1965,7 @@
       "infoTooltip": "<strong>Katasztrófa Kaszkád</strong> Konvergens természeti katasztrófa és infrastruktúra jelek detektálása:<ul><li>Földrengéseket, erdőtüzeket, árvizeket és szélsőséges időjárási eseményeket korreláló</li><li>Az infrastruktúrára és ellátási láncolatra gyakorolt kaszkádhatásokat nyomon követi</li><li>Összetett katasztrófakockázatú régiókat emel ki</li></ul>Kattintson egy kártyára, hogy nagyítson az érintett régióra."
     },
     "markets": {
-      "infoTooltip": "<strong>Piacok</strong> Valós idejű részvényindexek, értékpapírok és kriptoárak. Szabja testre a megfigyelési listáját a Megfigyelési lista gombbal. A minitrendek a közelmúltbeli ártrend változást mutatják.",
+      "infoTooltip": "<strong>Piacok</strong> Késleltetett vagy előre betöltött részvényindexek, értékpapírok és kriptoárak. Szabja testre a megfigyelési listáját a Megfigyelési lista gombbal. A minitrendek a közelmúltbeli ártrend változást mutatják.",
       "chart": {
         "title": "{{symbol}} árdiagram",
         "close": "Diagram bezárása"
@@ -1971,7 +2013,7 @@
       "infoTooltip": "<strong>Központi Bank Figyelő</strong> A szövetségi Rezerv Rendszer, az ECB, az angol Központi Bank és más világ szerte jelentős központi bankok legújabb közleményei, kamatdöntések és kommunikációja."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Golf Gazdaságok</strong> Valós idejű Golf részvényindexek, árfolyamok és olajárak a GCC-gazdaságok számára (Szaúd-Arábia, Egyesült Arab Emirátusok, Kuvait, Katar, Bahrein, Omán)."
+      "infoTooltip": "<strong>Golf Gazdaságok</strong> Késleltetett Golf részvényindexek, árfolyamok és olajárak a GCC-gazdaságok számára (Szaúd-Arábia, Egyesült Arab Emirátusok, Kuvait, Katar, Bahrein, Omán)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Élelmiszer Index</strong> Globális élelmiszer-kosár árösszehasonlítás 24 ország között — valós fogyasztási javak inflációját követi, amely túlmegy a címzetes CPI-n."
@@ -2385,13 +2427,14 @@
     },
     "sanctionsPressure": {
       "title": "Szankciók & Kijelölések",
-      "infoTooltip": "OFAC szankció kijelölések az SDN és Konszolidált Listáról. Megmutatja, mely országok szembenéznek a legmagasabb kijelölési nyomással, mely programok hajtják azt, és mi lett újonnan hozzáadva az utolsó frissítés óta.",
+      "infoTooltip": "OFAC SDN és Konszolidált Listák, plusz a kanadai Global Affairs SEMA/JVCFOA kijelölések. Megmutatja, mely országok szembenéznek a legmagasabb kijelölési nyomással, mely programok hajtják azt, és mi lett újonnan hozzáadva az utolsó frissítés óta.",
       "loading": "Szankció adatok betöltése...",
       "unavailable": "Szankció adatok nem érhetőek el.",
       "summary": {
         "new": "Új",
         "vessels": "Hajók",
-        "aircraft": "Repülőgép"
+        "aircraft": "Repülőgép",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Szankcionált országok",
@@ -2406,11 +2449,12 @@
       "footer": {
         "updated": "Frissítve: {{time}}",
         "dataset": "adatkészlet {{date}}",
-        "source": "Forrás: OFAC"
+        "source": "Forrás: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} új",
-        "new": "új"
+        "new": "új",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} bejelentés",
       "designations_other": "{{count}} bejelentés",
@@ -2856,6 +2900,7 @@
     "moreEvents": "további események",
     "monitoring": "Monitorozás",
     "viewUSGS": "Megtekintés az USGS-en",
+    "viewNRCan": "Megtekintés az Earthquakes Canada-n",
     "expired": "Lejárt",
     "timeAgo": {
       "s": "{{count}}s ezzel ezelőtt",

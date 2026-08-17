@@ -60,18 +60,20 @@ describe('resilience release gate', () => {
     // construct retirement. Allow-list keeps the zero-coverage placeholder
     // check enforcing on every non-allowlisted dimension.
     const RETIRED_DIMENSIONS = new Set(['fuelStockDays', 'reserveAdequacy']);
-    // plan 2026-04-25-004 Phase 2: financialSystemExposure ships flag-gated
-    // off by default (rollout pattern matches energy v2). With the flag
-    // off, the dim emits coverage=0 + imputationClass=null. Treated as
-    // "dark in this baseline" — same shape as a retired dim, but for a
-    // distinct reason: pending seeder rollout, not deliberate retirement.
-    // When the flag flips on with seeders populating, this allow-list
-    // entry should be removed in the same PR that flips the flag.
-    // 2026-08-10: `education` joins the dark set on the same terms — flag-gated
-    // off pending the Railway seeder rollout, emitting coverage=0 +
-    // imputationClass=null. Remove this entry in the PR that flips
-    // RESILIENCE_EDUCATION_ENABLED.
-    const FLAG_GATED_DARK_DIMENSIONS = new Set(['financialSystemExposure', 'education']);
+    // plan 2026-04-25-004 Phase 2: financialSystemExposure remains
+    // flag-gated off by the code default (rollout pattern matches energy v2).
+    // Production is owner-controlled flag-on as of 2026-08-12 (#6511), but CI
+    // intentionally exercises the explicit flag-off rollback shape here. With
+    // the flag off, the dim emits coverage=0 + imputationClass=null. Treat it
+    // as "dark in this baseline" — same shape as a retired dim, but for a
+    // deliberate rollback posture rather than a missing seeder.
+    // Remove this allow-list entry only if the code default is also promoted
+    // to on; an environment-only production flip must keep the CI contract.
+    // 2026-08-11 (#6460): `education` REMOVED from this set — it is live, so it
+    // must carry positive coverage like any other active dimension, and this
+    // assertion is what proves it. Leaving it here after the flip would have
+    // excused a genuinely dead education seeder as "dark by design".
+    const FLAG_GATED_DARK_DIMENSIONS = new Set(['financialSystemExposure']);
     // plan 2026-04-26-001 §U3: sovereignFiscalBuffer reframed from
     // "score 0, coverage 1.0 substantive absence" to "score 0,
     // coverage 0 dim-not-applicable" for countries not in the SWF

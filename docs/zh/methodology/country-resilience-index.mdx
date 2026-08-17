@@ -1,6 +1,6 @@
 ---
 title: "国家韧性指数"
-description: "面向 196 个国家的实时韧性评分体系，覆盖 6 大领域与 20 个细分维度 —— 一个每 6 小时刷新一次的 0-100 综合指数，采用 OECD、JRC 等国际对等标准进行同侪基准比较，用于衡量国家治理、经济、社会与安全韧性的相对强弱、动态变化与结构性差距。"
+description: "面向 196 个国家、包含 72 个指标的实时韧性评分体系，覆盖 21 个活跃维度与 6 大领域 —— 一个每 6 小时刷新一次的 0-100 综合指数，采用 OECD、JRC 等国际对等标准进行同侪基准比较，用于衡量国家治理、经济、社会与安全韧性的相对强弱、动态变化与结构性差距。"
 ---
 
 WorldMonitor 国家韧性指数（CRI）以 0-100 分对 196 国公开可排名范围进行评分，将长期结构能力与当前运营压力结合为可操作的韧性指标。上游静态/来源源可以包含更广泛的领土集合，但公开的 CRI 排名在分数发布前过滤到可排名范围。CRI 不依赖静态国家风险评级，而是每 6 小时从官方和权威来源更新，并公开完整的来源溯源、覆盖率和插补上下文，让分析师能准确看到分数*为什么*变动以及其中多少是真实数据与插补数据。
@@ -10,9 +10,9 @@ WorldMonitor 国家韧性指数（CRI）以 0-100 分对 196 国公开可排名�
 - **响应形状**：`schemaVersion: "2.0"` 是当前默认值。每个响应携带一个真实的 `pillars[]` 数组，将六个领域重新分组为结构准备度/实时冲击暴露/恢复能力。支柱分数使用每个成员领域的已发布设计权重乘以该领域的平均维度覆盖率。遗留的 `schemaVersion: "1.0"` 形状（支柱为空）仍可通过 `RESILIENCE_SCHEMA_V2_ENABLED=false` 环境标志获取，保留一个发布周期。
 - **评分公式**：顶层 `overall_score` 是 v2 非补偿性支柱组合公式，带最小支柱惩罚。遗留的六领域加权聚合仍保留在代码中作为 `RESILIENCE_PILLAR_COMBINE_ENABLED=false` 时的回退路径，但生产和验证 cron 已在支柱组合公式上激活。年度参考版是冻结的、引用级质量的工件；它有意与实时部署清单分离。
 
-对于实时部署状态，请使用[运行时清单](https://api.worldmonitor.app/resilience/v1/get-runtime-manifest)。它报告活动公式标签、静态 `dataVersion`、排名缓存元数据、安全派生构造版本如 `constructVersions.energy`（`legacy` 或 `v2`），以及公共 `scoreInterval`/`rankStable` 支持路径的 `intervals` 可用性元数据，而不暴露部署标识符、原始 `RESILIENCE_*` 标志状态或内部缓存键。参考版仍是冻结的已发布包；不应将其视为当前生产中活动运行时状态的证据。
+对于实时部署状态，请使用[运行时清单](https://api.worldmonitor.app/resilience/v1/get-runtime-manifest)。它报告活动公式标签、静态 `dataVersion`、排名缓存元数据和安全派生构造版本：`constructVersions.energy`（`legacy` 或 `v2`）与 `constructVersions.education`（`active` 或 `rollback`）。它还报告公共 `scoreInterval`/`rankStable` 支持路径的 `intervals` 可用性元数据，而不暴露部署标识符、原始 `RESILIENCE_*` 标志状态或内部缓存键。参考版仍是冻结的已发布包；不应将其视为当前生产中活动运行时状态的证据。
 
-以下文档描述**当前发布**状态：schemaVersion `"2.0"` 形状，6 领域 × 20 活跃维度 × 3 支柱（加上 2 个结构性退役维度为模式连续性在注册表中保留，`coverage=0`），支柱组合惩罚 `overall_score`，以及能源 v2 构造。[支柱组合分数激活](#pillar-combined-score-activation-active) 小节记录了激活证据和回退机制。2026-06-02 实时运行时清单报告 `formulaTag="pc"` 和 `constructVersions.energy="v2"`，`/api/health` 对三个必需的能源 v2 种子检查（`lowCarbonGeneration`、`fossilElectricityShare` 和 `powerLosses`）报告 `OK`。
+以下文档描述**当前发布**状态：72 个指标覆盖 21 个活跃维度与 6 个领域，schemaVersion `"2.0"` 形状，3 支柱（加上 2 个结构性退役维度为模式连续性在注册表中保留，`coverage=0`），支柱组合惩罚 `overall_score`，以及能源 v2 构造。[支柱组合分数激活](#pillar-combined-score-activation-active) 小节记录了激活证据和回退机制。2026-06-02 实时运行时清单报告 `formulaTag="pc"` 和 `constructVersions.energy="v2"`，`/api/health` 对三个必需的能源 v2 种子检查（`lowCarbonGeneration`、`fossilElectricityShare` 和 `powerLosses`）报告 `OK`。
 
 ## 构造合约
 
@@ -35,7 +35,7 @@ WorldMonitor 国家韧性指数（CRI）以 0-100 分对 196 国公开可排名�
 5. **全球核心分数中的死信号和仅区域信号。** ~~`fuelStockDays`（全球 100% 插补）、`euGasStorageStress`（仅欧盟）和 `currencyExternal`（BIS 64 经济体覆盖）尽管覆盖不足仍承担实质权重。~~ **在 PR 3 §3.5 中落地**：`fuelStockDays` 永久退役（coverage=0，每个国家 imputationClass=null — 评分器标记 `null` 而非 `source-failure`，使 widget 不渲染错误的"来源中断"标签，维度通过 `RESILIENCE_RETIRED_DIMENSIONS` 注册表从置信度/覆盖率平均值中排除）；`currencyExternal` 在 IMF 通胀 + WB 储备上重建（无 BIS）；BIS `fxVolatility` + `fxDeviation` 降级为实验层；`externalDebtCoverage` 目标阈值从 (0..5) 调整为 (0..2)，按 Greenspan-Guidotti，停止在 100 处饱和。
 6. **无基于覆盖率的权重上限。** ~~30% 观测覆盖率的维度与 95% 的承担相同权重。~~ **在 PR 3 §3.6 中落地**：CI 强制门（`tests/resilience-coverage-influence-gate.test.mts`）在可排名范围中任何低于承诺的 70% 覆盖率下限的核心指标在总分中承担超过 5% 标称权重时构建失败。有效影响力部分通过 `scripts/validate-resilience-sensitivity.mjs` 作为提交工件运行。
 
-项目 1-3 是现已活跃的能源 v2 修复；项目 4-6 是已落地的修复，此处保留作为活跃注册表有 20 个评分维度加 2 个为模式连续性保留的退役维度的历史记录。
+项目 1-3 是现已活跃的能源 v2 修复；项目 4-6 是已落地的修复，此处保留作为活跃注册表有 21 个评分维度加 2 个为模式连续性保留的退役维度的历史记录。
 
 ## 在仪表盘中
 
@@ -45,11 +45,11 @@ CRI 在产品的三个位置呈现，均由同一当前发布分数驱动：
 - **国家深度分析** — 在按国家的下钻面板内，CRI 与 CII（国家不稳定指数）并排，作为短程压力信号的结构性补充。CII 和 CRI 有意**不可互换**：CII 回答"这个国家当前承受多少压力？"；CRI 回答"这个国家在吸收和恢复冲击方面定位如何？"
 - **地图分级统计图** — 韧性分数驱动主地图上的国家级分级统计图层。从地图的图层面板或通过 Cmd+K 切换。
 
-三个仪表盘面均可免费查看。直接分数和排名 API 调用需要正常的 Pro/API 认证路径，而运行时清单在 `/api/resilience/v1/get-runtime-manifest` 公开；请参见 [Resilience service](/api/ResilienceService.openapi.yaml) 了解 HTTP 合约。
+三个仪表盘面均可免费查看。直接分数和排名 API 调用需要正常的 Pro/API 认证路径，而运行时清单在 `/api/resilience/v1/get-runtime-manifest` 公开；请参见 [Resilience service](https://github.com/koala73/worldmonitor/blob/main/docs/api/ResilienceService.openapi.yaml) 了解 HTTP 合约。
 
 ## 概览
 
-WorldMonitor 国家韧性指数以 0-100 分对 196 国公开可排名范围评分，覆盖 6 个领域和 20 个活跃维度（加上 2 个结构性退役维度为模式连续性在注册表中以 `coverage=0` 保留）。排名处理器仍可将低置信度或标题不合格的国家路由到 `greyedOut[]`，但可排名范围本身由提交的 UN 成员 + SAR 白名单固定。它将结构基线指标（治理质量、健康基础设施、财政能力）与实时压力信号（网络威胁、冲突事件、航运中断）和恢复能力指标（财政空间、储备、进口集中度）结合，产出每 6 小时更新的单一韧性分数。
+WorldMonitor 国家韧性指数以 0-100 分对 196 国公开可排名范围评分，使用 72 个指标覆盖 21 个活跃维度和 6 个领域（加上 2 个结构性退役维度为模式连续性在注册表中以 `coverage=0` 保留）。排名处理器仍可将低置信度或标题不合格的国家路由到 `greyedOut[]`，但可排名范围本身由提交的 UN 成员 + SAR 白名单固定。它将结构基线指标（治理质量、健康基础设施、财政能力）与实时压力信号（网络威胁、冲突事件、航运中断）和恢复能力指标（财政空间、储备、进口集中度）结合，产出每 6 小时更新的单一韧性分数。
 
 数据来源于官方和权威提供商：世界银行、IMF、WHO、WTO、UNHCR、UCDP、BIS、IEA、FAO、无国界记者和经济学与和平研究所等。
 
@@ -62,7 +62,7 @@ WorldMonitor 国家韧性指数以 0-100 分对 196 国公开可排名范围评�
 | 经济 | `economic` | 0.17 | 宏观财政、货币与外部、贸易政策、金融系统暴露 |
 | 基础设施 | `infrastructure` | 0.15 | 网络与数字、物流与供应、基础设施 |
 | 能源 | `energy` | 0.11 | 能源 |
-| 社会与治理 | `social-governance` | 0.19 | 治理、社会凝聚力、冲突与流离失所、信息 |
+| 社会与治理 | `social-governance` | 0.19 | 治理、社会凝聚力、冲突与流离失所、信息、教育 |
 | 健康与食品 | `health-food` | 0.13 | 健康与公共服务、食品与水 |
 | 恢复 | `recovery` | 0.25 | 财政空间、外债覆盖、进口集中度、国家连续性、流动储备充足性、主权财政缓冲 |
 
@@ -142,11 +142,13 @@ OFAC `sanctionCount` 组件（原权重 0.45）被删除 — 统计指定方注�
 | 指标 | 描述 | 方向 | 目标阈值（最差-最好） | 权重 | 来源 | 频率 |
 |---|---|---|---|---|---|---|
 | shortTermExternalDebtPctGni | 短期外债占 GNI 百分比（(WB IDS DT.DOD.DSTC.CD / NY.GNP.MKTP.CD) × 100）；IMF Article IV 脆弱性阈值为 GNI 的 15% | 越低越好 | 15 - 0 | 0.35 | 世界银行 IDS | 年度 |
-| bisLbsXborderPctGdp | BIS CBS（`WS_CBS_PUB`）按母国外国债权总和（美国/英国/主要欧盟/瑞士/日本/加拿大/澳大利亚/新加坡）占 GDP 百分比；U 形区间 — 隔离（低于 5%）和过度暴露（高于 60%）均低分 | 越低越好（U 形） | 60 - 25 | 0.30 | BIS CBS | 季度 |
-| fatfListingStatus | FATF AML/CFT 列表状态 — 黑名单（呼吁行动）→ 0，灰名单（加强监控）→ 30，合规 → 100 | 越高越好 | 0 - 100 | 0.20 | FATF | 月度 |
+| bisLbsXborderPctGdp | BIS CBS（`WS_CBS_PUB`）按母国外国债权总和（美国/英国/主要欧盟/瑞士/日本/加拿大/澳大利亚/新加坡）占 GDP 百分比；非对称 U 形区间 — 隔离（0%）是最差读数，得 30；过度暴露受惩罚但下限为 35 | 越低越好（U 形） | 0 - 25 | 0.30 | BIS CBS | 季度 |
+| fatfListingStatus | FATF AML/CFT 列表状态 — 黑名单（呼吁行动）→ 0，灰名单（加强监控）→ 55，合规 → 100 | 越高越好 | 0 - 100 | 0.20 | FATF | 月度 |
 | financialCenterRedundancy | 拥有非平凡（>1% GDP）外国债权的不同 BIS CBS 按母国报告者计数；奖励多对手方金融中心，平衡组件 2 过度暴露惩罚 | 越高越好 | 1 - 10 | 0.15 | BIS CBS | 季度 |
 
-**覆盖率**：WB IDS 仅发布约 125 个 LMIC；HIC 落入 BIS CBS 结构性暴露组件（覆盖约 200 国）。FATF + BIS CBS 一起有效覆盖所有清单国家。
+**覆盖率**：WB IDS 仅发布世界银行借款国（2026-08-11 载荷中为 119 国）。没有 IDS 行但有 BIS CBS 行的司法管辖区，其短期债务槽位采用推算值（分数 75，确定性 0.3，`imputationClass='not-applicable'`）而非丢弃 — 未参与债务报告系统（DRS）意味着没有已报告的短期外部商业债务，而非未知。两个来源都缺失的国家保持 null/丢弃行为。FATF + BIS CBS 一起有效覆盖所有清单国家。
+
+**全面禁运上限**：受全面或政府层面西方封锁计划约束的司法管辖区（RU、BY、IR、KP、CU、SY、MM、VE、LY）在混合后上限为 15。四个分级组件中有三个将金融切断读作优势 — 短期债务薄是因为没有市场准入，跨境债权低是因为无人放贷，FATF `compliant` 是因为 FATF 评估的是反洗钱/反恐融资缺陷而非制裁。成员资格标准以及为何仅重新调整区间无法承载该信号，参见 [financial-system-exposure.md](../../methodology/financial-system-exposure.md)。
 
 **数据来源与许可**：BIS 数据（组件 2 + 4）按 [BIS 使用条款](https://www.bis.org/terms_conditions.htm)发布 — 公开可用，需归属；再分发受限。WB IDS（组件 1）和 FATF（组件 3）是开放数据。BIS 衍生指标按现有 BIS 分类约定在指标注册表中标记 `non-commercial` / `enrichment`；维度本身按 Codex R1 #8 为 `core`（贡献标题分数）。
 
@@ -267,6 +269,20 @@ v2 下退役：`electricityConsumption`（富裕代理，修复计划 §3.1）�
 | `secondary` | 0.7 | AE, BB, BD, BH, BW, CM, CY, ET, FJ, GH, GM, GY, HK, IL, IN, JM, JO, KE, KH, KW, LK, LR, LS, MT, MW, MY, MM, MZ, NA, NG, NP, PG, PH, PK, QA, RW, SL, SZ, TT, TZ, UG, WS, ZA, ZM, ZW |
 | `limited` | 0.4 | AM, AR, AT, AZ, BE, BG, BR, BY, CH, CL, CN, CO, CZ, DE, DK, DZ, EC, EE, EG, ES, FI, FR, GE, GR, HR, HU, ID, IQ, IR, IT, JP, KR, KZ, LB, LT, LV, MA, MX, NL, NO, PE, PL, PT, RO, RS, RU, SA, SE, SI, SK, TH, TN, TR, TW, UA, UZ, VE, VN |
 | `minimal` | 0.2 | 上方未列出的任何国家的默认值 |
+
+### 教育（Education）
+
+教育维度于 2026-08-11 激活（#6460），在社会与治理领域中的维度权重为 `1.0`。它使用世界银行女性 25 岁以上人口的高中阶段教育完成率 `SE.SEC.CUAT.UP.FE.ZS`。该指标衡量在冲击中接收和理解指令、以及冲击后重新学习技能的结构能力。
+
+| 指标 | 描述 | 方向 | 目标阈值（最差-最好） | 权重 | 来源 | 频率 |
+|---|---|---|---|---|---|---|
+| femaleUpperSecondaryAttainment | 女性 25 岁以上人口的高中阶段教育完成率；0 到 85 线性映射，85 以上降低斜率 | 越高越好 | 0 - 100 | 1.00 | 世界银行 | 年度 |
+
+**变换与覆盖率。** 变换在 85 处使用凹形折点，以保留 20–80 区间的区分度，并限制最高证书完成率的影响。196 个可排名国家中有 181 个有观测。缺失国家使用 `unmonitored` 插补（分数 50、覆盖率 0.3），而不是 `stable-absence`。观测年份在 5 年内的确定性覆盖率为 1.0，5–10 年为 0.8，超过 10 年为 0.6。
+
+**限制与方向门。** 完成率衡量教育存量，不衡量教育质量或知识应用自由。南欧与后苏联国家之间的结构差异由三个整体指数配对门约束：`pt-vs-uz`、`es-vs-by` 和 `ch-vs-tm`。评分器使用固定的 0 和 100 目标阈值，不使用观测极值。
+
+**回退。** 设置 `RESILIENCE_EDUCATION_ENABLED=false` 会返回 `score=0`、`coverage=0`、`observedWeight=0`、`imputedWeight=0` 的暗状态。该状态从领域、支柱和置信度分母中排除；真实观测和来源故障仍参与覆盖率计算。
 
 ### 健康与食品领域（权重 0.13）
 
@@ -563,15 +579,15 @@ CRI 设计为端到端可审计：给定任一时刻的 Redis 快照，读者应
 
 | 键 | 类型 | TTL | 写入方 | 读取方 |
 |---|---|---|---|---|
-| `resilience:score:v26:{countryCode}` | JSON | 6 小时 | `server/worldmonitor/resilience/v1/_shared.ts` 中的 `buildResilienceScore` | `getResilienceScore` 处理器 |
-| `resilience:ranking:v26` | JSON | 12 小时 | `getResilienceRanking` 暖路径，仅当至少 90% 国家已评分时（`RANKING_CACHE_MIN_COVERAGE = 0.90`） | `getResilienceRanking` 处理器 |
-| `resilience:history:v20:{countryCode}` | 有序集合 | 无限期，修剪至 30 天 | 评分期间 `appendHistory` | 趋势和 `change30d` 计算 |
-| `resilience:intervals:v9:{countryCode}` | JSON | 7 天；通过 `seed-meta`/健康频率监控新鲜度 | `scripts/seed-resilience-scores.mjs` | `getResilienceScore`（可选 `scoreInterval` 字段）和 `getResilienceRanking`（`rankStable`） |
+| `resilience:score:v28:{countryCode}` | JSON | 6 小时 | `server/worldmonitor/resilience/v1/_shared.ts` 中的 `buildResilienceScore` | `getResilienceScore` 处理器 |
+| `resilience:ranking:v28` | JSON | 12 小时 | `getResilienceRanking` 暖路径，仅当至少 90% 国家已评分时（`RANKING_CACHE_MIN_COVERAGE = 0.90`） | `getResilienceRanking` 处理器 |
+| `resilience:history:v22:{countryCode}` | 有序集合 | 无限期，修剪至 30 天 | 评分期间 `appendHistory` | 趋势和 `change30d` 计算 |
+| `resilience:intervals:v11:{countryCode}` | JSON | 7 天；通过 `seed-meta`/健康频率监控新鲜度 | `scripts/seed-resilience-scores.mjs` | `getResilienceScore`（可选 `scoreInterval` 字段）和 `getResilienceRanking`（`rankStable`） |
 | `seed-meta:resilience:static` | JSON | 400 天 | 每次成功种子运行结束时的 `scripts/seed-resilience-static.mjs` | 评分器用于 `dataVersion` 填充、健康检查 |
 | `resilience:static:{countryCode}` | JSON | 400 天 | `scripts/seed-resilience-static.mjs` | 评分器用于所有基线信号（WGI、WHO、FAO、GPI、RSF 等） |
 | `resilience:static:index:v1` | JSON | 400 天 | `scripts/seed-resilience-static.mjs` | 枚举国家的预热路径 |
 
-公共运行时清单有意不回显这些 Redis 键名。其 `intervals` 对象报告使用固定公共样本国家、当前区间方法论标签和从区间新鲜度元数据或样本区间载荷得到的最新安全观测时间戳的派生可用性检查。如果区间数据缺失、对活动公式过期或由不同方法论产出，`intervals.available` 为 `false` 而非抛出；这是用户面 `scoreInterval` 和 `rankStable` 支持当前未由可读区间数据支撑的公共审计信号。
+公共运行时清单有意不回显这些 Redis 键名。其 `intervals` 对象报告使用固定公共样本国家、当前区间方法论标签和从区间新鲜度元数据或样本区间载荷得到的最新安全观测时间戳的派生可用性检查。仅当样本载荷同时匹配活动公式、活动教育构造版本和区间方法论时，`intervals.available` 才为 `true`。如果任一标签缺失或不匹配，或区间数据缺失或过期，`intervals.available` 为 `false` 而非抛出；这是用户面 `scoreInterval` 和 `rankStable` 支持当前未由完整活动评分构造的可读区间数据支撑的公共审计信号。
 
 ### dataVersion 语义
 
@@ -584,7 +600,7 @@ CRI 设计为端到端可审计：给定任一时刻的 Redis 快照，读者应
 1. 读取 `seed-meta:resilience:static` 获取 `dataVersion`。
 2. 读取 `resilience:static:{cc}` 获取国家基线记录（WGI、WHO、GPI、RSF、FAO、IEA 等）。
 3. 读取国家切片的滚动信号键（年度 UCDP GED 发布、UNHCR、中断、网络威胁、价格、航运压力等）。
-4. 对 20 个活跃维度中的每一个，应用评分公式小节中的公式和维度与指标表中的目标阈值。对缺失信号，查阅本文档中的插补分类法表。
+4. 对 21 个活跃维度中的每一个，应用评分公式小节中的公式和维度与指标表中的目标阈值。对缺失信号，查阅本文档中的插补分类法表。
 5. 通过覆盖率加权均值将维度分数聚合为领域分数。
 6. 使用 `domainWeight * averageDimensionCoverage` 作为每个成员领域的支柱分数影响力，将领域分数聚合为三个支柱分数，然后用生产 `pc` 缓存标签使用的支柱组合惩罚公式计算总分。
 
@@ -604,7 +620,7 @@ CRI 设计为端到端可审计：给定任一时刻的 Redis 快照，读者应
 4. **标题合格门（PR #3469，§U7）。** 国家仅在 `overallCoverage >= 0.65 AND (populationMillions >= 0.2 OR overallCoverage >= 0.85) AND !lowConfidence` 时 `headlineEligible: true`。不合格国家出现在 `greyedOut[]` 中（仍通过原始 API 为需要它们的分析师提供）但从公共排名中排除。这是端到端解决膨胀缺陷的单一变更：之前膨胀的 PW、NR、AD、FM、KI、GD、GQ、ER 队列现在由标题合格门路由，而非被描述为标题排名的一部分。
 5. **缓存命中路径的对称门过滤（PR #3472、#3477，§U7 后续）。** 门必须在每个返回排名的代码路径上为单一真值来源，包括命中缓存的读取时路径。PR #3472 将门接入缓存命中分支（重计算路径已正确过滤）；PR #3477 使其双向（缓存的 `greyedOut[]` 条目带 `headlineEligible: true` 在读取时提升到 `items[]`）并在提升后重新排序，使高分提升项落在正确排名位置，而非追加在末尾。
 
-**缓存前缀升级。** `resilience:score:v15:` → `:v16:` → `:v17:` → `:v18:` → `:v19:` → `:v20:` → `:v21:` → `:v22:` → `:v23:` → `:v24:` → `:v25:`；`resilience:ranking:v15` → `v16` → `v17` → `v18` → `v19` → `v20` → `v21` → `v22` → `v23` → `v24` → `v25`；`resilience:history:v10:` → `:v11:` → `:v12:` → `:v13:` → `:v14:` → `:v15:` → `:v16:` → `:v17:` → `:v18:` → `:v19:` → `:v20:`。v17 升级随标题合格门（PR #3469）发布，因为 `headlineEligible` 成为必需字段；缓存的 v16 条目省略它，v17 的保守防御默认值为 `headlineEligible: false`（异常缺失 → 降级）以匹配 v17 的"每个合法写入器标记字段"合约。v18 升级随 §U8.1（净进口分母扩展到 `liquidReserveAdequacy`）发布，v19 随 cyberDigital 按快照上限，v20 为陈旧降级推出保留，v21 发布在活跃 `pc` 公式内应用领域设计权重的 P1-1 支柱聚合修复，v22 发布第二轮通胀稳定性和 NaN 安全混合修复，v23 发布进口 HHI 陈旧/缺失来源年确定性降级、P3-8 中断源观测安静语义和 WTO 贸易政策严重性评分器修复（全部批量到同代），v24 发布第五轮 R5-2 / PR #4101 治理 WGI 指标槽语义修复。v25 发布 #4009 cyberDigital 发现日平滑。区间缓存也轮换到 `resilience:intervals:v9:` 使旧敏感度带不与 v25 分数一起提供。
+**缓存前缀升级。** `resilience:score:v15:` → `:v16:` → `:v17:` → `:v18:` → `:v19:` → `:v20:` → `:v21:` → `:v22:` → `:v23:` → `:v24:` → `:v25:`；`resilience:ranking:v15` → `v16` → `v17` → `v18` → `v19` → `v20` → `v21` → `v22` → `v23` → `v24` → `v25`；`resilience:history:v10:` → `:v11:` → `:v12:` → `:v13:` → `:v14:` → `:v15:` → `:v16:` → `:v17:` → `:v18:` → `:v19:` → `:v20:`。v17 升级随标题合格门（PR #3469）发布，因为 `headlineEligible` 成为必需字段；缓存的 v16 条目省略它，v17 的保守防御默认值为 `headlineEligible: false`（异常缺失 → 降级）以匹配 v17 的"每个合法写入器标记字段"合约。v18 升级随 §U8.1（净进口分母扩展到 `liquidReserveAdequacy`）发布，v19 随 cyberDigital 按快照上限，v20 为陈旧降级推出保留，v21 发布在活跃 `pc` 公式内应用领域设计权重的 P1-1 支柱聚合修复，v22 发布第二轮通胀稳定性和 NaN 安全混合修复，v23 发布进口 HHI 陈旧/缺失来源年确定性降级、P3-8 中断源观测安静语义和 WTO 贸易政策严重性评分器修复（全部批量到同代），v24 发布第五轮 R5-2 / PR #4101 治理 WGI 指标槽语义修复。v25 发布 #4009 cyberDigital 发现日平滑。v26 发布标志暗置的 `education` 脚手架，使缓存的评分载荷携带序列化的教育行（#6450）。**v27 发布教育维度的正式启用（#6460）**——此次翻转为社会治理领域增加第五个核心承载维度，使该领域内其他每个维度的门控份额从 1/4 变为 1/5，并改变全部 196 个国家的已发布分数。由于翻转改变分数，`resilience:history:` 同时从 `v20` 轮换到 `v21`，区间缓存从 `v9` 轮换到 `v10`：混合翻转前后的历史点会制造虚假趋势，陈旧的敏感度带会产生过时的 `rankStable` 判定。此前区间缓存已轮换到 `resilience:intervals:v9:` 使旧敏感度带不与 v25 分数一起提供。**v28 发布金融系统暴露生产启用（#6511）**——分数/排名命名空间从 `v27` 轮换到 `v28`，历史从 `v21` 轮换到 `v22`，区间从 `v10` 轮换到 `v11`，避免教育专用与金融启用的分数、趋势、排名和稳定区间混用。
 
 **经验锚点（实时 `resilience:ranking:v17`，2026-04-28 捕获，#3477 合并后）：**
 
@@ -736,7 +752,7 @@ v17.1 在评分时将修复扩展到 `liquidReserveAdequacy`（无种子器变�
 4. **重新锚定发布门带**：`tests/resilience-pillar-combine-activation.test.mts` 将高带锚点（NO、CH、DK）锁定在 ≥ 55（vs 6 领域公式的 ≥ 70 下限），低带锚点（YE、SO）在 ≤ 40（vs ≤ 45）。快照测试从每个快照读取 `methodologyFormula` 并应用匹配带。参考版重计算确认带在领域加权支柱聚合后有裕度成立：NO = 74.85（≥ 55 by 19.85 分），YE = 29.20（≤ 40 by 10.80 分）。
 5. **投影和权威快照**：`docs/snapshots/resilience-ranking-pillar-combined-projected-2026-04-21.json` 携带激活前使用的 52 国预览表。`docs/snapshots/resilience-ranking-2026-05-28.json` 携带标志激活后的权威全范围实时捕获；它早于 P1-1 领域加权支柱聚合修复，作为 P1-1 前历史捕获保留，直到生成下一次实时全范围捕获。
 
-回退：设 `RESILIENCE_PILLAR_COMBINE_ENABLED=false`，刷新当前 `resilience:score:v26:*`、`resilience:ranking:v26` 和 `resilience:history:v20:*` 键（或等待 TTL 过期）。6 领域公式与支柱组合在 `_shared.ts` 中并存，回退无需代码变更。
+回退：设 `RESILIENCE_PILLAR_COMBINE_ENABLED=false`，刷新当前 `resilience:score:v28:*`、`resilience:ranking:v28`、`resilience:history:v22:*` 和 `resilience:intervals:v11:*` 键（或等待 TTL 过期）。6 领域公式与支柱组合在 `_shared.ts` 中并存，回退无需代码变更。
 
 ### 评分卡（v2.0 自评）
 
@@ -745,7 +761,7 @@ v17.1 在评分时将修复扩展到 `liquidReserveAdequacy`（无种子器变�
 | 轴 | 分数 | 理由 |
 |---|---|---|
 | **验证** | 8.0 | 跨指数基准对 INFORM、UNDP HDI 和 WorldRiskIndex 脆弱性组件，含显式方向假设。7 事件族结果回测带 AUC 发布门。4 遍扰动和天花板检测敏感度套件。间隙：外部专家审查（Phase 3 T3.8b）尚未完成。 |
-| **数据** | 9.0 | 6 领域 20 活跃维度（加上 2 个结构性退役维度保留在注册表中），47+ 指标。恢复能力在 Comtrade 配额/回填限制允许处使用真实进口 HHI 数据；`fuelStockDays` 从核心分数退役，仅作为实验注册表面保留。信号分层注册表标记每个指标 Core/Enrichment/Experimental 含覆盖率 + 许可审计。间隙：储备保证金集成、外部专家审查、正式刷新 SLA 和归属/解释面。 |
+| **数据** | 9.0 | 当前指标注册表包含 72 个指标，覆盖 21 个活跃维度和 6 个领域（另有 2 个结构性退役维度为模式连续性保留）。恢复能力在 Comtrade 配额/回填限制允许处使用真实进口 HHI 数据；`fuelStockDays` 从核心分数退役，仅作为实验注册表面保留。信号分层注册表标记每个指标 Core/Enrichment/Experimental 含覆盖率 + 许可审计。间隙：储备保证金集成、外部专家审查、正式刷新 SLA 和归属/解释面。 |
 | **架构** | 9.0 | 三支柱模式带 schemaVersion 特性标志向后兼容。惩罚加权均值聚合带文档化 alpha。领域加权支柱分数。缓存键版本化（按模式变更升级）。语言归一化纠正英语媒体偏差。间隙：alpha 调优是初始的（0.5），需在实时数据积累后回测驱动优化。 |
 | **方法论** | 8.5 | 每个维度有命名来源、方向、目标阈值、权重、频率、插补类和层。四类插补分类法端到端活跃。新鲜度分类器在维度级呈现陈旧度。方法论文档 linter 强制对等。间隙：三支柱权重理由可辩护但尚未经验优化。 |
 | **可解释性** | 8.0 | 按维度置信网格带插补图标 + 新鲜度徽章。支柱结构使指数可分解（结构 vs 实时冲击 vs 恢复）。间隙：尚无瀑布图（Phase 3 T3.3），无变更归属（Phase 3 T3.5）。 |
@@ -779,3 +795,15 @@ v17.1 在评分时将修复扩展到 `liquidReserveAdequacy`（无种子器变�
 
 - 本文档以 OECD/JRC 复合指标标准对等维护：每个维度有命名来源、方向、目标阈值范围、权重理由、频率和插补类。方法论文档 linter（Phase 1 T1.8）验证指标注册表中的维度列表与此处文档化的列表匹配，如偏移 CI 失败。
 - 对于个别国家分数的问题，widget 页脚显示 `dataVersion`、置信标签和 30 天差值；深度分析面板暴露按维度分解，使分析师可看到哪个组件移动了。完整 proto 模式位于 `docs/api/ResilienceService.openapi.yaml`。
+
+### v2.4（2026 年 8 月）— 金融系统暴露启用（#6511）
+
+**状态：生产中。** Vercel 生产环境已设置 `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true`。代码默认值仍为 `false`，因此 CI 保持关闭标志的回退姿态；生产操作员可以只通过环境变量执行回退。
+
+- **缓存代际已轮换**：分数/排名从 `v27` 到 `v28`，历史从 `v21` 到 `v22`，区间从 `v10` 到 `v11`。这避免教育专用和金融启用的分数、趋势、排名及稳定区间混用。
+- **验收脚本**：`scripts/dry-run-resilience-financial-system-exposure-flip.mjs` 对同一生产 Upstash 快照执行完整主权国家范围的关闭标志和开启标志对照。脚本只读 Redis；未解析的读取会失败关闭，并且不会写入工件。
+- **验收结果（196 国，2026-08-13）**：Spearman **0.9983**；**196/196（100%）** 的整体变化小于 3 分；最大绝对变化 **2.23**；非制裁国家没有超过 12 分的变化；标题合格状态变化为 **0**。捕获解析了 **650** 个 Redis 键，并使用分数/排名 `v28`、历史 `v22`、区间 `v11`。同一次运行输出了已知的静态 WGI 来源故障诊断，因此这是金融启用的配对量测，不代表所有上游来源均健康。
+- **验收门**：Spearman 至少为 0.85；至少 60% 的国家整体变化小于 3 分；非制裁队列国家不得有超过 12 分的整体变化。标题合格变化和金融来源故障行保留在已提交工件中。
+- **问题状态**：#6461 已由 #6515 关闭，后者落地了剩余的“缺失即强度”修复，因此不需要修改已关闭问题的优先级。
+
+操作步骤见 [`financial-system-exposure-flag-flip-runbook.md`](./financial-system-exposure-flag-flip-runbook.md)；量测结果见已提交的 [`resilience-financial-system-exposure-acceptance-2026-08-13.json`](../snapshots/resilience-financial-system-exposure-acceptance-2026-08-13.json) 快照。

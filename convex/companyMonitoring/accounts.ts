@@ -10,6 +10,7 @@ import {
 import { COMPANY_MONITORING_LIMITS } from "../../shared/company-monitoring-contract";
 import {
   activeAccountForOwner,
+  COMPANY_MONITORING_CLAIM_POLICY_VERSION,
   COMPANY_LIMIT,
   deleteCompanyClaims,
   fingerprint,
@@ -180,6 +181,7 @@ export async function syncCompanyMonitoringAccountFromEntitlement(
       purgePhase: "none",
       destructivePurgeStarted: false,
       pendingReactivation: false,
+      claimPolicyVersion: COMPANY_MONITORING_CLAIM_POLICY_VERSION,
       createdAt: now,
       updatedAt: now,
     });
@@ -227,6 +229,7 @@ export async function syncCompanyMonitoringAccountFromEntitlement(
       purgePhase: "none",
       destructivePurgeStarted: false,
       pendingReactivation: false,
+      claimPolicyVersion: COMPANY_MONITORING_CLAIM_POLICY_VERSION,
       purgeAfter: undefined,
       purgeCursor: undefined,
       updatedAt: now,
@@ -552,6 +555,7 @@ export const advanceAccountPurge = internalMutation({
           purgePhase: "none",
           destructivePurgeStarted: false,
           pendingReactivation: false,
+          claimPolicyVersion: COMPANY_MONITORING_CLAIM_POLICY_VERSION,
           purgeAfter: undefined,
           purgeCursor: undefined,
           updatedAt: now,

@@ -12,19 +12,41 @@ import {
   normalizeCompanyClaimInput,
   normalizeMonitoredCompanyInput,
 } from "../../shared/company-monitoring-contract";
-import { fingerprint } from "./_shared";
+import {
+  fingerprint,
+  hasCurrentCompanyMonitoringClaimPolicy,
+  randomFence,
+} from "./_shared";
 import {
   companyMonitoringFinalizeResultValidator,
+  companyMonitoringExaIngestionValidator,
   companyMonitoringNonReassuringReasonValidator,
   companyMonitoringProviderErrorReasonValidator,
   companyMonitoringScanSourceValidator,
   companyMonitoringXIngestionValidator,
 } from "./validators";
+import {
+  ingestCompanyEvidenceForCompanyIds,
+  purgeAccountCandidatesBatch,
+  purgeAccountEvidenceBatch,
+  setAllCompanyProviderEvidenceState,
+  setCompanyEvidenceStateForProviderLocators,
+} from "./evidence";
+import {
+  claimNextAdmissionCandidateHandler,
+  recordAdmissionDecisionHandler,
+  recordAdmissionTransportFailureHandler,
+} from "./admission";
+import {
+  COMPANY_MONITORING_EVIDENCE_POLICY,
+  type ProviderEvidence,
+} from "../../shared/company-monitoring-evidence";
 
 type Source = Infer<typeof companyMonitoringScanSourceValidator>;
 type FinalizeResult = Infer<typeof companyMonitoringFinalizeResultValidator>;
 type NonReassuringReason = Infer<typeof companyMonitoringNonReassuringReasonValidator>;
 type ProviderErrorReason = Infer<typeof companyMonitoringProviderErrorReasonValidator>;
+type ExaIngestion = Infer<typeof companyMonitoringExaIngestionValidator>;
 type XIngestion = Infer<typeof companyMonitoringXIngestionValidator>;
 type Work = Doc<"companyMonitoringScanWorkItems">;
 type Obligation = Doc<"companyMonitoringScanObligations">;
@@ -39,6 +61,17 @@ type XPostAlias = Pick<
   | "createdAt"
   | "updatedAt"
 >;
+type NormalizedXPostInput = Pick<
+  Doc<"companyMonitoringXEvidence">,
+  | "companyId"
+  | "authorAccountId"
+  | "currentHandle"
+  | "createdAt"
+  | "observedAt"
+  | "contentState"
+  | "storageState"
+  | "text"
+> & { canonicalPostId: string };
 
 const ACCOUNT_DUE_PAGE_SIZE = 32;
 const ACCOUNT_WORK_PAGE_SIZE = 8;
@@ -57,6 +90,7 @@ const WORKER_ID = /^[A-Za-z0-9._:-]{1,64}$/;
 const X_ACCOUNT_ID = /^[1-9]\d{1,18}$/;
 const X_HANDLE = /^[A-Za-z0-9_]{1,15}$/;
 const SHA256_HEX = /^[a-f0-9]{64}$/;
+const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/u;
 const X_PACK_QUERY = /^\(from:[A-Za-z0-9_]{1,15}(?: OR from:[A-Za-z0-9_]{1,15})*\) -is:retweet$/;
 const MAX_X_PACKS = 25;
 const MAX_X_POSTS = 100;
@@ -66,7 +100,13 @@ const X_PURGE_POST_ALIAS_BATCH_SIZE =
 const MAX_X_IDENTITIES = COMPANY_MONITORING_SCAN_COHORT_LIMIT;
 const MAX_X_UNEXPECTED_AUTHORS = 100;
 const MAX_X_TEXT_BYTES = 32 * 1024;
+const MAX_EXA_PROVIDER_ID_BYTES = 512;
+const MAX_EXA_REQUEST_ID_BYTES = 512;
+const MAX_EXA_URL_BYTES = 2_048;
+const MAX_EXA_TITLE_BYTES = 512;
+const MAX_EXA_AUTHOR_BYTES = 256;
 const X_IDENTITY_CLOCK_SKEW_MS = 30 * 1000;
+const EXA_RETRIEVAL_CLOCK_SKEW_MS = 30 * 1000;
 const X_TRACKED_POSTS_PER_COMPANY = Math.max(
   1,
   Math.floor(MAX_X_POSTS / COMPANY_MONITORING_SCAN_COHORT_LIMIT),
@@ -172,18 +212,28 @@ async function requireWorkerSecret(secret: string): Promise<void> {
   }
 }
 
-function randomFence(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
-function enabledSources(): Source[] {
+function providerRolloutEnabled(source: Source): boolean {
   const flags: Record<Source, boolean> = {
     exa: COMPANY_MONITORING_ROLLOUT_FLAGS.exaProvider,
     x: COMPANY_MONITORING_ROLLOUT_FLAGS.xProvider,
   };
-  return (Object.keys(flags) as Source[]).filter((source) => flags[source]);
+  return flags[source];
+}
+
+function enabledSources(): Source[] {
+  return (["exa", "x"] as const).filter(providerRolloutEnabled);
+}
+
+function requireProviderClaimPolicy(
+  account: Doc<"companyMonitoringAccounts">,
+  source: Source,
+): void {
+  if (
+    providerRolloutEnabled(source) &&
+    !hasCurrentCompanyMonitoringClaimPolicy(account)
+  ) {
+    throw new ConvexError("COMPANY_MONITORING_CLAIM_POLICY_MIGRATION_REQUIRED");
+  }
 }
 
 async function updateAccountDueFromWork(ctx: MutationCtx, ownerAccountId: string) {
@@ -234,6 +284,7 @@ async function scheduleAccountWorkHandler(
   if (!account || account.lifecycle !== "entitled" || account.terminalReason) {
     throw new ConvexError("COMPANY_MONITORING_ACCOUNT_INACTIVE");
   }
+  requireProviderClaimPolicy(account, args.source);
 
   const requestedCompanyIds = [...new Set(args.companyIds)].sort();
   if (
@@ -723,6 +774,8 @@ export async function purgeAccountScanStateBatch(
   for (const alias of postAliasPage.slice(0, X_PURGE_POST_ALIAS_BATCH_SIZE)) {
     await ctx.db.delete(alias._id);
   }
+  const normalizedEvidence = await purgeAccountEvidenceBatch(ctx, ownerAccountId);
+  const normalizedCandidates = await purgeAccountCandidatesBatch(ctx, ownerAccountId);
   await updateAccountDueFromWork(ctx, ownerAccountId);
   return {
     complete:
@@ -730,7 +783,9 @@ export async function purgeAccountScanStateBatch(
       receiptLinkPage.length <= SCAN_PURGE_RECEIPT_LINK_BATCH_SIZE &&
       identityPage.length <= X_PURGE_IDENTITY_BATCH_SIZE &&
       evidencePage.length <= X_PURGE_EVIDENCE_BATCH_SIZE &&
-      postAliasPage.length <= X_PURGE_POST_ALIAS_BATCH_SIZE,
+      postAliasPage.length <= X_PURGE_POST_ALIAS_BATCH_SIZE &&
+      normalizedEvidence.complete &&
+      normalizedCandidates.complete,
   };
 }
 
@@ -884,6 +939,12 @@ async function xSubjectsForClaim(
           allowedUses: [],
           updatedAt: now,
         };
+        await setAllCompanyProviderEvidenceState(ctx, {
+          ownerAccountId,
+          companyId: obligation.companyId,
+          provider: "x",
+          state: "authority_lost",
+        });
       }
       const claimValue = (claim: Doc<"companyMonitoringClaims">) => ({
         claimId: claim.claimId,
@@ -1189,6 +1250,7 @@ async function claimNextWorkHandler(
     for (const account of accounts) {
       accountsExamined += 1;
       if (account.terminalReason) continue;
+      requireProviderClaimPolicy(account, source);
       const work = await dueWorkForAccount(ctx, account.logicalAccountId, now, source);
       if (!work) {
         await updateAccountDueFromWork(ctx, account.logicalAccountId);
@@ -1445,6 +1507,90 @@ async function validXIngestionForWork(
   return { valid: true, payload };
 }
 
+function validExaUrl(rawUrl: string): boolean {
+  if (
+    rawUrl !== rawUrl.trim() ||
+    CONTROL_CHARACTER.test(rawUrl) ||
+    byteLength(rawUrl) > MAX_EXA_URL_BYTES
+  ) return false;
+  try {
+    const url = new URL(rawUrl);
+    return url.protocol === "https:" && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
+function validExaCandidate(
+  candidate: ExaIngestion["candidates"][number],
+  companyIds: Set<string>,
+  work: Extract<Work, { state: "leased" }>,
+  now: number,
+) {
+  const candidateCompanyIds = new Set(candidate.candidateCompanyIds);
+  return candidate.providerResultId === candidate.providerResultId.trim() &&
+    candidate.providerResultId.length > 0 &&
+    !CONTROL_CHARACTER.test(candidate.providerResultId) &&
+    byteLength(candidate.providerResultId) <= MAX_EXA_PROVIDER_ID_BYTES &&
+    (candidate.providerRequestId === undefined || (
+      candidate.providerRequestId === candidate.providerRequestId.trim() &&
+      candidate.providerRequestId.length > 0 &&
+      !CONTROL_CHARACTER.test(candidate.providerRequestId) &&
+      byteLength(candidate.providerRequestId) <= MAX_EXA_REQUEST_ID_BYTES
+    )) &&
+    Number.isSafeInteger(candidate.providerRank) &&
+    candidate.providerRank >= 1 &&
+    candidate.providerRank <= work.resultCap &&
+    validExaUrl(candidate.url) &&
+    (candidate.title === undefined || (
+      !CONTROL_CHARACTER.test(candidate.title) && byteLength(candidate.title) <= MAX_EXA_TITLE_BYTES
+    )) &&
+    (candidate.author === undefined || (
+      !CONTROL_CHARACTER.test(candidate.author) && byteLength(candidate.author) <= MAX_EXA_AUTHOR_BYTES
+    )) &&
+    Number.isSafeInteger(candidate.publishedAt) &&
+    candidate.publishedAt >= work.windowStart &&
+    candidate.publishedAt <= work.windowEnd &&
+    Number.isSafeInteger(candidate.retrievedAt) &&
+    candidate.retrievedAt >= work.windowEnd &&
+    candidate.retrievedAt <= now + EXA_RETRIEVAL_CLOCK_SKEW_MS &&
+    candidateCompanyIds.size > 0 &&
+    candidateCompanyIds.size === candidate.candidateCompanyIds.length &&
+    candidateCompanyIds.size <= COMPANY_MONITORING_SCAN_COHORT_LIMIT &&
+    candidateCompanyIds.size === companyIds.size &&
+    [...candidateCompanyIds].every((companyId) => companyIds.has(companyId));
+}
+
+function validExaIngestionForWork(
+  result: FinalizeResult,
+  work: Extract<Work, { state: "leased" }>,
+  obligations: Obligation[],
+  now: number,
+): { valid: boolean; payload?: ExaIngestion } {
+  if (result.type === "provider_error") return { valid: true };
+  if (work.source !== "exa") return { valid: result.exaIngestion === undefined };
+  const payload = result.exaIngestion;
+  if (!payload || result.xIngestion !== undefined || payload.candidates.length > work.resultCap) {
+    return { valid: false };
+  }
+  const companyIds = new Set(obligations.map((obligation) => obligation.companyId));
+  const providerRanks = new Set<number>();
+  const providerResultIds = new Set<string>();
+  for (const candidate of payload.candidates) {
+    if (
+      providerRanks.has(candidate.providerRank) ||
+      providerResultIds.has(candidate.providerResultId) ||
+      !validExaCandidate(candidate, companyIds, work, now)
+    ) return { valid: false };
+    providerRanks.add(candidate.providerRank);
+    providerResultIds.add(candidate.providerResultId);
+  }
+  if (payload.candidates.length !== result.itemCount) {
+    return { valid: false };
+  }
+  return { valid: true, payload };
+}
+
 function xReceipt(payload: XIngestion) {
   return {
     requestedWindow: payload.requestedWindow,
@@ -1538,6 +1684,7 @@ async function applyXPosts(
   posts: XIngestion["posts"],
   now: number,
 ) {
+  const normalizedPosts = new Map<string, NormalizedXPostInput>();
   const companyRevisions = new Map<string, number>();
   const identities = new Map<string, Doc<"companyMonitoringXIdentities"> | null>();
   const companies = new Map<string, Doc<"companyMonitoringCompanies"> | null>();
@@ -1661,6 +1808,17 @@ async function applyXPosts(
         lastReconciledAt: now,
         updatedAt: now,
       });
+      normalizedPosts.set(`${post.companyId}\u0000${canonicalPostId}`, {
+        companyId: existing.companyId,
+        canonicalPostId,
+        authorAccountId: existing.authorAccountId,
+        currentHandle: existing.currentHandle,
+        createdAt: existing.createdAt,
+        observedAt: existing.observedAt,
+        contentState: existing.contentState,
+        storageState: existing.storageState,
+        ...(existing.text ? { text: existing.text } : {}),
+      });
       continue;
     }
     if (post.contentState === "deleted") deletedCanonicalPostIds.add(canonicalPostId);
@@ -1703,17 +1861,148 @@ async function applyXPosts(
     };
     if (existing) await ctx.db.replace(existing._id, row);
     else await ctx.db.insert("companyMonitoringXEvidence", row);
+    normalizedPosts.set(`${post.companyId}\u0000${canonicalPostId}`, {
+      companyId: row.companyId,
+      canonicalPostId,
+      authorAccountId: row.authorAccountId,
+      currentHandle: row.currentHandle,
+      createdAt: row.createdAt,
+      observedAt: row.observedAt,
+      contentState: row.contentState,
+      storageState: row.storageState,
+      ...(row.text ? { text: row.text } : {}),
+    });
   }
+  return [...normalizedPosts.values()];
 }
 
 async function applyXIngestion(
   ctx: MutationCtx,
   work: Work,
   payload: XIngestion,
+  obligations: Obligation[],
   now: number,
 ) {
   await applyXIdentities(ctx, work, payload.identities, now);
-  await applyXPosts(ctx, work, payload.posts, now);
+  const normalizedPosts = await applyXPosts(ctx, work, payload.posts, now);
+  await syncNormalizedXEvidence(ctx, work, normalizedPosts, obligations, now);
+}
+
+async function applyExaIngestion(
+  ctx: MutationCtx,
+  work: Work,
+  payload: ExaIngestion,
+  obligations: Obligation[],
+) {
+  if (payload.candidates.length === 0) return;
+  await ingestCompanyEvidenceForCompanyIds(ctx, {
+    ownerAccountId: work.ownerAccountId,
+    companyIds: obligations.map((obligation) => obligation.companyId),
+    evidence: payload.candidates.map((candidate) => ({
+      provider: "exa" as const,
+      providerLocator: candidate.providerResultId,
+      queryVersion: work.queryVersion,
+      url: candidate.url,
+      ...(candidate.title ? { title: candidate.title } : {}),
+      ...(candidate.author ? { author: candidate.author } : {}),
+      publishedAt: candidate.publishedAt,
+      observedAt: candidate.retrievedAt,
+      expiresAt: candidate.retrievedAt + COMPANY_MONITORING_EVIDENCE_POLICY.candidateTtlMs,
+      candidateCompanyIds: candidate.candidateCompanyIds,
+      sourceAuthority: "low_authority",
+    })),
+  });
+}
+
+async function syncNormalizedXEvidence(
+  ctx: MutationCtx,
+  work: Work,
+  posts: NormalizedXPostInput[],
+  obligations: Obligation[],
+  now: number,
+) {
+  const companyIds = [...new Set(obligations.map((obligation) => obligation.companyId))].sort();
+  for (const companyId of companyIds) {
+    const identity = await ctx.db
+      .query("companyMonitoringXIdentities")
+      .withIndex("by_account_company", (q) =>
+        q.eq("ownerAccountId", work.ownerAccountId).eq("companyId", companyId),
+      )
+      .unique();
+    const authoritative = Boolean(
+      identity?.state === "authoritative" &&
+      identity.expiresAt > now &&
+      identity.allowedUses.includes("primary_evidence")
+    );
+    if (!authoritative) {
+      await setAllCompanyProviderEvidenceState(ctx, {
+        ownerAccountId: work.ownerAccountId,
+        companyId,
+        provider: "x",
+        state: "authority_lost",
+      });
+    }
+
+    const normalizedRows: ProviderEvidence[] = [];
+    const deletedLocators: string[] = [];
+    const unavailableLocators: string[] = [];
+    for (const stored of posts.filter((row) => row.companyId === companyId)) {
+      const canonicalPostId = stored.canonicalPostId;
+      if (stored.contentState === "deleted") {
+        deletedLocators.push(canonicalPostId);
+        continue;
+      }
+      if (stored.storageState !== "full_text" || !stored.text) {
+        unavailableLocators.push(canonicalPostId);
+        continue;
+      }
+      if (
+        !authoritative ||
+        !identity ||
+        identity.accountId !== stored.authorAccountId
+      ) continue;
+      normalizedRows.push({
+        provider: "x",
+        providerLocator: canonicalPostId,
+        queryVersion: work.queryVersion,
+        url: `https://x.com/i/status/${canonicalPostId}`,
+        text: stored.text,
+        author: stored.currentHandle,
+        authorAccountId: stored.authorAccountId,
+        publishedAt: stored.createdAt,
+        observedAt: stored.observedAt,
+        expiresAt: identity.expiresAt,
+        candidateCompanyIds: [companyId],
+        verifiedCompanyIds: [companyId],
+        sourceAuthority: "verified_first_party",
+      });
+    }
+    if (deletedLocators.length > 0) {
+      await setCompanyEvidenceStateForProviderLocators(ctx, {
+        ownerAccountId: work.ownerAccountId,
+        companyId,
+        provider: "x",
+        providerLocators: deletedLocators,
+        state: "deleted",
+      });
+    }
+    if (unavailableLocators.length > 0) {
+      await setCompanyEvidenceStateForProviderLocators(ctx, {
+        ownerAccountId: work.ownerAccountId,
+        companyId,
+        provider: "x",
+        providerLocators: unavailableLocators,
+        state: "unavailable",
+      });
+    }
+    if (normalizedRows.length > 0) {
+      await ingestCompanyEvidenceForCompanyIds(ctx, {
+        ownerAccountId: work.ownerAccountId,
+        companyIds: [companyId],
+        evidence: normalizedRows,
+      });
+    }
+  }
 }
 
 function validCost(value: number): boolean {
@@ -1778,8 +2067,9 @@ function classifyResult(
   work: Work,
   now: number,
   xValidation: { valid: boolean; payload?: XIngestion },
+  exaValidation: { valid: boolean; payload?: ExaIngestion },
 ) {
-  if (!xValidation.valid) {
+  if (!xValidation.valid || !exaValidation.valid) {
     return nonReassuringReceipt("malformed", now, result, work);
   }
   if (!validCost(result.costUsdMicros)) {
@@ -1879,12 +2169,19 @@ async function finalizeWorkHandler(
   }
 
   const xValidation = await validXIngestionForWork(ctx, args.result, work, obligations, now);
-  const receipt = classifyResult(args.result, work, now, xValidation);
+  const exaValidation = validExaIngestionForWork(args.result, work, obligations, now);
+  const receipt = classifyResult(args.result, work, now, xValidation, exaValidation);
   if (
     xValidation.payload &&
     (receipt.reason === "complete" || receipt.reason === "partial" || receipt.reason === "capped")
   ) {
-    await applyXIngestion(ctx, work, xValidation.payload, now);
+    await applyXIngestion(ctx, work, xValidation.payload, obligations, now);
+  }
+  if (
+    exaValidation.payload &&
+    (receipt.reason === "complete" || receipt.reason === "partial" || receipt.reason === "capped")
+  ) {
+    await applyExaIngestion(ctx, work, exaValidation.payload, obligations);
   }
   if (receipt.kind === "complete") {
     await ctx.db.replace(work._id, {
@@ -1997,6 +2294,60 @@ export const finalizeWork = mutation({
   handler: async (ctx, args) => {
     await requireWorkerSecret(args.secret);
     return finalizeWorkHandler(ctx, args);
+  },
+});
+
+/** Claim one exact normalized-evidence snapshot for deterministic classification. */
+export const claimNextAdmissionCandidate = mutation({
+  args: {
+    secret: v.string(),
+    workerId: v.string(),
+    classificationRunId: v.string(),
+    requestedModelVersion: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await requireWorkerSecret(args.secret);
+    return claimNextAdmissionCandidateHandler(ctx, args);
+  },
+});
+
+/** Validate untrusted model output and append the fenced policy decision. */
+export const finalizeAdmissionCandidate = mutation({
+  args: {
+    secret: v.string(),
+    workerId: v.string(),
+    leaseToken: v.string(),
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    occurrenceDedupeKey: v.string(),
+    expectedEvidenceRevision: v.number(),
+    classificationRunId: v.string(),
+    requestedModelVersion: v.string(),
+    modelVersion: v.string(),
+    modelOutput: v.optional(v.any()),
+  },
+  handler: async (ctx, { secret, ...args }) => {
+    await requireWorkerSecret(secret);
+    return recordAdmissionDecisionHandler(ctx, args);
+  },
+});
+
+/** Record a fenced classifier transport failure without accepting model output. */
+export const finalizeAdmissionTransportFailure = mutation({
+  args: {
+    secret: v.string(),
+    workerId: v.string(),
+    leaseToken: v.string(),
+    ownerAccountId: v.string(),
+    companyId: v.string(),
+    occurrenceDedupeKey: v.string(),
+    expectedEvidenceRevision: v.number(),
+    classificationRunId: v.string(),
+    requestedModelVersion: v.string(),
+  },
+  handler: async (ctx, { secret, ...args }) => {
+    await requireWorkerSecret(secret);
+    return recordAdmissionTransportFailureHandler(ctx, args);
   },
 });
 

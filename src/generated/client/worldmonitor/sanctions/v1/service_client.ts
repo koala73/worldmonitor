@@ -17,6 +17,8 @@ export interface ListSanctionsPressureResponse {
   newEntryCount: number;
   vesselCount: number;
   aircraftCount: number;
+  semaCount: number;
+  semaError?: string;
 }
 
 export interface SanctionsEntry {

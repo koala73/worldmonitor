@@ -1,0 +1,61 @@
+{
+  "Closure": [
+    {
+      "id": "Tor-RD52026-4842",
+      "road": "Clyde Ave",
+      "name": "Clyde Ave 73 m South of Brooke Ave to 55 m South of Brooke Ave",
+      "district": "NORTH YORK",
+      "latitude": "43.731550",
+      "longitude": "-79.424030",
+      "type": "CONSTRUCTION",
+      "subType": null,
+      "currImpact": "Low",
+      "maxImpact": "Low",
+      "geoPolyline": "[-79.424030,43.731550],[-79.424010,43.731590],[-79.423950,43.731670],[-79.423940,43.731730]",
+      "description": "Toronto-TMC: Emergency Sewer Relay Services 4 Days to Complete(8am to 5pm) Sidewalk to remain open Occupying Curb Lane and putting \"No Parking\" signs throughout the work area.",
+      "createdTime": "1786652617000",
+      "lastUpdated": "1786652617000",
+      "startTime": "1786622400000",
+      "endTime": "1787086800000",
+      "directionsAffected": "ONE_DIRECTION"
+    },
+    {
+      "id": "Tor-RD1H2026-1340-13",
+      "road": "Morning Dew Rd",
+      "name": "Morning Dew Rd 65 m South of Davis Downs Pl to 71 m South of Davis Downs Pl",
+      "district": "SCARBOROUGH",
+      "latitude": "43.770870",
+      "longitude": "-79.168200",
+      "type": "ROAD_CLOSED",
+      "subType": "ROAD_CLOSED_CONSTRUCTION",
+      "currImpact": "None",
+      "maxImpact": "Low",
+      "geoPolyline": "[-79.168200,43.770870],[-79.168170,43.770820]",
+      "description": "Toronto-TMC: Pole work & OH Conductors. Working 1 location at a time, returning to each work zone, as needed, over time period. Will close Rodar once complete. Phasing is necessary for this work - over charge is accepted. (Ravena Carpen)",
+      "createdTime": "1784116130000",
+      "lastUpdated": "1784116130000",
+      "startTime": "1785063600000",
+      "endTime": "1788206400000",
+      "directionsAffected": "BOTH_DIRECTIONS"
+    },
+    {
+      "id": "12063620",
+      "road": "Steeles Ave W",
+      "name": "Westbound Steeles Ave W at Dufferin St",
+      "district": "NORTH YORK",
+      "latitude": "43.787268",
+      "longitude": "-79.470115",
+      "type": "HAZARD",
+      "subType": null,
+      "currImpact": "High",
+      "maxImpact": "High",
+      "geoPolyline": "[-79.470115,43.787268]",
+      "description": "Toronto-TMC: Right lane blocked due to fire investigation.",
+      "createdTime": "1786648075000",
+      "lastUpdated": "1786648075000",
+      "startTime": "1786648020000",
+      "endTime": null,
+      "directionsAffected": "ONE_DIRECTION"
+    }
+  ]
+}

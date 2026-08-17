@@ -29,29 +29,52 @@ import {
   EDUCATION_BEND,
   EDUCATION_BEND_SCORE,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.js';
+import sovereignStatus from '../scripts/shared/sovereign-status.json';
 
 const EDUCATION_KEY = 'resilience:education-attainment:v1';
 const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
 
+function healthyCountries(
+  overrides: Record<string, unknown> = {},
+  omitted = new Set<string>(),
+): Record<string, unknown> {
+  const countries = Object.fromEntries(
+    sovereignStatus.entries
+      .filter((entry) => !omitted.has(entry.iso2))
+      .slice(0, 180)
+      .map((entry, index) => [entry.iso2, { value: 20 + (index % 75), year: 2024 }]),
+  );
+  return { ...countries, ...overrides };
+}
+
 // Reader factory: healthy seed-meta plus whatever payload the test supplies.
-function readerFor(countries: Record<string, unknown> | null) {
+function readerForRawPayload(payload: unknown) {
   return async (key: string): Promise<unknown | null> => {
-    if (key === EDUCATION_META_KEY) return { status: 'ok', fetchedAt: Date.now() };
-    if (key === EDUCATION_KEY) return countries == null ? null : { countries };
+    if (key === EDUCATION_META_KEY) return { status: 'ok', fetchedAt: Date.now(), rankableRecordCount: 180 };
+    if (key === EDUCATION_KEY) return payload;
     return null;
   };
 }
 
-async function withFlagOn<T>(fn: () => Promise<T>): Promise<T> {
+function readerFor(countries: Record<string, unknown> | null) {
+  return readerForRawPayload(countries == null ? null : { countries: healthyCountries(countries) });
+}
+
+function withFlag<T>(value: 'true' | 'false', fn: () => Promise<T>): Promise<T> {
   const prior = process.env.RESILIENCE_EDUCATION_ENABLED;
-  process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
-  try {
-    return await fn();
-  } finally {
+  process.env.RESILIENCE_EDUCATION_ENABLED = value;
+  const restore = () => {
     if (prior == null) delete process.env.RESILIENCE_EDUCATION_ENABLED;
     else process.env.RESILIENCE_EDUCATION_ENABLED = prior;
-  }
+  };
+  return fn().finally(restore);
 }
+
+// Both directions are now set EXPLICITLY. Since #6460 the flag defaults to
+// true, so a suite that relied on the ambient default to mean "off" would keep
+// its name and quietly assert the opposite behavior.
+const withFlagOn = <T>(fn: () => Promise<T>) => withFlag('true', fn);
+const withFlagOff = <T>(fn: () => Promise<T>) => withFlag('false', fn);
 
 describe('normalizeEducationAttainment — anchors', () => {
   it('maps the goalposts to the full score range', () => {
@@ -146,9 +169,15 @@ describe('normalizeEducationAttainment — boundary handling', () => {
   });
 });
 
-describe('scoreEducation — flag off', () => {
+describe('scoreEducation — flag off (the rollback path)', () => {
   it('returns the empty-data shape and contributes no weight', async () => {
-    const score = await scoreEducation('US', readerFor({ US: { value: 80, year: 2024 } }));
+    // Explicit `=false` since #6460: the flag now DEFAULTS to true, so this
+    // suite would otherwise silently test the flag-ON path while still being
+    // named "flag off". This is no longer the shipped state — it is the
+    // rollback path documented in the runbook, and it still has to behave.
+    const score = await withFlagOff(() =>
+      scoreEducation('US', readerFor({ US: { value: 80, year: 2024 } })),
+    );
     assert.equal(score.coverage, 0);
     assert.equal(score.observedWeight, 0);
     assert.equal(score.imputedWeight, 0);
@@ -168,39 +197,135 @@ describe('scoreEducation — flag on', () => {
     assert.equal(score.imputationClass, null, 'observed data must not be tagged imputed');
   });
 
-  it('treats a null value as absent, not as 0% attainment', async () => {
+  it('fails closed below the active rankable-coverage floor', async () => {
+    await withFlagOn(() => assert.rejects(
+      () => scoreEducation('FR', async (key) => {
+        if (key === EDUCATION_META_KEY) {
+          return { status: 'ok', fetchedAt: Date.now(), rankableRecordCount: 179 };
+        }
+        if (key === EDUCATION_KEY) return { countries: { FR: { value: 82.5, year: 2024 } } };
+        return null;
+      }),
+      (err: Error) => /rankable coverage is 179\/180/.test(err.message),
+    ));
+  });
+
+  it('accepts the existing countrySet transition metadata when it proves the floor', async () => {
+    const countrySet = sovereignStatus.entries.slice(0, 180).map((entry) => entry.iso2).join(',');
+    const score = await withFlagOn(() => scoreEducation('FR', async (key) => {
+      if (key === EDUCATION_META_KEY) return { status: 'ok', fetchedAt: Date.now(), countrySet };
+      if (key === EDUCATION_KEY) return { countries: healthyCountries({ FR: { value: 82.5, year: 2024 } }) };
+      return null;
+    }));
+    assert.ok(score.coverage > 0);
+  });
+
+  it('rejects metadata that claims the floor when the data payload does not contain it', async () => {
+    await withFlagOn(() => assert.rejects(
+      () => scoreEducation('FR', readerForRawPayload({
+        countries: { FR: { value: 82.5, year: 2024 } },
+      })),
+      (err: Error) => /data payload has usable rankable coverage 1\/180/.test(err.message),
+    ));
+  });
+
+  it('rejects a payload with fewer than 180 usable records', async () => {
+    const countries = Object.fromEntries(
+      sovereignStatus.entries
+        .slice(0, 179)
+        .map((entry, index) => [entry.iso2, { value: 20 + (index % 75), year: 2024 }]),
+    );
+    await withFlagOn(() => assert.rejects(
+      () => scoreEducation('FR', readerForRawPayload({ countries })),
+      (err: Error) => /data payload has usable rankable coverage 179\/180/.test(err.message),
+    ));
+  });
+
+  it('fails closed on a null value instead of coercing it to 0% attainment', async () => {
     // The trap: Number(null) === 0 is finite, so a naive coercion publishes
     // "worst on earth, fully observed" for a country with no reading. This is
     // the read-side twin of the seeder's own null guard.
-    const score = await withFlagOn(() =>
-      scoreEducation('XX', readerFor({ XX: { value: null, year: 2023 } })),
-    );
-    assert.notEqual(score.coverage, 1, 'a null reading must not be full-coverage observed data');
-    assert.equal(score.imputationClass, 'unmonitored');
+    await withFlagOn(() => assert.rejects(
+      () => scoreEducation('FR', readerFor({
+        FR: { value: null, year: 2023 },
+        US: { value: 92.1, year: 2024 },
+      })),
+      (err: Error) => /malformed record for FR/.test(err.message),
+    ));
   });
 
-  it('treats a null year as absent rather than derating to the oldest bucket', async () => {
-    const score = await withFlagOn(() =>
-      scoreEducation('XX', readerFor({ XX: { value: 60, year: null } })),
-    );
-    assert.equal(score.imputationClass, 'unmonitored');
+  it('fails closed on a null year instead of derating it to the oldest bucket', async () => {
+    await withFlagOn(() => assert.rejects(
+      () => scoreEducation('FR', readerFor({
+        FR: { value: 60, year: null },
+        US: { value: 92.1, year: 2024 },
+      })),
+      (err: Error) => /malformed record for FR/.test(err.message),
+    ));
   });
 
-  it('rejects an out-of-range percentage', async () => {
-    const score = await withFlagOn(() =>
-      scoreEducation('XX', readerFor({ XX: { value: 145, year: 2024 } })),
-    );
-    assert.equal(score.imputationClass, 'unmonitored');
+  it('fails closed on an out-of-range percentage', async () => {
+    await withFlagOn(() => assert.rejects(
+      () => scoreEducation('FR', readerFor({
+        FR: { value: 145, year: 2024 },
+        US: { value: 92.1, year: 2024 },
+      })),
+      (err: Error) => /malformed record for FR/.test(err.message),
+    ));
+  });
+
+  it('fails closed on a fractional or implausible observation year', async () => {
+    for (const year of [2024.5, 1899, 2201]) {
+      await withFlagOn(() => assert.rejects(
+        () => scoreEducation('FR', readerFor({
+          FR: { value: 82.5, year },
+          US: { value: 92.1, year: 2024 },
+        })),
+        (err: Error) => /malformed record for FR/.test(err.message),
+      ));
+    }
   });
 
   it('imputes an absent country as unmonitored, never stable-absence', async () => {
     // stable-absence would hand DPRK and Syria a score near 85 for the crime of
     // not being surveyed. The World Bank does not publish everywhere.
-    const score = await withFlagOn(() =>
-      scoreEducation('KP', readerFor({ FR: { value: 82.5, year: 2024 } })),
-    );
+    const countries = healthyCountries({ FR: { value: 82.5, year: 2024 } }, new Set(['KP']));
+    const score = await withFlagOn(() => scoreEducation('KP', readerForRawPayload({ countries })));
     assert.equal(score.imputationClass, 'unmonitored');
   });
+
+  for (const [label, payload] of [
+    ['null', null],
+    ['array', []],
+    ['missing countries', { records: {} }],
+    ['null countries', { countries: null }],
+    ['empty countries', { countries: {} }],
+  ] as const) {
+    it(`fails closed when the data payload is ${label}`, async () => {
+      await withFlagOn(async () => {
+        await assert.rejects(
+          () => scoreEducation('FR', readerForRawPayload(payload)),
+          (err: Error) => /education-attainment/.test(err.message) && /payload/i.test(err.message),
+        );
+      });
+    });
+  }
+
+  for (const [label, countries] of [
+    ['irrelevant country only', { ZZ: { value: 50, year: 2024 } }],
+    ['null recognized record', { FR: null }],
+    ['invalid recognized value', { FR: { value: 101, year: 2024 } }],
+    ['invalid recognized year', { FR: { value: 50, year: null } }],
+  ] as const) {
+    it(`fails closed when the non-empty envelope has ${label}`, async () => {
+      await withFlagOn(async () => {
+        await assert.rejects(
+          () => scoreEducation('FR', readerForRawPayload({ countries })),
+          (err: Error) => /education-attainment/.test(err.message) && /(payload|malformed record)/i.test(err.message),
+        );
+      });
+    });
+  }
 
   it('fails closed when the seed envelope is missing', async () => {
     // A dead Railway bundle must surface as an operator-visible error, not

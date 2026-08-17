@@ -4,10 +4,11 @@ import {
   type ServerContext,
   type GetResilienceRankingRequest,
   type GetResilienceRankingResponse,
+  type GetResilienceScoreResponse,
   type ResilienceRankingItem,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
-import { compareAndDeleteRedisKey, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
+import { compareAndDeleteRedisKey, getCachedJson, runRedisPipeline, runRedisTransaction } from '../../../_shared/redis';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 import { timingSafeEqual } from '../../../_shared/internal-auth';
 import { isInRankableUniverse } from './_rankable-universe';
@@ -43,6 +44,12 @@ const SYNC_WARM_LIMIT = 1000;
 // publishing the ranking. A 75% table looked healthy to consumers while hiding
 // a large serving gap; require at least 90%, and label/shorten sub-95% publishes.
 const RANKING_CACHE_MIN_COVERAGE = 0.9;
+
+type CachedRankingResponse = GetResilienceRankingResponse & {
+  _formula?: string;
+  _educationState?: string;
+  _intervalMethodology?: string;
+};
 const RANKING_FULL_COVERAGE = 0.95;
 const PARTIAL_RANKING_CACHE_TTL_SECONDS = 2 * 60 * 60;
 const RANKING_PERSISTENCE_MIN_PARITY = 0.9;
@@ -50,7 +57,6 @@ const RANKING_REFRESH_LOCK_KEY = 'resilience:ranking:refresh-lock:v1';
 const RANKING_REFRESH_LOCK_TTL_SECONDS = 30;
 const RANKING_WARM_LOCK_KEY = 'resilience:ranking:warm-lock:v1';
 const RANKING_WARM_LOCK_TTL_SECONDS = 60;
-
 function isRefreshRequested(ctx: ServerContext): boolean {
   try {
     return new URL(ctx.request.url).searchParams.get('refresh') === '1';
@@ -166,10 +172,7 @@ function rankingCacheMetadataMatches(payload: Partial<GetResilienceRankingRespon
 }
 
 function coerceCachedRankingResponse(
-  payload: GetResilienceRankingResponse & {
-    _formula?: string;
-    _intervalMethodology?: string;
-  },
+  payload: CachedRankingResponse,
   items: ResilienceRankingItem[],
   greyedOut: ResilienceRankingItem[],
 ): GetResilienceRankingResponse {
@@ -185,12 +188,7 @@ function coerceCachedRankingResponse(
 }
 
 async function readValidCachedRankingResponse(): Promise<GetResilienceRankingResponse | null> {
-  const cached = (await getCachedJson(RESILIENCE_RANKING_CACHE_KEY)) as
-    | (GetResilienceRankingResponse & {
-        _formula?: string;
-        _intervalMethodology?: string;
-      })
-    | null;
+  const cached = (await getCachedJson(RESILIENCE_RANKING_CACHE_KEY)) as CachedRankingResponse | null;
   // Stale-cache gate: the ranking payload carries the score formula,
   // interval methodology, and public freshness metadata that were active
   // when rankStable was computed. Rejecting entries with stale/missing
@@ -255,8 +253,14 @@ async function readValidCachedRankingResponse(): Promise<GetResilienceRankingRes
   const stillGreyed = greyedWithEligibility.filter((item) => item.headlineEligible !== true);
   // Strip the cache-only tag before returning to callers so the
   // wire shape matches the generated proto response type.
-  const { _formula: _dropFormula, _intervalMethodology: _dropIntervalMethodology, ...publicResponse } = cached!;
+  const {
+    _formula: _dropFormula,
+    _educationState: _dropEducationState,
+    _intervalMethodology: _dropIntervalMethodology,
+    ...publicResponse
+  } = cached!;
   void _dropFormula;
+  void _dropEducationState;
   void _dropIntervalMethodology;
   // Re-sort items[] after the symmetric promotion. A high-scoring
   // item promoted from greyedOut[] would otherwise be appended at
@@ -322,7 +326,16 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
       });
     }
 
-    const cachedScores = await getCachedResilienceScores(countryCodes);
+    // An authorized refresh is the score-cohort rotation path used by the
+    // Railway seeder. It must bypass BOTH cache layers: skipping only the
+    // ranking aggregate while admitting every pre-warmed per-country score
+    // republished the #6510 source-failure cohort after #6503 deployed, without
+    // executing the fixed scorer once. The old payloads remain available as
+    // stale fallback in Redis if this rebuild fails, while every country enters
+    // the in-memory recompute-and-atomic-publish path.
+    const cachedScores = forceRefresh
+      ? new Map<string, GetResilienceScoreResponse>()
+      : await getCachedResilienceScores(countryCodes);
     const missing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));
     // Track the country codes whose scores were JUST warmed by this invocation.
     // The persistence parity check below samples from THIS set specifically —
@@ -438,38 +451,34 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
         }
       }
 
-      // Upstash REST /pipeline is not transactional: each SET can succeed or
-      // fail independently. A partial write (ranking OK, meta missed) would
-      // leave health.js reading a stale meta over a fresh ranking — the seeder
-      // self-heal here ensures we at least log it, and the seeder also verifies
-      // BOTH keys post-refresh. If either SET didn't return OK we log a warning
-      // that ops can grep for, rather than silently succeeding.
+      // Publish the ranking and its health metadata in one Redis transaction. A
+      // normal Upstash REST pipeline is not transactional: concurrent
+      // publishers can otherwise interleave old-state data with new-state
+      // metadata. /multi-exec is supported by both Upstash and the bundled
+      // self-hosted REST proxy, so every visible pair belongs to one generation.
       // Tag the persisted ranking so the stale-formula gate above can
       // detect a cross-formula cache hit after a flag flip. The tag is
       // stripped on read before the response crosses back to callers.
       const persistedRanking = stampRankingCacheTag(response);
       const ttlSeconds = coverageRatio >= RANKING_FULL_COVERAGE ? RESILIENCE_RANKING_CACHE_TTL_SECONDS : PARTIAL_RANKING_CACHE_TTL_SECONDS;
-      const pipelineResult = await runRedisPipeline([
+      const persistedMeta = stampRankingCacheTag({
+        fetchedAt: fetchedAtMs,
+        count: response.items.length + response.greyedOut.length,
+        scored: cachedScores.size,
+        total: countryCodes.length,
+        coverage: response.coverage,
+        partial: response.partial,
+      });
+      const publishCommands = [
         ['SET', RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(persistedRanking), 'EX', ttlSeconds],
-        [
-          'SET',
-          RESILIENCE_RANKING_META_KEY,
-          JSON.stringify({
-            fetchedAt: fetchedAtMs,
-            count: response.items.length + response.greyedOut.length,
-            scored: cachedScores.size,
-            total: countryCodes.length,
-            coverage: response.coverage,
-            partial: response.partial,
-          }),
-          'EX',
-          Math.min(RESILIENCE_RANKING_META_TTL_SECONDS, ttlSeconds),
-        ],
-      ]);
-      const rankingOk = pipelineResult[0]?.result === 'OK';
-      const metaOk = pipelineResult[1]?.result === 'OK';
-      if (!rankingOk || !metaOk) {
-        console.warn(`[resilience] ranking publish partial: ranking=${rankingOk ? 'OK' : 'FAIL'} meta=${metaOk ? 'OK' : 'FAIL'}`);
+        ['SET', RESILIENCE_RANKING_META_KEY, JSON.stringify(persistedMeta), 'EX', Math.min(RESILIENCE_RANKING_META_TTL_SECONDS, ttlSeconds)],
+      ];
+      const publishResult = await runRedisTransaction(publishCommands);
+      if (
+        publishResult.length !== publishCommands.length
+        || publishResult.some((result) => result.error || result.result !== 'OK')
+      ) {
+        console.warn('[resilience] atomic ranking publish failed; ranking and metadata were not confirmed');
       }
     } else {
       console.warn(`[resilience] ranking not cached — coverage ${cachedScores.size}/${countryCodes.length} below ${RANKING_CACHE_MIN_COVERAGE * 100}% threshold`);

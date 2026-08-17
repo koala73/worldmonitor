@@ -25,52 +25,16 @@
   "expiresAt": "2026-08-27",
   "acknowledged": [
     {
-      "name": "consumerPricesCoverage",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6355,
-      "reason": "AE aggregate: records match the enabled retailer roster (4) and coverage age stays inside maxStaleMin. summarizeMarketCoverage grades any retailer dirty scrape run as market-wide partial, which fires nearly every day, so the monitor has been red on every scheduled run since #5970 exposed these keys on 2026-07-30. Producer-side tolerance or a warn-level mapping is tracked in the issue."
-    },
-    {
-      "name": "consumerPricesCoverageAU",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6356,
-      "reason": "AU: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "consumerPricesCoverageBR",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6357,
-      "reason": "BR: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "consumerPricesCoverageGB",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6358,
-      "reason": "GB: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "consumerPricesCoverageIN",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6359,
-      "reason": "IN: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "consumerPricesCoverageSA",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6360,
-      "reason": "SA: records match the enabled retailer roster (3), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "consumerPricesCoverageSG",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6361,
-      "reason": "SG: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "consumerPricesCoverageUS",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6362,
-      "reason": "US: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
+      "name": "mineralProduction",
+      "status": "EMPTY",
+      "issue": 6439,
+      "reason": "USGS/BGS mineral-production probe has never published. Root cause found in #6799: seed-bundle-static-ref admits a section only when its DECLARED worst case fits the budget left on the tick, and Arms-Suppliers burned 390s of the 570s budget before failing gracefully, so this section was deferred on every tick and never ran. The concurrency fix (#6807) brings Arms-Suppliers to ~277s, which leaves room for this 190s reservation. Re-anchored to the first 03:00 UTC tick after that deploy; EMPTY after it is a real problem.",
+      "expiresAt": "2026-08-18T03:00:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:supply-chain:mineral-production",
+        "activatedAt": "2026-08-17T04:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-18T03:00:00.000Z"
+      }
     }
   ]
 }

@@ -13,15 +13,48 @@ import {
   readStandaloneSourceFailureDimensions,
   readFailedDatasets,
 } from '../server/worldmonitor/resilience/v1/_source-failure.ts';
-import { RESILIENCE_DIMENSION_ORDER } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
-import { resolveSeedMetaKey } from '../server/worldmonitor/resilience/v1/_dimension-freshness.ts';
+import {
+  RESILIENCE_DIMENSION_ORDER,
+  scoreAllDimensions,
+} from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+import {
+  getEffectiveIndicatorSourceKeys,
+  resolveSeedMetaKey,
+} from '../server/worldmonitor/resilience/v1/_dimension-freshness.ts';
 import {
   INDICATOR_REGISTRY,
   getIndicatorSourceKeys,
 } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 import type { IndicatorSpec } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
+import sovereignStatus from '../scripts/shared/sovereign-status.json';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+describe('structural source absences', () => {
+  it('does not convert Taiwan WGI absence into an actionable source failure', async () => {
+    assert.equal(failedDimensionsFromDatasets(['wgi'], 'TW').size, 0);
+    assert.deepEqual(
+      [...failedDimensionsFromDatasets(['wgi', 'rsf'], 'TW')],
+      ['informationCognitive'],
+      'the structural exception applies only to WGI',
+    );
+    assert.deepEqual(
+      [...failedDimensionsFromDatasets(['wgi'], 'US')].sort(),
+      ['governanceInstitutional', 'macroFiscal', 'stateContinuity'],
+    );
+
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'seed-meta:resilience:static') {
+        return { status: 'ok', fetchedAt: 1, recordCount: 196, failedDatasets: ['wgi'] };
+      }
+      return null;
+    };
+    const dimensions = await scoreAllDimensions('TW', reader);
+
+    assert.equal(dimensions.stateContinuity.observedWeight, 0);
+    assert.equal(dimensions.stateContinuity.imputationClass, 'unmonitored');
+  });
+});
 
 // Adapter keys enumerated in scripts/seed-resilience-static.mjs
 // `fetchAllDatasetMaps()`. Every adapter that can end up in the
@@ -51,14 +84,6 @@ const INTENTIONALLY_UNTRACKED_STANDALONE_META_KEYS = new Set([
 ]);
 
 const TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH = new Set([
-  // scripts/seed-education-attainment.mjs ships ahead of its /api/health probe:
-  // check-health-probe-cutovers.mts requires a new strict probe to carry
-  // pre-seed evidence, which cannot exist before the producer has ever run. The
-  // source-failure threshold is still tracked here so a dead seeder surfaces as
-  // source-failure on the scorer side in the meantime. The health probe — and
-  // the removal of this entry — land in the follow-up once seed-bundle-macro
-  // has published once. Owned by #6452.
-  'seed-meta:resilience:education-attainment',
   // api/seed-health.js tracks this seed with intervalMin=360; /api/health
   // does not include a direct SEED_META entry because its data key is
   // parameterized by year.
@@ -71,9 +96,131 @@ const TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH = new Set([
 ]);
 
 describe('education health-probe rollout sequencing', () => {
-  it('defers both data and seed-meta registration until the first production publish', () => {
-    assert.equal(Object.hasOwn(healthTesting.STANDALONE_KEYS, 'educationAttainment'), false);
-    assert.equal(Object.hasOwn(healthTesting.SEED_META, 'educationAttainment'), false);
+  // Inverted in #6452 once seed-bundle-macro published the series for real. The
+  // assertion is kept rather than deleted: it used to lock "not yet registered",
+  // and now it locks "registered on BOTH halves". Registering only SEED_META
+  // leaves /api/health with no canonical data key to probe, which reads as a
+  // healthy meta entry over data nothing checks — the same misleading-green
+  // shape the recoveryFuelStocks slot was removed for.
+  it('registers both the data key and the seed-meta probe after the first production publish', () => {
+    assert.equal(
+      healthTesting.STANDALONE_KEYS.educationAttainment,
+      'resilience:education-attainment:v1',
+      'educationAttainment needs its canonical data key in STANDALONE_KEYS, not the SEED_META entry alone',
+    );
+    assert.equal(
+      healthTesting.SEED_META.educationAttainment?.key,
+      'seed-meta:resilience:education-attainment',
+    );
+  });
+
+  it('keeps the seed-meta budget in step with the source-failure threshold', () => {
+    // The scorer-side threshold and the health budget are two sources of truth
+    // for "this seeder is dead". They must not drift apart, or one surface
+    // alarms while the other stays green on the same outage.
+    assert.equal(healthTesting.SEED_META.educationAttainment?.maxStaleMin, 11520);
+    assert.equal(healthTesting.SEED_META.educationAttainment?.minRankableRecordCount, 180);
+  });
+
+  it('fails health closed below the active rankable coverage floor', () => {
+    const name = 'educationAttainment';
+    const dataKey = healthTesting.STANDALONE_KEYS[name];
+    const metaKey = healthTesting.SEED_META[name].key;
+    const classify = (rankableRecordCount: number) => healthTesting.classifyKey(
+      name,
+      dataKey,
+      { allowOnDemand: false },
+      {
+        keyStrens: new Map([[dataKey, 1024]]),
+        keyErrors: new Map(),
+        keyMetaValues: new Map([[metaKey, JSON.stringify({
+          fetchedAt: Date.now(),
+          recordCount: 187,
+          rankableRecordCount,
+        })]]),
+        keyMetaErrors: new Map(),
+        now: Date.now(),
+      },
+    );
+
+    const below = classify(179);
+    assert.equal(below.status, 'COVERAGE_PARTIAL');
+    assert.equal(below.rankableRecordCount, 179);
+    assert.equal(below.minRankableRecordCount, 180);
+    assert.equal(classify(180).status, 'OK');
+  });
+
+  it('applies the strict countrySet transition parser in /api/health', () => {
+    const name = 'educationAttainment';
+    const dataKey = healthTesting.STANDALONE_KEYS[name];
+    const metaKey = healthTesting.SEED_META[name].key;
+    const classify = (countrySet: string) => healthTesting.classifyKey(
+      name,
+      dataKey,
+      { allowOnDemand: false },
+      {
+        keyStrens: new Map([[dataKey, 1024]]),
+        keyErrors: new Map(),
+        keyMetaValues: new Map([[metaKey, JSON.stringify({
+          fetchedAt: Date.now(),
+          recordCount: 187,
+          countrySet,
+        })]]),
+        keyMetaErrors: new Map(),
+        now: Date.now(),
+      },
+    );
+    const codes = sovereignStatus.entries.map((entry) => entry.iso2);
+
+    assert.equal(classify(codes.slice(0, 180).join(',')).status, 'OK');
+    assert.equal(classify(codes.slice(0, 179).join(',')).status, 'COVERAGE_PARTIAL');
+    assert.equal(
+      classify([...codes.slice(0, 179), codes[0]].join(',')).status,
+      'COVERAGE_PARTIAL',
+      'a duplicate must not inflate the transition count',
+    );
+    assert.equal(classify(`${codes.slice(0, 179).join(',')},fr`).status, 'COVERAGE_PARTIAL');
+  });
+
+  it('trusts canonical education payload coverage over stale metadata', () => {
+    const name = 'educationAttainment';
+    const dataKey = healthTesting.STANDALONE_KEYS[name];
+    const metaKey = healthTesting.SEED_META[name].key;
+    const entry = healthTesting.classifyKey(
+      name,
+      dataKey,
+      { allowOnDemand: false },
+      {
+        keyStrens: new Map([[dataKey, 1024]]),
+        keyErrors: new Map(),
+        keyMetaValues: new Map([[metaKey, JSON.stringify({
+          fetchedAt: Date.now() - 60_000,
+          recordCount: 187,
+          rankableRecordCount: 180,
+        })]]),
+        keyMetaErrors: new Map(),
+        educationPayloadReadFailed: false,
+        educationPayloadRankableCount: 179,
+        now: Date.now(),
+      },
+    );
+
+    assert.equal(entry.status, 'COVERAGE_PARTIAL');
+    assert.equal(entry.rankableRecordCount, 179);
+  });
+
+  it('carries pre-seed cutover evidence bound to this probe', () => {
+    // check-health-probe-cutovers.mts validates SHAPE, not provenance — it
+    // cannot tell a traced Railway publish from a hand-primed key. This pins
+    // the fields that make the claim auditable after the fact.
+    const cutover = healthTesting.SEED_META.educationAttainment?.cutover;
+    assert.equal(cutover?.mode, 'preseed');
+    assert.equal(cutover?.fromKey, null, 'a brand-new probe transitions from no prior key');
+    assert.equal(cutover?.issue, 6452);
+    assert.equal(cutover?.evidence?.platform, 'railway');
+    assert.equal(cutover?.evidence?.service, 'seed-bundle-macro');
+    assert.equal(cutover?.evidence?.probeKey, 'seed-meta:resilience:education-attainment');
+    assert.equal(cutover?.evidence?.compactHealthStatus, 'OK');
   });
 });
 
@@ -143,7 +290,11 @@ function readHealthSeedMetaThresholds(): Map<string, number> {
 function resolvedStandaloneRegistryMetaKeys(): string[] {
   return [...new Set(
     INDICATOR_REGISTRY
-      .flatMap((indicator) => getIndicatorSourceKeys(indicator).map((sourceKey) => resolveSeedMetaKey(sourceKey)))
+      .flatMap((indicator) => [
+        ...getIndicatorSourceKeys(indicator),
+        ...getEffectiveIndicatorSourceKeys(indicator, 'CA', { inflation: true, unemployment: true }),
+      ])
+      .map((sourceKey) => resolveSeedMetaKey(sourceKey))
       .filter((key) => key !== RESILIENCE_STATIC_META_KEY),
   )].sort();
 }

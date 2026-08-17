@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  COMPANY_MONITORING_CLASSIFIER_RUNTIME_APPROVED,
   COMPANY_MONITORING_CONVEX_TIMEOUT_MS,
   COMPANY_MONITORING_FINALIZE_TRANSPORT_BUFFER_MS,
   COMPANY_MONITORING_WORKER_ACTIVATION_KEY,
   COMPANY_MONITORING_WORKER_HEALTH_KEY,
   COMPANY_MONITORING_WORKER_META_KEY,
+  createApprovedCompanyMonitoringAdmissionClassifier,
+  createCompanyMonitoringAdmissionClassifier,
   createCompanyMonitoringExecutor,
   createCompanyMonitoringWorker,
   createConvexFetch,
@@ -44,6 +47,53 @@ const COMPLETE_RESULT = {
   emptyValidated: false,
   checkpoint: 'checkpoint-1',
   costUsdMicros: 12,
+};
+
+describe('company-monitoring classifier rollout gate', () => {
+  it('keeps complete provisioned classifier configuration inert while Stage 0 is stopped', () => {
+    assert.equal(COMPANY_MONITORING_CLASSIFIER_RUNTIME_APPROVED, false);
+    assert.equal(createApprovedCompanyMonitoringAdmissionClassifier({
+      apiKey: 'provisioned-key',
+      model: 'provider/classifier-v1',
+      providerRoute: 'pinned-route',
+      expectedResolvedProvider: 'Pinned Provider',
+    }), undefined);
+  });
+});
+
+const ADMISSION_CLAIM = {
+  status: 'claimed',
+  leaseToken: 'admission-lease-1',
+  leaseExpiresAt: 1_700_000_300_000,
+  expectedEvidenceRevision: 3,
+  candidate: {
+    ownerAccountId: 'account-private',
+    companyId: 'company-private',
+    candidateId: 'candidate-1',
+    occurrenceDedupeKey: 'occurrence-1',
+    firstDiscoveredAt: 1_700_000_000_000,
+    attemptCount: 1,
+    expiresAt: 1_700_259_200_000,
+    referenceEvidenceFingerprints: ['evidence-1'],
+    referencesTruncated: false,
+    selectionPolicyVersion: 'selection-v1',
+  },
+  evidence: [{
+    ownerAccountId: 'account-private',
+    companyId: 'company-private',
+    occurrenceDedupeKey: 'occurrence-1',
+    evidenceFingerprint: 'evidence-1',
+    provider: 'exa',
+    providerLocator: 'https://example.com/story',
+    providerOriginFingerprint: 'origin-1',
+    sourceAuthority: 'independent_source',
+    independence: 'independent',
+    queryVersion: 'exa-company-discovery-v1',
+    title: 'Company signs material contract',
+    text: 'The company signed a material customer contract.',
+    publishedAt: 1_700_000_000_000,
+    observedAt: 1_700_000_060_000,
+  }],
 };
 
 function deferred() {
@@ -111,6 +161,250 @@ describe('company monitoring Railway worker', () => {
 
     assert.equal(captured.headers.get('User-Agent'), 'worldmonitor-company-monitoring-worker/1.0');
     assert.ok(captured.signal instanceof AbortSignal);
+  });
+
+  it('claims one exact admission snapshot and finalizes its untrusted model output', async () => {
+    const calls = [];
+    const rawModelOutput = '{"untrusted":"classification"}';
+    const worker = createCompanyMonitoringWorker({
+      client: convexClient([
+        ADMISSION_CLAIM,
+        { status: 'recorded', decision: 'hold' },
+      ], calls),
+      secret: 'worker-secret',
+      workerId: 'worker-a',
+      executeAdmission: async (input) => {
+        assert.equal(input.candidate, ADMISSION_CLAIM.candidate);
+        assert.equal(input.evidence, ADMISSION_CLAIM.evidence);
+        return {
+          requestedModelVersion: 'provider/classifier-v1',
+          modelVersion: 'provider/classifier-v1',
+          modelOutput: rawModelOutput,
+        };
+      },
+      admissionModelVersion: 'provider/classifier-v1',
+      classificationRunId: () => 'classification-run-1',
+      publishHealth: async () => true,
+    });
+
+    assert.equal(await worker.admissionTick(), 'recorded');
+    assert.deepEqual(calls[0], {
+      secret: 'worker-secret',
+      workerId: 'worker-a',
+      classificationRunId: 'classification-run-1',
+      requestedModelVersion: 'provider/classifier-v1',
+    });
+    assert.deepEqual(calls[1], {
+      secret: 'worker-secret',
+      workerId: 'worker-a',
+      leaseToken: 'admission-lease-1',
+      ownerAccountId: 'account-private',
+      companyId: 'company-private',
+      occurrenceDedupeKey: 'occurrence-1',
+      expectedEvidenceRevision: 3,
+      classificationRunId: 'classification-run-1',
+      modelVersion: 'provider/classifier-v1',
+      requestedModelVersion: 'provider/classifier-v1',
+      modelOutput: rawModelOutput,
+    });
+  });
+
+  it('finalizes classifier transport failure as a durable hold and publishes admission health', async () => {
+    const calls = [];
+    const health = [];
+    const worker = createCompanyMonitoringWorker({
+      client: convexClient([
+        { status: 'idle' },
+        ADMISSION_CLAIM,
+        { status: 'recorded', decision: 'hold' },
+      ], calls),
+      secret: 'worker-secret',
+      workerId: 'worker-a',
+      executeAdmission: async () => { throw new Error('provider unavailable'); },
+      admissionModelVersion: 'provider/classifier-v1',
+      classificationRunId: () => 'classification-run-transport-1',
+      publishHealth: async (payload) => { health.push(payload); },
+    });
+
+    assert.equal(await worker.tick(), 'idle');
+    assert.equal(health.at(-1).status, 'ok');
+    assert.equal(await worker.admissionTick(), 'provider_error');
+    assert.equal(calls.length, 3, 'provider failure must finalize its leased candidate');
+    assert.deepEqual(calls[2], {
+      secret: 'worker-secret',
+      workerId: 'worker-a',
+      leaseToken: 'admission-lease-1',
+      ownerAccountId: 'account-private',
+      companyId: 'company-private',
+      occurrenceDedupeKey: 'occurrence-1',
+      expectedEvidenceRevision: 3,
+      classificationRunId: 'classification-run-transport-1',
+      requestedModelVersion: 'provider/classifier-v1',
+    });
+    assert.equal(health.at(-1).status, 'error');
+    assert.equal(health.at(-1).outcome, 'admission_transport_failure');
+    assert.equal(health.at(-1).counters.admissionClaims, 1);
+    assert.equal(health.at(-1).counters.admissionRecorded, 1);
+    assert.equal(health.at(-1).counters.admissionTransportFailures, 1);
+  });
+
+  it('publishes admission claim and finalize failures through bounded counters', async () => {
+    const claimHealth = [];
+    const claimWorker = createCompanyMonitoringWorker({
+      client: convexClient([new Error('claim unavailable')]),
+      secret: 'worker-secret',
+      workerId: 'worker-a',
+      executeAdmission: async () => ({
+        requestedModelVersion: 'provider/classifier-v1',
+        modelVersion: 'provider/classifier-v1',
+        modelOutput: '{}',
+      }),
+      admissionModelVersion: 'provider/classifier-v1',
+      publishHealth: async (payload) => { claimHealth.push(payload); },
+    });
+    assert.equal(await claimWorker.admissionTick(), 'claim_error');
+    assert.equal(claimHealth.at(-1).outcome, 'admission_claim_error');
+    assert.equal(claimHealth.at(-1).counters.admissionClaimErrors, 1);
+
+    const finalizeHealth = [];
+    const finalizeWorker = createCompanyMonitoringWorker({
+      client: convexClient([ADMISSION_CLAIM, new Error('finalize unavailable')]),
+      secret: 'worker-secret',
+      workerId: 'worker-a',
+      executeAdmission: async () => ({
+        requestedModelVersion: 'provider/classifier-v1',
+        modelVersion: 'provider/classifier-v1',
+        modelOutput: '{}',
+      }),
+      admissionModelVersion: 'provider/classifier-v1',
+      classificationRunId: () => 'classification-run-finalize-error',
+      publishHealth: async (payload) => { finalizeHealth.push(payload); },
+    });
+    assert.equal(await finalizeWorker.admissionTick(), 'finalize_error');
+    assert.equal(finalizeHealth.at(-1).outcome, 'admission_finalize_error');
+    assert.equal(finalizeHealth.at(-1).counters.admissionClaims, 1);
+    assert.equal(finalizeHealth.at(-1).counters.admissionFinalizeErrors, 1);
+  });
+
+  it('does not claim admission work when classification is not configured', async () => {
+    const calls = [];
+    const worker = createCompanyMonitoringWorker({
+      client: convexClient([], calls),
+      secret: 'worker-secret',
+      workerId: 'worker-a',
+      publishHealth: async () => true,
+    });
+
+    assert.equal(await worker.admissionTick(), 'disabled');
+    assert.equal(calls.length, 0);
+  });
+
+  it('uses the configured classifier model and returns raw transport content', async () => {
+    let capturedBody;
+    const executeAdmission = createCompanyMonitoringAdmissionClassifier({
+      apiKey: 'openrouter-test-key',
+      model: 'provider/classifier-v1',
+      providerRoute: 'pinned-route',
+      expectedResolvedProvider: 'Pinned Provider',
+      fetchImpl: async (_url, init) => {
+        capturedBody = JSON.parse(init.body);
+        return new Response(JSON.stringify({
+          id: 'gen-company-monitoring-worker-1',
+          model: 'provider/classifier-v1',
+          provider: 'Pinned Provider',
+          usage: { cost: 0.001 },
+          openrouter_metadata: {
+            requested: 'provider/classifier-v1',
+            strategy: 'direct',
+            attempt: 1,
+            endpoints: {
+              total: 1,
+              available: [{
+                provider: 'Pinned Provider',
+                model: 'provider/classifier-v1',
+                selected: true,
+              }],
+            },
+            attempts: [{
+              provider: 'Pinned Provider',
+              model: 'provider/classifier-v1',
+              status: 200,
+            }],
+            pipeline: [],
+          },
+          choices: [{
+            finish_reason: 'stop',
+            message: { role: 'assistant', content: 'not-json' },
+          }],
+        }), { status: 200 });
+      },
+    });
+
+    assert.deepEqual(await executeAdmission({
+      candidate: ADMISSION_CLAIM.candidate,
+      evidence: ADMISSION_CLAIM.evidence,
+    }), {
+      requestedModelVersion: 'provider/classifier-v1@pinned-route#Pinned Provider',
+      modelVersion: 'provider/classifier-v1@pinned-route#Pinned Provider',
+      modelOutput: 'not-json',
+    });
+    assert.equal(capturedBody.model, 'provider/classifier-v1');
+    assert.deepEqual(capturedBody.provider.only, ['pinned-route']);
+    assert.equal('tools' in capturedBody, false);
+  });
+
+  it('keeps an admission finalize error visible across the next healthy scan heartbeat', async () => {
+    const health = [];
+    let classifierCalls = 0;
+    const worker = createCompanyMonitoringWorker({
+      client: convexClient([
+        ADMISSION_CLAIM,
+        new Error('finalize response unavailable'),
+        { status: 'idle' },
+        ADMISSION_CLAIM,
+        { status: 'recorded', decision: 'publish' },
+      ]),
+      secret: 'worker-secret',
+      workerId: 'worker-a',
+      executeAdmission: async () => {
+        classifierCalls += 1;
+        return {
+          requestedModelVersion: 'provider/classifier-v1',
+          modelVersion: 'provider/classifier-v1',
+          modelOutput: '{}',
+        };
+      },
+      admissionModelVersion: 'provider/classifier-v1',
+      classificationRunId: () => 'classification-run-sticky-error',
+      publishHealth: async (payload) => { health.push(payload); },
+    });
+
+    assert.equal(await worker.admissionTick(), 'finalize_error');
+    assert.equal(classifierCalls, 1);
+    assert.equal(health.at(-1).outcome, 'admission_finalize_error');
+    assert.deepEqual(health.at(-1).subsystems.admission, {
+      status: 'error',
+      outcome: 'admission_finalize_error',
+    });
+
+    assert.equal(await worker.tick(), 'idle');
+    assert.equal(classifierCalls, 1, 'a scan heartbeat must not invoke the classifier');
+    assert.equal(health.at(-1).status, 'error');
+    assert.equal(health.at(-1).outcome, 'admission_finalize_error');
+    assert.deepEqual(health.at(-1).subsystems.scan, { status: 'ok', outcome: 'idle' });
+    assert.deepEqual(health.at(-1).subsystems.admission, {
+      status: 'error',
+      outcome: 'admission_finalize_error',
+    });
+
+    assert.equal(await worker.admissionTick(), 'recorded');
+    assert.equal(classifierCalls, 2);
+    assert.equal(health.at(-1).status, 'ok');
+    assert.equal(health.at(-1).outcome, 'admission_recorded');
+    assert.deepEqual(health.at(-1).subsystems.admission, {
+      status: 'ok',
+      outcome: 'admission_recorded',
+    });
   });
 
   it('claims without accepting a tenant target and continues when Redis health is down', async () => {
@@ -312,8 +606,11 @@ describe('company monitoring worker health projection', () => {
     });
 
     const ok = await publisher({
-      status: 'ok',
-      outcome: 'idle',
+      activeSubsystem: 'scan',
+      subsystems: {
+        scan: { status: 'ok', outcome: 'idle' },
+        admission: { status: 'ok', outcome: 'disabled' },
+      },
       counters: { loops: 1, claims: 0, completed: 0, nonReassuring: 0, fenced: 0, replayed: 0, executorErrors: 0, claimErrors: 0, finalizeErrors: 0 },
     });
 
@@ -328,6 +625,11 @@ describe('company monitoring worker health projection', () => {
     const meta = JSON.parse(commands[1][2]);
     assert.equal(canonical.status, meta.status);
     assert.equal(canonical.outcome, meta.outcome);
+    assert.deepEqual(canonical.subsystems, meta.subsystems);
+    assert.deepEqual(canonical.subsystems, {
+      scan: { status: 'ok', outcome: 'idle' },
+      admission: { status: 'ok', outcome: 'disabled' },
+    });
     assert.deepEqual(canonical.counters, meta.counters);
     assert.equal(JSON.stringify(canonical).includes('worker-secret'), false);
     assert.equal(JSON.stringify(canonical).includes('account-private'), false);
@@ -349,8 +651,11 @@ describe('company monitoring worker health projection', () => {
 
     for (const outcome of ['claim_error', 'non_reassuring', 'fenced']) {
       assert.equal(await publisher({
-        status: outcome === 'claim_error' ? 'error' : 'ok',
-        outcome,
+        activeSubsystem: 'scan',
+        subsystems: {
+          scan: { status: outcome === 'claim_error' ? 'error' : 'ok', outcome },
+          admission: { status: 'ok', outcome: 'disabled' },
+        },
         counters: { loops: 1, claims: 0, completed: 0, nonReassuring: 0, fenced: 0, replayed: 0, executorErrors: 0, claimErrors: 1, finalizeErrors: 0 },
       }), true);
     }

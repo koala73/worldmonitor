@@ -515,6 +515,22 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_mineral_production`
+
+各国矿产开采与冶炼份额及 HHI，来自 USGS Mineral Commodity Summaries 年度种子（BGS 补 USGS 缺表的品种，尤其是铀）。用于“谁精炼 X / 某国生产什么”。矿床位置仍用 `get_commodity_geo`。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|-----:|------|
+| `commodity` | string | 否 | 品种 id 或名称（`cobalt`、`lithium`、`ree` 等） |
+| `iso2` | string | 否 | ISO 3166-1 alpha-2 生产国过滤 |
+| `stage` | string: mine / refinery | 否 | 限制为开采或冶炼阶段 |
+
+- **API 端点：** `GET /api/supply-chain/v1/get-mineral-production`
+- **类型：** 缓存读取 — Redis 种子 `supply-chain:mineral-production:v1`。
+- **新鲜度：** 年度 MCS 版本。USGS 的 W（withheld）保持标记，不会被当成 0。
+
 ### `get_commodity_geo`
 
 全球矿业地点，含坐标、运营商、矿产类型和生产状态。覆盖全球 71 座主要矿山，涵盖黄金、白银、铜、锂、铀、煤和其他矿物。
@@ -747,7 +763,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/intelligence/v1/classify-event`
 - **类型：** 对 LLM 分类器的受约束规范路由代理。该操作此前以 `llm-passthrough` 理由被排除在 MCP 对等之外；按标题的 24 小时缓存吸收重复请求，且分类器输出上限为 50 个 token。
-- **配额：** 标准 —— OAuth（Pro）与仪表盘密钥上下文每次调用均消耗 MCP 每日预留（每 UTC 日 50 次）。环境 API 密钥（`wm_…`）调用方不受该每日预留约束，与其他所有 MCP 工具一样，仍受 60 次请求/分钟/密钥 的限流保护。
+- **配额：** 标准 —— OAuth 与控制面板签发的 `wm_…` 密钥上下文每次调用均消耗 MCP 每日预留（默认每 UTC 日 50 次）。只有部署中明确列入许可名单的旧版运营方密钥跳过每日预留；每个已认证上下文仍受每分钟 60 次的限流保护。
 
 <CodeGroup>
 
@@ -1400,7 +1416,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_airspace`
 
-某国上空的实时 ADS-B 航空器。返回民用航班（OpenSky）和识别出的军用飞机，含呼号、位置、高度和航向。回答诸如"现在阿联酋上空有多少架飞机？"或"台湾上空有军用飞机吗？"之类的问题。
+某国上空的实时 ADS-B 航空器。返回由 Wingbits 支持的民用航班，以及来自可再分发提供方的已识别军用飞机，含呼号、位置、高度和航向。回答诸如"现在阿联酋上空有多少架飞机？"或"台湾上空有军用飞机吗？"之类的问题。
 
 **参数：**
 
@@ -1624,7 +1640,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_natural_disasters`
 
-近期地震（USGS）、活跃野火（NASA FIRMS）和自然灾害事件。包含震级、位置和威胁严重程度。
+近期 M4.5+ 地震（USGS 与加拿大地震局 / NRCan）、活跃野火（NASA FIRMS）和自然灾害事件。包含震级、位置、来源和威胁严重程度。
 
 **参数（工具特定）：**
 

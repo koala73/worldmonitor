@@ -333,20 +333,20 @@ test('formatResilienceConfidence excludes retired dimensions by ID (not by cover
   assert.equal(formatResilienceConfidence(withRetired), 'Coverage 57% ✓');
 });
 
-test('formatResilienceConfidence excludes flag-dark education but counts an education outage', () => {
-  const withDarkEducation: ResilienceScoreResponse = {
+test('formatResilienceConfidence excludes only the education rollback shape', () => {
+  const withZeroCoverageEducation: ResilienceScoreResponse = {
     ...baseResponse,
     domains: [{ id: 'social-governance', score: 80, weight: 0.19, dimensions: [
       { id: 'governanceInstitutional', score: 80, coverage: 0.8, observedWeight: 0.8, imputedWeight: 0.2 },
       { id: 'education', score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0 },
     ] }],
   };
-  assert.equal(formatResilienceConfidence(withDarkEducation), 'Coverage 80% ✓');
+  assert.equal(formatResilienceConfidence(withZeroCoverageEducation), 'Coverage 80% ✓');
 
   const withEducationOutage: ResilienceScoreResponse = {
-    ...withDarkEducation,
-    domains: [{ ...withDarkEducation.domains[0]!, dimensions: [
-      withDarkEducation.domains[0]!.dimensions[0]!,
+    ...withZeroCoverageEducation,
+    domains: [{ ...withZeroCoverageEducation.domains[0]!, dimensions: [
+      withZeroCoverageEducation.domains[0]!.dimensions[0]!,
       { id: 'education', score: 50, coverage: 0, observedWeight: 0, imputedWeight: 1, imputationClass: 'source-failure' },
     ] }],
   };

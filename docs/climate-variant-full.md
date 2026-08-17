@@ -14,7 +14,7 @@
 
 ---
 
-## Target State: 6 Data Layers
+## Target State: Complete Data-Layer Set
 
 ### Layer 1: Climate Anomalies (EXISTING — fix + expand)
 

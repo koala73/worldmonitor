@@ -19,6 +19,8 @@ export const REFRESH_INTERVALS = {
   pizzint: 10 * 60 * 1000,
   natural: 60 * 60 * 1000,
   weather: 10 * 60 * 1000,
+  canadaRoads: 10 * 60 * 1000,
+  canadaAlerts: 10 * 60 * 1000,
   fred: 6 * 60 * 60 * 1000,
   oil: 6 * 60 * 60 * 1000,
   spending: 6 * 60 * 60 * 1000,
@@ -81,6 +83,7 @@ export const REFRESH_INTERVALS = {
   goldIntelligence: 5 * 60 * 1000,
   aaiiSentiment: 60 * 60 * 1000, // weekly data; hourly refresh is sufficient
   marketBreadth: 60 * 60 * 1000, // seeded daily; hourly refresh is sufficient
+  newsMarketCorrelation: 15 * 60 * 1000, // matches the timestamped market-series seed cadence
 };
 
 // Monitor colors - shared

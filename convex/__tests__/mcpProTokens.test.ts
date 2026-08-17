@@ -562,6 +562,53 @@ describe("HTTP route /api/internal-validate-pro-mcp-token", () => {
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     vi.useRealTimers();
   });
+
+  // Touch scheduling gate — same OCC write-conflict class as
+  // apiKeys:touchKeyLastUsed (see apiKeys.test.ts for the full mechanism
+  // note). A validate inside the 5-min debounce must schedule nothing; the
+  // observable is a deliberately late drain that would let a queued touch
+  // write with a stale read.
+  test("validate inside the debounce window schedules no touch; after expiry it does", async () => {
+    const T0 = new Date("2026-08-13T00:00:00Z").getTime();
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+    const issued = await t.mutation(internal.mcpProTokens.issueProMcpToken, {
+      userId: "user-pro",
+    });
+
+    const validate = () =>
+      t.fetch("/api/internal-validate-pro-mcp-token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-convex-shared-secret": SHARED_SECRET,
+        },
+        body: JSON.stringify({ tokenId: issued.tokenId }),
+      });
+    const readLastUsedAt = () =>
+      t.run(async (ctx) => (await ctx.db.get(issued.tokenId))?.lastUsedAt);
+
+    // Phase 1 — first validate: lastUsedAt unset → touch scheduled.
+    expect((await validate()).status).toBe(200);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await readLastUsedAt()).toBe(T0);
+
+    // Phase 2 — inside the window: drain only after the boundary; a queued
+    // touch would write T0+6min, a gated route queued nothing.
+    vi.setSystemTime(T0 + 2 * 60_000);
+    expect((await validate()).status).toBe(200);
+    vi.setSystemTime(T0 + 6 * 60_000);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await readLastUsedAt()).toBe(T0);
+
+    // Phase 3 — after expiry the gate reopens.
+    expect((await validate()).status).toBe(200);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(await readLastUsedAt()).toBe(T0 + 6 * 60_000);
+    vi.useRealTimers();
+  });
 });
 
 describe("HTTP route /api/internal-revoke-pro-mcp-token", () => {
