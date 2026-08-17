@@ -133,6 +133,7 @@
     "test:e2e:visual:full": "cross-env VITE_VARIANT=full playwright test -g \"matches golden screenshots per layer and zoom\"",
     "test:e2e:visual:tech": "cross-env VITE_VARIANT=tech playwright test -g \"matches golden screenshots per layer and zoom\"",
     "test:e2e:visual": "npm run test:e2e:visual:full && npm run test:e2e:visual:tech",
+    "test:e2e:chrome": "cross-env VITE_VARIANT=full playwright test e2e/visual-chrome.spec.ts",
     "test:e2e:visual:update:full": "cross-env VITE_VARIANT=full playwright test -g \"matches golden screenshots per layer and zoom\" --update-snapshots",
     "test:e2e:visual:update:tech": "cross-env VITE_VARIANT=tech playwright test -g \"matches golden screenshots per layer and zoom\" --update-snapshots",
     "test:e2e:visual:update": "npm run test:e2e:visual:update:full && npm run test:e2e:visual:update:tech",
