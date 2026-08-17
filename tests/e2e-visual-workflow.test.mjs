@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -123,5 +123,21 @@ describe('E2E visual workflow contract', () => {
       /cyberThreats/,
       'apt-groups-layer is only created when cyberThreats is on',
     );
+  });
+
+  it('commits a full/tech/finance golden for every visual scenario the e2e suite will run', () => {
+    const harness = read('src/e2e/map-harness.ts');
+    const snapDir = resolve(root, 'e2e/map-harness.spec.ts-snapshots');
+    const skipped = new Set(['commodity', 'happy']);
+    const scenes = [...harness.matchAll(/id: '([^']+)',\s*variant: '([^']+)'/g)];
+    assert.ok(scenes.length > 0, 'expected visual scenarios in the harness');
+    const missing = [];
+    for (const [, id, variant] of scenes) {
+      if (skipped.has(variant)) continue;
+      const screenshotVariant = variant === 'both' || variant === 'energy' ? 'full' : variant;
+      const name = `layer-${screenshotVariant}-${id}.png`;
+      if (!existsSync(resolve(snapDir, name))) missing.push(name);
+    }
+    assert.deepEqual(missing, [], `missing committed goldens: ${missing.join(', ')}`);
   });
 });
