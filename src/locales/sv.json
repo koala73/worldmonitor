@@ -105,7 +105,8 @@
     "consumerPrices": "Konsumentpriser",
     "fearGreed": "Rädsla & Girighet",
     "marketBreadth": "Marknadsbredd",
-    "climateNews": "Klimatnyheter"
+    "climateNews": "Klimatnyheter",
+    "fx": "Valutakurser"
   },
   "commands": {
     "prefixes": {
@@ -185,7 +186,9 @@
         "displacement": "Växla förflyttningsflöden",
         "climate": "Växla klimatanomalier",
         "outages": "Växla internetavbrott",
-        "tradeRoutes": "Växla handelsrutter"
+        "tradeRoutes": "Växla handelsrutter",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Byt till mörkt läge",
@@ -332,7 +335,7 @@
         "URLHAUS_AUTH_KEY": "Används för URLhaus- och ThreatFox-API:erna.",
         "OTX_API_KEY": "Valfri berikningskälla för cyberhot-lagret.",
         "ABUSEIPDB_API_KEY": "Valfri berikningskälla för rykte för skadliga IP-adresser.",
-        "FINNHUB_API_KEY": "Aktiekurser och marknadsdata i realtid.",
+        "FINNHUB_API_KEY": "Fördröjda eller förladdade aktiekurser och marknadsdata. En nyckel är inte en direktsänd ticker.",
         "NASA_FIRMS_API_KEY": "Brandinformationssystem för resurshantering.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -569,7 +572,7 @@
         "ucdpEvents": "UCDP-evenemang",
         "displacementFlows": "Förskjutningsflöden",
         "climateAnomalies": "Klimatanomalier",
-        "weatherAlerts": "Vädervarningar",
+        "weatherAlerts": "Vädervarningar för USA och Kanada (NWS, ECCC)",
         "strategicWaterways": "Strategiska vattenvägar",
         "economicCenters": "ekonomiska centra",
         "criticalMinerals": "Kritiska mineraler",
@@ -589,7 +592,9 @@
         "speciesRecovery": "Artåterhämtning",
         "renewableInstallations": "Ren energi",
         "radiationSpike": "Strålningsökning",
-        "radiationElevated": "Förhöjd strålning"
+        "radiationElevated": "Förhöjd strålning",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "layersTitle": "Lager",
       "layerSearch": "Sök lager...",
@@ -657,7 +662,7 @@
           "infraDatacenters": "AI-beräkningskluster >=10 000 GPU:er",
           "infraOutages": "Internetavbrott och serviceavbrott",
           "naturalEventsTech": "Jordbävningar, stormar, bränder (kan påverka datacenter)",
-          "weatherAlerts": "Varningar för svåra väderförhållanden",
+          "weatherAlerts": "Varningar för svåra väderförhållanden i USA och Kanada (NWS, ECCC)",
           "economicCenters": "Börser & centralbanker",
           "countriesOverlay": "Överlagringar för landsnamn",
           "financeExchanges": "Stora globala börser efter marknadsnivå",
@@ -669,7 +674,7 @@
           "financeOutages": "Internetstörningar som kan påverka marknadsoperationerna",
           "financeCyberThreats": "Säkerhetshändelser kring finansiell infrastruktur",
           "macroWaterways": "Strategiska chokepoints för varufrakt",
-          "weatherAlertsMarket": "Svåra väderhändelser med marknadsrelevans",
+          "weatherAlertsMarket": "Marknadsrelevanta svåra väderhändelser i USA och Kanada (NWS, ECCC)",
           "naturalEventsMacro": "Jordbävningar, bränder, översvämningar och andra naturliga störningar",
           "timeRecent": "Filtrera tidsbaserad data till de senaste timmarna",
           "timeExtended": "Visa data från senaste veckan, månaden eller genom tiderna",
@@ -702,7 +707,9 @@
           "techEvents": "Stora teknikkonferenser och evenemang",
           "techFires": "Aktiva skogsbränder nära teknikinfrastruktur",
           "geoBoundaries": "Demilitariserade zoner, eldupphörslinjer och omtvistade gränser",
-          "ciiChoropleth": "Country Instability Index värmekarta — färgar länder efter CII-poäng (grön=stabil, röd=kritisk)"
+          "ciiChoropleth": "Country Instability Index värmekarta — färgar länder efter CII-poäng (grön=stabil, röd=kritisk)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Påverkar: Jordbävningar, väder, protester, avbrott"
@@ -1029,6 +1036,7 @@
       "noComtradeData": "Ingen strategisk flödesdata tillgänglig",
       "comtradeUnavailable": "UN Comtrade-data är tillfälligt otillgänglig",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomali",
       "colReporter": "Land",
       "colCommodity": "Råvara",
@@ -1279,7 +1287,8 @@
       "newsSignals": "{{news}} nyheter • {{signals}} signaler",
       "provenanceTitle": "Täckningshärkomst: hur många inmatade historier och unika källor denna kortfattade sammanfattning valdes från",
       "compiledFrom": "Kompilerat från {{stories}} berättelser från {{sources}} källor",
-      "briefFreshness": "Genererad {{minutes}}m sedan · senaste källa {{hours}}h gammal"
+      "briefFreshness": "Genererad {{minutes}}m sedan · senaste källa {{hours}}h gammal",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "techHubs": {
       "infoTooltip": "<strong>Teknisk hubbaktivitet</strong><br>Visar tekniska nav med mest nyhetsaktivitet.<br><br><em>Aktivitetsnivåer:</em><br>• <span style=\"color: {{highColor}}\">Hög</span> — Nyheter från 50+ PH_• 50+ stil: {{elevatedColor}}\">Höjd</span> — Poäng 20-49<br>• <span style=\"color: {{lowColor}}\">Låg</span> — Poäng under 20<br><br>Klicka på ett nav för att zooma till dess plats."
@@ -1567,7 +1576,12 @@
       "loadingHistory": "Läser in transiteringshistorik…",
       "historyUnavailable": "Transiteringshistorik är otillgänglig",
       "transitDataUnavailable": "Transiteringsdata är otillgänglig (upstream partiell)",
-      "infoTooltip": "<strong>Supply Chain Monitor</strong> Global logistik- och resursspårning:<ul><li><strong>Flaskhalsar</strong>: Status för sjövägsransiter, störningspoäng och fartygsantal</li><li><strong>Frakt</strong>: Baltic Dry Index och fraktpriser</li><li><strong>Mineraler</strong>: Kritisk mineralkoncentrationsrisk (HHI) och huvudproducenter</li></ul>Klicka på ett flaskhalsväxel för att expandera transiteringshistorikdiagrammet."
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Global logistik- och resursspårning:<ul><li><strong>Flaskhalsar</strong>: Status för sjövägsransiter, störningspoäng och fartygsantal</li><li><strong>Frakt</strong>: Baltic Dry Index och fraktpriser</li><li><strong>Mineraler</strong>: Kritisk mineralkoncentrationsrisk (HHI) och huvudproducenter</li></ul>Klicka på ett flaskhalsväxel för att expandera transiteringshistorikdiagrammet.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "positiveNewsFeed": {
       "noStories": "Inga berättelser i denna kategori ännu"
@@ -1611,7 +1625,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -1873,10 +1887,21 @@
       "infoTooltip": "<strong>Katastrofkaskad</strong> Detekterar konvergerande signaler för naturkatastrofer och infrastruktur:<ul><li>Korrelerar jordbävningar, skogsbränder, översvämningar och extremt väder</li><li>Spårar kaskadeffekter på infrastruktur och försörjningskedjor</li><li>Markerar regioner med sammanlagd katastrofrisk</li></ul>Klicka på ett kort för att zooma in på den påverkade regionen."
     },
     "markets": {
-      "infoTooltip": "<strong>Marknader</strong> Realtids aktieindex, aktier och kryptovalutapriser. Anpassa din övervakningslista med knappen Övervakningslista. Sparklines visar den senaste pristrenden.",
+      "infoTooltip": "<strong>Marknader</strong> Fördröjda eller förladdade aktieindex, aktier och kryptovalutapriser. Anpassa din övervakningslista med knappen Övervakningslista. Sparklines visar den senaste pristrenden.",
       "chart": {
         "title": "{{symbol}} prisdiagram",
         "close": "Stäng diagram"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2043,13 +2068,14 @@
     },
     "sanctionsPressure": {
       "title": "Sanktioner och beteckningar",
-      "infoTooltip": "OFAC-sanktionsbeteckningar från SDN- och konsoliderade listor. Visar vilka länder som står under största beteckningspressung, vilka program som driver det, och vad som är nytt sedan senaste uppdateringen.",
+      "infoTooltip": "OFAC:s SDN- och konsoliderade listor plus Global Affairs Canadas SEMA/JVCFOA-beteckningar. Visar vilka länder som står under största beteckningspressung, vilka program som driver det, och vad som är nytt sedan senaste uppdateringen.",
       "loading": "Läser in sanktionsdata...",
       "unavailable": "Sanktionsdata är inte tillgänglig.",
       "summary": {
         "new": "Nytt",
         "vessels": "Fartyg",
-        "aircraft": "Flygplan"
+        "aircraft": "Flygplan",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Sanktionerade länder",
@@ -2064,11 +2090,12 @@
       "footer": {
         "updated": "Uppdaterad {{time}}",
         "dataset": "dataset {{date}}",
-        "source": "Källa: OFAC"
+        "source": "Källa: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nya",
-        "new": "nya"
+        "new": "nya",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} beteckning",
       "designations_other": "{{count}} beteckningar",
@@ -2261,6 +2288,38 @@
       "upgradeCta": "Uppgradera för mer",
       "lockedAriaLabel": "Lägg till flik — låst. {{reason}}",
       "unlockedAnnouncement": "Gränsen för instrumentpanelflikar upphävd."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Valutakurser</strong> Valutastress och avistakurser:<ul><li>FX Stress rangordnar 45 valutor efter deras värsta topp-till-dal-nedgång under de senaste 24 månaderna, tillsammans med 12-månadersförändringen</li><li>Täckningen inkluderar ARS, TRY, EGP, NGN, PKR och UAH — valutor som BIS och ECB:s referensuppsättningar utesluter</li><li>Spot listar kurser mot US-dollarn och ECB:s euroreferencekurser separat, eftersom de två är noterade från olika baser</li><li>RUB — kurser från Rysslands centralbank, rubel per enhet</li></ul> Källor: Yahoo Finance, Europeiska centralbanken och Rysslands centralbank.",
+      "tabs": {
+        "stress": "Valutastress",
+        "spot": "Avista",
+        "rub": "RUB"
+      },
+      "currency": "Valuta",
+      "pair": "Valutapar",
+      "rate": "Kurs",
+      "yoy": "12m",
+      "drawdown": "24m Nedgång",
+      "peakToTrough": "Topp → Dal",
+      "change1d": "1d",
+      "perUsd": "Per 1 USD",
+      "usdPerUnit": "USD per enhet",
+      "usdBase": "Mot US-dollarn",
+      "eurBase": "ECB:s euroreferencekurser",
+      "stressedCount": "{{stressed}} av {{total}} valutor under {{threshold}}",
+      "sourceYahoo": "Källa: Yahoo Finance",
+      "sourceEcb": "Källa: ECB",
+      "degraded": "Otillgänglig just nu: {{sources}}. Försöker igen inom kort.",
+      "source": {
+        "stress": "FX-stress",
+        "usd": "USD-kurser",
+        "eur": "ECB-eurokurser",
+        "rub": "Kurser från Rysslands centralbank"
+      },
+      "rubBase": "Rysslands centralbank — rubel per 1 enhet",
+      "rubPerUnit": "Rubel per enhet",
+      "sourceCbr": "Källa: Rysslands centralbank"
     }
   },
   "popups": {
@@ -2473,6 +2532,7 @@
     "moreEvents": "fler händelser",
     "monitoring": "Övervakning",
     "viewUSGS": "Visa på USGS",
+    "viewNRCan": "Visa på Earthquakes Canada",
     "expired": "Utgången",
     "timeAgo": {
       "s": "{{count}}s sedan",
@@ -2593,7 +2653,7 @@
       "heading": "RUBRIK",
       "hexCode": "HEXKOD",
       "squawk": "SKRIANDE",
-      "attribution": "Källa: OpenSky Network"
+      "attribution": "Källa: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS MÖRK",
@@ -3069,6 +3129,19 @@
       "activeStrikes": "{{count}} aktiva strejker upptäckta"
     },
     "militaryActivity": "Militär aktivitet",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Ekonomiska indikatorer",
     "ownFlights": "Egna flygningar",
     "foreignFlights": "Utländska flygningar",
@@ -3172,6 +3245,23 @@
       "corridorConditions": "Korridorförhållanden",
       "activityNowcast": "Aktivitetsnowcast",
       "decisionSignalsUnavailable": "Ögonblicksbilden av Kinas beslutssignaler är för närvarande inte tillgänglig."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "preferences": {
@@ -3335,5 +3425,31 @@
     "deleteTab": "Ta bort flik",
     "deleteTabAria": "Ta bort flik {{name}}",
     "tabNameAria": "Fliknamn"
+  },
+  "theaterPresets": {
+    "label": "Täckningspaket",
+    "applied": "Paketet {{preset}} har tillämpats: {{count}} källor aktiverade",
+    "alreadyApplied": "Paketet {{preset}} har redan tillämpats",
+    "ukraineWar": {
+      "label": "Kriget i Ukraina",
+      "description": "Aktivera ukrainska huvudmedier, oberoende rysk press och källor för frontbedömning"
+    },
+    "indoPacific": {
+      "label": "Indo-Pacific / Taiwan",
+      "description": "Aktivera säkerhetskällor från Taiwan, Pakistan och Sydostasien"
+    },
+    "sahelWestAfrica": {
+      "label": "Sahel och Västafrika",
+      "description": "Aktivera lokala källor från Sahel, Nigeria och Västafrika"
+    },
+    "caucasusCentralAsia": {
+      "label": "Kaukasus och Centralasien",
+      "description": "Aktivera regionala källor från södra Kaukasus och Centralasien"
+    },
+    "middleEastFlashpoints": {
+      "label": "Spänningshärdar i Mellanöstern",
+      "description": "Aktivera källor om Iran, Israel, Gulfen och kurdiska regioner"
+    },
+    "unavailable": "Paketet {{preset}} är inte tillgängligt med dina nuvarande paneler"
   }
 }

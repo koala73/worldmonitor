@@ -86,7 +86,7 @@ export class ProgressChartsPanel extends Panel {
       gap: '6px',
       margin: '0 0 8px 0',
       padding: '6px 8px',
-      fontSize: '11px',
+      fontSize: 'calc(11px * var(--wm-panel-effective-scale, 1))',
       color: 'var(--text-dim)',
       background: 'var(--bg-subtle, rgba(255,255,255,0.04))',
       border: '1px solid var(--border-subtle, rgba(255,255,255,0.12))',
@@ -112,7 +112,7 @@ export class ProgressChartsPanel extends Panel {
       border: `1px solid ${getCSSColor('--border')}`,
       borderRadius: '6px',
       padding: '4px 8px',
-      fontSize: '11px',
+      fontSize: 'calc(11px * var(--wm-panel-effective-scale, 1))',
       color: getCSSColor('--text'),
       zIndex: '9999',
       display: 'none',
@@ -149,7 +149,7 @@ export class ProgressChartsPanel extends Panel {
     labelSpan.className = 'progress-chart-label';
     Object.assign(labelSpan.style, {
       fontWeight: '600',
-      fontSize: '12px',
+      fontSize: 'calc(12px * var(--wm-panel-effective-scale, 1))',
       color: indicator.color,
     });
     labelSpan.textContent = indicator.label;
@@ -157,7 +157,7 @@ export class ProgressChartsPanel extends Panel {
     const meta = document.createElement('span');
     meta.className = 'progress-chart-meta';
     Object.assign(meta.style, {
-      fontSize: '11px',
+      fontSize: 'calc(11px * var(--wm-panel-effective-scale, 1))',
       color: 'var(--text-dim)',
     });
 
@@ -262,7 +262,7 @@ export class ProgressChartsPanel extends Panel {
 
     xAxisG.selectAll('text')
       .attr('fill', 'var(--text-dim)')
-      .attr('font-size', '9px');
+      .style('font-size', 'calc(9px * var(--wm-panel-effective-scale, 1))');
     xAxisG.selectAll('line').attr('stroke', 'var(--border-subtle)');
     xAxisG.select('.domain').attr('stroke', 'var(--border-subtle)');
 
@@ -276,7 +276,7 @@ export class ProgressChartsPanel extends Panel {
 
     yAxisG.selectAll('text')
       .attr('fill', 'var(--text-dim)')
-      .attr('font-size', '9px');
+      .style('font-size', 'calc(9px * var(--wm-panel-effective-scale, 1))');
     yAxisG.selectAll('line').attr('stroke', 'var(--border-subtle)');
     yAxisG.select('.domain').attr('stroke', 'var(--border-subtle)');
 

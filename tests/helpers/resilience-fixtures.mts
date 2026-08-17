@@ -1,4 +1,19 @@
+import sovereignStatus from '../../scripts/shared/sovereign-status.json';
+import { FINSYS_NON_DRS_COUNTRY_CODES } from './resilience-finsys-fixtures.mts';
+
 export type FixtureMap = Record<string, unknown>;
+
+const EDUCATION_FIXTURE_COUNTRIES = Object.fromEntries(
+  sovereignStatus.entries.map((entry, index) => [
+    entry.iso2,
+    { value: 35 + (index % 45), year: 2024 },
+  ]),
+);
+Object.assign(EDUCATION_FIXTURE_COUNTRIES, {
+  NO: { value: 84.6, year: 2024 },
+  US: { value: 92.1, year: 2024 },
+  YE: { value: 12.4, year: 2022 },
+});
 
 export const RESILIENCE_FIXTURES: FixtureMap = {
   'resilience:static:NO': {
@@ -393,12 +408,34 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
     fetchedAt: 1714694400000,
     recordCount: 200,
   },
+  // #6460: `education` is live, and its scorer fail-closes on the seed-meta
+  // preflight before any per-country read — so both halves are required or
+  // every consumer of this fixture throws ResilienceConfigurationError.
+  //
+  // `fetchedAt` MUST be a live clock, not the fixed past timestamps the other
+  // seed-metas above use. `_standalone-source-thresholds.ts` gives this key an
+  // 11520-minute (8 day) budget, so a hardcoded 2024 instant reads as STALE and
+  // fails the preflight exactly as a dead seeder would.
+  'seed-meta:resilience:education-attainment': {
+    fetchedAt: Date.now(),
+    recordCount: sovereignStatus.entries.length,
+    rankableRecordCount: sovereignStatus.entries.length,
+  },
+  'resilience:education-attainment:v1': {
+    // The active scorer verifies the canonical payload itself, not only the
+    // seed metadata. Keep a full rankable envelope while preserving the three
+    // exact values used by scorer/ranking assertions above.
+    countries: EDUCATION_FIXTURE_COUNTRIES,
+    seededAt: '2026-08-11T08:03:25.357Z',
+  },
   'economic:wb-external-debt:v1': {
+    schemaVersion: 2,
     countries: {
       NO: { value: 2, year: 2024 },     // 2% GNI — Norway low external debt → score ~87
       US: { value: 0, year: 2024 },     // HIC, WB IDS doesn't publish — fixture treats as 0 for the test triple
       YE: { value: 14, year: 2023 },    // ~14% GNI — fragile state near worst goalpost → score ~7
     },
+    nonDrsCountryCodes: FINSYS_NON_DRS_COUNTRY_CODES,
     seededAt: '2026-04-25T00:00:00.000Z',
   },
   'economic:bis-lbs:v1': {

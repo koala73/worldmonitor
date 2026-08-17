@@ -4,6 +4,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { computeStats, validateCategoryExplainerCopy } from '../scripts/docs-stats.mjs';
+
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
 const blogDir = resolve(root, 'blog-site/src/content/blog');
@@ -71,15 +73,26 @@ describe('blog SEO and GEO corpus contract', () => {
     }
   });
 
-  it('keeps capability claims aligned with generated repository facts', () => {
-    const stats = JSON.parse(readFileSync(resolve(root, 'docs/generated/stats.json'), 'utf8'));
+  it('does not reintroduce volatile aggregate inventory claims', () => {
     const corpus = posts.map((post) => post.source).join('\n');
     assert.doesNotMatch(corpus, /\b435\+ RSS|\b45\+ data layers|\b92 Global Stock|\b111 mapped|\b39 live geopolitical|\b21-language support/i);
-    assert.match(corpus, new RegExp(`\\b${stats.layerDefinitions} map layers\\b`));
-    assert.match(corpus, new RegExp(`\\b${stats.locales} languages\\b`));
-    assert.match(corpus, new RegExp(`\\b${stats.stockExchangeCount} stock exchanges\\b`));
-    assert.match(corpus, new RegExp(`\\b${stats.centralBankInstitutionCount} central banks\\b`));
-    assert.match(corpus, new RegExp(`\\b${stats.mcpToolCount} (?:live )?(?:geopolitical intelligence )?tools\\b`));
+    assert.doesNotMatch(
+      corpus,
+      /\b(?:58 map layers|28 languages|29 stock exchanges|14 central banks|63 (?:live )?(?:geopolitical intelligence )?tools)\b/i,
+    );
+  });
+
+  // The explainer's own contract lives in scripts/docs-stats.mjs — its numeric
+  // counts as claims() entries, its answer-first shape as
+  // validateCategoryExplainerCopy — because the `unit` job that runs this file
+  // is gated on changes.code, whose filter drops every .md path. Asserting it
+  // here as well is what let a markdown-only edit bypass the guard entirely.
+  // This delegates instead of restating, so there is one contract, checked in
+  // the always-on docs-stats job and exercised again by the unit suite.
+  it('keeps the first-party category explainer answer-first and fact-consistent', () => {
+    const explainer = posts.find((post) => post.file === 'what-is-worldmonitor-real-time-global-intelligence.md');
+    assert.ok(explainer, 'missing first-party World Monitor category explainer');
+    assert.deepEqual(validateCategoryExplainerCopy(computeStats()), []);
   });
 
   it('keeps crawl, entity, and citation signals in the shared templates', () => {

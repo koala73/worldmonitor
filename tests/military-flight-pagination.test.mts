@@ -3,9 +3,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { transformSync } from 'esbuild';
+import type { QueryRegion } from '../src/config/military';
 
 const root = resolve(import.meta.dirname, '..');
 const serviceSource = readFileSync(resolve(root, 'src/services/military-flights.ts'), 'utf8');
+const configSource = readFileSync(resolve(root, 'src/config/military.ts'), 'utf8');
 let moduleCounter = 0;
 
 type PageRequest = {
@@ -28,7 +30,23 @@ function replaceRequired(source: string, search: string | RegExp, replacement: s
   return patched;
 }
 
-async function loadMilitaryService(handler: (req: PageRequest) => Promise<PageResponse> | PageResponse) {
+async function loadMilitaryQueryRegions(): Promise<QueryRegion[]> {
+  const transformed = transformSync(
+    configSource.replaceAll('import.meta.env.DEV', 'false'),
+    { loader: 'ts', format: 'esm', target: 'es2022' },
+  );
+  const dataUrl = `data:text/javascript;base64,${Buffer.from(transformed.code).toString('base64')}#config`;
+  const module = await import(dataUrl) as { MILITARY_QUERY_REGIONS: QueryRegion[] };
+  return module.MILITARY_QUERY_REGIONS;
+}
+
+async function loadMilitaryService(
+  handler: (req: PageRequest) => Promise<PageResponse> | PageResponse,
+  queryRegions: QueryRegion[] = [
+    { name: 'alpha', lamin: 0, lamax: 1, lomin: 0, lomax: 1 },
+    { name: 'bravo', lamin: 10, lamax: 11, lomin: 10, lomax: 11 },
+  ],
+) {
   const hookName = `__wmMilitaryPaginationTest${++moduleCounter}`;
   (globalThis as Record<string, unknown>)[hookName] = handler;
 
@@ -58,10 +76,7 @@ async function loadMilitaryService(handler: (req: PageRequest) => Promise<PageRe
     const isKnownMilitaryHex = () => undefined;
     const getNearbyHotspot = () => undefined;
     const MILITARY_HOTSPOTS: any[] = [];
-    const MILITARY_QUERY_REGIONS = [
-      { name: 'alpha', lamin: 0, lamax: 1, lomin: 0, lomax: 1 },
-      { name: 'bravo', lamin: 10, lamax: 11, lomin: 10, lomax: 11 },
-    ];
+    const MILITARY_QUERY_REGIONS = ${JSON.stringify(queryRegions)};
     type QueryRegion = any;`,
     'military config',
   );
@@ -170,6 +185,42 @@ function regionName(req: PageRequest): 'alpha' | 'bravo' {
 }
 
 describe('military flight application-service pagination', { concurrency: 1 }, () => {
+  it('requests one global region and renders North American flights after bounded pagination', async () => {
+    const calls: PageRequest[] = [];
+    const queryRegions = await loadMilitaryQueryRegions();
+    const { module, cleanup } = await loadMilitaryService((req) => {
+      calls.push(req);
+      const isGlobal = req.swLat === -90 && req.neLat === 90 && req.swLon === -180 && req.neLon === 180;
+      if (!isGlobal) return { flights: [] };
+      if (req.cursor === '') {
+        return {
+          flights: [protoFlight('NA0001', 40, -100)],
+          pagination: { nextCursor: '100', totalCount: 2 },
+        };
+      }
+      if (req.cursor === '100') {
+        return {
+          flights: [protoFlight('AF0001', 5, 20)],
+          pagination: { nextCursor: '', totalCount: 2 },
+        };
+      }
+      throw new Error(`unexpected cursor ${JSON.stringify(req.cursor)}`);
+    }, queryRegions);
+
+    try {
+      const result = await module.fetchMilitaryFlights();
+
+      assert.equal(calls.filter((req) => req.cursor === '').length, 1, 'the client starts exactly one region request');
+      assert.deepEqual(calls.map((req) => req.cursor), ['', '100'], 'the one global request follows its cursor to termination');
+      assert.ok(
+        result.flights.some((flight) => flight.hexCode === 'NA0001' && flight.lat === 40 && flight.lon === -100),
+        'a North American military flight from the global snapshot reaches the dashboard service result',
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
   it('follows every region page, combines rows, and preserves cross-region hex deduplication', async () => {
     const cursorsByRegion = new Map<string, string[]>();
     const { module, cleanup } = await loadMilitaryService((req) => {

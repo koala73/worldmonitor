@@ -72,6 +72,10 @@ export function buildInstrument(target, currentRow, priorRow, kind) {
   let mmLong, mmShort, psLong, psShort, priorMmNet, priorPsNet;
   let leveragedFundsLong = 0;
   let leveragedFundsShort = 0;
+  const smallTraderLong = toNum(currentRow.nonrept_positions_long_all);
+  const smallTraderShort = toNum(currentRow.nonrept_positions_short_all);
+  const smallTraderAvailable = currentRow.nonrept_positions_long_all != null
+    && currentRow.nonrept_positions_short_all != null;
 
   if (kind === 'financial') {
     mmLong = toNum(currentRow.asset_mgr_positions_long);
@@ -126,6 +130,9 @@ export function buildInstrument(target, currentRow, priorRow, kind) {
     assetManagerShort: mmShort,
     leveragedFundsLong,
     leveragedFundsShort,
+    smallTraderLong,
+    smallTraderShort,
+    smallTraderAvailable,
     dealerLong: psLong,
     dealerShort: psShort,
     netPct: managedMoney.netPct,

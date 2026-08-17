@@ -3,10 +3,12 @@ import { describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { load as loadYaml } from 'js-yaml';
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 import { dedupeErrorResponses, dedupeSharedParameters } from '../scripts/openapi-dedup-responses.mjs';
 import { dedupeSharedChinaProvenanceSchemas } from '../scripts/openapi-dedup-schemas.mjs';
+import { buildBundle } from '../scripts/build-openapi-json.mjs';
+import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
 
 // Guards the served public/openapi.json against the ~1 MB scanner body cap.
 // On 2026-07-05 the per-op rate-limit/idempotency/example doc injections grew
@@ -22,14 +24,18 @@ import { dedupeSharedChinaProvenanceSchemas } from '../scripts/openapi-dedup-sch
 // the next injector cannot silently re-cross the cap.
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const bundlePath = resolve(root, 'docs/api/worldmonitor.openapi.yaml');
 const buildScriptPath = resolve(root, 'scripts/build-openapi-json.mjs');
 
 // Leave headroom under the ~1 MB cap: the spec sat at ~752 KB when the check
-// last passed and ~814 KB deduped today. If this fails, either extend the
+// last passed and ~853 KB deduped today. If this fails, either extend the
 // dedup (more shared structure) or trim the newest per-op injection — do NOT
 // raise the budget past 1 MB.
-const SIZE_BUDGET_BYTES = 950_000;
+//
+// The value lives in scripts/openapi-capacity-report.mjs so the gate and the
+// CI capacity report cannot disagree about where the wall is, and is pinned
+// literally below so raising it stays a deliberate two-file edit rather than a
+// one-line workaround (#6558).
+const SIZE_BUDGET_BYTES = SCANNER_BUDGET_BYTES;
 
 const HTTP_METHODS = new Set(['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']);
 
@@ -139,15 +145,15 @@ describe('dedupeErrorResponses (fixture)', () => {
     const stats = dedupeErrorResponses(spec);
     assert.equal(stats.hoisted, 1, 'only the repeated 429 group is hoisted');
     assert.equal(stats.replacedRefs, 2);
-    assert.deepEqual(spec.components.responses.TooManyRequests, {
+    assert.deepEqual(spec.components.responses.E429, {
       description: 'slow down',
       headers: { 'Retry-After': {} },
     });
     assert.deepEqual(spec.paths['/a'].get.responses[429], {
-      $ref: '#/components/responses/TooManyRequests',
+      $ref: '#/components/responses/E429',
     });
     assert.deepEqual(spec.paths['/b'].post.responses[429], {
-      $ref: '#/components/responses/TooManyRequests',
+      $ref: '#/components/responses/E429',
     });
     // Unique 400s and both 200s stay put.
     assert.equal(spec.paths['/a'].get.responses[400].description, 'bad a');
@@ -167,13 +173,13 @@ describe('dedupeErrorResponses (fixture)', () => {
 
   it('avoids colliding with pre-existing component names', () => {
     const spec = fixture();
-    spec.components = { responses: { TooManyRequests: { description: 'taken' } } };
+    spec.components = { responses: { E429: { description: 'taken' } } };
     dedupeErrorResponses(spec);
-    assert.equal(spec.components.responses.TooManyRequests.description, 'taken');
-    assert.equal(spec.components.responses.TooManyRequests2.description, 'slow down');
+    assert.equal(spec.components.responses.E429.description, 'taken');
+    assert.equal(spec.components.responses.E429_2.description, 'slow down');
     assert.equal(
       spec.paths['/a'].get.responses[429].$ref,
-      '#/components/responses/TooManyRequests2',
+      '#/components/responses/E429_2',
     );
   });
 });
@@ -257,7 +263,7 @@ describe('dedupeSharedChinaProvenanceSchemas (fixture)', () => {
 });
 
 describe('public OpenAPI dedupe (real bundle)', () => {
-  const original = loadYaml(readFileSync(bundlePath, 'utf8'));
+  const original = loadUnifiedOpenApiSpec();
   const deduped = structuredClone(original);
   const stats = dedupeErrorResponses(deduped);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(deduped);
@@ -283,8 +289,8 @@ describe('public OpenAPI dedupe (real bundle)', () => {
 
   it('actually engages on the injected error docs (429 et al.)', () => {
     assert.ok(
-      deduped.components.responses.TooManyRequests,
-      'the per-op 429 rate-limit block must dedupe into components.responses.TooManyRequests',
+      deduped.components.responses.E429,
+      'the per-op 429 rate-limit block must dedupe into components.responses.E429',
     );
     assert.ok(stats.replacedRefs >= 500, `expected wide dedup, got ${stats.replacedRefs} refs`);
   });
@@ -302,14 +308,29 @@ describe('public OpenAPI dedupe (real bundle)', () => {
     assert.ok(paramStats.replacedRefs >= 200, `expected fleet-wide dedup, got ${paramStats.replacedRefs} refs`);
   });
 
-  it(`keeps the minified JSON under the ${SIZE_BUDGET_BYTES}-byte scanner budget`, () => {
-    const bytes = JSON.stringify(deduped).length;
+  it('the budget is 950,000 bytes and raising it is not the remedy', () => {
+    // A literal pin, not a restatement: the guard below reads the shared
+    // constant, so without this a crossing could be "fixed" by editing one
+    // number in one file. The cap belongs to the scanner (#4852) — moving our
+    // number does not move it.
+    assert.equal(SIZE_BUDGET_BYTES, 950_000);
+  });
+
+  it(`keeps the served JSON under the ${SIZE_BUDGET_BYTES}-byte scanner budget`, () => {
+    // Measured through buildBundle — the same call that writes the artifact —
+    // so the gate can never guard a document the build does not emit. It
+    // applies one transform this file's `deduped` fixture does not (the
+    // unreachable-schema drop), and it counts UTF-8 BYTES: `String#length` is
+    // UTF-16 code units and undercut the served size by 264 bytes on the
+    // 2026-08-13 bundle, against a cap expressed in bytes.
+    const { bytes } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
     assert.ok(
       bytes <= SIZE_BUDGET_BYTES,
-      `public/openapi.json would be ${bytes} bytes (budget ${SIZE_BUDGET_BYTES}). ` +
+      `public/openapi.json is ${bytes} bytes (budget ${SIZE_BUDGET_BYTES}). ` +
         'Scanners cap spec bodies around 1 MB (orank function-calling-compat degrades to ' +
         '"couldn\'t validate" above it). Extend scripts/openapi-dedup-responses.mjs or slim ' +
-        'the newest per-op injection instead of raising this budget.',
+        'the newest per-op injection instead of raising this budget. ' +
+        '`node scripts/openapi-capacity-report.mjs` ranks what is worth collapsing next.',
     );
   });
 });
@@ -322,5 +343,21 @@ describe('build-openapi-json wiring', () => {
     assert.match(src, /dedupeErrorResponses\(spec\)/);
     assert.match(src, /dedupeSharedChinaProvenanceSchemas\(spec\)/);
     assert.match(src, /dedupeSharedParameters\(spec\)/);
+  });
+
+  it('every transform actually engaged on the bundle it emits', () => {
+    // The source match above proves the calls are written down; this proves
+    // they did something. A transform that silently stops finding work is the
+    // regression the byte budget notices last and from the wrong direction.
+    const { stats, schemaStats, paramStats, unreachableStats } = buildBundle({
+      spec: loadUnifiedOpenApiSpec(),
+    });
+    assert.ok(stats.replacedRefs >= 500, `error-response dedup: ${stats.replacedRefs} refs`);
+    assert.ok(paramStats.replacedRefs >= 200, `parameter dedup: ${paramStats.replacedRefs} refs`);
+    // `replacedRefs === compared` alone passes at 0 === 0, which is exactly the
+    // silent-disengagement case this test exists for.
+    assert.ok(schemaStats.compared > 0, 'China provenance dedup compared nothing');
+    assert.equal(schemaStats.replacedRefs, schemaStats.compared);
+    assert.ok(unreachableStats.dropped >= 150, `unreachable drop: ${unreachableStats.dropped} schemas`);
   });
 });

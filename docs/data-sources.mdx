@@ -1,119 +1,58 @@
 ---
 title: "Data Sources"
-description: "Every data source, feed tier, and collection method used by World Monitor — provider list, refresh cadence, freshness targets, and fallback ordering."
+description: "Every data source behind World Monitor, segmented by intelligence domain — what each domain covers, the providers behind it, and deep-dive links for methodology, cadence, and fallback ordering."
 ---
 
+World Monitor fuses attributed structured APIs, news and OSINT feeds, and operational-status endpoints into live operating pictures across the product variants. The source-attribution manifest, application feed registry, and Telegram catalog are separate inventories and are not added together. This page is the catalog: start with the domain map below, open the domain you care about, then follow the deep-dive links for methodology and freshness guarantees.
+
+Data flows one way: Railway seeders and edge functions fetch upstream sources on fixed cadences, normalize and cache the results in Redis, and the dashboard hydrates from those caches — so a burst of traffic never multiplies load on any provider. The [architecture guide](/architecture) covers the pipeline in depth, and the machine-audited inventory of every observed upstream host lives in the [full source inventory](/source-attribution).
+
+## Coverage at a Glance
+
+| Domain | What you get | Representative providers |
+|--------|--------------|--------------------------|
+| [Geopolitics & Conflict](#geopolitics-%26-conflict) | Conflict events, protests, displacement, travel advisories, rocket alerts, prediction markets | ACLED, UCDP, GDELT, UNHCR/OCHA, Polymarket |
+| [Military & Strategic](#military-%26-strategic) | Bases, live military flights, naval activity, satellites, GPS jamming | adsb.lol, Wingbits, CelesTrak, gpsjam.org |
+| [News & OSINT](#news-%26-osint) | Tiered news feeds, Telegram OSINT, live TV and webcams | Reuters, BBC, AP, Al Jazeera, and reviewed Telegram channels |
+| [Finance & Economics](#finance-%26-economics) | Markets, macro series, central banks, crypto, trade flows | FRED, ECB, BIS, Eurostat, World Bank, CoinGecko |
+| [Energy & Commodities](#energy-%26-commodities) | Gas storage, oil inventories, fuel prices, gold and metals | GIE AGSI+, U.S. EIA, IEA, CFTC |
+| [Infrastructure & Cyber](#infrastructure-%26-cyber) | Undersea cables, pipelines, ports, outages, threat IOCs | Cloudflare Radar, Submarine Cable Map, abuse.ch |
+| [Environment & Disasters](#environment-%26-disasters) | Earthquakes, disasters, wildfires, cyclones, climate anomalies | USGS, GDACS, NASA FIRMS/EONET, Open-Meteo |
+| [Aviation & Airspace](#aviation-%26-airspace) | Airport delays, NOTAM closures, flight tracking, prices | FAA, ICAO, AviationStack, adsb.lol |
+| [China Coverage](#china-coverage) | Official macro, policy, disclosures, cross-strait activity | NBS, SAFE, PBoC, Taiwan MND, SSE/SZSE |
+| [Tech Ecosystem](#tech-ecosystem) | Company HQs, startups, cloud regions, research signals | Crunchbase News, GitHub, OSS Insight |
+
+Every feed carries a source tier, propaganda-risk rating, and state-affiliation flag — see [source credibility & feed tiering](#source-credibility-%26-feed-tiering). A singleton freshness tracker reports [intelligence gaps](#data-freshness-%26-intelligence-gaps) instead of hiding them.
+
 ---
 
-## Data Layers
+## Geopolitics & Conflict
 
-### Real-Time Data Layers
-
-<details>
-<summary><strong>Geopolitical</strong></summary>
+The core of the geopolitical variant: who is fighting, protesting, fleeing, and warning — merged from academically curated conflict databases, real-time event feeds, and official government advisories.
 
 - Active conflict zones with escalation tracking (UCDP + ACLED)
 - Intelligence hotspots with news correlation
 - Social unrest events (dual-source: ACLED protests + GDELT geo-events, Haversine-deduplicated)
-- Natural disasters from 3 sources (USGS earthquakes M4.5+, GDACS alerts, NASA EONET events)
 - Sanctions regimes
-- Cyber threat IOCs (C2 servers, malware hosts, phishing, malicious URLs) geo-located on the globe
-- GPS/GNSS jamming zones from ADS-B transponder analysis (H3 hex grid, interference % classification)
+- Refugee and displacement flows (UN OCHA HAPI)
+- Government travel advisories from three national agencies plus embassy and health feeds
+- Israel Home Front Command (OREF) rocket and drone sirens in real time
+- Prediction-market probabilities as leading indicators (Polymarket)
 - Geopolitical boundary overlays — Korean DMZ (43-point closed-ring polygon based on the Korean Armistice Agreement), with typed boundary categories (demilitarized, ceasefire, disputed, armistice) and info popups
 - Iran conflict events — geocoded attacks, strikes, and military incidents sourced from LiveUAMap with severity classification
-- Weather alerts and severe conditions
 
-</details>
+**Key providers**
 
-<details>
-<summary><strong>Military & Strategic</strong></summary>
+| Provider | Data | Link |
+|----------|------|------|
+| ACLED | Armed conflict and protest event data | [acleddata.com](https://acleddata.com) |
+| UCDP | Uppsala Conflict Data Program — conflict events | [ucdp.uu.se](https://ucdp.uu.se) |
+| GDELT | Global event, language, and tone database | [gdeltproject.org](https://www.gdeltproject.org) |
+| IMF PortWatch | Chokepoint transit intelligence | [portwatch.imf.org](https://portwatch.imf.org) |
+| Taiwan Ministry of National Defense | Official daily Cross-Strait activity claims | [mnd.gov.tw](https://www.mnd.gov.tw/english/) |
+| Japan Joint Staff | Separately attributed regional activity context | [mod.go.jp/js](https://www.mod.go.jp/js/) |
 
-- 226 military bases from 9 operators
-- Live military flight tracking (ADS-B)
-- Naval vessel monitoring (AIS)
-- Nuclear facilities & gamma irradiators
-- APT cyber threat actor attribution
-- Spaceports & launch facilities
-- **Orbital surveillance** — ~80–120 intelligence-relevant satellites tracked in real time via CelesTrak TLE data and client-side SGP4 propagation (satellite.js). Country-coded markers at orbital altitude, 15-min orbit trails, ground footprints. Globe-only. [Details →](/orbital-surveillance)
-
-</details>
-
-<details>
-<summary><strong>Infrastructure</strong></summary>
-
-- Undersea cables with landing points, cable health advisories (NGA navigational warnings), and cable repair ship tracking
-- Oil & gas pipelines
-- AI datacenters (313 clusters from Epoch AI dataset)
-- 62 strategic ports across 6 types (container, oil, LNG, naval, mixed, bulk) with throughput rankings
-- Internet outages (Cloudflare Radar)
-- Critical mineral deposits
-- NASA FIRMS satellite fire detection (VIIRS thermal hotspots)
-- 19 global trade routes (container, energy, bulk) with multi-segment arcs through strategic chokepoints
-- Airport delays and closures across 115 monitored airports (FAA + AviationStack + ICAO NOTAM)
-- **Aviation intelligence** — 6-tab airline intel panel (ops, flights, airlines, tracking, news, prices) with customizable airport/airline watchlists, live ADS-B flight tracking, and flight price search
-
-</details>
-
-<details>
-<summary><strong>Market & Crypto Intelligence</strong></summary>
-
-- 7-signal macro radar with composite BUY/CASH verdict
-- **Customizable market watchlist** — user-defined stock/commodity/crypto symbol lists (up to 50 symbols) with optional friendly labels, persisted to localStorage, synchronized across panels via CustomEvent
-- **Gulf Economies panel** — live data for GCC financial markets across three sections: **Indices** (Tadawul/Saudi Arabia, Dubai Financial Market, Abu Dhabi, Qatar, WisdomTree Gulf Dividend, Muscat MSM 30), **Currencies** (SAR, AED, QAR, KWD, BHD, OMR vs USD), and **Oil** (WTI Crude, Brent Crude). All quotes fetched from Yahoo Finance with staggered batching, Redis-cached for 8 minutes, with mini sparklines per quote and 60-second polling
-- Real-time crypto prices (BTC, ETH, SOL, XRP, and more) via CoinGecko
-- **Prediction markets** — Polymarket geopolitical contracts with 4-tier fetch (bootstrap → RPC → browser-direct → Tauri native TLS), country-specific market matching, and volume-weighted ranking
-- BTC spot ETF flow tracker (IBIT, FBTC, GBTC, and 7 more)
-- Stablecoin peg health monitor (USDT, USDC, DAI, FDUSD, USDe)
-- Fear & Greed Index with 30-day history
-- Bitcoin technical trend (SMA50, SMA200, VWAP, Mayer Multiple)
-- JPY liquidity signal, QQQ/XLP macro regime, BTC hash rate
-- Inline SVG sparklines and donut gauges for visual trends
-
-</details>
-
-<details>
-<summary><strong>Tech Ecosystem</strong> (Tech variant)</summary>
-
-- Tech company HQs (Big Tech, unicorns, public)
-- Startup hubs with funding data
-- Cloud regions (AWS, Azure, GCP)
-- Accelerators (YC, Techstars, 500)
-- Upcoming tech conferences
-
-</details>
-
-<details>
-<summary><strong>Finance & Markets</strong> (Finance variant)</summary>
-
-- 29 global stock exchanges — mega (NYSE, NASDAQ, Shanghai, Euronext, Tokyo), major (Hong Kong, London, NSE/BSE, Toronto, Korea, Saudi Tadawul), and emerging markets — with market caps and trading hours
-- 19 financial centers — ranked by Global Financial Centres Index (New York #1 through offshore centers: Cayman Islands, Luxembourg, Bermuda, Channel Islands)
-- 14 central-bank and supranational finance institutions — 12 policy-rate institutions (Federal Reserve, ECB, BoJ, BoE, PBoC, SNB, RBA, BoC, RBI, BoK, BCB, SAMA) plus BIS and IMF
-- BIS central bank data — policy rates across major economies, real effective exchange rates (REER), and credit-to-GDP ratios sourced from the Bank for International Settlements
-- 10 commodity hubs — exchanges (CME Group, ICE, LME, SHFE, DCE, TOCOM, DGCX, MCX) and physical hubs (Rotterdam, Houston)
-- Gulf FDI investment layer — 64 Saudi/UAE foreign direct investments plotted globally, color-coded by status (operational, under-construction, announced), sized by investment amount
-- WTO trade policy intelligence — active trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers sourced from the World Trade Organization
-
-</details>
-
----
-
-## Intelligence Feeds
-
-### Telegram OSINT Intelligence Feed
-
-56 enabled channels in the default `full` Telegram channel set provide a raw, low-latency intelligence feed covering conflict zones, OSINT analysis, and breaking news — sources that are often minutes ahead of traditional wire services during fast-moving events.
-
-| Tier       | Enabled channels in `full` set |
-| ---------- | ------------------------------ |
-| **Tier 1** | 3                              |
-| **Tier 2** | 23                             |
-| **Tier 3** | 30                             |
-
-The channel set intentionally includes official, state-affiliated, partisan, and belligerent-party channels — for example military, ministry, state-media, and faction-aligned sources alongside independent OSINT accounts. Telegram posts are ingested as raw OSINT leads, not endorsed truth. The Telegram channel config carries operational `tier`, `topic`, and `region` metadata for polling and filtering; unlike RSS feeds, Telegram channels do not currently carry the RSS `stateAffiliation` or propaganda-risk fields, so source-bias review must use the disclosed channel identity plus the operational tier rather than RSS-style affiliation tags.
-
-**Architecture**: A GramJS MTProto client running on the Railway relay polls all channels sequentially on a 60-second cycle. Each channel has a 15-second timeout (GramJS `getEntity`/`getMessages` can hang indefinitely on FLOOD_WAIT or MTProto stalls), and the entire cycle has a 3-minute hard timeout. A stuck-poll guard force-clears the mutex after 3.5 minutes, and FLOOD_WAIT errors from Telegram's API stop the cycle early rather than propagating to every remaining channel.
-
-Messages are deduplicated by ID, filtered to exclude media-only posts (images without text), truncated to 800 characters, and stored in a rolling 200-item buffer. The relay connects with a 60-second startup delay to prevent `AUTH_KEY_DUPLICATED` errors during Railway container restarts (the old container must fully disconnect before the new one authenticates). Topic classification (breaking, conflict, alerts, osint, politics, middleeast) and channel-based filtering happen at query time via the `/telegram/feed` relay endpoint.
+Deep dives: [Country Instability Index](/country-instability-index) · [CII risk-score methodology](/methodology/cii-risk-scores) · [hotspot escalation](/hotspots) · [signal intelligence](/signal-intelligence)
 
 ### OREF Rocket Alert Integration
 
@@ -123,31 +62,45 @@ The dashboard monitors Israel's Home Front Command (Pikud HaOref) alert system f
 
 **CII integration**: Active OREF alerts boost Israel's CII conflict component by up to 50 points (`25 + min(25, alertCount × 5)`). Rolling 24-hour history adds a secondary boost: 3–9 alerts in the window contribute +5, 10+ contribute +10 to the blended score. This means a sustained multi-wave rocket barrage drives Israel's CII significantly higher than a single isolated alert.
 
-### GPS/GNSS Interference Detection
+### Dual-Source Protest Tracking
 
-GPS jamming and spoofing — increasingly used as electronic warfare in conflict zones — is detected by analyzing ADS-B transponder data from aircraft that report GPS anomalies. Data is sourced from [gpsjam.org](https://gpsjam.org), which aggregates ADS-B Exchange data into H3 resolution-4 hexagonal grid cells.
+Protest data is sourced from two independent providers to reduce single-source bias:
 
-**Classification**: Each H3 cell reports the ratio of aircraft with GPS anomalies vs. total aircraft. Cells with fewer than 3 aircraft are excluded as statistically noisy. The remaining cells are classified:
+1. **ACLED** (Armed Conflict Location & Event Data) — 30-day window, tokenized API with Redis caching (10-minute TTL). Covers protests, riots, strikes, and demonstrations with actor attribution and fatality counts.
+2. **GDELT** (Global Database of Events, Language, and Tone) — 7-day geospatial event feed filtered to protest keywords. Events with mention count ≥5 are included; those above 30 are marked as `validated`.
 
-| Interference Level | Bad Aircraft % | Map Color |
-| ------------------ | -------------- | --------- |
-| **Low**            | 0–2%           | Hidden    |
-| **Medium**         | 2–10%          | Amber     |
-| **High**           | > 10%          | Red       |
+Events from both sources are **Haversine-deduplicated** on a 0.1° grid (~10km) with same-day matching. ACLED events take priority due to higher editorial confidence. Severity is classified as:
 
-**Region tagging**: Each hex cell is tagged to one of 12 named conflict regions via bounding-box classification (Iran-Iraq, Levant, Ukraine-Russia, Baltic, Mediterranean, Black Sea, Arctic, Caucasus, Central Asia, Horn of Africa, Korean Peninsula, South China Sea) for filtered region views.
+- **High** — fatalities present or riot/clash keywords
+- **Medium** — standard protest/demonstration
+- **Low** — default
 
-**CII integration**: `ingestGpsJammingForCII` maps each H3 hex centroid to a country via the local geometry service, then accumulates per-country interference counts. In the CII security component, GPS jamming contributes up to 35 points: `min(35, highCount × 5 + mediumCount × 2)`.
+Protest scoring is regime-aware: democratic countries use logarithmic scaling (routine protests don't trigger instability), while authoritarian states use linear scoring (every protest is significant). Fatalities and concurrent internet outages apply severity boosts.
+
+ACLED is authenticated: set either `ACLED_EMAIL` + `ACLED_PASSWORD` (OAuth, auto-refreshed) or a static `ACLED_ACCESS_TOKEN` on the API project. When ACLED auth is absent the fetch degrades gracefully to an empty result — but ACLED is also the **real-time conflict source** for the Country Instability Index, so without it CII conflict scoring falls back to UCDP alone. UCDP GED's ANNUAL release lags ~7 months, so the UCDP seeders additionally discover the newest monthly **GED Candidate** release (`YY.0.M`, published with about a month's lag) and merge it on top of the annual base — the candidate adds recency, the annual base supplies the depth the 2-year window needs, and the published payload reserves slots for both. That keeps recent conflict events inside the CII 2-year recency window, but the fallback can still read `COVERAGE_PARTIAL` on the `riskScores` health/cache signal when UCDP itself is quiet or the candidate merge is degraded (cyber and news families still cover, so the metric reads 2 of 3). The `get-risk-scores` RPC logs a `[CII] ACLED returned 0 events` warning when this happens. When the candidate merge stops working, `seed-meta:conflict:ucdp-events` carries `candidateVersion: null` and the content-age trio drives the `ucdpEvents` health entry to `STALE_CONTENT`.
+
+### Displacement Tracking
+
+Refugee and displacement data is sourced from the UN OCHA Humanitarian API (HAPI), providing population-level counts for refugees, asylum seekers, and internally displaced persons (IDPs). The Displacement panel offers two perspectives:
+
+- **Origins** — countries people are fleeing from, ranked by outflow volume
+- **Hosts** — countries absorbing displaced populations, ranked by intake
+
+Crisis badges flag countries with extreme displacement: > 1 million displaced (red), > 500,000 (orange). Displacement outflow feeds into the CII as a component signal — high displacement is a lagging indicator of instability that persists even when headlines move on.
+
+### Population Exposure Estimation
+
+Population exposure estimation calculates affected populations within event-specific radii. See [Algorithms - Population Exposure](/algorithms#population-exposure-estimation) for the full methodology.
 
 ### Security Advisory Aggregation
 
 Government travel advisories serve as expert risk assessments from national intelligence agencies — when the US State Department issues a "Do Not Travel" advisory, it reflects classified threat intelligence that no open-source algorithm can replicate.
 
-**Sources**: 3 government advisory feeds (US State Dept, Australia DFAT Smartraveller, UK FCDO), 13 US Embassy country-specific alert feeds (Thailand, UAE, Germany, Ukraine, Mexico, India, Pakistan, Colombia, Poland, Bangladesh, Italy, Dominican Republic, Myanmar), and health agency feeds (CDC Travel Notices, ECDC epidemiological updates, WHO News, WHO Africa Emergencies).
+**Sources**: Government travel advisories (US State Dept, Australia DFAT Smartraveller, UK FCDO), US Embassy country-specific alerts, and health agency feeds (CDC Travel Notices, ECDC epidemiological updates, WHO News, WHO Africa Emergencies).
 
 **Advisory levels** (ranked): Do-Not-Travel (4) → Reconsider Travel (3) → Exercise Caution (2) → Normal (1) → Info (0). Both RSS (item) and Atom (entry) formats are parsed. Country extraction uses a 265-entry country name map (generated from GeoJSON + aliases) for accurate matching of compound names and alternative spellings.
 
-**Architecture**: Advisories follow the gold standard pattern. A Railway cron seed (`seed-security-advisories.mjs`) fetches all 24 feeds hourly via the relay RSS proxy, deduplicates by title, builds a `byCountry` risk-level map, and writes to Redis. The Vercel `ListSecurityAdvisories` RPC reads Redis only (no external calls). Bootstrap hydration provides instant advisory data on page load.
+**Architecture**: Advisories follow the gold standard pattern. A Railway cron seed (`seed-security-advisories.mjs`) fetches the complete advisory feed registry hourly via the relay RSS proxy, deduplicates by title, builds a `byCountry` risk-level map, and writes to Redis. The Vercel `ListSecurityAdvisories` RPC reads Redis only (no external calls). Bootstrap hydration provides instant advisory data on page load.
 
 **CII integration** — the server-side CII scorer reads the seeded advisory
 `byCountry` level when available and otherwise may use an embedded State
@@ -170,233 +123,102 @@ for the rationale and per-country score effects.
 
 The Security Advisories panel displays advisories with colored level badges and source country flags, filterable by severity (Critical, All) and issuing source group (US, AU, UK, Health).
 
-### Airport Delay & NOTAM Monitoring
+### Prediction Markets as Leading Indicators
 
-115 airports across 5 regions (Americas, Europe, Asia-Pacific, MENA, Africa) are continuously monitored for delays, ground stops, and closures through three independent data sources:
+Polymarket geopolitical markets are queried using tag-based filters (Ukraine, Iran, China, Taiwan, etc.) with 5-minute caching. Market probability shifts are correlated with news volume: if a prediction market moves significantly before matching news arrives, this is flagged as a potential early-warning signal.
 
-| Source             | Coverage                  | Method                                                                                                  |
-| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **FAA ASWS**       | 14 US hub airports        | Real-time XML feed from `nasstatus.faa.gov` — ground delays, ground stops, arrival/departure delays, closures |
-| **AviationStack**  | 56 international airports  | Last 100 flights per airport — cancellation rate and average delay duration computed from flight records  |
-| **ICAO NOTAM API** | 46 MENA airports           | Real-time NOTAM (Notice to Air Missions) query for active airport/airspace closures                      |
+**4-tier fetch strategy** — prediction markets use a cascading fetch chain to maximize data availability:
 
-**NOTAM closure detection** targets MENA airports where airspace closures due to military activity or security events carry strategic significance. Detection uses two methods: ICAO Q-code matching (aerodrome/airspace closure codes `FA`, `AH`, `AL`, `AW`, `AC`, `AM` combined with closure qualifiers `LC`, `AS`, `AU`, `XX`, `AW`) and free-text regex scanning for closure keywords (`AD CLSD`, `AIRPORT CLOSED`, `AIRSPACE CLOSED`). When a NOTAM closure is detected, it overrides any existing delay alert for that airport with a `severe/closure` classification.
+1. **Bootstrap hydration** — zero-network, page-load-embedded data from the Redis-cached `predictions` key. If fresh (&lt;20 min), the panel renders instantly without any API call
+2. **Sebuf RPC** — `GET /api/prediction/v1/list-prediction-markets` queries Redis for the seed-script-maintained cache. Single request, sub-100ms cold start
+3. **Browser-direct Polymarket** — the browser fetches Polymarket's Gamma API directly, bypassing JA3 fingerprinting (browser TLS passes Cloudflare)
+4. **Sidecar native TLS** — on Tauri desktop, Rust's `reqwest` TLS fingerprint differs from Node.js, providing another bypass vector
 
-**Severity thresholds**: Average delay ≥15min or ≥15% delayed flights = minor; ≥30min/30% = moderate; ≥45min/45% = major; ≥60min/60% = severe. Cancellation rate ≥80% with ≥10 flights = closure. All results are cached for 30 minutes in Redis. When no AviationStack API key is configured, the system generates probabilistic simulated delays for demonstration — rush-hour windows and high-traffic airports receive higher delay probability.
+**Country-specific markets** — `fetchCountryMarkets(country)` maps 40+ countries to Polymarket tag variants (e.g., "Russia" matches ["russia", "russian", "moscow", "kremlin", "putin"]), enabling the Country Brief to display prediction contracts relevant to any nation.
 
-### China Coverage, Attribution, and Freshness
+**Smart filtering** — markets are ranked by 24h trading volume, filtered to exclude sports and entertainment (100+ exclusion keywords: NBA, NFL, Oscar, Grammy, etc.), and require meaningful price divergence from 50% or volume above $50K to suppress noise. Each variant gets different tag sets — geopolitical queries politics/world/ukraine/middle-east tags, tech queries ai/crypto/business tags.
 
-The China country deep-dive composes source-specific contracts rather than
-operating one opaque China fetch path. The complete contract inventory,
-cadences, surfaces, and access boundaries are maintained on
-[China Data Coverage](/china-data-coverage).
+**Cloudflare JA3 bypass** — Polymarket's API is protected by Cloudflare TLS fingerprinting (JA3) that blocks all server-side requests. The system uses a 3-tier fallback:
 
-Its China-specific official lanes currently include:
+| Tier  | Method                     | When It Works                                           |
+| ----- | -------------------------- | ------------------------------------------------------- |
+| **1** | Browser-direct fetch       | Always (browser TLS passes Cloudflare)                  |
+| **2** | Tauri native TLS (reqwest) | Desktop app (Rust TLS fingerprint differs from Node.js) |
+| **3** | Vercel edge proxy          | Rarely (edge runtime sometimes passes)                  |
 
-- revision-aware macro observations from NBS and SAFE, with reviewed PBoC and
-  GACC candidates kept explicitly unavailable when their source preflight does
-  not pass;
-- official policy and enforcement documents from CAC, SAMR, MIIT, MOFCOM,
-  NDRC, and PBoC;
-- metadata-only corporate disclosures from SSE and SZSE, with HKEX explicitly
-  blocked by its automated-access terms;
-- Taiwan Ministry of National Defense claims with separately attributed Japan
-  Joint Staff context; and
-- HKO warnings and Western Pacific hazard observations.
+Once browser-direct succeeds, the system caches this state and skips fallback tiers on subsequent requests. Country-specific markets are fetched by mapping countries to Polymarket tags with name-variant matching (e.g., "Russia" matches titles containing "Russian", "Moscow", "Kremlin", "Putin").
 
-The composition also uses attributable global contracts for BIS, IMF, UN
-Comtrade reporter 156 and bilateral HS4 data, CCFI, IMF PortWatch,
-AviationStack, the China energy spine, the China market index, and reviewed
-China news sources. Every displayed signal carries its publisher and
-observation or release date. A missing, stale, blocked, or partial source is
-shown as unavailable or degraded rather than as zero.
-
-JODI remains enabled for its existing global energy product, but the China
-contract stays explicitly blocked until a reviewed update verifies that JODI
-publishes a substantive `CN` row for the relevant oil or gas dataset. This
-prevents a global JODI heartbeat from being presented as China coverage.
-
-The globally ranked insights payload is likewise not used as China feed-health
-evidence: a current top-eight can legitimately contain no China story. The
-insights seeder persists a separate China-source projection for Xinhua, MIIT,
-and MOFCOM. It records each source as available only when the digest fetch
-completed with dated content; a timeout, empty response, or undated feed stays
-visible as degraded coverage.
-
-The hourly Railway China coverage evaluator checks the transport heartbeat and
-content freshness independently for every launched contract. It uses the
-canonical eight-hub AviationStack `coverage` records—not the bootstrap's
-presentation-only airport rows—so an upstream omission remains observable.
-The audit records aggregate status and reason codes only: it never logs
-credentials or raw upstream payloads. Detailed bilateral trade data remains
-Pro-only and is not included in the public China summary.
-
-Source-specific collection and missingness details:
-
-- [Official macro and policy](/china-official-macro-policy)
-- [Corporate disclosures](/china-corporate-disclosures)
-- [Logistics corridors](/china-logistics-corridors)
-- [China decision signals](/china-decision-signals)
-- [Activity nowcast methodology](/methodology/china-activity-nowcast)
-
-#### Cross-Strait Official Activity Claims
-
-The durable Railway archive is `military:cross-strait-activity:v1`; the Force
-Posture panel hydrates its compact projection at
-`military:cross-strait-activity-bootstrap:v1`. Taiwan Ministry of National
-Defense daily releases are
-stored as publisher claims with their official 06:00-to-06:00 Asia/Taipei
-reporting window. PLA aircraft sorties, PLAN ships, other official ships,
-median-line crossings, and ADIZ entries remain separate nullable categories:
-an omitted category is unknown, not zero.
-
-The seed accumulates at most 20 new Taiwan MND detail pages per run and retains
-corrections as linked vintages in the durable archive. Oldest vintages are
-pruned first when the complete archive approaches its 4 MiB publish budget.
-Bootstrap carries only the latest MND observation and reviewed Japan context,
-never revision history.
-Its 30- and 90-day medians use only prior usable
-Taiwan MND reporting days, excluding the current report; each comparison stays
-unavailable until the full prior-day sample exists. Reviewed Japan Joint Staff
-releases are displayed as separately attributed regional context and never
-enter the Taiwan MND baselines.
-
-These official claims are not ADS-B aircraft tracks, AIS vessel tracks, NOTAMs,
-news reports, or market observations. The panel labels that distinction and
-does not combine those source families into a single activity count.
-
-### Aviation Intelligence Panel
-
-The Airline Intel panel provides a comprehensive 6-tab aviation monitoring interface covering operations, flights, carriers, tracking, news, and pricing:
-
-| Tab | Data | Source |
-| --- | --- | --- |
-| **Ops** | Delay percentages, cancellation rates, NOTAM closures, ground stops | FAA ASWS, AviationStack, ICAO |
-| **Flights** | Specific flight status with scheduled vs estimated times, divert/cancel flags | AviationStack flight lookup |
-| **Airlines** | Per-carrier statistics at monitored airports (delay %, cancellation rate, flight count) | AviationStack carrier ops |
-| **Tracking** | Live ADS-B aircraft positions with altitude, ground speed, heading, on-ground status | OpenSky / Wingbits |
-| **News** | 20+ recent aviation news items with entity matching (airlines, airports, aircraft types) | RSS feeds tagged `aviation` |
-| **Prices** | Multi-carrier price quotes with cabin selection (Economy/Business), currency conversion, non-stop filters | Travelpayouts cached data |
-
-**Aviation watchlist** — users customize a personal list of airports (IATA codes), airlines, and routes persisted to `localStorage` as `aviation:watchlist:v1`. The default watchlist includes IST, ESB, SAW, LHR, FRA, CDG airports and TK airline, reflecting common monitoring needs. The watchlist drives which airports appear in the Ops tab and which carriers are tracked in the Airlines tab.
-
-Delay severity is classified across five levels — normal, minor, moderate, major, severe — with each alert carrying a severity source (FAA, Eurocontrol, or computed from flight data). The panel auto-refreshes on a 5-minute polling cycle with a live indicator badge, and uses a `SmartPollLoop` with adaptive backoff on failures.
+Markets are filtered to exclude sports and entertainment (100+ exclusion keywords), require meaningful price divergence from 50% or volume above $50K, and are ranked by trading volume. Each variant gets different tag sets — geopolitical focus queries politics/world/ukraine/middle-east tags, while tech focus queries ai/crypto/business tags.
 
 ---
 
-## Cyber & Natural Events
+## Military & Strategic
 
-### Cyber Threat Intelligence Layer
+Force posture and strategic infrastructure, tracked from open sources in real time.
 
-Six threat intelligence feeds provide indicators of compromise (IOCs) for active command-and-control servers, malware distribution hosts, phishing campaigns, malicious URLs, and ransomware operations:
+- Registered military bases with operator attribution
+- Live military flight tracking (ADS-B) — see [Aviation & Airspace](#aviation-%26-airspace) for the provider chain
+- Naval vessel monitoring (AIS)
+- Nuclear facilities & gamma irradiators
+- APT cyber threat actor attribution
+- Spaceports & launch facilities
+- **Orbital surveillance** — ~80–120 intelligence-relevant satellites tracked in real time via CelesTrak TLE data and client-side SGP4 propagation (satellite.js). Country-coded markers at orbital altitude, 15-min orbit trails, ground footprints. Globe-only. [Details →](/orbital-surveillance)
+- GPS/GNSS jamming zones from ADS-B transponder analysis (H3 hex grid, interference % classification)
+- Defense industrial-base indicators from the World Bank and derived five-year arms-supplier dependency shares from SIPRI
 
-| Feed                         | IOC Type      | Coverage                        |
-| ---------------------------- | ------------- | ------------------------------- |
-| **Feodo Tracker** (abuse.ch) | C2 servers    | Botnet C&C infrastructure       |
-| **URLhaus** (abuse.ch)       | Malware hosts | Malware distribution URLs       |
-| **C2IntelFeeds**             | C2 servers    | Community-sourced C2 indicators |
-| **AlienVault OTX**           | Mixed         | Open threat exchange pulse IOCs |
-| **AbuseIPDB**                | Malicious IPs | Crowd-sourced abuse reports     |
-| **Ransomware.live**          | Ransomware    | Active ransomware group feeds   |
+**Key providers**
 
-Each IP-based IOC is geo-enriched using ipinfo.io with freeipapi.com as fallback. Geolocation results are Redis-cached for 24 hours. Enrichment runs concurrently — 16 parallel lookups with a 12-second timeout, processing up to 250 IPs per collection run.
+| Provider | Data | Link |
+|----------|------|------|
+| CelesTrak | Satellite TLE data for orbital tracking | [celestrak.org](https://celestrak.org) |
+| gpsjam.org | ADS-B-derived GPS interference grid | [gpsjam.org](https://gpsjam.org) |
+| LiveUAMap | Geocoded conflict events (Iran theater) | [liveuamap.com](https://liveuamap.com) |
+| World Bank Open Data | Military expenditure, personnel, and national arms-transfer totals (`MS.MIL.*`) | [api.worldbank.org](https://api.worldbank.org/) |
+| SIPRI Arms Transfers Database | Derived supplier shares and HHI for delivered major conventional weapons; no full-database mirror | [armstransfers.sipri.org](https://armstransfers.sipri.org/) |
 
-IOCs are classified into four types (`c2_server`, `malware_host`, `phishing`, `malicious_url`) with four severity levels, rendered as color-coded scatter dots on the globe. The layer uses a 10-minute cache, a 14-day rolling window, and caps display at 500 IOCs to maintain rendering performance.
+### Defense Industrial Base Licensing
 
-### Natural Disaster Monitoring
+| Source | Stored and displayed | License and attribution posture |
+|--------|----------------------|---------------------------------|
+| World Bank Open Data | Latest and previous annual `MS.MIL.*` observations per country | [CC BY 4.0](https://www.worldbank.org/en/about/legal/terms-of-use-for-datasets); attribute World Bank. |
+| SIPRI Arms Transfers Database | Per-importer five-year supplier shares and HHI only | SIPRI attribution is required. The full database is not redistributed. SIPRI fair use permits non-commercial analytical use and reproduction of less than 10% of a dataset; commercial use requires authorization and may require a royalty. See [SIPRI terms](https://www.sipri.org/about/terms-and-conditions). |
 
-Three independent sources are merged into a unified disaster picture, then deduplicated on a 0.1° geographic grid:
+SIPRI TIV measures the volume of transfers of major conventional weapons. It is
+not a financial value. The annual seeder reads the current public portal output,
+maps recognized state entities to ISO-2 codes, logs and skips unmapped entities,
+and publishes only derived aggregates for the newest complete five-year window.
 
-| Source         | Coverage                       | Types                                                         | Update Frequency |
-| -------------- | ------------------------------ | ------------------------------------------------------------- | ---------------- |
-| **USGS**       | Global earthquakes M4.5+       | Earthquakes                                                   | 5 minutes        |
-| **GDACS**      | UN-coordinated disaster alerts | Earthquakes, floods, cyclones, volcanoes, wildfires, droughts | Real-time        |
-| **NASA EONET** | Earth observation events       | 13 natural event categories (30-day open events)              | Real-time        |
+Deep dives: [Military tracking](/military-tracking) · [Maritime intelligence](/maritime-intelligence) · [Orbital surveillance](/orbital-surveillance)
 
-GDACS events carry color-coded alert levels (Red = critical, Orange = high) and are filtered to exclude low-severity Green alerts. EONET wildfires are filtered to events within 48 hours to prevent stale data. Earthquakes from EONET are excluded since USGS provides higher-quality seismological data.
+### GPS/GNSS Interference Detection
 
-The merged output feeds into the signal aggregator for geographic convergence detection — e.g., an earthquake near a pipeline triggers an infrastructure cascade alert.
+GPS jamming and spoofing — increasingly used as electronic warfare in conflict zones — is detected by analyzing ADS-B transponder data from aircraft that report GPS anomalies. Data is sourced from [gpsjam.org](https://gpsjam.org), which aggregates ADS-B Exchange data into H3 resolution-4 hexagonal grid cells.
 
-### Dual-Source Protest Tracking
+**Classification**: Each H3 cell reports the ratio of aircraft with GPS anomalies vs. total aircraft. Cells with fewer than 3 aircraft are excluded as statistically noisy. The remaining cells are classified:
 
-Protest data is sourced from two independent providers to reduce single-source bias:
+| Interference Level | Bad Aircraft % | Map Color |
+| ------------------ | -------------- | --------- |
+| **Low**            | 0–2%           | Hidden    |
+| **Medium**         | 2–10%          | Amber     |
+| **High**           | > 10%          | Red       |
 
-1. **ACLED** (Armed Conflict Location & Event Data) — 30-day window, tokenized API with Redis caching (10-minute TTL). Covers protests, riots, strikes, and demonstrations with actor attribution and fatality counts.
-2. **GDELT** (Global Database of Events, Language, and Tone) — 7-day geospatial event feed filtered to protest keywords. Events with mention count ≥5 are included; those above 30 are marked as `validated`.
+**Region tagging**: Each hex cell is tagged to one of 12 named conflict regions via bounding-box classification (Iran-Iraq, Levant, Ukraine-Russia, Baltic, Mediterranean, Black Sea, Arctic, Caucasus, Central Asia, Horn of Africa, Korean Peninsula, South China Sea) for filtered region views.
 
-Events from both sources are **Haversine-deduplicated** on a 0.1° grid (~10km) with same-day matching. ACLED events take priority due to higher editorial confidence. Severity is classified as:
-
-- **High** — fatalities present or riot/clash keywords
-- **Medium** — standard protest/demonstration
-- **Low** — default
-
-Protest scoring is regime-aware: democratic countries use logarithmic scaling (routine protests don't trigger instability), while authoritarian states use linear scoring (every protest is significant). Fatalities and concurrent internet outages apply severity boosts.
-
-ACLED is authenticated: set either `ACLED_EMAIL` + `ACLED_PASSWORD` (OAuth, auto-refreshed) or a static `ACLED_ACCESS_TOKEN` on the API project. When ACLED auth is absent the fetch degrades gracefully to an empty result — but ACLED is also the **real-time conflict source** for the Country Instability Index, so without it CII conflict scoring falls back to UCDP alone. UCDP GED's ANNUAL release lags ~7 months, so the UCDP seeders additionally discover the newest monthly **GED Candidate** release (`YY.0.M`, published with about a month's lag) and merge it on top of the annual base — the candidate adds recency, the annual base supplies the depth the 2-year window needs, and the published payload reserves slots for both. That keeps recent conflict events inside the CII 2-year recency window, but the fallback can still read `COVERAGE_PARTIAL` on the `riskScores` health/cache signal when UCDP itself is quiet or the candidate merge is degraded (cyber and news families still cover, so the metric reads 2 of 3). The `get-risk-scores` RPC logs a `[CII] ACLED returned 0 events` warning when this happens. When the candidate merge stops working, `seed-meta:conflict:ucdp-events` carries `candidateVersion: null` and the content-age trio drives the `ucdpEvents` health entry to `STALE_CONTENT`.
-
-### Climate Anomaly Detection
-
-15 conflict-prone and disaster-prone zones are continuously monitored for temperature and precipitation anomalies using Open-Meteo ERA5 reanalysis data. A 30-day baseline is computed, and current conditions are compared against it to determine severity:
-
-| Severity     | Temperature Deviation | Precipitation Deviation   |
-| ------------ | --------------------- | ------------------------- |
-| **Extreme**  | > 5°C above baseline  | > 80mm/day above baseline |
-| **Moderate** | > 3°C above baseline  | > 40mm/day above baseline |
-| **Normal**   | Within expected range | Within expected range     |
-
-Anomalies feed into the signal aggregator, where they amplify CII scores for affected countries (climate stress is a recognized conflict accelerant). The Climate Anomaly panel surfaces these deviations in a severity-sorted list.
-
-### Displacement Tracking
-
-Refugee and displacement data is sourced from the UN OCHA Humanitarian API (HAPI), providing population-level counts for refugees, asylum seekers, and internally displaced persons (IDPs). The Displacement panel offers two perspectives:
-
-- **Origins** — countries people are fleeing from, ranked by outflow volume
-- **Hosts** — countries absorbing displaced populations, ranked by intake
-
-Crisis badges flag countries with extreme displacement: > 1 million displaced (red), > 500,000 (orange). Displacement outflow feeds into the CII as a component signal — high displacement is a lagging indicator of instability that persists even when headlines move on.
-
-### Population Exposure Estimation
-
-Population exposure estimation calculates affected populations within event-specific radii. See [Algorithms - Population Exposure](/algorithms#population-exposure-estimation) for the full methodology.
+**CII integration**: `ingestGpsJammingForCII` maps each H3 hex centroid to a country via the local geometry service, then accumulates per-country interference counts. In the CII security component, GPS jamming contributes up to 35 points: `min(35, highCount × 5 + mediumCount × 2)`.
 
 ---
 
-## Infrastructure Monitoring
+## News & OSINT
 
-### Strategic Port Infrastructure
+The news backbone: tiered RSS feeds across the published variants, a raw Telegram OSINT lane, live TV streams, and a webcam grid — every source disclosed, tiered, and bias-tagged.
 
-62 strategic ports are cataloged across six types, reflecting their role in global trade and military posture:
+- Tiered global news network spanning politics, regional desks, finance, tech, energy, think tanks, and crisis monitors — the complete per-variant inventory is disclosed [below](#server-side-feed-aggregation)
+- Curated Telegram OSINT feed with official, independent, and belligerent-party sources
+- Live TV news streams and a webcam surveillance grid from geopolitical hotspots
+- Curated positive-news network for the Happy variant (Good News Network, Positive.News, Reasons to be Cheerful, and more)
+- Every feed carries source tier, propaganda-risk rating, and state-affiliation metadata
 
-| Type           | Count | Examples                                             |
-| -------------- | ----- | ---------------------------------------------------- |
-| **Container**  | 21    | Shanghai (#1, 47M+ TEU), Singapore, Ningbo, Shenzhen |
-| **Oil/LNG**    | 8     | Ras Tanura (Saudi), Sabine Pass (US), Fujairah (UAE) |
-| **Chokepoint** | 9     | Suez Canal, Panama Canal, Strait of Malacca, Gibraltar, Bosphorus, Dardanelles |
-| **Naval**      | 6     | Zhanjiang, Yulin (China), Vladivostok (Russia)       |
-| **Mixed**      | 15+   | Ports serving multiple roles (trade + military)      |
-| **Bulk**       | 20+   | Regional commodity ports                             |
-
-Ports are ranked by throughput and weighted by strategic importance in the infrastructure cascade model: oil/LNG terminals carry 0.9 criticality, container ports 0.7, and naval bases 0.4. Port proximity appears in the Country Brief infrastructure exposure section.
-
-### Live Webcam Surveillance Grid
-
-22 YouTube live streams from geopolitical hotspots across 5 regions provide continuous visual situational awareness:
-
-| Region             | Cities                                                           |
-| ------------------ | ---------------------------------------------------------------- |
-| **Iran / Attacks** | Tehran, Tel Aviv, Jerusalem (Western Wall)                       |
-| **Middle East**    | Jerusalem (Western Wall), Tehran, Tel Aviv, Mecca (Grand Mosque) |
-| **Europe**         | Kyiv, Odessa, Paris, St. Petersburg, London                      |
-| **Americas**       | Washington DC, New York, Los Angeles, Miami                      |
-| **Asia-Pacific**   | Taipei, Shanghai, Tokyo, Seoul, Sydney                           |
-
-The webcam panel supports two viewing modes: a 4-feed grid (default strategic selection: Jerusalem, Tehran, Kyiv, Washington DC) and a single-feed expanded view. Region tabs (ALL/IRAN/MIDEAST/EUROPE/AMERICAS/ASIA) filter the available feeds. The Iran/Attacks tab provides a dedicated 2×2 grid for real-time visual monitoring during escalation events between Iran and Israel.
-
-Resource management is aggressive — iframes are lazy-loaded via Intersection Observer (only rendered when the panel scrolls into view), paused after 5 minutes of user inactivity, and destroyed from the DOM entirely when the browser tab is hidden. On Tauri desktop, YouTube embeds route through a cloud proxy to bypass WKWebView autoplay restrictions. Each feed carries a fallback video ID in case the primary stream goes offline.
-
----
-
-## Server-Side Aggregation
+Deep dives: [News feeds panel](/panels/news-feeds) · [News digest & briefing methodology](/methodology/news-digest-and-briefing) · [Telegram intel panel](/panels/telegram-intel)
 
 ### Server-Side Feed Aggregation
 
@@ -407,29 +229,29 @@ The public server digest feed inventory below is source-backed from `server/worl
 | Variant | Category | Server feed sources |
 | --- | --- | --- |
 | `full` | `politics` | BBC World; Guardian World; AP News; Reuters World; CNN World; Trump - Truth Social |
-| `full` | `us` | Reuters US; NPR News; PBS NewsHour; ABC News; CBS News; NBC News; Wall Street Journal; Politico; The Hill; Axios |
-| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Tagesschau (de); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight |
-| `full` | `middleeast` | BBC Middle East; Al Jazeera; Guardian ME; Oman Observer; BBC Persian (fa); The National |
-| `full` | `tech` | Hacker News; Ars Technica; The Verge; MIT Tech Review |
+| `full` | `us` | Reuters US; NPR News; PBS NewsHour; ABC News; CBS News; NBC News; Wall Street Journal; Politico; The Hill; Axios; CBC News; Globe and Mail; Global News; Toronto Star; National Post; Financial Post; iPolitics; The Narwhal; The Tyee; Radio-Canada (fr); La Presse (fr); Le Devoir (fr); TVA Nouvelles (fr); Vancouver Sun; Calgary Herald; Winnipeg Free Press; Ottawa Citizen; Edmonton Journal; Maclean's; The Province; CTV News; CP24; Montreal Gazette |
+| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Telegraph; Interfax EN; Tagesschau (de); Handelsblatt (de); Welt (de); Interfax RU (ru); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Yle News; NRK; Aftenposten; DR Nyheder; Arctic Today; Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); Seznam Zprávy (cs); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight; Digi24 (ro); HotNews (ro); G4Media (ro); Dnevnik (bg); Kyiv Independent; Ukrinform; Suspilne; Ukrainska Pravda EN; NV EN; Hromadske EN; Ukrainska Pravda (uk); Hromadske (uk); Bihus.Info (uk); Slidstvo.Info (uk); ZN.UA (uk); TVN24; Rzeczpospolita; Meduza; Moscow Times; Civil.ge; OC Media; JAMnews; Azertag; Armenpress; Zerkalo; NewsMaker (ru); Ziarul de Gardă (ro); ERR News; LRT English; LSM English; Daily Sabah; Hurriyet (tr); Polsat News (pl); Kathimerini (el) |
+| `full` | `middleeast` | BBC Middle East; Al Jazeera; Al Arabiya; Guardian ME; BBC Persian (fa); Iran International; Haaretz; Jerusalem Post; Ynetnews; Arab News; The National; Oman Observer; Asharq Business; Rudaw; Yemen Online; Sana'a Center; Syria Direct; Enab Baladi English; +972 Magazine; WAFA English; Naharnet Lebanon; L'Orient Today; Libya Herald; Egypt Independent; Mada Masr |
+| `full` | `tech` | Hacker News; Ars Technica; The Verge; MIT Tech Review; Wired |
 | `full` | `ai` | AI News; VentureBeat AI; The Verge AI; MIT Tech Review; ArXiv AI |
-| `full` | `finance` | CNBC; MarketWatch; Yahoo Finance; Financial Times; Reuters Business |
+| `full` | `finance` | CNBC; MarketWatch; Yahoo Finance; Financial Times; Reuters Business; Fox Business; Business Insider; GlobeNewswire; Business Wire; PR Newswire; Chainwire; Coinbase Blog; Binance Announcements; Jin10 (zh) |
 | `full` | `commodities` | Oil & Gas; Gold & Metals |
-| `full` | `gov` | White House; White House Actions; State Dept; Pentagon; Federal Reserve; SEC; UN News; CISA; Treasury; DOJ |
-| `full` | `africa` | BBC Africa; News24; Africanews; Jeune Afrique (fr); Premium Times |
-| `full` | `latam` | BBC Latin America; Guardian Americas; Primicias (es); Infobae Americas (es); El Universo (es); Clarín (es); InSight Crime |
-| `full` | `asia` | BBC Asia; The Diplomat; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; Xinhua; MIIT (China) (zh); MOFCOM (China) (zh); BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi) |
+| `full` | `gov` | White House; White House Actions; State Dept; Pentagon; Federal Reserve; SEC; U.S. Trade Representative; UN News; CISA; Treasury; DOJ |
+| `full` | `africa` | BBC Africa; Africa News; Sahel Crisis; News24; Africanews; Jeune Afrique (fr); Premium Times; Vanguard Nigeria; Channels TV; Daily Trust; ThisDay; Radio Tamazuj; The Reporter Ethiopia; Ethiopia Insight; Dabanga Sudan; Hiiraan Online; Actualite.cd (fr); Radio Okapi (fr); MyJoyOnline; Citi Newsroom; Le Quotidien (fr); RFI Afrique; Studio Tamani (fr); leFaso.net (fr); ActuNiger (fr); Aïr Info (fr); Daily Nation; The Guardian Post; Tchadinfos (fr); Alwihda Info (fr); Radio Ndeke Luka (fr) |
+| `full` | `latam` | BBC Latin America; Guardian Americas; Primicias (es); Infobae Americas (es); El Universo (es); Clarín (es); InSight Crime; HaitiLibre English; AyiboPost (fr); Caracas Chronicles; Efecto Cocuyo (es); Havana Times; 14ymedio (es) |
+| `full` | `asia` | BBC Asia; The Diplomat; Reuters Asia; Japan Today; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; Xinhua; Asahi Shimbun (ja); MIIT (China) (zh); MOFCOM (China) (zh); Bangkok Post (th); VnExpress (vi); Yonhap News (ko); BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi); Eurasianet; RFE/RL Central Asia; The Astana Times; The Times of Central Asia; Focus Taiwan; Taipei Times; Taiwan News; Dawn; Geo News; Jakarta Post; Rappler; The Star (Malaysia); Irrawaddy; Island Times (Palau); Amu TV; Pajhwok Afghan News; The Daily Star; Dhaka Tribune |
 | `full` | `energy` | Oil & Gas; Reuters Energy; Nuclear Energy |
-| `full` | `thinktanks` | Foreign Policy; Atlantic Council; Foreign Affairs; War on the Rocks; CSIS |
+| `full` | `thinktanks` | Foreign Policy; Atlantic Council; Foreign Affairs; War on the Rocks; CSIS; ISW |
 | `full` | `crisis` | CrisisWatch; IAEA; WHO |
 | `full` | `layoffs` | Layoffs.fyi; TechCrunch Layoffs; Layoffs News |
 | `full` | `intel` | Defense One; The War Zone; Defense News; Breaking Defense; Military Times; Task & Purpose; USNI News; gCaptain; Oryx OSINT; Foreign Policy; Foreign Affairs; Atlantic Council; Bellingcat; Krebs Security; Arms Control Assn; Bulletin of Atomic Scientists; FAO News; OCCRP; DFRLab; Lighthouse Reports; The Sentry; GITOC; VSquare; Correctiv |
-| `tech` | `tech` | TechCrunch; The Verge; Ars Technica; Hacker News |
+| `tech` | `tech` | TechCrunch; The Verge; Ars Technica; Hacker News; Wired |
 | `tech` | `ai` | AI News; VentureBeat AI; The Verge AI; ArXiv AI |
 | `tech` | `startups` | TechCrunch Startups; VentureBeat; Crunchbase News |
 | `tech` | `vcblogs` | Y Combinator Blog; a16z Blog; First Round Review; Sequoia Blog; Stratechery |
 | `tech` | `regionalStartups` | EU Startups; Tech.eu; Sifted (Europe); Tech in Asia; TechCabal (Africa); Inc42 (India) |
 | `tech` | `unicorns` | Unicorn News; Decacorn News |
-| `tech` | `accelerators` | YC News; YC Blog; Demo Day News |
+| `tech` | `accelerators` | YC News; Demo Day News |
 | `tech` | `security` | Krebs Security; Dark Reading |
 | `tech` | `policy` | Politico Tech; AI Regulation; Tech Antitrust |
 | `tech` | `github` | GitHub Blog |
@@ -442,11 +264,11 @@ The public server digest feed inventory below is source-backed from `server/worl
 | `tech` | `producthunt` | Product Hunt |
 | `tech` | `hardware` | Tom's Hardware; SemiAnalysis; Semiconductor News |
 | `tech` | `outages` | AWS Status; Cloud Outages |
-| `finance` | `markets` | CNBC; Yahoo Finance; Seeking Alpha |
+| `finance` | `markets` | CNBC; Yahoo Finance; Seeking Alpha; Fox Business; Business Insider; GlobeNewswire; Business Wire; PR Newswire |
 | `finance` | `forex` | Forex News |
 | `finance` | `bonds` | Bond Market |
 | `finance` | `commodities` | Oil & Gas; Gold & Metals |
-| `finance` | `crypto` | CoinDesk; Cointelegraph; The Block; Decrypt; The Defiant; Bitcoin Magazine; DL News; CryptoSlate; Unchained; DeFi News; Bloomberg Crypto; Reuters Crypto; Wu Blockchain; Messari; NFT News; Stablecoin Policy |
+| `finance` | `crypto` | CoinDesk; Cointelegraph; The Block; Decrypt; Chainwire; Coinbase Blog; Binance Announcements; Jin10 (zh); The Defiant; Bitcoin Magazine; DL News; CryptoSlate; Unchained; DeFi News; Bloomberg Crypto; Reuters Crypto; Wu Blockchain; Messari; NFT News; Stablecoin Policy |
 | `finance` | `centralbanks` | Federal Reserve; PBoC Watch |
 | `finance` | `economic` | Economic Data |
 | `finance` | `ipo` | IPO News |
@@ -505,9 +327,39 @@ The digest cache key is `news:digest:v1:{variant}:{lang}` with a 900-second TTL.
 
 This eliminates per-client feed fan-out — 1,000 concurrent users each polling 25 feed categories would have generated 25,000 edge invocations per poll cycle. With server-side aggregation, they generate exactly 1 (or 0 if the digest is cached).
 
----
+### Telegram OSINT Intelligence Feed
 
-## Source Credibility & Feed Tiering
+The enabled channels in the default `full` Telegram channel set provide a raw, low-latency intelligence feed covering conflict zones, OSINT analysis, and breaking news — sources that are often minutes ahead of traditional wire services during fast-moving events.
+
+| Tier       | Role in the `full` set |
+| ---------- | ---------------------- |
+| **Tier 1** | Highest-priority sources |
+| **Tier 2** | Established sources |
+| **Tier 3** | Specialist sources |
+
+The channel set intentionally includes official, state-affiliated, partisan, and belligerent-party channels — for example military, ministry, state-media, and faction-aligned sources alongside independent OSINT accounts. Telegram posts are ingested as raw OSINT leads, not endorsed truth. The Telegram channel config carries operational `tier`, `topic`, and `region` metadata for polling and filtering; unlike RSS feeds, Telegram channels do not currently carry the RSS `stateAffiliation` or propaganda-risk fields, so source-bias review must use the disclosed channel identity plus the operational tier rather than RSS-style affiliation tags.
+
+**Architecture**: A GramJS MTProto client running on the Railway relay polls all channels sequentially on a 60-second cycle. Each channel has a 15-second timeout (GramJS `getEntity`/`getMessages` can hang indefinitely on FLOOD_WAIT or MTProto stalls), and the entire cycle has a 3-minute hard timeout. A stuck-poll guard force-clears the mutex after 3.5 minutes, and FLOOD_WAIT errors from Telegram's API stop the cycle early rather than propagating to every remaining channel.
+
+Messages are deduplicated by ID, filtered to exclude media-only posts (images without text), truncated to 800 characters, and stored in a rolling 200-item buffer. The relay connects with a 60-second startup delay to prevent `AUTH_KEY_DUPLICATED` errors during Railway container restarts (the old container must fully disconnect before the new one authenticates). Topic classification (breaking, conflict, alerts, osint, politics, middleeast) and channel-based filtering happen at query time via the `/telegram/feed` relay endpoint.
+
+### Live Webcam Surveillance Grid
+
+The YouTube live-stream catalog covers geopolitical hotspots across global regions and provides continuous visual situational awareness:
+
+| Region             | Cities                                                           |
+| ------------------ | ---------------------------------------------------------------- |
+| **Iran / Attacks** | Tehran, Tel Aviv, Jerusalem (Western Wall)                       |
+| **Middle East**    | Jerusalem (Western Wall), Tehran, Tel Aviv, Mecca (Grand Mosque) |
+| **Europe**         | Kyiv, Odessa, Paris, St. Petersburg, London                      |
+| **Americas**       | Washington DC, New York, Los Angeles, Miami                      |
+| **Asia-Pacific**   | Taipei, Shanghai, Tokyo, Seoul, Sydney                           |
+
+The webcam panel supports two viewing modes: a 2×2 grid (default strategic selection: Jerusalem, Tehran, Kyiv, Washington DC) and a single-feed expanded view. Region tabs (ALL/IRAN/MIDEAST/EUROPE/AMERICAS/ASIA) filter the available feeds. The Iran/Attacks tab provides a dedicated 2×2 grid for real-time visual monitoring during escalation events between Iran and Israel.
+
+Resource management is aggressive — iframes are lazy-loaded via Intersection Observer (only rendered when the panel scrolls into view), paused after 5 minutes of user inactivity, and destroyed from the DOM entirely when the browser tab is hidden. On Tauri desktop, YouTube embeds route through a cloud proxy to bypass WKWebView autoplay restrictions. Each feed carries a fallback video ID in case the primary stream goes offline.
+
+### Source Credibility & Feed Tiering
 
 Every RSS feed is assigned a source tier reflecting editorial reliability:
 
@@ -520,63 +372,40 @@ Every RSS feed is assigned a source tier reflecting editorial reliability:
 
 Feeds also carry a **propaganda risk rating** and **state affiliation flag**. State-affiliated sources (RT, Xinhua, IRNA) are included for completeness but visually tagged so analysts can factor in editorial bias. Threat classification confidence is weighted by source tier — a Tier 1 breaking alert carries more weight than a Tier 4 blog post in the focal point detection algorithm.
 
----
+**UA/RU EN default balance (#5950, epic #5948):** for the English full-variant path, `DEFAULT_ENABLED_SOURCES.europe` must keep **≥1 dedicated Ukrainian primary** (currently Kyiv Independent) and **≥1 independent Russian outlet** (currently Meduza and/or Moscow Times). Russian state media (TASS, RT, RT Russia) stays cataloged with high propaganda-risk tags for opt-in only — never default-on. Free-tier round-robin source-cap (`selectSourcesUnderCap`) treats `FREE_CAP_PROTECTED_SOURCES` as protected so the frontline balance set plus the Eastern-flank EN defaults (Daily Sabah and ERR News) are not stripped for unsigned EN users. The narrower `FRONTLINE_EUROPE_PROTECTED_SOURCES` remains the one-shot frontline migration contract. Additional Ukrainian institutional and frontline English sources are tracked under the P1 Ukraine depth pack (#5951), not jammed into the minimal default set.
 
-## Data Freshness & Intelligence Gaps
-
-### Data Freshness & Intelligence Gaps
-
-A singleton tracker monitors 35 data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, BLS, WTO trade, supply chain, security advisories, sanctions pressure, radiation, GPS jamming, Treasury revenue) with status categorization: fresh (&lt;15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two browser-tracker sources (GDELT, RSS) are flagged as `requiredForRisk`; that flag drives the Strategic Risk panel's hard insufficient-data gate, not the exhaustive list of CII score inputs. Score-relevant feeds such as UCDP events, ACLED conflict, news summaries, and cyber threats are tracked through source-specific health plus the `riskScores` health/cache signal-density coverage. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
+**Theater coverage presets (#5956, epic #5948):** Settings → Sources shows "Coverage presets" chips that enable a curated theater source set in one click: **Ukraine War**, **Indo-Pacific / Taiwan**, **Sahel & West Africa**, **Caucasus & Central Asia**, and **Middle East Flashpoints** (`src/config/theater-presets.ts`). Applying a preset is additive — it removes only the preset's sources from the user's disabled-sources set (`worldmonitor-disabled-feeds`, cloud-synced) via the same bulk primitive as select-all, so unrelated enabled/disabled choices, the free source cap, and cloud sync all behave identically to manual toggling. `DEFAULT_ENABLED_SOURCES` remains the baseline; presets are user-applied overlays. Catalog opt-in-only state propaganda (TASS, RT, RT Russia, Xinhua, Fars News, IRNA, Mehr News, Azertag, Armenpress) is never included in a preset — the #5950 opt-in rule extends to one-click enables — while risk-tagged national institutions added by the theater packs (Ukrinform, Suspilne) are included and keep their provenance risk tags in the UI. Purely locale-gated feeds are left to the locale boost rather than presets.
 
 ---
 
-## Prediction Markets
+## Finance & Economics
 
-### Prediction Markets as Leading Indicators
+Macro, markets, and money — official statistics from central banks and statistical agencies, live market quotes, crypto, and trade intelligence.
 
-Polymarket geopolitical markets are queried using tag-based filters (Ukraine, Iran, China, Taiwan, etc.) with 5-minute caching. Market probability shifts are correlated with news volume: if a prediction market moves significantly before matching news arrives, this is flagged as a potential early-warning signal.
+- 7-signal macro radar with composite BUY/CASH verdict
+- **Customizable market watchlist** — user-defined stock/commodity/crypto symbol lists (up to 50 symbols) with optional friendly labels, persisted to localStorage, synchronized across panels via CustomEvent
+- Global stock exchanges — mega (NYSE, NASDAQ, Shanghai, Euronext, Tokyo), major (Hong Kong, London, NSE/BSE, Toronto, Korea, Saudi Tadawul), and emerging markets — with market caps and trading hours
+- 19 financial centers — ranked by Global Financial Centres Index (New York #1 through offshore centers: Cayman Islands, Luxembourg, Bermuda, Channel Islands)
+- Central-bank and supranational finance institutions — policy-rate institutions (Federal Reserve, ECB, BoJ, BoE, PBoC, SNB, RBA, BoC, RBI, BoK, BCB, SAMA) plus BIS and IMF
+- BIS central bank data — policy rates across major economies, real effective exchange rates (REER), and credit-to-GDP ratios sourced from the Bank for International Settlements
+- 10 commodity hubs — exchanges (CME Group, ICE, LME, SHFE, DCE, TOCOM, DGCX, MCX) and physical hubs (Rotterdam, Houston)
+- **Gulf Economies panel** — live data for GCC financial markets across three sections: **Indices** (Tadawul/Saudi Arabia, Dubai Financial Market, Abu Dhabi, Qatar, WisdomTree Gulf Dividend, Muscat MSM 30), **Currencies** (SAR, AED, QAR, KWD, BHD, OMR vs USD), and **Oil** (WTI Crude, Brent Crude). All quotes fetched from Yahoo Finance with staggered batching, Redis-cached for 8 minutes, with mini sparklines per quote and 60-second polling
+- Gulf FDI investment layer — 64 Saudi/UAE foreign direct investments plotted globally, color-coded by status (operational, under-construction, announced), sized by investment amount
+- Real-time crypto prices (BTC, ETH, SOL, XRP, and more) via CoinGecko
+- BTC spot ETF flow tracker (IBIT, FBTC, GBTC, and 7 more)
+- Stablecoin peg health monitor (USDT, USDC, DAI, FDUSD, USDe)
+- Fear & Greed Index with 30-day history
+- Bitcoin technical trend (SMA50, SMA200, VWAP, Mayer Multiple)
+- JPY liquidity signal, QQQ/XLP macro regime, BTC hash rate
+- WTO trade policy intelligence — active trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers sourced from the World Trade Organization
+- Inline SVG sparklines and donut gauges for visual trends
 
-**4-tier fetch strategy** — prediction markets use a cascading fetch chain to maximize data availability:
-
-1. **Bootstrap hydration** — zero-network, page-load-embedded data from the Redis-cached `predictions` key. If fresh (&lt;20 min), the panel renders instantly without any API call
-2. **Sebuf RPC** — `GET /api/prediction/v1/list-prediction-markets` queries Redis for the seed-script-maintained cache. Single request, sub-100ms cold start
-3. **Browser-direct Polymarket** — the browser fetches Polymarket's Gamma API directly, bypassing JA3 fingerprinting (browser TLS passes Cloudflare)
-4. **Sidecar native TLS** — on Tauri desktop, Rust's `reqwest` TLS fingerprint differs from Node.js, providing another bypass vector
-
-**Country-specific markets** — `fetchCountryMarkets(country)` maps 40+ countries to Polymarket tag variants (e.g., "Russia" matches ["russia", "russian", "moscow", "kremlin", "putin"]), enabling the Country Brief to display prediction contracts relevant to any nation.
-
-**Smart filtering** — markets are ranked by 24h trading volume, filtered to exclude sports and entertainment (100+ exclusion keywords: NBA, NFL, Oscar, Grammy, etc.), and require meaningful price divergence from 50% or volume above $50K to suppress noise. Each variant gets different tag sets — geopolitical queries politics/world/ukraine/middle-east tags, tech queries ai/crypto/business tags.
-
-**Cloudflare JA3 bypass** — Polymarket's API is protected by Cloudflare TLS fingerprinting (JA3) that blocks all server-side requests. The system uses a 3-tier fallback:
-
-| Tier  | Method                     | When It Works                                           |
-| ----- | -------------------------- | ------------------------------------------------------- |
-| **1** | Browser-direct fetch       | Always (browser TLS passes Cloudflare)                  |
-| **2** | Tauri native TLS (reqwest) | Desktop app (Rust TLS fingerprint differs from Node.js) |
-| **3** | Vercel edge proxy          | Rarely (edge runtime sometimes passes)                  |
-
-Once browser-direct succeeds, the system caches this state and skips fallback tiers on subsequent requests. Country-specific markets are fetched by mapping countries to Polymarket tags with name-variant matching (e.g., "Russia" matches titles containing "Russian", "Moscow", "Kremlin", "Putin").
-
-Markets are filtered to exclude sports and entertainment (100+ exclusion keywords), require meaningful price divergence from 50% or volume above $50K, and are ranked by trading volume. Each variant gets different tag sets — geopolitical focus queries politics/world/ukraine/middle-east tags, while tech focus queries ai/crypto/business tags.
-
----
-
-## Provider Credits
-
-WorldMonitor is grateful to the following organizations for making their data publicly accessible.
-
-### Energy & Commodities
-
-| Provider | Data | Link |
-|----------|------|------|
-| GIE AGSI+ | EU natural gas storage levels | [agsi.gie.eu](https://agsi.gie.eu) |
-| U.S. EIA | Crude oil inventories, fuel prices, energy data | [eia.gov/opendata](https://www.eia.gov/opendata) |
-
-### Finance & Economics
+**Key providers**
 
 | Provider | Data | Link |
 |----------|------|------|
 | ECB Data Portal | FX reference rates, yield curve, ESTR/EURIBOR, financial stress index | [data-api.ecb.europa.eu](https://data-api.ecb.europa.eu) |
+| Bank of Russia | Official RUB exchange rates (~54 currencies) and the CBR key policy rate | [cbr.ru](https://www.cbr.ru) |
 | Eurostat | Euro Area CPI, GDP, unemployment, economic indicators | [ec.europa.eu/eurostat](https://ec.europa.eu/eurostat) |
 | FRED — St. Louis Fed | US/global interest rates, macroeconomic series | [fred.stlouisfed.org](https://fred.stlouisfed.org) |
 | World Bank Open Data | Development indicators, renewable energy, technology readiness | [data.worldbank.org](https://data.worldbank.org) |
@@ -585,6 +414,270 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | USA Spending | US federal spending and contracts | [api.usaspending.gov](https://api.usaspending.gov) |
 | Global procurement opportunities | US SAM.gov, EU TED, UK Contracts Finder, CanadaBuys, New Zealand GETS, and World Bank procurement notices | [Coverage and freshness](/global-procurement-intelligence) |
 | UN Comtrade | Global merchandise trade flows | [comtradeapi.un.org](https://comtradeapi.un.org) |
+| CoinGecko | Cryptocurrency prices and market data | [coingecko.com](https://www.coingecko.com) |
+
+China-specific official financial and statistical sources (NBS, SAFE, PBoC, SSE/SZSE, and more) are listed under [China Coverage](#china-coverage).
+
+Deep dives: [Finance data](/finance-data) · [Premium finance](/premium-finance) · [Consumer prices panel](/panels/consumer-prices) · [Trade policy panel](/panels/trade-policy)
+
+---
+
+## Energy & Commodities
+
+Physical-economy fundamentals for the Energy and Commodity variants: storage, inventories, flows, and prices.
+
+- EU natural gas storage levels (GIE AGSI+) with country-level fill rates
+- US crude oil inventories, fuel prices, and energy statistics (EIA)
+- IEA oil stock coverage and OECD inventory context
+- Gold — central-bank reserves (IMF), ETF flows (SPDR), and spot trend
+- CFTC Commitments of Traders positioning (reviewed US government data)
+- Global fuel-price tracking with national statistical sources (for example Malaysia's data.gov.my and Mexico's datos.gob.mx)
+- Commodity news network: precious metals, base metals, critical minerals, mining companies, and supply-chain feeds — see the [feed inventory](#server-side-feed-aggregation)
+- Mineral production and processing shares by country and stage (USGS Mineral Commodity Summaries, BGS World Mineral Production fill). Complements the static critical-minerals deposits map layer: deposits are where it *could* come from; these shares are where it *does*, at mine vs refinery.
+- Energy chokepoint and tanker context via [maritime intelligence](/maritime-intelligence) and the [Hormuz tracker](/panels/hormuz-tracker)
+
+**Key providers**
+
+| Provider | Data | Link |
+|----------|------|------|
+| GIE AGSI+ | EU natural gas storage levels | [agsi.gie.eu](https://agsi.gie.eu) |
+| U.S. EIA | Crude oil inventories, fuel prices, energy data | [eia.gov/opendata](https://www.eia.gov/opendata) |
+| USGS Mineral Commodity Summaries | Annual mine and refinery production by country (public domain) | [sciencebase.gov MCS 2026](https://doi.org/10.5066/P1WKQ63T) |
+| BGS World Mineral Production | Cross-check / fill where USGS lacks a world table (attribution required) | [bgs.ac.uk world mineral statistics](https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/) |
+
+Licensing: USGS MCS data is U.S. public domain. BGS World Mineral Production requires attribution to the British Geological Survey; IEA critical-minerals datasets are not ingested because redistribution terms are stricter than USGS/BGS, so USGS-unpublished REE refining shares are omitted.
+
+Deep dives: [Energy crisis panel](/panels/energy-crisis) · [Chokepoints methodology](/methodology/chokepoints) · [Pipelines methodology](/methodology/pipelines) · [Storage methodology](/methodology/storage)
+
+---
+
+## Infrastructure & Cyber
+
+The physical and digital backbone: cables, pipelines, ports, datacenters, internet health, and live cyber threat intelligence.
+
+- Undersea cables with landing points, cable health advisories (NGA navigational warnings), and cable repair ship tracking
+- Oil & gas pipelines
+- AI datacenters from the Epoch AI dataset
+- Strategic ports grouped by container, oil, LNG, naval, mixed, and bulk roles, with throughput rankings
+- Internet outages (Cloudflare Radar)
+- Critical mineral deposits
+- 19 global trade routes (container, energy, bulk) with multi-segment arcs through strategic chokepoints
+- Cyber threat IOCs (C2 servers, malware hosts, phishing, malicious URLs) geo-located on the globe
+- Cloud and SaaS operational-status monitoring across major providers
+
+**Key providers**
+
+| Provider | Data | Link |
+|----------|------|------|
+| Cloudflare Radar | Internet outages and traffic anomalies | [radar.cloudflare.com](https://radar.cloudflare.com) |
+| Submarine Cable Map | Global submarine cable infrastructure | [submarinecablemap.com](https://www.submarinecablemap.com) |
+| AbuseIPDB | Crowd-sourced malicious IP reports | [abuseipdb.com](https://www.abuseipdb.com) |
+
+Deep dives: [Infrastructure cascade](/infrastructure-cascade) · [Supply chain panel](/panels/supply-chain)
+
+### Cyber Threat Intelligence Layer
+
+Six threat intelligence feeds provide indicators of compromise (IOCs) for active command-and-control servers, malware distribution hosts, phishing campaigns, malicious URLs, and ransomware operations:
+
+| Feed                         | IOC Type      | Coverage                        |
+| ---------------------------- | ------------- | ------------------------------- |
+| **Feodo Tracker** (abuse.ch) | C2 servers    | Botnet C&C infrastructure       |
+| **URLhaus** (abuse.ch)       | Malware hosts | Malware distribution URLs       |
+| **C2IntelFeeds**             | C2 servers    | Community-sourced C2 indicators |
+| **AlienVault OTX**           | Mixed         | Open threat exchange pulse IOCs |
+| **AbuseIPDB**                | Malicious IPs | Crowd-sourced abuse reports     |
+| **Ransomware.live**          | Ransomware    | Active ransomware group feeds   |
+
+Each IP-based IOC is geo-enriched using ipinfo.io with freeipapi.com as fallback. Geolocation results are Redis-cached for 24 hours. Enrichment runs concurrently — 16 parallel lookups with a 12-second timeout, processing up to 250 IPs per collection run.
+
+IOCs are classified into four types (`c2_server`, `malware_host`, `phishing`, `malicious_url`) with four severity levels, rendered as color-coded scatter dots on the globe. The layer uses a 10-minute cache, a 14-day rolling window, and caps display at 500 IOCs to maintain rendering performance.
+
+### Strategic Port Infrastructure
+
+Strategic ports are cataloged by role, reflecting their place in global trade and military posture:
+
+| Type           | Count | Examples                                             |
+| -------------- | ----- | ---------------------------------------------------- |
+| **Container**  | 21    | Shanghai (#1, 47M+ TEU), Singapore, Ningbo, Shenzhen |
+| **Oil/LNG**    | 8     | Ras Tanura (Saudi), Sabine Pass (US), Fujairah (UAE) |
+| **Chokepoint** | 9     | Suez Canal, Panama Canal, Strait of Malacca, Gibraltar, Bosphorus, Dardanelles |
+| **Naval**      | 6     | Zhanjiang, Yulin (China), Vladivostok (Russia)       |
+| **Mixed**      | 15+   | Ports serving multiple roles (trade + military)      |
+| **Bulk**       | 20+   | Regional commodity ports                             |
+
+Ports are ranked by throughput and weighted by strategic importance in the infrastructure cascade model: oil/LNG terminals carry 0.9 criticality, container ports 0.7, and naval bases 0.4. Port proximity appears in the Country Brief infrastructure exposure section.
+
+---
+
+## Environment & Disasters
+
+Natural hazards and climate stress, merged from independent government and UN-coordinated sources.
+
+- Natural disasters from 3 sources (USGS earthquakes M4.5+, GDACS alerts, NASA EONET events)
+- NASA FIRMS satellite fire detection (VIIRS thermal hotspots)
+- Western Pacific tropical-cyclone observations (Hong Kong Observatory, Japan Meteorological Agency)
+- Climate anomaly detection over 15 conflict- and disaster-prone zones (Open-Meteo ERA5)
+- Weather alerts and severe conditions
+- Radiation monitoring — see the [Radiation Watch panel](/panels/radiation-watch)
+
+**Key providers**
+
+| Provider | Data | Link |
+|----------|------|------|
+| USGS Earthquake Hazards | Global seismic activity | [earthquake.usgs.gov](https://earthquake.usgs.gov) |
+| NASA FIRMS | Near real-time wildfire/fire detections (VIIRS) | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov) |
+| NASA EONET | Natural events — storms, volcanoes, floods | [eonet.gsfc.nasa.gov](https://eonet.gsfc.nasa.gov) |
+| GDACS | UN-coordinated global disaster alerts | [gdacs.org](https://www.gdacs.org) |
+| Hong Kong Observatory | Local tropical-cyclone warning signals | [data.weather.gov.hk](https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en) |
+| Japan Meteorological Agency | Western North Pacific tropical-cyclone observations | [jma.go.jp](https://www.jma.go.jp/bosai/map.html#contents=typhoon) |
+| Open-Meteo | ERA5 reanalysis climate data | [open-meteo.com](https://open-meteo.com) |
+
+Deep dives: [Natural disasters](/natural-disasters) · [Disease alert methodology](/methodology/disease-alert-level) · [Thermal escalation panel](/panels/thermal-escalation)
+
+### Natural Disaster Monitoring
+
+Three independent sources are merged into a unified disaster picture, then deduplicated on a 0.1° geographic grid:
+
+| Source         | Coverage                       | Types                                                         | Update Frequency |
+| -------------- | ------------------------------ | ------------------------------------------------------------- | ---------------- |
+| **USGS**       | Global earthquakes M4.5+       | Earthquakes                                                   | 5 minutes        |
+| **GDACS**      | UN-coordinated disaster alerts | Earthquakes, floods, cyclones, volcanoes, wildfires, droughts | Real-time        |
+| **NASA EONET** | Earth observation events       | 13 natural event categories (30-day open events)              | Real-time        |
+
+GDACS events carry color-coded alert levels (Red = critical, Orange = high) and are filtered to exclude low-severity Green alerts. EONET wildfires are filtered to events within 48 hours to prevent stale data. Earthquakes from EONET are excluded since USGS provides higher-quality seismological data.
+
+The merged output feeds into the signal aggregator for geographic convergence detection — e.g., an earthquake near a pipeline triggers an infrastructure cascade alert.
+
+### Climate Anomaly Detection
+
+15 conflict-prone and disaster-prone zones are continuously monitored for temperature and precipitation anomalies using Open-Meteo ERA5 reanalysis data. A 30-day baseline is computed, and current conditions are compared against it to determine severity:
+
+| Severity     | Temperature Deviation | Precipitation Deviation   |
+| ------------ | --------------------- | ------------------------- |
+| **Extreme**  | > 5°C above baseline  | > 80mm/day above baseline |
+| **Moderate** | > 3°C above baseline  | > 40mm/day above baseline |
+| **Normal**   | Within expected range | Within expected range     |
+
+Anomalies feed into the signal aggregator, where they amplify CII scores for affected countries (climate stress is a recognized conflict accelerant). The Climate Anomaly panel surfaces these deviations in a severity-sorted list.
+
+---
+
+## Aviation & Airspace
+
+Airport operations, airspace closures, live flight tracking, and airline intelligence.
+
+- Airport delays and closures across monitored airports (FAA + AviationStack + ICAO NOTAM)
+- **Aviation intelligence** — 6-tab airline intel panel (ops, flights, airlines, tracking, news, prices) with customizable airport/airline watchlists, live ADS-B flight tracking, and flight price search
+
+**Key providers**
+
+| Provider | Data | Link |
+|----------|------|------|
+| adsb.lol | Live military ADS-B flight data (primary, ODbL) | [adsb.lol](https://adsb.lol) |
+| airplanes.live | Optional non-commercial ADS-B point queries (gap-fill) | [airplanes.live](https://airplanes.live/api-guide/) |
+| adsb.fi | Optional personal/non-commercial ADS-B point queries (gap-fill) | [adsb.fi](https://github.com/adsbfi/opendata) |
+| Wingbits | Live ADS-B flight data (keyed) | [wingbits.com](https://wingbits.com) |
+| OpenSky Network | Legacy per-request recovery (disabled in the military seeder) | [opensky-network.org](https://opensky-network.org) |
+| FAA ASWS | US airport delay and ground stop data | [nasstatus.faa.gov](https://nasstatus.faa.gov) |
+| ICAO | NOTAM airspace closure data | [icao.int](https://www.icao.int) |
+| AviationStack | International airport delay coverage | [aviationstack.com](https://aviationstack.com/) |
+
+Deep dives: [Airline intel panel](/panels/airline-intel)
+
+### Airport Delay & NOTAM Monitoring
+
+Airports across the Americas, Europe, Asia-Pacific, MENA, and Africa are continuously monitored for delays, ground stops, and closures through independent data sources:
+
+| Source             | Coverage                  | Method                                                                                                  |
+| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **FAA ASWS**       | 14 US hub airports        | Real-time XML feed from `nasstatus.faa.gov` — ground delays, ground stops, arrival/departure delays, closures |
+| **AviationStack**  | 56 international airports  | Last 100 flights per airport — cancellation rate and average delay duration computed from flight records  |
+| **ICAO NOTAM API** | 46 MENA airports           | Real-time NOTAM (Notice to Air Missions) query for active airport/airspace closures                      |
+
+**NOTAM closure detection** targets MENA airports where airspace closures due to military activity or security events carry strategic significance. Detection uses two methods: ICAO Q-code matching (aerodrome/airspace closure codes `FA`, `AH`, `AL`, `AW`, `AC`, `AM` combined with closure qualifiers `LC`, `AS`, `AU`, `XX`, `AW`) and free-text regex scanning for closure keywords (`AD CLSD`, `AIRPORT CLOSED`, `AIRSPACE CLOSED`). When a NOTAM closure is detected, it overrides any existing delay alert for that airport with a `severe/closure` classification.
+
+**Severity thresholds**: Average delay ≥15min or ≥15% delayed flights = minor; ≥30min/30% = moderate; ≥45min/45% = major; ≥60min/60% = severe. Cancellation rate ≥80% with ≥10 flights = closure. All results are cached for 30 minutes in Redis. When no AviationStack API key is configured, the system generates probabilistic simulated delays for demonstration — rush-hour windows and high-traffic airports receive higher delay probability.
+
+### Aviation Intelligence Panel
+
+The Airline Intel panel provides a comprehensive 6-tab aviation monitoring interface covering operations, flights, carriers, tracking, news, and pricing:
+
+| Tab | Data | Source |
+| --- | --- | --- |
+| **Ops** | Delay percentages, cancellation rates, NOTAM closures, ground stops | FAA ASWS, AviationStack, ICAO |
+| **Flights** | Specific flight status with scheduled vs estimated times, divert/cancel flags | AviationStack flight lookup |
+| **Airlines** | Per-carrier statistics at monitored airports (delay %, cancellation rate, flight count) | AviationStack carrier ops |
+| **Tracking** | Live ADS-B aircraft positions with altitude, ground speed, heading, on-ground status | adsb.lol (ODbL) / Wingbits / OpenSky |
+| **News** | 20+ recent aviation news items with entity matching (airlines, airports, aircraft types) | RSS feeds tagged `aviation` |
+| **Prices** | Multi-carrier price quotes with cabin selection (Economy/Business), currency conversion, non-stop filters | Travelpayouts cached data |
+
+**Aviation watchlist** — users customize a personal list of airports (IATA codes), airlines, and routes persisted to `localStorage` as `aviation:watchlist:v1`. The default watchlist includes IST, ESB, SAW, LHR, FRA, CDG airports and TK airline, reflecting common monitoring needs. The watchlist drives which airports appear in the Ops tab and which carriers are tracked in the Airlines tab.
+
+Delay severity is classified across five levels — normal, minor, moderate, major, severe — with each alert carrying a severity source (FAA, Eurocontrol, or computed from flight data). The panel auto-refreshes on a 5-minute polling cycle with a live indicator badge, and uses a `SmartPollLoop` with adaptive backoff on failures.
+
+---
+
+## China Coverage
+
+### China Coverage, Attribution, and Freshness
+
+The China country deep-dive composes source-specific contracts rather than
+operating one opaque China fetch path. The complete contract inventory,
+cadences, surfaces, and access boundaries are maintained on
+[China Data Coverage](/china-data-coverage).
+
+Its China-specific official lanes currently include:
+
+- revision-aware macro observations from NBS and SAFE, with reviewed PBoC and
+  GACC candidates kept explicitly unavailable when their source preflight does
+  not pass;
+- official policy and enforcement documents from CAC, SAMR, MIIT, MOFCOM,
+  NDRC, and PBoC;
+- metadata-only corporate disclosures from SSE and SZSE, with HKEX explicitly
+  blocked by its automated-access terms;
+- Taiwan Ministry of National Defense claims with separately attributed Japan
+  Joint Staff context; and
+- HKO warnings and Western Pacific hazard observations.
+
+The composition also uses attributable global contracts for BIS, IMF, UN
+Comtrade reporter 156 and bilateral HS4 data, CCFI, IMF PortWatch,
+AviationStack, the China energy spine, the China market index, and reviewed
+China news sources. Every displayed signal carries its publisher and
+observation or release date. A missing, stale, blocked, or partial source is
+shown as unavailable or degraded rather than as zero.
+
+JODI remains enabled for its existing global energy product, but the China
+contract stays explicitly blocked until a reviewed update verifies that JODI
+publishes a substantive `CN` row for the relevant oil or gas dataset. This
+prevents a global JODI heartbeat from being presented as China coverage.
+
+The globally ranked insights payload is likewise not used as China feed-health
+evidence: a current top-eight can legitimately contain no China story. The
+insights seeder persists a separate China-source projection for Xinhua, MIIT,
+and MOFCOM. It records each source as available only when the digest fetch
+completed with dated content; a timeout, empty response, or undated feed stays
+visible as degraded coverage.
+
+The hourly Railway China coverage evaluator checks the transport heartbeat and
+content freshness independently for every launched contract. It uses the
+canonical eight-hub AviationStack `coverage` records—not the bootstrap's
+presentation-only airport rows—so an upstream omission remains observable.
+The audit records aggregate status and reason codes only: it never logs
+credentials or raw upstream payloads. Detailed bilateral trade data remains
+Pro-only and is not included in the public China summary.
+
+Source-specific collection and missingness details:
+
+- [Official macro and policy](/china-official-macro-policy)
+- [Corporate disclosures](/china-corporate-disclosures)
+- [Logistics corridors](/china-logistics-corridors)
+- [China decision signals](/china-decision-signals)
+- [Activity nowcast methodology](/methodology/china-activity-nowcast)
+
+**Key providers**
+
+| Provider | Data | Link |
+|----------|------|------|
 | National Bureau of Statistics of China | Official activity/investment observations and release calendar | [stats.gov.cn](https://www.stats.gov.cn/english/) |
 | State Administration of Foreign Exchange | Official reserves and bank FX settlement observations | [safe.gov.cn](https://www.safe.gov.cn/safe/sjjd/index.html) |
 | ChinaMoney / CFETS | Realized Loan Prime Rate publication-date verification | [chinamoney.com.cn](https://www.chinamoney.com.cn/) |
@@ -597,46 +690,56 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | Shanghai Stock Exchange | Reviewed issuer public disclosure metadata | [sse.com.cn](https://www.sse.com.cn/) |
 | Shenzhen Stock Exchange | Reviewed issuer public disclosure metadata | [szse.cn](https://www.szse.cn/) |
 | Shanghai Shipping Exchange | China Containerized Freight Index | [sse.net.cn](https://en.sse.net.cn/indices/ccfinew.jsp) |
-| CoinGecko | Cryptocurrency prices and market data | [coingecko.com](https://www.coingecko.com) |
 
-### Geopolitics & Conflict
+#### Cross-Strait Official Activity Claims
 
-| Provider | Data | Link |
-|----------|------|------|
-| ACLED | Armed conflict and protest event data | [acleddata.com](https://acleddata.com) |
-| UCDP | Uppsala Conflict Data Program — conflict events | [ucdp.uu.se](https://ucdp.uu.se) |
-| GDELT | Global event, language, and tone database | [gdeltproject.org](https://www.gdeltproject.org) |
-| IMF PortWatch | Chokepoint transit intelligence | [portwatch.imf.org](https://portwatch.imf.org) |
-| Taiwan Ministry of National Defense | Official daily Cross-Strait activity claims | [mnd.gov.tw](https://www.mnd.gov.tw/english/) |
-| Japan Joint Staff | Separately attributed regional activity context | [mod.go.jp/js](https://www.mod.go.jp/js/) |
+The durable Railway archive is `military:cross-strait-activity:v1`; the Force
+Posture panel hydrates its compact projection at
+`military:cross-strait-activity-bootstrap:v1`. Taiwan Ministry of National
+Defense daily releases are
+stored as publisher claims with their official 06:00-to-06:00 Asia/Taipei
+reporting window. PLA aircraft sorties, PLAN ships, other official ships,
+median-line crossings, and ADIZ entries remain separate nullable categories:
+an omitted category is unknown, not zero.
 
-### Environment & Disasters
+The seed accumulates at most 20 new Taiwan MND detail pages per run and retains
+corrections as linked vintages in the durable archive. Oldest vintages are
+pruned first when the complete archive approaches its 4 MiB publish budget.
+Bootstrap carries only the latest MND observation and reviewed Japan context,
+never revision history.
+Its 30- and 90-day medians use only prior usable
+Taiwan MND reporting days, excluding the current report; each comparison stays
+unavailable until the full prior-day sample exists. Reviewed Japan Joint Staff
+releases are displayed as separately attributed regional context and never
+enter the Taiwan MND baselines.
 
-| Provider | Data | Link |
-|----------|------|------|
-| USGS Earthquake Hazards | Global seismic activity | [earthquake.usgs.gov](https://earthquake.usgs.gov) |
-| NASA FIRMS | Near real-time wildfire/fire detections (VIIRS) | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov) |
-| NASA EONET | Natural events — storms, volcanoes, floods | [eonet.gsfc.nasa.gov](https://eonet.gsfc.nasa.gov) |
-| GDACS | UN-coordinated global disaster alerts | [gdacs.org](https://www.gdacs.org) |
-| Hong Kong Observatory | Local tropical-cyclone warning signals | [data.weather.gov.hk](https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en) |
-| Japan Meteorological Agency | Western North Pacific tropical-cyclone observations | [jma.go.jp](https://www.jma.go.jp/bosai/map.html#contents=typhoon) |
-| Open-Meteo | ERA5 reanalysis climate data | [open-meteo.com](https://open-meteo.com) |
+These official claims are not ADS-B aircraft tracks, AIS vessel tracks, NOTAMs,
+news reports, or market observations. The panel labels that distinction and
+does not combine those source families into a single activity count.
 
-### Infrastructure & Cyber
+---
 
-| Provider | Data | Link |
-|----------|------|------|
-| Cloudflare Radar | Internet outages and traffic anomalies | [radar.cloudflare.com](https://radar.cloudflare.com) |
-| Submarine Cable Map | Global submarine cable infrastructure | [submarinecablemap.com](https://www.submarinecablemap.com) |
-| AbuseIPDB | Crowd-sourced malicious IP reports | [abuseipdb.com](https://www.abuseipdb.com) |
-| CelesTrak | Satellite TLE data for orbital tracking | [celestrak.org](https://celestrak.org) |
+## Tech Ecosystem
 
-### Aviation
+Technology-sector intelligence for the Tech variant.
 
-| Provider | Data | Link |
-|----------|------|------|
-| Wingbits | Live ADS-B flight data | [wingbits.com](https://wingbits.com) |
-| OpenSky Network | ADS-B flight tracking (fallback) | [opensky-network.org](https://opensky-network.org) |
-| FAA ASWS | US airport delay and ground stop data | [nasstatus.faa.gov](https://nasstatus.faa.gov) |
-| ICAO | NOTAM airspace closure data | [icao.int](https://www.icao.int) |
-| AviationStack | International airport delay coverage | [aviationstack.com](https://aviationstack.com/) |
+- Tech company HQs (Big Tech, unicorns, public)
+- Startup hubs with funding data
+- Cloud regions (AWS, Azure, GCP)
+- Accelerators (YC, Techstars, 500)
+- Upcoming tech conferences
+- Research signals — GitHub trends, OSS Insight repository analytics, and tech-event calendars
+
+Deep dives: [Tech readiness panel](/panels/tech-readiness) · [Platform overview](/overview)
+
+---
+
+## Data Freshness & Intelligence Gaps
+
+A singleton tracker monitors configured data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, Ontario 511, BC Open511, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, BLS, WTO trade, supply chain, security advisories, sanctions pressure, radiation, GPS jamming, Treasury revenue) with status categorization: fresh (&lt;15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two browser-tracker sources (GDELT, RSS) are flagged as `requiredForRisk`; that flag drives the Strategic Risk panel's hard insufficient-data gate, not the exhaustive list of CII score inputs. Score-relevant feeds such as UCDP events, ACLED conflict, news summaries, and cyber threats are tracked through source-specific health plus the `riskScores` health/cache signal-density coverage. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
+
+---
+
+## Full Source Inventory & Credits
+
+World Monitor is grateful to the organizations that make their data publicly accessible. The complete, machine-generated inventory of every observed upstream host — with its license posture, required attribution, and review status — is maintained on the [source attribution](/source-attribution) page. It is regenerated from URL literals in the source tree, so the disclosure cannot silently drift from what the code actually fetches.

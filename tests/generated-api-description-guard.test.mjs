@@ -3,7 +3,8 @@ import { describe, it } from 'node:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import YAML from 'yaml';
+
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -164,7 +165,7 @@ function generatedQuerySpecs() {
     ...serviceJsonSpecs,
     {
       file: 'worldmonitor.openapi.yaml',
-      spec: YAML.parse(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8')),
+      spec: loadUnifiedOpenApiSpec(),
     },
   ];
 }

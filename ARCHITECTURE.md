@@ -1,6 +1,6 @@
 # Architecture
 
-> **Capability counts** (map layers, services, protos, locales, CI workflows, freshness sources) are derived from code and CI-verified by `npm run docs:check` (`scripts/docs-stats.mjs`, source of truth `docs/generated/stats.json`). Do not hand-edit those numbers — change the code, run `npm run docs:stats`.
+> **Inventory ownership**: map layers, services, protos, locales, CI workflows, and freshness sources are defined by their registries. `npm run docs:check` verifies registry and fixed-contract documentation; generated snapshots are refreshed with `npm run docs:stats`.
 >
 > **Ownership rule**: When deployment topology, API surface, desktop runtime, or bootstrap keys change, this document must be updated in the same PR.
 
@@ -46,7 +46,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
         │ CoinGeck│ │  FRED   │ │ FIRMS   │
         │   ...   │ │   ...   │ │   ...   │
         └─────────┘ └─────────┘ └─────────┘
-           65+ upstream providers and APIs
+           578+ observed upstream hosts
 ```
 
 **Source files**: `package.json`, `vercel.json`
@@ -92,7 +92,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 
 ### Component Model
 
-All panels extend the `Panel` base class (107 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
+All panels extend the `Panel` base class (109 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
 
 ### Dual Map System
 
@@ -197,7 +197,7 @@ CI enforces generated code freshness via `.github/workflows/proto-check.yml`: ru
 
 ### Bootstrap Hydration
 
-`/api/bootstrap` reads cached keys from Redis in a single batch call. The SPA fetches two tiers concurrently (fast + slow) with separate abort controllers and timeouts. Hydrated data is consumed on-demand by panels via `getHydratedData(key)`.
+`/api/bootstrap` reads cached keys from Redis in a single batch call. The SPA fetches two tiers concurrently (fast + slow) with separate abort controllers and timeouts. Large or opt-in datasets use a public, CDN-shielded single-key request and are consumed through `ensureHydrated(key)` only when their panel renders. Tier-hydrated data is consumed by panels via `getHydratedData(key)`.
 
 ### Seed Scripts
 
@@ -215,6 +215,8 @@ The Railway relay service (`scripts/ais-relay.cjs`) runs continuous seed loops:
 - UCDP events
 
 These are the primary seeders. Standalone `seed-*.mjs` scripts on Railway cron are secondary/backup.
+
+The market backup bundle also persists 14 days of timestamped hourly Yahoo closes for the news-to-market correlation panel. This series is an on-demand bootstrap key, so it does not increase the default hydration payload.
 
 ### Refresh Scheduling
 
@@ -370,13 +372,22 @@ Runs before every `git push`:
 | `live-api-cache-auth.yml` | 6-hourly cron, push to main (sweep paths), manual | Production cache/auth posture sweep: fake auth stays no-store and is never a cached 200, anonymous public surfaces stay cacheable, MCP/OAuth surfaces stay protocol-valid (#4497 regression net; suite was inert until #5379 wired the gate on, and the step fails if it executes 0 assertions) |
 | `china-decision-parity-live.yml` | 6-hourly cron, push to main (audit paths), manual (optional staging URL) | Live half of the China decision-signal parity audit: probes the deployed composition RPC and the public `chinaDecisionSignals` bootstrap projection for the six-domain contract and a canonical snapshot under one hour old (#5643 — the probe existed but nothing invoked it, and `--require-live` keeps a lost `--url` from passing vacuously) |
 | `security-audit.yml` | PR, push to main, daily cron, manual | Production dependency audits for every tracked `package-lock.json` workspace, failing on unbaselined high/critical advisories |
-| `seed-freshness-monitor.yml` | 15-minute cron, manual | Enforces production ingestion acceptance after a green scheduled main gate; fails on every actionable compact-health problem except explicitly on-demand sources without grading production before Railway deploys or runs |
+| `seed-freshness-monitor.yml` | 15-minute cron, manual | Enforces production ingestion acceptance after a green main gate (HEAD, or the newest gated ancestor when HEAD is undecided or already red); fails on every actionable compact-health problem except explicitly on-demand sources without grading production before Railway deploys or runs |
+| `railway-deploy-drift.yml` | Hourly cron, manual | Runs two independent read-only checks against the exact production fleet: Viewer-safe source/build/deploy configuration drift and deployment/Git-closure drift. It has no mutation, dispatch, retry, approval, or acceptance-baseline path |
+| `railway-deploy-trigger.yml` | Manual rollback only | Keeps the legacy reconciler quiesced unless an operator explicitly activates the bounded rollback path; it does not own normal Railway deployment creation |
 | `analytics-collector-monitor.yml` | 15-minute cron, manual | Probes the self-hosted Umami collector directly (heartbeat, tracker script, ingest route) and fails when events are being dropped — Railway reported a green deployment through the 4-day #5565 blackout, so deployment status is not trusted here |
+| `umami-storage-monitor.yml` | 15-minute cron, manual | Reads the Umami Postgres Railway volume and the `umami-retention` deployment history without mutation, caches a bounded history, and fails on capacity or projected days-to-full thresholds, or when the retention runner's newest deployment that ran is `CRASHED` |
+| `postmerge-deploy-monitor.yml` | 10-minute cron, manual | Alarms on a failed post-merge production deploy (#6376): reads the newest completed run on `main` of `convex-deploy.yml`, `deploy-railway-reconcile-control.yml` and `deploy-worker.yml` and fails when the deploy job did not run/succeed — covers the un-gated deployers outside `deploy-gate.yml`'s PR smoke list |
+| `perf-style-layout-budget.yml` | Twice-daily cron, manual (URL + budget inputs) | The #4536 forced-reflow gate the desktop main-thread baseline named but nothing enforced: captures `/dashboard` with the Playwright harness and fails when the `styleLayout` share of attributed main-thread self-time exceeds budget. Gates the *share*, not absolute ms, and runs scheduled rather than per-PR because lab absolutes are host-contention contaminated (KTD1) while the decomposition is stable. A report that measured nothing returns `unmeasured`, never a pass |
 | `contributor-trust.yml` | PR | Gates untrusted first-time-contributor runs |
 | `deploy-gate.yml` | After Test/Typecheck/Security Audit complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection |
 | `indexnow-submit.yml` | Successful Production deployment, manual | Submits deployment-relevant canonical URLs to IndexNow only after their host-specific ownership keys are directly reachable |
 | `convex-deploy.yml` | Push to main, manual | Deploys Convex backend functions |
 | `deploy-worker.yml` | Push to main (worker paths), manual | Deploys the `api-cors-preflight` Cloudflare Worker |
+| `deploy-railway-reconcile-control.yml` | Push to main (control-plane paths), manual | Tests and deploys the isolated SQLite-backed Durable Object used for Railway reconciliation leases, attempts, dispatch holds, and the global mutation-uncertain barrier; deployment does not itself activate the trigger cutover |
+| `railway-deploy-trigger-watchdog.yml` | Manual rollback only | Checks the legacy rollback surface only when an operator dispatches it; it can authorize a fenced replacement only when both legacy activation flags are explicitly enabled |
+| `railway-reconcile-manual-recovery.yml` | Protected manual dispatch only | Evidence-bound break-glass resolution for ambiguous dispatch holds or post-mutation barriers; records immutable supersession and delegates any retry to the ordinary lease-aware workflow rather than carrying a Railway deploy token |
+| `desktop-release-train.yml` | Push to main (release inputs), daily cron, manual | Compares the checked-in desktop version with the latest published release, creates a compatible release tag, and dispatches the atomic multi-platform desktop build |
 | `build-desktop.yml` | Release tag, push, manual | Multi-platform Tauri build, code signing (macOS), AppImage library stripping (Linux), smoke test |
 | `docker-publish.yml` | Release, manual | Multi-arch image (amd64, arm64) pushed to GHCR |
 | `publish-cli.yml` | `cli-v*` tag, manual | Tests and publishes the `worldmonitor` npm CLI (`cli/`) via OIDC trusted publishing (no token) with provenance |
@@ -384,6 +395,14 @@ Runs before every `git push`:
 | `publish-ruby.yml` | `gem-v*` tag, manual | Tests and publishes the `worldmonitor` gem (`sdk/ruby/`) via RubyGems OIDC trusted publishing (no token) |
 | `publish-go.yml` | `sdk/go/v*` tag, manual | Vets/tests the Go SDK module (`sdk/go/`) at the tag and warms proxy.golang.org so the version is go-gettable and indexed on pkg.go.dev |
 | `test-linux-app.yml` | Twice-weekly schedule (Mon/Thu 05:23 UTC), manual | Desktop Canary (Linux): installed-app build + launch, hard-fails on crashed app, unreachable sidecar, or blank render (#5902) |
+
+The Railway `umami` runtime is built from `Dockerfile.umami`, which pins the
+upstream v3.2.0 release and applies the reviewed session-data upsert fix.
+The separate `umami-retention` cron uses `Dockerfile.umami-retention` and the
+bounded SQL contract. The old collector is drained to zero before the patched
+image runs its schema migration as a monitored one-off; schema verification,
+patched-runtime write acceptance, and retention are independent operational
+gates.
 
 **Source files**: `.github/workflows/`, `.husky/pre-push`. The workflow list is CI-checked against `.github/workflows/*.yml` by `npm run docs:check` — a new workflow file must be added to this table.
 

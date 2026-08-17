@@ -92,7 +92,7 @@ export class MonitorPanel extends Panel {
 
     if (this.monitors.length === 0) {
       replaceChildren(results,
-        h('div', { style: 'color: var(--text-dim); font-size: 10px; margin-top: 12px;' },
+        h('div', { style: 'color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin-top: 12px;' },
           t('components.monitor.addKeywords'),
         ),
       );
@@ -127,7 +127,7 @@ export class MonitorPanel extends Panel {
 
     if (unique.length === 0) {
       replaceChildren(results,
-        h('div', { style: 'color: var(--text-dim); font-size: 10px; margin-top: 12px;' },
+        h('div', { style: 'color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin-top: 12px;' },
           t('components.monitor.noMatches', { count: String(news.length) }),
         ),
       );
@@ -139,7 +139,7 @@ export class MonitorPanel extends Panel {
       : `${unique.length} ${unique.length === 1 ? t('components.monitor.match') : t('components.monitor.matches')}`;
 
     replaceChildren(results,
-      h('div', { style: 'color: var(--text-dim); font-size: 10px; margin: 12px 0 8px;' }, countText),
+      h('div', { style: 'color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin: 12px 0 8px;' }, countText),
       ...unique.slice(0, 10).map((item) =>
         h('div', {
           className: 'item',

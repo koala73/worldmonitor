@@ -18,6 +18,7 @@ description: "WorldMonitor 中国数据管线、公共界面、来源状态、�
 | 政策与执法 | CAC、SAMR、MIIT、MOFCOM、NDRC、PBOC 官方文件 | 中国国家简报与 `chinaPolicyEvents` bootstrap | 6 小时 |
 | 台海活动 | 台湾国防部每日声明；日本统合幕僚监部背景单独归因 | Force Posture 与中国决策信号 | 3 小时 |
 | 企业披露 | 经审核发行人篮子的 SSE、SZSE 公共元数据；HKEX 明确被阻止 | `chinaCorporateDisclosures` bootstrap 与中国决策信号 | 30 分钟 |
+| 互联互通成交额与两融 | SSE、SZSE 关于北向成交额与融资融券余额的公共汇总统计 | `market:china:stock-connect:v1` 快照与中国健康投影 | 60 分钟 |
 | 物流走廊 | 由六个具名来源族组成的四条审核走廊 | REST/UI 详情；MCP 接收受限决策信号摘要 | 按请求；健康聚合缓存 5 分钟 |
 | 活动 nowcast | 官方宏观版本与七个审核代理指标族的确定性比较 | REST/UI 详情；MCP 接收受限决策信号摘要 | 按请求；健康结果缓存 15 分钟 |
 | 决策信号组合 | 宏观、政策、台海、披露、走廊与 nowcast 的受限组合 | 国家简报、公共 RPC、bootstrap 与 Pro MCP | 15 分钟 |
@@ -39,6 +40,7 @@ description: "WorldMonitor 中国数据管线、公共界面、来源状态、�
 | `supply-chain.ccfi` | 中国出口集装箱运价指数 | `launched` |
 | `market.china-index` | 中国国家市场指数 | `launched` |
 | `market.china-corporate-disclosures` | SSE/SZSE 官方企业披露 | `launched` |
+| `market.china-stock-connect` | SSE/SZSE 互联互通北向成交额与融资融券余额 | `launched` |
 | `news.china` | 中国新闻摘要 | `launched` |
 | `aviation.china-hubs` | 八个审核中国航空枢纽 | `launched` |
 | `macro.china-snapshot` | 规范化中国宏观快照 | `launched` |
@@ -76,6 +78,43 @@ JODI 仍可用于现有全球能源产品。其中国石油与天然气契约保
 
 缺失类别绝不会被转换为零、正常、不变或当前。保留最后良好值时，会保留原始
 观测时间，并同时报告当前传输失败。
+
+## 互联互通成交额与两融
+
+`market:china:stock-connect:v1` 由四个官方交易所端点组成。它们位于企业披露
+条款审核已覆盖的两个交易所主机上，四个端点均按 `admitted_aggregate_statistics`
+准入：仅使用公共汇总市场统计，不含任何投资者层面或委托层面数据。
+
+| 来源 ID | 交易所 | 序列 | 端点 |
+| --- | --- | --- | --- |
+| `sse-northbound` | SSE | 北向成交额 | `https://query.sse.com.cn/commonSoaQuery.do`，sqlId 为 `FW_HGTZL_HGTSCSJ_HGTCJGK_MRTJ`（沪股通成交概况） |
+| `sse-margin` | SSE | 融资融券余额 | `https://query.sse.com.cn/marketdata/tradedata/queryMargin.do`（融资融券汇总） |
+| `szse-northbound` | SZSE | 北向成交额 | `https://www.szse.cn/api/report/ShowReport/data`，CATALOGID 为 `SGT_SGTJYRB`（深股通交易日报） |
+| `szse-margin` | SZSE | 融资融券余额 | `https://www.szse.cn/api/report/ShowReport/data`，CATALOGID 为 `1837_xxpl`（融资融券交易总量） |
+
+审核条款记录与企业披露管线相同：SSE
+[官方法律条款](https://www.sse.com.cn/home/legal/)，robots.txt 未发布（404）；
+SZSE [适用规则与公告](https://www.szse.cn/application/laws/)，robots.txt
+存在但为空（200）。
+
+北向净流入不可用，因为该来源并不发布它。两个交易所自 2024-08-16 起停止披露
+北向买卖拆分，只有总成交额保留下来。负载对此直接说明：`northbound.netFlow` 为
+`{ status: 'unavailable', reason: 'EXCHANGE_STOPPED_PUBLISHING_BUY_SELL_SPLIT' }`，
+并附带 `netFlowDiscontinuedOn: '2024-08-16'`。成交额是买入与卖出合计的双向
+交易活动，不是流入或流出内地市场的资金，绝不可被读作资金流。
+
+其余契约：
+
+- 所有发布值统一规范化为 CNY。SSE 的融资融券本身以元计价；其余数字以
+  亿（1e8）或万（1e4）到达并完成换算；
+- 只有当两个交易所报告相同交易日时，才发布 SSE 与 SZSE 的合计值；否则合计值
+  以 `TRADE_DATE_MISMATCH` 原因降级。该检查同时充当冻结探测器：某个交易所
+  停止推进时立即可见，而不必等待新鲜度预算耗尽；
+- 融资融券按 T+1 延迟发布，北向在每个交易时段收盘后发布；
+- SZSE 端点按日期取数，因此 seeder 依据交易所交易日历
+  （`https://www.szse.cn/api/report/exchange/onepersistenthour/monthList`）
+  固定日期，并向前回溯有限数量的交易日进行探测；
+- 该管线作为 `seed-bundle-market-backup` Railway bundle 的成员每小时运行。
 
 ## 双边 HS4 进口篮
 

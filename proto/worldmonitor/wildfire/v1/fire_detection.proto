@@ -33,6 +33,31 @@ message FireDetection {
   // Whether the thermal signature suggests a possible explosion rather than a fire
   // (FRP > 80 MW and brightness > 380 K).
   bool possible_explosion = 10;
+
+  // Fields 11-16 carry agency-reported fires (CWFIS national, BC Wildfire
+  // Service) alongside satellite FIRMS detections. The seeder has emitted them
+  // since #6613/#6614; declaring them here is what makes them visible to typed
+  // clients, the SDK and the OpenAPI spec rather than travelling as untyped
+  // extras that a strict decoder is free to drop.
+
+  // Producer of the row: "firms" for satellite detections, "cwfis" / "bcws" for
+  // agency-reported fires. Absent means FIRMS, for rows written before this field.
+  string source = 11;
+  // Agency fire classification, e.g. "wildfire", "prescribed", "outOfControl".
+  // Empty for satellite detections, which classify nothing.
+  string kind = 12;
+  // Whether the row should page. Prescribed burns are reported fires but are
+  // NOT emergencies, and must not be treated as such by a consumer.
+  bool emergency = 13;
+  // Agency's own identifier for the fire, stable across ticks. Empty for FIRMS.
+  string agency_fire_id = 14;
+  // Reporting agency code (e.g. "BC", "AB", "ON"). Empty for FIRMS.
+  string agency_code = 15;
+  // Reported fire size in HECTARES. 0 when unknown or not applicable — FIRMS
+  // detections report radiative power, not area. Named to match the key the
+  // seeder actually emits: a proto field the payload never populates is worse
+  // than no field, because consumers see it in the schema and get nothing.
+  double fire_size = 16;
 }
 
 // FireConfidence represents the confidence level of a fire detection.

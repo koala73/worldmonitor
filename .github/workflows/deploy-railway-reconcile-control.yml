@@ -1,0 +1,183 @@
+name: Deploy Railway Reconcile Control
+
+# Dormant control-plane infrastructure for the Railway reconciler. This deploys
+# the isolated Durable Object and its authenticated API; it does not activate
+# the production deploy-trigger cutover or scheduled auto recovery.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'workers/railway-reconcile-control/**'
+      - '.github/workflows/deploy-railway-reconcile-control.yml'
+      - 'tests/deploy-railway-reconcile-control-workflow.test.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: railway-reconcile-control-production
+  cancel-in-progress: false
+
+jobs:
+  unit-test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: workers/railway-reconcile-control
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run unit tests
+        run: npm test
+
+  deploy:
+    name: Wrangler deploy
+    needs: [unit-test]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: railway-reconcile-control-production
+      deployment: false
+    defaults:
+      run:
+        working-directory: workers/railway-reconcile-control
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Fence stale main deployment
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+          if [ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]; then
+            echo "::error::Refusing to deploy a superseded control-plane SHA."
+            exit 1
+          fi
+      - name: Set control-plane secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          RAILWAY_RECONCILE_CONTROL_SCOPE: ${{ secrets.RAILWAY_RECONCILE_CONTROL_SCOPE }}
+          RAILWAY_RECONCILE_MUTATION_HMAC: ${{ secrets.RAILWAY_RECONCILE_MUTATION_HMAC }}
+          RAILWAY_RECONCILE_VERIFIER_HMAC: ${{ secrets.RAILWAY_RECONCILE_VERIFIER_HMAC }}
+          RAILWAY_RECONCILE_WATCHDOG_HMAC: ${{ secrets.RAILWAY_RECONCILE_WATCHDOG_HMAC }}
+          RAILWAY_RECONCILE_OPERATOR_HMAC: ${{ secrets.RAILWAY_RECONCILE_OPERATOR_HMAC }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RAILWAY_RECONCILE_CONTROL_SCOPE" ]; then
+            echo "::error::RAILWAY_RECONCILE_CONTROL_SCOPE is required."
+            exit 1
+          fi
+          require_hmac() {
+            name="$1"
+            value="$2"
+            byte_count="$(printf '%s' "$value" | wc -c | tr -d ' ')"
+            if [ "$byte_count" -lt 32 ] || [ "$byte_count" -gt 1024 ]; then
+              echo "::error::$name must contain 32 to 1024 bytes."
+              exit 1
+            fi
+          }
+          require_hmac RAILWAY_RECONCILE_MUTATION_HMAC "$RAILWAY_RECONCILE_MUTATION_HMAC"
+          require_hmac RAILWAY_RECONCILE_VERIFIER_HMAC "$RAILWAY_RECONCILE_VERIFIER_HMAC"
+          require_hmac RAILWAY_RECONCILE_WATCHDOG_HMAC "$RAILWAY_RECONCILE_WATCHDOG_HMAC"
+          require_hmac RAILWAY_RECONCILE_OPERATOR_HMAC "$RAILWAY_RECONCILE_OPERATOR_HMAC"
+          hmac_values=(
+            "$RAILWAY_RECONCILE_MUTATION_HMAC"
+            "$RAILWAY_RECONCILE_VERIFIER_HMAC"
+            "$RAILWAY_RECONCILE_WATCHDOG_HMAC"
+            "$RAILWAY_RECONCILE_OPERATOR_HMAC"
+          )
+          for ((i = 0; i < ${#hmac_values[@]}; i += 1)); do
+            for ((j = i + 1; j < ${#hmac_values[@]}; j += 1)); do
+              if [ "${hmac_values[$i]}" = "${hmac_values[$j]}" ]; then
+                echo "::error::Railway reconciliation HMAC credentials must be pairwise distinct."
+                exit 1
+              fi
+            done
+          done
+          node --input-type=module <<'NODE' | npx wrangler secret bulk
+          const names = {
+            CONTROL_SCOPE: 'RAILWAY_RECONCILE_CONTROL_SCOPE',
+            MUTATION_HMAC_SECRET: 'RAILWAY_RECONCILE_MUTATION_HMAC',
+            VERIFIER_HMAC_SECRET: 'RAILWAY_RECONCILE_VERIFIER_HMAC',
+            WATCHDOG_HMAC_SECRET: 'RAILWAY_RECONCILE_WATCHDOG_HMAC',
+            OPERATOR_HMAC_SECRET: 'RAILWAY_RECONCILE_OPERATOR_HMAC',
+          };
+          process.stdout.write(JSON.stringify(Object.fromEntries(
+            Object.entries(names).map(([binding, variable]) => [binding, process.env[variable]]),
+          )));
+          NODE
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy --var "DEPLOYMENT_SHA:$GITHUB_SHA"
+      - name: Smoke canonical Durable Object
+        env:
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          RAILWAY_RECONCILE_WATCHDOG_HMAC: ${{ secrets.RAILWAY_RECONCILE_WATCHDOG_HMAC }}
+        run: |
+          set -euo pipefail
+          sleep 30
+          node --input-type=module <<'NODE'
+          import { RailwayReconcileControlClient } from '../../scripts/railway-reconcile-control-client.mjs';
+          const client = new RailwayReconcileControlClient({
+            baseUrl: process.env.RAILWAY_RECONCILE_CONTROL_URL,
+            role: 'watchdog',
+            secret: process.env.RAILWAY_RECONCILE_WATCHDOG_HMAC,
+          });
+          const response = await client.status();
+          if (response.outcome !== 'STATUS_REPORTED'
+            || Object.keys(response.data).sort().join(',')
+              !== 'barrier,currentAttempt,dispatchHolds,generation,lastAccepted,lease') {
+            throw new Error('canonical Durable Object status smoke failed closed');
+          }
+          NODE
+
+  live-smoke:
+    name: Live control-plane smoke
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify exact deployed Worker version
+        env:
+          RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
+          EXPECTED_DEPLOYMENT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$RAILWAY_RECONCILE_CONTROL_URL" ]; then
+            echo "::error::RAILWAY_RECONCILE_CONTROL_URL must name the dedicated Worker origin."
+            exit 1
+          fi
+          for attempt in 1 2 3 4 5 6; do
+            if response=$(curl --fail --silent --show-error --proto '=https' --max-redirs 0 \
+              --connect-timeout 5 --max-time 10 \
+              "${RAILWAY_RECONCILE_CONTROL_URL%/}/version"); then
+              if jq -e \
+                --arg expected "$EXPECTED_DEPLOYMENT_SHA" \
+                '.protocolVersion == 1 and .deploymentSha == $expected and (keys | sort == ["deploymentSha", "protocolVersion"])' \
+                <<< "$response" > /dev/null; then
+                exit 0
+              fi
+            fi
+            if [ "$attempt" -lt 6 ]; then sleep 5; fi
+          done
+          echo "::error::Worker did not expose the exact deployed SHA within the bounded propagation window."
+          exit 1

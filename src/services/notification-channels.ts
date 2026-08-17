@@ -1,4 +1,8 @@
 import { getClerkToken, getCurrentClerkUser } from '@/services/clerk';
+import {
+  billingVerificationRetryDelayMs,
+  readBillingVerificationCode,
+} from '@/services/billing-retry';
 import { SITE_VARIANT } from '@/config/variant';
 
 export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord' | 'webhook' | 'web_push';
@@ -53,96 +57,13 @@ export interface ChannelsData {
 // ---------------------------------------------------------------------------
 // Retryable billing-verification denials (#5622)
 // ---------------------------------------------------------------------------
+//
+// The decision itself now lives in src/services/billing-retry.ts so the premium
+// RPC surface shares it verbatim (#6483) — the gateway emits this same 503 on
+// every tier-gated path, not just this endpoint. Re-exported because
+// tests/notification-channels-billing-retry.test.mts pins the contract here.
 
-/**
- * The `code`s the server marks RETRYABLE on a 503
- * (server/_shared/entitlement-check.ts, documented in docs/usage-errors.mdx).
- *
- * An allowlist, not "any 503", and that is the whole point. This endpoint also
- * answers 503 for a missing Convex/relay env and for relay failures that happen
- * AFTER a mutation may have partially landed — blind-retrying a POST on those
- * risks a duplicate write. A billing-verification denial is emitted by the gate
- * BEFORE any write, so retrying it is side-effect-free.
- *
- * `subscription_lapsed` is absent on purpose: it is a 403 and terminal.
- */
-const RETRYABLE_BILLING_CODES = new Set([
-  'entitlement_verification_unavailable',
-  'renewal_verification_pending',
-  'renewal_verification_failed',
-]);
-
-/** Used when the server omitted Retry-After; matches the server's own default. */
-const DEFAULT_BILLING_RETRY_AFTER_SECONDS = 5;
-
-/**
- * Longest delay worth waiting out inline. The server clamps Retry-After to
- * 1-60s; a user sitting in the activation wizard will not wait a minute, so a
- * longer hint means "surface the failure now" rather than "retry early".
- *
- * This threshold is not arbitrary — it lands between the delays the three
- * retryable states actually ask for (convex/payments/billing.ts):
- *
- *   entitlement_verification_unavailable  fixed 5s      -> retried
- *   renewal_verification_pending          1-3s, from
- *                                         the 2s Dodo
- *                                         re-check window -> retried
- *   renewal_verification_failed           up to 60s, the
- *                                         per-subscription
- *                                         failure cooldown -> NOT retried
- *
- * Declining the third is the correct outcome, not a shortfall: that cooldown
- * exists to stop re-querying Dodo, so a retry inside it is answered from the
- * same cooled-down state. Waiting it out inline would block the wizard for a
- * minute to arrive at the same denial.
- *
- * Retrying EARLIER than the server asked is deliberately not an option either:
- * it violates the Retry-After contract and, because the server negative-caches
- * a transient answer for a few seconds
- * (UNAVAILABLE_NEGATIVE_CACHE_TTL_MS in server/_shared/entitlement-check.ts),
- * an early retry would deterministically be served the same cached failure.
- */
-const BILLING_RETRY_MAX_DELAY_MS = 10_000;
-
-/**
- * How long to wait before the single retry, or null when this response must not
- * be retried. Pure — the wire decision, testable without a network.
- */
-export function billingVerificationRetryDelayMs(input: {
-  status: number;
-  code: string | null;
-  retryAfterHeader: string | null;
-}): number | null {
-  if (input.status !== 503) return null;
-  if (!input.code || !RETRYABLE_BILLING_CODES.has(input.code)) return null;
-
-  const parsed = Number(input.retryAfterHeader);
-  const seconds = Number.isFinite(parsed) && parsed > 0
-    ? parsed
-    : DEFAULT_BILLING_RETRY_AFTER_SECONDS;
-  const delayMs = Math.ceil(seconds * 1_000);
-  return delayMs > BILLING_RETRY_MAX_DELAY_MS ? null : delayMs;
-}
-
-/**
- * The denial code, header-first with a body fallback.
- *
- * `X-Billing-Verification` is now in Access-Control-Expose-Headers (#5622), but
- * the dashboard's same-origin calls are not the only consumers — the Tauri shell
- * and widget embeds are cross-origin, and an intermediary can strip a header.
- * The body's `code` mirrors it, read off a CLONE so the caller's response stream
- * is untouched whether or not we end up retrying.
- */
-async function readBillingVerificationCode(res: Response): Promise<string | null> {
-  const header = res.headers.get('X-Billing-Verification');
-  if (header) return header;
-  try {
-    const body = await res.clone().json() as { code?: unknown };
-    return typeof body.code === 'string' ? body.code : null;
-  } catch {
-    return null;
-  }
-}
+export { billingVerificationRetryDelayMs } from '@/services/billing-retry';
 
 function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
   return new Promise((resolve, reject) => {

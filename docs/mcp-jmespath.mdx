@@ -494,7 +494,7 @@ A JMESPath expression can fail three ways: the expression itself exceeds 1024 by
 }
 ```
 
-`original_keys` is the top-level keys of the unprojected response — enough context for the model to retry with a corrected expression in one extra call. A bad expression **does** consume one Pro/OAuth daily quota slot per attempt when that quota path applies; the echoed `original_keys` exists specifically to make the retry self-correcting rather than guesswork. The three kinds (`expression_too_long`, `invalid_expression`, `projection_too_large`) and their exact discriminator strings live in the [MCP Error Catalog](/mcp-error-catalog#_jmespath_error--projection-failed).
+`original_keys` is the top-level keys of the unprojected response — enough context for the model to retry with a corrected expression in one extra call. A bad expression **does** consume one daily quota slot per attempt when that quota path applies; the echoed `original_keys` exists specifically to make the retry self-correcting rather than guesswork. The three kinds (`expression_too_long`, `invalid_expression`, `projection_too_large`) and their exact discriminator strings live in the [MCP Error Catalog](/mcp-error-catalog#_jmespath_error--projection-failed).
 
 ## Complements to projection
 

@@ -1,11 +1,66 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
+
+import {
+  DEFAULT_CONCURRENCY,
+  RAILWAY_CALL_TIMEOUT_MS,
+  REPOSITORY,
+  isRepositoryService,
+  readArgument,
+  readEnvironmentConfig,
+  readExpectedRepositoryFleet,
+  readServices,
+  resolveRunDeadlineAt,
+  runRailway,
+  selectExpectedRepositoryServices,
+} from './railway-cli.mjs';
+import {
+  ROOT_DIRECTORY_BY_DEPLOY_MODE,
+  normalizeRootDirectory,
+} from './railway-deploy-closure.mjs';
+import {
+  DEPLOYMENT_CONFIG_READ_DEADLINE_ERROR,
+  readViewerDeploymentConfig,
+} from './railway-viewer-deployment-config.mjs';
+
+// Re-exported so the existing importers of this module keep working; the
+// definitions live in the shared files above so the audit, the drift check and
+// the trigger cannot drift into three ideas of the same thing.
+export {
+  RAILWAY_CALL_TIMEOUT_MS,
+  REPOSITORY,
+  ROOT_DIRECTORY_BY_DEPLOY_MODE,
+  isRepositoryService,
+  normalizeRootDirectory,
+  readArgument,
+  runRailway,
+};
 
 const REGISTRY_URL = new URL('./railway-services.json', import.meta.url);
 const DEFAULT_ENVIRONMENT = 'production';
+export const DEPLOYMENT_CONFIG_RUN_BUDGET_MS = 15 * 60 * 1000;
+
+export function resolveDeploymentConfigDeadlineAt({
+  jobStartedAtMs,
+  epochNow = Date.now(),
+  monotonicNow = performance.now(),
+}) {
+  return resolveRunDeadlineAt({
+    budgetMs: DEPLOYMENT_CONFIG_RUN_BUDGET_MS,
+    jobStartedAtMs,
+    epochNow,
+    monotonicNow,
+  });
+}
+
+export function validateAuditMode({ apply, deploymentOnly }) {
+  if (deploymentOnly && apply) {
+    throw new Error('deployment-only audit forbids --apply');
+  }
+}
 
 function hasOwn(value, key) {
   return Object.prototype.hasOwnProperty.call(value, key);
@@ -44,25 +99,37 @@ function sameStringSet(left, right) {
   return JSON.stringify(sortedUniqueStrings(left)) === JSON.stringify(sortedUniqueStrings(right));
 }
 
+function mergeServiceDrift(entries) {
+  const byService = new Map();
+  for (const entry of entries) {
+    const key = entry.serviceId ?? `name:${entry.service}`;
+    const current = byService.get(key);
+    if (!current) {
+      byService.set(key, { ...entry });
+      continue;
+    }
+    for (const [field, value] of Object.entries(entry)) {
+      if (field === 'service' || field === 'serviceId' || value == null) continue;
+      if (field === 'missingRequiredEnv') {
+        current[field] = sortedUniqueStrings([...(current[field] ?? []), ...value]);
+      } else if (typeof value === 'boolean') {
+        current[field] = Boolean(current[field]) || value;
+      } else {
+        current[field] = value;
+      }
+    }
+  }
+  return [...byService.values()].sort((left, right) => left.service.localeCompare(right.service));
+}
+
 function serviceIdFor(serviceIdsByName, serviceName) {
   if (serviceIdsByName instanceof Map) return serviceIdsByName.get(serviceName);
   return serviceIdsByName?.[serviceName];
 }
 
-function normalizeRootDirectory(value) {
-  return typeof value === 'string' ? value.replace(/^\/+|\/+$/g, '') : '';
+function normalizeDockerfilePath(value) {
+  return typeof value === 'string' ? value.replace(/^\/+/, '') : '';
 }
-
-// deployMode is the registry's claim about where Railway roots the build. It
-// decides which build inputs and which shared-config prefix belong in a
-// service's dependency closure, so a registry entry that claims the wrong mode
-// produces watch paths that --apply then pushes to production. Auditing it
-// keeps the claim honest against the live service.
-export const ROOT_DIRECTORY_BY_DEPLOY_MODE = Object.freeze({
-  'nixpacks-root-scripts': 'scripts',
-  'nixpacks-root-repo': '',
-  dockerfile: '',
-});
 
 // Every field this audit derives production mutations from is validated here,
 // because the registry is hand-edited JSON with no runtime schema. A typo used
@@ -74,10 +141,22 @@ export const ROOT_DIRECTORY_BY_DEPLOY_MODE = Object.freeze({
 // reported "audit passed".
 function assertRegistryEntry(entry) {
   const name = entry?.service ?? JSON.stringify(entry);
+  if (hasOwn(entry, 'lifecycle') && !['active', 'planned'].includes(entry.lifecycle)) {
+    throw new Error(
+      `${name} declares unknown lifecycle ${JSON.stringify(entry.lifecycle)}; expected active or planned`,
+    );
+  }
   if (hasOwn(entry, 'deployMode') && !hasOwn(ROOT_DIRECTORY_BY_DEPLOY_MODE, entry.deployMode)) {
     throw new Error(
       `${name} declares unknown deployMode ${JSON.stringify(entry.deployMode)}; expected one of ${Object.keys(ROOT_DIRECTORY_BY_DEPLOY_MODE).join(', ')}`,
     );
+  }
+  if (hasOwn(entry, 'dockerfile')
+    && (typeof entry.dockerfile !== 'string' || normalizeDockerfilePath(entry.dockerfile).length === 0)) {
+    throw new Error(`${name} dockerfile must be a non-empty string`);
+  }
+  if (entry.deployMode === 'dockerfile' && !hasOwn(entry, 'dockerfile')) {
+    throw new Error(`${name} deployMode dockerfile requires a dockerfile path`);
   }
   if (hasOwn(entry, 'watchPatterns')) {
     if (!Array.isArray(entry.watchPatterns)
@@ -114,9 +193,17 @@ export function managedRailwayServices(registry) {
     throw new Error('Railway service registry must be an array');
   }
   registry.forEach(assertRegistryEntry);
+  // Planned entries remain in the registry so Dockerfile/source coverage and
+  // field validation run before provisioning. They must not participate in a
+  // live audit or --apply until an explicit lifecycle activation; otherwise a
+  // scheduled audit fails on the intentionally absent service and an apply can
+  // install its cron before its deployment gates have passed.
   return registry.filter(
-    (entry) => hasOwn(entry, 'watchPatterns')
-      || (hasOwn(entry, 'cronSchedule') && entry.cronSchedule !== null),
+    (entry) => entry.lifecycle !== 'planned'
+      && (
+        hasOwn(entry, 'watchPatterns')
+        || (hasOwn(entry, 'cronSchedule') && entry.cronSchedule !== null)
+      ),
   );
 }
 
@@ -127,7 +214,6 @@ export function managedRailwayServices(registry) {
 // railway-seeder-watch-paths-can-skip-deployments.md).
 export const BROAD_WATCH_PATTERNS = Object.freeze(['scripts/**', 'shared/**']);
 
-const REPOSITORY = 'koala73/worldmonitor';
 const SEED_COMMAND_RE = /^node\s+(?:\.\/)?(?:scripts\/)?(?:seed-[^\s]+|fetch-gpsjam\.mjs|publish-bootstrap-tiers\.mjs)(?:\s|$)/;
 const SEED_DOCKERFILE_RE = /(?:^|\/)Dockerfile\.(?:seed-[^/\s]+|digest-notifications|publish-bootstrap-tiers)$/;
 
@@ -170,7 +256,12 @@ export function unmanagedWatchPatternDrift(service) {
   return { actual: watchPatterns, expected };
 }
 
-export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
+export function auditRailwayServiceConfig(
+  config,
+  serviceIdsByName,
+  registry,
+  { evaluateRequiredEnv = true, requireMainTrigger = false } = {},
+) {
   const services = config?.services;
   if (!services || typeof services !== 'object' || Array.isArray(services)) {
     throw new Error('Railway environment config must contain a services object');
@@ -179,6 +270,12 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
   const managed = managedRailwayServices(registry);
   const managedServiceIds = new Set(
     managed.map((entry) => serviceIdFor(serviceIdsByName, entry.service)).filter(Boolean),
+  );
+  const plannedServiceIds = new Set(
+    registry
+      .filter((entry) => entry.lifecycle === 'planned')
+      .map((entry) => serviceIdFor(serviceIdsByName, entry.service))
+      .filter(Boolean),
   );
   const nameByServiceId = new Map(
     (serviceIdsByName instanceof Map
@@ -192,7 +289,9 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
   // watch filter on any other seeder — the "merged is not ran" failure — passes
   // silently while the summary line still reads "audit passed".
   const unmanagedDrift = Object.entries(services)
-    .filter(([serviceId, service]) => !managedServiceIds.has(serviceId) && isSeederService(service))
+    .filter(([serviceId, service]) => !managedServiceIds.has(serviceId)
+      && !plannedServiceIds.has(serviceId)
+      && isSeederService(service))
     .flatMap(([serviceId, service]) => {
       const watchPatterns = unmanagedWatchPatternDrift(service);
       if (!watchPatterns) return [];
@@ -206,7 +305,29 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
       }];
     });
 
-  return managed
+  const repositorySourceDrift = requireMainTrigger
+    ? Object.entries(services).flatMap(([serviceId, service]) => {
+        if (service?.source?.repo !== REPOSITORY) return [];
+        const sourceBranch = service.source.branch !== 'main'
+          ? { actual: service.source.branch ?? null, expected: 'main' }
+          : null;
+        const checkSuites = service.source.checkSuites !== false
+          ? { actual: service.source.checkSuites ?? null, expected: false }
+          : null;
+        if (!sourceBranch && !checkSuites) return [];
+        return [{
+          service: nameByServiceId.get(serviceId) ?? serviceId,
+          serviceId,
+          missingService: false,
+          watchPatterns: null,
+          cronSchedule: null,
+          ...(sourceBranch ? { sourceBranch } : {}),
+          ...(checkSuites ? { checkSuites } : {}),
+        }];
+      })
+    : [];
+
+  const managedDrift = managed
     .flatMap((entry) => {
       const serviceId = serviceIdFor(serviceIdsByName, entry.service);
       if (!serviceId || !services[serviceId]) {
@@ -235,7 +356,17 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
         && actualRootDirectory !== expectedRootDirectory
         ? { actual: actualRootDirectory, expected: expectedRootDirectory }
         : null;
-      const missingRequiredEnv = unsatisfiedRequiredEnv(entry.requiredEnv, service?.variables);
+      const expectedDockerfilePath = hasOwn(entry, 'dockerfile')
+        ? normalizeDockerfilePath(entry.dockerfile)
+        : undefined;
+      const actualDockerfilePath = normalizeDockerfilePath(service?.build?.dockerfilePath);
+      const dockerfilePath = expectedDockerfilePath !== undefined
+        && actualDockerfilePath !== expectedDockerfilePath
+        ? { actual: actualDockerfilePath, expected: expectedDockerfilePath }
+        : null;
+      const missingRequiredEnv = evaluateRequiredEnv
+        ? unsatisfiedRequiredEnv(entry.requiredEnv, service?.variables)
+        : [];
       const expectedWatchPatterns = entry.watchPatterns;
       const actualWatchPatterns = service?.build?.watchPatterns ?? [];
       const watchPatterns = hasOwn(entry, 'watchPatterns')
@@ -254,7 +385,7 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
         ? { actual: actualCronSchedule, expected: expectedCronSchedule }
         : null;
 
-      if (!watchPatterns && !cronSchedule && !rootDirectory
+      if (!watchPatterns && !cronSchedule && !rootDirectory && !dockerfilePath
         && !missingWatchPatterns && missingRequiredEnv.length === 0) return [];
       return [{
         service: entry.service,
@@ -263,12 +394,13 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
         watchPatterns,
         cronSchedule,
         ...(rootDirectory ? { rootDirectory } : {}),
+        ...(dockerfilePath ? { dockerfilePath } : {}),
         ...(missingWatchPatterns ? { missingWatchPatterns } : {}),
         ...(missingRequiredEnv.length > 0 ? { missingRequiredEnv } : {}),
       }];
     })
-    .concat(unmanagedDrift)
-    .sort((left, right) => left.service.localeCompare(right.service));
+    .concat(unmanagedDrift, repositorySourceDrift);
+  return mergeServiceDrift(managedDrift);
 }
 
 export function buildRailwayServiceConfigPatch(drift) {
@@ -306,8 +438,14 @@ export function buildRailwayServiceConfigPatch(drift) {
   const services = {};
   for (const entry of drift) {
     const patch = {};
-    if (entry.watchPatterns) {
-      patch.build = { watchPatterns: entry.watchPatterns.expected };
+    if (entry.watchPatterns || entry.dockerfilePath) {
+      patch.build = {};
+      if (entry.watchPatterns) {
+        patch.build.watchPatterns = entry.watchPatterns.expected;
+      }
+      if (entry.dockerfilePath) {
+        patch.build.dockerfilePath = entry.dockerfilePath.expected;
+      }
     }
     if (entry.cronSchedule) {
       patch.deploy = { cronSchedule: entry.cronSchedule.expected };
@@ -340,44 +478,6 @@ export function serializeRailwayServiceConfigPatch(drift) {
   return `${JSON.stringify(buildRailwayServiceConfigPatch(drift))}\n`;
 }
 
-function runRailway(args, options = {}) {
-  const result = spawnSync('railway', args, {
-    encoding: 'utf8',
-    maxBuffer: 10 * 1024 * 1024,
-    ...options,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(
-      `railway ${args.join(' ')} failed (${result.status}): ${result.stderr.trim()}`,
-    );
-  }
-  return result.stdout;
-}
-
-function readEnvironmentConfig(environment) {
-  return JSON.parse(runRailway([
-    'environment',
-    'config',
-    '--environment',
-    environment,
-    '--json',
-  ]));
-}
-
-function readServiceIds(environment) {
-  const services = JSON.parse(runRailway([
-    'service',
-    'list',
-    '--environment',
-    environment,
-    '--json',
-  ]));
-  if (!Array.isArray(services)) {
-    throw new Error('railway service list must return an array');
-  }
-  return new Map(services.map((service) => [service.name, service.id]));
-}
 
 function readRegistry() {
   return JSON.parse(readFileSync(REGISTRY_URL, 'utf8'));
@@ -396,7 +496,7 @@ export async function waitForRailwayServiceConfigConvergence(
   let remaining = [];
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     remaining = auditRailwayServiceConfig(
-      readConfig(),
+      await readConfig(),
       serviceIdsByName,
       registry,
     );
@@ -406,9 +506,9 @@ export async function waitForRailwayServiceConfigConvergence(
   return remaining;
 }
 
-function printAudit(drift) {
+export function printAudit(drift) {
   if (drift.length === 0) {
-    console.log('Railway operational-config audit passed: registry-managed cron schedules and watch paths match production, and every other live seeder watches broadly enough not to miss a helper change.');
+    console.log('Railway operational-config audit passed: live Railway configuration matches repository policy.');
     return;
   }
 
@@ -444,6 +544,21 @@ function printAudit(drift) {
         `rootDirectory ${JSON.stringify(entry.rootDirectory.actual)} != ${JSON.stringify(entry.rootDirectory.expected)}`,
       );
     }
+    if (entry.dockerfilePath) {
+      details.push(
+        `dockerfilePath ${JSON.stringify(entry.dockerfilePath.actual)} != ${JSON.stringify(entry.dockerfilePath.expected)}`,
+      );
+    }
+    if (entry.sourceBranch) {
+      details.push(
+        `source branch ${JSON.stringify(entry.sourceBranch.actual)} != ${JSON.stringify(entry.sourceBranch.expected)}`,
+      );
+    }
+    if (entry.checkSuites) {
+      details.push(
+        `source checkSuites ${JSON.stringify(entry.checkSuites.actual)} != ${JSON.stringify(entry.checkSuites.expected)}`,
+      );
+    }
     if (entry.cronSchedule) {
       details.push(
         `cron ${JSON.stringify(entry.cronSchedule.actual)} != ${JSON.stringify(entry.cronSchedule.expected)}`,
@@ -456,42 +571,69 @@ function printAudit(drift) {
   }
 }
 
-// Accepts both `--flag value` and `--flag=value`. The equals form matters: an
-// exact indexOf match silently misses it, and this value selects which Railway
-// environment --apply mutates, so a missed `--environment=staging` would patch
-// production with no error and no signal.
-export function readArgument(argv, name, fallback) {
-  const inline = argv.find((arg) => arg.startsWith(`${name}=`));
-  if (inline) {
-    const value = inline.slice(name.length + 1);
-    if (!value) throw new Error(`${name} requires a value`);
-    return value;
-  }
-  const index = argv.indexOf(name);
-  if (index < 0) return fallback;
-  const value = argv[index + 1];
-  if (!value || value.startsWith('--')) {
-    throw new Error(`${name} requires a value`);
-  }
-  return value;
-}
 
 async function main() {
   const apply = process.argv.includes('--apply');
   const asJson = process.argv.includes('--json');
+  const deploymentOnly = process.argv.includes('--deployment-only');
+  validateAuditMode({ apply, deploymentOnly });
   const environment = readArgument(process.argv, '--environment', DEFAULT_ENVIRONMENT);
+  const concurrency = Number(readArgument(process.argv, '--concurrency', String(DEFAULT_CONCURRENCY)));
+  if (!Number.isInteger(concurrency) || concurrency <= 0) {
+    throw new Error('--concurrency must be a positive integer');
+  }
+  const deploymentDeadlineAt = deploymentOnly
+    ? resolveDeploymentConfigDeadlineAt({
+        jobStartedAtMs: Number(process.env.RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS),
+      })
+    : Number.POSITIVE_INFINITY;
+  if (deploymentOnly && performance.now() >= deploymentDeadlineAt) {
+    throw new Error(DEPLOYMENT_CONFIG_READ_DEADLINE_ERROR);
+  }
+  const projectId = process.env.RAILWAY_PROJECT_ID;
+  if (deploymentOnly && !projectId) {
+    throw new Error('RAILWAY_PROJECT_ID is required for the Viewer deployment projection');
+  }
   const registry = readRegistry();
-  const serviceIdsByName = readServiceIds(environment);
-  const readConfig = () => readEnvironmentConfig(environment);
+  const inventory = readServices(environment, { projectId });
+  if (deploymentOnly && performance.now() >= deploymentDeadlineAt) {
+    throw new Error(DEPLOYMENT_CONFIG_READ_DEADLINE_ERROR);
+  }
+  const services = deploymentOnly
+    ? selectExpectedRepositoryServices(inventory, readExpectedRepositoryFleet())
+    : inventory;
+  const serviceIdsByName = new Map(services.map((service) => [service.name, service.id]));
+  const readConfig = deploymentOnly
+    ? () => readViewerDeploymentConfig(environment, services, {
+        projectId,
+        concurrency,
+        deadlineAt: deploymentDeadlineAt,
+      })
+    : () => readEnvironmentConfig(environment);
   const drift = auditRailwayServiceConfig(
-    readConfig(),
+    await readConfig(),
     serviceIdsByName,
     registry,
+    {
+      evaluateRequiredEnv: !deploymentOnly,
+      requireMainTrigger: deploymentOnly,
+    },
   );
   // Always name the target. --apply mutates live infrastructure and the
   // environment is resolved from argv, so it must never be implicit.
-  console.log(`Railway operational-config audit: environment=${environment} mode=${apply ? 'apply' : 'audit'}`);
-  if (asJson) console.log(JSON.stringify({ environment, apply, drift }, null, 2));
+  console.log(`Railway operational-config audit: environment=${environment} mode=${deploymentOnly ? 'deployment-only' : apply ? 'apply' : 'audit'}`);
+  if (deploymentOnly) {
+    console.log('Required environment variables were not evaluated: the Viewer projection cannot request their values.');
+  }
+  if (asJson) {
+    console.log(JSON.stringify({
+      environment,
+      apply,
+      deploymentOnly,
+      requiredEnvironmentEvaluated: !deploymentOnly,
+      drift,
+    }, null, 2));
+  }
   else printAudit(drift);
 
   if (drift.length === 0) return;

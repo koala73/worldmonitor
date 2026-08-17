@@ -27,7 +27,7 @@ Panel id is `wsb-ticker-scanner`; canonical component is `src/components/WsbTick
 ## How you reach it
 
 - **Cmd+K**: type *wsb*, *retail sentiment*, or a ticker symbol.
-- **Availability by variant**: registered and enabled by default in the **full/geopolitical** and **finance** variants — locked in both, with `priority: 75` (surfacing lower in default panel grids than priority-1 panels). Not present in the tech, commodity, or happy variants. Source: `'wsb-ticker-scanner'` in `FULL_PANELS` at `src/config/panels.ts:91` and equivalent in `FINANCE_PANELS`.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** and **finance** variants — locked in both, with `priority: 75` (surfacing lower in default panel grids than higher-priority panels). Not present in the tech, commodity, or happy variants. Source: `'wsb-ticker-scanner'` in `FULL_PANELS` at `src/config/panels.ts:91` and equivalent in `FINANCE_PANELS`.
 
 ## Data sources
 
@@ -43,4 +43,4 @@ Aggregation runs on a scheduled cron (market-hours oriented). The panel reads th
 
 ## API reference
 
-- [Markets service](/api/MarketService.openapi.yaml) — Reddit / retail-sentiment family of RPCs (also includes premium-stock-store integrations).
+- [Markets service](https://github.com/koala73/worldmonitor/blob/main/docs/api/MarketService.openapi.yaml) — Reddit / retail-sentiment family of RPCs (also includes premium-stock-store integrations).

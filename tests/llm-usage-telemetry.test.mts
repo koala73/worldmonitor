@@ -46,7 +46,7 @@ function installFetchMock(opts: {
     if (url.includes('api.groq.com')) {
       return new Response(JSON.stringify({
         choices: [{ message: { content: 'groq answer' } }],
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-20b',
         usage: { prompt_tokens: 120, completion_tokens: 40, total_tokens: 160 },
       }), { status: 200 });
     }
@@ -118,15 +118,19 @@ describe('llm usage telemetry', () => {
     });
 
     assert.equal(result?.content, 'groq answer');
-    assert.equal(captured.events.length, 2, 'failed attempt + fallback must both be visible');
-    const [fail, ok] = captured.events;
+    assert.equal(captured.events.length, 4, 'paid failure, two fixed free failures, and fallback success must be visible');
+    const [fail, freeFail, freeBackupFail, ok] = captured.events;
     assert.equal(fail.provider, 'openrouter');
     assert.equal(fail.ok, false);
     assert.equal(fail.reason, 'http_500');
     assert.equal(fail.fallback_index, 0);
+    assert.equal(freeFail.provider, 'openrouter-free');
+    assert.equal(freeFail.ok, false);
+    assert.equal(freeBackupFail.provider, 'openrouter-free-backup');
+    assert.equal(freeBackupFail.ok, false);
     assert.equal(ok.provider, 'groq');
     assert.equal(ok.ok, true);
-    assert.equal(ok.fallback_index, 1);
+    assert.equal(ok.fallback_index, 3);
     assert.equal(ok.tokens_total, 160);
   });
 
@@ -142,12 +146,16 @@ describe('llm usage telemetry', () => {
     });
 
     assert.equal(result?.content, 'groq answer');
-    assert.equal(captured.events.length, 2);
-    const [lengthReject, fallbackSuccess] = captured.events;
+    assert.equal(captured.events.length, 4);
+    const [lengthReject, freeLengthReject, freeBackupLengthReject, fallbackSuccess] = captured.events;
     assert.equal(lengthReject.provider, 'openrouter');
     assert.equal(lengthReject.ok, false);
     assert.equal(lengthReject.reason, 'length');
     assert.equal(lengthReject.tokens_completion, 55);
+    assert.equal(freeLengthReject.provider, 'openrouter-free');
+    assert.equal(freeLengthReject.reason, 'length');
+    assert.equal(freeBackupLengthReject.provider, 'openrouter-free-backup');
+    assert.equal(freeBackupLengthReject.reason, 'length');
     assert.equal(fallbackSuccess.provider, 'groq');
     assert.equal(fallbackSuccess.ok, true);
   });

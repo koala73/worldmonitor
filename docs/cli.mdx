@@ -1,6 +1,6 @@
 ---
 title: "Command-Line Client"
-description: "Script country briefs, risk scores, and any of the 59 MCP tools from your shell with the official worldmonitor npm CLI — no API integration to write."
+description: "Script country briefs, risk scores, and registered MCP tools from your shell with the official worldmonitor npm CLI — no API integration to write."
 ---
 
 [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) is the official command-line client for the World Monitor global-intelligence API. It's a thin, **dependency-free** wrapper over the [MCP server](/mcp-overview) (the recommended agent surface) with a REST escape hatch, so you can pull briefs, risk scores, and conflict / cyber / market / news feeds from a shell script or an agent without writing a single line of HTTP plumbing. It ships as ESM and runs on **Node 18+**.
@@ -25,11 +25,11 @@ npx worldmonitor tools
 worldmonitor tools
 ```
 
-You'll get all 59 tool definitions back as JSON. Everything else that returns *data* is a `tools/call` and needs a user API key.
+You'll get the complete live tool registry back as JSON. Everything else that returns *data* is a `tools/call` and needs a user API key.
 
 ## Authenticate
 
-Data commands map to MCP `tools/call` and require a user API key. Grab one at [worldmonitor.app/pro](https://www.worldmonitor.app/pro), then either pass it per-call or export it once:
+Data commands map to MCP `tools/call`. Except for `worldmonitor call get_sources`, they require a subscription API key. Grab one at [worldmonitor.app/pro](https://www.worldmonitor.app/pro), then either pass it per-call or export it once:
 
 ```sh
 export WORLDMONITOR_API_KEY=wm_xxxxxxxx
@@ -38,7 +38,7 @@ worldmonitor risk IR                       # reads the key from the environment
 worldmonitor risk IR --api-key wm_xxxxxxxx # pass it explicitly
 ```
 
-The key is sent as the `X-WorldMonitor-Key` header. See [Authentication](/usage-auth) for how keys, OAuth, and browser sessions differ, and [Rate Limits](/usage-rate-limits) for the per-plan allowances. If you call a data command with no key, the CLI exits `1` and prints a hint telling you exactly which flag to pass.
+The key is sent as the `X-WorldMonitor-Key` header. See [Authentication](/usage-auth) for how keys, OAuth, and browser sessions differ, and [Rate Limits](/usage-rate-limits) for the per-plan allowances. If you call a subscription-gated data command with no key, the CLI exits `1` and prints a hint telling you exactly which flag to pass.
 
 ## Data commands
 
@@ -66,7 +66,7 @@ worldmonitor markets --asset_class crypto            # crypto quotes
 
 ## Any tool, any argument
 
-The curated table stays small on purpose — every one of the 59 tools is reachable via `call`, and any unrecognised `--key value` becomes a tool argument, so nothing needs special wiring:
+The curated table stays small on purpose — every registered tool is reachable via `call`, and any unrecognised `--key value` becomes a tool argument, so nothing needs special wiring:
 
 ```sh
 worldmonitor call get_cyber_threats --min_severity 7
@@ -137,7 +137,7 @@ const code = await run(['risk', 'IR'], { env: process.env });
 ## Where to go next
 
 - **[MCP Quickstart](/mcp-quickstart)** — connect Claude Desktop and make your first tool call over the Model Context Protocol.
-- **[MCP Tools Reference](/mcp-tools-reference)** — per-tool parameters, freshness budgets, and examples for all 59 tools.
+- **[MCP Tools Reference](/mcp-tools-reference)** — per-tool parameters, freshness budgets, and examples for the live tool registry.
 - **[JMESPath guide](/mcp-jmespath)** — projection grammar to shrink responses by 80–95%.
 - **[Authentication](/usage-auth)** — API keys vs. OAuth vs. browser session.
 - **[API Reference](/api-reference)** — the full REST service catalog behind the `get` and `list` commands.

@@ -149,7 +149,19 @@ Finance 变体包含一个精选数据库,记录了沙特阿拉伯和阿联酋�
 | 0.5% – 1.0% | SLIGHT DEPEG | 黄色       |
 | > 1.0%      | DEPEGGED     | 红色       |
 
-面板聚合稳定币总市值、24 小时成交量和整体健康状态(HEALTHY / CAUTION / WARNING)。`coins` 查询参数接受逗号分隔的 CoinGecko ID 列表,通过 `[a-z0-9-]+` 正则验证以防止注入。
+面板聚合稳定币总市值、24 小时成交量和整体健康状态(HEALTHY / CAUTION / WARNING)。
+
+`coins` 查询参数用于选择返回哪些稳定币。重复形式(`?coins=tether&coins=dai`)与逗号连接形式(`?coins=tether,dai`)等价。ID 会被去除空白、转为小写、去重,并通过 `^[a-z0-9][a-z0-9-]{0,63}$` 验证;单次请求最多 25 个 ID。
+
+不带参数与带参数的请求开销不同,这是有意为之:
+
+- **`coins` 为空**:从缓存快照返回五种默认稳定币,绝不调用上游服务商。
+- **指定 ID**:优先由该快照作答;只有快照未包含的 ID(包括默认五种之外的稳定币)才会访问 CoinGecko,且合并为一次批量请求,受限流保护并单独缓存。
+
+汇总统计基于实际返回的币种重新计算,因此子集请求描述的就是该子集。两个响应字段报告覆盖情况:
+
+- `dataStatus` —— `OK`、`PARTIAL` 或 `UNAVAILABLE`。它表示数据覆盖情况;`summary.healthStatus` 表示锚定健康状况,二者相互独立。
+- `unresolved` —— 每个请求了但未出现在响应中的 ID 各一条,并附原因:`INVALID_ID`(不符合 CoinGecko ID 格式)、`OVER_CAP`(超出 25 个 ID 上限,从未查询)、`NOT_FOUND`(服务商已应答,确无此币)或 `PROVIDER_ERROR`(查询失败,因此该 ID 是未知而非不存在)。
 
 ### BTC ETF 资金流向估算
 

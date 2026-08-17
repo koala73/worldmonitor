@@ -7,6 +7,12 @@
  * Google News wrappers — feeds that respond 200 with zero items when
  * Google's ranking shifts — become visible instead of rotting quietly.
  *
+ * #6624: CBC is native RSS (not a GNews wrapper) and is Canada's only
+ * default-on source. Wrapper-only `silentZeros` would never flag a
+ * sustained CBC 403/empty. The same consecutive-empty streak therefore
+ * also publishes `sustainedFailures` for CBC so a persistent fetch
+ * failure surfaces on the existing feed-health / seed-meta path.
+ *
  * Pure module: no I/O. The caller reads the previous payload from Redis
  * and passes it in.
  */
@@ -16,12 +22,23 @@ export function isGoogleNewsWrapper(url) {
   return typeof url === 'string' && url.includes('news.google.com/rss/');
 }
 
+/** Catalogued CBC native RSS (www or apex). Not a GNews workaround. */
+export function isCbcRss(url) {
+  return typeof url === 'string' && /^https?:\/\/(?:www\.)?cbc\.ca\//i.test(url);
+}
+
 /**
  * Consecutive EMPTY runs (this run included) before a wrapper feed is
  * flagged as a silent zero. One empty run can be Google jitter; two daily
  * runs of zero items on a search wrapper is a real coverage hole.
  */
 export const SILENT_ZERO_THRESHOLD = 2;
+
+/**
+ * Same window as silent-zeros: one CBC 403/empty is a blip; two consecutive
+ * DEAD/EMPTY runs is a sustained fetch failure (#6624).
+ */
+export const SUSTAINED_FAILURE_THRESHOLD = SILENT_ZERO_THRESHOLD;
 
 /**
  * @param {Array<{ name: string; url: string; status: 'OK'|'STALE'|'DEAD'|'EMPTY'|'SKIP'; detail?: string; catalog?: string }>} results
@@ -36,6 +53,7 @@ export function buildFeedHealthPayload(results, previousPayload, nowMs) {
   const feeds = {};
   const summary = { ok: 0, stale: 0, dead: 0, empty: 0, skipped: 0 };
   const silentZeros = [];
+  const sustainedFailures = [];
 
   for (const result of results) {
     const key = result.url;
@@ -47,13 +65,16 @@ export function buildFeedHealthPayload(results, previousPayload, nowMs) {
     else summary.skipped++;
 
     const wrapper = isGoogleNewsWrapper(result.url);
+    const cbc = isCbcRss(result.url);
     const prevStreak = Number.isFinite(prevFeeds[key]?.consecutiveEmpty)
       ? prevFeeds[key].consecutiveEmpty
       : 0;
     // DEAD counts toward the streak too — a wrapper that flips between
     // "200 with zero items" and timeouts is still delivering nothing.
+    // CBC 403s land as DEAD; empty bodies as EMPTY. Either is "nothing".
     const deliveredNothing = status === 'EMPTY' || status === 'DEAD';
     const consecutiveEmpty = deliveredNothing ? prevStreak + 1 : 0;
+    const sustainedFailure = cbc && consecutiveEmpty >= SUSTAINED_FAILURE_THRESHOLD;
 
     const entry = {
       name: result.name,
@@ -62,15 +83,26 @@ export function buildFeedHealthPayload(results, previousPayload, nowMs) {
       wrapper,
       consecutiveEmpty,
     };
+    if (cbc) entry.cbc = true;
+    if (sustainedFailure) entry.sustainedFailure = true;
     if (result.detail) entry.detail = String(result.detail).slice(0, 120);
     feeds[key] = entry;
 
     if (wrapper && consecutiveEmpty >= SILENT_ZERO_THRESHOLD) {
       silentZeros.push({ name: result.name, url: result.url, consecutiveEmpty });
     }
+    if (sustainedFailure) {
+      sustainedFailures.push({
+        name: result.name,
+        url: result.url,
+        consecutiveEmpty,
+        status,
+      });
+    }
   }
 
   silentZeros.sort((a, b) => b.consecutiveEmpty - a.consecutiveEmpty || a.name.localeCompare(b.name));
+  sustainedFailures.sort((a, b) => b.consecutiveEmpty - a.consecutiveEmpty || a.name.localeCompare(b.name));
 
   return {
     v: 1,
@@ -78,6 +110,7 @@ export function buildFeedHealthPayload(results, previousPayload, nowMs) {
     summary,
     feedCount: results.length,
     silentZeros,
+    sustainedFailures,
     feeds,
   };
 }

@@ -79,7 +79,7 @@ export function buildBoardHtml(snapshot: RegionalSnapshot): string {
 function section(title: string, bodyHtml: string, extraStyle = ''): string {
   return `
     <div class="rib-section" style="margin-bottom:12px;padding:10px 12px;border:1px solid var(--border);border-radius:4px;background:rgba(255,255,255,0.02);${extraStyle}">
-      <div class="rib-section-title" style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px">${escapeHtml(title)}</div>
+      <div class="rib-section-title" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px">${escapeHtml(title)}</div>
       ${bodyHtml}
     </div>
   `;
@@ -94,12 +94,12 @@ function narrativeSectionHtml(label: string, sec: NarrativeSection | undefined):
   if (!text) return '';
   const evidence = (sec?.evidenceIds ?? []).filter((id) => id.length > 0);
   const evidencePill = evidence.length > 0
-    ? `<span style="font-size:10px;color:var(--text-dim);margin-left:6px">[${escapeHtml(evidence.slice(0, 4).join(', '))}]</span>`
+    ? `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-left:6px">[${escapeHtml(evidence.slice(0, 4).join(', '))}]</span>`
     : '';
   return `
     <div class="rib-narrative-row" style="margin-bottom:8px">
-      <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:2px">${escapeHtml(label)}${evidencePill}</div>
-      <div style="font-size:12px;line-height:1.5">${escapeHtml(text)}</div>
+      <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:2px">${escapeHtml(label)}${evidencePill}</div>
+      <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));line-height:1.5">${escapeHtml(text)}</div>
     </div>
   `;
 }
@@ -128,10 +128,10 @@ export function buildRegimeBlock(snapshot: RegionalSnapshot): string {
   const driver = regime?.transitionDriver ?? '';
   const changed = previous && previous !== label;
   const previousLine = changed
-    ? `<div style="font-size:11px;color:var(--text-dim);margin-top:2px">Was: ${escapeHtml(previous)}${driver ? ` · ${escapeHtml(driver)}` : ''}</div>`
+    ? `<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:2px">Was: ${escapeHtml(previous)}${driver ? ` · ${escapeHtml(driver)}` : ''}</div>`
     : '';
   const body = `
-    <div class="rib-regime-label" style="font-size:15px;font-weight:600;text-transform:capitalize">${escapeHtml(label.replace(/_/g, ' '))}</div>
+    <div class="rib-regime-label" style="font-size:calc(15px * var(--wm-panel-effective-scale, 1));font-weight:600;text-transform:capitalize">${escapeHtml(label.replace(/_/g, ' '))}</div>
     ${previousLine}
   `;
   return section('Regime', body);
@@ -150,8 +150,8 @@ function axisRow(label: string, value: number, colorClass: string): string {
   const pct = Math.max(0, Math.min(1, value)) * 100;
   return `
     <div style="display:grid;grid-template-columns:110px 40px 1fr;gap:8px;align-items:center;margin-bottom:4px">
-      <div style="font-size:11px;color:var(--text-dim)">${escapeHtml(label)}</div>
-      <div style="font-size:11px;font-variant-numeric:tabular-nums">${value.toFixed(2)}</div>
+      <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(label)}</div>
+      <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-variant-numeric:tabular-nums">${value.toFixed(2)}</div>
       <div style="height:6px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden">
         <div style="height:100%;width:${pct.toFixed(1)}%;background:var(${colorClass})"></div>
       </div>
@@ -161,7 +161,7 @@ function axisRow(label: string, value: number, colorClass: string): string {
 
 export function buildBalanceBlock(balance: BalanceVector | undefined): string {
   if (!balance) {
-    return section('Balance Vector', '<div style="font-size:11px;color:var(--text-dim)">Unavailable</div>');
+    return section('Balance Vector', '<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Unavailable</div>');
   }
   const pressures = [
     axisRow('Coercive', balance.coercivePressure, '--danger'),
@@ -182,8 +182,8 @@ export function buildBalanceBlock(balance: BalanceVector | undefined): string {
   const netColor = netPct >= 0 ? 'var(--accent)' : 'var(--danger)';
   const netBar = `
     <div style="display:grid;grid-template-columns:110px 40px 1fr;gap:8px;align-items:center;margin-top:6px;padding-top:6px;border-top:1px dashed rgba(255,255,255,0.1)">
-      <div style="font-size:11px;color:var(--text-dim);font-weight:600">Net Balance</div>
-      <div style="font-size:11px;font-variant-numeric:tabular-nums;font-weight:600">${net.toFixed(2)}</div>
+      <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);font-weight:600">Net Balance</div>
+      <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-variant-numeric:tabular-nums;font-weight:600">${net.toFixed(2)}</div>
       <div style="position:relative;height:6px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden">
         <div style="position:absolute;left:50%;top:0;bottom:0;width:1px;background:rgba(255,255,255,0.3)"></div>
         <div style="position:absolute;${netSide}:50%;top:0;bottom:0;width:${netFill.toFixed(1)}%;background:${netColor}"></div>
@@ -194,11 +194,11 @@ export function buildBalanceBlock(balance: BalanceVector | undefined): string {
   const body = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div>
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Pressures</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Pressures</div>
         ${pressures}
       </div>
       <div>
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Buffers</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;margin-bottom:4px">Buffers</div>
         ${buffers}
       </div>
     </div>
@@ -213,7 +213,7 @@ export function buildBalanceBlock(balance: BalanceVector | undefined): string {
 
 export function buildActorsBlock(actors: ActorState[]): string {
   if (!actors || actors.length === 0) {
-    return section('Actors', '<div style="font-size:11px;color:var(--text-dim)">No actor data</div>');
+    return section('Actors', '<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">No actor data</div>');
   }
   const sorted = [...actors].sort((a, b) => (b.leverageScore ?? 0) - (a.leverageScore ?? 0)).slice(0, 5);
   const rows = sorted.map((a) => {
@@ -223,11 +223,11 @@ export function buildActorsBlock(actors: ActorState[]): string {
     return `
       <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:4px 0;border-bottom:1px dashed rgba(255,255,255,0.06)">
         <div>
-          <div style="font-size:12px;font-weight:500">${escapeHtml(a.name || a.actorId)}</div>
-          <div style="font-size:10px;color:var(--text-dim);text-transform:capitalize">${escapeHtml(a.role || 'actor')}${domains ? ` · ${escapeHtml(domains)}` : ''}</div>
+          <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:500">${escapeHtml(a.name || a.actorId)}</div>
+          <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:capitalize">${escapeHtml(a.role || 'actor')}${domains ? ` · ${escapeHtml(domains)}` : ''}</div>
         </div>
-        <div style="font-size:11px;font-variant-numeric:tabular-nums">${(a.leverageScore ?? 0).toFixed(2)}</div>
-        <div style="font-size:10px;color:${deltaColor};font-variant-numeric:tabular-nums;min-width:38px;text-align:right">${escapeHtml(deltaText)}</div>
+        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-variant-numeric:tabular-nums">${(a.leverageScore ?? 0).toFixed(2)}</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:${deltaColor};font-variant-numeric:tabular-nums;min-width:38px;text-align:right">${escapeHtml(deltaText)}</div>
       </div>
     `;
   }).join('');
@@ -240,7 +240,7 @@ export function buildActorsBlock(actors: ActorState[]): string {
 
 export function buildScenariosBlock(scenarioSets: ScenarioSet[]): string {
   if (!scenarioSets || scenarioSets.length === 0) {
-    return section('Scenarios', '<div style="font-size:11px;color:var(--text-dim)">No scenario data</div>');
+    return section('Scenarios', '<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">No scenario data</div>');
   }
   // Sort by canonical horizon order.
   const order: Record<string, number> = { '24h': 0, '7d': 1, '30d': 2 };
@@ -258,7 +258,7 @@ export function buildScenariosBlock(scenarioSets: ScenarioSet[]): string {
       const color = laneColor[l.name] ?? 'var(--text-dim)';
       return `
         <div style="margin-bottom:3px">
-          <div style="display:flex;justify-content:space-between;font-size:11px;text-transform:capitalize">
+          <div style="display:flex;justify-content:space-between;font-size:calc(11px * var(--wm-panel-effective-scale, 1));text-transform:capitalize">
             <span>${escapeHtml(l.name)}</span>
             <span style="font-variant-numeric:tabular-nums">${pct}%</span>
           </div>
@@ -270,7 +270,7 @@ export function buildScenariosBlock(scenarioSets: ScenarioSet[]): string {
     }).join('');
     return `
       <div>
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">${escapeHtml(set.horizon)}</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;margin-bottom:6px">${escapeHtml(set.horizon)}</div>
         ${lanesHtml}
       </div>
     `;
@@ -295,7 +295,7 @@ function severityColor(severity: string): string {
 
 export function buildTransmissionBlock(paths: TransmissionPath[]): string {
   if (!paths || paths.length === 0) {
-    return section('Transmission Paths', '<div style="font-size:11px;color:var(--text-dim)">No active transmissions</div>');
+    return section('Transmission Paths', '<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">No active transmissions</div>');
   }
   const sorted = [...paths]
     .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))
@@ -308,10 +308,10 @@ export function buildTransmissionBlock(paths: TransmissionPath[]): string {
     return `
       <div style="padding:4px 0;border-bottom:1px dashed rgba(255,255,255,0.06);display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
         <div>
-          <div style="font-size:11px;font-weight:500">${escapeHtml(p.mechanism || 'mechanism')}${corridor}</div>
-          <div style="font-size:10px;color:var(--text-dim)">${escapeHtml(p.start || '')} → ${escapeHtml(p.end || '')}${latency}</div>
+          <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:500">${escapeHtml(p.mechanism || 'mechanism')}${corridor}</div>
+          <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(p.start || '')} → ${escapeHtml(p.end || '')}${latency}</div>
         </div>
-        <div style="font-size:10px;font-variant-numeric:tabular-nums;color:${color};text-transform:uppercase">${escapeHtml(p.severity || 'unspec')} · ${conf}%</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-variant-numeric:tabular-nums;color:${color};text-transform:uppercase">${escapeHtml(p.severity || 'unspec')} · ${conf}%</div>
       </div>
     `;
   }).join('');
@@ -324,29 +324,29 @@ export function buildTransmissionBlock(paths: TransmissionPath[]): string {
 
 export function buildWatchlistBlock(activeTriggers: Trigger[], watchItems: NarrativeSection[]): string {
   const triggerRows = (activeTriggers ?? []).map((t) => `
-    <div style="padding:3px 0;font-size:11px">
+    <div style="padding:3px 0;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
       <span style="color:var(--danger);font-weight:600">●</span>
       ${escapeHtml(t.id)}${t.description ? ` — <span style="color:var(--text-dim)">${escapeHtml(t.description)}</span>` : ''}
     </div>
   `).join('');
 
   const watchRows = (watchItems ?? []).filter((w) => (w.text ?? '').trim().length > 0).map((w) => `
-    <div style="padding:3px 0;font-size:11px">
+    <div style="padding:3px 0;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
       <span style="color:var(--text-dim)">▸</span>
       ${escapeHtml(w.text)}
     </div>
   `).join('');
 
   if (!triggerRows && !watchRows) {
-    return section('Watchlist', '<div style="font-size:11px;color:var(--text-dim)">No active triggers or watch items</div>');
+    return section('Watchlist', '<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">No active triggers or watch items</div>');
   }
 
   const parts: string[] = [];
   if (triggerRows) {
-    parts.push(`<div style="margin-bottom:6px"><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Active Triggers</div>${triggerRows}</div>`);
+    parts.push(`<div style="margin-bottom:6px"><div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Active Triggers</div>${triggerRows}</div>`);
   }
   if (watchRows) {
-    parts.push(`<div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Watch Items</div>${watchRows}</div>`);
+    parts.push(`<div><div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Watch Items</div>${watchRows}</div>`);
   }
   return section('Watchlist', parts.join(''));
 }
@@ -366,7 +366,7 @@ export function buildMetaFooter(snapshot: RegionalSnapshot): string {
     ? `${escapeHtml(meta.narrativeProvider)}/${escapeHtml(meta.narrativeModel || 'unknown')}`
     : 'no narrative';
   return `
-    <div style="display:flex;flex-wrap:wrap;gap:12px;padding:6px 2px 0;font-size:10px;color:var(--text-dim)">
+    <div style="display:flex;flex-wrap:wrap;gap:12px;padding:6px 2px 0;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">
       <span>generated ${escapeHtml(generated)}</span>
       <span>confidence ${confidence}%</span>
       <span>scoring v${escapeHtml(meta.scoringVersion || '')}</span>
@@ -387,7 +387,7 @@ function formatDate(ms: number): string {
 
 export function buildRegimeHistoryBlock(transitions: RegimeTransition[]): string {
   if (!transitions || transitions.length === 0) {
-    return section('Regime History', '<div style="font-size:11px;color:var(--text-dim)">No regime transitions recorded yet</div>');
+    return section('Regime History', '<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">No regime transitions recorded yet</div>');
   }
   const rows = transitions.slice(0, 20).map((t) => {
     const from = t.previousLabel ? escapeHtml(t.previousLabel.replace(/_/g, ' ')) : 'none';
@@ -396,8 +396,8 @@ export function buildRegimeHistoryBlock(transitions: RegimeTransition[]): string
     const date = formatDate(t.transitionedAt);
     return `
       <div style="display:grid;grid-template-columns:130px 1fr;gap:8px;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,0.06)">
-        <div style="font-size:10px;color:var(--text-dim);font-variant-numeric:tabular-nums">${escapeHtml(date)}</div>
-        <div style="font-size:11px"><span style="color:var(--text-dim)">${from}</span> → <span style="font-weight:500;text-transform:capitalize">${to}</span>${driver}</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);font-variant-numeric:tabular-nums">${escapeHtml(date)}</div>
+        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1))"><span style="color:var(--text-dim)">${from}</span> → <span style="font-weight:500;text-transform:capitalize">${to}</span>${driver}</div>
       </div>
     `;
   }).join('');
@@ -410,7 +410,7 @@ export function buildRegimeHistoryBlock(transitions: RegimeTransition[]): string
 
 export function buildWeeklyBriefBlock(brief: RegionalBrief | undefined): string {
   if (!brief || !brief.situationRecap) {
-    return section('Weekly Brief', '<div style="font-size:11px;color:var(--text-dim)">No weekly brief available yet</div>');
+    return section('Weekly Brief', '<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">No weekly brief available yet</div>');
   }
 
   const periodStart = brief.periodStart ? (new Date(brief.periodStart).toISOString().split('T')[0] ?? '?') : '?';
@@ -420,28 +420,28 @@ export function buildWeeklyBriefBlock(brief: RegionalBrief | undefined): string 
   const developmentItems = (brief.keyDevelopments ?? [])
     .filter((d) => d.length > 0)
     .slice(0, 5)
-    .map((d) => `<div style="padding:2px 0;font-size:11px"><span style="color:var(--text-dim)">▸</span> ${escapeHtml(d)}</div>`)
+    .map((d) => `<div style="padding:2px 0;font-size:calc(11px * var(--wm-panel-effective-scale, 1))"><span style="color:var(--text-dim)">▸</span> ${escapeHtml(d)}</div>`)
     .join('');
 
   const body = `
-    <div style="font-size:10px;color:var(--text-dim);margin-bottom:6px">${escapeHtml(periodStart)} — ${escapeHtml(periodEnd)}${provider ? ` · ${provider}` : ''}</div>
-    ${brief.situationRecap ? `<div style="font-size:12px;line-height:1.5;margin-bottom:8px">${escapeHtml(brief.situationRecap)}</div>` : ''}
+    <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:6px">${escapeHtml(periodStart)} — ${escapeHtml(periodEnd)}${provider ? ` · ${provider}` : ''}</div>
+    ${brief.situationRecap ? `<div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));line-height:1.5;margin-bottom:8px">${escapeHtml(brief.situationRecap)}</div>` : ''}
     ${brief.regimeTrajectory ? `
       <div style="margin-bottom:6px">
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Regime Trajectory</div>
-        <div style="font-size:11px;line-height:1.4">${escapeHtml(brief.regimeTrajectory)}</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Regime Trajectory</div>
+        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));line-height:1.4">${escapeHtml(brief.regimeTrajectory)}</div>
       </div>
     ` : ''}
     ${developmentItems ? `
       <div style="margin-bottom:6px">
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Key Developments</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Key Developments</div>
         ${developmentItems}
       </div>
     ` : ''}
     ${brief.riskOutlook ? `
       <div>
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Risk Outlook</div>
-        <div style="font-size:11px;line-height:1.4">${escapeHtml(brief.riskOutlook)}</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;margin-bottom:2px">Risk Outlook</div>
+        <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));line-height:1.4">${escapeHtml(brief.riskOutlook)}</div>
       </div>
     ` : ''}
   `;

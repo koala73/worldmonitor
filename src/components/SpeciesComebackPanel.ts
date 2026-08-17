@@ -256,7 +256,7 @@ export class SpeciesComebackPanel extends Panel {
       .attr('x', x(first.year))
       .attr('y', height + SPARKLINE_MARGIN.bottom - 2)
       .attr('text-anchor', 'start')
-      .attr('font-size', '9px')
+      .style('font-size', 'calc(9px * var(--wm-panel-effective-scale, 1))')
       .attr('fill', 'var(--text-dim, #999)')
       .text(`${first.year}: ${getNumberFormat().format(first.value)}`);
 
@@ -266,7 +266,7 @@ export class SpeciesComebackPanel extends Panel {
       .attr('x', x(last.year))
       .attr('y', height + SPARKLINE_MARGIN.bottom - 2)
       .attr('text-anchor', 'end')
-      .attr('font-size', '9px')
+      .style('font-size', 'calc(9px * var(--wm-panel-effective-scale, 1))')
       .attr('fill', 'var(--text-dim, #999)')
       .text(`${last.year}: ${getNumberFormat().format(last.value)}`);
   }

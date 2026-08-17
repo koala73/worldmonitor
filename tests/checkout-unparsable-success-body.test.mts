@@ -164,6 +164,12 @@ const stubSources: Record<string, string> = {
   './analytics': `
     export const trackCheckoutStart = () => {};
   `,
+  // #5911 pulled the desktop detector into checkout.ts (desktop routes
+  // checkout to the OS browser). Stubbed so these web-path suites STATE their
+  // runtime rather than inferring it from a synthesised window.
+  './desktop-runtime': `
+    export const isDesktopRuntime = () => false;
+  `,
   './auth-state': `
     export const subscribeAuthState = () => () => {};
   `,
@@ -182,10 +188,16 @@ const stubSources: Record<string, string> = {
   './checkout-banner-state': `
     export const CLASSIC_AUTO_DISMISS_MS = 5000;
     export const EXTENDED_UNLOCK_TIMEOUT_MS = 30000;
+    export const ENTITLEMENT_POLL_MS = 1000;
+    export const LATE_ACTIVATION_GRACE_MS = 300000;
     export const maskEmail = (email) => email ?? null;
   `,
   './referral-capture': `
     export const loadActiveReferral = () => null;
+    // Re-exported real, never faked: startCheckout gates its outgoing
+    // referral on this, so a stub that always returns true would make any
+    // referral assertion in this harness vacuous (#6493).
+    export { isAffiliateCode } from './src/services/referral-capture.ts';
   `,
   './checkout-duplicate-dialog': `
     export const showDuplicateSubscriptionDialog = () => {};
@@ -212,6 +224,8 @@ const harnessPlugin: Plugin = {
     buildApi.onLoad({ filter: /.*/, namespace: 'xv-stub' }, (args) => ({
       contents: stubSources[args.path],
       loader: 'js',
+      // Lets a stub re-export the real module it partially replaces.
+      resolveDir: process.cwd(),
     }));
   },
 };

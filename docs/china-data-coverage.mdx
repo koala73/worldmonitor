@@ -20,6 +20,7 @@ recently; a fresh evaluator heartbeat does not prove healthy China content.
 | Policy and enforcement | CAC, SAMR, MIIT, MOFCOM, NDRC, and PBOC official documents | China country brief and `chinaPolicyEvents` bootstrap | 6 hours |
 | Cross-Strait activity | Taiwan Ministry of National Defense daily claims with separately attributed Japan Joint Staff context | Force Posture and China decision signals | 3 hours |
 | Corporate disclosures | SSE and SZSE public metadata for a reviewed issuer basket; HKEX is explicitly blocked | `chinaCorporateDisclosures` bootstrap and China decision signals | 30 minutes |
+| Stock Connect turnover and margin | SSE and SZSE public aggregate statistics for northbound turnover and margin financing balances | `market:china:stock-connect:v1` snapshot and the China health projection | 60 minutes |
 | Logistics corridors | Four reviewed corridors composed from six named source families | REST/UI detail; MCP receives a bounded decision-signal summary | On request; healthy aggregate cached 5 minutes |
 | Activity nowcast | Deterministic comparison of official macro vintages with seven reviewed proxy families | REST/UI detail; MCP receives a bounded decision-signal summary | On request; healthy result cached 15 minutes |
 | Decision-signal composition | Bounded composition of macro, policy, Cross-Strait, disclosures, corridors, and nowcast | Country brief, public RPC, bootstrap, and Pro MCP | 15 minutes |
@@ -42,6 +43,7 @@ freshness or content status.
 | `supply-chain.ccfi` | China Containerized Freight Index | `launched` |
 | `market.china-index` | China country market index | `launched` |
 | `market.china-corporate-disclosures` | Official SSE/SZSE corporate disclosures | `launched` |
+| `market.china-stock-connect` | SSE/SZSE Stock Connect northbound turnover and margin balance | `launched` |
 | `news.china` | China news digest | `launched` |
 | `aviation.china-hubs` | Eight reviewed China aviation hubs | `launched` |
 | `macro.china-snapshot` | Normalized China macro snapshot | `launched` |
@@ -85,6 +87,53 @@ The public contracts use explicit states:
 Missing categories are never converted to zero, normal, unchanged, or current.
 Last-good preservation keeps its original observation time and reports the
 current transport failure.
+
+## Stock Connect turnover and margin
+
+Four official exchange endpoints compose `market:china:stock-connect:v1`. They
+sit on the two exchange hosts already covered by the corporate-disclosure terms
+review, and all four are admitted as `admitted_aggregate_statistics`: public
+aggregate market statistics only, with no per-investor and no per-order data.
+
+| Source ID | Exchange | Series | Endpoint |
+| --- | --- | --- | --- |
+| `sse-northbound` | SSE | Northbound turnover | `https://query.sse.com.cn/commonSoaQuery.do` with sqlId `FW_HGTZL_HGTSCSJ_HGTCJGK_MRTJ` (沪股通成交概况) |
+| `sse-margin` | SSE | Margin balance | `https://query.sse.com.cn/marketdata/tradedata/queryMargin.do` (融资融券汇总) |
+| `szse-northbound` | SZSE | Northbound turnover | `https://www.szse.cn/api/report/ShowReport/data` with CATALOGID `SGT_SGTJYRB` (深股通交易日报) |
+| `szse-margin` | SZSE | Margin balance | `https://www.szse.cn/api/report/ShowReport/data` with CATALOGID `1837_xxpl` (融资融券交易总量) |
+
+The reviewed terms records are the same ones the disclosure lane uses: SSE
+[official legal terms](https://www.sse.com.cn/home/legal/), robots.txt not
+published (404); SZSE
+[applicable rules and notices](https://www.szse.cn/application/laws/),
+robots.txt present but empty (200).
+
+Northbound net flow is not available, because this source does not publish it.
+Both exchanges stopped disclosing the northbound buy and sell split on
+2024-08-16, so only gross turnover survives. The payload states that directly:
+`northbound.netFlow` is
+`{ status: 'unavailable', reason: 'EXCHANGE_STOPPED_PUBLISHING_BUY_SELL_SPLIT' }`,
+alongside `netFlowDiscontinuedOn: '2024-08-16'`. Turnover is two-way trading
+activity, buys and sells counted together. It is not capital entering or leaving
+the mainland market and must never be read as a flow.
+
+The rest of the contract:
+
+- every published value is normalized to CNY. SSE quotes margin in yuan; every
+  other figure arrives in 亿 (1e8) or 万 (1e4) and is converted;
+- a combined SSE and SZSE figure is published only when both exchanges report
+  the same trade date. Otherwise the combined value degrades with reason
+  `TRADE_DATE_MISMATCH`, which doubles as the freeze detector: one exchange that
+  stops advancing is visible immediately instead of after a staleness budget
+  expires;
+- margin publishes on a T+1 lag, and northbound publishes after each session
+  closes;
+- SZSE endpoints are date-keyed, so the seeder pins the date from the exchange
+  trading calendar
+  (`https://www.szse.cn/api/report/exchange/onepersistenthour/monthList`) and
+  probes back a bounded number of trading days; and
+- the lane runs hourly as a member of the `seed-bundle-market-backup` Railway
+  bundle.
 
 ## Bilateral HS4 import baskets
 

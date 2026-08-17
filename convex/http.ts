@@ -1,6 +1,7 @@
 import { anyApi, httpRouter } from "convex/server";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import {
   CHECKOUT_RATE_LIMITED,
   isCheckoutRateLimitedOutcome,
@@ -1107,6 +1108,19 @@ http.route({
 // User API key validation (service-to-service only)
 // ---------------------------------------------------------------------------
 
+// Schedule-site half of the lastUsedAt debounce (the mutation-side half lives
+// in touchKeyLastUsed / touchProMcpTokenLastUsed). Scheduling a touch on
+// EVERY validation meant that at each debounce boundary all concurrently
+// scheduled touches read the same stale lastUsedAt and patched the same hot
+// document — 1,036 OCC write conflicts on userApiKeys in 14 days at up to
+// retry depth 3 (Convex Insights, 2026-08). A fresh lastUsedAt makes the
+// touch a guaranteed no-op, so don't enqueue it at all; only genuinely stale
+// (or never-touched) rows schedule, which also drops one scheduled job per
+// validation off the scheduler.
+function touchIsDue(lastUsedAt: unknown): boolean {
+  return typeof lastUsedAt !== "number" || lastUsedAt <= Date.now() - TOUCH_DEBOUNCE_MS;
+}
+
 // Service-to-service: validate a user API key by its SHA-256 hash.
 // Called by the Vercel edge gateway to look up user-owned keys.
 http.route({
@@ -1142,7 +1156,7 @@ http.route({
       { keyHash: body.keyHash },
     );
 
-    if (result) {
+    if (result && touchIsDue(result.lastUsedAt)) {
       try {
         await ctx.scheduler.runAfter(0, (internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
       } catch (err) {
@@ -1152,7 +1166,14 @@ http.route({
       }
     }
 
-    return new Response(JSON.stringify(result), {
+    // Strip the gate's input from the response: the gateway caches this blob
+    // in Redis for 60s and its shape is load-bearing (isUserKeyResult in
+    // api/_user-api-key.js) — lastUsedAt exists for the gate above only.
+    const publicResult = result
+      ? (({ lastUsedAt: _lastUsedAt, ...rest }) => rest)(result)
+      : null;
+
+    return new Response(JSON.stringify(publicResult), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -1305,7 +1326,7 @@ http.route({
         { tokenId: body.tokenId },
       );
 
-      if (result) {
+      if (result && touchIsDue(result.lastUsedAt)) {
         try {
           await ctx.scheduler.runAfter(
             0,
@@ -1322,7 +1343,11 @@ http.route({
         }
       }
 
-      return new Response(JSON.stringify(result), {
+      // Strip the gate's input: the wire contract is exactly `{ userId }`
+      // (pinned by mcpProTokens.test.ts) — lastUsedAt feeds the gate only.
+      const publicResult = result ? { userId: result.userId } : null;
+
+      return new Response(JSON.stringify(publicResult), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });

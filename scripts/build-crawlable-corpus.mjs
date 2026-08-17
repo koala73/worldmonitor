@@ -15,12 +15,19 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { writeResearchSection } from './build-research-reports.mjs';
+import { buildSourceCatalog, renderSourcesIndex } from './crawlable-sources-page.mjs';
+import {
+  activeSourceAttributionEntries,
+  scanUpstreamHosts,
+  sourceAttributionStats,
+} from './source-attribution.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DEFAULT_ROOT = resolve(__dirname, '..');
 const DEFAULT_OUT_DIR = join(DEFAULT_ROOT, 'public');
 const DEFAULT_BASE_URL = 'https://www.worldmonitor.app';
+const SCHEMA_ORG_CONTEXT_URL = 'https://schema.org';
 const RESILIENCE_SNAPSHOT_PATH = 'docs/snapshots/resilience-ranking-2026-05-28.json';
 const COUNTRY_NAMES_PATH = 'shared/country-names.json';
 const CHOKEPOINT_REGISTRY_PATH = 'src/config/chokepoint-registry.ts';
@@ -31,12 +38,23 @@ const LIVE_TOOLS_SCRIPT_PATH = 'scripts/crawlable-live-tools.mjs';
 const COUNTRY_BBOXES_PATH = 'shared/country-bboxes.js';
 const CRISIS_REGISTRY_PATH = 'shared/crawlable-crises.json';
 const RESEARCH_REPORTS_INDEX_PATH = 'shared/research-reports/index.mjs';
+const SOURCE_ATTRIBUTION_MANIFEST_PATH = 'shared/source-attribution-manifest.json';
+const SOURCE_PAGE_RENDERER_PATH = 'scripts/crawlable-sources-page.mjs';
+const SOURCE_ORIGIN_PATH = 'scripts/source-origin.mjs';
+const SHARED_PAGE_TEMPLATE_PATH = 'scripts/build-crawlable-corpus.mjs';
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
-export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-07-27';
+export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-12';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-07-28';
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-07-28';
+const SOURCES_PAGE_CONTENT_VERSION = '2026-08-16';
+const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-05';
+const DATASET_LICENSE = {
+  '@type': 'CreativeWork',
+  name: 'World Monitor Terms of Service (27 July 2026)',
+  url: 'https://www.worldmonitor.app/docs/terms',
+};
 const CHANGELOG_PAGE_SIZE = 2;
 const MAX_TOOL_LATITUDE_SPAN = 45;
 const MAX_TOOL_LONGITUDE_SPAN = 60;
@@ -156,13 +174,17 @@ function displayCountryName(code, fallbackName) {
   return COUNTRY_DISPLAY_NAMES[code] || fallbackName || code;
 }
 
-const GENERATED_DIRS = [
+// Exported so a test can hold .gitignore to this list. Every directory here is
+// deleted and rewritten on each build, so one missing an ignore rule shows up
+// as permanent untracked noise and can be committed by a stray `git add -A`.
+export const GENERATED_DIRS = [
   'countries',
   'chokepoints',
   'crises',
   'tools',
   'reference/changelog',
   'research',
+  'sources',
 ];
 
 const MONTHS = [
@@ -197,6 +219,24 @@ function laterDate(...values) {
     .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? ''))
     .sort()
     .at(-1) ?? null;
+}
+
+export function sourcePageLastmod({
+  manifestLastmod,
+  rendererLastmod,
+  originLastmod,
+  sharedTemplateLastmod,
+  generatorContentVersion = CORPUS_GENERATOR_CONTENT_VERSION,
+  pageContentVersion = SOURCES_PAGE_CONTENT_VERSION,
+}) {
+  return laterDate(
+    manifestLastmod,
+    rendererLastmod,
+    originLastmod,
+    sharedTemplateLastmod,
+    generatorContentVersion,
+    pageContentVersion,
+  );
 }
 
 function normalizeBaseUrl(baseUrl) {
@@ -306,10 +346,19 @@ function formatCoordinates(lat, lon) {
 }
 
 function longestEligibleMetaDescription(candidates) {
-  return [...new Set(candidates)]
-    .map((candidate) => String(candidate ?? '').trim())
-    .filter((candidate) => candidate.length <= META_DESCRIPTION_MAX)
-    .sort((a, b) => b.length - a.length)[0];
+  // Linear scan, first-longest wins — the same pick a stable descending sort
+  // by length would make, without copying and sorting the (potentially ~12k)
+  // candidate array.
+  let best;
+  const seen = new Set();
+  for (const raw of candidates) {
+    const candidate = String(raw ?? '').trim();
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    if (candidate.length > META_DESCRIPTION_MAX) continue;
+    if (best === undefined || candidate.length > best.length) best = candidate;
+  }
+  return best;
 }
 
 function formatMetaDescriptionList(items) {
@@ -321,12 +370,21 @@ function formatMetaDescriptionList(items) {
 function signalMetaDescriptionCandidates({ subjects, signals }) {
   const candidates = [];
   const subsetCount = 2 ** signals.length;
+  // The formatted signal list depends only on the mask, so format each subset
+  // once instead of once per subject×verb combination. The triple loop below
+  // keeps its original nesting so the candidate order — and therefore which
+  // equal-length candidate longestEligibleMetaDescription picks — is unchanged.
+  const listByMask = new Array(subsetCount);
+  for (let mask = 1; mask < subsetCount; mask += 1) {
+    const selectedSignals = signals.filter((_, index) => mask & (2 ** index));
+    if (selectedSignals.length < 3) continue;
+    listByMask[mask] = formatMetaDescriptionList(selectedSignals);
+  }
   for (const subject of subjects) {
     for (const verb of ['tracks', 'monitors', 'covers']) {
       for (let mask = 1; mask < subsetCount; mask += 1) {
-        const selectedSignals = signals.filter((_, index) => mask & (2 ** index));
-        if (selectedSignals.length < 3) continue;
-        candidates.push(`${subject}: ${verb} ${formatMetaDescriptionList(selectedSignals)}.`);
+        if (listByMask[mask] === undefined) continue;
+        candidates.push(`${subject}: ${verb} ${listByMask[mask]}.`);
       }
     }
   }
@@ -751,6 +809,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     resilience.capturedAt,
     CORPUS_GENERATOR_CONTENT_VERSION,
     COUNTRY_PAGE_CONTENT_VERSION,
+    DATASET_SCHEMA_CONTENT_VERSION,
   );
   const changelogLastmod = laterDate(
     gitFileLastmod(rootDir, CHANGELOG_PATH),
@@ -773,7 +832,25 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const researchLastmod = laterDate(
     ...researchReports.map(({ report }) => report.dateModified),
     CORPUS_GENERATOR_CONTENT_VERSION,
+    DATASET_SCHEMA_CONTENT_VERSION,
   );
+  const attributionManifest = readJson(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH);
+  // Production generators share the validated attribution predicate and stats.
+  // Tests retain a separate raw-manifest oracle so a mutation here cannot make
+  // both the expected and actual provider sets agree with the same bug.
+  const sourceInventory = scanUpstreamHosts(rootDir);
+  const sourceStats = sourceAttributionStats(sourceInventory, attributionManifest);
+  const activeSourceEntries = activeSourceAttributionEntries(attributionManifest);
+  const sourceCatalog = buildSourceCatalog(activeSourceEntries);
+  if (sourceCatalog.length !== sourceStats.providerCount) {
+    throw new Error('Source catalog provider count drifted from the attribution manifest');
+  }
+  const sourcesLastmod = sourcePageLastmod({
+    manifestLastmod: gitFileLastmod(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH),
+    rendererLastmod: gitFileLastmod(rootDir, SOURCE_PAGE_RENDERER_PATH),
+    originLastmod: gitFileLastmod(rootDir, SOURCE_ORIGIN_PATH),
+    sharedTemplateLastmod: gitFileLastmod(rootDir, SHARED_PAGE_TEMPLATE_PATH),
+  });
 
   return {
     generatorContentVersion: CORPUS_GENERATOR_CONTENT_VERSION,
@@ -788,6 +865,10 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       countryBboxes: COUNTRY_BBOXES_PATH,
       crisisRegistry: CRISIS_REGISTRY_PATH,
       researchReports: RESEARCH_REPORTS_INDEX_PATH,
+      sourceAttributionManifest: SOURCE_ATTRIBUTION_MANIFEST_PATH,
+      sourcePageRenderer: SOURCE_PAGE_RENDERER_PATH,
+      sourceOrigin: SOURCE_ORIGIN_PATH,
+      sharedPageTemplate: SHARED_PAGE_TEMPLATE_PATH,
     },
     lastmod: {
       countries: countriesLastmod,
@@ -796,7 +877,10 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       tools: toolsLastmod,
       crises: crisesLastmod,
       research: researchLastmod,
+      sources: sourcesLastmod,
     },
+    sourceStats,
+    sourceCatalog,
     resilience,
     countries,
     countryBounds,
@@ -811,7 +895,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
 
 function breadcrumbLd(baseUrl, items) {
   return {
-    '@context': 'https://schema.org',
+    '@context': SCHEMA_ORG_CONTEXT_URL,
     '@type': 'BreadcrumbList',
     itemListElement: items.map((item, index) => ({
       '@type': 'ListItem',
@@ -833,11 +917,27 @@ function pageDocument({
   breadcrumbs,
   body,
   scriptSrcs = [],
+  inlineScript = '',
+  bodyClass = '',
+  headerNav = '',
+  footerBody = '',
+  extraStyles = '',
+  ogType = 'article',
   ogImage = OG_IMAGE_PATH,
   ogImageAlt = OG_IMAGE_ALT,
 }) {
   const canonical = absoluteUrl(baseUrl, path);
   const ld = [jsonLd, breadcrumbs].filter(Boolean);
+  const renderedNav = headerNav || `        <a href="/">World Monitor</a>
+        <a href="/sources/">Sources</a>
+        <a href="/countries/">Countries</a>
+        <a href="/chokepoints/">Chokepoints</a>
+        <a href="/crises/">Crises</a>
+        <a href="/tools/">Live tools</a>
+        <a href="/research/">Research</a>
+        <a href="/reference/changelog/">Changelog</a>
+        <a href="/blog/glossary/">Glossary</a>`;
+  const renderedFooter = footerBody || 'World Monitor reference corpus. Crawlable pages use committed snapshots; live API results are labelled separately.';
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -849,7 +949,7 @@ function pageDocument({
     <link rel="canonical" href="${escapeHtml(canonical)}">
     ${lastmod ? `<meta name="lastmod" content="${escapeHtml(lastmod)}">` : []}
     ${paginationLinks.map((link) => `<link rel="${escapeHtml(link.rel)}" href="${escapeHtml(absoluteUrl(baseUrl, link.path))}">`).join(String.fromCharCode(10) + "    ")}
-    <meta property="og:type" content="article">
+    <meta property="og:type" content="${escapeHtml(ogType)}">
     <meta property="og:title" content="${escapeHtml(title)}">
     <meta property="og:description" content="${escapeHtml(description)}">
     <meta property="og:url" content="${escapeHtml(canonical)}">
@@ -913,6 +1013,11 @@ function pageDocument({
       .routes { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 8px; }
       .routes li { border: 1px solid var(--line); border-radius: 8px; padding: 11px 14px; background: var(--panel); color: var(--text); font-size: 14px; }
       .routes .vol { color: var(--muted); }
+      .domains { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+      .card.domain p { margin: 8px 0 12px; font-size: 14px; }
+      .card.domain .providers { display: flex; flex-wrap: wrap; gap: 6px; }
+      .card.domain .providers span { border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; color: var(--muted); font-size: 12px; }
+      .card.domain:hover { border-color: var(--accent); text-decoration: none; }
       .related { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 0 20px; }
       .related a { display: inline-flex; align-items: center; min-height: 44px; }
       .source { margin-top: 34px; font-size: 13px; color: var(--muted); }
@@ -926,26 +1031,21 @@ function pageDocument({
       blockquote { margin: 16px 0 0; padding: 12px 16px; border-left: 2px solid var(--accent); background: var(--panel); border-radius: 0 8px 8px 0; }
       blockquote p { margin: 0; color: var(--text); font-size: 14px; }
       footer { border-top: 1px solid var(--line); padding-top: 20px; padding-bottom: 28px; color: var(--muted); font-size: 13px; }
+${extraStyles}
     </style>
   </head>
-  <body>
+  <body${bodyClass ? ` class="${escapeHtml(bodyClass)}"` : ''}>
     <header>
       <nav aria-label="Primary">
-        <a href="/">World Monitor</a>
-        <a href="/countries/">Countries</a>
-        <a href="/chokepoints/">Chokepoints</a>
-        <a href="/crises/">Crises</a>
-        <a href="/tools/">Live tools</a>
-        <a href="/research/">Research</a>
-        <a href="/reference/changelog/">Changelog</a>
-        <a href="/blog/glossary/">Glossary</a>
+${renderedNav}
       </nav>
     </header>
     <main>
 ${body}
     </main>
-    <footer>World Monitor reference corpus. Crawlable pages use committed snapshots; live API results are labelled separately.</footer>
+    <footer>${renderedFooter}</footer>
     ${scriptSrcs.map((src) => `<script type="module" nonce="wm-static-bootstrap" src="${escapeHtml(src)}"></script>`).join('\n    ')}
+    ${inlineScript ? `<script nonce="wm-static-bootstrap">${inlineScript}</script>` : ''}
   </body>
 </html>
 `;
@@ -1063,6 +1163,12 @@ function renderCountryPage({
         '@type': 'Dataset',
         name: `World Monitor Country Resilience snapshot for ${country.name}`,
         description: `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`,
+        creator: {
+          '@type': 'Organization',
+          name: 'World Monitor',
+          url: 'https://www.worldmonitor.app/',
+        },
+        license: DATASET_LICENSE,
         datePublished: capturedAt,
         measurementTechnique: methodologyFormula,
       },
@@ -1647,6 +1753,11 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
         index: '/research/',
         routes: researchRoutes,
       },
+      sources: {
+        count: 1,
+        index: '/sources/',
+        routes: [],
+      },
       glossary: {
         count: glossaryRoutes.length,
         index: '/blog/glossary/',
@@ -1669,6 +1780,24 @@ export async function buildCorpus({
       rmSync(join(outDir, dir), { recursive: true, force: true });
     }
   }
+
+  writeGeneratedFile(
+    outDir,
+    'sources/index.html',
+    renderSourcesIndex({
+      sourceStats: data.sourceStats,
+      sourceCatalog: data.sourceCatalog,
+      baseUrl,
+      lastmod: data.lastmod.sources,
+      helpers: {
+        absoluteUrl,
+        breadcrumbLd,
+        escapeHtml,
+        pageDocument,
+        withUtmSource,
+      },
+    }),
+  );
 
   writeGeneratedFile(
     outDir,
@@ -1842,7 +1971,8 @@ async function main() {
     + `${manifest.sections.crises.count} crisis trackers, `
     + `${manifest.sections.tools.count} live tools, `
     + `${manifest.sections.research.count} research reports, `
-    + `${manifest.sections.changelog.count} changelog pages. `
+    + `${manifest.sections.changelog.count} changelog pages, `
+    + `${manifest.sections.sources.count} source catalog page. `
     + `Glossary manifest references ${manifest.sections.glossary.count} existing blog pages.\n`,
   );
 }

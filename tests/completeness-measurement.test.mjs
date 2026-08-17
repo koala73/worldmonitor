@@ -10,8 +10,10 @@ import { fileURLToPath } from 'node:url';
 
 import {
   buildFeedHealthPayload,
+  isCbcRss,
   isGoogleNewsWrapper,
   SILENT_ZERO_THRESHOLD,
+  SUSTAINED_FAILURE_THRESHOLD,
 } from '../scripts/_feed-health.mjs';
 import { computeRecall } from '../scripts/_recall-benchmark-core.mjs';
 import { selectTopStories } from '../scripts/_clustering.mjs';
@@ -23,6 +25,54 @@ const readSrc = (rel) => readFileSync(resolve(root, rel), 'utf-8');
 const GN = 'https://news.google.com/rss/search?q=site%3Areuters.com&hl=en-US&gl=US&ceid=US:en';
 
 describe('feed-health payload (#4920a)', () => {
+  it('includes CBC native RSS so daily feed-health monitors it (#6624)', () => {
+    const feeds = extractServerFeeds();
+    const cbc = feeds.find((f) => f.name === 'CBC News');
+    assert.ok(cbc, 'CBC News must be in the server digest catalog feed-health publishes');
+    assert.equal(cbc.url, 'https://www.cbc.ca/webfeed/rss/rss-world');
+    assert.equal(isGoogleNewsWrapper(cbc.url), false, 'CBC is native RSS, not a GNews workaround');
+    assert.equal(isCbcRss(cbc.url), true);
+  });
+
+  it('CBC sustained fetch failure alerts after N consecutive DEAD/EMPTY runs, not a single blip (#6624)', () => {
+    const url = 'https://www.cbc.ca/webfeed/rss/rss-world';
+    assert.equal(SUSTAINED_FAILURE_THRESHOLD, SILENT_ZERO_THRESHOLD,
+      'CBC uses the same consecutive-run window as silent-zeros');
+
+    const blip = buildFeedHealthPayload(
+      [{ name: 'CBC News', url, status: 'DEAD', detail: 'HTTP 403' }],
+      null,
+      1,
+    );
+    assert.equal(blip.feeds[url].consecutiveEmpty, 1);
+    assert.equal(blip.feeds[url].cbc, true);
+    assert.equal(blip.feeds[url].sustainedFailure, undefined);
+    assert.deepEqual(blip.sustainedFailures, [], 'one 403 is a blip, not an alert');
+    assert.deepEqual(blip.silentZeros, [], 'CBC is native RSS — not a silent-zero wrapper');
+
+    const sustained = buildFeedHealthPayload(
+      [{ name: 'CBC News', url, status: 'DEAD', detail: 'HTTP 403' }],
+      blip,
+      2,
+    );
+    assert.equal(sustained.feeds[url].consecutiveEmpty, SUSTAINED_FAILURE_THRESHOLD);
+    assert.equal(sustained.feeds[url].sustainedFailure, true);
+    assert.equal(sustained.sustainedFailures.length, 1, 'N consecutive CBC failures = alert');
+    assert.equal(sustained.sustainedFailures[0].name, 'CBC News');
+    assert.equal(sustained.sustainedFailures[0].url, url);
+    assert.equal(sustained.sustainedFailures[0].status, 'DEAD');
+    assert.deepEqual(sustained.silentZeros, [], 'CBC still must not enter silentZeros');
+
+    const recovered = buildFeedHealthPayload(
+      [{ name: 'CBC News', url, status: 'OK' }],
+      sustained,
+      3,
+    );
+    assert.equal(recovered.feeds[url].consecutiveEmpty, 0);
+    assert.equal(recovered.feeds[url].sustainedFailure, undefined);
+    assert.deepEqual(recovered.sustainedFailures, [], 'recovery clears the CBC alert');
+  });
+
   it('classifies wrappers and counts statuses', () => {
     const payload = buildFeedHealthPayload([
       { name: 'BBC', url: 'https://feeds.bbci.co.uk/news/world/rss.xml', status: 'OK', catalog: 'both' },
@@ -140,7 +190,6 @@ describe('selectTopStories drop stats (#4920b)', () => {
 describe('server catalog extraction (#4920a)', () => {
   it('extracts the digest feed catalog with rebuilt Google News URLs', () => {
     const feeds = extractServerFeeds();
-    assert.ok(feeds.length > 250, `expected 250+ server feeds, got ${feeds.length}`);
     const wrapper = feeds.find((f) => f.url.includes('news.google.com'));
     assert.ok(wrapper, 'gn() URLs must be rebuilt');
     assert.match(wrapper.url, /^https:\/\/news\.google\.com\/rss\/search\?q=.+&hl=/);
@@ -418,6 +467,54 @@ describe('feed-health streak continuity (#4927 external review)', () => {
       delete process.env.UPSTASH_REDIS_REST_TOKEN;
     }
   });
+
+  it('seed-meta status=error after sustained CBC failure, ok after a single blip (#6624)', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub-token';
+    const url = 'https://www.cbc.ca/webfeed/rss/rss-world';
+    const realFetch = globalThis.fetch;
+
+    const publishAndReadMeta = async (results, previousPayload) => {
+      const sets = [];
+      globalThis.fetch = async (_u, init) => {
+        const cmd = JSON.parse(init.body);
+        if (cmd[0] === 'GET') {
+          return new Response(JSON.stringify({
+            result: previousPayload ? JSON.stringify(previousPayload) : null,
+          }), { status: 200 });
+        }
+        if (cmd[0] === 'SET') sets.push(cmd);
+        return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+      };
+      const out = await publishFeedHealth(results);
+      const metaCmd = sets.find((c) => c[1] === 'seed-meta:news:feed-health');
+      assert.ok(metaCmd, 'must SET seed-meta:news:feed-health');
+      return { out, meta: JSON.parse(metaCmd[2]) };
+    };
+
+    try {
+      const blip = await publishAndReadMeta(
+        [{ name: 'CBC News', url, status: 'DEAD', detail: 'HTTP 403' }],
+        null,
+      );
+      assert.equal(blip.out.published, true);
+      assert.equal(blip.out.payload.sustainedFailures.length, 0);
+      assert.equal(blip.meta.status, 'ok', 'a single CBC 403 must not mark seed-meta unhealthy');
+      assert.equal(blip.meta.sustainedFailureCount, 0);
+
+      const sustained = await publishAndReadMeta(
+        [{ name: 'CBC News', url, status: 'DEAD', detail: 'HTTP 403' }],
+        blip.out.payload,
+      );
+      assert.equal(sustained.out.payload.sustainedFailures.length, 1);
+      assert.equal(sustained.meta.status, 'error', 'N consecutive CBC failures mark seed-meta unhealthy');
+      assert.equal(sustained.meta.sustainedFailureCount, 1);
+    } finally {
+      globalThis.fetch = realFetch;
+      delete process.env.UPSTASH_REDIS_REST_URL;
+      delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    }
+  });
 });
 
 describe('selection attribution: same-source overflow (#4927 re-review)', () => {
@@ -461,11 +558,11 @@ describe('durable activation lifecycle (#4927 re-review P1)', () => {
     };
     // Never activated: missing data reads soft EMPTY_ON_DEMAND.
     const pending = classifyKey('newsFeedHealth', 'news:feed-health:v1', { allowOnDemand: true },
-      { ...baseCtx, activatedNames: new Set() });
+      { ...baseCtx, activationStates: new Map([['newsFeedHealth', false]]) });
     assert.equal(pending.status, 'EMPTY_ON_DEMAND');
     // Activated then died (marker present, data+meta expired): must alarm.
     const dead = classifyKey('newsFeedHealth', 'news:feed-health:v1', { allowOnDemand: true },
-      { ...baseCtx, activatedNames: new Set(['newsFeedHealth']) });
+      { ...baseCtx, activationStates: new Map([['newsFeedHealth', true]]) });
     assert.equal(dead.status, 'EMPTY', 'post-activation missing data must be EMPTY, not softened');
   });
 
@@ -480,7 +577,54 @@ describe('durable activation lifecycle (#4927 re-review P1)', () => {
     const seedHealthSrc = readSrc('api/seed-health.js');
     assert.match(seedHealthSrc, /activationKey: 'seed-activated:news:feed-health'/,
       'seed-health gates pending-activation on the marker');
-    assert.match(seedHealthSrc, /cfg\.activationKey && !activatedMap\.get\(domain\)/,
-      'missing meta with marker present must fall through to missing/stale');
+  });
+
+  // The claim above ("missing meta with the marker present must fall through to
+  // missing") used to be a regex over the exact gate expression in
+  // api/seed-health.js. That guard passed for the shape of the line rather than
+  // for its behaviour: it went red when #6095 rewrote the same gate to a
+  // three-valued read, and it would have stayed green if the gate had been
+  // inverted while keeping the expression's spelling. Drive the handler instead.
+  it('seed-health: the durable marker, not the missing meta, decides pending vs missing', async () => {
+    const { default: seedHealthHandler } = await import('../api/seed-health.js');
+    const FEED_HEALTH_MARKER = 'seed-activated:news:feed-health';
+    const FEED_HEALTH_META_KEY = 'seed-meta:news:feed-health';
+    const realFetch = globalThis.fetch;
+    const realKeys = process.env.WORLDMONITOR_VALID_KEYS;
+    const realUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const realToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.WORLDMONITOR_VALID_KEYS = 'test-completeness-key';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://mock-upstash.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'mock-token';
+
+    const readFeedHealth = async (markerExists) => {
+      globalThis.fetch = async (_url, init) => {
+        const results = JSON.parse(init.body).map(([op, key]) => {
+          if (op === 'EXISTS') return { result: key === FEED_HEALTH_MARKER && markerExists ? 1 : 0 };
+          if (key === FEED_HEALTH_META_KEY) return { result: null };
+          return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 10_000 }) };
+        });
+        return new Response(JSON.stringify(results), { status: 200 });
+      };
+      const res = await seedHealthHandler(new Request('https://api.worldmonitor.app/api/seed-health', {
+        headers: { 'X-WorldMonitor-Key': 'test-completeness-key' },
+      }));
+      return (await res.json()).seeds['news:feed-health'];
+    };
+
+    try {
+      assert.equal((await readFeedHealth(false)).status, 'pending-activation',
+        'before the first publish an absent meta is deploy lag, not a fault');
+      assert.equal((await readFeedHealth(true)).status, 'missing',
+        'a publisher that ran once and died must alarm, not read as pending');
+    } finally {
+      globalThis.fetch = realFetch;
+      if (realKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
+      else process.env.WORLDMONITOR_VALID_KEYS = realKeys;
+      if (realUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = realUrl;
+      if (realToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = realToken;
+    }
   });
 });

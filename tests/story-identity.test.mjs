@@ -235,6 +235,30 @@ describe('assignStoryIdentity (#4919 acceptance)', () => {
     assert.equal(first.get(a).titleHash, second.get(a).titleHash);
   });
 
+  it('#6428: one publisher across its own feed labels is not corroboration', async () => {
+    const items = [
+      { title: 'Iran threatens to close Strait of Hormuz if US blockade continues', source: 'Reuters World' },
+      { title: 'Iran threatens to close Strait of Hormuz — live updates', source: 'Reuters US' },
+      { title: 'Iran threatens to close Strait of Hormuz if US blockade continues', source: 'Reuters Business' },
+    ];
+    const assignment = await assignStoryIdentity(items, normalizeTitle, sha256Hex);
+    assert.equal(
+      assignment.get(items[0]).corroborationCount,
+      1,
+      'three Reuters feed labels are one wire, not three independent sources',
+    );
+
+    // Premise check: the same three wordings under three real publishers must
+    // still corroborate, or the assertion above would pass on a clustering
+    // failure rather than on the family collapse.
+    const distinct = items.map((item, i) => ({
+      ...item,
+      source: ['Reuters World', 'BBC World', 'Al Jazeera'][i],
+    }));
+    const distinctAssignment = await assignStoryIdentity(distinct, normalizeTitle, sha256Hex);
+    assert.equal(distinctAssignment.get(distinct[0]).corroborationCount, 3);
+  });
+
   it('duplicate sources within a cluster count once', async () => {
     const items = [
       { title: 'Turkey hikes interest rates to 50% in surprise move', source: 'Reuters' },

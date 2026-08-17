@@ -53,7 +53,7 @@ World Monitor is a client-side intelligence dashboard that aggregates publicly a
 
 ### Edge Functions & Sebuf Handlers
 
-- All 35 domain APIs are served through Sebuf (a Proto-first RPC framework) via Vercel Edge Functions
+- Domain APIs are served through Sebuf (a Proto-first RPC framework) via Vercel Edge Functions
 - Edge functions and handlers should validate/sanitize all input
 - CORS headers are configured per-function
 - Rate limiting and circuit breakers protect against abuse

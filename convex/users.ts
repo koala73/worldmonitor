@@ -34,6 +34,16 @@ const LOCALE_PRIMARY_RE = /^[a-z]{2,3}$/;
 // ISO 3166-1 alpha-2.
 const COUNTRY_RE = /^[A-Z]{2}$/;
 
+// A call that changes no material field refreshes `lastSeenAt` at most this
+// often; inside the window it is read-only. Why: every-call patching made
+// concurrent tabs / auth-refresh storms rewrite the same users doc — Convex
+// Insights recorded 1,618 OCC write conflicts on `users` on 2026-07-28 alone.
+// Read-only mutations cannot conflict. The #6335 email-freshness comparison
+// stays sound: any write still stamps `lastSeenAt` in the same patch, so the
+// timestamp remains a dated-address lower bound that lags by at most this
+// window. Matches the 5-min touch debounce convention (apiKeys.ts).
+export const LAST_SEEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
+
 function isValidTimezone(tz: string): boolean {
   // Use try/catch around `new Intl.DateTimeFormat(undefined, { timeZone })`
   // rather than `Intl.supportedValuesOf('timeZone').includes(...)`. The
@@ -122,6 +132,28 @@ export const ensureRecord = mutation({
       //   supplies a non-empty value (Clerk identity is source of truth;
       //   users do change their primary email). Empty incoming → leave
       //   existing alone (defends transient gaps during email-change flows).
+      //
+      // No-change debounce: when NONE of the above would change the row and
+      // lastSeenAt is inside LAST_SEEN_REFRESH_WINDOW_MS, return without
+      // writing. A read-only mutation cannot OCC-conflict, which is the fix
+      // for concurrent tabs / auth-refresh storms all patching the same doc
+      // (1,618 conflicts on 2026-07-28 alone). The #6335 invariant — an
+      // email rewrite always stamps lastSeenAt in the same patch — holds
+      // because the skip requires the email to be identical.
+      const emailChanged =
+        incomingEmail.length > 0 &&
+        (existing.email !== incomingEmail ||
+          existing.normalizedEmail !== incomingNormalizedEmail);
+      const materialChange =
+        existing.localeTag !== args.localeTag ||
+        existing.localePrimary !== args.localePrimary ||
+        (args.timezone !== undefined && existing.timezone !== args.timezone) ||
+        (args.country !== undefined && existing.country !== args.country) ||
+        emailChanged;
+      if (!materialChange && now - existing.lastSeenAt < LAST_SEEN_REFRESH_WINDOW_MS) {
+        return { ok: true as const, action: "unchanged" as const };
+      }
+
       const patch: Record<string, unknown> = {
         localeTag: args.localeTag,
         localePrimary: args.localePrimary,

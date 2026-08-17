@@ -16,6 +16,7 @@
       "apiRequestsPerDay": 0,
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 0,
+      "dashboardAiCallsPerDay": 0,
       "mcpBurstRequestsPerMinute": 0
     },
     "cta": "Get Started",
@@ -45,6 +46,7 @@
       "apiRequestsPerDay": 0,
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 50,
+      "dashboardAiCallsPerDay": 500,
       "mcpBurstRequestsPerMinute": 60
     },
     "monthlyProductId": "pdt_0Nbtt71uObulf7fGXhQup",
@@ -72,6 +74,7 @@
       "apiRequestsPerDay": 0,
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 250,
+      "dashboardAiCallsPerDay": 2500,
       "mcpBurstRequestsPerMinute": 60
     },
     "monthlyProductId": "pdt_0NjyFDbhURh2oROgPIU3G",
@@ -99,6 +102,7 @@
       "apiRequestsPerDay": 1000,
       "apiBurstRequestsPerMinute": 60,
       "mcpCallsPerDay": 1000,
+      "dashboardAiCallsPerDay": 1000,
       "mcpBurstRequestsPerMinute": 60
     },
     "monthlyProductId": "pdt_0NbttVmG1SERrxhygbbUq",
@@ -126,6 +130,7 @@
       "apiRequestsPerDay": 10000,
       "apiBurstRequestsPerMinute": 300,
       "mcpCallsPerDay": 10000,
+      "dashboardAiCallsPerDay": 10000,
       "mcpBurstRequestsPerMinute": 300
     },
     "monthlyProductId": "pdt_0Nbttg7NuOJrhbyBGCius",
@@ -149,6 +154,7 @@
       "apiRequestsPerDay": null,
       "apiBurstRequestsPerMinute": 1000,
       "mcpCallsPerDay": null,
+      "dashboardAiCallsPerDay": null,
       "mcpBurstRequestsPerMinute": 1000
     },
     "cta": "Contact Sales",

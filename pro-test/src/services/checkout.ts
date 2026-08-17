@@ -37,6 +37,10 @@ import {
 } from './checkout-rate-limit';
 import { DASHBOARD_CHECKOUT_SUCCESS_URL, DASHBOARD_CHECKOUT_RETURN_URL } from '../routes';
 import fallbackTiers from '../generated/tiers.json';
+import {
+  getContentAttributionForAnalytics,
+  withContentAttribution,
+} from '../../../shared/content-attribution';
 
 let checkoutInFlight = false;
 
@@ -113,15 +117,16 @@ function flushPendingFunnelEvents(): boolean {
 }
 
 function trackFunnelEvent(event: string, data?: Record<string, unknown>): void {
+  const enrichedData = withContentAttribution(data, getContentAttributionForAnalytics());
   try {
     const umami = getUmami();
     if (umami) {
-      umami.track(event, data);
+      umami.track(event, enrichedData);
       return;
     }
     if (pendingFunnelEvents.length >= FUNNEL_QUEUE_LIMIT) pendingFunnelEvents.shift();
-    pendingFunnelEvents.push({ event, data });
-    persistFunnelEventForReplay(event, data);
+    pendingFunnelEvents.push({ event, data: enrichedData });
+    persistFunnelEventForReplay(event, enrichedData);
     if (funnelFlushTimer === null) {
       let attempts = 0;
       funnelFlushTimer = window.setInterval(() => {
@@ -136,6 +141,12 @@ function trackFunnelEvent(event: string, data?: Record<string, unknown>): void {
   } catch {
     /* no-op — analytics can never break checkout */
   }
+}
+
+/** Record the first /pro pageview reached through a content handoff. */
+export function trackContentHandoff(): void {
+  if (!getContentAttributionForAnalytics()) return;
+  trackFunnelEvent('content-handoff');
 }
 
 /**

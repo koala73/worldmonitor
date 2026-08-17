@@ -31,6 +31,7 @@ import {
   scoreExternalDebtCoverage,
   scoreSovereignFiscalBuffer,
   isExcludedFromConfidenceMean,
+  RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE,
   type ResilienceSeedReader,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 
@@ -252,6 +253,68 @@ describe('construct invariants — sovereignFiscalBuffer (saturating transform)'
       }),
       false,
       'Path 2 with completeness=0 (data outage on SWF country) MUST NOT be excluded — operator must see the low-confidence signal',
+    );
+  });
+});
+
+describe('isExcludedFromConfidenceMean — flag-dark branch', () => {
+  it('keeps education rollback-dark in the authoritative set', () => {
+    assert.ok(
+      RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE.has('education'),
+      'education must remain flag-dark for its explicit false rollback shape',
+    );
+  });
+
+  it('excludes only the triple-zero education rollback shape', () => {
+    assert.equal(
+      isExcludedFromConfidenceMean({
+        id: 'education',
+        coverage: 0,
+        observedWeight: 0,
+        imputedWeight: 0,
+      }),
+      true,
+      'explicit false rollback must not reduce every country coverage merely because the serialized row remains present',
+    );
+  });
+
+  it('does NOT exclude a real outage on the same dimension', () => {
+    // source-failure path: coverage 0 but imputedWeight 1. Must stay counted.
+    assert.equal(
+      isExcludedFromConfidenceMean({
+        id: 'education',
+        coverage: 0,
+        observedWeight: 0,
+        imputedWeight: 1,
+      }),
+      false,
+      'a real education outage must still drag confidence down',
+    );
+  });
+
+  it('does NOT exclude an observed-but-zero-coverage reading', () => {
+    assert.equal(
+      isExcludedFromConfidenceMean({
+        id: 'education',
+        coverage: 0,
+        observedWeight: 1,
+        imputedWeight: 0,
+      }),
+      false,
+      'observed data derated to zero coverage is an outage, not a dark dim',
+    );
+  });
+
+  it('does NOT exclude a scoring education dimension once the flag is on', () => {
+    assert.equal(
+      isExcludedFromConfidenceMean({
+        id: 'education',
+        coverage: 0.92,
+        observedWeight: 0.92,
+        imputedWeight: 0.08,
+      }),
+      false,
+      'a live education dim must rejoin the confidence mean automatically',
     );
   });
 });

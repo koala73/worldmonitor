@@ -43,10 +43,35 @@ export function isOnDemandProblem(problem) {
   return problem?.onDemand === true && ON_DEMAND_SOFT_STATUSES.has(problem?.status);
 }
 
-export function findOperationalProblems(payload) {
+// #6059 — a schema whose producer has not reached its first scheduled run yet.
+// Softened for the SAME reason as on-demand (absence is explained, not a
+// fault), but on strictly tighter terms: /api/health emits the deadline it
+// compiled into the payload, and this gate re-checks it against the wall clock
+// rather than trusting the status string. So it fails CLOSED three ways —
+// a missing/unparseable deadline, an already-expired one, and a compact
+// snapshot cached from before the deadline all report the problem normally.
+// That is why this does not need a baseline entry with an owner and expiry:
+// the expiry is in the payload and this function enforces it.
+// One complete daily scrape/aggregate/publish window, the longest rollout the
+// health registry is allowed to declare. Bounding it HERE too is deliberate
+// defence in depth: this gate consumes a payload over the network, so it must
+// not accept an arbitrarily distant deadline as a licence to stay quiet. Without
+// this, a single bad `rolloutPendingUntil` — a registry bug, a bad merge, a
+// tampered response — would silence these keys in CI effectively forever.
+export const MAX_ROLLOUT_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export function isRolloutPendingProblem(problem, now = Date.now()) {
+  if (problem?.status !== 'ROLLOUT_PENDING') return false;
+  const until = Date.parse(problem?.rolloutPendingUntil ?? '');
+  if (!Number.isFinite(until)) return false;
+  if (until - now > MAX_ROLLOUT_WINDOW_MS) return false;
+  return now < until;
+}
+
+export function findOperationalProblems(payload, now = Date.now()) {
   validateCompactHealthPayload(payload);
   return Object.entries(payload.problems ?? {})
-    .filter(([, problem]) => !isOnDemandProblem(problem))
+    .filter(([, problem]) => !isOnDemandProblem(problem) && !isRolloutPendingProblem(problem, now))
     .map(([name, problem]) => ({
       name,
       status: problem?.status ?? 'UNKNOWN',
@@ -57,8 +82,47 @@ export function findOperationalProblems(payload) {
       ...(Number.isFinite(problem?.maxStaleMin)
         ? { maxStaleMin: problem.maxStaleMin }
         : {}),
+      // The content clock, carried so the report can name the pair that
+      // actually fired. Without these a STALE_CONTENT line could only print
+      // the SEED pair, which is by definition inside budget for that status —
+      // the reader sees `age=1200m max=5760m` on a problem row and reasonably
+      // concludes the monitor is broken.
+      ...(Number.isFinite(problem?.contentAgeMin)
+        ? { contentAgeMin: problem.contentAgeMin }
+        : {}),
+      ...(Number.isFinite(problem?.maxContentAgeMin)
+        ? { maxContentAgeMin: problem.maxContentAgeMin }
+        : {}),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Return true for a real ISO calendar instant with an explicit Z or numeric timezone.
+ * Date.parse alone is insufficient because it normalizes impossible dates such as February 30.
+ */
+export function isUtcIsoInstant(value) {
+  if (typeof value !== 'string') return false;
+  const match = value.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|[+-](\d{2}):(\d{2}))$/,
+  );
+  if (!match) return false;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, , zone, offsetHourText, offsetMinuteText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > daysInMonth[month - 1]) return false;
+  if (hour > 23 || minute > 59 || second > 59) return false;
+  if (
+    zone !== 'Z'
+    && (Number(offsetHourText) > 23 || Number(offsetMinuteText) > 59)
+  ) return false;
+  return Number.isFinite(Date.parse(value));
 }
 
 export function validateAcceptanceBaseline(baseline) {
@@ -71,12 +135,65 @@ export function validateAcceptanceBaseline(baseline) {
   if (!Array.isArray(baseline.acknowledged)) {
     throw new Error('Acceptance baseline must contain an acknowledged array');
   }
+  const seen = new Set();
   for (const entry of baseline.acknowledged) {
     if (!entry?.name || !entry?.status) {
       throw new Error('Each acknowledged baseline entry needs name and status');
     }
+    const key = `${entry.name}:${entry.status}`;
+    if (seen.has(key)) {
+      throw new Error(`Acceptance baseline contains duplicate entry ${key}`);
+    }
+    seen.add(key);
     if (!Number.isInteger(entry.issue)) {
       throw new Error(`Acknowledged baseline entry ${entry.name} needs an owner issue number`);
+    }
+    if (
+      Object.hasOwn(entry, 'expiresAt')
+      && !isUtcIsoInstant(entry.expiresAt)
+    ) {
+      throw new Error(`Acknowledged baseline entry ${entry.name} needs a valid UTC ISO expiresAt instant`);
+    }
+    // Optional rejection cohort: when present it must be a non-empty list of
+    // non-empty strings, or the cohort guard in applyAcceptanceBaseline would
+    // silently scope the acknowledgment to nothing.
+    if (Object.hasOwn(entry, 'rejectedShas')
+      && (!Array.isArray(entry.rejectedShas)
+        || entry.rejectedShas.length === 0
+        || entry.rejectedShas.some((sha) => typeof sha !== 'string' || sha.length === 0))) {
+      throw new Error(`Acknowledged baseline entry ${entry.name} needs rejectedShas to be a non-empty array of commit SHAs`);
+    }
+    if (Object.hasOwn(entry, 'cutover')) {
+      if (!entry.cutover || typeof entry.cutover !== 'object' || Array.isArray(entry.cutover)) {
+        throw new Error(`Acknowledged baseline entry ${entry.name} needs a cutover object`);
+      }
+      if (typeof entry.expiresAt !== 'string') {
+        throw new Error(`Cutover acknowledgement ${entry.name} needs an entry-level expiresAt`);
+      }
+      if (typeof entry.cutover.probeKey !== 'string' || entry.cutover.probeKey.length === 0) {
+        throw new Error(`Cutover acknowledgement ${entry.name} needs a probeKey`);
+      }
+      if (!isUtcIsoInstant(entry.cutover.activatedAt)) {
+        throw new Error(`Cutover acknowledgement ${entry.name} needs a valid UTC ISO activatedAt instant`);
+      }
+      if (!isUtcIsoInstant(entry.cutover.firstScheduledRunAt)) {
+        throw new Error(`Cutover acknowledgement ${entry.name} needs a valid UTC ISO firstScheduledRunAt instant`);
+      }
+      const activatedAt = Date.parse(entry.cutover.activatedAt);
+      const firstScheduledRunAt = Date.parse(entry.cutover.firstScheduledRunAt);
+      const expiresAt = Date.parse(entry.expiresAt);
+      if (firstScheduledRunAt <= activatedAt) {
+        throw new Error(`Cutover acknowledgement ${entry.name} first scheduled run must follow activation`);
+      }
+      if (firstScheduledRunAt - activatedAt > MAX_ROLLOUT_WINDOW_MS) {
+        throw new Error(`Cutover acknowledgement ${entry.name} first scheduled run must be within 24 hours`);
+      }
+      if (expiresAt <= activatedAt) {
+        throw new Error(`Cutover acknowledgement ${entry.name} must expire after activation`);
+      }
+      if (expiresAt > firstScheduledRunAt) {
+        throw new Error(`Cutover acknowledgement ${entry.name} must expire by its first scheduled run`);
+      }
     }
   }
   return baseline;
@@ -87,17 +204,37 @@ export function validateAcceptanceBaseline(baseline) {
  *
  * `blocking` fails the gate. `acknowledged` is a known-degraded source with an
  * owner issue, reported but not fatal. `cleared` is a baseline entry that no
- * longer appears in health — reported as a prompt to prune, but deliberately
- * NOT fatal, because several of these sources flap between polls and a
- * clear-on-recovery failure would make the monitor red on exactly the runs that
- * prove things improved. `expiresAt` is the anti-rot mechanism instead: the
- * whole baseline must be re-reviewed on a date, or the gate fails.
+ * longer appears in health at all — reported as a prompt to prune, but
+ * deliberately NOT fatal, because several of these sources flap between polls
+ * and a clear-on-recovery failure would make the monitor red on exactly the
+ * runs that prove things improved. The root `expiresAt` is the baseline-wide
+ * anti-rot mechanism: the whole baseline must be re-reviewed on a date, or the
+ * gate fails. An entry may carry its own tighter `expiresAt`; its exact live
+ * problem returns to `blocking` at that instant without expiring other entries.
+ *
+ * The expiry governs SUPPRESSIONS, so a baseline that acknowledges nothing
+ * cannot expire — there is no suppression left to outlive its cause, and a
+ * date-triggered failure over an empty list is a red monitor with nothing to
+ * review. That case is reachable: pruning the last recovered entry empties the
+ * file, and this repository has already watched a permanently-red monitor hide
+ * live drift (#6087).
+ *
+ * `escalated` is the third case, and it exists because the other two are not
+ * exhaustive. Acknowledgment is keyed on `name:status`, so a source that gets
+ * WORSE stops matching its entry exactly like one that recovers — and folding
+ * both into `cleared` told the operator to delete a suppression for a source
+ * that is still broken, in the same run that failed the gate on its new status.
+ * #6263 made that reachable fleet-wide: a faulting key whose data key also
+ * expires now moves SEED_ERROR -> EMPTY. The worse status still lands in
+ * `blocking` (an escalation is never suppressed); this bucket only stops the
+ * report from calling it a recovery.
  */
 export function applyAcceptanceBaseline(problems, baseline, now = Date.now()) {
   validateAcceptanceBaseline(baseline);
   const accepted = new Map(
     baseline.acknowledged.map((entry) => [`${entry.name}:${entry.status}`, entry]),
   );
+  const observedByName = new Map(problems.map((problem) => [problem.name, problem.status]));
   const seen = new Set();
   const blocking = [];
   const acknowledged = [];
@@ -106,26 +243,78 @@ export function applyAcceptanceBaseline(problems, baseline, now = Date.now()) {
     const entry = accepted.get(key);
     if (entry) {
       seen.add(key);
-      acknowledged.push({ ...problem, issue: entry.issue });
+      // An entry may scope its acknowledgment to an explicit rejection cohort
+      // (entry.rejectedShas). A problem carrying any SHA outside that cohort
+      // is NEW information wearing the acknowledged name:status — the exact
+      // shape a recovered service's next, unrelated rejection takes — and must
+      // block (#6483 cross-model review, verified by execution). Additive:
+      // callers whose problems or entries carry no rejectedShas are unchanged.
+      const novelRejections = Array.isArray(entry.rejectedShas) && Array.isArray(problem.rejectedShas)
+        ? problem.rejectedShas.filter((sha) => !entry.rejectedShas.includes(sha))
+        : [];
+      if (novelRejections.length > 0) {
+        blocking.push({ ...problem, novelRejections, issue: entry.issue });
+      } else if (!Object.hasOwn(entry, 'expiresAt') || now < Date.parse(entry.expiresAt)) {
+        acknowledged.push({ ...problem, issue: entry.issue });
+      } else {
+        // Carry the expired entry's identity so the report can attribute the
+        // red line to a scheduled re-page instead of a fresh outage.
+        blocking.push({ ...problem, expiredEntry: entry.expiresAt, issue: entry.issue });
+      }
     } else {
       blocking.push(problem);
     }
   }
-  const cleared = baseline.acknowledged
-    .filter((entry) => !seen.has(`${entry.name}:${entry.status}`))
+  const unmatched = baseline.acknowledged.filter((entry) => !seen.has(`${entry.name}:${entry.status}`));
+  const cleared = unmatched
+    .filter((entry) => !observedByName.has(entry.name))
     .map((entry) => ({ name: entry.name, status: entry.status, issue: entry.issue }));
-  const expired = Date.parse(baseline.expiresAt) < now;
-  return { blocking, acknowledged, cleared, expired, expiresAt: baseline.expiresAt };
+  const escalated = unmatched
+    .filter((entry) => observedByName.has(entry.name))
+    .map((entry) => ({
+      name: entry.name,
+      status: entry.status,
+      observedStatus: observedByName.get(entry.name),
+      issue: entry.issue,
+    }));
+  const expired = baseline.acknowledged.length > 0 && Date.parse(baseline.expiresAt) < now;
+  return { blocking, acknowledged, cleared, escalated, expired, expiresAt: baseline.expiresAt };
 }
 
 function readAcceptanceBaseline() {
   return JSON.parse(readFileSync(BASELINE_URL, 'utf8'));
 }
 
+/**
+ * Health runs TWO independent clocks and this line has to print the one that
+ * actually fired.
+ *
+ *   seed    seedAgeMin vs maxStaleMin        "is the seeder running"  -> STALE_SEED
+ *   content contentAgeMin vs maxContentAgeMin "is the data advancing"  -> STALE_CONTENT
+ *
+ * This printed the seed pair unconditionally, so every STALE_CONTENT line read
+ * as a contradiction: euFsi showed `age=1200m max=5760m` — comfortably inside
+ * budget — while the breach was contentAgeMin 19230 against maxContentAgeMin
+ * 14400. A reader can only conclude the monitor is wrong, and the numbers that
+ * would explain it are already on the wire and simply were not printed.
+ */
 function describeProblem(problem) {
-  const freshness = Number.isFinite(problem.seedAgeMin)
-    ? ` age=${problem.seedAgeMin}m max=${problem.maxStaleMin ?? 'unknown'}m`
-    : '';
+  // A content budget with no readable content age is its OWN failure mode:
+  // health scores `contentAgeMin == null` as stale (fail-closed), so the source
+  // is flagged because the clock could not be read, not because it ran out.
+  // jodiGas reads exactly this way. Printing the seed pair there reproduces the
+  // original bug on the other branch, so name the unreadable clock instead.
+  const contentClock = problem.status === 'STALE_CONTENT'
+    && Number.isFinite(problem.maxContentAgeMin);
+  const contentAge = Number.isFinite(problem.contentAgeMin)
+    ? `${problem.contentAgeMin}m`
+    : 'unknown (no dated item; scored stale)';
+  const freshness = contentClock
+    ? ` contentAge=${contentAge} maxContentAge=${problem.maxContentAgeMin}m`
+      + (Number.isFinite(problem.seedAgeMin) ? ` (seed age=${problem.seedAgeMin}m ok)` : '')
+    : Number.isFinite(problem.seedAgeMin)
+      ? ` age=${problem.seedAgeMin}m max=${problem.maxStaleMin ?? 'unknown'}m`
+      : '';
   return `${problem.name}: status=${problem.status} records=${problem.records ?? 'unknown'}${freshness}`;
 }
 
@@ -136,11 +325,17 @@ function describeProblem(problem) {
  * list, and no assertion over the pure split functions could have seen it.
  */
 export function formatAcceptanceReport(
-  { blocking, acknowledged, cleared, expired, expiresAt },
+  { blocking, acknowledged, cleared, escalated = [], expired, expiresAt },
   checkedAt,
 ) {
   const info = [
     ...acknowledged.map((problem) => `- acknowledged (#${problem.issue}): ${describeProblem(problem)}`),
+    // Deliberately carries NO pruning advice. The suppression is still live —
+    // its source got worse, not better — and the new status is already in
+    // `blocking` above. Telling an operator to delete the entry here would
+    // retire the owner record for an active fault.
+    ...escalated.map((entry) =>
+      `- escalated (#${entry.issue}): ${entry.name} ${entry.status} -> ${entry.observedStatus}; the baselined status is no longer what this source reports. Re-review the suppression against the worse state before changing it.`),
     ...cleared.map((entry) =>
       `- recovered: ${entry.name}:${entry.status} no longer reported; remove it from scripts/seed-freshness-baseline.json (#${entry.issue}).`),
   ];

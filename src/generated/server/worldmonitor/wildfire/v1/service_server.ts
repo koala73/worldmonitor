@@ -30,6 +30,12 @@ export interface FireDetection {
   region: string;
   dayNight: string;
   possibleExplosion: boolean;
+  source: string;
+  kind: string;
+  emergency: boolean;
+  agencyFireId: string;
+  agencyCode: string;
+  fireSize: number;
 }
 
 export interface GeoCoordinates {

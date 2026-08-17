@@ -38,13 +38,11 @@ export async function fetchYahooQuotesBatch(
   return { results, rateLimited: rateLimitHits > symbols.length / 2 };
 }
 
-// Yahoo-only symbols: indices, futures, and forex pairs not on Finnhub free tier
-export const YAHOO_ONLY_SYMBOLS = new Set([
-  '^GSPC', '^DJI', '^IXIC', '^VIX',
-  'GC=F', 'CL=F', 'NG=F', 'SI=F', 'HG=F',
-  'EURUSD=X', 'GBPUSD=X', 'AUDUSD=X',
-  'USDJPY=X', 'USDCNY=X', 'USDINR=X', 'USDCHF=X', 'USDCAD=X', 'USDTRY=X',
-]);
+// The Yahoo-only symbol list that used to live here was dead after #1684 (the
+// handler became a pure seed read) and had drifted to a subset of the routing
+// list the relay actually uses. `shared/stocks.json#yahooOnly` is the single
+// source of truth; `./_quote-provider.ts` reads it to decide what Finnhub can
+// serve.
 
 export const CRYPTO_META: Record<string, { name: string; symbol: string }> = cryptoConfig.meta;
 
@@ -232,33 +230,16 @@ export async function fetchFinnhubQuote(
 // ========================================================================
 // Yahoo Finance quote fetcher
 // ========================================================================
-// TODO: Add Financial Modeling Prep (FMP) as Yahoo Finance fallback.
-//
-// FMP API docs: https://site.financialmodelingprep.com/developer/docs
-// Auth: API key required — env var FMP_API_KEY
-// Free tier: 250 requests/day (paid tiers for higher volume)
-//
-// Endpoint mapping (Yahoo → FMP):
-//   Quote:      /stable/quote?symbol=AAPL           (batch: comma-separated)
-//   Indices:    /stable/quote?symbol=^GSPC           (^GSPC, ^DJI, ^IXIC supported)
-//   Commodities:/stable/quote?symbol=GCUSD           (gold=GCUSD, oil=CLUSD, etc.)
-//   Forex:      /stable/batch-forex-quotes            (JPY/USD pairs)
-//   Crypto:     /stable/batch-crypto-quotes           (BTC, ETH, etc.)
-//   Sparkline:  /stable/historical-price-eod/light?symbol=AAPL  (daily close)
-//   Intraday:   /stable/historical-chart/1min?symbol=AAPL
-//
-// Symbol mapping needed:
-//   ^GSPC → ^GSPC (same), ^VIX → ^VIX (same)
-//   GC=F → GCUSD, CL=F → CLUSD, NG=F → NGUSD, SI=F → SIUSD, HG=F → HGUSD
-//   JPY=X → JPYUSD (forex pair format differs)
-//   BTC-USD → BTCUSD
-//
-// Implementation plan:
-//   1. Add FMP_API_KEY to SUPPORTED_SECRET_KEYS in main.rs + settings UI
-//   2. Create fetchFMPQuote() here returning same shape as fetchYahooQuote()
-//   3. fetchYahooQuote() tries Yahoo first → on 429/failure, tries FMP if key exists
-//   4. economic/_shared.ts fetchJSON() same fallback for Yahoo chart URLs
-//   5. get-macro-signals.ts needs chart data (1y range) — use /stable/historical-price-eod/light
+// Provider decision (#6304): FMP is **not** the authorized fallback.
+// FMP ToS §2.2.1–2.2.2 prohibit commercial display/redistribution without a
+// separate Data Display and Licensing Agreement. WorldMonitor instead uses:
+//   - Finnhub (primary request-time equity gap fetch; watchlist search)
+//   - Alpha Vantage (authorized fallback + seeder bulk / physical commodities / FX)
+//   - CoinGecko / CoinPaprika (crypto)
+// See `./_quote-provider.ts`, `scripts/shared/market-quote-provider.mjs`, and
+// docs/finance-data.mdx § "Authorized market-data providers".
+// Yahoo residual paths remain only where no authorized provider covers the
+// instrument yet (#3731 tracks full retirement).
 // ========================================================================
 
 function parseYahooChartResponse(data: YahooChartResponse): { price: number; change: number; sparkline: number[] } | null {
@@ -354,11 +335,26 @@ export function coingeckoEndpoint(): { baseUrl: string; headers: Record<string, 
   return { baseUrl: 'https://api.coingecko.com/api/v3', headers, tier: 'keyless' };
 }
 
+/**
+ * Shape of the `/coins/markets` projection. Defaults reproduce the original
+ * call exactly (sparkline on, 24h window) so existing callers are unchanged;
+ * the stablecoin RPC asks for `24h,7d` and no sparkline, because it must
+ * populate a `change7d` field and renders no chart. Requesting `7d` is not
+ * optional there: CoinGecko omits `price_change_percentage_7d_in_currency`
+ * unless the window is named, which would silently zero the column.
+ */
+export interface CoinGeckoMarketsOpts {
+  sparkline?: boolean;
+  priceChangePercentage?: string;
+}
+
 export async function fetchCoinGeckoMarkets(
   ids: string[],
+  opts: CoinGeckoMarketsOpts = {},
 ): Promise<CoinGeckoMarketItem[]> {
+  const { sparkline = true, priceChangePercentage = '24h' } = opts;
   const { baseUrl, headers } = coingeckoEndpoint();
-  const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${ids.join(',')}&order=market_cap_desc&sparkline=true&price_change_percentage=24h`;
+  const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${ids.join(',')}&order=market_cap_desc&sparkline=${sparkline}&price_change_percentage=${encodeURIComponent(priceChangePercentage)}`;
 
   const resp = await fetch(url, {
     headers,
@@ -490,13 +486,39 @@ export async function fetchCoinPaprikaMarkets(
 // Unified crypto market fetcher: CoinGecko → CoinPaprika fallback
 // ========================================================================
 
+export type CryptoMarketsSource = 'coingecko' | 'coinpaprika';
+
+/**
+ * Same ladder as `fetchCryptoMarkets`, but names the leg that answered.
+ *
+ * The two legs do not have the same reach: CoinGecko resolves any ID it knows,
+ * while CoinPaprika can only answer for IDs present in COINPAPRIKA_ID_MAP. So
+ * "absent from the result" means "no such coin" on the primary and merely
+ * "outside our mapping table" on the fallback. A caller that reports per-ID
+ * outcomes has to tell those apart; one that just renders the rows does not,
+ * and should keep using `fetchCryptoMarkets`.
+ */
+export async function fetchCryptoMarketsWithSource(
+  ids: string[],
+  opts: CoinGeckoMarketsOpts = {},
+): Promise<{ items: CoinGeckoMarketItem[]; source: CryptoMarketsSource }> {
+  try {
+    return { items: await fetchCoinGeckoMarkets(ids, opts), source: 'coingecko' };
+  } catch (err) {
+    // sentry-coverage-ok: a primary-leg failure is the expected trigger for
+    // this ladder, and the CoinPaprika call below owns recovery. If that leg
+    // fails too the error propagates to the caller, which is where the
+    // both-providers-down condition is worth reporting.
+    console.warn(`[CoinGecko] Failed, falling back to CoinPaprika:`, (err as Error).message);
+    // No opts pass-through: CoinPaprika's ticker response always carries both
+    // the 24h and 7d change, so the projection knobs have nothing to select.
+    return { items: await fetchCoinPaprikaMarkets(ids), source: 'coinpaprika' };
+  }
+}
+
 export async function fetchCryptoMarkets(
   ids: string[],
+  opts: CoinGeckoMarketsOpts = {},
 ): Promise<CoinGeckoMarketItem[]> {
-  try {
-    return await fetchCoinGeckoMarkets(ids);
-  } catch (err) {
-    console.warn(`[CoinGecko] Failed, falling back to CoinPaprika:`, (err as Error).message);
-    return fetchCoinPaprikaMarkets(ids);
-  }
+  return (await fetchCryptoMarketsWithSource(ids, opts)).items;
 }

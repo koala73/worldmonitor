@@ -35,6 +35,8 @@ import {
   DASHBOARD_PATH,
   DASHBOARD_URL,
 } from './routes';
+import { appendStoredContentAttributionToUrl } from '../../shared/content-attribution';
+import { isInternalSourceTag } from '../../shared/referral-namespaces';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -67,9 +69,22 @@ export function renderTurnstileWidgets(): number {
   return count;
 }
 
+/**
+ * The single entry point for this page's inbound referral code. Every
+ * consumer goes through it — the dashboard CTAs via appendRefToUrl and
+ * PricingSection, which hands the value to startCheckout and from there to
+ * Dodo as `affonso_referral`.
+ *
+ * Internal source tags are rejected here rather than at each consumer: an
+ * internal tag is not an affiliate code on this surface either, and this page
+ * reaches checkout without ever passing through the dashboard's
+ * referral-capture guard (#6493).
+ */
 function getRefCode(): string | undefined {
   const params = new URLSearchParams(window.location.search);
-  return params.get('ref') || undefined;
+  const code = params.get('ref') || undefined;
+  if (!code || isInternalSourceTag(code)) return undefined;
+  return code;
 }
 
 /**
@@ -93,9 +108,20 @@ function isValidRefCode(code: string): boolean {
 }
 
 function appendRefToUrl(url: string, refCode: string | undefined): string {
-  if (!refCode || !isValidRefCode(refCode)) return url;
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}wm_referral=${encodeURIComponent(refCode)}`;
+  let nextUrl = appendStoredContentAttributionToUrl(url, {
+    destination: 'dashboard',
+    placement: 'pro-dashboard-cta',
+  });
+  if (!refCode || !isValidRefCode(refCode)) return nextUrl;
+  try {
+    const parsed = new URL(nextUrl, window.location.href);
+    parsed.searchParams.set('wm_referral', refCode);
+    nextUrl = parsed.toString();
+  } catch {
+    const sep = nextUrl.includes('?') ? '&' : '?';
+    nextUrl = `${nextUrl}${sep}wm_referral=${encodeURIComponent(refCode)}`;
+  }
+  return nextUrl;
 }
 
 function openSignIn(): void {
@@ -300,7 +326,7 @@ const Navbar = () => {
             ))}
           {showGoToDashboard ? (
             <a
-              href={DASHBOARD_URL}
+              href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
               className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-1.5"
             >
               {t('nav.goToDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
@@ -425,7 +451,7 @@ const Hero = () => {
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
             {showGoToDashboard ? (
-              <a href={DASHBOARD_URL} className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+              <a href={appendRefToUrl(DASHBOARD_URL, getRefCode())} className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
                 {t('hero.goToDashboard')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </a>
             ) : (

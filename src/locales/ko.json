@@ -67,6 +67,19 @@
       "stable": "안정"
     },
     "militaryActivity": "군사 활동",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "경제 지표",
     "ownFlights": "자국 항공편",
     "foreignFlights": "외국 항공편",
@@ -177,6 +190,23 @@
       "corridorConditions": "회랑 상황",
       "activityNowcast": "활동 나우캐스트",
       "decisionSignalsUnavailable": "중국 의사결정 신호 스냅샷을 현재 사용할 수 없습니다."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "header": {
@@ -365,7 +395,8 @@
     "consumerPrices": "소비자 물가",
     "fearGreed": "공포 & 탐욕",
     "marketBreadth": "시장 폭",
-    "climateNews": "기후 뉴스"
+    "climateNews": "기후 뉴스",
+    "fx": "환율"
   },
   "commands": {
     "prefixes": {
@@ -445,7 +476,9 @@
         "displacement": "이재민 흐름 전환",
         "climate": "기후 이상 전환",
         "outages": "인터넷 장애 전환",
-        "tradeRoutes": "무역 노선 전환"
+        "tradeRoutes": "무역 노선 전환",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "다크 모드로 전환",
@@ -607,7 +640,7 @@
         "URLHAUS_AUTH_KEY": "URLhaus 및 ThreatFox API에 사용됩니다.",
         "OTX_API_KEY": "사이버 위협 레이어의 선택적 보강 소스입니다.",
         "ABUSEIPDB_API_KEY": "악성 IP 평판 확인을 위한 선택적 보강 소스입니다.",
-        "FINNHUB_API_KEY": "실시간 주가 및 시장 데이터.",
+        "FINNHUB_API_KEY": "지연되었거나 사전 적재된 주가 및 시장 데이터. 키가 있어도 라이브 시세가 아닙니다.",
         "NASA_FIRMS_API_KEY": "자원 관리 시스템을 위한 화재 정보.",
         "OLLAMA_API_URL": "예: http://127.0.0.1:11434 (Ollama) 또는 http://127.0.0.1:1234/v1 (LM Studio) — OpenAI 호환 엔드포인트.",
         "OLLAMA_MODEL": "예: llama3.1:8b — 요약에 사용할 모델 태그."
@@ -851,7 +884,12 @@
       "loadingHistory": "통과 이력 로드 중…",
       "historyUnavailable": "통과 이력 미제공",
       "transitDataUnavailable": "통과 데이터 미제공 (업스트림 부분)",
-      "infoTooltip": "<strong>공급망 모니터</strong> 글로벌 물류 및 자원 추적:<ul><li><strong>병목지점</strong>: 해상 통과 상태, 지장 점수, 선박 수</li><li><strong>해운</strong>: 발틱 건화물지수 및 운임 추세</li><li><strong>광물</strong>: 주요 광물 집중 위험(HHI) 및 주요 생산국</li></ul>병목지점 카드를 클릭하면 통과 이력 차트가 확대됩니다."
+      "infoTooltip": "<strong>공급망 모니터</strong> 글로벌 물류 및 자원 추적:<ul><li><strong>병목지점</strong>: 해상 통과 상태, 지장 점수, 선박 수</li><li><strong>해운</strong>: 발틱 건화물지수 및 운임 추세</li><li><strong>광물</strong>: 주요 광물 집중 위험(HHI) 및 주요 생산국</li></ul>병목지점 카드를 클릭하면 통과 이력 차트가 확대됩니다.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "관세",
@@ -895,6 +933,7 @@
       "noComtradeData": "전략적 흐름 데이터 미제공",
       "comtradeUnavailable": "UN Comtrade 데이터 일시 미제공",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade 행은 보고국의 국가 단위 공식 통계이며 마을·회랑·공장·항구·선적의 수출이 아닙니다.",
       "anomalyBadge": "이상",
       "colReporter": "국가",
       "colCommodity": "상품",
@@ -1131,7 +1170,7 @@
         "ucdpEvents": "UCDP 사건",
         "displacementFlows": "난민 이동",
         "climateAnomalies": "기후 이상",
-        "weatherAlerts": "기상 경보",
+        "weatherAlerts": "미국·캐나다 기상 경보(NWS, ECCC)",
         "strategicWaterways": "전략 수로",
         "economicCenters": "경제 중심지",
         "criticalMinerals": "핵심 광물",
@@ -1151,7 +1190,9 @@
         "speciesRecovery": "종 복원",
         "renewableInstallations": "클린 에너지",
         "radiationSpike": "방사능 급증",
-        "radiationElevated": "상승된 방사능"
+        "radiationElevated": "상승된 방사능",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "지진",
@@ -1212,7 +1253,7 @@
           "infraDatacenters": "GPU 10,000대 이상 AI 컴퓨팅 클러스터",
           "infraOutages": "인터넷 차단 및 서비스 중단",
           "naturalEventsTech": "지진, 폭풍, 화재 (데이터 센터 영향 가능)",
-          "weatherAlerts": "기상 특보",
+          "weatherAlerts": "미국과 캐나다의 악천후 경보(NWS, ECCC)",
           "economicCenters": "증권거래소 및 중앙은행",
           "countriesOverlay": "국가명 오버레이",
           "financeExchanges": "시장 등급별 주요 글로벌 거래소",
@@ -1224,7 +1265,7 @@
           "financeOutages": "시장 운영에 영향을 줄 수 있는 인터넷 중단",
           "financeCyberThreats": "금융 인프라 관련 보안 이벤트",
           "macroWaterways": "원자재 해운의 전략적 병목 지점",
-          "weatherAlertsMarket": "시장 관련성이 있는 기상 특보",
+          "weatherAlertsMarket": "시장 관련성이 있는 미국과 캐나다의 악천후 현상(NWS, ECCC)",
           "naturalEventsMacro": "지진, 화재, 홍수 및 기타 자연재해",
           "timeRecent": "시간 기반 데이터를 최근 시간대로 필터링",
           "timeExtended": "지난 주, 월, 전체 기간의 데이터 표시",
@@ -1257,7 +1298,9 @@
           "tradeRoutes": "전략적 병목 지점을 경유하여 항구를 연결하는 주요 글로벌 해운 항로",
           "dayNight": "주간 및 야간 영역을 표시하는 실시간 태양 종단선",
           "geoBoundaries": "비무장지대, 휴전선 및 분쟁 경계선",
-          "ciiChoropleth": "국가 불안정 지수 히트맵 — CII 점수에 따라 국가를 색상으로 표시 (녹색=안정, 빨간색=심각)"
+          "ciiChoropleth": "국가 불안정 지수 히트맵 — CII 점수에 따라 국가를 색상으로 표시 (녹색=안정, 빨간색=심각)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "영향 대상: 지진, 기상, 시위, 장애"
@@ -1352,7 +1395,8 @@
       "newsSignals": "{{news}}개 뉴스 • {{signals}}개 신호",
       "provenanceTitle": "커버리지 출처: 이 브리프가 선택된 수집 스토리 및 고유 소스의 개수",
       "compiledFrom": "{{stories}}개의 스토리와 {{sources}}개의 소스에서 컴파일됨",
-      "briefFreshness": "{{minutes}}분 전 생성됨 · 최신 소스 {{hours}}시간 전"
+      "briefFreshness": "{{minutes}}분 전 생성됨 · 최신 소스 {{hours}}시간 전",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "설정 내보내기",
@@ -1871,7 +1915,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2133,10 +2177,21 @@
       "infoTooltip": "<strong>재난 연쇄 반응</strong> 수렴하는 자연재해 및 인프라 신호 감지:<ul><li>지진, 산불, 홍수 및 극한 날씨의 상관관계</li><li>인프라 및 공급망에 대한 연쇄 효과 추적</li><li>복합 재난 위험이 있는 지역 강조</li></ul>카드를 클릭하여 영향을 받는 지역으로 확대합니다."
     },
     "markets": {
-      "infoTooltip": "<strong>시장</strong> 실시간 주식 지수, 주식 및 암호화폐 가격. 감시목록 버튼으로 감시목록을 사용자 정의합니다. 스파크라인은 최근 가격 추세를 표시합니다.",
+      "infoTooltip": "<strong>시장</strong> 지연되었거나 사전 적재된 주식 지수, 주식 및 암호화폐 가격. 감시목록 버튼으로 감시목록을 사용자 정의합니다. 스파크라인은 최근 가격 추세를 표시합니다.",
       "chart": {
         "title": "{{symbol}} 가격 차트",
         "close": "차트 닫기"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2303,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "제재 및 지정",
-      "infoTooltip": "SDN 및 통합 목록의 OFAC 제재 지정. 어느 국가가 가장 높은 지정 압력을 받고 있는지, 어떤 프로그램이 이를 주도하고 있는지, 마지막 업데이트 이후 새로 추가된 것이 무엇인지를 보여줍니다.",
+      "infoTooltip": "OFAC SDN 및 통합 목록과 캐나다 글로벌 어페어스 SEMA/JVCFOA 지정. 어느 국가가 가장 높은 지정 압력을 받고 있는지, 어떤 프로그램이 이를 주도하고 있는지, 마지막 업데이트 이후 새로 추가된 것이 무엇인지를 보여줍니다.",
       "loading": "제재 데이터 로드 중...",
       "unavailable": "제재 데이터를 사용할 수 없습니다.",
       "summary": {
         "new": "신규",
         "vessels": "선박",
-        "aircraft": "항공기"
+        "aircraft": "항공기",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "제재 대상국",
@@ -2324,11 +2380,12 @@
       "footer": {
         "updated": "{{time}}에 업데이트됨",
         "dataset": "데이터셋 {{date}}",
-        "source": "출처: OFAC"
+        "source": "출처: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} 신규",
-        "new": "신규"
+        "new": "신규",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}}개 지정",
       "designations_other": "{{count}}개 지정",
@@ -2521,6 +2578,38 @@
       "upgradeCta": "더 많은 탭을 위해 업그레이드",
       "lockedAriaLabel": "탭 추가 — 잠김. {{reason}}",
       "unlockedAnnouncement": "대시보드 탭 한도가 해제되었습니다."
+    },
+    "fx": {
+      "infoTooltip": "<strong>환율</strong> 통화 스트레스 및 현물 환율:<ul><li>FX Stress는 45개 통화의 최악의 고점에서 저점까지의 하락률을 지난 24개월 동안 순위 매기고, 12개월 변화를 함께 표시합니다</li><li>범위에는 BIS 및 ECB 참조 세트에서 생략한 ARS, TRY, EGP, NGN, PKR, UAH 통화가 포함됩니다</li><li>Spot은 미국 달러 대비 환율과 ECB 유로 참조 환율을 별도로 표시하는데, 이는 두 환율이 서로 다른 기준에서 인용되기 때문입니다</li><li>RUB — 러시아 중앙은행 환율, 단위당 루블</li></ul> 출처: Yahoo Finance, 유럽중앙은행 및 러시아 중앙은행.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "통화",
+      "pair": "통화쌍",
+      "rate": "환율",
+      "yoy": "12개월",
+      "drawdown": "24개월 하락률",
+      "peakToTrough": "고점 → 저점",
+      "change1d": "1일",
+      "perUsd": "1 USD당",
+      "usdPerUnit": "단위당 USD",
+      "usdBase": "미국 달러 대비",
+      "eurBase": "ECB 유로 참조 환율",
+      "stressedCount": "{{total}}개 중 {{stressed}}개 통화가 {{threshold}} 미만",
+      "sourceYahoo": "출처: Yahoo Finance",
+      "sourceEcb": "출처: ECB",
+      "degraded": "현재 사용 불가: {{sources}}. 곧 다시 시도합니다.",
+      "source": {
+        "stress": "FX 스트레스",
+        "usd": "미국 달러 환율",
+        "eur": "ECB 유로 환율",
+        "rub": "러시아 중앙은행 환율"
+      },
+      "rubBase": "러시아 중앙은행 — 단위당 루블",
+      "rubPerUnit": "단위당 루블",
+      "sourceCbr": "출처: 러시아 중앙은행"
     }
   },
   "popups": {
@@ -2742,6 +2831,7 @@
     "moreEvents": "추가 사건",
     "monitoring": "감시 중",
     "viewUSGS": "USGS에서 보기",
+    "viewNRCan": "Earthquakes Canada에서 보기",
     "expired": "만료됨",
     "timeAgo": {
       "s": "{{count}}s 전",
@@ -2861,7 +2951,7 @@
       "heading": "방위",
       "hexCode": "HEX 코드",
       "squawk": "스쿼크",
-      "attribution": "출처: OpenSky Network"
+      "attribution": "출처: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS 소실",
@@ -3335,5 +3425,31 @@
     "deleteTab": "탭 삭제",
     "deleteTabAria": "탭 {{name}} 삭제",
     "tabNameAria": "탭 이름"
+  },
+  "theaterPresets": {
+    "label": "커버리지 프리셋",
+    "applied": "{{preset}} 프리셋 적용됨: {{count}}개 소스 활성화",
+    "alreadyApplied": "{{preset}} 프리셋은 이미 적용되었습니다",
+    "ukraineWar": {
+      "label": "우크라이나 전쟁",
+      "description": "우크라이나 주요 매체, 독립 러시아 언론 및 전선 평가 소스를 활성화합니다"
+    },
+    "indoPacific": {
+      "label": "인도-태평양 / 대만",
+      "description": "대만, 파키스탄 및 동남아시아 안보 소스를 활성화합니다"
+    },
+    "sahelWestAfrica": {
+      "label": "사헬 및 서아프리카",
+      "description": "사헬, 나이지리아 및 서아프리카 현지 소스를 활성화합니다"
+    },
+    "caucasusCentralAsia": {
+      "label": "캅카스 및 중앙아시아",
+      "description": "남캅카스와 중앙아시아 지역 소스를 활성화합니다"
+    },
+    "middleEastFlashpoints": {
+      "label": "중동 분쟁 요충지",
+      "description": "이란, 이스라엘, 걸프 및 쿠르드 지역 소스를 활성화합니다"
+    },
+    "unavailable": "현재 패널에서는 {{preset}} 프리셋을 사용할 수 없습니다"
   }
 }

@@ -26,8 +26,7 @@ export type ForeignPresenceAlert = CoreForeignPresenceAlert<MilitaryFlight>;
 /** The core narrows `type` to its own literal; the app-facing signal keeps the full union. */
 type MilitarySignal = Omit<MilitarySurgeSignal, 'type'> & { type: SignalType };
 
-// Cached/server scores are the only CII source here — see
-// tests/frontend-cii-source-of-truth.test.mts.
+// Cached/server scores are the only CII source here.
 const ciiLookup = (code: string): number | null => {
   const cii = getCachedCountryScoreValue(code);
   return cii;

@@ -36,6 +36,8 @@ function isSettingsKey(key: string): boolean {
   return SETTINGS_KEY_PREFIXES.some(prefix => key.startsWith(prefix));
 }
 
+export const __testing__ = { isSettingsKey };
+
 export function exportSettings(): void {
   const data: Record<string, string> = {};
 

@@ -14,12 +14,13 @@ import {
   RESILIENCE_INTERVAL_METHODOLOGY,
   RESILIENCE_INTERVALS_META_KEY,
   getCurrentCacheFormula,
+  getCurrentEducationCacheState,
   isCurrentResilienceIntervalPayload,
   isEnergyV2Enabled,
   type ResilienceIntervalPayload,
 } from './_shared';
 
-const MANIFEST_VERSION = 4;
+const MANIFEST_VERSION = 5;
 const INTERVAL_SAMPLE_COUNTRY = 'US';
 
 const PUBLIC_CACHE_STATE = {
@@ -30,9 +31,10 @@ const PUBLIC_CACHE_STATE = {
   intervalMethodology: '',
 };
 
-function getConstructVersions(): { energy: 'legacy' | 'v2' } {
+function getConstructVersions(): { energy: 'legacy' | 'v2'; education: 'active' | 'rollback' } {
   return {
     energy: isEnergyV2Enabled() ? 'v2' : 'legacy',
+    education: getCurrentEducationCacheState() === 'education-on' ? 'active' : 'rollback',
   };
 }
 

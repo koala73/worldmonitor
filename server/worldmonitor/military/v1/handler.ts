@@ -9,6 +9,7 @@ import { getUSNIFleetReport } from './get-usni-fleet-report';
 import { listMilitaryBases } from './list-military-bases';
 import { getWingbitsLiveFlight } from './get-wingbits-live-flight';
 import { listDefensePatents } from './list-defense-patents';
+import { getDefenseIndustrialBase } from './get-defense-industrial-base';
 
 export const militaryHandler: MilitaryServiceHandler = {
   listMilitaryFlights,
@@ -20,4 +21,5 @@ export const militaryHandler: MilitaryServiceHandler = {
   listMilitaryBases,
   getWingbitsLiveFlight,
   listDefensePatents,
+  getDefenseIndustrialBase,
 };

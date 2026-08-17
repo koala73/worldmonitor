@@ -73,13 +73,19 @@ export function cacheKeyFor(normalizedTitle) {
 // the orchestrator and the embedding client share one implementation.
 
 // Symmetric to the cache-write FLUSH knob: a 512-dim vector
-// serialises to ~9.4KB, so an unbatched GET pipeline RESPONSE for
-// N unique titles is N×9.4KB. With ~8K cached titles in production
-// (live brief:emb:v1:* count), a cold-tick pipeline-GET response
-// would already be 75MB — well past Upstash's per-request limit
-// and likely to time out the 10s pipeline budget. 500 GETs ×
+// serialises to ~9.4KB, so an unbatched GET pipeline response for
+// N unique titles is N×9.4KB. With ~26K cached titles in production
+// (live brief:emb:v1:* count, 2026-08-02), a cold-tick pipeline-GET
+// response would be ~245MB — a heap and latency problem that would
+// blow the 10s pipeline budget long before anything else. 500 GETs ×
 // ~9.4KB = ~4.7MB per chunk response keeps the symmetric read
 // path under the same budget the writes target.
+//
+// NOT an Upstash size-limit concern, though this comment used to say
+// so. Measured 2026-08-02: the 50MiB max-request-size applies PER
+// COMMAND, never to a pipeline's aggregate — 8 GETs returning 71.7MB
+// in total succeed. Each GET here returns ~9.4KB, so the limit cannot
+// bind on this path.
 const CACHE_GET_FLUSH = 500;
 
 /**
@@ -281,16 +287,22 @@ export async function embedBatch(normalizedTitles, deps = {}) {
       cacheWrites.push(['SET', key, JSON.stringify(freshVectors[i]), 'EX', String(CACHE_TTL_SECONDS)]);
     }
     // Cache writes are best-effort — a failure costs us a re-embed
-    // on the next run, never a correctness bug. Chunked because the
-    // 512-dim vector serialises to ~9.4KB per SET command; an unbatched
-    // pipeline of N misses sends one HTTP body of N×9.4KB to Upstash
-    // REST `/pipeline`, which trips the per-request body limit (50MB on
-    // our plan) at ~5,300 misses. Real ticks rarely approach that, but
-    // a cold cache on a high-volume language tick (or a future tick-
-    // size growth) would silently exceed it. 200 × 9.4KB ≈ 1.9MB per
-    // request matches the chunking pattern used by sibling seeders
-    // (PIPE_BATCH=50 in seed-resilience-scores.mjs / seed-comtrade-
-    // bilateral-hs4.mjs, SET_BATCH=30 in resilience/v1/_shared.ts).
+    // on the next run, never a correctness bug. Chunked to bound the
+    // request body and stay inside the 10s pipeline budget: the
+    // 512-dim vector serialises to ~9.4KB per SET command, so 200 ×
+    // 9.4KB ≈ 1.9MB per request, matching the chunking pattern used by
+    // sibling seeders (PIPE_BATCH=50 in seed-resilience-scores.mjs /
+    // seed-comtrade-bilateral-hs4.mjs, SET_BATCH=30 in
+    // resilience/v1/_shared.ts).
+    //
+    // This comment previously claimed an unbatched pipeline "trips the
+    // per-request body limit (50MB) at ~5,300 misses". That is WRONG.
+    // Measured 2026-08-02: the limit applies PER COMMAND, not to the
+    // HTTP body — a pipeline of 60 commands totalling a 60MB body
+    // succeeds, while a single command carrying a 60MB argument is
+    // rejected with HTTP 413. At ~9.4KB per SET no chunk size can trip
+    // it here. See
+    // docs/solutions/integration-issues/upstash-max-request-size-counts-one-command-and-answers-http-200.md
     //
     // Outage break: defaultRedisPipeline returns null on HTTP error
     // (does NOT throw), so the try/catch alone won't stop the loop.

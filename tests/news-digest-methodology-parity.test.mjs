@@ -10,6 +10,11 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
+import {
+  GROQ_DEFAULT_MODEL,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
+} from '../scripts/_llm-model-timeouts.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -60,6 +65,10 @@ const breakingAlertsSrc = readFileSync(
 );
 const summarizeSrc = readFileSync(
   resolve(repoRoot, 'server/worldmonitor/news/v1/summarize-article.ts'),
+  'utf8',
+);
+const summaryCacheKeySrc = readFileSync(
+  resolve(repoRoot, 'src/utils/summary-cache-key.ts'),
   'utf8',
 );
 const feedsSrc = readFileSync(
@@ -270,10 +279,29 @@ function extractStringUnionValues(src, propertyName) {
   return [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
 
-function extractPromptPairLimit(src) {
-  const match = src.match(/nonEmpty\.slice\(0,\s*([0-9]+)\)/);
-  assert.ok(match, 'failed to locate prompt-pair headline limit');
-  return Number(match[1]);
+function extractPromptPairLimit(src, cacheKeySrc) {
+  // #5969: the prompt window must come from the SAME bounded selection the
+  // cache key uses, or a story can reach the model without reaching cache
+  // identity. A bare substring check is not enough — the call can be present
+  // while its result is discarded and the window re-widened downstream — so
+  // pin the assignment AND assert nothing re-derives the window from the
+  // unbounded `paired` list afterwards.
+  assert.match(
+    src,
+    /const selectedPairs = selectUniqueHeadlinePairs\(paired\);/,
+    'prompt window must be assigned from selectUniqueHeadlinePairs(paired)',
+  );
+  assert.match(
+    src,
+    /const sanitizedPairs = selectedPairs\.map\(/,
+    'prompt sanitisation must consume the bounded selectedPairs, not the raw pairs',
+  );
+  assert.doesNotMatch(
+    src,
+    /const sanitizedPairs = paired\.map\(|nonEmpty = paired\b|selectUniqueHeadlinePairs\(paired\)\.concat/,
+    'prompt window must not be re-widened from the unbounded paired list',
+  );
+  return extractNumericConst(cacheKeySrc, 'MAX_SUMMARY_HEADLINES');
 }
 
 function extractEntityCorroborationCap(src) {
@@ -423,7 +451,7 @@ function assertDocMatches(re, label) {
 describe('news digest methodology parity', () => {
   it('keeps SummarizeArticle headline limits aligned across implementation and API docs', () => {
     const rawHeadlineLimit = extractNumericConst(summarizeSrc, 'MAX_HEADLINES');
-    const promptPairLimit = extractPromptPairLimit(summarizeSrc);
+    const promptPairLimit = extractPromptPairLimit(summarizeSrc, summaryCacheKeySrc);
     assert.equal(rawHeadlineLimit, 10);
     assert.equal(promptPairLimit, 5);
 
@@ -803,16 +831,26 @@ describe('news digest methodology parity', () => {
   it('documents regional weekly brief provider chain separately from digest prose', () => {
     const providerNames = [...weeklyBriefSrc.matchAll(/name:\s*'([^']+)'/g)]
       .map((m) => m[1]);
-    const providerModels = [...weeklyBriefSrc.matchAll(/model:\s*'([^']+)'/g)]
-      .map((m) => m[1]);
+    const sharedModels = {
+      GROQ_DEFAULT_MODEL,
+      OPENROUTER_FREE_BACKUP_MODEL,
+      OPENROUTER_FREE_PRIMARY_MODEL,
+    };
+    const providerModels = [...weeklyBriefSrc.matchAll(/model:\s*(?:'([^']+)'|([A-Z_]+))/g)]
+      .map((m) => m[1] || sharedModels[m[2]]);
     const weeklyTemperature = extractNumericConst(weeklyBriefSrc, 'BRIEF_TEMPERATURE');
 
-    assert.deepEqual(providerNames, ['openrouter', 'groq']);
-    assert.deepEqual(providerModels, ['deepseek/deepseek-v4-flash', 'llama-3.3-70b-versatile']);
+    assert.deepEqual(providerNames, ['openrouter', 'openrouter-free', 'openrouter-free-backup', 'groq']);
+    assert.deepEqual(providerModels, [
+      'deepseek/deepseek-v4-flash',
+      'google/gemma-4-26b-a4b-it:free',
+      'openai/gpt-oss-20b:free',
+      'openai/gpt-oss-20b',
+    ]);
     assert.equal(weeklyTemperature, 0.3);
 
     assertDocMatches(
-      /Regional weekly briefs[\s\S]*tr(?:y|ies) OpenRouter first[\s\S]*`deepseek\/deepseek-v4-flash`[\s\S]*Groq `llama-3\.3-70b-versatile`[\s\S]*temperature\s+`0\.3`/,
+      /Regional weekly briefs[\s\S]*tr(?:y|ies) OpenRouter first[\s\S]*`deepseek\/deepseek-v4-flash`[\s\S]*`google\/gemma-4-26b-a4b-it:free`[\s\S]*`openai\/gpt-oss-20b:free`[\s\S]*Groq `openai\/gpt-oss-20b`[\s\S]*temperature\s+`0\.3`/,
       'regional weekly brief provider order, models, and temperature',
     );
     assertDocMatches(

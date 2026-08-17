@@ -76,6 +76,22 @@ function formatPositionSource(source: string): string {
   return escapeHtml(source);
 }
 
+function formatMilitaryFlightSource(source: string | undefined): string {
+  if (!source) return escapeHtml(t('popups.militaryFlight.attribution'));
+  const providers: Record<string, { label: string; url: string }> = {
+    'adsb.lol': { label: 'adsb.lol (ODbL)', url: 'https://api.adsb.lol' },
+    'airplanes.live': { label: 'airplanes.live', url: 'https://api.airplanes.live' },
+    'adsb.fi': { label: 'adsb.fi', url: 'https://opendata.adsb.fi' },
+    wingbits: { label: 'Wingbits', url: 'https://wingbits.com' },
+    opensky: { label: 'OpenSky Network', url: 'https://opensky-network.org' },
+  };
+  const provider = providers[source];
+  const renderedSource = provider
+    ? `<a href="${provider.url}" target="_blank" rel="noopener" style="color:inherit">${provider.label}</a>`
+    : escapeHtml(source);
+  return `${escapeHtml(t('popups.source'))}: ${renderedSource}`;
+}
+
 function fmtUtcTime(utc: string | undefined): string {
   if (!utc) return '\u2014';
   const d = new Date(utc.includes('T') ? utc : utc.replace(' ', 'T') + 'Z');
@@ -84,7 +100,7 @@ function fmtUtcTime(utc: string | undefined): string {
 
 function fmtDelayMin(min: number | undefined): string {
   if (min === undefined || min === 0) return '';
-  return `<span style="color:${min > 0 ? '#f97316' : '#22c55e'};font-size:10px;margin-left:3px">${min > 0 ? '+' : ''}${min}m</span>`;
+  return `<span style="color:${min > 0 ? '#f97316' : '#22c55e'};font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin-left:3px">${min > 0 ? '+' : ''}${min}m</span>`;
 }
 
 export type PopupType = 'conflict' | 'hotspot' | 'earthquake' | 'weather' | 'base' | 'waterway' | 'apt' | 'cyberThreat' | 'nuclear' | 'economic' | 'irradiator' | 'pipeline' | 'cable' | 'cable-advisory' | 'repair-ship' | 'outage' | 'datacenter' | 'datacenterCluster' | 'ais' | 'protest' | 'protestCluster' | 'flight' | 'aircraft' | 'militaryFlight' | 'militaryVessel' | 'militaryFlightCluster' | 'militaryVesselCluster' | 'natEvent' | 'port' | 'spaceport' | 'mineral' | 'startupHub' | 'cloudRegion' | 'techHQ' | 'accelerator' | 'techEvent' | 'techHQCluster' | 'techEventCluster' | 'techActivity' | 'geoActivity' | 'stockExchange' | 'financialCenter' | 'centralBank' | 'commodityHub' | 'iranEvent' | 'gpsJamming' | 'radiation';
@@ -275,6 +291,26 @@ export class MapPopup {
     // Append to body to avoid container overflow clipping
     document.body.appendChild(this.popup);
 
+    // Reconcile the cached height against reality AFTER the frame has painted.
+    // rAF alone is not enough: rAF callbacks run before that frame's paint, and
+    // INP measures input→next paint, so an offsetHeight read there is still
+    // inside the interaction window. rAF + setTimeout(0) lands after it.
+    // The element is captured so a popup opened in the meantime (show() builds a
+    // fresh node) cannot be measured and filed under this popup's type.
+    if (!this.isMobileSheet) {
+      const popupType = data.type;
+      const openedPopup = this.popup;
+      // Captured now: positionDesktopPopup has already run, so this is the height
+      // THIS popup was placed with.
+      const positionedWith = this.lastPositionedHeight;
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          if (this.popup !== openedPopup) return;
+          this.refreshHeightCache(popupType, data, containerRect, positionedWith);
+        }, 0);
+      });
+    }
+
     // Mount transit chart for waterway popups after DOM insertion
     if (data.type === 'waterway') {
       const waterway = data.data as StrategicWaterway;
@@ -426,24 +462,24 @@ export class MapPopup {
       ? topSectors.map(s =>
           `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:6px">` +
           `<span style="width:8px;height:8px;border-radius:50%;background:${s.color};display:inline-block"></span>` +
-          `<span style="font-size:10px">${escapeHtml(s.label)} ${s.share}%</span></span>`
+          `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(s.label)} ${s.share}%</span></span>`
         ).join('')
-      : `<span style="font-size:10px;opacity:.5">No sector data</span>`;
+      : `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));opacity:.5">No sector data</span>`;
 
     const html = `
       <div class="popup-header">
-        <span class="popup-title" style="font-size:12px">${escapeHtml(segment.routeName)}</span>
+        <span class="popup-title" style="font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${escapeHtml(segment.routeName)}</span>
         <button class="popup-close" aria-label="Close">×</button>
       </div>
       <div class="popup-body" style="padding:8px 12px;min-width:200px">
-        ${cp ? `<div style="font-size:11px;font-weight:600;margin-bottom:6px">${escapeHtml(cp.name)}</div>` : ''}
+        ${cp ? `<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;margin-bottom:6px">${escapeHtml(cp.name)}</div>` : ''}
         <div style="display:flex;gap:10px;margin-bottom:6px">
-          <span style="font-size:10px;opacity:.6">Disruption</span>
-          <span style="font-size:10px;font-weight:600;color:${scoreColor}">${disruptionScore}/100</span>
+          <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));opacity:.6">Disruption</span>
+          <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${scoreColor}">${disruptionScore}/100</span>
         </div>
         <div style="display:flex;gap:10px;margin-bottom:6px">
-          <span style="font-size:10px;opacity:.6">War Risk</span>
-          <span style="font-size:10px;font-weight:600;color:${tierColor[tier] ?? 'inherit'}">${tierLabel[tier] ?? 'Normal'}</span>
+          <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));opacity:.6">War Risk</span>
+          <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${tierColor[tier] ?? 'inherit'}">${tierLabel[tier] ?? 'Normal'}</span>
         </div>
         <div style="margin-top:4px">${sectorHtml}</div>
       </div>`;
@@ -469,14 +505,38 @@ export class MapPopup {
     }, 200);
   }
 
+  /**
+   * Measured desktop popup height, keyed by popup type (#4487 INP).
+   *
+   * Reading `offsetHeight` forces a synchronous layout of the whole document,
+   * and this ran inside the click handler of every marker across all three map
+   * renderers — the append/measure/remove dance below was a full layout flush on
+   * the very task INP measures. Heights are near-constant per popup type, so the
+   * first popup of a type pays the measurement and every later one reuses it.
+   *
+   * Static so the cache survives the per-open `MapPopup` churn. A stale entry is
+   * self-correcting in the direction that matters: an under-estimate is pulled
+   * back by `clampPopupToViewport`, and `refreshHeightCache` re-measures after
+   * paint — off the interaction critical path — so the entry converges.
+   */
+  private static readonly heightByType = new Map<string, number>();
+
+  /** Height delta worth a visible reposition after the post-paint re-measure. */
+  private static readonly HEIGHT_DRIFT_PX = 12;
+
+  /** Height `applyDesktopPosition` last used, so the re-measure can detect drift. */
+  private lastPositionedHeight: number | null = null;
+
   private positionDesktopPopup(data: PopupData, containerRect: DOMRect): void {
     if (!this.popup) return;
 
-    const popupWidth = 380;
-    const bottomBuffer = 50; // Buffer from viewport bottom
-    const topBuffer = 60; // Header height
+    const cached = MapPopup.heightByType.get(data.type);
+    if (cached !== undefined) {
+      this.applyDesktopPosition(data, containerRect, cached);
+      return;
+    }
 
-    // Temporarily append popup off-screen to measure actual height
+    // First popup of this type: measure off-screen, then remember it.
     this.popup.style.visibility = 'hidden';
     this.popup.style.top = '0';
     this.popup.style.left = '-9999px';
@@ -484,6 +544,47 @@ export class MapPopup {
     const popupHeight = this.popup.offsetHeight;
     document.body.removeChild(this.popup);
     this.popup.style.visibility = '';
+    MapPopup.heightByType.set(data.type, popupHeight);
+
+    this.applyDesktopPosition(data, containerRect, popupHeight);
+  }
+
+  /**
+   * Re-measure the open popup, update the type cache, and correct the position
+   * if the height we positioned with was materially wrong.
+   *
+   * Repositioning matters because the cache key is the popup TYPE, and some
+   * types are not one layout: a `waterway` popup renders a transit chart and an
+   * HS2 ring only for entitled users, so its height genuinely varies within the
+   * key. Clamping alone only rescues downward overflow; an over-estimate would
+   * otherwise leave the popup flipped above the click for no reason.
+   */
+  private refreshHeightCache(
+    type: string,
+    data: PopupData,
+    containerRect: DOMRect,
+    positionedWith: number | null,
+  ): void {
+    if (!this.popup || this.isMobileSheet) return;
+    const measured = this.popup.offsetHeight;
+    if (measured <= 0) return;
+    MapPopup.heightByType.set(type, measured);
+
+    // Sub-pixel and single-line differences are not worth a visible move.
+    if (positionedWith !== null && Math.abs(measured - positionedWith) > MapPopup.HEIGHT_DRIFT_PX) {
+      this.applyDesktopPosition(data, containerRect, measured);
+      return;
+    }
+    this.clampPopupToViewport();
+  }
+
+  private applyDesktopPosition(data: PopupData, containerRect: DOMRect, popupHeight: number): void {
+    if (!this.popup) return;
+    this.lastPositionedHeight = popupHeight;
+
+    const popupWidth = 380;
+    const bottomBuffer = 50; // Buffer from viewport bottom
+    const topBuffer = 60; // Header height
 
     // Convert container-relative coords to viewport coords
     const viewportX = containerRect.left + data.x;
@@ -1186,18 +1287,18 @@ export class MapPopup {
 
       // IATA callsign + airline name header
       if (live.callsignIata) {
-        const name = live.airlineName ? ` <span style="font-size:12px;opacity:0.6;font-weight:400">${escapeHtml(live.airlineName)}</span>` : '';
-        parts.push(`<div style="font-weight:700;font-size:15px;margin:4px 0">${escapeHtml(live.callsignIata)}${name}</div>`);
+        const name = live.airlineName ? ` <span style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));opacity:0.6;font-weight:400">${escapeHtml(live.airlineName)}</span>` : '';
+        parts.push(`<div style="font-weight:700;font-size:calc(15px * var(--wm-panel-effective-scale, 1));margin:4px 0">${escapeHtml(live.callsignIata)}${name}</div>`);
       }
 
       // Route (FROM → TO)
       if (live.depIata && live.arrIata) {
-        const terminal = live.arrTerminal ? `<span style="font-size:10px;opacity:0.5;margin-left:4px">T${escapeHtml(live.arrTerminal)}</span>` : '';
-        const duration = live.flightDurationMin ? `<span style="font-size:11px;opacity:0.6">${Math.floor(live.flightDurationMin / 60)}h${live.flightDurationMin % 60 > 0 ? ` ${live.flightDurationMin % 60}m` : ''}</span>` : '';
+        const terminal = live.arrTerminal ? `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));opacity:0.5;margin-left:4px">T${escapeHtml(live.arrTerminal)}</span>` : '';
+        const duration = live.flightDurationMin ? `<span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));opacity:0.6">${Math.floor(live.flightDurationMin / 60)}h${live.flightDurationMin % 60 > 0 ? ` ${live.flightDurationMin % 60}m` : ''}</span>` : '';
         parts.push(`
-          <div class="flight-route" style="display:flex;align-items:center;gap:6px;margin:8px 0 4px;font-weight:700;font-size:18px">
+          <div class="flight-route" style="display:flex;align-items:center;gap:6px;margin:8px 0 4px;font-weight:700;font-size:calc(18px * var(--wm-panel-effective-scale, 1))">
             <span>${escapeHtml(live.depIata)}</span>
-            <span style="font-size:12px;opacity:0.4;font-weight:400">&#9992;</span>
+            <span style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));opacity:0.4;font-weight:400">&#9992;</span>
             <span>${escapeHtml(live.arrIata)}${terminal}</span>
             <span style="flex:1;text-align:right">${duration}</span>
           </div>`);
@@ -1209,14 +1310,14 @@ export class MapPopup {
         const hasDelay = live.depDelayedMin !== 0 || live.arrDelayedMin !== 0;
 
         parts.push(`
-          <div class="flight-times" style="font-size:11px;display:grid;grid-template-columns:1fr auto 1fr;gap:2px 8px;margin-bottom:6px;opacity:0.85">
-            <span style="opacity:0.5;font-size:10px;text-transform:uppercase">DEP</span>
+          <div class="flight-times" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));display:grid;grid-template-columns:1fr auto 1fr;gap:2px 8px;margin-bottom:6px;opacity:0.85">
+            <span style="opacity:0.5;font-size:calc(10px * var(--wm-panel-effective-scale, 1));text-transform:uppercase">DEP</span>
             <span></span>
-            <span style="opacity:0.5;font-size:10px;text-transform:uppercase;text-align:right">ARR</span>
-            <span style="opacity:0.5;font-size:10px">${t('popups.flight.scheduled') || 'Sched'}</span><span></span><span style="opacity:0.5;font-size:10px;text-align:right">${t('popups.flight.scheduled') || 'Sched'}</span>
+            <span style="opacity:0.5;font-size:calc(10px * var(--wm-panel-effective-scale, 1));text-transform:uppercase;text-align:right">ARR</span>
+            <span style="opacity:0.5;font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${t('popups.flight.scheduled') || 'Sched'}</span><span></span><span style="opacity:0.5;font-size:calc(10px * var(--wm-panel-effective-scale, 1));text-align:right">${t('popups.flight.scheduled') || 'Sched'}</span>
             <span>${depSched}</span><span style="opacity:0.3;text-align:center">\u2194</span><span style="text-align:right">${arrSched}</span>
             ${hasDelay ? `
-            <span style="opacity:0.5;font-size:10px">${t('popups.flight.estimated') || 'Est'}</span><span></span><span style="opacity:0.5;font-size:10px;text-align:right">${t('popups.flight.estimated') || 'Est'}</span>
+            <span style="opacity:0.5;font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${t('popups.flight.estimated') || 'Est'}</span><span></span><span style="opacity:0.5;font-size:calc(10px * var(--wm-panel-effective-scale, 1));text-align:right">${t('popups.flight.estimated') || 'Est'}</span>
             <span>${depEst}${fmtDelayMin(live.depDelayedMin)}</span><span style="opacity:0.3;text-align:center">\u2194</span><span style="text-align:right">${arrEst}${fmtDelayMin(live.arrDelayedMin)}</span>` : ''}
           </div>`);
 
@@ -1224,7 +1325,7 @@ export class MapPopup {
         const today = new Date();
         const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
         const bookUrl = sanitizeUrl(`https://www.google.com/travel/flights/search?q=Flights+from+${encodeURIComponent(live.depIata)}+to+${encodeURIComponent(live.arrIata)}+on+${encodeURIComponent(todayStr)}`);
-        parts.push(`<a href="${bookUrl}" target="_blank" rel="noopener" style="display:block;margin-top:8px;padding:7px 12px;background:rgba(68,255,136,.06);border:1px solid rgba(68,255,136,.18);border-radius:6px;color:var(--green,#44ff88);text-decoration:none;font-size:12px;text-align:center">Book this route &rarr;</a>`);
+        parts.push(`<a href="${bookUrl}" target="_blank" rel="noopener" style="display:block;margin-top:8px;padding:7px 12px;background:rgba(68,255,136,.06);border:1px solid rgba(68,255,136,.18);border-radius:6px;color:var(--green,#44ff88);text-decoration:none;font-size:calc(12px * var(--wm-panel-effective-scale, 1));text-align:center">Book this route &rarr;</a>`);
       }
 
       // Enrichment stats row
@@ -1241,7 +1342,7 @@ export class MapPopup {
 
       const statsHtml = rows.length > 0 ? `<div class="popup-stats">${rows.join('')}</div>` : '';
       setTrustedHtml(section, trustedHtml(`
-        <div class="popup-section-label" style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:.05em;margin-top:8px">Live Data</div>
+        <div class="popup-section-label" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));opacity:0.5;text-transform:uppercase;letter-spacing:.05em;margin-top:8px">Live Data</div>
         ${parts.join('')}
         ${statsHtml}
         ${photoHtml}
@@ -1282,6 +1383,9 @@ export class MapPopup {
     const severityLabel = earthquake.magnitude >= 6 ? t('popups.earthquake.levels.major') : earthquake.magnitude >= 5 ? t('popups.earthquake.levels.moderate') : t('popups.earthquake.levels.minor');
 
     const timeAgo = this.getTimeAgo(new Date(earthquake.occurredAt));
+    const isNrcan = earthquake.source === 'nrcan';
+    const sourceName = isNrcan ? 'Earthquakes Canada' : 'USGS';
+    const sourceLinkLabel = isNrcan ? t('popups.viewNRCan') : t('popups.viewUSGS');
 
     return `
       <div class="popup-header earthquake">
@@ -1304,8 +1408,12 @@ export class MapPopup {
             <span class="stat-label">${t('popups.time')}</span>
             <span class="stat-value">${timeAgo}</span>
           </div>
+          <div class="popup-stat">
+            <span class="stat-label">${t('popups.source')}</span>
+            <span class="stat-value">${sourceName}</span>
+          </div>
         </div>
-        <a href="${sanitizeUrl(earthquake.sourceUrl)}" target="_blank" class="popup-link">${t('popups.viewUSGS')} →</a>
+        <a href="${sanitizeUrl(earthquake.sourceUrl)}" target="_blank" class="popup-link">${sourceLinkLabel} →</a>
       </div>
     `;
   }
@@ -1419,7 +1527,7 @@ export class MapPopup {
 
     // Sector mix: only show the compact SVG ring for free users (PRO users get the full HS2RingChart below)
     const sectorSection = (sectors && !isPro)
-      ? `<div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">Trade Sector Mix</div>
+      ? `<div class="popup-section-title" style="margin-top:10px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));text-transform:uppercase;opacity:.6;letter-spacing:.06em">Trade Sector Mix</div>
          ${renderSectorRing(sectors)}`
       : '';
 
@@ -1427,14 +1535,14 @@ export class MapPopup {
     let chartSection = '';
     if (hasChart) {
       if (isPro) {
-        chartSection = `<div data-transit-chart="${escapeHtml(waterway.name)}" data-transit-chart-id="${escapeHtml(cp?.id ?? '')}" style="margin-top:10px;min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim,#888);font-size:12px">${t('components.supplyChain.loadingHistory') || 'Loading transit history\u2026'}</div>`;
+        chartSection = `<div data-transit-chart="${escapeHtml(waterway.name)}" data-transit-chart-id="${escapeHtml(cp?.id ?? '')}" style="margin-top:10px;min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim,#888);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${t('components.supplyChain.loadingHistory') || 'Loading transit history\u2026'}</div>`;
       } else {
         chartSection = `
           <div class="sector-pro-gate" data-gate="chokepoint-transit-chart" style="position:relative;overflow:hidden;border-radius:6px;margin-top:10px;min-height:120px;background:var(--surface-elevated, #111)">
             <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">
-              <span style="font-size:16px">🔒</span>
-              <span style="font-size:10px;font-weight:600;opacity:.8">PRO</span>
-              <span style="font-size:9px;opacity:.5">Transit History</span>
+              <span style="font-size:calc(16px * var(--wm-panel-effective-scale, 1))">🔒</span>
+              <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:600;opacity:.8">PRO</span>
+              <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));opacity:.5">Transit History</span>
             </div>
           </div>`;
       }
@@ -1445,15 +1553,15 @@ export class MapPopup {
     if (sectors) {
       if (isPro) {
         ringSection = `
-          <div class="popup-section-title" style="margin-top:10px;font-size:10px;text-transform:uppercase;opacity:.6;letter-spacing:.06em">Sector Exposure</div>
+          <div class="popup-section-title" style="margin-top:10px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));text-transform:uppercase;opacity:.6;letter-spacing:.06em">Sector Exposure</div>
           <div data-hs2-ring="${escapeHtml(waterway.chokepointId)}" class="popup-hs2-ring-container"></div>`;
       } else {
         ringSection = `
           <div class="sector-pro-gate" data-gate="chokepoint-sector-ring" style="position:relative;overflow:hidden;border-radius:6px;margin-top:10px;min-height:80px;background:var(--surface-elevated, #111)">
             <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:4px">
-              <span style="font-size:16px">🔒</span>
-              <span style="font-size:10px;font-weight:600;opacity:.8">PRO</span>
-              <span style="font-size:9px;opacity:.5">Sector Breakdown</span>
+              <span style="font-size:calc(16px * var(--wm-panel-effective-scale, 1))">🔒</span>
+              <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:600;opacity:.8">PRO</span>
+              <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));opacity:.5">Sector Breakdown</span>
             </div>
           </div>`;
       }
@@ -1749,7 +1857,7 @@ export class MapPopup {
             <span class="stat-value">${pos.observedAt.toLocaleTimeString()}</span>
           </div>
         </div>
-${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Loading Wingbits live data…</div></div>' : ''}
+${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));opacity:0.5;padding:4px 0">Loading Wingbits live data…</div></div>' : ''}
       </div>
     `;
   }
@@ -2724,7 +2832,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
       </div>
       <div class="popup-body">
         <div class="popup-subtitle">${operatorLabel}</div>
-        ${registration || aircraftModel ? `<div class="popup-subtitle" style="opacity:0.7;font-size:11px;margin-top:-4px">${[registration, aircraftModel].filter(Boolean).join(' · ')}</div>` : ''}
+        ${registration || aircraftModel ? `<div class="popup-subtitle" style="opacity:0.7;font-size:calc(11px * var(--wm-panel-effective-scale, 1));margin-top:-4px">${[registration, aircraftModel].filter(Boolean).join(' · ')}</div>` : ''}
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.militaryFlight.altitude')}</span>
@@ -2756,8 +2864,8 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
           ${enrichedStats}
         </div>
         ${flight.note ? `<p class="popup-description">${note}</p>` : ''}
-${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:11px;opacity:0.5;padding:4px 0">Loading Wingbits live data…</div></div>' : ''}
-        <div class="popup-attribution">${t('popups.militaryFlight.attribution')}</div>
+${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"><div class="wingbits-live-loading" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));opacity:0.5;padding:4px 0">Loading Wingbits live data…</div></div>' : ''}
+        <div class="popup-attribution">${formatMilitaryFlightSource(flight.source)}</div>
       </div>
     `;
   }
@@ -3501,7 +3609,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
       const rSev = this.normalizeSeverity(r.severity);
       const rTime = r.timestamp ? this.getTimeAgo(new Date(r.timestamp)) : '';
       const rTitle = r.title.length > 60 ? r.title.slice(0, 60) + '…' : r.title;
-      return `<li class="cluster-item"><span class="popup-badge ${rSev}">${escapeHtml(rSev.toUpperCase())}</span> ${escapeHtml(rTitle)}${rTime ? ` <span style="color:var(--text-muted);font-size:10px;">${escapeHtml(rTime)}</span>` : ''}</li>`;
+      return `<li class="cluster-item"><span class="popup-badge ${rSev}">${escapeHtml(rSev.toUpperCase())}</span> ${escapeHtml(rTitle)}${rTime ? ` <span style="color:var(--text-muted);font-size:calc(10px * var(--wm-panel-effective-scale, 1));">${escapeHtml(rTime)}</span>` : ''}</li>`;
     }).join('')}
           </ul>
         </div>` : '';
@@ -3559,7 +3667,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.gpsJamming.h3Hex')}</span>
-            <span class="stat-value" style="font-size:10px">${escapeHtml(data.h3)}</span>
+            <span class="stat-value" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(data.h3)}</span>
           </div>
         </div>
       </div>

@@ -26,8 +26,9 @@ import {
   type RuntimeFeatureId,
   type RuntimeSecretKey,
 } from '@/services/runtime-config';
-import { isDesktopRuntime, resolveLocalApiPort, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
-import { proxyLocalApiRequest, tryInvokeTauri, invokeTauri } from '@/services/tauri-bridge';
+import { resolveLocalApiPort, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
+import { proxyLocalApiRequest, tryInvokeTauri } from '@/services/tauri-bridge';
+import { openExternalUrl } from '@/services/external-navigation';
 import { escapeHtml } from '@/utils/sanitize';
 import { initI18n, t } from '@/services/i18n';
 import { applyStoredTheme } from '@/utils/theme-manager';
@@ -254,7 +255,7 @@ function initOverviewListeners(area: HTMLElement): void {
 
   area.querySelector('[data-wm-open-pro]')?.addEventListener('click', () => {
     const url = 'https://worldmonitor.app/pro';
-    void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
+    void openExternalUrl(url);
   });
 
   area.querySelectorAll<HTMLButtonElement>('.settings-ov-cat[data-section]').forEach(btn => {
@@ -345,11 +346,11 @@ function renderSecretInput(key: RuntimeSecretKey, _featureId: RuntimeFeatureId):
       <div class="settings-secret-row">
         <div class="settings-secret-label">${escapeHtml(label)}</div>
         <span class="settings-secret-status ${statusClass}">${escapeHtml(statusText)}</span>
-        <select data-model-select data-feature="${_featureId}" class="${inputClass}">
+        <select data-model-select data-feature="${_featureId}" class="${inputClass}" aria-label="${escapeHtml(label)}">
           ${storedModel ? `<option value="${escapeHtml(storedModel)}" selected>${escapeHtml(storedModel)}</option>` : '<option value="" selected disabled>Loading models...</option>'}
         </select>
         <input type="text" data-model-manual data-feature="${_featureId}" class="${inputClass} hidden-input"
-          placeholder="Or type model name" autocomplete="off"
+          placeholder="Or type model name" aria-label="${escapeHtml(label)}" autocomplete="off"
           ${storedModel ? `value="${escapeHtml(storedModel)}"` : ''}>
         ${hintText ? `<span class="settings-secret-hint">${escapeHtml(hintText)}</span>` : ''}
       </div>
@@ -366,7 +367,7 @@ function renderSecretInput(key: RuntimeSecretKey, _featureId: RuntimeFeatureId):
       <span class="settings-secret-status ${statusClass}">${escapeHtml(statusText)}</span>
       <div class="settings-input-wrapper${showGetKey ? ' has-suffix' : ''}">
         <input type="${isPlaintext ? 'text' : 'password'}" data-secret="${key}" data-feature="${_featureId}"
-          placeholder="${pending ? 'Staged' : 'Enter value...'}" autocomplete="off" class="${inputClass}"
+          placeholder="${pending ? 'Staged' : 'Enter value...'}" aria-label="${escapeHtml(label)}" autocomplete="off" class="${inputClass}"
           ${pending ? `value="${isPlaintext ? escapeHtml(settingsManager.getPending(key) || '') : MASKED_SENTINEL}"` : (isPlaintext && state.present ? `value="${escapeHtml(getRuntimeConfigSnapshot().secrets[key]?.value || '')}"` : '')}>
         ${getKeyHtml}
       </div>
@@ -471,11 +472,9 @@ function initFeatureSectionListeners(area: HTMLElement): void {
       e.preventDefault();
       const url = link.dataset.signupUrl;
       if (!url) return;
-      if (isDesktopRuntime()) {
-        void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
-      } else {
-        window.open(url, '_blank', 'noopener,noreferrer');
-      }
+      // Staged-but-unsaved secrets live in this panel; a same-tab navigation
+      // would discard them silently (#6137).
+      void openExternalUrl(url, null, { sameTabFallback: false });
     });
   });
 
@@ -849,7 +848,10 @@ async function initSettingsWindow(): Promise<void> {
   const headerTitle = document.querySelector('.settings-header-title');
   if (headerTitle) headerTitle.textContent = t('modals.settingsWindow.shellTitle');
   const searchInputEl = document.getElementById('settingsSearch') as HTMLInputElement | null;
-  if (searchInputEl) searchInputEl.placeholder = t('modals.settingsWindow.shellSearchPlaceholder');
+  if (searchInputEl) {
+    searchInputEl.placeholder = t('modals.settingsWindow.shellSearchPlaceholder');
+    searchInputEl.setAttribute('aria-label', t('modals.settingsWindow.shellSearchPlaceholder'));
+  }
   const cancelEl = document.getElementById('cancelBtn');
   if (cancelEl) cancelEl.textContent = t('modals.settingsWindow.shellCancel');
   const okEl = document.getElementById('okBtn');

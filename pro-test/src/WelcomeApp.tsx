@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Nav } from './welcome/Nav';
 import { Hero } from './welcome/Hero';
+import { TaskRoutes } from './welcome/TaskRoutes';
 import { LiveStrip } from './welcome/LiveStrip';
 import { Moments } from './welcome/Moments';
 import { FirstFive } from './welcome/FirstFive';
@@ -28,6 +29,7 @@ export default function WelcomeApp() {
       <Nav />
       <main>
         <Hero />
+        <TaskRoutes />
         <LiveStrip />
         <Moments />
         <FirstFive />

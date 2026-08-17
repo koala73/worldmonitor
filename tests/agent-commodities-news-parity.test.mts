@@ -22,22 +22,36 @@ describe('commodities news agent parity (#5889)', () => {
     );
   });
 
-  it('keeps the MCP full-digest category enum aligned with VARIANT_FEEDS.full keys', () => {
+  it('keeps the MCP category enums aligned with each agent-addressable digest variant', () => {
     const nlpSrc = readFileSync(join(ROOT, 'api/mcp/registry/nlp-tools.ts'), 'utf8');
-    const match = nlpSrc.match(
-      /const FULL_DIGEST_CATEGORIES = \[([\s\S]*?)\] as const;/,
-    );
-    assert.ok(match, 'FULL_DIGEST_CATEGORIES must be declared in nlp-tools.ts');
-    const enumKeys = [...match[1].matchAll(/'([a-z0-9_-]+)'/g)].map((m) => m[1]).sort();
-    const feedKeys = [
-      ...Object.keys(VARIANT_FEEDS.full ?? {}),
-      ...(INTEL_SOURCES.length > 0 ? ['intel'] : []),
-    ].sort();
-    assert.deepEqual(
-      enumKeys,
-      feedKeys,
-      'FULL_DIGEST_CATEGORIES must list every category emitted by the full digest (and no extras)',
-    );
+    const expectations = [
+      {
+        constant: 'FULL_DIGEST_CATEGORIES',
+        feedKeys: [
+          ...Object.keys(VARIANT_FEEDS.full ?? {}),
+          ...(INTEL_SOURCES.length > 0 ? ['intel'] : []),
+        ].sort(),
+      },
+      {
+        constant: 'TECH_DIGEST_CATEGORIES',
+        feedKeys: Object.keys(VARIANT_FEEDS.tech ?? {}).sort(),
+      },
+    ];
+
+    for (const { constant, feedKeys } of expectations) {
+      const match = nlpSrc.match(
+        new RegExp(`const ${constant} = \\[([\\s\\S]*?)\\] as const;`),
+      );
+      assert.ok(match, `${constant} must be declared in nlp-tools.ts`);
+      const enumKeys = [...match[1].matchAll(/'([A-Za-z0-9_-]+)'/g)]
+        .map((entry) => entry[1])
+        .sort();
+      assert.deepEqual(
+        enumKeys,
+        feedKeys,
+        `${constant} must list every category emitted by its digest variant (and no extras)`,
+      );
+    }
   });
 
   it('keeps the published MCP server card discoverable for category filtering', () => {
@@ -52,6 +66,10 @@ describe('commodities news agent parity (#5889)', () => {
         `${name} server-card description must advertise category filtering`);
       assert.match(description, /commodities/,
         `${name} server-card description must advertise commodities filtering`);
+      assert.match(description, /variant/,
+        `${name} server-card description must advertise variant selection`);
+      assert.match(description, /tech/,
+        `${name} server-card description must advertise Tech digest access`);
     }
   });
 });

@@ -16,13 +16,21 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const INDEXNOW_KEY = 'a7f3e9d1b2c44e8f9a0b1c2d3e4f5a6b';
+// Keys must be genuinely random (`openssl rand -hex 16`). The previous value
+// (a7f3e9d1b2c44e8f9a0b1c2d3e4f5a6b) is permanently rejected by Bing with
+// 403 UserForbiddedToAccessSite even though the key file served fine — never
+// reuse it (#6055).
+export const INDEXNOW_KEY = 'f25eec9ff48713a38c0a66a7f0628d46';
 const APEX_INDEXNOW_KEY = '315df476ff0a007d587f6a7455aa3e4e';
 const BLOG_DIR = new URL('../blog-site/src/content/blog/', import.meta.url);
 const BLOG_AUTHORS_DIR = new URL('../blog-site/src/pages/authors/', import.meta.url);
 const GLOSSARY_SOURCE = new URL('../blog-site/src/data/glossary.ts', import.meta.url);
 const ROOT_SITEMAP = new URL('../public/sitemap.xml', import.meta.url);
 const USER_AGENT = 'WorldMonitor-IndexNow/1.0 (+https://www.worldmonitor.app)';
+// Every host is submitted sequentially inside one 10-minute job, and fetch has
+// no default deadline — one unresponsive search engine would otherwise stall
+// the run until the job timeout and leave later hosts unsubmitted.
+const REQUEST_TIMEOUT_MS = 15_000;
 
 function decodeXml(value) {
   return String(value)
@@ -84,11 +92,31 @@ function getBlogUrls() {
   ];
 }
 
-const APEX_URLS = uniqueSorted(getSitemapUrlsForHost('worldmonitor.app'));
+const APEX_HOST = 'worldmonitor.app';
+const WWW_HOST = 'www.worldmonitor.app';
+
+const APEX_URLS = uniqueSorted(getSitemapUrlsForHost(APEX_HOST));
 const WWW_URLS = uniqueSorted([
-  ...getSitemapUrlsForHost('www.worldmonitor.app'),
+  ...getSitemapUrlsForHost(WWW_HOST),
   ...getBlogUrls(),
 ]);
+
+/**
+ * Every remaining host the committed sitemap publishes — today the variant
+ * dashboards. Derived from the sitemap rather than restated so a new variant
+ * cannot be silently omitted from IndexNow the way commodity and energy were
+ * (#6563). The deploy workflow reads this export to submit each one.
+ *
+ * Deriving it makes this list agree with the sitemap by construction, so the
+ * sitemap cannot also be its proof: tests/indexnow-submit.test.mjs pins it to
+ * WEB_DASHBOARD_VARIANTS — the registry of variants the app actually serves —
+ * so a variant dropped upstream in build-sitemap.mjs fails there instead of
+ * quietly shrinking this list.
+ */
+export const INDEXNOW_VARIANT_HOSTS = Object.freeze(
+  uniqueSorted(ROOT_SITEMAP_URLS.map((url) => new URL(url).hostname))
+    .filter((host) => host !== APEX_HOST && host !== WWW_HOST),
+);
 
 function urlsForHost(host, extraUrls = []) {
   return uniqueSorted([...getSitemapUrlsForHost(host), ...extraUrls]);
@@ -104,11 +132,11 @@ function batch(host, urls, key = INDEXNOW_KEY) {
 }
 
 export const INDEXNOW_BATCHES = Object.freeze([
-  batch('worldmonitor.app', APEX_URLS, APEX_INDEXNOW_KEY),
-  batch('www.worldmonitor.app', WWW_URLS),
-  batch('tech.worldmonitor.app', urlsForHost('tech.worldmonitor.app', ['https://tech.worldmonitor.app/'])),
-  batch('finance.worldmonitor.app', urlsForHost('finance.worldmonitor.app', ['https://finance.worldmonitor.app/'])),
-  batch('happy.worldmonitor.app', urlsForHost('happy.worldmonitor.app', ['https://happy.worldmonitor.app/'])),
+  batch(APEX_HOST, APEX_URLS, APEX_INDEXNOW_KEY),
+  batch(WWW_HOST, WWW_URLS),
+  // The sitemap lists each variant's canonical /dashboard; the bare root is the
+  // AI-crawler stub surface middleware.ts serves, so submit both.
+  ...INDEXNOW_VARIANT_HOSTS.map((host) => batch(host, urlsForHost(host, [`https://${host}/`]))),
 ]);
 
 export const INDEXNOW_ENDPOINTS = Object.freeze([
@@ -126,6 +154,7 @@ export async function verifyIndexNowKey(batchConfig, { fetchImpl = globalThis.fe
   const response = await fetchImpl(batchConfig.keyLocation, {
     method: 'GET',
     redirect: 'manual',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       Accept: 'text/plain',
       'User-Agent': USER_AGENT,
@@ -145,6 +174,7 @@ export async function verifyIndexNowKey(batchConfig, { fetchImpl = globalThis.fe
 async function submit(endpoint, batchConfig, fetchImpl) {
   const response = await fetchImpl(endpoint, {
     method: 'POST',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
       'User-Agent': USER_AGENT,

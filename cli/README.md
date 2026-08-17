@@ -6,7 +6,7 @@
 
 Official command-line client for the [World Monitor](https://worldmonitor.app)
 global-intelligence API. Script country briefs, risk scores, and
-conflict / cyber / market / news feeds — plus any of the 59 MCP tools — from
+conflict / cyber / market / news feeds — plus any registered MCP tool — from
 your shell or an agent, without writing an API integration.
 
 The CLI is a thin, dependency-free wrapper over the
@@ -29,7 +29,8 @@ npx worldmonitor tools
 # Discover every tool — public, no key needed
 worldmonitor tools
 
-# Data commands need a user API key (get one at https://worldmonitor.app/pro)
+# All data commands except `call get_sources` need a subscription API key
+# (get one at https://worldmonitor.app/pro)
 export WORLDMONITOR_API_KEY=wm_xxxxxxxx
 
 worldmonitor world                       # live global situation brief
@@ -42,7 +43,7 @@ worldmonitor call get_cyber_threats --min_severity 7
 
 ## Commands
 
-Data commands map to MCP `tools/call` and require `--api-key`:
+Data commands map to MCP `tools/call`. `call get_sources` is the sole credential-free, daily-quota-free data call; its anonymous path has a separate fail-closed ceiling of 10 calls/minute/IP. Every other data command requires `--api-key`:
 
 - `world` — live global situation brief
 - `country <ISO>` — AI strategic brief for a country (ISO 3166-1 alpha-2)

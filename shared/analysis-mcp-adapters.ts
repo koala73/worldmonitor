@@ -44,6 +44,9 @@ import {
   nonEmptyString,
   usableCoord,
 } from './analysis-adapter-guards';
+import {
+  hasRedistributableProviderAttribution,
+} from './provider-redistribution';
 
 // ---------------------------------------------------------------------------
 // Shared primitives
@@ -72,6 +75,11 @@ export interface GeoAdapterOptions {
   now?: number;
   /** Events older than this drop out; defaults to the core's 24h window. */
   windowMs?: number;
+}
+
+function flightProviderAttribution(record: Record<string, unknown>): unknown {
+  const sourceMeta = asRecord(record.sourceMeta);
+  return nonEmptyString(sourceMeta?.source) || nonEmptyString(record.source);
 }
 
 // ---------------------------------------------------------------------------
@@ -130,7 +138,10 @@ export function unrestEventsToGeoEvents(payload: unknown, options: GeoAdapterOpt
 /** `military:flights:v1` -> military-flight events. */
 export function militaryFlightsToGeoEvents(payload: unknown, options: GeoAdapterOptions = {}): GeoEventInput[] {
   return toGeoEvents(
-    arrayField(payload, 'flights'),
+    arrayField(payload, 'flights').filter((flight) => {
+      const record = asRecord(flight);
+      return record !== null && hasRedistributableProviderAttribution(flightProviderAttribution(record));
+    }),
     (record) => ({ lat: finiteNumber(record.lat), lon: finiteNumber(record.lon) }),
     (record) => finiteNumber(record.lastSeenMs),
     finiteNumber(asRecord(payload)?.fetchedAt),
@@ -462,6 +473,7 @@ export function militaryFlightsToSurgeInputs(payload: unknown): MilitaryFlightIn
   for (const raw of arrayField(payload, 'flights')) {
     const record = asRecord(raw);
     if (!record) continue;
+    if (!hasRedistributableProviderAttribution(flightProviderAttribution(record))) continue;
     const lat = finiteNumber(record.lat);
     const lon = finiteNumber(record.lon);
     if (!usableCoord(lat, lon) || lon === null) continue;
@@ -496,6 +508,7 @@ export function militaryFlightsToSurgeInputs(payload: unknown): MilitaryFlightIn
  */
 export function theaterPostureVesselCounts(payload: unknown): Map<string, number> {
   const counts = new Map<string, number>();
+  if (!hasRedistributableProviderAttribution(asRecord(payload)?.provider)) return counts;
 
   for (const raw of arrayField(payload, 'theaters')) {
     const record = asRecord(raw);
@@ -535,6 +548,7 @@ export function surgeHistoryToActivityHistory(payload: unknown): Map<string, The
   const runs = arrayField(payload, 'history')
     .map((raw) => asRecord(raw))
     .filter((run): run is Record<string, unknown> => run !== null)
+    .filter((run) => hasRedistributableProviderAttribution(run.sourceVersion))
     .map((run) => ({ run, timestamp: finiteNumber(run.assessedAt) }))
     .filter((entry): entry is { run: Record<string, unknown>; timestamp: number } => entry.timestamp !== null)
     // The core slices the tail (`-6`, `-12..-6`) to compare recent vs older,

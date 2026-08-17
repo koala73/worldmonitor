@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": true,
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig.contract-tests.tsbuildinfo"
+  },
+  "include": [
+    "scripts/company-monitoring-blind-evaluation.mts",
+    "scripts/company-monitoring-curation.mts",
+    "shared/company-monitoring-blind-evaluation.ts",
+    "shared/company-monitoring-curation.ts",
+    "shared/company-monitoring-evaluation.ts",
+    "tests/company-monitoring-blind-evaluation.test.mts",
+    "tests/company-monitoring-curation.test.mts",
+    "tests/company-monitoring-evaluation.test.mts"
+  ]
+}

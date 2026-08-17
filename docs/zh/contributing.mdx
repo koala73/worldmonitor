@@ -84,7 +84,7 @@ sanitizeUrl(url) // 仅允许 http/https 协议
 | 端点 | 校验规则 |
 |----------|------------|
 | `GET /api/market/v1/list-market-quotes` | 股票/指数 `symbols` 列表；为空则返回默认值 |
-| `GET /api/market/v1/list-crypto-quotes` | CoinGecko `ids` 列表；为空则返回默认值 |
+| `GET /api/market/v1/list-crypto-quotes` | CoinGecko `ids` 列表（最多 25 个）；为空则返回默认值；先读种子，缺口由提供方解析 |
 | `GET /api/polymarket` | 遗留 Polymarket 代理：排序字段白名单，limit 限制在 1-100 |
 
 这可防止上游 API 滥用以及因格式错误请求导致的速率限制耗尽。

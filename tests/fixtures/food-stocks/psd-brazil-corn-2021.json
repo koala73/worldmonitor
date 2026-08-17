@@ -1,0 +1,17 @@
+[
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 4, "unitId": 4, "value": 21800 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 20, "unitId": 8, "value": 4153 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 28, "unitId": 8, "value": 116000 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 57, "unitId": 8, "value": 2000 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 81, "unitId": 8, "value": 2500 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 84, "unitId": 8, "value": 0 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 86, "unitId": 8, "value": 122153 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 88, "unitId": 8, "value": 44500 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 113, "unitId": 8, "value": 34000 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 130, "unitId": 8, "value": 62000 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 192, "unitId": 8, "value": 11000 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 125, "unitId": 8, "value": 73000 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 176, "unitId": 8, "value": 4653 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 178, "unitId": 8, "value": 122153 },
+  { "commodityCode": 440000, "countryCode": "BR", "marketYear": 2021, "calendarYear": 2022, "month": 6, "attributeId": 184, "unitId": 26, "value": 5.3211 }
+]

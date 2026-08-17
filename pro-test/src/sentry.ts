@@ -1,5 +1,7 @@
 import * as Sentry from '@sentry/react';
 
+import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
+
 /**
  * Shared Sentry bootstrap for both marketing entries (/pro and root welcome).
  * Must be imported before the React render in every entry's main file.
@@ -13,10 +15,7 @@ export function initSentry(): void {
       : location.hostname.includes('vercel.app') ? 'preview'
       : 'development',
     enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost'),
-    allowUrls: [
-      /https?:\/\/(www\.|tech\.|finance\.|commodity\.|happy\.)?worldmonitor\.app/,
-      /https?:\/\/.*\.vercel\.app/,
-    ],
+    allowUrls: SENTRY_ALLOW_URLS,
     tracesSampleRate: 0.1,
     ignoreErrors: [
       /ResizeObserver loop/,

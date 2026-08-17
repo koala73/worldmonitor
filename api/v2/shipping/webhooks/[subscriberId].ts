@@ -67,7 +67,7 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const ownerHash = await callerFingerprint(req);
+  const ownerHash = await callerFingerprint(req, apiKeyResult.credential);
   if (record.ownerTag !== ownerHash) {
     return new Response(JSON.stringify({ error: 'Forbidden' }), {
       status: 403,
