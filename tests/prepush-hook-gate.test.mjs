@@ -552,3 +552,48 @@ describe('the gate does not fail closed on its own edge cases', () => {
     assert.equal(fixture.cached(), fixture.tree());
   });
 });
+
+describe('the pro-test gate carries its own input-keyed cache (#6765)', () => {
+  const genCalls = (invocations) =>
+    invocations.split('>scripts/generate-product-config.mjs').length - 1;
+
+  test('a docs-only amend skips the rebuild the whole-tree cache cannot', () => {
+    const fixture = makeFixture({ branchFiles: { 'pro-test/src/launch.ts': 'export const x = 1;\n' } });
+    fixture.git(['checkout', '-q', '-b', 'feature/pro-work']);
+
+    const first = fixture.run();
+    assert.equal(first.status, 0, first.stdout);
+    assert.match(first.stdout, /pro-test gate cached/);
+    assert.equal(genCalls(first.invocations), 1, 'the first run must actually run the generator');
+
+    // The #6765 shape: a merge, amend, or docs-only commit after a green run
+    // produces a NEW HEAD^{tree} — the whole-tree cache misses — while the
+    // pro-test gate's own inputs and verified outputs are byte-identical.
+    mkdirSync(join(fixture.root, 'docs'), { recursive: true });
+    writeFileSync(join(fixture.root, 'docs', 'notes.md'), 'note\n');
+    fixture.git(['add', '-A']);
+    fixture.git(['commit', '--quiet', '-m', 'docs only']);
+
+    const second = fixture.run();
+    assert.equal(second.status, 0, second.stdout);
+    assert.doesNotMatch(second.stdout, /this exact tree already passed/, 'the tree changed, so the whole-tree cache must miss');
+    assert.match(second.stdout, /identical inputs and verified outputs already passed/);
+    assert.equal(genCalls(second.invocations), 0, 'the per-gate cache must skip the rebuild entirely');
+  });
+
+  test('changing a gate input re-runs the rebuild', () => {
+    const fixture = makeFixture({ branchFiles: { 'pro-test/src/launch.ts': 'export const x = 1;\n' } });
+    fixture.git(['checkout', '-q', '-b', 'feature/pro-work-2']);
+    const first = fixture.run();
+    assert.match(first.stdout, /pro-test gate cached/);
+
+    writeFileSync(join(fixture.root, 'pro-test', 'src', 'launch.ts'), 'export const x = 2;\n');
+    fixture.git(['add', '-A']);
+    fixture.git(['commit', '--quiet', '-m', 'pro change']);
+
+    const second = fixture.run();
+    assert.equal(second.status, 0, second.stdout);
+    assert.doesNotMatch(second.stdout, /identical inputs and verified outputs already passed/);
+    assert.equal(genCalls(second.invocations), 1, 'a changed gate input must invalidate the per-gate entry');
+  });
+});

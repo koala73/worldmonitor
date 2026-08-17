@@ -693,6 +693,26 @@ echo "Running pro-test bundle freshness check..."
 # otherwise able to ship stale /pro bundles because Vercel serves public/pro/
 # as committed bytes.
 if [ "$RUN_ALL" = true ] || path_matches '^(pro-test|public/pro)/|^convex/config/productCatalog\.ts$|^scripts/generate-product-config\.mjs$'; then
+  # Per-gate cache (#6765): the whole-tree cache keys this gate on all bytes
+  # everywhere, so a docs-only amend after a green run re-pays the full
+  # ~55s cold rebuild for inputs that did not change. This entry hashes the
+  # gate's INPUTS (sources, lockfile, catalog, generator, vite/ts config)
+  # AND its VERIFIED OUTPUTS (generated config, tiers, locales, public/pro/)
+  # straight from HEAD's tree — blob hashes, so it costs path lookups, not
+  # file reads. Outputs are part of the key on purpose: an amend that swaps
+  # verified-good bundle bytes for stale ones under identical inputs must not
+  # ride a cache hit minted against the good bytes.
+  GATE_CACHE_DIR="$(git rev-parse --git-common-dir)/wm-prepush-gate-cache"
+  PRO_TEST_GATE_HASH=$(git ls-tree -r HEAD -- \
+    pro-test/src pro-test/package.json pro-test/package-lock.json \
+    pro-test/vite.config.ts pro-test/tsconfig.json \
+    convex/config/productCatalog.ts scripts/generate-product-config.mjs \
+    src/config/products.generated.ts src/config/product-ids.generated.ts \
+    public/pro \
+    | git hash-object --stdin)
+  if [ "$ATTESTABLE" = true ] && bash "$ATTEST" gate-cache-read "$GATE_CACHE_DIR" pro-test-bundle "$PRO_TEST_GATE_HASH"; then
+    echo "  pro-test bundle gate: identical inputs and verified outputs already passed for this tree (#6765) — skipping the rebuild."
+  else
   npx tsx scripts/generate-product-config.mjs >/dev/null || {
     echo "ERROR: product config generation failed"
     exit 1
@@ -736,6 +756,10 @@ if [ "$RUN_ALL" = true ] || path_matches '^(pro-test|public/pro)/|^convex/config
     exit 1
   fi
   echo "  pro-test bundle is up to date."
+  if bash "$ATTEST" gate-cache-write "$GATE_CACHE_DIR" pro-test-bundle "$PRO_TEST_GATE_HASH" "$ATTESTABLE"; then
+    echo "  pro-test gate cached — a re-push whose gate paths did not change skips the rebuild."
+  fi
+  fi  # end gate-cache miss: the rebuild path above
 else
   echo "  Skipped (no pro-test/, public/pro/, product catalog, or product-config generator changes in branch)."
 fi
