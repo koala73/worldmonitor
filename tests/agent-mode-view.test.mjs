@@ -136,6 +136,15 @@ describe('agent-mode view (/?mode=agent)', () => {
     assert.ok(agentIdx >= 0, 'missing /?mode=agent rewrite to /agent-view.json');
     assert.ok(welcomeIdx >= 0, 'welcome rewrite missing');
     assert.ok(agentIdx < welcomeIdx, '?mode=agent rewrite must precede the welcome rewrite (first match wins)');
+
+    const variantRootRedirect = vercelConfig.redirects.find(
+      (r) => r.source === '/' && r.destination === '/dashboard',
+    );
+    assert.ok(variantRootRedirect, 'product-variant / 308 must exist');
+    assert.ok(
+      (variantRootRedirect.missing ?? []).some((c) => c.type === 'query' && c.key === 'mode' && c.value === 'agent'),
+      'variant / 308 must not fire for /?mode=agent or agent-view.json is unreachable on variant hosts',
+    );
   });
 
   it('every discovery URL it advertises resolves to a tracked file or a live rewrite', () => {
