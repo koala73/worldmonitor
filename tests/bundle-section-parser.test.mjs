@@ -274,3 +274,58 @@ test('a section declaring a nested timeoutMs is dropped rather than mis-read', (
   assert.equal(extractBundleSections(sample).length, 0, 'ambiguous timeout must not be guessed');
   assert.equal(countSectionScriptKeys(stripped), 1, 'the count still sees the section, so the gate fails loudly');
 });
+
+// ── #6562 item 5: scanner residuals ──────────────────────────────────────
+
+test('stripLineComments: a regex literal containing // is not a line comment', () => {
+  // The exact shape from the issue: `const RE = /[//]/` used to truncate the
+  // file at the first slash pair, and the count cross-check blamed a
+  // commented-out section.
+  const src = [
+    "const RE = /[//]/;",
+    "const N = 5;",
+  ].join('\n');
+  const out = stripLineComments(src);
+  assert.match(out, /\/\[\/\/\]\//, 'the regex literal survives verbatim');
+  assert.match(out, /const N = 5;/, 'source after the regex literal survives');
+});
+
+test('stripLineComments: division and keyword-prefixed regexes stay intact', () => {
+  const src = [
+    'const half = 10 / 2 / 1;',
+    'function f(s) { return /[//]+$/g.test(s); }',
+    "const U = 'https://example.com//path';",
+  ].join('\n');
+  const out = stripLineComments(src);
+  assert.ok(out.includes('10 / 2 / 1'), 'division slashes are untouched');
+  assert.ok(out.includes('return /[//]+$/g.test(s)'), 'keyword-prefixed regex survives');
+  assert.match(out, /https:\/\/example\.com\/\/path/, 'URL in string survives');
+});
+
+test('resolver: follows a named import from a default-plus-named statement', () => {
+  // `import def, { X } from './y.mjs'` used to be invisible to the resolver.
+  const dir = mkdtempSync(join(tmpdir(), 'wm-bundle-parser-'));
+  const bundlePath = join(dir, 'seed-bundle-sample.mjs');
+  writeFileSync(join(dir, 'seed-thing.mjs'), 'export const THING_MS = 90_000;\n');
+  const src = "import defaultThing from './other.mjs';\nimport base, { THING_MS } from './seed-thing.mjs';\n";
+  writeFileSync(bundlePath, src);
+  assert.equal(resolveExpr(src, 'THING_MS', {}, { file: bundlePath }), 90_000);
+});
+
+test('resolver: follows an `export { X } from` re-export', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'wm-bundle-parser-'));
+  const bundlePath = join(dir, 'seed-bundle-sample.mjs');
+  writeFileSync(join(dir, 'origin.mjs'), 'export const ORIGIN_MS = 45_000;\n');
+  writeFileSync(join(dir, 'middle.mjs'), "export { ORIGIN_MS as SHARED_MS } from './origin.mjs';\n");
+  const src = "import { SHARED_MS } from './middle.mjs';\n";
+  writeFileSync(bundlePath, src);
+  assert.equal(resolveExpr(src, 'SHARED_MS', {}, { file: bundlePath }), 45_000);
+});
+
+test('extractBundleOption requires a word boundary before the key', () => {
+  // Without the boundary, `fooMaxBundleMs:` satisfied a `maxBundleMs` lookup.
+  const sample = '], { fooMaxBundleMs: 999_000 });';
+  assert.equal(extractBundleOption(sample, 'maxBundleMs'), null);
+  const real = '], { maxBundleMs: 570_000 });';
+  assert.equal(extractBundleOption(real, 'maxBundleMs'), '570_000');
+});

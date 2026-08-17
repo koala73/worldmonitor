@@ -18,7 +18,7 @@ Six tabs under a shared airport + route watchlist control:
 | `news` | Aviation-relevant news items (`AviationNewsItem[]`). |
 | `prices` | Google Flights quotes for a specific itinerary and a date-grid of cheapest-day prices across a range. |
 
-`TABS` is declared as `['ops', 'flights', 'airlines', 'tracking', 'news', 'prices'] as const` in `src/components/AirlineIntelPanel.ts:54`. Watchlist comes from `aviationWatchlist.get()` — the first 8 airports and the first route are seeded on mount.
+`TABS` is declared as `['ops', 'flights', 'airlines', 'tracking', 'news', 'prices'] as const` in `src/components/AirlineIntelPanel.ts:54`. Watchlist comes from `aviationWatchlist.get()`; the initial airport slice and route are seeded on mount.
 
 Panel id is `airline-intel`; canonical component is `src/components/AirlineIntelPanel.ts`. Title resolves from i18n (`panels.airlineIntel`).
 

@@ -1323,7 +1323,7 @@
         "ucdpEvents": "Matukio ya Migogoro ya Silaha",
         "displacementFlows": "Mitiririko ya Uhamisho",
         "climateAnomalies": "Matatizo ya Hali ya Hewa",
-        "weatherAlerts": "Tahadhari za Hali ya Hewa za Marekani (NWS)",
+        "weatherAlerts": "Tahadhari za Hali ya Hewa za Marekani na Kanada (NWS, ECCC)",
         "strategicWaterways": "Chokepoints",
         "economicCenters": "Vituo vya Uchumi",
         "criticalMinerals": "Madini Muhimu",
@@ -1404,7 +1404,7 @@
           "infraDatacenters": "AI inakokotoa makundi >=10,000 GPU",
           "infraOutages": "Kukatika kwa mtandao na kukatizwa kwa huduma",
           "naturalEventsTech": "Matetemeko ya ardhi, dhoruba, moto (huenda ikaathiri vituo vya data)",
-          "weatherAlerts": "Tahadhari za hali ya hewa kali nchini Marekani (NWS)",
+          "weatherAlerts": "Tahadhari za hali ya hewa kali nchini Marekani na Kanada (NWS, ECCC)",
           "economicCenters": "Soko la hisa na benki kuu",
           "countriesOverlay": "Viwekelezo vya majina ya nchi",
           "financeExchanges": "Mabadilishano makuu ya kimataifa kulingana na kiwango cha soko",
@@ -1416,7 +1416,7 @@
           "financeOutages": "Ukatizi wa mtandao ambao unaweza kuathiri shughuli za soko",
           "financeCyberThreats": "Matukio ya usalama karibu na miundombinu ya kifedha",
           "macroWaterways": "Vituo vya kimkakati vya kusafirisha bidhaa",
-          "weatherAlertsMarket": "Matukio ya hali ya hewa kali nchini Marekani yenye umuhimu wa soko (NWS)",
+          "weatherAlertsMarket": "Matukio ya hali ya hewa kali nchini Marekani na Kanada yenye umuhimu wa soko (NWS, ECCC)",
           "naturalEventsMacro": "Matetemeko ya ardhi, moto, mafuriko, na usumbufu mwingine wa asili",
           "timeRecent": "Chuja data kulingana na saa hadi saa za hivi majuzi",
           "timeExtended": "Onyesha data kutoka wiki iliyopita, mwezi au wakati wote",
@@ -2350,13 +2350,14 @@
     },
     "sanctionsPressure": {
       "title": "Vikwazo na Uteuzi",
-      "infoTooltip": "Uteuzi wa vikwazo vya OFAC kutoka SDN na Orodha Zilizounganishwa. Huonyesha ni nchi zipi zinakabiliwa na shinikizo la juu zaidi la uteuzi, ni programu gani zinazoiendesha, na ni nini ambacho kimeongezwa hivi karibuni tangu sasisho la mwisho.",
+      "infoTooltip": "Orodha za SDN na Zilizounganishwa za OFAC pamoja na uteuzi wa SEMA/JVCFOA wa Global Affairs Canada. Huonyesha ni nchi zipi zinakabiliwa na shinikizo la juu zaidi la uteuzi, ni programu gani zinazoiendesha, na ni nini ambacho kimeongezwa hivi karibuni tangu sasisho la mwisho.",
       "loading": "Inapakia data ya vikwazo...",
       "unavailable": "Data ya vikwazo haipatikani.",
       "summary": {
         "new": "Mpya",
         "vessels": "Vyombo",
-        "aircraft": "Ndege"
+        "aircraft": "Ndege",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Nchi zilizoidhinishwa",
@@ -2371,11 +2372,12 @@
       "footer": {
         "updated": "Ilisasishwa {{time}}",
         "dataset": "mkusanyiko wa data {{date}}",
-        "source": "Chanzo: OFAC"
+        "source": "Chanzo: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} mpya",
-        "new": "mpya"
+        "new": "mpya",
+        "sema": "sema-ca"
       },
       "designations_one": "Jina {{count}}",
       "designations_other": "Majina {{count}}",
@@ -2908,6 +2910,7 @@
     "moreEvents": "matukio zaidi",
     "monitoring": "Ufuatiliaji",
     "viewUSGS": "Tazama kwenye USGS",
+    "viewNRCan": "Tazama kwenye Earthquakes Canada",
     "expired": "Muda wake umeisha",
     "timeAgo": {
       "s": "Sekunde {{count}} zilizopita",

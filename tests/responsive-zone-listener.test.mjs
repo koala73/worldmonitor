@@ -13,6 +13,10 @@ const panelLayoutSrc = readFileSync(
   resolve(__dirname, '../src/app/panel-layout.ts'),
   'utf-8',
 );
+const panelsCss = readFileSync(
+  resolve(__dirname, '../src/styles/panels.css'),
+  'utf-8',
+);
 
 class FakeMediaQueryList extends EventTarget {
   constructor(media) {
@@ -132,6 +136,29 @@ describe('panel layout responsive zone wiring', () => {
     assert.match(panelLayoutSrc, /addResponsiveZoneListener\(/);
     assert.match(panelLayoutSrc, /this\.getUltraWideMinWidth\(\)/);
     assert.match(panelLayoutSrc, /addResponsiveZoneListener\([\s\S]*?ensureCorrectZones\(\)/);
+  });
+
+  it('keeps CSS visibility thresholds aligned with the runtime thresholds', () => {
+    const thresholds = panelLayoutSrc.match(/return this\.ctx\.isDesktopApp \? (\d+) : (\d+);/);
+    assert.ok(thresholds, 'getUltraWideMinWidth() must keep an explicit desktop/web threshold pair');
+    const desktopMinWidth = Number(thresholds[1]);
+    const webMinWidth = Number(thresholds[2]);
+
+    assert.match(
+      panelsCss,
+      new RegExp(`@media \\(max-width: ${desktopMinWidth - 1}px\\)`),
+      'CSS must hide the bottom zone below the desktop runtime threshold',
+    );
+    assert.match(
+      panelsCss,
+      new RegExp(`@media \\(max-width: ${webMinWidth - 1}px\\)`),
+      'CSS must hide the bottom zone below the web runtime threshold',
+    );
+    assert.match(
+      panelsCss,
+      /\.main-content:not\(\.desktop-grid\)\s+\.map-bottom-grid\s*\{\s*display:\s*none\s*!important;/,
+      'the web-only hide must exclude the desktop runtime marker',
+    );
   });
 
   it('does not register post-render listeners after destroy during async panel setup', () => {

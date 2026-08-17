@@ -90,36 +90,40 @@ describe('answer-first opening', () => {
 });
 
 describe('dashboard variants', () => {
-  it('fires when a variant ships and the spelled-out count goes stale', () => {
-    // The regression this gate exists for: the count was pinned as the literal
-    // word "Six", so this exact mutation left the contract green.
-    const failures = validateCategoryExplainerCopy({ ...REAL_STATS, variantCount: 7 }, read);
-    assert.equal(failures.length, 2, failures.join('\n'));
-    assert.ok(failures.some((f) => /must say "seven dashboard variants"/.test(f)), failures.join('\n'));
-    assert.ok(failures.some((f) => /enumerates 6 dashboard variants, code has 7/.test(f)), failures.join('\n'));
+  it('fires when a named variant ships but the registry-key list is unchanged', () => {
+    const failures = validateCategoryExplainerCopy({
+      ...REAL_STATS,
+      variantLayers: { ...REAL_STATS.variantLayers, risk: 1 },
+    }, read);
+    assert.equal(failures.length, 1, failures.join('\n'));
+    assert.match(failures[0], /missing: risk/);
   });
 
-  it('fires when the enumeration loses a variant but keeps the count word', () => {
+  it('fires when the enumeration loses a variant', () => {
     const failures = validateCategoryExplainerCopy(
       REAL_STATS,
-      withCopy((s) => s.replace('World, Tech, Finance, Commodity, Happy, and Energy Monitor', 'World, Tech, Finance, Commodity, and Happy')),
+      withCopy((s) => s.replace(', and `energy`', '')),
     );
     assert.equal(failures.length, 1, failures.join('\n'));
-    assert.match(failures[0], /enumerates 5 dashboard variants, code has 6/);
+    assert.match(failures[0], /missing: energy/);
   });
 
   it('fires when the enumeration is dropped entirely', () => {
     const failures = validateCategoryExplainerCopy(
       REAL_STATS,
-      withCopy((s) => s.replace('dashboard variants**: World, Tech, Finance, Commodity, Happy, and Energy Monitor', 'dashboard variants**')),
+      withCopy((s) => s.replace(/^- Dashboard variants \(registry keys\):.*$/m, '')),
     );
     assert.equal(failures.length, 1, failures.join('\n'));
     assert.match(failures[0], /missing the enumerated dashboard-variant list/);
   });
 
-  it('asks for COUNT_WORDS to be extended rather than passing an unspellable count', () => {
-    const failures = validateCategoryExplainerCopy({ ...REAL_STATS, variantCount: 99 }, read);
-    assert.ok(failures.some((f) => /extend COUNT_WORDS/.test(f)), failures.join('\n'));
+  it('fires when prose invents a variant that is not in the registry', () => {
+    const failures = validateCategoryExplainerCopy(
+      REAL_STATS,
+      withCopy((s) => s.replace('and `energy`', '`energy`, and `legacy`')),
+    );
+    assert.equal(failures.length, 1, failures.join('\n'));
+    assert.match(failures[0], /extra: legacy/);
   });
 });
 

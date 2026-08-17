@@ -13,6 +13,7 @@ import {
 } from "../../shared/company-monitoring-evidence";
 import { COMPANY_MONITORING_LIMITS } from "../../shared/company-monitoring-contract";
 import {
+  assertValidCandidateState,
   companyMonitoringProviderEvidenceValidator,
 } from "./validators";
 import { terminalizeSystemDecision } from "./admission";
@@ -143,6 +144,7 @@ function candidateLifecycle(
   candidate: Doc<"companyMonitoringCandidates"> | null,
   now: number,
 ) {
+  if (candidate) assertValidCandidateState(candidate);
   if (
     candidate?.state === "terminal" &&
     (candidate.terminalReason === "admitted" || candidate.terminalReason === "rejected")
@@ -201,6 +203,7 @@ async function recomputeOccurrenceCandidate(
         .eq("occurrenceDedupeKey", occurrenceDedupeKey),
     )
     .unique();
+  if (existing) assertValidCandidateState(existing);
   if (
     existing &&
     existing.expiresAt <= now &&
@@ -283,6 +286,7 @@ async function recomputeOccurrenceCandidate(
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     };
+    assertValidCandidateState(row);
     if (existing) await ctx.db.replace(existing._id, row);
     else await ctx.db.insert("companyMonitoringCandidates", row);
     const nextDeadline = [

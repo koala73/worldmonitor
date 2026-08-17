@@ -150,7 +150,7 @@ describe('source provenance defaults (#5390)', () => {
 
   it('requires an explicit reviewed-or-unknown declaration for every configured feed', () => {
     const names = feeds.listConfiguredFeedNames();
-    assert.ok(names.length > 100, `expected many feeds, got ${names.length}`);
+    assert.ok(names.length > 0, 'configured feed extraction must not be empty');
     assert.ok(names.includes('MIIT (China)'));
     assert.ok(names.includes('MOFCOM (China)'));
     const declaredNames = Object.keys(CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS);

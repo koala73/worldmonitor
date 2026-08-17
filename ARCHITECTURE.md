@@ -1,6 +1,6 @@
 # Architecture
 
-> **Capability counts** (map layers, services, protos, locales, CI workflows, freshness sources) are derived from code and CI-verified by `npm run docs:check` (`scripts/docs-stats.mjs`, source of truth `docs/generated/stats.json`). Do not hand-edit those numbers — change the code, run `npm run docs:stats`.
+> **Inventory ownership**: map layers, services, protos, locales, CI workflows, and freshness sources are defined by their registries. `npm run docs:check` verifies registry and fixed-contract documentation; generated snapshots are refreshed with `npm run docs:stats`.
 >
 > **Ownership rule**: When deployment topology, API surface, desktop runtime, or bootstrap keys change, this document must be updated in the same PR.
 
@@ -46,7 +46,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
         │ CoinGeck│ │  FRED   │ │ FIRMS   │
         │   ...   │ │   ...   │ │   ...   │
         └─────────┘ └─────────┘ └─────────┘
-           554+ observed upstream hosts
+           578+ observed upstream hosts
 ```
 
 **Source files**: `package.json`, `vercel.json`
@@ -372,7 +372,7 @@ Runs before every `git push`:
 | `live-api-cache-auth.yml` | 6-hourly cron, push to main (sweep paths), manual | Production cache/auth posture sweep: fake auth stays no-store and is never a cached 200, anonymous public surfaces stay cacheable, MCP/OAuth surfaces stay protocol-valid (#4497 regression net; suite was inert until #5379 wired the gate on, and the step fails if it executes 0 assertions) |
 | `china-decision-parity-live.yml` | 6-hourly cron, push to main (audit paths), manual (optional staging URL) | Live half of the China decision-signal parity audit: probes the deployed composition RPC and the public `chinaDecisionSignals` bootstrap projection for the six-domain contract and a canonical snapshot under one hour old (#5643 — the probe existed but nothing invoked it, and `--require-live` keeps a lost `--url` from passing vacuously) |
 | `security-audit.yml` | PR, push to main, daily cron, manual | Production dependency audits for every tracked `package-lock.json` workspace, failing on unbaselined high/critical advisories |
-| `seed-freshness-monitor.yml` | 15-minute cron, manual | Enforces production ingestion acceptance after a green scheduled main gate; fails on every actionable compact-health problem except explicitly on-demand sources without grading production before Railway deploys or runs |
+| `seed-freshness-monitor.yml` | 15-minute cron, manual | Enforces production ingestion acceptance after a green main gate (HEAD, or the newest gated ancestor when HEAD is undecided or already red); fails on every actionable compact-health problem except explicitly on-demand sources without grading production before Railway deploys or runs |
 | `railway-deploy-drift.yml` | Hourly cron, manual | Runs two independent read-only checks against the exact production fleet: Viewer-safe source/build/deploy configuration drift and deployment/Git-closure drift. It has no mutation, dispatch, retry, approval, or acceptance-baseline path |
 | `railway-deploy-trigger.yml` | Manual rollback only | Keeps the legacy reconciler quiesced unless an operator explicitly activates the bounded rollback path; it does not own normal Railway deployment creation |
 | `analytics-collector-monitor.yml` | 15-minute cron, manual | Probes the self-hosted Umami collector directly (heartbeat, tracker script, ingest route) and fails when events are being dropped — Railway reported a green deployment through the 4-day #5565 blackout, so deployment status is not trusted here |

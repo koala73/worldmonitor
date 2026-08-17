@@ -152,3 +152,63 @@ describe('defense-industrial deployment wiring', () => {
     assert.match(supplierSeeder, /maxContentAgeMin:\s*800 \* 24 \* 60/);
   });
 });
+
+describe('SIPRI importer fan-out fits its fetch deadline (#6799)', () => {
+  // The seeder POSTs once per mapped importer. SIPRI answers in ~10.6s whatever
+  // the payload, so the wall time is (importers / concurrency) * latency and
+  // has to land inside fetchPhaseTimeoutMs. At concurrency 4 it did not: ~200
+  // importers took ~547s against a 390s deadline, so the phase burned the whole
+  // deadline and exited 75 every run — which then starved every later section
+  // of seed-bundle-static-ref out of its 570s budget.
+
+  const OBSERVED_SIPRI_LATENCY_S = 10.6; // measured 2026-08-16 against live SIPRI
+  const MAPPED_IMPORTERS = 200;          // 385 catalog entries, ~185 unmapped non-state actors
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+  it('the configured concurrency leaves the fetch phase inside its deadline', () => {
+    const seeder = readFileSync(join(root, 'scripts/seed-defense-industrial-suppliers.mjs'), 'utf8');
+    const deadline = /fetchPhaseTimeoutMs:\s*([\d.]+)\s*\*\s*60\s*\*\s*1000/.exec(seeder);
+    assert.ok(deadline, 'the supplier seeder must declare fetchPhaseTimeoutMs');
+    const deadlineS = Number(deadline[1]) * 60;
+
+    const source = readFileSync(join(root, 'scripts/_defense-industrial-source.mjs'), 'utf8');
+    const declared = /^\s*concurrency = (\d+),$/m.exec(source);
+    assert.ok(declared, 'the SIPRI fan-out must declare a default concurrency');
+    const concurrency = Number(declared[1]);
+
+    const worstCaseS = (MAPPED_IMPORTERS / concurrency) * OBSERVED_SIPRI_LATENCY_S;
+    assert.ok(
+      worstCaseS < deadlineS,
+      `concurrency ${concurrency} needs ${Math.round(worstCaseS)}s for ${MAPPED_IMPORTERS} importers `
+      + `at ${OBSERVED_SIPRI_LATENCY_S}s each, but fetchPhaseTimeoutMs is ${deadlineS}s. `
+      + 'The phase cannot finish, so it burns the full deadline and exits 75 every run.',
+    );
+  });
+
+  it('actually runs the requests in parallel up to that concurrency', async () => {
+    // The arithmetic above is worthless if the pool silently serialises.
+    let inFlight = 0;
+    let peak = 0;
+    // Real ISO2-mappable names, or the catalog fails the >=150 importer floor
+    // before any request is made and this measures nothing.
+    // Real ISO2-mappable names, and the EntityId keyed to the NAME rather than
+    // the index: a repeated name carrying two ids trips the mapping-collision
+    // guard and the run throws before issuing a single request.
+    const names = ['Ukraine', 'Poland', 'Japan', 'Egypt', 'India', 'Brazil', 'Norway', 'Chile'];
+    const catalog = Array.from({ length: 160 }, (_, i) => ({
+      EntityId: 1000 + (i % names.length),
+      Name: names[i % names.length],
+    }));
+    const fetchFn = async (url) => {
+      if (String(url).includes('getMaxYear')) return new Response('2025');
+      if (String(url).includes('getAllCountriesTrimmed')) return new Response(JSON.stringify(catalog));
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      return new Response(JSON.stringify({ bytes: '' }));
+    };
+    await fetchSipriSupplierDependencies({ fetchFn, delayMs: 0 }).catch(() => {});
+    assert.ok(peak > 1, `expected parallel requests, saw peak in-flight ${peak}`);
+  });
+});

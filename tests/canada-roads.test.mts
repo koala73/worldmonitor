@@ -1,19 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  CANADA_ROAD_SOURCES,
   hasHealthyCanadaRoadSource,
   loadCanadaRoadSourcesCore,
   unionCanadaRoadRecords,
   type CanadaRoadRecord,
-  type CanadaRoadSourceDescriptor,
 } from '../src/services/canada-roads-core';
-
-const CANADA_ROAD_SOURCES: readonly CanadaRoadSourceDescriptor[] = [
-  { key: 'canadaRoads', source: 'ontario-511', jurisdiction: 'ON', onDemand: false },
-  { key: 'albertaRoads', source: 'alberta-511', jurisdiction: 'AB', onDemand: false },
-  { key: 'torontoRoads', source: 'toronto-roads', jurisdiction: 'Toronto', onDemand: true },
-  { key: 'bcOpen511', source: 'bc-open511', jurisdiction: 'BC', onDemand: true },
-];
 
 function road(id: string, source = ''): CanadaRoadRecord {
   return {

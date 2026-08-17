@@ -1503,10 +1503,18 @@ describe('Company Monitoring blind evaluation CLI', () => {
           fileURLToPath(new URL('../scripts/company-monitoring-blind-evaluation.mts', import.meta.url)),
           ...rejectedArgs,
         ],
-        { encoding: 'utf8', timeout: 30_000 },
+        // Hang guard, not a latency budget: this spawns a cold `tsx`, whose
+        // startup is dominated by whatever else the runner is doing. A 30s
+        // ceiling SIGTERM'd the child under a loaded parallel suite and failed
+        // the signal assertion below, while passing in isolation.
+        { encoding: 'utf8', timeout: 120_000 },
       );
       assert.ifError(rejectedProcess.error);
-      assert.equal(rejectedProcess.signal, null);
+      assert.equal(
+        rejectedProcess.signal,
+        null,
+        `child was killed by ${rejectedProcess.signal} instead of exiting on its own`,
+      );
       assert.equal(rejectedProcess.status, 2);
       assert.equal((JSON.parse(rejectedProcess.stdout) as ScoreReport).outcome, 'fail');
 

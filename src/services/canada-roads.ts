@@ -1,7 +1,7 @@
 import { createCircuitBreaker } from '@/utils';
 import { ensureHydrated, getHydratedData } from '@/services/bootstrap';
-import { toApiUrl } from '@/services/runtime';
 import {
+  CANADA_ROAD_SOURCES,
   hasHealthyCanadaRoadSource,
   loadCanadaRoadSourcesCore,
   type CanadaRoadRecord,
@@ -10,6 +10,7 @@ import {
 } from './canada-roads-core';
 
 export {
+  CANADA_ROAD_SOURCES,
   hasHealthyCanadaRoadSource,
   recordsFromPayload,
   unionCanadaRoadRecords,
@@ -20,16 +21,17 @@ export {
 } from './canada-roads-core';
 
 /**
- * Unions bootstrap `canadaRoads` (infra:ontario-511:v1) and `albertaRoads`
- * (infra:alberta-511:v1) with on-demand `torontoRoads`
- * (infra:toronto-roads:v1).
+ * Freshness-panel id per road source. Derived from CANADA_ROAD_SOURCES so a
+ * fifth jurisdiction cannot be added without deciding how it reports freshness:
+ * the union previously recorded every source as `ontario_511`, which made an
+ * Alberta/Toronto/BC outage indistinguishable from an Ontario one.
  */
-export const CANADA_ROAD_SOURCES: readonly CanadaRoadSourceDescriptor[] = Object.freeze([
-  { key: 'canadaRoads', source: 'ontario-511', jurisdiction: 'ON', onDemand: false },
-  { key: 'albertaRoads', source: 'alberta-511', jurisdiction: 'AB', onDemand: false },
-  { key: 'torontoRoads', source: 'toronto-roads', jurisdiction: 'Toronto', onDemand: true },
-  { key: 'bcOpen511', source: 'bc-open511', jurisdiction: 'BC', onDemand: true },
-]);
+export const CANADA_ROAD_FRESHNESS_IDS = Object.freeze([
+  { key: 'canadaRoads', freshnessId: 'ontario_511' },
+  { key: 'albertaRoads', freshnessId: 'alberta_511' },
+  { key: 'torontoRoads', freshnessId: 'toronto_roads' },
+  { key: 'bcOpen511', freshnessId: 'bc_open511' },
+] as const);
 
 const unavailableSourceStates = (): CanadaRoadSourceStates => Object.fromEntries(
   CANADA_ROAD_SOURCES.map(({ key }) => [key, 'unavailable' as const]),
@@ -50,48 +52,39 @@ const breaker = createCircuitBreaker<CanadaRoadCachedValue>({
   persistCache: true,
 });
 
-const ON_DEMAND_LOADERS: Record<string, () => Promise<unknown | undefined>> = {
-  torontoRoads: () => ensureHydrated('torontoRoads'),
-  bcOpen511: () => ensureHydrated('bcOpen511'),
-};
+// Derived from CANADA_ROAD_SOURCES rather than hand-listed: a fifth
+// jurisdiction added to the descriptors would otherwise silently have no loader
+// and read as permanently `unavailable`.
+const ON_DEMAND_LOADERS: Record<string, () => Promise<unknown | undefined>> = Object.fromEntries(
+  CANADA_ROAD_SOURCES.map(({ key }) => [key, () => ensureHydrated(key)]),
+);
 
-const HYDRATED_LOADERS: Record<string, () => unknown | undefined> = {
-  canadaRoads: () => getHydratedData('canadaRoads'),
-  albertaRoads: () => getHydratedData('albertaRoads'),
-  torontoRoads: () => getHydratedData('torontoRoads'),
-  bcOpen511: () => getHydratedData('bcOpen511'),
-};
+// The core's first check, before it reaches fetchMissing. Every road key is
+// on-demand today so these all miss, but the lookup stays correct if one is
+// ever promoted back into a tier.
+const HYDRATED_LOADERS: Record<string, () => unknown | undefined> = Object.fromEntries(
+  CANADA_ROAD_SOURCES.map(({ key }) => [key, () => getHydratedData(key)]),
+);
 
 interface CanadaRoadLoadDependencies {
   getHydrated?: (key: string) => unknown | undefined;
   ensureOnDemand?: (key: string) => Promise<unknown | undefined>;
-  fetchFn?: typeof fetch;
-}
-
-async function fetchTierKey(key: string, fetchFn: typeof fetch): Promise<unknown | undefined> {
-  const resp = await fetchFn(
-    toApiUrl(`/api/bootstrap?keys=${encodeURIComponent(key)}`),
-    { credentials: 'include', signal: AbortSignal.timeout(8000) },
-  );
-  if (!resp.ok) throw new Error(`Bootstrap fetch failed for ${key}: ${resp.status}`);
-  const json = await resp.json() as { data?: Record<string, unknown> };
-  return json.data?.[key];
 }
 
 export function loadCanadaRoadSources(
   descriptors: readonly CanadaRoadSourceDescriptor[] = CANADA_ROAD_SOURCES,
   dependencies: CanadaRoadLoadDependencies = {},
 ): Promise<{ records: CanadaRoadRecord[] | null; states: CanadaRoadSourceStates }> {
-  const fetchFn = dependencies.fetchFn ?? fetch;
   return loadCanadaRoadSourcesCore(descriptors, {
     getHydrated: (key) => dependencies.getHydrated
       ? dependencies.getHydrated(key)
       : HYDRATED_LOADERS[key]?.(),
-    fetchMissing: (descriptor) => descriptor.onDemand
-      ? dependencies.ensureOnDemand
-        ? dependencies.ensureOnDemand(descriptor.key)
-        : ON_DEMAND_LOADERS[descriptor.key]?.() ?? Promise.resolve(undefined)
-      : fetchTierKey(descriptor.key, fetchFn),
+    // Every source is on-demand now, so this is the only fetch path. The
+    // credentialed `?keys=` tier fetch it replaced no longer has a caller: a
+    // tiered key arrives through hydration, never through a per-key request.
+    fetchMissing: (descriptor) => dependencies.ensureOnDemand
+      ? dependencies.ensureOnDemand(descriptor.key)
+      : ON_DEMAND_LOADERS[descriptor.key]?.() ?? Promise.resolve(undefined),
   });
 }
 

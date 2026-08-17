@@ -14,6 +14,12 @@ import {
   readStandaloneSourceFailureDimensions,
   STANDALONE_SOURCE_META_MAX_STALE_MIN,
 } from './_source-failure';
+import {
+  applyCanadaNationalOverlay,
+  RESILIENCE_BOC_VALET_KEY,
+  RESILIENCE_STATCAN_WDS_KEY,
+  statcanOverlayUsed,
+} from './_canada-national-overlay';
 
 export type ResilienceDimensionId =
   | 'macroFiscal'
@@ -1568,15 +1574,23 @@ export async function scoreMacroFiscal(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [debtRaw, imfMacroRaw, imfLaborRaw, bisDsrRaw] = await Promise.all([
+  const [debtRaw, imfMacroRaw, imfLaborRaw, bisDsrRaw, bocRaw, statcanRaw] = await Promise.all([
     reader(RESILIENCE_NATIONAL_DEBT_KEY),
     reader(RESILIENCE_IMF_MACRO_KEY),
     reader(RESILIENCE_IMF_LABOR_KEY),
     reader(RESILIENCE_BIS_DSR_KEY),
+    countryCode === 'CA' ? reader(RESILIENCE_BOC_VALET_KEY) : Promise.resolve(null),
+    countryCode === 'CA' ? reader(RESILIENCE_STATCAN_WDS_KEY) : Promise.resolve(null),
   ]);
   const debtEntry = getLatestDebtEntry(debtRaw, countryCode);
-  const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
-  const laborEntry = getImfLaborEntry(imfLaborRaw, countryCode);
+  const overlay = applyCanadaNationalOverlay(
+    countryCode,
+    getImfMacroEntry(imfMacroRaw, countryCode),
+    getImfLaborEntry(imfLaborRaw, countryCode),
+    { boc: bocRaw as never, statcan: statcanRaw as never },
+  );
+  const imfEntry = overlay.imfEntry;
+  const laborEntry = overlay.laborEntry;
   const dsrEntry = getBisDsrEntry(bisDsrRaw, countryCode);
 
   return weightedBlend([
@@ -1602,7 +1616,7 @@ export async function scoreMacroFiscal(
           score: imfEntry?.currentAccountPct == null ? null : normalizeHigherBetter(Math.max(-20, Math.min(imfEntry.currentAccountPct, 20)), -20, 20),
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.currentAccountPct,
         },
-    imfLaborRaw == null
+    imfLaborRaw == null && !overlay.usedStatcanUnemployment
       ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.unemploymentPct }
       : {
           score: laborEntry?.unemploymentPct == null ? null : normalizeLowerBetter(Math.max(3, Math.min(laborEntry.unemploymentPct, 25)), 3, 25),
@@ -1646,14 +1660,23 @@ export async function scoreCurrencyExternal(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [imfMacroRaw, staticRecord] = await Promise.all([
+  const [imfMacroRaw, staticRecord, bocRaw, statcanRaw] = await Promise.all([
     reader(RESILIENCE_IMF_MACRO_KEY),
     readStaticCountry(countryCode, reader),
+    countryCode === 'CA' ? reader(RESILIENCE_BOC_VALET_KEY) : Promise.resolve(null),
+    countryCode === 'CA' ? reader(RESILIENCE_STATCAN_WDS_KEY) : Promise.resolve(null),
   ]);
 
-  const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
+  const overlay = applyCanadaNationalOverlay(
+    countryCode,
+    getImfMacroEntry(imfMacroRaw, countryCode),
+    null,
+    { boc: bocRaw as never, statcan: statcanRaw as never },
+  );
+  const imfEntry = overlay.imfEntry;
   const inflationPct = safeNum(imfEntry?.inflationPct);
-  const hasInflation = imfMacroRaw != null && inflationPct != null;
+  // StatCan CPI must score even when the IMF macro envelope is missing.
+  const hasInflation = inflationPct != null;
   const inflationScore = hasInflation
     ? scoreInflationStability(inflationPct!)
     : null;
@@ -3760,6 +3783,9 @@ export async function scoreAllDimensions(
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<Record<ResilienceDimensionId, ResilienceDimensionScore>> {
   const memoizedReader = createMemoizedSeedReader(reader);
+  const statcanUsed = countryCode === 'CA'
+    ? statcanOverlayUsed(await memoizedReader(RESILIENCE_STATCAN_WDS_KEY))
+    : undefined;
   const [entries, freshnessMap, failedDatasets, standaloneFailures] = await Promise.all([
     Promise.all(
       RESILIENCE_DIMENSION_ORDER.map(async (dimensionId) => {
@@ -3805,7 +3831,7 @@ export async function scoreAllDimensions(
     // with the scorer keys in practice, the shared reader is cheap).
     readFreshnessMap(memoizedReader),
     readFailedDatasets(memoizedReader),
-    readStandaloneSourceFailureDimensions(memoizedReader),
+    readStandaloneSourceFailureDimensions(memoizedReader, undefined, countryCode, statcanUsed),
   ]);
   const scores = Object.fromEntries(entries) as Record<ResilienceDimensionId, ResilienceDimensionScore>;
 
@@ -3813,10 +3839,12 @@ export async function scoreAllDimensions(
   // derived from the aggregated seed-meta map. Runs before the T1.7
   // source-failure pass because source-failure only touches
   // imputationClass and does not interact with freshness.
+  // CA inflation/unemployment that consumed StatCan must stamp StatCan
+  // seed-meta, not the IMF registry key the overlay replaced.
   for (const dimensionId of RESILIENCE_DIMENSION_ORDER) {
     scores[dimensionId] = {
       ...scores[dimensionId],
-      freshness: classifyDimensionFreshness(dimensionId, freshnessMap),
+      freshness: classifyDimensionFreshness(dimensionId, freshnessMap, undefined, countryCode, statcanUsed),
     };
   }
 

@@ -60,18 +60,13 @@ jobs:
             echo "Exact main revision passed repository gates."
             exit 0
           fi
-          # A gate that DECIDED against this revision still stops the probe. Only
-          # an undecided one falls through: the deploy gate posts about 6 minutes
-          # after a merge and this monitor runs every 15, so a fresh head is not
-          # yet judged rather than judged bad, and failing on it made every merge
-          # produce at least one red run.
-          if [ "$head_state" != "pending" ] && [ "$head_state" != "missing" ]; then
-            echo "::error::Cannot establish ingestion operational acceptance because main gate is $head_state."
-            exit 1
-          fi
-          # Fall back to the newest ANCESTOR that passed. This is not a skip: the
-          # probe still runs, and it still runs against a revision the repository
-          # gates accepted. It just is not always the head.
+          # Any non-success head falls through: pending/missing is the normal
+          # post-merge race (deploy gate ~6 minutes, this cron every 15), and
+          # failure/error is a verdict the `gate` status already owns. Echoing
+          # that verdict here reds the ingestion monitor without looking at
+          # seeds. Walk instead. This is not a skip: the probe still runs
+          # against a revision the repository gates accepted.
+
           now=$(date +%s)
           while read -r sha committed; do
             if [ -z "$sha" ] || [ "$sha" = "$GITHUB_SHA" ]; then continue; fi

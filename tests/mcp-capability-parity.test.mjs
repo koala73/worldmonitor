@@ -246,17 +246,18 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
       card.rateLimits?.dailyByPlan,
       {
         pro: 50,
-        apiStarter: null,
-        apiBusiness: null,
+        apiStarter: 50,
+        apiBusiness: 50,
         enterprise: null,
       },
-      'server-card must not advertise API-tier MCP daily caps that the handler does not enforce',
+      'server-card must mirror the MCP daily caps enforced by the handler',
     );
     const notes = card.rateLimits?.notes;
     assert.equal(typeof notes, 'string', 'server-card rateLimits.notes must be a string');
-    assert.match(notes, /Pro\/OAuth contexts only/i, 'notes must scope the hard daily reservation to Pro/OAuth contexts');
-    assert.match(notes, /API-key .* do not use this MCP daily reservation path/i,
-      'notes must disclose that env_key/API-key MCP callers do not use the daily reservation path');
+    assert.match(notes, /Dashboard-issued wm_ API keys use the 50\/day default/i,
+      'notes must disclose the dashboard-key daily reservation');
+    assert.match(notes, /Legacy operator keys[\s\S]*outside this daily reservation path/i,
+      'notes must keep operator keys outside the daily reservation path');
     assert.doesNotMatch(notes, /1,000|1000|10,000|10000/,
       'notes must not publish API Starter/Business MCP daily caps that are not enforced');
     for (const method of [
@@ -293,17 +294,17 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
 });
 
 describe('docs/mcp-overview.mdx — API-key quota contract', () => {
-  it('keeps API-key auth separate from the Pro/OAuth daily reservation path', () => {
+  it('distinguishes dashboard-issued and legacy operator API keys', () => {
     const docs = readFileSync(new URL('../docs/mcp-overview.mdx', import.meta.url), 'utf8');
     assert.doesNotMatch(docs, /Both modes check the same PRO entitlement/i,
       'docs must not claim API-key requests use the OAuth/Pro entitlement pre-check path');
     assert.match(docs, /OAuth bearer requests re-check[\s\S]*active entitlement[\s\S]*before dispatch/i,
       'docs must describe the OAuth entitlement re-check path');
-    assert.match(docs, /Direct `X-WorldMonitor-Key` requests[\s\S]*configured API key[\s\S]*per-key (?:rate )?limiter/i,
-      'docs must describe API-key MCP auth and per-key minute limiting without implying Pro daily quota reservation');
-    assert.match(docs, /REST\/API plan allowances[\s\S]*outside[\s\S]*Pro\/OAuth MCP daily reservation path/i,
-      'docs must keep REST/API plan allowances separate from MCP daily reservation semantics');
-    assert.match(docs, /`wm_…` MCP calls[\s\S]*no MCP daily reservation/i,
-      'docs must state that wm_ API-key MCP calls have no MCP daily reservation');
+    assert.match(docs, /Dashboard-issued `X-WorldMonitor-Key: wm_…` requests[\s\S]*active entitlement[\s\S]*same per-user minute bucket and 50\/day default/i,
+      'docs must describe dashboard-key entitlement, minute, and daily enforcement');
+    assert.match(docs, /Legacy deployment-allowlisted operator keys[\s\S]*per-key minute bucket[\s\S]*skip the daily reservation/i,
+      'docs must keep operator-key limiting separate from dashboard-key metering');
+    assert.match(docs, /higher REST\/API plan allowances[\s\S]*MCP calls still use the 50\/day default/i,
+      'docs must keep REST/API allowances separate from the current MCP daily cap');
   });
 });

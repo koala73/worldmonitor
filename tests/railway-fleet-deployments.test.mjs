@@ -133,11 +133,19 @@ describe('immutable native-autodeploy fleet', () => {
     source: { repo, image: null },
   });
 
-  it('ships the exact 80-service fleet accepted by the terminal production run', () => {
+  it('ships the exact 81-service fleet accepted by the terminal production run', () => {
+    // 80 -> 81: seed-bundle-canada was provisioned after that reconciliation
+    // (service 0a4b8757, cron */5). The roster is not a baseline to be quieted —
+    // every mismatch is red — but it must list every repo-backed service, or a
+    // service whose GitHub source detaches vanishes before repository filtering
+    // and both read-only monitors report healthy. An active registry row that is
+    // absent here fails the Viewer projection audit, so the two move together.
+    // NOTE: acceptedHead/acceptedRunId still name the pre-provisioning run; a
+    // fresh reconciliation should re-stamp them.
     const fleet = readExpectedRepositoryFleet();
-    assert.equal(fleet.length, 80);
-    assert.equal(new Set(fleet.map((service) => service.id)).size, 80);
-    assert.equal(new Set(fleet.map((service) => service.name)).size, 80);
+    assert.equal(fleet.length, 81);
+    assert.equal(new Set(fleet.map((service) => service.id)).size, 81);
+    assert.equal(new Set(fleet.map((service) => service.name)).size, 81);
     assert.deepEqual(
       fleet.map((service) => service.name),
       [...fleet.map((service) => service.name)].sort(),

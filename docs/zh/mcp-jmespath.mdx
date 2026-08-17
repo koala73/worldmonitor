@@ -494,7 +494,7 @@ JMESPath 表达式可能以三种方式失败：表达式本身超过 1024 字�
 }
 ```
 
-`original_keys` 是未投影响应的顶层键——足以让模型在多一次调用里用修正后的表达式重试。一个坏表达式在适用该配额路径时**确实**每次尝试消耗一个 Pro/OAuth 每日配额槽；回显的 `original_keys` 正是为了让重试能自我修正而非瞎猜。三种类型（`expression_too_long`、`invalid_expression`、`projection_too_large`）及其精确判别字符串见 [MCP 错误目录](/zh/mcp-error-catalog#_jmespath_error--projection-failed)。
+`original_keys` 是未投影响应的顶层键——足以让模型在多一次调用里用修正后的表达式重试。一个坏表达式在适用该配额路径时**确实**每次尝试消耗一个每日配额槽；回显的 `original_keys` 正是为了让重试能自我修正而非瞎猜。三种类型（`expression_too_long`、`invalid_expression`、`projection_too_large`）及其精确判别字符串见 [MCP 错误目录](/zh/mcp-error-catalog#_jmespath_error--projection-failed)。
 
 ## 投影的互补项
 

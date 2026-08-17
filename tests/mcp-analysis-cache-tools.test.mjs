@@ -23,8 +23,10 @@ describe('get_temporal_anomalies cache tool', () => {
   it('is registered with the cache-tool contract fields', () => {
     assert.ok(tool, 'tool must exist in CACHE_TOOLS');
     assert.deepEqual(tool._cacheKeys, ['temporal:anomalies:v1']);
-    assert.equal(tool._seedMetaKey, 'seed-meta:temporal:anomalies');
-    assert.equal(tool._maxStaleMin, 45);
+    // Migrated from the retired seed-meta/stale-budget pair — the single
+    // synthesized freshness check must carry the original key + budget verbatim.
+    assert.equal(tool._freshnessChecks[0].key, 'seed-meta:temporal:anomalies');
+    assert.equal(tool._freshnessChecks[0].maxStaleMin, 45);
     assert.deepEqual(tool._apiPaths, []);
     assert.equal(tool._outputBudgetBytes, 65536);
     assert.deepEqual(tool.annotations, {
@@ -104,8 +106,10 @@ describe('get_test_site_seismicity cache tool', () => {
   it('is registered with the cache-tool contract fields', () => {
     assert.ok(tool, 'tool must exist in CACHE_TOOLS');
     assert.deepEqual(tool._cacheKeys, ['seismology:earthquakes:v1']);
-    assert.equal(tool._seedMetaKey, 'seed-meta:seismology:earthquakes');
-    assert.equal(tool._maxStaleMin, 30);
+    // Migrated from the retired seed-meta/stale-budget pair — the single
+    // synthesized freshness check must carry the original key + budget verbatim.
+    assert.equal(tool._freshnessChecks[0].key, 'seed-meta:seismology:earthquakes');
+    assert.equal(tool._freshnessChecks[0].maxStaleMin, 30);
     assert.deepEqual(tool._apiPaths, []);
     assert.deepEqual(tool.annotations, {
       readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false,

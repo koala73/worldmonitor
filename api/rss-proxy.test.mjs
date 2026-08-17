@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -10,7 +12,7 @@ delete process.env.UPSTASH_REDIS_REST_URL;
 delete process.env.UPSTASH_REDIS_REST_TOKEN;
 
 const { default: handler, __testing__ } = await import('./rss-proxy.js');
-const { RELAY_ONLY_DOMAINS } = __testing__;
+const { RELAY_ONLY_DOMAINS, RSS_BROWSER_UA, DIRECT_FETCH_HEADERS } = __testing__;
 const { __resetRateLimitForTest } = await import('./_rate-limit.js');
 const { default: isAllowedDomain } = await import('./_rss-allowed-domain-match.js');
 
@@ -843,4 +845,88 @@ test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, 
   } finally {
     mock.timers.reset();
   }
+});
+
+
+// ---------------------------------------------------------------------------
+// Browser User-Agent on the RSS proxy (#6624)
+//
+// CBC (and similar publishers) 403 Node/undici default UAs from some
+// datacenter IPs. The UA belongs on this proxy fetch, not a one-off in
+// feeds.ts, and not via fetch.bind(globalThis).
+// ---------------------------------------------------------------------------
+
+const CBC_CATALOG_URL = 'https://www.cbc.ca/webfeed/rss/rss-world';
+const SEEDER_CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
+
+test('RSS proxy browser UA matches the seeder CHROME_UA convention (#6624)', () => {
+  assert.equal(RSS_BROWSER_UA, SEEDER_CHROME_UA);
+  assert.equal(DIRECT_FETCH_HEADERS['User-Agent'], SEEDER_CHROME_UA);
+  const seedSrc = readFileSync(fileURLToPath(new URL('../scripts/_seed-utils.mjs', import.meta.url)), 'utf8');
+  assert.match(
+    seedSrc,
+    /const CHROME_UA = 'Mozilla\/5\.0 \(Windows NT 10\.0; Win64; x64\) AppleWebKit\/537\.36 \(KHTML, like Gecko\) Chrome\/134\.0\.0\.0 Safari\/537\.36'/,
+    'seeder CHROME_UA drifted from the RSS proxy browser UA',
+  );
+});
+
+test('does not inject UA via a bound fetch (#6624)', () => {
+  const src = readFileSync(fileURLToPath(new URL('./rss-proxy.js', import.meta.url)), 'utf8');
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  assert.doesNotMatch(code, /fetch\.bind\s*\(/);
+  assert.match(src, /rssFetchHeadersForHost\(/, 'UA must be set on the proxy fetch headers');
+});
+
+test('sends the seeder-convention browser User-Agent on a CBC direct fetch (#6624)', async () => {
+  const calls = spyFetch();
+  const res = await handler(makeRequest(CBC_CATALOG_URL));
+  assert.equal(res.status, 200);
+  assert.equal(feedCalls(calls).length, 1);
+  assert.equal(calls[0].url, CBC_CATALOG_URL);
+  assert.equal(calls[0].headers['User-Agent'], RSS_BROWSER_UA);
+  assert.match(calls[0].headers['User-Agent'], /Chrome\//);
+  assert.doesNotMatch(calls[0].headers['User-Agent'], /^(undici|node|WorldMonitor)/);
+});
+
+test('keeps a browser UA on the CBC path — a bot UA would be 403ed (#6624)', async () => {
+  // SCOPE, stated plainly so this is not misread as proof of a fix: the proxy
+  // ALREADY sent a browser UA before this change (Chrome/120). This mock 403s
+  // anything without Mozilla/5.0 + Chrome/, which the old UA also satisfied, so
+  // this test does NOT discriminate the new behaviour from the old and no CBC
+  // 403 is demonstrated anywhere in this change.
+  //
+  // What it does lock is a regression: if someone drops the header block or
+  // swaps in a library/undici default UA, the direct fetch starts 403ing. The
+  // version bump itself is pinned by the CHROME_UA equality test above, which
+  // is what actually fails if the proxy and seeder UAs drift apart.
+  const calls = spyFetch((_url, init) => {
+    const ua = init.headers?.['User-Agent'] || '';
+    if (!/Mozilla\/5\.0/.test(ua) || !/Chrome\//.test(ua)) {
+      return new Response('Forbidden', { status: 403 });
+    }
+    return new Response('<rss><channel><item><title>ok</title></item></channel></rss>', {
+      status: 200,
+      headers: { 'Content-Type': 'application/rss+xml' },
+    });
+  });
+
+  const res = await handler(makeRequest(CBC_CATALOG_URL));
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /<item>/);
+  assert.equal(calls[0].headers['User-Agent'], RSS_BROWSER_UA);
+  assert.equal(calls.length, 1, 'browser UA must succeed on the direct fetch; no relay retry');
+});
+
+test('does not treat an upstream CBC 403 as a cacheable success (#6624)', async () => {
+  // No relay configured (beforeEach deletes WS_RELAY_URL). A 403 must be
+  // forwarded, not rewritten to empty-200, so last-good is not poisoned
+  // by coverage-less success.
+  const calls = spyFetch(() => new Response('Forbidden', { status: 403 }));
+  const res = await handler(makeRequest(CBC_CATALOG_URL));
+  assert.equal(res.status, 403);
+  assert.equal(await res.text(), 'Forbidden');
+  const cache = res.headers.get('cache-control') || '';
+  assert.doesNotMatch(cache, /s-maxage=900/, '403 must not use the success CDN TTL');
+  assert.match(cache, /max-age=15/, '403 uses the short error cache');
+  assert.equal(calls[0].headers['User-Agent'], RSS_BROWSER_UA);
 });

@@ -3,11 +3,16 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import { __testing__ as healthTesting } from '../api/health.js';
+import { gtfsRtHeaderContentMeta } from '../scripts/lib/gtfsrt.mjs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
 const SEEDER = read('scripts/seed-ttc-alerts.mjs');
 const ADAPTER = read('scripts/lib/gtfsrt.mjs');
+// Parsed, not imported: importing the seeder executes runSeed() at module scope.
+const TTC_ALERTS_MAX_CONTENT_AGE_MIN = Number(
+  /TTC_ALERTS_MAX_CONTENT_AGE_MIN = (\d+)/.exec(SEEDER)[1],
+);
 const DEAD_URL = 'https://alerts.ttc.ca/api/alerts/live';
 const LIVE_URL = 'https://gtfsrt.ttc.ca/alerts/all?format=binary';
 
@@ -26,12 +31,15 @@ describe('TTC service-alerts production registration (#6623)', () => {
 
     assert.equal(healthTesting.SEED_META.ttcAlerts.key, written);
 
-    // The freshness cutover watches the same key, or the acknowledgement is
-    // anchored to a probe that can never clear.
+    // ttcAlerts publishes now (seed-bundle-canada is provisioned), so its
+    // expiring-ack was removed as satisfied and is no longer REQUIRED. The
+    // invariant that survives is directional: IF an acknowledgement exists it
+    // must watch the key runSeed actually writes, or it is anchored to a probe
+    // that can never clear. Requiring the ack outright would force a satisfied
+    // suppression to be reinstated just to keep this test green.
     const baseline = JSON.parse(read('scripts/seed-freshness-baseline.json'));
     const ack = baseline.acknowledged.find((row) => row.name === 'ttcAlerts');
-    assert.ok(ack, 'ttcAlerts must carry a freshness acknowledgement');
-    assert.equal(ack.cutover.probeKey, written);
+    if (ack) assert.equal(ack.cutover.probeKey, written);
   });
 
   it('does not ship the 404 alerts.ttc.ca/api/alerts/live URL', () => {
@@ -89,11 +97,12 @@ describe('TTC service-alerts production registration (#6623)', () => {
       /'transit:ttc:alerts':\s*\{ key: 'seed-meta:transit:ttc-alerts',\s*intervalMin:\s*15/,
     );
     assert.equal(healthTesting.SEED_META.ttcAlerts.key, 'seed-meta:transit:ttc-alerts');
+    // The baseline was the third carrier of the colon form. Its ack is gone now
+    // that the probe publishes, so this checks it directionally: present or
+    // absent is fine, wrong key is not.
     const baseline = JSON.parse(read('scripts/seed-freshness-baseline.json'));
-    assert.equal(
-      baseline.acknowledged.find((row) => row.name === 'ttcAlerts').cutover.probeKey,
-      'seed-meta:transit:ttc-alerts',
-    );
+    const ack = baseline.acknowledged.find((row) => row.name === 'ttcAlerts');
+    if (ack) assert.equal(ack.cutover.probeKey, 'seed-meta:transit:ttc-alerts');
   });
 
   it('does not overload VIA or 511 adapters', () => {
@@ -150,5 +159,67 @@ describe('TTC alerts health classifier (#6623)', () => {
       recordCount: 0,
     }));
     assert.equal(validEmpty.status, 'OK');
+  });
+});
+
+describe('a frozen GTFS-RT feed must not read fresh (#6623)', () => {
+  // A frozen feed still serves 200s with well-formed protobuf, so every
+  // fetch-time signal keeps saying healthy: the request succeeds, the snapshot
+  // validates, fetchedAt is always now. zeroIsValid makes it sharper — an empty
+  // alerts array is a legitimate quiet period, so record count can never
+  // separate "no disruptions" from "the producer died three days ago".
+  const NOW = Date.parse('2026-08-15T12:00:00Z');
+
+  it('derives the content clock from header.timestamp, not from fetch time', () => {
+    const fresh = gtfsRtHeaderContentMeta(
+      { header: { timestamp: new Date(NOW - 5 * 60_000).toISOString() } },
+      NOW,
+    );
+    assert.equal(fresh.newestItemAt, NOW - 5 * 60_000);
+
+    // The frozen case: fetched now, but the producer's own stamp is 3 days old.
+    const frozen = gtfsRtHeaderContentMeta(
+      { header: { timestamp: new Date(NOW - 3 * 24 * 60 * 60_000).toISOString() } },
+      NOW,
+    );
+    assert.equal(frozen.newestItemAt, NOW - 3 * 24 * 60 * 60_000);
+    assert.ok(
+      NOW - frozen.newestItemAt > TTC_ALERTS_MAX_CONTENT_AGE_MIN * 60_000,
+      'a 3-day-old header must exceed the content-age budget',
+    );
+  });
+
+  it('returns null rather than substituting now() when the stamp is missing', () => {
+    // Substituting a clock reading for a missing stamp is exactly what makes a
+    // frozen feed look fresh, so absence must mean "no content clock".
+    assert.equal(gtfsRtHeaderContentMeta({ header: {} }, NOW), null);
+    assert.equal(gtfsRtHeaderContentMeta({}, NOW), null);
+    assert.equal(gtfsRtHeaderContentMeta({ header: { timestamp: 'not-a-date' } }, NOW), null);
+    assert.equal(gtfsRtHeaderContentMeta({ header: { timestamp: null } }, NOW), null);
+  });
+
+  it('ignores a future stamp beyond clock skew instead of trusting it', () => {
+    // A feed stamped ahead cannot bound staleness; trusting it would let a
+    // producer mask a freeze by stamping the future.
+    assert.equal(
+      gtfsRtHeaderContentMeta({ header: { timestamp: new Date(NOW + 2 * 60 * 60_000).toISOString() } }, NOW),
+      null,
+    );
+    // Within an hour of skew is still accepted.
+    assert.ok(gtfsRtHeaderContentMeta({ header: { timestamp: new Date(NOW + 60_000).toISOString() } }, NOW));
+  });
+
+  it('the snapshot actually carries header.timestamp for the clock to read', () => {
+    // buildTtcAlertsSnapshot feeds contentMeta. If it dropped the stamp the
+    // clock would be permanently null and the guard silently inert. Asserted on
+    // source because importing the seeder executes runSeed().
+    assert.match(SEEDER, /timestamp:\s*unixSecondsToIso\(feed\?\.header\?\.timestamp\)/);
+  });
+
+  it('registers the content clock with runSeed, or it is never evaluated', () => {
+    // contentMeta without maxContentAgeMin is inert — maxContentAgeMin is the
+    // opt-in signal runSeed checks before consulting the clock at all.
+    assert.match(SEEDER, /contentMeta:\s*gtfsRtHeaderContentMeta/);
+    assert.match(SEEDER, /maxContentAgeMin:\s*TTC_ALERTS_MAX_CONTENT_AGE_MIN/);
   });
 });

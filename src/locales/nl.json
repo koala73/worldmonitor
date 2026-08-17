@@ -572,7 +572,7 @@
         "ucdpEvents": "UCDP-evenementen",
         "displacementFlows": "Verplaatsingsstromen",
         "climateAnomalies": "Klimaatafwijkingen",
-        "weatherAlerts": "Weerwaarschuwingen voor de VS (NWS)",
+        "weatherAlerts": "Weerwaarschuwingen voor de VS en Canada (NWS, ECCC)",
         "strategicWaterways": "Strategische waterwegen",
         "economicCenters": "Economische Centra",
         "criticalMinerals": "Kritieke mineralen",
@@ -662,7 +662,7 @@
           "infraDatacenters": "AI-rekenclusters >=10.000 GPU's",
           "infraOutages": "Internetstoringen en serviceonderbrekingen",
           "naturalEventsTech": "Aardbevingen, stormen, branden (kan datacenters treffen)",
-          "weatherAlerts": "Waarschuwingen voor zwaar weer in de VS (NWS)",
+          "weatherAlerts": "Waarschuwingen voor zwaar weer in de VS en Canada (NWS, ECCC)",
           "economicCenters": "Beurzen en centrale banken",
           "countriesOverlay": "Overlays met landnamen",
           "financeExchanges": "Belangrijke mondiale beurzen per marktniveau",
@@ -674,7 +674,7 @@
           "financeOutages": "Internetverstoringen die de marktactiviteiten kunnen beïnvloeden",
           "financeCyberThreats": "Beveiligingsgebeurtenissen rond financiële infrastructuur",
           "macroWaterways": "Strategische knelpunten voor de goederenscheepvaart",
-          "weatherAlertsMarket": "Marktrelevante zware weersomstandigheden in de VS (NWS)",
+          "weatherAlertsMarket": "Marktrelevante zware weersomstandigheden in de VS en Canada (NWS, ECCC)",
           "naturalEventsMacro": "Aardbevingen, branden, overstromingen en andere natuurlijke verstoringen",
           "timeRecent": "Filter op tijd gebaseerde gegevens naar recente uren",
           "timeExtended": "Toon gegevens van de afgelopen week, maand of altijd",
@@ -2068,13 +2068,14 @@
     },
     "sanctionsPressure": {
       "title": "Sancties & Aanwijzingen",
-      "infoTooltip": "OFAC-sanctiesaanwijzingen uit de SDN- en Geconsolideerde Lijsten. Toont welke landen het meeste druk van aanwijzingen ervaren, welke programma's dit veroorzaken, en wat sinds de laatste update is toegevoegd.",
+      "infoTooltip": "OFAC SDN- en Geconsolideerde Lijsten plus SEMA/JVCFOA-aanwijzingen van Global Affairs Canada. Toont welke landen het meeste druk van aanwijzingen ervaren, welke programma's dit veroorzaken, en wat sinds de laatste update is toegevoegd.",
       "loading": "Sanctiegegevens laden...",
       "unavailable": "Sanctiegegevens niet beschikbaar.",
       "summary": {
         "new": "Nieuw",
         "vessels": "Schepen",
-        "aircraft": "Luchtvaartuigen"
+        "aircraft": "Luchtvaartuigen",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Gesanctioneerde landen",
@@ -2089,11 +2090,12 @@
       "footer": {
         "updated": "Bijgewerkt {{time}}",
         "dataset": "dataset {{date}}",
-        "source": "Bron: OFAC"
+        "source": "Bron: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nieuw",
-        "new": "nieuw"
+        "new": "nieuw",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} aanwijzing",
       "designations_other": "{{count}} aanwijzingen",
@@ -2530,6 +2532,7 @@
     "moreEvents": "meer gebeurtenissen",
     "monitoring": "Toezicht",
     "viewUSGS": "Bekijk op USGS",
+    "viewNRCan": "Bekijk op Earthquakes Canada",
     "expired": "Verlopen",
     "timeAgo": {
       "s": "{{count}}s geleden",

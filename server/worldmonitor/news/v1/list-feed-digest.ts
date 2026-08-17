@@ -175,6 +175,14 @@ const DIPLOMACY_SEVERITY_PROMOTION_MIN_TIER12_SOURCES = 3;
 
 interface ParsedItem {
   source: string;
+  // Originating publisher from the RSS <source> element ('' when absent).
+  // Google News feeds — which back 154 of the 366 server digest labels —
+  // stamp it per item, naming the outlet that actually wrote the story.
+  // Corroboration counting prefers this over `source`: a Reuters wire
+  // arriving through the "Oil & Gas" keyword feed and through "Reuters
+  // Energy" is ONE publisher, not two (#6430). Internal to the digest
+  // build; `source` stays what the UI credits, links, and tiers.
+  originPublisher: string;
   title: string;
   link: string;
   publishedAt: number;
@@ -606,8 +614,17 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
     const isAlert = threat.level === 'critical' || threat.level === 'high';
     const description = extractDescription(block, isAtom, title);
 
+    // RSS 2.0 <source url="...">Name</source> — the originating publisher,
+    // emitted per item by Google News. Atom's <source> is a metadata
+    // CONTAINER (nested elements, no text of its own), so only the RSS
+    // dialect is read; extractTag's [^<]* body would not match a container
+    // anyway, but skipping Atom keeps that an invariant rather than a
+    // regex accident.
+    const originPublisher = isAtom ? '' : extractTag(block, 'source');
+
     items.push({
       source: feed.name,
+      originPublisher,
       title,
       link,
       publishedAt,
@@ -980,7 +997,10 @@ function computeEntityCorroborationSignals(
       // signal that feeds importanceScore and the diplomacy severity
       // promotion. The tier is a property of the LABEL, so a family joins
       // tier12Sources when any of its labels is tier 1-2.
-      const family = publisherFamilyFor(item.source);
+      // #6430: the originating publisher (RSS <source>) outranks the feed
+      // label — a wire syndicated through a keyword feed corroborates as
+      // the wire, not as the query it arrived through.
+      const family = publisherFamilyFor(item.originPublisher || item.source);
       if (family) {
         bucket.sources.add(family);
         if (getSourceTier(item.source) <= 2) bucket.tier12Sources.add(family);

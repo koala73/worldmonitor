@@ -204,6 +204,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
       lines.push('# See JSON export for full sanctions data');
       lines.push(`TotalCount,${intel.sanctions.totalCount}`);
       lines.push(`SDNCount,${intel.sanctions.sdnCount}`);
+      lines.push(`SemaCount,${intel.sanctions.semaCount}`);
       lines.push(`NewEntries,${intel.sanctions.newEntryCount}`);
       lines.push('');
     }
