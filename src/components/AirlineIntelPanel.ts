@@ -388,7 +388,7 @@ export class AirlineIntelPanel extends Panel {
     // ---- Ops tab ----
     private renderOps(): void {
         if (!this.opsData.length) {
-            setTrustedHtml(this.content, trustedHtml(`<div class="no-data">${t('components.airlineIntel.noOpsData')}</div>`, "legacy direct innerHTML migration"));
+            this.setTrustedContent(trustedHtml(`<div class="no-data">${t('components.airlineIntel.noOpsData')}</div>`, "legacy direct innerHTML migration"));
             return;
         }
         const rows = this.opsData.map(s => `
@@ -401,13 +401,13 @@ export class AirlineIntelPanel extends Panel {
         ${s.closureStatus ? '<div class="ops-closed">CLOSED</div>' : ''}
         ${s.notamFlags.length ? `<div class="ops-notam">⚠️ NOTAM</div>` : ''}
       </div>`).join('');
-        setTrustedHtml(this.content, trustedHtml(`<div class="ops-grid">${rows}</div>`, "legacy direct innerHTML migration"));
+        this.setTrustedContent(trustedHtml(`<div class="ops-grid">${rows}</div>`, "legacy direct innerHTML migration"));
     }
 
     // ---- Flights tab ----
     private renderFlights(): void {
         if (!this.flightsData.length) {
-            setTrustedHtml(this.content, trustedHtml(`<div class="no-data">${t('components.airlineIntel.noFlights')}</div>`, "legacy direct innerHTML migration"));
+            this.setTrustedContent(trustedHtml(`<div class="no-data">${t('components.airlineIntel.noFlights')}</div>`, "legacy direct innerHTML migration"));
             return;
         }
         const rows = this.flightsData.map(f => {
@@ -421,13 +421,13 @@ export class AirlineIntelPanel extends Panel {
           <div class="flight-status" style="color:${color}">${f.status}</div>
         </div>`;
         }).join('');
-        setTrustedHtml(this.content, trustedHtml(`<div class="flights-list">${rows}</div>`, "legacy direct innerHTML migration"));
+        this.setTrustedContent(trustedHtml(`<div class="flights-list">${rows}</div>`, "legacy direct innerHTML migration"));
     }
 
     // ---- Airlines tab ----
     private renderAirlines(): void {
         if (!this.carriersData.length) {
-            setTrustedHtml(this.content, trustedHtml(`<div class="no-data">${t('components.airlineIntel.noCarrierData')}</div>`, "legacy direct innerHTML migration"));
+            this.setTrustedContent(trustedHtml(`<div class="no-data">${t('components.airlineIntel.noCarrierData')}</div>`, "legacy direct innerHTML migration"));
             return;
         }
         const rows = this.carriersData.slice(0, 15).map(c => `
@@ -437,7 +437,7 @@ export class AirlineIntelPanel extends Panel {
         <div class="carrier-delay" style="color:${c.delayPct > 30 ? '#ef4444' : '#aaa'}">${c.delayPct.toFixed(1)}% delayed</div>
         <div class="carrier-cancel">${c.cancellationRate.toFixed(1)}% cxl</div>
       </div>`).join('');
-        setTrustedHtml(this.content, trustedHtml(`<div class="carriers-list">${rows}</div>`, "legacy direct innerHTML migration"));
+        this.setTrustedContent(trustedHtml(`<div class="carriers-list">${rows}</div>`, "legacy direct innerHTML migration"));
     }
 
     // ---- Tracking tab ----
@@ -505,7 +505,7 @@ export class AirlineIntelPanel extends Panel {
     // ---- News tab ----
     private renderNews(): void {
         if (!this.newsData.length) {
-            setTrustedHtml(this.content, trustedHtml(`<div class="no-data">${t('components.airlineIntel.noNews')}</div>`, "legacy direct innerHTML migration"));
+            this.setTrustedContent(trustedHtml(`<div class="no-data">${t('components.airlineIntel.noNews')}</div>`, "legacy direct innerHTML migration"));
             return;
         }
         const items = this.newsData.map(n => `

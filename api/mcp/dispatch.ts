@@ -49,9 +49,7 @@ export async function executeTool(
   data: Record<string, unknown>;
 }> {
   const reads = tool._cacheKeys.map(k => readJsonFromUpstash(k));
-  const freshnessChecks = tool._freshnessChecks?.length
-    ? tool._freshnessChecks
-    : [{ key: tool._seedMetaKey, maxStaleMin: tool._maxStaleMin }];
+  const freshnessChecks = tool._freshnessChecks;
   const metaReads = freshnessChecks.map((check) => readJsonFromUpstash(check.key));
   // #6080 deployment-order grace. Only checks declaring a content contract pay
   // for this read, so it is one extra command on get_chokepoint_status and

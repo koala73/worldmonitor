@@ -322,7 +322,15 @@ async function fetchCsv(url) {
     headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv,text/plain,*/*' },
     signal: AbortSignal.timeout(30_000),
   });
-  if (!resp.ok) throw new Error(`JODI CSV fetch failed: HTTP ${resp.status} for ${url}`);
+  if (!resp.ok) {
+    const err = new Error(`JODI CSV fetch failed: HTTP ${resp.status} for ${url}`);
+    // A missing static file does not appear during a 2s backoff, and this
+    // seeder now tries two naming conventions per year — retrying each 404
+    // three times would spend ~12s of the bundle's wall-clock budget just to
+    // rediscover that a year is not published under that name.
+    if (resp.status === 404) err.nonRetryable = true;
+    throw err;
+  }
   return resp.text();
 }
 
@@ -364,30 +372,95 @@ export function jodiSourceYears(now = new Date()) {
   };
 }
 
+/**
+ * Every published filename for one JODI year file, in the order to try them.
+ *
+ * JODI names each completed year `<kind>/<year>.csv` (2002 through 2025) but
+ * publishes the year in progress as `<kind>/<kind>year<year>.csv`. Asking only
+ * for the plain name meant the current year 404d for the whole of 2026 (#6799).
+ * Plain name first: it is what every settled year uses, so a completed year
+ * costs one request.
+ */
+export function jodiCsvCandidates(kind, year) {
+  return [
+    `${JODI_BASE}${kind}/${year}.csv`,
+    `${JODI_BASE}${kind}/${kind}year${year}.csv`,
+  ];
+}
+
+/**
+ * Fetch one JODI year, trying each published naming convention in turn.
+ *
+ * Returns `{ ok, text, url, attempted, error }` rather than a bare string so a
+ * caller can tell "this year is unreachable" from "this year is empty". That
+ * distinction is the actual #6799 defect: the previous `.catch(() => '')`
+ * collapsed both into an empty string, and an unreachable CURRENT year then
+ * degraded silently to publishing the prior year as if it were current.
+ */
+export async function fetchYearCsv(kind, year, options = {}) {
+  const fetcher = options.fetchCsv ?? fetchCsv;
+  const retries = options.retries ?? 2;
+  const attempted = jodiCsvCandidates(kind, year);
+  let lastError = null;
+
+  for (const url of attempted) {
+    try {
+      const text = await withRetry(() => fetcher(url), retries, 2000);
+      return { ok: true, text, url, attempted, error: null };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  return {
+    ok: false,
+    text: '',
+    url: null,
+    attempted,
+    error: lastError?.message || String(lastError),
+  };
+}
+
 async function fetchAllRows() {
   const { currentYear, priorYear, lookbackYear } = jodiSourceYears();
 
   const [primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior, secondaryLookback] =
     await Promise.all([
-      withRetry(() => fetchCsv(`${JODI_BASE}primary/${currentYear}.csv`), 2, 2000)
-        .catch(e => { console.warn(`  primary/${currentYear}.csv failed: ${e.message}`); return ''; }),
-      withRetry(() => fetchCsv(`${JODI_BASE}primary/${priorYear}.csv`), 2, 2000)
-        .catch(e => { console.warn(`  primary/${priorYear}.csv failed: ${e.message}`); return ''; }),
-      withRetry(() => fetchCsv(`${JODI_BASE}secondary/${currentYear}.csv`), 2, 2000)
-        .catch(e => { console.warn(`  secondary/${currentYear}.csv failed: ${e.message}`); return ''; }),
-      withRetry(() => fetchCsv(`${JODI_BASE}secondary/${priorYear}.csv`), 2, 2000)
-        .catch(e => { console.warn(`  secondary/${priorYear}.csv failed: ${e.message}`); return ''; }),
+      fetchYearCsv('primary', currentYear),
+      fetchYearCsv('primary', priorYear),
+      fetchYearCsv('secondary', currentYear),
+      fetchYearCsv('secondary', priorYear),
       // Optional: its absence only withholds the demand change, never the seed.
-      withRetry(() => fetchCsv(`${JODI_BASE}secondary/${lookbackYear}.csv`), 2, 2000)
-        .catch(e => { console.warn(`  secondary/${lookbackYear}.csv failed: ${e.message}`); return ''; }),
+      fetchYearCsv('secondary', lookbackYear),
     ]);
 
+  for (const [label, result] of [
+    [`primary/${currentYear}`, primaryCurrent],
+    [`primary/${priorYear}`, primaryPrior],
+    [`secondary/${currentYear}`, secondaryCurrent],
+    [`secondary/${priorYear}`, secondaryPrior],
+    [`secondary/${lookbackYear}`, secondaryLookback],
+  ]) {
+    if (!result.ok) console.warn(`  ${label} unavailable (tried ${result.attempted.length} names): ${result.error}`);
+  }
+
+  // Losing BOTH current-year files is not a soft degrade — every month the
+  // snapshot can still date itself from is last year's, so the publish silently
+  // becomes a re-run of a stale vintage. Say so loudly: this is what went
+  // unnoticed from January to August 2026.
+  if (!primaryCurrent.ok && !secondaryCurrent.ok) {
+    console.error(
+      `  [jodi-oil] CURRENT_YEAR_UNAVAILABLE ${currentYear}: no primary or secondary file resolved `
+      + `under any known naming convention. Publishing from ${priorYear} only — the snapshot cannot `
+      + 'advance past that year until this is fixed. Check whether JODI renamed the download again.',
+    );
+  }
+
   return mergeSourceRows(
-    primaryCurrent,
-    primaryPrior,
-    secondaryCurrent,
-    secondaryPrior,
-    secondaryLookback,
+    primaryCurrent.text,
+    primaryPrior.text,
+    secondaryCurrent.text,
+    secondaryPrior.text,
+    secondaryLookback.text,
   );
 }
 

@@ -19,6 +19,7 @@ import {
 } from '../scripts/build-crawlable-corpus.mjs';
 import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
 import { buildSourceCatalog, sourceProviderDisplayName } from '../scripts/crawlable-sources-page.mjs';
+import { resolveSourceOrigin, sourceOriginLabel } from '../scripts/source-origin.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -117,6 +118,81 @@ describe('sources catalog domain assignment', () => {
         references: [{ path: 'scripts/seed-example.mjs' }],
       }]),
       /Source provider needs a catalog domain: Unclassified Structured Provider/,
+    );
+  });
+});
+
+describe('sources catalog origin countries', () => {
+  it('infers national ccTLDs and government suffixes', () => {
+    assert.equal(resolveSourceOrigin({ provider: '24.hu', hosts: ['24.hu'] }), 'HU');
+    assert.equal(resolveSourceOrigin({
+      provider: 'Bank of Canada',
+      hosts: ['www.bankofcanada.ca'],
+    }), 'CA');
+    assert.equal(resolveSourceOrigin({
+      provider: 'U.S. Geological Survey (USGS)',
+      hosts: ['earthquake.usgs.gov'],
+    }), 'US');
+  });
+
+  it('uses publisher home country for generic-TLD outlets', () => {
+    assert.equal(resolveSourceOrigin({
+      provider: 'www.aljazeera.com',
+      hosts: ['www.aljazeera.com'],
+    }), 'QA');
+    assert.equal(resolveSourceOrigin({
+      provider: 'www.bbc.com',
+      hosts: ['www.bbc.com'],
+    }), 'GB');
+    assert.equal(sourceOriginLabel('QA'), 'Qatar');
+  });
+
+  it('marks international organizations as having no national origin', () => {
+    assert.equal(resolveSourceOrigin({
+      provider: 'International Monetary Fund (IMF)',
+      hosts: ['api.imf.org'],
+    }), null);
+    assert.equal(sourceOriginLabel(null), 'International');
+  });
+
+  it('classifies GitHub-owned platform hosts as international', () => {
+    for (const host of [
+      'api.github.com',
+      'github.blog',
+      'raw.githubusercontent.com',
+      'www.githubstatus.com',
+    ]) {
+      assert.equal(
+        resolveSourceOrigin({ provider: host, hosts: [host] }),
+        null,
+        `${host} must use the catalog's global-platform classification`,
+      );
+    }
+  });
+
+  it('does not infer Serbia from the vanity domain lobste.rs', () => {
+    assert.equal(resolveSourceOrigin({ provider: 'lobste.rs', hosts: ['lobste.rs'] }), 'US');
+  });
+
+  it('fails closed when one provider resolves to conflicting countries', () => {
+    assert.throws(
+      () => resolveSourceOrigin({
+        provider: 'Conflicting Provider',
+        hosts: ['24.hu', 'www.bbc.com'],
+      }),
+      /Source provider has conflicting origin countries: Conflicting Provider/,
+    );
+  });
+
+  it('fails closed when a generic-TLD provider has no origin country', () => {
+    assert.throws(
+      () => buildSourceCatalog([{
+        provider: 'Unknown Wire',
+        host: 'unknown-wire.example',
+        kind: 'structured',
+        references: [{ path: 'scripts/seed-market.mjs' }],
+      }]),
+      /Source provider needs a catalog origin country: Unknown Wire/,
     );
   });
 });
@@ -563,6 +639,7 @@ describe('crawlable corpus generator', () => {
         'sources page must label provider and host counts as different inventory layers',
       );
       assert.match(sourcesPage, /id="source-search"/);
+      assert.match(sourcesPage, /id="source-country"/);
       assert.match(sourcesPage, /data-source-catalog/);
       assert.match(sourcesPage, /data-source-filter="all"/);
       const renderedProviders = [...sourcesPage.matchAll(/data-provider="([^"]+)"/g)]
@@ -588,6 +665,10 @@ describe('crawlable corpus generator', () => {
       assert.ok(renderedDomains.every((domain) => SOURCE_DOMAIN_IDS.has(domain)));
       const renderedKinds = [...sourcesPage.matchAll(/data-source-kind="([^"]+)"/g)]
         .map((match) => match[1]);
+      const renderedCountries = [...sourcesPage.matchAll(/data-source-country="([^"]+)"/g)]
+        .map((match) => match[1]);
+      assert.equal(renderedCountries.length, activeProviderNames.size);
+      assert.ok(renderedCountries.every((country) => /^[a-z]{2}$|^intl$/.test(country)));
       assert.doesNotMatch(
         sourcesPage,
         /audited upstream|audited &amp; attributed/i,
@@ -631,6 +712,20 @@ describe('crawlable corpus generator', () => {
         'source type selection must filter the complete catalog',
       );
       resetButton.click();
+      const countrySelect = window.document.getElementById('source-country');
+      countrySelect.value = 'hu';
+      countrySelect.dispatchEvent(new window.Event('change'));
+      assert.equal(
+        visibleProviderCount(),
+        renderedCountries.filter((country) => country === 'hu').length,
+        'country selection must filter the complete catalog',
+      );
+      assert.ok(visibleProviderCount() > 0, 'Hungary must have at least one classified source');
+      assert.equal(
+        window.document.querySelector('.provider-card[data-provider="24.hu"] .provider-country')?.textContent,
+        'Hungary',
+      );
+      resetButton.click();
       const searchInput = window.document.getElementById('source-search');
       searchInput.value = 'Hyperliquid';
       searchInput.dispatchEvent(new window.Event('input'));
@@ -639,6 +734,31 @@ describe('crawlable corpus generator', () => {
       searchInput.dispatchEvent(new window.Event('input'));
       assert.equal(visibleProviderCount(), 0);
       assert.equal(window.document.getElementById('source-no-results').hidden, false);
+      resetButton.click();
+      const composableCard = [...window.document.querySelectorAll('.provider-card')]
+        .find((card) => card.dataset.sourceKind.split(' ').length > 0);
+      assert.ok(composableCard, 'the catalog must contain a provider for the combined-filter test');
+      const combinedDomain = composableCard.dataset.sourceDomain;
+      const combinedKind = composableCard.dataset.sourceKind.split(' ')[0];
+      const combinedCountry = composableCard.dataset.sourceCountry;
+      const combinedQuery = composableCard.dataset.provider;
+      window.document.getElementById('source-domain').value = combinedDomain;
+      kindSelect.value = combinedKind;
+      countrySelect.value = combinedCountry;
+      searchInput.value = combinedQuery;
+      searchInput.dispatchEvent(new window.Event('input'));
+      const combinedMatches = [...window.document.querySelectorAll('.provider-card')].filter((card) => (
+        card.dataset.sourceDomain === combinedDomain
+        && card.dataset.sourceKind.split(' ').includes(combinedKind)
+        && card.dataset.sourceCountry === combinedCountry
+        && card.textContent.toLowerCase().includes(combinedQuery.toLowerCase())
+      ));
+      assert.ok(combinedMatches.length > 0, 'the selected filters must retain at least one provider');
+      assert.equal(
+        visibleProviderCount(),
+        combinedMatches.length,
+        'domain, type, country, and search filters must compose with AND semantics',
+      );
       window.close();
       assert.doesNotMatch(sourcesPage, /[?&]ref=/, 'sources CTAs must never use the affiliate ref= param');
       // Domain cards deep-link into the docs catalog with the query BEFORE the
@@ -740,6 +860,7 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.countryBboxes, 'shared/country-bboxes.js');
     assert.equal(data.sources.crisisRegistry, 'shared/crawlable-crises.json');
     assert.equal(data.sources.sourcePageRenderer, 'scripts/crawlable-sources-page.mjs');
+    assert.equal(data.sources.sourceOrigin, 'scripts/source-origin.mjs');
     assert.equal(data.sources.sharedPageTemplate, 'scripts/build-crawlable-corpus.mjs');
     assert.equal(data.resilience.capturedAt, '2026-05-28');
     assert.equal(data.lastmod.countries, '2026-08-12');
@@ -749,9 +870,10 @@ describe('crawlable corpus generator', () => {
       sourcePageLastmod({
         manifestLastmod: gitFileLastmod(repoRoot, data.sources.sourceAttributionManifest),
         rendererLastmod: gitFileLastmod(repoRoot, data.sources.sourcePageRenderer),
+        originLastmod: gitFileLastmod(repoRoot, data.sources.sourceOrigin),
         sharedTemplateLastmod: gitFileLastmod(repoRoot, data.sources.sharedPageTemplate),
       }),
-      'source-page lastmod must include manifest, renderer, and shared-template changes',
+      'source-page lastmod must include manifest, renderer, origin, and shared-template changes',
     );
     assert.equal(data.crises.length, 4);
     assert.ok(data.crises.some((crisis) => crisis.slug === 'ukraine-war' && crisis.coverage.some((country) => country.code === 'UA')));

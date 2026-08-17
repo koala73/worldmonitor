@@ -597,13 +597,24 @@ export async function runBundle(label, sections, opts = {}) {
   // section runs on a later tick, so this state repeating is a stalled
   // service — the shape that made #6556 invisible for six hours. Report it as
   // a failure; `ran:0 deferred:0` (everything fresh) stays a healthy no-op.
-  // `gracefulFailed === 0` is load-bearing: a tick whose only admitted section
-  // hit a transient upstream blip (child exit 75, last-good TTL extended, no
-  // data lost) already has an exit-0 exemption precisely so one flaky source
-  // does not fire "Deploy Crashed!". Without this clause a benign 429 that
-  // happened to also push a sibling past the budget would page — alert fatigue
-  // on the exact alarm this change exists to make trustworthy.
-  const starvedTick = ran === 0 && deferred > 0 && gracefulFailed === 0;
+  // This used to carry `&& gracefulFailed === 0`, exempting a tick whose only
+  // admitted section hit a transient blip (child exit 75, last-good TTL
+  // extended, no data lost) so one flaky source would not fire "Deploy
+  // Crashed!". That premise holds for the FAILING section and not for the ones
+  // it shed — those published nothing and extended no TTL.
+  //
+  // seed-bundle-static-ref is the counter-example that removed it:
+  // Arms-Suppliers burns its full 390s fetch deadline (SIPRI answers in ~10.6s
+  // and it issues ~200 requests at concurrency 4) and exits 75, leaving 179s of
+  // a 570s budget. All four remaining due sections need >=190s, so every one
+  // defers and `ran:0`. gracefulFailed was 1, so this stayed false and the
+  // bundle reported success for weeks while mineralProduction and
+  // submarineCables had no key in Redis at all (#6799).
+  //
+  // The exemption below still covers the case it was written for — `ran > 0`
+  // with a graceful skip, where real work published and one source blipped. A
+  // tick that published NOTHING has no successful work to vouch for it.
+  const starvedTick = ran === 0 && deferred > 0;
   if (starvedTick) {
     console.error(
       `[Bundle:${label}] ran:0 while ${deferred} due section(s) were deferred — this tick published nothing and shed work. `

@@ -153,7 +153,10 @@ const FULL_MAP_LAYERS: MapLayers = {
   radiationWatch: false,
   sanctions: true,
   weather: true,
-  canadaRoads: true,
+  // Opt-in — see DEFAULT_MAP_LAYERS in src/config/variants/full.ts. Its four
+  // sources are on-demand bootstrap keys (~2.7 MB), so shipping the layer on
+  // put that on every visitor (#6763).
+  canadaRoads: false,
   canadaAlerts: true,
   economic: true,
   waterways: true,

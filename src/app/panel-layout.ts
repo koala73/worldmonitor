@@ -445,11 +445,10 @@ export class PanelLayoutManager implements AppModule {
     //      we stash a session flag before the reload and consume it here.
     const returnResult = handleCheckoutReturn();
     const returnedFromOverlayFlag = consumePostCheckoutFlag();
-    const {
-      returnedFromDesktopBrowser,
-      returnedFromCheckout,
-      returnedFromAccountCheckout,
-    } = resolveCheckoutReturnRouting(returnResult, returnedFromOverlayFlag);
+    const routing = resolveCheckoutReturnRouting(returnResult, returnedFromOverlayFlag);
+    const returnedFromDesktopBrowser = routing.kind === 'desktop';
+    const returnedFromCheckout = routing.kind !== 'none';
+    const returnedFromAccountCheckout = routing.kind === 'overlay' || routing.kind === 'account';
     this.proActivationController = new ProActivationController(ctx, {
       reloadPending: returnedFromAccountCheckout,
       openAiAnalyst: () => this.revealAnalystPanel(),

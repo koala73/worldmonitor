@@ -57,6 +57,7 @@ describe('get_sources — summary view', () => {
     assert.ok(summary.outletCount > 100, 'outlets population');
     assert.ok(Object.keys(summary.providersByKind).length > 1);
     assert.ok(Object.keys(summary.outletsByTier).length > 1);
+    assert.ok(Object.keys(summary.providersByCountry).length > 1);
   });
 
   it('includes the summary in every view, so counts never need a second call', async () => {
@@ -68,10 +69,53 @@ describe('get_sources — summary view', () => {
 });
 
 describe('get_sources — providers view', () => {
+  it('exposes the catalog origin contract in its schema', () => {
+    assert.ok(tool.inputSchema.properties.country, 'agents need a country filter');
+    assert.ok(tool.outputSchema.properties.summary.properties.providersByCountry);
+    const providerProperties = tool.outputSchema.properties.providers.items.properties;
+    assert.ok(providerProperties.originCountry);
+    assert.ok(providerProperties.originLabel);
+  });
+
   it('returns only active providers and never an excluded row', async () => {
     const result = await run({ view: 'providers', limit: 200 });
     assert.ok(result.providers.length > 0);
     assert.ok(result.providers.every((p) => p.status !== 'excluded'));
+  });
+
+  it('returns the same publisher-origin classification exposed by the public catalog', async () => {
+    const github = await run({ view: 'providers', query: 'api.github.com', limit: 50 });
+    assert.equal(github.providers.length, 1);
+    assert.equal(github.providers[0].originCountry, null);
+    assert.equal(github.providers[0].originLabel, 'International');
+
+    const lobsters = await run({ view: 'providers', query: 'lobste.rs', limit: 50 });
+    assert.equal(lobsters.providers.length, 1);
+    assert.equal(lobsters.providers[0].originCountry, 'US');
+    assert.equal(lobsters.providers[0].originLabel, 'United States');
+  });
+
+  it('narrows by country and composes country with other provider filters', async () => {
+    const result = await run({
+      view: 'providers',
+      country: 'us',
+      kind: 'feed',
+      query: 'news',
+      limit: 200,
+    });
+    assert.ok(result.providers.length > 0);
+    assert.ok(result.providers.every((p) => (
+      p.originCountry === 'US'
+      && p.kind === 'feed'
+      && /news/i.test(`${p.host} ${p.provider}`)
+    )));
+    assertOutputSchema(result);
+  });
+
+  it('supports the international country bucket', async () => {
+    const result = await run({ view: 'providers', country: 'intl', limit: 200 });
+    assert.ok(result.providers.length > 0);
+    assert.ok(result.providers.every((p) => p.originCountry === null));
   });
 
   it('narrows by kind', async () => {
@@ -161,6 +205,13 @@ describe('get_sources — input handling', () => {
   it('rejects an unknown view with a schema-valid error envelope', async () => {
     const result = await run({ view: 'nonsense' });
     assert.ok(result.error, 'an unknown view must be an explicit error');
+    assertOutputSchema(result);
+  });
+
+  it('rejects an unknown provider country with the available filter values', async () => {
+    const result = await run({ view: 'providers', country: 'zz' });
+    assert.match(result.error, /country must be one of:/i);
+    assert.equal(result.providers, undefined);
     assertOutputSchema(result);
   });
 

@@ -434,4 +434,34 @@ describe('health freshness ingestion', () => {
       'App scheduler should hydrate health freshness at post-paint idle (never in the LCP window — #4907) and then on an interval, independent of panel visibility',
     );
   });
+
+  it('renders server-crit and server-warn statuses as degraded, not fresh (#6780)', async () => {
+    __resetHealthFreshnessForTests();
+    const checkedAtMs = Date.now();
+    await refreshDataFreshnessFromHealth({
+      endpoint: '/api/health',
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        checkedAt: new Date(checkedAtMs).toISOString(),
+        checks: {
+          // Server-crit: must surface as an error even at a fresh seed age,
+          // instead of passing calculateStatus's age check as 'fresh'.
+          weatherAlerts: { status: 'CHINA_UNAVAILABLE', records: 5, seedAgeMin: 1, maxStaleMin: 45 },
+          // Server-warn degradation: fresh age but must render 'stale'.
+          gdeltIntel: { status: 'COVERAGE_DEGRADED', records: 10, seedAgeMin: 1, maxStaleMin: 420 },
+          // Server-ok: an intentionally-blocked source is NOT a degradation and
+          // must still render 'fresh' at a fresh age (guards a future edit from
+          // folding it in with the warn statuses next to it).
+          cyberThreats: { status: 'SOURCE_BLOCKED', records: 8, seedAgeMin: 1, maxStaleMin: 240 },
+        },
+      }),
+    });
+
+    // Before #6780 the first two rendered 'fresh' (green): CHINA_UNAVAILABLE was
+    // not an error predicate and COVERAGE_DEGRADED was not in the fresh-age stale
+    // set. SOURCE_BLOCKED must stay fresh in both the old and new behavior.
+    assert.equal(dataFreshness.getSource('weather')?.status, 'error');
+    assert.equal(dataFreshness.getSource('gdelt')?.status, 'stale');
+    assert.equal(dataFreshness.getSource('cyber_threats')?.status, 'fresh');
+  });
 });

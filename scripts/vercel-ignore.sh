@@ -11,6 +11,7 @@ if [ "$VERCEL_GIT_COMMIT_REF" = "main" ] && [ -n "$VERCEL_GIT_PREVIOUS_SHA" ]; t
       'scripts/build-crawlable-corpus.mjs' 'scripts/build-research-reports.mjs' \
       'scripts/build-sitemap.mjs' 'scripts/discover-content-corpus-pages.mjs' \
       'scripts/crawlable-live-tools.mjs' 'scripts/crawlable-sources-page.mjs' \
+      'scripts/source-origin.mjs' 'scripts/source-origin.d.mts' \
       'scripts/generate-inventory-facts.mjs' \
       'scripts/docs-stats.mjs' 'scripts/source-attribution.mjs' 'scripts/vercel-ignore.sh' \
       'package.json' 'package-lock.json' 'vite.config.ts' 'tsconfig.json' \
@@ -75,6 +76,8 @@ git diff --name-only "$COMPARE_SHA" HEAD -- \
   'scripts/discover-content-corpus-pages.mjs' \
   'scripts/crawlable-live-tools.mjs' \
   'scripts/crawlable-sources-page.mjs' \
+  'scripts/source-origin.mjs' \
+  'scripts/source-origin.d.mts' \
   'scripts/generate-inventory-facts.mjs' \
   'scripts/docs-stats.mjs' \
   'scripts/source-attribution.mjs' \

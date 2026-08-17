@@ -23,6 +23,7 @@ import {
   selectTorontoRoadRecords,
   validateTorontoRoadEnvelope,
 } from '../scripts/lib/toronto-road-restrictions.mjs';
+import { CANADA_ROAD_SOURCES } from '../src/services/canada-roads-core.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FIXTURE_PATH = join(root, 'tests/fixtures/toronto-road-restrictions.json');
@@ -315,11 +316,26 @@ test("toronto restrictions share canadaRoads and do not invent a second MapLayer
   assert.doesNotMatch(types, /torontoRoads\?: boolean/);
   assert.match(layers, /canadaRoads:\s+def\('canadaRoads'/);
   assert.doesNotMatch(layers, /torontoRoads:\s+def\(/);
-  assert.match(client, /getHydratedData\('canadaRoads'\)/);
-  assert.match(client, /key: 'torontoRoads'/);
   assert.match(client, /unionCanadaRoadRecords/);
-  assert.match(client, /ontario-511/);
-  assert.match(client, /toronto-roads/);
+
+  // Read the real descriptors instead of grepping canada-roads.ts for their
+  // literals: #6763 moved the list into canada-roads-core.ts so tests could
+  // import it, and derived both loader maps from it — so the per-key strings
+  // this used to match no longer exist anywhere in the client.
+  assert.deepEqual(
+    CANADA_ROAD_SOURCES.map(({ key, source }) => `${key}:${source}`),
+    [
+      'canadaRoads:ontario-511',
+      'albertaRoads:alberta-511',
+      'torontoRoads:toronto-roads',
+      'bcOpen511:bc-open511',
+    ],
+    'Toronto is one source of the shared canadaRoads layer, not its own layer key',
+  );
+  // Derived, so a source cannot be added without a loader and read as
+  // permanently unavailable.
+  assert.match(client, /HYDRATED_LOADERS[\s\S]{0,200}CANADA_ROAD_SOURCES\.map/);
+  assert.match(client, /ON_DEMAND_LOADERS[\s\S]{0,200}CANADA_ROAD_SOURCES\.map/);
 });
 
 test("toronto roads runs as a bundle member, not its own */15 service", () => {
@@ -335,18 +351,25 @@ test("toronto roads runs as a bundle member, not its own */15 service", () => {
   );
 });
 
-test("bootstrap keeps Ontario and Alberta fast but fetches Toronto roads on demand", () => {
+test("bootstrap fetches every Canada road feed on demand, including Toronto", () => {
+  // Was: "keeps Ontario and Alberta fast but fetches Toronto roads on demand".
+  // That split was the #6763 bug. A tier is not layer-gated, so keeping the two
+  // 511 feeds fast shipped 507,639 B to every visitor on every variant while
+  // this file's own subject — the 2 MB Toronto snapshot — was correctly held
+  // back. All four are on-demand now.
+  //
+  // The layer-level invariant (an on-demand-backed layer must not ship enabled)
+  // lives in tests/canada-roads-startup-cost.test.mts; this only pins Toronto's
+  // neighbourhood of it.
   const src = readFileSync(join(root, "shared/bootstrap-tier-keys.js"), "utf8");
   assert.match(src, /canadaRoads: 'infra:ontario-511:v1'/);
   assert.match(src, /torontoRoads: 'infra:toronto-roads:v1'/);
   const fast = src.slice(src.indexOf("const FAST_KEY_NAMES"), src.indexOf("const ON_DEMAND_KEY_NAMES"));
-  assert.match(fast, /'canadaRoads'/);
-  assert.match(fast, /'albertaRoads'/);
-  assert.doesNotMatch(fast, /'torontoRoads'/);
-  assert.doesNotMatch(fast, /'bcOpen511'/);
   const onDemand = src.slice(src.indexOf("const ON_DEMAND_KEY_NAMES"));
-  assert.match(onDemand, /'torontoRoads'/);
-  assert.match(onDemand, /'bcOpen511'/);
+  for (const key of ["canadaRoads", "albertaRoads", "torontoRoads", "bcOpen511"]) {
+    assert.doesNotMatch(fast, new RegExp(`'${key}'`), `${key} must not ride the fast tier`);
+    assert.match(onDemand, new RegExp(`'${key}'`), `${key} must be on-demand`);
+  }
 });
 
 test("Toronto roads is live, so it carries no freshness acknowledgement", () => {

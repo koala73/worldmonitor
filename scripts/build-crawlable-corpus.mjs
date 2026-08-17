@@ -40,6 +40,7 @@ const CRISIS_REGISTRY_PATH = 'shared/crawlable-crises.json';
 const RESEARCH_REPORTS_INDEX_PATH = 'shared/research-reports/index.mjs';
 const SOURCE_ATTRIBUTION_MANIFEST_PATH = 'shared/source-attribution-manifest.json';
 const SOURCE_PAGE_RENDERER_PATH = 'scripts/crawlable-sources-page.mjs';
+const SOURCE_ORIGIN_PATH = 'scripts/source-origin.mjs';
 const SHARED_PAGE_TEMPLATE_PATH = 'scripts/build-crawlable-corpus.mjs';
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
@@ -47,7 +48,7 @@ const SHARED_PAGE_TEMPLATE_PATH = 'scripts/build-crawlable-corpus.mjs';
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-12';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-07-28';
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-07-28';
-const SOURCES_PAGE_CONTENT_VERSION = '2026-08-14';
+const SOURCES_PAGE_CONTENT_VERSION = '2026-08-16';
 const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-05';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
@@ -223,6 +224,7 @@ function laterDate(...values) {
 export function sourcePageLastmod({
   manifestLastmod,
   rendererLastmod,
+  originLastmod,
   sharedTemplateLastmod,
   generatorContentVersion = CORPUS_GENERATOR_CONTENT_VERSION,
   pageContentVersion = SOURCES_PAGE_CONTENT_VERSION,
@@ -230,6 +232,7 @@ export function sourcePageLastmod({
   return laterDate(
     manifestLastmod,
     rendererLastmod,
+    originLastmod,
     sharedTemplateLastmod,
     generatorContentVersion,
     pageContentVersion,
@@ -845,6 +848,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const sourcesLastmod = sourcePageLastmod({
     manifestLastmod: gitFileLastmod(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH),
     rendererLastmod: gitFileLastmod(rootDir, SOURCE_PAGE_RENDERER_PATH),
+    originLastmod: gitFileLastmod(rootDir, SOURCE_ORIGIN_PATH),
     sharedTemplateLastmod: gitFileLastmod(rootDir, SHARED_PAGE_TEMPLATE_PATH),
   });
 
@@ -863,6 +867,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       researchReports: RESEARCH_REPORTS_INDEX_PATH,
       sourceAttributionManifest: SOURCE_ATTRIBUTION_MANIFEST_PATH,
       sourcePageRenderer: SOURCE_PAGE_RENDERER_PATH,
+      sourceOrigin: SOURCE_ORIGIN_PATH,
       sharedPageTemplate: SHARED_PAGE_TEMPLATE_PATH,
     },
     lastmod: {

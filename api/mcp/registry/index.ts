@@ -49,8 +49,8 @@ for (const tool of TOOL_REGISTRY) {
 // the registry or the module-level schema consts. Codex Round 2 explicitly
 // flagged shallow `{ ...prop }` as insufficient for these shapes.
 //
-// `_*`-prefixed internal fields (_apiPaths, _cacheKeys, _seedMetaKey,
-// _maxStaleMin, _freshnessChecks, _coverageKeys, _postFilter, _execute)
+// `_*`-prefixed internal fields (_apiPaths, _cacheKeys,
+// _freshnessChecks, _coverageKeys, _postFilter, _execute)
 // are NEVER enumerated — the function only constructs a fresh object with
 // the public-shape fields (name, description, inputSchema, annotations).
 //

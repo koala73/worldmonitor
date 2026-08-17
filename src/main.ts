@@ -357,6 +357,18 @@ function shouldSuppressCspViolation(
       if (url.protocol === 'https:'
           && ((url.hostname === 'use.typekit.net' && /^\/[^/]+\.css$/.test(url.pathname))
             || (url.hostname === 'p.typekit.net' && url.pathname === '/p.css'))) return true;
+      // unpkg's Leaflet stylesheet. WorldMonitor renders every map with
+      // MapLibre/deck.gl and has never depended on Leaflet — the string appears
+      // nowhere in src/, api/, public/, index.html or package.json — and this
+      // page's style-src is `'self' 'unsafe-inline'` with no cross-origin host,
+      // so an unpkg sheet is injected by an extension or userscript. Round 4 of
+      // WORLDMONITOR-J0, and the only blockedURI still live: a 300-event sample
+      // taken 2026-08-16 showed every other host silent since its own rule
+      // shipped (6ppn 07-05, Google Fonts 07-20, Typekit 08-02, FontAwesome
+      // 08-07) while unpkg produced 6 events that morning across 3 builds.
+      // Exact host + `.css` path, like the 6ppn rule; unpkg under script-src
+      // still surfaces, which matters because it is a general npm CDN.
+      if (url.protocol === 'https:' && url.hostname === 'unpkg.com' && cssFile.test(url.pathname)) return true;
     } catch { /* unparseable values fall through */ }
     // Extension bug: a literal unsubstituted `[email]` template placeholder as
     // the stylesheet URL. Not a parseable host; can never be first-party.

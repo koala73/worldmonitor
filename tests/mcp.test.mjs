@@ -1243,8 +1243,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       description: 'test seam',
       inputSchema: { type: 'object', properties: {}, required: [] },
       _cacheKeys: ['fake:key:v1'],
-      _seedMetaKey: 'seed-meta:fake',
-      _maxStaleMin: 60,
+      _freshnessChecks: [{ key: 'seed-meta:fake', maxStaleMin: 60 }],
       _apiPaths: [],
       _postFilter: (data) => {
         data.mutated = true; // mutate the clone, then blow up mid-filter

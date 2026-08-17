@@ -414,18 +414,20 @@ function parseBootstrapCacheContract(source = read('api/bootstrap.js')) {
     );
   }
 
-  // `const cacheTier = tier ?? (auth.kind === 'public-on-demand' ? 'slow' : null)`
+  const successBlock = source.match(/function successCacheHeaders\([\s\S]*?\n\}/)?.[0];
+  if (!successBlock) throw new Error('docs-stats: could not parse successCacheHeaders in api/bootstrap.js');
+
+  // `const tier = requestedTier ?? (authKind === 'public-on-demand' ? 'slow' : null)`
   // — the tier a marked single-key on-demand URL inherits when it declares no
-  // profile of its own.
-  const onDemandDefaultTier = source.match(
-    /const cacheTier = tier \?\? \(auth\.kind === 'public-on-demand' \? '(\w+)' : null\);/,
+  // profile of its own. Read inside successCacheHeaders, where the default now
+  // lives, for the same reason as the fallbacks below: bounded to the emitter so
+  // a removed default throws instead of matching something unrelated.
+  const onDemandDefaultTier = successBlock.match(
+    /const tier = requestedTier \?\? \(authKind === 'public-on-demand' \? '(\w+)' : null\);/,
   )?.[1];
   if (!onDemandDefaultTier || !tierCache[onDemandDefaultTier]) {
     throw new Error('docs-stats: could not parse the public-on-demand default cache tier in api/bootstrap.js');
   }
-
-  const successBlock = source.match(/function successCacheHeaders\([\s\S]*?\n\}/)?.[0];
-  if (!successBlock) throw new Error('docs-stats: could not parse successCacheHeaders in api/bootstrap.js');
 
   // The tier-less fallbacks — what `?keys=weatherAlerts&public=1` gets, since a
   // marked single-key URL carries no `tier` param and weatherAlerts declares no
@@ -441,17 +443,23 @@ function parseBootstrapCacheContract(source = read('api/bootstrap.js')) {
     throw new Error('docs-stats: could not parse the tier-less public cache fallbacks in api/bootstrap.js');
   }
 
-  // Pin the WIRING, not just the constants. Parsing `cacheTier` proves the
-  // value is COMPUTED, never that it reaches the emitter: swap the call to
-  // `successCacheHeaders(tier, ...)` and on-demand inheritance stops while
-  // every parsed value stays byte-identical and the pages keep publishing it.
-  // Same for the profile lookup — without it the per-key overrides are dead.
+  // Pin the WIRING, not just the constants. Parsing the on-demand default proves
+  // the value is COMPUTED, never that it reaches the emitter; same for the
+  // profile lookup, without which the per-key overrides are dead.
+  //
+  // The default used to be computed at the call site and passed in, so this
+  // checked that the caller passed the computed value rather than the raw
+  // `tier`. #6763 moved it inside successCacheHeaders — there is now one
+  // resolution path and no call-site variant that can silently drop
+  // inheritance — so what is pinned here is that the handler still routes its
+  // success response through that emitter at all.
+  //
   // A source gate cannot prove runtime behavior (api/bootstrap-auth.test.mjs
   // does that); this narrows the gap between "the constant says X" and "the
   // handler emits X" to a rename, which throws rather than passing quietly.
-  if (!/successCacheHeaders\(\s*cacheTier,\s*auth\.kind,\s*cors,\s*onDemandKey,?\s*\)/.test(source)) {
+  if (!/successCacheHeaders\(\s*tier,\s*auth\.kind,\s*cors,\s*onDemandKey,?\s*\)/.test(source)) {
     throw new Error(
-      'docs-stats: api/bootstrap.js no longer calls successCacheHeaders(cacheTier, auth.kind, cors, onDemandKey) '
+      'docs-stats: api/bootstrap.js no longer calls successCacheHeaders(tier, auth.kind, cors, onDemandKey) '
       + '— the documented per-auth-kind cache contract may no longer be what it emits',
     );
   }

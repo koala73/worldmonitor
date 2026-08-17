@@ -18,6 +18,7 @@
 import sourceTiersData from '../../../shared/source-tiers.json';
 import attributionManifest from '../../../shared/source-attribution-manifest.json';
 import { getSourceProvenanceState } from '../../../shared/source-provenance';
+import { resolveSourceOrigin, sourceOriginFilterValue, sourceOriginLabel } from '../../../scripts/source-origin.mjs';
 import { argNum, argStr, ciIncludes } from '../filters';
 import type { ToolDef } from '../types';
 
@@ -35,6 +36,28 @@ interface ManifestEntry {
 const MANIFEST_ENTRIES = (attributionManifest as { entries: ManifestEntry[] }).entries;
 const ACTIVE_PROVIDERS = MANIFEST_ENTRIES.filter((e) => e.status !== 'excluded');
 const EXCLUDED_COUNT = MANIFEST_ENTRIES.length - ACTIVE_PROVIDERS.length;
+
+const PROVIDER_HOSTS = new Map<string, string[]>();
+for (const entry of ACTIVE_PROVIDERS) {
+  const provider = entry.provider || entry.host;
+  const hosts = PROVIDER_HOSTS.get(provider) || [];
+  if (!hosts.includes(entry.host)) hosts.push(entry.host);
+  PROVIDER_HOSTS.set(provider, hosts);
+}
+
+const PROVIDER_ORIGINS = new Map<string, string | null>();
+for (const [provider, hosts] of PROVIDER_HOSTS) {
+  PROVIDER_ORIGINS.set(provider, resolveSourceOrigin({ provider, hosts }));
+}
+
+function providerOrigin(entry: ManifestEntry): string | null {
+  const provider = entry.provider || entry.host;
+  const origin = PROVIDER_ORIGINS.get(provider);
+  if (origin === undefined && !PROVIDER_ORIGINS.has(provider)) {
+    throw new Error(`Missing publisher origin for provider: ${provider}`);
+  }
+  return origin ?? null;
+}
 
 const SOURCE_VIEWS = ['summary', 'providers', 'outlets'] as const;
 const DEFAULT_ROW_LIMIT = 50;
@@ -105,6 +128,7 @@ export const SOURCE_TOOLS: ToolDef[] = [
           description: 'summary (default) returns counts only and is small. providers enumerates upstream hosts; outlets enumerates named news organisations with tier and provenance.',
         },
         kind: { type: 'string', description: 'providers view only: restrict to one kind — feed, structured, feed+structured, or operational-status.' },
+        country: { type: 'string', description: 'providers view only: restrict by publisher origin using a two-letter country code or intl for international sources. Case-insensitive.' },
         tier: { type: 'integer', minimum: 1, maximum: 4, description: 'outlets view only: restrict to one editorial tier. 1 is a wire or primary outlet. Outlets with no declared tier are never returned by this filter, because their tier is unknown rather than 4.' },
         risk: { type: 'string', enum: ['low', 'medium', 'high', 'unknown'], description: 'outlets view only: restrict to one declared propaganda-risk band.' },
         query: { type: 'string', description: 'Case-insensitive substring match — against host and provider in the providers view, against outlet name in the outlets view. Applied before limit.' },
@@ -120,13 +144,14 @@ export const SOURCE_TOOLS: ToolDef[] = [
         summary: {
           type: 'object',
           description: 'Always present, in every view, so counts are available without a second call.',
-          required: ['providerCount', 'outletCount', 'excludedProviderCount'],
+          required: ['providerCount', 'outletCount', 'excludedProviderCount', 'providersByCountry'],
           properties: {
             providerCount: { type: 'number', description: 'Active upstream hosts. Excludes the excluded-status rows counted separately.' },
             excludedProviderCount: { type: 'number', description: 'Manifest rows deliberately excluded from the provider count (local transports and development-only URLs). Reported rather than silently dropped.' },
             outletCount: { type: 'number', description: 'Named news organisations carrying a declared editorial tier.' },
             providersByKind: { type: 'object', description: 'Active provider counts keyed by kind.' },
             providersByStatus: { type: 'object', description: 'Active provider counts keyed by attribution-review status.' },
+            providersByCountry: { type: 'object', description: 'Active provider counts keyed by the lowercase country filter value, including intl.' },
             outletsByTier: { type: 'object', description: 'Outlet counts keyed by declared tier.' },
             outletsByRisk: { type: 'object', description: 'Outlet counts keyed by propaganda-risk band.' },
           },
@@ -136,12 +161,15 @@ export const SOURCE_TOOLS: ToolDef[] = [
           description: 'Present only in the providers view.',
           items: {
             type: 'object',
+            required: ['host', 'provider', 'originCountry', 'originLabel'],
             properties: {
               host: { type: 'string' },
               provider: { type: 'string' },
               kind: { type: 'string' },
               status: { type: 'string' },
               license: { type: 'string' },
+              originCountry: { type: ['string', 'null'], description: 'Publisher-origin ISO 3166-1 alpha-2 code, or null for international sources.' },
+              originLabel: { type: 'string', description: 'Human-readable publisher-origin label.' },
             },
           },
         },
@@ -172,6 +200,7 @@ export const SOURCE_TOOLS: ToolDef[] = [
         outletCount: outletNames.length,
         providersByKind: tally(ACTIVE_PROVIDERS.map((e) => e.kind)),
         providersByStatus: tally(ACTIVE_PROVIDERS.map((e) => e.status)),
+        providersByCountry: tally(ACTIVE_PROVIDERS.map((e) => sourceOriginFilterValue(providerOrigin(e)))),
         outletsByTier: tally(outletNames.map((n) => String(SOURCE_TIERS[n]))),
         outletsByRisk: tally(outletNames.map((n) => getSourceProvenanceState(n).risk)),
       };
@@ -189,17 +218,31 @@ export const SOURCE_TOOLS: ToolDef[] = [
 
       if (view === 'providers') {
         const kind = argStr(params.kind);
+        const country = argStr(params.country)?.toLowerCase();
+        if (country && !(country in summary.providersByCountry)) {
+          return {
+            view,
+            summary,
+            error: `country must be one of: ${Object.keys(summary.providersByCountry).sort().join(', ')}`,
+          };
+        }
         const matches = ACTIVE_PROVIDERS.filter((e) => (
           (!kind || argStr(e.kind) === kind)
+          && (!country || sourceOriginFilterValue(providerOrigin(e)) === country)
           && (!query || ciIncludes(e.host, query) || ciIncludes(e.provider, query))
         ));
-        const providers = matches.slice(0, limit).map((e) => ({
-          host: e.host,
-          provider: e.provider,
-          kind: e.kind,
-          status: e.status,
-          license: e.license,
-        }));
+        const providers = matches.slice(0, limit).map((e) => {
+          const originCountry = providerOrigin(e);
+          return {
+            host: e.host,
+            provider: e.provider || e.host,
+            kind: e.kind,
+            status: e.status,
+            license: e.license,
+            originCountry,
+            originLabel: sourceOriginLabel(originCountry),
+          };
+        });
         return {
           view,
           summary,

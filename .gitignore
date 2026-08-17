@@ -110,6 +110,13 @@ api-cache.json
 verbose-mode.json
 skills-lock.json
 tmp/
+# Two tests mkdtemp their stub bins and fixtures INSIDE the repo root
+# (seed-freshness-workflow.test.mjs, deploy-gate-status-description.test.mjs),
+# so while test:data runs any `git add -A` sweeps them into the commit — which
+# is how ten of them reached a branch during #6763, caught only by the pre-push
+# worktree-drift gate.
+.tmp-seed-freshness-gate-*/
+.tmp-deploy-gate-*/
 .context/
 # Scratch the Umami storage monitor writes on the runner: Railway volume and
 # deployment dumps plus its cached growth baseline. Local runs produce them too.

@@ -12,7 +12,10 @@ import {
 const SEEDER_SOURCE = readFileSync(new URL('../scripts/seed-provincial-511.mjs', import.meta.url), 'utf8');
 const ADAPTER_SOURCE = readFileSync(new URL('../scripts/lib/provincial-511.mjs', import.meta.url), 'utf8');
 const RELAY_SOURCE = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
-const CANADA_ROADS_SOURCE = readFileSync(new URL('../src/services/canada-roads.ts', import.meta.url), 'utf8');
+// canada-roads-core.ts, not canada-roads.ts: #6763 moved the source descriptors
+// into the import-safe core, so the per-jurisdiction literals this file checks
+// for live there now.
+const CANADA_ROADS_SOURCE = readFileSync(new URL('../src/services/canada-roads-core.ts', import.meta.url), 'utf8');
 
 describe('per-host 511 limiter (#6618 v1)', () => {
   it('does not import the seeder from tests', () => {

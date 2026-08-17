@@ -12,6 +12,7 @@ import {
   BOOTSTRAP_CACHE_KEYS as EDGE_BOOTSTRAP_CACHE_KEYS,
   BOOTSTRAP_TIERS as EDGE_BOOTSTRAP_TIERS,
 } from '../api/_bootstrap-tier-keys.js';
+import { CANADA_ROAD_SOURCES } from '../src/services/canada-roads-core.ts';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../api/_cii-risk-cache-keys.js';
 import { BOOTSTRAP_TIER_TIMEOUT_MS } from '../src/services/bootstrap.ts';
 import { __testing__ as healthTesting } from '../api/health.js';
@@ -317,8 +318,24 @@ describe('Bootstrap key hydration coverage', () => {
     walk(join(root, 'src'));
     const allSrc = srcFiles.map(f => readFileSync(f, 'utf-8')).join('\n');
 
+    // A third valid form: a key consumed through a loader map DERIVED from a
+    // descriptor list rather than named in a per-key literal. #6763 built the
+    // Canada road loaders as `CANADA_ROAD_SOURCES.map(({ key }) => ...)`
+    // precisely so a fifth jurisdiction cannot be added with no loader and read
+    // as permanently unavailable — the failure hand-listed literals invite.
+    //
+    // This follows the derivation instead of forcing the literals back, and
+    // stays honest by requiring the derivation site to exist: delete it and
+    // every road key falls through to the assertion below.
+    const derivedRoadKeys = new Set(
+      /CANADA_ROAD_SOURCES\.map\(\(\{ key \}\) => \[key, \(\) => ensureHydrated\(key\)\]\)/.test(allSrc)
+        ? CANADA_ROAD_SOURCES.map(({ key }) => key)
+        : [],
+    );
+
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;
+      if (derivedRoadKeys.has(key)) continue;
       // Two valid consumer forms. `getHydratedData(k)` reads a key delivered by a
       // tier bundle. `ensureHydrated(k)` (#5300) reads a key that rides in no
       // tier: it returns the tier value if one is present and otherwise fetches

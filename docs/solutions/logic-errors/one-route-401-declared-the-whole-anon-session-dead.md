@@ -138,3 +138,8 @@ wm_api_usage | where ip in ("1.0.210.48", ...) | summarize c=count() by ip, stat
 - #5516 — removed one contributor (country-intel-brief Pro denials), not the class
 - #5251 — original diagnosis; #5245 — the telemetry itself; #5219 — the 15-minute cooldown
 - `tests/wm-session-auto-refresh.test.mts` — the five regression tests, each proven red against the pre-change code before the fix was restored
+
+Later in the same lineage:
+
+- #6413 — split a failed mint into `refused` / `malformed` / `timeout` / `network`, so only a *server* verdict still skips the quorum this doc introduced, and added the `mint_cause` Sentry tag
+- #6804 / PR #6809 — [`mint_failed` named a mint nobody attempted](mint-failed-named-a-mint-nobody-attempted.md). The prevention rule below ("check the deliverability of a new telemetry level before relying on it") recurred one layer down: the `mint_cause` tag *was* delivered, but was written conditionally and attributed from module-scoped state, so it could not name the failure it existed to explain

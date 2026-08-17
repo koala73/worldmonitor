@@ -471,6 +471,9 @@ class DataFreshnessTracker {
     if (age <= freshThreshold) return source.healthStatus === 'COVERAGE_PARTIAL'
       || source.healthStatus === 'STALE_CONTENT'
       || source.healthStatus === 'STALE_SEED'
+      || source.healthStatus === 'COVERAGE_DEGRADED'
+      || source.healthStatus === 'CHINA_DEGRADED'
+      || source.healthStatus === 'ROLLOUT_PENDING'
       ? 'stale'
       : 'fresh';
     if (age <= staleThreshold) return 'stale';
@@ -479,7 +482,10 @@ class DataFreshnessTracker {
   }
 
   private healthStatusIsError(status: string): boolean {
-    return status === 'SEED_ERROR' || status === 'REDIS_DOWN' || status === 'REDIS_PARTIAL';
+    return status === 'SEED_ERROR' || status === 'REDIS_DOWN' || status === 'REDIS_PARTIAL'
+      // Server-crit: a fresh-aged CHINA_UNAVAILABLE must render as an error, not
+      // pass through calculateStatus's age check as 'fresh' (api/health.js crit).
+      || status === 'CHINA_UNAVAILABLE';
   }
 
   private healthStatusHasNoData(status: string): boolean {

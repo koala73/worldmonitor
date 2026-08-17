@@ -183,9 +183,10 @@ export interface CacheToolDef extends BaseToolDef {
   // Explicit output labels for keys whose last informative segment is too
   // generic (for example economic:china:macro:v2 -> "china-macro").
   _cacheLabels?: Record<string, string>;
-  _seedMetaKey: string;
-  _maxStaleMin: number;
-  _freshnessChecks?: FreshnessCheck[];
+  // Per-key freshness contract. Required and non-empty (tuple = at least one
+  // element) — every cache tool must declare at least one freshness budget, and
+  // the dispatcher reads this list directly with no synthesized fallback.
+  _freshnessChecks: [FreshnessCheck, ...FreshnessCheck[]];
   _execute?: never;
   // Optional in-memory post-filter applied to the label-walked `data` map
   // AFTER the Redis reads + freshness + cache_all_null guard. Pure narrowing:
@@ -216,8 +217,6 @@ export interface CacheToolDef extends BaseToolDef {
 // hybrid _execute's `_coverageKeys` are equivalent for that audit.
 export interface RpcToolDef extends BaseToolDef {
   _cacheKeys?: never;
-  _seedMetaKey?: never;
-  _maxStaleMin?: never;
   _freshnessChecks?: never;
   _execute: (
     params: Record<string, unknown>,

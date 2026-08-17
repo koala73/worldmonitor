@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { CANADA_ROAD_SOURCES } from '../src/services/canada-roads-core';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel: string) => readFileSync(join(root, rel), 'utf8');
@@ -28,12 +29,13 @@ function freshnessIds(): Array<{ key: string; freshnessId: string }> {
     .map((m) => ({ key: m[1], freshnessId: m[2] }));
 }
 
-/** Source keys as declared in CANADA_ROAD_SOURCES. */
+/**
+ * Source keys as declared in CANADA_ROAD_SOURCES. Imported rather than scraped:
+ * the descriptors live in `canada-roads-core.ts`, which has no Vite-side imports,
+ * so the real list is reachable from a test.
+ */
 function sourceKeys(): string[] {
-  const block = /CANADA_ROAD_SOURCES: readonly CanadaRoadSourceDescriptor\[\] = Object\.freeze\(\[([\s\S]*?)\]\)/
-    .exec(roadsSrc);
-  assert.ok(block, 'CANADA_ROAD_SOURCES must exist');
-  return [...block[1].matchAll(/\{\s*key:\s*'([^']+)'/g)].map((m) => m[1]);
+  return CANADA_ROAD_SOURCES.map(({ key }) => key);
 }
 
 test('every road source has its own freshness id', () => {

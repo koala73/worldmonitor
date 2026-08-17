@@ -1493,6 +1493,8 @@ export interface GulfInvestment {
 
 export interface MapProtestCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;
@@ -1511,6 +1513,8 @@ export interface MapProtestCluster {
 
 export interface MapTechHQCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;
@@ -1527,6 +1531,8 @@ export interface MapTechHQCluster {
 
 export interface MapTechEventCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;
@@ -1541,6 +1547,8 @@ export interface MapTechEventCluster {
 
 export interface MapDatacenterCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;

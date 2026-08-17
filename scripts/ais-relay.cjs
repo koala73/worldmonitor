@@ -2368,10 +2368,14 @@ async function seedMarketQuotes() {
   const skipped = !FINNHUB_API_KEY && !coveredByYahoo;
   const payload = { quotes, finnhubSkipped: skipped, skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '', rateLimited: false };
   const redisKey = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
-  const ok = await envelopeWrite(redisKey, payload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-stocks' });
+  // Compute once and thread through every write below so the envelopes'
+  // _seed.fetchedAt and seed-meta.fetchedAt agree for this one publish,
+  // instead of each awaited round-trip sampling Date.now() independently.
+  const fetchedAt = Date.now();
+  const ok = await envelopeWrite(redisKey, payload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-stocks' });
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
-  const ok2 = await envelopeWrite('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-stocks' });
-  const ok3 = await upstashSet('seed-meta:market:stocks', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
+  const ok2 = await envelopeWrite('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-stocks' });
+  const ok3 = await upstashSet('seed-meta:market:stocks', { fetchedAt, recordCount: quotes.length }, 604800);
   if (freshQuotes.some((quote) => quote.symbol === CHINA_COUNTRY_STOCK_SYMBOL)) {
     try {
       await writeChinaCountryStockIndex();
@@ -2430,15 +2434,19 @@ async function seedCommodityQuotes() {
 
   const payload = { quotes };
   const redisKey = `market:commodities:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
-  const ok = await envelopeWrite(redisKey, payload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-commodities' });
+  // Compute once and thread through every write below so the envelopes'
+  // _seed.fetchedAt and seed-meta.fetchedAt agree for this one publish,
+  // instead of each awaited round-trip sampling Date.now() independently.
+  const fetchedAt = Date.now();
+  const ok = await envelopeWrite(redisKey, payload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-commodities' });
   // Also write under market:quotes:v1: key — the frontend routes commodities through
   // listMarketQuotes RPC, which constructs this key pattern (not market:commodities:v1:)
   const quotesKey = `market:quotes:v1:${[...COMMODITY_SYMBOLS].sort().join(',')}`;
   const quotesPayload = { quotes, finnhubSkipped: false, skipReason: '', rateLimited: false };
-  const ok2 = await envelopeWrite(quotesKey, quotesPayload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-commodities' });
+  const ok2 = await envelopeWrite(quotesKey, quotesPayload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-commodities' });
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
-  const ok3 = await envelopeWrite('market:commodities-bootstrap:v1', quotesPayload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-commodities' });
-  const ok4 = await upstashSet('seed-meta:market:commodities', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
+  const ok3 = await envelopeWrite('market:commodities-bootstrap:v1', quotesPayload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-commodities' });
+  const ok4 = await upstashSet('seed-meta:market:commodities', { fetchedAt, recordCount: quotes.length }, 604800);
   console.log(`[Market] Seeded ${quotes.length}/${COMMODITY_SYMBOLS.length} commodities (redis: ${ok && ok2 && ok3 && ok4 ? 'OK' : 'PARTIAL'})`);
   const movingCommodities = quotes.filter(q => Math.abs(q.change ?? 0) >= 5).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
   for (const q of movingCommodities.slice(0, 3)) {

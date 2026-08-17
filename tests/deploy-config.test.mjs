@@ -329,6 +329,8 @@ describe('crawlable content corpus deployment contracts', () => {
     assert.ok(vercelIgnoreSource.includes("'docs/snapshots/'"));
     for (const path of [
       'scripts/crawlable-sources-page.mjs',
+      'scripts/source-origin.mjs',
+      'scripts/source-origin.d.mts',
       'scripts/generate-inventory-facts.mjs',
       'scripts/docs-stats.mjs',
       'scripts/source-attribution.mjs',
@@ -337,7 +339,7 @@ describe('crawlable content corpus deployment contracts', () => {
     }
   });
 
-  it('builds Vercel for script-only inventory derivation changes', () => {
+  it('builds Vercel on main and preview for script-only inventory derivation changes', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'wm-vercel-ignore-'));
     try {
       const fixtureEnv = { ...process.env };
@@ -355,6 +357,8 @@ describe('crawlable content corpus deployment contracts', () => {
 
       for (const path of [
         'scripts/crawlable-sources-page.mjs',
+        'scripts/source-origin.mjs',
+        'scripts/source-origin.d.mts',
         'scripts/generate-inventory-facts.mjs',
         'scripts/docs-stats.mjs',
         'scripts/source-attribution.mjs',
@@ -371,6 +375,15 @@ describe('crawlable content corpus deployment contracts', () => {
           }),
           (error) => error?.status === 1,
           `${path} must request a Vercel build`,
+        );
+        git('update-ref', 'refs/remotes/origin/main', previous);
+        assert.throws(
+          () => execFileSync('/bin/bash', [resolve(__dirname, '../scripts/vercel-ignore.sh')], {
+            cwd: fixture,
+            env: { ...fixtureEnv, VERCEL_GIT_COMMIT_REF: 'feature/source-catalog' },
+          }),
+          (error) => error?.status === 1,
+          `${path} must request a Vercel preview build`,
         );
       }
     } finally {

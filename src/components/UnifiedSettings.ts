@@ -42,7 +42,7 @@ import {
   onEntitlementVerificationChange,
 } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { getSubscription, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import { getSubscription, isSubscriptionLoaded, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { BusinessSeatsSection } from '@/components/BusinessSeatsSection';
 import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
@@ -913,6 +913,18 @@ export class UnifiedSettings {
     }
   }
 
+  // Pending state shown while the plan is still resolving — used both before
+  // the entitlement snapshot arrives and, for an entitled owner, while the
+  // subscription watch is still settling (#6772).
+  private renderPlanCheckingState(): string {
+    return `
+        <div class="upgrade-pro-section upgrade-pro-loading" role="status" aria-live="polite">
+          <div class="upgrade-pro-title">Checking your plan…</div>
+          <div class="upgrade-pro-desc">This usually takes only a moment.</div>
+        </div>
+      `;
+  }
+
   private renderUpgradeSection(): string {
     // Non-Dodo premium (API key / tester key / Clerk pro role without a
     // Convex subscription): neither "Upgrade" nor "Manage Billing" is
@@ -951,15 +963,19 @@ export class UnifiedSettings {
       && getEntitlementState() === null
       && (verificationStatus === 'idle' || verificationStatus === 'pending')
     ) {
-      return `
-        <div class="upgrade-pro-section upgrade-pro-loading" role="status" aria-live="polite">
-          <div class="upgrade-pro-title">Checking your plan…</div>
-          <div class="upgrade-pro-desc">This usually takes only a moment.</div>
-        </div>
-      `;
+      return this.renderPlanCheckingState();
     }
     if (isEntitled()) {
       const sub = getSubscription();
+      // A Pro owner's entitlement snapshot can arrive before their own
+      // subscription watch settles. In that window getSubscription() is null
+      // but the user is NOT a Business invitee — falling through would render
+      // "Billing is managed by your plan owner" and hide Manage Billing from a
+      // paying owner. Treat an unresolved watch like the pending state above;
+      // the invitee copy below is reserved for a *settled* null (#6772).
+      if (sub === null && !isSubscriptionLoaded()) {
+        return this.renderPlanCheckingState();
+      }
       const planName = sub?.displayName ?? 'Pro';
       // A Business Pro grant invitee has no own subscription row (sub === null)
       // but IS entitled (we're inside the isEntitled() branch) — treat that as
