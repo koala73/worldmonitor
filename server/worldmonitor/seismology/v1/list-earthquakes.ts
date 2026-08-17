@@ -1,6 +1,6 @@
 /**
  * ListEarthquakes RPC -- reads seeded earthquake data from Railway seed cache.
- * All external USGS API calls happen in seed-earthquakes.mjs on Railway.
+ * Upstream USGS and NRCan fetches happen in seed-earthquakes.mjs on Railway.
  */
 
 import type {

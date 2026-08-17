@@ -8,7 +8,7 @@ This page names and links every developer resource type. For the machine-readabl
 
 ## Developer Resources
 
-- **[World Monitor MCP Server](https://worldmonitor.app/mcp-server.md):** the recommended agent surface — `https://worldmonitor.app/mcp`, Streamable HTTP, 63 tools. Connect Claude, Cursor, and any MCP-compatible client to live intelligence data. Details: [mcp-server.md](https://worldmonitor.app/mcp-server.md) · [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) · Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
+- **[World Monitor MCP Server](https://worldmonitor.app/mcp-server.md):** the recommended agent surface — `https://worldmonitor.app/mcp`, Streamable HTTP. Connect Claude, Cursor, and any MCP-compatible client to live intelligence data. Details: [mcp-server.md](https://worldmonitor.app/mcp-server.md) · [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) · Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
 - **[World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md):** the OpenAPI 3.1 contract for the REST API — [openapi.yaml](https://worldmonitor.app/openapi.yaml) · [openapi.json](https://worldmonitor.app/openapi.json). Details: [openapi.md](https://worldmonitor.app/openapi.md)
 - **World Monitor REST API:** base `https://api.worldmonitor.app` — the same tools and data as the MCP server, exposed as granular endpoints over plain HTTP. Machine-readable [API catalog (RFC 9727)](https://worldmonitor.app/.well-known/api-catalog) · human docs at [/docs/documentation](https://www.worldmonitor.app/docs/documentation)
 - **[World Monitor SDKs](https://worldmonitor.app/sdks.md):** official zero-dependency client libraries for Python, Ruby, Go, and JavaScript. Details: [sdks.md](https://worldmonitor.app/sdks.md) · [SDK guide](https://www.worldmonitor.app/docs/sdks)
@@ -20,12 +20,12 @@ This page names and links every developer resource type. For the machine-readabl
 
 ## Authentication in one line
 
-Discovery endpoints and `tools/list` are public. Data calls need either an API key header `X-WorldMonitor-Key: wm_<40-hex>` (issue one at https://worldmonitor.app/pro) or OAuth 2.1 with scope `mcp`. The full walkthrough — including dynamic client registration and the Pro sign-in flow — lives at [auth.md](https://worldmonitor.app/auth.md).
+Discovery endpoints and `tools/list` are public. `get_sources` is the sole credential-free, daily-quota-free MCP data tool, with a separate fail-closed ceiling of 10 anonymous calls/minute/IP. Every other data call needs subscription access through an API key header `X-WorldMonitor-Key: wm_<40-hex>` (issue one at https://worldmonitor.app/pro) or OAuth 2.1 with scope `mcp`. The full walkthrough — including dynamic client registration and the Pro sign-in flow — lives at [auth.md](https://worldmonitor.app/auth.md).
 
 ## Pricing, limits & support
 
 - **Pricing and plan limits:** [pricing.md](https://worldmonitor.app/pricing.md) · live JSON catalog `GET https://www.worldmonitor.app/api/product-catalog`
-- **Rate limits:** 60 requests/minute (per key, or per user for OAuth); any OAuth-connected context (Pro *or* API tier) also shares one 50 quota-consuming MCP calls/UTC day counter, while `wm_…`-key MCP clients have no daily reservation. Honor `Retry-After` on 429.
+- **Rate limits:** 60 requests/minute (per user for OAuth and dashboard-issued `wm_…` keys; per key for legacy operator keys). Dashboard-issued keys use the 50 quota-consuming MCP calls/UTC day default. OAuth allowances are plan-resolved; API Starter and API Business currently use the same 50/day default, while enterprise OAuth can be unlimited. Honor `Retry-After` on 429.
 - **Support:** [support.md](https://worldmonitor.app/support.md) — support@worldmonitor.app · Status: https://status.worldmonitor.app
 - **Source (AGPL-3.0):** https://github.com/koala73/worldmonitor · Issues: https://github.com/koala73/worldmonitor/issues
 

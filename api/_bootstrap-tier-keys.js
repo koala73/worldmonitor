@@ -180,7 +180,7 @@ const SLOW_KEY_NAMES = new Set([
 const FAST_KEY_NAMES = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints',
   'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays', 'insights', 'predictions',
-  'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'canadaRoads', 'albertaRoads', 'spending', 'theaterPosture', 'gdeltIntel', 'canadaAlerts',
+  'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture', 'gdeltIntel', 'canadaAlerts',
   'correlationCards', 'forecasts', 'shippingRates', 'shippingStress', 'socialVelocity', 'wsbTickers',
 ]);
 
@@ -211,6 +211,17 @@ const ON_DEMAND_KEY_NAMES = new Set([
   'torontoRoads',
   // DriveBC is also too large for every visitor's startup payload.
   'bcOpen511',
+  // The other two feeds behind the same map layer, moved off FAST in #6763.
+  // Together they were 507,639 of the fast tier's 1,343,003 bytes — 37.8%, more
+  // than marketQuotes — and a tier is not layer-gated, so every visitor on every
+  // variant downloaded them, mobile included, where this layer ships disabled
+  // and nothing ever rendered a byte of it.
+  //
+  // All four road sources are on-demand now, which is what lets the layer stay
+  // off by default: with none of them tiered, a visitor who never enables
+  // Canada roads pays nothing at all for them.
+  'canadaRoads',
+  'albertaRoads',
 ]);
 
 /**

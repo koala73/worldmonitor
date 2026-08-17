@@ -242,27 +242,8 @@ describe('MacroTilesPanel China launch surface', () => {
     );
   });
 
-  it('keeps the launch gate, hydration fallback, and tablist keyboard behavior wired in the panel', () => {
-    assert.match(panelSource, /type Tab = 'us' \| 'eu' \| 'cn'/);
-    assert.match(panelSource, /getHydratedData\('chinaMacro'\)/);
-    assert.match(panelSource, /getHydratedData\('chinaReleaseCalendar'\)/);
-    assert.match(panelSource, /normalizeHydratedChina\(hydratedMacro, hydratedCalendar\)/);
-    assert.match(panelSource, /client\.getChinaMacroSnapshot\(\{\}\)/);
-    assert.match(panelSource, /hasChinaMacroData\(this\._china\)/);
-    assert.match(panelSource, /role="tablist"/);
-    assert.match(panelSource, /role="tab"/);
-    assert.match(panelSource, /aria-selected=/);
-    assert.match(panelSource, /aria-controls=/);
-    assert.match(panelSource, /ArrowRight/);
-    assert.match(panelSource, /ArrowLeft/);
-    assert.match(panelSource, /Home/);
-    assert.match(panelSource, /End/);
-    assert.match(panelSource, /setSafeContent\([\s\S]*afterUpdate/);
-    assert.match(panelSource, /class="panel-tabs macro-tiles-tabs"/);
-    assert.match(panelSource, /class="macro-summary-grid/);
-    assert.match(panelSource, /class="macro-quality-note macro-quality-note--degraded"/);
-    assert.match(panelSource, /class="macro-release-calendar"/);
-    assert.doesNotMatch(panelSource, /style="/);
-    assert.match(panelSource, /China release calendar/);
-  });
+  // A single test used to pin the panel's Tab union, its getHydratedData call
+  // sites, and its ARIA attributes by regex. The four tests above exercise the
+  // hydration and provenance logic for real, and the tablist markup is
+  // exercised by booting the dashboard in e2e/variant-live-smoke.spec.ts.
 });

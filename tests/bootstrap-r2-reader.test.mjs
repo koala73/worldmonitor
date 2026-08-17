@@ -101,9 +101,8 @@ describe('readBootstrapTierObject', () => {
     assertDuration(result);
   });
 
-  it('returns timeout promptly when the caller-supplied signal expires', async () => {
+  it('returns timeout when the caller-supplied signal expires', async () => {
     const timeoutMs = 10;
-    const startedAt = performance.now();
     const result = await readBootstrapTierObject('fast', readerOptions(null, {
       timeoutMs,
       awsClientFactory: () => ({
@@ -113,10 +112,14 @@ describe('readBootstrapTierObject', () => {
       }),
     }));
 
+    // The stubbed fetch only ever settles by rejecting on abort, so reaching a
+    // 'timeout' result at all is the proof that the reader aborted rather than
+    // waiting on the network. A wall-clock ceiling here added nothing and
+    // measured the runner's load instead — it flaked under the parallel suite
+    // and passed in isolation.
     assert.equal(result.status, 'fallback');
     assert.equal(result.reason, 'timeout');
     assertDuration(result);
-    assert.ok(performance.now() - startedAt < 500, 'reader should not hang beyond its timeout');
   });
 
   it('returns timeout when the response body stalls after headers arrive', async () => {

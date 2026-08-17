@@ -1,9 +1,9 @@
 ---
 title: "Agent Skills Catalog"
-description: "Human-readable catalog of the 25 World Monitor agent skills advertised through the /.well-known/agent-skills/index.json discovery endpoint."
+description: "Human-readable catalog of World Monitor agent skills advertised through the /.well-known/agent-skills/index.json discovery endpoint."
 ---
 
-The catalog contains 25 World Monitor agent skills for agents that need a focused, ready-to-run recipe instead of a full OpenAPI crawl. Each skill is a public `SKILL.md` file with when-to-use guidance, auth shape, REST examples, response notes, and content-safety handling.
+The catalog contains focused, ready-to-run World Monitor agent skills for agents that do not need a full OpenAPI crawl. Each skill is a public `SKILL.md` file with when-to-use guidance, auth shape, REST examples, response notes, and content-safety handling.
 
 The machine-readable source of truth is [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json). Each row below links to the served recipe whose SHA-256 digest is pinned in that manifest.
 
@@ -65,7 +65,7 @@ X-WorldMonitor-Key: wm_<40-hex>
 
 | Skill | Use it for | Recipe |
 |---|---|---|
-| `fetch-news-digest` | Retrieve the pre-aggregated digest of World Monitor's 500+ curated news feeds, bucketed by category, with per-article threat classification and alert flags. Use when the user asks what's in the news right now, wants headlines by topic, or needs a current-events sweep. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-news-digest/SKILL.md) |
+| `fetch-news-digest` | Retrieve the pre-aggregated digest of World Monitor's curated news feeds, bucketed by category, with per-article threat classification and alert flags. Use when the user asks what's in the news right now, wants headlines by topic, or needs a current-events sweep. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-news-digest/SKILL.md) |
 | `check-airport-delays` | Retrieve current airport delay and cancellation alerts worldwide — delay type, severity, average delay minutes, and affected-flight percentages per airport. Use when the user asks whether an airport is delayed, disrupted, or experiencing cancellations. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-airport-delays/SKILL.md) |
 | `track-military-flights` | Retrieve tracked military aircraft positions (OpenSky + Wingbits) with callsign, type, operator, altitude, and activity clusters, filterable by bounding box, operator, and aircraft type. Use when the user asks about military air activity in a region. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-military-flights/SKILL.md) |
 | `monitor-internet-outages` | Retrieve detected internet outages (Cloudflare Radar) with country, cause, severity, and time bounds. Use when the user asks whether a country's internet is down, throttled, or experiencing a shutdown. | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/monitor-internet-outages/SKILL.md) |

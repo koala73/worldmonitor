@@ -3,7 +3,7 @@ title: "数据源"
 description: "World Monitor 背后的每一个数据源，按情报领域分区呈现——每个领域覆盖什么、由哪些提供商支撑，以及方法论、刷新频率与回退顺序的深入链接。"
 ---
 
-World Monitor 将**500 多个上游主机**——结构化 API、新闻与 OSINT 订阅源、运行状态端点——融合成横跨六个产品变体的单一实时态势图。本页是数据目录：先浏览下方的领域地图，打开你关心的领域，再沿深入链接查看方法论与新鲜度保障。
+World Monitor 将上游主机——结构化 API、新闻与 OSINT 订阅源、运行状态端点——融合成横跨六个产品变体的单一实时态势图。本页是数据目录：先浏览下方的领域地图，打开你关心的领域，再沿深入链接查看方法论与新鲜度保障。
 
 数据单向流动：Railway 种子任务与边缘函数按固定节奏抓取上游数据源，归一化后缓存到 Redis，仪表盘从这些缓存水合——因此流量激增永远不会放大任何提供商的负载。[架构指南](/zh/architecture)详细介绍了该管线；每个观测到的上游主机的机器审计清单见[完整来源清单](/zh/source-attribution)。
 
@@ -13,11 +13,11 @@ World Monitor 将**500 多个上游主机**——结构化 API、新闻与 OSINT
 |------|--------------|--------------|
 | [地缘政治与冲突](#地缘政治与冲突) | 冲突事件、抗议、流离失所、旅行公告、火箭警报、预测市场 | ACLED、UCDP、GDELT、UNHCR/OCHA、Polymarket |
 | [军事与战略](#军事与战略) | 军事基地、实时军机、海军活动、卫星、GPS 干扰 | adsb.lol、Wingbits、CelesTrak、gpsjam.org |
-| [新闻与 OSINT](#新闻与-osint) | 数百个分级新闻源、Telegram OSINT、直播电视与网络摄像头 | Reuters、BBC、AP、Al Jazeera、56 个 Telegram 频道 |
+| [新闻与 OSINT](#新闻与-osint) | 数百个分级新闻源、Telegram OSINT、直播电视与网络摄像头 | Reuters、BBC、AP、Al Jazeera、Telegram 频道 |
 | [金融与经济](#金融与经济) | 市场、宏观序列、央行、加密货币、贸易流向 | FRED、ECB、BIS、Eurostat、World Bank、CoinGecko |
 | [能源与大宗商品](#能源与大宗商品) | 天然气储存、石油库存、燃料价格、黄金与金属 | GIE AGSI+、U.S. EIA、IEA、CFTC |
 | [基础设施与网络安全](#基础设施与网络安全) | 海底光缆、管道、港口、互联网中断、威胁 IOC | Cloudflare Radar、Submarine Cable Map、abuse.ch |
-| [环境与灾害](#环境与灾害) | 地震、灾害、野火、气旋、气候异常 | USGS、GDACS、NASA FIRMS/EONET、Open-Meteo |
+| [环境与灾害](#环境与灾害) | 地震、灾害、野火、气旋、气候异常 | USGS、NRCan、GDACS、NASA FIRMS/EONET、Open-Meteo |
 | [航空与空域](#航空与空域) | 机场延误、NOTAM 关闭、航班跟踪、机票价格 | FAA、ICAO、AviationStack、adsb.lol |
 | [中国覆盖](#中国覆盖) | 官方宏观、政策、企业披露、台海活动 | NBS、SAFE、PBoC、台湾国防部、SSE/SZSE |
 | [科技生态](#科技生态) | 公司总部、创业公司、云区域、研究信号 | Crunchbase News、GitHub、OSS Insight |
@@ -142,7 +142,7 @@ Polymarket 地缘政治市场使用基于标签的过滤器（乌克兰、伊朗
 
 从开源实时跟踪的部队态势与战略基础设施。
 
-- 来自 9 个运营方的 226 个军事基地
+- 带运营方归属信息的已注册军事基地
 - 实时军事航班跟踪（ADS-B）— 提供商链见[航空与空域](#航空与空域)
 - 海军舰船监测（AIS）
 - 核设施与伽马辐照装置
@@ -184,7 +184,7 @@ GPS 干扰和欺骗 — 在冲突区域越来越多地被用作电子战 — 通
 新闻主干：横跨六个变体的数百个分级 RSS 源、一条原始 Telegram OSINT 通道、直播电视流和网络摄像头网格——每个来源都公开披露、分级并标注偏见。
 
 - 覆盖政治、区域、金融、科技、能源、智库与危机监测的分级全球新闻网络——完整的按变体清单[见下文](#服务端源聚合)
-- 56 个频道的 Telegram OSINT 源，包含官方、独立与交战方来源
+- Telegram OSINT 源，包含官方、独立与交战方来源
 - 直播电视新闻流和来自地缘政治热点的 22 路网络摄像头监视网格
 - Happy 变体的正面新闻策展网络（Good News Network、Positive.News、Reasons to be Cheerful 等）
 - 每个源都带有来源分级、宣传风险评级和国家关联元数据
@@ -201,16 +201,16 @@ GPS 干扰和欺骗 — 在冲突区域越来越多地被用作电子战 — 通
 | --- | --- | --- |
 | `full` | `politics` | BBC World; Guardian World; AP News; Reuters World; CNN World; Trump - Truth Social |
 | `full` | `us` | Reuters US; NPR News; PBS NewsHour; ABC News; CBS News; NBC News; Wall Street Journal; Politico; The Hill; Axios; CBC News; Globe and Mail; Global News |
-| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Tagesschau (de); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Yle News; NRK; Aftenposten; DR Nyheder; Arctic Today; Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); Seznam Zprávy (cs); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight; Digi24 (ro); HotNews (ro); G4Media (ro); Dnevnik (bg); Kyiv Independent; Ukrinform; Suspilne; Ukrainska Pravda EN; NV EN; Hromadske EN; Ukrainska Pravda (uk); Hromadske (uk); Bihus.Info (uk); Slidstvo.Info (uk); ZN.UA (uk); TVN24; Rzeczpospolita; Meduza; Moscow Times; Civil.ge; OC Media; JAMnews; Azertag; Armenpress; Zerkalo; NewsMaker (ru); Ziarul de Gardă (ro); ERR News; LRT English; LSM English; Daily Sabah; Hurriyet (tr); Polsat News (pl); Kathimerini (el) |
-| `full` | `middleeast` | BBC Middle East; Al Jazeera; Al Arabiya; Guardian ME; BBC Persian (fa); Iran International; Haaretz; Jerusalem Post; Ynetnews; Arab News; The National; Oman Observer; Asharq Business; Rudaw |
+| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Tagesschau (de); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Yle News; NRK; Aftenposten; DR Nyheder; Arctic Today; Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); Seznam Zprávy (cs); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight; Digi24 (ro); HotNews (ro); G4Media (ro); Dnevnik (bg); Kyiv Independent; Ukrinform; Suspilne; Ukrainska Pravda EN; NV EN; Hromadske EN; Ukrainska Pravda (uk); Hromadske (uk); Bihus.Info (uk); Slidstvo.Info (uk); ZN.UA (uk); TVN24; Rzeczpospolita; Meduza; Moscow Times; Civil.ge; OC Media; JAMnews; Azertag; Armenpress; Zerkalo; NewsMaker (ru); Ziarul de Gardă (ro); ERR News; LRT English; LSM English; Daily Sabah; Hurriyet (tr); Polsat News (pl); PAP (pl); Gazeta Wyborcza (pl); Polityka (pl); Onet (pl); OKO.press (pl); TVP Info (pl); Kathimerini (el) |
+| `full` | `middleeast` | BBC Middle East; Al Jazeera; Al Arabiya; Guardian ME; BBC Persian (fa); Iran International; Haaretz; Jerusalem Post; Ynetnews; Arab News; The National; Oman Observer; Asharq Business; Rudaw; Yemen Online; Sana'a Center; Syria Direct; Enab Baladi English; +972 Magazine; WAFA English; Naharnet Lebanon; L'Orient Today; Annahar (ar); Libya Herald; Egypt Independent; Mada Masr |
 | `full` | `tech` | Hacker News; Ars Technica; The Verge; MIT Tech Review |
 | `full` | `ai` | AI News; VentureBeat AI; The Verge AI; MIT Tech Review; ArXiv AI |
 | `full` | `finance` | CNBC; MarketWatch; Yahoo Finance; Financial Times; Reuters Business |
 | `full` | `commodities` | Oil & Gas; Gold & Metals |
 | `full` | `gov` | White House; White House Actions; State Dept; Pentagon; Federal Reserve; SEC; UN News; CISA; Treasury; DOJ |
-| `full` | `africa` | BBC Africa; Africa News; Sahel Crisis; News24; Africanews; Jeune Afrique (fr); Premium Times; Vanguard Nigeria; Channels TV; Daily Trust; ThisDay; Radio Tamazuj; The Reporter Ethiopia; Ethiopia Insight; Dabanga Sudan; Hiiraan Online; Actualite.cd (fr); Radio Okapi (fr); MyJoyOnline; Citi Newsroom; Le Quotidien (fr); RFI Afrique |
-| `full` | `latam` | BBC Latin America; Guardian Americas; Primicias (es); Infobae Americas (es); El Universo (es); Clarín (es); InSight Crime |
-| `full` | `asia` | BBC Asia; The Diplomat; Reuters Asia; Japan Today; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; Xinhua; Asahi Shimbun (ja); MIIT (China) (zh); MOFCOM (China) (zh); Bangkok Post (th); VnExpress (vi); Yonhap News (ko); BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi); Eurasianet; RFE/RL Central Asia; The Astana Times; The Times of Central Asia; Focus Taiwan; Taipei Times; Taiwan News; Dawn; Geo News; Jakarta Post; Rappler; The Star (Malaysia); Irrawaddy; Island Times (Palau) |
+| `full` | `africa` | BBC Africa; Africa News; Sahel Crisis; News24; Africanews; Jeune Afrique (fr); Premium Times; Vanguard Nigeria; Channels TV; Daily Trust; ThisDay; Radio Tamazuj; The Reporter Ethiopia; Ethiopia Insight; Dabanga Sudan; Hiiraan Online; Actualite.cd (fr); Radio Okapi (fr); MyJoyOnline; Citi Newsroom; Le Quotidien (fr); RFI Afrique; Studio Tamani (fr); leFaso.net (fr); ActuNiger (fr); Aïr Info (fr); Daily Nation; The Guardian Post; Tchadinfos (fr); Alwihda Info (fr); Radio Ndeke Luka (fr) |
+| `full` | `latam` | BBC Latin America; Guardian Americas; Primicias (es); Infobae Americas (es); El Universo (es); Clarín (es); InSight Crime; HaitiLibre English; AyiboPost (fr); Caracas Chronicles; Efecto Cocuyo (es); Havana Times; 14ymedio (es) |
+| `full` | `asia` | BBC Asia; The Diplomat; Reuters Asia; Japan Today; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; Xinhua; Asahi Shimbun (ja); MIIT (China) (zh); MOFCOM (China) (zh); Bangkok Post (th); VnExpress (vi); Yonhap News (ko); BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi); Eurasianet; RFE/RL Central Asia; The Astana Times; The Times of Central Asia; Focus Taiwan; Taipei Times; Taiwan News; Dawn; Geo News; Jakarta Post; Rappler; The Star (Malaysia); Irrawaddy; Island Times (Palau); Amu TV; Pajhwok Afghan News; The Daily Star; Dhaka Tribune |
 | `full` | `energy` | Oil & Gas; Reuters Energy; Nuclear Energy |
 | `full` | `thinktanks` | Foreign Policy; Atlantic Council; Foreign Affairs; War on the Rocks; CSIS; ISW |
 | `full` | `crisis` | CrisisWatch; IAEA; WHO |
@@ -300,13 +300,13 @@ Client (1 RPC call) → listFeedDigest → Redis check (digest:v1:{variant}:{lan
 
 ### Telegram OSINT 情报源
 
-默认 `full` Telegram 频道集中的 56 个启用频道提供了一个原始、低延迟的情报源，覆盖冲突区域、OSINT 分析和突发新闻 — 在快速演变的事件中，这些来源通常比传统通讯社早数分钟。
+默认 `full` Telegram 频道集中的已启用频道提供了一个原始、低延迟的情报源，覆盖冲突区域、OSINT 分析和突发新闻 — 在快速演变的事件中，这些来源通常比传统通讯社早数分钟。
 
-| 分级       | `full` 集中已启用频道数 |
-| ---------- | ---------------------- |
-| **Tier 1** | 3                      |
-| **Tier 2** | 23                     |
-| **Tier 3** | 30                     |
+| 分级       | `full` 集中的作用 |
+| ---------- | ---------------- |
+| **Tier 1** | 最高优先级来源 |
+| **Tier 2** | 已建立来源 |
+| **Tier 3** | 专业来源 |
 
 该频道集有意包含官方、国家关联、党派和交战方频道 — 例如军事、政府部门、官方媒体和派系阵营来源，以及独立的 OSINT 账号。Telegram 帖子作为原始 OSINT 线索被摄入，而非被认可的事实。Telegram 频道配置携带运营用的 `tier`、`topic` 和 `region` 元数据，用于轮询和过滤；与 RSS 源不同，Telegram 频道目前不携带 RSS 的 `stateAffiliation` 或宣传风险字段，因此来源偏见审查必须使用已披露的频道身份加上运营分级，而非 RSS 式的关联标签。
 
@@ -357,7 +357,7 @@ Client (1 RPC call) → listFeedDigest → Redis check (digest:v1:{variant}:{lan
 - **可自定义的市场关注列表** — 用户定义的股票/大宗商品/加密货币代码列表（最多 50 个代码），可带友好名称标签，持久化到 localStorage，通过 CustomEvent 在各面板间同步
 - 29 个全球证券交易所 — 超大型（NYSE、NASDAQ、上海、泛欧交易所、东京）、主要（香港、伦敦、NSE/BSE、多伦多、韩国、沙特 Tadawul）以及新兴市场 — 含市值和交易时间
 - 19 个金融中心 — 按全球金融中心指数排名（纽约 #1 直到离岸中心：开曼群岛、卢森堡、百慕大、海峡群岛）
-- 14 家央行及超国家金融机构 — 12 家政策利率机构（美联储、ECB、日本央行、英国央行、中国人民银行、瑞士国家银行、澳洲联储、加拿大央行、印度储备银行、韩国银行、巴西央行、SAMA）加上 BIS 和 IMF
+- 央行及超国家金融机构 — 政策利率机构（美联储、ECB、日本央行、英国央行、中国人民银行、瑞士国家银行、澳洲联储、加拿大央行、印度储备银行、韩国银行、巴西央行、SAMA）加上 BIS 和 IMF
 - BIS 央行数据 — 来自国际清算银行的主要经济体政策利率、实际有效汇率（REER）和信贷/GDP 比率
 - 10 个大宗商品枢纽 — 交易所（CME Group、ICE、LME、SHFE、DCE、TOCOM、DGCX、MCX）和实体枢纽（鹿特丹、休斯敦）
 - **海湾经济体面板** — 跨三个板块提供 GCC 金融市场实时数据：**指数**（沙特 Tadawul/沙特阿拉伯、迪拜金融市场、阿布扎比、卡塔尔、WisdomTree 海湾股息、马斯喀特 MSM 30）、**货币**（SAR、AED、QAR、KWD、BHD、OMR 对 USD）以及**石油**（WTI 原油、布伦特原油）。所有报价均来自 Yahoo Finance 并采用错峰批量获取，Redis 缓存 8 分钟，每条报价带迷你图，轮询间隔 60 秒
@@ -423,8 +423,8 @@ Energy 与 Commodity 变体的实体经济基本面：储存、库存、流向�
 
 - 海底光缆及其登陆点、光缆健康公告（NGA 航海警告）及光缆维修船跟踪
 - 石油与天然气管道
-- AI 数据中心（来自 Epoch AI 数据集的 313 个集群）
-- 跨 6 种类型的 62 个战略港口（集装箱、石油、LNG、海军、混合、散货），含吞吐量排名
+- AI 数据中心（来自 Epoch AI 数据集）
+- 按集装箱、石油、LNG、海军、混合和散货角色分类的战略港口，含吞吐量排名
 - 互联网中断（Cloudflare Radar）
 - 关键矿产矿藏
 - 19 条全球贸易路线（集装箱、能源、散货），通过战略咽喉的多段弧线
@@ -479,6 +479,7 @@ IOC 分为四种类型（`c2_server`、`malware_host`、`phishing`、`malicious_
 
 来自独立政府与联合国协调来源的自然灾害与气候压力。
 
+- 地震来自 USGS（全球 M4.5+）并与加拿大地震（NRCan）国家 Atom 合并
 - 来自 3 个数据源的自然灾害（USGS M4.5+ 地震、GDACS 警报、NASA EONET 事件）
 - NASA FIRMS 卫星火灾探测（VIIRS 热点）
 - 西太平洋热带气旋观测（香港天文台、日本气象厅）
@@ -491,6 +492,7 @@ IOC 分为四种类型（`c2_server`、`malware_host`、`phishing`、`malicious_
 | 提供商 | 数据 | 链接 |
 |----------|------|------|
 | USGS Earthquake Hazards | 全球地震活动 | [earthquake.usgs.gov](https://earthquake.usgs.gov) |
+| Earthquakes Canada (NRCan) | 加拿大国家地震公报（Atom） | [earthquakescanada.nrcan.gc.ca](https://www.earthquakescanada.nrcan.gc.ca/index-en.php?tpl_region=canada) |
 | NASA FIRMS | 近实时野火/火灾探测（VIIRS） | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov) |
 | NASA EONET | 自然事件 — 风暴、火山、洪水 | [eonet.gsfc.nasa.gov](https://eonet.gsfc.nasa.gov) |
 | GDACS | 联合国协调的全球灾害警报 | [gdacs.org](https://www.gdacs.org) |
@@ -552,13 +554,13 @@ GDACS 事件带有彩色编码的警报级别（红色 = 严重，橙色 = 高�
 
 ### 机场延误与 NOTAM 监测
 
-跨 5 个区域（美洲、欧洲、亚太、MENA、非洲）的 115 个机场通过三个独立数据源持续监测延误、地面停留和关闭：
+美洲、欧洲、亚太、MENA 和非洲的机场通过独立数据源持续监测延误、地面停留和关闭：
 
 | 数据源             | 覆盖范围                  | 方法                                                                                                  |
 | ------------------ | ------------------------- | ----------------------------------------------------------------------------------------------------- |
-| **FAA ASWS**       | 14 个美国枢纽机场        | 来自 `nasstatus.faa.gov` 的实时 XML 源 — 地面延误、地面停留、到达/出发延误、关闭 |
-| **AviationStack**  | 56 个国际机场  | 每个机场最近 100 架航班 — 根据航班记录计算取消率和平均延误时长  |
-| **ICAO NOTAM API** | 46 个 MENA 机场           | 实时 NOTAM（Notice to Air Missions）查询，用于活跃的机场/空域关闭                      |
+| **FAA ASWS**       | 美国枢纽机场目录        | 来自 `nasstatus.faa.gov` 的实时 XML 源 — 地面延误、地面停留、到达/出发延误、关闭 |
+| **AviationStack**  | 国际机场目录  | 每个机场最近 100 架航班 — 根据航班记录计算取消率和平均延误时长  |
+| **ICAO NOTAM API** | MENA 机场目录           | 实时 NOTAM（Notice to Air Missions）查询，用于活跃的机场/空域关闭                      |
 
 **NOTAM 关闭检测**针对 MENA 机场，因军事活动或安全事件导致的空域关闭具有战略意义。检测使用两种方法：ICAO Q 码匹配（机场/空域关闭代码 `FA`、`AH`、`AL`、`AW`、`AC`、`AM` 结合关闭限定符 `LC`、`AS`、`AU`、`XX`、`AW`）和闭包关键词的自由文本正则扫描（`AD CLSD`、`AIRPORT CLOSED`、`AIRSPACE CLOSED`）。当检测到 NOTAM 关闭时，它会以 `severe/closure` 分级覆盖该机场已有的任何延误警报。
 
@@ -670,7 +672,7 @@ Tech 变体的科技行业情报。
 
 ## 数据新鲜度与情报缺口
 
-一个单例跟踪器监测 35 个数据源（GDELT、GDELT Doc、RSS、AIS、OpenSky、Wingbits、USGS、天气、中断、ACLED、ACLED 冲突、Polymarket、预测、PizzINT、经济、石油、支出、NASA FIRMS、网络威胁、UCDP、UCDP 事件、HAPI、UNHCR、气候、WorldPop、捐赠、BIS、BLS、WTO 贸易、供应链、安全公告、制裁压力、辐射、GPS 干扰、财政部收入），并按状态分类：新鲜（&lt;15 分钟）、陈旧（2 小时）、非常陈旧（6 小时）、无数据、错误、已禁用。两个浏览器跟踪器来源（GDELT、RSS）被标记为 `requiredForRisk`；该标志驱动 Strategic Risk 面板的硬性数据不足门控，而非 CII 评分输入的穷尽列表。与评分相关的源（如 UCDP 事件、ACLED 冲突、新闻摘要和网络威胁）通过来源专属健康加上 `riskScores` 健康/缓存信号密度覆盖来跟踪。该跟踪器显式报告**情报缺口** — 分析师看不到的内容 — 在关键数据源下线或降级时防止虚假信心。
+一个单例跟踪器监测注册的数据新鲜度源（包括 GDELT、GDELT Doc、RSS、AIS、OpenSky、Wingbits、USGS、天气、中断、ACLED、ACLED 冲突、Polymarket、预测、PizzINT、经济、石油、支出、NASA FIRMS、网络威胁、UCDP、UCDP 事件、HAPI、UNHCR、气候、WorldPop、捐赠、BIS、BLS、WTO 贸易、供应链、安全公告、制裁压力、辐射、GPS 干扰、财政部收入），并按状态分类：新鲜（&lt;15 分钟）、陈旧（2 小时）、非常陈旧（6 小时）、无数据、错误、已禁用。两个浏览器跟踪器来源（GDELT、RSS）被标记为 `requiredForRisk`；该标志驱动 Strategic Risk 面板的硬性数据不足门控，而非 CII 评分输入的穷尽列表。与评分相关的源（如 UCDP 事件、ACLED 冲突、新闻摘要和网络威胁）通过来源专属健康加上 `riskScores` 健康/缓存信号密度覆盖来跟踪。该跟踪器显式报告**情报缺口** — 分析师看不到的内容 — 在关键数据源下线或降级时防止虚假信心。
 
 ---
 

@@ -82,6 +82,17 @@ export function findOperationalProblems(payload, now = Date.now()) {
       ...(Number.isFinite(problem?.maxStaleMin)
         ? { maxStaleMin: problem.maxStaleMin }
         : {}),
+      // The content clock, carried so the report can name the pair that
+      // actually fired. Without these a STALE_CONTENT line could only print
+      // the SEED pair, which is by definition inside budget for that status —
+      // the reader sees `age=1200m max=5760m` on a problem row and reasonably
+      // concludes the monitor is broken.
+      ...(Number.isFinite(problem?.contentAgeMin)
+        ? { contentAgeMin: problem.contentAgeMin }
+        : {}),
+      ...(Number.isFinite(problem?.maxContentAgeMin)
+        ? { maxContentAgeMin: problem.maxContentAgeMin }
+        : {}),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -274,11 +285,53 @@ function readAcceptanceBaseline() {
   return JSON.parse(readFileSync(BASELINE_URL, 'utf8'));
 }
 
+/**
+ * Health decides STALE_CONTENT on a different clock from STALE_SEED, and this
+ * line has to print the one that actually fired.
+ *
+ *   seed     seedAgeMin vs maxStaleMin         "is the seeder running"  -> STALE_SEED
+ *   content  contentAgeMin vs maxContentAgeMin "is the data advancing"  -> STALE_CONTENT
+ *
+ * This printed the seed pair unconditionally, so every STALE_CONTENT line read
+ * as a contradiction: euFsi showed `age=1200m max=5760m` — comfortably inside
+ * budget — while the breach was contentAgeMin 19230 against maxContentAgeMin
+ * 14400. A reader can only conclude the monitor is wrong.
+ *
+ * The seed pair is by definition INSIDE budget on a STALE_CONTENT row, so it is
+ * never the reason and must never be printed as though it were. That holds even
+ * when the content numbers are missing, which happens two different ways:
+ *
+ *   contentAgeMin === null   health fail-closes on an unreadable content clock,
+ *                            so the source is stale because nothing in the
+ *                            payload carries a date (jodiGas).
+ *   no content fields at all health also reaches STALE_CONTENT via
+ *                            requireContentFreshness — a per-country verdict
+ *                            (portwatchPortActivity). That detail names WHICH
+ *                            country is stale, so api/health.js strips it from
+ *                            the public compact shape (#6060) that this monitor
+ *                            reads. The numbers are operator-only by design and
+ *                            are not coming; say so and point at where they live.
+ */
 function describeProblem(problem) {
-  const freshness = Number.isFinite(problem.seedAgeMin)
+  const seedClock = Number.isFinite(problem.seedAgeMin)
     ? ` age=${problem.seedAgeMin}m max=${problem.maxStaleMin ?? 'unknown'}m`
     : '';
-  return `${problem.name}: status=${problem.status} records=${problem.records ?? 'unknown'}${freshness}`;
+
+  if (problem.status !== 'STALE_CONTENT') {
+    return `${problem.name}: status=${problem.status} records=${problem.records ?? 'unknown'}${seedClock}`;
+  }
+
+  // Marked `ok` so the healthy clock is never mistaken for the failing one.
+  const seedAside = Number.isFinite(problem.seedAgeMin)
+    ? ` (seed age=${problem.seedAgeMin}m ok)`
+    : '';
+  const contentClock = Number.isFinite(problem.maxContentAgeMin)
+    ? ` contentAge=${Number.isFinite(problem.contentAgeMin)
+      ? `${problem.contentAgeMin}m`
+      : 'unknown (no dated item; scored stale)'} maxContentAge=${problem.maxContentAgeMin}m`
+    : ' contentAge=operator-only (per-country freshness; see detailed /api/health)';
+
+  return `${problem.name}: status=${problem.status} records=${problem.records ?? 'unknown'}${contentClock}${seedAside}`;
 }
 
 /**

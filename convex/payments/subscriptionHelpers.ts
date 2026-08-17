@@ -1052,6 +1052,13 @@ export async function handleSubscriptionActive(
       reconcileNotFoundCount: undefined,
       renewalVerificationState: undefined,
       renewalVerificationAttemptAt: undefined,
+      // Clear the prior episode stamps too. A reactivated sub that still
+      // carried `cancelledAt` read as "already cancelled" to
+      // classifyRefundAlert, silencing a genuine full-refund alert after
+      // reactivate (#6769). The cancel/on-hold handlers re-anchor these on the
+      // next status transition, so wiping them here is safe.
+      cancelledAt: undefined,
+      onHoldAt: undefined,
     });
   } else {
     await ctx.db.insert("subscriptions", {

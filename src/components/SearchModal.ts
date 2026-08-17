@@ -365,7 +365,7 @@ export class SearchModal {
           </div>
           <div class="search-sheet-header">
             <span class="search-sheet-icon" aria-hidden="true"></span>
-            <input type="text" class="search-input" placeholder="${this.placeholder}" autofocus />
+            <input type="text" class="search-input" placeholder="${this.placeholder}" aria-label="${this.placeholder}" autofocus />
             <button class="search-sheet-cancel" aria-label="Close">\u00D7</button>
           </div>
           ${this.renderScopeMarkup()}
@@ -411,7 +411,7 @@ export class SearchModal {
           </div>
           <div class="search-header">
             <span class="search-icon" aria-hidden="true"></span>
-            <input type="text" class="search-input" placeholder="${this.placeholder}" autofocus />
+            <input type="text" class="search-input" placeholder="${this.placeholder}" aria-label="${this.placeholder}" autofocus />
             <kbd class="search-kbd">ESC</kbd>
           </div>
           ${this.renderScopeMarkup()}

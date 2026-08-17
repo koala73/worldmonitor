@@ -853,7 +853,7 @@ describe('mission preset renderer filtering', () => {
     assert.equal(applied.mapLayers.fuelShortages, true);
     assert.equal(applied.mapLayers.liveTankers, true);
 
-    const filtered = filterMissionLayersForRenderer(applied.mapLayers, 'flat', false, DEFAULT_MAP_LAYERS);
+    const filtered = filterMissionLayersForRenderer(applied.mapLayers, 'svg', DEFAULT_MAP_LAYERS);
 
     assert.equal(filtered.storageFacilities, false);
     assert.equal(filtered.fuelShortages, false);
@@ -869,7 +869,7 @@ describe('mission preset renderer filtering', () => {
     presetLayers.storageFacilities = true;
 
     const fallbackLayers = { ...DEFAULT_MAP_LAYERS, storageFacilities: true };
-    const filtered = filterMissionLayersForRenderer(presetLayers, 'flat', false, fallbackLayers);
+    const filtered = filterMissionLayersForRenderer(presetLayers, 'svg', fallbackLayers);
 
     assert.equal(filtered.storageFacilities, false);
     assert.ok(Object.values(filtered).some(Boolean), 'filtered fallback should keep executable default layers');
@@ -885,7 +885,7 @@ describe('mission preset renderer filtering', () => {
 
     assert.equal(applied.mapLayers.resilienceScore, true);
 
-    const filtered = filterMissionLayersForRenderer(applied.mapLayers, 'flat', false, DEFAULT_MAP_LAYERS);
+    const filtered = filterMissionLayersForRenderer(applied.mapLayers, 'svg', DEFAULT_MAP_LAYERS);
 
     assert.equal(filtered.resilienceScore, false);
     assert.equal(filtered.tradeRoutes, true);

@@ -763,7 +763,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/intelligence/v1/classify-event`
 - **类型：** 对 LLM 分类器的受约束规范路由代理。该操作此前以 `llm-passthrough` 理由被排除在 MCP 对等之外；按标题的 24 小时缓存吸收重复请求，且分类器输出上限为 50 个 token。
-- **配额：** 标准 —— OAuth（Pro）与仪表盘密钥上下文每次调用均消耗 MCP 每日预留（每 UTC 日 50 次）。环境 API 密钥（`wm_…`）调用方不受该每日预留约束，与其他所有 MCP 工具一样，仍受 60 次请求/分钟/密钥 的限流保护。
+- **配额：** 标准 —— OAuth 与控制面板签发的 `wm_…` 密钥上下文每次调用均消耗 MCP 每日预留（默认每 UTC 日 50 次）。只有部署中明确列入许可名单的旧版运营方密钥跳过每日预留；每个已认证上下文仍受每分钟 60 次的限流保护。
 
 <CodeGroup>
 
@@ -1640,7 +1640,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_natural_disasters`
 
-近期地震（USGS）、活跃野火（NASA FIRMS）和自然灾害事件。包含震级、位置和威胁严重程度。
+近期 M4.5+ 地震（USGS 与加拿大地震局 / NRCan）、活跃野火（NASA FIRMS）和自然灾害事件。包含震级、位置、来源和威胁严重程度。
 
 **参数（工具特定）：**
 

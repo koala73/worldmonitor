@@ -168,9 +168,16 @@ describe('Tape Claim copy', () => {
 
   const localeFiles = readdirSync(join(root, 'src/locales')).filter((name) => name.endsWith('.json'));
 
+  function supportedLocaleFiles(): string[] {
+    const source = readFileSync(join(root, 'src/services/i18n.ts'), 'utf8');
+    const declaration = source.match(/const SUPPORTED_LANGUAGES = \[([^\]]+)\]/);
+    assert.ok(declaration, 'SUPPORTED_LANGUAGES declaration must be extractable');
+    const supported = [...declaration[1].matchAll(/'([^']+)'/g)].map((match) => `${match[1]}.json`);
+    return [...supported, 'en.shell.json'].sort();
+  }
+
   it('ships a locale set to sweep', () => {
-    // Guards against the sweep below passing vacuously on an empty glob.
-    assert.ok(localeFiles.length >= 25, `expected the full locale set, found ${localeFiles.length}`);
+    assert.deepEqual(localeFiles.sort(), supportedLocaleFiles(), 'market-copy locale sweep must match SUPPORTED_LANGUAGES exactly');
   });
 
   it('claims no live tape at any market-quote copy key, in any locale', () => {

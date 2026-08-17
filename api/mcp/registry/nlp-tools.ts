@@ -26,7 +26,7 @@ import type { NewsItemCore } from '../../../shared/news-clustering-core.js';
 import { getSourceProvenanceState } from '../../../shared/source-provenance.js';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk } from '../billing-denial';
-import { argStr } from '../filters';
+import { argStr, ciIncludes } from '../filters';
 import { McpSourceUnavailableError } from '../source-unavailable';
 import type { ToolDef } from '../types';
 
@@ -509,6 +509,7 @@ export const NLP_TOOLS: ToolDef[] = [
           enum: [...ALL_DIGEST_CATEGORIES],
           description: DIGEST_CATEGORY_DESC,
         },
+        query: { type: 'string', description: 'Keep only clusters whose primary headline or any member headline contains this text (case-insensitive substring). Filters the LIVE digest window only — not a historical index. Applied before limit, so a capped list is drawn from the matches.' },
       },
       required: [],
     },
@@ -577,6 +578,7 @@ export const NLP_TOOLS: ToolDef[] = [
         };
       }
       const category = argStr(params.category);
+      const query = argStr(params.query);
       const digest = await fetchNlpDigestItems(base, context, variant, category);
       const clusters = clusterNewsCore(digest.items, () => 3);
       const selectedClusters = clusters
@@ -592,6 +594,14 @@ export const NLP_TOOLS: ToolDef[] = [
           distinctPublishers: cluster.uniquePublisherCount,
         }))
         .filter(({ distinctPublishers }) => distinctPublishers >= minSources)
+        // Query narrows BEFORE the slice: filtering after would take the first
+        // `limit` clusters and match within them, dropping a match that sits
+        // past the cap. Member headlines are matched too — a cluster's primary
+        // is recency-picked, so the term an agent searched for is often on a
+        // sibling headline rather than the one promoted to primary.
+        .filter(({ cluster }) => !query
+          || ciIncludes(cluster.primaryTitle, query)
+          || cluster.allItems.some((item) => ciIncludes(item.title, query)))
         .slice(0, limit);
       const projected = selectedClusters.map(({ cluster, sources, distinctPublishers }) => {
         const projectedSources = sources.slice(0, 8);

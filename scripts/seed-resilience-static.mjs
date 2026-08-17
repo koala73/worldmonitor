@@ -81,6 +81,29 @@ export function countryRedisKey(iso2) {
   return `${RESILIENCE_STATIC_PREFIX}${iso2}`;
 }
 
+export function installSigtermLockCleanup({
+  runId,
+  processRef = process,
+  release = releaseLock,
+  logError = console.error,
+} = {}) {
+  if (!runId) throw new Error('installSigtermLockCleanup requires runId');
+
+  const onSigterm = async () => {
+    logError(`  [${LOCK_DOMAIN}] SIGTERM received — releasing lock runId=${runId}`);
+    try {
+      await release(LOCK_DOMAIN, runId);
+    } catch (error) {
+      logError(`  [${LOCK_DOMAIN}] SIGTERM cleanup error: ${error?.message || error}`);
+    } finally {
+      processRef.exit(143);
+    }
+  };
+
+  processRef.once('SIGTERM', onSigterm);
+  return () => processRef.off('SIGTERM', onSigterm);
+}
+
 function nowSeedYear(now = new Date()) {
   return now.getUTCFullYear();
 }
@@ -209,12 +232,31 @@ function upsertDatasetRecord(target, iso2, datasetField, value) {
   target.set(iso2, current);
 }
 
+/**
+ * The World Bank archived the bare WGI codes; the live series now sit in source
+ * 3 behind a `GOV_WGI_` prefix. Requesting `VA.EST` returns
+ * "The indicator was not found. It may have been deleted or archived.", which
+ * Promise.allSettled below turned into a quiet `failedDatasets: ['wgi']` rather
+ * than a hard failure — the whole governance dataset had stopped refreshing.
+ *
+ * Only the REQUEST id is prefixed. The stored key stays the bare code on
+ * purpose: shared/wgi-indicator-keys.json is also the payload contract that
+ * server/.../\_dimension-scorers.ts reads back with
+ * `indicators[key]`, and every record already in Redis is keyed that way. This
+ * seeder is annual with a 400-day TTL, so renaming the stored key would leave
+ * the governance dimension reading nothing until the next re-seed.
+ */
+export function wgiUpstreamIndicatorId(storedKey) {
+  return `GOV_WGI_${storedKey}`;
+}
+
 export async function fetchWgiDataset() {
   const merged = new Map();
   const results = await Promise.allSettled(
     WGI_INDICATORS.map((indicatorId) =>
-      fetchWorldBankIndicatorRows(indicatorId, { mrv: '12' })
+      fetchWorldBankIndicatorRows(wgiUpstreamIndicatorId(indicatorId), { mrv: '12' })
         .then(selectLatestWorldBankByCountry)
+        // Deliberately re-keyed to the BARE indicatorId, not the upstream one.
         .then((countryMap) => ({ indicatorId, countryMap })),
     ),
   );
@@ -1226,6 +1268,7 @@ export async function main() {
     return;
   }
 
+  const removeSigtermHandler = installSigtermLockCleanup({ runId });
   try {
     const result = await seedResilienceStatic();
     logSeedResult('resilience:static', result?.manifest?.recordCount ?? 0, Date.now() - startedAt, {
@@ -1235,6 +1278,7 @@ export async function main() {
     });
   } finally {
     await releaseLock(LOCK_DOMAIN, runId);
+    removeSigtermHandler();
   }
 }
 

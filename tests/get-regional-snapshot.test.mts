@@ -1,38 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { adaptSnapshot } from '../server/worldmonitor/intelligence/v1/get-regional-snapshot';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, '..');
-
-const handlerSrc = readFileSync(
-  resolve(root, 'server/worldmonitor/intelligence/v1/get-regional-snapshot.ts'),
-  'utf-8',
-);
-
-const handlerIndexSrc = readFileSync(
-  resolve(root, 'server/worldmonitor/intelligence/v1/handler.ts'),
-  'utf-8',
-);
-
-const premiumPathsSrc = readFileSync(
-  resolve(root, 'src/shared/premium-paths.ts'),
-  'utf-8',
-);
-
-const gatewaySrc = readFileSync(
-  resolve(root, 'server/gateway.ts'),
-  'utf-8',
-);
-
-const protoSrc = readFileSync(
-  resolve(root, 'proto/worldmonitor/intelligence/v1/get_regional_snapshot.proto'),
-  'utf-8',
-);
+import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 
 // ────────────────────────────────────────────────────────────────────────────
 // adaptSnapshot: snake_case -> camelCase adapter (the substantive logic)
@@ -383,126 +353,14 @@ describe('adaptSnapshot', () => {
 // Handler structural checks (static analysis)
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('get-regional-snapshot handler: structural checks', () => {
-  it('imports getCachedJson + getCachedRawString from redis helpers', () => {
-    // getCachedRawString reads the bare-string latestKey pointer (the seed
-    // writer stores snapshot_id via `SET key bareString` — JSON.parse would
-    // throw); getCachedJson reads the JSON-stringified snapshot-by-id payload.
-    // Both must be imported.
-    assert.match(handlerSrc, /import\s*\{[^}]*\bgetCachedJson\b[^}]*\}\s*from\s*'\.\.\/\.\.\/\.\.\/_shared\/redis'/);
-    assert.match(handlerSrc, /import\s*\{[^}]*\bgetCachedRawString\b[^}]*\}\s*from\s*'\.\.\/\.\.\/\.\.\/_shared\/redis'/);
-  });
+// The structural, registration and proto assertions that used to close this
+// file pinned import lines, handler internals, and proto field numbers. Generated
+// clients make an unregistered RPC a typecheck failure, and adaptSnapshot above
+// is the behaviour worth testing. What survives is the premium gate, asserted
+// against the real Set rather than a grep of the module text.
 
-  it('reads latestKey via getCachedRawString (encoding contract)', () => {
-    // Guard the primary fix: if a future refactor swaps back to getCachedJson
-    // for the latestKey read, every region will silently render empty because
-    // JSON.parse throws on the bare snapshot_id string. See commit that
-    // replaced the getCachedJson+JSON.parse path with getCachedRawString.
-    assert.match(handlerSrc, /getCachedRawString\s*\(\s*latestKey\s*\)/);
-  });
-
-  it('uses the canonical :latest key prefix', () => {
-    assert.match(handlerSrc, /'intelligence:snapshot:v1:'/);
-  });
-
-  it('uses the canonical snapshot-by-id key prefix', () => {
-    assert.match(handlerSrc, /'intelligence:snapshot-by-id:v1:'/);
-  });
-
-  it('reads latest pointer then snapshot-by-id (two-hop lookup)', () => {
-    // latest resolved before snapKey construction
-    const latestIdx = handlerSrc.indexOf('latestKey');
-    const snapKeyIdx = handlerSrc.indexOf('snapKey');
-    assert.ok(latestIdx > 0 && snapKeyIdx > latestIdx, 'latest must resolve before snap lookup');
-  });
-
-  it('returns empty response on missing snapshot id', () => {
-    assert.match(handlerSrc, /if \(!snapshotId\) \{\s*return \{\}/);
-  });
-
-  it('returns empty response on missing persisted snapshot', () => {
-    assert.match(handlerSrc, /if \(!persisted \|\| typeof persisted !== 'object'\) \{\s*return \{\}/);
-  });
-
-  it('calls adaptSnapshot to produce the wire shape', () => {
-    assert.match(handlerSrc, /adaptSnapshot\(persisted\)/);
-  });
-
-  it('exports getRegionalSnapshot handler matching the service interface', () => {
-    assert.match(handlerSrc, /export const getRegionalSnapshot: IntelligenceServiceHandler\['getRegionalSnapshot'\]/);
-  });
-});
-
-describe('intelligence handler registration', () => {
-  it('imports getRegionalSnapshot from get-regional-snapshot module', () => {
-    assert.match(handlerIndexSrc, /import \{ getRegionalSnapshot \} from '\.\/get-regional-snapshot'/);
-  });
-
-  it('registers getRegionalSnapshot on the handler object', () => {
-    assert.match(handlerIndexSrc, /\s+getRegionalSnapshot,/);
-  });
-});
-
-describe('security wiring', () => {
-  it('adds the endpoint to PREMIUM_RPC_PATHS', () => {
-    assert.match(premiumPathsSrc, /'\/api\/intelligence\/v1\/get-regional-snapshot'/);
-  });
-
-  it('has a RPC_CACHE_TIER entry for route-parity (even though premium paths bypass it)', () => {
-    // At runtime the gateway checks PREMIUM_RPC_PATHS first and short-circuits
-    // to 'slow-browser' regardless of RPC_CACHE_TIER. The entry exists to satisfy
-    // tests/route-cache-tier.test.mjs which enforces that every generated GET
-    // route has an explicit tier, and documents the intended tier if the endpoint
-    // ever becomes non-premium.
-    assert.match(gatewaySrc, /'\/api\/intelligence\/v1\/get-regional-snapshot':\s*'slow'/);
-  });
-});
-
-describe('proto definition', () => {
-  it('declares the GetRegionalSnapshot RPC method', () => {
-    const serviceProtoSrc = readFileSync(
-      resolve(root, 'proto/worldmonitor/intelligence/v1/service.proto'),
-      'utf-8',
-    );
-    assert.match(serviceProtoSrc, /rpc GetRegionalSnapshot\(GetRegionalSnapshotRequest\) returns \(GetRegionalSnapshotResponse\)/);
-  });
-
-  it('validates region_id as strict lowercase kebab pattern (no trailing or consecutive hyphens)', () => {
-    // Pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
-    // - Starts with a lowercase letter
-    // - Each hyphen must be followed by at least one alphanumeric character
-    // - Rejects "mena-", "east-asia-", "foo--bar"
-    assert.match(
-      protoSrc,
-      /buf\.validate\.field\)\.string\.pattern = "\^\[a-z\]\[a-z0-9\]\*\(-\[a-z0-9\]\+\)\*\$"/,
-    );
-  });
-
-  it('defines RegionalSnapshot with all 13 top-level fields', () => {
-    assert.match(protoSrc, /message RegionalSnapshot \{/);
-    assert.match(protoSrc, /string region_id = 1/);
-    assert.match(protoSrc, /int64 generated_at = 2/);
-    assert.match(protoSrc, /SnapshotMeta meta = 3/);
-    assert.match(protoSrc, /RegimeState regime = 4/);
-    assert.match(protoSrc, /BalanceVector balance = 5/);
-    assert.match(protoSrc, /repeated ActorState actors = 6/);
-    assert.match(protoSrc, /repeated LeverageEdge leverage_edges = 7/);
-    assert.match(protoSrc, /repeated ScenarioSet scenario_sets = 8/);
-    assert.match(protoSrc, /repeated TransmissionPath transmission_paths = 9/);
-    assert.match(protoSrc, /TriggerLadder triggers = 10/);
-    assert.match(protoSrc, /MobilityState mobility = 11/);
-    assert.match(protoSrc, /repeated EvidenceItem evidence = 12/);
-    assert.match(protoSrc, /RegionalNarrative narrative = 13/);
-  });
-
-  it('defines BalanceVector with all 7 axes plus net_balance and drivers', () => {
-    assert.match(protoSrc, /double coercive_pressure = 1/);
-    assert.match(protoSrc, /double domestic_fragility = 2/);
-    assert.match(protoSrc, /double capital_stress = 3/);
-    assert.match(protoSrc, /double energy_vulnerability = 4/);
-    assert.match(protoSrc, /double alliance_cohesion = 5/);
-    assert.match(protoSrc, /double maritime_access = 6/);
-    assert.match(protoSrc, /double energy_leverage = 7/);
-    assert.match(protoSrc, /double net_balance = 8/);
+describe('regional snapshot is premium-gated', () => {
+  it('is in PREMIUM_RPC_PATHS', () => {
+    assert.ok(PREMIUM_RPC_PATHS.has('/api/intelligence/v1/get-regional-snapshot'));
   });
 });

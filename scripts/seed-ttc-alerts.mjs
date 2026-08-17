@@ -18,7 +18,7 @@
  */
 
 import { loadEnvFile, runSeed } from './_seed-utils.mjs';
-import { gtfsrtAdapter } from './lib/gtfsrt.mjs';
+import { gtfsRtHeaderContentMeta, gtfsrtAdapter } from './lib/gtfsrt.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -78,9 +78,13 @@ export function validateTtcAlertsSnapshot(snapshot) {
     && Array.isArray(snapshot?.alerts);
 }
 
+// 18x the 5min seed-bundle-canada member interval.
+export const TTC_ALERTS_MAX_CONTENT_AGE_MIN = 90;
+
 export function declareRecords(snapshot) {
   return Array.isArray(snapshot?.alerts) ? snapshot.alerts.length : 0;
 }
+
 
 async function fetchTtcAlerts() {
   const feed = await gtfsrtAdapter(TTC_GTFS_RT_ALERTS_URL, {
@@ -97,6 +101,8 @@ runSeed('transit', 'ttc-alerts', TTC_ALERTS_KEY, fetchTtcAlerts, {
   zeroIsValid: true,
   schemaVersion: 1,
   maxStaleMin: TTC_ALERTS_MAX_STALE_MIN,
+  contentMeta: gtfsRtHeaderContentMeta,
+  maxContentAgeMin: TTC_ALERTS_MAX_CONTENT_AGE_MIN,
 }).catch((err) => {
   const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + cause);

@@ -96,6 +96,16 @@ describe('Vercel handler bundle graph rejects JSON import attributes', () => {
     );
   });
 
+  it('reaches the source-origin classifier from the MCP handler', () => {
+    const originConsumers = entries.filter((entry) =>
+      [...importClosure(entry)].some((f) => f.endsWith('scripts/source-origin.mjs')),
+    );
+    assert.ok(
+      originConsumers.some((entry) => entry.endsWith('api/mcp.ts')),
+      'api/mcp.ts must bundle the same source-origin classifier used by the public catalog',
+    );
+  });
+
   it('no module in any handler closure uses `with { type: \'json\' }`', () => {
     const offenders = new Set();
     for (const entry of entries) {

@@ -291,9 +291,17 @@ describe('VIA Rail live registration (no bootstrap / seeder import / ais-relay)'
       false,
       'a standalone row would claim a slot the bundle already covers',
     );
+    // The ack was the bridge until the bundle existed. It exists now and
+    // viarailLive publishes, so the ack was removed as satisfied — keeping it
+    // would leave a suppression that silently absorbs a future VIA outage.
+    // What still matters is that any ack still present names the right probe.
     const ack = JSON.parse(read('scripts/seed-freshness-baseline.json'))
       .acknowledged.find((row) => row.name === 'viarailLive');
-    assert.ok(ack, 'viarailLive keeps its expiring acknowledgement');
-    assert.equal(ack.cutover.probeKey, 'seed-meta:transit:viarail-live');
+    if (ack) assert.equal(ack.cutover.probeKey, 'seed-meta:transit:viarail-live');
+
+    // The bundle must actually own it, or removing the ack leaves the probe
+    // with no producer at all.
+    const bundle = read('scripts/seed-bundle-canada.mjs');
+    assert.match(bundle, /seedMetaKey:\s*'seed-meta:transit:viarail-live'/);
   });
 });

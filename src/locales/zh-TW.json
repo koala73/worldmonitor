@@ -1170,7 +1170,7 @@
         "ucdpEvents": "UCDP事件",
         "displacementFlows": "流離失所流向",
         "climateAnomalies": "氣候異常",
-        "weatherAlerts": "美國天氣預警（NWS）",
+        "weatherAlerts": "美國與加拿大天氣預警（NWS, ECCC）",
         "strategicWaterways": "戰略水道",
         "economicCenters": "經濟中心",
         "criticalMinerals": "關鍵礦產",
@@ -1253,7 +1253,7 @@
           "infraDatacenters": "AI算力叢集 >=10,000 GPU",
           "infraOutages": "網際網路中斷和服務故障",
           "naturalEventsTech": "地震、風暴、火災（可能影響資料中心）",
-          "weatherAlerts": "美國惡劣天氣預警（NWS）",
+          "weatherAlerts": "美國與加拿大惡劣天氣預警（NWS, ECCC）",
           "economicCenters": "證券交易所和央行",
           "countriesOverlay": "國家名稱疊加層",
           "financeExchanges": "按市場層級劃分的全球主要交易所",
@@ -1265,7 +1265,7 @@
           "financeOutages": "可能影響市場運營的網際網路中斷",
           "financeCyberThreats": "金融基礎設施周邊的安全事件",
           "macroWaterways": "大宗商品航運的戰略咽喉要道",
-          "weatherAlertsMarket": "與市場相關的美國惡劣天氣事件（NWS）",
+          "weatherAlertsMarket": "與市場相關的美國與加拿大惡劣天氣事件（NWS, ECCC）",
           "naturalEventsMacro": "地震、火災、洪水等自然災害",
           "timeRecent": "按近幾小時篩選時間資料",
           "timeExtended": "顯示過去一週、一個月或所有時間的資料",
@@ -2358,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "制裁與指定",
-      "infoTooltip": "來自 SDN 和綜合名單的 OFAC 制裁指定。顯示哪些國家面臨最高指定壓力、驅動因素以及自上次更新以來新增的內容。",
+      "infoTooltip": "OFAC 的 SDN 與綜合名單，以及加拿大全球事務部 SEMA/JVCFOA 指定。 顯示哪些國家面臨最高指定壓力、驅動因素以及自上次更新以來新增的內容。",
       "loading": "正在載入制裁資料...",
       "unavailable": "制裁資料不可用。",
       "summary": {
         "new": "新增",
         "vessels": "船舶",
-        "aircraft": "飛機"
+        "aircraft": "飛機",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "受制裁國家",
@@ -2379,11 +2380,12 @@
       "footer": {
         "updated": "更新於 {{time}}",
         "dataset": "資料集 {{date}}",
-        "source": "來源：OFAC"
+        "source": "來源：OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} 新增",
-        "new": "新增"
+        "new": "新增",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} 項指定",
       "designations_other": "{{count}} 項指定",
@@ -2829,6 +2831,7 @@
     "moreEvents": "更多事件",
     "monitoring": "監控中",
     "viewUSGS": "在USGS上檢視",
+    "viewNRCan": "在Earthquakes Canada上檢視",
     "expired": "已過期",
     "timeAgo": {
       "s": "{{count}}秒前",

@@ -1162,7 +1162,7 @@
         "ucdpEvents": "UCDP události",
         "displacementFlows": "Toky vysídlení",
         "climateAnomalies": "Klimatické anomálie",
-        "weatherAlerts": "Meteorologická varování pro USA (NWS)",
+        "weatherAlerts": "Meteorologická varování pro USA a Kanadu (NWS, ECCC)",
         "strategicWaterways": "Strategické vodní cesty",
         "economicCenters": "Ekonomická centra",
         "criticalMinerals": "Kritické minerály",
@@ -1245,7 +1245,7 @@
           "infraDatacenters": "Výpočetní clustery AI >=10 000 GPU",
           "infraOutages": "Výpadky internetu a narušení služeb",
           "naturalEventsTech": "Zemětřesení, bouře, požáry (mohou ovlivnit datová centra)",
-          "weatherAlerts": "Varování před extrémním počasím v USA (NWS)",
+          "weatherAlerts": "Varování před extrémním počasím v USA a Kanadě (NWS, ECCC)",
           "economicCenters": "Burzy a centrální banky",
           "countriesOverlay": "Překryv názvů zemí",
           "financeExchanges": "Hlavní světové burzy podle úrovně trhu",
@@ -1257,7 +1257,7 @@
           "financeOutages": "Výpadky internetu, které mohou ovlivnit operace na trzích",
           "financeCyberThreats": "Bezpečnostní události kolem finanční infrastruktury",
           "macroWaterways": "Strategická úzká hrdla pro přepravu komodit",
-          "weatherAlertsMarket": "Události extrémního počasí v USA s tržním významem (NWS)",
+          "weatherAlertsMarket": "Události extrémního počasí v USA a Kanadě s tržním významem (NWS, ECCC)",
           "naturalEventsMacro": "Zemětřesení, požáry, záplavy a další přírodní narušení",
           "timeRecent": "Filtrovat data na základě času za poslední hodiny",
           "timeExtended": "Zobrazit data z minulého týdne, měsíce nebo za celou dobu",
@@ -2376,13 +2376,14 @@
     },
     "sanctionsPressure": {
       "title": "Sankce a designace",
-      "infoTooltip": "OFAC sankce designace ze seznamů SDN a Consolidated Lists. Ukazuje, které země čelí největšímu tlaku na desig­nace, jaké programy to řídí a co bylo nově přidáno od poslední aktualizace.",
+      "infoTooltip": "OFAC seznamy SDN a Consolidated plus označení SEMA/JVCFOA od Global Affairs Canada. Ukazuje, které země čelí největšímu tlaku na desig­nace, jaké programy to řídí a co bylo nově přidáno od poslední aktualizace.",
       "loading": "Načítání dat sankcí...",
       "unavailable": "Data sankcí není dostupná.",
       "summary": {
         "new": "Nový",
         "vessels": "Plavidla",
-        "aircraft": "Letadla"
+        "aircraft": "Letadla",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Země s sankcemi",
@@ -2397,11 +2398,12 @@
       "footer": {
         "updated": "Aktualizováno {{time}}",
         "dataset": "dataset {{date}}",
-        "source": "Zdroj: OFAC"
+        "source": "Zdroj: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nových",
-        "new": "nový"
+        "new": "nový",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} designace",
       "designations_other": "{{count}} designací",
@@ -2857,6 +2859,7 @@
     "moreEvents": "dalších událostí",
     "monitoring": "Monitorování",
     "viewUSGS": "Zobrazit na USGS",
+    "viewNRCan": "Zobrazit na Earthquakes Canada",
     "expired": "Vypršelo",
     "timeAgo": {
       "s": "před {{count}} s",

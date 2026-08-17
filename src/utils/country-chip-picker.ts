@@ -115,7 +115,7 @@ export function mountCountryChipPicker(
     setTrustedHtml(root, trustedHtml(`
       <div class="us-notif-country-chips" data-country-chip-row>${chipRow}${extraChips}</div>
       <div class="us-notif-country-add-row" style="margin-top:6px;display:flex;gap:6px;align-items:center">
-        <input type="text" class="unified-settings-input" data-country-add-input placeholder="Add code (e.g. PL)" maxlength="2" style="width:90px;text-transform:uppercase">
+        <input type="text" class="unified-settings-input" data-country-add-input placeholder="Add code (e.g. PL)" aria-label="Add country code" maxlength="2" style="width:90px;text-transform:uppercase">
         <button type="button" class="us-notif-ch-btn" data-country-add-btn>Add</button>
         <span class="us-notif-country-error" data-country-error style="color:#c00;font-size:12px;display:none">Enter a 2-letter ISO country code (e.g. US, GB).</span>
       </div>

@@ -341,6 +341,33 @@ describe('JODI publishes the rest of the world without China (#6395)', () => {
     assert.equal(jodiDatasetContentMeta(null, hasMeasurement, NOW), null);
   });
 
+  it('dates content age when called with epoch ms, which is what runSeed passes', () => {
+    // runSeed invokes the hook as `contentMeta(data, startMs)` — a NUMBER
+    // (scripts/_seed-utils.mjs). This helper used to demand `now instanceof
+    // Date` and return null for anything else, and a null newestItemAt is read
+    // as STALE_CONTENT by api/health.js. jodiGas and lngVulnerability were
+    // therefore permanently stale no matter how current the file was (#6799).
+    //
+    // Every other test here passes `NOW`, a Date — which is exactly why the
+    // real call shape was never exercised.
+    const records = reporters('2026-01', 3);
+    const fromDate = jodiDatasetContentMeta(records, hasMeasurement, NOW);
+    const fromEpochMs = jodiDatasetContentMeta(records, hasMeasurement, NOW.getTime());
+
+    assert.ok(fromDate, 'fixture must produce a datable month');
+    assert.deepEqual(fromEpochMs, fromDate, 'epoch ms and Date must agree');
+
+    // The future-month rejection has to survive the number path too, or the
+    // fix would trade a false stale for a file dated by mis-stamped rows.
+    assert.equal(
+      jodiDatasetContentMeta(reporters('2027-03', 5), hasMeasurement, NOW.getTime()),
+      null,
+    );
+    // A genuinely unusable clock still refuses to date the file.
+    assert.equal(jodiDatasetContentMeta(records, hasMeasurement, Number.NaN), null);
+    assert.equal(jodiDatasetContentMeta(records, hasMeasurement, null), null);
+  });
+
   it('one fast reporter cannot date a file everyone else stopped updating', () => {
     // JODI carries a long reporting tail — a single country sitting on a
     // current month while the leading cohort is frozen must not read as fresh.
