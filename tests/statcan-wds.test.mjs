@@ -9,6 +9,7 @@ import {
   CPI_VECTOR_ID,
   LFS_UNEMPLOYMENT_VECTOR_ID,
   STATCAN_WDS_HOST,
+  STATCAN_MAX_CONTENT_AGE_MIN,
   WDS_VECTORS_URL,
   buildStatcanPayload,
   changedCubeListUrl,
@@ -30,6 +31,7 @@ import {
   CPI_PRODUCT_ID,
   LFS_PRODUCT_ID,
 } from '../scripts/lib/statcan-wds.mjs';
+import { DAY_MIN } from '../scripts/_content-age-helpers.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const changedDoc = JSON.parse(readFileSync(resolve(here, 'fixtures/statcan-wds/changed-cube-list.json'), 'utf8'));
@@ -388,4 +390,28 @@ test('the StatCan and BoC EMPTY waivers are retired, and the 08:00 cron stays do
     assert.doesNotMatch(row.reason ?? '', /13:00/, `${row.name} must not cite a 13:00 tick`);
   }
   assert.match(runbook, /0 8 \* \* \*[^\n]*daily 08:00 UTC/);
+});
+
+test('STATCAN_MAX_CONTENT_AGE_MIN clears the ~79-day content-age peak and is wired into the seeder', () => {
+  // WDS refPer is the FIRST of the reference month, so a monthly series'
+  // newest observation start-dates a month before the data exists: June CPI
+  // carries refPer 2026-06-01 while July CPI releases ~2026-08-19, a ~79-day
+  // natural peak. The budget must clear that peak.
+  //
+  // Unlike its two siblings in #6831 — China (tests/china-macro-production-
+  // registration.test.mts) and CISS (tests/ciss-stale-threshold-consistency
+  // .test.mjs) both pin their budgets — nothing else asserts this value or its
+  // wiring. The generic seeder-content-age-coverage net skips StatCan because
+  // www150.statcan.gc.ca is not one of its FREEZE_PRONE_MARKER hosts, so a
+  // wrong value or a dropped maxContentAgeMin wiring would ship unnoticed.
+  assert.equal(STATCAN_MAX_CONTENT_AGE_MIN, 90 * DAY_MIN);
+  assert.ok(
+    STATCAN_MAX_CONTENT_AGE_MIN > 79 * DAY_MIN,
+    'budget must exceed the ~79-day content-age peak',
+  );
+  assert.match(
+    seederSrc,
+    /maxContentAgeMin:\s*STATCAN_MAX_CONTENT_AGE_MIN/,
+    'seed-statcan-wds.mjs must wire the content-age budget from the shared constant',
+  );
 });

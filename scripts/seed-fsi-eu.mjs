@@ -30,21 +30,29 @@ const FSI_EU_TTL = 259200;
 // Health staleness budgets:
 //  - maxStaleMin 5760 (96h) tracks SEEDER liveness — covers an Easter Wed→Mon
 //    gap on the daily cron. Mirrored in api/health.js SEED_META.euFsi.
-//  - CISS_MAX_CONTENT_AGE_MIN (10 days) tracks DATA freshness via the
+//  - CISS_MAX_CONTENT_AGE_MIN (14 days) tracks DATA freshness via the
 //    content-age contract: if the NEW series ever freezes the way SS_CI did,
-//    /api/health flips to STALE_CONTENT within ~6 ECB business days instead of
-//    staying green for a year. 10d absorbs a weekend + ECB holiday cluster +
-//    one missed cron without false-positiving.
+//    /api/health flips to STALE_CONTENT instead of staying green for a year.
+//    The budget absorbs a weekend + ECB holiday cluster + one missed cron
+//    without false-positiving.
 //
-// CANONICAL source of the 10-day threshold. The server RPC + panel mirror it
+// CANONICAL source of the 14-day threshold. The server RPC + panel mirror it
 // via src/shared/ciss-staleness.ts (the seeder is plain .mjs and cannot be
 // imported by TS code); tests/ciss-stale-threshold-consistency.test.mjs
 // asserts the two never drift.
+//
 // 14 days, not 10. Verified 2026-08-17: the ECB's own newest CISS observation
 // was 2026-08-04, exactly what the seeder held — it was in sync, and the ECB
-// had simply not published its daily index for 13 days. A 10-day budget calls
-// that STALE_CONTENT while the seeder is doing everything right, so two weeks
-// is the accepted publication gap before the alarm means something.
+// had simply not published its daily index for 13 days. A 10-day budget called
+// that STALE_CONTENT while the seeder was doing everything right.
+//
+// 14 is a deliberately chosen FLOOR — "two weeks is the accepted publication
+// gap before the alarm means something" — NOT a computed peak+margin like the
+// China (60d vs ~51d) and StatCan (90d vs ~79d) budgets. It clears the observed
+// 13-day gap by only ~1 day on purpose: two weeks is the shortest silence we
+// are willing to treat as normal for a daily index. If the ECB opens a longer
+// publication gap and this false-positives again, raise the floor deliberately
+// — do not read 14 as a measured ceiling.
 const CISS_MAX_CONTENT_AGE_MIN = 14 * DAY_MIN;
 
 function classifyLabel(value) {

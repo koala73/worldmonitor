@@ -11,6 +11,7 @@ import {
   RESILIENCE_STATIC_SOURCE_VERSION,
   WGI_INDICATORS,
   wgiUpstreamIndicatorId,
+  fetchWgiDataset,
   buildFailureRefreshKeys,
   buildFaoAggregate,
   buildFaoAggregateForPublish,
@@ -119,6 +120,72 @@ describe('resilience static seed WGI indicator contract', () => {
       'the scorer must still look the stored indicators up by the shared key list',
     );
     assert.doesNotMatch(scorer, /GOV_WGI_/, 'the scorer must never learn the upstream prefix');
+  });
+
+  // The regression this PR exists to prevent lives inside fetchWgiDataset's
+  // .then chain, not in wgiUpstreamIndicatorId() or the shared key list alone:
+  // the REQUEST must carry the GOV_WGI_ prefix while the STORED key stays bare.
+  // The three tests above check the key list, the prefixer in isolation, and
+  // the scorer's source — none actually RUN fetchWgiDataset, so a future edit
+  // to `.then((countryMap) => ({ indicatorId, countryMap }))` (e.g. re-keying
+  // to the upstream id) would pass them all while silently zeroing governance
+  // scores for the 400-day TTL. This exercises the function end-to-end.
+  it('fetchWgiDataset requests the GOV_WGI_ prefix but stores results under the bare key', async () => {
+    const requestedIds = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      const match = href.match(/\/indicator\/([^?]+)\?/);
+      if (!href.includes('api.worldbank.org/') || !match) {
+        throw new Error(`Unexpected test URL: ${href}`);
+      }
+      requestedIds.push(decodeURIComponent(match[1]));
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [
+          { pages: 1 },
+          [
+            {
+              country: { id: 'US', value: 'United States' },
+              countryiso3code: 'USA',
+              date: '2024',
+              value: 0.42,
+            },
+          ],
+        ],
+      };
+    };
+
+    let merged;
+    try {
+      merged = await fetchWgiDataset();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    // Every upstream request carried the prefix — one per stored key.
+    assert.equal(requestedIds.length, WGI_INDICATORS.length);
+    for (const requested of requestedIds) {
+      assert.match(requested, /^GOV_WGI_/, `request ${requested} must carry the GOV_WGI_ prefix`);
+      assert.ok(
+        WGI_INDICATORS.includes(requested.replace(/^GOV_WGI_/, '')),
+        `request ${requested} must map back to a bare stored key`,
+      );
+    }
+
+    // The stored payload is keyed by the BARE code, never the prefixed one.
+    assert.ok(merged.size >= 1, 'fetchWgiDataset must return at least one country');
+    for (const record of merged.values()) {
+      assert.equal(record.source, 'worldbank-wgi');
+      for (const storedKey of Object.keys(record.indicators)) {
+        assert.doesNotMatch(storedKey, /^GOV_WGI_/, `stored key ${storedKey} must be the bare code`);
+        assert.ok(WGI_INDICATORS.includes(storedKey), `stored key ${storedKey} must be a canonical bare key`);
+      }
+      for (const bare of WGI_INDICATORS) {
+        assert.ok(bare in record.indicators, `indicator ${bare} must be stored under its bare key`);
+      }
+    }
   });
 });
 
