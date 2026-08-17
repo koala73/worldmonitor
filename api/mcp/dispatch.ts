@@ -8,6 +8,7 @@ import {
   BothSourcesFailedError,
   createMcpToolExecutionContext,
   downstreamErrorTags,
+  McpValidationDetailError,
 } from './downstream';
 import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
@@ -439,6 +440,21 @@ export async function dispatchToolsCall(
           stale: true,
           unavailable_inputs: err.unavailableInputs,
           failed_inputs: err.failedInputs,
+        },
+      );
+    }
+    // #6559: a downstream RPC 400 with field-level violations is a caller
+    // input problem, not an internal failure. Re-emit the bounded projection
+    // as structured JSON-RPC error data so agents can correct the request
+    // without seeing raw response text.
+    if (err instanceof McpValidationDetailError) {
+      return rpcError(
+        id,
+        -32602,
+        'Invalid params: downstream validation failed',
+        corsHeaders,
+        {
+          validation_violations: err.violations,
         },
       );
     }

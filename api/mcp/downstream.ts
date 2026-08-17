@@ -76,6 +76,72 @@ export class ToolFetchError extends Error {
   }
 }
 
+/**
+ * One bounded field-level validation violation carried to the MCP caller.
+ * Only `field`/`description` strings survive, each length-capped; every other
+ * property of the upstream body is dropped before it can leave this module.
+ */
+export type McpValidationViolation = {
+  field: string;
+  description: string;
+};
+
+export class McpValidationDetailError extends ToolFetchError {
+  readonly violations: McpValidationViolation[];
+
+  constructor(
+    operation: string,
+    status: number,
+    safeCode: string,
+    responseMarker: DownstreamResponseMarker,
+    violations: McpValidationViolation[],
+  ) {
+    super(operation, status, safeCode, responseMarker);
+    this.name = 'McpValidationDetailError';
+    this.violations = violations;
+  }
+}
+
+const MAX_VALIDATION_VIOLATIONS = 10;
+const MAX_VALIDATION_FIELD_CHARS = 64;
+const MAX_VALIDATION_DESCRIPTION_CHARS = 200;
+
+/**
+ * Extract a closed, bounded projection of the generated RPC servers'
+ * `{"violations":[{"field":...,"description":...}]}` 400 bodies.
+ *
+ * Returns null unless the body parses as JSON and carries a usable
+ * `violations` array — malformed, non-JSON, empty, or entirely mis-shaped
+ * input keeps the existing generic failure contract. Raw text, unknown
+ * fields, non-strings, and anything past the caps never propagate.
+ */
+function parseBoundedValidationViolations(detail: string): McpValidationViolation[] | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(detail);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const rawViolations = (parsed as { violations?: unknown }).violations;
+  if (!Array.isArray(rawViolations)) return null;
+
+  const violations: McpValidationViolation[] = [];
+  for (const entry of rawViolations) {
+    if (violations.length >= MAX_VALIDATION_VIOLATIONS) break;
+    if (typeof entry !== 'object' || entry === null) continue;
+    const field = (entry as { field?: unknown }).field;
+    const description = (entry as { description?: unknown }).description;
+    if (typeof field !== 'string' || field.trim() === '') continue;
+    if (typeof description !== 'string') continue;
+    violations.push({
+      field: field.slice(0, MAX_VALIDATION_FIELD_CHARS),
+      description: description.slice(0, MAX_VALIDATION_DESCRIPTION_CHARS),
+    });
+  }
+  return violations.length > 0 ? violations : null;
+}
+
 type DownstreamObservation = {
   operation: string;
   tool: string;
@@ -203,13 +269,25 @@ async function readBoundedResponseText(
 
 async function classifyFailure(
   response: ToolFetchResponse,
-): Promise<{ errorCode: string; marker: DownstreamResponseMarker }> {
+): Promise<{
+  errorCode: string;
+  marker: DownstreamResponseMarker;
+  violations?: McpValidationViolation[];
+}> {
   if (response.status === 405) {
     return { errorCode: 'method_not_allowed', marker: 'method_not_allowed' };
   }
 
   const type = contentType(response);
-  const detail = await readBoundedResponseText(response);
+  // 400s carry the generated servers' violation lists, which can legitimately
+  // exceed the 4 KB classification budget before the bounded projection below
+  // caps the surviving data at 10 x (64 + 200) characters. Keep the read
+  // bounded (16 KB) — larger or hostile bodies still truncate and fall back
+  // to the generic contract instead of buffering unbounded upstream output.
+  const detail = await readBoundedResponseText(
+    response,
+    response.status === 400 ? 16_384 : 4_096,
+  );
   if (!detail) {
     return {
       errorCode: defaultSafeErrorCode(response.status),
@@ -220,6 +298,20 @@ async function classifyFailure(
   if (type.includes('json')) {
     try {
       const parsed = JSON.parse(detail) as { code?: unknown; error?: unknown };
+      // #6559: generated RPC servers reject invalid input with HTTP 400 and a
+      // {violations:[{field,description}]} body. Preserve the bounded,
+      // field-level projection so agent callers can correct the request;
+      // every other JSON error keeps the closed-set code mapping.
+      if (response.status === 400) {
+        const violations = parseBoundedValidationViolations(detail);
+        if (violations) {
+          return {
+            errorCode: 'validation_failed',
+            marker: 'json_error',
+            violations,
+          };
+        }
+      }
       return {
         errorCode: safeGatewayErrorCode(parsed.code ?? parsed.error, response.status),
         marker: 'json_error',
@@ -312,6 +404,15 @@ export async function assertMcpToolFetchOk(
     failure.errorCode,
     failure.marker,
   );
+  if (failure.violations) {
+    throw new McpValidationDetailError(
+      operation,
+      response.status,
+      failure.errorCode,
+      failure.marker,
+      failure.violations,
+    );
+  }
   throw new ToolFetchError(
     operation,
     response.status,
