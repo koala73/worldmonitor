@@ -73,13 +73,7 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit == 'true'
       - name: Run committed map goldens
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'visual-goldens' }}
-        run: |
-          npm run test:e2e:visual:full
-          # Tech goldens were recorded with the raster basemap still visible.
-          # Refresh them on this runner so the committed set matches SwiftShader.
-          npm run test:e2e:visual:update:tech
-          mkdir -p test-results/updated-tech-goldens
-          cp e2e/map-harness.spec.ts-snapshots/layer-tech-*.png test-results/updated-tech-goldens/
+        run: npm run test:e2e:visual
       - name: Upload visual-goldens Playwright artifacts
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
