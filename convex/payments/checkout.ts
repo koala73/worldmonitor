@@ -34,6 +34,14 @@ import {
 } from "./checkoutRateLimit";
 import { recordTerminalCheckoutRateLimit } from "./checkoutRateLimitAlarm";
 
+/** MCP paid-funnel campaign marker (#6716). Keep in sync with shared/mcp-attribution.ts. */
+const MCP_ATTRIBUTION_SOURCE = "mcp-paid-funnel";
+
+function normalizeAttributionSource(value: string | undefined): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return value.trim() === MCP_ATTRIBUTION_SOURCE ? MCP_ATTRIBUTION_SOURCE : undefined;
+}
+
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 const PAYMENT_IN_PROGRESS = "PAYMENT_IN_PROGRESS";
 
@@ -85,6 +93,8 @@ interface CheckoutArgs {
   returnUrl?: string;
   discountCode?: string;
   referralCode?: string;
+  /** MCP paid-funnel attribution (#6716). Parallel to referralCode. */
+  attributionSource?: string;
 }
 
 interface UserInfo {
@@ -283,6 +293,13 @@ async function _createCheckoutSession(
     // `convex/payments/subscriptionHelpers.ts`.
     metadata.affonso_referral = args.referralCode;
   }
+  const attributionSource = normalizeAttributionSource(args.attributionSource);
+  if (attributionSource) {
+    // Internal source tag for MCP paid-funnel conversions (#6716). Distinct
+    // from affonso_referral — never an affiliate code. Mirror read in
+    // subscriptionHelpers on first subscription.active.
+    metadata.wm_attribution = attributionSource;
+  }
 
   try {
     // A 429 here is Dodo rate-limiting our shared API key (account-level, not
@@ -353,6 +370,7 @@ export const createCheckout = action({
     returnUrl: v.optional(v.string()),
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
+    attributionSource: v.optional(v.string()),
     // "Start a new checkout anyway" — skips ONLY the pending-payment guard
     // (#4438). The subscription guard still applies.
     bypassPendingGuard: v.optional(v.boolean()),
@@ -420,6 +438,7 @@ export const internalCreateCheckout = internalAction({
     returnUrl: v.optional(v.string()),
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
+    attributionSource: v.optional(v.string()),
     // See createCheckout — skips only the pending-payment guard (#4438).
     bypassPendingGuard: v.optional(v.boolean()),
   },
@@ -452,6 +471,7 @@ export const internalCreateCheckout = internalAction({
         returnUrl: args.returnUrl,
         discountCode: args.discountCode,
         referralCode: args.referralCode,
+        attributionSource: args.attributionSource,
       },
       {
         userId: args.userId,

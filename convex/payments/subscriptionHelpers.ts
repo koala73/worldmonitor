@@ -1070,6 +1070,13 @@ export async function handleSubscriptionActive(
       currentPeriodStart,
       currentPeriodEnd,
       dodoCustomerId: incomingDodoCustomerId,
+      // MCP paid-funnel (#6716): stamp only on FIRST activation (this insert
+      // branch). Replays / renewals skip via the `else` above.
+      attributionSource:
+        typeof data.metadata?.wm_attribution === "string"
+        && data.metadata.wm_attribution === "mcp-paid-funnel"
+          ? data.metadata.wm_attribution
+          : undefined,
       rawPayload: data,
       updatedAt: eventTimestamp,
     });

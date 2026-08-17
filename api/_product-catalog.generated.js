@@ -229,7 +229,7 @@ export const TIER_CONFIG = {
     "planLimits": {
       "apiRequestsPerDay": 0,
       "apiBurstRequestsPerMinute": 0,
-      "mcpCallsPerDay": 0,
+      "mcpCallsPerDay": 5,
       "dashboardAiCallsPerDay": 0,
       "mcpBurstRequestsPerMinute": 0
     },

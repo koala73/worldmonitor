@@ -87,6 +87,11 @@ function getRefCode(): string | undefined {
   return code;
 }
 
+function getMcpAttributionSource(): string | undefined {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('utm_campaign') === 'mcp-paid-funnel' ? 'mcp-paid-funnel' : undefined;
+}
+
 /**
  * Carry the current visit's referral code into a dashboard-target URL.
  * Ensures `/pro?ref=X` → hero "try the dashboard" click propagates the
@@ -1431,7 +1436,7 @@ export default function App() {
           <AudiencePersonas />
           <SocialProof />
           <LivePreview />
-          <PricingSection refCode={getRefCode()} />
+          <PricingSection refCode={getRefCode()} attributionSource={getMcpAttributionSource()} />
           <PricingTable />
           <ApiSection />
           <EnterpriseShowcase />

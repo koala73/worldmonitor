@@ -663,6 +663,7 @@ async function mcpHandlerInner(
   // Set alongside `context` by the gated branch's pre-check. Stays undefined on
   // the public/anon branch — which never reaches a metered dispatch anyway.
   let mcpDailyLimit: number | null | undefined;
+  let freeAccountAllowance = false;
   if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
@@ -735,6 +736,7 @@ async function mcpHandlerInner(
     // already fetched (plan 2026-07-25-001 U3). Carried to the two metered
     // dispatch sites below; unset for every caller class but `pro`.
     mcpDailyLimit = preCheck.mcpDailyLimit;
+    freeAccountAllowance = preCheck.freeAccountAllowance === true;
     const limited = await applyPerMinuteLimit(context, corsHeaders);
     if (limited) {
       usage.phase = 'limit';
@@ -803,7 +805,16 @@ async function mcpHandlerInner(
         usage.phase = 'auth';
         return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
       }
-      const dispatched = await dispatchToolsCall(req, context, deps, body, corsHeaders, ctx, mcpDailyLimit);
+      const dispatched = await dispatchToolsCall(
+        req,
+        context,
+        deps,
+        body,
+        corsHeaders,
+        ctx,
+        mcpDailyLimit,
+        freeAccountAllowance,
+      );
       // Mid-call billing denials (dispatch's BillingDenialError re-emit) must
       // classify like the pre-check sites: 'billing' -> billing_verification_503
       // / tier_403, not rate_limit_degraded (503) or 'ok' (403).
@@ -875,7 +886,16 @@ async function mcpHandlerInner(
         return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
       }
       {
-        const resourceRes = await buildResourceResponse(req, context, deps, body, corsHeaders, ctx, mcpDailyLimit);
+        const resourceRes = await buildResourceResponse(
+          req,
+          context,
+          deps,
+          body,
+          corsHeaders,
+          ctx,
+          mcpDailyLimit,
+          freeAccountAllowance,
+        );
         if (resourceRes.status === 429 || resourceRes.status === 503) usage.phase = 'dispatch';
         return maybeStreamJsonRpcResponse(req, resourceRes);
       }

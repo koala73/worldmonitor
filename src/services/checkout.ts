@@ -834,7 +834,12 @@ async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> 
  */
 export async function startCheckout(
   productId: string,
-  options?: { discountCode?: string; referralCode?: string; bypassPendingGuard?: boolean },
+  options?: {
+    discountCode?: string;
+    referralCode?: string;
+    attributionSource?: string;
+    bypassPendingGuard?: boolean;
+  },
   behavior?: { fallbackToPricingPage?: boolean; analyticsSurface?: 'dashboard' | 'dashboard-resume' },
 ): Promise<boolean> {
   if (_checkoutInFlight) return false;
@@ -958,6 +963,7 @@ export async function startCheckout(
         ),
         discountCode: options?.discountCode,
         referralCode: effectiveReferral,
+        attributionSource: options?.attributionSource,
         // #4438: only set when the user confirmed "start a new checkout anyway"
         // from the pending-payment dialog. Skips the backend pending guard.
         ...(options?.bypassPendingGuard ? { bypassPendingGuard: true } : {}),

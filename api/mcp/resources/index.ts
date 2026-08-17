@@ -289,6 +289,7 @@ export async function buildResourceResponse(
   // caller's PLAN allowance, exactly like the equivalent tools/call. Dropping
   // it here would reopen the quota asymmetry this path exists to close.
   mcpDailyLimit?: number | null,
+  freeAccountAllowance?: boolean,
 ): Promise<Response> {
   const outerId = body.id ?? null;
   const params = body.params as { uri?: unknown } | null;
@@ -333,7 +334,16 @@ export async function buildResourceResponse(
   // budget gate, and telemetry emission. Returns a Response with
   // the standard JSON-RPC envelope. We parse, repackage, and re-emit
   // under the OUTER id.
-  const dispatched = await dispatchToolsCall(req, context, deps, innerBody, corsHeaders, ctx, mcpDailyLimit);
+  const dispatched = await dispatchToolsCall(
+    req,
+    context,
+    deps,
+    innerBody,
+    corsHeaders,
+    ctx,
+    mcpDailyLimit,
+    freeAccountAllowance,
+  );
 
   // Parse the dispatched body. dispatched.json() is safe — the dispatcher
   // always emits JSON-RPC, never streams or returns null bodies for these

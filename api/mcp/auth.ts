@@ -39,6 +39,8 @@ import type {
   McpPreCheckResult,
 } from './types';
 import { emitMcpRateLimitHit } from './telemetry';
+import { FREE_ACCOUNT_CALLS_PER_DAY } from './upgrade-constants';
+import { buildMcpStructuredDenial, type McpDenialReason } from './upgrade';
 
 // ---------------------------------------------------------------------------
 // Rate limiters
@@ -177,6 +179,39 @@ export const PRODUCTION_DEPS: McpHandlerDeps = {
 export function wwwAuthHeader(resourceMetadataUrl: string, errorParam = ''): string {
   const errSegment = errorParam ? `, error="${errorParam}"` : '';
   return `Bearer realm="worldmonitor"${errSegment}, resource_metadata="${resourceMetadataUrl}"`;
+}
+
+/**
+ * JSON-RPC denial with machine-readable reason + upgrade URL (#6716).
+ * HTTP 401 + WWW-Authenticate for auth-shaped denials; callers that need a
+ * different status (e.g. lapsed at 403 via billing helper) use that path.
+ */
+export function mcpStructuredDenialResponse(
+  reason: McpDenialReason,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+  id: unknown = null,
+  opts?: { wwwAuthError?: string },
+): Response {
+  const { message, data } = buildMcpStructuredDenial(reason);
+  const wwwAuth = opts?.wwwAuthError !== undefined
+    ? wwwAuthHeader(resourceMetadataUrl, opts.wwwAuthError)
+    : wwwAuthHeader(resourceMetadataUrl, reason === 'no-account' ? '' : 'invalid_token');
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: id ?? null,
+      error: { code: -32001, message, data },
+    }),
+    {
+      status: 401,
+      headers: withMcpNoStore({
+        'Content-Type': 'application/json',
+        'WWW-Authenticate': wwwAuth,
+        ...corsHeaders,
+      }),
+    },
+  );
 }
 
 function userKeyValidationBackpressureResponse(
@@ -499,17 +534,17 @@ async function checkMcpEntitlementGate(
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
 ): Promise<McpPreCheckResult> {
-  const rejected = (): McpPreCheckResult => ({ ok: false, response: new Response(
-    JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32001, message: 'Subscription not active.' } }),
-    { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
-  ) });
+  const rejected = (reason: McpDenialReason = 'no-account'): McpPreCheckResult => ({
+    ok: false,
+    response: mcpStructuredDenialResponse(reason, resourceMetadataUrl, corsHeaders, id),
+  });
 
   let ent: Awaited<ReturnType<typeof deps.getEntitlements>> = null;
   try {
     ent = await deps.getEntitlements(userId);
   } catch (err) {
     captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, ctx });
-    return rejected();
+    return rejected('no-account');
   }
   const passed = (): McpPreCheckResult => ({
     ok: true,
@@ -523,9 +558,27 @@ async function checkMcpEntitlementGate(
   if (!gate) {
     return passed();
   }
-  const billingDenial = getMcpBillingVerificationDenial(ent, corsHeaders, id);
-  if (billingDenial) return { ok: false, response: billingDenial };
-  return rejected();
+  // Billing-verification states (lapse / renewal / unverifiable) keep their
+  // existing envelopes. A confirmed lapse gets the structured upgrade denial
+  // reason so agents can distinguish it from a never-subscribed free account.
+  if (gate.kind === 'billing_verification') {
+    if (gate.denial.code === 'subscription_lapsed') {
+      return rejected('lapsed-subscription');
+    }
+    const billingDenial = getMcpBillingVerificationDenial(ent, corsHeaders, id);
+    if (billingDenial) return { ok: false, response: billingDenial };
+    return rejected('lapsed-subscription');
+  }
+  // insufficient_tier — MCP call-site ONLY reinterpretation (#6716).
+  // Do NOT fold this into checkProMcpAccess: that gate's other four callers
+  // (gateway, authorize-pro, grant-mint, grant-context) must still refuse.
+  // Admission here is eligibility; the idle-gap + call counters live in
+  // dispatch via reserveFreeAccountAllowance.
+  return {
+    ok: true,
+    mcpDailyLimit: FREE_ACCOUNT_CALLS_PER_DAY,
+    freeAccountAllowance: true,
+  };
 }
 
 /**
@@ -544,12 +597,19 @@ export async function runUserKeyPreChecks(
   id: unknown = null,
 ): Promise<McpPreCheckResult> {
   const gate = await checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx, id);
-  // KTD6: the entitlement verdict applies, the plan's MCP allowance does NOT.
-  // user_key callers stay on the hardcoded daily cap whatever their API plan
-  // advertises — raising API-tier MCP allowances is a deliberate follow-up, and
-  // dropping the limit HERE (rather than guarding at the metering site) keeps
-  // one place to change when that follow-up lands.
-  return gate.ok ? { ok: true } : gate;
+  // KTD6: the entitlement verdict applies, the plan's MCP allowance does NOT —
+  // except the free-account paid-funnel ceiling (#6716), which is not a plan
+  // catalog allowance. user_key callers otherwise stay on the hardcoded daily
+  // cap whatever their API plan advertises.
+  if (!gate.ok) return gate;
+  if (gate.freeAccountAllowance) {
+    return {
+      ok: true,
+      mcpDailyLimit: gate.mcpDailyLimit,
+      freeAccountAllowance: true,
+    };
+  }
+  return { ok: true };
 }
 
 /**

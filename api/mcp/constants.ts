@@ -32,6 +32,8 @@
 // (api/mcp.ts) re-declares the snapshot constants locally so its own
 // `mod.MCP_SUPPORTED_PROTOCOL_VERSIONS` / `mod.MCP_PROTOCOL_VERSION`
 // exports also reflect the per-import env state.
+import { MCP_UPGRADE_URL } from './upgrade';
+
 function supportedProtocolVersions(): readonly string[] {
   return process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'off'
     ? ['2025-03-26']
@@ -345,7 +347,7 @@ export const SERVER_INSTRUCTIONS = [
   '',
   `tools/list ships compressed tool descriptions (≤${TOOL_DESCRIPTION_MAX_BYTES}B). Call describe_tool({tool_name}) for the full uncompressed definition — quota-exempt (still counts toward the 60/min rate limit), so use freely while exploring. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct. Full reference: https://www.worldmonitor.app/docs/mcp-tools-reference.`,
   '',
-  'get_sources is the sole credential-free data tool and consumes no daily quota. It has a separate fail-closed ceiling of 10 unauthenticated calls/minute/IP; all other data-bearing tools/call operations require subscription credentials. In tools/list, get_sources carries `_meta["worldmonitor/access"] = "free"`; omission of that marker means subscription-gated.',
+  `get_sources is the sole credential-free data tool and consumes no daily quota. It has a separate fail-closed ceiling of 10 unauthenticated calls/minute/IP. Authenticated free accounts may call gated tools within a small idle-gap allowance (3 request windows/day, 5 calls/day ceiling) before upgrade; exhaustion and unauthenticated gated calls return a structured denial with reason + upgrade URL. In tools/list, get_sources carries \`_meta["worldmonitor/access"] = "free"\`; omission of that marker means subscription-gated. Upgrade: ${MCP_UPGRADE_URL}.`,
   '',
   'Issue prompts/list to discover pre-built workflow templates (country-briefing, energy-shock-watch, market-open-prep, conflict-pulse, route-risk-check, freshness-audit). Each prompt pre-bakes a JMESPath projection per step so the first execution lands on the right shape. prompts/list + prompts/get are quota-exempt (per-minute limit only).',
   '',

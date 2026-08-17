@@ -178,7 +178,11 @@ const FREE_FEATURES: PlanFeatures = {
   planLimits: {
     apiRequestsPerDay: 0,
     apiBurstRequestsPerMinute: 0,
-    mcpCallsPerDay: 0,
+    // #6716: free-account MCP call ceiling (idle-gap request windows are a
+    // separate counter). Always-free tools need no account and consume none
+    // of this budget; authenticated free callers meter against it at the
+    // MCP call site only.
+    mcpCallsPerDay: 5,
     dashboardAiCallsPerDay: 0,
     mcpBurstRequestsPerMinute: 0,
   },

@@ -629,6 +629,9 @@ export default defineSchema({
     // may still rely on tiers 2-3 until
     // `backfillSubscriptionDodoCustomerId` lands their values here.
     dodoCustomerId: v.optional(v.string()),
+    // MCP paid-funnel upgrade attribution (#6716). Stamped from checkout
+    // metadata.wm_attribution on first subscription.active only.
+    attributionSource: v.optional(v.string()),
     // Epoch ms of the event that opened the CURRENT on_hold episode.
     // Set by handleSubscriptionOnHold only on the active→on_hold
     // transition (webhook replays while already on_hold keep the

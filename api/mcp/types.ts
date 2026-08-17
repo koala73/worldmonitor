@@ -394,8 +394,17 @@ export interface McpPreCheckPassed {
    *   number  → enforced verbatim
    * Set for the `pro` context only. `user_key` and `env_key` omit it — raising
    * API-plan MCP allowances is a deliberate follow-up, not a default (KTD6).
+   *
+   * Free-account paid-funnel (#6716): when `freeAccountAllowance` is set, this
+   * is the free call ceiling and dispatch meters via
+   * `reserveFreeAccountAllowance` instead of `reserveQuota`.
    */
   mcpDailyLimit?: number | null;
+  /**
+   * Authenticated free / insufficient-tier caller admitted at the MCP call
+   * site only (#6716). Must never be set by relaxing `checkProMcpAccess`.
+   */
+  freeAccountAllowance?: true;
 }
 export interface McpPreCheckRejected {
   ok: false;

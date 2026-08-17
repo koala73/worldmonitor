@@ -14,6 +14,8 @@ import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
 import { reserveQuota } from './quota';
+import { reserveFreeAccountAllowance } from './free-account-allowance';
+import { buildMcpStructuredDenial } from './upgrade';
 import { TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
@@ -193,6 +195,9 @@ export async function dispatchToolsCall(
   // null → unlimited. Only the `pro` context ever supplies one (KTD6), so a
   // caller that skips the pre-check simply inherits the plan default.
   mcpDailyLimit?: number | null,
+  // Free-account paid-funnel path (#6716). When set, meters via the idle-gap
+  // + call counters instead of reserveQuota.
+  freeAccountAllowance?: boolean,
 ): Promise<Response> {
   const id = body.id ?? null;
   const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
@@ -212,7 +217,11 @@ export async function dispatchToolsCall(
   // future edit to the handler's matching cannot silently widen what a free
   // caller can reach.
   if (context.kind === 'free' && tool._freeTier !== true) {
-    return rpcError(id, -32001, 'Subscription not active.', corsHeaders);
+    const { message, data } = buildMcpStructuredDenial('no-account');
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32001, message, data } }),
+      { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', ...corsHeaders }) },
+    );
   }
 
   // Credentialed INCR-first reservation. Both cache-only AND RPC tools count
@@ -236,25 +245,54 @@ export async function dispatchToolsCall(
     && tool._freeTier !== true
     && !isMetadataTool
   ) {
-    const reservation = await reserveQuota(context.userId, deps.redisPipeline, mcpDailyLimit);
-    if (!reservation.ok) {
-      if (reservation.reason === 'cap-exceeded') {
-        // `floor` is the limit the reservation actually enforced, so the copy
-        // can never quote a different number from the one that rejected.
+    if (freeAccountAllowance) {
+      const reservation = await reserveFreeAccountAllowance(
+        context.userId,
+        deps.redisPipeline,
+      );
+      if (!reservation.ok) {
+        if (reservation.reason === 'allowance-exhausted') {
+          const { message, data } = buildMcpStructuredDenial('allowance-exhausted');
+          return new Response(
+            JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32001, message, data } }),
+            {
+              status: 401,
+              headers: withMcpNoStore({
+                'Content-Type': 'application/json',
+                'Retry-After': String(secondsUntilUtcMidnight()),
+                ...corsHeaders,
+              }),
+            },
+          );
+        }
         return new Response(
-          JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32029, message: `Daily MCP quota exceeded (${reservation.floor}/day). Resets at next UTC midnight.` } }),
-          { status: 429, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': String(secondsUntilUtcMidnight()), ...corsHeaders }) },
+          JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
+          { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
         );
       }
-      // Hard-cap correctness: NEVER dispatch on reservation failure.
-      return new Response(
-        JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
-        { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
-      );
+      // Slot charged for good once dispatch begins (same GHSA-hcq5 posture as
+      // reserveQuota). No caller-side rollback after this point.
+    } else {
+      const reservation = await reserveQuota(context.userId, deps.redisPipeline, mcpDailyLimit);
+      if (!reservation.ok) {
+        if (reservation.reason === 'cap-exceeded') {
+          // `floor` is the limit the reservation actually enforced, so the copy
+          // can never quote a different number from the one that rejected.
+          return new Response(
+            JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32029, message: `Daily MCP quota exceeded (${reservation.floor}/day). Resets at next UTC midnight.` } }),
+            { status: 429, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': String(secondsUntilUtcMidnight()), ...corsHeaders }) },
+          );
+        }
+        // Hard-cap correctness: NEVER dispatch on reservation failure.
+        return new Response(
+          JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
+          { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
+        );
+      }
+      // No caller-side rollback of the reservation: once we pass this point the
+      // tool runs and the daily slot is charged for good (GHSA-hcq5). The only
+      // rollback is INSIDE reserveQuota, for the pre-dispatch cap-exceeded case.
     }
-    // No caller-side rollback of the reservation: once we pass this point the
-    // tool runs and the daily slot is charged for good (GHSA-hcq5). The only
-    // rollback is INSIDE reserveQuota, for the pre-dispatch cap-exceeded case.
   }
 
   const jmespathArg = p.arguments?.jmespath;

@@ -21,6 +21,7 @@ import {
   getIdempotencyKey,
 } from './_idempotency.js';
 import { validateBearerToken } from '../server/auth-session';
+import { normalizeCheckoutAttributionSource } from './mcp/upgrade';
 
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
@@ -126,6 +127,7 @@ export default async function handler(
     returnUrl?: string;
     discountCode?: string;
     referralCode?: string;
+    attributionSource?: string;
     bypassPendingGuard?: boolean;
   };
   try {
@@ -161,6 +163,8 @@ export default async function handler(
     return completeStandaloneIdempotency(idempotency, json({ error: 'Service unavailable' }, 503, cors));
   }
 
+  const attributionSource = normalizeCheckoutAttributionSource(body.attributionSource);
+
   // Relay to Convex
   try {
     const resp = await createCheckoutDeps.fetch(`${CONVEX_SITE_URL}/relay/create-checkout`, {
@@ -178,6 +182,7 @@ export default async function handler(
         returnUrl: body.returnUrl,
         discountCode: body.discountCode,
         referralCode: body.referralCode,
+        attributionSource,
         bypassPendingGuard: body.bypassPendingGuard,
       }),
       signal: AbortSignal.timeout(15_000),
