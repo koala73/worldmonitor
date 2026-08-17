@@ -4,7 +4,7 @@ import type { Monitor, NewsItem } from '@/types';
 import { MONITOR_COLORS } from '@/config';
 import { generateId, formatTime, getCSSColor } from '@/utils';
 import { sanitizeUrl } from '@/utils/sanitize';
-import { h, replaceChildren, clearChildren } from '@/utils/dom-utils';
+import { h, replaceChildren } from '@/utils/dom-utils';
 
 export class MonitorPanel extends Panel {
   private monitors: Monitor[] = [];
@@ -17,8 +17,6 @@ export class MonitorPanel extends Panel {
   }
 
   private renderInput(): void {
-    clearChildren(this.content);
-
     const input = h('input', {
       type: 'text',
       className: 'monitor-input',
