@@ -658,6 +658,29 @@ describe('scheduled seed freshness monitor', () => {
       assert.equal(mineral.cutover?.probeKey, 'seed-meta:supply-chain:mineral-production');
       const staticRefService = readRailwayServices().find((entry) => entry.service === 'seed-bundle-static-ref');
       assert.equal(staticRefService?.cronSchedule, '0 3 * * *');
+      const owned6806 = committed.acknowledged
+        .filter((entry) => entry.issue === 6806)
+        .map((entry) => entry.name)
+        .sort();
+      assert.deepEqual(
+        owned6806,
+        ['armsSuppliersBundleTick', 'militaryBasesBundleTick'],
+        '#6806 must own both new 1-section bundle-tick acks',
+      );
+      for (const [name, serviceName, cron, probeKey, expiresAt] of [
+        ['armsSuppliersBundleTick', 'seed-bundle-arms-suppliers', '0 4 * * *', 'bundle:heartbeat:arms-suppliers', '2026-08-18T04:00:00.000Z'],
+        ['militaryBasesBundleTick', 'seed-bundle-military-bases', '0 5 * * *', 'bundle:heartbeat:military-bases', '2026-08-18T05:00:00.000Z'],
+      ]) {
+        const entry = committed.acknowledged.find((item) => item.name === name);
+        assert.ok(entry, `${name} must be acknowledged until first sibling fire`);
+        assert.equal(entry.status, 'EMPTY');
+        assert.equal(entry.expiresAt, expiresAt);
+        assert.equal(entry.cutover?.firstScheduledRunAt, expiresAt);
+        assert.equal(entry.cutover?.probeKey, probeKey);
+        const service = readRailwayServices().find((item) => item.service === serviceName);
+        assert.equal(service?.cronSchedule, cron);
+        assert.equal(service?.lifecycle, 'planned');
+      }
       assert.ok(
         Date.parse(committed.expiresAt) > Date.parse('2026-07-28'),
         'committed baseline must not ship already expired',
@@ -672,16 +695,38 @@ describe('scheduled seed freshness monitor', () => {
       // merged and closed, four degraded sources were suppressed against a
       // closed PR with nobody owning them. Distinct issue numbers is the
       // cheapest offline proxy for "somebody actually filed these".
+      // #6806 is the one allowed repeat: it owns both new 1-section bundle-tick
+      // probes as a single add-then-remove cutover.
       const issues = committed.acknowledged.map((entry) => entry.issue);
       assert.ok(
         !issues.includes(5771),
         'recovered chinaCoverage degradation must not remain acknowledged',
       );
-      assert.equal(
-        new Set(issues).size,
-        issues.length,
-        'each acknowledged degradation needs its OWN tracking issue, not one shared number',
-      );
+      const namesByIssue = new Map();
+      for (const entry of committed.acknowledged) {
+        const names = namesByIssue.get(entry.issue) ?? [];
+        names.push(entry.name);
+        namesByIssue.set(entry.issue, names);
+      }
+      const allowedSharedIssues = new Map([
+        [6806, ['armsSuppliersBundleTick', 'militaryBasesBundleTick']],
+      ]);
+      for (const [issue, names] of namesByIssue) {
+        const allowed = allowedSharedIssues.get(issue);
+        if (allowed) {
+          assert.deepEqual(
+            [...names].sort(),
+            [...allowed].sort(),
+            `#${issue} may only cover ${allowed.join(', ')}`,
+          );
+          continue;
+        }
+        assert.equal(
+          names.length,
+          1,
+          `issue #${issue} is shared by ${names.join(', ')} — each acknowledged degradation needs its OWN tracking issue`,
+        );
+      }
       for (const entry of committed.acknowledged) {
         assert.doesNotMatch(
           entry.reason,

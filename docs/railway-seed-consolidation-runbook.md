@@ -999,6 +999,34 @@ Strict health-probe registration is a staged follow-up after the first Railway
 run publishes both seed-meta keys; the follow-up must cite real Railway
 pre-seed evidence under the health-probe cutover contract.
 
+### Bundle 3 siblings (planned, #6806)
+
+Arms-Suppliers (460s worst case) and Military-Bases (410s worst case) cannot
+share leftover's 570s tick. These two 1-section bundles are the structural
+fix. They land as `lifecycle: planned` until Railway services exist. Leftover
+`seed-bundle-static-ref` still lists both members until each new service has
+written a `bundle:heartbeat:*` (add-then-remove). Do not strip leftover in
+the same merge that only adds these files.
+
+| Setting | seed-bundle-arms-suppliers | seed-bundle-military-bases |
+|---|---|---|
+| **Service name** | `seed-bundle-arms-suppliers` | `seed-bundle-military-bases` |
+| **Start command** | `node scripts/seed-bundle-arms-suppliers.mjs` | `node scripts/seed-bundle-military-bases.mjs` |
+| **Cron schedule** | `0 4 * * *` (daily 04:00 UTC) | `0 5 * * *` (daily 05:00 UTC) |
+| **Lifecycle** | `planned` until provisioned | `planned` until provisioned |
+| **Members** | Arms-Suppliers only (450s / 10d) | Military-Bases only (400s / 30d) |
+| **Wall-time budget** | `maxBundleMs: 570_000` | `maxBundleMs: 570_000` |
+| **Required variable** | none (`USPTO_API_KEY` stays on leftover) | none (R2 vars are project-level; confirm at provision) |
+| **Heartbeat** | `bundle:heartbeat:arms-suppliers` | `bundle:heartbeat:military-bases` |
+
+Start commands in this table keep the `scripts/` prefix so they match the
+other bundle rows and the registry-coverage grep. Railway's actual start
+command is `node seed-bundle-arms-suppliers.mjs` / `node seed-bundle-military-bases.mjs`
+because `deployMode: nixpacks-root-scripts` sets `rootDirectory` to `scripts/`.
+Clone `seed-bundle-static-ref` twice; do not reuse service id
+`4dd3934d-e5f7-4af8-b34b-c1796226800b`. Stagger is intentional — three 400s
+jobs at 03:00 would contend Redis / R2 / upstreams.
+
 ### Bundle 4: seed-bundle-resilience
 
 | Setting | Value |
