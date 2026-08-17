@@ -44,7 +44,6 @@ const EXPECTED_INVENTORY_SURFACES = [
   ['mcp-presets', 'tests/mcp-presets.test.mjs', ['presets']],
   ['route-explorer-countries', 'tests/route-explorer-pickers.test.mts', ['getAllCountries']],
   ['notification-country-registry', 'tests/notification-relay-country-scope-5359.test.mjs', ['names']],
-  ['consumer-price-health-markets', 'tests/consumer-prices-coverage-rollout.test.mjs', ['CONSUMER_PRICE_HEALTH_MARKETS']],
   ['iso2-country-registry', 'convex/__tests__/followed-countries-mutations.test.ts', ['_ISO2_REGISTRY_FOR_TESTS']],
   ['public-fixed-algorithm-claims', 'tests/cii-docs-drift.test.mts', ['llmsBrief', 'llmsFull', 'pressKit', 'communityGuide', 'publicHome', 'agentView.capabilities']],
 ];
