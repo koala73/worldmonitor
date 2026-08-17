@@ -1346,6 +1346,9 @@ function sanitizeCoverageFailureReasons(raw) {
 // pruned after its 14-day grace. Add a new market with its own { from, until }.
 // Do not revive the closed eight-market dates — that would re-soften live keys.
 const CONSUMER_PRICE_COVERAGE_ROLLOUT = Object.freeze({});
+const CONSUMER_PRICE_COVERAGE_NAMES = new Set(
+  CONSUMER_PRICE_HEALTH_MARKETS.map(consumerPriceCoverageHealthName),
+);
 
 // name -> epoch ms after which ROLLOUT_PENDING softening is no longer offered.
 // Absent name = no rollout window; the key is strict from the first sweep.
@@ -1353,16 +1356,18 @@ const ROLLOUT_PENDING_UNTIL_MS = {};
 const ROLLOUT_PENDING_FROM_MS = {};
 for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
   const name = consumerPriceCoverageHealthName(market);
+  // Probe every coverage market even after its window is pruned so `activated`
+  // can still tell "published, then broke" from "never ran".
+  ACTIVATION_MARKERS[name] = consumerPriceCoverageActivationKey(market);
   const window = CONSUMER_PRICE_COVERAGE_ROLLOUT[market];
   const until = Date.parse(window?.until ?? '');
   const from = Date.parse(window?.from ?? '');
-  // Probe the marker only while a window can still be revoked by it. After the
-  // window is gone the EXISTS result cannot change status or emit `activated`.
-  if (Number.isFinite(until)) {
-    ACTIVATION_MARKERS[name] = consumerPriceCoverageActivationKey(market);
-    ROLLOUT_PENDING_UNTIL_MS[name] = until;
-  }
+  if (Number.isFinite(until)) ROLLOUT_PENDING_UNTIL_MS[name] = until;
   if (Number.isFinite(from)) ROLLOUT_PENDING_FROM_MS[name] = from;
+}
+
+function resolveRolloutPendingUntil(name, ctx, registry = ROLLOUT_PENDING_UNTIL_MS) {
+  return ctx.rolloutPendingUntilMs?.get(name) ?? registry[name];
 }
 
 function fredRatesRolloutCommands(now, vercelEnv = process.env.VERCEL_ENV) {
@@ -1953,8 +1958,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   // Soft on an unreadable marker for the same reasons as ON_DEMAND above, plus
   // the deadline: an unknown state can delay strictness only until
   // `rolloutPendingUntil`, so it can never grant a grace that never expires.
-  const rolloutPendingUntil = ctx.rolloutPendingUntilMs?.get(name)
-    ?? ROLLOUT_PENDING_UNTIL_MS[name];
+  const rolloutPendingUntil = resolveRolloutPendingUntil(name, ctx);
   const isRolloutPending = rolloutPendingUntil != null
     && now < rolloutPendingUntil
     && ctx.activationStates?.get(name) !== true;
@@ -1968,7 +1972,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   // `onDemand`, and covers BOTH markers a check can consult: its own, and the
   // separate content-freshness marker its seed config names.
   const activationUnknown = Boolean(ctx.activationStates) && [
-    (ACTIVATION_MARKERS[name] || ctx.rolloutPendingUntilMs?.has(name)) ? name : null,
+    ACTIVATION_MARKERS[name] ? name : null,
     seedCfg?.contentFreshnessActivation ?? null,
   ].some((markerName) => markerName !== null && !ctx.activationStates.has(markerName));
 
@@ -2222,16 +2226,17 @@ function classifyKey(name, redisKey, opts, ctx) {
   if (contentFreshnessActivationWindow) {
     entry.contentFreshnessPendingUntil = new Date(contentFreshnessActivationWindow.untilMs).toISOString();
   }
-  // Activation is emitted for EVERY status on a rollout-registered key, not just
-  // the pending one — `rolloutPendingUntil` exists precisely when the market has
-  // NOT activated, so on its own it can never answer "which markets have gone
-  // live?". Without this, auditing rollout progress (or telling
-  // "activated-then-broke" apart from "never ran") means EXISTS-probing Redis by
-  // hand. ctx.activationStates already holds the answer at classify time.
+  // Activation is emitted for EVERY status on a consumer-price coverage key
+  // (and on any other key that still has an open rollout window). The field
+  // must survive after the window is pruned — `rolloutPendingUntil` exists
+  // precisely when the market has NOT activated, so on its own it can never
+  // answer "which markets have gone live?". Without this, telling
+  // "activated-then-broke" apart from "never ran" means EXISTS-probing Redis
+  // by hand. ctx.activationStates already holds the answer at classify time.
   // Reported as "read AND present", so an unreadable marker publishes `false` —
   // the same soft-on-unknown reading `isRolloutPending` takes above, kept
   // aligned so this flag can never contradict the status it accompanies.
-  if (rolloutPendingUntil != null) {
+  if (rolloutPendingUntil != null || CONSUMER_PRICE_COVERAGE_NAMES.has(name)) {
     entry.activated = ctx.activationStates?.get(name) === true;
   }
   if (seedAge !== null) entry.seedAgeMin = seedAge;
@@ -3171,6 +3176,9 @@ export const __testing__ = {
   CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
   ROLLOUT_PENDING_UNTIL_MS,
   ROLLOUT_PENDING_FROM_MS,
+  CONSUMER_PRICE_COVERAGE_ROLLOUT,
+  CONSUMER_PRICE_COVERAGE_NAMES,
+  resolveRolloutPendingUntil,
   RUNTIME_ROLLOUT_PENDING_POLICIES,
   FRED_RATES_ROLLOUT_DEADLINE_KEY,
   FRED_RATES_ROLLOUT_DURATION_MS,

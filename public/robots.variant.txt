@@ -1,4 +1,6 @@
 # Variant-host robots (#6835). Shared corpus is canonical on www.
+# Prefixes that 308 to www are NOT Disallowed — a crawler must fetch them to
+# observe the redirect. /pro/welcome.html stays 200 here, so /pro is Disallowed.
 # Named AI groups restate the * rules — robots.txt groups do not inherit.
 
 User-agent: *
@@ -9,17 +11,7 @@ Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
-Disallow: /blog
-Disallow: /countries
-Disallow: /chokepoints
-Disallow: /research
-Disallow: /tools
-Disallow: /crises
-Disallow: /reference
-Disallow: /sources
 Disallow: /pro
-Disallow: /docs
-Disallow: /zh
 Disallow: /api/
 Disallow: /tests/
 
@@ -42,17 +34,7 @@ Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
-Disallow: /blog
-Disallow: /countries
-Disallow: /chokepoints
-Disallow: /research
-Disallow: /tools
-Disallow: /crises
-Disallow: /reference
-Disallow: /sources
 Disallow: /pro
-Disallow: /docs
-Disallow: /zh
 Disallow: /api/
 Disallow: /tests/
 

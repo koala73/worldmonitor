@@ -40,6 +40,8 @@ const {
   ACTIVATION_MARKERS,
   ROLLOUT_PENDING_UNTIL_MS,
   ROLLOUT_PENDING_FROM_MS,
+  CONSUMER_PRICE_COVERAGE_ROLLOUT,
+  resolveRolloutPendingUntil,
   CONSUMER_PRICE_HEALTH_MARKETS,
   consumerPriceCoverageActivationKey,
   consumerPriceCoverageHealthName,
@@ -122,45 +124,54 @@ const computeOverall = ({ crit, warn, onDemandWarn = 0, rolloutPending = 0, tota
 
 // ── Registry contract ───────────────────────────────────────────────────────
 
-test('every consumer-price market can still mint a versioned activation key', () => {
+test('every consumer-price market has a durable activation marker registered', () => {
   assert.deepEqual(CONSUMER_PRICE_HEALTH_MARKETS, ['ae', 'au', 'br', 'gb', 'in', 'sa', 'sg', 'us']);
   for (const market of CONSUMER_PRICE_HEALTH_MARKETS) {
     const name = consumerPriceCoverageHealthName(market);
-    const key = consumerPriceCoverageActivationKey(market);
-    assert.equal(key, `seed-activated:consumer-prices:coverage:v1:${market}`);
-    if (ROLLOUT_PENDING_UNTIL_MS[name] != null) {
-      assert.equal(
-        ACTIVATION_MARKERS[name],
-        key,
-        `${name} must be EXISTS-probed while its window can still be revoked`,
-      );
-    } else {
-      assert.equal(
-        ACTIVATION_MARKERS[name],
-        undefined,
-        `${name} must not keep an EXISTS probe after its window is pruned`,
-      );
-    }
+    assert.equal(
+      ACTIVATION_MARKERS[name],
+      `seed-activated:consumer-prices:coverage:v1:${market}`,
+      `${name} must stay EXISTS-probed after the window is pruned so activated remains on the payload`,
+    );
   }
 });
 
+const isBoundedDailyWindow = (window) => {
+  const from = Date.parse(window?.from ?? '');
+  const until = Date.parse(window?.until ?? '');
+  return Number.isFinite(from) && Number.isFinite(until) && until > from && until - from <= ONE_DAY_MS;
+};
+
 test('any declared consumer-price rollout window is bounded to one daily cycle', () => {
-  // Measured against each market's OWN declared rollout start, not a single
-  // historical constant: a ninth market added months from now must still be able
-  // to declare a valid window, and pinning the bound to the 2026-08-02 deploy
-  // would have made every future window fail this check the day it was written.
-  // An empty registry is valid — it means no market is currently in rollout.
-  for (const name of Object.keys(ROLLOUT_PENDING_UNTIL_MS)) {
-    const until = ROLLOUT_PENDING_UNTIL_MS[name];
-    const from = ROLLOUT_PENDING_FROM_MS[name];
-    assert.ok(Number.isFinite(until), `${name} must declare a rollout deadline`);
-    assert.ok(Number.isFinite(from), `${name} must declare when its rollout window opened`);
-    assert.ok(until > from, `${name} deadline must be after its rollout start`);
-    assert.ok(
-      until - from <= ONE_DAY_MS,
-      `${name} window is ${Math.round((until - from) / 3_600_000)}h wide — the interim state must expire within ONE complete daily scrape/aggregate/publish window`,
-    );
+  // Iterate the declared registry, not the parsed survivors — a typo'd `until`
+  // must fail here, not silently skip ACTIVATION_MARKERS registration.
+  for (const [market, window] of Object.entries(CONSUMER_PRICE_COVERAGE_ROLLOUT)) {
+    assert.ok(isBoundedDailyWindow(window), `${market} window must be a finite span of at most one day`);
   }
+});
+
+test('the daily-window predicate rejects a missing from and a 25h span', () => {
+  assert.equal(isBoundedDailyWindow({ from: '2027-03-01T12:00:00Z', until: '2027-03-02T06:00:00Z' }), true);
+  assert.equal(isBoundedDailyWindow({ from: '2027-03-01T12:00:00Z', until: '2027-03-02T13:00:00Z' }), false);
+  assert.equal(isBoundedDailyWindow({ until: '2027-03-02T06:00:00Z' }), false);
+});
+
+test('the static ROLLOUT_PENDING_UNTIL_MS arm still softens when ctx has no injected map', () => {
+  const emptyCtx = { rolloutPendingUntilMs: new Map() };
+  assert.equal(resolveRolloutPendingUntil(US, emptyCtx, {}), undefined);
+  assert.equal(resolveRolloutPendingUntil(US, emptyCtx, { [US]: US_UNTIL }), US_UNTIL);
+  const injected = { rolloutPendingUntilMs: new Map([[US, US_UNTIL + 1]]) };
+  assert.equal(resolveRolloutPendingUntil(US, injected, { [US]: US_UNTIL }), US_UNTIL + 1);
+});
+
+test('consumer-price coverage still publishes activated after the window is pruned', () => {
+  const entry = classifyKey(US, BOOTSTRAP_KEYS[US], { allowOnDemand: false }, makeCtx({
+    now: AFTER_DEADLINE,
+    rolloutUntilMs: new Map(),
+    activated: [US],
+  }));
+  assert.equal(entry.activated, true);
+  assert.notEqual(entry.status, 'ROLLOUT_PENDING');
 });
 
 test('a market added long after this rollout can still declare a valid window', () => {
@@ -229,12 +240,12 @@ test('expired rollout deadlines must be pruned from the registry', () => {
   assert.deepEqual(
     rotted,
     [],
-    'These rollout windows closed more than 14 days ago and are now dead config. '
-    + 'Delete their entries from CONSUMER_PRICE_COVERAGE_ROLLOUT_UNTIL in api/health.js. '
-    + 'If that empties the map, also remove ROLLOUT_PENDING_UNTIL_MS, the ROLLOUT_PENDING '
-    + 'branch in classifyKey, its STATUS_COUNTS entry and summary.rolloutPending counter, '
-    + 'isRolloutPendingProblem in scripts/check-seed-freshness.mjs, the ROLLOUT_PENDING rows '
-    + 'in docs/health-endpoints.mdx + docs/zh/health-endpoints.mdx, and this test file. '
+    'These consumer-price rollout windows closed more than 14 days ago and are now dead config. '
+    + 'Delete only those entries from CONSUMER_PRICE_COVERAGE_ROLLOUT in api/health.js. '
+    + 'An empty consumer-price map is the expected steady state. Do not remove '
+    + 'ROLLOUT_PENDING_UNTIL_MS, the classifyKey branch, STATUS_COUNTS.ROLLOUT_PENDING, '
+    + 'summary.rolloutPending, or isRolloutPendingProblem — RUNTIME_ROLLOUT_PENDING_POLICIES.fredRatesSeeder '
+    + 'still drives a live window. '
     + `Stale: ${rotted.join(', ')}`,
   );
 });

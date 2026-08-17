@@ -37,6 +37,7 @@ const {
   ON_DEMAND_KEYS,
   ROLLOUT_PENDING_UNTIL_MS,
   RUNTIME_ROLLOUT_PENDING_POLICIES,
+  CONSUMER_PRICE_COVERAGE_NAMES,
   CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
 } = __testing__;
 
@@ -568,6 +569,9 @@ describe('#6095 — every activation marker is claimed by exactly one policy', (
       const policies = [];
       if (contentNames.has(name)) policies.push('content-freshness: fail closed on unknown');
       if (ROLLOUT_PENDING_UNTIL_MS[name] != null) policies.push('static-rollout-pending: soft on unknown');
+      else if (CONSUMER_PRICE_COVERAGE_NAMES.has(name)) {
+        policies.push('consumer-price-coverage-activation: observability');
+      }
       if (RUNTIME_ROLLOUT_PENDING_POLICIES[name] != null) {
         policies.push('runtime-rollout-pending: soft on unknown');
       }

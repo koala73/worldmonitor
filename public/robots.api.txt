@@ -1,5 +1,6 @@
 # api.worldmonitor.app robots (#6835). This host is an API origin, not a site.
 # Named AI groups restate the * rules — robots.txt groups do not inherit.
+# Longest-match Allow beats Disallow: / for the documented agent-discovery paths.
 
 User-agent: *
 Content-Signal: ai-train=no, search=yes, ai-input=yes
@@ -7,12 +8,16 @@ Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
+Allow: /.well-known/
+Allow: /mcp
+Allow: /a2a
+Allow: /agent.txt
+Allow: /llms.txt
+Allow: /llms-full.txt
+Allow: /openapi.yaml
+Allow: /openapi.json
 Disallow: /api/
-Disallow: /blog
-Disallow: /docs
 Disallow: /pro
-Disallow: /countries
-Disallow: /zh
 Disallow: /
 
 User-agent: GPTBot
@@ -32,12 +37,16 @@ Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
+Allow: /.well-known/
+Allow: /mcp
+Allow: /a2a
+Allow: /agent.txt
+Allow: /llms.txt
+Allow: /llms-full.txt
+Allow: /openapi.yaml
+Allow: /openapi.json
 Disallow: /api/
-Disallow: /blog
-Disallow: /docs
 Disallow: /pro
-Disallow: /countries
-Disallow: /zh
 Disallow: /
 
 User-agent: CCBot

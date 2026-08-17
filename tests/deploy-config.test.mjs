@@ -738,7 +738,7 @@ describe('welcome landing page routing', () => {
     assert.ok(rewrite, 'expected a rewrite for /');
     assert.equal(rewrite.destination, '/pro/welcome.html');
     assert.deepEqual(rewrite.has, [
-      { type: 'host', value: APP_ROOT_HOST_PATTERN },
+      { type: 'host', value: '^(?:www\\.)?worldmonitor\\.app$' },
     ]);
   });
 
@@ -774,8 +774,8 @@ describe('welcome landing page routing', () => {
     for (const host of variantHosts) {
       assert.equal(
         rootDestinationForHost(host),
-        '/pro/welcome.html',
-        `${host}/ rewrite fallback remains welcome; the host-conditioned / 308 (#6833) is the production winner`
+        DASHBOARD_HTML_DESTINATION,
+        `${host}/ welcome rewrite is dead — the / 308 wins in production, and the fallback is the SPA catch-all`
       );
     }
   });
@@ -2838,6 +2838,7 @@ describe('agent readiness: homepage Link headers', () => {
 // Lighthouse's robots.txt validator safelists `content-signal`, so the
 // directive no longer costs SEO points (#4471 history).
 describe('agent readiness: Content-Signal declarations', () => {
+  const robotsFiles = ['robots.www.txt', 'robots.variant.txt', 'robots.api.txt'];
   const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
 
   const headerValue = () => {
@@ -2854,6 +2855,30 @@ describe('agent readiness: Content-Signal declarations', () => {
     assert.match(value, /ai-train=(yes|no)/);
     assert.match(value, /search=(yes|no)/);
     assert.match(value, /ai-input=(yes|no)/);
+  });
+
+  it('every host robots file declares the same Content-Signal inside the User-agent group', () => {
+    for (const file of robotsFiles) {
+      const source = readFileSync(resolve(__dirname, '../public', file), 'utf-8');
+      const lines = source.split('\n');
+      const uaIndex = lines.findIndex((l) => l.trim().toLowerCase() === 'user-agent: *');
+      assert.ok(uaIndex !== -1, `${file} must have a \`User-agent: *\` group`);
+      const signalIndex = lines.findIndex((l) => l.startsWith('Content-Signal:'));
+      assert.ok(signalIndex > uaIndex, `${file} Content-Signal must appear after \`User-agent: *\``);
+      for (let i = uaIndex + 1; i < signalIndex; i++) {
+        assert.notStrictEqual(
+          lines[i].trim(),
+          '',
+          `${file} Content-Signal must not be separated from its User-agent group by a blank line`
+        );
+      }
+      const robotsValue = lines[signalIndex].slice('Content-Signal:'.length).trim();
+      assert.strictEqual(
+        robotsValue,
+        headerValue(),
+        `${file} Content-Signal must match the vercel.json header value`
+      );
+    }
   });
 
   it('robots.txt declares the same Content-Signal inside the User-agent group', () => {
@@ -2880,16 +2905,18 @@ describe('agent readiness: Content-Signal declarations', () => {
   it('every Content-Signal line in robots.txt matches the header (multi-group)', () => {
     // The AI-agent groups added in #4952 carry their own Content-Signal
     // directive; none of the copies may drift from the origin-wide header.
-    const signalLines = robotsSource
-      .split('\n')
-      .filter((l) => l.startsWith('Content-Signal:'));
-    assert.ok(signalLines.length >= 1, 'robots.txt must declare Content-Signal');
-    for (const line of signalLines) {
-      assert.strictEqual(
-        line.slice('Content-Signal:'.length).trim(),
-        headerValue(),
-        'every robots.txt Content-Signal must match the vercel.json header value'
-      );
+    for (const file of robotsFiles) {
+      const signalLines = readFileSync(resolve(__dirname, '../public', file), 'utf-8')
+        .split('\n')
+        .filter((l) => l.startsWith('Content-Signal:'));
+      assert.ok(signalLines.length >= 1, `${file} must declare Content-Signal`);
+      for (const line of signalLines) {
+        assert.strictEqual(
+          line.slice('Content-Signal:'.length).trim(),
+          headerValue(),
+          `${file} Content-Signal must match the vercel.json header value`
+        );
+      }
     }
   });
 });
@@ -3257,7 +3284,7 @@ describe('markdown canonical Link headers (#4999)', () => {
   // agents, so they cannot carry a <link rel="canonical">. RFC 6596 allows the
   // HTTP Link header form; without it these are the only indexable URLs with
   // no canonical signal at all.
-  const MD_PAGES = ['/pricing.md', '/support.md', '/ai-search.md', '/developers.md', '/mcp-server.md', '/openapi.md', '/sdks.md'];
+  const MD_PAGES = ['/pricing.md', '/support.md', '/ai-search.md', '/developers.md', '/mcp-server.md', '/openapi.md', '/sdks.md', '/auth.md', '/agents.md', '/home.md'];
 
   for (const page of MD_PAGES) {
     it(`${page} declares a self-referencing canonical Link header`, () => {
@@ -3269,6 +3296,18 @@ describe('markdown canonical Link headers (#4999)', () => {
       assert.strictEqual(
         getHeaderValueForSource(page, 'Content-Type'),
         'text/markdown; charset=utf-8'
+      );
+    });
+  }
+
+  const CORPUS_PAGES = ['/llms.txt', '/llms-full.txt', '/agent.txt', '/openapi.yaml', '/openapi.json', '/schemamap.xml'];
+
+  for (const page of CORPUS_PAGES) {
+    it(`${page} declares a www canonical Link header`, () => {
+      assert.strictEqual(
+        getHeaderValueForSource(page, 'Link'),
+        `<https://www.worldmonitor.app${page}>; rel="canonical"`,
+        `${page} must self-canonicalize on the www host via the Link header`
       );
     });
   }
@@ -3675,9 +3714,16 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
     );
   });
 
-  it('variant robots.txt disallows the shared corpus and keeps /dashboard crawlable (#6835)', () => {
+  it('variant robots.txt keeps /dashboard crawlable and does not Disallow 308 families (#6835)', () => {
     const body = readFileSync(resolve(__dirname, '../public/robots.variant.txt'), 'utf-8');
-    for (const path of ['/blog', '/countries', '/chokepoints', '/research', '/tools', '/crises', '/reference', '/sources', '/pro', '/docs', '/zh']) {
+    for (const path of [...SHARED_WWW_PREFIXES.map((p) => `/${p}`), '/docs', '/zh']) {
+      assert.doesNotMatch(
+        body,
+        new RegExp(`^Disallow: ${path.replace('/', '\\/')}$`, 'm'),
+        `Disallow ${path} would hide the 308 from a compliant crawler`
+      );
+    }
+    for (const path of ['/pro', '/api/', '/tests/']) {
       assert.match(body, new RegExp(`^Disallow: ${path.replace('/', '\\/')}$`, 'm'), `variant robots must Disallow ${path}`);
     }
     assert.match(body, /^Allow: \/dashboard$/m);
@@ -3690,9 +3736,37 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
     assert.match(body, /^Disallow: \/$/m);
     assert.match(body, /^Allow: \/api\/llms\.txt$/m);
     assert.match(body, /^Allow: \/api\/product-catalog$/m);
-    for (const path of ['/blog', '/docs', '/pro', '/countries', '/zh']) {
-      assert.match(body, new RegExp(`^Disallow: ${path.replace('/', '\\/')}$`, 'm'));
-    }
+    assert.match(body, /^Allow: \/\.well-known\/$/m);
+    assert.match(body, /^Allow: \/mcp$/m);
+    assert.match(body, /^Allow: \/a2a$/m);
+    assert.match(body, /^Allow: \/llms\.txt$/m);
+    assert.match(body, /^Disallow: \/pro$/m);
+  });
+
+  it('308s www /reference/ to the changelog so empty :match* is not a 404', () => {
+    assert.equal(
+      firstRedirectFor({ host: 'www.worldmonitor.app', path: '/reference/' })?.destination,
+      '/reference/changelog/',
+    );
+    assert.equal(
+      firstRedirectFor({ host: 'tech.worldmonitor.app', path: '/reference/' })?.destination,
+      '/reference/changelog/',
+    );
+    assert.equal(
+      firstRedirectFor({ host: 'tech.worldmonitor.app', path: '/reference' })?.destination,
+      'https://www.worldmonitor.app/reference/:match*',
+    );
+  });
+
+  it('keeps the SPA catch-all rewrite and cache-header regex identical', () => {
+    const catchAllRewrite = vercelConfig.rewrites.find((r) =>
+      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
+    );
+    const catchAllHeader = vercelConfig.headers.find((r) => r.source === catchAllRewrite?.source);
+    assert.ok(catchAllRewrite, 'expected the SPA catch-all rewrite');
+    assert.ok(catchAllHeader, 'expected a cache-header rule whose source matches the SPA catch-all');
+    assert.equal(catchAllRewrite.source, catchAllHeader.source);
+    assert.equal(catchAllRewrite.source, SPA_HTML_CACHE_SOURCE);
   });
 
   it('variant and api robots keep AI-group rule parity with their own * group (#6835)', () => {
