@@ -725,7 +725,7 @@ function walk(rel, out = []) {
 // races any sibling running computeStats() end to end on the same tree
 // (docs-stats-plan-layer-entitlement), and the ENOENT reddens the sibling
 // on an unrelated PR.
-function dirHasFiles(rel) {
+export function dirHasFiles(rel) {
   let entries;
   try {
     entries = readdirSync(join(ROOT, rel), { withFileTypes: true });
