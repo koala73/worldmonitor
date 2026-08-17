@@ -10,9 +10,11 @@ import { assertValidCandidateState } from "../companyMonitoring/validators";
 import { internal } from "../_generated/api";
 
 const EVIDENCE = internal.companyMonitoring.evidence;
+const ADMISSION = (internal as any).companyMonitoring.admission;
 const ACCOUNT = "cm_account_candidate_state";
 const COMPANY = "cm_company_01K27CCCCCCCCCCCCCCCCCCCCC";
 const DAY_MS = 24 * 60 * 60 * 1000;
+const REQUESTED_MODEL_VERSION = "openrouter/google/gemini-2.5-flash";
 const STATE_INVALID = /COMPANY_MONITORING_CANDIDATE_STATE_INVALID/;
 
 installCompanyMonitoringTestEnvironment();
@@ -64,6 +66,15 @@ async function seedCompany(t: ReturnType<typeof convexTest>) {
       updatedAt: NOW,
     });
   });
+}
+
+async function storedCandidate(t: ReturnType<typeof convexTest>) {
+  return t.run(async (ctx) => ctx.db
+    .query("companyMonitoringCandidates")
+    .withIndex("by_account_company", (q) =>
+      q.eq("ownerAccountId", ACCOUNT).eq("companyId", COMPANY),
+    )
+    .unique());
 }
 
 function exaEvidence() {
@@ -178,5 +189,66 @@ describe("Company Monitoring candidate state invariant", () => {
         occurrenceDedupeKey: candidate!.occurrenceDedupeKey,
       }),
     ).rejects.toThrow(STATE_INVALID);
+  });
+
+  test("admission claim fails closed before leasing an out-of-band corrupt candidate", async () => {
+    const t = convexTest(schema, modules);
+    await seedCompany(t);
+    await t.mutation(EVIDENCE.ingestEvidenceForTest, {
+      ownerAccountId: ACCOUNT,
+      companyIds: [COMPANY],
+      evidence: [exaEvidence()],
+    });
+    const candidate = await storedCandidate(t);
+    expect(candidate).toMatchObject({ state: "pending_classification" });
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(candidate!._id, { terminalReason: "rejected" });
+    });
+
+    await expect(
+      t.mutation(ADMISSION.claimNextAdmissionCandidateForTest, {
+        workerId: "candidate-state-worker",
+        classificationRunId: "candidate-state-run",
+        requestedModelVersion: REQUESTED_MODEL_VERSION,
+      }),
+    ).rejects.toThrow(STATE_INVALID);
+
+    expect(await storedCandidate(t)).not.toHaveProperty("classificationLeaseToken");
+  });
+
+  test("evidence refresh fails closed before normalizing a corrupt held candidate", async () => {
+    const t = convexTest(schema, modules);
+    await seedCompany(t);
+    await t.mutation(EVIDENCE.ingestEvidenceForTest, {
+      ownerAccountId: ACCOUNT,
+      companyIds: [COMPANY],
+      evidence: [exaEvidence()],
+    });
+    const candidate = await storedCandidate(t);
+    expect(candidate).toMatchObject({ state: "pending_classification" });
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(candidate!._id, {
+        state: "held",
+        holdUntil: NOW + DAY_MS,
+        terminalReason: "admitted",
+        evidenceSnapshotDigest: "out-of-band-stale-digest",
+      });
+    });
+
+    await expect(
+      t.mutation(EVIDENCE.recomputeCompanyEvidenceForTest, {
+        ownerAccountId: ACCOUNT,
+        companyId: COMPANY,
+        occurrenceDedupeKey: candidate!.occurrenceDedupeKey,
+      }),
+    ).rejects.toThrow(STATE_INVALID);
+
+    expect(await storedCandidate(t)).toMatchObject({
+      state: "held",
+      holdUntil: NOW + DAY_MS,
+      terminalReason: "admitted",
+    });
   });
 });

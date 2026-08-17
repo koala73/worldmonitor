@@ -203,6 +203,7 @@ async function recomputeOccurrenceCandidate(
         .eq("occurrenceDedupeKey", occurrenceDedupeKey),
     )
     .unique();
+  if (existing) assertValidCandidateState(existing);
   if (
     existing &&
     existing.expiresAt <= now &&
