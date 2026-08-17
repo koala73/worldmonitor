@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { h, replaceChildren } from '@/utils/dom-utils';
+import { h } from '@/utils/dom-utils';
 import type { InternetOutage } from '@/types';
 import type {
   ListInternetDdosAttacksResponse,
