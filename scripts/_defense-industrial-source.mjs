@@ -188,7 +188,22 @@ function sipriFilters(importerId, startYear, endYear) {
 export async function fetchSipriSupplierDependencies({
   fetchFn = fetch,
   baseUrl = process.env.SIPRI_ARMS_API_BASE_URL || DEFAULT_SIPRI_BASE_URL,
-  concurrency = 4,
+  // 8, not 4, and the ceiling below is the reason it can go no higher.
+  //
+  // This issues one POST per mapped importer — ~200 of them (the catalog is 385
+  // entries, ~185 of which are non-state actors that map to no ISO2). SIPRI
+  // answers in ~10.6s regardless of payload size; even `getMaxYear`, which
+  // returns four bytes, takes ~6.8s. At concurrency 4 that is 50 requests per
+  // worker, ~547s, against a 390s fetchPhaseTimeoutMs — the fetch phase could
+  // never finish, so it burned the whole deadline and exited 75 on every run.
+  //
+  // That is also why seed-bundle-static-ref published nothing: a 390s failure
+  // inside a 570s bundle budget left 179s, and every remaining due section
+  // needed >=190s. mineralProduction and submarineCables had no key in Redis at
+  // all as a result (#6799).
+  //
+  // At 8 the same work is ~277s, inside the deadline with ~110s of margin.
+  concurrency = 8,
   delayMs = 150,
   logger = console,
 } = {}) {

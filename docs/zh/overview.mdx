@@ -25,7 +25,7 @@ World Monitor 从单一代码库运行六个专用变体，每个变体针对不
 
 ### 技术能力
 
-World Monitor 将交互式 3D 地球仪和平面地图、可配置情报面板、带来源归属的新闻与 OSINT、市场和经济数据、国家风险与韧性评分、基础设施与供应链分析、情景建模、AI 生成简报及告警工作流整合在一起。当前生成的产品清单记录了 56 个地图图层定义、100 多个面板实现和 6 个产品变体。
+World Monitor 将交互式 3D 地球仪和平面地图、可配置情报面板、带来源归属的新闻与 OSINT、市场和经济数据、国家风险与韧性评分、基础设施与供应链分析、情景建模、AI 生成简报及告警工作流整合在一起。生成的产品清单记录共享地图图层目录、具体面板实现和专用产品变体。
 
 | 能力 | 当前范围 |
 | --- | --- |
@@ -34,7 +34,7 @@ World Monitor 将交互式 3D 地球仪和平面地图、可配置情报面板�
 | 决策支持 | 带来源链接的 AI 简报、含机器可检查解决标准和评分卡上下文的概率预测、[路线探索器](/zh/route-explorer)及[情景引擎](/zh/scenario-engine)。 |
 | 公司与采购工作流 | MCP 公司情报工具组合市场上下文、SEC 文件搜索和重大 8-K 事件。[全球采购情报](/zh/global-procurement-intelligence)使用来自支持的政府和多边机构门户的种子化公开机会。可用性仍取决于部署凭据和来源健康状态。 |
 | 交付界面 | 托管 Web 仪表盘和可安装 PWA、适用于 macOS、Windows 和 Linux 的原生桌面应用，以及自托管技术栈。桌面应用包含本地 Node.js 边车，并支持 Ollama 和 LM Studio 等本地 LLM 端点。 |
-| 语言覆盖 | 界面支持 28 种语言。阿拉伯语和波斯语使用从右到左布局。本站文档目前提供英语和简体中文。 |
+| 语言覆盖 | 界面提供本地化和从右到左布局。阿拉伯语和波斯语使用从右到左布局。本站文档目前提供英语和简体中文。 |
 
 完整产品功能见[功能与界面](/zh/features)。处理模型、缓存、韧性控制和部署组件见[架构](/zh/architecture)。方法论页面说明平台如何计算[算法与复合信号](/zh/algorithms)。
 
@@ -58,11 +58,11 @@ World Monitor 不对所有数据集使用统一刷新间隔。每个来源的更
 
 ### 来源与溯源
 
-World Monitor 发布了公开且可搜索的[数据源目录（英文）](https://worldmonitor.app/sources)。该目录基于来源归属清单生成，目前列出 549 个活跃提供方、553 个上游主机、302 个结构化端点和 279 个新闻及 OSINT 数据流。单独的应用清单记录了 658 个已配置数据流定义，Telegram 目录启用了 56 个频道。这些数字描述不同的清单层级，不应相加。
+World Monitor 发布了公开且可搜索的[数据源目录（英文）](https://worldmonitor.app/sources)。该目录基于来源归属清单生成，列出活跃提供方、上游主机、结构化端点以及新闻和 OSINT 数据流。应用数据流注册表与 Telegram 目录是独立的清单层级，不应相加。
 
 在这些清单中，World Monitor 组合结构化 API、公开和授权数据集、政府及多边机构官方来源、新闻源和经过审核的 OSINT。代表性提供方包括 ACLED、UCDP、GDELT、UNHCR/OCHA、IMF、世界银行、BIS、Eurostat、FRED、USGS、NASA、Open-Meteo、Cloudflare Radar、AIS 与 ADS-B 提供方，以及数百家新闻发布机构。RSS 配置可包含来源层级、国家关联和宣传风险元数据。Telegram 配置使用不同的结构，包含层级、主题和地区元数据。跨来源佐证可以提高排序和置信度，但不是每个告警的通用前提条件。
 
-请先使用公开的[数据源目录（英文）](https://worldmonitor.app/sources)，按信号领域或来源类型搜索和筛选提供方。有关收集方法、覆盖范围、可信度层级和偏见元数据，请查看[数据源方法论](/zh/data-sources)。有关主机级归属和条款审核状态，请查看机器生成的[来源归属清单](/zh/source-attribution)。生成检查会检测仓库漂移，但清单条目本身不构成法律许可。不同功能和部署模式的来源可用性与许可条件可能不同。
+请先使用公开的[数据源目录（英文）](https://worldmonitor.app/sources)，按信号领域、来源类型或来源国搜索和筛选提供方。有关收集方法、覆盖范围、可信度层级和偏见元数据，请查看[数据源方法论](/zh/data-sources)。有关主机级归属和条款审核状态，请查看机器生成的[来源归属清单](/zh/source-attribution)。生成检查会检测仓库漂移，但清单条目本身不构成法律许可。不同功能和部署模式的来源可用性与许可条件可能不同。
 
 ### 集成选项与要求
 
@@ -70,12 +70,12 @@ World Monitor 发布了公开且可搜索的[数据源目录（英文）](https:
 | --- | --- | --- |
 | 托管仪表盘 | 需要完整可视化产品的分析人员 | 现代浏览器。公开功能无需客户侧集成；付费功能需要相应的 World Monitor 账户或套餐。 |
 | [实时地图嵌入](/zh/embed-live-map) | 文章、门户和内部仪表盘 | 允许使用 HTTPS iframe 的页面。嵌入仅公开允许列表中的公共地图图层，不公开账户或高级功能状态。 |
-| [REST API](/zh/api-reference) | 应用、数据管道和较高流量的批量读取 | OpenAPI 3.1 描述 36 个生成的服务合同和 200 多个版本化 HTTP 路径。标准服务器到服务器访问通过 `X-WorldMonitor-Key` 发送 API 密钥。请在参考文档中检查当前路由状态，并查看[快速入门](/zh/usage-quickstart)、[身份验证](/zh/usage-auth)、[版本政策](/zh/api-versioning)和 [REST 速率限制](/zh/usage-rate-limits)。 |
-| [MCP 服务器](/zh/mcp-overview) | Claude、Cursor 和自定义 AI 智能体 | Streamable HTTP，提供 63 个工具、6 个工作流提示、10 个交互应用和可选 JMESPath 响应筛选。目录发现公开；数据调用需要 OAuth 2.1 或 World Monitor API 密钥。MCP 权益与计量和 REST API 套餐额度分别说明。 |
+| [REST API](/zh/api-reference) | 应用、数据管道和较高流量的批量读取 | OpenAPI 3.1 描述生成的服务合同和版本化 HTTP 路径。标准服务器到服务器访问通过 `X-WorldMonitor-Key` 发送 API 密钥。请在参考文档中检查当前路由状态，并查看[快速入门](/zh/usage-quickstart)、[身份验证](/zh/usage-auth)、[版本政策](/zh/api-versioning)和 [REST 速率限制](/zh/usage-rate-limits)。 |
+| [MCP 服务器](/zh/mcp-overview) | Claude、Cursor 和自定义 AI 智能体 | Streamable HTTP，提供实时工具目录、工作流提示、交互应用和可选 JMESPath 响应筛选。目录发现公开；数据调用需要 OAuth 2.1 或 World Monitor API 密钥。MCP 权益与计量和 REST API 套餐额度分别说明。 |
 | [官方 SDK](/zh/sdks) 与 [CLI](/zh/cli) | Python、Ruby、Go、JavaScript 应用或 Shell 自动化 | 对应语言运行时；数据调用需要 API 密钥。零依赖 SDK 和 npm CLI 支持托管及自托管基础 URL。 |
 | [通知渠道](/zh/api-notifications) | 向运营系统发送通用领域告警 | 已计费的 PRO 账户和 Clerk bearer token。支持的交付渠道包括签名 HTTPS Webhook、Telegram、Slack、Discord、电子邮件和 Web Push。可用性取决于事件领域和渠道配置。 |
 | [航运 Webhook](/zh/api-shipping-v2) | 咽喉要道中断通知 | 具备 PRO 权限的 API 密钥，以及通过文档所述 SSRF 检查的公开 HTTPS 回调。交付使用 HMAC-SHA256 签名，并采用至少一次语义。这些 Webhook 仅适用于特定领域，并非全平台通用事件总线。 |
-| [智能体发现](/zh/agent-discovery) | 自动化接入和智能体原生工作流 | 标准 `.well-known` 元数据、`llms.txt`、OpenAPI 资产、MCP 服务器卡，以及包含 25 个可安装智能体技能的目录。发现元数据公开；携带数据的操作仍需要相应凭据。 |
+| [智能体发现](/zh/agent-discovery) | 自动化接入和智能体原生工作流 | 标准 `.well-known` 元数据、`llms.txt`、OpenAPI 资产、MCP 服务器卡和可安装的智能体技能目录。发现元数据公开；携带数据的操作仍需要相应凭据。 |
 | 自托管部署 | 需要自行运行整个技术栈的团队 | Node.js 22+、Docker 或 Podman、Redis、部署密钥，并遵守 [AGPL 或单独商业许可](/zh/license)。请参阅[入门指南](/zh/getting-started)。 |
 
 浏览器内 API 调用请查看 [CORS 策略](/zh/cors)。生成客户端请使用机器可读合同：[OpenAPI 规范](https://www.worldmonitor.app/openapi.yaml)。
@@ -89,7 +89,7 @@ World Monitor 发布了公开且可搜索的[数据源目录（英文）](https:
 ### 核心能力
 
 - **冲突监测** - 实时追踪活跃战区、热点地区和危机区域的升级动态
-- **军事情报** - 226 个军事基地、航班追踪、海军船舶监测、兵力集结检测
+- **军事情报** - 已注册军事基地、航班追踪、海军船舶监测、兵力集结检测
 - **基础设施安全** - 海底电缆、管道、数据中心、网络中断
 - **经济情报** - FRED 指标、石油分析、政府支出、制裁追踪
 - **自然灾害** - 地震、恶劣天气、NASA EONET 事件（野火、火山、洪水）
@@ -108,7 +108,7 @@ World Monitor 发布了公开且可搜索的[数据源目录（英文）](https:
 
 ### 新闻覆盖
 
-涵盖地缘政治、国防、能源、智库和区域新闻（中东、非洲、拉丁美洲、亚太）的 500+ 精选新闻源。
+涵盖地缘政治、国防、能源、智库和区域新闻（中东、非洲、拉丁美洲、亚太）的精选新闻源。
 
 ---
 
@@ -170,7 +170,7 @@ World Monitor 发布了公开且可搜索的[数据源目录（英文）](https:
 |-------|-------------|
 | **Stock Exchanges** | 全球主要证券交易所，含实时状态 |
 | **Financial Centers** | 关键金融中心和银行区 |
-| **Central Banks & Institutions** | 14 家央行和超国家金融机构，包括政策利率追踪以及 BIS/IMF 背景 |
+| **Central Banks & Institutions** | 央行和超国家金融机构信号，包括政策利率追踪以及 BIS/IMF 背景 |
 | **Commodity Hubs** | 大宗商品交易所（LME、CME、SHFE、NYMEX） |
 | **Gulf Investments** | 海合会主权财富和投资区 |
 

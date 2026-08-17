@@ -14,6 +14,10 @@ interface CountryHit {
 }
 
 const COUNTRY_GEOJSON_URL = '/data/countries.geojson';
+/** The base GeoJSON is the module-level gate for every geometry consumer;
+ * a hung fetch parks `loadPromise` forever, so bound it well above a normal
+ * static-asset load but well below "stuck for the session". */
+const COUNTRY_GEOJSON_TIMEOUT_MS = 15_000;
 
 /** Optional higher-resolution boundary overrides sourced from Natural Earth (served from R2 CDN). */
 const COUNTRY_OVERRIDES_URL = 'https://maps.worldmonitor.app/country-boundary-overrides.geojson';
@@ -254,7 +258,14 @@ async function ensureLoaded(): Promise<void> {
 
     markLcpDebug('wm:data:country-geometry-fetch-start');
     try {
-      const response = await fetch(COUNTRY_GEOJSON_URL);
+      // Bound the fetch: `loadPromise` is cached at module scope, so an
+      // unbounded await parks every future ensureLoaded() caller forever —
+      // the map never renders country boundaries and coordinate lookups
+      // silently degrade. The override fetch below already carries a signal;
+      // this is the same treatment for the primary asset.
+      const response = await fetch(COUNTRY_GEOJSON_URL, {
+        signal: makeTimeout(COUNTRY_GEOJSON_TIMEOUT_MS),
+      });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
       }

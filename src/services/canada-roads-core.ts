@@ -30,8 +30,31 @@ export interface CanadaRoadSourceDescriptor {
   key: string;
   source: string;
   jurisdiction: string;
-  onDemand: boolean;
 }
+
+/**
+ * The four road feeds that union onto the `canadaRoads` map layer.
+ *
+ * Declared here rather than in `canada-roads.ts` so tests can assert against the
+ * real descriptors: that module reaches Vite-side imports (`import.meta.env`),
+ * so a test importing it has to fall back to reading source text or cloning this
+ * list — and a cloned copy cannot fail when the real one changes.
+ *
+ * Every source is an on-demand bootstrap key (#6763). None of them rides a
+ * tier, so a visitor who leaves the layer off never downloads any of it —
+ * which is the whole reason the layer can ship disabled by default.
+ *
+ * Whether a key is on-demand is NOT restated here. `bootstrapTierKeyNames`
+ * (shared/bootstrap-tier-keys.js) is the single source of truth, and a copy in
+ * this list would only give the two somewhere to disagree — the descriptor
+ * carried a stale `onDemand: false` for both 511 feeds right up to #6763.
+ */
+export const CANADA_ROAD_SOURCES: readonly CanadaRoadSourceDescriptor[] = Object.freeze([
+  { key: 'canadaRoads', source: 'ontario-511', jurisdiction: 'ON' },
+  { key: 'albertaRoads', source: 'alberta-511', jurisdiction: 'AB' },
+  { key: 'torontoRoads', source: 'toronto-roads', jurisdiction: 'Toronto' },
+  { key: 'bcOpen511', source: 'bc-open511', jurisdiction: 'BC' },
+]);
 
 export type CanadaRoadSourceStates = Record<string, CanadaRoadSourceState>;
 

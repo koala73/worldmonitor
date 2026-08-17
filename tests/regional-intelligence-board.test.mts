@@ -65,7 +65,7 @@ function snapshotFixture(overrides: Partial<RegionalSnapshot> = {}): RegionalSna
       validUntil: 0,
       triggerReason: 'scheduled_6h',
       narrativeProvider: 'groq',
-      narrativeModel: 'llama-3.3-70b-versatile',
+      narrativeModel: 'openai/gpt-oss-20b',
     },
     regime: {
       label: 'coercive_stalemate',
@@ -441,7 +441,7 @@ describe('buildMetaFooter', () => {
     assert.match(html, /confidence 92%/);
     assert.match(html, /scoring v1\.0\.0/);
     assert.match(html, /geo v1\.0\.0/);
-    assert.match(html, /groq\/llama-3\.3-70b-versatile/);
+    assert.match(html, /groq\/openai\/gpt-oss-20b/);
   });
 
   it('shows "no narrative" when provider is empty', () => {
@@ -791,7 +791,7 @@ describe('buildWeeklyBriefBlock', () => {
     keyDevelopments: ['Hormuz transit dropped 15%', 'CII spike for Iran'],
     riskOutlook: 'Escalation risk remains elevated.',
     provider: 'groq',
-    model: 'llama-3.3-70b-versatile',
+    model: 'openai/gpt-oss-20b',
   };
 
   it('renders all brief sections when populated', () => {

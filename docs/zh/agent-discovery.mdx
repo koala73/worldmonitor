@@ -67,7 +67,7 @@ npx @openapitools/openapi-generator-cli generate \
   -i worldmonitor.openapi.yaml -g typescript-fetch -o ./client
 ```
 
-打包的规范在单个文档中覆盖了全部 35 个服务，因此一次代码生成即可为所有服务生成带类型的客户端。偏好维护好的包而非代码生成？[官方 SDK](/zh/sdks) 提供 Python、Ruby、Go 和 JavaScript 版本。
+打包的规范在单个文档中覆盖了完整服务目录，因此一次代码生成即可为所有服务生成带类型的客户端。偏好维护好的包而非代码生成？[官方 SDK](/zh/sdks) 提供 Python、Ruby、Go 和 JavaScript 版本。
 
 ### 将 MCP 客户端连接到实时数据
 
@@ -105,7 +105,7 @@ PRO 订阅者可从 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 获
 
 ### 即插即用智能体技能
 
-`/.well-known/agent-skills/index.json` 列出了预打包的技能——每个都是一份自包含配方，智能体无需阅读 OpenAPI 即可消化。适用于你宁愿让智能体"获取国家简报"而非"阅读 30 个 OpenAPI 规范然后自己搞清楚"的窄任务。请参见 [Agent Skills Catalog](/zh/agent-skills) 获取每份配方的人类可读列表。当前目录涵盖 25 个可安装配方，涉及国家简报、风险与韧性、咽喉要道、市场、网络、制裁、航空、军用航班、海上交通、能源冲击、贸易流、动荡、网络摄像头、气候灾害、健康告警和预报。
+`/.well-known/agent-skills/index.json` 列出了预打包的技能——每个都是一份自包含配方，智能体无需阅读 OpenAPI 即可消化。适用于你宁愿让智能体"获取国家简报"而非"阅读 OpenAPI 规范然后自己搞清楚"的窄任务。请参见 [Agent Skills Catalog](/zh/agent-skills) 获取每份配方的人类可读列表。当前目录涵盖国家简报、风险与韧性、咽喉要道、市场、网络、制裁、航空、军用航班、海上交通、能源冲击、贸易流、动荡、网络摄像头、气候灾害、健康告警和预报。
 
 ## 为什么这很重要
 
@@ -119,7 +119,7 @@ PRO 订阅者可从 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 获
 ## 相关
 
 - [MCP Server](/zh/mcp-overview)——完整客户端设置（Claude Desktop、Cursor、claude.ai、MCP Inspector、Claude Code）
-- [Agent Skills Catalog](/zh/agent-skills)——25 个公开智能体配方的人类可读目录
+- [Agent Skills Catalog](/zh/agent-skills)——公开智能体配方注册表的人类可读目录
 - [API 参考](/zh/api-reference)——人类可读的服务目录和 MCP→REST 工具映射
 - [身份验证](/zh/usage-auth)——浏览器、API 密钥和 OAuth 模式
 - [快速入门](/zh/usage-quickstart)——一分钟内完成首次调用

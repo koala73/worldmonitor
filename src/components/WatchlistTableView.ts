@@ -279,7 +279,7 @@ export class WatchlistTableView<T> {
           data-watchlist-search="1">
         <div class="watchlist-control-row">
           <div class="watchlist-pills">${pills}</div>
-          <select class="watchlist-sort" data-watchlist-sort="1">${sortOpts}</select>
+          <select class="watchlist-sort" data-watchlist-sort="1" aria-label="Sort watchlist">${sortOpts}</select>
         </div>
       </div>
     `;

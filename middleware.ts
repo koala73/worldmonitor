@@ -1,3 +1,5 @@
+import { getRootlessDocsDestination } from './src/config/docs-root-redirects';
+
 const BOT_UA =
   /bot|crawl|spider|slurp|archiver|wget|curl\/|python-requests|scrapy|httpclient|go-http|java\/|libwww|perl|ruby|php\/|ahrefsbot|semrushbot|mj12bot|dotbot|baiduspider|yandexbot|sogou|bytespider|petalbot|gptbot|claudebot|ccbot/i;
 
@@ -173,6 +175,15 @@ export default function middleware(request: Request) {
     return Response.redirect(dashboardUrl.toString(), 308);
   }
 
+  if (request.method === 'GET' || request.method === 'HEAD') {
+    const docsDestination = getRootlessDocsDestination(path);
+    if (docsDestination) {
+      const canonicalUrl = new URL(docsDestination);
+      canonicalUrl.search = url.search;
+      return Response.redirect(canonicalUrl.toString(), 308);
+    }
+  }
+
   // Variant-aware crawlable stub for social preview bots AND AI crawlers
   // (GPTBot, ClaudeBot, PerplexityBot, etc.) when hitting variant subdomain
   // roots. Social bots get OG-only; AI crawlers additionally get JSON-LD
@@ -225,7 +236,7 @@ ${AI_CRAWLER_VARIANT_LINKS}
 <li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub</a></li>
 </ul>
 <h2>Sources</h2>
-<p>Data ingested live from 553+ observed upstream hosts, including <a href="https://acleddata.com/">ACLED</a>, <a href="https://ucdp.uu.se/">UCDP</a>, <a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>, <a href="https://earthquake.usgs.gov/">USGS</a>, <a href="https://opensky-network.org/">OpenSky</a>, <a href="https://aisstream.io/">AISStream</a>, <a href="https://fred.stlouisfed.org/">FRED</a>, <a href="https://www.imf.org/en/Data">IMF</a>, and <a href="https://www.bis.org/">BIS</a>. See the <a href="https://www.worldmonitor.app/docs/data-sources">source catalog</a> for coverage by domain and the <a href="https://www.worldmonitor.app/docs/source-attribution">audited attribution ledger</a> for the complete inventory and license posture.</p>` : '';
+<p>Data ingested live from 578+ observed upstream hosts, including <a href="https://acleddata.com/">ACLED</a>, <a href="https://ucdp.uu.se/">UCDP</a>, <a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>, <a href="https://earthquake.usgs.gov/">USGS</a>, <a href="https://opensky-network.org/">OpenSky</a>, <a href="https://aisstream.io/">AISStream</a>, <a href="https://fred.stlouisfed.org/">FRED</a>, <a href="https://www.imf.org/en/Data">IMF</a>, and <a href="https://www.bis.org/">BIS</a>. See the <a href="https://www.worldmonitor.app/docs/data-sources">source catalog</a> for coverage by domain and the <a href="https://www.worldmonitor.app/docs/source-attribution">audited attribution ledger</a> for the complete inventory and license posture.</p>` : '';
           const html = `<!DOCTYPE html><html lang="en"><head>
 <meta property="og:type" content="website"/>
 <meta property="og:title" content="${eTitle}"/>
@@ -366,5 +377,9 @@ ${AI_CRAWLER_VARIANT_LINKS}
 }
 
 export const config = {
-  matcher: ['/', '/mcp', '/api/:path*'],
+  matcher: [
+    '/mcp',
+    '/api/:path*',
+    '/((?!api(?:/|$)|mcp(?:/|$)|.*\\.[^/]+$).*)',
+  ],
 };

@@ -531,19 +531,31 @@ describe('scheduled seed freshness monitor', () => {
         'a recovered gdeltIntel failure must block the committed acceptance gate',
       );
       assert.deepEqual(gdeltFailure.acknowledged, []);
+      // These three recovered or changed status; the monitor reported them as
+      // "no longer reported; remove it" and #6799 pruned them. staticRefBundleTick
+      // and bocValet publish again, and statcanWds's EMPTY never returns — it
+      // moved to STALE_CONTENT, which that entry could never have matched.
+      for (const [name, why] of [
+        ['staticRefBundleTick', 'the static-ref heartbeat publishes again'],
+        ['bocValet', 'the Bank of Canada Valet probe publishes again'],
+        ['statcanWds', 'its EMPTY escalated to STALE_CONTENT and the content budget now covers the real cadence'],
+      ]) {
+        assert.equal(
+          committed.acknowledged.some((entry) => entry.name === name),
+          false,
+          `${name} recovered (${why}); do not suppress a future recurrence`,
+        );
+      }
+
       const mineral = committed.acknowledged.find((entry) => entry.name === 'mineralProduction');
       assert.ok(mineral, 'mineralProduction stays acknowledged until the first post-recovery tick publishes');
       assert.equal(mineral.status, 'EMPTY');
-      assert.equal(mineral.expiresAt, '2026-08-15T03:00:00.000Z');
-      assert.equal(mineral.cutover?.firstScheduledRunAt, '2026-08-15T03:00:00.000Z');
+      // Re-anchored in #6799 onto the first static-ref tick after the
+      // Arms-Suppliers concurrency fix (#6807) frees the budget this section
+      // was being deferred out of.
+      assert.equal(mineral.expiresAt, '2026-08-18T03:00:00.000Z');
+      assert.equal(mineral.cutover?.firstScheduledRunAt, '2026-08-18T03:00:00.000Z');
       assert.equal(mineral.cutover?.probeKey, 'seed-meta:supply-chain:mineral-production');
-      const staticRefTick = committed.acknowledged.find((entry) => entry.name === 'staticRefBundleTick');
-      assert.ok(staticRefTick, 'the new tick-execution probe needs an expiring ack until the first post-deploy cron');
-      assert.equal(staticRefTick.status, 'EMPTY');
-      assert.equal(staticRefTick.issue, 6691);
-      assert.equal(staticRefTick.expiresAt, '2026-08-15T03:00:00.000Z');
-      assert.equal(staticRefTick.cutover?.probeKey, 'bundle:heartbeat:static-ref');
-      assert.equal(staticRefTick.cutover?.firstScheduledRunAt, '2026-08-15T03:00:00.000Z');
       const staticRefService = readRailwayServices().find((entry) => entry.service === 'seed-bundle-static-ref');
       assert.equal(staticRefService?.cronSchedule, '0 3 * * *');
       assert.ok(
@@ -793,6 +805,76 @@ describe('scheduled seed freshness monitor', () => {
         'Ingestion operational acceptance failed: 1 unacknowledged problem(s).',
         '- supplyChainTrade: status=STALE_SEED records=3 age=900m max=360m',
       ]);
+    });
+
+    it('a STALE_CONTENT row prints the clock that fired, not the one that did not', () => {
+      // Health runs two independent clocks. STALE_CONTENT is decided by
+      // contentAgeMin vs maxContentAgeMin, but this line used to print the SEED
+      // pair unconditionally — which for that status is ALWAYS inside budget.
+      // Production read `euFsi: status=STALE_CONTENT age=1200m max=5760m`, so
+      // the only available conclusion was that the monitor was wrong. The
+      // numbers that explain it were on the wire and were being dropped by the
+      // projection before the formatter ever saw them.
+      const payload = {
+        status: 'DEGRADED',
+        checkedAt: '2026-08-17T10:00:00.000Z',
+        summary: { total: 1, ok: 0, warn: 1, crit: 0 },
+        problems: {
+          euFsi: {
+            status: 'STALE_CONTENT',
+            records: 252,
+            seedAgeMin: 1200,
+            maxStaleMin: 5760,
+            contentAgeMin: 19230,
+            maxContentAgeMin: 14400,
+          },
+        },
+      };
+      const [problem] = findOperationalProblems(payload);
+      assert.equal(problem.contentAgeMin, 19230, 'the projection must carry the content clock');
+      assert.equal(problem.maxContentAgeMin, 14400);
+
+      const report = formatAcceptanceReport(
+        baselineResult({ blocking: [problem] }),
+        '2026-08-17T10:00:00.000Z',
+      );
+      const line = report.errors.find((row) => row.includes('euFsi'));
+      assert.match(line, /contentAge=19230m maxContentAge=14400m/, 'the breached pair must be named');
+      assert.match(line, /seed age=1200m ok/, 'and the healthy clock marked as such, not omitted');
+      assert.doesNotMatch(
+        line,
+        /\bage=1200m max=5760m/,
+        'the bare seed pair must not be presented as the reason for a content breach',
+      );
+    });
+
+    it('names an UNREADABLE content clock rather than falling back to the seed pair', () => {
+      // health scores `contentAgeMin == null` as stale (fail-closed), so a source
+      // can be STALE_CONTENT because nothing in the payload carries a date at
+      // all. jodiGas reads exactly this way in production. Printing the seed
+      // pair here would reproduce the original bug on the other branch: the
+      // reader again sees a clock that is comfortably inside budget.
+      const problem = {
+        name: 'jodiGas',
+        status: 'STALE_CONTENT',
+        records: 57,
+        seedAgeMin: 8793,
+        maxStaleMin: 57600,
+        contentAgeMin: null,
+        maxContentAgeMin: 267840,
+      };
+      const report = formatAcceptanceReport(
+        baselineResult({ blocking: [problem] }),
+        '2026-08-17T10:00:00.000Z',
+      );
+      const line = report.errors.find((row) => row.includes('jodiGas'));
+      assert.match(line, /contentAge=unknown/, 'an unreadable clock must be named as unreadable');
+      assert.match(line, /scored stale/, 'and the fail-closed scoring made explicit');
+      assert.doesNotMatch(
+        line,
+        /\bage=8793m max=57600m/,
+        'the passing seed pair must not be offered as the reason',
+      );
     });
 
     it('still reports the blocking problems on the run where the baseline expires', () => {

@@ -812,30 +812,42 @@ test('a tick that runs nothing while deferring due work exits non-zero', async (
   }
 });
 
-test('a transient graceful skip that also defers work stays exit 0', async () => {
-  // The narrowing on starvedTick. A child exit 75 means the last-good TTL was
-  // extended and no data was lost — a rate-limited upstream, not a stall. If
-  // that blip also pushed a sibling past the budget, `ran:0 deferred:1` is
-  // technically true but firing "Deploy Crashed!" for it is exactly the alert
-  // fatigue the graceful exemption exists to prevent. The deferred section
-  // retries on the next tick; real staleness is caught by the seed-meta
-  // freshness monitor, not by this exit code.
+test('a graceful skip that publishes nothing and defers work exits non-zero', async () => {
+  // Was: 'stays exit 0'. The graceful exemption used to cover this on the
+  // premise that a child exit 75 extended the last-good TTL and lost no data.
+  // That is true of the FAILING section and false of the ones it shed.
+  //
+  // seed-bundle-static-ref proved it: Arms-Suppliers burns its whole 390s fetch
+  // deadline (SIPRI answers in ~10.6s and it makes ~200 requests at concurrency
+  // 4) and exits 75, leaving 179s of a 570s budget. Every remaining due section
+  // needs >=190s, so all four defer and `ran:0`. Because gracefulFailed was 1,
+  // starvedTick stayed false and the bundle reported success — while
+  // mineralProduction and submarineCables had NO key in Redis at all. The one
+  // scenario the guard was written for was the one it could not see (#6799).
+  //
+  // The exemption now applies where its premise holds: `ran > 0` — some work
+  // published and one source blipped. A tick that published NOTHING has no
+  // successful work to vouch for it, whatever the reason.
   const cleanupGrace = writeFixture(
     '_bundle-fixture-slow-graceful.mjs',
     `await new Promise((r) => setTimeout(r, 16000));\nconsole.log('=== Failed gracefully ===');\nprocess.exit(${GRACEFUL_FETCH_FAILURE_EXIT_CODE});\n`,
   );
   const cleanupLate = writeFixture('_bundle-fixture-late.mjs', `console.log('late-ran');\n`);
   try {
-    const { code, stdout } = await runBundleWith(
+    const { code, stdout, stderr } = await runBundleWith(
       [
         { label: 'GRACE', script: '_bundle-fixture-slow-graceful.mjs', intervalMs: 1, timeoutMs: 30_000 },
         { label: 'LATE', script: '_bundle-fixture-late.mjs', intervalMs: 1, timeoutMs: 35_000 },
       ],
       { maxBundleMs: 60_000 },
     );
-    assert.equal(code, 0, 'a transient upstream blip must not page, even when it also defers a sibling');
+    assert.equal(code, 1, 'a tick that published nothing and shed due work must not report success');
     assert.match(stdout, /\[Bundle:test\] Finished .* ran:0 skipped:0 deferred:1 failed:0 graceful:1/);
-    assert.match(stdout, /no data lost, exiting 0/);
+    assert.match(
+      stderr,
+      /\[Bundle:test\] ran:0 while 1 due section\(s\) were deferred/,
+      `expected the starvation explanation; stderr:\n${stderr}`,
+    );
     assert.doesNotMatch(stdout, /late-ran/);
   } finally {
     cleanupGrace();

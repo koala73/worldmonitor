@@ -103,7 +103,13 @@ export const MCP_DOWNSTREAM_TELEMETRY_KEYS = Object.freeze([
 //              material; mirrors `principal_id` in
 //              server/_shared/usage-identity.ts).
 export function principalIdForLog(context: McpAuthContext): string {
-  return context.kind === 'env_key' ? hashKeySync(context.apiKey) : context.userId;
+  if (context.kind === 'env_key') return hashKeySync(context.apiKey);
+  // U7: a free-tier caller has no principal to attribute. 'anon' matches the
+  // value the anonymous discovery path already logs, so free-tier tool calls
+  // aggregate with the rest of the unauthenticated traffic instead of
+  // appearing as a distinct phantom principal.
+  if (context.kind === 'free') return 'anon';
+  return context.userId;
 }
 
 export function emitMcpRateLimitHit(

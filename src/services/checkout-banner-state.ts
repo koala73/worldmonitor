@@ -17,6 +17,27 @@ export type CheckoutSuccessBannerState = 'pending' | 'active' | 'timeout';
 export const EXTENDED_UNLOCK_TIMEOUT_MS = 30_000;
 
 /**
+ * How often the banner re-reads `isEntitled()` while it waits.
+ *
+ * The entitlement subscription only emits on a TRANSITION this page observed.
+ * A buyer returning from Dodo's hosted checkout is on a cold load, so the
+ * entitlement is often already true by the time Convex authenticates — no
+ * transition, no event, and an event-only wait never settles (WORLDMONITOR-PZ).
+ * Polling is a synchronous read of an in-memory store, so 1s costs nothing.
+ */
+export const ENTITLEMENT_POLL_MS = 1_000;
+
+/**
+ * How long the banner keeps watching after it has announced a timeout.
+ *
+ * The banner never auto-dismisses in the wait-for-entitlement flow, so a
+ * genuinely slow activation should still be able to correct the message rather
+ * than leave a paying customer looking at a failure until they reload. Bounded
+ * rather than page-lifetime so the watchers cannot leak.
+ */
+export const LATE_ACTIVATION_GRACE_MS = 300_000;
+
+/**
  * Auto-dismiss window for the classic (non-waitForEntitlement) banner.
  * Informational-only usage where the panel unlock is already guaranteed.
  */

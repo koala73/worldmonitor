@@ -11,7 +11,7 @@ The primary data source is the [Windy Webcams API](https://api.windy.com/webcams
 | Attribute | Value |
 |-----------|-------|
 | **Provider** | Windy Webcams API v3 |
-| **Coverage** | ~65,000 cameras globally |
+| **Coverage** | Global camera catalog |
 | **Update frequency** | Cameras capture images periodically (every 5-15 min) |
 | **Seeder** | `scripts/seed-webcams.mjs` — regional bounding-box fetch with adaptive quadrant splitting |
 | **API key** | Required (`WINDY_API_KEY`); free tier available at [api.windy.com](https://api.windy.com) |
@@ -190,4 +190,4 @@ Challenge: Each state has a slightly different schema requiring normalizing adap
 
 ### Phase 3: OpenWebcamDB
 
-Supplementary source with ~2,052 curated cameras. Free tier limited to 50 requests/day. Clean REST API but small dataset. Requires aggressive caching strategy.
+Supplementary source with a curated camera catalog. Free tier limited to 50 requests/day. Clean REST API but a smaller dataset. Requires aggressive caching strategy.

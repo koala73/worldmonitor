@@ -17,6 +17,11 @@ const MACRO_SECTIONS = [
   // being SIGTERM'd here, which the runner counts as a hard section failure.
   // 300_000 matches the peer sections and leaves the publish phase headroom.
   { label: 'CBR-Rates', script: 'seed-cbr-rates.mjs', seedMetaKey: 'economic:cbr-rates', canonicalKey: 'economic:cbr-rates:v1', intervalMs: DAY, timeoutMs: 300_000 },
+  // Bank of Canada Valet (CAD FX + overnight target + 2/5/10y yields) and
+  // Statistics Canada WDS (same-day cube radar + CPI/LFS for the CA overlay).
+  // Independent clocks: Valet is recent=1, WDS is the seeder UTC date path.
+  { label: 'BoC-Valet', script: 'seed-boc-valet.mjs', seedMetaKey: 'economic:boc-valet', canonicalKey: 'economic:boc-valet:v1', intervalMs: DAY, timeoutMs: 120_000 },
+  { label: 'StatCan-WDS', script: 'seed-statcan-wds.mjs', seedMetaKey: 'economic:statcan-wds', canonicalKey: 'economic:statcan-wds:v1', intervalMs: DAY, timeoutMs: 120_000 },
   // Official-source requests are sequential and bounded per host. Blocked
   // PBoC/GACC candidates stay explicitly unavailable rather than using proxies.
   { label: 'China-Macro', script: 'seed-china-macro.mjs', seedMetaKey: 'economic:china-macro', freshnessMetaKey: 'seed-meta:economic:china-macro-transport', completionMetaKey: 'seed-meta:economic:china-macro-complete', canonicalKey: CHINA_MACRO_CACHE_KEY, requireCanonical: true, intervalMs: 36 * HOUR, timeoutMs: 240_000 },

@@ -1130,7 +1130,7 @@
         "ucdpEvents": "أحداث UCDP",
         "displacementFlows": "تدفقات النزوح",
         "climateAnomalies": "شذوذات مناخية",
-        "weatherAlerts": "تنبيهات الطقس في الولايات المتحدة (NWS)",
+        "weatherAlerts": "تنبيهات الطقس في الولايات المتحدة وكندا (NWS, ECCC)",
         "strategicWaterways": "ممرات مائية استراتيجية",
         "economicCenters": "مراكز اقتصادية",
         "criticalMinerals": "معادن حيوية",
@@ -1213,7 +1213,7 @@
           "infraDatacenters": "مجموعات حوسبة AI بـ 10,000+ GPU",
           "infraOutages": "انقطاعات الإنترنت وتعطل الخدمات",
           "naturalEventsTech": "زلازل وعواصف وحرائق (قد تؤثر على مراكز البيانات)",
-          "weatherAlerts": "تنبيهات الطقس الشديد في الولايات المتحدة (NWS)",
+          "weatherAlerts": "تنبيهات الطقس الشديد في الولايات المتحدة وكندا (NWS, ECCC)",
           "economicCenters": "بورصات وبنوك مركزية",
           "countriesOverlay": "طبقة أسماء الدول",
           "financeExchanges": "البورصات العالمية الرئيسية حسب الفئة السوقية",
@@ -1225,7 +1225,7 @@
           "financeOutages": "انقطاعات إنترنت قد تؤثر على عمليات الأسواق",
           "financeCyberThreats": "أحداث أمنية حول البنية التحتية المالية",
           "macroWaterways": "نقاط اختناق استراتيجية لشحن السلع",
-          "weatherAlertsMarket": "أحداث الطقس الشديد في الولايات المتحدة ذات الصلة بالأسواق (NWS)",
+          "weatherAlertsMarket": "أحداث الطقس الشديد في الولايات المتحدة وكندا ذات الصلة بالأسواق (NWS, ECCC)",
           "naturalEventsMacro": "زلازل وحرائق وفيضانات وكوارث طبيعية أخرى",
           "timeRecent": "تصفية البيانات الزمنية للساعات الأخيرة",
           "timeExtended": "عرض بيانات الأسبوع أو الشهر الماضي أو الكل",
@@ -2394,13 +2394,14 @@
     },
     "sanctionsPressure": {
       "title": "العقوبات والتسميات",
-      "infoTooltip": "تسميات عقوبات OFAC من قوائم SDN والقائمة الموحدة. يعرض الدول التي تواجه أعلى ضغط تسميات، والبرامج التي تدفعها، وما تمت إضافته مؤخراً منذ آخر تحديث.",
+      "infoTooltip": "قوائم SDN والموحدة من OFAC بالإضافة إلى تسميات SEMA/JVCFOA من الشؤون العالمية الكندية. يعرض الدول التي تواجه أعلى ضغط تسميات، والبرامج التي تدفعها، وما تمت إضافته مؤخراً منذ آخر تحديث.",
       "loading": "جاري تحميل بيانات العقوبات...",
       "unavailable": "بيانات العقوبات غير متاحة.",
       "summary": {
         "new": "جديد",
         "vessels": "السفن",
-        "aircraft": "الطائرات"
+        "aircraft": "الطائرات",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "الدول المعاقَبة",
@@ -2415,11 +2416,12 @@
       "footer": {
         "updated": "تم التحديث {{time}}",
         "dataset": "مجموعة البيانات {{date}}",
-        "source": "المصدر: OFAC"
+        "source": "المصدر: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} جديد",
-        "new": "جديد"
+        "new": "جديد",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} تسمية",
       "designations_other": "{{count}} تسميات",
@@ -2893,6 +2895,7 @@
     "moreEvents": "أحداث إضافية",
     "monitoring": "مراقبة",
     "viewUSGS": "عرض على USGS",
+    "viewNRCan": "عرض على Earthquakes Canada",
     "expired": "منتهي الصلاحية",
     "timeAgo": {
       "s": "{{count}}ث مضت",

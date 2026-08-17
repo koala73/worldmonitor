@@ -3,7 +3,7 @@ title: "Data Sources"
 description: "Every data source behind World Monitor, segmented by intelligence domain — what each domain covers, the providers behind it, and deep-dive links for methodology, cadence, and fallback ordering."
 ---
 
-World Monitor fuses **549 active providers across 553 upstream hosts** — structured APIs, news and OSINT feeds, and operational-status endpoints — into one live operating picture across six product variants. The separate application inventory contains **500+ curated news feeds** and 56 Telegram channels; these are different inventory layers and are not added to the provider or host totals. This page is the catalog: start with the domain map below, open the domain you care about, then follow the deep-dive links for methodology and freshness guarantees.
+World Monitor fuses attributed structured APIs, news and OSINT feeds, and operational-status endpoints into live operating pictures across the product variants. The source-attribution manifest, application feed registry, and Telegram catalog are separate inventories and are not added together. This page is the catalog: start with the domain map below, open the domain you care about, then follow the deep-dive links for methodology and freshness guarantees.
 
 Data flows one way: Railway seeders and edge functions fetch upstream sources on fixed cadences, normalize and cache the results in Redis, and the dashboard hydrates from those caches — so a burst of traffic never multiplies load on any provider. The [architecture guide](/architecture) covers the pipeline in depth, and the machine-audited inventory of every observed upstream host lives in the [full source inventory](/source-attribution).
 
@@ -13,7 +13,7 @@ Data flows one way: Railway seeders and edge functions fetch upstream sources on
 |--------|--------------|--------------------------|
 | [Geopolitics & Conflict](#geopolitics-%26-conflict) | Conflict events, protests, displacement, travel advisories, rocket alerts, prediction markets | ACLED, UCDP, GDELT, UNHCR/OCHA, Polymarket |
 | [Military & Strategic](#military-%26-strategic) | Bases, live military flights, naval activity, satellites, GPS jamming | adsb.lol, Wingbits, CelesTrak, gpsjam.org |
-| [News & OSINT](#news-%26-osint) | Hundreds of tiered news feeds, Telegram OSINT, live TV and webcams | Reuters, BBC, AP, Al Jazeera, 56 Telegram channels |
+| [News & OSINT](#news-%26-osint) | Tiered news feeds, Telegram OSINT, live TV and webcams | Reuters, BBC, AP, Al Jazeera, and reviewed Telegram channels |
 | [Finance & Economics](#finance-%26-economics) | Markets, macro series, central banks, crypto, trade flows | FRED, ECB, BIS, Eurostat, World Bank, CoinGecko |
 | [Energy & Commodities](#energy-%26-commodities) | Gas storage, oil inventories, fuel prices, gold and metals | GIE AGSI+, U.S. EIA, IEA, CFTC |
 | [Infrastructure & Cyber](#infrastructure-%26-cyber) | Undersea cables, pipelines, ports, outages, threat IOCs | Cloudflare Radar, Submarine Cable Map, abuse.ch |
@@ -96,11 +96,11 @@ Population exposure estimation calculates affected populations within event-spec
 
 Government travel advisories serve as expert risk assessments from national intelligence agencies — when the US State Department issues a "Do Not Travel" advisory, it reflects classified threat intelligence that no open-source algorithm can replicate.
 
-**Sources**: 3 government advisory feeds (US State Dept, Australia DFAT Smartraveller, UK FCDO), 13 US Embassy country-specific alert feeds (Thailand, UAE, Germany, Ukraine, Mexico, India, Pakistan, Colombia, Poland, Bangladesh, Italy, Dominican Republic, Myanmar), and health agency feeds (CDC Travel Notices, ECDC epidemiological updates, WHO News, WHO Africa Emergencies).
+**Sources**: Government travel advisories (US State Dept, Australia DFAT Smartraveller, UK FCDO), US Embassy country-specific alerts, and health agency feeds (CDC Travel Notices, ECDC epidemiological updates, WHO News, WHO Africa Emergencies).
 
 **Advisory levels** (ranked): Do-Not-Travel (4) → Reconsider Travel (3) → Exercise Caution (2) → Normal (1) → Info (0). Both RSS (item) and Atom (entry) formats are parsed. Country extraction uses a 265-entry country name map (generated from GeoJSON + aliases) for accurate matching of compound names and alternative spellings.
 
-**Architecture**: Advisories follow the gold standard pattern. A Railway cron seed (`seed-security-advisories.mjs`) fetches all 24 feeds hourly via the relay RSS proxy, deduplicates by title, builds a `byCountry` risk-level map, and writes to Redis. The Vercel `ListSecurityAdvisories` RPC reads Redis only (no external calls). Bootstrap hydration provides instant advisory data on page load.
+**Architecture**: Advisories follow the gold standard pattern. A Railway cron seed (`seed-security-advisories.mjs`) fetches the complete advisory feed registry hourly via the relay RSS proxy, deduplicates by title, builds a `byCountry` risk-level map, and writes to Redis. The Vercel `ListSecurityAdvisories` RPC reads Redis only (no external calls). Bootstrap hydration provides instant advisory data on page load.
 
 **CII integration** — the server-side CII scorer reads the seeded advisory
 `byCountry` level when available and otherwise may use an embedded State
@@ -156,7 +156,7 @@ Markets are filtered to exclude sports and entertainment (100+ exclusion keyword
 
 Force posture and strategic infrastructure, tracked from open sources in real time.
 
-- 226 military bases from 9 operators
+- Registered military bases with operator attribution
 - Live military flight tracking (ADS-B) — see [Aviation & Airspace](#aviation-%26-airspace) for the provider chain
 - Naval vessel monitoring (AIS)
 - Nuclear facilities & gamma irradiators
@@ -210,11 +210,11 @@ GPS jamming and spoofing — increasingly used as electronic warfare in conflict
 
 ## News & OSINT
 
-The news backbone: hundreds of tiered RSS feeds across six variants, a raw Telegram OSINT lane, live TV streams, and a webcam grid — every source disclosed, tiered, and bias-tagged.
+The news backbone: tiered RSS feeds across the published variants, a raw Telegram OSINT lane, live TV streams, and a webcam grid — every source disclosed, tiered, and bias-tagged.
 
 - Tiered global news network spanning politics, regional desks, finance, tech, energy, think tanks, and crisis monitors — the complete per-variant inventory is disclosed [below](#server-side-feed-aggregation)
-- 56-channel Telegram OSINT feed with official, independent, and belligerent-party sources
-- Live TV news streams and a 22-feed webcam surveillance grid from geopolitical hotspots
+- Curated Telegram OSINT feed with official, independent, and belligerent-party sources
+- Live TV news streams and a webcam surveillance grid from geopolitical hotspots
 - Curated positive-news network for the Happy variant (Good News Network, Positive.News, Reasons to be Cheerful, and more)
 - Every feed carries source tier, propaganda-risk rating, and state-affiliation metadata
 
@@ -229,17 +229,17 @@ The public server digest feed inventory below is source-backed from `server/worl
 | Variant | Category | Server feed sources |
 | --- | --- | --- |
 | `full` | `politics` | BBC World; Guardian World; AP News; Reuters World; CNN World; Trump - Truth Social |
-| `full` | `us` | Reuters US; NPR News; PBS NewsHour; ABC News; CBS News; NBC News; Wall Street Journal; Politico; The Hill; Axios; CBC News; Globe and Mail; Global News |
-| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Telegraph; Interfax EN; Tagesschau (de); Handelsblatt (de); Welt (de); Interfax RU (ru); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Yle News; NRK; Aftenposten; DR Nyheder; Arctic Today; Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); Seznam Zprávy (cs); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight; Digi24 (ro); HotNews (ro); G4Media (ro); Dnevnik (bg); Kyiv Independent; Ukrinform; Suspilne; Ukrainska Pravda EN; NV EN; Hromadske EN; Ukrainska Pravda (uk); Hromadske (uk); Bihus.Info (uk); Slidstvo.Info (uk); ZN.UA (uk); TVN24; Rzeczpospolita; Meduza; Moscow Times; Civil.ge; OC Media; JAMnews; Azertag; Armenpress; Zerkalo; NewsMaker (ru); Ziarul de Gardă (ro); ERR News; LRT English; LSM English; Daily Sabah; Hurriyet (tr); Polsat News (pl); Kathimerini (el) |
-| `full` | `middleeast` | BBC Middle East; Al Jazeera; Al Arabiya; Guardian ME; BBC Persian (fa); Iran International; Haaretz; Jerusalem Post; Ynetnews; Arab News; The National; Oman Observer; Asharq Business; Rudaw |
+| `full` | `us` | Reuters US; NPR News; PBS NewsHour; ABC News; CBS News; NBC News; Wall Street Journal; Politico; The Hill; Axios; CBC News; Globe and Mail; Global News; Toronto Star; National Post; Financial Post; iPolitics; The Narwhal; The Tyee; Radio-Canada (fr); La Presse (fr); Le Devoir (fr); TVA Nouvelles (fr); Vancouver Sun; Calgary Herald; Winnipeg Free Press; Ottawa Citizen; Edmonton Journal; Maclean's; The Province; CTV News; CP24; Montreal Gazette |
+| `full` | `europe` | France 24; EuroNews; Le Monde; DW News; Telegraph; Interfax EN; Tagesschau (de); Handelsblatt (de); Welt (de); Interfax RU (ru); ANSA (it); NOS Nieuws (nl); SVT Nyheter (sv); Yle News; NRK; Aftenposten; DR Nyheder; Arctic Today; Telex (hu); Index.hu (hu); HVG (hu); 444.hu (hu); 24.hu (hu); Híradó (hu); Portfolio.hu (hu); ATV (hu); Seznam Zprávy (cs); N1 Croatia (hr); Index.hr (hr); Jutarnji list (hr); Balkan Insight; Digi24 (ro); HotNews (ro); G4Media (ro); Dnevnik (bg); Kyiv Independent; Ukrinform; Suspilne; Ukrainska Pravda EN; NV EN; Hromadske EN; Ukrainska Pravda (uk); Hromadske (uk); Bihus.Info (uk); Slidstvo.Info (uk); ZN.UA (uk); TVN24; Rzeczpospolita; Meduza; Moscow Times; Civil.ge; OC Media; JAMnews; Azertag; Armenpress; Zerkalo; NewsMaker (ru); Ziarul de Gardă (ro); ERR News; LRT English; LSM English; Daily Sabah; Hurriyet (tr); Polsat News (pl); PAP (pl); Gazeta Wyborcza (pl); Polityka (pl); Onet (pl); OKO.press (pl); TVP Info (pl); Kathimerini (el) |
+| `full` | `middleeast` | BBC Middle East; Al Jazeera; Al Arabiya; Guardian ME; BBC Persian (fa); Iran International; Haaretz; Jerusalem Post; Ynetnews; Arab News; The National; Oman Observer; Asharq Business; Rudaw; Yemen Online; Sana'a Center; Syria Direct; Enab Baladi English; +972 Magazine; WAFA English; Naharnet Lebanon; L'Orient Today; Annahar (ar); Libya Herald; Egypt Independent; Mada Masr |
 | `full` | `tech` | Hacker News; Ars Technica; The Verge; MIT Tech Review; Wired |
 | `full` | `ai` | AI News; VentureBeat AI; The Verge AI; MIT Tech Review; ArXiv AI |
 | `full` | `finance` | CNBC; MarketWatch; Yahoo Finance; Financial Times; Reuters Business; Fox Business; Business Insider; GlobeNewswire; Business Wire; PR Newswire; Chainwire; Coinbase Blog; Binance Announcements; Jin10 (zh) |
 | `full` | `commodities` | Oil & Gas; Gold & Metals |
 | `full` | `gov` | White House; White House Actions; State Dept; Pentagon; Federal Reserve; SEC; U.S. Trade Representative; UN News; CISA; Treasury; DOJ |
-| `full` | `africa` | BBC Africa; Africa News; Sahel Crisis; News24; Africanews; Jeune Afrique (fr); Premium Times; Vanguard Nigeria; Channels TV; Daily Trust; ThisDay; Radio Tamazuj; The Reporter Ethiopia; Ethiopia Insight; Dabanga Sudan; Hiiraan Online; Actualite.cd (fr); Radio Okapi (fr); MyJoyOnline; Citi Newsroom; Le Quotidien (fr); RFI Afrique |
-| `full` | `latam` | BBC Latin America; Guardian Americas; Primicias (es); Infobae Americas (es); El Universo (es); Clarín (es); InSight Crime |
-| `full` | `asia` | BBC Asia; The Diplomat; Reuters Asia; Japan Today; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; Xinhua; Asahi Shimbun (ja); MIIT (China) (zh); MOFCOM (China) (zh); Bangkok Post (th); VnExpress (vi); Yonhap News (ko); BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi); Eurasianet; RFE/RL Central Asia; The Astana Times; The Times of Central Asia; Focus Taiwan; Taipei Times; Taiwan News; Dawn; Geo News; Jakarta Post; Rappler; The Star (Malaysia); Irrawaddy; Island Times (Palau) |
+| `full` | `africa` | BBC Africa; Africa News; Sahel Crisis; News24; Africanews; Jeune Afrique (fr); Premium Times; Vanguard Nigeria; Channels TV; Daily Trust; ThisDay; Radio Tamazuj; The Reporter Ethiopia; Ethiopia Insight; Dabanga Sudan; Hiiraan Online; Actualite.cd (fr); Radio Okapi (fr); MyJoyOnline; Citi Newsroom; Le Quotidien (fr); RFI Afrique; Studio Tamani (fr); leFaso.net (fr); ActuNiger (fr); Aïr Info (fr); Daily Nation; The Guardian Post; Tchadinfos (fr); Alwihda Info (fr); Radio Ndeke Luka (fr) |
+| `full` | `latam` | BBC Latin America; Guardian Americas; Primicias (es); Infobae Americas (es); El Universo (es); Clarín (es); InSight Crime; HaitiLibre English; AyiboPost (fr); Caracas Chronicles; Efecto Cocuyo (es); Havana Times; 14ymedio (es) |
+| `full` | `asia` | BBC Asia; The Diplomat; Reuters Asia; Japan Today; Nikkei Asia; CNA; NDTV; South China Morning Post; The Hindu; Asia News; Xinhua; Asahi Shimbun (ja); MIIT (China) (zh); MOFCOM (China) (zh); Bangkok Post (th); VnExpress (vi); Yonhap News (ko); BBC Hindi (hi); Aaj Tak (hi); NDTV India (hi); Amar Ujala (hi); Eurasianet; RFE/RL Central Asia; The Astana Times; The Times of Central Asia; Focus Taiwan; Taipei Times; Taiwan News; Dawn; Geo News; Jakarta Post; Rappler; The Star (Malaysia); Irrawaddy; Island Times (Palau); Amu TV; Pajhwok Afghan News; The Daily Star; Dhaka Tribune |
 | `full` | `energy` | Oil & Gas; Reuters Energy; Nuclear Energy |
 | `full` | `thinktanks` | Foreign Policy; Atlantic Council; Foreign Affairs; War on the Rocks; CSIS; ISW |
 | `full` | `crisis` | CrisisWatch; IAEA; WHO |
@@ -329,13 +329,13 @@ This eliminates per-client feed fan-out — 1,000 concurrent users each polling 
 
 ### Telegram OSINT Intelligence Feed
 
-56 enabled channels in the default `full` Telegram channel set provide a raw, low-latency intelligence feed covering conflict zones, OSINT analysis, and breaking news — sources that are often minutes ahead of traditional wire services during fast-moving events.
+The enabled channels in the default `full` Telegram channel set provide a raw, low-latency intelligence feed covering conflict zones, OSINT analysis, and breaking news — sources that are often minutes ahead of traditional wire services during fast-moving events.
 
-| Tier       | Enabled channels in `full` set |
-| ---------- | ------------------------------ |
-| **Tier 1** | 3                              |
-| **Tier 2** | 23                             |
-| **Tier 3** | 30                             |
+| Tier       | Role in the `full` set |
+| ---------- | ---------------------- |
+| **Tier 1** | Highest-priority sources |
+| **Tier 2** | Established sources |
+| **Tier 3** | Specialist sources |
 
 The channel set intentionally includes official, state-affiliated, partisan, and belligerent-party channels — for example military, ministry, state-media, and faction-aligned sources alongside independent OSINT accounts. Telegram posts are ingested as raw OSINT leads, not endorsed truth. The Telegram channel config carries operational `tier`, `topic`, and `region` metadata for polling and filtering; unlike RSS feeds, Telegram channels do not currently carry the RSS `stateAffiliation` or propaganda-risk fields, so source-bias review must use the disclosed channel identity plus the operational tier rather than RSS-style affiliation tags.
 
@@ -345,7 +345,7 @@ Messages are deduplicated by ID, filtered to exclude media-only posts (images wi
 
 ### Live Webcam Surveillance Grid
 
-22 YouTube live streams from geopolitical hotspots across 5 regions provide continuous visual situational awareness:
+The YouTube live-stream catalog covers geopolitical hotspots across global regions and provides continuous visual situational awareness:
 
 | Region             | Cities                                                           |
 | ------------------ | ---------------------------------------------------------------- |
@@ -355,7 +355,7 @@ Messages are deduplicated by ID, filtered to exclude media-only posts (images wi
 | **Americas**       | Washington DC, New York, Los Angeles, Miami                      |
 | **Asia-Pacific**   | Taipei, Shanghai, Tokyo, Seoul, Sydney                           |
 
-The webcam panel supports two viewing modes: a 4-feed grid (default strategic selection: Jerusalem, Tehran, Kyiv, Washington DC) and a single-feed expanded view. Region tabs (ALL/IRAN/MIDEAST/EUROPE/AMERICAS/ASIA) filter the available feeds. The Iran/Attacks tab provides a dedicated 2×2 grid for real-time visual monitoring during escalation events between Iran and Israel.
+The webcam panel supports two viewing modes: a 2×2 grid (default strategic selection: Jerusalem, Tehran, Kyiv, Washington DC) and a single-feed expanded view. Region tabs (ALL/IRAN/MIDEAST/EUROPE/AMERICAS/ASIA) filter the available feeds. The Iran/Attacks tab provides a dedicated 2×2 grid for real-time visual monitoring during escalation events between Iran and Israel.
 
 Resource management is aggressive — iframes are lazy-loaded via Intersection Observer (only rendered when the panel scrolls into view), paused after 5 minutes of user inactivity, and destroyed from the DOM entirely when the browser tab is hidden. On Tauri desktop, YouTube embeds route through a cloud proxy to bypass WKWebView autoplay restrictions. Each feed carries a fallback video ID in case the primary stream goes offline.
 
@@ -384,9 +384,9 @@ Macro, markets, and money — official statistics from central banks and statist
 
 - 7-signal macro radar with composite BUY/CASH verdict
 - **Customizable market watchlist** — user-defined stock/commodity/crypto symbol lists (up to 50 symbols) with optional friendly labels, persisted to localStorage, synchronized across panels via CustomEvent
-- 29 global stock exchanges — mega (NYSE, NASDAQ, Shanghai, Euronext, Tokyo), major (Hong Kong, London, NSE/BSE, Toronto, Korea, Saudi Tadawul), and emerging markets — with market caps and trading hours
+- Global stock exchanges — mega (NYSE, NASDAQ, Shanghai, Euronext, Tokyo), major (Hong Kong, London, NSE/BSE, Toronto, Korea, Saudi Tadawul), and emerging markets — with market caps and trading hours
 - 19 financial centers — ranked by Global Financial Centres Index (New York #1 through offshore centers: Cayman Islands, Luxembourg, Bermuda, Channel Islands)
-- 14 central-bank and supranational finance institutions — 12 policy-rate institutions (Federal Reserve, ECB, BoJ, BoE, PBoC, SNB, RBA, BoC, RBI, BoK, BCB, SAMA) plus BIS and IMF
+- Central-bank and supranational finance institutions — policy-rate institutions (Federal Reserve, ECB, BoJ, BoE, PBoC, SNB, RBA, BoC, RBI, BoK, BCB, SAMA) plus BIS and IMF
 - BIS central bank data — policy rates across major economies, real effective exchange rates (REER), and credit-to-GDP ratios sourced from the Bank for International Settlements
 - 10 commodity hubs — exchanges (CME Group, ICE, LME, SHFE, DCE, TOCOM, DGCX, MCX) and physical hubs (Rotterdam, Houston)
 - **Gulf Economies panel** — live data for GCC financial markets across three sections: **Indices** (Tadawul/Saudi Arabia, Dubai Financial Market, Abu Dhabi, Qatar, WisdomTree Gulf Dividend, Muscat MSM 30), **Currencies** (SAR, AED, QAR, KWD, BHD, OMR vs USD), and **Oil** (WTI Crude, Brent Crude). All quotes fetched from Yahoo Finance with staggered batching, Redis-cached for 8 minutes, with mini sparklines per quote and 60-second polling
@@ -457,8 +457,8 @@ The physical and digital backbone: cables, pipelines, ports, datacenters, intern
 
 - Undersea cables with landing points, cable health advisories (NGA navigational warnings), and cable repair ship tracking
 - Oil & gas pipelines
-- AI datacenters (313 clusters from Epoch AI dataset)
-- 62 strategic ports across 6 types (container, oil, LNG, naval, mixed, bulk) with throughput rankings
+- AI datacenters from the Epoch AI dataset
+- Strategic ports grouped by container, oil, LNG, naval, mixed, and bulk roles, with throughput rankings
 - Internet outages (Cloudflare Radar)
 - Critical mineral deposits
 - 19 global trade routes (container, energy, bulk) with multi-segment arcs through strategic chokepoints
@@ -494,7 +494,7 @@ IOCs are classified into four types (`c2_server`, `malware_host`, `phishing`, `m
 
 ### Strategic Port Infrastructure
 
-62 strategic ports are cataloged across six types, reflecting their role in global trade and military posture:
+Strategic ports are cataloged by role, reflecting their place in global trade and military posture:
 
 | Type           | Count | Examples                                             |
 | -------------- | ----- | ---------------------------------------------------- |
@@ -566,7 +566,7 @@ Anomalies feed into the signal aggregator, where they amplify CII scores for aff
 
 Airport operations, airspace closures, live flight tracking, and airline intelligence.
 
-- Airport delays and closures across 115 monitored airports (FAA + AviationStack + ICAO NOTAM)
+- Airport delays and closures across monitored airports (FAA + AviationStack + ICAO NOTAM)
 - **Aviation intelligence** — 6-tab airline intel panel (ops, flights, airlines, tracking, news, prices) with customizable airport/airline watchlists, live ADS-B flight tracking, and flight price search
 
 **Key providers**
@@ -586,7 +586,7 @@ Deep dives: [Airline intel panel](/panels/airline-intel)
 
 ### Airport Delay & NOTAM Monitoring
 
-115 airports across 5 regions (Americas, Europe, Asia-Pacific, MENA, Africa) are continuously monitored for delays, ground stops, and closures through three independent data sources:
+Airports across the Americas, Europe, Asia-Pacific, MENA, and Africa are continuously monitored for delays, ground stops, and closures through independent data sources:
 
 | Source             | Coverage                  | Method                                                                                                  |
 | ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -736,7 +736,7 @@ Deep dives: [Tech readiness panel](/panels/tech-readiness) · [Platform overview
 
 ## Data Freshness & Intelligence Gaps
 
-A singleton tracker monitors 37 data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, Ontario 511, BC Open511, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, BLS, WTO trade, supply chain, security advisories, sanctions pressure, radiation, GPS jamming, Treasury revenue) with status categorization: fresh (&lt;15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two browser-tracker sources (GDELT, RSS) are flagged as `requiredForRisk`; that flag drives the Strategic Risk panel's hard insufficient-data gate, not the exhaustive list of CII score inputs. Score-relevant feeds such as UCDP events, ACLED conflict, news summaries, and cyber threats are tracked through source-specific health plus the `riskScores` health/cache signal-density coverage. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
+A singleton tracker monitors configured data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, Ontario 511, BC Open511, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, BLS, WTO trade, supply chain, security advisories, sanctions pressure, radiation, GPS jamming, Treasury revenue) with status categorization: fresh (&lt;15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two browser-tracker sources (GDELT, RSS) are flagged as `requiredForRisk`; that flag drives the Strategic Risk panel's hard insufficient-data gate, not the exhaustive list of CII score inputs. Score-relevant feeds such as UCDP events, ACLED conflict, news summaries, and cyber threats are tracked through source-specific health plus the `riskScores` health/cache signal-density coverage. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
 
 ---
 

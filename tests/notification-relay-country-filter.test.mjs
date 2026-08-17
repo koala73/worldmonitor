@@ -1,20 +1,21 @@
 /**
- * Regression test: scripts/notification-relay.cjs's eventMatchesCountryScope
- * filter. Layer 3 of the country-scoping PR.
+ * Regression coverage for scripts/notification-relay.cjs's
+ * eventMatchesCountryScope filter (country-scoping PR, #5359).
  *
- * Two test surfaces:
- *  1. Source-grep: the filter MUST be wired into the per-rule matching loop
- *     alongside shouldNotify, otherwise country-scoped rules would receive
- *     events from all countries (silent over-delivery).
- *  2. Behavioural: re-execute the filter logic against a synthetic rule +
- *     event matrix to lock in the PERMISSIVE-on-unattributed semantics +
- *     country extraction priority.
+ * This file used to MIRROR the filter — a hand-copied reimplementation that
+ * deliberately omitted the regional_* branch and was 'kept in sync' by a
+ * source grep. A mirror cannot fail when the relay changes, and this one had
+ * already diverged. The real export is loaded here with the same env-stub and
+ * loader-patch technique as tests/notification-relay-country-scope-5359.test.mjs:
+ * the relay only starts its poll loop when require.main === module, so
+ * requiring it from a test is side-effect free.
  *
  * Run: node --test tests/notification-relay-country-filter.test.mjs
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import Module from 'node:module';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -22,10 +23,33 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
+
+process.env.UPSTASH_REDIS_REST_URL ??= 'https://stub.upstash.io';
+process.env.UPSTASH_REDIS_REST_TOKEN ??= 'stub-token';
+process.env.CONVEX_URL ??= 'https://stub.convex.cloud';
+process.env.RELAY_SHARED_SECRET ??= 'stub-secret';
+process.env.TELEGRAM_BOT_TOKEN ??= 'stub-bot-token';
+
+// The relay's runtime deps live in scripts/package.json and are only installed
+// in the Railway container — stub them at the loader level.
+const originalLoad = Module._load;
+Module._load = function patchedLoad(request, parent, ...rest) {
+  if (request === 'resend') return { Resend: class {} };
+  if (request === 'convex/browser') {
+    return { ConvexHttpClient: class { async query() {} } };
+  }
+  return originalLoad.call(this, request, parent, ...rest);
+};
+
 const {
   COUNTRY_NAME_TO_ISO2,
   countryNameToIso2,
 } = require('../scripts/shared/country-name-to-iso2.cjs');
+
+const { eventMatchesCountryScope } = require(
+  resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
+);
+
 const relaySrc = readFileSync(
   resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
   'utf-8',
@@ -35,45 +59,6 @@ const aisRelaySrc = readFileSync(
   'utf-8',
 );
 
-function normalizeEventCountryCode(raw) {
-  return countryNameToIso2(raw);
-}
-
-// Since #5359 the default for unattributed events is DROP; only news-origin
-// types stay permissive (mirrors PERMISSIVE_UNATTRIBUTED_EVENT_TYPES in the
-// relay — the source-grep below keeps this in sync).
-const PERMISSIVE_UNATTRIBUTED_EVENT_TYPES = new Set([
-  'rss_alert',
-  'keyword_spike',
-  'hotspot_escalation',
-  'military_surge',
-  'watchlist_story_alert',
-]);
-
-function isPermissiveUnattributedEvent(event) {
-  return PERMISSIVE_UNATTRIBUTED_EVENT_TYPES.has(event?.eventType);
-}
-
-// Mirror the relay's eventMatchesCountryScope (regional_* branch omitted —
-// covered against the REAL export in
-// tests/notification-relay-country-scope-5359.test.mjs). The source-grep
-// contract keeps this mirror in sync.
-function eventMatchesCountryScope(event, rule) {
-  if (!Array.isArray(rule.countries) || rule.countries.length === 0) return true;
-  const eventCountry =
-    event?.payload?.countryCode
-    ?? event?.payload?.country
-    ?? event?.country
-    ?? null;
-  // Unattributed → drop unless explicitly news-permissive.
-  if (typeof eventCountry !== 'string' || eventCountry.trim().length === 0) {
-    return isPermissiveUnattributedEvent(event);
-  }
-  const normalized = normalizeEventCountryCode(eventCountry);
-  // Unresolvable → treat as unattributed.
-  if (normalized === null) return isPermissiveUnattributedEvent(event);
-  return rule.countries.includes(normalized);
-}
 
 describe('notification-relay eventMatchesCountryScope — source-grep contract', () => {
   it('publisher and dispatcher both import the shared country-name map', () => {
@@ -171,8 +156,8 @@ describe('notification-relay eventMatchesCountryScope — behavioural', () => {
   it('shared country-name map covers UK aliases used by both publisher and dispatcher', () => {
     assert.equal(COUNTRY_NAME_TO_ISO2['united kingdom'], 'GB');
     assert.equal(COUNTRY_NAME_TO_ISO2.uk, 'GB');
-    assert.equal(normalizeEventCountryCode('United Kingdom'), 'GB');
-    assert.equal(normalizeEventCountryCode('UK'), 'GB');
+    assert.equal(countryNameToIso2('United Kingdom'), 'GB');
+    assert.equal(countryNameToIso2('UK'), 'GB');
   });
 
   it("rule.countries=['GB'] + event.payload.country='United Kingdom' → true", () => {
@@ -320,8 +305,8 @@ describe('ais-relay country-specific notification publishers — source-grep con
     );
     assert.match(
       aisRelaySrc,
-      /eventType:\s*'weather_alert'[\s\S]*?countryCode:\s*'US'/,
-      'NWS weather notifications must publish countryCode=US',
+      /eventType:\s*'weather_alert'[\s\S]*?countryCode:\s*a\.countryCode/,
+      'weather notifications must stamp countryCode from the stored record',
     );
   });
 });

@@ -2,7 +2,7 @@
 title: "Platform Overview"
 description: "World Monitor capabilities, data freshness, source coverage, integration options, and specialized monitoring variants."
 ---
-World Monitor runs six specialized variants from a single codebase, each optimized for different monitoring needs.
+World Monitor runs specialized variants from a single codebase, each optimized for different monitoring needs.
 
 ## Platform Variants
 
@@ -25,7 +25,7 @@ This section gives procurement, security, and engineering teams a concise view o
 
 ### Technical capabilities
 
-World Monitor combines an interactive 3D globe and flat map, configurable intelligence panels, source-attributed news and OSINT, market and economic data, country risk and resilience scoring, infrastructure and supply-chain analysis, scenario modelling, AI-generated briefs, and alerting workflows. The generated product inventory currently records 56 map-layer definitions, 109 concrete panel implementations, and six product variants. The panel figure counts concrete classes that extend the shared `Panel` base in [`src/components`](https://github.com/koala73/worldmonitor/tree/main/src/components); the base class itself is excluded, and a class reused by multiple variants is counted once.
+World Monitor combines an interactive 3D globe and flat map, configurable intelligence panels, source-attributed news and OSINT, market and economic data, country risk and resilience scoring, infrastructure and supply-chain analysis, scenario modelling, AI-generated briefs, and alerting workflows. The generated product inventory records a shared map-layer catalog, concrete panel implementations, and specialized product variants. Panels extend the shared `Panel` base in [`src/components`](https://github.com/koala73/worldmonitor/tree/main/src/components); the base class itself is excluded, and a class reused by multiple variants is represented once.
 
 | Capability | Current scope |
 | --- | --- |
@@ -34,7 +34,7 @@ World Monitor combines an interactive 3D globe and flat map, configurable intell
 | Decision support | Source-linked AI briefs, probabilistic forecasts with machine-checkable resolution criteria and scorecard context, [Route Explorer](/route-explorer), and the [Scenario Engine](/scenario-engine). |
 | Company and procurement workflows | The MCP company-intelligence tool combines market context, SEC filing search, and material 8-K events. [Global Procurement Intelligence](/global-procurement-intelligence) uses seeded public opportunities from supported government and multilateral portals. Availability still depends on deployment credentials and source health. |
 | Delivery surfaces | Hosted web dashboard and installable PWA, native desktop applications for macOS, Windows, and Linux, and a self-hosted stack. The desktop application includes a local Node.js sidecar and supports local LLM endpoints such as Ollama and LM Studio. |
-| Language coverage | The interface supports 28 languages. Arabic and Persian use right-to-left layouts. This documentation site is currently available in English and Simplified Chinese. |
+| Language coverage | The interface has localized and right-to-left layouts. Arabic and Persian use right-to-left layouts. This documentation site is currently available in English and Simplified Chinese. |
 
 For the complete product surface, see [Features & Interface](/features). For the processing model, caching, resilience controls, and deployment components, see [Architecture](/architecture). Methodology pages explain how the platform calculates [algorithms and composite signals](/algorithms).
 
@@ -58,11 +58,11 @@ These are operating targets, not a promise that an upstream publisher will relea
 
 ### Sources and provenance
 
-World Monitor publishes a public, searchable [Data Source Catalog](https://worldmonitor.app/sources). Its manifest-derived inventory currently lists 549 active providers, 553 upstream hosts, 302 structured endpoints, and 279 news and OSINT feeds. The separate application inventory records 658 configured feed definitions, and the Telegram catalog enables 56 channels. These figures describe different inventory layers and should not be added together.
+World Monitor publishes a public, searchable [Data Source Catalog](https://worldmonitor.app/sources). Its manifest-derived inventory lists active providers, upstream hosts, structured endpoints, and news and OSINT feeds. The application feed registry and Telegram catalog are separate inventory layers and should not be added together.
 
 Across those inventories, World Monitor combines structured APIs, public and licensed datasets, official government and multilateral sources, news feeds, and reviewed OSINT. Representative providers include ACLED, UCDP, GDELT, UNHCR/OCHA, IMF, World Bank, BIS, Eurostat, FRED, USGS, NASA, Open-Meteo, Cloudflare Radar, AIS and ADS-B providers, and hundreds of news publishers. RSS configuration can include source tier, state affiliation, and propaganda-risk metadata. Telegram configuration uses a different schema with tier, topic, and region metadata. Cross-source corroboration can improve ranking and confidence, but it is not a universal prerequisite for every alert.
 
-Start with the public [Data Source Catalog](https://worldmonitor.app/sources) to search and filter providers by signal domain or source type. For collection methods, coverage, credibility tiers, and bias metadata, use the [Data Sources methodology](/data-sources). For the host-level attribution and terms-review posture, use the machine-generated [Source Attribution inventory](/source-attribution). Generation checks detect repository drift, but an inventory entry is not by itself a legal clearance. Source availability and licensing can differ by feature and deployment model.
+Start with the public [Data Source Catalog](https://worldmonitor.app/sources) to search and filter providers by signal domain, source type, or country of origin. For collection methods, coverage, credibility tiers, and bias metadata, use the [Data Sources methodology](/data-sources). For the host-level attribution and terms-review posture, use the machine-generated [Source Attribution inventory](/source-attribution). Generation checks detect repository drift, but an inventory entry is not by itself a legal clearance. Source availability and licensing can differ by feature and deployment model.
 
 ### Integration options and requirements
 
@@ -70,12 +70,12 @@ Start with the public [Data Source Catalog](https://worldmonitor.app/sources) to
 | --- | --- | --- |
 | Hosted dashboard | Analysts who need the complete visual product | A modern browser. Public capabilities need no customer-side integration; paid features require the applicable World Monitor account or plan. |
 | [Live map embed](/embed-live-map) | Articles, portals, and internal dashboards | A page that permits an HTTPS iframe. The embed exposes allow-listed public map layers only and does not expose account or premium state. |
-| [REST API](/api-reference) | Applications, data pipelines, and higher-volume batch reads | 36 generated service contracts and more than 200 versioned HTTP paths described by OpenAPI 3.1. Standard server-to-server access uses an API key in `X-WorldMonitor-Key`. See the reference for current routing status, then review the [quickstart](/usage-quickstart), [authentication](/usage-auth), [versioning policy](/api-versioning), and [REST rate limits](/usage-rate-limits). |
-| [MCP server](/mcp-overview) | Claude, Cursor, and custom AI agents | Streamable HTTP with 63 tools, 6 workflow prompts, 10 interactive apps, and optional JMESPath response filtering. Catalog discovery is public; data calls require OAuth 2.1 or a World Monitor API key. MCP entitlements and metering are documented separately from REST API-plan allowances. |
+| [REST API](/api-reference) | Applications, data pipelines, and higher-volume batch reads | Generated service contracts and versioned HTTP paths described by OpenAPI 3.1. Standard server-to-server access uses an API key in `X-WorldMonitor-Key`. See the reference for current routing status, then review the [quickstart](/usage-quickstart), [authentication](/usage-auth), [versioning policy](/api-versioning), and [REST rate limits](/usage-rate-limits). |
+| [MCP server](/mcp-overview) | Claude, Cursor, and custom AI agents | Streamable HTTP with a live tool registry, workflow prompts, interactive apps, and optional JMESPath response filtering. Catalog discovery is public; data calls require OAuth 2.1 or a World Monitor API key. MCP entitlements and metering are documented separately from REST API-plan allowances. |
 | [Official SDKs](/sdks) and [CLI](/cli) | Python, Ruby, Go, and JavaScript applications or shell automation | The relevant language runtime and an API key for data calls. The zero-dependency SDKs and npm CLI support hosted and self-hosted base URLs. |
 | [Notification channels](/api-notifications) | General domain alerts to operational systems | A billed PRO account and Clerk bearer token. Supported delivery channels include signed HTTPS webhooks, Telegram, Slack, Discord, email, and Web Push. Availability depends on the event domain and channel configuration. |
 | [Shipping webhooks](/api-shipping-v2#webhook-subscriptions) | Chokepoint disruption notifications | A PRO-capable API key and a public HTTPS callback that passes the documented SSRF checks. Deliveries are HMAC-SHA256 signed and at least once. These webhooks are domain-specific, not a general platform-wide event bus. |
-| [Agent discovery](/agent-discovery) | Automated onboarding and agent-native workflows | Standard `.well-known` metadata, `llms.txt`, OpenAPI assets, an MCP server card, and a catalog of 25 installable agent skills. Discovery metadata is public; data-bearing operations still require the applicable credentials. |
+| [Agent discovery](/agent-discovery) | Automated onboarding and agent-native workflows | Standard `.well-known` metadata, `llms.txt`, OpenAPI assets, an MCP server card, and an installable agent-skill catalog. Discovery metadata is public; data-bearing operations still require the applicable credentials. |
 | Self-hosted deployment | Teams that need to operate the stack themselves | Node.js 22+, Docker or Podman, Redis, deployment secrets, and compliance with the [AGPL or separate commercial license](/license). See [Getting Started](/getting-started#3-self-hosted-docker-stack). |
 
 For browser-based API calls, review the [CORS policy](/cors). For generated clients, the bundled [OpenAPI specification](https://www.worldmonitor.app/openapi.yaml) is the machine-readable contract.
@@ -89,7 +89,7 @@ The primary variant focuses on geopolitical intelligence, military tracking, and
 ### Key Capabilities
 
 - **Conflict Monitoring** - Active war zones, hotspots, and crisis areas with real-time escalation tracking
-- **Military Intelligence** - 226 military bases, flight tracking, naval vessel monitoring, surge detection
+- **Military Intelligence** - Registered military bases, flight tracking, naval vessel monitoring, surge detection
 - **Infrastructure Security** - Undersea cables, pipelines, datacenters, internet outages
 - **Economic Intelligence** - FRED indicators, oil analytics, government spending, sanctions tracking
 - **Natural Disasters** - Earthquakes, severe weather, NASA EONET events (wildfires, volcanoes, floods)
@@ -108,7 +108,7 @@ The primary variant focuses on geopolitical intelligence, military tracking, and
 
 ### News Coverage
 
-500+ curated news feeds across geopolitics, defense, energy, think tanks, and regional news (Middle East, Africa, Latin America, Asia-Pacific), backed by 553+ observed upstream hosts.
+Curated, attributed news feeds cover geopolitics, defense, energy, think tanks, and regional news across the Middle East, Africa, Latin America, and Asia-Pacific.
 
 ---
 
@@ -170,7 +170,7 @@ The finance variant ([finance.worldmonitor.app](https://finance.worldmonitor.app
 |-------|-------------|
 | **Stock Exchanges** | Major global stock exchanges with live status |
 | **Financial Centers** | Key financial hubs and banking districts |
-| **Central Banks & Institutions** | 14 central-bank and supranational finance institutions, including policy-rate tracking plus BIS/IMF context |
+| **Central Banks & Institutions** | Central-bank and supranational finance signals, including policy-rate tracking plus BIS/IMF context |
 | **Commodity Hubs** | Commodity exchanges (LME, CME, SHFE, NYMEX) |
 | **Gulf Investments** | GCC sovereign wealth and investment zones |
 

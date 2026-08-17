@@ -212,6 +212,7 @@ describe("iso2 registry — sanity & boundary cases", () => {
   test("registry has 239 canonical alpha-2 codes (matches client mirror)", () => {
     // If this number changes, update BOTH `convex/lib/iso2.ts` and
     // `src/utils/country-codes.ts::ISO2_TO_ISO3` together.
+    // inventory-contract: iso2-country-registry; classification: exact; reason: this is the project's closed canonical alpha-2 standard and the next test enforces exact client parity
     expect(_ISO2_REGISTRY_FOR_TESTS.size).toBe(239);
   });
 

@@ -1,6 +1,7 @@
 # Company Monitoring provider policy and 500-company cost package
 
-- Review date: 2026-08-05
+- Frozen package review date: 2026-08-05
+- Live source refresh: 2026-08-16
 - Protocol: `cm_eval_v1`
 - Runtime decision: **blocked**
 
@@ -113,6 +114,16 @@ Sources: [OpenRouter zero data retention](https://openrouter.ai/docs/guides/feat
 [pricing](https://openrouter.ai/pricing), and
 [DeepSeek V4 Flash pricing](https://openrouter.ai/deepseek/deepseek-v4-flash/pricing).
 
+The 2026-08-16 refresh found two items that prevent the frozen cost package from
+serving as current production approval. OpenRouter's live model catalog still
+lists `deepseek/deepseek-v4-flash`, but at $0.06146 per million input tokens and
+$0.12292 per million output tokens, not the frozen price snapshot. OpenRouter
+also states that account-level ZDR disables response caching, while per-request
+`provider.zdr` does not affect cache eligibility. The current client proves the
+per-request routing constraint, but it does not prove the external account-level
+ZDR and logging settings. Current price or account-control evidence must use a
+new reviewed package; it cannot rewrite `cm_eval_v1` after scoring.
+
 ## Production-shaped monthly model
 
 The model covers exactly one account-level shared-discovery workload of 500
@@ -133,7 +144,8 @@ a promise of provider yield.
 
 The frozen ceiling is $125 per account-month, or $0.25 per monitored company.
 The modeled total is $0.221731875 per company and therefore passes the arithmetic
-gate. This does not override the Stage 0 stop. Before paid beta, the fourteen-day
+gate for the frozen 2026-08-05 snapshot. It is not a current price approval and
+does not override the Stage 0 stop. Before paid beta, the fourteen-day
 tracer must replace every volume assumption with measured requests, returned
 resources, caps, tokens, storage, and retry cost. Any changed provider price or
 workload shape requires a new cost-package version and product-owner decision.

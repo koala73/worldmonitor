@@ -5,7 +5,7 @@ import {
   isLayerEntitled,
   isLayerExecutable,
   LAYER_REGISTRY,
-  type MapRenderer,
+  type RendererKind,
   type MapVariant,
 } from '@/config/map-layer-definitions';
 import type { AppContext } from './app-context';
@@ -41,7 +41,7 @@ export interface AgentBusApplierOptions {
   getPanelConfig?: (panelId: string) => PanelConfig;
   isPanelAllowed?: (panelId: string, config: PanelConfig) => boolean;
   hasPremiumAccess?: () => boolean;
-  getRenderer?: (ctx: AppContext) => MapRenderer;
+  getRenderer?: (ctx: AppContext) => RendererKind;
   getVariant?: () => MapVariant;
   applyViewChange?: (
     action: Extract<AgentBusAction, { type: 'set_view' }>,
@@ -114,9 +114,10 @@ function premiumAccess(options: AgentBusApplierOptions): boolean {
   return options.hasPremiumAccess?.() ?? false;
 }
 
-function currentRenderer(ctx: AppContext, options: AgentBusApplierOptions): MapRenderer {
+function currentRendererKind(ctx: AppContext, options: AgentBusApplierOptions): RendererKind {
   if (options.getRenderer) return options.getRenderer(ctx);
-  return ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
+  if (ctx.map?.isGlobeMode?.()) return 'globe';
+  return ctx.map?.isDeckGLActive?.() ? 'deck' : 'svg';
 }
 
 function currentMapVariant(options: AgentBusApplierOptions): MapVariant {
@@ -199,7 +200,7 @@ function applySetLayers(ctx: AppContext, action: Extract<AgentBusAction, { type:
   }
 
   const allowed = getAllowedLayerKeys(currentMapVariant(options));
-  const renderer = currentRenderer(ctx, options);
+  const kind = currentRendererKind(ctx, options);
   const isDeckGLActive = Boolean(ctx.map.isDeckGLActive?.());
   const isPremium = premiumAccess(options);
   const nextLayers = { ...ctx.mapLayers };
@@ -228,7 +229,7 @@ function applySetLayers(ctx: AppContext, action: Extract<AgentBusAction, { type:
       targets.push({ target: rawKey, status: 'denied', reason: 'layer_not_executable' });
       continue;
     }
-    if (enabled && !isLayerExecutable(rawKey, renderer, isDeckGLActive)) {
+    if (enabled && !isLayerExecutable(rawKey, kind)) {
       targets.push({ target: rawKey, status: 'denied', reason: 'layer_not_executable' });
       continue;
     }

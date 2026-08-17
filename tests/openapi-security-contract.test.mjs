@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
-import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+import { discoverProtoServiceNames, loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 import {
   readPublicNoAuthPaths,
   readEndpointEntitlements,
@@ -416,8 +416,12 @@ function assertAuthContract(spec, label) {
 }
 
 describe('OpenAPI security contract', () => {
-  it('audits at least the full known service surface', () => {
-    assert.ok(serviceSpecs.length >= 34, `expected >= 34 service specs, found ${serviceSpecs.length}`);
+  it('audits the complete proto service surface', () => {
+    assert.deepEqual(
+      serviceSpecs.map((file) => file.replace(/\.openapi\.json$/, '')),
+      discoverProtoServiceNames(),
+      'security specs must match the proto service universe exactly',
+    );
   });
 
   it('parses the bearer-auth and entitlement path sources from gateway-adjacent code', () => {

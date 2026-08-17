@@ -50,6 +50,20 @@
       ]
     },
     {
+      "host": "36kr.com",
+      "provider": "36kr.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit 36kr.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "444.hu",
       "provider": "444.hu",
       "kind": "feed",
@@ -91,6 +105,20 @@
       "references": [
         {
           "path": "scripts/lib/provincial-511.mjs"
+        }
+      ]
+    },
+    {
+      "host": "a16z.com",
+      "provider": "a16z.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit a16z.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -197,6 +225,23 @@
       ]
     },
     {
+      "host": "actuniger.com",
+      "provider": "ActuNiger",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit ActuNiger and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "ae.usembassy.gov",
       "provider": "ae.usembassy.gov",
       "kind": "structured",
@@ -259,6 +304,23 @@
       ]
     },
     {
+      "host": "airinfoagadez.com",
+      "provider": "Aïr Info",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Aïr Info and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "airlinegeeks.com",
       "provider": "airlinegeeks.com",
       "kind": "structured",
@@ -300,6 +362,54 @@
       "references": [
         {
           "path": "src/components/LiveNewsPanel.ts"
+        }
+      ]
+    },
+    {
+      "host": "amu.tv",
+      "provider": "Amu TV",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Amu TV and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "angellist.com",
+      "provider": "angellist.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit angellist.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "annahar.com",
+      "provider": "Annahar",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Annahar and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -1087,6 +1197,20 @@
       ]
     },
     {
+      "host": "api.weather.gc.ca",
+      "provider": "Environment and Climate Change Canada (ECCC)",
+      "kind": "structured",
+      "observed": true,
+      "license": "ECCC Data Server End-use Licence; Government of Canada open data",
+      "attribution": "Environment and Climate Change Canada (ECCC) weather alerts via MSC GeoMet (https://api.weather.gc.ca/).",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/_weather-alert-select.mjs"
+        }
+      ]
+    },
+    {
       "host": "api.weather.gov",
       "provider": "api.weather.gov",
       "kind": "structured",
@@ -1096,10 +1220,7 @@
       "status": "terms-review",
       "references": [
         {
-          "path": "scripts/ais-relay.cjs"
-        },
-        {
-          "path": "scripts/seed-weather-alerts.mjs"
+          "path": "scripts/_weather-alert-select.mjs"
         }
       ]
     },
@@ -1279,6 +1400,23 @@
       ]
     },
     {
+      "host": "apnews.com",
+      "provider": "apnews.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit apnews.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "apps.fas.usda.gov",
       "provider": "USDA FAS PSD",
       "kind": "structured",
@@ -1286,6 +1424,40 @@
       "license": "U.S. government public-domain PSD Open Data",
       "attribution": "USDA Foreign Agricultural Service, Production, Supply and Distribution (PSD).",
       "status": "excluded"
+    },
+    {
+      "host": "arabianbusiness.com",
+      "provider": "arabianbusiness.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit arabianbusiness.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "arabnews.com",
+      "provider": "arabnews.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit arabnews.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
     },
     {
       "host": "archive-api.open-meteo.com",
@@ -1298,6 +1470,57 @@
       "references": [
         {
           "path": "scripts/_open-meteo-archive.mjs"
+        }
+      ]
+    },
+    {
+      "host": "arctictoday.com",
+      "provider": "arctictoday.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit arctictoday.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "armenpress.am",
+      "provider": "armenpress.am",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit armenpress.am and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "armscontrol.org",
+      "provider": "armscontrol.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit armscontrol.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -1343,6 +1566,37 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "asia.nikkei.com",
+      "provider": "asia.nikkei.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit asia.nikkei.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "asianews.it",
+      "provider": "asianews.it",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit asianews.it and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
         }
       ]
     },
@@ -1406,6 +1660,40 @@
       ]
     },
     {
+      "host": "ayibopost.com",
+      "provider": "AyiboPost",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit AyiboPost and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "azertag.az",
+      "provider": "azertag.az",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit azertag.az and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "azure.status.microsoft",
       "provider": "azure.status.microsoft",
       "kind": "operational-status",
@@ -1426,6 +1714,23 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit balkaninsight.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "bangkokpost.com",
+      "provider": "bangkokpost.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit bangkokpost.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -1479,6 +1784,57 @@
       ]
     },
     {
+      "host": "bellingcat.com",
+      "provider": "bellingcat.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit bellingcat.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "bihus.info",
+      "provider": "bihus.info",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit bihus.info and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "binance.com",
+      "provider": "Binance",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Binance and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "bitbucket.status.atlassian.com",
       "provider": "bitbucket.status.atlassian.com",
       "kind": "operational-status",
@@ -1514,12 +1870,18 @@
       "provider": "bloomberg.com",
       "kind": "feed",
       "observed": true,
-      "license": "Excluded: live-video playback transport; channel/provider terms apply separately",
-      "attribution": "Excluded from the external-provider count: presentation-only HLS stream, not an ingested dataset.",
-      "status": "excluded",
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit bloomberg.com and link to the original feed publisher.",
+      "status": "terms-review",
       "references": [
         {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
           "path": "src/components/LiveNewsPanel.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -1555,6 +1917,20 @@
       ]
     },
     {
+      "host": "brookings.edu",
+      "provider": "brookings.edu",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit brookings.edu and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "browser.mcp.cloudflare.com",
       "provider": "Cloudflare Browser MCP",
       "kind": "structured",
@@ -1583,6 +1959,23 @@
       ]
     },
     {
+      "host": "calgaryherald.com",
+      "provider": "calgaryherald.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit calgaryherald.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "canadabuys.canada.ca",
       "provider": "canadabuys.canada.ca",
       "kind": "structured",
@@ -1593,6 +1986,20 @@
       "references": [
         {
           "path": "scripts/seed-global-tenders.mjs"
+        }
+      ]
+    },
+    {
+      "host": "carnegieendowment.org",
+      "provider": "carnegieendowment.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit carnegieendowment.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -1611,6 +2018,20 @@
       ]
     },
     {
+      "host": "cbinsights.com",
+      "provider": "cbinsights.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit cbinsights.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "cbsn-us.cbsnstream.cbsnews.com",
       "provider": "cbsn-us.cbsnstream.cbsnews.com",
       "kind": "feed",
@@ -1621,6 +2042,20 @@
       "references": [
         {
           "path": "src/components/LiveNewsPanel.ts"
+        }
+      ]
+    },
+    {
+      "host": "cdc.gov",
+      "provider": "cdc.gov",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit cdc.gov and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -1749,6 +2184,37 @@
       ]
     },
     {
+      "host": "chathamhouse.org",
+      "provider": "chathamhouse.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit chathamhouse.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "citinewsroom.com",
+      "provider": "citinewsroom.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit citinewsroom.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "civil.ge",
       "provider": "civil.ge",
       "kind": "feed",
@@ -1803,6 +2269,54 @@
       ]
     },
     {
+      "host": "cnas.org",
+      "provider": "cnas.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit cnas.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "cnbc.com",
+      "provider": "cnbc.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit cnbc.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "cnn.com",
+      "provider": "cnn.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit cnn.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "co.usembassy.gov",
       "provider": "co.usembassy.gov",
       "kind": "structured",
@@ -1813,6 +2327,23 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "coinbase.com",
+      "provider": "Coinbase",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Coinbase and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -1976,12 +2507,60 @@
       ]
     },
     {
+      "host": "cp24.com",
+      "provider": "cp24.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit cp24.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "cryptoslate.com",
       "provider": "cryptoslate.com",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit cryptoslate.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "csis.org",
+      "provider": "csis.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit csis.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "ctvnews.ca",
+      "provider": "ctvnews.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit ctvnews.ca and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -2264,6 +2843,20 @@
       ]
     },
     {
+      "host": "defense.gov",
+      "provider": "defense.gov",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit defense.gov and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "dev.events",
       "provider": "dev.events",
       "kind": "structured",
@@ -2341,6 +2934,37 @@
       ]
     },
     {
+      "host": "dhakatribune.com",
+      "provider": "Dhaka Tribune",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Dhaka Tribune and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "dhs.gov",
+      "provider": "dhs.gov",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit dhs.gov and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "discord.com",
       "provider": "discord.com",
       "kind": "structured",
@@ -2400,6 +3024,23 @@
       ]
     },
     {
+      "host": "dlnews.com",
+      "provider": "dlnews.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit dlnews.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "do.usembassy.gov",
       "provider": "do.usembassy.gov",
       "kind": "structured",
@@ -2424,6 +3065,20 @@
       "references": [
         {
           "path": "scripts/benchmark-resilience-external.mjs"
+        }
+      ]
+    },
+    {
+      "host": "dw.com",
+      "provider": "dw.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit dw.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -2514,7 +3169,7 @@
     {
       "host": "ec.europa.eu",
       "provider": "ec.europa.eu",
-      "kind": "structured",
+      "kind": "feed+structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit ec.europa.eu and link to the original upstream API/dataset.",
@@ -2531,6 +3186,23 @@
         },
         {
           "path": "scripts/seed-resilience-static.mjs"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "ecfr.eu",
+      "provider": "ecfr.eu",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit ecfr.eu and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -2549,6 +3221,54 @@
       ]
     },
     {
+      "host": "edmontonjournal.com",
+      "provider": "edmontonjournal.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit edmontonjournal.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "efectococuyo.com",
+      "provider": "Efecto Cocuyo",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Efecto Cocuyo and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "eff.org",
+      "provider": "eff.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit eff.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "efts.sec.gov",
       "provider": "SEC EDGAR Full-Text Search",
       "kind": "structured",
@@ -2559,6 +3279,20 @@
       "references": [
         {
           "path": "server/_shared/sec-edgar.ts"
+        }
+      ]
+    },
+    {
+      "host": "eia.gov",
+      "provider": "eia.gov",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit eia.gov and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
         }
       ]
     },
@@ -2673,6 +3407,23 @@
       ]
     },
     {
+      "host": "english.alarabiya.net",
+      "provider": "english.alarabiya.net",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit english.alarabiya.net and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "english.customs.gov.cn",
       "provider": "english.customs.gov.cn",
       "kind": "structured",
@@ -2683,6 +3434,57 @@
       "references": [
         {
           "path": "scripts/china-macro/source-contracts.mjs"
+        }
+      ]
+    },
+    {
+      "host": "english.enabbaladi.net",
+      "provider": "Enab Baladi English",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Enab Baladi English and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "english.nv.ua",
+      "provider": "english.nv.ua",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit english.nv.ua and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "english.wafa.ps",
+      "provider": "WAFA English",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit WAFA English and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -2729,12 +3531,57 @@
       ]
     },
     {
+      "host": "eu-startups.com",
+      "provider": "eu-startups.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit eu-startups.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "euractiv.com",
+      "provider": "euractiv.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit euractiv.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "eurasianet.org",
       "provider": "eurasianet.org",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit eurasianet.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "euromaidanpress.com",
+      "provider": "euromaidanpress.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit euromaidanpress.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -2785,6 +3632,48 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "fao.org",
+      "provider": "fao.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit fao.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "farsnews.ir",
+      "provider": "farsnews.ir",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit farsnews.ir and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "fas.org",
+      "provider": "fas.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit fas.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -3055,6 +3944,20 @@
       ]
     },
     {
+      "host": "fema.gov",
+      "provider": "fema.gov",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit fema.gov and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "fenixservices.fao.org",
       "provider": "FAOSTAT",
       "kind": "structured",
@@ -3126,6 +4029,23 @@
       ]
     },
     {
+      "host": "financialpost.com",
+      "provider": "financialpost.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit financialpost.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "finnhub.io",
       "provider": "finnhub.io",
       "kind": "structured",
@@ -3174,6 +4094,23 @@
       "references": [
         {
           "path": "scripts/seed-fire-detections.mjs"
+        }
+      ]
+    },
+    {
+      "host": "focustaiwan.tw",
+      "provider": "focustaiwan.tw",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit focustaiwan.tw and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -3254,6 +4191,34 @@
       ]
     },
     {
+      "host": "ft.com",
+      "provider": "ft.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit ft.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "fxempire.com",
+      "provider": "fxempire.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit fxempire.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "gain.nd.edu",
       "provider": "gain.nd.edu",
       "kind": "structured",
@@ -3301,6 +4266,37 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "geo.tv",
+      "provider": "geo.tv",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit geo.tv and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "geoserver.cwfif.nrcan.gc.ca",
+      "provider": "CWFIS / CWFIF (NRCan)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence - Canada; redistribution granted (copy, modify, publish, distribute, including commercial use) with attribution",
+      "attribution": "Canadian Forest Service. Canadian Wildland Fire Information System (CWFIS), Natural Resources Canada, Canadian Forest Service, Northern Forestry Centre, Edmonton, Alberta. https://cwfis.cfs.nrcan.gc.ca. Contains information licensed under the Open Government Licence – Canada (https://open.canada.ca/en/open-government-licence-canada). Evidence: https://cwfis.cfs.nrcan.gc.ca/downloads/licence.txt",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/wildfire/cwfis-wfs.mjs"
         }
       ]
     },
@@ -3433,6 +4429,20 @@
       ]
     },
     {
+      "host": "gmfus.org",
+      "provider": "gmfus.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit gmfus.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "gml.noaa.gov",
       "provider": "gml.noaa.gov",
       "kind": "structured",
@@ -3503,6 +4513,37 @@
       ]
     },
     {
+      "host": "gtfsrt.ttc.ca",
+      "provider": "Toronto Transit Commission (TTC) GTFS-RT",
+      "kind": "structured",
+      "observed": true,
+      "license": "CKAN package_show for ttc-gtfs-realtime-gtfs-rt: license_id=notspecified, isopen=false (https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/package_show?id=ttc-gtfs-realtime-gtfs-rt). Portal dataset page chrome links OGL-Toronto but is not data-bound to this dataset.",
+      "attribution": "Toronto Transit Commission GTFS-RT service alerts. https://gtfsrt.ttc.ca and https://open.toronto.ca/dataset/ttc-gtfs-realtime-gtfs-rt/. Portal HTML cites OGL-Toronto; CKAN does not.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-ttc-alerts.mjs"
+        }
+      ]
+    },
+    {
+      "host": "haaretz.com",
+      "provider": "haaretz.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit haaretz.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "hacker-news.firebaseio.com",
       "provider": "hacker-news.firebaseio.com",
       "kind": "structured",
@@ -3513,6 +4554,20 @@
       "references": [
         {
           "path": "scripts/seed-research.mjs"
+        }
+      ]
+    },
+    {
+      "host": "hai.stanford.edu",
+      "provider": "hai.stanford.edu",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit hai.stanford.edu and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -3545,6 +4600,23 @@
       ]
     },
     {
+      "host": "havanatimes.org",
+      "provider": "Havana Times",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Havana Times and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "hdr.undp.org",
       "provider": "UNDP Human Development Report",
       "kind": "structured",
@@ -3573,6 +4645,40 @@
       ]
     },
     {
+      "host": "hiiraan.com",
+      "provider": "hiiraan.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit hiiraan.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "hirado.hu",
+      "provider": "hirado.hu",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit hirado.hu and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "hnrss.org",
       "provider": "hnrss.org",
       "kind": "feed+structured",
@@ -3589,6 +4695,23 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "hromadske.ua",
+      "provider": "hromadske.ua",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit hromadske.ua and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -3616,6 +4739,40 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit hvg.hu and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "ici.radio-canada.ca",
+      "provider": "ici.radio-canada.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit ici.radio-canada.ca and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "iea.org",
+      "provider": "iea.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit iea.org and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -3737,6 +4894,23 @@
       ]
     },
     {
+      "host": "interfax.com",
+      "provider": "Interfax",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Interfax and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "internal.example.com",
       "provider": "Internal example placeholder",
       "kind": "structured",
@@ -3747,6 +4921,20 @@
       "references": [
         {
           "path": "api/notification-channels.ts"
+        }
+      ]
+    },
+    {
+      "host": "investing.com",
+      "provider": "investing.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit investing.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -3768,6 +4956,37 @@
       ]
     },
     {
+      "host": "iranintl.com",
+      "provider": "iranintl.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit iranintl.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "iseas.edu.sg",
+      "provider": "iseas.edu.sg",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit iseas.edu.sg and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "islandtimes.org",
       "provider": "islandtimes.org",
       "kind": "feed",
@@ -3779,6 +4998,20 @@
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts"
         },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "iss.europa.eu",
+      "provider": "iss.europa.eu",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit iss.europa.eu and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
         {
           "path": "src/config/feeds.ts"
         }
@@ -3844,6 +5077,20 @@
       ]
     },
     {
+      "host": "janes.com",
+      "provider": "janes.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit janes.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "japantoday.com",
       "provider": "japantoday.com",
       "kind": "feed",
@@ -3851,6 +5098,23 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit japantoday.com and link to the original feed publisher.",
       "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "jin10.com",
+      "provider": "Jin10",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Jin10 and link to the original item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts"
@@ -3889,6 +5153,23 @@
       ]
     },
     {
+      "host": "justice.gov",
+      "provider": "justice.gov",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit justice.gov and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "kalshi.com",
       "provider": "kalshi.com",
       "kind": "structured",
@@ -3920,14 +5201,51 @@
       ]
     },
     {
+      "host": "kathimerini.gr",
+      "provider": "kathimerini.gr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit kathimerini.gr and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "kitco.com",
+      "provider": "kitco.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit kitco.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "kr-asia.com",
       "provider": "kr-asia.com",
-      "kind": "structured",
+      "kind": "feed+structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit kr-asia.com and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "src/config/feeds.ts"
+        },
         {
           "path": "src/config/variants/tech.ts"
         }
@@ -3954,16 +5272,53 @@
       ]
     },
     {
+      "host": "kyivindependent.com",
+      "provider": "kyivindependent.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit kyivindependent.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "lavca.org",
       "provider": "lavca.org",
-      "kind": "structured",
+      "kind": "feed+structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit lavca.org and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
         {
+          "path": "src/config/feeds.ts"
+        },
+        {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "lefaso.net",
+      "provider": "leFaso.net",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit leFaso.net and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -3975,6 +5330,23 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit lequotidien.sn and link to the original feed publisher.",
       "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "libyaherald.com",
+      "provider": "Libya Herald",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Libya Herald and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts"
@@ -4213,6 +5585,71 @@
       ]
     },
     {
+      "host": "lorientlejour.com",
+      "provider": "L'Orient Today",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit L'Orient Today and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "lowyinstitute.org",
+      "provider": "lowyinstitute.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit lowyinstitute.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "macleans.ca",
+      "provider": "macleans.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit macleans.ca and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "madamasr.com",
+      "provider": "Mada Masr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Mada Masr and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "maps.worldmonitor.app",
       "provider": "maps.worldmonitor.app",
       "kind": "structured",
@@ -4237,6 +5674,23 @@
       "references": [
         {
           "path": "scripts/seed-natural-events.mjs"
+        }
+      ]
+    },
+    {
+      "host": "marketwatch.com",
+      "provider": "marketwatch.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit marketwatch.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -4286,6 +5740,20 @@
       ]
     },
     {
+      "host": "mei.edu",
+      "provider": "mei.edu",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit mei.edu and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "mempool.space",
       "provider": "mempool.space",
       "kind": "structured",
@@ -4296,6 +5764,23 @@
       "references": [
         {
           "path": "scripts/seed-economy.mjs"
+        }
+      ]
+    },
+    {
+      "host": "messari.io",
+      "provider": "messari.io",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit messari.io and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -4314,6 +5799,57 @@
       ]
     },
     {
+      "host": "miit.gov.cn",
+      "provider": "miit.gov.cn",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit miit.gov.cn and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "mining-journal.com",
+      "provider": "mining-journal.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit mining-journal.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "miningweekly.com",
+      "provider": "miningweekly.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit miningweekly.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "mm.usembassy.gov",
       "provider": "mm.usembassy.gov",
       "kind": "structured",
@@ -4324,6 +5860,40 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "mofcom.gov.cn",
+      "provider": "mofcom.gov.cn",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit mofcom.gov.cn and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "montrealgazette.com",
+      "provider": "montrealgazette.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit montrealgazette.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -4434,6 +6004,40 @@
         },
         {
           "path": "server/worldmonitor/aviation/v1/_shared.ts"
+        }
+      ]
+    },
+    {
+      "host": "nation.africa",
+      "provider": "Daily Nation",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Daily Nation and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "nationalpost.com",
+      "provider": "nationalpost.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit nationalpost.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -4599,7 +6203,7 @@
     {
       "host": "news.usni.org",
       "provider": "news.usni.org",
-      "kind": "structured",
+      "kind": "feed+structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit news.usni.org and link to the original upstream API/dataset.",
@@ -4607,6 +6211,12 @@
       "references": [
         {
           "path": "scripts/ais-relay.cjs"
+        },
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -4707,6 +6317,20 @@
       ]
     },
     {
+      "host": "northernminer.com",
+      "provider": "northernminer.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit northernminer.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "novayagazeta.eu",
       "provider": "novayagazeta.eu",
       "kind": "feed",
@@ -4731,6 +6355,20 @@
       "references": [
         {
           "path": "src/components/LiveNewsPanel.ts"
+        }
+      ]
+    },
+    {
+      "host": "nti.org",
+      "provider": "nti.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit nti.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -4766,6 +6404,20 @@
       ]
     },
     {
+      "host": "oecd.org",
+      "provider": "oecd.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit oecd.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "ogcapi.bgs.ac.uk",
       "provider": "British Geological Survey World Mineral Statistics",
       "kind": "structured",
@@ -4776,6 +6428,20 @@
       "references": [
         {
           "path": "scripts/seed-mineral-production.mjs"
+        }
+      ]
+    },
+    {
+      "host": "oglobo.globo.com",
+      "provider": "oglobo.globo.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit oglobo.globo.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -4791,6 +6457,23 @@
         {
           "path": "scripts/seed-energy-intelligence.mjs"
         },
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "oko.press",
+      "provider": "OKO.press",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit OKO.press and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts"
         },
@@ -4843,6 +6526,20 @@
       ]
     },
     {
+      "host": "openmaps.gov.bc.ca",
+      "provider": "BC Wildfire Service (OpenMaps)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence - British Columbia; redistribution granted (copy, modify, publish, distribute, including commercial use) with attribution",
+      "attribution": "Contains information licensed under the Open Government Licence – British Columbia. BC Wildfire Service, Current Fire Locations (PROT_CURRENT_FIRE_PNTS_SP), Government of British Columbia. https://catalogue.data.gov.bc.ca/dataset/bc-wildfire-fire-locations-current. Evidence: https://www2.gov.bc.ca/gov/content/data/policy-standards/data-policies/open-data/open-government-licence-bc and https://open.canada.ca/data/en/dataset/2790e3f7-6395-4230-8545-04efb5a18800",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/wildfire/bc-fire-points.mjs"
+        }
+      ]
+    },
+    {
       "host": "openrouter.ai",
       "provider": "openrouter.ai",
       "kind": "structured",
@@ -4856,6 +6553,9 @@
         },
         {
           "path": "scripts/lib/company-monitoring-classifier-client.mjs"
+        },
+        {
+          "path": "scripts/regional-snapshot/weekly-brief.mjs"
         }
       ]
     },
@@ -4907,6 +6607,23 @@
       "references": [
         {
           "path": "src/components/LiveNewsPanel.ts"
+        }
+      ]
+    },
+    {
+      "host": "ottawacitizen.com",
+      "provider": "ottawacitizen.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit ottawacitizen.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -4984,6 +6701,40 @@
       ]
     },
     {
+      "host": "pajhwok.com",
+      "provider": "Pajhwok Afghan News",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Pajhwok Afghan News and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "pap.pl",
+      "provider": "PAP",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit PAP and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "patents.google.com",
       "provider": "patents.google.com",
       "kind": "structured",
@@ -5028,12 +6779,15 @@
     {
       "host": "pitchbook.com",
       "provider": "pitchbook.com",
-      "kind": "structured",
+      "kind": "feed+structured",
       "observed": true,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit pitchbook.com and link to the original upstream API/dataset.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "src/config/feeds.ts"
+        },
         {
           "path": "src/config/variants/tech.ts"
         }
@@ -5064,6 +6818,23 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "polityka.pl",
+      "provider": "Polityka",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Polityka and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -5119,6 +6890,40 @@
       ]
     },
     {
+      "host": "pravda.com.ua",
+      "provider": "pravda.com.ua",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit pravda.com.ua and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "prnewswire.com",
+      "provider": "PR Newswire",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit PR Newswire and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "pro-api.coingecko.com",
       "provider": "pro-api.coingecko.com",
       "kind": "structured",
@@ -5157,6 +6962,20 @@
       "references": [
         {
           "path": "src/config/basemap-styles.ts"
+        }
+      ]
+    },
+    {
+      "host": "protothema.gr",
+      "provider": "protothema.gr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit protothema.gr and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -5485,6 +7304,20 @@
       ]
     },
     {
+      "host": "renaissancecapital.com",
+      "provider": "renaissancecapital.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit renaissancecapital.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "responsiblestatecraft.org",
       "provider": "responsiblestatecraft.org",
       "kind": "feed",
@@ -5527,6 +7360,23 @@
       ]
     },
     {
+      "host": "reuters.com",
+      "provider": "reuters.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit reuters.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "review.firstround.com",
       "provider": "review.firstround.com",
       "kind": "feed+structured",
@@ -5543,6 +7393,37 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "rferl.org",
+      "provider": "rferl.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit rferl.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "rieti.go.jp",
+      "provider": "rieti.go.jp",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit rieti.go.jp and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -5682,6 +7563,37 @@
       ]
     },
     {
+      "host": "rudaw.net",
+      "provider": "rudaw.net",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit rudaw.net and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "rusi.org",
+      "provider": "rusi.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit rusi.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "sabconetanw.cdn.mangomolo.com",
       "provider": "sabconetanw.cdn.mangomolo.com",
       "kind": "feed",
@@ -5692,6 +7604,23 @@
       "references": [
         {
           "path": "src/components/LiveNewsPanel.ts"
+        }
+      ]
+    },
+    {
+      "host": "sanaacenter.org",
+      "provider": "Sana'a Center",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Sana'a Center and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -5737,6 +7666,20 @@
       "references": [
         {
           "path": "scripts/build-agent-skills-index.mjs"
+        }
+      ]
+    },
+    {
+      "host": "scmp.com",
+      "provider": "scmp.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit scmp.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
         }
       ]
     },
@@ -5861,6 +7804,34 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "semianalysis.com",
+      "provider": "semianalysis.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit semianalysis.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "sequoiacap.com",
+      "provider": "sequoiacap.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit sequoiacap.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -6000,6 +7971,57 @@
         },
         {
           "path": "api/slack/oauth/start.ts"
+        }
+      ]
+    },
+    {
+      "host": "slidstvo.info",
+      "provider": "slidstvo.info",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit slidstvo.info and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "spglobal.com",
+      "provider": "spglobal.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit spglobal.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "state.gov",
+      "provider": "state.gov",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit state.gov and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -6277,6 +8299,23 @@
       ]
     },
     {
+      "host": "suspilne.media",
+      "provider": "suspilne.media",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit suspilne.media and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "svs.itworkscdn.net",
       "provider": "svs.itworkscdn.net",
       "kind": "feed",
@@ -6287,6 +8326,23 @@
       "references": [
         {
           "path": "src/components/LiveNewsPanel.ts"
+        }
+      ]
+    },
+    {
+      "host": "syriadirect.org",
+      "provider": "Syria Direct",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Syria Direct and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -6325,6 +8381,40 @@
       ]
     },
     {
+      "host": "taipeitimes.com",
+      "provider": "taipeitimes.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit taipeitimes.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "taiwannews.com.tw",
+      "provider": "taiwannews.com.tw",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit taiwannews.com.tw and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "taskandpurpose.com",
       "provider": "taskandpurpose.com",
       "kind": "feed",
@@ -6332,6 +8422,37 @@
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit taskandpurpose.com and link to the original feed publisher.",
       "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "tass.com",
+      "provider": "tass.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit tass.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "tchadinfos.com",
+      "provider": "Tchadinfos",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Tchadinfos and link to the original publisher item.",
+      "status": "reviewed",
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts"
@@ -6419,6 +8540,34 @@
       ]
     },
     {
+      "host": "techinasia.com",
+      "provider": "techinasia.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit techinasia.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "telegraaf.nl",
+      "provider": "telegraaf.nl",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit telegraaf.nl and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "telex.hu",
       "provider": "telex.hu",
       "kind": "feed",
@@ -6495,6 +8644,57 @@
       ]
     },
     {
+      "host": "theblock.co",
+      "provider": "theblock.co",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit theblock.co and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "thebulletin.org",
+      "provider": "thebulletin.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit thebulletin.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "thedailystar.net",
+      "provider": "The Daily Star",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The Daily Star and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "thedefiant.io",
       "provider": "thedefiant.io",
       "kind": "feed",
@@ -6529,12 +8729,94 @@
       ]
     },
     {
+      "host": "theguardianpostcameroon.com",
+      "provider": "The Guardian Post",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit The Guardian Post and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "thehill.com",
       "provider": "thehill.com",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit thehill.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "theinformation.com",
+      "provider": "theinformation.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit theinformation.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "thejakartapost.com",
+      "provider": "thejakartapost.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit thejakartapost.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "thenarwhal.ca",
+      "provider": "thenarwhal.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit thenarwhal.ca and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "thenationalnews.com",
+      "provider": "thenationalnews.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit thenationalnews.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -6566,6 +8848,20 @@
       ]
     },
     {
+      "host": "thenextweb.com",
+      "provider": "thenextweb.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit thenextweb.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "thepointsguy.com",
       "provider": "thepointsguy.com",
       "kind": "structured",
@@ -6583,12 +8879,63 @@
       ]
     },
     {
+      "host": "theprovince.com",
+      "provider": "theprovince.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit theprovince.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "thesentry.org",
       "provider": "thesentry.org",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit thesentry.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "thestar.com.my",
+      "provider": "thestar.com.my",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit thestar.com.my and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "thetyee.ca",
+      "provider": "thetyee.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit thetyee.ca and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -6672,6 +9019,23 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "treasury.gov",
+      "provider": "treasury.gov",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit treasury.gov and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -6775,6 +9139,23 @@
       ]
     },
     {
+      "host": "tvp.info",
+      "provider": "TVP Info",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit TVP Info and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "twitter.com",
       "provider": "twitter.com",
       "kind": "structured",
@@ -6820,6 +9201,37 @@
       ]
     },
     {
+      "host": "ukrinform.net",
+      "provider": "ukrinform.net",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit ukrinform.net and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "ukrinform.ua",
+      "provider": "ukrinform.ua",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit ukrinform.ua and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "unchainedcrypto.com",
       "provider": "unchainedcrypto.com",
       "kind": "feed",
@@ -6831,6 +9243,37 @@
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts"
         },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "understandingwar.org",
+      "provider": "understandingwar.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit understandingwar.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "unhcr.org",
+      "provider": "unhcr.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit unhcr.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
         {
           "path": "src/config/feeds.ts"
         }
@@ -6881,6 +9324,23 @@
       "license": "U.S. government public information; site and document-specific notices apply",
       "attribution": "Office of the U.S. Trade Representative; link to the original release.",
       "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "vancouversun.com",
+      "provider": "vancouversun.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit vancouversun.com and link to the original feed publisher.",
+      "status": "terms-review",
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts"
@@ -7100,6 +9560,51 @@
       ]
     },
     {
+      "host": "whitehouse.gov",
+      "provider": "whitehouse.gov",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit whitehouse.gov and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "wiadomosci.onet.pl",
+      "provider": "Onet",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Onet and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "wilsoncenter.org",
+      "provider": "wilsoncenter.org",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit wilsoncenter.org and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "wingbits.com",
       "provider": "wingbits.com",
       "kind": "structured",
@@ -7295,6 +9800,57 @@
       "references": [
         {
           "path": "api/docs-mcp.ts"
+        }
+      ]
+    },
+    {
+      "host": "wublockchain.com",
+      "provider": "wublockchain.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit wublockchain.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.14ymedio.com",
+      "provider": "14ymedio",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit 14ymedio and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.972mag.com",
+      "provider": "+972 Magazine",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit +972 Magazine and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -7508,6 +10064,23 @@
       ]
     },
     {
+      "host": "www.alwihdainfo.com",
+      "provider": "Alwihda Info",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Alwihda Info and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "www.amarujala.com",
       "provider": "www.amarujala.com",
       "kind": "feed",
@@ -7644,6 +10217,20 @@
       ]
     },
     {
+      "host": "www.bankofcanada.ca",
+      "provider": "Bank of Canada",
+      "kind": "structured",
+      "observed": true,
+      "license": "Bank of Canada Terms of Use — permission to freely use, copy, distribute and transmit website content with attribution (https://www.bankofcanada.ca/terms/)",
+      "attribution": "Bank of Canada Valet API; link to https://www.bankofcanada.ca/valet/ and the Terms of Use at https://www.bankofcanada.ca/terms/.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/boc-valet.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.barchart.com",
       "provider": "Barchart",
       "kind": "structured",
@@ -7744,6 +10331,23 @@
       "references": [
         {
           "path": "scripts/china-policy/adapters.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.caracaschronicles.com",
+      "provider": "Caracas Chronicles",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Caracas Chronicles and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -8268,6 +10872,20 @@
       ]
     },
     {
+      "host": "www.earthquakescanada.nrcan.gc.ca",
+      "provider": "Earthquakes Canada (NRCan)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Earthquakes Canada citation terms; live Atom redistribution not explicitly granted (historical catalogues on the Open Government Portal are OGL-Canada)",
+      "attribution": "Natural Resources Canada, Earthquakes Canada; link to https://www.earthquakescanada.nrcan.gc.ca/index-en.php?tpl_region=canada. Event-metadata citation: https://www.earthquakescanada.nrcan.gc.ca/cite-en.php",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seismology/nrcan-atom.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.ecb.europa.eu",
       "provider": "www.ecb.europa.eu",
       "kind": "structured",
@@ -8292,6 +10910,23 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.egyptindependent.com",
+      "provider": "Egypt Independent",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Egypt Independent and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -8791,6 +11426,23 @@
       ]
     },
     {
+      "host": "www.haitilibre.com",
+      "provider": "HaitiLibre English",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit HaitiLibre English and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "www.handelsblatt.com",
       "provider": "Handelsblatt",
       "kind": "feed",
@@ -8983,6 +11635,37 @@
       ]
     },
     {
+      "host": "www.international.gc.ca",
+      "provider": "Global Affairs Canada (SEMA consolidated sanctions)",
+      "kind": "structured",
+      "observed": true,
+      "license": "Government of Canada website terms; no explicit redistribution licence on the SEMA XML. Canada.ca terms restrict commercial reproduction unless otherwise specified. The Open Government Licence page on this host covers international-assistance open data sets, not this sanctions list.",
+      "attribution": "Global Affairs Canada, Consolidated Canadian Autonomous Sanctions List; link to https://www.international.gc.ca/world-monde/international_relations-relations_internationales/sanctions/consolidated-consolide.aspx?lang=eng",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_sema-sanctions.mjs"
+        }
+      ]
+    },
+    {
+      "host": "www.ipolitics.ca",
+      "provider": "www.ipolitics.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.ipolitics.ca and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "www.irrawaddy.com",
       "provider": "www.irrawaddy.com",
       "kind": "feed",
@@ -9068,6 +11751,23 @@
       ]
     },
     {
+      "host": "www.lapresse.ca",
+      "provider": "www.lapresse.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.lapresse.ca and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "www.lasillavacia.com",
       "provider": "www.lasillavacia.com",
       "kind": "feed",
@@ -9076,6 +11776,23 @@
       "attribution": "Credit www.lasillavacia.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.ledevoir.com",
+      "provider": "www.ledevoir.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.ledevoir.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
         {
           "path": "src/config/feeds.ts"
         }
@@ -9319,6 +12036,23 @@
       "attribution": "Credit www.naftemporiki.gr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.naharnet.com",
+      "provider": "Naharnet Lebanon",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Naharnet Lebanon and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
         {
           "path": "src/config/feeds.ts"
         }
@@ -9699,6 +12433,23 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.radiondekeluka.org",
+      "provider": "Radio Ndeke Luka",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Radio Ndeke Luka and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -10186,6 +12937,23 @@
       ]
     },
     {
+      "host": "www.studiotamani.org",
+      "provider": "Studio Tamani",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Studio Tamani and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "www.submarinecablemap.com",
       "provider": "TeleGeography Submarine Cable Map",
       "kind": "structured",
@@ -10500,6 +13268,23 @@
       ]
     },
     {
+      "host": "www.thestar.com",
+      "provider": "www.thestar.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.thestar.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "www.theverge.com",
       "provider": "www.theverge.com",
       "kind": "feed+structured",
@@ -10573,6 +13358,23 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.tvanouvelles.ca",
+      "provider": "www.tvanouvelles.ca",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.tvanouvelles.ca and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -10779,6 +13581,23 @@
         },
         {
           "path": "src/services/webcams/index.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.winnipegfreepress.com",
+      "provider": "www.winnipegfreepress.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.winnipegfreepress.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -11013,6 +13832,20 @@
       ]
     },
     {
+      "host": "www150.statcan.gc.ca",
+      "provider": "Statistics Canada",
+      "kind": "structured",
+      "observed": true,
+      "license": "Statistics Canada Open Licence (Open Government Licence — Canada); use, reproduce, publish, freely distribute or sell with attribution (https://www.statcan.gc.ca/en/terms-conditions/open-licence)",
+      "attribution": "Statistics Canada. Web Data Service. https://www.statcan.gc.ca/en/developers/wds/user-guide",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/statcan-wds.mjs"
+        }
+      ]
+    },
+    {
       "host": "wwwnc.cdc.gov",
       "provider": "wwwnc.cdc.gov",
       "kind": "structured",
@@ -11023,6 +13856,23 @@
       "references": [
         {
           "path": "scripts/seed-security-advisories.mjs"
+        }
+      ]
+    },
+    {
+      "host": "wyborcza.pl",
+      "provider": "Gazeta Wyborcza",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Gazeta Wyborcza and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -11041,6 +13891,23 @@
       ]
     },
     {
+      "host": "xinhuanet.com",
+      "provider": "xinhuanet.com",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit xinhuanet.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "yandex.com",
       "provider": "yandex.com",
       "kind": "structured",
@@ -11051,6 +13918,23 @@
       "references": [
         {
           "path": "scripts/seo-indexnow-submit.mjs"
+        }
+      ]
+    },
+    {
+      "host": "yemenonline.info",
+      "provider": "Yemen Online",
+      "kind": "feed",
+      "observed": true,
+      "license": "Publisher-provided feed or Google News link metadata; ingest is limited to headlines, summaries, timestamps, publisher credit, and link-out",
+      "attribution": "Credit Yemen Online and link to the original publisher item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -11115,27 +13999,43 @@
           "path": "src/components/LiveNewsPanel.ts"
         }
       ]
+    },
+    {
+      "host": "zerkalo.io",
+      "provider": "zerkalo.io",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit zerkalo.io and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "zn.ua",
+      "provider": "zn.ua",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit zn.ua and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
     }
   ],
   "logicalEntries": [
-    {
-      "provider": "Binance",
-      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
-      "attribution": "Credit Binance and link to the original announcement; Google News is the acquisition transport.",
-      "status": "reviewed",
-      "host": "binance.com",
-      "kind": "feed",
-      "observed": true
-    },
-    {
-      "provider": "Coinbase",
-      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
-      "attribution": "Credit Coinbase and link to the original blog post; Google News is the acquisition transport.",
-      "status": "reviewed",
-      "host": "coinbase.com",
-      "kind": "feed",
-      "observed": true
-    },
     {
       "provider": "Fintraffic Digitraffic",
       "host": "not-currently-wired",
@@ -11144,33 +14044,6 @@
       "license": "Not applicable: no live fetch is present in this checkout",
       "attribution": "Excluded from the live-provider count: issue audit named Digitraffic, but no current source call was found.",
       "status": "excluded"
-    },
-    {
-      "provider": "Interfax",
-      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
-      "attribution": "Credit Interfax and link to the original Interfax English item; Google News is the acquisition transport.",
-      "status": "reviewed",
-      "host": "interfax.com",
-      "kind": "feed",
-      "observed": true
-    },
-    {
-      "provider": "Jin10",
-      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
-      "attribution": "Credit Jin10 and link to the original item; Google News is the acquisition transport.",
-      "status": "reviewed",
-      "host": "jin10.com",
-      "kind": "feed",
-      "observed": true
-    },
-    {
-      "provider": "PR Newswire",
-      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
-      "attribution": "Credit PR Newswire and link to the original release; Google News is the acquisition transport.",
-      "status": "reviewed",
-      "host": "prnewswire.com",
-      "kind": "feed",
-      "observed": true
     }
   ]
 }

@@ -12,14 +12,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, '..');
-
-const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
+import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 
 // ========================================================================
 // 1. _insurance-tier.ts pure function
@@ -160,271 +153,24 @@ describe('BYPASS_CORRIDORS_BY_CHOKEPOINT index', () => {
 });
 
 // ========================================================================
-// 3. get-bypass-options handler source code guards
+// Premium enforcement. Membership in PREMIUM_RPC_PATHS is what gates these
+// endpoints, so assert against the real Set rather than grepping the module
+// for a path string — a path moved into a comment satisfies the grep.
+//
+// The handler/proto/generated-type/client assertions that used to follow all
+// restated lines of source. Generated clients make an unregistered RPC a
+// typecheck failure, and the dashboard exercises these paths in
+// e2e/variant-live-smoke.spec.ts.
 // ========================================================================
 
-describe('get-bypass-options handler source code', () => {
-  const src = readSrc('server/worldmonitor/supply-chain/v1/get-bypass-options.ts');
-
-  it('calls isCallerPremium and returns empty when not PRO', () => {
-    assert.match(src, /isCallerPremium/);
-    assert.match(src, /if \(!isPro\) return empty/);
-  });
-
-  it('filters by suitableCargoTypes.length === 0 (no-bypass placeholder guard)', () => {
-    assert.match(src, /suitableCargoTypes\.length === 0/);
-  });
-
-  it('filters by activation threshold when closurePct < 100', () => {
-    assert.match(src, /closurePct < 100.*full_closure/s);
-  });
-
-  it('reads chokepoint status cache via getCachedJson', () => {
-    assert.match(src, /getCachedJson\(CHOKEPOINT_STATUS_KEY\)/);
-  });
-
-  it('sorts options by liveScore ascending', () => {
-    assert.match(src, /liveScore - b\.liveScore/);
-  });
-
-  it('uses BYPASS_CORRIDORS_BY_CHOKEPOINT lookup', () => {
-    assert.match(src, /BYPASS_CORRIDORS_BY_CHOKEPOINT\[chokepointId\]/);
-  });
-});
-
-// ========================================================================
-// 4. get-country-cost-shock handler source code guards
-// ========================================================================
-
-describe('get-country-cost-shock handler source code', () => {
-  const src = readSrc('server/worldmonitor/supply-chain/v1/get-country-cost-shock.ts');
-
-  it('calls isCallerPremium and returns empty when not PRO', () => {
-    assert.match(src, /isCallerPremium/);
-    assert.match(src, /if \(!isPro\) return empty/);
-  });
-
-  it('uses warRiskTierToInsurancePremiumBps for premium calculation', () => {
-    assert.match(src, /warRiskTierToInsurancePremiumBps/);
-  });
-
-  it('reads chokepoint status cache via getCachedJson', () => {
-    assert.match(src, /getCachedJson\(CHOKEPOINT_STATUS_KEY\)/);
-  });
-
-  it('returns unavailableReason for non-energy sectors', () => {
-    assert.match(src, /HS 27.*mineral fuels.*only/s);
-  });
-
-  it('validates iso2 with regex before proceeding', () => {
-    assert.match(src, /\^[^\]]*A-Z.*\$.*test\(iso2/s);
-  });
-
-  it('uses shockModelSupported from registry for hasEnergyModel', () => {
-    assert.match(src, /shockModelSupported/);
-    assert.match(src, /hasEnergyModel/);
-  });
-
-  it('averages deficitPct across all products (no crude product entry)', () => {
-    assert.match(src, /productDeficits/);
-    assert.doesNotMatch(src, /product.*===.*'crude'/);
-  });
-
-  it('productDeficits must NOT filter before averaging — zero-deficit products must stay in denominator', () => {
-    assert.ok(
-      !src.includes('.filter((d: number) => d > 0)') && !src.includes('.filter((d) => d > 0)'),
-      'productDeficits must NOT filter before averaging — zero-deficit products must stay in denominator'
-    );
-  });
-
-  it('coverageDays must clamp negative sentinel for net exporters', () => {
-    assert.ok(
-      src.includes('Math.max(0, shock?.effectiveCoverDays'),
-      'coverageDays must clamp negative sentinel for net exporters'
-    );
-  });
-});
-
-// ========================================================================
-// 5. Gateway: both RPCs registered as slow-browser
-// ========================================================================
-
-describe('Gateway slow-browser tier registration', () => {
-  const src = readSrc('server/gateway.ts');
-
-  it('get-bypass-options uses slow-browser tier', () => {
-    assert.match(src, /\/api\/supply-chain\/v1\/get-bypass-options':\s*'slow-browser'/);
-  });
-
-  it('get-country-cost-shock uses slow-browser tier', () => {
-    assert.match(src, /\/api\/supply-chain\/v1\/get-country-cost-shock':\s*'slow-browser'/);
-  });
-});
-
-// ========================================================================
-// 6. Premium paths registered
-// ========================================================================
-
-describe('Premium paths registration', () => {
-  const src = readSrc('src/shared/premium-paths.ts');
-
-  it('get-bypass-options is in PREMIUM_RPC_PATHS', () => {
-    assert.match(src, /\/api\/supply-chain\/v1\/get-bypass-options/);
-  });
-
-  it('get-country-cost-shock is in PREMIUM_RPC_PATHS', () => {
-    assert.match(src, /\/api\/supply-chain\/v1\/get-country-cost-shock/);
-  });
-
-  it('get-sector-dependency is in PREMIUM_RPC_PATHS', () => {
-    assert.match(src, /\/api\/supply-chain\/v1\/get-sector-dependency/);
-  });
-});
-
-// ========================================================================
-// 7. Proto definitions
-// ========================================================================
-
-describe('GetBypassOptions proto definition', () => {
-  const proto = readSrc('proto/worldmonitor/supply_chain/v1/get_bypass_options.proto');
-
-  it('has GetBypassOptionsRequest message', () => {
-    assert.match(proto, /message GetBypassOptionsRequest/);
-  });
-
-  it('has GetBypassOptionsResponse message', () => {
-    assert.match(proto, /message GetBypassOptionsResponse/);
-  });
-
-  it('has BypassOption message', () => {
-    assert.match(proto, /message BypassOption/);
-  });
-
-  it('chokepoint_id field has required validation', () => {
-    assert.match(proto, /\(buf\.validate\.field\)\.required\s*=\s*true/);
-  });
-
-  it('live_score field is at field 10', () => {
-    assert.match(proto, /double live_score\s*=\s*10/);
-  });
-
-  it('bypass_war_risk_tier field is at field 11', () => {
-    assert.match(proto, /WarRiskTier bypass_war_risk_tier\s*=\s*11/);
-  });
-});
-
-describe('GetCountryCostShock proto definition', () => {
-  const proto = readSrc('proto/worldmonitor/supply_chain/v1/get_country_cost_shock.proto');
-
-  it('has GetCountryCostShockRequest message', () => {
-    assert.match(proto, /message GetCountryCostShockRequest/);
-  });
-
-  it('has GetCountryCostShockResponse message', () => {
-    assert.match(proto, /message GetCountryCostShockResponse/);
-  });
-
-  it('iso2 field has pattern validation', () => {
-    assert.match(proto, /\^[^\]]*A-Z.*\$/);
-  });
-
-  it('war_risk_premium_bps is int32', () => {
-    assert.match(proto, /int32 war_risk_premium_bps/);
-  });
-
-  it('has_energy_model is bool', () => {
-    assert.match(proto, /bool has_energy_model/);
-  });
-});
-
-// ========================================================================
-// 8. Generated types include new interfaces
-// ========================================================================
-
-describe('Generated server types include Sprint 2 interfaces', () => {
-  const serverSrc = readSrc('src/generated/server/worldmonitor/supply_chain/v1/service_server.ts');
-
-  it('BypassOption interface is generated', () => {
-    assert.match(serverSrc, /interface BypassOption/);
-  });
-
-  it('GetBypassOptionsRequest interface is generated', () => {
-    assert.match(serverSrc, /interface GetBypassOptionsRequest/);
-  });
-
-  it('GetBypassOptionsResponse interface is generated', () => {
-    assert.match(serverSrc, /interface GetBypassOptionsResponse/);
-  });
-
-  it('GetCountryCostShockRequest interface is generated', () => {
-    assert.match(serverSrc, /interface GetCountryCostShockRequest/);
-  });
-
-  it('GetCountryCostShockResponse interface is generated', () => {
-    assert.match(serverSrc, /interface GetCountryCostShockResponse/);
-  });
-
-  it('SupplyChainServiceHandler includes getBypassOptions', () => {
-    assert.match(serverSrc, /getBypassOptions\(.*GetBypassOptionsRequest.*GetBypassOptionsResponse/);
-  });
-
-  it('SupplyChainServiceHandler includes getCountryCostShock', () => {
-    assert.match(serverSrc, /getCountryCostShock\(.*GetCountryCostShockRequest.*GetCountryCostShockResponse/);
-  });
-});
-
-// ========================================================================
-// 9. Client service: new methods exported
-// ========================================================================
-
-describe('Supply chain client service: Sprint 2 methods', () => {
-  const src = readSrc('src/services/supply-chain/index.ts');
-
-  it('exports fetchBypassOptions function', () => {
-    assert.match(src, /export async function fetchBypassOptions/);
-  });
-
-  it('exports fetchCountryCostShock function', () => {
-    assert.match(src, /export async function fetchCountryCostShock/);
-  });
-
-  it('imports GetBypassOptionsResponse from generated client', () => {
-    assert.match(src, /GetBypassOptionsResponse/);
-  });
-
-  it('imports GetCountryCostShockResponse from generated client', () => {
-    assert.match(src, /GetCountryCostShockResponse/);
-  });
-});
-
-// ========================================================================
-// 10. Service proto registers both new RPCs
-// ========================================================================
-
-describe('Service proto registers Sprint 2 RPCs', () => {
-  const proto = readSrc('proto/worldmonitor/supply_chain/v1/service.proto');
-
-  it('imports get_bypass_options.proto', () => {
-    assert.match(proto, /import.*get_bypass_options\.proto/);
-  });
-
-  it('imports get_country_cost_shock.proto', () => {
-    assert.match(proto, /import.*get_country_cost_shock\.proto/);
-  });
-
-  it('registers GetBypassOptions RPC', () => {
-    assert.match(proto, /rpc GetBypassOptions\(GetBypassOptionsRequest\)/);
-  });
-
-  it('registers GetCountryCostShock RPC', () => {
-    assert.match(proto, /rpc GetCountryCostShock\(GetCountryCostShockRequest\)/);
-  });
-
-  it('GetBypassOptions path is /get-bypass-options', () => {
-    assert.match(proto, /path:\s*"\/get-bypass-options"/);
-  });
-
-  it('GetCountryCostShock path is /get-country-cost-shock', () => {
-    assert.match(proto, /path:\s*"\/get-country-cost-shock"/);
-  });
+describe('Sprint 2 RPCs are premium-gated', () => {
+  for (const path of [
+    '/api/supply-chain/v1/get-bypass-options',
+    '/api/supply-chain/v1/get-country-cost-shock',
+    '/api/supply-chain/v1/get-sector-dependency',
+  ]) {
+    it(`${path} is in PREMIUM_RPC_PATHS`, () => {
+      assert.ok(PREMIUM_RPC_PATHS.has(path), `${path} is not premium-gated`);
+    });
+  }
 });

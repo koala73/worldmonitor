@@ -14,6 +14,7 @@ import {
   checkPostmergeDeploys,
   createRetryingGh,
   diffTouchesPath,
+  diffTouchesPaths,
   isRetryableGhFailure,
   judgeWorkflow,
   readNewestRun,
@@ -109,11 +110,25 @@ describe('post-merge deploy monitor', () => {
         workflow,
         run: run({ runId: 333 }),
         jobs: new Map([[workflow.deployJobName, { name: workflow.deployJobName, conclusion: 'success', status: 'completed' }]]),
+        deploymentRequired: workflow.triggerPaths ? false : null,
         now: NOW,
       });
       assert.equal(verdict.state, 'OK', workflow.file);
       assert.equal(verdict.verdict, 'DEPLOYED', workflow.file);
     }
+  });
+
+  it('alarms immediately when current main changed a path-filtered deploy trigger', () => {
+    const verdict = judgeWorkflow({
+      workflow: WORKER,
+      run: run({ runId: 334 }),
+      jobs: new Map([['Wrangler deploy', { name: 'Wrangler deploy', conclusion: 'success', status: 'completed' }]]),
+      deploymentRequired: true,
+      now: NOW,
+    });
+
+    assert.equal(verdict.state, 'ALARM');
+    assert.equal(verdict.verdict, 'DEPLOY_MISSING_AFTER_CHANGE');
   });
 
   it('accepts a convex=false skip only when the head diff proves it', () => {
@@ -156,6 +171,7 @@ describe('post-merge deploy monitor', () => {
         workflow,
         run: run({ runId: 666 }),
         jobs: new Map([[workflow.deployJobName, { name: workflow.deployJobName, conclusion: 'skipped', status: 'completed' }]]),
+        deploymentRequired: false,
         now: NOW,
       });
       assert.equal(verdict.state, 'ALARM', workflow.file);
@@ -179,6 +195,7 @@ describe('post-merge deploy monitor', () => {
       workflow: RECONCILE,
       run: run({ runId: 888 }),
       jobs: new Map([['Wrangler deploy', { name: 'Wrangler deploy', conclusion: 'failure', status: 'completed' }]]),
+      deploymentRequired: false,
       now: NOW,
     });
     assert.equal(verdict.state, 'ALARM');
@@ -209,12 +226,12 @@ describe('post-merge deploy monitor', () => {
     }
   });
 
-  it('alarms when no completed run exists in the window', () => {
+  it('alarms when no run exists in the window', () => {
     // The workflow stopped running entirely (deleted, broken trigger) — the
     // case a workflow_run event can never see.
     const noRun = judgeWorkflow({
       workflow: CONVEX,
-      run: { found: false, verdict: 'NO_RUN', detail: 'no completed run at all' },
+      run: { found: false, verdict: 'NO_RUN', detail: 'no run at all' },
       jobs: null,
       now: NOW,
     });
@@ -238,6 +255,64 @@ describe('post-merge deploy monitor', () => {
     assert.equal(staleRun.verdict, 'NO_RUN_IN_WINDOW');
   });
 
+  it('does not age out a path-filtered deploy when its trigger paths are unchanged', () => {
+    const staleRun = {
+      found: true,
+      verdict: 'NO_RUN_IN_WINDOW',
+      runId: 42,
+      createdAt: new Date(NOW - 15 * 24 * HOUR).toISOString(),
+      conclusion: 'success',
+      headSha: 'a'.repeat(40),
+      detail: 'predates the window',
+    };
+
+    const verdict = judgeWorkflow({
+      workflow: WORKER,
+      run: staleRun,
+      jobs: new Map([['Wrangler deploy', { name: 'Wrangler deploy', conclusion: 'success', status: 'completed' }]]),
+      deploymentRequired: false,
+      now: NOW,
+    });
+
+    assert.equal(verdict.state, 'OK');
+    assert.equal(verdict.verdict, 'DEPLOY_NOT_DUE');
+    assert.match(verdict.detail, /trigger path/i);
+
+    const failedBaseline = judgeWorkflow({
+      workflow: WORKER,
+      run: { ...staleRun, conclusion: 'failure' },
+      jobs: null,
+      deploymentRequired: false,
+      now: NOW,
+    });
+    assert.equal(failedBaseline.state, 'ALARM', 'an unchanged tree cannot turn a failed baseline green');
+    assert.equal(failedBaseline.verdict, 'RUN_FAILED');
+  });
+
+  it('still alarms when a path-filtered deploy is old and a trigger path changed', () => {
+    const staleRun = {
+      found: true,
+      verdict: 'NO_RUN_IN_WINDOW',
+      runId: 43,
+      createdAt: new Date(NOW - 15 * 24 * HOUR).toISOString(),
+      conclusion: 'success',
+      headSha: 'b'.repeat(40),
+      detail: 'predates the window',
+    };
+
+    const verdict = judgeWorkflow({
+      workflow: WORKER,
+      run: staleRun,
+      jobs: null,
+      deploymentRequired: true,
+      now: NOW,
+    });
+
+    assert.equal(verdict.state, 'ALARM');
+    assert.equal(verdict.verdict, 'DEPLOY_MISSING_AFTER_CHANGE');
+    assert.match(verdict.detail, /trigger path/i);
+  });
+
   it('reads the newest run and the attempts-scoped jobs', () => {
     const newest = readNewestRun({
       gh: ghRuns('convex-deploy.yml', [
@@ -248,7 +323,7 @@ describe('post-merge deploy monitor', () => {
       workflowFile: 'convex-deploy.yml',
       now: NOW,
     });
-    assert.equal(newest.runId, 2, 'must pick the newest completed run, not the first page entry');
+    assert.equal(newest.runId, 2, 'must pick the newest run, not the first page entry');
     assert.equal(newest.conclusion, 'failure');
     assert.equal(newest.runAttempt, 2);
 
@@ -267,6 +342,39 @@ describe('post-merge deploy monitor', () => {
     assert.equal(jobs.get('deploy').conclusion, 'skipped');
   });
 
+  it('reads active runs so an in-flight path deploy is not a false alarm', () => {
+    const active = readNewestRun({
+      gh: (args) => {
+        assert.doesNotMatch(args.join(' '), /status=completed/, 'the newest run may still be queued or running');
+        return JSON.stringify({
+          workflow_runs: [{
+            id: 3,
+            created_at: new Date(NOW - 1000).toISOString(),
+            status: 'in_progress',
+            conclusion: null,
+            run_attempt: 1,
+            head_sha: 'f'.repeat(40),
+            event: 'push',
+          }],
+        });
+      },
+      repository: 'koala73/worldmonitor',
+      workflowFile: 'deploy-worker.yml',
+      now: NOW,
+    });
+
+    assert.equal(active.verdict, 'RUN_FOUND');
+    assert.equal(active.conclusion, 'in_progress');
+    const verdict = judgeWorkflow({
+      workflow: WORKER,
+      run: active,
+      jobs: null,
+      deploymentRequired: true,
+    });
+    assert.equal(verdict.state, 'OK');
+    assert.equal(verdict.verdict, 'IN_PROGRESS');
+  });
+
   it('throws on an unreadable run listing instead of resolving to healthy', () => {
     assert.throws(
       () => readNewestRun({
@@ -276,6 +384,21 @@ describe('post-merge deploy monitor', () => {
         now: NOW,
       }),
       /workflow_runs/,
+    );
+    assert.throws(
+      () => readNewestRun({
+        gh: ghRuns('deploy-worker.yml', [{
+          id: 7,
+          created_at: 'not-a-timestamp',
+          conclusion: 'success',
+          run_attempt: 1,
+          head_sha: '7'.repeat(40),
+        }]),
+        repository: 'koala73/worldmonitor',
+        workflowFile: 'deploy-worker.yml',
+        now: NOW,
+      }),
+      /created_at/,
     );
     assert.throws(
       () => readRunJobs({
@@ -307,6 +430,73 @@ describe('post-merge deploy monitor', () => {
       }),
       true,
     );
+    const calls = [];
+    assert.equal(
+      diffTouchesPaths({
+        git: (args) => { calls.push(args); return ''; },
+        baseSha: 'd'.repeat(40),
+        headSha: 'origin/main',
+        paths: ['workers/api-cors-preflight/**', 'api/_bootstrap-public-tier.js'],
+      }),
+      false,
+    );
+    assert.deepEqual(calls[0], [
+      'diff',
+      '--name-only',
+      'd'.repeat(40),
+      'origin/main',
+      '--',
+      'workers/api-cors-preflight/**',
+      'api/_bootstrap-public-tier.js',
+    ]);
+  });
+
+  it('proves a stale path-filtered deploy against current main before reporting healthy', () => {
+    const deployedHead = '9'.repeat(40);
+    const gitCalls = [];
+    const gh = (args) => {
+      const joined = args.join(' ');
+      const runsMatch = joined.match(/workflows\/([^/]+)\/runs/);
+      if (runsMatch) {
+        const stale = runsMatch[1] === 'deploy-worker.yml';
+        return JSON.stringify({
+          workflow_runs: [{
+            id: stale ? 700 : 701,
+            created_at: new Date(NOW - (stale ? 15 * 24 * HOUR : HOUR)).toISOString(),
+            conclusion: 'success',
+            run_attempt: 1,
+            head_sha: stale ? deployedHead : '8'.repeat(40),
+            event: 'push',
+            display_title: 'push',
+          }],
+        });
+      }
+      return jobsPayload([
+        { name: 'deploy', conclusion: 'success', status: 'completed' },
+        { name: 'Wrangler deploy', conclusion: 'success', status: 'completed' },
+      ]);
+    };
+
+    const results = checkPostmergeDeploys({
+      repository: 'koala73/worldmonitor',
+      gh,
+      git: (args) => { gitCalls.push(args); return ''; },
+      now: NOW,
+    });
+
+    const worker = results.find((entry) => entry.workflow === 'deploy-worker.yml');
+    assert.equal(worker.state, 'OK');
+    assert.equal(worker.verdict, 'DEPLOY_NOT_DUE');
+    assert.equal(gitCalls.length, 2, 'both path-filtered workflows require current-tree proof');
+    const workerDiff = gitCalls.find((args) => args.includes('workers/api-cors-preflight/**'));
+    assert.deepEqual(workerDiff, [
+      'diff',
+      '--name-only',
+      deployedHead,
+      'origin/main',
+      '--',
+      ...WORKER.triggerPaths,
+    ]);
   });
 
   it('honours the no-run window as a boundary, not a race', () => {
@@ -329,6 +519,8 @@ describe('post-merge deploy monitor', () => {
       now: NOW,
     });
     assert.equal(outside.verdict, 'NO_RUN_IN_WINDOW');
+    assert.equal(outside.headSha, 'e'.repeat(40), 'a stale run must retain the deployed head for path proof');
+    assert.equal(outside.runAttempt, 1);
   });
 });
 

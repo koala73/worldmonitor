@@ -77,7 +77,7 @@ export function openWatchlistModal(): void {
         <div class="wl-region-bar" role="group" aria-label="Filter catalog by region"></div>
         <label class="wl-search">
           <span class="sr-only">Search built-in market catalog</span>
-          <input id="wmCatalogSearch" type="search" placeholder="Search stocks and indices" />
+          <input id="wmCatalogSearch" type="search" placeholder="Search stocks and indices" aria-label="Search stocks and indices" />
         </label>
         <div class="wl-grid" role="group" aria-label="Built-in market symbols"></div>
         <div class="wl-counter" aria-live="polite"></div>

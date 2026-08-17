@@ -94,6 +94,56 @@ const INTERVAL_SOURCE_VERSION = `resilience-intervals:${INTERVAL_KEY_PREFIX}${IN
 const INTERVAL_META_KEY = 'seed-meta:resilience:intervals';
 export const RESILIENCE_INTERVAL_MIN_RECORD_COUNT = 180;
 export const RESILIENCE_INTERVAL_PROBE_COUNTRY_CODE = 'US';
+
+// #6562 item 3: the laggard warm-up phase previously had no aggregate
+// deadline — batches of 5 countries at a 30s per-request timeout over up to
+// 196 countries is ~20 min worst case, longer than any timeout that fits the
+// 240s Resilience-Scores section cap. This wall budget bounds the phase with
+// headroom below the section timeout so a degraded run stops warming and
+// still publishes the ranking + intervals for what did warm, instead of
+// being SIGTERM'd mid-warm and publishing nothing.
+export const LAGGARD_WARMUP_BUDGET_MS = 150_000;
+export const LAGGARD_WARMUP_BATCH_SIZE = 5;
+
+// Individual warm-up for countries the bulk ranking warm path timed out on.
+// Bounded by LAGGARD_WARMUP_BUDGET_MS so the phase cannot outlive the section
+// timeout; on exhaustion it stops early and the caller still publishes the
+// ranking aggregate and intervals for whatever did warm (#6562 item 3).
+export async function warmLaggardCountries(stillMissing, {
+  apiKey,
+  budgetMs = LAGGARD_WARMUP_BUDGET_MS,
+  batchSize = LAGGARD_WARMUP_BATCH_SIZE,
+  apiBase = API_BASE,
+  fetchImpl = (u, i) => globalThis.fetch(u, i),
+} = {}) {
+  if (stillMissing.length === 0) return 0;
+  if (!apiKey) {
+    console.warn(`[resilience-scores] ${stillMissing.length} laggards found but neither WORLDMONITOR_API_KEY nor WORLDMONITOR_VALID_KEYS is set — skipping individual warmup`);
+    return 0;
+  }
+  console.log(`[resilience-scores] Warming ${stillMissing.length} laggards individually...`);
+  const deadline = Date.now() + budgetMs;
+  let warmed = 0;
+  for (let i = 0; i < stillMissing.length; i += batchSize) {
+    if (Date.now() > deadline) {
+      console.warn(`[resilience-scores] Laggard warmup budget exhausted after ${warmed}/${stillMissing.length} — continuing with partial warmup so the ranking and intervals still publish (#6562 item 3)`);
+      break;
+    }
+    const batch = stillMissing.slice(i, i + batchSize);
+    const results = await Promise.allSettled(batch.map(async (cc) => {
+      const scoreUrl = `${apiBase}/api/resilience/v1/get-resilience-score?countryCode=${cc}`;
+      const resp = await fetchImpl(scoreUrl, {
+        headers: { 'User-Agent': SEED_UA, 'Accept': 'application/json', 'X-WorldMonitor-Key': apiKey },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!resp.ok) throw new Error(`${cc}: HTTP ${resp.status}`);
+      return cc;
+    }));
+    warmed += results.filter((r) => r.status === 'fulfilled').length;
+  }
+  console.log(`[resilience-scores] Laggards warmed: ${warmed}/${stillMissing.length}`);
+  return warmed;
+}
 export { computeIntervals };
 
 function isKnownScoreFormulaTag(value) {
@@ -526,29 +576,9 @@ export async function seedResilienceScores({ runtimeCacheState = fetchRuntimeCac
       if (parseCachedScorePayload(raw, expectedCacheState) == null) stillMissing.push(countryCodes[i]);
     }
 
-    // Warm laggards individually (countries the bulk ranking timed out on)
-    if (stillMissing.length > 0 && !WM_KEY) {
-      console.warn(`[resilience-scores] ${stillMissing.length} laggards found but neither WORLDMONITOR_API_KEY nor WORLDMONITOR_VALID_KEYS is set — skipping individual warmup`);
-    }
-    let laggardsWarmed = 0;
-    if (stillMissing.length > 0 && WM_KEY) {
-      console.log(`[resilience-scores] Warming ${stillMissing.length} laggards individually...`);
-      const BATCH = 5;
-      for (let i = 0; i < stillMissing.length; i += BATCH) {
-        const batch = stillMissing.slice(i, i + BATCH);
-        const results = await Promise.allSettled(batch.map(async (cc) => {
-          const scoreUrl = `${API_BASE}/api/resilience/v1/get-resilience-score?countryCode=${cc}`;
-          const resp = await fetch(scoreUrl, {
-            headers: { 'User-Agent': SEED_UA, 'Accept': 'application/json', 'X-WorldMonitor-Key': WM_KEY },
-            signal: AbortSignal.timeout(30_000),
-          });
-          if (!resp.ok) throw new Error(`${cc}: HTTP ${resp.status}`);
-          return cc;
-        }));
-        laggardsWarmed += results.filter(r => r.status === 'fulfilled').length;
-      }
-      console.log(`[resilience-scores] Laggards warmed: ${laggardsWarmed}/${stillMissing.length}`);
-    }
+    // Warm laggards individually (countries the bulk ranking timed out on).
+    // The phase is bounded by LAGGARD_WARMUP_BUDGET_MS — see #6562 item 3.
+    const laggardsWarmed = await warmLaggardCountries(stillMissing, { apiKey: WM_KEY });
 
     const rankingPresent = await refreshRankingAggregate({ url, token, laggardsWarmed });
     // refresh=1 rotates every per-country score, not only the ranking aggregate.

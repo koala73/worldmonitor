@@ -15,7 +15,7 @@ WorldMonitor's Country Resilience Index is built for the second question:
 
 > How well positioned is this country to absorb, adapt to, and recover from shocks?
 
-The CRI is a 0-100 national resilience score for a public rankable universe of 196 countries. It combines long-run structural capacity with current stress signals, then publishes the result through a methodology that exposes domains, coverage, and imputation context instead of hiding the model behind a black-box rating.
+The CRI is a 0-100 national resilience score for a public rankable country universe. It combines long-run structural capacity with current stress signals, then publishes the result through a methodology that exposes domains, coverage, and imputation context instead of hiding the model behind a black-box rating.
 
 It complements the Country Instability Index, which is faster and more stress-oriented. CII asks where pressure is rising now. CRI asks which countries have the institutional, infrastructure, fiscal, health, energy, and recovery capacity to withstand pressure.
 

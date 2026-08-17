@@ -124,7 +124,7 @@ Radar is an infrastructure signal. It can suggest that something changed in a co
 
 WorldMonitor is not a replacement for the sources above. It is the connective layer: a way to pull many signals into country-risk, route-risk, market, news, and agent workflows without building every normalizer from scratch.
 
-The API surface is proto-first and documented through a bundled OpenAPI spec covering 34 services. The codebase currently contains 276 `.proto` files, with generated TypeScript clients and OpenAPI docs. For AI agents, the same data is exposed through the [WorldMonitor MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/) so Claude, Cursor, and custom MCP clients can call tools conversationally.
+The API surface is proto-first and documented through a bundled OpenAPI spec. The codebase contains Protocol Buffer definitions, generated TypeScript clients, and OpenAPI docs. For AI agents, the same data is exposed through the [WorldMonitor MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/) so Claude, Cursor, and custom MCP clients can call tools conversationally.
 
 Good use cases:
 

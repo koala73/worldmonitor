@@ -129,6 +129,15 @@ class TestMCPCalls(unittest.TestCase):
         self.assertEqual(rpc["method"], "tools/list")
         self.assertNotIn("params", rpc)
 
+    def test_get_sources_is_keyless(self):
+        transport = FakeTransport([rpc_result({"sources": []})])
+        result = Client(env={}, transport=transport).call_tool("get_sources", view="summary")
+        self.assertEqual(result, {"sources": []})
+        request, _ = transport.requests[0]
+        self.assertNotIn(EXPECTED_API_KEY_HEADER, request["headers"])
+        rpc = json.loads(request["body"].decode("utf-8"))
+        self.assertEqual(rpc["params"], {"name": "get_sources", "arguments": {"view": "summary"}})
+
     def test_mcp_error_raises_with_auth_hint(self):
         transport = FakeTransport(
             [json_response({"jsonrpc": "2.0", "id": 1, "error": {"code": MCP_AUTH_ERROR_CODE, "message": "auth required"}})]

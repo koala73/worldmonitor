@@ -47,7 +47,12 @@ describe('api/mcp.ts — per-tool annotations coverage (v1.7.0)', () => {
   // --------------------------------------------------------------------
   it('every tool in TOOL_REGISTRY declares all four annotation hints as strict booleans (no undefined, no defaulting)', () => {
     const registry = mod.__testing__.TOOL_REGISTRY ?? [];
-    assert.ok(registry.length >= 40, `expected ≥40 tools, got ${registry.length}`);
+    assert.ok(registry.length > 0, 'TOOL_REGISTRY extraction must not be empty');
+    assert.equal(
+      new Set(registry.map((tool) => tool.name)).size,
+      registry.length,
+      'TOOL_REGISTRY tool identities must be unique',
+    );
     const failures = [];
     for (const tool of registry) {
       const ann = tool.annotations;
@@ -79,7 +84,11 @@ describe('api/mcp.ts — per-tool annotations coverage (v1.7.0)', () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     const tools = body.result?.tools ?? [];
-    assert.ok(tools.length >= 40, `expected ≥40 tools, got ${tools.length}`);
+    assert.deepEqual(
+      tools.map((tool) => tool.name).sort(),
+      mod.__testing__.TOOL_REGISTRY.map((tool) => tool.name).sort(),
+      'tools/list names must match TOOL_REGISTRY exactly',
+    );
     const failures = [];
     for (const t of tools) {
       if (!t.annotations || typeof t.annotations !== 'object') {

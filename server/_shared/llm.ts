@@ -3,7 +3,11 @@ import { isModelUsable, isProviderAvailable, recordModelFailure, recordModelSucc
 import { sanitizeForPrompt } from './llm-sanitize.js';
 import { buildLlmCallEvent, deliverUsageEvents, type LlmCallEvent } from './usage';
 import {
+  DEEPSEEK_V4_FLASH_MODEL_PREFIX,
+  GROQ_DEFAULT_MODEL,
   getLlmAttemptTimeoutMs,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
 } from '../../scripts/_llm-model-timeouts.mjs';
 
@@ -31,7 +35,22 @@ export interface ProviderCredentials {
   extraBody?: Record<string, unknown>;
 }
 
-export type LlmProviderName = 'ollama' | 'groq' | 'openrouter' | 'generic';
+const PROVIDER_CHAIN = [
+  'ollama',
+  'openrouter',
+  'openrouter-free',
+  'openrouter-free-backup',
+  'groq',
+  'generic',
+] as const;
+
+export type LlmProviderName = typeof PROVIDER_CHAIN[number];
+
+const OPENROUTER_DEFAULT_MODELS = {
+  openrouter: DEEPSEEK_V4_FLASH_MODEL_PREFIX,
+  'openrouter-free': OPENROUTER_FREE_PRIMARY_MODEL,
+  'openrouter-free-backup': OPENROUTER_FREE_BACKUP_MODEL,
+} as const satisfies Partial<Record<LlmProviderName, string>>;
 
 export interface ProviderCredentialOverrides {
   model?: string;
@@ -92,7 +111,7 @@ export function getProviderCredentials(
     if (!apiKey) return null;
     return {
       apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-      model: overrides.model || 'llama-3.3-70b-versatile',
+      model: overrides.model || GROQ_DEFAULT_MODEL,
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
@@ -100,12 +119,13 @@ export function getProviderCredentials(
     };
   }
 
-  if (provider === 'openrouter') {
+  const openRouterDefaultModel = OPENROUTER_DEFAULT_MODELS[provider as keyof typeof OPENROUTER_DEFAULT_MODELS];
+  if (typeof openRouterDefaultModel === 'string') {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) return null;
     return {
       apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-      model: overrides.model || 'deepseek/deepseek-v4-flash',
+      model: overrides.model || openRouterDefaultModel,
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
@@ -188,12 +208,19 @@ export function stripThinkingTags(text: string): string {
 }
 
 
-// openrouter ahead of groq since #4944: core surfaces run DeepSeek V4 Flash
-// via OpenRouter; groq (llama-3.3-70b-versatile) is the free-tier/outage
-// fallback. Ollama stays first so self-hosted deployments are untouched —
-// it is skipped in cloud where OLLAMA_API_URL is unset.
-const PROVIDER_CHAIN = ['ollama', 'openrouter', 'groq', 'generic'] as const;
+// Fixed OpenRouter free variants absorb paid-model outages before Groq. Each
+// model is its own validated attempt, so malformed JSON or empty content can
+// advance the chain; OpenRouter's random `openrouter/free` router cannot.
+// Ollama stays first so self-hosted deployments are untouched.
 const PROVIDER_SET = new Set<string>(PROVIDER_CHAIN);
+const OPENROUTER_FREE_ATTEMPT_TIMEOUT_MS = 8_000;
+const INDEPENDENT_FALLBACK_RESERVE_MS = 5_000;
+
+function isOpenRouterProvider(provider: string): boolean {
+  return provider === 'openrouter'
+    || provider === 'openrouter-free'
+    || provider === 'openrouter-free-backup';
+}
 
 export interface LlmCallOptions {
   messages: Array<{ role: string; content: string }>;
@@ -570,9 +597,14 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
   const inputChars = promptChars(messages);
   const events: LlmCallEvent[] = [];
   let attemptIndex = 0;
+  const deadlineAt = Date.now() + Math.max(1, timeoutMs);
+  let skipRemainingOpenRouter = false;
 
   try {
-    for (const providerName of providers) {
+    for (let providerIndex = 0; providerIndex < providers.length; providerIndex += 1) {
+      const providerName = providers[providerIndex]!;
+      if (skipRemainingOpenRouter && isOpenRouterProvider(providerName)) continue;
+
       const creds = getProviderCredentials(providerName, {
         model: modelOverrides?.[providerName as LlmProviderName],
         enableReasoning,
@@ -596,6 +628,38 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         if (forcedProvider) return null;
         continue;
       }
+
+      const remainingMs = deadlineAt - Date.now();
+      if (remainingMs <= 0) break;
+
+      // Keep one independent provider reachable inside the caller's wall-clock
+      // budget. The fixed free models share OpenRouter's control plane, so a
+      // stalled OpenRouter completion must not consume Groq's reserve.
+      const hasIndependentFallback = isOpenRouterProvider(providerName)
+        && providers.slice(providerIndex + 1).some((laterProvider) => {
+          const laterCreds = getProviderCredentials(laterProvider, {
+            model: modelOverrides?.[laterProvider as LlmProviderName],
+            enableReasoning,
+          });
+          return laterCreds !== null
+            && new URL(laterCreds.apiUrl).origin !== new URL(creds.apiUrl).origin;
+        });
+      const reservedMs = hasIndependentFallback
+        ? Math.min(INDEPENDENT_FALLBACK_RESERVE_MS, Math.max(0, remainingMs - 1))
+        : 0;
+      const availableAttemptMs = remainingMs - reservedMs;
+      if (availableAttemptMs <= 0) continue;
+
+      const modelAttemptMs = getLlmAttemptTimeoutMs(creds.model, timeoutMs);
+      const freeAttemptCapMs = providerName === 'openrouter-free'
+        || providerName === 'openrouter-free-backup'
+        ? OPENROUTER_FREE_ATTEMPT_TIMEOUT_MS
+        : modelAttemptMs;
+      const attemptTimeoutMs = Math.max(1, Math.min(
+        modelAttemptMs,
+        freeAttemptCapMs,
+        availableAttemptMs,
+      ));
 
       // Skipped providers (no creds / offline) never sent the prompt, so
       // only real attempts get an event and advance the fallback index.
@@ -630,7 +694,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
           // #5246: DeepSeek V4 Flash is bimodal — healthy calls finish near 2s,
           // while stalled calls hang to the old 25s clamp. Cut only this model's
           // dead tail so the existing provider chain can reach its fallback.
-          signal: AbortSignal.timeout(getLlmAttemptTimeoutMs(creds.model, timeoutMs)),
+          signal: AbortSignal.timeout(attemptTimeoutMs),
         });
 
         if (!resp.ok) {
@@ -706,9 +770,15 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         record(true, tokensExtra);
         return { content, model: creds.model, provider: providerName, tokens, finishReason };
       } catch (err) {
+        // sentry-coverage-ok: provider failures are expected fallback signals;
+        // record() emits the bounded per-attempt telemetry before the chain continues.
         const name = (err as Error).name;
         console.warn(`[llm:${providerName}] ${(err as Error).message}`);
-        record(false, { reason: name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'fetch_error' });
+        const timedOut = name === 'TimeoutError' || name === 'AbortError';
+        record(false, { reason: timedOut ? 'timeout' : 'fetch_error' });
+        if (timedOut && isOpenRouterProvider(providerName)) {
+          skipRemainingOpenRouter = true;
+        }
         if (forcedProvider) return null;
       }
     }

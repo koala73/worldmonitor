@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -16,6 +17,7 @@ import {
   CONTENT_CORPUS_PREFIXES,
   discoverContentCorpusPages,
 } from '../scripts/discover-content-corpus-pages.mjs';
+import { guardBuiltOutput, shouldSkipBuiltOutput } from './_lib/built-output-guard.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8'));
@@ -26,7 +28,7 @@ const playwrightConfigSource = readFileSync(resolve(__dirname, '../playwright.co
 const embedE2eSource = readFileSync(resolve(__dirname, '../e2e/embed.spec.ts'), 'utf-8');
 const testWorkflowSource = readFileSync(resolve(__dirname, '../.github/workflows/test.yml'), 'utf-8');
 const sitemapSource = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
-const robotsSource = readFileSync(resolve(__dirname, '../public/robots.txt'), 'utf-8');
+const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
 const mainSource = readFileSync(resolve(__dirname, '../src/main.ts'), 'utf-8');
 const zodCspSource = readFileSync(resolve(__dirname, '../src/bootstrap/zod-csp.ts'), 'utf-8');
 const proIndexCssSource = readFileSync(resolve(__dirname, '../pro-test/src/index.css'), 'utf-8');
@@ -36,7 +38,8 @@ const dockerNginxSource = readFileSync(resolve(__dirname, '../docker/nginx.conf'
 const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dockerfile'), 'utf-8');
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
@@ -128,6 +131,36 @@ const sourceToRegExp = (source) => {
     }
   }
   return new RegExp(`^${out}$`);
+};
+
+const conditionMatchesRequest = (condition, { host, query = {} }) => {
+  if (condition.type === 'host') return new RegExp(condition.value).test(host);
+  if (condition.type === 'query') {
+    const actual = query[condition.key];
+    if (actual === undefined) return false;
+    return condition.value === undefined || new RegExp(`^(?:${condition.value})$`).test(actual);
+  }
+  return false;
+};
+
+const firstRedirectFor = ({ host, path, query = {} }) => {
+  for (const rule of vercelConfig.redirects) {
+    if (!sourceToRegExp(rule.source).test(path)) continue;
+    if (!(rule.has ?? []).every((condition) => conditionMatchesRequest(condition, { host, query }))) continue;
+    if ((rule.missing ?? []).some((condition) => conditionMatchesRequest(condition, { host, query }))) continue;
+    return rule;
+  }
+  return null;
+};
+
+const firstRewriteFor = ({ host, path, query = {} }) => {
+  for (const rule of vercelConfig.rewrites) {
+    if (!sourceToRegExp(rule.source).test(path)) continue;
+    if (!(rule.has ?? []).every((condition) => conditionMatchesRequest(condition, { host, query }))) continue;
+    if ((rule.missing ?? []).some((condition) => conditionMatchesRequest(condition, { host, query }))) continue;
+    return rule;
+  }
+  return null;
 };
 
 const headerRuleMatchesRequest = (rule, { path, host, query = {} }) => {
@@ -308,12 +341,86 @@ describe('crawlable content corpus deployment contracts', () => {
         source.indexOf('npm run build:sitemap') < source.indexOf('npx vite build'),
         name + ' must update public/sitemap.xml before Vite copies public/ into dist/'
       );
+      assert.ok(
+        source.indexOf('node scripts/generate-inventory-facts.mjs') < source.indexOf('npx vite build'),
+        name + ' must generate ignored inventory assets in a clean build context before Vite runs',
+      );
     }
+    assert.ok(
+      dockerfileSource.indexOf('node scripts/generate-inventory-facts.mjs') < dockerfileSource.indexOf('node docker/build-handlers.mjs'),
+      'the self-host image must generate the Edge inventory module before handler bundling',
+    );
+    assert.match(frontendDockerfileSource, /RUN test -s dist\/product-facts\.json/);
+    assert.ok(!packageJson.scripts['build:full'].includes('npm run build:blog &&'), 'build:full must not regenerate inventory facts inside build:blog');
   });
 
   it('builds Vercel when corpus source files change', () => {
     assert.ok(vercelIgnoreSource.includes("'CHANGELOG.md'"));
     assert.ok(vercelIgnoreSource.includes("'docs/snapshots/'"));
+    for (const path of [
+      'docs/docs.json',
+      'scripts/crawlable-sources-page.mjs',
+      'scripts/source-origin.mjs',
+      'scripts/source-origin.d.mts',
+      'scripts/generate-inventory-facts.mjs',
+      'scripts/docs-stats.mjs',
+      'scripts/source-attribution.mjs',
+    ]) {
+      assert.equal(vercelIgnoreSource.split(`'${path}'`).length - 1, 2, `${path} must trigger main and preview builds`);
+    }
+  });
+
+  it('builds Vercel on main and preview for generated web-input changes', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'wm-vercel-ignore-'));
+    try {
+      const fixtureEnv = { ...process.env };
+      for (const key of ['GIT_COMMON_DIR', 'GIT_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_WORK_TREE']) {
+        delete fixtureEnv[key];
+      }
+      const git = (...args) => execFileSync('git', args, { cwd: fixture, env: fixtureEnv, encoding: 'utf8' });
+
+      git('init', '-q');
+      git('config', 'user.email', 'test@example.com');
+      git('config', 'user.name', 'Test');
+      writeFileSync(join(fixture, 'README.md'), 'base\n');
+      git('add', 'README.md');
+      git('commit', '-qm', 'base');
+
+      for (const path of [
+        'docs/docs.json',
+        'scripts/crawlable-sources-page.mjs',
+        'scripts/source-origin.mjs',
+        'scripts/source-origin.d.mts',
+        'scripts/generate-inventory-facts.mjs',
+        'scripts/docs-stats.mjs',
+        'scripts/source-attribution.mjs',
+      ]) {
+        const previous = git('rev-parse', 'HEAD').trim();
+        mkdirSync(dirname(join(fixture, path)), { recursive: true });
+        writeFileSync(join(fixture, path), `${path}\n`);
+        git('add', path);
+        git('commit', '-qm', path);
+        assert.throws(
+          () => execFileSync('/bin/bash', [resolve(__dirname, '../scripts/vercel-ignore.sh')], {
+            cwd: fixture,
+            env: { ...fixtureEnv, VERCEL_GIT_COMMIT_REF: 'main', VERCEL_GIT_PREVIOUS_SHA: previous },
+          }),
+          (error) => error?.status === 1,
+          `${path} must request a Vercel build`,
+        );
+        git('update-ref', 'refs/remotes/origin/main', previous);
+        assert.throws(
+          () => execFileSync('/bin/bash', [resolve(__dirname, '../scripts/vercel-ignore.sh')], {
+            cwd: fixture,
+            env: { ...fixtureEnv, VERCEL_GIT_COMMIT_REF: 'feature/source-catalog' },
+          }),
+          (error) => error?.status === 1,
+          `${path} must request a Vercel preview build`,
+        );
+      }
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
   });
 
   it('keeps corpus inputs available in Docker build contexts', () => {
@@ -633,7 +740,7 @@ describe('welcome landing page routing', () => {
     assert.ok(rewrite, 'expected a rewrite for /');
     assert.equal(rewrite.destination, '/pro/welcome.html');
     assert.deepEqual(rewrite.has, [
-      { type: 'host', value: APP_ROOT_HOST_PATTERN },
+      { type: 'host', value: '^(?:www\\.)?worldmonitor\\.app$' },
     ]);
   });
 
@@ -669,8 +776,8 @@ describe('welcome landing page routing', () => {
     for (const host of variantHosts) {
       assert.equal(
         rootDestinationForHost(host),
-        '/pro/welcome.html',
-        `${host}/ must serve the welcome page; the variant dashboard route is /dashboard`
+        DASHBOARD_HTML_DESTINATION,
+        `${host}/ welcome rewrite is dead — the / 308 wins in production, and the fallback is the SPA catch-all`
       );
     }
   });
@@ -773,13 +880,21 @@ describe('welcome landing page routing', () => {
   });
 
   it('renames the web dashboard HTML output away from root index.html', () => {
-    assert.match(viteConfigSource, /function dashboardHtmlOutputPlugin\(\)/);
-    assert.match(viteConfigSource, /enforce:\s*'post'/);
-    assert.match(viteConfigSource, /Object\.entries\(bundle\)\.find/);
-    assert.match(viteConfigSource, /output\.fileName === 'index\.html'/);
-    assert.match(viteConfigSource, /delete bundle\[bundleKey\]/);
-    assert.match(viteConfigSource, /dashboardHtml\.fileName = 'dashboard\.html'/);
-    assert.match(viteConfigSource, /!isDesktopBuild && dashboardHtmlOutputPlugin\(\)/);
+    // Assert the build's OUTPUT, not the plugin's internals. Vercel's
+    // filesystem precedence serves a root index.html at / ahead of every
+    // rewrite above, so what matters is that the web build emits
+    // dashboard.html and leaves no index.html behind — however the plugin
+    // happens to accomplish it.
+    const distDir = resolve(__dirname, '../dist');
+    const dashboardHtml = join(distDir, 'dashboard.html');
+    if (shouldSkipBuiltOutput(dashboardHtml)) return;
+    guardBuiltOutput(dashboardHtml);
+
+    assert.ok(existsSync(dashboardHtml), 'web build must emit dist/dashboard.html');
+    assert.ok(
+      !existsSync(join(distDir, 'index.html')),
+      'web build must not leave a root dist/index.html — Vercel would serve it at / ahead of the dashboard rewrite',
+    );
   });
 
   it('does not keep stale welcome exclusions in the SPA catch-all rewrite', () => {
@@ -2210,23 +2325,50 @@ describe('agent readiness: api-catalog + openapi build', () => {
     );
   });
 
-  it('every web-variant build chains npm run build:openapi', () => {
+  it('every web-variant build regenerates inventory facts and OpenAPI', () => {
     // build:desktop and build:pro are intentionally excluded — Tauri
     // sidecar builds and the standalone pro-test workspace don't ship
     // the OpenAPI spec.
-    const webVariants = ['build:full', 'build:tech', 'build:finance', 'build:happy', 'build:commodity'];
-    for (const variant of webVariants) {
-      const script = pkg.scripts[variant];
-      assert.ok(script, `package.json must define scripts["${variant}"]`);
+    const declaredVariants = variantDashboardSource
+      .match(/WEB_DASHBOARD_VARIANTS\s*=\s*\[([^\]]+)\]/)?.[1]
+      .match(/'[^']+'/g)
+      ?.map((value) => value.slice(1, -1));
+    assert.ok(declaredVariants?.length, 'WEB_DASHBOARD_VARIANTS extraction must not be empty');
+
+    for (const variant of ['full', ...declaredVariants]) {
+      const buildName = `build:${variant}`;
+      const prebuildName = `prebuild:${variant}`;
+      const script = pkg.scripts[buildName];
+      assert.ok(script, `package.json must define scripts["${buildName}"]`);
       assert.ok(
         script.includes('npm run build:openapi'),
-        `scripts["${variant}"] must chain "npm run build:openapi" so the web bundle ships the spec; got: ${script}`
+        `scripts["${buildName}"] must chain "npm run build:openapi" so the web bundle ships the spec; got: ${script}`
+      );
+      assert.equal(
+        pkg.scripts[prebuildName],
+        'npm run product:facts',
+        `scripts["${prebuildName}"] must regenerate ignored inventory facts before ${buildName}`,
       );
     }
   });
 
   it('keeps a prebuild hook so the default `npm run build` path also copies the spec', () => {
-    assert.ok(pkg.scripts.prebuild, 'package.json must define scripts["prebuild"] (default build path uses it)');
+    assert.ok(
+      pkg.scripts.prebuild?.includes('npm run product:facts'),
+      'package.json scripts["prebuild"] must regenerate ignored product and inventory facts',
+    );
+    assert.ok(
+      pkg.scripts.prebuild?.includes('npm run build:openapi'),
+      'package.json scripts["prebuild"] must copy the generated OpenAPI spec',
+    );
+  });
+
+  it('regenerates ignored inventory facts before the Tauri desktop build', () => {
+    assert.equal(
+      pkg.scripts['prebuild:desktop'],
+      'npm run product:facts',
+      'Tauri packages api/ and public/ resources, so build:desktop must regenerate ignored facts',
+    );
   });
 
   it('openapi source exists at docs/api/worldmonitor.openapi.yaml', () => {
@@ -2698,7 +2840,8 @@ describe('agent readiness: homepage Link headers', () => {
 // Lighthouse's robots.txt validator safelists `content-signal`, so the
 // directive no longer costs SEO points (#4471 history).
 describe('agent readiness: Content-Signal declarations', () => {
-  const robotsSource = readFileSync(resolve(__dirname, '../public/robots.txt'), 'utf-8');
+  const robotsFiles = ['robots.www.txt', 'robots.variant.txt', 'robots.api.txt'];
+  const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
 
   const headerValue = () => {
     for (const block of vercelConfig.headers ?? []) {
@@ -2714,6 +2857,30 @@ describe('agent readiness: Content-Signal declarations', () => {
     assert.match(value, /ai-train=(yes|no)/);
     assert.match(value, /search=(yes|no)/);
     assert.match(value, /ai-input=(yes|no)/);
+  });
+
+  it('every host robots file declares the same Content-Signal inside the User-agent group', () => {
+    for (const file of robotsFiles) {
+      const source = readFileSync(resolve(__dirname, '../public', file), 'utf-8');
+      const lines = source.split('\n');
+      const uaIndex = lines.findIndex((l) => l.trim().toLowerCase() === 'user-agent: *');
+      assert.ok(uaIndex !== -1, `${file} must have a \`User-agent: *\` group`);
+      const signalIndex = lines.findIndex((l) => l.startsWith('Content-Signal:'));
+      assert.ok(signalIndex > uaIndex, `${file} Content-Signal must appear after \`User-agent: *\``);
+      for (let i = uaIndex + 1; i < signalIndex; i++) {
+        assert.notStrictEqual(
+          lines[i].trim(),
+          '',
+          `${file} Content-Signal must not be separated from its User-agent group by a blank line`
+        );
+      }
+      const robotsValue = lines[signalIndex].slice('Content-Signal:'.length).trim();
+      assert.strictEqual(
+        robotsValue,
+        headerValue(),
+        `${file} Content-Signal must match the vercel.json header value`
+      );
+    }
   });
 
   it('robots.txt declares the same Content-Signal inside the User-agent group', () => {
@@ -2740,16 +2907,18 @@ describe('agent readiness: Content-Signal declarations', () => {
   it('every Content-Signal line in robots.txt matches the header (multi-group)', () => {
     // The AI-agent groups added in #4952 carry their own Content-Signal
     // directive; none of the copies may drift from the origin-wide header.
-    const signalLines = robotsSource
-      .split('\n')
-      .filter((l) => l.startsWith('Content-Signal:'));
-    assert.ok(signalLines.length >= 1, 'robots.txt must declare Content-Signal');
-    for (const line of signalLines) {
-      assert.strictEqual(
-        line.slice('Content-Signal:'.length).trim(),
-        headerValue(),
-        'every robots.txt Content-Signal must match the vercel.json header value'
-      );
+    for (const file of robotsFiles) {
+      const signalLines = readFileSync(resolve(__dirname, '../public', file), 'utf-8')
+        .split('\n')
+        .filter((l) => l.startsWith('Content-Signal:'));
+      assert.ok(signalLines.length >= 1, `${file} must declare Content-Signal`);
+      for (const line of signalLines) {
+        assert.strictEqual(
+          line.slice('Content-Signal:'.length).trim(),
+          headerValue(),
+          `${file} Content-Signal must match the vercel.json header value`
+        );
+      }
     }
   });
 });
@@ -2760,7 +2929,7 @@ describe('agent readiness: Content-Signal declarations', () => {
 // crawlers would lose the /api/ protections. The training-only group must
 // stay a hard `Disallow: /`.
 describe('agent readiness: robots.txt AI crawler policy', () => {
-  const robotsSource = readFileSync(resolve(__dirname, '../public/robots.txt'), 'utf-8');
+  const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
 
   // Minimal robots.txt group parser: consecutive User-agent lines share one
   // group; a blank line or a User-agent line following rules starts a new one;
@@ -3117,7 +3286,7 @@ describe('markdown canonical Link headers (#4999)', () => {
   // agents, so they cannot carry a <link rel="canonical">. RFC 6596 allows the
   // HTTP Link header form; without it these are the only indexable URLs with
   // no canonical signal at all.
-  const MD_PAGES = ['/pricing.md', '/support.md', '/ai-search.md', '/developers.md', '/mcp-server.md', '/openapi.md', '/sdks.md'];
+  const MD_PAGES = ['/pricing.md', '/support.md', '/ai-search.md', '/developers.md', '/mcp-server.md', '/openapi.md', '/sdks.md', '/auth.md', '/agents.md', '/home.md'];
 
   for (const page of MD_PAGES) {
     it(`${page} declares a self-referencing canonical Link header`, () => {
@@ -3129,6 +3298,18 @@ describe('markdown canonical Link headers (#4999)', () => {
       assert.strictEqual(
         getHeaderValueForSource(page, 'Content-Type'),
         'text/markdown; charset=utf-8'
+      );
+    });
+  }
+
+  const CORPUS_PAGES = ['/llms.txt', '/llms-full.txt', '/agent.txt', '/openapi.yaml', '/openapi.json', '/schemamap.xml'];
+
+  for (const page of CORPUS_PAGES) {
+    it(`${page} declares a www canonical Link header`, () => {
+      assert.strictEqual(
+        getHeaderValueForSource(page, 'Link'),
+        `<https://www.worldmonitor.app${page}>; rel="canonical"`,
+        `${page} must self-canonicalize on the www host via the Link header`
       );
     });
   }
@@ -3351,5 +3532,306 @@ describe('skeleton brand text extraction (#5541)', () => {
 
   it('.skeleton-brand-mark renders "W" via CSS content pseudo-element', () => {
     assert.match(indexHtml, /\.skeleton-brand-mark::after\s*\{\s*content:\s*"W"\s*\}/, 'skeleton-brand-mark must render W via CSS ::after content');
+  });
+});
+
+// #6832/#6833/#6834/#6835/#6836 — one Vercel project serves every host, so
+// shared HTML/XML on tech/finance/commodity/happy/energy/api is crawled as
+// alternates (or, for RSS, duplicates with no user-selected canonical).
+describe('variant-host canonicalization (#6833–#6836)', () => {
+  const docsHostRedirect = vercelConfig.redirects.find(
+    (r) => r.source === '/docs/:match*' && r.has
+  );
+  const sharedHostValue = (docsHostRedirect?.has ?? []).find((h) => h.type === 'host')?.value ?? '';
+  const sharedHostRe = new RegExp(sharedHostValue);
+  const dashboardVariantHosts = vercelConfig.rewrites
+    .filter((r) => r.source === '/dashboard' && r.has)
+    .map((r) => (r.has ?? []).find((h) => h.type === 'host')?.value ?? '')
+    .filter(Boolean);
+
+  const hostRedirect = (source, hostNeedle) =>
+    vercelConfig.redirects.find((r) => {
+      if (r.source !== source) return false;
+      const hostValue = (r.has ?? []).find((h) => h.type === 'host')?.value ?? '';
+      return hostNeedle ? hostValue.includes(hostNeedle) : Boolean(r.has);
+    });
+
+  const SHARED_WWW_PREFIXES = [
+    'blog',
+    'countries',
+    'chokepoints',
+    'research',
+    'tools',
+    'crises',
+    'reference',
+    'sources',
+  ];
+
+  it('keeps the docs host regex as the single shared-content host list', () => {
+    assert.ok(sharedHostValue, 'docs host redirect must exist so shared-content 308s can share its host list');
+    for (const host of [...dashboardVariantHosts, 'api.worldmonitor.app']) {
+      assert.match(host, sharedHostRe, `${host} must stay in the shared-content host regex`);
+    }
+    assert.ok(!sharedHostRe.test('www.worldmonitor.app'), 'www must not be redirected off itself');
+    assert.ok(!sharedHostRe.test('worldmonitor.app'), 'apex must not inherit variant 308s');
+  });
+
+  for (const prefix of SHARED_WWW_PREFIXES) {
+    it(`308s variant/api /${prefix}/* to www (#6833)`, () => {
+      const redirect = hostRedirect(`/${prefix}/:match*`, 'tech');
+      assert.ok(redirect, `expected a host-conditioned 308 for /${prefix}/:match*`);
+      assert.equal(redirect.destination, `https://www.worldmonitor.app/${prefix}/:match*`);
+      assert.equal(redirect.permanent, true);
+      const hostValue = (redirect.has ?? []).find((h) => h.type === 'host')?.value;
+      assert.equal(
+        hostValue,
+        sharedHostValue,
+        `/${prefix}/:match* must reuse the /docs host regex so a new variant cannot ship uncovered`
+      );
+    });
+  }
+
+  it('308s variant/api /pro exactly, never /pro/assets (#6833)', () => {
+    const redirect = hostRedirect('/pro', 'tech');
+    assert.ok(redirect, 'expected a host-conditioned 308 for /pro');
+    assert.equal(redirect.destination, 'https://www.worldmonitor.app/pro');
+    assert.equal(redirect.permanent, true);
+    assert.equal((redirect.has ?? []).find((h) => h.type === 'host')?.value, sharedHostValue);
+    assert.equal(
+      vercelConfig.redirects.some((r) => r.source === '/pro/:match*' && r.has),
+      false,
+      '/pro/:match* would 308 hashed /pro/assets/* off the variant host'
+    );
+  });
+
+  it('308s prefix-less /zh/* into /docs/zh on www on every host (#6833)', () => {
+    const redirect = vercelConfig.redirects.find((r) => r.source === '/zh/:match*');
+    assert.ok(redirect, 'expected a redirect for /zh/:match*');
+    assert.equal(redirect.destination, 'https://www.worldmonitor.app/docs/zh/:match*');
+    assert.equal(redirect.permanent, true);
+    assert.equal(redirect.has, undefined, '/zh/* is a Mintlify leak — must apply on www too');
+  });
+
+  it('308s product-variant / to same-host /dashboard (#6833)', () => {
+    const redirect = vercelConfig.redirects.find((r) =>
+      r.source === '/' && r.destination === '/dashboard'
+    );
+    assert.ok(redirect, 'expected a host-conditioned 308 for product-variant /');
+    assert.equal(redirect.destination, '/dashboard');
+    assert.equal(redirect.permanent, true);
+    const hostRe = new RegExp((redirect.has ?? []).find((h) => h.type === 'host')?.value ?? '');
+    for (const host of dashboardVariantHosts) {
+      assert.match(host, hostRe, `${host}/ must 308 to /dashboard`);
+    }
+    assert.ok(!hostRe.test('www.worldmonitor.app'), 'www / must stay the welcome page');
+    assert.ok(!hostRe.test('worldmonitor.app'), 'apex / must stay the welcome page');
+    assert.ok(!hostRe.test('api.worldmonitor.app'), 'api / is not a product variant');
+  });
+
+  it('308s api / to www / (#6833)', () => {
+    const redirect = firstRedirectFor({ host: 'api.worldmonitor.app', path: '/' });
+    assert.ok(redirect, 'expected a host-conditioned 308 for api.worldmonitor.app/');
+    assert.equal(redirect.destination, 'https://www.worldmonitor.app/');
+    assert.equal(redirect.permanent, true);
+    const hostValue = (redirect.has ?? []).find((h) => h.type === 'host')?.value ?? '';
+    assert.ok(new RegExp(hostValue).test('api.worldmonitor.app'));
+    assert.ok(!new RegExp(hostValue).test('www.worldmonitor.app'));
+  });
+
+  it('evaluates first-match redirects by host and path (#6833)', () => {
+    const tech = 'tech.worldmonitor.app';
+    assert.equal(firstRedirectFor({ host: tech, path: '/' })?.destination, '/dashboard');
+    assert.equal(firstRedirectFor({ host: tech, path: '/', query: { mode: 'agent' } }), null);
+    assert.equal(firstRedirectFor({ host: 'www.worldmonitor.app', path: '/' }), null);
+    assert.equal(firstRedirectFor({ host: 'worldmonitor.app', path: '/' }), null);
+    assert.equal(firstRedirectFor({ host: 'api.worldmonitor.app', path: '/' })?.destination, 'https://www.worldmonitor.app/');
+    assert.equal(
+      firstRedirectFor({ host: tech, path: '/blog/rss.xml' })?.destination,
+      'https://www.worldmonitor.app/blog/:match*'
+    );
+    assert.equal(firstRedirectFor({ host: tech, path: '/pro' })?.destination, 'https://www.worldmonitor.app/pro');
+    assert.equal(firstRedirectFor({ host: tech, path: '/pro/' })?.destination, 'https://www.worldmonitor.app/pro');
+    assert.equal(firstRedirectFor({ host: tech, path: '/pro/assets/index-abc.js' }), null);
+    assert.equal(firstRedirectFor({ host: tech, path: '/dashboard' }), null);
+    assert.equal(
+      firstRedirectFor({ host: tech, path: '/zh/mcp-error-catalog' })?.destination,
+      'https://www.worldmonitor.app/docs/zh/:match*'
+    );
+    assert.equal(firstRewriteFor({ host: tech, path: '/', query: { mode: 'agent' } })?.destination, '/agent-view.json');
+  });
+
+  it('does not 308 variant /dashboard to www (#6833)', () => {
+    const dashboardToWww = vercelConfig.redirects.filter((r) =>
+      r.source === '/dashboard' && String(r.destination).includes('www.worldmonitor.app')
+    );
+    assert.deepEqual(dashboardToWww, [], 'variant /dashboard is the indexable product URL');
+  });
+
+  it('places shared-content 308s before host-agnostic trailing-slash redirects (#6833)', () => {
+    const blogIdx = vercelConfig.redirects.findIndex((r) => r.source === '/blog/:match*' && r.has);
+    const slashIdx = vercelConfig.redirects.findIndex((r) => r.source === '/countries' && !r.has);
+    assert.ok(blogIdx >= 0, 'missing /blog/:match* host 308');
+    assert.ok(slashIdx >= 0, 'missing /countries trailing-slash redirect');
+    assert.ok(blogIdx < slashIdx, 'host 308s must run before same-host slash normalization');
+  });
+
+  it('advertises the www RSS feed as the user-selected canonical (#6834)', () => {
+    assert.equal(
+      getHeaderValueForSource('/blog/rss.xml', 'Link'),
+      '<https://www.worldmonitor.app/blog/rss.xml>; rel="canonical"'
+    );
+    assert.equal(getHeaderValueForSource('/blog/rss.xml', 'X-Robots-Tag'), 'noindex, follow');
+  });
+
+  it('blog HTML autodiscovery points at the absolute www feed (#6834)', () => {
+    const layout = readFileSync(resolve(__dirname, '../blog-site/src/layouts/Base.astro'), 'utf-8');
+    assert.match(
+      layout,
+      /rel="alternate"[^>]*type="application\/rss\+xml"[^>]*href="https:\/\/www\.worldmonitor\.app\/blog\/rss\.xml"/
+    );
+    assert.doesNotMatch(
+      layout,
+      /rel="alternate"[^>]*href="\/blog\/rss\.xml"/,
+      'relative /blog/rss.xml on a variant-host 200 teaches Google a new feed URL'
+    );
+    const rss = readFileSync(resolve(__dirname, '../blog-site/src/pages/rss.xml.ts'), 'utf-8');
+    assert.match(rss, /atom:link href="https:\/\/www\.worldmonitor\.app\/blog\/rss\.xml" rel="self"/);
+  });
+
+  it('rewrites variant and api /robots.txt to dedicated files (#6835)', () => {
+    assert.equal(
+      existsSync(resolve(__dirname, '../public/robots.txt')),
+      false,
+      'public/robots.txt would win filesystem precedence and ignore host rewrites (#4825 class)'
+    );
+    assert.ok(existsSync(resolve(__dirname, '../public/robots.www.txt')));
+    assert.equal(firstRewriteFor({ host: 'tech.worldmonitor.app', path: '/robots.txt' })?.destination, '/robots.variant.txt');
+    assert.equal(firstRewriteFor({ host: 'happy.worldmonitor.app', path: '/robots.txt' })?.destination, '/robots.variant.txt');
+    assert.equal(firstRewriteFor({ host: 'api.worldmonitor.app', path: '/robots.txt' })?.destination, '/robots.api.txt');
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/robots.txt' })?.destination, '/robots.www.txt');
+    assert.equal(
+      vercelConfig.redirects.some((r) => r.source === '/robots.txt'),
+      false,
+      '/robots.txt must 200 on every host — never 308 to www'
+    );
+  });
+
+  it('variant robots.txt keeps /dashboard crawlable and does not Disallow 308 families (#6835)', () => {
+    const body = readFileSync(resolve(__dirname, '../public/robots.variant.txt'), 'utf-8');
+    for (const path of [...SHARED_WWW_PREFIXES.map((p) => `/${p}`), '/docs', '/zh']) {
+      assert.doesNotMatch(
+        body,
+        new RegExp(`^Disallow: ${path.replace('/', '\\/')}$`, 'm'),
+        `Disallow ${path} would hide the 308 from a compliant crawler`
+      );
+    }
+    for (const path of ['/pro', '/api/', '/tests/']) {
+      assert.match(body, new RegExp(`^Disallow: ${path.replace('/', '\\/')}$`, 'm'), `variant robots must Disallow ${path}`);
+    }
+    assert.match(body, /^Allow: \/dashboard$/m);
+    assert.doesNotMatch(body, /^Disallow: \/dashboard$/m);
+    assert.match(body, /^Sitemap: https:\/\/www\.worldmonitor\.app\/sitemap\.xml$/m);
+  });
+
+  it('api robots.txt does not invite a marketing crawl of / (#6835)', () => {
+    const body = readFileSync(resolve(__dirname, '../public/robots.api.txt'), 'utf-8');
+    assert.match(body, /^Disallow: \/$/m);
+    assert.match(body, /^Allow: \/api\/llms\.txt$/m);
+    assert.match(body, /^Allow: \/api\/product-catalog$/m);
+    assert.match(body, /^Allow: \/\.well-known\/$/m);
+    assert.match(body, /^Allow: \/mcp$/m);
+    assert.match(body, /^Allow: \/a2a$/m);
+    assert.match(body, /^Allow: \/llms\.txt$/m);
+    assert.match(body, /^Disallow: \/pro$/m);
+  });
+
+  it('308s www /reference/ to the changelog so empty :match* is not a 404', () => {
+    assert.equal(
+      firstRedirectFor({ host: 'www.worldmonitor.app', path: '/reference/' })?.destination,
+      '/reference/changelog/',
+    );
+    assert.equal(
+      firstRedirectFor({ host: 'tech.worldmonitor.app', path: '/reference/' })?.destination,
+      '/reference/changelog/',
+    );
+    assert.equal(
+      firstRedirectFor({ host: 'tech.worldmonitor.app', path: '/reference' })?.destination,
+      'https://www.worldmonitor.app/reference/:match*',
+    );
+  });
+
+  it('keeps the SPA catch-all rewrite and cache-header regex identical', () => {
+    const catchAllRewrite = vercelConfig.rewrites.find((r) =>
+      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
+    );
+    const catchAllHeader = vercelConfig.headers.find((r) => r.source === catchAllRewrite?.source);
+    assert.ok(catchAllRewrite, 'expected the SPA catch-all rewrite');
+    assert.ok(catchAllHeader, 'expected a cache-header rule whose source matches the SPA catch-all');
+    assert.equal(catchAllRewrite.source, catchAllHeader.source);
+    assert.equal(catchAllRewrite.source, SPA_HTML_CACHE_SOURCE);
+  });
+
+  it('variant and api robots keep AI-group rule parity with their own * group (#6835)', () => {
+    const parseGroups = (source) => {
+      const groups = [];
+      let current = null;
+      for (const raw of source.split('\n')) {
+        const line = raw.trim();
+        if (line === '') {
+          current = null;
+          continue;
+        }
+        if (line.startsWith('#')) continue;
+        const colon = line.indexOf(':');
+        if (colon === -1) continue;
+        const key = line.slice(0, colon).trim().toLowerCase();
+        const value = line.slice(colon + 1).trim();
+        if (key === 'user-agent') {
+          if (!current || current.rules.length > 0) {
+            current = { agents: [], rules: [] };
+            groups.push(current);
+          }
+          current.agents.push(value.toLowerCase());
+        } else if (current && (key === 'allow' || key === 'disallow')) {
+          current.rules.push(`${key}: ${value}`);
+        }
+      }
+      return groups;
+    };
+
+    for (const file of ['robots.variant.txt', 'robots.api.txt']) {
+      const groups = parseGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
+      const star = groups.find((g) => g.agents.includes('*'));
+      const ai = groups.find((g) => g.agents.includes('gptbot'));
+      const training = groups.find((g) => g.agents.includes('ccbot'));
+      assert.ok(star, `${file} must have a * group`);
+      assert.ok(ai, `${file} must restate the AI search/assistant group`);
+      assert.deepStrictEqual(
+        [...ai.rules].sort(),
+        [...star.rules].sort(),
+        `${file} AI group must restate the * rules`
+      );
+      assert.deepStrictEqual(training?.rules, ['disallow: /']);
+    }
+  });
+
+  it('keeps leaked source/tmp/server paths out of the SPA catch-all (#6836)', () => {
+    const catchAll = vercelConfig.rewrites.find((r) =>
+      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
+    );
+    assert.ok(catchAll, 'expected the SPA catch-all rewrite');
+    const matcher = sourceToRegExp(catchAll.source);
+    for (const path of [
+      '/src/generated/server/worldmonitor/seismology/v1/service_server',
+      '/tmp/gem-drops.log',
+      '/server/worldmonitor/intelligence/v1/_risk-config.ts',
+      '/llms*.txt',
+    ]) {
+      assert.equal(matcher.test(path), false, `${path} must 404 instead of serving dashboard.html`);
+    }
+    assert.equal(matcher.test('/country-intel'), true, 'client-side app routes must still hit the catch-all');
+    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|src|'), 'HTML cache catch-all must exclude /src');
+    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|tmp|'), 'HTML cache catch-all must exclude /tmp');
+    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|server|'), 'HTML cache catch-all must exclude /server');
   });
 });
