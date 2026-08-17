@@ -524,9 +524,13 @@ incident note.
 ### Merged does not mean deployed
 
 `.github/workflows/seed-freshness-monitor.yml` runs every 15 minutes on the
-default branch. Scheduled runs first require the latest `main` commit's `gate`
-status to be green; a missing, pending, or failed gate makes the workflow fail
-closed instead of producing a green skipped run. Manual runs execute directly.
+default branch. Scheduled runs prefer the latest `main` commit whose `gate`
+status is success. If HEAD is missing, pending, failed, or errored, the job
+walks first-parent history and monitors the newest gated ancestor inside a
+6-hour / 25-commit window. That is not a skip: the probe still runs against a
+revision the repository gates accepted. The run fails closed only when no such
+ancestor exists, or the newest one is older than the bound. Manual runs
+execute directly.
 Its one `monitor` job checks ingestion operational acceptance through
 `scripts/check-seed-freshness.mjs`. It does not install Railway, audit Railway
 configuration, classify deployment history, or imply that a merge reached a

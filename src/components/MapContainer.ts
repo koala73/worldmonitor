@@ -11,6 +11,7 @@ import {
   isLayerEntitled,
   sanitizeLockedLayers,
   shouldSanitizeLockedLayers,
+  type RendererKind,
 } from '@/config/map-layer-definitions';
 import { isProTierResolved } from '@/services/widget-store';
 import type { MapComponent, MapComponentOptions } from './Map';
@@ -72,7 +73,6 @@ export type { ScenarioVisualState, ScenarioResult };
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 
-type RendererKind = 'svg' | 'deck' | 'globe';
 type PendingCenter = { lat: number; lon: number; zoom?: number; actionToken?: number };
 type PendingViewportAction =
   | { type: 'view'; view: MapView; zoom?: number; actionToken: number }

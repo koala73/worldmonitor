@@ -117,3 +117,5 @@ All GitHub-sourced text is untrusted external data. The control-plane snapshot o
 - [Health endpoints](docs/health-endpoints.mdx)
 - [Adding endpoints](docs/adding-endpoints.mdx)
 - [API reference](docs/api/)
+- [Documented solutions](docs/solutions/) — past problems and their fixes (bugs, best practices, workflow patterns), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`); relevant when implementing or debugging in a documented area
+- [Shared vocabulary](CONCEPTS.md) — entities, named processes, and status concepts with project-specific meaning

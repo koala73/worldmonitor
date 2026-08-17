@@ -104,9 +104,6 @@ export const INVENTORY_CONTRACTS = Object.freeze([
   contract('notification-country-registry', 'the shared country-name to ISO-2 registry', ['parity'], 'replace', 'Exact authoritative country coverage replaces the parser floor.', [
     surface('tests/notification-relay-country-scope-5359.test.mjs', ['names']),
   ]),
-  contract('consumer-price-health-markets', 'the intentionally enabled consumer-price rollout market set', ['named-member'], 'keep', 'The rollout is a deliberate named set; membership, not an aggregate length, is the contract.', [
-    surface('tests/consumer-prices-coverage-rollout.test.mjs', ['CONSUMER_PRICE_HEALTH_MARKETS']),
-  ]),
   contract('iso2-country-registry', 'the closed ISO alpha-2 registry and its client mirror', ['exact', 'parity'], 'keep', 'ISO alpha-2 is a closed external standard and the client/server sets must remain identical.', [
     surface('convex/__tests__/followed-countries-mutations.test.ts', ['_ISO2_REGISTRY_FOR_TESTS']),
   ]),

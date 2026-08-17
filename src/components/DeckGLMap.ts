@@ -1920,7 +1920,7 @@ export class DeckGLMap {
 
     // Live tanker positions inside chokepoint bounding boxes. AIS ship type
     // 80-89 (tanker class). Refreshed every 60s; one Map<chokepointId, ...>
-    // fetch per layer-tick. deckGLOnly per src/config/map-layer-definitions.ts.
+    // fetch per layer-tick. renderers: ['deck'] per src/config/map-layer-definitions.ts.
     // Powered by the relay's tankerReports field (added in PR 3 U7 alongside
     // the existing military-only candidateReports). Energy Atlas parity-push.
     if (mapLayers.liveTankers) {
@@ -5567,7 +5567,7 @@ export class DeckGLMap {
     const toggles = document.createElement('div');
     toggles.className = 'layer-toggles deckgl-layer-toggles';
 
-    const layerDefs = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat');
+    const layerDefs = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'deck');
     const premiumUnlocked = hasPremiumAccess(getAuthState());
     const layerConfig = layerDefs.map(def => ({
       key: def.key,
@@ -5751,7 +5751,7 @@ export class DeckGLMap {
     this.container.querySelector('.layer-help-popup')?.remove();
     this.container.querySelectorAll('.layer-explain-btn.active').forEach(btn => btn.classList.remove('active'));
 
-    const def = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat').find(item => item.key === layer);
+    const def = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'deck').find(item => item.key === layer);
     const layerLabel = def ? resolveLayerLabel(def, t) : String(layer);
     const explanation = getLayerExplanation(layer);
     const popup = document.createElement('div');
