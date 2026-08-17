@@ -686,6 +686,12 @@ const SEED_META = {
   // snapshots age.
   militaryForecastInputs: { key: 'seed-meta:military-forecast-inputs', maxStaleMin: 30 },
   militarySurges:     { key: 'seed-meta:military-surges',      maxStaleMin: 30 },
+  // #6845 item 3: staleness was invisible — the bases corpus was monitored
+  // only through the presence of military:bases:active. 30-day Military-Bases
+  // cadence (seed-bundle-static-ref); 60d = one fully missed cycle. Gated by
+  // the active-version pointer via ACTIVATION_MARKERS so a deploy that has
+  // never seeded reads as pending instead of CRIT.
+  militaryBasesSeed: { key: 'seed-meta:military:bases', maxStaleMin: 86_400, minRecordCount: 100_000 },
   militaryCii:      { key: 'seed-meta:intelligence:military-cii',  maxStaleMin: 45 }, // seed-military-cii cron ~10min; 45 = generous grace (relay-dependent; preserve-last-good runs still refresh meta)
   defensePatents:   { key: 'seed-meta:military:defense-patents',  maxStaleMin: 25200 },
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 240 }, // CelesTrak every 120min; 240min = absorbs one missed cycle
@@ -1187,6 +1193,10 @@ const ON_DEMAND_KEYS = new Set([
   // absence must be EMPTY/CRIT rather than on-demand.
   'macroSignals', 'chokepoints', 'minerals', 'giving',
   'cyberThreatsRpc', 'militaryBases', 'displacement',
+  // #6845 item 3: same deploy-before-first-tick bridge as cbrRates above —
+  // the seed-activated marker written by seed-military-bases.mjs turns the
+  // militaryBasesSeed staleness alarm on for good after the first publish.
+  'militaryBasesSeed',
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
   // marketImplications removed 2026-05-01 — see policy block above. Homepage panel,
@@ -1242,6 +1252,11 @@ const ON_DEMAND_KEYS = new Set([
 const ACTIVATION_MARKERS = {
   chinaCoverage: 'seed-activated:health:china-coverage',
   companyMonitoringWorker: 'seed-activated:company-monitoring:worker',
+  // Written by seed-military-bases.mjs after the first successful publish (or
+  // a successful restore from live data), so a deployment that has never
+  // seeded reads as pending rather than CRIT, and the first publish arms the
+  // militaryBasesSeed staleness alarm forever (#6845 item 3).
+  militaryBasesSeed: 'seed-activated:military:bases',
   // Written by scripts/seed-cbr-rates.mjs (CBR_ACTIVATION_KEY) in runSeed's
   // afterPublish hook, so it exists only once a real table has been published.
   cbrRates: 'seed-activated:economic:cbr-rates',

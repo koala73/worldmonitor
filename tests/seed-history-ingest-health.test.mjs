@@ -1055,6 +1055,11 @@ describe('a prolonged relay rejection is visible in /api/seed-health', () => {
             ])),
           }) };
         }
+        if (key === 'seed-meta:military:bases') {
+          // #6845: the bases domain now carries a 100k integrity floor; the
+          // generic fresh-and-healthy default below does not clear it.
+          return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 125_380 }) };
+        }
         if (key === PORTWATCH_META_KEY) {
           const observedAt = Date.now() - 60 * 60_000;
           return {

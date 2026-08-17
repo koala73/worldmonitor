@@ -121,6 +121,11 @@ function installSeedHealthPipelineMock(
       // This fixture isolates the PortWatch entry. Keep every unrelated
       // coverage-gated feed above its floor so a new minRecordCount contract
       // cannot turn the aggregate warning for an unrelated reason.
+      if (key === 'seed-meta:military:bases') {
+        // #6845: the bases domain carries a 100k integrity floor the
+        // generic fresh-and-healthy default does not clear.
+        return { result: JSON.stringify({ fetchedAt: now, recordCount: 125_380 }) };
+      }
       return { result: JSON.stringify({ fetchedAt: now, recordCount: 10_000 }) };
     });
     return new Response(JSON.stringify(results), {

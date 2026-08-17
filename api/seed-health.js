@@ -132,6 +132,18 @@ const SEED_DOMAINS = {
   'intelligence:gpsjam':      { key: 'seed-meta:intelligence:gpsjam',      intervalMin: 720 }, // 720 × 2 = 1440min (24h) staleness; matches api/health.js gpsjam.maxStaleMin. Widened from 360 (12h) on 2026-04-29 alongside Wingbits API quota incident — see PR #3494 + the seeder graceful-failure path at scripts/fetch-gpsjam.mjs:258-262.
   'intelligence:satellites':  { key: 'seed-meta:intelligence:satellites',  intervalMin: 90 },
   'military:flights':         { key: 'seed-meta:military:flights',         intervalMin: 8 },
+  // #6845 item 3: staleness was invisible — this endpoint had no entry for the
+  // bases corpus at all, and /api/health checked only the presence of
+  // military:bases:active. The seeder runs on Military-Bases' 30-day cadence
+  // (seed-bundle-static-ref), so intervalMin = one cadence and stale fires at
+  // 2x = one fully missed cycle. activationKey is the active-version pointer
+  // itself: atomicSwitch writes it atomically with seed-meta, so a deployment
+  // that has never published reads as pending-activation rather than missing,
+  // while the #6806 missing-marker case (pointer present, seed-meta absent)
+  // still alarms and forces the repair path to matter. minRecordCount floors
+  // the corpus near the published 125,380 — the integrity half of the item: a
+  // degenerate partial seed must not read as a healthy quiet cycle.
+  'military:bases':           { key: 'seed-meta:military:bases',           intervalMin: 43200, activationKey: 'seed-activated:military:bases', minRecordCount: 100_000 },
   'military:cross-strait-activity': { key: 'seed-meta:military:cross-strait-activity', intervalMin: 180 },
   'military:cross-strait-activity-bootstrap': { key: 'seed-meta:military:cross-strait-activity-bootstrap', intervalMin: 180 },
   'military:cross-strait-activity:complete': { key: 'seed-meta:military:cross-strait-activity:complete', intervalMin: 180 },
