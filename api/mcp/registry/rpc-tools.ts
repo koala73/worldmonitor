@@ -961,8 +961,16 @@ export const RPC_TOOLS: ToolDef[] = [
       // gateway-backed path to retain entitlement and replay protection.
       const insightsUrl = `${base}/api/infrastructure/v1/get-bootstrap-data?keys=insights`;
       const insightsAuth = await buildAuthHeaders(context, 'GET', insightsUrl, null);
+      // On a self-hosted install `base` is the sidecar's own loopback origin,
+      // whose global auth gate requires the per-session LOCAL_API_TOKEN (the
+      // MCP key authenticates the client, not this internal hop). Route the
+      // headers through the loopback helper so the process attaches the token
+      // it already holds — mirroring get_defense_industrial_base (#6538).
       const insightsRes = await fetch(insightsUrl, {
-        headers: { ...insightsAuth, 'User-Agent': UA },
+        headers: buildMcpDownstreamHeaders(base, execution, {
+          ...insightsAuth,
+          'User-Agent': UA,
+        }),
         signal: AbortSignal.timeout(6_000),
       });
       await assertMcpToolFetchOk(insightsRes, {
