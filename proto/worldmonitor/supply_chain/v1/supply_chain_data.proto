@@ -2,20 +2,76 @@ syntax = "proto3";
 
 package worldmonitor.supply_chain.v1;
 
+import "sebuf/http/annotations.proto";
+
 message ShippingRatePoint {
   string date = 1;
   double value = 2;
+}
+
+// Basis for the decision-grade period-over-period change. The custom JSON
+// values preserve the lowercase strings already present in Redis and consumed
+// by downstream matchers while exposing a closed taxonomy to generated clients
+// and OpenAPI.
+enum PeriodChangeBasis {
+  PERIOD_CHANGE_BASIS_UNSPECIFIED = 0;
+  PERIOD_CHANGE_BASIS_PUBLISHER_REPORTED = 1 [(sebuf.http.enum_value) = "publisher_reported"];
+  PERIOD_CHANGE_BASIS_DERIVED_FROM_PRIOR_PERIOD_LEVEL = 2 [(sebuf.http.enum_value) = "derived_from_prior_period_level"];
 }
 
 message ShippingIndex {
   string index_id = 1;
   string name = 2;
   double current_value = 3;
+  // Legacy display field. For the Shanghai Shipping Exchange indices (SCFI,
+  // CCFI) this DELIBERATELY falls back to the current level when the exchange
+  // published no comparable prior, so it cannot distinguish "unchanged week"
+  // from "no prior at all". Use prior_period_value for decision work.
   double previous_value = 4;
+  // Legacy display field with the same fail-OPEN fallback as previous_value
+  // (a flat 0 when no prior exists). Use period_change_pct for decision work.
   double change_pct = 5;
   string unit = 6;
   repeated ShippingRatePoint history = 7;
   bool spike_alert = 8;
+  // Decision-grade period-over-period move in percent (#6066). Optional so a
+  // missing reading is ABSENT from the response rather than collapsing to 0,
+  // which would render identically to a real unchanged period. Fails CLOSED:
+  // present only when the publisher reported its own percentage or a
+  // comparable prior-period level. A single index level never becomes a
+  // change. The endpoint normalizes a missing reading to ABSENT (canonical
+  // ProtoJSON: serializers omit, parsers treat null as unset) — a plain JSON
+  // client can still tell absent from null, so read absence, not null.
+  optional double period_change_pct = 9;
+  // Provenance of period_change_pct: "publisher_reported" when the exchange
+  // published the percentage itself, or "derived_from_prior_period_level"
+  // when it was computed from prior_period_value. Absent whenever
+  // period_change_pct is absent.
+  optional PeriodChangeBasis period_change_basis = 10;
+  // The publisher's own prior-period index level that period_change_pct was
+  // measured against. Absent when the publisher shipped no comparable prior.
+  optional double prior_period_value = 11;
+  // Observation date (YYYY-MM-DD) of prior_period_value, as published. Absent
+  // whenever prior_period_value is absent, or when the publisher dated the
+  // level only implicitly.
+  optional string prior_period_date = 12;
+}
+
+// Coverage basis behind a PortWatch-derived flow estimate: "portwatch-dwt"
+// when the rolling baseline window has DWT-majority coverage, otherwise
+// "portwatch-counts" for vessel-count coverage. FLOW_SOURCE_UNSPECIFIED means
+// the cached estimate carried a basis this taxonomy does not list, which the
+// endpoint reports rather than passing through undeclared.
+//
+// Carries the per-value semantics because an enum-typed field takes its
+// generated OpenAPI description from the enum, not from the field. The custom
+// JSON values preserve the strings seed-chokepoint-flows.mjs already writes to
+// energy:chokepoint-flows:v1, so promoting this taxonomy out of prose changes
+// no wire value.
+enum FlowSource {
+  FLOW_SOURCE_UNSPECIFIED = 0;
+  FLOW_SOURCE_PORTWATCH_DWT = 1 [(sebuf.http.enum_value) = "portwatch-dwt"];
+  FLOW_SOURCE_PORTWATCH_COUNTS = 2 [(sebuf.http.enum_value) = "portwatch-counts"];
 }
 
 message FlowEstimate {
@@ -32,10 +88,19 @@ message FlowEstimate {
   // rolling baseline window. Separate from the green/yellow/red status badge.
   bool disrupted = 4;
   // Flow source: "portwatch-dwt" when DWT-majority coverage is used,
-  // otherwise "portwatch-counts" for vessel-count coverage.
-  string source = 5;
+  // otherwise "portwatch-counts" for vessel-count coverage. Those are the only
+  // two the seeder emits; FLOW_SOURCE_UNSPECIFIED means the cached estimate
+  // carried a coverage basis this taxonomy does not list, which the endpoint
+  // reports rather than passing through undeclared.
+  FlowSource source = 5;
   // Nearest active GDACS hazard alert level within the configured radius:
   // "RED", "ORANGE", or empty string when no nearby alert applies.
+  //
+  // Deliberately an open string rather than a closed enum like source: the
+  // empty string is a real published value here, and the pinned sebuf codegen
+  // drops an empty (sebuf.http.enum_value), so "" cannot be expressed as an
+  // enum's JSON name. Verified at both the zero and a non-zero value; see
+  // #6106 before retrying.
   string hazard_alert_level = 6;
   // Name of the nearest active GDACS hazard event within the configured
   // radius, or empty string when no nearby alert applies.

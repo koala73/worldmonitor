@@ -41,7 +41,7 @@ Talk is cheap; here is one live query — `query: "software", sort: closing_soon
 | [Culture and Employee Experience Evolution Support RFP](https://www.merx.com/public/solicitations/4019038063/abstract?language=EN) | Farm Credit Canada | CanadaBuys | Aug 4 |
 | [Portable Ultrasound Simulator](https://www.gets.govt.nz//UA/ExternalTenderDetails.htm?id=34516070) | University of Auckland | GETS (NZ) | Aug 14 |
 
-Four sources, four jurisdictions, one query, official notice links intact. An Air Force autonomy-software solicitation sitting next to a World Bank IT tender and a New Zealand university's simulator purchase is exactly what a cross-portal feed is for — no single national portal shows you that row set.
+Official sources across multiple jurisdictions, one query, and notice links intact. An Air Force autonomy-software solicitation sitting next to a World Bank IT tender and a New Zealand university's simulator purchase is exactly what a cross-portal feed is for — no single national portal shows you that row set.
 
 ## If you already live in SAM.gov
 
@@ -77,7 +77,7 @@ Even if you never bid on anything, tender flow is worth watching. Clusters of no
 
 ## Limits
 
-Coverage is currently six sources — strong for the US, EU, UK, Canada, New Zealand, and World Bank-financed projects, absent elsewhere until more official machine-readable sources ship. Estimated values are only present when the source publishes them. The `automationFit` score is keyword-based by design: transparent and auditable, but not a semantic model, so skim beyond your filter occasionally.
+Coverage currently includes official sources for the US, EU, UK, Canada, New Zealand, and World Bank-financed projects, and remains absent elsewhere until more official machine-readable sources ship. Estimated values are only present when the source publishes them. The `automationFit` score is keyword-based by design: transparent and auditable, but not a semantic model, so skim beyond your filter occasionally.
 
 ## Frequently Asked Questions
 

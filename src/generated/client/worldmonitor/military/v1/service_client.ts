@@ -42,6 +42,7 @@ export interface MilitaryFlight {
   isInteresting: boolean;
   note: string;
   enrichment?: FlightEnrichment;
+  source: string;
 }
 
 export interface GeoCoordinates {
@@ -293,6 +294,44 @@ export interface DefensePatentFiling {
   cpcDesc: string;
   abstract: string;
   url: string;
+}
+
+export interface GetDefenseIndustrialBaseRequest {
+  countryCode: string;
+}
+
+export interface GetDefenseIndustrialBaseResponse {
+  countryCode: string;
+  available: boolean;
+  expenditurePctGdp?: DefenseIndustrialMetric;
+  expenditureUsd?: DefenseIndustrialMetric;
+  personnel?: DefenseIndustrialMetric;
+  armsExportsTiv?: DefenseIndustrialMetric;
+  armsImportsTiv?: DefenseIndustrialMetric;
+  suppliers: ArmsSupplierDependency[];
+  supplierHhi: number;
+  windowStartYear: number;
+  windowEndYear: number;
+  supplierSource: string;
+  fetchedAt: string;
+  industrialFetchedAt: string;
+  supplierFetchedAt: string;
+  supplierRetained: boolean;
+  supplierMappingCoverage: number;
+}
+
+export interface DefenseIndustrialMetric {
+  available: boolean;
+  value: number;
+  year: number;
+  previousValue: number;
+  previousYear: number;
+  source: string;
+}
+
+export interface ArmsSupplierDependency {
+  supplierIso2: string;
+  tivShare: number;
 }
 
 export type MilitaryActivityType = "MILITARY_ACTIVITY_TYPE_UNSPECIFIED" | "MILITARY_ACTIVITY_TYPE_EXERCISE" | "MILITARY_ACTIVITY_TYPE_PATROL" | "MILITARY_ACTIVITY_TYPE_TRANSPORT" | "MILITARY_ACTIVITY_TYPE_DEPLOYMENT" | "MILITARY_ACTIVITY_TYPE_TRANSIT" | "MILITARY_ACTIVITY_TYPE_UNKNOWN";
@@ -587,6 +626,31 @@ export class MilitaryServiceClient {
     }
 
     return await resp.json() as ListDefensePatentsResponse;
+  }
+
+  async getDefenseIndustrialBase(req: GetDefenseIndustrialBaseRequest, options?: MilitaryServiceCallOptions): Promise<GetDefenseIndustrialBaseResponse> {
+    let path = "/api/military/v1/get-defense-industrial-base";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("country_code", String(req.countryCode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetDefenseIndustrialBaseResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

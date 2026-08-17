@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import YAML from 'yaml';
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 const ISO2_CODES = Object.keys(JSON.parse(readFileSync('shared/iso2-to-iso3.json', 'utf8'))).sort();
 const FILTER_PARAM_CONTRACTS = JSON.parse(readFileSync('shared/openapi-filter-param-contracts.json', 'utf8'));
@@ -61,7 +61,7 @@ function readJsonSpec(service) {
 }
 
 function readUnifiedSpec() {
-  return YAML.parse(readFileSync('docs/api/worldmonitor.openapi.yaml', 'utf8'));
+  return loadUnifiedOpenApiSpec();
 }
 
 function getParam(spec, path, method, name) {

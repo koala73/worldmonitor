@@ -129,7 +129,7 @@ export function terminalChart(data: number[] | undefined, opts: TerminalChartOpt
   const labels = labelSpecs
     .map(
       (label) =>
-        `<text x="${labelX}" y="${label.y.toFixed(1)}" fill="${label.fill}" font-size="9"${label.emphasis ? ' font-weight="600"' : ''}>${label.text}</text>`,
+        `<text x="${labelX}" y="${label.y.toFixed(1)}" fill="${label.fill}" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1))"${label.emphasis ? ' font-weight="600"' : ''}>${label.text}</text>`,
     )
     .join('');
 

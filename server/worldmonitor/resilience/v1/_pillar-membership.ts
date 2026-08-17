@@ -1,5 +1,5 @@
 import type { ResilienceDomain } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
-import type { ResilienceDomainId } from './_dimension-scorers';
+import { isFlagDarkDimension, type ResilienceDomainId } from './_dimension-scorers';
 
 export type ResiliencePillarId = 'structural-readiness' | 'live-shock-exposure' | 'recovery-capacity';
 
@@ -30,8 +30,13 @@ export const PILLAR_ORDER: ResiliencePillarId[] = [
 ];
 
 function averageDomainDimensionCoverage(domain: ResilienceDomain): number {
-  if (domain.dimensions.length === 0) return 0;
-  return domain.dimensions.reduce((sum, dim) => sum + dim.coverage, 0) / domain.dimensions.length;
+  // A default-off construct is not part of the active scoring universe. Keep
+  // its triple-zero placeholder in the response schema, but do not let that
+  // placeholder change the domain's pillar influence. Real outages on the same
+  // dimension carry observed or imputed weight and remain in this mean.
+  const activeDimensions = domain.dimensions.filter((dimension) => !isFlagDarkDimension(dimension));
+  if (activeDimensions.length === 0) return 0;
+  return activeDimensions.reduce((sum, dim) => sum + dim.coverage, 0) / activeDimensions.length;
 }
 
 export function buildPillarList(

@@ -127,6 +127,7 @@ let container: HTMLElement;
 let manager: InstanceType<typeof EventHandlerManager>;
 let ctx: ConstructorParameters<typeof EventHandlerManager>[0];
 let loadAllData: Mock<() => void>;
+let invalidateNewsHydration: Mock<() => void>;
 
 const control = () => container.querySelector<HTMLElement>('.playback-control');
 const isVisible = () => control()!.style.display !== 'none';
@@ -188,6 +189,7 @@ beforeEach(() => {
   entitlement = null;
   desktopKeyPresent = false;
   loadAllData = vi.fn<() => void>();
+  invalidateNewsHydration = vi.fn<() => void>();
 
   container = document.createElement('div');
   const headerRight = document.createElement('div');
@@ -205,6 +207,7 @@ beforeEach(() => {
 
   manager = new EventHandlerManager(ctx, {
     loadAllData,
+    invalidateNewsHydration,
   } as unknown as ConstructorParameters<typeof EventHandlerManager>[1]);
 });
 
@@ -455,5 +458,10 @@ describe('setupPlaybackControl — teardown and active playback (#5632)', () => 
     expect(isVisible()).toBe(false);
     expect(document.body.classList.contains('playback-mode')).toBe(false);
     expect(loadAllData).toHaveBeenCalled();
+    // Replay parked the news panels on a loading state, so the exit reload must
+    // actually refetch news. loadAllData()'s news task is skipped when the
+    // category set is unchanged — which replay does not touch — so the replay
+    // path has to invalidate the record for the panels to refill (#5376).
+    expect(invalidateNewsHydration).toHaveBeenCalled();
   });
 });

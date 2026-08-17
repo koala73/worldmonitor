@@ -60,6 +60,7 @@ const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 const originalVercelEnv = process.env.VERCEL_ENV;
 const originalPillarFlag = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+const originalEducationFlag = process.env.RESILIENCE_EDUCATION_ENABLED;
 
 function installRedisFixtures() {
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
@@ -81,6 +82,7 @@ function disablePillarCombine(): void {
 describe('pillar-combined score activation', () => {
   beforeEach(() => {
     enablePillarCombine();
+    process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
   });
 
   afterEach(() => {
@@ -93,6 +95,8 @@ describe('pillar-combined score activation', () => {
     else process.env.VERCEL_ENV = originalVercelEnv;
     if (originalPillarFlag == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
     else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalPillarFlag;
+    if (originalEducationFlag == null) delete process.env.RESILIENCE_EDUCATION_ENABLED;
+    else process.env.RESILIENCE_EDUCATION_ENABLED = originalEducationFlag;
   });
 
   it('defaults to pillar-combined unless the env is explicitly false', () => {
@@ -302,5 +306,26 @@ describe('pillar-combined score activation', () => {
       secondRead.overallScore >= HIGH_BAND_FLOOR,
       `flag-on NO should still meet the re-anchored high-band floor (${HIGH_BAND_FLOOR}), got ${secondRead.overallScore}`,
     );
+  });
+
+  it('rolling education back mid-session rebuilds score and history under the dark construct state', async () => {
+    const { redis, sortedSets } = installRedisFixtures();
+    const firstRead = await getResilienceScore(
+      { request: new Request('https://example.com?countryCode=NO') } as never,
+      { countryCode: 'NO' },
+    );
+
+    process.env.RESILIENCE_EDUCATION_ENABLED = 'false';
+    const secondRead = await getResilienceScore(
+      { request: new Request('https://example.com?countryCode=NO') } as never,
+      { countryCode: 'NO' },
+    );
+
+    assert.notEqual(secondRead.overallScore, firstRead.overallScore, 'rollback must rebuild rather than serve the active education score cache');
+    const cached = JSON.parse(String(redis.get('resilience:score:v28:NO')));
+    assert.equal(cached._educationState, 'education-off');
+    const history = sortedSets.get('resilience:history:v22:NO') ?? [];
+    assert.ok(history.some((entry) => entry.member.endsWith(':education-off')), 'rollback history must carry the inactive education state');
+    assert.equal(secondRead.change30d, 0, 'active-state history must not leak into the rollback trend');
   });
 });

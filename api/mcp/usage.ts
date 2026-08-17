@@ -35,7 +35,7 @@ export type McpPhase =
   | 'auth'       // credential resolution rejected (invalid key/bearer, backend down)
   | 'precheck'   // identity ok, entitlement/token pre-check rejected
   | 'billing'    // pre-check rejected with a billing-verification denial (#4770)
-  | 'limit'      // per-minute rate limit
+  | 'limit'      // per-minute rate limit or fail-closed free-tier limiter outage
   | 'dispatch'   // tools/call quota (429) / reservation unavailable (503)
   | 'malformed'  // unparseable JSON-RPC envelope
   | 'transport'  // method/SSE-transport level (405, replay 4xx)
@@ -70,6 +70,16 @@ export function setUsageContext(usage: McpUsage, context: McpAuthContext): void 
     usage.principalId = context.userId;
     return;
   }
+  if (context.kind === 'free') {
+    // U7: a free-tier caller is anonymous — no customer, no principal. Without
+    // this arm it would fall through to `enterprise_api_key` below and every
+    // free call would report as enterprise traffic in Axiom, corrupting the
+    // one dataset the free tier is supposed to be measured by.
+    usage.authKind = 'anon';
+    usage.customerId = null;
+    usage.principalId = null;
+    return;
+  }
   usage.authKind = 'enterprise_api_key';
 }
 
@@ -86,7 +96,7 @@ export function mcpReasonFor(phase: McpPhase, status: number): RequestReason {
       // stops Axiom outage alerts from paging on ordinary billing states.
       return status === 503 ? 'billing_verification_503' : 'tier_403';
     case 'limit':
-      return 'rate_limit_429';
+      return status === 503 ? 'rate_limit_degraded' : 'rate_limit_429';
     case 'dispatch':
       if (status === 429) return 'rate_limit_429';
       if (status === 503) return 'rate_limit_degraded';

@@ -32,13 +32,30 @@ paths:
                             example:
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "indices":
-                                    - "changePct": 1.5
-                                      "currentValue": 1.5
+                                    - "changePct": 1.69
+                                      "currentValue": 1072.16
                                       "history":
                                           - "date": "2026-01-15"
-                                            "value": 1.5
-                                      "indexId": "example-id"
-                                      "name": "WorldMonitor Analyst"
+                                            "value": 1072.16
+                                      "indexId": "CCFI"
+                                      "name": "CCFI - China Container Freight"
+                                      "periodChangeBasis": "publisher_reported"
+                                      "periodChangePct": 1.69
+                                      "previousValue": 1054.38
+                                      "priorPeriodDate": "2026-01-08"
+                                      "priorPeriodValue": 1054.38
+                                      "spikeAlert": false
+                                      "unit": "index"
+                                    - "changePct": 0
+                                      "currentValue": 1972
+                                      "history":
+                                          - "date": "2026-01-15"
+                                            "value": 1972
+                                      "indexId": "BDI"
+                                      "name": "BDI - Baltic Dry Index"
+                                      "previousValue": 1972
+                                      "spikeAlert": false
+                                      "unit": "index"
                                 "upstreamUnavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetShippingRatesResponse'
@@ -58,6 +75,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -87,6 +109,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -147,6 +194,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -176,6 +228,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -242,6 +319,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -271,6 +353,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -331,6 +438,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -360,6 +472,201 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/supply-chain/v1/get-mineral-production:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetMineralProduction
+            description: |-
+                GetMineralProduction returns per-commodity mine and refinery country shares
+                 and HHI from the annual USGS MCS / BGS seed.
+            operationId: GetMineralProduction
+            parameters:
+                - name: commodity
+                  in: query
+                  description: USGS commodity id or label (e.g. "cobalt"). Empty returns every commodity.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: iso2
+                  in: query
+                  description: |-
+                    ISO 3166-1 alpha-2. When set, countries[] is scoped to this producer and
+                     the countries portfolio is populated.
+                  required: false
+                  example: "US"
+                  schema:
+                    type: string
+                - name: stage
+                  in: query
+                  description: '"mine" or "refinery". Empty returns both stages when present.'
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "commodities":
+                                    - "commodity": "example"
+                                      "commodityId": "example-id"
+                                      "mine":
+                                          "countries":
+                                              - "country": "US"
+                                                "estimated": true
+                                                "iso2": "US"
+                                                "output": 1.5
+                                                "residual": true
+                                          "hhi": 1.5
+                                          "unit": "example"
+                                          "withheldCount": 1
+                                          "worldTotal": 1
+                                      "refinery":
+                                          "countries":
+                                              - "country": "US"
+                                                "estimated": true
+                                                "iso2": "US"
+                                                "output": 1.5
+                                                "residual": true
+                                          "hhi": 1.5
+                                          "unit": "example"
+                                          "withheldCount": 1
+                                          "worldTotal": 1
+                                      "sources":
+                                          - "example"
+                                "countries":
+                                    - "holdings":
+                                        - "commodity": "example"
+                                          "commodityId": "example-id"
+                                          "output": 1.5
+                                          "share": 1.5
+                                          "stage": "example"
+                                      "iso2": "US"
+                                "dataYear": 1
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "upstreamUnavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetMineralProductionResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -419,6 +726,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -448,6 +760,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -525,6 +862,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -554,6 +896,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -638,6 +1005,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -667,6 +1039,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -746,6 +1143,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -775,6 +1177,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -847,6 +1274,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -876,6 +1308,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -963,6 +1420,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -992,6 +1454,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -1065,6 +1552,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -1094,6 +1586,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -1198,6 +1715,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -1227,6 +1749,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -1308,6 +1855,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -1337,6 +1889,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -1415,6 +1992,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -1444,6 +2026,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -1525,6 +2132,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -1554,6 +2166,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -1631,6 +2268,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -1660,6 +2302,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -1736,6 +2403,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -1765,6 +2437,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -1859,6 +2556,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -1888,6 +2590,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -1964,6 +2691,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -1993,6 +2725,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -2078,6 +2835,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -2107,6 +2869,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -2161,6 +2948,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -2190,6 +2982,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -3540,6 +4357,27 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        BillingVerificationError:
+            type: object
+            description: "Returned with HTTP 503 when paid access cannot be confirmed right now: the billing provider is re-verifying a recently expired subscription, or the entitlement backend is unreachable. Retryable — honor Retry-After."
+            properties:
+                error:
+                    type: string
+                    description: Human-readable billing-verification failure reason.
+                code:
+                    type: string
+                    enum:
+                        - renewal_verification_pending
+                        - renewal_verification_failed
+                        - entitlement_verification_unavailable
+                    description: Machine-readable billing-verification state, mirrored in the X-Billing-Verification response header.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint, when the denial came from a tier gate.
+            required:
+                - error
+                - code
         InvalidRequestBodyError:
             type: object
             description: Returned when a JSON POST request body is empty or malformed.
@@ -3576,6 +4414,11 @@ components:
                 error:
                     type: string
                     description: Human-readable entitlement failure reason.
+                code:
+                    type: string
+                    enum:
+                        - subscription_lapsed
+                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).
                 requiredTier:
                     type: integer
                     format: int32
@@ -3640,9 +4483,17 @@ components:
                 previousValue:
                     type: number
                     format: double
+                    description: |-
+                        Legacy display field. For the Shanghai Shipping Exchange indices (SCFI,
+                         CCFI) this DELIBERATELY falls back to the current level when the exchange
+                         published no comparable prior, so it cannot distinguish "unchanged week"
+                         from "no prior at all". Use prior_period_value for decision work.
                 changePct:
                     type: number
                     format: double
+                    description: |-
+                        Legacy display field with the same fail-OPEN fallback as previous_value
+                         (a flat 0 when no prior exists). Use period_change_pct for decision work.
                 unit:
                     type: string
                 history:
@@ -3651,6 +4502,41 @@ components:
                         $ref: '#/components/schemas/ShippingRatePoint'
                 spikeAlert:
                     type: boolean
+                periodChangePct:
+                    type: number
+                    format: double
+                    description: |-
+                        Decision-grade period-over-period move in percent (#6066). Optional so a
+                         missing reading is ABSENT from the response rather than collapsing to 0,
+                         which would render identically to a real unchanged period. Fails CLOSED:
+                         present only when the publisher reported its own percentage or a
+                         comparable prior-period level. A single index level never becomes a
+                         change. The endpoint normalizes a missing reading to ABSENT (canonical
+                         ProtoJSON: serializers omit, parsers treat null as unset) — a plain JSON
+                         client can still tell absent from null, so read absence, not null.
+                periodChangeBasis:
+                    type: string
+                    enum:
+                        - PERIOD_CHANGE_BASIS_UNSPECIFIED
+                        - publisher_reported
+                        - derived_from_prior_period_level
+                    description: |-
+                        Basis for the decision-grade period-over-period change. The custom JSON
+                         values preserve the lowercase strings already present in Redis and consumed
+                         by downstream matchers while exposing a closed taxonomy to generated clients
+                         and OpenAPI.
+                priorPeriodValue:
+                    type: number
+                    format: double
+                    description: |-
+                        The publisher's own prior-period index level that period_change_pct was
+                         measured against. Absent when the publisher shipped no comparable prior.
+                priorPeriodDate:
+                    type: string
+                    description: |-
+                        Observation date (YYYY-MM-DD) of prior_period_value, as published. Absent
+                         whenever prior_period_value is absent, or when the publisher dated the
+                         level only implicitly.
         ShippingRatePoint:
             type: object
             properties:
@@ -3865,14 +4751,33 @@ components:
                          rolling baseline window. Separate from the green/yellow/red status badge.
                 source:
                     type: string
+                    enum:
+                        - FLOW_SOURCE_UNSPECIFIED
+                        - portwatch-dwt
+                        - portwatch-counts
                     description: |-
-                        Flow source: "portwatch-dwt" when DWT-majority coverage is used,
-                         otherwise "portwatch-counts" for vessel-count coverage.
+                        Coverage basis behind a PortWatch-derived flow estimate: "portwatch-dwt"
+                         when the rolling baseline window has DWT-majority coverage, otherwise
+                         "portwatch-counts" for vessel-count coverage. FLOW_SOURCE_UNSPECIFIED means
+                         the cached estimate carried a basis this taxonomy does not list, which the
+                         endpoint reports rather than passing through undeclared.
+
+                         Carries the per-value semantics because an enum-typed field takes its
+                         generated OpenAPI description from the enum, not from the field. The custom
+                         JSON values preserve the strings seed-chokepoint-flows.mjs already writes to
+                         energy:chokepoint-flows:v1, so promoting this taxonomy out of prose changes
+                         no wire value.
                 hazardAlertLevel:
                     type: string
                     description: |-
                         Nearest active GDACS hazard alert level within the configured radius:
                          "RED", "ORANGE", or empty string when no nearby alert applies.
+
+                         Deliberately an open string rather than a closed enum like source: the
+                         empty string is a real published value here, and the pinned sebuf codegen
+                         drops an empty (sebuf.http.enum_value), so "" cannot be expressed as an
+                         enum's JSON name. Verified at both the zero and a non-zero value; see
+                         #6106 before retrying.
                 hazardAlertName:
                     type: string
                     description: |-
@@ -3947,6 +4852,124 @@ components:
                 sharePct:
                     type: number
                     format: double
+        GetMineralProductionRequest:
+            type: object
+            properties:
+                commodity:
+                    type: string
+                    description: USGS commodity id or label (e.g. "cobalt"). Empty returns every commodity.
+                iso2:
+                    type: string
+                    description: |-
+                        ISO 3166-1 alpha-2. When set, countries[] is scoped to this producer and
+                         the countries portfolio is populated.
+                stage:
+                    type: string
+                    description: '"mine" or "refinery". Empty returns both stages when present.'
+        GetMineralProductionResponse:
+            type: object
+            properties:
+                commodities:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MineralProductionRecord'
+                countries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MineralCountryPortfolio'
+                fetchedAt:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+                dataYear:
+                    type: integer
+                    format: int32
+        MineralProductionRecord:
+            type: object
+            properties:
+                commodityId:
+                    type: string
+                commodity:
+                    type: string
+                year:
+                    type: integer
+                    format: int32
+                unit:
+                    type: string
+                mine:
+                    $ref: '#/components/schemas/MineralStageSnapshot'
+                refinery:
+                    $ref: '#/components/schemas/MineralStageSnapshot'
+                sources:
+                    type: array
+                    items:
+                        type: string
+        MineralStageSnapshot:
+            type: object
+            properties:
+                year:
+                    type: integer
+                    format: int32
+                unit:
+                    type: string
+                countries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MineralCountryShare'
+                hhi:
+                    type: number
+                    format: double
+                worldTotal:
+                    type: number
+                    format: double
+                withheldCount:
+                    type: integer
+                    format: int32
+        MineralCountryShare:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                country:
+                    type: string
+                output:
+                    type: number
+                    format: double
+                share:
+                    type: number
+                    format: double
+                withheld:
+                    type: boolean
+                estimated:
+                    type: boolean
+                residual:
+                    type: boolean
+        MineralCountryPortfolio:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                holdings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MineralCountryHolding'
+        MineralCountryHolding:
+            type: object
+            properties:
+                commodityId:
+                    type: string
+                commodity:
+                    type: string
+                stage:
+                    type: string
+                output:
+                    type: number
+                    format: double
+                share:
+                    type: number
+                    format: double
+                withheld:
+                    type: boolean
         GetShippingStressRequest:
             type: object
         GetShippingStressResponse:

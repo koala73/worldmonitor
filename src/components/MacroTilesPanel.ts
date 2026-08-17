@@ -68,10 +68,9 @@ function lastTwo(obs: { date: string; value: number }[]): { value: number | null
   return { value: last.value, prior: prev?.value ?? null, date: last.date };
 }
 
-function deltaColor(delta: number, lowerIsBetter: boolean, neutral: boolean): string {
-  if (neutral) return 'var(--text-dim)';
-  if (delta === 0) return 'var(--text-dim)';
-  return (lowerIsBetter ? delta < 0 : delta > 0) ? '#27ae60' : '#e74c3c';
+function deltaClass(delta: number, lowerIsBetter: boolean, neutral: boolean): string {
+  if (neutral || delta === 0) return 'neutral';
+  return (lowerIsBetter ? delta < 0 : delta > 0) ? 'positive' : 'negative';
 }
 
 function tileHtml(tile: MacroTile): string {
@@ -79,12 +78,14 @@ function tileHtml(tile: MacroTile): string {
   const delta = tile.value !== null && tile.prior !== null ? tile.value - tile.prior : null;
   const fmt = tile.deltaFormat ?? tile.format;
   const deltaStr = delta !== null ? `${delta >= 0 ? '+' : ''}${fmt(delta)} vs prior` : '';
-  const color = delta !== null ? deltaColor(delta, tile.lowerIsBetter, tile.neutral ?? false) : 'var(--text-dim)';
-  return `<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:6px;padding:14px 12px;display:flex;flex-direction:column;gap:4px">
-    <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.07em">${escapeHtml(tile.label)}</div>
-    <div style="font-size:28px;font-weight:700;color:var(--text);line-height:1.1;font-variant-numeric:tabular-nums">${val}</div>
-    ${deltaStr ? `<div style="font-size:11px;color:${color}">${escapeHtml(deltaStr)}</div>` : ''}
-    <div style="font-size:10px;color:var(--text-dim)">${escapeHtml(tile.date)}</div>
+  const changeClass = delta !== null ? deltaClass(delta, tile.lowerIsBetter, tile.neutral ?? false) : 'neutral';
+  return `<div class="macro-summary-card">
+    <div class="macro-summary-head">
+      <span class="indicator-name">${escapeHtml(tile.label)}</span>
+    </div>
+    <div class="macro-summary-value">${val}</div>
+    ${deltaStr ? `<div class="macro-summary-change ${changeClass}">${escapeHtml(deltaStr)}</div>` : ''}
+    <div class="indicator-date">${escapeHtml(tile.date)}</div>
   </div>`;
 }
 
@@ -224,13 +225,13 @@ export class MacroTilesPanel extends Panel {
   private _render(afterUpdate?: () => void): void {
     const tabs = this._availableTabs();
     const labels: Record<Tab, string> = { us: 'US', eu: 'Euro Area', cn: 'China' };
-    const tabBar = `<div role="tablist" aria-label="Macro economy" style="display:flex;gap:4px;margin-bottom:10px;overflow-x:auto">
-      ${tabs.map((tab) => `<button id="macro-tiles-tab-${tab}" role="tab" aria-selected="${this._tab === tab}" aria-controls="macro-tiles-tabpanel" tabindex="${this._tab === tab ? '0' : '-1'}" class="panel-tab${this._tab === tab ? ' active' : ''}" data-tab="${tab}" style="font-size:11px;padding:6px 10px;min-height:44px">${labels[tab]}</button>`).join('')}
+    const tabBar = `<div class="panel-tabs macro-tiles-tabs" role="tablist" aria-label="Macro economy">
+      ${tabs.map((tab) => `<button type="button" id="macro-tiles-tab-${tab}" role="tab" aria-selected="${this._tab === tab}" aria-controls="macro-tiles-tabpanel" tabindex="${this._tab === tab ? '0' : '-1'}" class="panel-tab${this._tab === tab ? ' active' : ''}" data-tab="${tab}">${labels[tab]}</button>`).join('')}
     </div>`;
 
     let body: string;
     if (this._tab === 'us') {
-      body = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">${this._usTiles.map(tileHtml).join('')}</div>`;
+      body = `<div class="macro-summary-grid">${this._usTiles.map(tileHtml).join('')}</div>`;
     } else if (this._tab === 'eu') {
       body = this._buildEuBody();
     } else {
@@ -239,7 +240,7 @@ export class MacroTilesPanel extends Panel {
 
     const labelledBy = `macro-tiles-tab-${this._tab}`;
     this.setSafeContent(
-      unsafeRawHtml(`${tabBar}<div id="macro-tiles-tabpanel" role="tabpanel" aria-labelledby="${labelledBy}">${body}</div>`, 'legacy Panel.setContent() migration'),
+      unsafeRawHtml(`${tabBar}<div id="macro-tiles-tabpanel" class="macro-tiles-tabpanel" role="tabpanel" aria-labelledby="${labelledBy}">${body}</div>`, 'legacy Panel.setContent() migration'),
       afterUpdate,
     );
   }
@@ -250,11 +251,11 @@ export class MacroTilesPanel extends Panel {
 
   private _buildChinaBody(): string {
     if (!hasChinaMacroData(this._china) || !this._china) {
-      return '<div style="padding:8px;color:var(--text-dim);font-size:12px">China macro data unavailable</div>';
+      return '<div class="macro-summary-empty">China macro data unavailable</div>';
     }
     const quality = isChinaLaunchReady(this._china)
       ? ''
-      : '<div style="margin-bottom:8px;padding:7px 9px;border:1px solid #f39c12;border-radius:5px;color:#f39c12;font-size:10px">Official China macro pulse is degraded; stale or delayed observations remain visible below.</div>';
+      : '<div class="macro-quality-note macro-quality-note--degraded" role="status">Official China macro pulse is degraded; stale or delayed observations remain visible below.</div>';
     const tiles = this._china.indicators.map(chinaTileHtml).join('');
     const today = new Date().toISOString().slice(0, 10);
     const events = this._china.releaseEvents
@@ -262,17 +263,17 @@ export class MacroTilesPanel extends Panel {
       .sort((a, b) => a.releaseDate.localeCompare(b.releaseDate))
       .slice(0, 3);
     const calendar = events.length > 0
-      ? `<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:5px">China release calendar</div>
-          ${events.map((event) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;color:var(--text-dim);margin-top:3px"><span>${escapeHtml(event.event)}</span><span>${escapeHtml(event.releaseDate)} · ${escapeHtml(event.status)}</span></div>`).join('')}
-        </div>`
-      : '<div style="margin-top:8px;font-size:10px;color:var(--text-dim)">China release calendar unavailable</div>';
-    return `${quality}<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">${tiles}</div>${calendar}`;
+      ? `<section class="macro-release-calendar" aria-label="China release calendar">
+          <div class="macro-release-calendar__heading">China release calendar</div>
+          ${events.map((event) => `<div class="macro-release-calendar__event"><span>${escapeHtml(event.event)}</span><span>${escapeHtml(event.releaseDate)} · ${escapeHtml(event.status)}</span></div>`).join('')}
+        </section>`
+      : '<div class="macro-release-calendar__empty">China release calendar unavailable</div>';
+    return `${quality}<div class="macro-summary-grid macro-summary-grid--china">${tiles}</div>${calendar}`;
   }
 
   private _buildEuBody(): string {
     if (!this._eurostat) {
-      return '<div style="padding:8px;color:var(--text-dim);font-size:12px">Euro Area data unavailable</div>';
+      return '<div class="macro-summary-empty">Euro Area data unavailable</div>';
     }
     const cpiAvg = euAvg(this._eurostat, 'cpi');
     const unAvg = euAvg(this._eurostat, 'unemployment');
@@ -287,10 +288,10 @@ export class MacroTilesPanel extends Panel {
     ];
 
     if (!euTiles.some(t => t.value !== null)) {
-      return '<div style="padding:8px;color:var(--text-dim);font-size:12px">Euro Area data unavailable</div>';
+      return '<div class="macro-summary-empty">Euro Area data unavailable</div>';
     }
 
-    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">${euTiles.map(tileHtml).join('')}</div>
-      <div style="margin-top:8px;font-size:9px;color:var(--text-dim)">Eurostat · ECB · avg DE, FR, IT, ES</div>`;
+    return `<div class="macro-summary-grid">${euTiles.map(tileHtml).join('')}</div>
+      <div class="economic-source macro-summary-source">Eurostat · ECB · avg DE, FR, IT, ES</div>`;
   }
 }

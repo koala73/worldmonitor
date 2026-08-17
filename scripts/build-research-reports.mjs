@@ -21,6 +21,12 @@ const UMAMI_SCRIPT_TAG =
   + 'data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" '
   + 'nonce="wm-static-bootstrap"></script>';
 
+const DATASET_LICENSE = {
+  '@type': 'CreativeWork',
+  name: 'World Monitor Terms of Service (27 July 2026)',
+  url: 'https://www.worldmonitor.app/docs/terms',
+};
+
 const CHART_WIDTH = 720;
 const LINE_CHART_HEIGHT = 260;
 const BAR_CHART_HEIGHT = 240;
@@ -864,6 +870,8 @@ ${justification}
       name: `Strait of Hormuz daily transit calls, ${focus.observationStart} to ${focus.observationEnd}`,
       description:
         'Daily AIS-observed vessel transit calls by class with deadweight-tonnage aggregates, from IMF PortWatch, frozen in a versioned snapshot.',
+      creator: { '@type': 'Organization', name: report.author.name, url: report.author.url },
+      license: DATASET_LICENSE,
       temporalCoverage: `${focus.observationStart}/${focus.observationEnd}`,
       isBasedOn: 'https://portwatch.imf.org/',
       distribution: [

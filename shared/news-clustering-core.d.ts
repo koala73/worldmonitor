@@ -35,7 +35,10 @@ export interface ClusteredEventCore {
   primaryTitle: string;
   primarySource: string;
   primaryLink: string;
+  /** Articles in the cluster — a volume signal, not a corroboration signal. */
   sourceCount: number;
+  /** Distinct publishers behind those articles (#6428). */
+  uniquePublisherCount: number;
   topSources: Array<{ name: string; tier: number; url: string }>;
   allItems: NewsItemCore[];
   firstSeen: Date;

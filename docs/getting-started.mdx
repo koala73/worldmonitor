@@ -115,7 +115,7 @@ The dashboard fetches data from various public APIs and data sources:
 | CoinGecko | Cryptocurrency prices | No |
 | USGS | Earthquake data | No |
 | NASA EONET | Natural events (storms, fires, volcanoes, floods) | No |
-| NWS | Weather alerts | No |
+| NWS + ECCC | US + Canada weather alerts | No |
 | FRED | Economic indicators (Fed data) | No |
 | EIA | Oil analytics (prices, production, inventory) | Yes (free) |
 | USASpending.gov | Federal government contracts & awards | No |
@@ -136,8 +136,10 @@ Some features require API credentials. Without them, the corresponding layer is 
 
 | Variable | Service | How to Get |
 |----------|---------|------------|
-| `FINNHUB_API_KEY` | Stock quotes (primary) | Free registration at [finnhub.io](https://finnhub.io/) |
+| `FINNHUB_API_KEY` | Stock quotes (primary equity gap + symbol search) | Free registration at [finnhub.io](https://finnhub.io/) |
+| `ALPHA_VANTAGE_API_KEY` | Equity quote fallback + market seeders | Free key at [alphavantage.co](https://www.alphavantage.co/support/#api-key) |
 | `EIA_API_KEY` | Oil analytics | Free registration at [eia.gov/opendata](https://www.eia.gov/opendata/) |
+| `USDA_FAS_PSD_API_KEY` | Food stocks / stocks-to-use (PSD) | Free key via [FAS Open Data](https://apps.fas.usda.gov/opendataweb/home) |
 | `VITE_WS_RELAY_URL` | AIS vessel tracking | Deploy AIS relay or use hosted service |
 | `VITE_OPENSKY_RELAY_URL` | Military aircraft | Deploy relay with OpenSky credentials |
 | `OPENSKY_CLIENT_ID` | OpenSky auth (relay) | Free registration at [opensky-network.org](https://opensky-network.org) |
@@ -177,13 +179,13 @@ src/
 │   ├── ServiceStatusPanel.ts # External service health monitoring
 │   └── ...
 ├── config/
-│   ├── feeds.ts              # 500+ RSS feeds, source tiers, regional sources
-│   ├── geo.ts                # 30+ hotspots, conflicts, 86 cables, waterways, spaceports, minerals
-│   ├── pipelines.ts          # 88 oil & gas pipelines
-│   ├── ports.ts              # 62 strategic ports worldwide
-│   ├── bases-expanded.ts     # 226 military bases
-│   ├── ai-datacenters.ts     # 313 AI compute clusters (Epoch AI dataset)
-│   ├── airports.ts           # 111 airports across 5 regions
+│   ├── feeds.ts              # RSS feed registry, source tiers, regional sources
+│   ├── geo.ts                # Hotspots, conflicts, cables, waterways, spaceports, minerals
+│   ├── pipelines.ts          # Oil and gas pipeline registry
+│   ├── ports.ts              # Strategic ports worldwide
+│   ├── bases-expanded.ts     # Military base registry
+│   ├── ai-datacenters.ts     # AI compute clusters (Epoch AI dataset)
+│   ├── airports.ts           # Regional airport registry
 │   ├── irradiators.ts        # IAEA gamma irradiator sites
 │   ├── nuclear-facilities.ts # Global nuclear infrastructure
 │   ├── markets.ts            # Stock symbols, sectors
@@ -206,7 +208,7 @@ src/
 │   ├── rss.ts                # RSS parsing with circuit breakers
 │   ├── markets.ts            # Finnhub, Yahoo Finance, CoinGecko
 │   ├── earthquakes.ts        # USGS integration
-│   ├── weather.ts            # NWS alerts
+│   ├── weather.ts            # NWS + ECCC alerts
 │   ├── fred.ts               # Federal Reserve data
 │   ├── oil-analytics.ts      # EIA oil prices, production, inventory
 │   ├── usa-spending.ts       # USASpending.gov contracts & awards
@@ -242,7 +244,7 @@ src/
 api/                          # Vercel Edge Functions (two kinds, see Architecture)
 ├── <domain>/v<N>/[rpc].ts    # Generated domain gateways — aviation, market,
 │                             #   conflict, climate, cyber, sanctions, maritime,
-│                             #   resilience, ... (34 proto-backed domains)
+│                             #   resilience, ... (registered proto-backed domains)
 ├── bootstrap.js              # Two-tier Redis hydration for the SPA
 ├── health/                   # Per-key freshness + cascade status
 ├── mcp.ts / mcp-proxy.ts     # Model Context Protocol server endpoints
@@ -252,7 +254,7 @@ api/                          # Vercel Edge Functions (two kinds, see Architectu
 └── notify.ts                 # Notification dispatch (hand-written operational)
 server/                       # Server-side handlers (bundled into Edge functions)
 ├── gateway.ts                # createDomainGateway — per-domain Edge bundles
-├── worldmonitor/<domain>/    # 34 proto-backed domain handler implementations
+├── worldmonitor/<domain>/    # Proto-backed domain handler implementations
 └── _shared/                  # Redis client, source tiers, shared utilities
 ```
 
@@ -283,7 +285,7 @@ Data provided by [The OpenSky Network](https://opensky-network.org). If you use 
 
 - **Earthquakes**: [U.S. Geological Survey](https://earthquake.usgs.gov/), ANSS Comprehensive Catalog
 - **Natural Events**: [NASA EONET](https://eonet.gsfc.nasa.gov/) - Earth Observatory Natural Event Tracker (storms, wildfires, volcanoes, floods)
-- **Weather Alerts**: [National Weather Service](https://www.weather.gov/) - Open data, free to use
+- **Weather Alerts**: [National Weather Service](https://www.weather.gov/) and [ECCC](https://weather.gc.ca/) - US + Canada official alerts
 
 ### Infrastructure & Transport
 

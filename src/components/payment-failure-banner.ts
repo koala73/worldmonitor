@@ -100,7 +100,7 @@ export function initPaymentFailureBanner(): () => void {
     // keys as the panel CTA, so the two surfaces cannot drift). Our own
     // locale strings, never user input — safe for the trusted template.
     const actionBtn = variant.actionLabelKey
-      ? `<button id="pf-update-btn" style="background:#fff;color:${accent};border:none;border-radius:4px;padding:4px 12px;font-weight:600;font-size:12px;cursor:pointer;white-space:nowrap;">${t(variant.actionLabelKey)}</button>`
+      ? `<button id="pf-update-btn" style="background:#fff;color:${accent};border:none;border-radius:4px;padding:4px 12px;font-weight:600;font-size:calc(12px * var(--wm-panel-effective-scale, 1));cursor:pointer;white-space:nowrap;">${t(variant.actionLabelKey)}</button>`
       : '';
     setTrustedHtml(banner, trustedHtml(`
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
@@ -110,7 +110,7 @@ export function initPaymentFailureBanner(): () => void {
       </svg>
       <span>${t(variant.messageKey)}</span>
       ${actionBtn}
-      <button id="pf-dismiss-btn" style="background:transparent;color:#fff;border:none;cursor:pointer;font-size:18px;padding:0 4px;line-height:1;">&times;</button>
+      <button id="pf-dismiss-btn" style="background:transparent;color:#fff;border:none;cursor:pointer;font-size:calc(18px * var(--wm-panel-effective-scale, 1));padding:0 4px;line-height:1;">&times;</button>
     `, "legacy direct innerHTML migration"));
 
     document.body.appendChild(banner);

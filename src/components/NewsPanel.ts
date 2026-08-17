@@ -7,13 +7,18 @@ import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { computeNewSinceVisit } from '@/utils/new-since-visit';
 import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText, preloadRelatedAssetTables } from '@/services';
 import { SITE_VARIANT } from '@/config';
-import { t, getCurrentLanguage } from '@/services/i18n';
+import { t, getCurrentLanguage, getCurrentLanguageTag } from '@/services/i18n';
 import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import {
   renderCorroboratingSourceRisk,
   renderPrimarySourceProvenance,
 } from './news/source-provenance';
+import {
+  coverageBadgeString,
+  type CoverageStringKey,
+  type SourceCoverage,
+} from './news/source-coverage';
 
 
 type SortMode = 'relevance' | 'newest';
@@ -55,6 +60,21 @@ export class NewsPanel extends Panel {
   private lastRawClusters: ClusteredEvent[] | null = null;
   private lastRawItems: NewsItem[] | null = null;
   private relatedAssetTableRefreshPending = false;
+
+  /**
+   * How much of this category's enabled source list the panel is actually
+   * showing, or `null` when it shows all of it (#5873).
+   *
+   * Only a CUSTOM category sets this. It is never in the per-variant server
+   * digest, so it rotates through its sources a capped window at a time and
+   * accumulates — which means that for the first few refresh cycles the panel
+   * is genuinely incomplete while the Sources manager lists every source as
+   * enabled. Saying so on the badge is the difference between a panel that is
+   * partial and a panel that lies about being complete.
+   */
+  private sourceCoverage: SourceCoverage | null = null;
+  private refreshDegraded = false;
+  private renderedBadgeState: 'none' | 'live' | 'cached' | 'unavailable' = 'none';
 
   // Panel summary feature
   private summaryBtn: HTMLButtonElement | null = null;
@@ -239,7 +259,11 @@ export class NewsPanel extends Panel {
     if (this.currentHeadlines.length === 0) return;
 
     // Check cache first (include variant, version, and language)
-    const currentLang = getCurrentLanguage();
+    // The full tag, not the stripped code: this is the language the model is
+    // asked to WRITE in, and a Traditional reader asking for `zh` gets
+    // Simplified prose back. It keys the cache too, so the two scripts cannot
+    // serve each other's summary.
+    const currentLang = getCurrentLanguageTag();
     const cacheKey = `panel_summary_v3_${SITE_VARIANT}_${this.panelId}_${currentLang}`;
     const cached = this.getCachedSummary(cacheKey);
     if (cached) {
@@ -290,7 +314,10 @@ export class NewsPanel extends Panel {
   }
 
   private async handleTranslate(element: HTMLElement, text: string): Promise<void> {
-    const currentLang = getCurrentLanguage();
+    // Target language for the translation, so the full tag — same reason as
+    // handleSummarize above. The `en` short-circuit is unaffected: no tag that
+    // resolves to a Chinese catalogue equals 'en'.
+    const currentLang = getCurrentLanguageTag();
     if (currentLang === 'en') return; // Assume news is mostly English, no need to translate if UI is English (or add detection later)
 
     const titleEl = element.closest('.item')?.querySelector('.item-title') as HTMLElement;
@@ -404,18 +431,56 @@ export class NewsPanel extends Panel {
   public override showError(message?: string, onRetry?: () => void, autoRetrySeconds?: number): void {
     this.lastRawClusters = null;
     this.lastRawItems = null;
+    this.renderedBadgeState = 'unavailable';
     super.showError(message, onRetry, autoRetrySeconds);
+  }
+
+  /**
+   * Declare how many of the category's enabled sources this panel is showing.
+   *
+   * Pass `null` for the normal case (digest-backed, or every source fetched) —
+   * the badge then reads plain `LIVE` as before. The value is stored rather
+   * than painted directly so it survives the re-renders that don't reload data
+   * (time-range filter changes, sort toggles).
+   */
+  public setSourceCoverage(coverage: SourceCoverage | null): void {
+    this.sourceCoverage = coverage;
+    if (this.renderedBadgeState === 'live' || this.renderedBadgeState === 'cached') {
+      this.renderCurrentDataBadge();
+    }
+  }
+
+  /**
+   * Retained headlines remain useful when a refresh window fails, but they
+   * must not be relabelled LIVE by time-range or sort re-renders.
+   */
+  public setRefreshDegraded(degraded: boolean): void {
+    this.refreshDegraded = degraded;
+    if (this.renderedBadgeState === 'live' || this.renderedBadgeState === 'cached') {
+      this.renderCurrentDataBadge();
+    }
+  }
+
+  private coverageString(key: CoverageStringKey): string | undefined {
+    return coverageBadgeString(this.sourceCoverage, key, (path, vars) => t(path, vars));
+  }
+
+  private renderCurrentDataBadge(): void {
+    const state = this.refreshDegraded ? 'cached' : 'live';
+    this.renderedBadgeState = state;
+    this.setDataBadge(state, this.coverageString('sourceCoverage'), this.coverageString('sourceCoverageHint'));
   }
 
   public renderNews(items: NewsItem[]): void {
     if (items.length === 0) {
       this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
+      this.renderedBadgeState = 'unavailable';
       this.setDataBadge('unavailable');
       this.showError(t('common.noNewsAvailable'));
       return;
     }
 
-    this.setDataBadge('live');
+    this.renderCurrentDataBadge();
 
     // Always show flat items immediately for instant visual feedback,
     // then upgrade to clustered view in the background when ready.
@@ -430,7 +495,7 @@ export class NewsPanel extends Panel {
     this.renderRequestId += 1; // Cancel in-flight clustering from previous renders.
     this.lastRawClusters = null;
     this.lastRawItems = null;
-    this.setDataBadge('live');
+    this.renderCurrentDataBadge();
     this.setCount(0);
     this.relatedAssetContext.clear();
     this.currentHeadlines = [];
@@ -638,8 +703,13 @@ export class NewsPanel extends Panel {
     shouldHighlight: boolean,
     showNewTag: boolean
   ): string {
-    const sourceBadge = cluster.sourceCount > 1
-      ? `<span class="source-count">${t('components.newsPanel.sources', { count: String(cluster.sourceCount) })}</span>`
+    // #6428: "N sources" is a corroboration claim, so it counts PUBLISHERS.
+    // cluster.sourceCount is the article count, which read nine reprints of
+    // one wire across one newsroom's feeds as nine sources. The velocity
+    // badge below keeps sourceCount — velocity IS about article volume.
+    const publisherCount = cluster.uniquePublisherCount ?? 0;
+    const sourceBadge = publisherCount > 1
+      ? `<span class="source-count">${t('components.newsPanel.sources', { count: String(publisherCount) })}</span>`
       : '';
 
     const velocity = cluster.velocity;

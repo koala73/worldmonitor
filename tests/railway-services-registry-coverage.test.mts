@@ -306,6 +306,24 @@ describe('Railway service registry coverage', () => {
     }
   });
 
+  it('every nixpacks-root-scripts entry with watchPatterns lists the GDELT bulk contract for seed-conflict-intel', () => {
+    const conflictIntel = registry.find(
+      (r) => r.service === 'seed-conflict-intel',
+    );
+    assert.ok(conflictIntel, 'seed-conflict-intel must be registered');
+    const watchPatterns = conflictIntel.watchPatterns;
+    assert.ok(
+      Array.isArray(watchPatterns),
+      'seed-conflict-intel must declare watchPatterns',
+    );
+    assert.ok(
+      watchPatterns.includes('scripts/_gdelt-bulk-contract.mjs'),
+      'seed-conflict-intel watchPaths must include scripts/_gdelt-bulk-contract.mjs ' +
+        '(the GDELT bulk Redis key contract shared by the materializer, conflict intel, ' +
+        'and unrest consumers)',
+    );
+  });
+
   // Self-fixture: prove BOTH regex shapes match what they're supposed to.
   // Without this, a future "simplification" of either regex could silently
   // stop matching one shape, and the audit above would pass coincidentally

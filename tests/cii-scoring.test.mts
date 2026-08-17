@@ -44,8 +44,8 @@ import {
   normalizeRiskScoreAdvisoryDisclosure,
   normalizeCountryName,
   selectCiiTrendPriorSnapshot,
-  ZONE_COUNTRY_MAP,
 } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
+import { CII_CLIMATE_ZONE_COUNTRIES } from '../shared/cii-climate-zones.ts';
 import {
   CII_BASELINE_RISK as SHARED_BASELINE_RISK,
   CII_COUNTRY_WEIGHTS,
@@ -358,7 +358,7 @@ function extractTopLevelConstLiteralSnapshot(
   return literalExpressionSnapshot(declaration.initializer!, sourceFile);
 }
 
-function extractScoreHelperInputSnapshot(source: string): ScoreHelperInputSnapshot {
+function extractScoreHelperInputSnapshot(source: string, climateZoneSource = source): ScoreHelperInputSnapshot {
   const sourceFile = ts.createSourceFile(
     'get-risk-scores.ts',
     source,
@@ -370,7 +370,10 @@ function extractScoreHelperInputSnapshot(source: string): ScoreHelperInputSnapsh
   return {
     ucdpClassificationWindowMs: extractNumericConstSnapshot(sourceFile, 'UCDP_CLASSIFICATION_WINDOW_MS'),
     advisoryLevelsFallback: extractTopLevelConstLiteralSnapshot(sourceFile, 'ADVISORY_LEVELS_FALLBACK'),
-    zoneCountryMap: extractTopLevelConstLiteralSnapshot(sourceFile, 'ZONE_COUNTRY_MAP'),
+    zoneCountryMap: extractTopLevelConstLiteralSnapshot(
+      ts.createSourceFile('cii-climate-zones.ts', climateZoneSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
+      'CII_CLIMATE_ZONE_COUNTRIES',
+    ),
   };
 }
 
@@ -715,7 +718,7 @@ describe('CII signal wiring', () => {
     for (const [zone, expectedCodes] of Object.entries(expected)) {
       assert.equal(producerZones.has(zone), true, `${zone} must still be emitted by the climate producer`);
       assert.deepEqual(
-        expectedCodes.filter((code) => ZONE_COUNTRY_MAP[zone]?.includes(code)),
+        expectedCodes.filter((code) => CII_CLIMATE_ZONE_COUNTRIES[zone]?.includes(code)),
         expectedCodes,
         `${zone} must feed CII countries ${expectedCodes.join(', ')}`,
       );
@@ -1614,8 +1617,9 @@ describe('CII scoring', () => {
 
     const cachedRiskSource = readRepoFile('src/services/cached-risk-scores.ts');
     const getRiskScoresSource = readRepoFile('server/worldmonitor/intelligence/v1/get-risk-scores.ts');
+    const climateZoneSource = readRepoFile('shared/cii-climate-zones.ts');
     const scoreFormulaLiterals = extractScoreFormulaLiterals(getRiskScoresSource);
-    const scoreHelperInputs = extractScoreHelperInputSnapshot(getRiskScoresSource);
+    const scoreHelperInputs = extractScoreHelperInputSnapshot(getRiskScoresSource, climateZoneSource);
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'climateSeverityScore', 5, 'return 5');
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'UCDP_CLASSIFICATION_WINDOW_MS', 2, '2 * 365');
     assertFormulaLiteralCovered(scoreFormulaLiterals, 'deriveUcdpIntensityByRegion', 1000, 'totalDeaths > 1000');
@@ -1709,7 +1713,7 @@ describe('CII scoring', () => {
       const EXTRA_MIDDLE_EAST_COUNTRIES = ['IL', 'SA'] as const;
       const MIDDLE_EAST_COUNTRIES = ['IR', ...EXTRA_MIDDLE_EAST_COUNTRIES];
       const CLIMATE_ZONE_GROUPS = { Europe: EUROPE_COUNTRIES } satisfies Record<string, readonly string[]>;
-      const ZONE_COUNTRY_MAP = {
+      const CII_CLIMATE_ZONE_COUNTRIES = {
         ...CLIMATE_ZONE_GROUPS,
         'Middle East': MIDDLE_EAST_COUNTRIES,
       };
@@ -1730,9 +1734,7 @@ describe('CII scoring', () => {
 
   it('getScoreLevel uses canonical CII UI bands at 81/66/51/31', () => {
     const cachedRiskSource = readRepoFile('src/services/cached-risk-scores.ts');
-    const browserCiiSource = readRepoFile('src/services/country-instability.ts');
     const cachedScoreLevel = parseScoreLevelFunction(cachedRiskSource, 'getScoreLevel');
-    const browserScoreLevel = parseScoreLevelFunction(browserCiiSource, 'getLevel');
     const expectedCutoffs = [
       { min: 81, level: 'critical' },
       { min: 66, level: 'high' },
@@ -1741,9 +1743,7 @@ describe('CII scoring', () => {
     ];
 
     assert.deepEqual(cachedScoreLevel.cutoffs, expectedCutoffs);
-    assert.deepEqual(browserScoreLevel.cutoffs, expectedCutoffs);
     assert.equal(cachedScoreLevel.fallback, 'low');
-    assert.equal(browserScoreLevel.fallback, 'low');
 
     for (const [score, level] of [
       [81, 'critical'], [80, 'high'],
@@ -1753,8 +1753,6 @@ describe('CII scoring', () => {
     ] as const) {
       assert.equal(evaluateScoreLevel(cachedScoreLevel, score), level,
         `cached getScoreLevel(${score}) should be ${level}`);
-      assert.equal(evaluateScoreLevel(browserScoreLevel, score), level,
-        `browser getLevel(${score}) should be ${level}`);
     }
   });
 
@@ -2437,22 +2435,13 @@ describe('CII scoring', () => {
     );
   });
 
-  it('methodology doc and browser CII engine expose the current conflict curve coefficients', () => {
+  it('methodology doc publishes the current conflict curve coefficients', () => {
     const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
     const doc = readFileSync(resolve(root, 'docs', 'methodology', 'cii-risk-scores.mdx'), 'utf8');
-    const browserSource = readFileSync(resolve(root, 'src', 'services', 'country-instability.ts'), 'utf8');
 
     assert.ok(
       doc.includes(`cap = ${CII_CONFLICT_ACTIVITY_CAP}`) && doc.includes(`pivot = ${CII_CONFLICT_ACTIVITY_PIVOT}`),
       'methodology doc must publish the current conflict activity curve cap and pivot',
-    );
-    assert.ok(
-      browserSource.includes(`const CII_CONFLICT_ACTIVITY_CAP = ${CII_CONFLICT_ACTIVITY_CAP}`),
-      'browser CII engine conflict activity cap must match server _risk-config.ts',
-    );
-    assert.ok(
-      browserSource.includes(`const CII_CONFLICT_ACTIVITY_PIVOT = ${CII_CONFLICT_ACTIVITY_PIVOT}`),
-      'browser CII engine conflict activity pivot must match server _risk-config.ts',
     );
   });
 
@@ -2540,26 +2529,4 @@ describe('CII scoring', () => {
     );
   });
 
-  it('legacy browser CII engine no longer carries the old compression formulas', () => {
-    const sourcePath = resolve(
-      fileURLToPath(new URL('.', import.meta.url)),
-      '..',
-      'src',
-      'services',
-      'country-instability.ts',
-    );
-    const src = readFileSync(sourcePath, 'utf8');
-    assert.ok(
-      !src.includes('Math.min(60, h.eventsPoliticalViolence * 3 * multiplier)'),
-      'browser HAPI fallback must not hard-cap moderate and extreme political-violence counts at the same value',
-    );
-    assert.ok(
-      !src.includes('data.displacementOutflow >= 1_000_000 ? 8'),
-      'browser displacement boost must not use the old +4/+8 two-tier scale',
-    );
-    assert.ok(
-      !src.includes('20 * multiplier'),
-      'browser news alert boost must not amplify salience with country eventMultiplier',
-    );
-  });
 });

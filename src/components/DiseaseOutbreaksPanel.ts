@@ -170,9 +170,9 @@ export class DiseaseOutbreaksPanel extends Panel {
     }
 
     const filterBar = `<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
-      ${counts.alert > 0 ? `<button data-filter="alert" style="font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid rgba(231,76,60,0.4);background:${this._filter === 'alert' ? 'rgba(231,76,60,0.2)' : 'transparent'};color:#e74c3c;cursor:pointer">${escapeHtml(t('components.diseaseOutbreaks.filters.alert', { count: counts.alert }))}</button>` : ''}
-      ${counts.warning > 0 ? `<button data-filter="warning" style="font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid rgba(230,126,34,0.4);background:${this._filter === 'warning' ? 'rgba(230,126,34,0.2)' : 'transparent'};color:#e67e22;cursor:pointer">${escapeHtml(t('components.diseaseOutbreaks.filters.warning', { count: counts.warning }))}</button>` : ''}
-      ${counts.watch > 0 ? `<button data-filter="watch" style="font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid rgba(241,196,15,0.4);background:${this._filter === 'watch' ? 'rgba(241,196,15,0.2)' : 'transparent'};color:#f1c40f;cursor:pointer">${escapeHtml(t('components.diseaseOutbreaks.filters.watch', { count: counts.watch }))}</button>` : ''}
+      ${counts.alert > 0 ? `<button data-filter="alert" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:2px 8px;border-radius:10px;border:1px solid rgba(231,76,60,0.4);background:${this._filter === 'alert' ? 'rgba(231,76,60,0.2)' : 'transparent'};color:#e74c3c;cursor:pointer">${escapeHtml(t('components.diseaseOutbreaks.filters.alert', { count: counts.alert }))}</button>` : ''}
+      ${counts.warning > 0 ? `<button data-filter="warning" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:2px 8px;border-radius:10px;border:1px solid rgba(230,126,34,0.4);background:${this._filter === 'warning' ? 'rgba(230,126,34,0.2)' : 'transparent'};color:#e67e22;cursor:pointer">${escapeHtml(t('components.diseaseOutbreaks.filters.warning', { count: counts.warning }))}</button>` : ''}
+      ${counts.watch > 0 ? `<button data-filter="watch" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:2px 8px;border-radius:10px;border:1px solid rgba(241,196,15,0.4);background:${this._filter === 'watch' ? 'rgba(241,196,15,0.2)' : 'transparent'};color:#f1c40f;cursor:pointer">${escapeHtml(t('components.diseaseOutbreaks.filters.watch', { count: counts.watch }))}</button>` : ''}
     </div>`;
 
     const rows = filtered.map(o => {
@@ -180,19 +180,19 @@ export class DiseaseOutbreaksPanel extends Panel {
       const label = alertLabel(o.alertLevel);
       const age = relativeTime(o.publishedAt);
       const sourceLink = o.sourceUrl
-        ? `<a href="${escapeHtml(sanitizeUrl(o.sourceUrl))}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-primary);text-decoration:none;font-size:9px">${escapeHtml(o.sourceName || t('components.diseaseOutbreaks.sourceFallback'))}</a>`
-        : (o.sourceName ? `<span style="font-size:9px;color:var(--text-dim)">${escapeHtml(o.sourceName)}</span>` : '');
+        ? `<a href="${escapeHtml(sanitizeUrl(o.sourceUrl))}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-primary);text-decoration:none;font-size:calc(9px * var(--wm-panel-effective-scale, 1))">${escapeHtml(o.sourceName || t('components.diseaseOutbreaks.sourceFallback'))}</a>`
+        : (o.sourceName ? `<span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(o.sourceName)}</span>` : '');
 
       return `<div style="border-bottom:1px solid var(--border);padding:8px 0">
         <div style="display:flex;align-items:flex-start;gap:6px">
-          <span style="flex-shrink:0;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;background:${color}22;color:${color};margin-top:1px">${label}</span>
+          <span style="flex-shrink:0;font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:2px 5px;border-radius:3px;background:${color}22;color:${color};margin-top:1px">${label}</span>
           <div style="flex:1;min-width:0">
-            <div style="font-size:12px;font-weight:600;color:var(--text);line-height:1.3">${escapeHtml(o.disease)}</div>
-            <div style="font-size:11px;color:var(--text-dim);margin-top:2px">${escapeHtml(o.location)}</div>
-            ${o.summary ? `<div style="font-size:10px;color:var(--text-dim);margin-top:3px;line-height:1.4">${escapeHtml(o.summary.slice(0, 120))}${o.summary.length > 120 ? '…' : ''}</div>` : ''}
+            <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text);line-height:1.3">${escapeHtml(o.disease)}</div>
+            <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:2px">${escapeHtml(o.location)}</div>
+            ${o.summary ? `<div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:3px;line-height:1.4">${escapeHtml(o.summary.slice(0, 120))}${o.summary.length > 120 ? '…' : ''}</div>` : ''}
             <div style="display:flex;gap:8px;margin-top:4px;align-items:center">
               ${sourceLink}
-              ${age ? `<span style="font-size:9px;color:var(--text-dim)">${escapeHtml(age)}</span>` : ''}
+              ${age ? `<span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(age)}</span>` : ''}
             </div>
           </div>
         </div>
@@ -203,7 +203,7 @@ export class DiseaseOutbreaksPanel extends Panel {
       ? 'No items in your followed countries. Add countries by tapping the star, or turn off this filter.'
       : t('components.diseaseOutbreaks.empty');
     const empty = filtered.length === 0
-      ? `<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:12px">${escapeHtml(emptyMessage)}</div>`
+      ? `<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${escapeHtml(emptyMessage)}</div>`
       : '';
 
     this.setSafeContent(unsafeRawHtml(`
@@ -211,7 +211,7 @@ export class DiseaseOutbreaksPanel extends Panel {
       <div style="overflow-y:auto;max-height:420px">
         ${rows || empty}
       </div>
-      <div style="margin-top:6px;font-size:9px;color:var(--text-dim)">${escapeHtml(t('components.diseaseOutbreaks.attribution'))}</div>
+      <div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(t('components.diseaseOutbreaks.attribution'))}</div>
     `, 'legacy Panel.setContent() migration'));
   }
 

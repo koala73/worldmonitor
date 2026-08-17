@@ -177,6 +177,31 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     },
   },
   {
+    id: 'market.china-stock-connect',
+    label: 'Stock Connect northbound turnover and margin balance (SSE/SZSE)',
+    ownerIssue: 6155,
+    launchStatus: 'launched',
+    transport: metaTransport('seed-meta:market:china-stock-connect', 180),
+    content: {
+      key: 'market:china:stock-connect:v1',
+      // Margin publishes on a T+1 lag and both series pause for every mainland
+      // market holiday, so the content budget has to clear Chinese New Year.
+      maxAgeMin: 14 * 1_440,
+      probe: {
+        kind: 'object',
+        requiredTruthyPaths: [['sources']],
+        // A degraded snapshot is real partial coverage -- one exchange missing,
+        // or the two disagreeing on the trade date -- not a missing timestamp.
+        statusPath: ['status'],
+        validStatusValues: ['healthy'],
+        timestampPaths: [
+          ['northbound', 'tradeDate'],
+          ['margin', 'tradeDate'],
+        ],
+      },
+    },
+  },
+  {
     id: 'news.china',
     label: 'China news digest',
     ownerIssue: 5272,

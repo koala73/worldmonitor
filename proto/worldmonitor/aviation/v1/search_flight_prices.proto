@@ -33,6 +33,7 @@ message SearchFlightPricesRequest {
   // Number of adult passengers (1-9).
   int32 adults = 5 [
     (sebuf.http.query) = { name: "adults" },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
     (buf.validate.field).int32.gte = 1,
     (buf.validate.field).int32.lte = 9
   ];
@@ -43,6 +44,7 @@ message SearchFlightPricesRequest {
   // Maximum number of quotes to return (1-50).
   int32 max_results = 8 [
     (sebuf.http.query) = { name: "max_results" },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
     (buf.validate.field).int32.gte = 1,
     (buf.validate.field).int32.lte = 50
   ];

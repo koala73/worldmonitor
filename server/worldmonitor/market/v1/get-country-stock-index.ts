@@ -27,18 +27,25 @@ const COUNTRY_INDEX = filterParamContracts.marketCountryStockIndexes as Record<s
 // Keep request-driven cachedFetchJson writes separate: a slow request that
 // ends in a negative sentinel must never overwrite the seed's last-good data.
 const REDIS_CACHE_KEY = 'market:stock-index:rpc:v1';
-const RAILWAY_SEEDED_COUNTRY_INDEX_KEY = 'market:stock-index:v1:CN';
+const RAILWAY_SEEDED_COUNTRY_INDEX_KEY_PREFIX = 'market:stock-index:v1:';
 const REDIS_CACHE_TTL = 1800; // 30 min — weekly data, slow-moving
 
 const stockIndexCache: Record<string, { data: GetCountryStockIndexResponse; ts: number }> = {};
 const STOCK_INDEX_CACHE_TTL = 3_600_000; // 1 hour (in-memory fallback)
 
-function isAvailableCountryStockIndex(value: unknown): value is GetCountryStockIndexResponse {
+function railwaySeededKey(code: string): string {
+  return `${RAILWAY_SEEDED_COUNTRY_INDEX_KEY_PREFIX}${code}`;
+}
+
+// The seed row must agree with the key it was read from. A payload whose
+// `code` differs is a mis-keyed write, not usable data — serving it would
+// answer one country's request with another country's index.
+function isAvailableCountryStockIndex(value: unknown, code: string): value is GetCountryStockIndexResponse {
   return Boolean(
     value
     && typeof value === 'object'
     && (value as GetCountryStockIndexResponse).available
-    && (value as GetCountryStockIndexResponse).code === 'CN',
+    && (value as GetCountryStockIndexResponse).code === code,
   );
 }
 
@@ -60,16 +67,16 @@ export async function getCountryStockIndex(
   const index = COUNTRY_INDEX[code];
   if (!index) return notAvailable;
 
-  // Railway owns the CN snapshot and writes it without the Vercel environment
-  // prefix. Prefer that raw last-good payload before serving the RPC cache.
-  // The fallback cache below intentionally uses a separate key so a failed
-  // request cannot replace this seed-owned record with a negative sentinel.
-  if (code === 'CN') {
-    const railwaySnapshot = await getCachedJson(RAILWAY_SEEDED_COUNTRY_INDEX_KEY, true);
-    if (isAvailableCountryStockIndex(railwaySnapshot)) {
-      stockIndexCache[code] = { data: railwaySnapshot, ts: Date.now() };
-      return railwaySnapshot;
-    }
+  // Railway seeds every country in the enum and writes without the Vercel
+  // environment prefix. Prefer that raw last-good payload before serving the
+  // RPC cache. The fallback cache below intentionally uses a separate key so a
+  // failed request cannot replace a seed-owned record with a negative sentinel.
+  // The live fetch below remains as a gap-filler for any country whose seed
+  // leg failed on the last run.
+  const railwaySnapshot = await getCachedJson(railwaySeededKey(code), true);
+  if (isAvailableCountryStockIndex(railwaySnapshot, code)) {
+    stockIndexCache[code] = { data: railwaySnapshot, ts: Date.now() };
+    return railwaySnapshot;
   }
 
   const cached = stockIndexCache[code];

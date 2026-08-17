@@ -12,7 +12,9 @@ import {
   BOOTSTRAP_CACHE_KEYS as EDGE_BOOTSTRAP_CACHE_KEYS,
   BOOTSTRAP_TIERS as EDGE_BOOTSTRAP_TIERS,
 } from '../api/_bootstrap-tier-keys.js';
+import { CANADA_ROAD_SOURCES } from '../src/services/canada-roads-core.ts';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../api/_cii-risk-cache-keys.js';
+import { BOOTSTRAP_TIER_TIMEOUT_MS } from '../src/services/bootstrap.ts';
 import { __testing__ as healthTesting } from '../api/health.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -187,112 +189,57 @@ describe('Bootstrap endpoint (api/bootstrap.js)', () => {
     }
   });
 
-  it('supports optional ?keys= query param for subset filtering', () => {
-    assert.ok(src.includes("'keys'"), 'Missing keys query param handling');
-  });
+  // The query-param, header and tier-set assertions that used to sit here were
+  // `src.includes('data')`, `src.includes('keys')`, `src.includes('catch')` and
+  // friends — substrings common enough to pass against almost any JavaScript
+  // file, so they could not fail. The endpoint's actual behaviour is exercised
+  // by the runtime suite in tests/bootstrap-runtime.test.mts; what is worth
+  // reading off the source is the Edge boundary above, which no runtime test
+  // can observe.
 
-  it('returns JSON with data and missing keys', () => {
-    assert.ok(src.includes('data'), 'Missing data field in response');
-    assert.ok(src.includes('missing'), 'Missing missing field in response');
-  });
-
-  it('sets Cache-Control header with s-maxage for both tiers', () => {
-    // Cache-Control uses browser-only max-age (no s-maxage) so CF does not cache and
-    // pin a single ACAO origin. Vercel CDN uses CDN-Cache-Control for edge caching.
-    assert.ok(src.includes('max-age='), 'Missing max-age in Cache-Control');
-    assert.ok(src.includes('stale-while-revalidate'), 'Missing stale-while-revalidate');
-    assert.ok(src.includes('CDN-Cache-Control'), 'Missing CDN-Cache-Control for Vercel CDN');
-  });
-
-  it('validates API key for desktop origins', () => {
-    assert.ok(src.includes('validateApiKey'), 'Missing API key validation');
-  });
-
-  it('handles CORS preflight', () => {
-    assert.ok(src.includes("'OPTIONS'"), 'Missing OPTIONS method handling');
-    assert.ok(src.includes('getCorsHeaders'), 'Missing CORS headers');
-  });
-
-  it('supports ?tier= query param for tiered fetching', () => {
-    assert.ok(src.includes("'tier'"), 'Missing tier query param handling');
-    assert.ok(src.includes('SLOW_KEYS'), 'Missing SLOW_KEYS set');
-    assert.ok(src.includes('FAST_KEYS'), 'Missing FAST_KEYS set');
-    assert.ok(src.includes('TIER_CACHE'), 'Missing TIER_CACHE map');
-  });
 });
 
-describe('Frontend hydration (src/services/bootstrap.ts)', () => {
-  const bootstrapClientPath = join(root, 'src', 'services', 'bootstrap.ts');
-  const src = readFileSync(bootstrapClientPath, 'utf-8');
-
-  it('exports getHydratedData function', () => {
-    assert.ok(src.includes('export function getHydratedData'), 'Missing getHydratedData export');
+describe('Frontend bootstrap tier budgets', () => {
+  // Behaviour (consume-once hydration, tier ordering, stale-generation guards,
+  // silent slow-tier failure) is exercised against the real functions in
+  // tests/bootstrap-runtime.test.mts. What remains here is the timeout budget,
+  // which is a deliberate product constraint rather than an implementation
+  // detail — and is now read from the exported constant instead of by
+  // regex-scanning the module for bare numeric literals.
+  it('keeps the web fast tier off the first-paint critical path', () => {
+    assert.ok(
+      BOOTSTRAP_TIER_TIMEOUT_MS.web.fast <= 1_500,
+      `web fast tier budget ${BOOTSTRAP_TIER_TIMEOUT_MS.web.fast}ms blocks first paint too long`,
+    );
   });
 
-  it('exports fetchBootstrapData function', () => {
-    assert.ok(src.includes('export async function fetchBootstrapData'), 'Missing fetchBootstrapData export');
-  });
-
-  it('uses consume-once pattern (deletes after read)', () => {
-    assert.ok(src.includes('.delete('), 'Missing delete in getHydratedData — consume-once pattern not implemented');
-  });
-
-  it('has a fast timeout cap to avoid regressing startup', () => {
-    const timeoutMatches = [...src.matchAll(/setTimeout\([^,]+,\s*(?:desktop\s*\?\s*[\d_]+\s*:\s*)?(\d[\d_]*)\)/g)];
-    assert.ok(timeoutMatches.length > 0, 'Missing timeout');
-    for (const m of timeoutMatches) {
-      const ms = parseInt(m[1].replace(/_/g, ''), 10);
-      assert.ok(ms <= 5000, `Timeout ${ms}ms too high — should be ≤5000ms to avoid regressing startup`);
+  it('gives the slow tier more room than the fast tier, on both runtimes', () => {
+    for (const runtime of ['web', 'desktop']) {
+      const { fast, slow } = BOOTSTRAP_TIER_TIMEOUT_MS[runtime];
+      assert.ok(slow > fast, `${runtime}: slow budget must exceed fast`);
     }
   });
 
-  it('keeps web bootstrap tier timeouts within budget', () => {
-    const timeouts = Array.from(src.matchAll(/(\d[_\d]*)\)/g))
-      .map((m) => parseInt(m[1].replace(/_/g, ''), 10))
-      .filter((n) => n === 1200 || n === 3000);
-    assert.deepEqual(
-      timeouts.toSorted((a, b) => a - b),
-      [1200, 3000],
-      `Expected web bootstrap timeouts (fast=1200, slow=3000) — slow tier was bumped from 1.8s to 3.0s to avoid hydration-cascade aborts`,
-    );
+  it('keeps every budget inside the 8s ceiling that panels fall back at', () => {
+    for (const runtime of ['web', 'desktop']) {
+      for (const [tier, ms] of Object.entries(BOOTSTRAP_TIER_TIMEOUT_MS[runtime])) {
+        assert.ok(ms > 0 && ms <= 8_000, `${runtime}.${tier} budget ${ms}ms is out of range`);
+      }
+    }
   });
 
-  it('allows longer bootstrap timeouts for desktop runtime', () => {
-    assert.ok(src.includes('isDesktopRuntime'), 'Bootstrap should branch on desktop for longer timeouts');
-  });
-
-  it('fetches tiered bootstrap URLs', () => {
-    assert.ok(src.includes('/api/bootstrap?tier='), 'Missing tiered bootstrap fetch URLs');
-    assert.ok(src.includes('&public=1'), 'Tiered bootstrap fetches must use the isolated public cache URL');
-    assert.ok(src.includes("credentials: 'omit'"), 'Public tier fetches must omit credentials');
-  });
-
-  it('handles fetch failure silently', () => {
-    assert.ok(src.includes('catch'), 'Missing error handling — panels should fall through to individual calls');
-  });
-
-  it('awaits only the fast tier; backgrounds the slow tier (#4488 — slow off the boot critical path)', () => {
-    assert.ok(src.includes("'slow'"), 'Missing slow tier fetch');
-    assert.ok(src.includes("'fast'"), 'Missing fast tier fetch');
-    // The ~410KB slow tier must NOT block first paint: the boot must not await both tiers
-    // together. A regression to `await Promise.all([fetchTier('slow'), fetchTier('fast')])`
-    // re-introduces the LCP-blocking boot this deferral removed.
-    assert.ok(
-      !/await\s+Promise\.all\(\s*\[\s*fetchTier\('slow'/.test(src),
-      'slow tier must not be awaited via Promise.all — background it so it stays off the first-paint critical path',
-    );
-    // Slow tier is scheduled only after the fast state is committed.
-    assert.ok(src.includes('scheduleSlowTierFetch'), 'slow tier should be scheduled through the deferred slow-tier helper');
-    assert.ok(src.includes('slowTierSettled = scheduleSlowTierFetch'), 'fetchBootstrapData should expose the background slow-tier checkpoint');
-    assert.ok(/await\s+fetchTier\('fast'/.test(src), "boot should await the fast tier: await fetchTier('fast', …)");
-  });
-
-  it('guards stale slow-tier generations before committing cache or hydration state', () => {
-    assert.ok(src.includes('bootstrapGeneration'), 'Missing bootstrap generation guard');
-    assert.ok(src.includes('isCurrentGeneration'), 'Missing current-generation predicate');
-    assert.ok(src.includes('fetchTier(') && src.includes('shouldCommit'), 'fetchTier should receive a commit guard');
+  it('allows desktop longer budgets than web on every tier', () => {
+    // Different network and dependency-loading constraints; a web budget that
+    // drifted above desktop's would mean the tuning got inverted.
+    for (const tier of ['fast', 'slow']) {
+      assert.ok(
+        BOOTSTRAP_TIER_TIMEOUT_MS.desktop[tier] > BOOTSTRAP_TIER_TIMEOUT_MS.web[tier],
+        `desktop ${tier} budget must exceed web`,
+      );
+    }
   });
 });
+
 
 describe('App bootstrap slow-tier lifecycle', () => {
   const appSrc = readFileSync(join(root, 'src', 'App.ts'), 'utf-8');
@@ -329,7 +276,7 @@ describe('App bootstrap slow-tier lifecycle', () => {
     assert.ok(!/await\s+waitForBootstrapSlowTier\s*\(/.test(preFanout), 'raw slow-tier wait must not be inlined before the fan-out');
     assert.ok(!phase6.includes('void slowTierReady;'), 'slow-tier checkpoint must be awaited, not discarded');
     assert.ok(appSrc.includes('this.startPostLcpIntelligence(countryGeometryReady, geometryReadyBeforeFanout);'), 'post-LCP intelligence should wait on background geometry and know whether geometry was already applied');
-    assert.ok(appSrc.includes('this.dataLoader.refreshGeometryDependentCiiAfterCountryGeometry();'), 'post-geometry replay should restore CII country attribution without blocking fan-out');
+    assert.ok(appSrc.includes('this.dataLoader.refreshGeometryDependentCountryData();'), 'post-geometry replay should restore country-detail attribution without blocking fan-out');
   });
 });
 
@@ -371,8 +318,24 @@ describe('Bootstrap key hydration coverage', () => {
     walk(join(root, 'src'));
     const allSrc = srcFiles.map(f => readFileSync(f, 'utf-8')).join('\n');
 
+    // A third valid form: a key consumed through a loader map DERIVED from a
+    // descriptor list rather than named in a per-key literal. #6763 built the
+    // Canada road loaders as `CANADA_ROAD_SOURCES.map(({ key }) => ...)`
+    // precisely so a fifth jurisdiction cannot be added with no loader and read
+    // as permanently unavailable — the failure hand-listed literals invite.
+    //
+    // This follows the derivation instead of forcing the literals back, and
+    // stays honest by requiring the derivation site to exist: delete it and
+    // every road key falls through to the assertion below.
+    const derivedRoadKeys = new Set(
+      /CANADA_ROAD_SOURCES\.map\(\(\{ key \}\) => \[key, \(\) => ensureHydrated\(key\)\]\)/.test(allSrc)
+        ? CANADA_ROAD_SOURCES.map(({ key }) => key)
+        : [],
+    );
+
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;
+      if (derivedRoadKeys.has(key)) continue;
       // Two valid consumer forms. `getHydratedData(k)` reads a key delivered by a
       // tier bundle. `ensureHydrated(k)` (#5300) reads a key that rides in no
       // tier: it returns the tier value if one is present and otherwise fetches

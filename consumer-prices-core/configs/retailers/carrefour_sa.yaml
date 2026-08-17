@@ -9,8 +9,17 @@ retailer:
 
   searchConfig:
     numResults: 5
-    queryTemplate: "{canonicalName} carrefour saudi"
+    queryTemplate: "{canonicalName} grocery carrefour saudi {currency}"
+    allowedHosts:
+      - www.carrefourksa.com
     urlPathContains: /p/
+    # Carrefour MAF storefronts hydrate product data late: at the default
+    # settle the sibling carrefouruae.com page captured as a 2.2KB breadcrumb
+    # shell (extractor: missing-price on every candidate) vs 32KB with an 8s
+    # wait. Same MAF frontend here, same 2026-08-08 missing-price signature.
+    renderWaitMs: 8000
+    extractionFallback: exa
+    requireStrictValidator: true
 
   rateLimit:
     requestsPerMinute: 10

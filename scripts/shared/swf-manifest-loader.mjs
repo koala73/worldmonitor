@@ -375,5 +375,3 @@ export function groupFundsByCountry(manifest) {
   }
   return byCountry;
 }
-
-export const __TEST_ONLY = { MANIFEST_PATH };

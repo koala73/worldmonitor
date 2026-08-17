@@ -71,6 +71,10 @@ export function reportServerError(
   // widget endpoint and drowns the genuine origin-5xx canary (#5245).
   // markWmSessionDead() captures the episode once instead.
   if (res.headers.get('X-Wm-Session-Degraded') === '1') return;
+  // Fail-closed rate-limit degradation is already captured at the server
+  // decision point. Reporting every browser-visible 503 again would turn one
+  // Redis outage into a per-route, per-client Sentry flood.
+  if (res.headers.get('X-RateLimit-Mode') === 'degraded') return;
   try {
     const href = input instanceof Request ? input.url : String(input);
     const path = new URL(href, globalThis.location?.href ?? 'https://worldmonitor.app').pathname;
@@ -82,10 +86,75 @@ export function reportServerError(
     const isCloudflareEdgeError = res.status >= 520 && res.status <= 527;
     const message = `API ${res.status}: ${path}`;
     const level: 'warning' | 'error' = isCloudflareEdgeError ? 'warning' : 'error';
-    const tags = { kind: isCloudflareEdgeError ? 'api_cf_5xx' : 'api_5xx' };
+    // `status` is a tag, not just an `extra`: `extra` is not indexed, so a
+    // status that is only there can be read one event at a time but never
+    // aggregated. Both sibling fingerprint sites mirror every grouping
+    // dimension into tags for that reason — analytics-collector-transport.ts
+    // tags `status` beside its fingerprint, and api/user-prefs.ts promotes
+    // fields out of `extra` explicitly to make them searchable. Without it
+    // `kind:api_cf_5xx` is queryable but `status:503` is not, so triage cannot
+    // ask "every 503 this week, across all routes" — the exact question that
+    // separated this issue's 503s from its 520s. Cardinality is the bounded
+    // 5xx set, same as the fingerprint's.
+    const tags = {
+      kind: isCloudflareEdgeError ? 'api_cf_5xx' : 'api_5xx',
+      status: String(res.status),
+    };
     const extra = { path, status: res.status };
-    enqueue((s) => s.captureMessage(message, { level, tags, extra }));
+    // Group explicitly rather than letting Sentry infer it. These are
+    // message-only events — `attachStacktrace` defaults to false and is never
+    // set in sentry-init.ts — so Sentry groups them by message, and its
+    // server-side parameterization normalizes the embedded status integer:
+    // `API 520: /x` and `API 503: /x` collapse to the same grouping message.
+    // WORLDMONITOR-P4 ("API 520: /api/economic/v1/get-fred-series-batch") held
+    // 256 api_5xx events beside 25 api_cf_5xx ones that way — 92 of its last
+    // 100 were the 2026-07-12 origin 503s, not the 520 it is named for. That
+    // inflates the headline count, voids the level split above (one issue
+    // carries one level), and makes an unpinned resolve reopen and page on any
+    // origin 5xx for the path.
+    //
+    // `path` and the status are the two grouping axes. The leading token is a
+    // readable class label in the style of analytics-collector-transport.ts's
+    // fingerprint namespace, but it is derived from the status, so it splits
+    // nothing on its own — do not read it as a third axis.
+    // Cardinality stays bounded at the RPC path set x the 5xx status set —
+    // `path` is a pathname, so query strings never enter the key. Keep it that
+    // way: a path-parameterized caller would mint one Sentry issue per URL.
+    const fingerprint = [
+      isCloudflareEdgeError ? 'api-cf-5xx' : 'api-5xx',
+      path,
+      String(res.status),
+    ];
+    enqueue((s) => s.captureMessage(message, { level, tags, extra, fingerprint }));
   } catch { /* ignore URL parse errors */ }
+}
+
+/**
+ * The single dispatch point for every authenticated variant below: fetch, then
+ * report whatever the caller will actually receive.
+ *
+ * The retryable billing-verification 503 (#6483) is honored one layer down, by
+ * `withBillingVerificationRetry` around the `window.fetch` patch in
+ * services/runtime.ts. It moved there because the server's contract is
+ * route-agnostic while this function is not: the legacy-Pro-bearer gate
+ * (server/gateway.ts:1467) 503s routes that are in neither ENDPOINT_ENTITLEMENTS
+ * nor PREMIUM_RPC_PATHS, and those callers never reach `premiumFetch`. Retrying
+ * here as well would double the bound to two attempts and ~10s of inline wait.
+ *
+ * Reporting the FINAL response is still the point, and still works: the patch
+ * resolves to the post-retry response, so a transient it absorbs produces no
+ * Sentry event at all — matching how the two other expected-transient 503s on
+ * this path are handled (see reportServerError) — while a sustained outage
+ * still yields exactly one event per call, so the origin-5xx canary keeps its
+ * signal.
+ */
+async function fetchReportingServerErrors(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const res = await globalThis.fetch(input, init);
+  reportServerError(res, input);
+  return res;
 }
 
 function withCredentials(init?: RequestInit): RequestInit {
@@ -215,9 +284,7 @@ export async function premiumFetch(
   // Skip injection if the caller already set an auth header.
   const existing = new Headers(requestInit?.headers);
   if (existing.has('Authorization') || existing.has('X-WorldMonitor-Key')) {
-    const res = await globalThis.fetch(input, withCredentials(requestInit));
-    reportServerError(res, input);
-    return res;
+    return fetchReportingServerErrors(input, withCredentials(requestInit));
   }
 
   // 1. Browser/test runtime key. Desktop keys remain inside the native
@@ -229,9 +296,14 @@ export async function premiumFetch(
       const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
       if (wmKey) {
         existing.set('X-WorldMonitor-Key', wmKey);
-        const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: existing });
-        reportServerError(res, input);
-        return res;
+        // `return await`, not a bare `return`: this sits inside the try below,
+        // and only an awaited rejection is caught by it. Returning the promise
+        // unawaited would escape the catch and propagate instead of falling
+        // through to the next credential — a silent behavior change.
+        return await fetchReportingServerErrors(
+          input,
+          { ...withCredentials(requestInit), headers: existing },
+        );
       }
     } catch { /* not available — fall through */ }
   }
@@ -242,11 +314,12 @@ export async function premiumFetch(
   for (const testerKey of testerKeys) {
     const testerHeaders = new Headers(existing);
     testerHeaders.set('X-WorldMonitor-Key', testerKey);
-    const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: testerHeaders });
-    if (res.status !== 401) {
-      reportServerError(res, input);
-      return res;
-    }
+    // A 401 is never reported (reportServerError ignores anything under 500),
+    // so dispatching through the shared path here does not change what the
+    // fallback chain surfaces — it only lets a tester-key call absorb the same
+    // retryable 503 as every other variant.
+    const res = await fetchReportingServerErrors(input, { ...withCredentials(requestInit), headers: testerHeaders });
+    if (res.status !== 401) return res;
     // 401 → try the next tester key, then fall through to Clerk if none work.
   }
 
@@ -273,9 +346,12 @@ export async function premiumFetch(
       }
       if (token) {
         existing.set('Authorization', `Bearer ${token}`);
-        const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: existing });
-        reportServerError(res, input);
-        return res;
+        // `return await` — see the wm-key branch above: this is inside the
+        // enclosing try, whose catch must keep seeing a rejection here.
+        return await fetchReportingServerErrors(
+          input,
+          { ...withCredentials(requestInit), headers: existing },
+        );
       }
     } catch { /* not signed in — fall through */ }
   }
@@ -317,7 +393,5 @@ export async function premiumFetch(
   const unauthenticatedInit = marksPremiumIntent
     ? withPremiumIntent(withCredentials(requestInit))
     : withCredentials(requestInit);
-  const res = await globalThis.fetch(input, unauthenticatedInit);
-  reportServerError(res, input);
-  return res;
+  return fetchReportingServerErrors(input, unauthenticatedInit);
 }

@@ -1,40 +1,22 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, describe, it, mock } from 'node:test';
-import { resolveTechEventsPaging } from '../server/worldmonitor/research/v1/_tech-events-paging.ts';
 import {
   fetchWidestTechEvents,
   listTechEvents,
   TECH_EVENTS_UNAVAILABLE_ERROR,
-  WIDEST_TECH_EVENTS_REQUEST,
 } from '../server/worldmonitor/research/v1/list-tech-events.ts';
 import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
 
-// #5427: the cold-start fallback fetcher writes to the SHARED, request-
-// independent `research:tech-events:v1` key (the same one the relay seeder
-// fills with the full list). Whatever it caches is what every client sees for
-// the 6h TTL, so the request it fetches with must be the widest the params
-// allow — narrowing belongs exclusively to filterEvents() on the read path.
-describe('cold-start fallback caches the widest tech-events payload (#5427)', () => {
-  it('applies no type or mappable narrowing', () => {
-    assert.equal(WIDEST_TECH_EVENTS_REQUEST.type, 'all');
-    assert.equal(WIDEST_TECH_EVENTS_REQUEST.mappable, false);
-  });
-
-  it('resolves to the documented clamp maxima for limit and days', () => {
-    assert.deepEqual(
-      resolveTechEventsPaging(WIDEST_TECH_EVENTS_REQUEST, { hasLimit: true, hasDays: true }),
-      { limit: 200, days: 365 },
-    );
-  });
-
-  it('cannot resolve narrower than a maxed-out explicit request', () => {
-    const maxedExplicit = resolveTechEventsPaging({ limit: 999, days: 999 });
-    assert.deepEqual(
-      resolveTechEventsPaging(WIDEST_TECH_EVENTS_REQUEST, { hasLimit: true, hasDays: true }),
-      maxedExplicit,
-    );
-  });
-});
+// #5427: the cold-start fallback writes to the SHARED, request-independent
+// `research:tech-events:v1` key (the same one the relay seeder fills with the
+// full list). Whatever it caches is what every client sees for the 6h TTL, so
+// it must cache the full set — narrowing belongs exclusively to filterEvents()
+// on the read path.
+//
+// The suite that pinned the values of a WIDEST_TECH_EVENTS_REQUEST constant is
+// gone with the constant: the fetch path no longer takes a request at all, so
+// there is nothing to hold at the clamp maxima. `resolveTechEventsPaging` and
+// its bounds stay covered by tests/tech-events-paging.test.mts.
 
 // Greptile P2 on #5603: the assertions above validate the exported constant and
 // the paging resolver, but nothing proved `listTechEvents` actually hands that
@@ -220,7 +202,7 @@ describe('listTechEvents cold-start cache write', () => {
    * `icsEventless` instead returns a healthy-looking 200 that parses to
    * nothing. FIXTURE_RSS is already item-free, so it covers the RSS side.
    */
-  function installFetchMock({ icsFails = false, rssFails = false, icsEventless = false } = {}) {
+  function installFetchMock({ icsFails = false, rssFails = false, icsEventless = false, icsBody = '' } = {}) {
     const redisSets: RedisSetCommand[] = [];
     mock.method(globalThis, 'fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -233,7 +215,8 @@ describe('listTechEvents cold-start cache write', () => {
       }
       if (url === ICS_URL) {
         if (icsFails) return new Response('', { status: 503 });
-        return new Response(icsEventless ? EVENTLESS_ICS_200 : FIXTURE_ICS, { status: 200 });
+        if (icsEventless) return new Response(EVENTLESS_ICS_200, { status: 200 });
+        return new Response(icsBody || FIXTURE_ICS, { status: 200 });
       }
       if (url === DEV_EVENTS_RSS) {
         return rssFails ? new Response('', { status: 503 }) : new Response(FIXTURE_RSS, { status: 200 });
@@ -293,6 +276,31 @@ describe('listTechEvents cold-start cache write', () => {
       events.length >= 4,
       `?limit=1 must not truncate the shared cache, but only ${events.length} event(s) were written`,
     );
+  });
+
+  // Both seeders (scripts/ais-relay.cjs seedTechEvents, scripts/seed-research.mjs)
+  // write the full deduped list with no limit and no day horizon. The fetch path
+  // used to cap at 200/365, so once the corpus grew past 200 a fallback-warmed
+  // key held a different, shorter set than a seeder-warmed one — the same
+  // divergence class as #5427, just further out. With no request in the fetch
+  // path there is nothing left to cap with.
+  it('caches the full corpus, matching what the seeders write', async () => {
+    const many = Array.from({ length: 250 }, (_, i) =>
+      vevent(`wm-bulk-${i}`, `WM Bulk Conference ${i}`, i + 1, 'Paris, France'));
+    const redisSets = installFetchMock({
+      icsBody: ['BEGIN:VCALENDAR', 'VERSION:2.0', ...many, 'END:VCALENDAR'].join('\n'),
+    });
+
+    await listTechEvents(ctxFor(NARROW_PATH), NARROW_REQ);
+
+    const events = cachedPayload(redisSets).events;
+    assert.ok(
+      events.length >= 250,
+      `the shared key must hold the full corpus, not a 200-event slice; got ${events.length}`,
+    );
+    // Day 250 is past the old 365-day cutoff's practical reach for this fixture
+    // and far past the warming request's 5-day window.
+    assert.ok(events.some(e => e.id === 'wm-bulk-249'), 'the tail of the corpus must survive');
   });
 
   it('still narrows the warming request own response via filterEvents', async () => {

@@ -6,6 +6,7 @@ import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { issueSessionToken } from '../api/_session.js';
 import { createDomainGateway } from '../server/gateway.ts';
 import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc.ts';
+import { installRedis } from './helpers/fake-upstash-redis.mts';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_ENV = {
@@ -13,6 +14,9 @@ const ORIGINAL_ENV = {
   CONVEX_SITE_URL: process.env.CONVEX_SITE_URL,
   CONVEX_SERVER_SHARED_SECRET: process.env.CONVEX_SERVER_SHARED_SECRET,
   WM_SESSION_SECRET: process.env.WM_SESSION_SECRET,
+  UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+  UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+  VERCEL_ENV: process.env.VERCEL_ENV,
 };
 
 type Entitlement = {
@@ -112,6 +116,13 @@ before(async () => {
   process.env.WM_SESSION_SECRET = 'pro-fresh-session-secret-at-least-32-chars';
   anonymousSessionToken = (await issueSessionToken()).token;
 
+  // list-stablecoin-markets carries an endpoint rate policy (#6308), and the
+  // endpoint limiter fails closed with 503 when Redis is unconfigured. Install
+  // the fake so every route here reaches its handler like in production —
+  // same accommodation as tests/leads-gateway-public.test.mts. The other four
+  // paths have no policy and are unaffected either way.
+  const redis = installRedis({});
+
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url =
       typeof input === 'string'
@@ -125,6 +136,9 @@ before(async () => {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
+    }
+    if (url.startsWith(process.env.UPSTASH_REDIS_REST_URL ?? '\0')) {
+      return redis.fetchImpl(input, init);
     }
     return ORIGINAL_FETCH(input, init);
   }) as typeof fetch;

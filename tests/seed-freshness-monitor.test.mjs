@@ -13,9 +13,17 @@ import {
   validateAcceptanceBaseline,
   validateCompactHealthPayload,
 } from '../scripts/check-seed-freshness.mjs';
+import { validateHealthProbeCutovers } from '../scripts/check-health-probe-cutovers.mts';
 
 const COMMITTED_BASELINE_URL = new URL('../scripts/seed-freshness-baseline.json', import.meta.url);
+const PR_TEMPLATE_URL = new URL('../.github/pull_request_template.md', import.meta.url);
+const LONG_CRON_RUNBOOK_URL = new URL(
+  '../docs/solutions/integration-issues/merged-is-not-ran-long-cron-seeders.md',
+  import.meta.url,
+);
 const RAILWAY_SERVICES_URL = new URL('../scripts/railway-services.json', import.meta.url);
+const TEST_WORKFLOW_URL = new URL('../.github/workflows/test.yml', import.meta.url);
+const PRE_PUSH_HOOK_URL = new URL('../.husky/pre-push', import.meta.url);
 const readCommittedBaseline = () => JSON.parse(readFileSync(COMMITTED_BASELINE_URL, 'utf8'));
 const readRailwayServices = () => JSON.parse(readFileSync(RAILWAY_SERVICES_URL, 'utf8'));
 
@@ -127,7 +135,7 @@ describe('scheduled seed freshness monitor', () => {
         recordCount: 9,
       })]]),
       keyMetaErrors: new Map(),
-      activatedNames: new Set(),
+      activationStates: new Map(),
       now,
     });
     const committed = readCommittedBaseline();
@@ -172,7 +180,7 @@ describe('scheduled seed freshness monitor', () => {
         recordCount: 9,
       })]]),
       keyMetaErrors: new Map(),
-      activatedNames: new Set(),
+      activationStates: new Map(),
       now,
     });
     const result = applyAcceptanceBaseline(
@@ -234,6 +242,58 @@ describe('scheduled seed freshness monitor', () => {
       assert.equal(result.expired, false);
     });
 
+    it('acknowledges a matching problem before its entry-level expiry', () => {
+      const rolloutBaseline = {
+        ...baseline,
+        acknowledged: [{
+          name: 'tariffTrendsUs',
+          status: 'EMPTY',
+          issue: 6377,
+          expiresAt: '2026-08-10T12:00:00.000Z',
+        }],
+      };
+      const result = applyAcceptanceBaseline(
+        [{ name: 'tariffTrendsUs', status: 'EMPTY' }],
+        rolloutBaseline,
+        at('2026-08-10T11:59:59.999Z'),
+      );
+
+      assert.deepEqual(result.blocking, []);
+      assert.deepEqual(result.acknowledged, [
+        { name: 'tariffTrendsUs', status: 'EMPTY', issue: 6377 },
+      ]);
+    });
+
+    it('fails closed at and after an entry-level expiry while the root baseline remains valid', () => {
+      const rolloutBaseline = {
+        ...baseline,
+        acknowledged: [{
+          name: 'tariffTrendsUs',
+          status: 'EMPTY',
+          issue: 6377,
+          expiresAt: '2026-08-10T12:00:00.000Z',
+        }],
+      };
+      const problem = { name: 'tariffTrendsUs', status: 'EMPTY' };
+
+      for (const now of [
+        '2026-08-10T12:00:00.000Z',
+        '2026-08-10T12:00:00.001Z',
+      ]) {
+        const result = applyAcceptanceBaseline([problem], rolloutBaseline, at(now));
+        // The blocking item carries the expired entry's identity so the report
+        // can attribute the red line to a scheduled re-page instead of a fresh
+        // outage (#6483 review) — the fail-closed split itself is unchanged.
+        assert.deepEqual(result.blocking, [
+          { ...problem, expiredEntry: '2026-08-10T12:00:00.000Z', issue: 6377 },
+        ], now);
+        assert.deepEqual(result.acknowledged, [], now);
+        assert.deepEqual(result.cleared, [], now);
+        assert.deepEqual(result.escalated, [], now);
+        assert.equal(result.expired, false, 'the later root expiry keeps its existing semantics');
+      }
+    });
+
     it('blocks when a baselined source fails with a DIFFERENT status', () => {
       // A source degrading further is new information, not the accepted state.
       const result = applyAcceptanceBaseline(
@@ -259,9 +319,60 @@ describe('scheduled seed freshness monitor', () => {
       assert.equal(result.blocking.length, 0);
     });
 
+    it('calls a baselined source that changed status escalated, never recovered (#6263)', () => {
+      // The acknowledgment is keyed on name:status, so a source that gets WORSE
+      // stops matching exactly like one that recovers. Both then land in the
+      // same "no longer reported" bucket, and the report tells the operator to
+      // delete a suppression for a source that is still broken — while the same
+      // run fails the gate on the new status. #6263 made this reachable: a
+      // blocked source whose data key also expires moves SEED_ERROR -> EMPTY.
+      const result = applyAcceptanceBaseline(
+        [{ name: 'crossStraitActivityJapanMod', status: 'EMPTY' }],
+        baseline,
+        at('2026-08-01'),
+      );
+
+      assert.equal(
+        result.cleared.some((entry) => entry.name === 'crossStraitActivityJapanMod'),
+        false,
+        'the source is still reporting a problem, so it has not recovered',
+      );
+      assert.deepEqual(result.escalated, [
+        { name: 'crossStraitActivityJapanMod', status: 'SEED_ERROR', observedStatus: 'EMPTY', issue: 5714 },
+      ]);
+      assert.deepEqual(
+        result.blocking.map((p) => p.status),
+        ['EMPTY'],
+        'the unacknowledged worse status still blocks — escalation is reported, never suppressed',
+      );
+    });
+
+    it('still reports a genuinely recovered source as recovered', () => {
+      // The other side of the same split: absent from the problem set entirely
+      // is the only thing that counts as recovery.
+      const result = applyAcceptanceBaseline(
+        [{ name: 'gdeltIntel', status: 'SEED_ERROR' }],
+        baseline,
+        at('2026-08-01'),
+      );
+      assert.deepEqual(result.cleared, [
+        { name: 'crossStraitActivityJapanMod', status: 'SEED_ERROR', issue: 5714 },
+      ]);
+      assert.deepEqual(result.escalated, []);
+    });
+
     it('expires so the baseline cannot silently become permanent', () => {
       assert.equal(applyAcceptanceBaseline([], baseline, at('2026-08-26')).expired, false);
       assert.equal(applyAcceptanceBaseline([], baseline, at('2026-08-28')).expired, true);
+    });
+
+    // The expiry exists to stop a SUPPRESSION outliving its cause. Pruning the
+    // last recovered entry empties the list, and a date-triggered failure over
+    // nothing is a red monitor with nothing to review — which is how people
+    // learn to ignore the check that is supposed to page them.
+    it('does not expire once the last suppression is pruned', () => {
+      const emptied = { ...baseline, acknowledged: [] };
+      assert.equal(applyAcceptanceBaseline([], emptied, at('2026-08-28')).expired, false);
     });
 
     it('requires an owner issue and an expiry on every entry', () => {
@@ -279,6 +390,91 @@ describe('scheduled seed freshness monitor', () => {
       );
     });
 
+    it('rejects a malformed entry-level expiry when the optional field is supplied', () => {
+      assert.doesNotThrow(() => validateAcceptanceBaseline(baseline));
+      for (const expiresAt of [undefined, null, 42, 'not-a-date']) {
+        assert.throws(
+          () => validateAcceptanceBaseline({
+            ...baseline,
+            acknowledged: [{
+              name: 'tariffTrendsUs',
+              status: 'EMPTY',
+              issue: 6377,
+              expiresAt,
+            }],
+          }),
+          /tariffTrendsUs.*ISO expiresAt/,
+        );
+      }
+    });
+
+    it('rejects parseable entry expiries that are not real UTC ISO instants', () => {
+      for (const expiresAt of [
+        'August 10, 2026',
+        '2026-02-30T00:00:00.000Z',
+        '2026-08-10T12:00:00',
+      ]) {
+        assert.throws(
+          () => validateAcceptanceBaseline({
+            ...baseline,
+            acknowledged: [{
+              name: 'tariffTrendsUs',
+              status: 'EMPTY',
+              issue: 6377,
+              expiresAt,
+            }],
+          }),
+          /tariffTrendsUs.*UTC ISO expiresAt/,
+          expiresAt,
+        );
+      }
+
+      for (const expiresAt of [
+        '2026-08-10T12:00:00Z',
+        '2026-08-10T12:00:00.1Z',
+        '2026-08-10T12:00:00.123Z',
+        '2026-08-10T12:00:00.123456Z',
+        '2026-08-10T12:00:00+04:00',
+      ]) {
+        assert.doesNotThrow(
+          () => validateAcceptanceBaseline({
+            ...baseline,
+            acknowledged: [{
+              name: 'tariffTrendsUs',
+              status: 'EMPTY',
+              issue: 6377,
+              expiresAt,
+            }],
+          }),
+          expiresAt,
+        );
+      }
+    });
+
+    it('rejects duplicate name and status entries in either order', () => {
+      const expired = {
+        name: 'tariffTrendsUs',
+        status: 'EMPTY',
+        issue: 6377,
+        expiresAt: '2026-08-10T12:00:00.000Z',
+      };
+      const unbounded = {
+        name: 'tariffTrendsUs',
+        status: 'EMPTY',
+        issue: 6378,
+      };
+
+      for (const acknowledged of [
+        [expired, unbounded],
+        [unbounded, expired],
+      ]) {
+        assert.throws(
+          () => validateAcceptanceBaseline({ ...baseline, acknowledged }),
+          /duplicate.*tariffTrendsUs:EMPTY/i,
+        );
+      }
+    });
+
     it('ships a valid, unexpired committed baseline', () => {
       const committed = readCommittedBaseline();
       validateAcceptanceBaseline(committed);
@@ -287,6 +483,81 @@ describe('scheduled seed freshness monitor', () => {
         false,
         'shippingRates recovered across the canonical cadence; do not suppress it again',
       );
+      assert.equal(
+        committed.acknowledged.some((entry) => entry.name === 'gdeltIntel'),
+        false,
+        'gdeltIntel recovered after the bulk-materializer cutover; do not suppress it again',
+      );
+      assert.equal(
+        committed.acknowledged.some((entry) => entry.name === 'humanitarianSummary'),
+        false,
+        'humanitarianSummary recovered; do not suppress a future recurrence',
+      );
+      assert.equal(
+        committed.acknowledged.some((entry) => entry.name === 'crossStraitActivityJapanMod'),
+        false,
+        'crossStraitActivityJapanMod stopped reporting SEED_ERROR and compact health now counts it OK; do not suppress a future recurrence',
+      );
+      const japanModFailure = applyAcceptanceBaseline(
+        [{ name: 'crossStraitActivityJapanMod', status: 'SEED_ERROR' }],
+        committed,
+        Date.parse('2026-08-10'),
+      );
+      assert.deepEqual(
+        japanModFailure.blocking.map((problem) => problem.name),
+        ['crossStraitActivityJapanMod'],
+        'a returning Japan MOD proxy block must reach the gate, not the suppression it used to carry (#5714)',
+      );
+      assert.deepEqual(japanModFailure.acknowledged, []);
+      const humanitarianFailure = applyAcceptanceBaseline(
+        [{ name: 'humanitarianSummary', status: 'SEED_ERROR' }],
+        committed,
+        Date.parse('2026-08-08'),
+      );
+      assert.deepEqual(
+        humanitarianFailure.blocking.map((problem) => problem.name),
+        ['humanitarianSummary'],
+        'a future humanitarianSummary failure must block the committed acceptance gate',
+      );
+      assert.deepEqual(humanitarianFailure.acknowledged, []);
+      const gdeltFailure = applyAcceptanceBaseline(
+        [{ name: 'gdeltIntel', status: 'SEED_ERROR' }],
+        committed,
+        Date.parse('2026-08-01'),
+      );
+      assert.deepEqual(
+        gdeltFailure.blocking.map((problem) => problem.name),
+        ['gdeltIntel'],
+        'a recovered gdeltIntel failure must block the committed acceptance gate',
+      );
+      assert.deepEqual(gdeltFailure.acknowledged, []);
+      // These three recovered or changed status; the monitor reported them as
+      // "no longer reported; remove it" and #6799 pruned them. staticRefBundleTick
+      // and bocValet publish again, and statcanWds's EMPTY never returns — it
+      // moved to STALE_CONTENT, which that entry could never have matched.
+      for (const [name, why] of [
+        ['staticRefBundleTick', 'the static-ref heartbeat publishes again'],
+        ['bocValet', 'the Bank of Canada Valet probe publishes again'],
+        ['statcanWds', 'its EMPTY escalated to STALE_CONTENT and the content budget now covers the real cadence'],
+      ]) {
+        assert.equal(
+          committed.acknowledged.some((entry) => entry.name === name),
+          false,
+          `${name} recovered (${why}); do not suppress a future recurrence`,
+        );
+      }
+
+      const mineral = committed.acknowledged.find((entry) => entry.name === 'mineralProduction');
+      assert.ok(mineral, 'mineralProduction stays acknowledged until the first post-recovery tick publishes');
+      assert.equal(mineral.status, 'EMPTY');
+      // Re-anchored in #6799 onto the first static-ref tick after the
+      // Arms-Suppliers concurrency fix (#6807) frees the budget this section
+      // was being deferred out of.
+      assert.equal(mineral.expiresAt, '2026-08-18T03:00:00.000Z');
+      assert.equal(mineral.cutover?.firstScheduledRunAt, '2026-08-18T03:00:00.000Z');
+      assert.equal(mineral.cutover?.probeKey, 'seed-meta:supply-chain:mineral-production');
+      const staticRefService = readRailwayServices().find((entry) => entry.service === 'seed-bundle-static-ref');
+      assert.equal(staticRefService?.cronSchedule, '0 3 * * *');
       assert.ok(
         Date.parse(committed.expiresAt) > Date.parse('2026-07-28'),
         'committed baseline must not ship already expired',
@@ -319,6 +590,201 @@ describe('scheduled seed freshness monitor', () => {
         );
       }
     });
+
+    it('documents the pre-seed-or-expiring-acknowledgement cutover contract', () => {
+      const committed = readCommittedBaseline();
+      const baselinePolicy = committed.$comment.join('\n');
+      const prTemplate = readFileSync(PR_TEMPLATE_URL, 'utf8');
+      const runbook = readFileSync(LONG_CRON_RUNBOOK_URL, 'utf8');
+
+      assert.match(baselinePolicy, /entry-level `expiresAt`/i);
+      assert.match(baselinePolicy, /first\s+(scheduled\s+)?cron window/i);
+      assert.match(prTemplate, /Railway-side pre-seed/i);
+      assert.match(prTemplate, /entry-level `expiresAt`/i);
+      assert.match(runbook, /Railway-side pre-seed/i);
+      assert.match(runbook, /entry-level `expiresAt`/i);
+      assert.match(runbook, /first\s+(scheduled\s+)?cron window/i);
+    });
+
+    describe('health-probe cutover enforcement', () => {
+      const baseSeedMeta = {
+        tariffTrendsUs: { key: 'seed-meta:economic:tariff-trends-us' },
+        unchanged: { key: 'seed-meta:unchanged', maxStaleMin: 60 },
+      };
+      const baselineWithoutCutover = { ...baseline, acknowledged: [] };
+
+      it('fails a new or repointed probe without machine-readable cutover evidence', () => {
+        assert.throws(
+          () => validateHealthProbeCutovers({
+            baseSeedMeta,
+            headSeedMeta: {
+              ...baseSeedMeta,
+              tariffTrendsUs: { key: 'seed-meta:trade:tariffs' },
+            },
+            baseline: baselineWithoutCutover,
+          }),
+          /tariffTrendsUs.*pre-seed.*expiring acknowledgement/i,
+        );
+      });
+
+      it('accepts pre-seed evidence bound to the exact key transition', () => {
+        const cutover = {
+          mode: 'preseed',
+          fromKey: 'seed-meta:economic:tariff-trends-us',
+          issue: 6377,
+          verifiedAt: '2026-08-10T09:00:00.000Z',
+          evidence: {
+            platform: 'railway',
+            service: 'seed-supply-chain-trade',
+            probeKey: 'seed-meta:trade:tariffs',
+            compactHealthStatus: 'OK',
+            reference: 'https://github.com/koala73/worldmonitor/issues/6377#issuecomment-1',
+          },
+        };
+        const headSeedMeta = {
+          ...baseSeedMeta,
+          tariffTrendsUs: { key: 'seed-meta:trade:tariffs', cutover },
+        };
+
+        assert.doesNotThrow(() => validateHealthProbeCutovers({
+          baseSeedMeta,
+          headSeedMeta,
+          baseline: baselineWithoutCutover,
+        }));
+        assert.throws(
+          () => validateHealthProbeCutovers({
+            baseSeedMeta: {
+              ...baseSeedMeta,
+              tariffTrendsUs: { key: 'seed-meta:another-old-key' },
+            },
+            headSeedMeta,
+            baseline: baselineWithoutCutover,
+          }),
+          /fromKey.*seed-meta:another-old-key/i,
+        );
+        assert.throws(
+          () => validateHealthProbeCutovers({
+            baseSeedMeta,
+            headSeedMeta: {
+              ...headSeedMeta,
+              tariffTrendsUs: {
+                ...headSeedMeta.tariffTrendsUs,
+                cutover: { ...cutover, verifiedAt: 'August 10, 2026' },
+              },
+            },
+            baseline: baselineWithoutCutover,
+          }),
+          /verifiedAt/i,
+        );
+        for (const evidence of [
+          'unstructured',
+          { ...cutover.evidence, platform: 'github' },
+          { ...cutover.evidence, service: '' },
+          { ...cutover.evidence, probeKey: 'seed-meta:wrong' },
+          { ...cutover.evidence, compactHealthStatus: 'EMPTY' },
+          { ...cutover.evidence, reference: 'http://example.com/evidence' },
+        ]) {
+          assert.throws(
+            () => validateHealthProbeCutovers({
+              baseSeedMeta,
+              headSeedMeta: {
+                ...headSeedMeta,
+                tariffTrendsUs: {
+                  ...headSeedMeta.tariffTrendsUs,
+                  cutover: { ...cutover, evidence },
+                },
+              },
+              baseline: baselineWithoutCutover,
+            }),
+            /Railway.*service.*probe.*compact health OK.*HTTPS/i,
+          );
+        }
+      });
+
+      it('accepts an owner-bound acknowledgement that expires by the first cron run', () => {
+        const headSeedMeta = {
+          ...baseSeedMeta,
+          tariffTrendsUs: {
+            key: 'seed-meta:trade:tariffs',
+            cutover: {
+              mode: 'expiring-ack',
+              fromKey: 'seed-meta:economic:tariff-trends-us',
+              issue: 6377,
+              status: 'EMPTY',
+            },
+          },
+        };
+        const cutoverEntry = {
+          name: 'tariffTrendsUs',
+          status: 'EMPTY',
+          issue: 6377,
+          expiresAt: '2026-08-10T06:00:00.000Z',
+          cutover: {
+            probeKey: 'seed-meta:trade:tariffs',
+            activatedAt: '2026-08-10T00:00:00.000Z',
+            firstScheduledRunAt: '2026-08-10T06:00:00.000Z',
+          },
+        };
+
+        assert.doesNotThrow(() => validateHealthProbeCutovers({
+          baseSeedMeta,
+          headSeedMeta,
+          baseline: { ...baseline, acknowledged: [cutoverEntry] },
+        }));
+        for (const badEntry of [
+          { ...cutoverEntry, expiresAt: '2026-08-10T06:00:00.001Z' },
+          { ...cutoverEntry, expiresAt: '2026-08-09T23:59:59.999Z' },
+          {
+            ...cutoverEntry,
+            cutover: {
+              ...cutoverEntry.cutover,
+              firstScheduledRunAt: '2026-08-11T00:00:00.001Z',
+            },
+          },
+        ]) {
+          assert.throws(
+            () => validateHealthProbeCutovers({
+              baseSeedMeta,
+              headSeedMeta,
+              baseline: { ...baseline, acknowledged: [badEntry] },
+            }),
+            /activation|first scheduled run|24 hours/i,
+          );
+        }
+        assert.throws(
+          () => validateHealthProbeCutovers({
+            baseSeedMeta,
+            headSeedMeta: {
+              ...headSeedMeta,
+              tariffTrendsUs: {
+                ...headSeedMeta.tariffTrendsUs,
+                cutover: { ...headSeedMeta.tariffTrendsUs.cutover, status: 'SEED_ERROR' },
+              },
+            },
+            baseline: { ...baseline, acknowledged: [cutoverEntry] },
+          }),
+          /exact health status|expiring acknowledgement/i,
+        );
+      });
+
+      it('runs in the pull-request workflow and the pre-push hook', () => {
+        const workflow = readFileSync(TEST_WORKFLOW_URL, 'utf8');
+        const hook = readFileSync(PRE_PUSH_HOOK_URL, 'utf8');
+
+        assert.match(
+          workflow,
+          /unit:[\s\S]*?fetch-depth: 0[\s\S]*?name: Enforce health-probe cutovers[\s\S]*?node --import tsx scripts\/check-health-probe-cutovers\.mts/,
+        );
+        assert.match(
+          hook,
+          /changed '[^']*scripts\/check-health-probe-cutovers\\\.mts/,
+        );
+        assert.match(
+          hook,
+          /node --import tsx scripts\/check-health-probe-cutovers\.mts origin\/main/,
+        );
+      });
+    });
   });
 
   // The run's ORDER of output is not observable through the split functions
@@ -329,7 +795,7 @@ describe('scheduled seed freshness monitor', () => {
       name: 'supplyChainTrade', status: 'STALE_SEED', records: 3, seedAgeMin: 900, maxStaleMin: 360,
     };
     const baselineResult = (overrides) => ({
-      blocking: [], acknowledged: [], cleared: [], expired: false, expiresAt: '2026-08-27', ...overrides,
+      blocking: [], acknowledged: [], cleared: [], escalated: [], expired: false, expiresAt: '2026-08-27', ...overrides,
     });
 
     it('names every blocking problem, not just the count', () => {
@@ -339,6 +805,76 @@ describe('scheduled seed freshness monitor', () => {
         'Ingestion operational acceptance failed: 1 unacknowledged problem(s).',
         '- supplyChainTrade: status=STALE_SEED records=3 age=900m max=360m',
       ]);
+    });
+
+    it('a STALE_CONTENT row prints the clock that fired, not the one that did not', () => {
+      // Health runs two independent clocks. STALE_CONTENT is decided by
+      // contentAgeMin vs maxContentAgeMin, but this line used to print the SEED
+      // pair unconditionally — which for that status is ALWAYS inside budget.
+      // Production read `euFsi: status=STALE_CONTENT age=1200m max=5760m`, so
+      // the only available conclusion was that the monitor was wrong. The
+      // numbers that explain it were on the wire and were being dropped by the
+      // projection before the formatter ever saw them.
+      const payload = {
+        status: 'DEGRADED',
+        checkedAt: '2026-08-17T10:00:00.000Z',
+        summary: { total: 1, ok: 0, warn: 1, crit: 0 },
+        problems: {
+          euFsi: {
+            status: 'STALE_CONTENT',
+            records: 252,
+            seedAgeMin: 1200,
+            maxStaleMin: 5760,
+            contentAgeMin: 19230,
+            maxContentAgeMin: 14400,
+          },
+        },
+      };
+      const [problem] = findOperationalProblems(payload);
+      assert.equal(problem.contentAgeMin, 19230, 'the projection must carry the content clock');
+      assert.equal(problem.maxContentAgeMin, 14400);
+
+      const report = formatAcceptanceReport(
+        baselineResult({ blocking: [problem] }),
+        '2026-08-17T10:00:00.000Z',
+      );
+      const line = report.errors.find((row) => row.includes('euFsi'));
+      assert.match(line, /contentAge=19230m maxContentAge=14400m/, 'the breached pair must be named');
+      assert.match(line, /seed age=1200m ok/, 'and the healthy clock marked as such, not omitted');
+      assert.doesNotMatch(
+        line,
+        /\bage=1200m max=5760m/,
+        'the bare seed pair must not be presented as the reason for a content breach',
+      );
+    });
+
+    it('names an UNREADABLE content clock rather than falling back to the seed pair', () => {
+      // health scores `contentAgeMin == null` as stale (fail-closed), so a source
+      // can be STALE_CONTENT because nothing in the payload carries a date at
+      // all. jodiGas reads exactly this way in production. Printing the seed
+      // pair here would reproduce the original bug on the other branch: the
+      // reader again sees a clock that is comfortably inside budget.
+      const problem = {
+        name: 'jodiGas',
+        status: 'STALE_CONTENT',
+        records: 57,
+        seedAgeMin: 8793,
+        maxStaleMin: 57600,
+        contentAgeMin: null,
+        maxContentAgeMin: 267840,
+      };
+      const report = formatAcceptanceReport(
+        baselineResult({ blocking: [problem] }),
+        '2026-08-17T10:00:00.000Z',
+      );
+      const line = report.errors.find((row) => row.includes('jodiGas'));
+      assert.match(line, /contentAge=unknown/, 'an unreadable clock must be named as unreadable');
+      assert.match(line, /scored stale/, 'and the fail-closed scoring made explicit');
+      assert.doesNotMatch(
+        line,
+        /\bage=8793m max=57600m/,
+        'the passing seed pair must not be offered as the reason',
+      );
     });
 
     it('still reports the blocking problems on the run where the baseline expires', () => {
@@ -380,6 +916,30 @@ describe('scheduled seed freshness monitor', () => {
       assert.match(report.info[0], /acknowledged \(#5766\): gdeltIntel: status=SEED_ERROR records=1/);
       assert.match(report.info[1], /recovered: shippingRates:STALE_SEED/);
       assert.match(report.info[2], /acceptance passed at 2026-07-28T12:00:00Z.*\(1 acknowledged\)/);
+    });
+
+    it('never tells the operator to prune a suppression for a source that escalated', () => {
+      const report = formatAcceptanceReport(
+        baselineResult({
+          blocking: [{ name: 'crossStraitActivityJapanMod', status: 'EMPTY', records: 0 }],
+          escalated: [{
+            name: 'crossStraitActivityJapanMod',
+            status: 'SEED_ERROR',
+            observedStatus: 'EMPTY',
+            issue: 5714,
+          }],
+        }),
+        '2026-07-28T12:00:00Z',
+      );
+
+      assert.equal(report.failed, true, 'the worse status is unacknowledged and must still fail the gate');
+      const escalation = report.info.find((line) => line.includes('crossStraitActivityJapanMod'));
+      assert.match(escalation, /escalated .*SEED_ERROR -> EMPTY/);
+      assert.doesNotMatch(
+        escalation,
+        /remove it from|recovered/,
+        'pruning advice on an escalation is how a live suppression gets deleted',
+      );
     });
   });
 

@@ -43,22 +43,18 @@ async function encryptWebhook(url: string): Promise<string> {
   return `v1:${btoa(binary)}`;
 }
 
-async function upstashGet(key: string): Promise<string | null> {
-  const res = await fetch(`${UPSTASH_URL}/get/${encodeURIComponent(key)}`, {
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
+async function upstashGetDel(key: string): Promise<string | null> {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) throw new Error('Redis not configured');
+  const res = await fetch(`${UPSTASH_URL}/getdel/${encodeURIComponent(key)}`, {
+    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-edge/1.0' },
     signal: AbortSignal.timeout(5000),
-  }).catch(() => null);
-  if (!res?.ok) return null;
-  const json = await res.json() as { result: string | null };
-  return json.result;
-}
-
-async function upstashDel(key: string): Promise<void> {
-  await fetch(`${UPSTASH_URL}/del/${encodeURIComponent(key)}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` },
-    signal: AbortSignal.timeout(5000),
-  }).catch(() => {});
+  });
+  if (!res.ok) throw new Error(`Redis HTTP ${res.status}`);
+  const json = await res.json() as { result?: string | null };
+  if (!json || !Object.prototype.hasOwnProperty.call(json, 'result')) {
+    throw new Error('Redis returned a malformed GETDEL response');
+  }
+  return json.result ?? null;
 }
 
 function escapeHtml(s: string): string {
@@ -90,7 +86,7 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
   }
 }
 
-function htmlResponse(script: string, body: string): Response {
+function htmlResponse(script: string, body: string, status = 200): Response {
   return new Response(
     `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Slack OAuth</title></head><body>
 <p style="font-family:system-ui;padding:20px">${body}</p>
@@ -98,7 +94,7 @@ function htmlResponse(script: string, body: string): Response {
 (function(){try{${script}}catch(e){}})();
 </script>
 </body></html>`,
-    { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
+    { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
   );
 }
 
@@ -116,11 +112,12 @@ function postAndClose(data: Record<string, unknown>): Response {
   );
 }
 
-function errorAndClose(error: string): Response {
+function errorAndClose(error: string, status = 200): Response {
   const msg = safeJsonInScript({ type: 'wm:slack_error', error });
   return htmlResponse(
     `window.opener&&window.opener.postMessage(${msg},'${APP_ORIGIN}');window.close();`,
     `Slack connection failed: ${escapeHtml(error)}. You can close this window.`,
+    status,
   );
 }
 
@@ -139,9 +136,15 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
   // Validate and consume state
   const stateKey = `wm:slack:oauth:${state}`;
-  const userId = await upstashGet(stateKey);
+  let userId: string | null;
+  try {
+    userId = await upstashGetDel(stateKey);
+  } catch (error) {
+    console.error('[slack-oauth] state store unavailable:', error instanceof Error ? error.message : error);
+    await captureSilentError(error, { tags: { route: 'api/slack/oauth/callback', step: 'state-consume' }, ctx });
+    return errorAndClose('service_unavailable', 503);
+  }
   if (!userId) return errorAndClose('invalid_state');
-  await upstashDel(stateKey); // consume — prevents replay
 
   // Exchange code for token
   const tokenRes = await fetch('https://slack.com/api/oauth.v2.access', {

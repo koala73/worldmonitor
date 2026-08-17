@@ -3,11 +3,16 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { guardBuiltOutput, shouldSkipBuiltOutput } from './_lib/built-output-guard.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const distDir = resolve(repoRoot, 'dist');
 const dashboardHtml = resolve(distDir, 'dashboard.html');
+
+function shouldSkipDashboard() {
+  return shouldSkipBuiltOutput(dashboardHtml);
+}
 
 // Large static config DATA TABLES intentionally kept OFF the eager dashboard
 // critical path (#4404 — main.js diet round 2). Each must (a) build as its own
@@ -15,8 +20,10 @@ const dashboardHtml = resolve(distDir, 'dashboard.html');
 // imported by the main entry chunk. A re-added @/config barrel value re-export
 // or a new eager consumer would re-eagerise the table and fail this guard.
 //
-// Dist-gated: skips when dist/dashboard.html is absent. CI builds the dashboard
-// before `npm run test:data` (the step added in #4393), so this runs in CI.
+// Dist-gated: skips when dist/dashboard.html is absent (unless
+// WM_EXPECT_BUILT_OUTPUT=1 is set, which makes it fail instead so CI cannot
+// silently skip). CI exports WM_EXPECT_BUILT_OUTPUT=1 before `npm run test:data`
+// and builds the dashboard first (the step added in #4393).
 const DEFERRED_TABLE_CHUNKS = ['tech-geo-data', 'airports-data', 'ai-datacenters-data', 'geo-map-data', 'military-bases-data'];
 const DEFERRED_SENTRY_CHUNKS = ['sentry-init', 'sentry'];
 // agent-bus-applier + shared/agent-bus-actions pull in zod (~69KB raw). They are
@@ -180,7 +187,12 @@ function registerDeferredChunkAssertions(chunks, options) {
   }
 }
 
-describe('eager chunk budget: lazy-only config data tables stay off the entry', { skip: !existsSync(dashboardHtml) }, () => {
+function guardDashboardBuild() {
+  guardBuiltOutput(dashboardHtml);
+}
+
+describe('eager chunk budget: lazy-only config data tables stay off the entry', { skip: shouldSkipDashboard() }, () => {
+  guardDashboardBuild();
   const html = readFileSync(dashboardHtml, 'utf-8');
   const assetsDir = resolve(distDir, 'assets');
   const assets = existsSync(assetsDir) ? readdirSync(assetsDir) : [];
@@ -250,7 +262,8 @@ describe('eager chunk budget: military base data stays behind its lazy loader', 
   });
 });
 
-describe('eager chunk budget: Sentry stays behind the deferred scheduler', { skip: !existsSync(dashboardHtml) }, () => {
+describe('eager chunk budget: Sentry stays behind the deferred scheduler', { skip: shouldSkipDashboard() }, () => {
+  guardDashboardBuild();
   const html = readFileSync(dashboardHtml, 'utf-8');
   const assetsDir = resolve(distDir, 'assets');
   const assets = existsSync(assetsDir) ? readdirSync(assetsDir) : [];
@@ -284,35 +297,40 @@ describe('eager chunk budget: Sentry stays behind the deferred scheduler', { ski
   }
 });
 
-describe('eager chunk budget: opt-in npm libs stay off the entry', { skip: !existsSync(dashboardHtml) }, () => {
+describe('eager chunk budget: opt-in npm libs stay off the entry', { skip: shouldSkipDashboard() }, () => {
+  guardDashboardBuild();
   registerDeferredChunkAssertions(DEFERRED_NPM_LIB_CHUNKS, {
     missingMessage: (chunk) => `${chunk}-*.js chunk should exist — if missing, the lib was inlined into another chunk by a static import`,
     preloadMessage: (chunk) => `${chunk} must not be eagerly modulepreloaded — it loads on demand`,
   });
 });
 
-describe('eager chunk budget: checkout-only code stays off the dashboard entry', { skip: !existsSync(dashboardHtml) }, () => {
+describe('eager chunk budget: checkout-only code stays off the dashboard entry', { skip: shouldSkipDashboard() }, () => {
+  guardDashboardBuild();
   registerDeferredChunkAssertions(DEFERRED_CHECKOUT_CHUNKS, {
     missingMessage: (chunk) => `${chunk}-*.js chunk should exist — checkout/widget work must remain code-split`,
     preloadMessage: (chunk) => `${chunk} must not be eagerly modulepreloaded — it loads only after checkout or widget interaction`,
   });
 });
 
-describe('eager chunk budget: agent-bus + zod stay behind the lazy chat-analyst panel', { skip: !existsSync(dashboardHtml) }, () => {
+describe('eager chunk budget: agent-bus + zod stay behind the lazy chat-analyst panel', { skip: shouldSkipDashboard() }, () => {
+  guardDashboardBuild();
   registerDeferredChunkAssertions(DEFERRED_AGENT_BUS_CHUNKS, {
     missingMessage: (chunk) => `${chunk}-*.js chunk should exist — if it was inlined into main, a static import re-eagerised agent-bus-applier (and zod)`,
     preloadMessage: (chunk) => `${chunk} must not be eagerly modulepreloaded — agent-bus loads through the lazy chat-analyst panel`,
   });
 });
 
-describe('eager chunk budget: post-paint enrichment services stay off the entry', { skip: !existsSync(dashboardHtml) }, () => {
+describe('eager chunk budget: post-paint enrichment services stay off the entry', { skip: shouldSkipDashboard() }, () => {
+  guardDashboardBuild();
   registerDeferredChunkAssertions(DEFERRED_SERVICE_CHUNKS, {
     missingMessage: (chunk) => `${chunk}-*.js chunk should exist — if missing, a static import inlined the service into the entry (correlation-engine: App.ts; story-renderer: country-intel/StoryModal)`,
     preloadMessage: (chunk) => `${chunk} must not be eagerly modulepreloaded — it loads post-first-paint on demand`,
   });
 });
 
-describe('eager chunk budget: generated RPC clients stay lazy', { skip: !existsSync(dashboardHtml) }, () => {
+describe('eager chunk budget: generated RPC clients stay lazy', { skip: shouldSkipDashboard() }, () => {
+  guardDashboardBuild();
   registerDeferredChunkAssertions(DEFERRED_RPC_CLIENT_CHUNKS, {
     missingMessage: (chunk) => `${chunk}-*.js chunk should exist — generated RPC constructors must load through the lazy runtime shim`,
     preloadMessage: (chunk) => `${chunk} must not be eagerly modulepreloaded — RPC constructors load on first RPC call`,

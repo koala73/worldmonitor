@@ -17,6 +17,8 @@ import {
 // (api/rss-proxy.js) so dev and prod agree on allow/deny. Previously a
 // hand-maintained Set here had drifted ~138 domains from prod.
 import { isAllowedDomain } from './api/_rss-allowed-domain-match.js';
+import { rssFetchHeadersForHost } from './api/_rss-fetch-headers.js';
+import { validateGeneratedRequest } from './server/request-validator';
 
 // Env-dependent constants moved inside defineConfig function
 
@@ -98,9 +100,11 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   AAIISentiment: 'panels-markets', CotPositioning: 'panels-markets',
   ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets',
   EconomicCalendar: 'panels-markets', FearGreed: 'panels-markets',
+  Fx: 'panels-markets',
   GoldIntelligence: 'panels-markets', LiquidityShifts: 'panels-markets',
   MacroSignals: 'panels-markets', Market: 'panels-markets',
   MarketBreadth: 'panels-markets', MarketImplications: 'panels-markets',
+  NewsMarketCorrelation: 'panels-markets',
   Positioning: 'panels-markets', Stablecoin: 'panels-markets',
   StockAnalysis: 'panels-markets', StockBacktest: 'panels-markets',
   WsbTickerScanner: 'panels-markets', YieldCurve: 'panels-markets',
@@ -524,7 +528,10 @@ function sebufApiPlugin(): Plugin {
         import('./server/worldmonitor/shipping/v2/handler'),
       ]);
 
-    const serverOptions = { onError: errorMod.mapErrorToResponse };
+    const serverOptions = {
+      onError: errorMod.mapErrorToResponse,
+      validateRequest: validateGeneratedRequest,
+    };
     const allRoutes = [
       ...seismologyServerMod.createSeismologyServiceRoutes(seismologyHandlerMod.seismologyHandler, serverOptions),
       ...wildfireServerMod.createWildfireServiceRoutes(wildfireHandlerMod.wildfireHandler, serverOptions),
@@ -732,10 +739,7 @@ function rssProxyPlugin(): Plugin {
 
           const response = await fetch(feedUrl, {
             signal: controller.signal,
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-            },
+            headers: rssFetchHeadersForHost(parsed.hostname),
             redirect: 'follow',
           });
           clearTimeout(timer);
@@ -848,6 +852,27 @@ function gpsjamDevPlugin(): Plugin {
   };
 }
 
+// Mirror the WebMCP security gates during local development. Chrome's
+// #enable-webmcp-testing flag bypasses origin-trial enrollment, but it does not
+// bypass origin isolation or Permissions Policy. Keeping these headers in the
+// dev server makes the documented local smoke meaningful while preserving the
+// production boundary: no Origin-Trial token is ever served locally.
+function webMcpDevSecurityHeadersPlugin(): Plugin {
+  return {
+    name: 'wm-webmcp-dev-security-headers',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = new URL(req.url ?? '/', 'http://localhost').pathname;
+        const isEmbedDocument = pathname === '/embed' || pathname === '/embed.html';
+        res.setHeader('Origin-Agent-Cluster', '?1');
+        res.setHeader('Permissions-Policy', isEmbedDocument ? 'tools=()' : 'tools=(self)');
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   // Inject environment variables from .env files into process.env.
@@ -907,6 +932,7 @@ export default defineConfig(({ mode }) => {
       // which is always the 'full' build (variant selection is runtime by
       // hostname). Desktop and dedicated VITE_VARIANT builds skip it.
       !isDesktopBuild && activeVariant === 'full' && variantDashboardHtmlPlugin(),
+      webMcpDevSecurityHeadersPlugin(),
       polymarketPlugin(),
       rssProxyPlugin(),
       youtubeLivePlugin(),

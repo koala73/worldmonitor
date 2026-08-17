@@ -4,17 +4,23 @@ import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { VARIANT_FEEDS } from '../server/worldmonitor/news/v1/_feeds.ts';
+import {
+  orderServerFeedEntries,
+  VARIANT_FEEDS,
+} from '../server/worldmonitor/news/v1/_feeds.ts';
+import { __testing__ as digestTesting } from '../server/worldmonitor/news/v1/list-feed-digest.ts';
 import { SOURCE_PROPAGANDA_RISK } from '../shared/source-provenance.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const readText = (path: string) => readFileSync(resolve(root, path), 'utf8');
 const readJson = <T>(path: string): T => JSON.parse(readText(path)) as T;
+const { buildDigestFeedBatches } = digestTesting;
 
 interface StockEntry {
   symbol: string;
   name: string;
   display: string;
+  region: string;
 }
 
 interface StockConfig {
@@ -23,17 +29,17 @@ interface StockConfig {
 }
 
 const CHINA_BASKET: StockEntry[] = [
-  { symbol: '000001.SS', name: 'Shanghai Composite', display: 'SSEC' },
-  { symbol: '^HSI', name: 'Hang Seng', display: 'HSI' },
-  { symbol: '600519.SS', name: 'Kweichow Moutai', display: 'MOUTAI' },
-  { symbol: '601318.SS', name: 'Ping An Insurance', display: 'PINGAN-A' },
-  { symbol: '600900.SS', name: 'China Yangtze Power', display: 'CYPC' },
-  { symbol: '300750.SZ', name: 'CATL', display: 'CATL' },
-  { symbol: '688981.SS', name: 'SMIC', display: 'SMIC-A' },
-  { symbol: '0700.HK', name: 'Tencent', display: 'TENCENT' },
-  { symbol: '1211.HK', name: 'BYD', display: 'BYD-H' },
-  { symbol: '0939.HK', name: 'China Construction Bank', display: 'CCB-H' },
-  { symbol: '0857.HK', name: 'PetroChina', display: 'PETROCHINA-H' },
+  { symbol: '000001.SS', name: 'Shanghai Composite', display: 'SSEC', region: 'asia' },
+  { symbol: '^HSI', name: 'Hang Seng', display: 'HSI', region: 'asia' },
+  { symbol: '600519.SS', name: 'Kweichow Moutai', display: 'MOUTAI', region: 'asia' },
+  { symbol: '601318.SS', name: 'Ping An Insurance', display: 'PINGAN-A', region: 'asia' },
+  { symbol: '600900.SS', name: 'China Yangtze Power', display: 'CYPC', region: 'asia' },
+  { symbol: '300750.SZ', name: 'CATL', display: 'CATL', region: 'asia' },
+  { symbol: '688981.SS', name: 'SMIC', display: 'SMIC-A', region: 'asia' },
+  { symbol: '0700.HK', name: 'Tencent', display: 'TENCENT', region: 'asia' },
+  { symbol: '1211.HK', name: 'BYD', display: 'BYD-H', region: 'asia' },
+  { symbol: '0939.HK', name: 'China Construction Bank', display: 'CCB-H', region: 'asia' },
+  { symbol: '0857.HK', name: 'PetroChina', display: 'PETROCHINA-H', region: 'asia' },
 ];
 
 const CLIENT_VARIANT_BLOCKS: Record<string, string> = {
@@ -89,6 +95,15 @@ describe('China A/H-share market coverage (#5272)', () => {
 
   it('keeps the browser and Railway stock configurations identical', () => {
     assert.deepEqual(railwayMirror, canonical);
+  });
+
+  it('keeps both seeders on the complete shared catalog instead of private symbol lists', () => {
+    const relay = readText('scripts/ais-relay.cjs');
+    const standalone = readText('scripts/seed-market-quotes.mjs');
+    assert.match(relay, /const MARKET_SYMBOLS = _stockCfg\.symbols\.map\(\(s\) => s\.symbol\)/);
+    assert.match(standalone, /const MARKET_SYMBOLS = stocksConfig\.symbols\.map\(s => s\.symbol\)/);
+    assert.equal(canonical.symbols.length, 93);
+    assert.ok(canonical.symbols.every((entry) => entry.region), 'every catalog symbol needs region metadata');
   });
 
   it('makes the long-running Railway relay consume stock symbols and metadata from the shared config', () => {
@@ -148,5 +163,27 @@ describe('China client/server news digest parity (#5272)', () => {
     assert.equal(readText('scripts/shared/source-tiers.json'), readText('shared/source-tiers.json'));
     assert.equal(SOURCE_PROPAGANDA_RISK.Xinhua?.risk, 'high');
     assert.equal(SOURCE_PROPAGANDA_RISK.Xinhua?.stateAffiliated, 'China');
+  });
+
+  it('starts all China coverage feeds before ordinary full-digest feeds', () => {
+    const { batches } = buildDigestFeedBatches('full', 'en');
+    const firstBatch = batches[0] ?? [];
+
+    assert.deepEqual(
+      firstBatch.slice(0, 3).map(({ feed }) => feed.name).sort(),
+      ['Xinhua', 'MIIT (China)', 'MOFCOM (China)'].sort(),
+    );
+    assert.notEqual(firstBatch[3]?.feed.name, 'Xinhua');
+    assert.notEqual(firstBatch[3]?.feed.name, 'MIIT (China)');
+    assert.notEqual(firstBatch[3]?.feed.name, 'MOFCOM (China)');
+
+    const ordinaryEntries = [
+      { category: 'test', feed: { name: 'ordinary-first', url: 'https://example.test/first' } },
+      { category: 'test', feed: { name: 'ordinary-second', url: 'https://example.test/second' } },
+    ];
+    assert.deepEqual(
+      orderServerFeedEntries([...ordinaryEntries].reverse()).map(({ feed }) => feed.name),
+      ['ordinary-second', 'ordinary-first'],
+    );
   });
 });

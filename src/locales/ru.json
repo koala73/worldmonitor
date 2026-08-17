@@ -67,6 +67,19 @@
       "stable": "Стабильный"
     },
     "militaryActivity": "Военная активность",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Экономические показатели",
     "ownFlights": "Собственные рейсы",
     "foreignFlights": "Иностранные рейсы",
@@ -129,20 +142,20 @@
       "currencies": "Валюты",
       "area": "Площадь"
     },
-    "loadingResilienceScore": "Loading resilience score…",
-    "resilienceScoreUnavailable": "Resilience score unavailable.",
+    "loadingResilienceScore": "Загрузка оценки устойчивости…",
+    "resilienceScoreUnavailable": "Оценка устойчивости недоступна.",
     "china": {
       "title": "Обзор по Китаю",
       "description": "Текущие макроэкономика, рынок, торговля, энергетика и операционная доступность на основе существующих публичных контрактов данных.",
-      "policyEvents": "Policy & Enforcement",
+      "policyEvents": "Политика и правоприменение",
       "energy": "Энергетика",
       "availability": "Опасности и авиация",
       "observed": "По состоянию на:",
-      "published": "Published:",
-      "effective": "Effective:",
-      "sectors": "Sectors:",
-      "entities": "Entities:",
-      "translation": "Translation:",
+      "published": "Опубликовано:",
+      "effective": "Вступает в силу:",
+      "sectors": "Секторы:",
+      "entities": "Организации:",
+      "translation": "Перевод:",
       "source": "Источник:",
       "imfGrowth": "Прогноз роста МВФ",
       "creditGdp": "Кредит к ВВП",
@@ -175,12 +188,29 @@
         "stale": "Устарело",
         "unavailable": "Недоступно"
       },
-      "macroSignals": "Macro Signals",
-      "crossStraitActivity": "Cross-Strait Activity",
-      "corporateDisclosures": "Corporate Disclosures",
-      "corridorConditions": "Corridor Conditions",
-      "activityNowcast": "Activity Nowcast",
-      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
+      "macroSignals": "Макросигналы",
+      "crossStraitActivity": "Активность через пролив",
+      "corporateDisclosures": "Корпоративные раскрытия",
+      "corridorConditions": "Условия в коридоре",
+      "activityNowcast": "Нокаст активности",
+      "decisionSignalsUnavailable": "Снимок сигналов принятия решений Китая в настоящее время недоступен."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "header": {
@@ -261,7 +291,7 @@
     "panelCatCommodityEcon": "Экономика и торговля",
     "panelCatHappyNews": "Хорошие новости",
     "panelCatHappyPlanet": "Планета и благотворительность",
-    "embed": "Embed"
+    "embed": "Встроить"
   },
   "panels": {
     "liveNews": "Новости в реальном времени",
@@ -369,7 +399,8 @@
     "consumerPrices": "Потребительские цены",
     "fearGreed": "Страх и жадность",
     "marketBreadth": "Ширина рынка",
-    "climateNews": "Новости климата"
+    "climateNews": "Новости климата",
+    "fx": "Курсы валют"
   },
   "commands": {
     "prefixes": {
@@ -449,7 +480,9 @@
         "displacement": "Переключить потоки перемещённых лиц",
         "climate": "Переключить климатические аномалии",
         "outages": "Переключить интернет-отключения",
-        "tradeRoutes": "Переключить торговые маршруты"
+        "tradeRoutes": "Переключить торговые маршруты",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Переключить на тёмную тему",
@@ -611,7 +644,7 @@
         "URLHAUS_AUTH_KEY": "Используется для API URLhaus и ThreatFox.",
         "OTX_API_KEY": "Дополнительный источник обогащения для уровня киберугроз.",
         "ABUSEIPDB_API_KEY": "Дополнительный источник репутации вредоносных IP-адресов.",
-        "FINNHUB_API_KEY": "Котировки акций и рыночные данные в реальном времени.",
+        "FINNHUB_API_KEY": "Задержанные или предзагруженные котировки акций и рыночные данные. Ключ — это не прямая трансляция.",
         "NASA_FIRMS_API_KEY": "Система управления информацией о пожарах.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -855,7 +888,12 @@
       "loadingHistory": "Загрузка истории транзита…",
       "historyUnavailable": "История транзита недоступна",
       "transitDataUnavailable": "Данные транзита недоступны (верхний поток частичный)",
-      "infoTooltip": "<strong>Supply Chain Monitor</strong> Глобальное отслеживание логистики и ресурсов:<ul><li><strong>Узкие места</strong>: статус морского транзита, баллы нарушений и количество судов</li><li><strong>Доставка</strong>: индекс Baltic Dry Index и тренды ставок фрахта</li><li><strong>Минералы</strong>: риск концентрации критических минералов (HHI) и основные производители</li></ul>Нажмите на карточку узкого места, чтобы развернуть график истории транзита."
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Глобальное отслеживание логистики и ресурсов:<ul><li><strong>Узкие места</strong>: статус морского транзита, баллы нарушений и количество судов</li><li><strong>Доставка</strong>: индекс Baltic Dry Index и тренды ставок фрахта</li><li><strong>Минералы</strong>: риск концентрации критических минералов (HHI) и основные производители</li></ul>Нажмите на карточку узкого места, чтобы развернуть график истории транзита.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "Тарифы",
@@ -891,7 +929,7 @@
       "fytdLabel": "ФГ{{year}} с начала года",
       "vsPriorFy": "в сравнении с ФГ{{year}}",
       "sourceWto": "ВТО",
-      "sourceTreasury": "Казначейство США",
+      "sourceTreasury": "Министерство финансов США",
       "colDate": "Дата",
       "colMonthly": "Ежемесячно",
       "colFytd": "ФГ с начала года",
@@ -899,6 +937,7 @@
       "noComtradeData": "Данные стратегических потоков недоступны",
       "comtradeUnavailable": "Данные UN Comtrade временно недоступны",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "Строки UN Comtrade — официальная статистика на национальном уровне отчитывающейся страны, а не экспорт города, коридора, завода, порта или партии.",
       "anomalyBadge": "Аномалия",
       "colReporter": "Страна",
       "colCommodity": "Товар",
@@ -1135,7 +1174,7 @@
         "ucdpEvents": "События UCDP",
         "displacementFlows": "Потоки перемещённых лиц",
         "climateAnomalies": "Климатические аномалии",
-        "weatherAlerts": "Метеопредупреждения",
+        "weatherAlerts": "Метеопредупреждения в США и Канаде (NWS, ECCC)",
         "strategicWaterways": "Стратегические водные пути",
         "economicCenters": "Экономические центры",
         "criticalMinerals": "Критически важные минералы",
@@ -1155,7 +1194,9 @@
         "speciesRecovery": "Восстановление видов",
         "renewableInstallations": "Чистая энергия",
         "radiationSpike": "Всплеск радиации",
-        "radiationElevated": "Повышенный уровень радиации"
+        "radiationElevated": "Повышенный уровень радиации",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Землетрясение",
@@ -1216,7 +1257,7 @@
           "infraDatacenters": "Кластеры ИИ-вычислений >=10 000 GPU",
           "infraOutages": "Блэкауты интернета и сбои сервисов",
           "naturalEventsTech": "Землетрясения, штормы, пожары (могут затронуть дата-центры)",
-          "weatherAlerts": "Предупреждения о суровой погоде",
+          "weatherAlerts": "Предупреждения об опасной погоде в США и Канаде (NWS, ECCC)",
           "economicCenters": "Фондовые биржи и центральные банки",
           "countriesOverlay": "Наложение названий стран",
           "financeExchanges": "Крупные мировые биржи по рыночному уровню",
@@ -1228,7 +1269,7 @@
           "financeOutages": "Сбои интернета, способные повлиять на торговые операции",
           "financeCyberThreats": "Инциденты безопасности вокруг финансовой инфраструктуры",
           "macroWaterways": "Стратегические узкие места для транспортировки сырья",
-          "weatherAlertsMarket": "Суровые погодные явления, влияющие на рынки",
+          "weatherAlertsMarket": "Опасные погодные явления в США и Канаде, влияющие на рынки (NWS, ECCC)",
           "naturalEventsMacro": "Землетрясения, пожары, наводнения и другие стихийные бедствия",
           "timeRecent": "Фильтрация данных по времени за последние часы",
           "timeExtended": "Данные за прошлую неделю, месяц или за всё время",
@@ -1261,7 +1302,9 @@
           "tradeRoutes": "Основные мировые судоходные маршруты, соединяющие порты через стратегические узкие места",
           "dayNight": "Солнечный терминатор в реальном времени, показывающий зоны дня и ночи",
           "geoBoundaries": "Демилитаризованные зоны, линии прекращения огня и спорные границы",
-          "ciiChoropleth": "Тепловая карта индекса нестабильности стран — цвета по CII (зелёный=стабильно, красный=критично)"
+          "ciiChoropleth": "Тепловая карта индекса нестабильности стран — цвета по CII (зелёный=стабильно, красный=критично)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Влияет на: Землетрясения, Погода, Протесты, Сбои"
@@ -1276,8 +1319,8 @@
       "sectionFollowing": "Following",
       "sectionAll": "All",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "деградировавший",
+        "stale": "устаревший"
       }
     },
     "insights": {
@@ -1358,7 +1401,8 @@
       "sources_many": "{{count}} источников",
       "provenanceTitle": "Происхождение охвата: количество полученных историй и отдельных источников, из которых была выбрана эта сводка",
       "compiledFrom": "Собрано из {{stories}} историй из {{sources}} источников",
-      "briefFreshness": "Сгенерировано {{minutes}}м назад · последний источник {{hours}}ч старый"
+      "briefFreshness": "Сгенерировано {{minutes}}м назад · последний источник {{hours}}ч старый",
+      "briefStoryDetails": "Story details ({{count}})"
     },
     "settings": {
       "exportSettings": "Экспорт настроек",
@@ -1436,10 +1480,10 @@
         "hoursAgo": "{{count}}h ago"
       },
       "infoTooltip": "<strong>Методология</strong> Составная оценка (0-100) на основе:<ul><li>50% Нестабильность стран (топ-5, взвешенные)</li><li>30% Географические зоны конвергенции</li><li>20% Инфраструктурные инциденты</li></ul>Автообновление каждые 5 минут.",
-      "cachedCiiStatus": "Cached CII {{states}}",
+      "cachedCiiStatus": "Кэшированный CII {{states}}",
       "sourceStates": {
-        "degraded": "degraded",
-        "stale": "stale"
+        "degraded": "деградировавший",
+        "stale": "устаревший"
       },
       "dataFreshness": "Data Freshness",
       "sourcesDetail": "{{active}}/{{total}} sources"
@@ -1567,25 +1611,25 @@
       "candidGrants": "Гранты Candid",
       "dataLag": "Задержка данных",
       "infoTooltip": "<strong>Глобальный индекс благотворительной активности</strong> Композитный индекс отслеживания частных пожертвований через краудфандинговые платформы и крипто-кошельки.<ul><li><strong>Платформы</strong>: Выборка кампаний GoFundMe, GlobalGiving, JustGiving</li><li><strong>Крипто</strong>: Ончейн-поступления в благотворительные кошельки (Endaoment, Giving Block)</li><li><strong>Институциональные</strong>: OECD ODA, CAF World Giving Index, гранты Candid</li></ul>Индекс показывает направление, а не точные суммы. Сочетает живую выборку с опубликованными годовыми отчётами.",
-      "benchmarkTitle": "Global Giving Benchmarks",
-      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "benchmarkTitle": "Глобальные ориентиры пожертвований",
+      "benchmarkInfoTooltip": "<strong>Глобальные ориентиры пожертвований</strong> Опубликованные заявления платформ и организаций с периодами источников и статусом проверки. Годовые цифры являются оценками, а не активностью в реальном времени.",
       "status": {
-        "published": "Published benchmarks with verified source coverage.",
-        "partial": "Published benchmarks with partial source coverage.",
-        "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached snapshot; refresh unavailable."
+        "published": "Опубликованные ориентиры с проверенным охватом источников.",
+        "partial": "Опубликованные ориентиры с частичным охватом источников.",
+        "legacy": "Устаревший снимок; сведения об источнике недоступны.",
+        "cached": "Отображается кэшированный снимок; обновление недоступно."
       },
-      "trackedAnnualized": "Tracked platform giving — annualized estimate",
-      "annualizedDaily": "Annualized daily estimate",
-      "atLeast": "At least",
-      "about": "About",
-      "sourceNotVerified": "Source not verified",
-      "reportedCumulative": "Reported cumulative total",
+      "trackedAnnualized": "Отслеживаемые пожертвования платформы — годовая оценка",
+      "annualizedDaily": "Дневная годовая оценка",
+      "atLeast": "Не менее",
+      "about": "Около",
+      "sourceNotVerified": "Источник не проверен",
+      "reportedCumulative": "Заявленный совокупный итог",
       "sourcePeriod": "{{source}} · {{period}}",
-      "benchmark": "Published benchmark",
-      "sourcesMethodology": "Sources & methodology",
-      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
-      "partialEstimate": "Partially verified estimate"
+      "benchmark": "Опубликованный ориентир",
+      "sourcesMethodology": "Источники и методология",
+      "methodologyIntro": "В заголовок включаются только проверенные ежегодные или обоснованно годовые заявления платформ. Совокупные и институциональные цифры остаются отдельным контекстом.",
+      "partialEstimate": "Частично проверенная оценка"
     },
     "displacement": {
       "refugees": "Беженцы",
@@ -1625,6 +1669,8 @@
       "summaryFailed": "Ошибка формирования сводки",
       "sources": "{{count}} источников",
       "relatedAssetsNear": "Связанные объекты вблизи {{location}}",
+      "sourceCoverage": "{{covered}}/{{total}} источников",
+      "sourceCoverageHint": "Показано {{covered}} из {{total}} включённых источников — эта панель чередует свои источники при каждом обновлении",
       "sortBy": "Сортировать по",
       "sortNewest": "Новейшие",
       "sortRelevance": "Релевантности"
@@ -1875,7 +1921,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2149,10 +2195,21 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Обнаруживает сходящиеся сигналы природных бедствий и инфраструктуры:<ul><li>Коррелирует землетрясения, лесные пожары, наводнения и экстремальную погоду</li><li>Отслеживает каскадные эффекты на инфраструктуру и цепи поставок</li><li>Выделяет регионы с сопутствующим риском бедствий</li></ul>Нажмите на карточку, чтобы увеличить затронутый регион."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Котировки индексов в реальном времени, акции и цены крипто. Настройте свой список отслеживания с помощью кнопки Список отслеживания. Спарклайны показывают недавний ценовой тренд.",
+      "infoTooltip": "<strong>Markets</strong> Задержанные или предзагруженные котировки индексов, акции и цены крипто. Настройте свой список отслеживания с помощью кнопки Список отслеживания. Спарклайны показывают недавний ценовой тренд.",
       "chart": {
-        "title": "{{symbol}} price chart",
-        "close": "Close chart"
+        "title": "График цены {{symbol}}",
+        "close": "Закрыть график"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2319,13 +2376,14 @@
     },
     "sanctionsPressure": {
       "title": "Санкции и обозначения",
-      "infoTooltip": "Обозначения санкций OFAC из списков SDN и Consolidated Lists. Показывает, какие страны сталкиваются с наибольшим давлением обозначений, какие программы его вызывают и что было добавлено с последнего обновления.",
+      "infoTooltip": "Списки SDN и Consolidated OFAC плюс обозначения SEMA/JVCFOA Global Affairs Canada. Показывает, какие страны сталкиваются с наибольшим давлением обозначений, какие программы его вызывают и что было добавлено с последнего обновления.",
       "loading": "Загрузка данных санкций...",
       "unavailable": "Данные санкций недоступны.",
       "summary": {
         "new": "Новое",
         "vessels": "Суда",
-        "aircraft": "Воздушные суда"
+        "aircraft": "Воздушные суда",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Страны под санкциями",
@@ -2340,11 +2398,12 @@
       "footer": {
         "updated": "Обновлено {{time}}",
         "dataset": "набор данных {{date}}",
-        "source": "Источник: OFAC"
+        "source": "Источник: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} новое",
-        "new": "новое"
+        "new": "новое",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} обозначение",
       "designations_other": "{{count}} обозначений",
@@ -2502,59 +2561,91 @@
       }
     },
     "mobileNav": {
-      "panelCategories": "Panel categories"
+      "panelCategories": "Категории панелей"
     },
     "panelFreshness": {
       "status": {
-        "fresh": "Fresh",
-        "stale": "Stale",
-        "veryStale": "Very stale",
-        "noData": "No data",
-        "disabled": "Disabled",
-        "error": "Error"
+        "fresh": "Актуально",
+        "stale": "Устарело",
+        "veryStale": "Очень устарело",
+        "noData": "Нет данных",
+        "disabled": "Отключено",
+        "error": "Ошибка"
       },
       "labelWithAge": "{{status}} {{age}}",
-      "title": "Data freshness: {{status}}. {{sources}}",
+      "title": "Актуальность данных: {{status}}. {{sources}}",
       "sourceDetail": "{{name}}: {{status}}, {{update}}",
       "sourceDetailWithHealth": "{{name}}: {{status}}, {{update}}, {{detail}}",
-      "lastUpdated": "last updated {{time}}",
-      "neverUpdated": "never updated",
+      "lastUpdated": "последнее обновление {{time}}",
+      "neverUpdated": "никогда не обновлялось",
       "health": {
-        "partialCoverage": "partial coverage",
-        "contentStale": "content stale",
-        "seedStale": "seed stale",
-        "noSourceData": "no source data",
-        "sourceErrorReported": "source error reported",
-        "freshnessStoreUnavailable": "freshness store unavailable",
-        "freshnessStoreDegraded": "freshness store degraded"
+        "partialCoverage": "частичное покрытие",
+        "contentStale": "контент устарел",
+        "seedStale": "seed устарел",
+        "noSourceData": "нет данных источника",
+        "sourceErrorReported": "сообщена ошибка источника",
+        "freshnessStoreUnavailable": "хранилище свежести недоступно",
+        "freshnessStoreDegraded": "хранилище свежести деградировало"
       },
       "time": {
-        "never": "never",
-        "justNow": "just now",
-        "minutesAgo": "{{count}}m ago",
-        "hoursAgo": "{{count}}h ago",
-        "daysAgo": "{{count}}d ago",
-        "compactNow": "now",
-        "compactMinutes": "{{count}}m",
-        "compactHours": "{{count}}h",
-        "compactDays": "{{count}}d"
+        "never": "никогда",
+        "justNow": "только что",
+        "minutesAgo": "{{count}}м назад",
+        "hoursAgo": "{{count}}ч назад",
+        "daysAgo": "{{count}}д назад",
+        "compactNow": "сейчас",
+        "compactMinutes": "{{count}}м",
+        "compactHours": "{{count}}ч",
+        "compactDays": "{{count}}д"
       }
     },
     "exportGate": {
-      "signedOutDesc": "Sign in to export dashboard data as CSV, JSON or PDF.",
-      "upgradeDesc": "Data export (CSV, JSON, PDF) is included with Pro Business.",
-      "upgradeCta": "Upgrade to Pro Business",
-      "lockedAriaLabel": "Export data — locked. {{reason}}",
-      "unlockedAnnouncement": "Data export unlocked.",
-      "preparingPdf": "Preparing PDF…",
-      "pdfFailed": "The PDF report could not be generated. Try again, or use the JSON export."
+      "signedOutDesc": "Войдите, чтобы экспортировать данные панели в CSV, JSON или PDF.",
+      "upgradeDesc": "Экспорт данных (CSV, JSON, PDF) включён в Pro Business.",
+      "upgradeCta": "Перейти на Pro Business",
+      "lockedAriaLabel": "Экспорт данных — заблокировано. {{reason}}",
+      "unlockedAnnouncement": "Экспорт данных разблокирован.",
+      "preparingPdf": "Подготовка PDF…",
+      "pdfFailed": "Не удалось создать отчёт PDF. Повторите попытку или используйте экспорт JSON."
     },
     "tabCap": {
-      "signedOutDesc": "Signed-out workspaces are limited to {{cap}} dashboard tabs. Sign in to add more.",
-      "upgradeDesc": "You've reached your limit of {{cap}} dashboard tabs.",
-      "upgradeCta": "Upgrade for more",
-      "lockedAriaLabel": "Add tab — locked. {{reason}}",
-      "unlockedAnnouncement": "Dashboard tab limit lifted."
+      "signedOutDesc": "Рабочие пространства без входа ограничены {{cap}} вкладками панели. Войдите, чтобы добавить больше.",
+      "upgradeDesc": "Вы достигли лимита {{cap}} вкладок панели.",
+      "upgradeCta": "Обновить для большего",
+      "lockedAriaLabel": "Добавить вкладку — заблокировано. {{reason}}",
+      "unlockedAnnouncement": "Лимит вкладок панели снят."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Курсы валют</strong> Стресс-тесты валют и спот-курсы:<ul><li>FX Stress ранжирует 45 валют по наихудшему падению от пика до дна за последние 24 месяца, наряду с изменением за 12 месяцев</li><li>Охватывает ARS, TRY, EGP, NGN, PKR и UAH — валюты, которые не включены в справочные наборы BIS и ECB</li><li>Spot содержит курсы против доллара США и справочные курсы евро ECB отдельно, так как они котируются на разных базах</li><li>RUB — курсы Банка России, рублей за единицу</li></ul> Источники: Yahoo Finance, Европейский центральный банк и Банк России.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Спот",
+        "rub": "RUB"
+      },
+      "currency": "Валюта",
+      "pair": "Пара",
+      "rate": "Курс",
+      "yoy": "12м",
+      "drawdown": "Падение за 24м",
+      "peakToTrough": "Пик → Дно",
+      "change1d": "1д",
+      "perUsd": "За 1 USD",
+      "usdPerUnit": "USD за единицу",
+      "usdBase": "Против доллара США",
+      "eurBase": "Справочные курсы евро ECB",
+      "stressedCount": "{{stressed}} из {{total}} валют ниже {{threshold}}",
+      "sourceYahoo": "Источник: Yahoo Finance",
+      "sourceEcb": "Источник: ECB",
+      "degraded": "Временно недоступно: {{sources}}. Повторная попытка в ближайшее время.",
+      "source": {
+        "stress": "Стресс-тест валют",
+        "usd": "Курсы доллара США",
+        "eur": "Курсы евро ЕЦБ",
+        "rub": "Курсы Банка России"
+      },
+      "rubBase": "Банк России — рублей за 1 единицу",
+      "rubPerUnit": "Рублей за единицу",
+      "sourceCbr": "Источник: Банк России"
     }
   },
   "popups": {
@@ -2776,6 +2867,7 @@
     "moreEvents": "ещё событий",
     "monitoring": "Мониторинг",
     "viewUSGS": "Смотреть на USGS",
+    "viewNRCan": "Смотреть на Earthquakes Canada",
     "expired": "Истёк",
     "timeAgo": {
       "s": "{{count}}с назад",
@@ -2895,7 +2987,7 @@
       "heading": "КУРС",
       "hexCode": "HEX-КОД",
       "squawk": "СКВОК",
-      "attribution": "Источник: OpenSky Network"
+      "attribution": "Источник: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
       "aisDark": "AIS ВЫКЛЮЧЕН",
@@ -3358,16 +3450,42 @@
     "visualizationFailed": "Ошибка визуализации"
   },
   "dashboardTabs": {
-    "ariaLabel": "Dashboard tabs",
-    "defaultName": "Main",
-    "newTabName": "New Tab",
-    "newTabCreated": "New tab created",
-    "tabDeleted": "Tab \"{{name}}\" deleted",
-    "addTab": "Add tab",
-    "addTabTitle": "New tab (starts with the default panels)",
-    "renameHint": "{{name}} — double-click to rename",
-    "deleteTab": "Delete tab",
-    "deleteTabAria": "Delete tab {{name}}",
-    "tabNameAria": "Tab name"
+    "ariaLabel": "Вкладки панели",
+    "defaultName": "Главная",
+    "newTabName": "Новая вкладка",
+    "newTabCreated": "Новая вкладка создана",
+    "tabDeleted": "Вкладка \"{{name}}\" удалена",
+    "addTab": "Добавить вкладку",
+    "addTabTitle": "Новая вкладка (начинается с панелей по умолчанию)",
+    "renameHint": "{{name}} — двойной клик для переименования",
+    "deleteTab": "Удалить вкладку",
+    "deleteTabAria": "Удалить вкладку {{name}}",
+    "tabNameAria": "Название вкладки"
+  },
+  "theaterPresets": {
+    "label": "Пакеты покрытия",
+    "applied": "Пакет {{preset}} применён: включено источников — {{count}}",
+    "alreadyApplied": "Пакет {{preset}} уже применён",
+    "ukraineWar": {
+      "label": "Война в Украине",
+      "description": "Включить основные украинские СМИ, независимую российскую прессу и источники оценки ситуации на фронте"
+    },
+    "indoPacific": {
+      "label": "Индо-Тихоокеанский регион / Тайвань",
+      "description": "Включить источники по безопасности Тайваня, Пакистана и Юго-Восточной Азии"
+    },
+    "sahelWestAfrica": {
+      "label": "Сахель и Западная Африка",
+      "description": "Включить местные источники из Сахеля, Нигерии и Западной Африки"
+    },
+    "caucasusCentralAsia": {
+      "label": "Кавказ и Центральная Азия",
+      "description": "Включить региональные источники Южного Кавказа и Центральной Азии"
+    },
+    "middleEastFlashpoints": {
+      "label": "Очаги напряжённости на Ближнем Востоке",
+      "description": "Включить источники по Ирану, Израилю, странам Залива и курдским регионам"
+    },
+    "unavailable": "Пакет {{preset}} недоступен при текущем наборе панелей"
   }
 }

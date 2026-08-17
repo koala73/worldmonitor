@@ -21,13 +21,39 @@ function rpcTool(name) {
   return tool;
 }
 
+function seededInsights(overrides = {}) {
+  return {
+    worldBrief: 'Seeded grounded world brief.',
+    briefStoryLines: [{ n: 1, text: 'Seeded grounded world brief.' }],
+    worldBriefSources: [{
+      title: 'United States headline used for MCP grounding',
+      source: 'Example Wire',
+      url: 'https://example.com/world-grounding',
+      publishedAt: '2026-06-07T00:00:00.000Z',
+    }],
+    briefProvider: 'seeded-provider',
+    briefModel: 'seeded-model',
+    generatedAt: new Date().toISOString(),
+    status: 'ok',
+    topStories: [{ primaryTitle: 'United States headline used for MCP grounding' }],
+    ...overrides,
+  };
+}
+
 async function captureRpcFetches(toolName, params, opts = {}) {
   const calls = [];
-  let result;
+  const insights = seededInsights(opts.insights);
   globalThis.fetch = async (input, init = {}) => {
     const url = String(input);
     calls.push({ url, init });
     const { pathname } = new URL(url);
+
+    if (pathname === '/api/infrastructure/v1/get-bootstrap-data') {
+      return new Response(JSON.stringify({ data: { insights: JSON.stringify(insights) }, missing: [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     if (pathname === '/api/news/v1/list-feed-digest') {
       return new Response(JSON.stringify({
@@ -68,13 +94,6 @@ async function captureRpcFetches(toolName, params, opts = {}) {
       }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
 
-    if (pathname === '/api/news/v1/summarize-article') {
-      return new Response(JSON.stringify({ summary: 'Grounded world brief.' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
     if (pathname === '/api/intelligence/v1/get-country-intel-brief') {
       return new Response(JSON.stringify({ brief: 'Grounded country brief.' }), {
         status: 200,
@@ -85,7 +104,7 @@ async function captureRpcFetches(toolName, params, opts = {}) {
     throw new Error(`Unexpected fetch in ${toolName}: ${url}`);
   };
 
-  result = await rpcTool(toolName)._execute(params, 'https://worldmonitor.app', {
+  const result = await rpcTool(toolName)._execute(params, 'https://worldmonitor.app', {
     kind: 'env_key',
     apiKey: 'wm_test_key_mcp_news_contract',
   });
@@ -93,27 +112,47 @@ async function captureRpcFetches(toolName, params, opts = {}) {
 }
 
 describe('MCP news/auth public contract', () => {
-  it('RPC news-brief tools use the documented full digest variant for grounding', async () => {
+  it('get_world_brief reads the seeded dashboard brief while country briefs retain digest grounding', async () => {
     const { calls: worldCalls } = await captureRpcFetches('get_world_brief', { geo_context: 'Middle East tensions' });
     const { calls: countryCalls } = await captureRpcFetches('get_country_brief', { country_code: 'US' });
-    const allCalls = [...worldCalls, ...countryCalls];
 
-    const digestUrls = allCalls
+    const worldBootstrapUrls = worldCalls
       .map((call) => new URL(call.url))
-      .filter((url) => url.pathname === '/api/news/v1/list-feed-digest');
-    assert.equal(digestUrls.length, 2, 'both RPC brief tools should ground on list-feed-digest');
-    assert.deepEqual(
-      digestUrls.map((url) => url.searchParams.get('variant')),
-      ['full', 'full'],
-      'MCP RPC tools must not rely on unsupported digest variants such as geo',
+      .filter((url) => url.pathname === '/api/infrastructure/v1/get-bootstrap-data');
+    assert.equal(worldBootstrapUrls.length, 1, 'world brief should read the shared insights gateway payload');
+    assert.equal(worldBootstrapUrls[0].search, '?keys=insights');
+    assert.equal(
+      worldCalls.some((call) => /\/api\/news\/v1\/(list-feed-digest|summarize-article)/.test(call.url)),
+      false,
+      'world brief must not invoke the live digest or LLM summarizer paths',
     );
 
-    const summarizeCall = allCalls.find((call) => new URL(call.url).pathname === '/api/news/v1/summarize-article');
-    assert.ok(summarizeCall, 'get_world_brief should call summarize-article');
-    assert.equal(JSON.parse(String(summarizeCall.init.body)).variant, 'full');
+    const digestUrls = countryCalls
+      .map((call) => new URL(call.url))
+      .filter((url) => url.pathname === '/api/news/v1/list-feed-digest');
+    assert.equal(digestUrls.length, 1, 'country brief should still ground on list-feed-digest');
+    assert.deepEqual(
+      digestUrls.map((url) => url.searchParams.get('variant')),
+      ['full'],
+      'MCP RPC tools must not rely on unsupported digest variants such as geo',
+    );
   });
 
-  it('RPC brief tools return sources from grounding digest items, not LLM text', async () => {
+  it('keeps geo_context as compatibility-only input', async () => {
+    const withContext = await captureRpcFetches('get_world_brief', { geo_context: 'Middle East tensions' });
+    const withoutContext = await captureRpcFetches('get_world_brief', {});
+    const requestShape = ({ calls }) => calls.map((call) => [call.url, String(call.init.body ?? '')]);
+    const resultWithoutTimestamp = ({ result }) => {
+      const { generatedAt, ...stable } = result;
+      assert.match(generatedAt, /^\d{4}-\d{2}-\d{2}T/);
+      return stable;
+    };
+
+    assert.deepEqual(resultWithoutTimestamp(withContext), resultWithoutTimestamp(withoutContext));
+    assert.deepEqual(requestShape(withContext), requestShape(withoutContext));
+  });
+
+  it('RPC brief tools return sources from producer records, not generated text', async () => {
     const { result: worldResult } = await captureRpcFetches('get_world_brief', { geo_context: 'Middle East tensions' });
     const { result: countryResult, calls: countryCalls } = await captureRpcFetches('get_country_brief', { country_code: 'US' });
 
@@ -123,7 +162,7 @@ describe('MCP news/auth public contract', () => {
       url: 'https://example.com/world-grounding',
       publishedAt: '2026-06-07T00:00:00.000Z',
     }]);
-    assert.equal(worldResult.summary, 'Grounded world brief.');
+    assert.equal(worldResult.summary, 'Seeded grounded world brief.');
     assert.equal(worldResult.sources.some((source) => source.url.startsWith('javascript:')), false);
 
     assert.deepEqual(countryResult.sources, worldResult.sources);
@@ -132,6 +171,54 @@ describe('MCP news/auth public contract', () => {
     const context = JSON.parse(String(countryBriefCall.init.body)).context || '';
     assert.match(context, /Source \[1\]: \{"title":"United States headline used for MCP grounding","source":"Example Wire","url":"https:\/\/example\.com\/world-grounding","publishedAt":"2026-06-07T00:00:00.000Z"\}/);
     assert.doesNotMatch(context, /russia-house/);
+  });
+
+  it('fails closed when the shared dashboard payload has no accepted brief', async () => {
+    const rejectedPayloads = [
+      { worldBrief: '', status: 'degraded' },
+      { worldBrief: 'Degraded but non-empty', status: 'degraded' },
+      { status: 'unknown' },
+      { status: undefined },
+      { generatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
+      { generatedAt: 'not-a-timestamp' },
+      { topStories: [], generatedAt: new Date().toISOString() },
+      { worldBriefSources: [], generatedAt: new Date().toISOString() },
+      {
+        worldBriefSources: [{
+          title: 'No usable source URL',
+          source: 'Example Wire',
+          url: 'javascript:alert(1)',
+        }],
+        generatedAt: new Date().toISOString(),
+      },
+    ];
+    for (const insights of rejectedPayloads) {
+      await assert.rejects(
+        () => captureRpcFetches('get_world_brief', {}, { insights }),
+        (error) => error?.name === 'McpSourceUnavailableError'
+          && /world brief unavailable/i.test(error.message),
+      );
+    }
+  });
+
+  it('preserves producer citation indexes when one source has no usable URL', async () => {
+    const { result } = await captureRpcFetches('get_world_brief', {}, {
+      insights: seededInsights({
+        worldBrief: 'First claim [1]. Second claim [2].',
+        topStories: [
+          { primaryTitle: 'First headline' },
+          { primaryTitle: 'Second headline' },
+        ],
+        worldBriefSources: [
+          { title: 'First headline', source: 'Unavailable Wire', url: '' },
+          { title: 'Second headline', source: 'Example Wire', url: 'https://example.com/second' },
+        ],
+      }),
+    });
+    assert.deepEqual(result.sources, [
+      { title: 'First headline', source: 'Unavailable Wire', url: '' },
+      { title: 'Second headline', source: 'Example Wire', url: 'https://example.com/second' },
+    ]);
   });
 
   it('get_country_brief keeps large grounding context out of the signed URL', async () => {
@@ -157,6 +244,8 @@ describe('MCP news/auth public contract', () => {
       assert.equal(schema.properties.sources.items.properties.title.type, 'string', `${name} sources must expose title`);
       assert.equal(schema.properties.sources.items.properties.source.type, 'string', `${name} sources must expose source`);
     }
+    assert.match(rpcTool('get_world_brief').description, /seeded|precomputed|dashboard/i);
+    assert.doesNotMatch(rpcTool('get_world_brief').description, /live-fetches.*LLM/i);
   });
 
   it('MCP-facing docs and fixture helpers do not teach stale API-key prefixes', () => {

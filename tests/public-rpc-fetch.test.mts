@@ -3,6 +3,7 @@ import { afterEach, describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 
 import { publicRpcFetch } from '../src/services/public-rpc-fetch.ts';
+import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache.ts';
 
 const originalFetch = globalThis.fetch;
 
@@ -11,6 +12,13 @@ afterEach(() => {
 });
 
 describe('publicRpcFetch', () => {
+  it('allows the Swahili digest through the shared public cache contract', () => {
+    assert.equal(
+      isPublicSharedRpcRequest('https://api.worldmonitor.app/api/news/v1/list-feed-digest?variant=full&lang=sw&public=1'),
+      true,
+    );
+  });
+
   it('keeps the allowlist-only transport scoped to the displacement summary call', () => {
     const source = readFileSync(new URL('../src/services/displacement/index.ts', import.meta.url), 'utf8');
 

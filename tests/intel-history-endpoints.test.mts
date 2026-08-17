@@ -32,6 +32,7 @@ import {
   OPENROUTER_EMBEDDINGS_URL,
 } from '../scripts/lib/brief-dedup-consts.mjs';
 import { normalizeQueryText } from '../server/_shared/intel-history-embed';
+import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 import { getIntelTimeline } from '../server/worldmonitor/intelligence/v1/get-intel-timeline';
 import { getSimilarEvents } from '../server/worldmonitor/intelligence/v1/get-similar-events';
 import { searchIntelHistory } from '../server/worldmonitor/intelligence/v1/search-intel-history';
@@ -766,7 +767,9 @@ describe('handler registration', () => {
 describe('gateway wiring', () => {
   for (const { path } of RPCS) {
     it(`gates ${path} behind Pro in both registries`, () => {
-      assert.match(premiumPathsSrc, new RegExp(`'${path}'`));
+      // Membership in the real Set is what gates the route; a grep of the
+      // module text also matches a path sitting in a comment.
+      assert.ok(PREMIUM_RPC_PATHS.has(path), `${path} missing from PREMIUM_RPC_PATHS`);
       assert.match(entitlementSrc, new RegExp(`'${path}': 1`));
     });
   }

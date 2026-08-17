@@ -295,6 +295,50 @@ describe('calibrateWithMarkets', () => {
     assert.equal(pred.probability, 0.45);
   });
 
+  // #5733: these two readers used `markets.geopolitical` as a stand-in for "all
+  // markets", which was true only while the producer published near-duplicate
+  // pools. Now that the pools are a disjoint partition, a macro/rates/crypto
+  // anchor lives ONLY in tech or finance, and reading one pool would silently
+  // drop it. Every other test in this describe passes a geopolitical-only
+  // fixture, so without these the regression ships green.
+  it('calibrates from an anchor that lives in the finance pool, not geopolitical', () => {
+    const pred = makePrediction(
+      'economic', 'United States', 'US recession',
+      0.7, 0.6, '7d', [],
+    );
+    pred.region = 'United States';
+    calibrateWithMarkets([pred], {
+      geopolitical: [],
+      tech: [],
+      finance: [{ title: 'US recession by end of 2026?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
+    });
+    assert.ok(pred.calibration !== null, 'a finance-pool market must still calibrate');
+    assert.equal(pred.probability, +(0.4 * 0.3 + 0.6 * 0.7).toFixed(3));
+  });
+
+  it('calibrates from an anchor that lives in the tech pool', () => {
+    const pred = makePrediction(
+      'economic', 'United States', 'US AI market correction',
+      0.7, 0.6, '7d', [],
+    );
+    pred.region = 'United States';
+    calibrateWithMarkets([pred], {
+      geopolitical: [],
+      tech: [{ title: 'US AI market correction in 2026?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
+      finance: [],
+    });
+    assert.ok(pred.calibration !== null, 'a tech-pool market must still calibrate');
+  });
+
+  it('returns early only when every pool is empty', () => {
+    const pred = makePrediction('economic', 'United States', 'US recession', 0.7, 0.6, '7d', []);
+    const original = pred.probability;
+    calibrateWithMarkets([pred], { geopolitical: [], tech: [], finance: [] });
+    assert.equal(pred.probability, original);
+    calibrateWithMarkets([pred], undefined);
+    assert.equal(pred.probability, original);
+  });
+
   it('does not calibrate de-escalation risk from an adverse YES market', () => {
     const pred = makePrediction(
       'conflict', 'Sudan', 'Ceasefire holds in Sudan',
@@ -1553,7 +1597,7 @@ describe('forecast llm overrides', () => {
     const options = getForecastLlmCallOptions('combined');
     const providers = resolveForecastLlmProviders(options);
 
-    assert.deepEqual(options.providerOrder, ['openrouter', 'groq']);
+    assert.deepEqual(options.providerOrder, ['openrouter', 'openrouter-free', 'openrouter-free-backup', 'groq']);
     assert.equal(providers[0]?.name, 'openrouter');
     assert.equal(providers[0]?.model, 'deepseek/deepseek-v4-flash');
     // Was 15_000: a 'stall cutoff' that treated the SYMPTOM of unrouted OpenRouter
@@ -1564,9 +1608,13 @@ describe('forecast llm overrides', () => {
     // every market_implications run wrote a SEED_ERROR. Flash now gets a completion
     // deadline that covers its measured distribution.
     assert.equal(providers[0]?.timeout, 40_000, 'Flash gets its measured completion deadline under pinned routing');
-    assert.equal(providers[1]?.name, 'groq');
-    assert.equal(providers[1]?.model, 'llama-3.3-70b-versatile');
-    assert.equal(providers[1]?.timeout, 20_000, 'the fallback keeps its provider-specific window');
+    assert.equal(providers[1]?.name, 'openrouter-free');
+    assert.equal(providers[1]?.model, 'google/gemma-4-26b-a4b-it:free');
+    assert.equal(providers[2]?.name, 'openrouter-free-backup');
+    assert.equal(providers[2]?.model, 'openai/gpt-oss-20b:free');
+    assert.equal(providers[3]?.name, 'groq');
+    assert.equal(providers[3]?.model, 'openai/gpt-oss-20b');
+    assert.equal(providers[3]?.timeout, 20_000, 'the fallback keeps its provider-specific window');
   });
 
   it('pins critical_signals to the pre-#4944 chain (probability-coupled stage)', () => {
@@ -1583,7 +1631,7 @@ describe('forecast llm overrides', () => {
 
     assert.deepEqual(options.providerOrder, ['groq', 'openrouter']);
     assert.equal(providers[0]?.name, 'groq');
-    assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
+    assert.equal(providers[0]?.model, 'openai/gpt-oss-20b');
     assert.equal(providers[1]?.name, 'openrouter');
     assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
     assert.equal(providers[1]?.timeout, 25_000, 'the DeepSeek stall cutoff must not change the pinned Gemini fallback');
@@ -1619,7 +1667,7 @@ describe('forecast llm overrides', () => {
     const providers = resolveForecastLlmProviders(options);
 
     assert.deepEqual(options.providerOrder, ['groq', 'openrouter']);
-    assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
+    assert.equal(providers[0]?.model, 'openai/gpt-oss-20b');
     assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
 
     delete process.env.FORECAST_LLM_PROVIDER_ORDER;
@@ -1636,7 +1684,7 @@ describe('forecast llm overrides', () => {
     const options = getForecastLlmCallOptions('critical_signals');
     const providers = resolveForecastLlmProviders(options);
 
-    assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
+    assert.equal(providers[0]?.model, 'openai/gpt-oss-20b');
     assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
     assert.deepEqual(providers[1]?.extraBody, { provider: OPENROUTER_PROVIDER_ROUTING });
 
@@ -1664,11 +1712,13 @@ describe('forecast llm overrides', () => {
     assert.equal(combinedProviders[0]?.model, 'google/gemini-2.5-pro');
     assert.equal(combinedProviders[0]?.timeout, 25_000, 'model overrides outside DeepSeek Flash keep the original timeout');
 
-    assert.deepEqual(scenarioOptions.providerOrder, ['openrouter', 'groq']);
+    assert.deepEqual(scenarioOptions.providerOrder, ['openrouter', 'openrouter-free', 'openrouter-free-backup', 'groq']);
     assert.equal(scenarioProviders[0]?.name, 'openrouter');
     assert.equal(scenarioProviders[0]?.model, 'deepseek/deepseek-v4-flash');
     assert.equal(scenarioProviders[0]?.timeout, 40_000, 'Flash completion deadline (see above); non-Flash overrides keep 25s');
-    assert.equal(scenarioProviders[1]?.model, 'llama-3.3-70b-versatile');
+    assert.equal(scenarioProviders[1]?.model, 'google/gemma-4-26b-a4b-it:free');
+    assert.equal(scenarioProviders[2]?.model, 'openai/gpt-oss-20b:free');
+    assert.equal(scenarioProviders[3]?.model, 'openai/gpt-oss-20b');
   });
 
   it('lets a global provider order and openrouter model apply to non-combined stages', () => {
@@ -1682,6 +1732,38 @@ describe('forecast llm overrides', () => {
     assert.equal(providers.length, 1);
     assert.equal(providers[0]?.name, 'openrouter');
     assert.equal(providers[0]?.model, 'google/gemini-2.5-flash-lite-preview');
+  });
+
+  it('migrates the production openrouter,groq order through both fixed free fallbacks', () => {
+    process.env.FORECAST_LLM_PROVIDER_ORDER = 'openrouter,groq';
+    delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
+    delete process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER;
+
+    assert.deepEqual(
+      getForecastLlmCallOptions('scenario').providerOrder,
+      ['openrouter', 'openrouter-free', 'openrouter-free-backup', 'groq'],
+    );
+    assert.deepEqual(
+      getForecastLlmCallOptions('critical_signals').providerOrder,
+      ['groq', 'openrouter'],
+      'probability-coupled critical signals keep their pinned chain',
+    );
+    assert.deepEqual(
+      getForecastLlmCallOptions('market_implications').providerOrder,
+      ['openrouter'],
+      'market implications keep their paid-only budgeted chain',
+    );
+  });
+
+  it('keeps stage-scoped provider orders exact', () => {
+    process.env.FORECAST_LLM_PROVIDER_ORDER = 'openrouter,groq';
+    process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER = 'openrouter,groq';
+
+    assert.deepEqual(
+      getForecastLlmCallOptions('combined').providerOrder,
+      ['openrouter', 'groq'],
+      'a stage-scoped operator override must not receive implicit providers',
+    );
   });
 
   it('falls through immediately after a DeepSeek Flash stall instead of retrying the hung provider', async () => {
@@ -1702,7 +1784,7 @@ describe('forecast llm overrides', () => {
           status: 200,
           headers: { get: () => null },
           json: async () => ({
-            model: 'llama-3.3-70b-versatile',
+            model: 'openai/gpt-oss-20b',
             choices: [{ message: { content: 'Groq fallback returned a complete narrative.' } }],
           }),
         };
@@ -1712,7 +1794,7 @@ describe('forecast llm overrides', () => {
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
     assert.equal(result?.provider, 'groq');
-    assert.equal(calls.filter((url) => url.includes('openrouter.ai')).length, 1);
+    assert.equal(calls.filter((url) => url.includes('openrouter.ai')).length, 3);
     assert.equal(calls.filter((url) => url.includes('api.groq.com')).length, 1);
   });
 
@@ -1935,7 +2017,7 @@ describe('forecast llm overrides', () => {
 
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'openrouter', 'groq']);
+    assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'openrouter', 'openrouter', 'openrouter', 'groq']);
     assert.deepEqual(result, {
       text: 'Groq fallback succeeded with enough narrative content.',
       model: 'groq/llama-test',
@@ -1973,7 +2055,7 @@ describe('forecast llm overrides', () => {
 
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['openrouter', 'groq']);
+    assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'groq']);
     assert.deepEqual(result, {
       text: 'Groq fallback after non retryable status has enough content.',
       model: 'groq/no-retry-test',
@@ -2756,6 +2838,37 @@ describe('detectFromPredictionMarkets', () => {
       title: `Will Europe face crisis ${i}?`, yesPrice: 70,
     })) };
     assert.ok(detectFromPredictionMarkets({ predictionMarkets: markets }).length <= 5);
+  });
+
+  // #5733: reads every pool, not just geopolitical. The detector's own gate is
+  // "the title tags a region", so a tech- or finance-classified market with a
+  // regional title is in scope — and since the producer's pools became a
+  // disjoint partition those markets no longer appear in `geopolitical`.
+  it('detects from the tech and finance pools, not only geopolitical', () => {
+    const fromTech = detectFromPredictionMarkets({
+      predictionMarkets: {
+        geopolitical: [],
+        tech: [{ title: 'Will China ship the best AI model by December 31?', yesPrice: 70, source: 'polymarket' }],
+        finance: [],
+      },
+    });
+    assert.equal(fromTech.length, 1, 'a tech-pool market must still produce a prediction');
+    assert.equal(fromTech[0].region, 'Asia-Pacific');
+
+    const fromFinance = detectFromPredictionMarkets({
+      predictionMarkets: {
+        geopolitical: [],
+        tech: [],
+        finance: [{ title: 'Will the ECB cut rates in 2026?', yesPrice: 70, source: 'polymarket' }],
+      },
+    });
+    assert.equal(fromFinance.length, 1, 'a finance-pool market must still produce a prediction');
+    assert.equal(fromFinance[0].region, 'Europe');
+  });
+
+  it('tolerates a payload missing pools entirely', () => {
+    assert.equal(detectFromPredictionMarkets({ predictionMarkets: {} }).length, 0);
+    assert.equal(detectFromPredictionMarkets({}).length, 0);
   });
 });
 

@@ -121,6 +121,18 @@ export class StrategicPosturePanel extends Panel {
   }
 
   private async fetchAndRender(): Promise<void> {
+    // A deferred panel runs its constructor BEFORE panel-layout inserts the
+    // element into the grid, and `init()` starts this fetch from that
+    // constructor. Bootstrap hydration and the posture circuit breaker both
+    // resolve on the microtask queue, so the response routinely lands while the
+    // element is still detached — and the `isConnected` guard below then
+    // discarded the render with no retry, stranding the panel on "Scanning
+    // Theaters" until the 15-minute scheduled refresh. Wait for the mount
+    // instead (same idiom as LatestBriefPanel / McpDataPanel).
+    if (!this.element?.isConnected) {
+      this.runWhenConnected(() => { void this.fetchAndRender(); });
+      return;
+    }
     if (!this.isPanelVisible()) return;
 
     try {

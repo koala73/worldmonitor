@@ -29,6 +29,23 @@ const cachedSnapshot = () => ({
   })),
 });
 
+// Since issue #5848 the previous snapshot is read up front to order the article
+// loop. These clean-sweep fixtures never produce a 0-article topic, so they pin
+// only the ORDERING read's count (exactly one on a clean sweep) — the
+// no-second-GET-on-the-degraded-path invariant is pinned by the dedicated
+// read-count tests in seed-gdelt-intel-fetch-rotation.test.mjs, not here
+// (#5859 review). Before #5848 a clean sweep read the snapshot zero times and
+// these asserted it was never consulted. `cachedSnapshot`'s 'PREV' stamps are unparseable, so every topic
+// ties as maximally stale and the fetch order stays canonical here.
+function countingSnapshotLoader(snapshot = cachedSnapshot()) {
+  const loadPrevious = async () => {
+    loadPrevious.reads += 1;
+    return snapshot;
+  };
+  loadPrevious.reads = 0;
+  return loadPrevious;
+}
+
 describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
   it('fatal runSeed rejection exits nonzero so Railway/bundles see the failure', () => {
     const source = readFileSync(new URL('../scripts/seed-gdelt-intel.mjs', import.meta.url), 'utf8');
@@ -79,6 +96,7 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
   });
 
   it('happy path: all topics publish fresh articles while one timeline pair refreshes', async () => {
+    const loadPrevious = countingSnapshotLoader();
     const out = await fetchAllTopics({
       _now: () => 0,
       _softBudgetMs: 60_000,
@@ -89,8 +107,9 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
         fetchedAt: 'NOW',
       }),
       _fetchTimeline: async () => [{ date: '2026-07-05', value: 1 }],
-      _loadPrevious: async () => { throw new Error('cache must not be consulted on the happy path'); },
+      _loadPrevious: loadPrevious,
     });
+    assert.equal(loadPrevious.reads, 1, 'a clean sweep needs no cache-merge read beyond the ordering one');
     assert.deepEqual(out.topics.map((t) => t.id), TOPIC_IDS);
     for (const [index, t] of out.topics.entries()) {
       assert.equal(t.articles[0].title, `fresh ${t.id}`);
@@ -105,6 +124,7 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
     let articleCalls = 0;
     let timelineCalls = 0;
     const measuredRequestMs = 22_000;
+    const loadPrevious = countingSnapshotLoader();
 
     const out = await fetchAllTopics({
       _now: () => now,
@@ -123,9 +143,10 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
         now += measuredRequestMs;
         return { points: [{ date: '2026-07-29', value: 1 }], errorCode: null };
       },
-      _loadPrevious: async () => { throw new Error('a complete sweep must not read cache'); },
+      _loadPrevious: loadPrevious,
     });
 
+    assert.equal(loadPrevious.reads, 1, 'a complete sweep reads the snapshot only to order the loop');
     assert.equal(articleCalls, 6);
     assert.equal(timelineCalls, 2);
     assert.equal(out._gdeltFailureCode, null);
@@ -135,6 +156,7 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
 
   it('paces all eight healthy DOC requests instead of bursting article/tone/volume', async () => {
     const sleeps = [];
+    const loadPrevious = countingSnapshotLoader();
     await fetchAllTopics({
       _softBudgetMs: 60_000,
       _interRequestDelayMs: 5_500,
@@ -145,9 +167,10 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
         fetchedAt: 'NOW',
       }),
       _fetchTimeline: async () => ({ points: [{ date: '2026-07-05', value: 1 }], errorCode: null }),
-      _loadPrevious: async () => { throw new Error('cache must not be consulted'); },
+      _loadPrevious: loadPrevious,
     });
 
+    assert.equal(loadPrevious.reads, 1, 'the ordering read must not be repeated per topic');
     assert.equal(sleeps.length, 7, '8 DOC calls have exactly 7 inter-request gaps');
     assert.equal(sleeps.every((ms) => ms === 5_500), true);
   });
@@ -215,6 +238,7 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
   it('rotates the one refreshed timeline pair across UTC four-hour slots', async () => {
     const timelineCalls = [];
     const slotMs = 4 * 60 * 60_000;
+    const loadPrevious = countingSnapshotLoader();
     await fetchAllTopics({
       _now: () => 4 * slotMs,
       _softBudgetMs: 60_000,
@@ -228,9 +252,10 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
         timelineCalls.push(`${topic.id}/${mode}`);
         return { points: [{ date: '2026-07-29', value: 1 }], errorCode: null };
       },
-      _loadPrevious: async () => { throw new Error('cache must not be consulted'); },
+      _loadPrevious: loadPrevious,
     });
 
+    assert.equal(loadPrevious.reads, 1, 'slot rotation must not re-read the snapshot per series');
     assert.deepEqual(timelineCalls, [
       'intelligence/TimelineTone',
       'intelligence/TimelineVol',

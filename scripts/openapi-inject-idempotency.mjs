@@ -21,11 +21,16 @@
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { eq, serialize } from './lib/openapi-codegen.mjs';
+import { eq, serialize, readIdempotencyExemptPaths } from './lib/openapi-codegen.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const CHECK = process.argv.includes('--check');
+// Read from the runtime's own Set (server/_shared/idempotency.ts) rather than restating
+// it here: the gateway skips the idempotency machinery for these paths, and the spec must
+// describe that same behaviour. A second literal would let the docs and the runtime drift
+// silently in either direction.
+const IDEMPOTENCY_EXEMPT_PATHS = readIdempotencyExemptPaths();
 
 const DESCRIPTION =
   'Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.';
@@ -162,9 +167,10 @@ function canonicalizeJson400Response(existing) {
 
 function injectJson(spec) {
   let changed = false;
-  for (const ops of Object.values(spec.paths ?? {})) {
+  for (const [pathname, ops] of Object.entries(spec.paths ?? {})) {
     const post = ops && typeof ops === 'object' ? ops.post : null;
     if (!post || typeof post !== 'object') continue;
+    if (IDEMPOTENCY_EXEMPT_PATHS.has(pathname)) continue;
     const params = Array.isArray(post.parameters) ? post.parameters : [];
     const paramIndex = params.findIndex(isIdempotencyParam);
     if (paramIndex === -1) {
@@ -474,6 +480,7 @@ function injectYaml(text) {
       continue;
     }
     if (!currentPath || !/^ {8}post:\s*$/.test(line)) continue;
+    if (IDEMPOTENCY_EXEMPT_PATHS.has(currentPath)) continue;
 
     // Op block spans until the next line at <= 8-space indent (next method /
     // path / top-level key).

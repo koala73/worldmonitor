@@ -402,19 +402,164 @@ describe('map renderer deferral boundary', () => {
       'rehydrateActiveMap must not consume chokepoint opens before async renderer readiness/fallback settles',
     );
 
+    const markReadyBody = methodBodyText(cls, 'markRendererReady');
+    assert.match(
+      markReadyBody,
+      /!this\.isCurrentRendererInit\(token\)[\s\S]*this\.rendererReady\s*=\s*true[\s\S]*this\.replayPendingChokepointOpen\(\)/,
+      'the shared concrete-ready seam should replay queued chokepoint opens',
+    );
+
     const svgBody = methodBodyText(cls, 'initSvgMap');
     assert.match(
       svgBody,
-      /this\.rendererReady\s*=\s*true[\s\S]*this\.replayPendingChokepointOpen\(\)/,
+      /this\.markRendererReady\(token\)/,
       'SVG fallback should replay queued chokepoint opens once it is ready',
     );
 
     const deckBody = methodBodyText(cls, 'createDeckGLMap');
     assert.match(
       deckBody,
-      /await\s+this\.deckGLMap\.whenReady\(\)[\s\S]*this\.rendererReady\s*=\s*true[\s\S]*this\.replayPendingChokepointOpen\(\)/,
+      /await\s+this\.deckGLMap\.whenReady\(\)[\s\S]*this\.markRendererReady\(token\)/,
       'DeckGL should replay queued chokepoint opens only after whenReady() succeeds',
     );
+  });
+
+  it('queues viewport commands until a concrete renderer is ready', () => {
+    const cls = mapContainerClass(parseSource('src/components/MapContainer.ts'));
+    const members = classMemberNames(cls);
+
+    for (const member of [
+      'rendererReadyWaiters',
+      'pendingViewportActions',
+      'pendingCenter',
+      'whenRendererReady',
+      'whenViewportSettled',
+    ]) {
+      assert.ok(members.has(member), `MapContainer should expose deferred viewport member ${member}`);
+    }
+
+    assert.match(
+      methodBodyText(cls, 'setView'),
+      /!this\.isViewportRendererReady\(\)[\s\S]*this\.pendingViewportActions\.push/,
+      'named views should queue while an async renderer object is not yet usable',
+    );
+    assert.match(
+      methodBodyText(cls, 'setCenter'),
+      /!this\.isViewportRendererReady\(\)[\s\S]*this\.pendingCenter\s*=/,
+      'coordinate moves should queue while an async renderer object is not yet usable',
+    );
+    assert.match(
+      methodBodyText(cls, 'markRendererReady'),
+      /!this\.isCurrentRendererInit\(token\)[\s\S]*this\.rendererReady\s*=\s*true[\s\S]*this\.replayPendingViewportActions\(\)[\s\S]*waiter\.resolve\(\)/,
+      'readiness should replay queued viewport work before waking tool callers',
+    );
+  });
+
+  it('lets an explicit readiness request release the deferred DeckGL demand gate', () => {
+    const cls = mapContainerClass(parseSource('src/components/MapContainer.ts'));
+    assert.match(
+      methodBodyText(cls, 'whenRendererReady'),
+      /this\.rendererDemandRequested\s*=\s*true[\s\S]*this\.releaseRendererDemand\?\.\(\)/,
+      'agent demand should release an already-waiting DeckGL gate',
+    );
+    assert.match(
+      methodBodyText(cls, 'waitForDeckRendererDemand'),
+      /this\.rendererDemandRequested[\s\S]*return Promise\.resolve\(true\)[\s\S]*this\.releaseRendererDemand\s*=\s*finishIfCurrent/,
+      'DeckGL demand should work whether readiness was requested before or during the gate',
+    );
+    assert.match(
+      methodBodyText(cls, 'destroy'),
+      /rendererReadyWaiters[\s\S]*waiter\.reject/,
+      'destroy should not strand renderer-readiness callers',
+    );
+  });
+
+  it('publishes settled viewport state from animated DeckGL and globe moves', () => {
+    const deck = findClass(parseSource('src/components/DeckGLMap.ts'), 'DeckGLMap');
+    const globe = findClass(parseSource('src/components/GlobeMap.ts'), 'GlobeMap');
+
+    for (const method of ['setView', 'setCenter']) {
+      assert.match(
+        methodBodyText(deck, method),
+        /this\.markViewportMoving\([\s\S]*this\.maplibreMap\.flyTo/,
+        `DeckGLMap.${method} should start settlement tracking before flyTo`,
+      );
+      assert.match(
+        methodBodyText(globe, method),
+        /this\.moveViewport\(/,
+        `GlobeMap.${method} should route through the shared tracked movement helper`,
+      );
+    }
+
+    assert.match(
+      methodBodyText(deck, 'setCenter'),
+      /this\.pendingCenter\s*=\s*\{\s*lat,\s*lon\s*\}[\s\S]*this\.state\.zoom\s*=\s*zoom[\s\S]*this\.maplibreMap\.flyTo[\s\S]*this\.onStateChange\?\.\(this\.getState\(\)\)/,
+      'DeckGLMap.setCenter should expose its target center and zoom before publishing state',
+    );
+
+    for (const method of ['setView', 'setCenter']) {
+      assert.match(
+        methodBodyText(deck, method),
+        /const viewportMovementGeneration\s*=\s*this\.markViewportMoving[\s\S]*this\.maplibreMap\.flyTo\([\s\S]*VIEWPORT_MOVEMENT_EVENT_KEY\]: viewportMovementGeneration/s,
+        `DeckGLMap.${method} should tag MapLibre moveend events with its viewport generation`,
+      );
+    }
+
+    assert.match(
+      methodBodyText(deck, 'initDeck'),
+      /const eventGeneration\s*=\s*\(event as unknown as ViewportMovementEventData\)\[VIEWPORT_MOVEMENT_EVENT_KEY\][\s\S]*if \(eventGeneration !== undefined && eventGeneration !== viewportMovementGeneration\) return;[\s\S]*this\.pendingCenter = null/s,
+      'DeckGLMap should ignore a stale moveend before clearing the active pending center',
+    );
+
+    assert.match(
+      methodBodyText(globe, 'settleViewportMovement'),
+      /this\.onStateChangeCb\?\.\(this\.getState\(\)\)[\s\S]*resolve\?\.\(completed\)/,
+      'globe settlement should publish visible state before resolving tool callers',
+    );
+    assert.match(
+      methodBodyText(globe, 'markViewportMoving'),
+      /this\.viewportAutoRotateBeforeMove\s*=\s*this\.controls\.autoRotate[\s\S]*this\.controls\.autoRotate\s*=\s*false/,
+      'globe settlement should suspend auto-rotation before a tracked camera tween',
+    );
+    assert.match(
+      methodBodyText(globe, 'moveViewport'),
+      /this\.markViewportMoving\([\s\S]*this\.globe\.pointOfView/,
+      'the shared globe movement helper should track before mutating the camera',
+    );
+    for (const renderer of [deck, globe]) {
+      assert.match(
+        methodBodyText(renderer, 'markViewportMoving'),
+        /this\.resolveViewportSettled\?\.\(false\)[\s\S]*this\.viewportSettledPromise\s*=\s*new Promise/,
+        `${renderer.id.name}.markViewportMoving should interrupt the previous generation`,
+      );
+    }
+    assert.match(
+      methodBodyText(globe, 'settleViewportMovement'),
+      /!this\.destroyed[\s\S]*this\.controlsAutoRotateBeforePause\s*=\s*this\.viewportAutoRotateBeforeMove[\s\S]*this\.controls\.autoRotate\s*=\s*this\.viewportAutoRotateBeforeMove[\s\S]*this\.viewportAutoRotateBeforeMove\s*=\s*null/,
+      'globe settlement should restore the pre-move auto-rotation state now or after render pause',
+    );
+    assert.match(
+      methodBodyText(globe, 'initGlobe'),
+      /pauseAutoRotate[\s\S]*this\.viewportAutoRotateBeforeMove\s*=\s*false[\s\S]*controls\.autoRotate\s*=\s*false/,
+      'user interaction should cancel pre-move auto-rotation restoration',
+    );
+    assert.match(
+      methodBodyText(globe, 'onStateChanged'),
+      /this\.onStateChangeCb\s*=\s*cb/,
+      'GlobeMap should honor the MapContainer state-change callback contract',
+    );
+    for (const method of ['zoomInGlobe', 'zoomOutGlobe', 'fitCountry', 'setZoom']) {
+      assert.match(
+        methodBodyText(globe, method),
+        /this\.moveViewport\(/,
+        `GlobeMap.${method} should cancel older moves and publish settled state`,
+      );
+      assert.doesNotMatch(
+        methodBodyText(globe, method),
+        /this\.globe\.pointOfView\([^)]*,\s*\d+/,
+        `GlobeMap.${method} must not bypass tracked movement`,
+      );
+    }
   });
 
   // The MapContainer queue only covers "no renderer object yet". A deferred

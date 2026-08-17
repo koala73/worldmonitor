@@ -1,21 +1,23 @@
+/**
+ * Premium access, panel gate reasons, and CTA routing.
+ *
+ * Per-gate logic does NOT live here (#5813). Each gate owns a pure resolver
+ * leaf plus a reader beside it under `gates/` — `gates/export.ts` (data export
+ * + dashboard tab cap) and `gates/playback.ts` (historical playback). A fourth
+ * gate gets its own pair there, not another `readX`/`evaluateX` in this file.
+ *
+ * What stays here is what every gate shares: the access predicate
+ * (`hasPremiumAccess`), the reason enum and its billing-aware refinement, and
+ * the CTA action resolver. Gate modules import from this file; it imports from
+ * none of them, so the dependency runs one way.
+ */
+
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import type { AuthSession } from './auth-state';
 import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from './billing';
 import { deriveBillingUxState, getBillingGateOverride, getReactivationHref } from './billing-state';
 import { getEntitlementState } from './entitlements';
-import {
-  isExportGateActive,
-  resolveExportGate,
-  resolveTabCap,
-  type ExportGateInputs,
-  type ExportGateLockReason,
-  type ExportGateVerdict,
-  type TabCapVerdict,
-} from './export-gate';
-import {
-  resolvePlaybackGate,
-  type PlaybackGateInputs,
-  type PlaybackGateVerdict,
-} from './playback-gate';
+import { openExternalUrl } from './external-navigation';
 import type { ClientEntitlementBelief } from './premium-denial';
 import { getSecretState } from './runtime-config';
 import { isProUser } from './widget-store';
@@ -116,78 +118,6 @@ export function resolveBillingAwareGateReason(reason: PanelGateReason): PanelGat
   }
 }
 
-/** Export-gate lock reasons carry the same string values as the enum. */
-const EXPORT_LOCK_TO_GATE_REASON: Record<ExportGateLockReason, PanelGateReason> = {
-  anonymous: PanelGateReason.ANONYMOUS,
-  free_tier: PanelGateReason.FREE_TIER,
-  payment_on_hold: PanelGateReason.PAYMENT_ON_HOLD,
-  renewal_pending: PanelGateReason.RENEWAL_PENDING,
-  renewal_failed: PanelGateReason.RENEWAL_FAILED,
-  lapsed: PanelGateReason.LAPSED,
-};
-
-export function exportLockToGateReason(reason: ExportGateLockReason): PanelGateReason {
-  return EXPORT_LOCK_TO_GATE_REASON[reason];
-}
-
-/**
- * Snapshot the live inputs of the data-export gate (plan 2026-07-25-001, KTD2)
- * and the dashboard tab cap (KTD8) — one reactive read shared by both.
- * The decisions themselves live in the pure `export-gate` leaf so they can be
- * unit-tested without a DOM; this function only reads the reactive sources.
- */
-export function readExportGateInputs(authState: AuthSession): ExportGateInputs {
-  const entitlement = getEntitlementState();
-  return {
-    gateActive: isExportGateActive(),
-    desktopKeyPresent: getSecretState('WORLDMONITOR_API_KEY').present,
-    authPending: authState.isPending,
-    signedIn: Boolean(authState.user),
-    features: entitlement
-      ? {
-          tier: entitlement.features.tier,
-          dataExport: entitlement.features.dataExport,
-          maxDashboards: entitlement.features.maxDashboards,
-        }
-      : null,
-    billingState: deriveBillingUxState(getSubscription(), entitlement, Date.now()),
-  };
-}
-
-/** Current data-export verdict for the given auth session. */
-export function evaluateExportGate(authState: AuthSession): ExportGateVerdict {
-  return resolveExportGate(readExportGateInputs(authState));
-}
-
-/**
- * May this session create another dashboard tab? Creation-only — the verdict
- * never asks a caller to remove tabs that already exist (KTD8).
- */
-export function evaluateTabCap(authState: AuthSession, currentTabCount: number): TabCapVerdict {
-  return resolveTabCap(readExportGateInputs(authState), currentTabCount);
-}
-
-/**
- * Snapshot the live inputs of the historical-playback gate (#5632). Separate
- * from `readExportGateInputs` because playback is a Pro takeaway resolved by
- * `hasPremiumAccess()`, not a Pro Business one — it needs neither the catalog
- * activation probe nor the billing-state refinement (the control has no CTA to
- * route, so there is no denial reason to display).
- */
-export function readPlaybackGateInputs(authState: AuthSession): PlaybackGateInputs {
-  return {
-    premiumAccess: hasPremiumAccess(authState),
-    authPending: authState.isPending,
-    signedIn: Boolean(authState.user),
-    entitlementLoaded: getEntitlementState() !== null,
-  };
-}
-
-/** Current playback-control verdict for the given auth session. */
-export function evaluatePlaybackGate(authState: AuthSession): PlaybackGateVerdict {
-  return resolvePlaybackGate(readPlaybackGateInputs(authState));
-}
-
 /**
  * Every locked surface routes its CTA through here. Extracted from
  * `PanelLayoutManager.getGateAction` (which was private and closed over
@@ -204,12 +134,12 @@ export interface GateActionDeps {
   planKey?: string | null;
 }
 
-// Absolute origin: the desktop runtime's webview has no worldmonitor.app
-// origin, so a relative href would resolve against tauri://localhost.
-const PRO_PAGE_ORIGIN = 'https://worldmonitor.app';
-
+// Absolute origin (WEB_APP_ORIGIN): the desktop runtime's webview has no
+// worldmonitor.app origin, so a relative href would resolve against
+// tauri://localhost. `openExternalUrl` then routes it to the OS browser on
+// desktop rather than opening another WebView window (#5911).
 function openProPage(path: string): void {
-  window.open(`${PRO_PAGE_ORIGIN}${path}`, '_blank', 'noopener,noreferrer');
+  void openExternalUrl(`${WEB_APP_ORIGIN}${path}`);
 }
 
 /** Return the action callback for a given gate reason. */

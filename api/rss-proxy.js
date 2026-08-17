@@ -3,6 +3,7 @@ import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
 import { isAllowedDomain, hostMatchForms } from './_rss-allowed-domain-match.js';
+import { RSS_BROWSER_UA, rssFetchHeadersForHost } from './_rss-fetch-headers.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 
@@ -30,11 +31,8 @@ const RELAY_ONLY_DOMAINS = new Set([
   'www.atlanticcouncil.org',
 ]);
 
-const DIRECT_FETCH_HEADERS = Object.freeze({
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-  'Accept-Language': 'en-US,en;q=0.9',
-});
+// Browser UA for upstream RSS: see api/_rss-fetch-headers.js (#6624).
+const DIRECT_FETCH_HEADERS = rssFetchHeadersForHost('');
 const DIRECT_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const MAX_DIRECT_REDIRECTS = 3;
 
@@ -152,7 +150,7 @@ export default async function handler(req, ctx) {
 
       for (let redirectCount = 0; redirectCount <= MAX_DIRECT_REDIRECTS; redirectCount += 1) {
         const response = await fetchWithTimeout(currentUrl.href, {
-          headers: DIRECT_FETCH_HEADERS,
+          headers: rssFetchHeadersForHost(currentUrl.hostname),
           redirect: 'manual',
         }, timeout);
 
@@ -215,12 +213,20 @@ export default async function handler(req, ctx) {
         }
         if (relayResponse?.ok) {
           response = relayResponse;
+          usedRelay = true;
         }
       }
     }
 
     const data = await response.text();
     const isSuccess = response.status >= 200 && response.status < 300;
+    const relayCacheState = usedRelay ? response.headers.get('x-cache') : null;
+    const relayStaleMarker = usedRelay ? response.headers.get('x-relay-stale') : null;
+    // New relays identify stale fallback explicitly. Keep the label fallback
+    // while Railway and Vercel revisions roll out independently.
+    const legacyStaleCacheLabel = relayCacheState === 'STALE' || relayCacheState?.endsWith('-STALE');
+    const isStaleRelay = relayStaleMarker === '1' || legacyStaleCacheLabel;
+    const isCacheableSuccess = isSuccess && !isStaleRelay;
     // Relay-only feeds are slow-updating institutional sources — cache longer
     const cdnTtl = isRelayOnly ? 3600 : 900;
     const swr = isRelayOnly ? 7200 : 1800;
@@ -230,10 +236,13 @@ export default async function handler(req, ctx) {
       status: response.status,
       headers: {
         'Content-Type': response.headers.get('content-type') || 'application/xml',
-        'Cache-Control': isSuccess
+        'Cache-Control': isCacheableSuccess
           ? `public, max-age=${browserTtl}, s-maxage=${cdnTtl}, stale-while-revalidate=${swr}, stale-if-error=${sie}`
-          : 'public, max-age=15, s-maxage=60, stale-while-revalidate=120',
-        ...(isSuccess && { 'CDN-Cache-Control': `public, s-maxage=${cdnTtl}, stale-while-revalidate=${swr}, stale-if-error=${sie}` }),
+          : isStaleRelay ? 'no-store' : 'public, max-age=15, s-maxage=60, stale-while-revalidate=120',
+        ...(isCacheableSuccess && { 'CDN-Cache-Control': `public, s-maxage=${cdnTtl}, stale-while-revalidate=${swr}, stale-if-error=${sie}` }),
+        ...(isStaleRelay && { 'CDN-Cache-Control': 'no-store' }),
+        ...(relayCacheState && { 'X-Cache': relayCacheState }),
+        ...(relayStaleMarker && { 'X-Relay-Stale': relayStaleMarker }),
         ...corsHeaders,
       },
     });
@@ -264,4 +273,6 @@ export default async function handler(req, ctx) {
 // would 403 before the relay routing it exists for is ever consulted.
 export const __testing__ = {
   RELAY_ONLY_DOMAINS,
+  RSS_BROWSER_UA,
+  DIRECT_FETCH_HEADERS,
 };

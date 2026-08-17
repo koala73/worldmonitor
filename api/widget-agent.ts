@@ -21,6 +21,8 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeEqualSecret, timingSafeIncludes } from './_crypto.js';
+// @ts-expect-error — JS module, no declaration file
+import { isSessionTokenShape } from './_session.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
 
@@ -97,10 +99,14 @@ export default async function handler(req: Request): Promise<Response> {
     req.headers.get('X-WorldMonitor-Key') ??
     req.headers.get('X-Api-Key') ??
     '';
+  const explicitWorldMonitorKey = isSessionTokenShape(headerWorldMonitorKey)
+    ? ''
+    : headerWorldMonitorKey;
   const worldMonitorKey =
-    headerWorldMonitorKey ||
+    explicitWorldMonitorKey ||
     getCookie(req, 'wm-pro-key') ||
-    getCookie(req, 'wm-widget-key');
+    getCookie(req, 'wm-widget-key') ||
+    headerWorldMonitorKey;
   if (await hasValidWorldMonitorKey(worldMonitorKey)) {
     isPro = true;
   } else {

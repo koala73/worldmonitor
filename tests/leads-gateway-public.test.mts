@@ -46,7 +46,7 @@ async function loadLeadsGateway() {
   };
 }
 
-describe('leads gateway public access', () => {
+describe('leads gateway public access', { concurrency: 1 }, () => {
   it('declares both leads RPCs public-no-auth and non-premium', async () => {
     const { PUBLIC_NO_AUTH_RPC_PATHS, PREMIUM_RPC_PATHS } = await loadLeadsGateway();
     assert.equal(PUBLIC_NO_AUTH_RPC_PATHS.has('/api/leads/v1/submit-contact'), true);
@@ -75,13 +75,16 @@ describe('leads gateway public access', () => {
         message: 'hello',
         source: 'enterprise-contact',
         website: 'http://honeypot-filled.example',
-        turnstileToken: '',
+        // The generated request validator requires a non-empty token; the
+        // honeypot still short-circuits before the handler verifies it.
+        turnstileToken: 'test-token',
       }),
     }));
 
     assert.notEqual(res.status, 401, 'gateway must not 401 anonymous contact submissions');
-    assert.equal(res.status, 200);
-    const body = await res.json() as { status?: string };
+    const bodyText = await res.text();
+    assert.equal(res.status, 200, bodyText);
+    const body = JSON.parse(bodyText) as { status?: string };
     assert.equal(body.status, 'sent');
   });
 

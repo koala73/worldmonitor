@@ -15,6 +15,8 @@
  */
 
 import { SUPPRESSED_TRENDING_TERMS, escapeRegex, tokenize } from './text-analysis-core.js';
+// #6428: spike "source diversity" counts publishers, not feed labels.
+import { publisherFamiliesFor } from './publisher-families.js';
 
 export const CVE_PATTERN = /CVE-\d{4}-\d{4,}/gi;
 export const APT_PATTERN = /APT\d+/gi;
@@ -195,9 +197,14 @@ export function computeKeywordSpikesFromStories(stories, {
     });
     if (!isSpike) continue;
 
+    // #6428: source diversity is a claim about PUBLISHERS. story.sources holds
+    // the raw feed labels persisted to story:sources:v1, so a single newsroom
+    // shipping the term through several of its own feeds used to clear this
+    // gate alone — and `uniqueSources` is surfaced to agents by
+    // get_keyword_spikes as the diversity evidence for the alert.
     const uniqueSources = new Set();
     for (const story of record.recent) {
-      for (const source of story.sources ?? []) uniqueSources.add(source);
+      for (const family of publisherFamiliesFor(story.sources)) uniqueSources.add(family);
     }
     if (uniqueSources.size < MIN_SPIKE_SOURCE_COUNT) continue;
 

@@ -81,7 +81,24 @@ describe('resilience scorer contracts', () => {
       'importConcentration', 'stateContinuity',
       'liquidReserveAdequacy', 'sovereignFiscalBuffer',
     ]);
+    // #6460: `education` is FAIL-CLOSED, so on a total seed outage it throws
+    // rather than returning a coverage=0 shape. That is the correct behaviour
+    // and the point of the design — a missing envelope means the Railway bundle
+    // is not publishing, which is an operator problem, and imputing every
+    // country to the midpoint would hide it. Asserted explicitly here instead
+    // of being exempted, so a regression that silently downgrades the throw to
+    // a quiet coverage=0 still fails this test.
+    const failClosedOnTotalOutage = new Set(['education']);
     for (const [dimensionId, scorer] of Object.entries(RESILIENCE_DIMENSION_SCORERS)) {
+      if (failClosedOnTotalOutage.has(dimensionId)) {
+        await assert.rejects(
+          () => scorer('US'),
+          (err: Error) => err.name === 'ResilienceConfigurationError'
+            && /required seed-meta absent or unhealthy/.test(err.message),
+          `${dimensionId} must fail closed when its seed-meta envelope is absent`,
+        );
+        continue;
+      }
       const result = await scorer('US');
       assert.ok(result.score >= 0 && result.score <= 100, `${dimensionId} fallback score out of bounds: ${result.score}`);
       if (coverageZeroExempt.has(dimensionId)) {
@@ -168,11 +185,24 @@ describe('resilience scorer contracts', () => {
     // per-snapshot cyber severity weight (fixture threats are undated, so the
     // whole snapshot is one capped bucket — same value pre/post the day-bucket
     // rework). Undated rows intentionally fall back to the current bucket.
+    // 2026-08-10 education dim: social-governance 66.25 -> 53. Flat-mean
+    // artifact — the `education` dim shipped flag-gated off, so score=0, and
+    // this flat average dropped 66.25 = 265/4 -> 53 = 265/5.
+    // 2026-08-11 education ACTIVATED (#6460): social-governance 53 -> 72.20.
+    // The same 265/5 mean now carries a real education score instead of the
+    // dark placeholder zero: (265 + 96) / 5 = 72.20, where 96 is the US
+    // fixture's 92.1% attainment through the piecewise transform. The jump is
+    // the placeholder leaving the mean, NOT a 19-point construct swing.
+    //
+    // This arithmetic-only assertion deliberately averages every serialized
+    // row. Production aggregation is different: the domain blend drops zero
+    // coverage, which is why the coverage-weighted assertion below moves by a
+    // far smaller amount than this flat mean does.
     assert.deepEqual(domainAverages, {
       economic: 56.5,
       infrastructure: 79.67,
       energy: 80,
-      'social-governance': 66.25,
+      'social-governance': 72.2,
       'health-food': 60.5,
       recovery: 49.63,
     });
@@ -237,7 +267,11 @@ describe('resilience scorer contracts', () => {
     // PR #4088 P2 follow-up: 63.29 -> 61.81. Shared fixtures intentionally
     // omit import-HHI source years, so the scorer keeps the HHI score but
     // derates certainty coverage to the stale/missing-year floor.
-    assert.equal(baselineScore, 61.81);
+    // #6460 education activation: 61.81 -> 63.21. `education` is a `baseline`
+    // dimension (RESILIENCE_DIMENSION_TYPES), so it joins this aggregate and
+    // the US fixture's high attainment score lifts it by 1.40. It is absent
+    // from the stress aggregate below, which is why that number is unchanged.
+    assert.equal(baselineScore, 63.21);
     // PR 3 §3.5: 65.84 → 67.85 (fuelStockDays retirement) → 67.21
     // (currencyExternal rebuilt on IMF inflation + WB reserves, coverage
     // shifts and US stress score moves).
@@ -327,7 +361,10 @@ describe('resilience scorer contracts', () => {
     // Round 2 P2-N2 inflation-stability scorer: 66.12 -> 66.38.
     // PR #4088 import-HHI missing-year certainty derate: 66.38 -> 64.79.
     // Audit P2-1 tradePolicy severity scorer (on top of the derate): 64.79 -> 65.12.
-    assert.equal(overallScore, 65.12);
+    // #6460 education activation: 65.12 -> 65.75, matching the independently
+    // derived expectation in the domain-weighted test below. The two are
+    // computed by different code paths and must agree.
+    assert.equal(overallScore, 65.75);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -440,7 +477,13 @@ describe('resilience scorer contracts', () => {
     // Round 2 P2-N2 inflation-stability scorer: 66.12 -> 66.38.
     // PR #4088 import-HHI missing-year certainty derate: 66.38 -> 64.79.
     // Audit P2-1 tradePolicy severity scorer (on top of the derate): 64.79 -> 65.12.
-    assert.equal(expected, 65.12, 'overallScore should match sum(domainScore * domainWeight); plan 002 §U4+§U6 64.78 -> 65.64 -> plan 2026-05-12 -> 66.02 -> issue #3971 -> 66.12 -> round2 P2-N2 -> 66.38 -> import-HHI missing-year derating -> 64.79 -> audit P2-1 WTO severity -> 65.12');
+    // #6460 education activation: 65.12 -> 65.75. The US fixture scores 96 on
+    // the new dimension, but this is the COVERAGE-WEIGHTED production path, so
+    // the dimension enters at weight 0.5 against a domain that already carried
+    // four dims — +0.63 overall, not the +19.2 the flat-mean assertion above
+    // moves by. The gap between those two numbers is the whole reason both
+    // assertions exist.
+    assert.equal(expected, 65.75, 'overallScore should match sum(domainScore * domainWeight); plan 002 §U4+§U6 64.78 -> 65.64 -> plan 2026-05-12 -> 66.02 -> issue #3971 -> 66.12 -> round2 P2-N2 -> 66.38 -> import-HHI missing-year derating -> 64.79 -> audit P2-1 WTO severity -> 65.12 -> #6460 education activation -> 65.75');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {

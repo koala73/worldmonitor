@@ -15,6 +15,8 @@
  * `helpers/print-recorder.mts`.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock, type MockInstance } from 'vitest';
 
 import { ExportPanel, type ExportData } from '@/utils/export';
@@ -33,6 +35,7 @@ const PRINT_DELAY_MS = 300;
 const CLEANUP_DELAY_MS = 5000;
 
 const TS = Date.parse('2026-07-25T12:00:00.000Z');
+const MAIN_CSS = readFileSync(resolve(process.cwd(), 'src/styles/main.css'), 'utf8');
 
 function exportData(overrides: Partial<ExportData> = {}): ExportData {
   return {
@@ -101,6 +104,34 @@ async function clickExportPdf(): Promise<void> {
 }
 
 describe('Export PDF click cycle — button to printed document', () => {
+  it('only exposes the formats selected by the entitlement-backed menu', () => {
+    panel.setAvailableFormats(['json']);
+
+    expect(root().querySelector<HTMLButtonElement>('[data-format="json"]')!.hidden).toBe(false);
+    expect(root().querySelector<HTMLButtonElement>('[data-format="csv"]')!.hidden).toBe(true);
+    expect(root().querySelector<HTMLButtonElement>('[data-format="pdf"]')!.hidden).toBe(true);
+  });
+
+  it('keeps unavailable options out of layout under the production CSS cascade', () => {
+    const productionExportRules = MAIN_CSS
+      .match(/\.export-option(?:\[hidden\])?\s*\{[^}]*\}/g)
+      ?.join('\n');
+    expect(productionExportRules).toBeTruthy();
+
+    const style = document.createElement('style');
+    style.textContent = productionExportRules!;
+    document.head.appendChild(style);
+    try {
+      panel.setAvailableFormats(['json']);
+
+      expect(getComputedStyle(root().querySelector('[data-format="csv"]')!).display).toBe('none');
+      expect(getComputedStyle(root().querySelector('[data-format="pdf"]')!).display).toBe('none');
+      expect(getComputedStyle(root().querySelector('[data-format="json"]')!).display).toBe('block');
+    } finally {
+      style.remove();
+    }
+  });
+
   it('prints a report built from the data the panel holds at CLICK time', async () => {
     // Not construction time: the dashboard mutates constantly, and a report
     // built from a stale snapshot is the whole reason getData is a callback.

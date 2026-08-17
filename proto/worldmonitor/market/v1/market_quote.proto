@@ -23,6 +23,43 @@ message MarketQuote {
   repeated double sparkline = 6;
 }
 
+// MarketQuoteUnavailableReason explains why a requested symbol produced no quote.
+//
+// Requested symbols are resolved seed-first: the fixed Railway seed snapshot
+// answers without any upstream call, and only the remaining symbols are looked
+// up through the bounded, Redis-cached quote provider. Every symbol that
+// survives normalization is accounted for by either a quote or one of these
+// reasons — a requested symbol is never silently dropped.
+enum MarketQuoteUnavailableReason {
+  // Unspecified reason.
+  MARKET_QUOTE_UNAVAILABLE_REASON_UNSPECIFIED = 0;
+  // The symbol is absent from the seed snapshot and the provider has no quote for it.
+  MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND = 1;
+  // The provider lookup failed. Transient, and deliberately not cached.
+  MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_ERROR = 2;
+  // The provider rate-limited the lookup.
+  MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_RATE_LIMITED = 3;
+  // No credentials are configured for the quote provider, so the gap was not filled.
+  MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_NOT_CONFIGURED = 4;
+  // Dropped by the per-request symbol cardinality bound before any lookup.
+  MARKET_QUOTE_UNAVAILABLE_REASON_REQUEST_LIMIT_EXCEEDED = 5;
+  // A seed miss the request's bounded upstream budget (count or deadline) could not cover.
+  MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED = 6;
+  // The seed snapshot could not be read, so no symbol was resolved and no upstream was contacted.
+  MARKET_QUOTE_UNAVAILABLE_REASON_SEED_UNAVAILABLE = 7;
+}
+
+// MarketQuoteUnavailable reports a requested symbol that produced no quote.
+message MarketQuoteUnavailable {
+  // The requested ticker symbol, normalized.
+  string symbol = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1
+  ];
+  // Why the symbol produced no quote.
+  MarketQuoteUnavailableReason reason = 2;
+}
+
 // CryptoQuote represents a cryptocurrency quote from CoinGecko.
 message CryptoQuote {
   // Cryptocurrency name (e.g., "Bitcoin").

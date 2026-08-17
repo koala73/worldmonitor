@@ -29,7 +29,7 @@ export async function listWebhooks(
   // sides equal 'anon' — exposing every 'anon'-bucket tenant's webhooks to
   // every Clerk-session holder. See registerWebhook for full rationale.
   const apiKeyResult = (await validateApiKey(ctx.request, { forceKey: true })) as {
-    valid: boolean; required: boolean; error?: string;
+    valid: boolean; required: boolean; error?: string; credential?: string;
   };
   if (apiKeyResult.required && !apiKeyResult.valid) {
     throw new ApiError(401, apiKeyResult.error ?? 'API key required', '');
@@ -37,7 +37,7 @@ export async function listWebhooks(
 
   await requirePremiumRpcAccess(ctx.request, ApiError, 'PRO subscription required');
 
-  const ownerHash = await callerFingerprint(ctx.request);
+  const ownerHash = await callerFingerprint(ctx.request, apiKeyResult.credential);
   const smembersResult = await runRedisPipeline([['SMEMBERS', ownerIndexKey(ownerHash)]]);
   const memberIds = (smembersResult[0]?.result as string[] | null) ?? [];
 

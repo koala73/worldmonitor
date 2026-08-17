@@ -170,6 +170,8 @@ const allLayersEnabled: MapLayers = {
   irradiators: true,
   sanctions: true,
   weather: true,
+  canadaRoads: true,
+  canadaAlerts: true,
   economic: true,
   waterways: true,
   outages: true,
@@ -230,6 +232,8 @@ const allLayersDisabled: MapLayers = {
   irradiators: false,
   sanctions: false,
   weather: false,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: false,
   waterways: false,
   outages: false,
@@ -1188,6 +1192,8 @@ const seedAllDynamicData = (): void => {
       testSiteName: '',
       concernScore: 0,
       concernLevel: '',
+      source: 'usgs',
+      category: '',
     },
   ];
 

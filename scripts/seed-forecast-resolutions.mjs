@@ -24,6 +24,7 @@ import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS } from './_forecast-score
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 import { updateMarketSettlements } from './_forecast-market-settlements.mjs';
 import { callForecastLLM } from './seed-forecasts.mjs';
+import { GROQ_DEFAULT_MODEL } from './_llm-model-timeouts.mjs';
 import { readStoryTracksChunked, STORY_TRACK_HGETALL_BATCH } from './lib/story-track-batch-reader.mjs';
 
 export const HISTORY_KEY = 'forecast:predictions:history:v1';
@@ -506,7 +507,7 @@ function createLiveJudgeModels(options = {}) {
       stage: 'forecast_resolution_judge_groq',
       providerOrder: ['groq'],
       modelOverrides: {
-        groq: process.env.FORECAST_RESOLUTION_JUDGE_MODEL_GROQ || 'llama-3.3-70b-versatile',
+        groq: process.env.FORECAST_RESOLUTION_JUDGE_MODEL_GROQ || GROQ_DEFAULT_MODEL,
       },
     }),
   ];

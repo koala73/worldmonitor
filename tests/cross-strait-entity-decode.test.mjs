@@ -6,7 +6,7 @@ import { parseJapanModIndex } from '../scripts/cross-strait-activity/adapters.mj
 // decodeHtml is private; parseJapanModIndex decodes anchor titles through it.
 function decodeTitleViaParser(body) {
   const rows = parseJapanModIndex(
-    `<a href="/js/pdf/2026/p20260724_05e.pdf">${body}</a>`,
+    `<a href="/js/pdf/2026/p20260730_01.pdf">${body}</a>`,
   );
   assert.equal(rows.length, 1);
   return rows[0].title;

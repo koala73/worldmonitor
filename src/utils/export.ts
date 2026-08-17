@@ -7,13 +7,14 @@ import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { showToast } from '@/utils/toast';
 import { buildDataReportDocument, printReportDocument, sanitizeExportData } from '@/utils/export-report';
+import { SUPPORTED_EXPORT_FORMATS, type DataExportFormat } from '@/services/gates/export-resolver';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: omit the IRAN
 // EVENTS CSV block. Set VITE_ENABLE_IRAN_ATTACKS=true to restore. Guarded so
 // node:test never dereferences import.meta.env.
 const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
 
-type ExportFormat = 'json' | 'csv' | 'pdf';
+type ExportFormat = DataExportFormat;
 
 export interface ExportMeta {
   exportedAt: string;
@@ -203,6 +204,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
       lines.push('# See JSON export for full sanctions data');
       lines.push(`TotalCount,${intel.sanctions.totalCount}`);
       lines.push(`SDNCount,${intel.sanctions.sdnCount}`);
+      lines.push(`SemaCount,${intel.sanctions.semaCount}`);
       lines.push(`NewEntries,${intel.sanctions.newEntryCount}`);
       lines.push('');
     }
@@ -743,8 +745,9 @@ export class ExportPanel {
   private element: HTMLElement;
   private isOpen = false;
   private getData: () => ExportData;
+  private availableFormats = new Set<DataExportFormat>();
 
-  constructor(getDataFn: () => ExportData) {
+  constructor(getDataFn: () => ExportData, formats: readonly DataExportFormat[] = SUPPORTED_EXPORT_FORMATS) {
     this.getData = getDataFn;
     this.element = document.createElement('div');
     this.element.className = 'export-panel-container';
@@ -757,7 +760,17 @@ export class ExportPanel {
       </div>
     `, "legacy direct innerHTML migration"));
 
+    this.setAvailableFormats(formats);
     this.setupEventListeners();
+  }
+
+  /** Update the menu in place when a live entitlement snapshot changes. */
+  public setAvailableFormats(formats: readonly DataExportFormat[]): void {
+    this.availableFormats = new Set(formats);
+    this.element.querySelectorAll<HTMLButtonElement>('.export-option').forEach((button) => {
+      const format = button.dataset.format as DataExportFormat;
+      button.hidden = !this.availableFormats.has(format);
+    });
   }
 
   private setupEventListeners(): void {
@@ -780,6 +793,7 @@ export class ExportPanel {
       option.addEventListener('click', () => {
         const button = option as HTMLButtonElement;
         const format = button.dataset.format as ExportFormat;
+        if (!this.availableFormats.has(format)) return;
         if (format === 'pdf') {
           // The report renders and prints asynchronously, so the menu stays
           // open with the option in a busy state until it settles — and a

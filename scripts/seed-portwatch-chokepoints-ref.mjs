@@ -49,22 +49,34 @@ export async function fetchAll() {
   for (const f of features) {
     const a = f.attributes;
     if (a?.portid == null) continue;
-    const portId = String(a.portid);
-    const industries = [a.industry_top1, a.industry_top2, a.industry_top3].filter(Boolean);
-    result[portId] = {
-      portId,
-      portName: String(a.portname || ''),
-      fullName: String(a.fullname || ''),
-      lat: Number(a.lat ?? 0),
-      lon: Number(a.lon ?? 0),
-      vesselCountTanker: Number(a.vessel_count_tanker ?? 0),
-      shareMaritimeImport: Number(a.share_country_maritime_import ?? 0),
-      shareMaritimeExport: Number(a.share_country_maritime_export ?? 0),
-      industries,
-    };
+    const entry = buildEntry(a);
+    result[entry.portId] = entry;
   }
 
   return result;
+}
+
+/**
+ * Adapt one ArcGIS chokepoint-reference row into the published entry.
+ *
+ * Pure and exported so the field coercions are exercised against this function
+ * rather than a copy of it: the three industry columns are sparse and the empty
+ * ones must be dropped rather than published as nulls, and every numeric column
+ * defaults to 0 so a missing upstream field cannot surface as `undefined` in
+ * the payload.
+ */
+export function buildEntry(a) {
+  return {
+    portId: String(a.portid),
+    portName: String(a.portname || ''),
+    fullName: String(a.fullname || ''),
+    lat: Number(a.lat ?? 0),
+    lon: Number(a.lon ?? 0),
+    vesselCountTanker: Number(a.vessel_count_tanker ?? 0),
+    shareMaritimeImport: Number(a.share_country_maritime_import ?? 0),
+    shareMaritimeExport: Number(a.share_country_maritime_export ?? 0),
+    industries: [a.industry_top1, a.industry_top2, a.industry_top3].filter(Boolean),
+  };
 }
 
 export function validateFn(data) {

@@ -9,6 +9,15 @@
 // SEED_ERROR for benign, self-healing resource contention. A budget-starve must
 // instead PRESERVE last-good (leaving seed-meta.fetchedAt untouched) so
 // age-based STALE_SEED still escalates only if the starve persists past 2h.
+//
+// What this file protects is the CLASSIFICATION boundary: a starve and a real
+// provider failure must never look alike in seed-meta. The signal that carries
+// the distinction changed once a real failure over fresh last-good stopped
+// being an instant SEED_ERROR (see market-implications-seed-health.test.mjs) —
+// a starve now records NO failure at all, while a genuine failure records the
+// streak, the attempt timestamp and the reason code that escalate health on
+// the second consecutive miss. The boundary itself is unchanged and is
+// asserted on those fields below.
 
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
@@ -44,8 +53,8 @@ afterEach(() => {
 });
 
 const LAST_GOOD = [{
-  ticker: 'LMT', name: 'Lockheed Martin', direction: 'long', timeframe: '1-3m',
-  confidence: 0.7, title: 'Defense demand', narrative: 'n', risk_caveat: '', driver: '', transmission_chain: [],
+  ticker: 'LMT', name: 'Lockheed Martin', direction: 'long', timeframe: '1M',
+  confidence: 'MEDIUM', title: 'Defense demand', narrative: 'Sustained procurement lifts the backlog across primes.', risk_caveat: '', driver: '', transmission_chain: [],
 }];
 
 function seedLastGood(store) {
@@ -82,10 +91,50 @@ test('run-budget starve preserves last-good and does NOT write a SEED_ERROR', as
   assert.equal(meta.status, 'ok', 'a budget starve must NOT flip seed-meta to error — age-based STALE_SEED escalates instead');
   assert.equal(meta.recordCount, 1, 'last-good record count is preserved (fetchedAt untouched)');
   assert.equal(meta.fetchedAt, 1783340000000, 'seed-meta.fetchedAt must not advance on a starve, else STALE_SEED never fires');
+  assert.equal(meta.consecutiveFailures, undefined, 'a starve is NOT a producer miss — recording one here would escalate health for pure resource contention');
+  assert.equal(meta.lastSynthesisFailureCode, undefined, 'and it has no failure reason to report');
   assert.deepEqual(store['intelligence:market-implications:v1'].cards, LAST_GOOD, 'last-good cards preserved');
   assert.ok(
     !Object.keys(store).some((k) => k.startsWith('forecast:llm-market-implications:')),
     'no stage cache entry written on a budget-starved skip',
+  );
+});
+
+test('a starve landing on an already-degraded meta neither clears nor advances the streak', async () => {
+  // The boundary between the two mechanisms: a prior LLM miss recorded a
+  // streak, and the NEXT tick is starved rather than attempted. A starve is
+  // not a miss (nothing was tried) and not a success (nothing was published),
+  // so it must leave the record exactly as it found it — clearing it would
+  // erase the escalation, incrementing it would alarm on contention.
+  const store = {};
+  __setRedisStoreForTests(store);
+  seedLastGood(store);
+  store['seed-meta:intelligence:market-implications'] = {
+    fetchedAt: 1783340000000,
+    recordCount: 1,
+    status: 'ok',
+    lastAttemptAt: 1783340000000,
+    lastSuccessAt: 1783340000000,
+    consecutiveFailures: 1,
+    lastSynthesisFailureCode: 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE',
+  };
+
+  __setForecastLlmRunDeadlineForTests(Date.now() - 1000);
+  const redisCommands = [];
+  global.fetch = async (_url, init = {}) => {
+    redisCommands.push(JSON.parse(String(init.body || '[]')));
+    return { ok: true, status: 200, json: async () => ({ result: 1 }), text: async () => '' };
+  };
+
+  await buildAndSeedMarketImplications({});
+
+  const meta = store['seed-meta:intelligence:market-implications'];
+  assert.equal(meta.consecutiveFailures, 1, 'a starve must not reset a real miss streak — that would erase the pending escalation');
+  assert.equal(meta.lastSynthesisFailureCode, 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE', 'nor drop the reason');
+  assert.equal(meta.fetchedAt, 1783340000000, 'nor advance the content clock');
+  assert.ok(
+    redisCommands.some((command) => command[0] === 'EXPIRE' && command[1] === 'seed-meta:intelligence:market-implications'),
+    'the degraded meta is TTL-refreshed rather than rewritten, so the diagnostics survive',
   );
 });
 
@@ -148,7 +197,7 @@ test('a genuine provider failure (budget remaining) still writes a SEED_ERROR', 
   assert.equal(meta.status, 'error', 'a real LLM failure with budget remaining must still surface SEED_ERROR');
 });
 
-test('a genuine provider failure that drains the run deadline still writes a SEED_ERROR', async () => {
+test('a genuine provider failure that drains the run deadline is still recorded as a failure', async () => {
   const store = {};
   __setRedisStoreForTests(store);
   seedLastGood(store);
@@ -178,7 +227,9 @@ test('a genuine provider failure that drains the run deadline still writes a SEE
 
   assert.equal(providerCalls, 1, 'provider failure path must run before the deadline is drained');
   const meta = store['seed-meta:intelligence:market-implications'];
-  assert.equal(meta.status, 'error', 'provider failure must not be reclassified as budget starve just because the deadline is now exhausted');
+  assert.equal(meta.consecutiveFailures, 1, 'provider failure must not be reclassified as a budget starve just because the deadline is now exhausted — a starve would record nothing');
+  assert.equal(meta.lastSynthesisFailureCode, 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE', 'the reason reaches health');
+  assert.equal(meta.fetchedAt, Date.parse('2026-07-06T13:00:00.000Z'), 'and it is not mistaken for a fresh publish');
 });
 
 test('pre-call guard skips when the run budget cannot cover the full provider chain (#1/#4)', async () => {
@@ -242,7 +293,7 @@ test('mid-call budget_exhausted result preserves last-good, no SEED_ERROR (#5 de
   );
 });
 
-test('mid-call provider_failed result still writes a SEED_ERROR (#5 classification symmetry)', async () => {
+test('mid-call provider_failed result is still recorded as a failure (#5 classification symmetry)', async () => {
   const store = {};
   __setRedisStoreForTests(store);
   seedLastGood(store);
@@ -254,7 +305,10 @@ test('mid-call provider_failed result still writes a SEED_ERROR (#5 classificati
   await buildAndSeedMarketImplications({});
 
   const meta = store['seed-meta:intelligence:market-implications'];
-  assert.equal(meta.status, 'error', 'a genuine provider failure (even textless) must surface SEED_ERROR, not be preserved as a starve');
+  // The BUDGET_EXHAUSTED twin of this test asserts the opposite: same textless
+  // result, but recorded as nothing. That asymmetry IS the classification.
+  assert.equal(meta.consecutiveFailures, 1, 'a genuine provider failure (even textless) must be counted, not preserved as a starve');
+  assert.equal(meta.lastSynthesisFailureCode, 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE');
 });
 
 test('a budget covering only the primary — not the fallback — skips instead of stranding groq → no SEED_ERROR (#4978 follow-up)', async () => {
@@ -331,7 +385,8 @@ test('an admitted primary timeout falls through to the fallback in ONE attempt e
   assert.equal(calls.openrouter, 1, 'primary must be tried exactly ONCE (maxRetries:0) — no 4-attempt retry storm that burns the fallback budget');
   assert.equal(calls.groq, 1, 'the fallback MUST be reached (it was stranded pre-fix)');
   const meta = store['seed-meta:intelligence:market-implications'];
-  assert.equal(meta.status, 'error', 'both providers genuinely failed → SEED_ERROR is correct (the fallback ran, it just also failed)');
+  assert.equal(meta.consecutiveFailures, 1, 'both providers genuinely failed → the miss is recorded (the fallback ran, it just also failed)');
+  assert.equal(meta.lastSynthesisFailureCode, 'MARKET_IMPLICATIONS_LLM_NO_RESPONSE');
 });
 
 test('a single-provider override reserves only that provider — admitted where the 2-provider chain would skip (#5003 review, finding 2)', async () => {

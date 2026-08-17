@@ -32,13 +32,15 @@ type Verdict =
   | { locked: true; reason: string };
 
 const verdict = vi.fn<() => Verdict>(() => ({ locked: false, pendingActivation: false }));
+const availableFormats = vi.fn<() => Array<'csv' | 'json' | 'pdf'>>(() => ['csv', 'json', 'pdf']);
 const trackGateHit = vi.fn<(feature: string) => void>();
 /** Auth/entitlement listeners registered by setupExportPanel. */
 const emitters: Array<() => void> = [];
 
-vi.mock('@/services/panel-gating', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/services/panel-gating')>()),
+vi.mock('@/services/gates/export', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/gates/export')>()),
   evaluateExportGate: () => verdict(),
+  evaluateAvailableExportFormats: () => availableFormats(),
 }));
 
 // Partial, like the others: a full replacement would silently turn any other
@@ -61,8 +63,8 @@ vi.mock('@/services/entitlements', async (importOriginal) => ({
   },
 }));
 
-vi.mock('@/services/export-gate', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@/services/export-gate')>()),
+vi.mock('@/services/gates/export-resolver', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/gates/export-resolver')>()),
   primeExportGateActivation: async () => false,
 }));
 
@@ -114,6 +116,7 @@ beforeEach(() => {
   document.body.replaceChildren();
   emitters.length = 0;
   trackGateHit.mockClear();
+  availableFormats.mockReset().mockReturnValue(['csv', 'json', 'pdf']);
   verdict.mockReset().mockReturnValue({ locked: false, pendingActivation: false });
   openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
   authModalOpen = vi.fn<() => void>();
@@ -159,7 +162,7 @@ describe('setupExportPanel — CTA routing through resolveGateAction', () => {
     trigger().click();
     cta().click();
 
-    expect(openSpy).toHaveBeenCalledWith(`${PRO_ORIGIN}/pro`, '_blank', 'noopener,noreferrer');
+    expect(openSpy).toHaveBeenCalledWith(`${PRO_ORIGIN}/pro`, '_blank');
     expect(authModalOpen).not.toHaveBeenCalled();
   });
 
@@ -173,7 +176,6 @@ describe('setupExportPanel — CTA routing through resolveGateAction', () => {
     expect(openSpy).toHaveBeenCalledWith(
       `${PRO_ORIGIN}/pro#pricing`,
       '_blank',
-      'noopener,noreferrer',
     );
   });
 
@@ -194,7 +196,6 @@ describe('setupExportPanel — CTA routing through resolveGateAction', () => {
     expect(openSpy).toHaveBeenCalledWith(
       `${PRO_ORIGIN}/pro#pricing`,
       '_blank',
-      'noopener,noreferrer',
     );
     expect(authModalOpen).not.toHaveBeenCalled();
   });
@@ -211,6 +212,30 @@ describe('setupExportPanel — CTA routing through resolveGateAction', () => {
 });
 
 describe('setupExportPanel — aria-live announcements', () => {
+  it('uses the newest entitlement formats when the exporter chunk resolves after an update', async () => {
+    manager.setupExportPanel();
+    availableFormats.mockReturnValue(['json']);
+    emit({ locked: false, pendingActivation: false });
+
+    await vi.waitFor(() => expect(formatOptions().length).toBeGreaterThan(0), { timeout: 5000 });
+
+    expect(container.querySelector<HTMLButtonElement>('[data-format="json"]')!.hidden).toBe(false);
+    expect(container.querySelector<HTMLButtonElement>('[data-format="csv"]')!.hidden).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>('[data-format="pdf"]')!.hidden).toBe(true);
+  });
+
+  it('updates formats after an unlocked exporter is already attached', async () => {
+    manager.setupExportPanel();
+    await vi.waitFor(() => expect(formatOptions().length).toBeGreaterThan(0), { timeout: 5000 });
+
+    availableFormats.mockReturnValue(['json']);
+    emit({ locked: false, pendingActivation: false });
+
+    expect(container.querySelector<HTMLButtonElement>('[data-format="json"]')!.hidden).toBe(false);
+    expect(container.querySelector<HTMLButtonElement>('[data-format="csv"]')!.hidden).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>('[data-format="pdf"]')!.hidden).toBe(true);
+  });
+
   it('puts the live region in the accessibility tree empty, before anything is announced', () => {
     // An aria-live region only announces content injected AFTER it is in the
     // tree — creating it together with its message announces nothing.

@@ -1,0 +1,95 @@
+<!-- Trimmed capture of https://www.mod.go.jp/js/ (2026-08-01, 33,419 bytes).
+     The live page is byte-identical between requests except one Cloudflare
+     beacon parameter (window.__CF$cv$params ray id + timestamp), so it has no
+     stable whole-page hash; that beacon is outside the region kept here.
+     Header nav and news list keep the publisher's real markup — including the
+     standing /js/pdf/2023/OB.pdf nav link, which must not be discovered. The
+     template block is a local decoy that must never be discovered either.
+     As first committed (#5904/#6013, 2026-08-02) this capture carried a `</a>`
+     on every news item. The live page does not: measured 2026-08-08 it opens
+     each release anchor and lets `</li>` bound it (103 `<a ` opening tags, 98
+     `</a>` closing tags, the five missing closers being exactly the five
+     release links). Whether the publisher changed its markup after 2026-08-01
+     or the capture was tidied on the way in was not determined — no archive
+     snapshot of the news list survives to settle it. Either way the closers do
+     not match what the page serves today, so the nine were removed: this
+     fixture drives every Japan MOD test, and it has to exercise what the
+     publisher sends. The dates and items are unchanged from the 2026-08-01
+     trim. jmod-homepage-unterminated.html is the verbatim 2026-08-08 trim the
+     parser was actually measured against. -->
+<header class="header">
+  <nav>
+    <ul>
+      <li><a href="/js/pdf/2023/OB.pdf">退職された皆様へ</a></li>
+      <li><a href="/js/press/index.html#2025">過去の報道発表</a></li>
+    </ul>
+  </nav>
+</header>
+<template>
+  <a href="/js/pdf/2026/p20260101_01.pdf">
+    <time datetime="2026-01-01">2026年01月01日</time>
+    <h5>Template decoy</h5>
+  </a>
+</template>
+<!-- News 更新情報 -->
+        <section class="section news">
+          <div class="inner">
+            <h2 class="section_h2 section_h2-vertical"><span class="section_h2">News</span><span class="section_h2-jp">更新情報</span></h2>
+            <ul class="list-news" data-num="4">
+              <li>
+                <a href="/js/pdf/2026/p20260801_01.pdf" target="_blank" rel="noreferrer">
+                  <time datetime="2026-08-01">2026年08月01日</time>
+                  <span data-tag="公表">公表</span>
+                  <h5>令和８年熊本地震に係る災害派遣について(8.1)</h5>
+              </li>
+              <li>
+                <a href="/js/pdf/2026/p20260731_02.pdf" target="_blank" rel="noreferrer">
+                  <time datetime="2026-07-31">2026年07月31日</time>
+                  <span data-tag="公表">公表</span>
+                  <h5>令和８年熊本地震に係る災害派遣について(7.31)</h5>
+              </li>
+              <li>
+                <a href="/js/pdf/2026/p20260731_01.pdf" target="_blank" rel="noreferrer">
+                  <time datetime="2026-07-31">2026年07月31日</time>
+                  <span data-tag="公表">公表</span>
+                  <h5>派遣海賊対処行動航空隊の要員交代について</h5>
+              </li>
+              <li>
+                <a href="/js/pdf/2026/p20260730_02.pdf" target="_blank" rel="noreferrer">
+                  <time datetime="2026-07-30">2026年07月30日</time>
+                  <span data-tag="公表">公表</span>
+                  <h5>令和８年熊本地震に係る災害派遣について(7.30)</h5>
+              </li>
+              <li>
+                <a href="/js/pdf/2026/p20260730_01.pdf" target="_blank" rel="noreferrer">
+                  <time datetime="2026-07-30">2026年07月30日</time>
+                  <span data-tag="公表">公表</span>
+                  <h5>中国海軍艦艇の動向について（レンハイ、ジャンカイⅡ／沖縄本島－宮古島間北西進）</h5>
+              </li>
+              <li>
+                <a href="/js/pdf/2026/p20260729_03.pdf" target="_blank" rel="noreferrer">
+                  <time datetime="2026-07-29">2026年07月29日</time>
+                  <span data-tag="公表">公表</span>
+                  <h5>令和８年熊本地震に係る災害派遣について(7.29)</h5>
+              </li>
+              <li>
+                <a href="/js/pdf/2026/p20260729_02.pdf" target="_blank" rel="noreferrer">
+                  <time datetime="2026-07-29">2026年07月29日</time>
+                  <span data-tag="公表">公表</span>
+                  <h5>ロシア海軍艦艇の動向について（ステレグ／宗谷海峡西進）</h5>
+              </li>
+              <li>
+                <a href="/js/pdf/2026/p20260729_01.pdf" target="_blank" rel="noreferrer">
+                  <time datetime="2026-07-29">2026年07月29日</time>
+                  <span data-tag="公表">公表</span>
+                  <h5>中国及びロシア海軍艦艇の動向について（中露共同航行／宗谷海峡西進）</h5>
+              </li>
+              <li>
+                <a href="/js/pdf/2026/p20260728_01.pdf" target="_blank" rel="noreferrer">
+                  <time datetime="2026-07-28">2026年07月28日</time>
+                  <span data-tag="公表">公表</span>
+                  <h5>令和８年熊本地震に係る災害派遣について</h5>
+              </li>
+            </ul>
+          </div>
+        </section>

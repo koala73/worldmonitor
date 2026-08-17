@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  GENERATED_LOCALES,
   LOCALES,
   baselinePathFor,
   classifyKeys,
@@ -23,6 +24,23 @@ const BASELINE_PATH = join(ROOT, baselinePathFor(true));
 const REFRESH_HINT =
   'Run: ANTHROPIC_API_KEY=... node scripts/translate-locales.mjs --pro-test  ' +
   '(then rebuild pro-test and commit public/pro/).';
+
+// The locales below iterate LOCALES, which keeps zh-TW so the freshness gate
+// still covers it. The command in REFRESH_HINT no longer writes it: zh-TW is
+// converted from zh.json by scripts/convert-zh-tw.py, and translate-locales.mjs
+// skips generated locales on the write path (it even rejects --only=zh-TW). A
+// reader who follows the hint on a stale zh-TW gets a run that reports the same
+// gap and changes nothing.
+const GENERATED_HINT =
+  'Generated locales (' +
+  [...GENERATED_LOCALES].sort().join(', ') +
+  ') are not written by that command — regenerate with: npm run locales:zh-tw';
+
+/** Appended only when a generated locale is actually implicated. */
+const hintFor = (locales) =>
+  locales.some((locale) => GENERATED_LOCALES.has(locale))
+    ? REFRESH_HINT + '  ' + GENERATED_HINT
+    : REFRESH_HINT;
 
 const readJson = (file) => JSON.parse(readFileSync(file, 'utf8'));
 const enFlat = flatten(readJson(join(LOCALES_DIR, 'en.json')));
@@ -50,7 +68,8 @@ const ENGLISH_CEILING = {
   ar: 49, bg: 50, cs: 58, de: 61, el: 60, es: 53,
   fa: 573, fr: 66, hi: 115, hr: 55, hu: 51, it: 61,
   ja: 51, ko: 49, nl: 67, pl: 55, pt: 55, ro: 61,
-  ru: 51, sv: 61, th: 54, tr: 51, vi: 53, zh: 49,
+  ru: 51, sv: 61, sw: 45, th: 54, tr: 51, uk: 574, vi: 53, zh: 49,
+  'zh-TW': 49,
 };
 
 describe('pro locale freshness', () => {
@@ -103,6 +122,7 @@ describe('pro locale freshness', () => {
     const baselinePlurals = findPluralBases(baseline);
 
     const problems = [];
+    const problemLocales = [];
     for (const locale of LOCALES) {
       const file = join(LOCALES_DIR, locale + '.json');
       if (!existsSync(file)) continue;
@@ -113,6 +133,7 @@ describe('pro locale freshness', () => {
         expectedKeysForLocale(baseline, baselinePlurals, categories),
       );
       if (result.missing.length || result.stale.length || result.orphan.length) {
+        problemLocales.push(locale);
         problems.push(
           locale + ': ' + result.missing.length + ' missing, ' + result.stale.length + ' stale, ' +
             result.orphan.length + ' orphaned (e.g. ' +
@@ -120,7 +141,7 @@ describe('pro locale freshness', () => {
         );
       }
     }
-    assert.deepEqual(problems, [], 'pro locales are out of date. ' + REFRESH_HINT);
+    assert.deepEqual(problems, [], 'pro locales are out of date. ' + hintFor(problemLocales));
   });
 
   it('does not let a locale drift back toward untranslated English', () => {

@@ -46,8 +46,14 @@ describe('withTimeout', () => {
     const elapsed = Date.now() - start;
     assert.equal(v, 'done');
     // A clean clearTimeout means we return as soon as the source resolves
-    // (~5ms), not after the 5_000ms budget.
-    assert.ok(elapsed < 500, `elapsed ${elapsed}ms — clearTimeout likely not firing`);
+    // (~5ms), not after the 5_000ms budget. The bound is expressed against
+    // that budget rather than as a tight stopwatch reading, which would
+    // measure the runner's load and flake under a parallel suite.
+    const budgetMs = 5_000;
+    assert.ok(
+      elapsed < budgetMs / 2,
+      `elapsed ${elapsed}ms against a ${budgetMs}ms budget — clearTimeout likely not firing`,
+    );
   });
 
   it('invokes onTimeout exactly once when the budget fires', async () => {

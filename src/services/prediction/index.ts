@@ -142,9 +142,15 @@ export async function fetchCountryMarkets(country: string): Promise<PredictionMa
   const terms = countrySearchTerms(country);
   const allMarkets: PredictionMarket[] = [];
 
-  // Try RPC across geopolitics + finance (parallel, both cover most country markets)
+  // Try RPC across geopolitics + finance + tech (parallel; together they cover
+  // every pool). `tech` is not optional here: since #5733 made the producer's
+  // pools a disjoint partition, a tech-classified country market (a Chinese AI
+  // model line, say) lives ONLY in the tech pool, and the early return below
+  // fires as soon as any geopolitics/economy match is found — so without this
+  // category the bootstrap fallback that also unions tech would never be reached
+  // for any country that has a single geo or finance market.
   const rpcResults = await Promise.allSettled(
-    (['geopolitics', 'economy'] as const).map(category =>
+    (['geopolitics', 'economy', 'tech'] as const).map(category =>
       client.listPredictionMarkets({ category, query: country, pageSize: 30, cursor: '' })
     )
   );
@@ -164,10 +170,14 @@ export async function fetchCountryMarkets(country: string): Promise<PredictionMa
     if (matched.length > 0) return matched;
   }
 
-  // Fallback: search bootstrap data across all buckets
+  // Fallback: search bootstrap data across all buckets. `tech` must be included
+  // explicitly — until #5733 the geopolitical bucket was an unfiltered copy of
+  // every market, so omitting tech here was invisible; now the buckets are a
+  // disjoint partition and a tech-classified country market (e.g. a Chinese AI
+  // model line) would be unreachable without it.
   const hydrated = getHydratedData('predictions') as BootstrapPredictionData | undefined;
   if (hydrated) {
-    const buckets = [...(hydrated.geopolitical ?? []), ...(hydrated.finance ?? [])];
+    const buckets = [...(hydrated.geopolitical ?? []), ...(hydrated.tech ?? []), ...(hydrated.finance ?? [])];
     const filtered = buckets
       .filter(m => !isExpired(m.endDate) && matchesCountryTerms(m.title, terms))
       .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))

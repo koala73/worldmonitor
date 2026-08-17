@@ -1,0 +1,76 @@
+{
+  "contractVersion": "cm_exa_discovery_v1",
+  "protocolVersion": "cm_eval_v1",
+  "limits": {
+    "cohortCompanies": 25,
+    "queryUtf8Bytes": 2048,
+    "resultsPerSearch": 25,
+    "providerResultsMaximum": 100,
+    "providerAttemptsMaximum": 2,
+    "providerRequestTimeoutMs": 12000
+  },
+  "pricing": {
+    "baseUsdPerSearch": 0.007,
+    "includedResults": 10,
+    "additionalResultUsd": 0.001
+  },
+  "frozenDiscovery": {
+    "queryVersion": "exa-company-discovery-v1",
+    "confirmationQueryVersion": "exa-company-confirmation-v1",
+    "companies": [
+      {
+        "companyId": "cm_company_00000000000000000000000001",
+        "name": "Acme Holdings",
+        "domicileCountry": "US",
+        "claims": [
+          { "claimId": "cm_claim_00000000000000000000000001", "type": "alias", "value": "Acme" },
+          { "claimId": "cm_claim_00000000000000000000000002", "type": "domain", "value": "acme.example" }
+        ]
+      },
+      {
+        "companyId": "cm_company_00000000000000000000000002",
+        "name": "Beacon Systems",
+        "domicileCountry": "GB",
+        "claims": [
+          { "claimId": "cm_claim_00000000000000000000000003", "type": "location", "value": "London" }
+        ]
+      }
+    ],
+    "expectedQuery": "WorldMonitor discovery v1 | recent factual company news | candidate-only attribution | company[0]{name=\"Acme Holdings\";domicile=\"US\";aliases=[\"Acme\"];domains=[\"acme.example\"];identifiers=[];locations=[]} | company[1]{name=\"Beacon Systems\";domicile=\"GB\";aliases=[];domains=[];identifiers=[];locations=[\"London\"]}"
+  },
+  "successResponse": {
+    "requestId": "exa-request-001",
+    "results": [
+      {
+        "id": "https://news.example/acme-contract",
+        "url": "https://news.example/acme-contract",
+        "title": "Acme signs a material supply contract",
+        "publishedDate": "2026-08-09T12:00:00.000Z",
+        "author": "Example News"
+      },
+      {
+        "id": "https://news.example/acme-lookalike",
+        "url": "https://news.example/acme-lookalike",
+        "title": "Acme Services opens a new office",
+        "publishedDate": "2026-08-09T13:00:00.000Z",
+        "author": "Example News"
+      }
+    ],
+    "costDollars": {
+      "total": 0.022
+    }
+  },
+  "malformedResponse": {
+    "requestId": "exa-request-malformed",
+    "results": [
+      {
+        "id": "missing-publication-time",
+        "url": "https://news.example/missing-publication-time",
+        "title": "Provider row without a publication time"
+      }
+    ],
+    "costDollars": {
+      "total": 0.022
+    }
+  }
+}

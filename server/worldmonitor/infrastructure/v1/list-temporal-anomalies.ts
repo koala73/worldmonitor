@@ -6,6 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+import { resolveFireDetectionTotalCount } from '../../../../src/services/wildfires/payload';
 import {
   BASELINE_TTL,
   MIN_SAMPLES,
@@ -127,8 +128,15 @@ export async function listTemporalAnomalies(
           const stories = (data as { topStories?: unknown[] })?.topStories;
           counts[type] = stories?.length ?? 0;
         } else if (type === 'satellite_fires') {
+          // wildfire:fires:v1 is itself capped at WILDFIRE_CANONICAL_DETECTION_LIMIT (#5866)
+          // and carries the pre-cap FIRMS total in `pagination`. Counting the array instead
+          // would saturate this baseline at the cap, silently flattening every fire-volume
+          // anomaly above it — the z-score would read "normal" during a record fire season.
           const fires = (data as { fireDetections?: unknown[] })?.fireDetections;
-          counts[type] = fires?.length ?? 0;
+          counts[type] = resolveFireDetectionTotalCount({
+            fireDetections: fires ?? [],
+            pagination: (data as { pagination?: { totalCount?: number } })?.pagination,
+          });
         }
       }
 

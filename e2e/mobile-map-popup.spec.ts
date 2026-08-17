@@ -81,6 +81,13 @@ for (const deviceConfig of MOBILE_DEVICE_MATRIX) {
 
       const popup = page.locator('.map-popup.map-popup-sheet');
       await expect(popup).toBeVisible();
+      await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBe('map-popup');
+      await page.evaluate(() => history.back());
+      await expect(popup).toHaveCount(0);
+      await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBeNull();
+
+      await hotspot.tap();
+      await expect(popup).toBeVisible();
 
       await expect
         .poll(async () => {
@@ -184,17 +191,20 @@ for (const deviceConfig of MOBILE_DEVICE_MATRIX) {
 
       await dragPopupBy(150);
       await expect(page.locator('.map-popup')).toHaveCount(0);
+      await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBeNull();
 
       await hotspot.tap();
       await expect(page.locator('.map-popup.map-popup-sheet')).toBeVisible();
       await page.locator('.popup-close').first().tap();
       await expect(page.locator('.map-popup')).toHaveCount(0);
+      await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBeNull();
 
       await hotspot.tap();
       await expect(page.locator('.map-popup.map-popup-sheet')).toBeVisible();
 
       await page.touchscreen.tap(6, 6);
       await expect(page.locator('.map-popup')).toHaveCount(0);
+      await expect.poll(async () => page.evaluate(() => history.state?.__wmOverlay?.id ?? null)).toBeNull();
 
       expect(pageErrors).toEqual([]);
     });

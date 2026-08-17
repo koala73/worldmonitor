@@ -121,6 +121,7 @@ function mapProtoFlight(pf: ProtoMilitaryFlight, nowDate: Date): MilitaryFlight 
 
   return {
     id: pf.id,
+    source: pf.source || undefined,
     callsign: pf.callsign,
     hexCode: pf.hexCode,
     registration: pf.registration || undefined,
@@ -163,9 +164,10 @@ function mapProtoFlight(pf: ProtoMilitaryFlight, nowDate: Date): MilitaryFlight 
 const MAX_REGION_PAGES = 50;
 
 async function fetchViaProto(): Promise<MilitaryFlight[]> {
-  // Iterate the same PACIFIC/WESTERN regions the server-side seed cron uses
-  // so dashboard coverage matches the analytic pipeline. The proto handler
-  // caches per-bbox, so parallel region calls warm independent cache keys.
+  // Request one full-world region so the seed cron's global OpenSky snapshot
+  // reaches the dashboard without being clipped back to the legacy boxes. The
+  // handler falls through to request-specific recovery when a seed snapshot
+  // declares only regional coverage.
   const results = await Promise.all(
     MILITARY_QUERY_REGIONS.map(async (region) => {
       // The server now bounds every response to a page, so follow next_cursor
