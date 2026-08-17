@@ -110,6 +110,25 @@ function partition(mode, { cwd, changed = CHANGED } = {}) {
   return out.split('\0').filter(Boolean);
 }
 
+function loadDomTestConfig(env = {}) {
+  const probe = join(fixtureDir('wm-dom-config-probe-'), 'probe.mts');
+  writeFileSync(
+    probe,
+    `const m = await import(${JSON.stringify(join(REPO_ROOT, 'vitest.dom.config.mts'))});\n` +
+      'console.log(JSON.stringify(m.default?.test ?? null));\n',
+  );
+  const childEnv = { ...process.env };
+  delete childEnv.VITEST_MAX_THREADS;
+  Object.assign(childEnv, env);
+  const out = execFileSync(join(REPO_ROOT, 'node_modules', '.bin', 'tsx'), [probe], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    env: childEnv,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  return JSON.parse(out.trim().split('\n').at(-1));
+}
+
 describe('pre-push changed-test partition', () => {
   const cwd = makeFixtureWorktree();
 
@@ -220,19 +239,8 @@ describe('partition stays in step with the vitest DOM project', () => {
   // Resolved in a CHILD process on purpose: importing it here would pull
   // vitest/config (~220MB RSS) into the shared `npm run test:data` runner,
   // which already OOMs at the tail of its ~390-file single-process run.
-  const include = (() => {
-    const probe = join(fixtureDir('wm-dom-config-probe-'), 'probe.mts');
-    writeFileSync(
-      probe,
-      `const m = await import(${JSON.stringify(join(REPO_ROOT, 'vitest.dom.config.mts'))});\n` +
-        'console.log(JSON.stringify(m.default?.test?.include ?? null));\n',
-    );
-    const out = execFileSync(join(REPO_ROOT, 'node_modules', '.bin', 'tsx'), [probe], {
-      cwd: REPO_ROOT,
-      encoding: 'utf8',
-    });
-    return JSON.parse(out.trim().split('\n').at(-1));
-  })();
+  const defaultConfig = loadDomTestConfig();
+  const include = defaultConfig.include;
 
   test('every DOM include glob lives under the prefix the partition claims', () => {
     assert.ok(Array.isArray(include) && include.length > 0, 'DOM config must declare test.include');
@@ -277,6 +285,15 @@ describe('partition stays in step with the vitest DOM project', () => {
     const pkg = JSON.parse(readFileSync(join(REPO_ROOT, 'package.json'), 'utf8'));
     assert.match(pkg.scripts['test:dom'], /vitest run --config vitest\.dom\.config\.mts/);
   });
+
+  test('the local hook can cap vitest workers without slowing CI by default', () => {
+    assert.equal(defaultConfig.maxWorkers, undefined);
+    assert.equal(loadDomTestConfig({ VITEST_MAX_THREADS: '2' }).maxWorkers, 2);
+    assert.throws(
+      () => loadDomTestConfig({ VITEST_MAX_THREADS: 'not-a-number' }),
+      /VITEST_MAX_THREADS must be a positive integer/,
+    );
+  });
 });
 
 describe('runner dispatch', () => {
@@ -285,7 +302,7 @@ describe('runner dispatch', () => {
   // green when `-n` becomes `-z` or `|| exit 1` is dropped, silently skipping
   // the suite. The decision now lives in the script, so these run it for real
   // against stubbed runners and assert what was invoked.
-  function runDispatch(mode, list, { stubExit = 0 } = {}) {
+  function runDispatch(mode, list, { stubExit = 0, concurrency } = {}) {
     const dir = fixtureDir('wm-prepush-dispatch-');
     const log = join(dir, 'invocations.log');
     for (const bin of ['npm', 'npx']) {
@@ -300,7 +317,11 @@ describe('runner dispatch', () => {
         cwd: REPO_ROOT,
         input: nulList(list),
         encoding: 'utf8',
-        env: { ...process.env, PATH: `${dir}:${process.env.PATH}` },
+        env: {
+          ...process.env,
+          PATH: `${dir}:${process.env.PATH}`,
+          ...(concurrency ? { WM_PREPUSH_TEST_CONCURRENCY: concurrency } : {}),
+        },
       });
     } catch (err) {
       status = err.status;
@@ -335,7 +356,20 @@ describe('runner dispatch', () => {
     ]);
     assert.equal(status, 0);
     // Quoted expansion — the path with a space stays one argument.
-    assert.match(invocations, /^npx tsx --test tests\/handlers\.test\.mts tests\/a b\.test\.mjs$/);
+    assert.match(
+      invocations,
+      /^npx tsx --test --test-concurrency=2 tests\/handlers\.test\.mts tests\/a b\.test\.mjs$/,
+    );
+  });
+
+  test('changed node tests honor an explicit local worker cap', () => {
+    const { status, invocations } = runDispatch(
+      'run-node',
+      ['tests/handlers.test.mts'],
+      { concurrency: '3' },
+    );
+    assert.equal(status, 0);
+    assert.equal(invocations, 'npx tsx --test --test-concurrency=3 tests/handlers.test.mts');
   });
 
   test('an empty node list runs nothing and does not fail the push', () => {
@@ -407,6 +441,7 @@ describe('pre-push hook wiring', () => {
     // assertions absent exactly when the thing they pin was being rewritten.
     for (const path of [
       '\\.husky/pre-push',
+      'scripts/prepush-admission\\.mjs',
       'scripts/prepush-changed-tests\\.sh',
       'scripts/prepush-attest\\.sh',
       'vitest\\.dom\\.config\\.mts',
@@ -417,8 +452,26 @@ describe('pre-push hook wiring', () => {
         `pre-push must re-run the contract tests when ${path} changes`,
       );
     }
-    for (const testFile of ['tests/prepush-changed-tests.test.mjs', 'tests/prepush-attest.test.mjs']) {
+    for (const testFile of [
+      'tests/prepush-admission.test.mjs',
+      'tests/prepush-changed-tests.test.mjs',
+      'tests/prepush-attest.test.mjs',
+    ]) {
       assert.ok(hook.includes(testFile), `${testFile} must be in the contract-test list`);
     }
+  });
+
+  test('caps every direct node:test runner in the hook', () => {
+    const directRuns = hook
+      .split('\n')
+      .filter((line) => line.includes('npx tsx --test'));
+
+    assert.equal(directRuns.length, 3);
+    assert.ok(
+      directRuns.every((line) =>
+        line.includes('--test-concurrency="$WM_PREPUSH_TEST_CONCURRENCY"'),
+      ),
+      'every direct node:test runner must use the configured worker cap',
+    );
   });
 });
