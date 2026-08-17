@@ -367,14 +367,21 @@ export function jodiSourceYears(now = new Date()) {
 async function fetchAllRows() {
   const { currentYear, priorYear, lookbackYear } = jodiSourceYears();
 
+  // #6799: JODI renamed the current-year downloads — 2025 and earlier use
+  // `<year>.csv`, 2026+ uses `primaryyear<year>.csv` / `secondaryyear<year>.csv`.
+  // Try the new name first, fall back to the old one so prior years still work.
+  const fetchCurrentYear = kind =>
+    withRetry(() => fetchCsv(`${JODI_BASE}${kind}/${kind}year${currentYear}.csv`), 2, 2000)
+      .then(csv => csv || Promise.reject(new Error('empty')))
+      .catch(() => withRetry(() => fetchCsv(`${JODI_BASE}${kind}/${currentYear}.csv`), 2, 2000))
+      .catch(e => { console.warn(`  ${kind}/${currentYear}.csv failed (tried both names): ${e.message}`); return ''; });
+
   const [primaryCurrent, primaryPrior, secondaryCurrent, secondaryPrior, secondaryLookback] =
     await Promise.all([
-      withRetry(() => fetchCsv(`${JODI_BASE}primary/${currentYear}.csv`), 2, 2000)
-        .catch(e => { console.warn(`  primary/${currentYear}.csv failed: ${e.message}`); return ''; }),
+      fetchCurrentYear('primary'),
       withRetry(() => fetchCsv(`${JODI_BASE}primary/${priorYear}.csv`), 2, 2000)
         .catch(e => { console.warn(`  primary/${priorYear}.csv failed: ${e.message}`); return ''; }),
-      withRetry(() => fetchCsv(`${JODI_BASE}secondary/${currentYear}.csv`), 2, 2000)
-        .catch(e => { console.warn(`  secondary/${currentYear}.csv failed: ${e.message}`); return ''; }),
+      fetchCurrentYear('secondary'),
       withRetry(() => fetchCsv(`${JODI_BASE}secondary/${priorYear}.csv`), 2, 2000)
         .catch(e => { console.warn(`  secondary/${priorYear}.csv failed: ${e.message}`); return ''; }),
       // Optional: its absence only withholds the demand change, never the seed.
