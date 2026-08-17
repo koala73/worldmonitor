@@ -57,8 +57,10 @@ export function assessChinaJodiCoverage(records, now, hasMeasurements) {
   }
 
   const sourceMonth = monthIndex(china.dataMonth);
-  const currentMonth = now instanceof Date && Number.isFinite(now.getTime())
-    ? now.getUTCFullYear() * 12 + now.getUTCMonth()
+  // #6799: accept both Date and epoch-ms (runSeed's hook passes a number).
+  const nowDate = now instanceof Date ? now : typeof now === 'number' && Number.isFinite(now) ? new Date(now) : null;
+  const currentMonth = nowDate && Number.isFinite(nowDate.getTime())
+    ? nowDate.getUTCFullYear() * 12 + nowDate.getUTCMonth()
     : null;
   if (sourceMonth == null || currentMonth == null || sourceMonth > currentMonth) {
     return { ok: false, reason: 'china-invalid-month', dataMonth: china.dataMonth ?? null, ageMonths: null };
@@ -123,7 +125,13 @@ export function jodiDatasetContentMeta(
   minCountries = MIN_JODI_CONTENT_AGE_COUNTRIES,
 ) {
   if (!Array.isArray(records)) return null;
-  const nowMs = now instanceof Date && Number.isFinite(now.getTime()) ? now.getTime() : null;
+  // #6799: runSeed's contentMeta hook passes epoch milliseconds (a number),
+  // not a Date. Accept both so the hook works — previously `instanceof Date`
+  // rejected the number unconditionally and contentMeta always returned null.
+  const nowMs =
+    now instanceof Date ? (Number.isFinite(now.getTime()) ? now.getTime() : null)
+    : typeof now === 'number' && Number.isFinite(now) ? now
+    : null;
   if (nowMs === null) return null;
 
   /** @type {Map<number, number>} */
