@@ -8,7 +8,7 @@ import {
 } from '@/config/panels';
 import { SITE_VARIANT } from '@/config/variant';
 import { isLayerExecutable, sanitizeLayersForVariant } from '@/config/map-layer-definitions';
-import type { MapRenderer, MapVariant } from '@/config/map-layer-definitions';
+import type { RendererKind, MapVariant } from '@/config/map-layer-definitions';
 
 export const MISSION_PRESET_STORAGE_KEY = 'worldmonitor-mission-preset-v1';
 export const MISSION_PRESET_DISMISSED_KEY = 'worldmonitor-mission-preset-dismissed-v1';
@@ -501,14 +501,13 @@ export function resetMissionPresetState(
 
 export function filterMissionLayersForRenderer(
   layers: MapLayers,
-  renderer: MapRenderer,
-  isDeckGLActive: boolean,
+  kind: RendererKind,
   fallbackLayers: MapLayers = DEFAULT_MAP_LAYERS,
 ): MapLayers {
   const filter = (candidateLayers: MapLayers): MapLayers => {
     const next = { ...candidateLayers };
     for (const key of Object.keys(next) as Array<keyof MapLayers>) {
-      if (next[key] && !isLayerExecutable(key, renderer, isDeckGLActive)) {
+      if (next[key] && !isLayerExecutable(key, kind)) {
         next[key] = false;
       }
     }
