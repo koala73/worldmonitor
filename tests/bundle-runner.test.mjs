@@ -347,12 +347,19 @@ test('Military-Bases normal publication atomically writes metadata and gates', a
   try {
     await atomicSwitch(redis.url, redis.token, '', version, 42, fetchedAt);
     assert.equal(redis.commands.length, 1);
-    const [operation, script, keyCount, activeKey, seedMetaKey, publishedVersion, payload] = redis.commands[0];
+    const [operation, script, keyCount, activeKey, seedMetaKey, geoKey, metaKey, publishedVersion, payload] = redis.commands[0];
     assert.equal(operation, 'EVAL');
     assert.match(script, /redis\.call\('SET', KEYS\[1\]/);
-    assert.equal(keyCount, '2');
+    // The version's own keys are PERSISTed inside the publish EVAL so the
+    // self-healing TTL armed during seeding (#6845) is dropped atomically with
+    // the version going live.
+    assert.match(script, /redis\.call\('PERSIST', KEYS\[3\]/);
+    assert.match(script, /redis\.call\('PERSIST', KEYS\[4\]/);
+    assert.equal(keyCount, '4');
     assert.equal(activeKey, 'military:bases:active');
     assert.equal(seedMetaKey, 'seed-meta:military:bases');
+    assert.equal(geoKey, `military:bases:geo:${version}`);
+    assert.equal(metaKey, `military:bases:meta:${version}`);
     assert.equal(publishedVersion, String(version));
     assert.deepEqual(JSON.parse(payload), {
       fetchedAt,

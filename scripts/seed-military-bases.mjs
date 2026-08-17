@@ -24,12 +24,37 @@ const PROGRESS_INTERVAL = 5000;
 // The window it actually has to cover is one in-flight HTTP request, which is
 // seconds; 30s is an order of magnitude over that.
 export const GRACE_PERIOD_MS = 30 * 1000;
+// Self-healing TTLs for version keys, so a run that dies before its own
+// cleanup leaves nothing behind permanently (#6845). The runner SIGTERMs a
+// section at `timeoutMs` and SIGKILLs 10s later; a death before
+// `atomicSwitch` leaves `military:bases:{geo,meta}:<version>` written with no
+// TTL, and `cleanupOldVersion` only ever names the keys of the version that
+// is *currently active* — a version that never published (or was superseded
+// by a run killed inside the grace window) is swept by nothing, ever.
+//
+//   VERSION_KEY_TTL_SECONDS is armed on every seed batch, so it stays
+//   refreshed for as long as the run is alive and only counts down once the
+//   run is gone. `atomicSwitch` PERSISTs both keys inside the same EVAL that
+//   publishes, so a live version can never expire out from under readers.
+//   30 minutes is ~3x the section's 540s slot including the R2-cold worst
+//   case: generous enough that a slow-but-alive run never loses its own data,
+//   short enough that a leaked 125k-member zset + hash is gone within the
+//   hour.
+//
+//   SUPERSEDED_KEY_TTL_SECONDS covers the superseded version's keys between
+//   `atomicSwitch` and the post-grace DELs. If the run is killed inside the
+//   30s grace the DELs never fire — the armed TTL reaps them instead, after a
+//   window comfortably longer than the reader grace it exists to protect.
+export const VERSION_KEY_TTL_SECONDS = 30 * 60;
+export const SUPERSEDED_KEY_TTL_SECONDS = 5 * (GRACE_PERIOD_MS / 1000);
 const VALIDATION_BATCH_SIZE = 500;
 const USER_AGENT = 'worldmonitor-military-bases-seeder/1.0';
 
 const PUBLISH_ACTIVE_AND_META_SCRIPT = `
 redis.call('SET', KEYS[1], ARGV[1])
 redis.call('SET', KEYS[2], ARGV[2])
+redis.call('PERSIST', KEYS[3])
+redis.call('PERSIST', KEYS[4])
 return ARGV[1]
 `.trim();
 
@@ -159,13 +184,20 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-async function seedGeo(url, token, geoKey, entries) {
+export async function seedGeo(url, token, geoKey, entries) {
   let seeded = 0;
   const total = entries.length;
 
   for (let i = 0; i < total; i += BATCH_SIZE) {
     const batch = entries.slice(i, i + BATCH_SIZE);
-    const commands = batch.map(e => ['GEOADD', geoKey, String(e.lon), String(e.lat), e.id]);
+    const commands = [
+      ...batch.map(e => ['GEOADD', geoKey, String(e.lon), String(e.lat), e.id]),
+      // Refresh the self-healing TTL on every batch (#6845): the key exists
+      // from the first GEOADD on, and EXPIRE on a missing key is a no-op, so
+      // piggybacking it here arms the TTL as soon as there is anything to
+      // reap and keeps pushing the deadline out while the run is alive.
+      ['EXPIRE', geoKey, String(VERSION_KEY_TTL_SECONDS)],
+    ];
     await pipelineRequest(url, token, commands);
     seeded += batch.length;
 
@@ -177,17 +209,20 @@ async function seedGeo(url, token, geoKey, entries) {
   return seeded;
 }
 
-async function seedMeta(url, token, metaKey, entries) {
+export async function seedMeta(url, token, metaKey, entries) {
   let seeded = 0;
   const total = entries.length;
 
   for (let i = 0; i < total; i += BATCH_SIZE) {
     const batch = entries.slice(i, i + BATCH_SIZE);
-    const commands = batch.map(e => {
-      const meta = { ...e };
-      delete meta.id;
-      return ['HSET', metaKey, e.id, JSON.stringify(meta)];
-    });
+    const commands = [
+      ...batch.map(e => {
+        const meta = { ...e };
+        delete meta.id;
+        return ['HSET', metaKey, e.id, JSON.stringify(meta)];
+      }),
+      ['EXPIRE', metaKey, String(VERSION_KEY_TTL_SECONDS)],
+    ];
     await pipelineRequest(url, token, commands);
     seeded += batch.length;
 
@@ -308,12 +343,20 @@ export async function atomicSwitch(
 ) {
   const activeKey = `${prefix}military:bases:active`;
   const seedMetaKey = `${prefix}seed-meta:military:bases`;
+  // PERSISTed inside the same EVAL that publishes, so the self-healing TTL
+  // armed during seeding is dropped atomically with the version going live —
+  // a published version can never expire, and an unpublished one always can
+  // (#6845).
+  const geoKey = `${prefix}military:bases:geo:${version}`;
+  const metaKey = `${prefix}military:bases:meta:${version}`;
   const publishedVersion = await commandRequest(url, token, [
     'EVAL',
     PUBLISH_ACTIVE_AND_META_SCRIPT,
-    '2',
+    '4',
     activeKey,
     seedMetaKey,
+    geoKey,
+    metaKey,
     String(version),
     buildSeedMetaPayload(version, recordCount, fetchedAt, durationMs),
   ]);
@@ -322,6 +365,67 @@ export async function atomicSwitch(
   }
   console.log(`\nAtomic switch: SET ${activeKey} = ${version}`);
   console.log(`Freshness meta: SET ${seedMetaKey}`);
+}
+
+/**
+ * Arm the superseded-key TTL right after the switch, before the grace sleep.
+ * If the run is killed inside the grace window the post-grace DELs never
+ * fire, and the next reseed's `cleanupOldVersion` names only the
+ * then-active version's keys — the superseded pair would leak permanently.
+ * The armed TTL reaps them instead, after a window comfortably longer than
+ * the reader grace it exists to protect (#6845).
+ */
+export async function armSupersededCleanup(url, token, oldInfo) {
+  await pipelineRequest(url, token, [
+    ['EXPIRE', oldInfo.oldGeoKey, String(SUPERSEDED_KEY_TTL_SECONDS)],
+    ['EXPIRE', oldInfo.oldMetaKey, String(SUPERSEDED_KEY_TTL_SECONDS)],
+  ]);
+}
+
+/**
+ * Re-arm a TTL on version keys left behind by earlier runs (#6845). Leaks
+ * from before the TTL mechanism have no TTL and no sweeper: a version key is
+ * treated as leaked only when it has NO ttl and does not belong to the active
+ * version — live seeding runs arm a TTL on every batch, and the active
+ * version's keys are PERSISTed inside the publish EVAL, so neither can match.
+ *
+ * The sweep never DELs directly: it re-arms the superseded TTL and lets Redis
+ * do the reaping, which preserves a reader-grace-sized window even if a
+ * concurrent publish flips `active` between the SCAN and the TTL probe.
+ */
+export async function sweepLeakedVersionKeys(url, token, prefix) {
+  const activeResult = await commandRequest(url, token, ['GET', `${prefix}military:bases:active`]);
+  const activeVersion = activeResult == null ? null : String(activeResult);
+
+  for (const kind of ['geo', 'meta']) {
+    let cursor = '0';
+    do {
+      const scanResult = await commandRequest(url, token, [
+        'SCAN',
+        cursor,
+        'MATCH',
+        `${prefix}military:bases:${kind}:*`,
+        'COUNT',
+        '100',
+      ]);
+      if (!Array.isArray(scanResult) || scanResult.length !== 2) {
+        throw new Error(`SCAN for ${kind} version keys returned an unexpected shape`);
+      }
+      cursor = String(scanResult[0]);
+      const keys = Array.isArray(scanResult[1]) ? scanResult[1] : [];
+      for (const key of keys) {
+        if (activeVersion != null && key === `${prefix}military:bases:${kind}:${activeVersion}`) {
+          continue;
+        }
+        const ttl = await commandRequest(url, token, ['TTL', key]);
+        if (Number(ttl) !== -1) continue;
+        console.log(`  Re-arming TTL on leaked version key (no TTL, not active): ${key}`);
+        await pipelineRequest(url, token, [
+          ['EXPIRE', key, String(SUPERSEDED_KEY_TTL_SECONDS)],
+        ]);
+      }
+    } while (cursor !== '0');
+  }
 }
 
 /**
@@ -483,6 +587,15 @@ async function main() {
     return;
   }
 
+  // Collect version keys leaked by pre-TTL runs (#6845). Best-effort: a
+  // transport failure here must not take the section down with it — the next
+  // run sweeps again.
+  try {
+    await sweepLeakedVersionKeys(redisUrl, redisToken, prefix);
+  } catch (err) {
+    console.warn(`Version-key sweep skipped: ${err instanceof Error ? err.message : err}`);
+  }
+
   const volumePath = '/data/military-bases-final.json';
   const localPath = join(__dirname, 'data', 'military-bases-final.json');
   let dataPath = existsSync(volumePath) ? volumePath : existsSync(localPath) ? localPath : null;
@@ -579,6 +692,12 @@ async function main() {
   await atomicSwitch(redisUrl, redisToken, prefix, version, entries.length, Date.now(), durationMs);
 
   if (oldInfo) {
+    // Arm AFTER the switch, never before: until `atomicSwitch` lands, the old
+    // version's keys are the live data, and seeding this run can outlast any
+    // superseded TTL. From the switch on, they only need to outlive the
+    // reader grace — this arms them for that window so a kill inside it still
+    // self-heals (#6845).
+    await armSupersededCleanup(redisUrl, redisToken, oldInfo);
     console.log(`\nScheduling cleanup of old version ${oldInfo.oldVersion} in ${GRACE_PERIOD_MS / 1000}s...`);
     await sleep(GRACE_PERIOD_MS);
     console.log(`Cleaning up old keys: ${oldInfo.oldGeoKey}, ${oldInfo.oldMetaKey}`);
