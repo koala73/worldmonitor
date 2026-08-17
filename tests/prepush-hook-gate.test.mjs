@@ -319,7 +319,9 @@ describe('a poisoned shared hooksPath self-heals at push time (#6104)', () => {
 describe('a clean push runs the changed tests and attests the tree', () => {
   test('dispatches the changed test and caches HEAD^{tree}', () => {
     const fixture = makeFixture({ branchFiles: { 'tests/alpha.test.mjs': 'x\n' } });
-    const { status, stdout, invocations } = fixture.run();
+    const { status, stdout, invocations } = fixture.run({
+      WM_PREPUSH_STUB_REQUIRE_SLOT_FOR: 'npx tsx',
+    });
 
     assert.equal(status, 0, stdout);
     assert.deepEqual(tsxRuns(invocations), [
@@ -331,7 +333,10 @@ describe('a clean push runs the changed tests and attests the tree', () => {
 
   test('a heavy-phase failure still releases its admission slot', () => {
     const fixture = makeFixture({ branchFiles: { 'scripts/failing-change.mjs': 'x\n' } });
-    const { status } = fixture.run({ WM_PREPUSH_STUB_FAIL: 'npm run typecheck' });
+    const { status } = fixture.run({
+      WM_PREPUSH_STUB_FAIL: 'npm run typecheck',
+      WM_PREPUSH_STUB_REQUIRE_SLOT_FOR: 'npm run',
+    });
 
     assert.equal(status, 1);
     assert.deepEqual(admissionSlots(fixture.root), [], 'an || exit 1 path must not wedge later pushes');

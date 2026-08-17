@@ -211,6 +211,61 @@ describe('pre-push heavy-phase admission', () => {
     release(dir, lease);
   });
 
+  test('concurrent stale reclaim does not abort waiters or exceed the cap', async () => {
+    const dir = commonDir();
+    const slot = join(dir, 'wm-prepush-admission', 'slot-1');
+    mkdirSync(slot, { recursive: true });
+    writeFileSync(
+      join(slot, 'owner.json'),
+      `${JSON.stringify({ acquiredAt: Date.now() - 60_000, pid: 999_999_999, token: 'crashed' })}\n`,
+    );
+    const staleTime = new Date(Date.now() - 60_000);
+    utimesSync(slot, staleTime, staleTime);
+
+    const env = {
+      ...process.env,
+      WM_PREPUSH_ADMISSION_MAX: '1',
+      WM_PREPUSH_ADMISSION_POLL_MS: '10',
+      WM_PREPUSH_ADMISSION_WAIT_MS: String(2_000),
+      WM_PREPUSH_ADMISSION_STALE_MS: '20',
+    };
+    const worker = join(dir, 'reclaim-worker.mjs');
+    writeFileSync(
+      worker,
+      `import { spawnSync } from 'node:child_process';\n` +
+        `const [script, commonDir] = process.argv.slice(2);\n` +
+        `const acquire = spawnSync(process.execPath, [script, 'acquire', commonDir], { encoding: 'utf8', env: process.env });\n` +
+        `if (acquire.status !== 0) { console.error(acquire.stderr); process.exit(acquire.status ?? 1); }\n` +
+        `await new Promise((resolve) => setTimeout(resolve, 80));\n` +
+        `const release = spawnSync(process.execPath, [script, 'release', commonDir, acquire.stdout.trim()], { encoding: 'utf8', env: process.env });\n` +
+        `if (release.status !== 0) { console.error(release.stderr); process.exit(release.status ?? 1); }\n`,
+    );
+    const children = Array.from({ length: 3 }, () => spawn(process.execPath, [worker, SCRIPT, dir], {
+      env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }));
+
+    let maxSlots = 0;
+    const sample = setInterval(() => {
+      maxSlots = Math.max(maxSlots, slots(dir).length);
+    }, 5);
+    const results = await Promise.all(children.map((child) => new Promise((resolveChild) => {
+      let stderr = '';
+      child.stderr.on('data', (chunk) => { stderr += chunk; });
+      child.on('close', (status) => resolveChild({ status, stderr }));
+    })));
+    clearInterval(sample);
+
+    assert.deepEqual(results.map(({ status }) => status), [0, 0, 0], JSON.stringify(results));
+    assert.equal(
+      results.some(({ stderr }) => stderr.includes('changed owner')),
+      false,
+      JSON.stringify(results),
+    );
+    assert.ok(maxSlots <= 1, `concurrent reclaim must not exceed the cap (saw ${maxSlots})`);
+    assert.deepEqual(slots(dir), []);
+  });
+
   test('never reclaims an old slot while its owner process is alive', () => {
     const dir = commonDir();
     const slot = join(dir, 'wm-prepush-admission', 'slot-1');

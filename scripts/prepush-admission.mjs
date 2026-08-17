@@ -16,6 +16,12 @@ const DEFAULT_MAX_PARALLEL = 2;
 const DEFAULT_POLL_MS = 250;
 const DEFAULT_STALE_MS = 30_000;
 const DEFAULT_WAIT_MS = 12 * 60_000;
+const RECLAIM_LOCK = '.reclaim-lock';
+
+function retryableAcquireError(error) {
+  return error?.code === 'ENOENT'
+    || (error instanceof Error && error.message.includes('changed owner during'));
+}
 
 function positiveInteger(name, fallback) {
   const raw = process.env[name];
@@ -90,8 +96,9 @@ function quarantineOwnedSlot(slotPath, expectedRaw, expectedStat, reason) {
       } catch {
         // Fail closed. Never delete a lease whose identity changed, and never
         // overwrite another owner that acquired the original slot path.
+        // Leave the quarantine in place and let acquire retry the wait loop.
       }
-      throw new Error(`Pre-push admission slot changed owner during ${reason}`);
+      return false;
     }
     rmSync(quarantinePath, { recursive: true });
     return true;
@@ -136,6 +143,49 @@ function reclaimIfStale(slotPath, staleMs) {
   return quarantineOwnedSlot(slotPath, ownerRecord.raw, stat, 'stale');
 }
 
+function stealStaleLock(lockPath, staleMs) {
+  let stat;
+  try {
+    stat = lstatSync(lockPath);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return true;
+    throw error;
+  }
+  if (Date.now() - stat.mtimeMs < staleMs) return false;
+
+  const quarantinePath = `${lockPath}.stale-${randomUUID()}`;
+  try {
+    renameSync(lockPath, quarantinePath);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return true;
+    throw error;
+  }
+  rmSync(quarantinePath, { recursive: true, force: true });
+  return true;
+}
+
+function tryReclaimLock(root, staleMs) {
+  const lockPath = join(root, RECLAIM_LOCK);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      mkdirSync(lockPath, { mode: 0o700 });
+      return lockPath;
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      if (!stealStaleLock(lockPath, staleMs)) return null;
+    }
+  }
+  return null;
+}
+
+function releaseReclaimLock(lockPath) {
+  try {
+    rmSync(lockPath, { recursive: true, force: true });
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+}
+
 function tryAcquire(root, settings) {
   const { maxParallel, ownerPid, staleMs } = settings;
   for (let slotNumber = 1; slotNumber <= maxParallel; slotNumber += 1) {
@@ -145,11 +195,25 @@ function tryAcquire(root, settings) {
         mkdirSync(slotPath, { mode: 0o700 });
       } catch (error) {
         if (error?.code !== 'EEXIST') throw error;
-        if (reclaimIfStale(slotPath, staleMs)) continue;
+        // One waiter at a time may quarantine a given slot. Concurrent reclaim
+        // of the same dead lease is what let a third owner occupy slot-N.
+        const lockPath = tryReclaimLock(root, staleMs);
+        if (!lockPath) break;
+        try {
+          if (reclaimIfStale(slotPath, staleMs)) continue;
+        } finally {
+          releaseReclaimLock(lockPath);
+        }
         break;
       }
 
-      const createdStat = lstatSync(slotPath);
+      let createdStat;
+      try {
+        createdStat = lstatSync(slotPath);
+      } catch (error) {
+        if (error?.code === 'ENOENT') continue;
+        throw error;
+      }
       const token = randomUUID();
       try {
         writeFileSync(
@@ -165,6 +229,7 @@ function tryAcquire(root, settings) {
           if (readError?.code !== 'ENOENT') throw readError;
         }
         quarantineOwnedSlot(slotPath, currentRaw, createdStat, 'failed');
+        if (retryableAcquireError(error)) continue;
         throw error;
       }
       return JSON.stringify({ slotPath, token });
@@ -183,7 +248,12 @@ async function acquire(root, ownerPid) {
   const settings = { maxParallel, ownerPid, staleMs };
 
   while (true) {
-    const lease = tryAcquire(root, settings);
+    let lease;
+    try {
+      lease = tryAcquire(root, settings);
+    } catch (error) {
+      if (!retryableAcquireError(error)) throw error;
+    }
     if (lease) return lease;
     if (Date.now() >= deadline) {
       throw new Error(`Timed out waiting for a pre-push heavy-phase slot after ${waitMs}ms`);

@@ -474,4 +474,11 @@ describe('pre-push hook wiring', () => {
       'every direct node:test runner must use the configured worker cap',
     );
   });
+
+  test('exports VITEST_MAX_THREADS from the configured worker cap', () => {
+    assert.match(
+      hook,
+      /export VITEST_MAX_THREADS="\$\{VITEST_MAX_THREADS:-\$WM_PREPUSH_TEST_CONCURRENCY\}"/,
+    );
+  });
 });
