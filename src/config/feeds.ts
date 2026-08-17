@@ -195,6 +195,15 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
       en: rss('https://www.rp.pl/rss_main'),
       pl: rss('https://www.rp.pl/rss_main'),
     } },
+    // Polish depth — catalog opt-in, locale-boosted for `pl`. Native RSS for
+    // PAP (`/rss.xml`) and Onet (`wiadomosci.onet.pl/rss/index.xml`) is dead;
+    // keep those on Google News. OKO.press still publishes a live native feed.
+    { name: 'PAP', url: rss('https://news.google.com/rss/search?q=site%3Apap.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'Gazeta Wyborcza', url: rss('https://news.google.com/rss/search?q=site%3Awyborcza.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'Polityka', url: rss('https://news.google.com/rss/search?q=site%3Apolityka.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'Onet', url: rss('https://news.google.com/rss/search?q=site%3Awiadomosci.onet.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'OKO.press', url: rss('https://oko.press/feed'), lang: 'pl' },
+    { name: 'TVP Info', url: rss('https://news.google.com/rss/search?q=site%3Atvp.info%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
     // Hungarian (HU) — V4 / CEE coverage. Locale-gated for hu users only,
     // matching the Tagesschau (de) / ANSA (it) / NOS Nieuws (nl) / SVT (sv)
     // convention. `hu` is registered as a supported locale in src/services/i18n.ts.
