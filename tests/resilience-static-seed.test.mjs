@@ -10,6 +10,7 @@ import {
   RESILIENCE_STATIC_META_KEY,
   RESILIENCE_STATIC_SOURCE_VERSION,
   WGI_INDICATORS,
+  wgiUpstreamIndicatorId,
   buildFailureRefreshKeys,
   buildFaoAggregate,
   buildFaoAggregateForPublish,
@@ -86,6 +87,38 @@ describe('resilience static seed country normalization', () => {
 describe('resilience static seed WGI indicator contract', () => {
   it('fetchWgiDataset uses the canonical shared WGI key list', () => {
     assert.deepEqual(WGI_INDICATORS, wgiIndicatorKeys);
+  });
+
+  // shared/wgi-indicator-keys.json plays TWO roles, and #6799 turns on keeping
+  // them apart. It is the upstream request id for this seeder AND the key
+  // server/worldmonitor/resilience/v1/_dimension-scorers.ts reads back out of
+  // the stored payload (`indicators[key]`).
+  //
+  // The World Bank archived the bare codes and moved the live series behind a
+  // GOV_WGI_ prefix, so the REQUEST had to change. The STORED key must not:
+  // every record already in Redis is keyed by the bare code, and this seeder is
+  // annual with a 400-day TTL, so renaming it would leave the governance
+  // dimension reading nothing until the next re-seed.
+  it('prefixes the upstream request but keeps the bare stored key', () => {
+    for (const storedKey of WGI_INDICATORS) {
+      assert.match(storedKey, /^[A-Z]{2}\.EST$/, `stored key ${storedKey} must stay the bare code`);
+      assert.equal(wgiUpstreamIndicatorId(storedKey), `GOV_WGI_${storedKey}`);
+    }
+  });
+
+  it('the scorer reads the same bare keys the seeder stores', () => {
+    // Reading the scorer's own source rather than restating the list: the whole
+    // failure mode is these two drifting apart.
+    const scorer = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '..', 'server/worldmonitor/resilience/v1/_dimension-scorers.ts'),
+      'utf8',
+    );
+    assert.match(
+      scorer,
+      /WGI_INDICATOR_KEYS[\s\S]{0,200}indicators\[key\]/,
+      'the scorer must still look the stored indicators up by the shared key list',
+    );
+    assert.doesNotMatch(scorer, /GOV_WGI_/, 'the scorer must never learn the upstream prefix');
   });
 });
 

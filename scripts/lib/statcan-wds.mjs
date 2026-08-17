@@ -8,7 +8,18 @@ export const STATCAN_WDS_HOST = 'www150.statcan.gc.ca';
 export const WDS_VECTORS_URL =
   'https://www150.statcan.gc.ca/t1/wds/rest/getDataFromVectorsAndLatestNPeriods';
 export const MAX_STATCAN_WDS_BYTES = 2 * 1024 * 1024;
-export const STATCAN_MAX_CONTENT_AGE_MIN = 75 * DAY_MIN;
+// 90 days, not 75. StatCan's WDS `refPer` is a normalized observation date and
+// for a monthly series it is the FIRST of the reference month, so the clock
+// starts a month before the data even exists. June CPI carries refPer
+// 2026-06-01 and July CPI is not released until roughly 2026-08-19, which puts
+// the natural peak at ~79 days — above a 75-day budget, so this reported
+// STALE_CONTENT on a series that was current. 90 clears the peak with ~11 days
+// of margin (#6799).
+//
+// Note the start-dating is StatCan's own convention, not periodTokenToMs
+// rounding a YYYY-MM token: normalizedStatcanRefPer only accepts YYYY-MM-DD, so
+// the helper parses it exactly.
+export const STATCAN_MAX_CONTENT_AGE_MIN = 90 * DAY_MIN;
 export const FETCH_TIMEOUT_MS = 20_000;
 
 // Cubes the Country Resilience Index actually consumes for CA:

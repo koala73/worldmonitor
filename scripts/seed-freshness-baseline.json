@@ -28,48 +28,12 @@
       "name": "mineralProduction",
       "status": "EMPTY",
       "issue": 6439,
-      "reason": "USGS/BGS mineral-production probe has never published. seed-bundle-static-ref cron froze after the lone Aug 9 tick (#6691); recovery redeploy landed 2026-08-14T12:40Z. EMPTY is expected until the next 03:00 UTC tick. Re-anchored from the expired 2026-08-14T03:00Z cutover to that first post-recovery window.",
-      "expiresAt": "2026-08-15T03:00:00.000Z",
+      "reason": "USGS/BGS mineral-production probe has never published. Root cause found in #6799: seed-bundle-static-ref admits a section only when its DECLARED worst case fits the budget left on the tick, and Arms-Suppliers burned 390s of the 570s budget before failing gracefully, so this section was deferred on every tick and never ran. The concurrency fix (#6807) brings Arms-Suppliers to ~277s, which leaves room for this 190s reservation. Re-anchored to the first 03:00 UTC tick after that deploy; EMPTY after it is a real problem.",
+      "expiresAt": "2026-08-18T03:00:00.000Z",
       "cutover": {
         "probeKey": "seed-meta:supply-chain:mineral-production",
-        "activatedAt": "2026-08-14T12:45:00.000Z",
-        "firstScheduledRunAt": "2026-08-15T03:00:00.000Z"
-      }
-    },
-    {
-      "name": "staticRefBundleTick",
-      "status": "EMPTY",
-      "issue": 6691,
-      "reason": "New tick-execution heartbeat for seed-bundle-static-ref. Writer ships in this change; the key cannot exist until the first 03:00 UTC cron after deploy. EMPTY is expected until then. Expiry equals firstScheduledRunAt so a missed recovery tick pages instead of staying silent.",
-      "expiresAt": "2026-08-15T03:00:00.000Z",
-      "cutover": {
-        "probeKey": "bundle:heartbeat:static-ref",
-        "activatedAt": "2026-08-14T12:45:00.000Z",
-        "firstScheduledRunAt": "2026-08-15T03:00:00.000Z"
-      }
-    },
-    {
-      "name": "bocValet",
-      "status": "EMPTY",
-      "issue": 6616,
-      "expiresAt": "2026-08-15T08:00:00.000Z",
-      "reason": "New Bank of Canada Valet probe. seed-bundle-macro cron is 0 8 * * * (08:00 UTC); first scheduled run after this acknowledgement is 2026-08-15T08:00:00.000Z. EMPTY is expected until that publish. Re-anchored because the previous 2026-08-14T08:00Z window expires today before merge. The expiry equals firstScheduledRunAt so EMPTY after that run is a real problem.",
-      "cutover": {
-        "probeKey": "seed-meta:economic:boc-valet",
-        "activatedAt": "2026-08-14T08:00:00.000Z",
-        "firstScheduledRunAt": "2026-08-15T08:00:00.000Z"
-      }
-    },
-    {
-      "name": "statcanWds",
-      "status": "EMPTY",
-      "issue": 6676,
-      "expiresAt": "2026-08-16T08:00:00.000Z",
-      "reason": "New Statistics Canada WDS probe. seed-bundle-macro cron is 0 8 * * * (08:00 UTC). First scheduled run after this acknowledgement is 2026-08-16T08:00:00.000Z. EMPTY is expected until that publish. Re-anchored onto the real 08:00 UTC tick. There is no mid-day cron. Toronto-today 409 is a quiet miss; CPI/LFS vectors still POST at 08:00 UTC. The expiry equals firstScheduledRunAt so EMPTY after that run is a real problem. Issue #6676 (BoC remains #6616).",
-      "cutover": {
-        "probeKey": "seed-meta:economic:statcan-wds",
-        "activatedAt": "2026-08-15T08:00:00.000Z",
-        "firstScheduledRunAt": "2026-08-16T08:00:00.000Z"
+        "activatedAt": "2026-08-17T04:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-18T03:00:00.000Z"
       }
     }
   ]

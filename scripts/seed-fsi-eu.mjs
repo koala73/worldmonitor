@@ -40,7 +40,12 @@ const FSI_EU_TTL = 259200;
 // via src/shared/ciss-staleness.ts (the seeder is plain .mjs and cannot be
 // imported by TS code); tests/ciss-stale-threshold-consistency.test.mjs
 // asserts the two never drift.
-const CISS_MAX_CONTENT_AGE_MIN = 10 * DAY_MIN;
+// 14 days, not 10. Verified 2026-08-17: the ECB's own newest CISS observation
+// was 2026-08-04, exactly what the seeder held — it was in sync, and the ECB
+// had simply not published its daily index for 13 days. A 10-day budget calls
+// that STALE_CONTENT while the seeder is doing everything right, so two weeks
+// is the accepted publication gap before the alarm means something.
+const CISS_MAX_CONTENT_AGE_MIN = 14 * DAY_MIN;
 
 function classifyLabel(value) {
   if (value < 0.2) return 'Low';
