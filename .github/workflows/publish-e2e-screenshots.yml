@@ -1,0 +1,56 @@
+name: Publish E2E Screenshots
+
+on:
+  workflow_run:
+    workflows: [E2E Visual]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event != 'pull_request' &&
+      github.event.workflow_run.conclusion != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: e2e-screenshot-publication
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Download chrome gallery artifact
+        continue-on-error: true
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: playwright-gallery-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: gallery
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+      - name: Sync gallery to object storage
+        id: sync
+        if: ${{ vars.E2E_SCREENSHOT_BUCKET != '' && secrets.E2E_SCREENSHOT_S3_ACCESS_KEY_ID != '' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.E2E_SCREENSHOT_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.E2E_SCREENSHOT_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.E2E_SCREENSHOT_REGION || 'us-east-1' }}
+          AWS_EC2_METADATA_DISABLED: 'true'
+          S3_BUCKET: ${{ vars.E2E_SCREENSHOT_BUCKET }}
+          S3_ENDPOINT: ${{ vars.E2E_SCREENSHOT_ENDPOINT }}
+        run: |
+          if [ ! -f gallery/index.html ]; then
+            echo "No gallery artifact on this run; skipping publish."
+            exit 0
+          fi
+          if [ -z "$S3_ENDPOINT" ]; then
+            echo "E2E_SCREENSHOT_ENDPOINT is unset; skipping publish."
+            exit 0
+          fi
+          aws s3 sync gallery/ "s3://${S3_BUCKET}/playwright/" --endpoint-url "$S3_ENDPOINT"
+          echo "Published screenshot gallery to s3://${S3_BUCKET}/playwright/"
+      - name: Note when object storage is not configured
+        if: ${{ vars.E2E_SCREENSHOT_BUCKET == '' || secrets.E2E_SCREENSHOT_S3_ACCESS_KEY_ID == '' }}
+        run: echo "E2E screenshot object storage is not configured; the gallery artifact on E2E Visual is the durable copy."
