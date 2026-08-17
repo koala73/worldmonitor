@@ -778,6 +778,12 @@ export const PERMANENT_4XX_STATUSES = new Set([400, 401, 403, 404, 410, 413, 422
 // generic crash.
 export const GRACEFUL_FETCH_FAILURE_EXIT_CODE = 75;
 
+// #6396: the seeder fetched its data but its coverage gate refused to publish
+// (and preserved the last-good TTL instead). Distinct from EX_TEMPFAIL so the
+// bundle runner can report PUBLISH_BLOCKED rather than OK for a section whose
+// entire purpose — writing the seed keys — did not happen.
+export const PUBLISH_BLOCKED_EXIT_CODE = 76;
+
 // Cap upstream Retry-After hints so a stuck/abusive header can't park the
 // bundle past its section timeoutMs. Mirrors _yahoo-fetch.mjs convention.
 const MAX_RETRY_AFTER_MS = 60_000;
