@@ -178,7 +178,7 @@ async function fetchNlpDigestItems(
     headers: { ...auth, 'User-Agent': NLP_UA },
     signal: AbortSignal.timeout(NLP_DIGEST_TIMEOUT_MS),
   });
-  assertToolFetchOk(res, 'list-feed-digest');
+  await assertToolFetchOk(res, 'list-feed-digest');
   const body = await res.json() as {
     categories?: Record<string, NlpDigestCategoryGroup>;
     feedStatuses?: Record<string, string>;
@@ -345,7 +345,7 @@ export const NLP_TOOLS: ToolDef[] = [
         // slow-but-successful cache-miss classifications the handler completes.
         signal: AbortSignal.timeout(25_000),
       });
-      assertToolFetchOk(res, 'classify-event');
+      await assertToolFetchOk(res, 'classify-event');
       const result = await res.json() as {
         classification?: { category?: string; subcategory?: string; severity?: string; confidence?: number };
       };
