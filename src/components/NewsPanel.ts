@@ -7,7 +7,7 @@ import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { computeNewSinceVisit } from '@/utils/new-since-visit';
 import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText, preloadRelatedAssetTables } from '@/services';
 import { SITE_VARIANT } from '@/config';
-import { t, getCurrentLanguage } from '@/services/i18n';
+import { t, getCurrentLanguage, getCurrentLanguageTag } from '@/services/i18n';
 import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import {
@@ -259,7 +259,11 @@ export class NewsPanel extends Panel {
     if (this.currentHeadlines.length === 0) return;
 
     // Check cache first (include variant, version, and language)
-    const currentLang = getCurrentLanguage();
+    // The full tag, not the stripped code: this is the language the model is
+    // asked to WRITE in, and a Traditional reader asking for `zh` gets
+    // Simplified prose back. It keys the cache too, so the two scripts cannot
+    // serve each other's summary.
+    const currentLang = getCurrentLanguageTag();
     const cacheKey = `panel_summary_v3_${SITE_VARIANT}_${this.panelId}_${currentLang}`;
     const cached = this.getCachedSummary(cacheKey);
     if (cached) {
@@ -310,7 +314,10 @@ export class NewsPanel extends Panel {
   }
 
   private async handleTranslate(element: HTMLElement, text: string): Promise<void> {
-    const currentLang = getCurrentLanguage();
+    // Target language for the translation, so the full tag — same reason as
+    // handleSummarize above. The `en` short-circuit is unaffected: no tag that
+    // resolves to a Chinese catalogue equals 'en'.
+    const currentLang = getCurrentLanguageTag();
     if (currentLang === 'en') return; // Assume news is mostly English, no need to translate if UI is English (or add detection later)
 
     const titleEl = element.closest('.item')?.querySelector('.item-title') as HTMLElement;
@@ -696,8 +703,13 @@ export class NewsPanel extends Panel {
     shouldHighlight: boolean,
     showNewTag: boolean
   ): string {
-    const sourceBadge = cluster.sourceCount > 1
-      ? `<span class="source-count">${t('components.newsPanel.sources', { count: String(cluster.sourceCount) })}</span>`
+    // #6428: "N sources" is a corroboration claim, so it counts PUBLISHERS.
+    // cluster.sourceCount is the article count, which read nine reprints of
+    // one wire across one newsroom's feeds as nine sources. The velocity
+    // badge below keeps sourceCount — velocity IS about article volume.
+    const publisherCount = cluster.uniquePublisherCount ?? 0;
+    const sourceBadge = publisherCount > 1
+      ? `<span class="source-count">${t('components.newsPanel.sources', { count: String(publisherCount) })}</span>`
       : '';
 
     const velocity = cluster.velocity;

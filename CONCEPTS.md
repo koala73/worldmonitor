@@ -26,7 +26,7 @@ The freshness clock a seeder declares over the *observation dates inside* the pa
 
 Two rules follow from what the contract reduces to. It reports a single newest timestamp, so a payload assembled from *several independently-failing sources* must derive one clock per source and report the **oldest** of them; reducing all their dates together takes the newest, and the still-living source then hides the dead one indefinitely — an alarm that can only fire when every source dies at once. And an undatable payload must report nothing rather than a default, because "we cannot date this" and "this is stale" warrant the same response, while a fabricated recent date warrants none.
 
-Sizing the budget belongs to the source's own publication calendar, measured rather than assumed: the widest gap the source routinely takes — a holiday cluster, a non-working period, a weekend either side — plus room for one missed run. A budget guessed generously enough to never false-alarm has usually also stopped detecting the freeze it exists for. See also: Seed-Owned Key, Activation Marker.
+Sizing the budget belongs to the source's own publication calendar, measured rather than assumed: the widest gap the source routinely takes — a holiday cluster, a non-working period, a weekend either side — plus room for one missed run. A budget guessed generously enough to never false-alarm has usually also stopped detecting the freeze it exists for. See also: Seed-Owned Key, Activation Marker, Content Clock.
 
 ### Activation Marker
 
@@ -114,6 +114,12 @@ Every enabled panel beyond the immediate tier's budget. A deferred panel's slot 
 
 The project's rule for any panel that joins the grid asynchronously, in either tier: a footprint-matched placeholder shell must occupy the panel's exact grid slot from the first synchronous layout pass, and the arriving panel replaces the shell in place rather than being inserted as a new grid item. The contract's invariant is that grid geometry never changes when async content arrives — violations register as layout shifts for every panel below the insertion point. Reserving the slot and starting the load early are independent decisions; conflating "loads immediately" with "needs no reservation" is the failure mode that produced the dashboard's dominant desktop layout-shift mechanism. See also: Immediate Tier, Deferred Tier, Shift Mover.
 
+### Late-Mount Window
+
+The interval between a Deferred Tier panel being constructed and its element entering the grid — routinely minutes on a phone, since the panel is built only as its shell nears the viewport while the boot data pass finished long before. Two things cross the window in opposite directions and both need somewhere to wait: data *pushed* to a panel that does not exist yet, and a render *emitted* by a panel whose element is not attached yet.
+
+The project's rule is that neither may be discarded. A push aimed at an absent panel is queued and replayed when the panel loads; a render emitted before attachment is deferred and flushed when the element joins the grid. Both failure modes read as defensive code and are silent — no error, no failed request, no telemetry — so they surface only as a panel that shows its initial placeholder for the whole session. The attachment check is the subtler of the two, because it is genuinely correct *after* attachment (a torn-down panel must not paint) and wrong *before* it; only checking ahead of the work distinguishes "never attached yet" from "detached again". See also: Deferred Tier, Deferred-Shell Contract, Viewport Prime.
+
 ### Viewport Prime
 
 The dashboard's demand-driven data pass: on boot, and again on every scroll and resize, it loads data for exactly the panels near the viewport, so a Deferred Tier panel receives its content only as the user approaches it. It re-runs constantly by design, which makes its safety contract the load-bearing part: the pass dedupes *concurrent* loads but does not remember *completed* ones, so every loader it can reach must be cheap to repeat — served from a real cache, or skipped outright when the panel already renders data. A loader that repeats expensively (an uncached network call, a teardown of already-rendered content) turns every scroll into user-visible churn.
@@ -138,11 +144,27 @@ The invariant that exactly one layer owns retry policy for any external provider
 
 The typed value a provider-rate-limited operation returns *instead of throwing*, so every downstream surface renders a deliberate retry state — an HTTP 429 with a retry hint at the service boundary, a structured error code on the public API — rather than collapsing the limit into a generic failure. The outcome only exists after the owning retry layer has exhausted its bounded attempts; a raw rate-limit error escaping before that point is a defect, not an outcome. See also: Retry Ownership.
 
+## Error Telemetry & Suppression
+
+### Trampoline Frame
+
+A stack frame contributed by a monkeypatched global — most often a third-party script's `window.fetch` wrapper — that appears in a trace as though it were a caller but merely passes the call through. Trampoline frames make third-party failures look first-party, which is why suppression gates must classify them; the trap is that their *names* are minifier output, renamed at will across builds and eventually omitted entirely, so any gate that recognizes a trampoline by name shape is on a treadmill. Identity comes instead from build-stable structural facts: which first-party chunk the frame is attributed to, and whether the wrapping script's own frame is present in the same trace. A gate that admits trampoline frames from a chunk is safe only under an *enforced* invariant that the chunk's backing modules perform no network work of their own — enforced meaning a test fails when it stops being true, not a comment asserting it. See also: Vacuous Guard.
+
+## Timestamps & Hot-Document Writes
+
+### Content Clock
+
+A timestamp whose meaning is "the data beside it was confirmed against its source at this moment" — as distinct from a write stamp, which records only that a write happened. A clock becomes a content clock the moment any consumer compares it against another clock to decide which of two sources holds the fresher content; from then on, two rules bind every writer. Any write that changes the content the clock dates must stamp the clock in the same write, or the clock silently stops dating the content. And the clock may be throttled only for *no-change* writes: skipping a write when the content is identical cannot mis-order a freshness comparison, because whichever side then wins names the same content. The seeder-payload instance of the same idea is the Content-Age Contract — date the observations, never the run. See also: Content-Age Contract, Touch Mutation.
+
+### Touch Mutation
+
+A fire-and-forget mutation that stamps a credential's last-used time as a side effect of validating it. The stamp is telemetry — nothing may treat it as a Content Clock — which is what licenses aggressive suppression of the write. Its discipline is a debounce split across two lines that share one window constant: the *scheduling* site consults the stamp returned by the validation read and schedules nothing while the stamp is fresh, so no queue of touches can accumulate behind a debounce boundary and herd-write the same hot document when the window expires; the mutation re-checks staleness on execution as the second line, turning any straggler that races anyway into a read-only no-op — and in an optimistic-concurrency store, an execution that never writes cannot conflict. Splitting the window's value across the two lines is the failure mode: the halves drift and the herd returns. See also: Content Clock.
+
 ## Test & Guard Verification
 
 ### Vacuous Guard
 
-A test, CI gate, or static audit that reports success without having examined what it claims to cover, because its *input* silently shrank rather than because its assertion held. The distinguishing property is that it fails open: guards of this shape assert a negative — a violation list is empty, a count is zero, no match was found — and an empty input satisfies a negative assertion perfectly, so the less such a guard actually checks, the greener it looks. Levers that shrink the input include a skip condition gated on a flag nothing sets, a normaliser or comment-stripper that deletes part of the scanned source, a filter or path-walk predicate that stops matching files, and a test harness that never supplies the input the assertion is written about — an "X is absent" check cannot fail when the fixture could not have produced an X in the first place. Two further levers arise from *substitution* rather than filtering: a stub standing in for the unit under test, which makes every branch inside it — error returns especially — unreachable by a contract assertion that still passes for every other tool in the registry; and a lookup that parses a value out of another file, whose miss branch yields a plausible default (`0`, empty, `null`) instead of raising, so a moved or renamed target reads as a real answer rather than a lost one. Both are refactor-triggered: nothing in the import graph follows a path held as a string, so the compiler and the suite stay silent. A third shape does not shrink the input at all but asserts against the wrong artefact: a *wiring* guard that greps a script's source text for the command it should invoke, rather than executing the decision and observing what ran. Such a guard survives the bug restored verbatim, because inverting the condition that reaches the command, or dropping the `|| exit` that propagates its failure, leaves the grepped token in place — the remedy is to move the decision into something callable and run it against stubbed executables, asserting the invocation. A fourth shape asserts a negative consequence of an action the test never actually performed: a check that some effect did *not* follow a simulated user gesture is satisfied just as well by the gesture never landing, so an input that silently does nothing — a scroll against a container that does not scroll, a click on a detached node — makes "nothing happened" indistinguishable from "the mechanism suppressed it". The remedy is a positive control: assert the trigger was delivered before asserting anything about its absence of effect. A fifth shape corrupts the *comparison value* rather than the input: two writers emit a failure sentinel on the same failure path — a probe command that prints its sentinel to stdout even as it exits non-zero, plus a fallback echo appended inside the same command substitution — and the capture concatenates them, so the captured value never equals the bare sentinel and a "not-sentinel means healthy" check passes for a target that is entirely dead. The remedy is a single sentinel source: rely on the command's own failure output, or branch on the exit status, never both. A sixth shape shrinks nothing and substitutes nothing: it examines the whole input and asserts truthfully, but along the wrong *axis*. A schema gate that diffs emitted field names against declared field names answers only whether every emitted key is declared; it is silent on whether the emitted *values* satisfy the declaration, so a producer writing an explicit null for a field the schema declares as absent-when-missing publishes a declared name carrying an undeclared value, and the gate certifies it green forever. The remedy is to name the axes the gate covers and to enforce the uncovered one somewhere it can be seen — for a serialized contract, on the serialized wire rather than the in-process object, since undefined disappears from JSON and null does not. A seventh shape is a guard-of-a-guard that goes blind in lockstep with its subject: a parser paired with a count pin that shares the parser's own pattern shape drops the same unrecognized forms from both sides, and the two agree at the wrong number rather than disagreeing loudly — a self-check must be strictly looser than the thing it checks. An eighth shape covers every unit a fix touches and still misses the fix: when the corrected behaviour lives in the *seam* that composes those units — which decoding a caller applies to a response before handing it to a parser, which of two overloads it selects — then unit tests over the parts stay green with the seam reverted, and the count of them is no evidence at all. The tell is that the diff's essential line sits in a function no test names; the remedy is to make the composing function callable and drive it against a stub deliberately built to satisfy *both* branches, so only the correct seam produces the correct result. A vacuous guard is worse than no guard, because it also supplies confidence. See also: Mutation Proof, Surviving Mutant, Wiring Guard.
+A test, CI gate, or static audit that reports success without having examined what it claims to cover, because its *input* silently shrank rather than because its assertion held. The distinguishing property is that it fails open: guards of this shape assert a negative — a violation list is empty, a count is zero, no match was found — and an empty input satisfies a negative assertion perfectly, so the less such a guard actually checks, the greener it looks. Levers that shrink the input include a skip condition gated on a flag nothing sets, a normaliser or comment-stripper that deletes part of the scanned source, a filter or path-walk predicate that stops matching files — or one authored too narrow from the outset, whose scope silently encodes a false claim about where the target can appear, the everyday instance being a source-only extension glob that never covered the documentation or localized files also carrying the string, so a zero-result search reads as proof of completeness; this lever is not confined to automated gates, and is at its most dangerous inside a human-followed runbook step, where the operator is under time pressure and explicitly looking for permission to proceed — and a test harness that never supplies the input the assertion is written about — an "X is absent" check cannot fail when the fixture could not have produced an X in the first place. Two further levers arise from *substitution* rather than filtering: a stub standing in for the unit under test, which makes every branch inside it — error returns especially — unreachable by a contract assertion that still passes for every other tool in the registry; and a lookup that parses a value out of another file, whose miss branch yields a plausible default (`0`, empty, `null`) instead of raising, so a moved or renamed target reads as a real answer rather than a lost one. Both are refactor-triggered: nothing in the import graph follows a path held as a string, so the compiler and the suite stay silent. A third shape does not shrink the input at all but asserts against the wrong artefact: a *wiring* guard that greps a script's source text for the command it should invoke, rather than executing the decision and observing what ran. Such a guard survives the bug restored verbatim, because inverting the condition that reaches the command, or dropping the `|| exit` that propagates its failure, leaves the grepped token in place — the remedy is to move the decision into something callable and run it against stubbed executables, asserting the invocation. A fourth shape asserts a negative consequence of an action the test never actually performed: a check that some effect did *not* follow a simulated user gesture is satisfied just as well by the gesture never landing, so an input that silently does nothing — a scroll against a container that does not scroll, a click on a detached node — makes "nothing happened" indistinguishable from "the mechanism suppressed it". The remedy is a positive control: assert the trigger was delivered before asserting anything about its absence of effect. A fifth shape corrupts the *comparison value* rather than the input: two writers emit a failure sentinel on the same failure path — a probe command that prints its sentinel to stdout even as it exits non-zero, plus a fallback echo appended inside the same command substitution — and the capture concatenates them, so the captured value never equals the bare sentinel and a "not-sentinel means healthy" check passes for a target that is entirely dead. The remedy is a single sentinel source: rely on the command's own failure output, or branch on the exit status, never both. A sixth shape shrinks nothing and substitutes nothing: it examines the whole input and asserts truthfully, but along the wrong *axis*. A schema gate that diffs emitted field names against declared field names answers only whether every emitted key is declared; it is silent on whether the emitted *values* satisfy the declaration, so a producer writing an explicit null for a field the schema declares as absent-when-missing publishes a declared name carrying an undeclared value, and the gate certifies it green forever. The remedy is to name the axes the gate covers and to enforce the uncovered one somewhere it can be seen — for a serialized contract, on the serialized wire rather than the in-process object, since undefined disappears from JSON and null does not. A seventh shape is a guard-of-a-guard that goes blind in lockstep with its subject: a parser paired with a count pin that shares the parser's own pattern shape drops the same unrecognized forms from both sides, and the two agree at the wrong number rather than disagreeing loudly — a self-check must be strictly looser than the thing it checks. An eighth shape covers every unit a fix touches and still misses the fix: when the corrected behaviour lives in the *seam* that composes those units — which decoding a caller applies to a response before handing it to a parser, which of two overloads it selects — then unit tests over the parts stay green with the seam reverted, and the count of them is no evidence at all. The tell is that the diff's essential line sits in a function no test names; the remedy is to make the composing function callable and drive it against a stub deliberately built to satisfy *both* branches, so only the correct seam produces the correct result. A ninth shape neither shrinks its input nor checks the wrong axis: it derives its *expectation* from the very artifact it is checking. A generator with a `--check`/`--write` pair does this when the check renders its expected output from the committed artifact while the writer renders from a fresh rebuild — the check then compares the artifact against a projection of itself, is self-consistent by construction, and cannot see the artifact drifting away from the source of truth it is supposed to track. The tell is available in one command: run the writer on a clean tree and read `git status`, because any diff is drift the checker could not see. Two properties make the remedy stick. The comparison must be against a *rebuild* (byte-compare the serialized rebuild, since a semantic walk misses whole classes — a deleted row that both sides omit identically), and the writer must be a **fixpoint**, or there is no stable expectation to compare against; a writer that retires a row on one run and deletes it on the next has none. The economic half is inseparable from the correctness half: an honest comparison over a field that churns for unrelated reasons taxes every change and gets reverted, so the drift-prone field that carries no meaning must be removed in the same stroke that makes the check honest. A vacuous guard is worse than no guard, because it also supplies confidence. See also: Mutation Proof, Surviving Mutant, Wiring Guard.
 
 ### Mutation Proof
 
@@ -163,6 +185,12 @@ A deterministic check that a value reported by a model-based extractor actually 
 ### Closed-World Gate
 
 A completeness check structured so the universe it covers is mechanically enumerated from the source of truth and every member must be classified — required (mechanically asserted at every consumer) or excluded with a recorded reason — so an unclassified member fails the gate at the moment it is introduced. The inverse of an opt-in allowlist, which can only catch what someone remembered to add and therefore rots silently as the universe grows; a closed world converts each new member into a forced, recorded decision, and the classification record doubles as a decision log distinguishing deliberately-absent from forgotten. Both halves need their own vacuous-pass protection: an enumerator that finds zero members, or an extractor that finds zero consumers, must fail rather than skip. See also: Vacuous Guard, Mutation Proof.
+
+### Ratchet Inventory
+
+A counted census of a known-bad idiom's remaining occurrences, recorded per (file, idiom) pair with an occurrence count, which the guard enforces in *both* directions: a higher count or an unrecorded pair fails as new drift, a lower count fails as a stale record that must be updated. The bidirectionality is what separates it from an allowlist — a plain permission list cannot see a second occurrence added to a file it already forgives, which is the highest-traffic regression shape there is, because new code lands in the files that already carry the pattern. Counts must be measured on normalised source (comment-stripped, at minimum), or a mention of the idiom in prose keeps an entry alive after its last real call is gone and the stale check never asks anyone to delete it.
+
+Two properties are routinely misread. An entry is a *record*, not a permission slip: it says this many occurrences are known and tracked, never that they are sanctioned. And a shrinking entry does not imply zero is the destination — some populations have a floor, where the surviving occurrence is the one that must *not* be migrated, so its count is terminal rather than unfinished. A ratchet cannot distinguish "this count moved" from "this count moved for the wrong reason", so wherever a floor exists it has to be stated in the inventory *and* in the guard's own failure text, which is the only prose the person driving the count to zero will actually read. The behavioural rule underneath the floor needs a separate test; the ratchet enforces the census, not the reason. See also: Closed-World Gate, Vacuous Guard, Mutation Proof.
 
 ## News Story Tracking & Trend Detection
 
@@ -238,9 +266,17 @@ Because the cookie is opaque to JavaScript, the client can only infer its health
 
 The client-side cooldown during which every anonymous API call is answered locally with a synthetic unavailable response instead of reaching the network, entered when the anonymous session is judged unrecoverable and lifted automatically when the cooldown lapses. Its purpose is to stop a dead session from amplifying into a request-mint-retry storm across every panel.
 
-The blackout is deliberately blunt — it suppresses the whole surface — so what justifies entering it matters more than what it does. Only session-wide evidence qualifies: a failure to mint at all, or the same failure corroborated across distinct routes *within seconds of each other*. A single route's denial, even one that survives a fresh mint, is route-scoped evidence and earns at most route-scoped suppression; generalizing it blanks a dashboard whose session was never broken.
+The blackout is deliberately blunt — it suppresses the whole surface — so what justifies entering it matters more than what it does. Only session-wide evidence qualifies, and that is narrower than "the mint failed": a *server verdict* on the mint alone (see Mint Attempt), or any other failure corroborated across distinct routes *within seconds of each other*. A single route's denial, even one that survives a fresh mint, is route-scoped evidence and earns at most route-scoped suppression; generalizing it blanks a dashboard whose session was never broken.
 
-Two properties make that corroboration mean what it says. It is time-bounded, because the evidence being generalized from is temporal coincidence — denials minutes apart are two endpoint problems, not one session problem. And it is retracted by success: a single credentialed 200 proves the browser is delivering the cookie, which settles the question the blackout was about. Suppression and evidence therefore expire on different clocks, and a sibling's success must retract the evidence without releasing the failing route's own suppression — that suppression is what stops a known-bad endpoint from re-minting on every poll. See also: Anonymous Session.
+Two properties make that corroboration mean what it says. It is time-bounded, because the evidence being generalized from is temporal coincidence — denials minutes apart are two endpoint problems, not one session problem. And it is retracted by success: a single credentialed 200 proves the browser is delivering the cookie, which settles the question the blackout was about. Suppression and evidence therefore expire on different clocks, and a sibling's success must retract the evidence without releasing the failing route's own suppression — that suppression is what stops a known-bad endpoint from re-minting on every poll.
+
+One consequence is easy to miss: a request already in flight when a blackout is declared is the only kind that can still reach the recovery path, and re-declaring the blackout from it extends the cooldown rather than being absorbed as a duplicate. A blackout therefore lasts its nominal window only if the paths that were merely *suppressed* by it stay silent. See also: Anonymous Session, Mint Attempt.
+
+### Mint Attempt
+
+One try at obtaining an anonymous session, and — this is the part that carries the meaning — the verdict of that try, which is not the same as whether a session came back. Four outcomes are distinct and need different responses: the mint succeeded; the mint failed and the *server* rendered that verdict (it refused, or answered something unusable); the mint failed in our own transport or threw client-side, so the server rendered no verdict at all; or **no mint was attempted**, because the session was already blacked out or because the mint succeeded and the browser then refused to keep the cookie.
+
+Only the server-verdict case is session-wide on its own; everything else needs corroboration. The distinction that is easiest to lose is the last one — an attempt that never happened is not a failed attempt, and reporting it as one both misdirects diagnosis and re-arms the blackout it was suppressed by. The verdict therefore travels with the attempt's result rather than being recovered afterwards from module state, which would describe whichever attempt finished last. See also: Session Blackout, Anonymous Session.
 
 ## Billing & Entitlements
 
@@ -330,7 +366,7 @@ Two properties keep the soft path from becoming a hole. It may fire only when th
 
 A dependency advisory the security gate knowingly tolerates, recorded per-lockfile with written reasoning for why the vulnerable path is unreachable in this project — typically a build-time-only or dev-tooling chain, or a fix that is semver-major on a parent the project cannot yet move.
 
-The baseline is an exemption list, not a suppression: an advisory outside it fails the gate for every branch at once, which is why a newly published advisory blocks the whole repository until someone either patches or baselines it. Each entry carries its justification inline so a later reader can re-evaluate rather than inherit a bare allowlist, and an entry that no longer matches any live advisory is surfaced as stale so the list does not accrete dead exemptions. See also: Third-Party Rot.
+The baseline is an exemption list, not a suppression: an advisory outside it fails the gate for every branch at once, which is why a newly published advisory blocks the whole repository until someone either patches or baselines it. Each entry carries its justification inline so a later reader can re-evaluate rather than inherit a bare allowlist, and an entry that no longer matches any live advisory is surfaced as stale so the list does not accrete dead exemptions. See also: Third-Party Rot, Acceptance Baseline.
 
 ## Localization & First Paint
 
@@ -380,6 +416,36 @@ A source in an ordered chain that is queried regardless of whether an earlier so
 
 Whether it is a defect depends on what the tier does with its results. A tier whose results *replace* the primary's adds nothing when the primary succeeded, so on a metered upstream it spends budget for no marginal records and should be gated. A tier whose results *merge* into the primary's is contributing coverage, and gating it trades that coverage away — dangerously so, because a degraded-but-non-empty primary satisfies a success-gate and suppresses the merging tier precisely when its coverage matters most. For a merging tier the correct remedy is to reduce its cost rather than to stop calling it. See also: Credit Budget, Cost Tier, Theater Posture, Publication Source.
 
+## Consumer Prices Ingestion
+
+### Retailer Roster
+
+The set of enabled retailer configurations for one market. The market's coverage denominator is the pages its roster plans, so roster membership — not scrape tuning — is the operational lever when a retailer's domain becomes unscrapeable to every acquisition provider.
+
+A retailer enters or leaves the roster by flipping its declared enablement; a disabled retailer keeps its configuration and its recorded disable evidence so re-admission starts from the prior verdict rather than a fresh diagnosis (and that evidence goes stale — re-probe before trusting it). Onboarding requires probing every acquisition provider against the retailer's domain first: a retailer only one provider can reach carries a single point of failure from day one. See also: Market Completion Floor.
+
+### Market Completion Floor
+
+The declared minimum share of planned pages a market's scrape must complete for the market to stay operationally healthy; below the floor the market grades degraded rather than merely noisy.
+
+The floor governs the market aggregate, not individual retailers — one retailer can fail outright without degrading the market so long as the remaining roster keeps the completion ratio above the floor. Roster size is therefore floor headroom: the roster should survive the outright loss of any single retailer. See also: Retailer Roster.
+
+### Auto Match
+
+A scraped product accepted for aggregation: validation bound the retailer product to a basket item confidently enough that its price is aggregate-eligible without review.
+
+### Candidate Match
+
+A scraped product admitted with doubt: recorded for later review but excluded from aggregates. A page can scrape successfully yet yield only a candidate match, so page-level success and aggregate eligibility diverge — coverage built on page counts alone can read healthy while contributing no usable prices. Strict validation closes the gap by rejecting the doubtful product and trying the next candidate page instead of admitting the doubt. See also: Auto Match, Market Completion Floor.
+
+## Ingestion Acceptance
+
+### Acceptance Baseline
+
+The accepted-problem list the ingestion acceptance gate consults: each entry acknowledges one known degradation, identified by exactly its source and status, and owned by an open tracking issue.
+
+Matching is exact by design. A source that recovers surfaces its entry as a prune prompt; a source that worsens to a different status escalates and blocks, because a suppression written for a lesser state must not cover a worse one. The list as a whole carries an expiry that forces re-review, and an acknowledgement is never added for a status whose remediation is still in flight — the gate exists to verify the remediation, not to trust it. See also: Baselined Advisory.
+
 ## Desktop Distribution
 
 ### Desktop Variant Selection
@@ -418,6 +484,126 @@ alarm are the same check, the monitoring cannot be disabled without also
 breaking the sum. It applies only to sources that genuinely share a publication
 clock; series on different schedules would disagree constantly and the check
 would degrade into noise.
+
+## Resilience Scoring
+
+### Dimension
+
+One scored facet of a country's resilience — a single question about the
+country ("how exposed is its financial system?") answered as a number on a
+common scale, so facets that measure unlike things can be combined. A dimension
+is not a data source: it is a construct assembled from several inputs, and the
+same source can feed more than one.
+
+A dimension can be published dark — computed but deliberately excluded from what
+readers see — while its inputs and calibration are proven. Dark is a rollout
+state, not a defect state; a dimension that is dark is still expected to be
+correct.
+
+### Component Slot
+
+One weighted input to a dimension, together with the weight it carries. A slot
+resolves in one of three ways: to an observed reading, to an imputed value
+carrying reduced certainty, or not at all.
+
+The third case has a consequence worth stating, because it is the opposite of
+the intuition: an unresolved slot is not scored as zero and does not pull the
+dimension down. Its weight is redistributed across the slots that did resolve,
+so the dimension moves toward whatever survived. Withholding a slot is
+therefore never automatically the cautious choice — it raises the score
+whenever the withheld slot would have read below its siblings.
+
+### Coverage
+
+How much of a dimension's *designed* evidence actually resolved, expressed on
+the same scale for every dimension so sparsely-observed countries are
+distinguishable from well-observed ones.
+
+Coverage is measured against the weights the dimension was designed with, not
+against the weight that happened to resolve — which is what makes it meaningful
+at all. Because the score renormalises onto surviving slots and coverage does
+not, the two can move in opposite directions: a country losing an input can show
+a rising score and a falling coverage in the same response. When they disagree,
+coverage is the one describing the evidence.
+
+### Imputation Class
+
+The typed reason a slot carries an inferred value rather than an observed one.
+The distinction is the point: "we do not measure here", "the phenomenon is
+genuinely absent", "this indicator does not apply to this country", and "the
+source failed" are four different claims that would otherwise all appear as a
+missing number, and they justify very different scores. A country nobody
+surveys must not be scored like a country where the thing being measured
+verifiably does not happen.
+
+## Seed Bundle Orchestration
+
+### Bundle Wall Budget
+
+The total wall-clock time one bundle tick may occupy, chosen to sit below the
+container's hard kill so a member is shed cleanly instead of being killed
+mid-publish.
+
+The budget only shapes anything while it stays under that kill; at or above it
+the container dies first and the budget is decorative. Every member must fit the
+budget outright — a member whose worst case cannot fit is not under pressure, it
+can never run at all, which is a configuration error rather than load.
+
+### Section Worst Case
+
+The longest wall-clock a member can occupy: its own timeout plus the grace the
+runner allows between asking a child to stop and forcing it.
+
+Distinct from expected runtime, which is usually far smaller. Admission is
+decided on the worst case, so an over-declared timeout costs the bundle budget
+the member will never actually spend.
+
+### Admission Headroom
+
+Slack reserved above a member's worst case to cover the work the runner itself
+performs before it admits anything.
+
+Load-bearing rather than defensive: the runner's freshness checks run before the
+budget test, so the budget is already partly spent when the first member is
+considered. Deriving this from the runner's own per-check bound, rather than
+choosing a number, is what keeps the admission rule and the runtime rule from
+drifting apart — when they drift, the admission rule accepts a band of
+configurations the runtime rejects on every tick.
+
+### Section Deferral
+
+A due member skipped for lack of remaining budget on this tick, expected to run
+on a later one.
+
+Deferral is load-shedding, not failure — but it only pays for itself if the
+member eventually runs. A member deferred on every tick is a stall wearing
+deferral's clothing, and telling those two apart is the whole reason this
+vocabulary exists.
+
+### Graceful Skip
+
+A member that hit a transient upstream failure, extended its last-good data
+instead of publishing, and lost nothing.
+
+It must not crash the bundle: one rate-limited source firing a deploy-crash
+alert is the alert fatigue that makes the alarm worthless. Real staleness is
+caught by freshness monitoring on the published data, never by the tick's exit
+status.
+
+### Starved Tick
+
+A tick that completed no member while deferring due work — it published nothing
+and shed work at the same time.
+
+Indistinguishable from a healthy no-op by exit status alone, which is why it is
+named and reported explicitly. A tick where every member was merely fresh is a
+healthy no-op and must not be confused with it.
+
+## Market Data Claims
+
+### Tape Claim
+
+The label a market surface is allowed to show for a quote, bar, or stream: unconfigured, delayed, end-of-day, historical, stale, or — only after a separate commercial display/rebroadcast confirmation — licensed live. A configured provider key is not a Tape Claim. `Panel.setDataBadge('live')` means a fresh fetch versus a cache hit, not a licensed tape. Yahoo and seeded Finnhub quotes in this product stay delayed or end-of-day even when their keys exist. See also: Entitlement.
 
 ## Flagged ambiguities
 

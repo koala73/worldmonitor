@@ -16,6 +16,7 @@ import {
   GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES,
   RATE_LIMIT_DEGRADED_HEADERS,
   UNKNOWN_CLIENT_IP,
+  __ENDPOINT_LIMITER_DEADLINES_FOR_TEST,
   __resetRateLimitForTest,
   checkEndpointRateLimit,
   checkFailClosedScopedIpRateLimit,
@@ -23,9 +24,10 @@ import {
   checkScopedRateLimit,
   getClientIp,
   rateLimitErrorLevel,
+  rateLimitFingerprintStage,
 } from '../server/_shared/rate-limit.ts';
 // @ts-expect-error — JS module, no declaration file
-import { rateLimitErrorLevel as apiRateLimitErrorLevel } from '../api/_rate-limit.js';
+import { rateLimitErrorLevel as apiRateLimitErrorLevel, rateLimitFingerprintStage as apiRateLimitFingerprintStage } from '../api/_rate-limit.js';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -307,6 +309,63 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     );
   });
 
+  it('gateway reverse-geocode RPC is a Nominatim provider route with a matched 60/min fail-closed policy (#6432)', async () => {
+    // #6432 — the second Nominatim caller. The legacy edge route carries a
+    // per-IP 60/min budget (#6234); this RPC must carry the same policy or it
+    // silently inherits the gateway's 600/min availability-first fallback,
+    // leaving half the egress exposure open. Since the RPC has no handler --
+    // checkEndpointRateLimit runs in the gateway before any route logic -- the
+    // policy is the whole metering, so assert it stays registered, stays in
+    // the fail-closed requirement, and degrades to 503.
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    const mod = await importFreshRateLimitModule();
+    const pathname = '/api/infrastructure/v1/reverse-geocode';
+
+    assert.deepEqual(ENDPOINT_RATE_POLICIES[pathname], { limit: 60, window: '60 s' });
+    assert.ok(
+      pathname in FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED,
+      'reverse-geocode RPC must stay in the fail-closed requirement registry — a Redis outage must 503, not inherit the fail-open 600/min fallback',
+    );
+
+    const res = await mod.checkEndpointRateLimit(
+      makeRequest({ 'cf-connecting-ip': '203.0.113.7' }),
+      pathname,
+      { 'Access-Control-Allow-Origin': 'https://worldmonitor.app' },
+    );
+
+    assert.ok(res, 'expected reverse-geocode RPC policy to fail closed without Redis config');
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+
+    process.env.WORLDMONITOR_VALID_KEYS = 'reverse-geocode-gateway-test-key';
+    __resetRateLimitForTest();
+    const { createDomainGateway } = await import('../server/gateway.ts');
+    let handlerCalls = 0;
+    const gateway = createDomainGateway([{
+      method: 'GET',
+      path: pathname,
+      handler: async () => {
+        handlerCalls += 1;
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      },
+    }]);
+    const gatewayRes = await gateway(new Request(
+      `https://worldmonitor.app${pathname}?lat=40.7&lon=-74.0`,
+      {
+        headers: {
+          Origin: 'https://worldmonitor.app',
+          'X-WorldMonitor-Key': 'reverse-geocode-gateway-test-key',
+          'x-real-ip': '203.0.113.7',
+        },
+      },
+    ));
+
+    assert.equal(gatewayRes.status, 503);
+    assert.equal(gatewayRes.headers.get('X-RateLimit-Mode'), 'degraded');
+    assert.equal(handlerCalls, 0, 'the gateway must reject before route execution');
+  });
+
   it('paid-provider market routes each have explicit fail-closed policies (#6236)', async () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -430,8 +489,19 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
 
     assert.match(src, /import\s+\{\s*captureSilentError\s+\}\s+from\s+['"]\.\.\/\.\.\/api\/_sentry-edge\.js['"]/);
     assert.match(src, /captureSilentError\(err,\s*\{/);
-    assert.match(src, /surface:\s*'server'/);
-    assert.match(src, /fingerprint:\s*\['rate-limit',\s*'redis-error',\s*stage\]/);
+    assert.match(src, /surface:\s*'api'\s*\|\s*'server'\s*=\s*'server'/);
+    assert.match(src, /tags:\s*\{\s*surface,\s*component:\s*'rate-limit'/);
+    // Group on the collapsed stage, never the raw one. The raw `stage` embeds
+    // the caller's pathname, so using it here mints one Sentry issue per route
+    // for a single Redis slowdown (#6454). The semantics of the collapse are
+    // covered directly by the rateLimitFingerprintStage unit tests below; this
+    // assertion only pins that the capture routes through it.
+    assert.match(src, /fingerprint:\s*\['rate-limit',\s*'redis-error',\s*rateLimitFingerprintStage\(stage\)\]/);
+    assert.doesNotMatch(
+      src,
+      /fingerprint:\s*\['rate-limit',\s*'redis-error',\s*stage\]/,
+      'the raw stage must not be used as a fingerprint — it is high-cardinality and fragments grouping per route',
+    );
     assert.match(src, /lastRateLimitSentryCaptureAt\.get\(stage\)/);
     assert.match(src, /lastCaptureAt !== undefined && now - lastCaptureAt < RATE_LIMIT_SENTRY_DEDUP_MS/);
   });
@@ -530,6 +600,11 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       reason: 'MCP proxy is already premium-auth gated; scoped limit degradation is logged and remains availability-first',
     },
     {
+      path: 'api/skills/fetch-agentskills.ts',
+      expected: /Redis-degraded scoped limits intentionally stay availability-first/,
+      reason: 'agent-skills import proxy fetches one public host behind a fixed allowlist and is called by the settings importer - degradation is logged and stays availability-first',
+    },
+    {
       path: 'api/user-prefs.ts',
       expected: /Redis-degraded scoped limits intentionally fail open for prefs writes/,
       reason: 'cloud prefs writes are low-stakes, so Redis degradation should not block legitimate settings sync',
@@ -564,6 +639,166 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
   });
 });
 
+describe('slow-Redis timeout is degraded, not a silent allow (#6412 review)', () => {
+  // @upstash/ratelimit v2 races the Redis call against its own internal timeout
+  // and RESOLVES `{ success: true, reason: 'timeout' }` instead of rejecting, so
+  // it never reaches a catch block. checkEndpointRateLimit already handled this;
+  // checkScopedRateLimit and api/_rate-limit.js's checkRateLimit did not, which
+  // meant a SLOW (not down) Redis silently dropped the limit on every in-handler
+  // caller with no log, no Sentry event and degraded:false.
+  //
+  // These two tests each wait out the SDK's real 5 s race with a fetch that never
+  // settles — there is no supported seam to shorten it, and a mocked reply cannot
+  // produce `reason: 'timeout'` at all. That cost buys the only coverage of a
+  // fail-open window; keep the generous per-test timeout.
+  const HANG_TEST_TIMEOUT_MS = 20_000;
+
+  let originalFetch: typeof globalThis.fetch;
+  let errorLogs: string[];
+  let originalConsoleError: typeof console.error;
+  let originalUrl: string | undefined;
+  let originalToken: string | undefined;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    originalConsoleError = console.error;
+    originalUrl = process.env.UPSTASH_REDIS_REST_URL;
+    originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    errorLogs = [];
+    console.error = (...args: unknown[]) => { errorLogs.push(args.map(String).join(' ')); };
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+    // Never settles, so the SDK's internal timer wins the race.
+    globalThis.fetch = (() => new Promise(() => {})) as typeof globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    console.error = originalConsoleError;
+    // Restore rather than delete: this block configures Upstash, and sibling
+    // describes in this file assume they own that env.
+    if (originalUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+    if (originalToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+    __resetRateLimitForTest();
+  });
+
+  it('checkScopedRateLimit reports a timed-out decision as degraded', { timeout: HANG_TEST_TIMEOUT_MS }, async () => {
+    const result = await checkScopedRateLimit('timeout-probe', 30, '60 s', '203.0.113.77');
+
+    assert.equal(result.allowed, true, 'availability-first: the caller is still allowed through');
+    assert.equal(
+      result.degraded,
+      true,
+      'a timed-out limiter decision is an unmetered window, not a genuine allow — callers gating on degraded must be able to see it',
+    );
+    assert.ok(
+      errorLogs.some((l) => l.includes('[rate-limit] redis-error') && l.includes('timed out')),
+      `the bypass window must be visible in logs: ${errorLogs.join(' | ')}`,
+    );
+  });
+
+  it('checkRateLimit (api/_rate-limit.js) fails closed on a timed-out decision when asked to', { timeout: HANG_TEST_TIMEOUT_MS }, async () => {
+    const { checkRateLimit: apiCheckRateLimit, __resetRateLimitForTest: resetApi } = await import('../api/_rate-limit.js');
+    try {
+      const req = new Request('https://api.worldmonitor.app/api/anything', {
+        headers: { 'x-real-ip': '203.0.113.78' },
+      });
+      const res = await apiCheckRateLimit(req, {}, { failClosed: true, scope: 'timeout-probe-api', limit: 30, window: '60 s' });
+
+      assert.ok(res, 'a failClosed caller must not be waved through on a timed-out decision');
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+      assert.ok(
+        errorLogs.some((l) => l.includes('[rate-limit] redis-error') && l.includes('timed out')),
+        `the bypass window must be visible in logs: ${errorLogs.join(' | ')}`,
+      );
+    } finally {
+      resetApi();
+    }
+  });
+});
+
+describe('legacy edge-function rate-limit policy mirrors (#6234)', () => {
+  // `api/*.js` edge functions are self-contained JS and cannot import
+  // `../server/` (AGENTS.md, enforced by scripts/lint-boundaries.mjs and the
+  // pre-push esbuild check). So unlike api/mcp-proxy.ts, which reads
+  // ENDPOINT_RATE_POLICIES at module load, these handlers duplicate their
+  // budget as a literal constant and enforce it via api/_rate-limit.js.
+  //
+  // Without this test the registry entry would be decorative: the audit script
+  // (scripts/enforce-rate-limit-policies.mjs) and docs/usage-rate-limits.mdx
+  // would advertise a number no handler enforces, which is exactly the
+  // declare-vs-serve divergence the repo treats as a defect class.
+  const MIRRORED_JS_POLICIES = [
+    { path: 'api/youtube/live.js', route: '/api/youtube/live', scope: 'youtube-live' },
+    { path: 'api/reverse-geocode.js', route: '/api/reverse-geocode', scope: 'reverse-geocode' },
+  ];
+
+  for (const { path, route, scope } of MIRRORED_JS_POLICIES) {
+    it(`${path} enforces the ENDPOINT_RATE_POLICIES['${route}'] budget`, async () => {
+      const fs = await import('node:fs');
+      const src = fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+      const policy = ENDPOINT_RATE_POLICIES[route];
+      assert.ok(policy, `${route} must stay in ENDPOINT_RATE_POLICIES`);
+
+      const limitMatch = src.match(/const RATE_LIMIT_PER_MINUTE = (\d+);/);
+      assert.ok(limitMatch, `${path} must declare a RATE_LIMIT_PER_MINUTE constant`);
+      assert.equal(
+        Number(limitMatch[1]),
+        policy.limit,
+        `${path} enforces ${limitMatch[1]}/min but ENDPOINT_RATE_POLICIES['${route}'] declares ${policy.limit} — api/*.js cannot import server/_shared/rate-limit.ts, so the budget must be updated in both places`,
+      );
+      assert.equal(
+        policy.window,
+        '60 s',
+        `${route} must stay on a 60 s window while ${path} hard-codes a per-minute budget`,
+      );
+
+      const scopeMatch = src.match(/const RATE_LIMIT_SCOPE = '([^']+)';/);
+      assert.ok(scopeMatch, `${path} must declare a RATE_LIMIT_SCOPE constant`);
+      assert.equal(
+        scopeMatch[1],
+        scope,
+        `${path} rate-limit scope changed — Redis keys are prefixed rl:<scope>, so renaming it silently resets every caller's window`,
+      );
+
+      // Assert the WIRING, not just the declarations. A bare /checkRateLimit\(/
+      // presence check proves neither constant reaches the call: dropping
+      // `limit:` makes api/_rate-limit.js apply `opts.limit ?? DEFAULT_RATE_LIMIT`
+      // (600/min — a 20x silent widening) and dropping `scope:` moves the route
+      // into the shared `rl` global bucket, both while the two constants sit
+      // there unused and every assertion above still passes. Match the option
+      // keys inside the call so the registry entry cannot become decorative.
+      // (#6412 review)
+      const callMatch = src.match(/checkRateLimit\(\s*\w+\s*,\s*\w+\s*,\s*\{([\s\S]*?)\}\s*\)/);
+      assert.ok(callMatch, `${path} must call checkRateLimit with an explicit options object`);
+      const callOptions = callMatch[1] ?? '';
+      assert.match(
+        callOptions,
+        /\blimit:\s*RATE_LIMIT_PER_MINUTE\b/,
+        `${path} must pass limit: RATE_LIMIT_PER_MINUTE to checkRateLimit — without it the call silently falls back to the 600/min global default and the registry entry is decorative`,
+      );
+      assert.match(
+        callOptions,
+        /\bscope:\s*RATE_LIMIT_SCOPE\b/,
+        `${path} must pass scope: RATE_LIMIT_SCOPE to checkRateLimit — without it the route shares the global 'rl' bucket instead of rl:${scope}`,
+      );
+      assert.match(
+        callOptions,
+        /\bwindow:\s*'60 s'/,
+        `${path} must pass window: '60 s' to checkRateLimit so the enforced window matches ENDPOINT_RATE_POLICIES['${route}']`,
+      );
+      assert.match(
+        callOptions,
+        /\bctx\b/,
+        `${path} must forward ctx to checkRateLimit so the degraded-path Sentry envelope survives isolate teardown`,
+      );
+    });
+  }
+});
+
 describe('rate-limit constants', () => {
   it('exposes the degraded marker shape both surfaces depend on', () => {
     assert.equal(RATE_LIMIT_DEGRADED_HEADERS['X-RateLimit-Mode'], 'degraded');
@@ -572,6 +807,82 @@ describe('rate-limit constants', () => {
 
   it('UNKNOWN_CLIENT_IP is the literal "unknown" so the api/ mirror stays string-equal', () => {
     assert.equal(UNKNOWN_CLIENT_IP, 'unknown');
+  });
+
+  // The abort deadline and the SDK decision deadline are a pair, and their
+  // test-context gap is what makes 'abort a stalled Redis fetch before failing
+  // closed (#6236)' deterministic rather than a coin flip. The abort signal is
+  // armed lazily -- the Upstash client calls the `signal` factory only when it
+  // builds the request -- so the gap has to cover that arming cost, measured at
+  // 8-71ms on an idle machine. The original 25/20 pair left 1.1ms at worst.
+  it('keeps the Redis abort deadline far enough ahead of the limiter decision (#6236)', () => {
+    const { decisionMs, abortMs } = __ENDPOINT_LIMITER_DEADLINES_FOR_TEST;
+    assert.ok(abortMs > 0, 'the Upstash fetch abort deadline must stay armed');
+    assert.ok(
+      decisionMs - abortMs >= 100,
+      `the abort must fire well before the decision resolves; gap is ${decisionMs - abortMs}ms`,
+    );
+  });
+});
+
+describe('rateLimitFingerprintStage — Sentry grouping for a degraded limiter (#6454)', () => {
+  // Both copies must agree; api/_rate-limit.js is the byte-mirror of the .ts one.
+  const IMPLS: Array<[string, (stage: string) => string]> = [
+    ['server/_shared/rate-limit.ts', rateLimitFingerprintStage],
+    ['api/_rate-limit.js', apiRateLimitFingerprintStage],
+  ];
+
+  for (const [name, fn] of IMPLS) {
+    it(`${name}: strips the per-caller token so one incident is one issue`, () => {
+      // The bug: `stage` embeds the pathname, and it was used verbatim as the
+      // fingerprint, so a single Redis slowdown opened one issue per route.
+      assert.equal(fn('checkEndpointRateLimit:/api/market/v1/list-market-quotes'), 'checkEndpointRateLimit');
+      assert.equal(fn('checkEndpointRateLimit:/api/military/v1/get-aircraft-details-batch'), 'checkEndpointRateLimit');
+      assert.equal(
+        fn('checkEndpointRateLimit:/api/market/v1/list-market-quotes'),
+        fn('checkEndpointRateLimit:/api/military/v1/get-aircraft-details-batch'),
+        'two routes failing the same way must land in the same Sentry issue',
+      );
+      assert.equal(fn('checkScopedRateLimit:/api/skills/fetch-agentskills'), 'checkScopedRateLimit');
+    });
+
+    it(`${name}: keeps failure-mode suffixes, which are a closed set`, () => {
+      // These describe HOW the limiter failed, not who called it, so they do not
+      // grow with traffic and each deserves its own issue.
+      assert.equal(fn('checkRateLimit:missing-config'), 'checkRateLimit:missing-config');
+      assert.equal(fn('checkRateLimit:timeout'), 'checkRateLimit:timeout');
+      assert.equal(fn('mcpFreeTierRateLimit:edge-proof'), 'mcpFreeTierRateLimit:edge-proof');
+      assert.equal(fn('checkScopedRateLimit:/api/skills/fetch-agentskills:missing-config'), 'checkScopedRateLimit:missing-config');
+      assert.notEqual(
+        fn('checkRateLimit:timeout'),
+        fn('checkRateLimit:missing-config'),
+        'a slow Redis and an unconfigured Redis are different problems and must not merge',
+      );
+    });
+
+    it(`${name}: passes through a stage with no caller token, and never returns empty`, () => {
+      assert.equal(fn('checkRateLimit'), 'checkRateLimit');
+      assert.equal(fn('checkScopedRateLimit'), 'checkScopedRateLimit');
+      assert.equal(fn(''), 'rate-limit');
+      assert.equal(fn(':missing-config'), 'rate-limit:missing-config');
+    });
+  }
+
+  it('both mirrors agree on every shape', () => {
+    for (const stage of [
+      'checkEndpointRateLimit:/api/a/b/c',
+      'checkScopedRateLimit:/api/skills/fetch-agentskills',
+      'checkScopedRateLimit:/api/x:missing-config',
+      'checkRateLimit:timeout',
+      'checkRateLimit',
+      '',
+    ]) {
+      assert.equal(
+        rateLimitFingerprintStage(stage),
+        apiRateLimitFingerprintStage(stage),
+        `mirrors disagree for stage "${stage}" — operators grep across both surfaces`,
+      );
+    }
   });
 });
 

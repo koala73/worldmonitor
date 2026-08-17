@@ -33,8 +33,10 @@ describe('Python SDK package (sdk/python → PyPI worldmonitor-sdk)', () => {
     assert.equal(modVersion, pkgVersion);
   });
 
-  it('sends a descriptive User-Agent (Cloudflare WAF passes it, not python-urllib)', () => {
-    assert.match(module, /USER_AGENT = "worldmonitor-python\/%s \(\+https:\/\/worldmonitor\.app\)"/);
+  it('sends a self-identifying User-Agent (Cloudflare WAF blocks the python-urllib default)', () => {
+    // Only the two properties the WAF rule depends on: it names the client and
+    // carries the product domain. The exact format string is not a contract.
+    assert.match(module, /USER_AGENT = "worldmonitor-python[^"]*worldmonitor\.app[^"]*"/);
   });
 });
 
@@ -55,8 +57,8 @@ describe('Ruby SDK package (sdk/ruby → gem worldmonitor)', () => {
     assert.match(gemspec, /require_relative "lib\/worldmonitor\/version"/);
   });
 
-  it('sends a descriptive User-Agent', () => {
-    assert.match(lib, /USER_AGENT = "worldmonitor-ruby\/#\{VERSION\} \(\+https:\/\/worldmonitor\.app\)"/);
+  it('sends a self-identifying User-Agent', () => {
+    assert.match(lib, /USER_AGENT = "worldmonitor-ruby[^"]*worldmonitor\.app[^"]*"/);
   });
 });
 
@@ -72,9 +74,8 @@ describe('Go SDK module (sdk/go → pkg.go.dev)', () => {
     assert.match(source, /^const Version = "\d+\.\d+\.\d+"$/m);
   });
 
-  it('documents the product domain and sends a descriptive User-Agent', () => {
-    assert.match(source, /https:\/\/worldmonitor\.app/);
-    assert.match(source, /const UserAgent = "worldmonitor-go\/" \+ Version \+ " \(\+https:\/\/worldmonitor\.app\)"/);
+  it('documents the product domain and sends a self-identifying User-Agent', () => {
+    assert.match(source, /const UserAgent = "worldmonitor-go[\s\S]{0,80}worldmonitor\.app/);
   });
 });
 

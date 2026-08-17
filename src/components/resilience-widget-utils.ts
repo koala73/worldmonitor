@@ -40,6 +40,19 @@ const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE_IDS: ReadonlySet<string> = ne
   'sovereignFiscalBuffer',
 ]);
 
+// Client mirror of `RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE`. A disabled
+// construct stays serialized for schema continuity but is not part of the
+// active coverage universe. The parity test below keeps this set synchronized
+// with the server.
+//
+// `education` stays in this set after activation because its explicit
+// RESILIENCE_EDUCATION_ENABLED=false rollback still serializes the unique
+// triple-zero dark shape. Active observations and source failures carry weight,
+// so they automatically remain in the coverage mean.
+const RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE_IDS: ReadonlySet<string> = new Set([
+  'education',
+]);
+
 // Mirrors server/worldmonitor/resilience/v1/_shared.ts. Keep this table
 // in sync so the widget Coverage % matches API overallCoverage semantics;
 // tests/resilience-staleness-factor-parity.test.mts guards drift.
@@ -54,8 +67,8 @@ const STALENESS_CONFIDENCE_COVERAGE_FACTOR: Readonly<Record<string, number>> = {
 // visible to non-entitled users. The preview is blurred and
 // non-interactive via the .resilience-widget__preview CSS class, so
 // the exact values do not need to match any real country. They just
-// need to populate the 6 domain bars AND the 22-cell serialized
-// per-dimension confidence grid (20 active + 2 retired) with
+// need to populate the 6 domain bars AND the 23-cell serialized
+// per-dimension confidence grid (21 active + 2 retired) with
 // realistic-looking data so the gated card is not a blank gap. Raised
 // in PR #2949 review. Lives in this
 // dependency-free utils module so tests can import it without
@@ -117,6 +130,11 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
         { id: 'socialCohesion', score: 72, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: 'stable-absence', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
         { id: 'borderSecurity', score: 68, coverage: 0.75, observedWeight: 0.75, imputedWeight: 0.25, imputationClass: 'unmonitored', freshness: { lastObservedAtMs: LOCKED_PREVIEW_AGING_AT_MS, staleness: 'aging' } },
         { id: 'informationCognitive', score: 66, coverage: 0.82, observedWeight: 0.82, imputedWeight: 0.18, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        // LOCKED_PREVIEW is the blurred teaser grid, not a mirror of live
+        // state — every non-retired cell carries populated values so the
+        // preview renders meaningfully. Coverage 0.92 reflects the series'
+        // real 181/196 reach for when the flag flips.
+        { id: 'education', score: 71, coverage: 0.92, observedWeight: 0.92, imputedWeight: 0.08, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
       ],
     },
     {
@@ -347,6 +365,12 @@ export function formatResilienceConfidence(data: ResilienceScoreResponse): strin
           (dim.observedWeight ?? 0) === 0 &&
           (dim.imputedWeight ?? 0) === 0
         ) return false;
+        if (
+          RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE_IDS.has(dim.id) &&
+          dim.coverage === 0 &&
+          (dim.observedWeight ?? 0) === 0 &&
+          (dim.imputedWeight ?? 0) === 0
+        ) return false;
         return true;
       })
       .map((dim) => confidenceCoverage(dim)),
@@ -457,6 +481,7 @@ const DIMENSION_LABELS: Record<string, string> = {
   // displacement, not border infrastructure. Surface the truthful label.
   borderSecurity: 'Conflict',
   informationCognitive: 'Info',
+  education: 'Edu',
   healthPublicService: 'Health',
   foodWater: 'Food',
   fiscalSpace: 'Fiscal',
@@ -466,7 +491,7 @@ const DIMENSION_LABELS: Record<string, string> = {
   stateContinuity: 'Continuity',
   fuelStockDays: 'Fuel',
   // PR 2 §3.4 — new active dimensions. Labels chosen to stay short
-  // enough for the 20-active/22-serialized-cell confidence grid
+  // enough for the 21-active/23-serialized-cell confidence grid
   // without leaking the internal ID. "Reserves" is already taken by the retired
   // reserveAdequacy so the replacement disambiguates with "Liquid".
   liquidReserveAdequacy: 'Liquid Reserves',

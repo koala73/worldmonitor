@@ -583,10 +583,15 @@ export class InsightsPanel extends Panel {
 
       const badges: string[] = [];
 
-      if (story.sourceCount >= 3) {
-        badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: story.sourceCount })}</span>`);
-      } else if (story.sourceCount >= 2) {
-        badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: story.sourceCount })}</span>`);
+      // #6428: the "✓ N sources" badge is a corroboration claim, so it counts
+      // PUBLISHERS. story.sourceCount is the article count — nine reprints of
+      // one wire across one newsroom's feeds rendered "✓ 9 sources". Fail
+      // closed on a pre-#6428 cached payload rather than fall back to it.
+      const storyPublishers = story.uniqueSourceCount ?? 0;
+      if (storyPublishers >= 3) {
+        badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: storyPublishers })}</span>`);
+      } else if (storyPublishers >= 2) {
+        badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: storyPublishers })}</span>`);
       }
 
       if (story.isAlert) {
@@ -712,10 +717,12 @@ export class InsightsPanel extends Panel {
         badges.push(`<span class="insight-badge ${cls}">${isq.tier.toUpperCase()}</span>`);
       }
 
-      if (cluster.sourceCount >= 3) {
-        badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: cluster.sourceCount })}</span>`);
-      } else if (cluster.sourceCount >= 2) {
-        badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: cluster.sourceCount })}</span>`);
+      // #6428: publishers, not articles — see renderServerStories above.
+      const clusterPublishers = cluster.uniquePublisherCount ?? 0;
+      if (clusterPublishers >= 3) {
+        badges.push(`<span class="insight-badge confirmed">✓ ${t('components.insights.sources', { count: clusterPublishers })}</span>`);
+      } else if (clusterPublishers >= 2) {
+        badges.push(`<span class="insight-badge multi">${t('components.insights.sources', { count: clusterPublishers })}</span>`);
       }
 
       if (cluster.velocity && cluster.velocity.level !== 'normal') {
@@ -781,7 +788,10 @@ export class InsightsPanel extends Panel {
   }
 
   private renderStats(clusters: ClusteredEvent[]): string {
-    const multiSource = clusters.filter(c => c.sourceCount >= 2).length;
+    // #6428: "MULTI-SOURCE" counts clusters carried by 2+ PUBLISHERS. Keyed
+    // on sourceCount it counted 2+ ARTICLES, so one outlet publishing a story
+    // twice — or two of its own feeds carrying it — read as multi-source.
+    const multiSource = clusters.filter(c => (c.uniquePublisherCount ?? 0) >= 2).length;
     const fastMoving = clusters.filter(c => c.velocity && c.velocity.level !== 'normal').length;
     const alerts = clusters.filter(c => c.isAlert).length;
 

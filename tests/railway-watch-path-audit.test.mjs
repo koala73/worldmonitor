@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -68,6 +68,65 @@ const INSTALL_MANIFESTS = Object.freeze([
   'package-lock.json',
 ]);
 
+// Dockerfile.relay derives this ignored runtime artifact from authoritative
+// registries. These are build inputs, not runtime imports. Keep the list closed
+// so broad wildcards cannot silently expand the relay's deployment surface.
+const RELAY_INVENTORY_BUILD_INPUTS = Object.freeze([
+  'scripts/docs-stats.mjs',
+  'scripts/generate-inventory-facts.mjs',
+  'scripts/source-attribution.mjs',
+  'shared/source-attribution-manifest.json',
+  'public/.well-known/mcp/server-card.json',
+  'src/components/**/*.ts',
+  'src/config/feeds.ts',
+  'src/config/map-layer-definitions.ts',
+  'src/config/variants/*.ts',
+  'src/locales/*.json',
+  'src/services/data-freshness.ts',
+]);
+const RELAY_GENERATED_RUNTIME_OUTPUT = 'scripts/shared/inventory-facts.generated.json';
+
+function pathPatternMatches(pattern, path) {
+  let expression = '';
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+    if (char !== '*') {
+      expression += /[.+?^${}()|[\]\\]/u.test(char) ? `\\${char}` : char;
+      continue;
+    }
+    if (pattern[index + 1] === '*') {
+      index += 1;
+      if (pattern[index + 1] === '/') {
+        index += 1;
+        expression += '(?:.*/)?';
+      } else {
+        expression += '.*';
+      }
+    } else {
+      expression += '[^/]*';
+    }
+  }
+  return new RegExp(`^${expression}$`, 'u').test(path);
+}
+
+function patternHasRepositoryMatch(pattern) {
+  if (!pattern.includes('*')) return existsSync(resolve(repoRoot, pattern));
+  const slash = pattern.lastIndexOf('/', pattern.indexOf('*'));
+  const directory = slash === -1 ? '' : pattern.slice(0, slash);
+  return readFilePaths(resolve(repoRoot, directory), directory)
+    .some((path) => pathPatternMatches(pattern, path));
+}
+
+function readFilePaths(directory, relativeDirectory) {
+  const paths = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) paths.push(...readFilePaths(resolve(directory, entry.name), path));
+    else if (entry.isFile()) paths.push(path);
+  }
+  return paths;
+}
+
 /**
  * Which dependency manifests a Dockerfile installs from.
  *
@@ -88,6 +147,14 @@ function manifestsCopiedBy(dockerfileSource) {
   return copied;
 }
 
+function repositoryCopyInputs(dockerfileSource) {
+  const repositoryCopySource = dockerfileSource
+    .split('\n')
+    .filter((line) => !/^COPY\s+--from=/u.test(line))
+    .join('\n');
+  return parseDockerfileCopy(repositoryCopySource);
+}
+
 /**
  * The BUILD inputs a service's closure must name, on top of its runtime graph.
  *
@@ -105,11 +172,19 @@ function buildInputsFor(entry, repoRootDir) {
   }
   if (entry.dockerfile) {
     inputs.add(entry.dockerfile);
-    // Derived from the Dockerfile itself rather than assumed per mode: these
-    // images differ, and one that pins its tooling inline (tsx@x.y.z with
-    // --no-package-lock) genuinely has no manifest dependency to watch.
+    inputs.add('.dockerignore');
     const source = readFileSync(resolve(repoRootDir, entry.dockerfile), 'utf8');
-    for (const manifest of manifestsCopiedBy(source)) inputs.add(manifest);
+    // A repository file copied directly into the image is a build input even
+    // when it is a patch, fixture, declaration, or config that the runtime
+    // import graph cannot see. Stage-to-stage COPY sources are image-local and
+    // must not become repository watch paths.
+    const copied = repositoryCopyInputs(source);
+    for (const file of copied.files) {
+      if (file !== '.') inputs.add(file);
+    }
+    if (/^RUN node scripts\/generate-inventory-facts\.mjs$/mu.test(source)) {
+      for (const file of RELAY_INVENTORY_BUILD_INPUTS) inputs.add(file);
+    }
   }
   return inputs;
 }
@@ -737,7 +812,17 @@ describe('planned Railway service lifecycle', () => {
   };
 
   it('keeps unprovisioned standalone seeders explicitly planned', () => {
+    // An exact list, not a predicate: `planned` removes an entry from the live
+    // audit AND from `--apply`, so every addition has to be a decision somebody
+    // made rather than a way to quiet a red gate.
+    //
     const expectedPlannedServices = [
+      // seed-bundle-canada is deliberately ABSENT now: all six members merged
+      // (#6669, #6672, #6674 and the roads stack) and the Railway service was
+      // provisioned, so it is a live cron and belongs in the audit. Leaving it
+      // planned would exempt the one service most likely to drift — six member
+      // scripts behind a single */5 cron — from the watch-path and deploy-drift
+      // checks that exist to catch exactly that.
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',
@@ -762,6 +847,18 @@ describe('planned Railway service lifecycle', () => {
       ),
       [],
     );
+  });
+
+  it('does not attach watchPatterns to planned seed-weather-alerts (no dual-SET of weather:alerts:v1)', () => {
+    const weather = RAILWAY_SERVICE_REGISTRY.find((entry) => entry.service === 'seed-weather-alerts');
+    assert.ok(weather, 'seed-weather-alerts must remain in the Railway registry');
+    assert.equal(weather.lifecycle, 'planned');
+    assert.equal(
+      Object.hasOwn(weather, 'watchPatterns'),
+      false,
+      'watchPatterns on a planned seeder is a dual-SET footgun; live writer is ais-relay only',
+    );
+    assert.equal(Object.hasOwn(weather, 'cronSchedule'), false);
   });
 
   it('does not report an intentionally absent planned service', () => {
@@ -1042,6 +1139,12 @@ describe('audit CLI argument parsing', () => {
 // behaviour directly, so a broken detector fails here rather than passing a
 // co-evolved comparison.
 describe('closure detection layers', () => {
+  it('matches recursive relay inventory inputs at the component root and below it', () => {
+    assert.equal(pathPatternMatches('src/components/**/*.ts', 'src/components/NewsPanel.ts'), true);
+    assert.equal(pathPatternMatches('src/components/**/*.ts', 'src/components/map/NestedPanel.ts'), true);
+    assert.equal(pathPatternMatches('src/components/**/*.ts', 'src/components/map/NestedPanel.css'), false);
+  });
+
   const registry = RAILWAY_SERVICE_REGISTRY;
 
   describe('the container model derived from a Dockerfile', () => {
@@ -1119,25 +1222,37 @@ describe('closure detection layers', () => {
       );
     });
 
-    it('gives a Dockerfile service its Dockerfile plus only the manifests it copies', () => {
+    it('gives a Dockerfile service its definition plus every direct file input', () => {
       const relay = [...buildInputsFor(
         { deployMode: 'dockerfile', dockerfile: 'Dockerfile.relay' },
         repoRoot,
       )].sort();
-      assert.deepEqual(relay, [
-        'Dockerfile.relay',
-        'scripts/package-lock.json',
-        'scripts/package.json',
-      ]);
+      const relaySource = readFileSync(resolve(repoRoot, 'Dockerfile.relay'), 'utf8');
+      const copied = repositoryCopyInputs(relaySource);
+      copied.files.delete('.');
+      assert.deepEqual(
+        relay,
+        [
+          '.dockerignore',
+          'Dockerfile.relay',
+          ...copied.files,
+          ...RELAY_INVENTORY_BUILD_INPUTS,
+        ].sort(),
+      );
 
-      // The contrast case, in the same test so the two cannot drift apart: an
-      // image that installs nothing from a manifest gets only its Dockerfile.
+      // Directory sources are verified through the runtime-surface walk. Exact
+      // config files copied beside them are build inputs in their own right.
       assert.deepEqual(
         [...buildInputsFor(
           { deployMode: 'dockerfile', dockerfile: 'Dockerfile.seed-bundle-resilience-validation' },
           repoRoot,
-        )],
-        ['Dockerfile.seed-bundle-resilience-validation'],
+        )].sort(),
+        [
+          '.dockerignore',
+          'Dockerfile.seed-bundle-resilience-validation',
+          'tsconfig.api.json',
+          'tsconfig.json',
+        ],
       );
     });
   });
@@ -1222,13 +1337,21 @@ describe('critical ingestion Railway registry contract', () => {
   const closureManaged = managedRailwayServices(registry)
     .filter((entry) => Array.isArray(entry.watchPatterns) && entry.watchPatterns.length > 0);
 
-  it('audit-manages the always-on Umami collector with whole-repository rebuilds', () => {
+  it('audit-manages the always-on Umami collector with its exact image inputs', () => {
     const collector = registry.find((entry) => entry.service === 'umami');
     assert.ok(collector, 'umami must be registered');
+
+    const dockerfileSource = readFileSync(resolve(repoRoot, collector.dockerfile), 'utf8');
+    const copied = repositoryCopyInputs(dockerfileSource);
     assert.deepEqual(
-      collector.watchPatterns,
+      [...copied.directories],
       [],
-      'empty watch paths intentionally rebuild Umami for any repository change',
+      'directory COPY inputs need an explicit recursive watch-path contract',
+    );
+    assert.deepEqual(
+      [...collector.watchPatterns].sort(),
+      ['.dockerignore', collector.dockerfile, ...copied.files].sort(),
+      'Umami must rebuild for every repository input copied into its image, and only those inputs',
     );
     assert.ok(
       managedRailwayServices(registry).includes(collector),
@@ -1238,7 +1361,7 @@ describe('critical ingestion Railway registry contract', () => {
     const liveCollector = service({
       cronSchedule: null,
       dockerfilePath: 'Dockerfile.umami',
-      watchPatterns: [],
+      watchPatterns: [...collector.watchPatterns],
       variables: { DATABASE_URL: 'postgres://configured' },
     });
     const drift = auditRailwayServiceConfig(
@@ -1284,9 +1407,15 @@ describe('critical ingestion Railway registry contract', () => {
       assert.ok(!entry.watchPatterns.includes('scripts/**'), `${serviceName} must not watch every seeder`);
       assert.ok(!entry.watchPatterns.includes('shared/**'), `${serviceName} must not watch all shared data`);
       for (const watchedPath of entry.watchPatterns) {
-        assert.ok(!watchedPath.includes('*'), `${serviceName} must use exact watch paths`);
+        if (watchedPath.includes('*')) {
+          assert.equal(
+            serviceName === 'ais-relay' && RELAY_INVENTORY_BUILD_INPUTS.includes(watchedPath),
+            true,
+            `${serviceName} may use only closed inventory-builder globs`,
+          );
+        }
         assert.ok(
-          existsSync(resolve(repoRoot, watchedPath)),
+          patternHasRepositoryMatch(watchedPath),
           `${serviceName} watchPatterns references missing ${watchedPath}`,
         );
       }
@@ -1300,7 +1429,8 @@ describe('critical ingestion Railway registry contract', () => {
 
       const watched = new Set(entry.watchPatterns);
       const missingRuntimeFiles = [...runtimeFiles]
-        .filter((file) => !watched.has(file))
+        .filter((file) => file !== RELAY_GENERATED_RUNTIME_OUTPUT || serviceName !== 'ais-relay')
+        .filter((file) => ![...watched].some((pattern) => pathPatternMatches(pattern, file)))
         .sort();
       assert.deepEqual(
         missingRuntimeFiles,

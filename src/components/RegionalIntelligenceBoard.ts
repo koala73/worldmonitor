@@ -298,15 +298,15 @@ export class RegionalIntelligenceBoard extends Panel {
   }
 
   private renderLoading(): void {
-    setTrustedHtml(this.body, trustedHtml('<div class="rib-status" style="padding:16px;color:var(--text-dim);font-size:12px">Loading regional intelligence…</div>', "legacy direct innerHTML migration"));
+    setTrustedHtml(this.body, trustedHtml('<div class="rib-status" style="padding:16px;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">Loading regional intelligence…</div>', "legacy direct innerHTML migration"));
   }
 
   private renderEmpty(): void {
-    setTrustedHtml(this.body, trustedHtml('<div class="rib-status" style="padding:16px;color:var(--text-dim);font-size:12px">Regional intelligence is being refreshed. Try selecting another region above.</div>', "legacy direct innerHTML migration"));
+    setTrustedHtml(this.body, trustedHtml('<div class="rib-status" style="padding:16px;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">Regional intelligence is being refreshed. Try selecting another region above.</div>', "legacy direct innerHTML migration"));
   }
 
   private renderError(message: string): void {
-    setTrustedHtml(this.body, trustedHtml(`<div class="rib-status rib-status-error" style="padding:16px;color:var(--danger);font-size:12px">We couldn't load this region right now: ${escapeHtml(message)}</div>`, "legacy direct innerHTML migration"));
+    setTrustedHtml(this.body, trustedHtml(`<div class="rib-status rib-status-error" style="padding:16px;color:var(--danger);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">We couldn't load this region right now: ${escapeHtml(message)}</div>`, "legacy direct innerHTML migration"));
   }
 
   /** Render the full board HTML from a hydrated snapshot + optional Phase 3 data.
@@ -323,7 +323,7 @@ export class RegionalIntelligenceBoard extends Panel {
     if (fallbackFrom) {
       const requestedLabel = BOARD_REGIONS.find(r => r.id === fallbackFrom)?.label ?? fallbackFrom;
       const actualLabel = BOARD_REGIONS.find(r => r.id === snapshot.regionId)?.label ?? snapshot.regionId;
-      html += `<div class="rib-fallback-notice" style="padding:10px 16px;margin:0 0 8px;background:var(--bg-elevated,rgba(255,255,255,0.04));border-left:3px solid var(--warning,#d4a015);font-size:12px;color:var(--text-dim);line-height:1.5">${escapeHtml(requestedLabel)} is being refreshed — showing ${escapeHtml(actualLabel)} in the meantime.</div>`;
+      html += `<div class="rib-fallback-notice" style="padding:10px 16px;margin:0 0 8px;background:var(--bg-elevated,rgba(255,255,255,0.04));border-left:3px solid var(--warning,#d4a015);font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);line-height:1.5">${escapeHtml(requestedLabel)} is being refreshed — showing ${escapeHtml(actualLabel)} in the meantime.</div>`;
     }
     html += buildBoardHtml(snapshot);
     // Phase 3 blocks: only render when the RPC succeeded (non-null).

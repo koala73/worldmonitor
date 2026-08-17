@@ -31,9 +31,10 @@
 // measurement above is what they look like working — and clearing them rebuilds
 // all 77 services on every merge for no gain in the tail that matters.
 //
-// It does not re-trigger a build that Railway already ran and FAILED. That is a
-// real failure that scripts/check-railway-deploy-drift.mjs reports; retrying it
-// here would bury the alarm under a retry loop.
+// Ordinary runs do not re-trigger a build that Railway already ran and FAILED.
+// That is a real failure that scripts/check-railway-deploy-drift.mjs reports;
+// retrying it automatically would bury the alarm under a retry loop. A
+// controller-authorized manual recovery may retry that exact failed head once.
 //
 // Usage:
 //   node scripts/trigger-railway-deploys.mjs
@@ -58,7 +59,10 @@ import {
   runRailway,
 } from './railway-cli.mjs';
 import {
+  FAILED_STATUSES,
+  IN_FLIGHT_STATUSES,
   REJECTED_STATUS,
+  RUNNING_STATUSES,
   createFleetAccumulator,
   isKnownStatus,
   newestRunning,
@@ -141,9 +145,10 @@ export const FAILING_ACQUIRE_DEFERRALS = new Set([
 // two days of the busiest cron in the fleet while staying one CLI call.
 export const DEFAULT_DEPLOYMENT_WINDOW = 200;
 
-// A build that is queued, running, finished or even failed for the head commit
-// all mean the same thing here: Railway has taken this commit, so triggering a
-// second build of it would only duplicate work or bury a failure.
+// For ordinary planning, a build that is queued, running, finished or failed
+// for the head commit means Railway has taken it. A controller-authorized
+// recovery treats the newest unresolved FAILED record differently while still
+// adopting active work and a newer running replacement.
 export const HANDLED_BY_RAILWAY = 'ALREADY_TAKEN';
 
 // Deploying is the safe direction, so every "we could not tell" resolves here.
@@ -167,6 +172,7 @@ export function planServiceDeploy({
   headSha,
   changedPathsSince,
   readError = null,
+  retryFailedHead = false,
   // Tri-state: 'yes' | 'no' | 'unknown'. Used to refuse deploying a service
   // BACKWARDS. Defaults to 'unknown', which REFUSES rather than deploys — the
   // one place in this script where uncertainty must not resolve toward
@@ -199,10 +205,11 @@ export function planServiceDeploy({
   // unparseable timestamp sorts oldest rather than producing NaN comparisons.
   const ordered = orderByRecency(deployments);
 
-  // A record for head in a status we RECOGNISE as non-refusal means Railway has
-  // taken this commit — queued it, built it, or built it and failed. This also
-  // subsumes "the service is already running head". SKIPPED is excluded on
-  // purpose: that record IS the refusal this script exists to compensate.
+  // A record for head in a status we RECOGNISE as non-refusal normally means
+  // Railway has taken this commit — queued it, built it, or built it and
+  // failed. This also subsumes "the service is already running head". SKIPPED
+  // is excluded on purpose: that record IS the refusal this script exists to
+  // compensate.
   //
   // "Recognise" is load-bearing. `status !== 'SKIPPED'` treats every UNKNOWN
   // status as handled, and Railway's enum already carries two this file does
@@ -212,9 +219,22 @@ export function planServiceDeploy({
   // trigger never retries — the unmatched case silently meaning HEALTHY, which
   // is the failure this whole change exists to remove.
   const forHead = ordered.filter((deployment) => deployment?.meta?.commitHash === headSha);
-  const taken = forHead.find(
-    (deployment) => deployment.status !== REJECTED_STATUS && isKnownStatus(deployment.status),
-  );
+  const failedHeadIndex = retryFailedHead
+    ? forHead.findIndex((deployment) => FAILED_STATUSES.includes(deployment.status))
+    : -1;
+  const retryingFailedHead = failedHeadIndex >= 0;
+  const failedHeadDetail = `protected recovery is replacing failed ${headSha.slice(0, 9)}`;
+  const taken = retryingFailedHead
+    ? forHead.find((deployment, index) => (
+      // In-flight work is active regardless of creation order. A running
+      // deployment is a replacement only when it is newer than the failure;
+      // an older success does not clear the failed-build alarm.
+      IN_FLIGHT_STATUSES.includes(deployment.status)
+      || (index < failedHeadIndex && RUNNING_STATUSES.includes(deployment.status))
+    ))
+    : forHead.find((deployment) => (
+      deployment.status !== REJECTED_STATUS && isKnownStatus(deployment.status)
+    ));
   if (taken) {
     return {
       ...base,
@@ -240,6 +260,14 @@ export function planServiceDeploy({
 
   const running = newestRunning(ordered);
   if (!running) {
+    if (retryingFailedHead) {
+      return {
+        ...base,
+        action: 'deploy',
+        reason: 'FAILED_HEAD_RETRY',
+        detail: failedHeadDetail,
+      };
+    }
     // Nothing has ever run. That is not a service lagging a merge — it is one
     // that was never started, is stopped, or is provisioned but idle, and
     // starting it is a decision nobody made here. The drift check reports it as
@@ -256,8 +284,10 @@ export function planServiceDeploy({
     return {
       ...base,
       action: 'deploy',
-      reason: 'UNKNOWN_SOURCE',
-      detail: DEPLOY_REASONS.UNKNOWN_SOURCE,
+      reason: retryingFailedHead ? 'FAILED_HEAD_RETRY' : 'UNKNOWN_SOURCE',
+      detail: retryingFailedHead
+        ? failedHeadDetail
+        : DEPLOY_REASONS.UNKNOWN_SOURCE,
     };
   }
   // PROVE forward motion before deploying anything.
@@ -299,6 +329,15 @@ export function planServiceDeploy({
 
   // runningToHead === 'yes': head provably contains what the service runs, so
   // any deploy from here moves it forward.
+  if (retryingFailedHead) {
+    return {
+      ...base,
+      runningSha,
+      action: 'deploy',
+      reason: 'FAILED_HEAD_RETRY',
+      detail: failedHeadDetail,
+    };
+  }
   const changedPaths = changedPathsSince(runningSha);
   if (changedPaths === null) {
     return {
@@ -709,7 +748,13 @@ export async function runLeasedReconcile({
   let operationError = null;
   let completed = null;
   try {
-    const context = await buildPlan();
+    const retryFailedHead = recoveryAttemptId !== null
+      && acquisition.dispatchHold?.recoveryAttemptId === recoveryAttemptId
+      && acquisition.dispatchHold?.headSha === headSha
+      && acquisition.dispatchHold?.state === 'LEASE_ACQUIRED'
+      && acquisition.dispatchHold?.linkedAttemptId === attempt.attemptId
+      && acquisition.dispatchHold?.failedHeadRetryAuthorized === true;
+    const context = await buildPlan({ retryFailedHead });
     const plans = [...context.plans].sort((left, right) => left.service.localeCompare(right.service));
     const intent = createIntentManifest({
       attemptId: attempt.attemptId,
@@ -904,7 +949,13 @@ function printReport(plans, summary, headSha, { dryRun, elapsedMs }) {
   }
 }
 
-async function buildDeployPlanningContext({ environment, window, concurrency, headSha }) {
+async function buildDeployPlanningContext({
+  environment,
+  window,
+  concurrency,
+  headSha,
+  retryFailedHead = false,
+}) {
   const projectId = process.env.RAILWAY_PROJECT_ID;
   if (typeof projectId !== 'string' || projectId.length === 0) {
     throw new Error('RAILWAY_PROJECT_ID is required');
@@ -966,6 +1017,7 @@ async function buildDeployPlanningContext({ environment, window, concurrency, he
     changedPathsSince,
     readError,
     ancestry,
+    retryFailedHead,
   });
   const plans = (await mapWithConcurrency(repositoryServices, concurrency, async (service) => {
     const { deployments, error: readError } = histories.get(service.id)
@@ -1067,11 +1119,19 @@ async function main() {
       recoveryAttemptId,
       producer,
       authorizeCurrent: () => readExactCurrentMainAuthorization({ repository, headSha }),
-      buildPlan: async () => {
+      buildPlan: async ({ retryFailedHead }) => {
         // A runner-less job or a contender rejected by durable admission must
         // perform neither production setup nor Railway reads.
         installPinnedRailwayCli();
-        planningContext = await buildDeployPlanningContext({ environment, window, concurrency, headSha });
+        planningContext = await buildDeployPlanningContext({
+          environment,
+          window,
+          concurrency,
+          headSha,
+          // This capability comes from the immutable admitted hold. Watchdog
+          // recovery IDs do not authorize replacing a failed deployment.
+          retryFailedHead,
+        });
         return planningContext;
       },
       refreshService: (plan) => planningContext.refreshService(plan),

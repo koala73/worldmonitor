@@ -5,11 +5,37 @@ package worldmonitor.market.v1;
 import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
+// How a headline's publish time was mapped onto a US equity trading date.
+// Bookkeeping only — never a claim that the headline moved the tape.
+enum HeadlineAlignmentRule {
+  // Alignment was not attempted, or the publish timestamp was unusable.
+  HEADLINE_ALIGNMENT_RULE_UNSPECIFIED = 0;
+  // Published during the regular session; aligns to that same trading date.
+  HEADLINE_ALIGNMENT_RULE_REGULAR_SESSION_SAME_TRADING_DAY = 1;
+  // Published in pre-market; aligns to that same trading date.
+  HEADLINE_ALIGNMENT_RULE_PREMARKET_SAME_TRADING_DAY = 2;
+  // Published after the close; aligns to the next trading date.
+  HEADLINE_ALIGNMENT_RULE_AFTER_HOURS_NEXT_TRADING_DAY = 3;
+  // Published on a weekend or holiday; aligns to the next trading date.
+  HEADLINE_ALIGNMENT_RULE_NON_SESSION_NEXT_TRADING_DAY = 4;
+  // Published after midnight but before pre-market on a trading date; aligns
+  // to that same date, which opens hours later.
+  HEADLINE_ALIGNMENT_RULE_OVERNIGHT_SAME_TRADING_DAY = 5;
+}
+
 message StockAnalysisHeadline {
   string title = 1;
   string source = 2;
   string link = 3;
   int64 published_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // US equity session at publish time: "regular", "pre", "post", or "closed".
+  // Empty when published_at is invalid or US hours do not apply.
+  string market_session_at_publish = 5;
+  // NYSE/Nasdaq trading date this headline aligns to (YYYY-MM-DD). Empty when unaligned.
+  string aligned_trading_date = 6;
+  // Bookkeeping rule only. Never a causal claim. Carried as a closed enum so a
+  // consumer can switch exhaustively instead of matching undocumented strings.
+  HeadlineAlignmentRule alignment_rule = 7;
 }
 
 message AnalyzeStockRequest {

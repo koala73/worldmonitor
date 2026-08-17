@@ -77,12 +77,13 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'fear-greed': { name: 'Fear & Greed', enabled: true, priority: 2 },
   'aaii-sentiment': { name: 'AAII Sentiment', enabled: false, priority: 2 },
   'market-breadth': { name: 'Market Breadth', enabled: true, priority: 2 },
+  'news-market-correlation': { name: 'News ↔ Markets', enabled: true, priority: 1 },
   'macro-tiles': { name: 'Macro Indicators', enabled: false, priority: 2 },
   'fsi': { name: 'Financial Stress', enabled: false, priority: 2 },
   'yield-curve': { name: 'Yield Curve', enabled: false, priority: 2 },
   'earnings-calendar': { name: 'Earnings Calendar', enabled: false, priority: 2 },
   'economic-calendar': { name: 'Economic Calendar', enabled: false, priority: 2 },
-  'cot-positioning': { name: 'COT Positioning', enabled: false, priority: 2 },
+  'cot-positioning': { name: 'COT Positioning', enabled: true, priority: 2 },
   'liquidity-shifts': { name: 'Liquidity Shifts', enabled: true, priority: 2 },
   'positioning-247': { name: '24/7 Positioning', enabled: true, priority: 2 },
   'gold-intelligence': { name: 'Gold Intelligence', enabled: true, priority: 60 },
@@ -152,6 +153,11 @@ const FULL_MAP_LAYERS: MapLayers = {
   radiationWatch: false,
   sanctions: true,
   weather: true,
+  // Opt-in — see DEFAULT_MAP_LAYERS in src/config/variants/full.ts. Its four
+  // sources are on-demand bootstrap keys (~2.7 MB), so shipping the layer on
+  // put that on every visitor (#6763).
+  canadaRoads: false,
+  canadaAlerts: true,
   economic: true,
   waterways: true,
   outages: true,
@@ -217,6 +223,8 @@ const FULL_MOBILE_MAP_LAYERS: MapLayers = {
   radiationWatch: false,
   sanctions: true,
   weather: true,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: false,
   waterways: false,
   outages: true,
@@ -325,6 +333,8 @@ const TECH_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: false,
   weather: false,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: false,
   waterways: false,
   outages: true,
@@ -387,6 +397,8 @@ const TECH_MOBILE_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: false,
   weather: false,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: false,
   waterways: false,
   outages: true,
@@ -485,6 +497,7 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'fear-greed': { name: 'Fear & Greed', enabled: true, priority: 1 },
   'aaii-sentiment': { name: 'AAII Sentiment', enabled: true, priority: 2 },
   'market-breadth': { name: 'Market Breadth', enabled: true, priority: 1 },
+  'news-market-correlation': { name: 'News ↔ Markets', enabled: true, priority: 1 },
   'fsi': { name: 'Financial Stress', enabled: true, priority: 1 },
   'yield-curve': { name: 'Yield Curve', enabled: true, priority: 1 },
   'earnings-calendar': { name: 'Earnings Calendar', enabled: true, priority: 1 },
@@ -527,6 +540,8 @@ const FINANCE_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: true,
   weather: true,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: true,
   waterways: true,
   outages: true,
@@ -589,6 +604,8 @@ const FINANCE_MOBILE_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: false,
   weather: false,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: true,
   waterways: false,
   outages: true,
@@ -667,6 +684,8 @@ const HAPPY_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: false,
   weather: false,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: false,
   waterways: false,
   outages: false,
@@ -729,6 +748,8 @@ const HAPPY_MOBILE_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: false,
   weather: false,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: false,
   waterways: false,
   outages: false,
@@ -785,6 +806,7 @@ const COMMODITY_PANELS: Record<string, PanelConfig> = {
   insights: { name: 'AI Commodity Insights', enabled: true, priority: 1 },
   'commodity-news': { name: 'Commodity News', enabled: true, priority: 1 },
   'liquidity-shifts': { name: 'Liquidity Shifts', enabled: true, priority: 1 },
+  'news-market-correlation': { name: 'News ↔ Markets', enabled: true, priority: 1 },
   'positioning-247': { name: '24/7 Positioning', enabled: true, priority: 1 },
   'gold-silver': { name: 'Gold & Silver', enabled: true, priority: 1 },
   energy: { name: 'Energy Markets', enabled: true, priority: 1 },
@@ -836,6 +858,8 @@ const COMMODITY_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: true,
   weather: true,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: true,
   waterways: true,
   outages: true,
@@ -898,6 +922,8 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: false,
   weather: false,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: true,
   waterways: false,
   outages: true,
@@ -1000,6 +1026,8 @@ const ENERGY_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: true,        // Energy sanctions flows
   weather: true,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: false,
   waterways: true,        // Strategic chokepoints (Hormuz, Suez, Bab el-Mandeb, etc.)
   outages: true,          // Power / energy system status
@@ -1063,6 +1091,8 @@ const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: false,
   weather: false,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: false,
   waterways: true,
   outages: false,
@@ -1188,6 +1218,22 @@ export function getEffectivePanelConfig(key: string, variant: string): PanelConf
   if (!base) return { name: key, enabled: false, priority: 2 };
   const override = VARIANT_PANEL_OVERRIDES[variant]?.[key] ?? {};
   return { ...base, ...override };
+}
+
+/**
+ * Build the same canonical panel-settings seed App uses on a first visit:
+ * every panel is addressable, while only the selected variant's enabled
+ * defaults are active. Keeping this pure also gives non-DOM integrations a
+ * variant-realistic state without duplicating App's merge formula.
+ */
+export function getInitialPanelSettingsForVariant(variant: string): Record<string, PanelConfig> {
+  const variantDefaults = new Set(VARIANT_DEFAULTS[variant] ?? VARIANT_DEFAULTS.full ?? []);
+  return Object.fromEntries(
+    Object.keys(ALL_PANELS).map((key) => {
+      const config = getEffectivePanelConfig(key, variant);
+      return [key, { ...config, enabled: variantDefaults.has(key) && config.enabled }];
+    }),
+  );
 }
 
 /**
@@ -1426,6 +1472,7 @@ export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> =
   ais: ['ais'],
   natural: ['usgs'],
   weather: ['weather'],
+  canadaRoads: ['ontario_511', 'alberta_511', 'toronto_roads', 'bc_open511'],
   outages: ['outages'],
   cyberThreats: ['cyber_threats'],
   protests: ['acled', 'gdelt_doc'],
@@ -1467,7 +1514,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
-    panelKeys: ['commodities', 'energy-complex', 'energy-risk-overview', 'pipeline-status', 'storage-facility-map', 'oil-inventories', 'fuel-prices', 'chokepoint-strip', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'global-procurement', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'china-corridors', 'china-activity-nowcast', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap', 'aaii-sentiment', 'cot-positioning', 'earnings-calendar', 'economic-calendar', 'fear-greed', 'fsi', 'macro-tiles', 'market-breadth', 'liquidity-shifts', 'national-debt', 'positioning-247', 'wsb-ticker-scanner', 'yield-curve', 'gold-intelligence', 'bigmac', 'fx', 'market-implications'],
+    panelKeys: ['commodities', 'energy-complex', 'energy-risk-overview', 'pipeline-status', 'storage-facility-map', 'oil-inventories', 'fuel-prices', 'chokepoint-strip', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'global-procurement', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'china-corridors', 'china-activity-nowcast', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap', 'aaii-sentiment', 'cot-positioning', 'earnings-calendar', 'economic-calendar', 'fear-greed', 'fsi', 'macro-tiles', 'market-breadth', 'news-market-correlation', 'liquidity-shifts', 'national-debt', 'positioning-247', 'wsb-ticker-scanner', 'yield-curve', 'gold-intelligence', 'bigmac', 'fx', 'market-implications'],
     variants: ['full', 'energy'],
   },
   topical: {

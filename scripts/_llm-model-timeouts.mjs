@@ -8,7 +8,15 @@
 // so OpenRouter free-routed its calls to backends 4-7x slower than the timeout
 // allowed and every market_implications run failed. Keeping both here means a
 // consumer cannot pick up one without the other.
+import modelPolicy from './lib/llm-model-policy.cjs';
+
 export const DEEPSEEK_V4_FLASH_MODEL_PREFIX = 'deepseek/deepseek-v4-flash';
+export const {
+  GROQ_DEFAULT_MODEL,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
+  OPENROUTER_PROVIDER_ROUTING,
+} = modelPolicy;
 
 // OpenRouter provider routing. WorldMonitor is a geopolitical product, so inference
 // must never physically run on a China-hosted provider — one could log queries or
@@ -27,14 +35,7 @@ export const DEEPSEEK_V4_FLASH_MODEL_PREFIX = 'deepseek/deepseek-v4-flash';
 // Blocking costs nothing: measured on the market_implications call shape, the
 // eligible set (Venice/AtlasCloud) is FASTER than the unrestricted set —
 // p50 15.3s / p90 22.4s / max 25.0s vs p50 17.5s / p90 26.4s / max 34.7s.
-export const OPENROUTER_BLOCKED_PROVIDERS = [
-  'baidu', 'alibaba', 'deepseek', 'siliconflow', 'streamlake', 'novita',
-];
-
-export const OPENROUTER_PROVIDER_ROUTING = {
-  ignore: OPENROUTER_BLOCKED_PROVIDERS,
-  sort: 'throughput',
-};
+export const OPENROUTER_BLOCKED_PROVIDERS = OPENROUTER_PROVIDER_ROUTING.ignore;
 
 // This is a non-streaming completion deadline, not a first-token deadline.
 //

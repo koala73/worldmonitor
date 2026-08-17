@@ -18,7 +18,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-const LOCALES = ['en', 'ar', 'bg', 'cs', 'de', 'el', 'es', 'fr', 'hi', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'uk', 'vi', 'zh'];
+const LOCALES = ['en', 'ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'sw', 'th', 'tr', 'uk', 'vi', 'zh', 'zh-TW'];
 const OFFLINE_HTML = 'public/offline.html';
 const LOCALES_DIR = 'src/locales';
 
@@ -43,7 +43,10 @@ function buildTable() {
       missing++;
       continue;
     }
-    rows.push(`        ${loc}: { title: "${escJs(title)}", msg: "${escJs(msg)}", retry: "${escJs(retry)}" }`);
+    // Quote any code that is not a bare JS identifier — `zh-TW:` unquoted is a
+    // SyntaxError that would take the whole inline script down, not just one locale.
+    const key = /^[A-Za-z_$][\w$]*$/.test(loc) ? loc : `'${loc}'`;
+    rows.push(`        ${key}: { title: "${escJs(title)}", msg: "${escJs(msg)}", retry: "${escJs(retry)}" }`);
   }
   return { body: rows.join(',\n'), missing };
 }

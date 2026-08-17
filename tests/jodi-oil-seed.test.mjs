@@ -11,6 +11,8 @@ import {
   assessOilDemandChange,
   computeOilDemandChange,
   jodiSourceYears,
+  jodiCsvCandidates,
+  fetchYearCsv,
   validateCoverage,
   mergeSourceRows,
   CANONICAL_KEY,
@@ -716,5 +718,64 @@ describe('golden fixture (JODI Oil CSV)', () => {
         assert.ok(val === null || typeof val === 'number', `${prod}.${field} should be number|null, got ${typeof val}`);
       }
     }
+  });
+});
+
+describe('JODI current-year source resolution (#6799)', () => {
+  // JODI publishes every past year as `<kind>/<year>.csv`, but named the 2026
+  // files `<kind>/<kind>year<year>.csv`. The seeder asked only for the first
+  // shape, got a 404, and its `.catch(() => '')` turned that into "publish from
+  // last year's file" — so production served December 2025 oil data from
+  // January to August 2026 while reporting recordCount 50 and a fresh
+  // fetchedAt. Nothing on the seed clock could see it; only the content clock
+  // added in #6395 eventually surfaced it.
+
+  it('offers both published filename conventions, plain name first', () => {
+    assert.deepEqual(jodiCsvCandidates('primary', 2026), [
+      'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv/primary/2026.csv',
+      'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv/primary/primaryyear2026.csv',
+    ]);
+    assert.deepEqual(jodiCsvCandidates('secondary', 2026), [
+      'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv/secondary/2026.csv',
+      'https://www.jodidata.org/_resources/files/downloads/oil-data/annual-csv/secondary/secondaryyear2026.csv',
+    ]);
+  });
+
+  it('falls through to the second convention when the first 404s', async () => {
+    const asked = [];
+    const fetchCsv = async (url) => {
+      asked.push(url);
+      if (url.endsWith('/2026.csv')) throw new Error('HTTP 404');
+      return 'REF_AREA,TIME_PERIOD\nDE,2026-05\n';
+    };
+    const result = await fetchYearCsv('primary', 2026, { fetchCsv, retries: 0 });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.text, 'REF_AREA,TIME_PERIOD\nDE,2026-05\n');
+    assert.match(result.url, /primaryyear2026\.csv$/);
+    assert.equal(asked.length, 2, 'must try the plain name before the prefixed one');
+  });
+
+  it('stops at the first convention that answers', async () => {
+    const asked = [];
+    const fetchCsv = async (url) => { asked.push(url); return 'rows'; };
+    const result = await fetchYearCsv('secondary', 2025, { fetchCsv, retries: 0 });
+
+    assert.equal(result.ok, true);
+    assert.match(result.url, /secondary\/2025\.csv$/);
+    assert.equal(asked.length, 1, 'a working plain name must not trigger a second request');
+  });
+
+  it('reports a total miss instead of silently returning an empty string', async () => {
+    // The silent-empty return is the actual defect: a year that cannot be
+    // fetched AT ALL must be distinguishable from a year that is legitimately
+    // empty, or the next rename degrades to stale data just as quietly.
+    const fetchCsv = async () => { throw new Error('HTTP 404'); };
+    const result = await fetchYearCsv('primary', 2026, { fetchCsv, retries: 0 });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.text, '');
+    assert.match(result.error, /404/);
+    assert.deepEqual(result.attempted, jodiCsvCandidates('primary', 2026));
   });
 });

@@ -195,4 +195,4 @@ Alert on combined signals: route stress plus country risk, energy pressure, comm
 
 ---
 
-**Build the first version with one route, five chokepoints, and ten countries. A small reliable dashboard beats a large noisy one.**
+**Build the first version with one route and a focused set of chokepoints and countries. A small reliable dashboard beats a large noisy one.**

@@ -21,7 +21,7 @@ on:
         required: true
         type: string
       approver:
-        description: Independent audit approver identity; environment protection verifies it externally
+        description: Operator audit identity; may equal the GitHub actor
         required: true
         type: string
       reason:
@@ -101,11 +101,14 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    # GitHub does not expose the approving reviewer identity as a trustworthy
-    # workflow expression. The required approver input is an audit assertion,
-    # not a claim that YAML discovered the live reviewer. Required reviewers,
-    # prevent-self-review, and live reviewer identity/evidence are an
-    # EXTERNAL PROVISIONING GATE. YAML proves only the environment target.
+    # This environment is a main-only secret boundary with no required reviewer.
+    # For a single operator, self-review adds no independent authorization and
+    # sends an approval email for every recovery attempt. The approver input
+    # records delegated operator identity in the immutable controller audit and
+    # can equal the GitHub actor.
+    # Safety remains fail-closed through exact-main and repeated provider-inactivity proof,
+    # role-specific HMACs, controller CAS/generation checks, exact run binding,
+    # and terminal deployment verification.
     environment:
       name: ingestion-acceptance-production-breakglass
       deployment: false

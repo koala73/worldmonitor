@@ -248,7 +248,7 @@
   text-align: center;
   color: var(--text-dim);
   gap: 12px;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
 }
 
 [data-variant="happy"] .panel-empty::before,
@@ -381,7 +381,7 @@
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   white-space: nowrap;
   cursor: pointer;
   transition: background 0.2s, color 0.2s, border-color 0.2s;
@@ -435,7 +435,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
 }
 [data-variant="happy"] .positive-card-source {
   color: var(--text-dim);
@@ -446,7 +446,7 @@
 [data-variant="happy"] .positive-card-category {
   padding: 1px 6px;
   border-radius: 8px;
-  font-size: 9px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   background: var(--green);
   color: white;
@@ -459,7 +459,7 @@
 [data-variant="happy"] .positive-card-category.cat-culture-community { background: #8b5cf6; }
 
 [data-variant="happy"] .positive-card-title {
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   line-height: 1.35;
   font-weight: 500;
   color: var(--text);
@@ -470,7 +470,7 @@
   overflow: hidden;
 }
 [data-variant="happy"] .positive-card-time {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
 }
 
@@ -518,7 +518,7 @@
   padding: 24px 16px;
   text-align: center;
   color: var(--text-dim);
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
 }
 
 /* ==========================================================
@@ -550,12 +550,16 @@
 }
 
 [data-variant='happy'] .counter-icon {
-  font-size: 1.4rem;
+  font-size: calc(1.4rem * var(--wm-panel-effective-scale, 1));
   margin-bottom: 4px;
 }
 
 [data-variant='happy'] .counter-value {
-  font-size: clamp(0.85rem, 1.8vw, 1.3rem);
+  font-size: clamp(
+    calc(0.85rem * var(--wm-panel-effective-scale, 1)),
+    calc(1.8vw * var(--wm-panel-effective-scale, 1)),
+    calc(1.3rem * var(--wm-panel-effective-scale, 1))
+  );
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text);
@@ -567,7 +571,7 @@
 }
 
 [data-variant='happy'] .counter-label {
-  font-size: 0.7rem;
+  font-size: calc(0.7rem * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--text-secondary);
   margin-top: 4px;
@@ -577,7 +581,7 @@
 }
 
 [data-variant='happy'] .counter-source {
-  font-size: 0.65rem;
+  font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
   margin-top: 4px;
 }
@@ -604,13 +608,13 @@
 }
 
 [data-variant='happy'] .progress-chart-label {
-  font-size: 0.85rem;
+  font-size: calc(0.85rem * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--text);
 }
 
 [data-variant='happy'] .progress-chart-badge {
-  font-size: 0.7rem;
+  font-size: calc(0.7rem * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 10px;
@@ -619,7 +623,7 @@
 }
 
 [data-variant='happy'] .progress-chart-unit {
-  font-size: 0.7rem;
+  font-size: calc(0.7rem * var(--wm-panel-effective-scale, 1));
   color: var(--text-secondary);
   margin-left: 6px;
 }
@@ -631,7 +635,7 @@
 
 [data-variant='happy'] .progress-chart-container .tick text {
   fill: var(--text-secondary);
-  font-size: 0.65rem;
+  font-size: calc(0.65rem * var(--wm-panel-effective-scale, 1));
 }
 
 [data-variant='happy'] .progress-chart-container .tick line,
@@ -646,7 +650,7 @@
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 4px 8px;
-  font-size: 0.7rem;
+  font-size: calc(0.7rem * var(--wm-panel-effective-scale, 1));
   color: var(--text);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   z-index: 10;
@@ -698,7 +702,7 @@
   background: var(--bg-secondary);
   text-decoration: none;
   color: var(--text);
-  font-size: 0.85rem;
+  font-size: calc(0.85rem * var(--wm-panel-effective-scale, 1));
   transition: background 0.2s;
 }
 
@@ -709,7 +713,7 @@
 [data-variant="happy"] .ticker-item-source {
   color: var(--yellow);
   font-weight: 600;
-  font-size: 0.75rem;
+  font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1));
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -755,7 +759,7 @@
 }
 
 [data-variant="happy"] .hero-card-source {
-  font-size: 0.75rem;
+  font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -763,7 +767,7 @@
 }
 
 [data-variant="happy"] .hero-card-title {
-  font-size: 1.1rem;
+  font-size: calc(1.1rem * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
   line-height: 1.3;
   margin: 0;
@@ -779,7 +783,7 @@
 }
 
 [data-variant="happy"] .hero-card-time {
-  font-size: 0.8rem;
+  font-size: calc(0.8rem * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted);
   opacity: 0.7;
 }
@@ -793,7 +797,7 @@
   border-radius: 6px;
   background: transparent;
   color: var(--green);
-  font-size: 0.8rem;
+  font-size: calc(0.8rem * var(--wm-panel-effective-scale, 1));
   cursor: pointer;
   transition: background 0.2s, color 0.2s;
   align-self: flex-start;
@@ -839,7 +843,7 @@
   background: var(--green);
   color: #fff;
   font-weight: 700;
-  font-size: 0.85rem;
+  font-size: calc(0.85rem * var(--wm-panel-effective-scale, 1));
 }
 
 [data-variant="happy"] .digest-card-body {
@@ -851,7 +855,7 @@
 }
 
 [data-variant="happy"] .digest-card-title {
-  font-size: 0.9rem;
+  font-size: calc(0.9rem * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--text);
   text-decoration: none;
@@ -863,14 +867,14 @@
 }
 
 [data-variant="happy"] .digest-card-source {
-  font-size: 0.7rem;
+  font-size: calc(0.7rem * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
 [data-variant="happy"] .digest-card-summary {
-  font-size: 0.85rem;
+  font-size: calc(0.85rem * var(--wm-panel-effective-scale, 1));
   color: var(--text);
   opacity: 0.85;
   line-height: 1.4;
@@ -957,14 +961,14 @@
 }
 
 [data-variant='happy'] .species-name {
-  font-size: 14px;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
   color: var(--text);
   margin: 0 0 2px;
 }
 
 [data-variant='happy'] .species-scientific {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-style: italic;
   color: var(--text-dim);
   display: block;
@@ -978,7 +982,7 @@
 }
 
 [data-variant='happy'] .species-badge {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 10px;
@@ -1007,7 +1011,7 @@
 }
 
 [data-variant='happy'] .species-region {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
   display: block;
   margin-bottom: 4px;
@@ -1023,7 +1027,7 @@
 }
 
 [data-variant='happy'] .species-sparkline text {
-  font-size: 9px;
+  font-size: calc(9px * var(--wm-panel-effective-scale, 1));
   fill: var(--text-dim);
 }
 
@@ -1032,7 +1036,7 @@
 }
 
 [data-variant='happy'] .species-summary p {
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text);
   margin: 0 0 4px;
   line-height: 1.4;
@@ -1043,7 +1047,7 @@
 }
 
 [data-variant='happy'] .species-source {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
   font-style: normal;
 }
@@ -1071,19 +1075,19 @@
 }
 
 [data-variant='happy'] .gauge-value {
-  font-size: 28px;
+  font-size: calc(28px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
   fill: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
 [data-variant='happy'] .gauge-label {
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   fill: var(--text-dim);
 }
 
 [data-variant='happy'] .gauge-year {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
   text-align: center;
   margin-top: 4px;
@@ -1111,13 +1115,13 @@
   grid-template-columns: 140px 1fr 48px;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 
 @media (max-width: 768px) {
   [data-variant='happy'] .region-row {
     grid-template-columns: 100px 1fr 40px;
-    font-size: 11px;
+    font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   }
 }
 
@@ -1155,7 +1159,7 @@
 }
 
 [data-variant='happy'] .capacity-header {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   color: var(--text-dim);
   margin-bottom: 8px;
@@ -1167,7 +1171,7 @@
   justify-content: center;
   gap: 12px;
   margin-top: 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
 }
 
@@ -1219,11 +1223,11 @@
 }
 
 /* ---------- 2. Larger typography (TV-02) ---------- */
-[data-tv-mode] .panel-title { font-size: 1.6rem; }
-[data-tv-mode] .panel-content { font-size: 1.15rem; line-height: 1.7; }
-[data-tv-mode] .positive-card-title { font-size: 1.3rem; }
-[data-tv-mode] .counter-value { font-size: 2.4rem; }
-[data-tv-mode] .counter-label { font-size: 1.1rem; }
+[data-tv-mode] .panel-title { font-size: calc(1.6rem * var(--wm-panel-effective-scale, 1)); }
+[data-tv-mode] .panel-content { font-size: calc(1.15rem * var(--wm-panel-effective-scale, 1)); line-height: 1.7; }
+[data-tv-mode] .positive-card-title { font-size: calc(1.3rem * var(--wm-panel-effective-scale, 1)); }
+[data-tv-mode] .counter-value { font-size: calc(2.4rem * var(--wm-panel-effective-scale, 1)); }
+[data-tv-mode] .counter-label { font-size: calc(1.1rem * var(--wm-panel-effective-scale, 1)); }
 
 /* ---------- 3. Suppressed interactive elements (TV-02) ---------- */
 [data-tv-mode] .positive-filter-bar,
@@ -1319,7 +1323,7 @@
   border: 1px solid rgba(255,255,255,0.2);
   border-radius: 8px;
   padding: 8px 16px;
-  font-size: 14px;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.3s;

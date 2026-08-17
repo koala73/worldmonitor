@@ -1,5 +1,10 @@
 import type { Monitor, PanelConfig, MapLayers } from '@/types';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import {
+  isStockResearchPath,
+  stockResearchSymbolFromPath,
+} from '@/features/stock-research/stock-research-route';
+import { openStockResearchOverlay } from '@/features/stock-research/stock-research-overlay';
 import { openExternalUrl } from '@/services/external-navigation';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import type { AppContext } from '@/app/app-context';
@@ -13,6 +18,8 @@ import {
   ALL_PANELS,
   VARIANT_DEFAULTS,
   getEffectivePanelConfig,
+  getInitialPanelSettingsForVariant,
+  isPanelEntitled,
   enforceFreePanelLimit,
   restoreFreeMapPanelAccess,
   restoreProGatedPanels,
@@ -31,6 +38,7 @@ import {
 } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
+import { applyCanadaRoadsOptInMigration } from '@/services/canada-roads-opt-in';
 import {
   initDB,
   cleanOldSnapshots,
@@ -94,18 +102,22 @@ import type { EarningsCalendarPanel } from '@/components/EarningsCalendarPanel';
 import type { EconomicCalendarPanel } from '@/components/EconomicCalendarPanel';
 import type { CotPositioningPanel } from '@/components/CotPositioningPanel';
 import type { LiquidityShiftsPanel } from '@/components/LiquidityShiftsPanel';
+import type { NewsMarketCorrelationPanel } from '@/components/NewsMarketCorrelationPanel';
 import type { PositioningPanel } from '@/components/PositioningPanel';
 import type { GoldIntelligencePanel } from '@/components/GoldIntelligencePanel';
 import { isDesktopRuntime, waitForSidecarReady } from '@/services/runtime';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { BETA_MODE } from '@/config/beta';
-import { track, trackEvent, trackDeeplinkOpened, initAuthAnalytics } from '@/services/analytics';
+import { track, trackEvent, trackDeeplinkOpened, initAuthAnalytics, trackMapViewChange } from '@/services/analytics';
 import { preloadCountryGeometry, isCountryGeometryLoaded, getCountryNameByCode } from '@/services/country-geometry';
 import { initI18n, t, I18N_RESOURCES_LOADED_EVENT, type I18nResourcesLoadedDetail } from '@/services/i18n';
 import { initDeferredDashboardFonts } from '@/bootstrap/secondary-startup';
+import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
 
 import {
   CANADA_ARCTIC_OPT_IN_SOURCES,
+  CANADA_DEPTH_OPT_IN_SOURCES,
+  CRISIS_FLOOR_OPT_IN_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -148,6 +160,11 @@ import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
 import { registerWebMcpTools } from '@/services/webmcp';
+import {
+  getWebMcpDashboardContext,
+  waitForWebMcpUiReady,
+} from '@/app/webmcp-dashboard';
+import { runDashboardActionBinding } from '@/app/dashboard-action-binding';
 import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import type { SearchManager } from '@/app/search-manager';
@@ -183,6 +200,8 @@ import {
   migrateStrategicDefaultsV4,
   migrateRegionalFeedRolloutDefaultsV5,
   migrateCanadaArcticOptInsV6,
+  migrateCanadaDepthOptInsV7,
+  migrateCrisisDeskOptInsV8,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -197,7 +216,16 @@ import {
   settleAccountOperation,
 } from '@/services/account-operation';
 import type { Id } from '../convex/_generated/dataModel';
-import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
+import {
+  beginEntitlementVerification,
+  destroyEntitlementSubscription,
+  getEntitlementState,
+  initEntitlementSubscription,
+  markEntitlementVerificationUnavailable,
+  onEntitlementChange,
+  resetEntitlementState,
+  resetEntitlementVerification,
+} from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import {
   FREE_TIER_FOLLOW_LIMIT,
@@ -240,6 +268,7 @@ export class App {
   private pendingDeepLinkStoryCode: string | null = null;
   private pendingDeepLinkChokepoint: string | null = null;
   private chokepointDeepLinkTimer: number | null = null;
+  private stockDeepLinkTimer: number | null = null;
 
   private panelLayout: PanelLayoutManager;
   private dataLoader: DataLoaderManager;
@@ -269,6 +298,8 @@ export class App {
   // target panel exists.
   private uiReady!: Promise<void>;
   private resolveUiReady!: () => void;
+  private appDestroyed!: Promise<void>;
+  private resolveAppDestroyed!: () => void;
   // Returned by registerWebMcpTools in browser runtimes — aborting it removes
   // late-provider listeners and unregisters every accepted tool. destroy()
   // triggers it so test harnesses / same-document re-inits don't accumulate
@@ -380,6 +411,10 @@ export class App {
     let freeTierLimitsInvoked = false;
     const tierReconciliationDeferred = this.shouldDeferTierPreferenceReconciliation();
     invalidatePanelStorageCacheForKeys(keys);
+
+    if (keySet.has(FONT_SCALE_STORAGE_KEY)) {
+      applyFontScale();
+    }
 
     if (keySet.has(STORAGE_KEYS.panels)) {
       // Cloud can reconcile before Clerk/Convex finishes settling. Preserve
@@ -789,6 +824,10 @@ export class App {
     if (shouldPrime('market-breadth')) {
       primeTask('marketBreadth', () => this.dataLoader.loadMarketBreadth());
     }
+    if (shouldPrime('news-market-correlation')) {
+      const panel = this.state.panels['news-market-correlation'] as NewsMarketCorrelationPanel | undefined;
+      if (panel) primeTask('news-market-correlation', () => panel.fetchData());
+    }
     if (shouldPrimeAny(['markets', 'heatmap', 'commodities', 'crypto', 'energy-complex'])) {
       primeTask('markets', () => this.dataLoader.loadMarkets());
     }
@@ -857,6 +896,9 @@ export class App {
     this.uiReady = new Promise<void>((resolve) => {
       this.resolveUiReady = resolve;
     });
+    this.appDestroyed = new Promise<void>((resolve) => {
+      this.resolveAppDestroyed = resolve;
+    });
 
     const PANEL_ORDER_KEY = 'panel-order';
     const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
@@ -901,7 +943,7 @@ export class App {
       mapLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant({ ...defaultLayers }, currentVariant as MapVariant), null,
       );
-      panelSettings = { ...DEFAULT_PANELS };
+      panelSettings = getInitialPanelSettingsForVariant(currentVariant);
     } else if (appliedPanelLayoutVariant !== currentVariant) {
       // Variant changed - reset all settings to variant defaults.
       console.log(`[App] Variant check: applied="${appliedPanelLayoutVariant}", current="${currentVariant}"`);
@@ -954,6 +996,13 @@ export class App {
       // tier is settled. Do not run while Pro status is still resolving.
       // Persist immediately so dirty storage doesn't reintroduce the layer.
       mapLayers = this.sanitizeMapLayersForTier(mapLayers);
+
+      mapLayers = applyCanadaRoadsOptInMigration(
+        mapLayers,
+        localStorage,
+        (layers) => saveToStorage(STORAGE_KEYS.mapLayers, layers),
+      );
+
       panelSettings = loadFromStorage<Record<string, PanelConfig>>(
         STORAGE_KEYS.panels,
         DEFAULT_PANELS
@@ -1269,6 +1318,56 @@ export class App {
           }
         }
         localStorage.setItem(canadaArcticKey, 'done');
+      }
+      // #6604/#6605 — Canada depth pack: new opt-in names need a NEW key.
+      // Do not reuse worldmonitor-canada-arctic-optin-v1 (already fired).
+      const canadaDepthKey = 'worldmonitor-canada-depth-optin-v1';
+      if (!localStorage.getItem(canadaDepthKey)) {
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateCanadaDepthOptInsV7({
+          [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current),
+        }, CANADA_DEPTH_OPT_IN_SOURCES);
+        const rawUpdated = migrated[STORAGE_KEYS.disabledFeeds];
+        if (typeof rawUpdated === 'string') {
+          let updated: unknown;
+          try { updated = JSON.parse(rawUpdated); } catch { updated = null; }
+          if (
+            Array.isArray(updated)
+            && updated.every((name): name is string => typeof name === 'string')
+            && JSON.stringify(updated) !== JSON.stringify(current)
+          ) {
+            saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+            console.log(
+              `[App] Canada depth opt-in (#6604/#6605): disabled ${updated.length - current.length} newly cataloged source(s)`,
+            );
+          }
+        }
+        localStorage.setItem(canadaDepthKey, 'done');
+      }
+      // #6813-#6830 — validated crisis desks: preserve every reviewed depth,
+      // backup, and locale-primary source as opt-in for returning profiles.
+      const crisisDeskOptInKey = 'worldmonitor-crisis-desk-optin-v1';
+      if (!localStorage.getItem(crisisDeskOptInKey)) {
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateCrisisDeskOptInsV8({
+          [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current),
+        }, CRISIS_FLOOR_OPT_IN_SOURCES);
+        const rawUpdated = migrated[STORAGE_KEYS.disabledFeeds];
+        if (typeof rawUpdated === 'string') {
+          let updated: unknown;
+          try { updated = JSON.parse(rawUpdated); } catch { updated = null; }
+          if (
+            Array.isArray(updated)
+            && updated.every((name): name is string => typeof name === 'string')
+            && JSON.stringify(updated) !== JSON.stringify(current)
+          ) {
+            saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+            console.log(
+              `[App] Crisis-desk opt-ins (#6813-#6830): disabled ${updated.length - current.length} newly cataloged source(s)`,
+            );
+          }
+        }
+        localStorage.setItem(crisisDeskOptInKey, 'done');
       }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →
@@ -1666,6 +1765,30 @@ export class App {
         // Cmd+K closed it between open and the check — #4403 review ADV-4.)
         await this.openSearch({ throwOnFailure: true });
       },
+      getDashboardContext: async () => {
+        await this.waitForDashboardReady();
+        return getWebMcpDashboardContext(this.state, SITE_VARIANT);
+      },
+      applyDashboardAction: async (action) => {
+        return runDashboardActionBinding(this.state, action, {
+          waitForUiReady: () => this.waitForDashboardReady(false),
+          waitForMapReady: () => this.waitForDashboardReady(),
+          applierOptions: {
+            getPanelConfig: (panelId) => getEffectivePanelConfig(panelId, SITE_VARIANT),
+            isPanelAllowed: (panelId, config) => (
+              isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState()))
+            ),
+            hasPremiumAccess: () => hasPremiumAccess(getAuthState()),
+            applyViewChange: (viewAction) => {
+              if (viewAction.view) trackMapViewChange(viewAction.view);
+            },
+            applyLayerChange: (layer, enabled, source) => (
+              this.eventHandlers.applyMapLayerChange(layer, enabled, source)
+            ),
+          },
+          syncUrlStateNow: () => this.eventHandlers.syncUrlStateNow(),
+        });
+      },
     });
 
     window.addEventListener(I18N_RESOURCES_LOADED_EVENT, this.handleI18nResourcesLoaded);
@@ -1699,11 +1822,15 @@ export class App {
       en: 'en_US', bg: 'bg_BG', cs: 'cs_CZ', fr: 'fr_FR', de: 'de_DE', el: 'el_GR',
       es: 'es_ES', hr: 'hr_HR', hu: 'hu_HU', it: 'it_IT', pl: 'pl_PL', pt: 'pt_BR',
       nl: 'nl_NL', sv: 'sv_SE', ru: 'ru_RU', uk: 'uk_UA', ar: 'ar_SA', fa: 'fa_IR', zh: 'zh_CN',
+      'zh-TW': 'zh_TW',
       ja: 'ja_JP', ko: 'ko_KR', ro: 'ro_RO', tr: 'tr_TR', th: 'th_TH', vi: 'vi_VN',
-      hi: 'hi_IN',
+      hi: 'hi_IN', sw: 'sw_TZ',
     };
-    const baseLang = (document.documentElement.lang || 'en').split('-')[0] || 'en';
-    setMeta('meta[property="og:locale"]', ogLocaleMap[baseLang] || `${baseLang}_${baseLang.toUpperCase()}`);
+    // Look the full tag up first: a region-bearing locale (zh-TW) has its own
+    // entry above that a region-stripped key would never reach.
+    const docLang = document.documentElement.lang || 'en';
+    const baseLang = docLang.split('-')[0] || 'en';
+    setMeta('meta[property="og:locale"]', ogLocaleMap[docLang] || ogLocaleMap[baseLang] || `${baseLang}_${baseLang.toUpperCase()}`);
     const srH1 = document.querySelector('body > h1');
     if (srH1) srH1.textContent = t('shell.documentTitle');
     const aiFlow = getAiFlowSettings();
@@ -1761,10 +1888,15 @@ export class App {
       initAisStream();
     }
 
-    // Wait for sidecar readiness on desktop so bootstrap hits a live server
+    // Wait for sidecar readiness on desktop so bootstrap hits a live server.
+    // Consume the result: a sidecar that never answered its own health probe
+    // should leave a signal rather than being silently treated as ready (#6779).
     if (isDesktopRuntime()) {
-      await waitForSidecarReady(3000);
-      markLcpDebug('wm:boot:sidecar-ready');
+      const sidecarReady = await waitForSidecarReady(3000);
+      markLcpDebug(sidecarReady ? 'wm:boot:sidecar-ready' : 'wm:boot:sidecar-not-ready');
+      if (!sidecarReady) {
+        console.warn('[boot] Local sidecar did not report ready within 3s; bootstrap may fall back to cloud.');
+      }
     }
 
     // Anonymous browser session token (issue #3541). Server's validateApiKey
@@ -1776,7 +1908,16 @@ export class App {
     if (!isDesktopRuntime()) {
       window.addEventListener(WM_SESSION_DEGRADED_EVENT, this.handleWmSessionDegraded);
       installWmSessionFetchInterceptor();
-      await ensureWmSession();
+      // Guarded like every other call site (the interceptor's own, and both
+      // periodic-refresh handlers). ensureWmSession() genuinely rejects on the
+      // old WebView / Smart-TV engines this module targets — `new
+      // AbortController()` and the timeout setTimeout sit outside mintSession's
+      // try — and init() has no try/catch, so a bare await would abort boot
+      // here: no bootstrap hydration, no auth, no UI. main.ts catches that with
+      // `.catch(console.error)`, so it would not even reach Sentry. Session
+      // establishment is best-effort at this point; the refresh-on-401 layer is
+      // the safety net.
+      await ensureWmSession().catch(() => false);
       markLcpDebug('wm:boot:session-ready');
     }
 
@@ -1907,7 +2048,9 @@ export class App {
           ),
           effects: {
             destroyEntitlementSubscription,
+            beginEntitlementVerification,
             resetEntitlementState,
+            markEntitlementVerificationUnavailable,
             destroySubscriptionWatch,
             rebindConvexAuthForWatchHandoff,
             initEntitlementSubscription,
@@ -2024,6 +2167,7 @@ export class App {
         destroySubscriptionWatch();
         cloudPrefsSignOut();
         resetEntitlementState();
+        resetEntitlementVerification();
         this.tierPreferenceHandoff.clear();
         this.pendingPreferenceHandoffGeneration = undefined;
       }
@@ -2686,6 +2830,7 @@ export class App {
 
   public destroy(): void {
     this.state.isDestroyed = true;
+    this.resolveAppDestroyed();
     this.tierPreferenceHandoff.clear();
     this.pendingPreferenceHandoffGeneration = undefined;
     this.viewportHydrationReady = false;
@@ -2708,6 +2853,10 @@ export class App {
     if (this.chokepointDeepLinkTimer !== null) {
       window.clearTimeout(this.chokepointDeepLinkTimer);
       this.chokepointDeepLinkTimer = null;
+    }
+    if (this.stockDeepLinkTimer !== null) {
+      window.clearTimeout(this.stockDeepLinkTimer);
+      this.stockDeepLinkTimer = null;
     }
 
     // Destroy all modules in reverse order
@@ -2852,17 +3001,27 @@ export class App {
   // the timeout guards against a genuinely broken init path hanging the
   // agent forever.
   private async waitForUiReady(timeoutMs = 10_000): Promise<void> {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () => reject(new Error(`UI did not initialise within ${timeoutMs}ms`)),
-        timeoutMs,
-      );
-    });
+    await waitForWebMcpUiReady(this.uiReady, this.appDestroyed, timeoutMs);
+  }
+
+  private async waitForDashboardReady(requireMapRenderer = true): Promise<void> {
     try {
-      await Promise.race([this.uiReady, timeout]);
-    } finally {
-      if (timer !== null) clearTimeout(timer);
+      await this.waitForUiReady();
+      if (!requireMapRenderer) return;
+      const map = this.state.map;
+      if (map) {
+        await waitForWebMcpUiReady(
+          map.whenRendererReady(),
+          this.appDestroyed,
+          15_000,
+          'Map renderer',
+        );
+      }
+    } catch (error) {
+      // A dashboard binding that loses the readiness/destroy race must reach
+      // the narrow context/applier seam so it can return its closed
+      // app_destroyed reason. Genuine readiness timeouts still reject.
+      if (!this.state.isDestroyed) throw error;
     }
   }
 
@@ -2873,6 +3032,23 @@ export class App {
     // Check for country brief deep link: ?c=IR (captured early before URL sync)
     const storyCode = this.pendingDeepLinkStoryCode ?? url.searchParams.get('c');
     this.pendingDeepLinkStoryCode = null;
+    if (isStockResearchPath(url.pathname)) {
+      const stockSymbol = stockResearchSymbolFromPath(url.pathname);
+      // Return only when the overlay actually takes the navigation. The path
+      // regex accepts a leading digit that the symbol pattern rejects, so
+      // /stocks/0700.HK parses to null — returning there would open nothing
+      // AND cancel the ?c= / ?country= / ?chokepoint= deep links below.
+      if (stockSymbol) {
+        trackDeeplinkOpened('stock', stockSymbol);
+        this.stockDeepLinkTimer = window.setTimeout(() => {
+          this.stockDeepLinkTimer = null;
+          if (this.state.isDestroyed) return;
+          void openStockResearchOverlay(stockSymbol);
+        }, DEEP_LINK_INITIAL_DELAY_MS);
+        return;
+      }
+    }
+
     if (url.pathname === '/story' || storyCode) {
       const countryCode = storyCode;
       if (countryCode) {
@@ -2971,12 +3147,17 @@ export class App {
         { name: 'pizzint', fn: () => this.dataLoader.loadPizzInt(), intervalMs: REFRESH_INTERVALS.pizzint, condition: () => SITE_VARIANT === 'full' },
         { name: 'natural', fn: () => this.dataLoader.loadNatural(), intervalMs: REFRESH_INTERVALS.natural, condition: () => this.state.mapLayers.natural },
         { name: 'weather', fn: () => this.dataLoader.loadWeatherAlerts(), intervalMs: REFRESH_INTERVALS.weather, condition: () => this.state.mapLayers.weather },
+        { name: 'canadaRoads', fn: () => this.dataLoader.loadCanadaRoads(), intervalMs: REFRESH_INTERVALS.canadaRoads, condition: () => !!this.state.mapLayers.canadaRoads },
+        { name: 'canadaAlerts', fn: () => this.dataLoader.loadCanadaAlerts(), intervalMs: REFRESH_INTERVALS.canadaAlerts, condition: () => !!this.state.mapLayers.canadaAlerts },
         { name: 'fred', fn: () => this.dataLoader.loadFredData(), intervalMs: REFRESH_INTERVALS.fred, condition: () => this.isPanelNearViewport('economic') },
         { name: 'spending', fn: () => this.dataLoader.loadGovernmentSpending(), intervalMs: REFRESH_INTERVALS.spending, condition: () => this.isPanelNearViewport('economic') },
         { name: 'global-tenders', fn: () => this.dataLoader.loadGlobalTenders(), intervalMs: REFRESH_INTERVALS.spending, condition: () => hasPremiumAccess() && this.isPanelNearViewport('global-procurement') },
         { name: 'bis', fn: () => this.dataLoader.loadBisData(), intervalMs: REFRESH_INTERVALS.bis, condition: () => this.isPanelNearViewport('economic') },
         { name: 'oil', fn: () => this.dataLoader.loadOilAnalytics(), intervalMs: REFRESH_INTERVALS.oil, condition: () => this.isPanelNearViewport('energy-complex') },
-        { name: 'firms', fn: () => this.dataLoader.loadFirmsData(), intervalMs: REFRESH_INTERVALS.firms, condition: () => this.shouldRefreshFirms() },
+        // inFlight key 'fires' matches the hydration loader and loadDataForLayer
+        // (the map-layer key), like every other layer refresh here — so all three
+        // firms call sites one-flight the guard-less loadFirmsData (#6770).
+        { name: 'fires', fn: () => this.dataLoader.loadFirmsData(), intervalMs: REFRESH_INTERVALS.firms, condition: () => this.shouldRefreshFirms() },
         { name: 'ais', fn: () => this.dataLoader.loadAisSignals(), intervalMs: REFRESH_INTERVALS.ais, condition: () => this.state.mapLayers.ais },
         { name: 'cables', fn: () => this.dataLoader.loadCableActivity(), intervalMs: REFRESH_INTERVALS.cables, condition: () => this.state.mapLayers.cables },
         { name: 'cableHealth', fn: () => this.dataLoader.loadCableHealth(), intervalMs: REFRESH_INTERVALS.cableHealth, condition: () => this.state.mapLayers.cables },
@@ -2992,7 +3173,10 @@ export class App {
 
     if (SITE_VARIANT === 'finance') {
       this.refreshScheduler.scheduleRefresh(
-        'stock-analysis',
+        // inFlight lock key matches the hydration loader's runGuarded key so
+        // boot and refresh one-flight each other (loadStockAnalysis has no
+        // internal guard). The panel/viewport key stays kebab below (#6770).
+        'stockAnalysis',
         () => this.dataLoader.loadStockAnalysis(),
         REFRESH_INTERVALS.stockAnalysis,
         () => hasPremiumAccess() && this.isPanelNearViewport('stock-analysis'),
@@ -3004,7 +3188,9 @@ export class App {
         () => hasPremiumAccess() && this.isPanelNearViewport('daily-market-brief'),
       );
       this.refreshScheduler.scheduleRefresh(
-        'stock-backtest',
+        // inFlight lock key matches the hydration loader's runGuarded key
+        // (loadStockBacktest has no internal guard); panel key stays kebab (#6770).
+        'stockBacktest',
         () => this.dataLoader.loadStockBacktest(),
         REFRESH_INTERVALS.stockBacktest,
         () => hasPremiumAccess() && this.isPanelNearViewport('stock-backtest'),
@@ -3274,6 +3460,12 @@ export class App {
       () => this.dataLoader.loadMarketBreadth(),
       REFRESH_INTERVALS.marketBreadth,
       () => this.isPanelNearViewport('market-breadth')
+    );
+    this.refreshScheduler.scheduleRefresh(
+      'news-market-correlation',
+      () => (this.state.panels['news-market-correlation'] as NewsMarketCorrelationPanel).fetchData(),
+      REFRESH_INTERVALS.newsMarketCorrelation,
+      () => this.isPanelNearViewport('news-market-correlation')
     );
 
     // Refresh intelligence signals for CII (geopolitical variant only)

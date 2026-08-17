@@ -8,6 +8,8 @@
  * BriefStory retains only its primary source.
  */
 
+import { countPublisherFamilies } from '../shared/publisher-families.js';
+
 function clusterIdForRawStory(story) {
   if (Array.isArray(story?.mergedHashes)
     && story.mergedHashes.length > 0
@@ -46,7 +48,11 @@ function sourceCountsByClusterId(rawStories) {
   for (const story of rawStories) {
     const clusterId = clusterIdForRawStory(story);
     if (!clusterId || sourceCountByClusterId.has(clusterId)) continue;
-    sourceCountByClusterId.set(clusterId, Array.isArray(story?.sources) ? story.sources.length : 0);
+    // #6428: this count drives the cooldown bypass below, so counting feed
+    // LABELS let one newsroom's own editions buy a story past the quiet
+    // period. Publishers is the only reading that means "more sources picked
+    // this up".
+    sourceCountByClusterId.set(clusterId, countPublisherFamilies(story?.sources));
   }
   return sourceCountByClusterId;
 }

@@ -225,7 +225,7 @@ const MAX_RATE_LIMIT_RETRIES = 1;
 // (cached aggregates were computed against a window that's now 7+ days offset
 // from today's last30/prev30 cutoffs) and serves as a belt-and-braces refresh
 // if the maxDate check ever silently short-circuits.
-const MAX_CACHE_AGE_MS = 7 * 86_400_000;
+export const MAX_CACHE_AGE_MS = 7 * 86_400_000;
 // Cap how many countries can be cold-fetched in a single run. When upstream
 // advances its data (asof mismatch on a sync'd cache), all 174 countries
 // become "cache miss" at once. Cold-fetching 174 against ArcGIS exceeds the
@@ -241,7 +241,7 @@ const MAX_CACHE_AGE_MS = 7 * 86_400_000;
 // 30 is sized so the cold-fetch path (30 × ~3-5s/country with concurrency
 // 6 ≈ 15-25s, plus 20s of backoff) easily fits the 570s budget even when
 // ArcGIS is slow.
-const MAX_COLD_FETCH_PER_RUN = 30;
+export const MAX_COLD_FETCH_PER_RUN = 30;
 // Concurrency for the cheap per-country maxDate preflight. These are tiny
 // outStatistics queries (returns 1 row), so we can push harder than the
 // expensive fetch concurrency without tripping ArcGIS 429s in practice.
@@ -415,13 +415,6 @@ const MAX_BODY_CAPTURE_SUCCESSES = 1;
 // during the current Railway-throttled-direct + proxy-works mode.
 const MAX_BODY_CAPTURE_ATTEMPTS = 0;
 
-// Test-only helper: resets the capture counters so unit tests can
-// re-exercise the capture path with different mocked responses.
-export function _resetBodyCapturedFlag() {
-  _bodyCaptureSuccessCount = 0;
-  _bodyCaptureAttemptCount = 0;
-}
-
 // Best-effort body capture when the initial fetch times out at
 // FETCH_TIMEOUT. Used to surface the actual ArcGIS error body during
 // degradation episodes (see ERROR_BODY_CAPTURE_EXTRA_MS comment).
@@ -512,12 +505,6 @@ async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
     console.warn(`  [port-activity] retrying after "${msg}" (${_invalidParamsErrorCount}/${INVALID_PARAMS_RETRY_THRESHOLD}): ${url.slice(0, 80)}`);
     return await fetchWithTimeout(url, { signal });
   }
-}
-
-// Test-only helper: clears the module-level counter so unit tests can
-// re-exercise the threshold path with different inputs.
-export function _resetInvalidParamsErrorCount() {
-  _invalidParamsErrorCount = 0;
 }
 
 // Fetch ALL ports globally in one paginated pass, grouped by ISO3.

@@ -110,6 +110,76 @@ describe('deploy planning', () => {
     assert.equal(result.reason, HANDLED_BY_RAILWAY);
   });
 
+  it('retries a failed head only when protected recovery explicitly authorizes it', () => {
+    const failed = deployment('FAILED', HEAD, {
+      id: 'dep-failed',
+      createdAt: '2026-08-04T12:00:00.000Z',
+    });
+    const result = plan({
+      deployments: [failed, deployment('SUCCESS', RUNNING)],
+      retryFailedHead: true,
+    });
+    assert.equal(result.action, 'deploy');
+    assert.equal(result.reason, 'FAILED_HEAD_RETRY');
+    assert.equal(result.observedDeploymentId, null);
+  });
+
+  it('retries the newest failed head even when an older same-head build succeeded', () => {
+    const result = plan({
+      deployments: [
+        deployment('FAILED', HEAD, { id: 'dep-failed', createdAt: '2026-08-04T12:00:00.000Z' }),
+        deployment('SUCCESS', HEAD, { id: 'dep-old-success', createdAt: '2026-08-04T11:58:00.000Z' }),
+        deployment('SUCCESS', RUNNING, { createdAt: '2026-08-04T11:00:00.000Z' }),
+      ],
+      changedPathsSince: () => [],
+      retryFailedHead: true,
+      ancestry: (ancestor, descendant) => (ancestor === HEAD && descendant === HEAD ? 'yes' : 'no'),
+    });
+    assert.equal(result.action, 'deploy');
+    assert.equal(result.reason, 'FAILED_HEAD_RETRY');
+    assert.equal(result.observedDeploymentId, null);
+  });
+
+  it('retries an authorized failed first build instead of calling it never deployed', () => {
+    const result = plan({
+      deployments: [deployment('FAILED', HEAD, {
+        id: 'dep-failed',
+        createdAt: '2026-08-04T12:00:00.000Z',
+      })],
+      retryFailedHead: true,
+    });
+    assert.equal(result.action, 'deploy');
+    assert.equal(result.reason, 'FAILED_HEAD_RETRY');
+  });
+
+  it('adopts a running same-head replacement newer than the failed build', () => {
+    const result = plan({
+      deployments: [
+        deployment('SUCCESS', HEAD, { id: 'dep-replacement', createdAt: '2026-08-04T12:01:00.000Z' }),
+        deployment('FAILED', HEAD, { id: 'dep-failed', createdAt: '2026-08-04T12:00:00.000Z' }),
+        deployment('SUCCESS', RUNNING),
+      ],
+      retryFailedHead: true,
+    });
+    assert.equal(result.action, 'skip');
+    assert.equal(result.reason, HANDLED_BY_RAILWAY);
+    assert.equal(result.observedDeploymentId, 'dep-replacement');
+  });
+
+  it('does not duplicate active head work during protected recovery', () => {
+    const result = plan({
+      deployments: [
+        deployment('FAILED', HEAD, { id: 'dep-failed', createdAt: '2026-08-04T12:00:00.000Z' }),
+        deployment('BUILDING', HEAD, { id: 'dep-building', createdAt: '2026-08-04T11:59:00.000Z' }),
+        deployment('SUCCESS', RUNNING),
+      ],
+      retryFailedHead: true,
+    });
+    assert.equal(result.action, 'skip');
+    assert.equal(result.reason, HANDLED_BY_RAILWAY);
+    assert.equal(result.observedDeploymentId, 'dep-building');
+  });
+
   it('still deploys when the only record for head is Railway refusing it', () => {
     // This is the whole point: a SKIPPED record means Railway declined, so it
     // must never count as "already taken".
@@ -435,6 +505,7 @@ function fakeControl(events, { acquire } = {}) {
         data: {
           attempt: { attemptId: 'attempt-1' },
           leaseCapability: 'lease-capability-abcdefghijklmnopqrstuvwxyz',
+          dispatchHold: null,
         },
       };
     }),
@@ -731,7 +802,19 @@ describe('protected leased mutation orchestration', () => {
         if (attempts === 1) {
           throw new ControlPlaneError('DISPATCH_HOLD_ACTIVE', 'not bound', { definitive: true });
         }
-        return { data: { attempt: { attemptId: 'attempt-1' }, leaseCapability: 'lease-capability-abcdefghijklmnopqrstuvwxyz' } };
+        return {
+          data: {
+            attempt: { attemptId: 'attempt-1' },
+            leaseCapability: 'lease-capability-abcdefghijklmnopqrstuvwxyz',
+            dispatchHold: {
+              recoveryAttemptId: 'recovery-1',
+              headSha: HEAD,
+              state: 'LEASE_ACQUIRED',
+              linkedAttemptId: 'attempt-1',
+              failedHeadRetryAuthorized: false,
+            },
+          },
+        };
       },
     });
     await runLeasedReconcile(leasedOptions(events, {
@@ -743,6 +826,75 @@ describe('protected leased mutation orchestration', () => {
       recoveryHoldPollMs: 1_000,
     }));
     assert.deepEqual(events.slice(0, 5), ['authorize', 'acquire:1', 'authorize', 'acquire:2', 'build']);
+  });
+
+  it('takes failed-head retry authority from the admitted hold, not the recovery ID', async () => {
+    for (const failedHeadRetryAuthorized of [false, true]) {
+      const events = [];
+      let planningAuthority = null;
+      const control = fakeControl(events, {
+        acquire: async () => ({
+          data: {
+            attempt: { attemptId: 'attempt-1' },
+            leaseCapability: 'lease-capability-abcdefghijklmnopqrstuvwxyz',
+            dispatchHold: {
+              recoveryAttemptId: 'recovery-1',
+              headSha: HEAD,
+              state: 'LEASE_ACQUIRED',
+              linkedAttemptId: 'attempt-1',
+              failedHeadRetryAuthorized,
+            },
+          },
+        }),
+      });
+      await runLeasedReconcile(leasedOptions(events, {
+        control,
+        recoveryAttemptId: 'recovery-1',
+        buildPlan: async ({ retryFailedHead }) => {
+          planningAuthority = retryFailedHead;
+          return { projectId: 'project-1', environmentId: 'environment-1', plans: [] };
+        },
+      }));
+      assert.equal(planningAuthority, failedHeadRetryAuthorized);
+    }
+  });
+
+  it('rejects failed-head retry authority from a mismatched admitted hold', async () => {
+    const mismatches = [
+      { recoveryAttemptId: 'different-recovery' },
+      { headSha: 'f'.repeat(40) },
+      { state: 'RUN_BOUND' },
+      { linkedAttemptId: 'different-attempt' },
+    ];
+    for (const mismatch of mismatches) {
+      const events = [];
+      let planningAuthority = null;
+      const control = fakeControl(events, {
+        acquire: async () => ({
+          data: {
+            attempt: { attemptId: 'attempt-1' },
+            leaseCapability: 'lease-capability-abcdefghijklmnopqrstuvwxyz',
+            dispatchHold: {
+              recoveryAttemptId: 'recovery-1',
+              headSha: HEAD,
+              state: 'LEASE_ACQUIRED',
+              linkedAttemptId: 'attempt-1',
+              failedHeadRetryAuthorized: true,
+              ...mismatch,
+            },
+          },
+        }),
+      });
+      await runLeasedReconcile(leasedOptions(events, {
+        control,
+        recoveryAttemptId: 'recovery-1',
+        buildPlan: async ({ retryFailedHead }) => {
+          planningAuthority = retryFailedHead;
+          return { projectId: 'project-1', environmentId: 'environment-1', plans: [] };
+        },
+      }));
+      assert.equal(planningAuthority, false);
+    }
   });
 
   it('defers definitive lease contention without planning or provider access', async () => {

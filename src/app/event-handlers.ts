@@ -292,13 +292,14 @@ export class EventHandlerManager implements AppModule {
   private clockIntervalId: ReturnType<typeof setInterval> | null = null;
 
   private readonly idlePauseMs = IDLE_PAUSE_MS;
-  private readonly debouncedUrlSync = debounce(() => {
+  private readonly writeUrlState = (): void => {
     const shareUrl = this.getShareUrl();
     if (!shareUrl) return;
     // Preserve the shared mobile-overlay marker while syncing map URL state;
     // replacing it with null makes Android Back skip the open sheet.
     try { history.replaceState(history.state, '', shareUrl); } catch { }
-  }, 250);
+  };
+  private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
 
   private readonly debouncedWebcamReload = debounce(() => {
     if (this.ctx.mapLayers?.webcams) {
@@ -982,10 +983,12 @@ export class EventHandlerManager implements AppModule {
   }
 
   private filterMissionLayersForCurrentRenderer(layers: MapLayers): MapLayers {
-    const renderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
     const isDeckGLActive = this.ctx.map?.isDeckGLActive?.() ?? !this.ctx.isMobile;
+    const kind = this.ctx.map?.isGlobeMode?.()
+      ? 'globe'
+      : (isDeckGLActive ? 'deck' : 'svg');
     let filtered = this.filterMissionLayersForAvailableServices(
-      filterMissionLayersForRenderer(layers, renderer, isDeckGLActive, this.getMissionDefaultLayers()),
+      filterMissionLayersForRenderer(layers, kind, this.getMissionDefaultLayers()),
     );
     // #6045 — mission presets (e.g. Supply-Chain Risk) include resilienceScore.
     // Free users must not persist or apply locked layers through this path.
@@ -1189,10 +1192,9 @@ export class EventHandlerManager implements AppModule {
     //
     // view is intentionally excluded: all renderers set this.state.view
     // synchronously at the top of setView(), so the debounced read is always
-    // correct regardless of renderer. GlobeMap.onStateChanged is a no-op and
-    // SVG Map fires emitStateChange before the listener is installed — neither
-    // can rely on a later onStateChanged to drive the URL write, so they must
-    // use the immediate debounce path.
+    // correct regardless of renderer. The initial Globe/SVG view is applied
+    // before this listener is installed, so neither can rely on that earlier
+    // state change to drive the URL write; they need the immediate debounce.
     const { view, lat, lon, zoom, chokepoint } = this.ctx.initialUrlState ?? {};
     const urlHasAsyncFlyTo =
       (lat !== undefined && lon !== undefined) ||   // setCenter → flyTo (requires both)
@@ -1205,6 +1207,11 @@ export class EventHandlerManager implements AppModule {
 
   syncUrlState(): void {
     this.debouncedUrlSync();
+  }
+
+  syncUrlStateNow(): void {
+    this.debouncedUrlSync.cancel();
+    this.writeUrlState();
   }
 
   applyMapLayerChange(layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic'): void {
@@ -1794,6 +1801,7 @@ export class EventHandlerManager implements AppModule {
             trackPanelToggled(key, nextConfig.enabled);
           }
           Object.assign(current, nextConfig);
+          if (nextConfig.fontScale === undefined) delete current.fontScale;
           // Object.assign cannot DELETE a key, so a stale gate marker would
           // survive a settings-driven toggle. Re-apply through the owner helper.
           if (enabledChanged) userSetPanelEnabled(current, nextConfig.enabled);
@@ -1841,10 +1849,26 @@ export class EventHandlerManager implements AppModule {
         }
       },
       getAllSourceNames: () => this.getAllSourceNames(),
+      // Sources are applied to ctx.disabledSources on click, but DataLoader
+      // only re-reads that set when a load runs — so before this, a source
+      // toggle first showed up at RefreshScheduler's `news` tick,
+      // REFRESH_INTERVALS.feeds = 20 minutes away, or on reload (#6380).
+      //
+      // No invalidateNewsHydration() here, deliberately: DataLoader's news gate
+      // keys its work-list signature on ctx.disabledSources
+      // (data-loader.ts shouldHydrateNews / newsWorkListSignature), so a real
+      // change re-arms the load on its own. Dropping the signature as well
+      // would ALSO refetch when the net change is nil — the toggled-off-and-
+      // back-on case UnifiedSettings already declines to report — and spending
+      // a digest request on a work-list that did not move is precisely what the
+      // #5376 budget guard exists to prevent.
+      onSourcesChanged: () => { void this.callbacks.loadAllData(); },
       getLocalizedPanelName: (key: string, fallback: string) => this.getLocalizedPanelName(key, fallback),
       resetLayout: () => {
         clearPanelSpans();
         clearPanelColSpans();
+        for (const panel of Object.values(this.ctx.panelSettings)) delete panel.fontScale;
+        saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
         removeStorageValue(this.ctx.PANEL_ORDER_KEY);
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom');
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom-set');
@@ -1917,7 +1941,7 @@ export class EventHandlerManager implements AppModule {
         this.restoreSnapshot(snapshot);
       } else {
         this.ctx.isPlaybackMode = false;
-        this.callbacks.loadAllData();
+        void this.callbacks.loadAllData();
       }
     });
 

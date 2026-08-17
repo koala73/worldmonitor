@@ -888,8 +888,11 @@ describe('Handler cache-only (get-shipping-rates.ts)', () => {
   });
 
   it('reads seed key raw (bypasses env prefix)', () => {
-    assert.ok(handlerSrc.includes('getCachedJson'));
-    assert.ok(handlerSrc.includes('true'), 'Should pass raw=true');
+    // The seeder writes an unprefixed key, so the handler must pass raw=true
+    // or it reads a prefixed key that never exists and serves empty forever.
+    // `includes('true')` used to stand in for this — a substring present in
+    // essentially every JavaScript file, so the assertion could not fail.
+    assert.match(handlerSrc, /getCachedJson\(\s*REDIS_CACHE_KEY\s*,\s*true\s*\)/);
   });
 
   it('returns upstreamUnavailable on cache miss', () => {

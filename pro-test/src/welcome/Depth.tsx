@@ -42,7 +42,7 @@ export const Depth = () => (
         {NUGGETS.map(({ icon: Icon, n }, i) => (
           <motion.a
             key={n}
-            href={`${DASHBOARD_PATH}?ref=welcome-depth-n${n}`}
+            href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=depth-n${n}`}
             initial={false}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-40px' }}
@@ -57,8 +57,15 @@ export const Depth = () => (
       </div>
       <p className="text-center font-mono text-xs text-wm-muted mt-8">
         {t('welcome.depth.faith')}{' '}
-        <a href={`${DASHBOARD_PATH}?ref=welcome-depth`} className="text-wm-green hover:text-green-300 transition-colors">{t('welcome.depth.faithCta')}</a>{' '}
-        {t('welcome.depth.faithNote')}
+        <a href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=depth`} className="text-wm-green hover:text-green-300 transition-colors">{t('welcome.depth.faithCta')}</a>{' '}
+        <a
+          href="/sources/?utm_source=welcome-depth"
+          data-umami-event="welcome-cta"
+          data-umami-event-target="welcome-sources-depth"
+          className="underline decoration-wm-border underline-offset-4 hover:text-wm-text transition-colors"
+        >
+          {t('welcome.depth.faithNote')}
+        </a>
       </p>
     </div>
   </section>

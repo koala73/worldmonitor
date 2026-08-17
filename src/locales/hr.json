@@ -142,6 +142,19 @@
       "stable": "Stabilno"
     },
     "militaryActivity": "Vojna aktivnost",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Ekonomski pokazatelji",
     "ownFlights": "Vlastiti letovi",
     "foreignFlights": "Inozemni letovi",
@@ -255,6 +268,23 @@
       "corridorConditions": "Uvjeti koridora",
       "activityNowcast": "Nowcast aktivnosti",
       "decisionSignalsUnavailable": "Snimka signala odlučivanja Kine trenutno nije dostupna."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "header": {
@@ -527,7 +557,9 @@
         "displacement": "Uključi/isključi tokove raseljenih osoba",
         "climate": "Uključi/isključi klimatske anomalije",
         "outages": "Uključi/isključi ispade interneta",
-        "tradeRoutes": "Uključi/isključi trgovačke rute"
+        "tradeRoutes": "Uključi/isključi trgovačke rute",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
       },
       "view": {
         "dark": "Prebedi na tamni način",
@@ -697,7 +729,7 @@
         "URLHAUS_AUTH_KEY": "Koristi se za URLhaus i ThreatFox API-je.",
         "OTX_API_KEY": "Opcionalni izvor obogaćivanja za sloj cyber prijetnji.",
         "ABUSEIPDB_API_KEY": "Opcionalni izvor obogaćivanja za reputaciju zlonamjernih IP adresa.",
-        "FINNHUB_API_KEY": "Cijene dionica u realnom vremenu i tržišni podaci.",
+        "FINNHUB_API_KEY": "Odgođene ili unaprijed učitane cijene dionica i tržišni podaci. Ključ nije živi prijenos.",
         "NASA_FIRMS_API_KEY": "Sustav za upravljanje informacijama o požarima.",
         "OLLAMA_API_URL": "npr. http://127.0.0.1:11434 (Ollama) ili http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-kompatibilan endpoint.",
         "OLLAMA_MODEL": "npr. llama3.1:8b — tag modela za summarizaciju."
@@ -1026,7 +1058,12 @@
       "topProducers": "Najveći proizvođači",
       "risk": "Rizik",
       "sources": "IMF PortWatch / AISStream / CorridorRisk / NGA / USGS",
-      "infoTooltip": "<strong>Monitor opskrbnog lanca</strong> Globalno praćenje logistike i resursa:<ul><li><strong>Uska grla</strong>: Status pomorskog tranzita, ocjene poremećaja i broj brodova</li><li><strong>Transport</strong>: Baltic Dry Index i trendovi cijena prijevoza</li><li><strong>Minerali</strong>: Rizik koncentracije kritičnih minerala (HHI) i najveći proizvođači</li></ul>Kliknite na karticu uskog grla za prikaz grafikona povijesti tranzita."
+      "infoTooltip": "<strong>Monitor opskrbnog lanca</strong> Globalno praćenje logistike i resursa:<ul><li><strong>Uska grla</strong>: Status pomorskog tranzita, ocjene poremećaja i broj brodova</li><li><strong>Transport</strong>: Baltic Dry Index i trendovi cijena prijevoza</li><li><strong>Minerali</strong>: Rizik koncentracije kritičnih minerala (HHI) i najveći proizvođači</li></ul>Kliknite na karticu uskog grla za prikaz grafikona povijesti tranzita.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "restrictions": "Ograničenja",
@@ -1074,6 +1111,7 @@
       "noComtradeData": "Nema dostupnih podataka o strateških tokovima",
       "comtradeUnavailable": "UN Comtrade podaci privremeno nisu dostupni",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomalija",
       "colReporter": "Država",
       "colCommodity": "Roba",
@@ -1401,7 +1439,7 @@
         "ucdpEvents": "Događaji Oružanih Konfliktaa",
         "displacementFlows": "Tokovi Raseljenih",
         "climateAnomalies": "Klimatske Anomalije",
-        "weatherAlerts": "Vremenska upozorenja za SAD (NWS)",
+        "weatherAlerts": "Vremenska upozorenja za SAD i Kanadu (NWS, ECCC)",
         "strategicWaterways": "Uska Grla",
         "economicCenters": "Ekonomski Centri",
         "criticalMinerals": "Kritični Minerali",
@@ -1419,7 +1457,9 @@
         "kindness": "Čini Ljubaznosti",
         "happiness": "Svjetsko Blagostanje",
         "speciesRecovery": "Oporavak vrsta",
-        "renewableInstallations": "Čista energija"
+        "renewableInstallations": "Čista energija",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
       },
       "tooltip": {
         "earthquake": "Zemljotres",
@@ -1480,7 +1520,7 @@
           "infraDatacenters": "AI compute klasteri >=10.000 GPU-a",
           "infraOutages": "Internetske crne točke i prekidi usluga",
           "naturalEventsTech": "Zemljotresi, oluje, požari (mogu utjecati na podatkovne centre)",
-          "weatherAlerts": "Upozorenja za ekstremne vremenske prilike u SAD-u (NWS)",
+          "weatherAlerts": "Upozorenja za ekstremne vremenske prilike u SAD-u i Kanadi (NWS, ECCC)",
           "economicCenters": "Berzanske bolnice i središnje banke",
           "countriesOverlay": "Oznake imena država",
           "financeExchanges": "Glavne svjetske berze po razredu tržišta",
@@ -1492,7 +1532,7 @@
           "financeOutages": "Internetski prekidi koji mogu utjecati na rad tržišta",
           "financeCyberThreats": "Sigurnosni incidenti oko financijske infrastrukture",
           "macroWaterways": "Strateška uska grla za robno brodarstvo",
-          "weatherAlertsMarket": "Ekstremne vremenske prilike u SAD-u važne za tržište (NWS)",
+          "weatherAlertsMarket": "Ekstremne vremenske prilike u SAD-u i Kanadi važne za tržište (NWS, ECCC)",
           "naturalEventsMacro": "Zemljotresi, požari, poplave i ostali prirodni poremećaji",
           "timeRecent": "Filtriraj vremenski ovisne podatke na nedavne sate",
           "timeExtended": "Prikaži podatke iz prošlog tjedna, mjeseca ili cijelog vremena",
@@ -1525,7 +1565,9 @@
           "tradeRoutes": "Glavne globalne brodske rute koje povezuju luke kroz strateške uske grle",
           "dayNight": "Praćenje solarnog terminatora u stvarnom vremenu - prikaz dnevne i noćne zone",
           "geoBoundaries": "Demilitarizirane zone, linije primirja i sporne granice",
-          "ciiChoropleth": "Indeks nestabilnosti države toplinska mapa — boji zemlje po CII rezultatu (zelena=stabilna, crvena=kritična)"
+          "ciiChoropleth": "Indeks nestabilnosti države toplinska mapa — boji zemlje po CII rezultatu (zelena=stabilna, crvena=kritična)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
         },
         "notes": {
           "timeAffects": "Utječe na: Zemljotresi, Vrijeme, Protesti, Prekidi"
@@ -2562,13 +2604,14 @@
     },
     "sanctionsPressure": {
       "title": "Sankcije i Označavanja",
-      "infoTooltip": "OFAC sankcijama označavanja iz SDN i Consolidated Lists. Prikazuje koje zemlje suočavaju najveću tlak označavanja, koji programi ga pokrivaju i što je novo dodano od posljednje ažuriranja.",
+      "infoTooltip": "OFAC SDN i Consolidated Lists plus SEMA/JVCFOA oznake Global Affairs Canada. Prikazuje koje zemlje suočavaju najveću tlak označavanja, koji programi ga pokrivaju i što je novo dodano od posljednje ažuriranja.",
       "loading": "Učitavanje podataka sankcija...",
       "unavailable": "Podaci sankcija nisu dostupni.",
       "summary": {
         "new": "Novo",
         "vessels": "Plovila",
-        "aircraft": "Zrakoplov"
+        "aircraft": "Zrakoplov",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Zemlje pod sankcijama",
@@ -2583,11 +2626,12 @@
       "footer": {
         "updated": "Ažurirano {{time}}",
         "dataset": "skup podataka {{date}}",
-        "source": "Izvor: OFAC"
+        "source": "Izvor: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} novo",
-        "new": "novo"
+        "new": "novo",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} designacija",
       "designations_other": "{{count}} designacija",
@@ -3065,6 +3109,7 @@
     "moreEvents": "više događaja",
     "monitoring": "Praćenje",
     "viewUSGS": "Pogledaj na USGS",
+    "viewNRCan": "Pogledaj na Earthquakes Canada",
     "expired": "Isteklo",
     "timeAgo": {
       "s": "prije {{count}}s",

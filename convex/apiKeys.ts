@@ -235,6 +235,10 @@ export const validateKeyByHash = internalQuery({
       name: key.name,
       scopes: key.scopes,
       companyMonitoringAccountId: key.companyMonitoringAccountId,
+      // Consumed ONLY by the /api/internal-validate-api-key route to decide
+      // whether scheduling touchKeyLastUsed is worthwhile; the route strips
+      // it before responding, so the gateway cache blob is unchanged.
+      lastUsedAt: key.lastUsedAt,
     };
   },
 });
@@ -258,8 +262,17 @@ export const getKeyOwner = internalQuery({
  * Bump lastUsedAt for a key (fire-and-forget from the gateway).
  * Skips the write if lastUsedAt was updated within the last 5 minutes
  * to reduce Convex write load for hot keys.
+ *
+ * Exported because the debounce check ALSO runs in http.ts before the touch
+ * is even scheduled. The in-mutation check alone was a read-then-write race:
+ * every validation scheduled a touch, and at each debounce boundary all
+ * concurrently scheduled touches read the same stale lastUsedAt and patched
+ * the same hot document — 1,036 OCC write conflicts on userApiKeys in 14
+ * days, reaching retry depth 3 (Convex Insights, 2026-08). Gating at the
+ * schedule site keeps the herd from forming; this in-mutation check stays as
+ * the second line, making any touch that does race a no-op on retry.
  */
-const TOUCH_DEBOUNCE_MS = 5 * 60 * 1000;
+export const TOUCH_DEBOUNCE_MS = 5 * 60 * 1000;
 
 export const touchKeyLastUsed = internalMutation({
   args: { keyId: v.id("userApiKeys") },

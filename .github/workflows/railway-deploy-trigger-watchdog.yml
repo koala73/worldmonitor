@@ -1,8 +1,9 @@
-name: Railway Deploy Trigger Watchdog
+name: Railway Deploy Trigger Watchdog (Manual Rollback Only)
+run-name: Manual Railway rollback watchdog (${{ inputs.mode }})
 
+# Transitional rollback surface only. It may inspect or dispatch recovery only
+# after an explicit manual invocation; do not add a schedule or dispatcher.
 on:
-  schedule:
-    - cron: '8,23,38,53 * * * *'
   workflow_dispatch:
     inputs:
       mode:
@@ -49,6 +50,8 @@ jobs:
       recovery_attempt_id: ${{ steps.controller.outputs.recovery_attempt_id }}
       prior_id: ${{ steps.controller.outputs.prior_id }}
       outcome: ${{ steps.controller.outputs.outcome }}
+      read_failure: ${{ steps.controller.outputs.read_failure }}
+      read_failure_code: ${{ steps.controller.outputs.read_failure_code }}
     steps:
       - name: Check out the watchdog classifier
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -63,11 +66,22 @@ jobs:
           RAILWAY_RECONCILE_CONTROL_URL: ${{ vars.RAILWAY_RECONCILE_CONTROL_URL }}
           RAILWAY_RECONCILE_WATCHDOG_HMAC: ${{ secrets.RAILWAY_RECONCILE_WATCHDOG_HMAC }}
           WATCHDOG_PHASE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'status' && 'status' || 'classify' }}
-          AUTO_RECOVERY_ENABLED: ${{ vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true' && vars.RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED == 'true' && (github.event_name == 'schedule' || inputs.mode == 'dispatch') }}
+          AUTO_RECOVERY_ENABLED: ${{ vars.RAILWAY_RECONCILE_CUTOVER_ACTIVE == 'true' && vars.RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED == 'true' && github.event_name == 'workflow_dispatch' && inputs.mode == 'dispatch' }}
         run: >-
           node scripts/dispatch-stale-railway-reconcile.mjs
           --phase "$WATCHDOG_PHASE"
           --auto-recovery-enabled "$AUTO_RECOVERY_ENABLED"
+
+      # This step records why the current manual classifier failed. Success
+      # means this invocation could not read GitHub; skipped means it could.
+      # The step name is pinned to WATCHDOG_READ_FAILURE_STEP_NAME by tests.
+      # `always()` is load-bearing because the controller deliberately fails
+      # the current job on its first unreadable GitHub result.
+      - name: Record watchdog read-path failure
+        if: always() && steps.controller.outputs.read_failure == 'true'
+        env:
+          READ_FAILURE_CODE: ${{ steps.controller.outputs.read_failure_code }}
+        run: echo "::warning::The watchdog could not read GitHub ($READ_FAILURE_CODE)."
 
   dispatch:
     name: Dispatch authorized recovery

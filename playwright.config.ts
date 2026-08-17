@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const requireWebMcp = process.env.WM_REQUIRE_WEBMCP === '1';
+const webMcpChromeChannel = process.env.WM_WEBMCP_CHROME_CHANNEL?.trim() || 'chrome';
+const webMcpChromeExecutablePath = process.env.WM_WEBMCP_CHROME_EXECUTABLE_PATH?.trim();
+
 export default defineConfig({
   testDir: './e2e',
   // CI: the smoke specs are dominated by fixed settle windows (eight 8 s
@@ -45,8 +49,19 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
+        // The bundled Playwright Chromium can lag the WebMCP origin-trial
+        // milestone. Strict smoke runs deliberately use an installed Chrome
+        // channel and the command-line equivalent of
+        // chrome://flags/#enable-webmcp-testing. If Chrome is absent or too
+        // old, the smoke fails instead of silently exercising the no-op path.
+        ...(requireWebMcp && !webMcpChromeExecutablePath ? { channel: webMcpChromeChannel } : {}),
         launchOptions: {
-          args: ['--use-angle=swiftshader', '--use-gl=swiftshader'],
+          ...(webMcpChromeExecutablePath ? { executablePath: webMcpChromeExecutablePath } : {}),
+          args: [
+            '--use-angle=swiftshader',
+            '--use-gl=swiftshader',
+            ...(requireWebMcp ? ['--enable-features=WebMCPTesting'] : []),
+          ],
         },
       },
     },

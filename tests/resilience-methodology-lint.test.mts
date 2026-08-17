@@ -48,6 +48,7 @@ const HEADING_TO_DIMENSION: Readonly<Record<string, ResilienceDimensionId>> = {
   // for proto / cache-key stability.
   'Conflict & Displacement': 'borderSecurity',
   'Information & Cognitive': 'informationCognitive',
+  Education: 'education',
   'Health & Public Service': 'healthPublicService',
   'Food & Water': 'foodWater',
   'Fiscal Space': 'fiscalSpace',
@@ -111,6 +112,25 @@ function isOfacRetirementExplanation(claim: string): boolean {
     rationalePattern.test(segment) ||
     /Renamed from "Trade & Sanctions"/i.test(segment)
   );
+}
+
+/**
+ * #6459 — `financialSystemExposure` now carries a genuine, ACTIVE sanctions
+ * input: a post-blend cap for jurisdictions under a comprehensive or
+ * government-wide Western blocking programme. Prose describing that construct
+ * is legitimate current methodology, not resurrected OFAC-domicile scoring, so
+ * the generic-`sanctions` rule below has to admit it.
+ *
+ * The exemption is deliberately narrow in two ways. It requires the claim to
+ * NAME the comprehensive-embargo cap, so an ordinary "we score sanctions"
+ * sentence still trips the rule. And it never admits `OFAC`, `sanctionCount`
+ * or `sanctions:country-counts:v1` — the retired-signal test keys on those
+ * independently and stays strict, so this cannot become a back door for the
+ * signal the rule was written to keep out.
+ */
+function isComprehensiveEmbargoCapClaim(claim: string): boolean {
+  if (/\bOFAC\b|\bsanctionCount\b|sanctions:country-counts:v1/i.test(claim)) return false;
+  return /comprehensive[- ]embargo cap/i.test(claim);
 }
 
 describe('resilience methodology doc linter (T1.8)', () => {
@@ -309,13 +329,40 @@ describe('resilience methodology doc linter (T1.8)', () => {
     const currentStateSource = source.slice(0, changelogIndex);
     const offenders = splitActiveMethodologyClaims(currentStateSource).filter((claim) =>
       /\bsanctions?\b/i.test(claim) &&
-      !isOfacRetirementExplanation(claim)
+      !isOfacRetirementExplanation(claim) &&
+      !isComprehensiveEmbargoCapClaim(claim)
     );
 
     assert.deepEqual(
       offenders,
       [],
-      'Current methodology prose must not describe sanctions as an active scoring signal unless the claim is explicitly a retirement/replacement explanation.',
+      'Current methodology prose must not describe sanctions as an active scoring signal unless the claim is explicitly a retirement/replacement explanation or the #6459 comprehensive-embargo cap.',
+    );
+  });
+
+  it('the comprehensive-embargo-cap exemption cannot readmit the retired OFAC signal', () => {
+    // The exemption added in #6459 is the only way an active-sanctions claim
+    // can pass. Pin its edges so a later widening has to be deliberate.
+    assert.equal(
+      isComprehensiveEmbargoCapClaim(
+        '**Comprehensive-embargo cap**: jurisdictions under a comprehensive blocking programme are capped at 15; FATF assesses AML/CFT deficiency rather than sanctions.',
+      ),
+      true,
+      'prose describing the comprehensive-embargo cap is legitimate current methodology',
+    );
+
+    assert.equal(
+      isComprehensiveEmbargoCapClaim(
+        'The comprehensive-embargo cap uses the OFAC `sanctionCount` seed to decide membership.',
+      ),
+      false,
+      'naming the cap must not launder the retired OFAC-domicile count back into active methodology',
+    );
+
+    assert.equal(
+      isComprehensiveEmbargoCapClaim('Sanctions exposure is scored as an active signal.'),
+      false,
+      'a generic active-sanctions claim must still trip the rule',
     );
   });
 });

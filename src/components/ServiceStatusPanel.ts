@@ -84,11 +84,10 @@ export class ServiceStatusPanel extends Panel {
       return;
     }
 
-    this.setErrorState(false);
     const filtered = this.getFilteredServices();
     const issues = filtered.filter(s => s.status !== 'operational');
 
-    replaceChildren(this.content,
+    this.setContentNodes(
       this.buildSummary(filtered),
       this.buildFilters(),
       h('div', { className: 'service-status-list' },

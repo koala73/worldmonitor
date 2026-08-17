@@ -37,6 +37,7 @@ export class TransitChart {
   private source: HTMLDivElement | null = null;
   private themeHandler: (() => void) | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private scaleObserver: MutationObserver | null = null;
   private allData: TransitDayCount[] = [];
   private zoom: ZoomWindow = 90;
   private tab: Tab = 'calls';
@@ -66,7 +67,8 @@ export class TransitChart {
     Object.assign(this.tooltip.style, {
       position: 'absolute', display: 'none', pointerEvents: 'none', zIndex: '10',
       background: 'var(--bg-elevated, #1a1a2e)', border: '1px solid var(--border-subtle, #444)',
-      borderRadius: '4px', padding: '6px 9px', fontSize: '11px', color: 'var(--text-primary, #eee)',
+      borderRadius: '4px', padding: '6px 9px',
+      fontSize: 'calc(11px * var(--wm-panel-effective-scale, 1))', color: 'var(--text-primary, #eee)',
       whiteSpace: 'nowrap', lineHeight: '1.6',
     });
     container.appendChild(this.tooltip);
@@ -78,7 +80,10 @@ export class TransitChart {
     container.appendChild(this.legend);
 
     this.source = document.createElement('div');
-    Object.assign(this.source.style, { fontSize: '10px', color: 'var(--text-dim, #888)', paddingTop: '4px' });
+    Object.assign(this.source.style, {
+      fontSize: 'calc(10px * var(--wm-panel-effective-scale, 1))',
+      color: 'var(--text-dim, #888)', paddingTop: '4px',
+    });
     this.source.textContent = 'Source: IMF PortWatch · 180d history';
     container.appendChild(this.source);
 
@@ -87,6 +92,11 @@ export class TransitChart {
 
     this.resizeObserver = new ResizeObserver(() => this.draw());
     this.resizeObserver.observe(this.canvas);
+
+    this.scaleObserver = new MutationObserver(() => this.draw());
+    this.scaleObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    const panel = container.closest('.panel');
+    if (panel) this.scaleObserver.observe(panel, { attributes: true, attributeFilter: ['style'] });
 
     this.themeHandler = () => { this.buildControls(); this.buildLegend(); this.draw(); };
     window.addEventListener('theme-changed', this.themeHandler);
@@ -99,6 +109,7 @@ export class TransitChart {
   destroy(): void {
     if (this.themeHandler) { window.removeEventListener('theme-changed', this.themeHandler); this.themeHandler = null; }
     if (this.resizeObserver) { this.resizeObserver.disconnect(); this.resizeObserver = null; }
+    if (this.scaleObserver) { this.scaleObserver.disconnect(); this.scaleObserver = null; }
     if (this.canvas) {
       this.canvas.removeEventListener('mousemove', this.onMouseMove);
       this.canvas.removeEventListener('mouseleave', this.onMouseLeave);
@@ -125,7 +136,7 @@ export class TransitChart {
     const bgColor = getCSSColor('--bg') || '#000';
 
     const btnStyle = (active: boolean) =>
-      `font-size:10px;padding:2px 7px;border-radius:3px;cursor:pointer;border:1px solid ${borderSubtle};` +
+      `font-size:calc(10px * var(--wm-panel-effective-scale, 1));padding:2px 7px;border-radius:3px;cursor:pointer;border:1px solid ${borderSubtle};` +
       `background:${active ? accentColor : 'transparent'};` +
       `color:${active ? bgColor : textDim};transition:background 0.15s`;
 
@@ -170,7 +181,7 @@ export class TransitChart {
       const key = this.tab === 'calls' ? VESSEL_KEYS[i]! : CAP_KEYS[i]!;
       const val = last ? (last[key as keyof TransitDayCount] as number) : 0;
       const display = this.tab === 'dwt' ? fmtDWT(val) : String(val);
-      return `<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:${textDim}">` +
+      return `<span style="display:flex;align-items:center;gap:4px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:${textDim}">` +
         `<span style="width:7px;height:7px;border-radius:1px;background:${VESSEL_COLORS[i]}"></span>` +
         `${label} <b style="color:${VESSEL_COLORS[i]}">${display}</b></span>`;
     }).join(''), "legacy direct innerHTML migration"));
@@ -212,7 +223,8 @@ export class TransitChart {
     const yPos = (v: number) => PAD.top + plotH - (v / yScale) * plotH;
 
     // Grid
-    ctx.font = `9px -apple-system, BlinkMacSystemFont, system-ui, sans-serif`;
+    const textScale = Number.parseFloat(getComputedStyle(canvas).getPropertyValue('--wm-panel-effective-scale')) || 1;
+    ctx.font = `${9 * textScale}px -apple-system, BlinkMacSystemFont, system-ui, sans-serif`;
     ctx.textAlign = 'left';
     for (let i = 0; i <= GRID_LINES; i++) {
       const gy = PAD.top + (i / GRID_LINES) * plotH;

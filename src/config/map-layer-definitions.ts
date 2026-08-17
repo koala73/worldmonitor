@@ -2,7 +2,14 @@ import type { MapLayers } from '@/types';
 // boundary-ignore: isDesktopRuntime is a pure env probe with no service dependencies
 import { isDesktopRuntime } from '@/services/runtime';
 
-export type MapRenderer = 'flat' | 'globe';
+/**
+ * The three concrete map renderers a layer can be painted by. This is the
+ * single renderer axis: `'svg'` (D3/SVG mobile fallback in Map.ts), `'deck'`
+ * (WebGL DeckGLMap), and `'globe'` (globe.gl GlobeMap). It mirrors
+ * MapContainer's `RendererKind` (computed by `getPendingRendererKind()`), which
+ * imports this type so the picker, dispatcher, and shell stay in lockstep.
+ */
+export type RendererKind = 'svg' | 'deck' | 'globe';
 export type MapVariant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity' | 'energy';
 
 const _desktop = isDesktopRuntime();
@@ -12,16 +19,15 @@ export interface LayerDefinition {
   icon: string;
   i18nSuffix: string;
   fallbackLabel: string;
-  renderers: MapRenderer[];
-  premium?: 'locked' | 'enhanced';
   /**
-   * When true, this layer only renders under DeckGL — neither the SVG/mobile
-   * fallback in Map.ts nor the WebGL GlobeMap has a code path for its data.
-   * `renderers: ['flat']` is not sufficient because `'flat'` covers both
-   * DeckGL-flat and SVG-flat. Consumers (layer picker, CMD+K dispatcher)
-   * must additionally gate on `isDeckGLActive()` for these layers.
+   * Every renderer that has a real paint path for this layer. A layer executes
+   * (picker toggle / CMD+K dispatch) under a renderer only if that renderer is
+   * listed here — this is the whole gate. A DeckGL-only layer is `['deck']`; a
+   * layer painted by both DeckGL and the globe (e.g. the CII choropleth) is
+   * `['deck', 'globe']`; a layer on every surface is `['svg', 'deck', 'globe']`.
    */
-  deckGLOnly?: boolean;
+  renderers: RendererKind[];
+  premium?: 'locked' | 'enhanced';
 }
 
 export type LayerExplanationCoverage = 'curated' | 'fallback';
@@ -44,17 +50,15 @@ const def = (
   icon: string,
   i18nSuffix: string,
   fallbackLabel: string,
-  renderers: MapRenderer[] = ['flat', 'globe'],
+  renderers: RendererKind[] = ['svg', 'deck', 'globe'],
   premium?: 'locked' | 'enhanced',
-  deckGLOnly?: boolean,
 ): LayerDefinition => ({
   key, icon, i18nSuffix, fallbackLabel, renderers,
   ...(premium && { premium }),
-  ...(deckGLOnly && { deckGLOnly: true }),
 });
 
 export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
-  iranAttacks:              def('iranAttacks',              '&#127919;', 'iranAttacks',              'Iran Attacks', ['flat', 'globe'], _desktop ? 'locked' : undefined),
+  iranAttacks:              def('iranAttacks',              '&#127919;', 'iranAttacks',              'Iran Attacks', ['svg', 'deck', 'globe'], _desktop ? 'locked' : undefined),
   hotspots:                 def('hotspots',                 '&#127919;', 'intelHotspots',            'Intel Hotspots'),
   conflicts:                def('conflicts',                '&#9876;',   'conflictZones',            'Conflict Zones'),
 
@@ -63,7 +67,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   irradiators:              def('irradiators',              '&#9888;',   'gammaIrradiators',         'Gamma Irradiators'),
   radiationWatch:           def('radiationWatch',           '&#9762;',   'radiationWatch',           'Radiation Watch'),
   spaceports:               def('spaceports',               '&#128640;', 'spaceports',               'Spaceports'),
-  satellites:               def('satellites',               '&#128752;', 'satellites',               'Orbital Surveillance', ['flat', 'globe']),
+  satellites:               def('satellites',               '&#128752;', 'satellites',               'Orbital Surveillance', ['svg', 'deck', 'globe']),
 
   cables:                   def('cables',                   '&#128268;', 'underseaCables',           'Undersea Cables'),
   pipelines:                def('pipelines',                '&#128738;', 'pipelines',                'Pipelines'),
@@ -76,7 +80,9 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   ucdpEvents:               def('ucdpEvents',               '&#9876;',   'ucdpEvents',               'Armed Conflict Events'),
   displacement:             def('displacement',             '&#128101;', 'displacementFlows',        'Displacement Flows'),
   climate:                  def('climate',                  '&#127787;', 'climateAnomalies',         'Climate Anomalies'),
-  weather:                  def('weather',                  '&#9928;',   'weatherAlerts',            'US Weather Alerts (NWS)'),
+  weather:                  def('weather',                  '&#9928;',   'weatherAlerts',            'US + Canada Weather Alerts (NWS, ECCC)'),
+  canadaRoads:              def('canadaRoads',              '&#128679;', 'canadaRoads',              'Canada Roads (Ontario, Alberta, Toronto, BC)', ['deck']),
+  canadaAlerts:             def('canadaAlerts',             '&#9888;',   'canadaAlerts',             'Canada Alerts (Alberta Emergency Alert)', ['deck']),
   outages:                  def('outages',                  '&#128225;', 'internetOutages',          'Internet Disruptions'),
   cyberThreats:             def('cyberThreats',             '&#128737;', 'cyberThreats',             'Cyber Threats'),
   natural:                  def('natural',                  '&#127755;', 'naturalEvents',            'Natural Events'),
@@ -84,13 +90,16 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   waterways:                def('waterways',                '&#9875;',   'strategicWaterways',       'Chokepoints'),
   economic:                 def('economic',                 '&#128176;', 'economicCenters',          'Economic Centers'),
   minerals:                 def('minerals',                 '&#128142;', 'criticalMinerals',         'Critical Minerals'),
-  gpsJamming:               def('gpsJamming',               '&#128225;', 'gpsJamming',               'GPS Jamming', ['flat', 'globe'], _desktop ? 'locked' : undefined),
-  ciiChoropleth:            def('ciiChoropleth',            '&#127758;', 'ciiChoropleth',            'CII Instability', ['flat'], _desktop ? 'enhanced' : undefined),
-  // DeckGLMap owns the resilience choropleth; Map.ts/MapContainer strip it
-  // on SVG/mobile fallback.
-  resilienceScore:          def('resilienceScore',          '&#128200;', 'resilienceScore',          'Resilience', ['flat'], 'locked', true),
-  dayNight:                 def('dayNight',                 '&#127763;', 'dayNight',                 'Day/Night', ['flat']),
-  sanctions:                def('sanctions',                '&#128683;', 'sanctions',                'Sanctions', ['flat']),
+  gpsJamming:               def('gpsJamming',               '&#128225;', 'gpsJamming',               'GPS Jamming', ['svg', 'deck', 'globe'], _desktop ? 'locked' : undefined),
+  // Painted by DeckGLMap AND GlobeMap (both build CII choropleth polygons);
+  // the SVG/mobile fallback has no CII paint path, so this is deck + globe,
+  // NOT svg. Previously mislabeled `['flat']`, which wrongly kept it out of
+  // the globe layer picker even though GlobeMap renders it (#6773 / R8).
+  ciiChoropleth:            def('ciiChoropleth',            '&#127758;', 'ciiChoropleth',            'CII Instability', ['deck', 'globe'], _desktop ? 'enhanced' : undefined),
+  // DeckGLMap owns the resilience choropleth; only DeckGL has a paint path.
+  resilienceScore:          def('resilienceScore',          '&#128200;', 'resilienceScore',          'Resilience', ['deck'], 'locked'),
+  dayNight:                 def('dayNight',                 '&#127763;', 'dayNight',                 'Day/Night', ['svg', 'deck']),
+  sanctions:                def('sanctions',                '&#128683;', 'sanctions',                'Sanctions', ['svg', 'deck']),
   startupHubs:              def('startupHubs',              '&#128640;', 'startupHubs',              'Startup Hubs'),
   techHQs:                  def('techHQs',                  '&#127970;', 'techHQs',                  'Tech HQs'),
   accelerators:             def('accelerators',             '&#9889;',   'accelerators',             'Accelerators'),
@@ -111,16 +120,15 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   commodityPorts:           def('commodityPorts',           '&#9973;',   'commodityPorts',           'Commodity Ports'),
   webcams:                  def('webcams',                  '&#128247;', 'webcams',                  'Live Webcams'),
   // weatherRadar removed — radar tiles now auto-start when Weather Alerts layer is toggled on
-  diseaseOutbreaks:         def('diseaseOutbreaks',         '&#129440;', 'diseaseOutbreaks',         'Disease Outbreaks', ['flat'], undefined, true),
-  // DeckGL-only layers. `renderers: ['flat']` hides them from the globe
+  diseaseOutbreaks:         def('diseaseOutbreaks',         '&#129440;', 'diseaseOutbreaks',         'Disease Outbreaks', ['deck']),
+  // DeckGL-only layers: `renderers: ['deck']` hides them from the globe
   // picker (GlobeMap has no branch in ensureStaticDataForLayer / no entry
-  // in the layer-channel map). `deckGLOnly: true` also hides them from
-  // the SVG/mobile fallback's CMD+K dispatch (Map.ts has no SVG render
-  // path for either marker/pin type). Restore to `['flat', 'globe']`
-  // without `deckGLOnly` once both renderers gain real support.
-  storageFacilities:        def('storageFacilities',        '&#127959;', 'storageFacilities',        'Storage Facilities', ['flat'], undefined, true),
-  fuelShortages:            def('fuelShortages',            '&#9881;',   'fuelShortages',            'Fuel Shortages', ['flat'], undefined, true),
-  liveTankers:              def('liveTankers',              '&#128674;', 'liveTankers',              'Live Tanker Positions', ['flat'], undefined, true),
+  // in the layer-channel map) AND from the SVG/mobile fallback's CMD+K
+  // dispatch (Map.ts has no SVG render path for either marker/pin type).
+  // Add 'svg'/'globe' here once those renderers gain real support.
+  storageFacilities:        def('storageFacilities',        '&#127959;', 'storageFacilities',        'Storage Facilities', ['deck']),
+  fuelShortages:            def('fuelShortages',            '&#9881;',   'fuelShortages',            'Fuel Shortages', ['deck']),
+  liveTankers:              def('liveTankers',              '&#128674;', 'liveTankers',              'Live Tanker Positions', ['deck']),
 };
 
 export const V1_LAYER_EXPLANATION_KEYS = [
@@ -129,6 +137,7 @@ export const V1_LAYER_EXPLANATION_KEYS = [
   'ciiChoropleth',
   'natural',
   'weather',
+  'canadaRoads', 'canadaAlerts',
   'flights',
   'ais',
   'waterways',
@@ -195,23 +204,56 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
       'Low-severity GDACS alerts are filtered out to keep the map readable.',
       'EONET wildfires are freshness-filtered, so older open events may not appear as active map points.',
     ],
-    related: ['Natural Events layer popups', 'US Weather Alerts (NWS)', 'Country brief natural signals'],
+    related: ['Natural Events layer popups', 'US + Canada Weather Alerts (NWS, ECCC)', 'Country brief natural signals'],
     evidence: ['docs/data-sources.mdx', 'docs/architecture.mdx', 'server/worldmonitor/natural/v1/list-natural-events.ts'],
   },
   weather: {
     key: 'weather',
     coverage: 'curated',
     category: 'Weather',
-    purpose: 'Shows active severe-weather alerts for the United States from the official national warning feed.',
-    source: 'United States National Weather Service (NWS) active alerts API, seeded through the WorldMonitor relay.',
-    freshness: 'NWS alerts are seeded every 15 minutes by the relay and monitored against a 45-minute freshness budget.',
-    confidence: 'Authoritative for active NWS alerts, subject to upstream publication timing and mapped alert geometry.',
+    purpose: 'Shows active severe-weather alerts for the United States and Canada from official national warning feeds.',
+    source: 'United States National Weather Service (NWS) and Environment and Climate Change Canada (ECCC) active alerts, seeded through the WorldMonitor relay.',
+    freshness: 'NWS and ECCC alerts are seeded every 15 minutes by the relay and monitored against a 45-minute freshness budget.',
+    confidence: 'Authoritative for active NWS and ECCC alerts, subject to upstream publication timing and mapped alert geometry.',
     limitations: [
-      'Does not include official national weather warnings outside the United States.',
+      'Does not include official national weather warnings outside the United States and Canada.',
       'Alerts without usable polygon geometry may not appear as map overlays.',
     ],
     related: ['Natural Events layer', 'Weather alert popups', 'Data freshness status'],
     evidence: ['scripts/ais-relay.cjs', 'api/health.js', 'src/services/weather.ts'],
+  },
+  canadaRoads: {
+    key: 'canadaRoads',
+    coverage: 'curated',
+    category: 'Transport',
+    purpose: 'Shows official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions.',
+    source: 'Ontario 511 and Alberta 511 provincial feeds, City of Toronto Road Restrictions, and DriveBC Open511, seeded through WorldMonitor.',
+    freshness: 'Each road source is seeded every 15 minutes and monitored against a 45-minute freshness budget.',
+    confidence: 'Authoritative for the supported provincial and municipal publishers, subject to upstream publication timing and mapped geometry.',
+    limitations: [
+      'Manitoba 511 is not ingested yet; it must use this same canadaRoads layer key when it ships.',
+      'Alberta 511 roadconditions is not ingested (the vendor endpoint 404s); live Alberta paint is events and alerts only.',
+      'Provincial alerts without coordinates do not appear as map dots.',
+      'Road-condition polylines may simplify complex highway geometry.',
+    ],
+    related: ['US Weather Alerts (NWS)', 'Data freshness status'],
+    evidence: ['scripts/seed-provincial-511.mjs', 'scripts/seed-toronto-road-restrictions.mjs', 'scripts/seed-open511.mjs', 'api/health.js', 'src/services/canada-roads.ts'],
+  },
+  canadaAlerts: {
+    key: 'canadaAlerts',
+    coverage: 'curated',
+    category: 'Emergency Alerts',
+    purpose: 'Shows active Alberta Emergency Alert warnings as map dots so analysts can see provincial public-safety alerts alongside US NWS weather.',
+    source: 'Alberta Emergency Alert full Atom feed (www.alberta.ca/data/aea/rss/feed-full.atom), seeded through seed-alberta-emergency-alert. CAP area polygons become centroids; records without geometry use the Alberta province centroid.',
+    freshness: 'Alberta Emergency Alert is seeded every 15 minutes and monitored against a 45-minute freshness budget. An empty feed (no active alerts) is a valid zero-record success.',
+    confidence: 'Authoritative for alerts published by Alberta Emergency Alert, subject to upstream publication timing and mapped alert geometry.',
+    limitations: [
+      'Alberta Emergency Alert only in this slice; other provinces are a follow-up and must share the canadaAlerts layer key.',
+      'Does not replace US NWS weather alerts or Ontario/Toronto road layers.',
+      'Entries without a mappable severity (CAP severity/category/urgency or Alberta colour/level in the title) are dropped rather than invented.',
+    ],
+    related: ['US Weather Alerts (NWS)', 'Natural Events layer', 'Data freshness status'],
+    evidence: ['scripts/seed-alberta-emergency-alert.mjs', 'api/health.js', 'src/services/canada-alerts.ts'],
   },
   flights: {
     key: 'flights',
@@ -311,7 +353,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'bases', 'nuclear', 'irradiators', 'radiationWatch', 'spaceports',
     'cables', 'pipelines', 'storageFacilities', 'fuelShortages', 'datacenters', 'military',
     'ais', 'tradeRoutes', 'flights', 'protests',
-    'ucdpEvents', 'displacement', 'climate', 'weather',
+    'ucdpEvents', 'displacement', 'climate', 'weather', 'canadaRoads', 'canadaAlerts',
     'outages', 'cyberThreats', 'natural', 'fires',
     'waterways', 'economic', 'minerals', 'gpsJamming',
     'satellites', 'ciiChoropleth', 'resilienceScore', 'sanctions', 'dayNight', 'webcams',
@@ -325,7 +367,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
   finance: [
     'stockExchanges', 'financialCenters', 'centralBanks', 'commodityHubs',
     'gulfInvestments', 'tradeRoutes', 'cables', 'pipelines',
-    'outages', 'weather', 'economic', 'waterways',
+    'outages', 'weather', 'canadaRoads', 'economic', 'waterways', 'canadaAlerts',
     'resilienceScore', 'natural', 'cyberThreats', 'sanctions', 'dayNight',
   ],
   happy: [
@@ -336,14 +378,14 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     'miningSites', 'processingPlants', 'commodityPorts', 'commodityHubs',
     'minerals', 'pipelines', 'waterways', 'tradeRoutes',
     'ais', 'economic', 'fires', 'climate',
-    'resilienceScore', 'natural', 'weather', 'outages', 'sanctions', 'dayNight',
+    'resilienceScore', 'natural', 'weather', 'canadaRoads', 'outages', 'sanctions', 'dayNight', 'canadaAlerts',
   ],
   energy: [
     // Core energy infrastructure — mirror of ENERGY_MAP_LAYERS in panels.ts
     'pipelines', 'storageFacilities', 'fuelShortages', 'waterways', 'commodityPorts', 'commodityHubs',
     'ais', 'liveTankers', 'tradeRoutes', 'minerals',
     // Energy-adjacent context
-    'sanctions', 'fires', 'climate', 'weather', 'outages', 'natural',
+    'sanctions', 'fires', 'climate', 'weather', 'canadaRoads', 'outages', 'natural', 'canadaAlerts',
     'resilienceScore', 'dayNight',
   ],
 };
@@ -365,12 +407,12 @@ export function isSunsetLayer(key: keyof MapLayers): boolean {
   return !IRAN_ATTACKS_ENABLED && key === 'iranAttacks';
 }
 
-export function getLayersForVariant(variant: MapVariant, renderer: MapRenderer): LayerDefinition[] {
+export function getLayersForVariant(variant: MapVariant, kind: RendererKind): LayerDefinition[] {
   const keys = VARIANT_LAYER_ORDER[variant] ?? VARIANT_LAYER_ORDER.full;
   return keys
     .filter(k => !isSunsetLayer(k))
     .map(k => LAYER_REGISTRY[k])
-    .filter(d => d.renderers.includes(renderer));
+    .filter(d => d.renderers.includes(kind));
 }
 
 export function getAllowedLayerKeys(variant: MapVariant): Set<keyof MapLayers> {
@@ -387,28 +429,22 @@ export function sanitizeLayersForVariant(layers: MapLayers, variant: MapVariant)
 }
 
 /**
- * Checks whether a layer can actually render under the given renderer +
- * DeckGL state. Used by both the layer picker UI and the CMD+K dispatcher
- * to hide / silently-skip toggles that would be a no-op.
+ * Checks whether a layer can actually render under the active renderer. Used
+ * by both the layer picker UI and the CMD+K dispatcher to hide / silently-skip
+ * toggles that would be a no-op.
  *
- * Rules:
- *   - The layer's declared `renderers` must include `currentRenderer`
- *     (catches globe toggles for flat-only layers).
- *   - If `deckGLOnly: true`, the SVG/mobile fallback can't render either,
- *     so DeckGL must be active (catches flat-only layers whose data
- *     shape is DeckGL-specific — see storageFacilities, fuelShortages).
+ * The layer's declared `renderers` must include `kind`. Because the axis now
+ * distinguishes `'svg'` from `'deck'`, a DeckGL-only layer (`['deck']`) is
+ * naturally rejected on the SVG fallback and on the globe — no separate flag.
  */
 export function isLayerExecutable(
   layerKey: keyof MapLayers,
-  currentRenderer: MapRenderer,
-  isDeckGLActive: boolean,
+  kind: RendererKind,
 ): boolean {
   if (isSunsetLayer(layerKey)) return false;
   const def = LAYER_REGISTRY[layerKey];
   if (!def) return false;
-  if (!def.renderers.includes(currentRenderer)) return false;
-  if (def.deckGLOnly && !isDeckGLActive) return false;
-  return true;
+  return def.renderers.includes(kind);
 }
 
 /**
@@ -458,11 +494,10 @@ export function isLayerToggleAllowed(
 export function isLayerCommandAllowed(
   layerKey: keyof MapLayers,
   currentlyEnabled: boolean | undefined,
-  currentRenderer: MapRenderer,
-  isDeckGLActive: boolean,
+  kind: RendererKind,
   hasPremium: boolean,
 ): boolean {
-  return isLayerExecutable(layerKey, currentRenderer, isDeckGLActive)
+  return isLayerExecutable(layerKey, kind)
     && isLayerToggleAllowed(layerKey, currentlyEnabled, hasPremium);
 }
 
@@ -591,7 +626,19 @@ export const LAYER_SYNONYMS: Record<string, Array<keyof MapLayers>> = {
   typhoon: ['weather', 'natural'],
   cyclone: ['weather', 'natural'],
   flood: ['weather', 'natural'],
+  aea: ['canadaAlerts'],
   wildfire: ['fires'],
+  road: ['canadaRoads'],
+  roads: ['canadaRoads'],
+  traffic: ['canadaRoads'],
+  ontario: ['canadaRoads'],
+  // Both sides of the merge claimed this alias: Alberta 511 roads (#6612) and
+  // Alberta Emergency Alert (#6610). Searching "alberta" should surface both.
+  alberta: ['canadaRoads', 'canadaAlerts'],
+  toronto: ['canadaRoads'],
+  britishcolumbia: ['canadaRoads'],
+  drivebc: ['canadaRoads'],
+  highway: ['canadaRoads'],
   forest: ['fires'],
   refugee: ['displacement'],
   migration: ['displacement'],

@@ -5,14 +5,15 @@ import { compressDescription, utf8ByteLength } from '../utils';
 import { CACHE_TOOLS } from './cache-tools';
 import { NLP_TOOLS } from './nlp-tools';
 import { RPC_TOOLS } from './rpc-tools';
+import { SOURCE_TOOLS } from './source-tools';
 
 // Merged tool registry — cache tools first (no `_execute`), then RPC tools
 // (with `_execute`), then the NLP utilities. Order is observable: `tools/list`
 // emits tools in this same order, and `describe_tool({tool_name: 'nonexistent'})`
 // returns the available-list sorted before responding. NLP_TOOLS is appended
 // last so extracting it from rpc-tools.ts left every other tool's position
-// unchanged.
-export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS];
+// unchanged. SOURCE_TOOLS is appended after it for the same reason.
+export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS];
 
 // Public shape for tools/list — strips internal _-prefixed fields, adds MCP
 // annotations, and injects the universal `summary` flag (issue #3678) into
@@ -48,8 +49,8 @@ for (const tool of TOOL_REGISTRY) {
 // the registry or the module-level schema consts. Codex Round 2 explicitly
 // flagged shallow `{ ...prop }` as insufficient for these shapes.
 //
-// `_*`-prefixed internal fields (_apiPaths, _cacheKeys, _seedMetaKey,
-// _maxStaleMin, _freshnessChecks, _coverageKeys, _postFilter, _execute)
+// `_*`-prefixed internal fields (_apiPaths, _cacheKeys,
+// _freshnessChecks, _coverageKeys, _postFilter, _execute)
 // are NEVER enumerated — the function only constructs a fresh object with
 // the public-shape fields (name, description, inputSchema, annotations).
 //
@@ -112,6 +113,22 @@ export function buildPublicTool(
       ui: { resourceUri: tool._uiResourceUri },
       'ui/resourceUri': tool._uiResourceUri,
     };
+  }
+
+  // U7 / R6: per-tool access level. Stating the tiers only in the server
+  // instructions helps a client that reads prose; a client that reads schemas
+  // otherwise sees 64 tools with no way to tell which it can call without
+  // credentials. Emitted under the same spec-reserved `_meta` as the UI hint,
+  // and derived from the SAME `_freeTier` flag the handler authorises on, so
+  // the advertisement cannot drift from the behaviour.
+  //
+  // Emitted ONLY on free-tier tools. Marking all 64 would add a key to every
+  // tool's public shape — breaking the deliberate "no `_meta` unless the tool
+  // has something to say" contract, and paying wire bytes on a session-init
+  // payload to restate the default. Absence means subscription-gated, which
+  // the server instructions state once.
+  if (tool._freeTier === true) {
+    publicTool._meta = { ...(publicTool._meta ?? {}), 'worldmonitor/access': 'free' };
   }
 
   return publicTool;

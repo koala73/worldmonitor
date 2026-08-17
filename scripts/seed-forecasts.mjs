@@ -14,8 +14,11 @@ import { assessFunnelDiversity } from './_forecast-funnel.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
 import {
+  GROQ_DEFAULT_MODEL,
   getLlmAttemptTimeoutMs,
   isDeepseekV4FlashModel,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
   DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS,
 } from './_llm-model-timeouts.mjs';
@@ -14660,10 +14663,10 @@ function selectForecastsForEnrichment(predictions, options = {}) {
 }
 
 // ── Phase 2: LLM Scenario Enrichment ───────────────────────
-// openrouter-first since #4944 U6: forecast NARRATIVE (never probabilities —
-// detectors own those) runs DeepSeek V4 Flash with reasoning disabled; groq
-// llama-3.3-70b-versatile is the free-tier/outage fallback. Per-stage
-// FORECAST_LLM_*_PROVIDER_ORDER env still overrides.
+// Forecast narrative calls try the paid OpenRouter model, two fixed free
+// OpenRouter variants, then Groq. Separate entries let application validation
+// advance after malformed/empty content; do not replace them with the random
+// `openrouter/free` router. Per-stage FORECAST_LLM_*_PROVIDER_ORDER still overrides.
 const FORECAST_LLM_PROVIDERS = [
   // `provider.sort: 'throughput'` makes OpenRouter dispatch to its fastest backend
   // instead of free-routing. Without it the SAME model lands on backends spanning
@@ -14675,7 +14678,9 @@ const FORECAST_LLM_PROVIDERS = [
   // same entry onto google/gemini-2.5-flash and must keep its 25s window). Flash uses
   // its own completion deadline via getLlmAttemptTimeoutMs — see _llm-model-timeouts.
   { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'deepseek/deepseek-v4-flash', timeout: 25_000, extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING } },
-  { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile', timeout: 20_000 },
+  { name: 'openrouter-free', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: OPENROUTER_FREE_PRIMARY_MODEL, timeout: 25_000, maxRetries: 0, extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING } },
+  { name: 'openrouter-free-backup', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: OPENROUTER_FREE_BACKUP_MODEL, timeout: 25_000, maxRetries: 0, extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING } },
+  { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: GROQ_DEFAULT_MODEL, timeout: 20_000 },
 ];
 
 // market_implications does NOT fall back to groq. Groq's free tier caps at 100k
@@ -14739,26 +14744,45 @@ function parseForecastProviderOrder(raw) {
   return providers.length > 0 ? providers : null;
 }
 
+function migrateLegacyGlobalProviderOrder(providerOrder) {
+  if (providerOrder.length !== 2
+    || providerOrder[0] !== 'openrouter'
+    || providerOrder[1] !== 'groq') return providerOrder;
+  const paidIndex = providerOrder.indexOf('openrouter');
+  const groqIndex = providerOrder.indexOf('groq');
+  if (paidIndex < 0 || groqIndex < 0 || paidIndex > groqIndex) return providerOrder;
+  const freeProviders = ['openrouter-free', 'openrouter-free-backup'];
+  return providerOrder.flatMap(provider => provider === 'groq'
+    ? [...freeProviders.filter(freeProvider => !providerOrder.includes(freeProvider)), provider]
+    : [provider]);
+}
+
 function getForecastLlmCallOptions(stage = 'default') {
   const defaultProviderOrder = FORECAST_LLM_PROVIDERS.map(provider => provider.name);
   const globalProviderOrder = parseForecastProviderOrder(process.env.FORECAST_LLM_PROVIDER_ORDER);
+  // Production carries the historical global `openrouter,groq` value. Migrate
+  // only that exact legacy default; stage-scoped operator overrides stay exact.
+  const effectiveGlobalProviderOrder = globalProviderOrder
+    ? migrateLegacyGlobalProviderOrder(globalProviderOrder)
+    : null;
   const combinedProviderOrder = parseForecastProviderOrder(process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER);
   const criticalProviderOrder = parseForecastProviderOrder(process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER);
   const impactProviderOrder = parseForecastProviderOrder(process.env.FORECAST_LLM_IMPACT_PROVIDER_ORDER);
   const marketImplicationsProviderOrder = parseForecastProviderOrder(process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER);
-  const providerOrder = stage === 'combined'
-    ? (combinedProviderOrder || globalProviderOrder || defaultProviderOrder)
+  const configuredProviderOrder = stage === 'combined'
+    ? (combinedProviderOrder || effectiveGlobalProviderOrder || defaultProviderOrder)
     : stage === 'critical_signals'
-      ? (criticalProviderOrder || globalProviderOrder || defaultProviderOrder)
+      ? (criticalProviderOrder || effectiveGlobalProviderOrder || defaultProviderOrder)
       : stage === 'impact_expansion'
-        ? (impactProviderOrder || globalProviderOrder || defaultProviderOrder)
+        ? (impactProviderOrder || effectiveGlobalProviderOrder || defaultProviderOrder)
       // Deliberately does NOT fall through to globalProviderOrder: that env is set
       // to `openrouter,groq` in production, which would re-add the groq fallback
       // this stage must not depend on (see MARKET_IMPLICATIONS_DEFAULT_PROVIDER_ORDER).
       // Its own stage env still overrides.
       : stage === 'market_implications'
         ? (marketImplicationsProviderOrder || MARKET_IMPLICATIONS_DEFAULT_PROVIDER_ORDER)
-      : (globalProviderOrder || defaultProviderOrder);
+      : (effectiveGlobalProviderOrder || defaultProviderOrder);
+  const providerOrder = configuredProviderOrder;
 
   const openrouterModel = stage === 'combined'
     ? (process.env.FORECAST_LLM_COMBINED_MODEL_OPENROUTER || process.env.FORECAST_LLM_MODEL_OPENROUTER)
@@ -14774,16 +14798,16 @@ function getForecastLlmCallOptions(stage = 'default') {
   // strength/confidence flow into state-derived (market/supply_chain)
   // forecast probabilities and publish selection (frames → world signals →
   // pressure/confirmation scores → buildStateDerivedForecast probability).
-  // Hold this stage on the pre-#4944 models so the DeepSeek narrative
-  // migration cannot move probabilities before the #4930 resolver baseline
-  // exists. ONLY the stage-scoped FORECAST_LLM_CRITICAL_PROVIDER_ORDER
+  // Hold this stage on the same provider hosts and OpenRouter fallback. Groq's
+  // decommissioned 8B model moves to its official gpt-oss-20b replacement.
+  // ONLY the stage-scoped FORECAST_LLM_CRITICAL_PROVIDER_ORDER
   // unpins it — a global FORECAST_LLM_PROVIDER_ORDER must not move a
   // probability-coupled stage as a side effect (review finding on #4965).
   if (stage === 'critical_signals' && !criticalProviderOrder) {
     return {
       providerOrder: ['groq', 'openrouter'],
       modelOverrides: {
-        groq: 'llama-3.1-8b-instant',
+        groq: GROQ_DEFAULT_MODEL,
         // ONLY the stage-scoped model env may change the pinned fallback —
         // a global FORECAST_LLM_MODEL_OPENROUTER must not move the
         // probability-coupled stage either (review finding on #4965).
@@ -15267,7 +15291,7 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
                 Authorization: `Bearer ${apiKey}`,
                 'Content-Type': 'application/json',
                 'User-Agent': CHROME_UA,
-                ...(provider.name === 'openrouter' ? { 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor' } : {}),
+                ...(provider.name.startsWith('openrouter') ? { 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor' } : {}),
               },
               body: JSON.stringify({
                 model: provider.model,
@@ -15323,7 +15347,7 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
             }
             throw err;
           }
-        }, providerMaxRetries, retryDelayMs);
+        }, provider.maxRetries ?? providerMaxRetries, retryDelayMs);
 
         let json;
         try {

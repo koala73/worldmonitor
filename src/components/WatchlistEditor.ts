@@ -60,7 +60,7 @@ export class WatchlistEditor {
     this.input.setAttribute('aria-label', 'Search ticker or company');
     this.input.style.cssText =
       'width:100%;box-sizing:border-box;background:rgba(255,255,255,0.04);border:1px solid var(--border);' +
-      'color:var(--text);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:13px;outline:none';
+      'color:var(--text);border-radius:10px;padding:10px 12px;font-family:inherit;font-size:calc(13px * var(--wm-panel-effective-scale, 1));outline:none';
 
     this.dropdown = document.createElement('ul');
     this.dropdown.setAttribute('role', 'listbox');
@@ -75,7 +75,7 @@ export class WatchlistEditor {
     this.chipsEl.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;min-height:8px';
 
     this.statusEl = document.createElement('div');
-    this.statusEl.style.cssText = 'font-size:11px;color:var(--text-dim)';
+    this.statusEl.style.cssText = 'font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)';
 
     this.element.append(searchWrap, this.chipsEl, this.statusEl);
 
@@ -217,19 +217,19 @@ export class WatchlistEditor {
       const active = idx === this.highlight;
       li.style.cssText =
         'display:flex;align-items:baseline;gap:8px;padding:7px 9px;border-radius:7px;cursor:pointer;' +
-        `font-size:12px;${active ? 'background:rgba(255,255,255,0.08);' : ''}` +
+        `font-size:calc(12px * var(--wm-panel-effective-scale, 1));${active ? 'background:rgba(255,255,255,0.08);' : ''}` +
         (added ? 'opacity:0.5;' : '');
       if (active) li.setAttribute('aria-selected', 'true');
       setTrustedHtml(li, trustedHtml(`<span style="font-family:var(--font-mono);font-weight:600;min-width:64px">${escapeHtml(r.display || r.symbol)}</span>` +
         `<span style="color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(r.name)}</span>` +
-        (added ? `<span style="margin-left:auto;color:var(--semantic-normal);font-size:11px">added</span>` : ''), "legacy direct innerHTML migration"));
+        (added ? `<span style="margin-left:auto;color:var(--semantic-normal);font-size:calc(11px * var(--wm-panel-effective-scale, 1))">added</span>` : ''), "legacy direct innerHTML migration"));
       this.dropdown.append(li);
     });
   }
 
   private messageRow(text: string): HTMLLIElement {
     const li = document.createElement('li');
-    li.style.cssText = 'padding:8px 9px;font-size:12px;color:var(--text-dim)';
+    li.style.cssText = 'padding:8px 9px;font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)';
     li.textContent = text;
     return li;
   }
@@ -240,12 +240,12 @@ export class WatchlistEditor {
       const chip = document.createElement('span');
       chip.style.cssText =
         'display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 9px;border:1px solid var(--border);' +
-        'border-radius:999px;font-size:11px;background:rgba(255,255,255,0.03)';
+        'border-radius:999px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));background:rgba(255,255,255,0.03)';
       const label = e.name && e.name !== e.symbol ? `${e.display || e.symbol} · ${e.name}` : (e.display || e.symbol);
       setTrustedHtml(chip, trustedHtml(`<span><span style="font-family:var(--font-mono);font-weight:600">${escapeHtml(e.display || e.symbol)}</span>` +
         `${e.name && e.name !== e.symbol ? `<span style="color:var(--text-dim)"> · ${escapeHtml(e.name)}</span>` : ''}</span>` +
         `<button type="button" data-remove="${escapeHtml(e.symbol)}" aria-label="Remove ${escapeHtml(label)}" ` +
-        `style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:13px;line-height:1;padding:0 2px">×</button>`, "legacy direct innerHTML migration"));
+        `style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:calc(13px * var(--wm-panel-effective-scale, 1));line-height:1;padding:0 2px">×</button>`, "legacy direct innerHTML migration"));
       this.chipsEl.append(chip);
     }
     this.renderStatus();

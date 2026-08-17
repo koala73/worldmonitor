@@ -721,7 +721,7 @@ export async function fetchTradeFlows() {
 
   for (const [reporter, partner] of pairs) {
     await fetchFlowPair(reporter, partner, flows, stats, now);
-    await sleep(500);
+    if (!process.env.NODE_TEST_CONTEXT) await sleep(500);
   }
 
   const coverage = {

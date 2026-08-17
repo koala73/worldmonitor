@@ -46,6 +46,44 @@ describe('synthesis prompts (#4921)', () => {
     assert.match(prompt, /2\. Turkey hikes interest rates to 50% \(Bloomberg, 1 source\)/);
     assert.match(prompt, /3\. Magnitude 6\.8 earthquake/);
   });
+
+  // #6428: this count is fed to the LLM that writes the published brief, so it
+  // is the most directly user-visible corroboration claim in the product. It
+  // read story.sources.length — feed LABELS — so one newsroom's own editions
+  // told the model a single-sourced story carried six.
+  it('user prompt counts publishers, not feed labels', () => {
+    const prompt = synthesisUserPrompt([
+      {
+        primaryTitle: 'Missile attack kills troops in border strike',
+        primarySource: 'Reuters World',
+        sources: ['Reuters World', 'Reuters US', 'Reuters Business', 'Reuters Asia'],
+      },
+      {
+        primaryTitle: 'Talks resume in Geneva',
+        primarySource: 'Reuters World',
+        sources: ['Reuters World', 'BBC World', 'Al Jazeera'],
+      },
+    ]);
+    assert.match(
+      prompt,
+      /1\. Missile attack kills troops in border strike \(Reuters World, 1 source\)/,
+      'four Reuters feed labels are one publisher',
+    );
+    assert.match(
+      prompt,
+      /2\. Talks resume in Geneva \(Reuters World, 3 sources\)/,
+      'three real publishers must still read as three',
+    );
+  });
+
+  it('user prompt never falls back to the article count', () => {
+    // sourceCount is articles. A story with no usable source list must claim
+    // one source, not the number of headlines that clustered into it.
+    const prompt = synthesisUserPrompt([
+      { primaryTitle: 'Something happened', primarySource: 'Wire', sources: [], sourceCount: 9 },
+    ]);
+    assert.match(prompt, /1\. Something happened \(Wire, 1 source\)/);
+  });
 });
 
 describe('parseBriefSynthesis (#4921)', () => {

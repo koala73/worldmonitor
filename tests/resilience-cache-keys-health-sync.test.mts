@@ -101,10 +101,12 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
     );
     assert.ok(
       seedHealthText.includes("function currentResilienceCacheFormula()") &&
+        seedHealthText.includes("function currentResilienceEducationState()") &&
         seedHealthText.includes("RESILIENCE_PILLAR_COMBINE_ENABLED") &&
         seedHealthText.includes("RESILIENCE_SCHEMA_V2_ENABLED") &&
-        seedHealthText.includes("formula: currentResilienceCacheFormula()"),
-      'api/seed-health.js must mirror the server currentCacheFormula gate for resilience interval probes',
+        seedHealthText.includes("formula: currentResilienceCacheFormula()") &&
+        seedHealthText.includes("educationState: currentResilienceEducationState()"),
+      'api/seed-health.js must mirror the server formula and education-state gates for resilience interval probes',
     );
     assert.ok(
       seedHealthText.includes("kind: 'resilience_interval'") &&
@@ -112,6 +114,16 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
         seedHealthText.includes('payload.p05 <= payload.p95'),
       'api/seed-health.js must validate resilience interval payload shape before reporting healthy',
     );
+  });
+
+  it('interval publication and both health surfaces share the same coverage floor', () => {
+    const seedScriptText = readFileSync(join(repoRoot, 'scripts/seed-resilience-scores.mjs'), 'utf-8');
+    const seedHealthText = readFileSync(join(repoRoot, 'api/seed-health.js'), 'utf-8');
+    const expectedDeclaration = 'const RESILIENCE_INTERVAL_MIN_RECORD_COUNT = 180;';
+
+    assert.ok(seedScriptText.includes(`export ${expectedDeclaration}`));
+    assert.ok(healthText.includes(expectedDeclaration));
+    assert.ok(seedHealthText.includes(expectedDeclaration));
   });
 
   it('score and ranking cache namespaces share the same methodology generation', () => {

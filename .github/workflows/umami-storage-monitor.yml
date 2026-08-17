@@ -31,8 +31,14 @@ jobs:
       - name: Install pinned Railway CLI
         run: npm install --global @railway/cli@5.30.1
 
+      # Split restore/save deliberately. The combined actions/cache action
+      # declares `post-if: success()`, so its save runs only when the whole job
+      # succeeded — and this job can now fail on the retention runner alarm
+      # below. Left combined, the first firing of that alarm would also throw
+      # away this run's growth sample, degrading the projection the workflow
+      # exists for exactly when someone is reading it.
       - name: Restore bounded storage history
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .cache/umami-storage-state.json
           key: umami-storage-${{ github.run_id }}
@@ -67,3 +73,32 @@ jobs:
         env:
           UMAMI_POSTGRES_SERVICE_NAME: Postgres Umami
         run: node scripts/check-umami-storage.mjs --input .cache/railway-volumes.json --state .cache/umami-storage-state.json
+
+      # Persist the sample the step above just wrote, before anything that can
+      # fail the job runs. check-umami-storage.mjs writes its state file and
+      # only then sets a non-zero exit code, so this saves the newest sample
+      # even on a critical-capacity run.
+      - name: Persist bounded storage history
+        if: ${{ !cancelled() }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .cache/umami-storage-state.json
+          key: umami-storage-${{ github.run_id }}
+
+      # Both runner steps run even when an earlier step failed, because
+      # capacity is the lagging symptom of a dead runner and a critical volume
+      # must never be the reason the actionable alarm goes unread.
+      - name: Read retention runner deployments
+        if: ${{ !cancelled() }}
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p .cache
+          railway deployment list --project "$RAILWAY_PROJECT_ID" --environment production \
+            --service umami-retention --limit 200 --json > .cache/railway-retention-deployments.json
+
+      - name: Check the retention runner is retiring rows
+        if: ${{ !cancelled() }}
+        run: node scripts/check-umami-retention-runner.mjs --input .cache/railway-retention-deployments.json

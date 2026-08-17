@@ -82,6 +82,7 @@ function shouldSuppressCspViolation(
   cspConnectSrcAllowsHttps: boolean,
   firstPartyConvexHost: string | null,
   cspMediaSrcAllowsHttps: boolean = false,
+  cspFontSrcAllowsCrossOrigin: boolean = false,
 ): boolean {
   // Skip non-enforced violations (report-only from dual-CSP interaction).
   if (disposition && disposition !== 'enforce') return true;
@@ -268,72 +269,43 @@ function shouldSuppressCspViolation(
   if (/manifest\.webmanifest$/.test(blockedURI)) return true;
   // Third-party injectors: Google Translate, Facebook Pixel.
   if (/gstatic\.com\/_\/translate/.test(blockedURI) || /facebook\.net/.test(blockedURI)) return true;
-  // Google Fonts font files from stale or injected stylesheets. The dashboard now
-  // self-hosts its own fonts and the deploy/config tests keep Google Fonts out of
-  // dashboard CSP/source surfaces; if a user's browser still tries a
-  // fonts.gstatic.com/s/* font file, the strict font-src block is expected noise.
-  if (directive === 'font-src') {
-    // An @font-face `src:` list names the same face in several formats, and the
-    // browser reports a CSP block for each one it tries. Every host rule below
-    // therefore matches the whole fallback chain — pinning one extension leaks
-    // the rest, which is how a Doubao `.otf` and a gstatic `.ttf` kept firing
-    // after their rules shipped (WORLDMONITOR-TR round 3).
-    const fontFile = /\.(?:woff2?|ttf|otf)$/;
+  // ---- font-src: one invariant, not a host list.
+  //
+  // The app ships `font-src 'self' data:` (vercel.json, the catch-all route that
+  // serves /dashboard) and self-hosts every face it uses. That policy admits NO
+  // cross-origin source, so a cross-origin font block is by construction a face
+  // WE DID NOT REQUEST — an extension or in-app browser injected a stylesheet
+  // into our page and the browser blocked its font.
+  //
+  // This replaces sixteen host-pinned rules shipped over eight rounds
+  // (fonts.gstatic /s/ and /l/font, perplexity, doubao, migaku, at.alicdn,
+  // slant, shopback, simplycodes, scite, typekit, use.fontawesome, merci-app,
+  // yiban, marmot, unpkg, jsDelivr, cdnjs). Every one of them carried this same
+  // justification in its comment — "our font-src is 'self' data:, so this cannot
+  // be ours" — and every one was followed within days by a different extension
+  // injecting a different host. The host set is unbounded and attacker/vendor
+  // controlled, so enumerating it can never converge; applying the invariant
+  // once does. Round 9 would have been assets.faircado.com.
+  //
+  // Why a bare https: check is sufficient to mean "cross-origin": `'self'`
+  // already permits our own origin, so a same-origin font never produces a
+  // violation at all. The existence of an https font-src violation is therefore
+  // itself proof the URI was not same-origin.
+  //
+  // Policy-aware, exactly like the connect-src / media-src gates above — this is
+  // scoped to the current policy state, not a blanket protocol assumption. If
+  // the app ever adopts a cross-origin font host, the caller passes true here
+  // and font blocks surface again. tests/deploy-config.test.mjs pins the shipped
+  // header to zero cross-origin font sources so that adoption cannot land
+  // silently and leave this suppression over-broad.
+  //
+  // Scope: font-src ONLY. style-src/script-src/connect-src keep their exact-host
+  // pinning below, because a violation there can indicate a real injection
+  // vector, whereas a blocked webfont is cosmetic and already-mitigated.
+  if (directive === 'font-src' && !cspFontSrcAllowsCrossOrigin) {
     try {
-      const url = new URL(blockedURI);
-      if (url.protocol === 'https:' && url.hostname === 'fonts.gstatic.com' && /^\/s\/.+/.test(url.pathname) && fontFile.test(url.pathname)) return true;
-      // Perplexity's Comet browser / extension injects its own UI webfont
-      // (frontend-cdn.perplexity.ai/_agi_assets/fonts/*.woff2) into every page.
-      // We never load it; the block is the overlay's font failing regardless of
-      // our code. Allowlisted by exact host like gstatic above — NOT a blanket
-      // third-party suppression, so an unexpected font injection from any other
-      // host still surfaces (WORLDMONITOR-TR: 1065 events / 83 users).
-      if (url.protocol === 'https:' && url.hostname === 'frontend-cdn.perplexity.ai'
-          && url.pathname.startsWith('/_agi_assets/') && fontFile.test(url.pathname)) return true;
-      // ByteDance's Doubao AI-assistant browser/extension injects its overlay's
-      // KaTeX math fonts (lf-flow-web-cdn.doubao.com/obj/flow-doubao/...) into
-      // every page — .woff2/.woff/.ttf fallback chain, so all three extensions
-      // appear. We never load it; exact host + font-file path like the rules
-      // above, NOT a blanket third-party suppression (WORLDMONITOR-TR round 2:
-      // 310k events / 308 users in 11 days).
-      if (url.protocol === 'https:' && url.hostname === 'lf-flow-web-cdn.doubao.com'
-          && url.pathname.startsWith('/obj/flow-doubao/') && fontFile.test(url.pathname)) return true;
-      // Migaku language-learning browser extension injects a subsetted Chiron
-      // Hei HK webfont as many numbered chunks (fonts/chiron-hei-hk-webfont-*/
-      // cw_N.woff2, kx_N.woff2) into every page. 38 distinct URLs in a 14-day
-      // sample and 69% of this issue's current volume — the single largest
-      // contributor. We never load it; exact host + font-file path like the
-      // rules above, so any other migaku path still surfaces.
-      if (url.protocol === 'https:' && url.hostname === 'migaku-public-data.migaku.com'
-          && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
-      // Alibaba iconfont.cn project CDN (at.alicdn.com/t/c/font_<id>.<ext>).
-      // One injected icon font requested in all three formats — 15% of this
-      // issue's current volume. `alicdn.com` is a general Alibaba CDN, so this
-      // is pinned to the exact `at.` host and a font-file path — other alicdn
-      // hosts and non-font assets still surface.
-      if (url.protocol === 'https:' && url.hostname === 'at.alicdn.com'
-          && url.pathname.startsWith('/t/c/') && fontFile.test(url.pathname)) return true;
-      // slant.co overlay webfont (Plus Jakarta Display, 3 weights x 2 formats)
-      // served from the injecting extension's own origin — 12% of this issue's
-      // current volume. Our font-src is `'self' data:` — we ship no
-      // cross-origin webfonts at all, so a block here can never be a
-      // first-party regression.
-      if (url.protocol === 'https:' && url.hostname === 'www.slant.co'
-          && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
-      // ShopBack cashback extension injects its own UI face (ShopBackSans, 8
-      // weight/style combinations) from its static origin. Sized on the window
-      // AFTER the rules above deployed: every host named there went silent and
-      // this one was 100% of what remained, which is why the issue regressed
-      // minutes after being resolved. Exact host + font-file path like the
-      // rules above, so other shopback assets still surface.
-      if (url.protocol === 'https:' && url.hostname === 'static.shopback.com'
-          && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
-      // SimplyCodes coupon extension injects three overlay families (Circular
-      // XX, Neue Haas Grotesk, Degular) under one /fonts/ root — 10 distinct
-      // URLs, the second-largest remaining slice. Same exact-host shape.
-      if (url.protocol === 'https:' && url.hostname === 'images.simplycodes.com'
-          && url.pathname.startsWith('/fonts/') && fontFile.test(url.pathname)) return true;
-    } catch { /* scheme-only values fall through */ }
+      if (new URL(blockedURI).protocol === 'https:') return true;
+    } catch { /* scheme-only values ('data', 'inline', 'eval') fall through */ }
   }
   // YouTube live stream manifests.
   if (/googlevideo\.com|youtube\.com\/generate_204/.test(blockedURI)) return true;
@@ -385,6 +357,18 @@ function shouldSuppressCspViolation(
       if (url.protocol === 'https:'
           && ((url.hostname === 'use.typekit.net' && /^\/[^/]+\.css$/.test(url.pathname))
             || (url.hostname === 'p.typekit.net' && url.pathname === '/p.css'))) return true;
+      // unpkg's Leaflet stylesheet. WorldMonitor renders every map with
+      // MapLibre/deck.gl and has never depended on Leaflet — the string appears
+      // nowhere in src/, api/, public/, index.html or package.json — and this
+      // page's style-src is `'self' 'unsafe-inline'` with no cross-origin host,
+      // so an unpkg sheet is injected by an extension or userscript. Round 4 of
+      // WORLDMONITOR-J0, and the only blockedURI still live: a 300-event sample
+      // taken 2026-08-16 showed every other host silent since its own rule
+      // shipped (6ppn 07-05, Google Fonts 07-20, Typekit 08-02, FontAwesome
+      // 08-07) while unpkg produced 6 events that morning across 3 builds.
+      // Exact host + `.css` path, like the 6ppn rule; unpkg under script-src
+      // still surfaces, which matters because it is a general npm CDN.
+      if (url.protocol === 'https:' && url.hostname === 'unpkg.com' && cssFile.test(url.pathname)) return true;
     } catch { /* unparseable values fall through */ }
     // Extension bug: a literal unsubstituted `[email]` template placeholder as
     // the stylesheet URL. Not a parseable host; can never be first-party.
@@ -417,6 +401,25 @@ const _cspMediaSrcAllowsHttps = (() => {
   const metaMediaSrc = metaCsp.match(/media-src\s+([^;]*)/)?.[1] ?? '';
   return metaMediaSrc.split(/\s+/).includes('https:');
 })();
+// font-src counterpart of `_cspAllowsHttps`, but asking a different question.
+// connect-/media-src ask "does the policy allow the https: SCHEME?"; font-src asks
+// "does the policy allow ANY cross-origin source at all?" — because the shipped
+// header is `font-src 'self' data:` and every face is self-hosted, which is what
+// licenses suppressing cross-origin font blocks wholesale.
+// Keyword sources ('self', 'none', 'unsafe-inline') and the data:/blob: schemes are
+// not cross-origin hosts; anything else in the list is.
+const _cspFontSrcAllowsCrossOrigin = (() => {
+  const metaEl = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  // No meta CSP: the deployed header is the source of truth, and
+  // tests/deploy-config.test.mjs pins it to zero cross-origin font sources.
+  if (!metaEl) return false;
+  const metaCsp = metaEl.getAttribute('content') ?? '';
+  const metaFontSrc = metaCsp.match(/font-src\s+([^;]*)/)?.[1] ?? '';
+  return metaFontSrc
+    .split(/\s+/)
+    .filter(Boolean)
+    .some(token => !/^'[^']*'$/.test(token) && !/^(?:data|blob):$/.test(token));
+})();
 // Resolve our configured Convex deployment hostname once. Convex is multi-tenant —
 // the CSP filter must scope its first-party suppression to OUR specific hostname,
 // not all *.convex.cloud, otherwise blocks to foreign/attacker tenants get silently
@@ -445,6 +448,7 @@ window.addEventListener('securitypolicyviolation', (e) => {
     _cspAllowsHttps,
     _firstPartyConvexHost,
     _cspMediaSrcAllowsHttps,
+    _cspFontSrcAllowsCrossOrigin,
   )) return;
   const message = `CSP: ${e.effectiveDirective} blocked ${blocked || '(inline)'}`;
   const extra = {
@@ -466,10 +470,12 @@ window.addEventListener('securitypolicyviolation', (e) => {
 
 import { debugGetCells, getCellCount } from '@/services/geo-convergence';
 import { initMetaTags } from '@/services/meta-tags';
+import { installFetchFailureAttribution } from '@/services/fetch-failure-attribution';
 import { installRuntimeFetchPatch, installWebApiRedirect } from '@/services/runtime';
 import { loadDesktopSecrets } from '@/services/runtime-config';
 import { applyStoredTheme } from '@/utils/theme-manager';
 import { applyFont } from '@/services/font-settings';
+import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-settings';
 import { initAnalytics, trackContentHandoff } from '@/services/analytics';
 import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
 import { initDebugBearRum } from '@/bootstrap/debugbear-rum';
@@ -495,6 +501,14 @@ initDebugBearRum();
 // Initialize dynamic meta tags for sharing
 initMetaTags();
 
+// MUST stay first among the fetch wrappers. This one wraps native `fetch`
+// directly and sits at the BOTTOM of the delegation chain, so every request
+// that reaches the network passes through it — including the ones
+// `wmSessionFetch` early-returns past (non-API targets, credential-less public
+// data, premium paths), which is where the Umami beacon lives. Installed above
+// instead, it would miss exactly the traffic it exists to attribute.
+// Guarded by tests/fetch-attribution-install-order.test.mts. #6746.
+installFetchFailureAttribution();
 // In desktop mode, route /api/* calls to the local Tauri sidecar backend.
 installRuntimeFetchPatch();
 // In web production, route RPC calls through api.worldmonitor.app (Cloudflare edge).
@@ -508,6 +522,10 @@ loadDesktopSecrets().catch(() => {});
 // Apply stored theme preference before app initialization (safety net for inline script)
 applyStoredTheme();
 applyFont();
+applyFontScale();
+window.addEventListener('storage', (event) => {
+  if (event.key === FONT_SCALE_STORAGE_KEY) applyFontScale();
+});
 
 // Set data-variant on <html> so CSS theme overrides activate
 if (SITE_VARIANT && SITE_VARIANT !== 'full') {

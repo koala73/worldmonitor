@@ -139,14 +139,14 @@ export class ChokepointStripPanel extends Panel {
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: 8px;
           min-width: 120px;
-          font-size: 11px;
+          font-size: calc(11px * var(--wm-panel-effective-scale, 1));
           cursor: default;
         }
         .cp-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
         .cp-chip-body { display: flex; flex-direction: column; line-height: 1.2; }
         .cp-chip-name { font-weight: 600; color: var(--text, #eee); display: flex; align-items: center; gap: 4px; }
-        .cp-chip-warn { background:#e74c3c;color:#fff;border-radius:9px;padding:0 5px;font-size:9px;font-weight:700; }
-        .cp-chip-flow { color: var(--text-dim, #888); font-size: 10px; }
+        .cp-chip-warn { background:#e74c3c;color:#fff;border-radius:9px;padding:0 5px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700; }
+        .cp-chip-flow { color: var(--text-dim, #888); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); }
       </style>
     `);
   }

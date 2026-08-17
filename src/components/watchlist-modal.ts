@@ -67,7 +67,7 @@ export function openWatchlistModal(): void {
       <button class="modal-close" aria-label="Close">×</button>
     </div>
     <div style="padding:14px 16px 16px 16px">
-      <div style="color:var(--text-dim);font-size:12px;line-height:1.5;margin-bottom:12px">
+      <div style="color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1));line-height:1.5;margin-bottom:12px">
         Choose the built-in market universe by region, then add searchable
         company tickers below. Searchable additions stay visible and removable,
         and lead Premium Stock Analysis, Backtesting and Daily Market Brief.
@@ -77,7 +77,7 @@ export function openWatchlistModal(): void {
         <div class="wl-region-bar" role="group" aria-label="Filter catalog by region"></div>
         <label class="wl-search">
           <span class="sr-only">Search built-in market catalog</span>
-          <input id="wmCatalogSearch" type="search" placeholder="Search stocks and indices" />
+          <input id="wmCatalogSearch" type="search" placeholder="Search stocks and indices" aria-label="Search stocks and indices" />
         </label>
         <div class="wl-grid" role="group" aria-label="Built-in market symbols"></div>
         <div class="wl-counter" aria-live="polite"></div>

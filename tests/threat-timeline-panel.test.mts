@@ -459,7 +459,10 @@ describe('ThreatTimelinePanel registration', () => {
     assert.match(panelsSrc, /'threat-timeline':\s*\{\s*name:\s*'Threat Timeline'/);
     assert.match(panelsSrc, /intelligence:\s*\{[\s\S]*panelKeys:\s*\[[^\]]*'threat-timeline'/);
     assert.match(layoutSrc, /isPanelInVariantDefaults\('threat-timeline'\)[\s\S]*lazyDefaultPanel\('threat-timeline',\s*\(\)\s*=>\s*import\('@\/components\/ThreatTimelinePanel'\),\s*'ThreatTimelinePanel'\)/);
-    assert.match(dataLoaderSrc, /isPanelInVariantDefaults\('threat-timeline'\)[\s\S]*panels\['threat-timeline'\]\s+as ThreatTimelinePanel/);
+    // Queued through callPanel(), never a direct `panels['threat-timeline']`
+    // lookup — the panel is a deferred shell when clustering finishes on mobile.
+    // See tests/one-shot-loader-panel-delivery.test.mts for the per-arm guard.
+    assert.match(dataLoaderSrc, /isPanelInVariantDefaults\('threat-timeline'\)[\s\S]*this\.callPanel\('threat-timeline', 'refresh',/);
     assert.match(commandsSrc, /id:\s*'panel:threat-timeline'[\s\S]*keywords:\s*\[[^\]]*'threat trend'/);
   });
 });

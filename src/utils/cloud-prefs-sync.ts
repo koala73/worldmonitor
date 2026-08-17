@@ -13,7 +13,7 @@
  */
 
 import {
-  ABSENCE_TOLERANT_SYNC_KEYS,
+  ACCOUNT_PROVENANCE_SYNC_KEYS,
   CLOUD_SYNC_KEYS,
   resolveCloudBlobKeyAction,
   type CloudSyncKey,
@@ -24,6 +24,8 @@ import {
   computeLegacyDefaultDisabledSources,
   computePreStrategicDefaultDisabledSources,
   CANADA_ARCTIC_OPT_IN_SOURCES,
+  CANADA_DEPTH_OPT_IN_SOURCES,
+  CRISIS_FLOOR_OPT_IN_SOURCES,
   FEEDS,
   FRONTLINE_EUROPE_PROTECTED_SOURCES,
   getStrategicDefaultSources,
@@ -92,7 +94,7 @@ const KEY_DIRTY_KEYS = 'wm-cloud-prefs-dirty-keys';
 // the new schema version. Defaults to 1 when missing (assumes oldest).
 const KEY_LOCAL_SCHEMA_VERSION = 'wm-cloud-prefs-local-schema-version';
 
-const CURRENT_PREFS_SCHEMA_VERSION = 6;
+const CURRENT_PREFS_SCHEMA_VERSION = 8;
 const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 
 // Migrations live in cloud-prefs-migrations.ts to keep them testable —
@@ -124,6 +126,9 @@ const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 // opt-ins only for exact untouched default/cap states across known locales.
 // Schema 6 (#5960): add the Canada/Arctic companion opt-ins to non-empty
 // denylist profiles without depending on the ambiguous schema-5 decision.
+// Schema 7 (#6604/#6605): add the Canada depth opt-ins the same way.
+// Schema 6 already ran; a new App.ts key alone is not enough.
+// Schema 8 (#6813-#6830): add the validated crisis-desk opt-in companions.
 let _migrations: ReturnType<typeof buildMigrations> | null = null;
 let _regionalRolloutTargets: ReturnType<typeof buildRegionalFeedRolloutMigrationTargets> | null = null;
 
@@ -158,6 +163,12 @@ function getMigrations(): ReturnType<typeof buildMigrations> {
     },
     canadaArctic: {
       optInSources: CANADA_ARCTIC_OPT_IN_SOURCES,
+    },
+    canadaDepth: {
+      optInSources: CANADA_DEPTH_OPT_IN_SOURCES,
+    },
+    crisisDesk: {
+      optInSources: CRISIS_FLOOR_OPT_IN_SOURCES,
     },
   });
   return _migrations;
@@ -357,7 +368,7 @@ function clearForeignOwnershipSidecars(userId: string): void {
   // account provenance. If the next account has a legacy row that omits them,
   // keeping the prior account's local values attributes A's gate decisions to
   // B. B's explicit cloud values will still be applied later in this attempt.
-  for (const key of ABSENCE_TOLERANT_SYNC_KEYS) {
+  for (const key of ACCOUNT_PROVENANCE_SYNC_KEYS) {
     Storage.prototype.removeItem.call(localStorage, key);
   }
 }
@@ -367,10 +378,9 @@ function applyCloudBlob(data: Record<string, unknown>, syncVersion?: number): vo
   _suppressPatch = true;
   try {
     for (const key of CLOUD_SYNC_KEYS) {
-      // An omitted key normally means the user cleared it. For the free-tier
-      // ownership sidecars it instead means the row predates them (or an older
-      // tab uploaded), and deleting them strands the gate's own disables as
-      // user intent forever. See resolveCloudBlobKeyAction.
+      // An omitted key normally means the user cleared it. A small set of keys
+      // instead uses explicit reset values and preserves omission from an old
+      // client during rolling deployments. See resolveCloudBlobKeyAction.
       const action = resolveCloudBlobKeyAction(key, data);
       if (action.kind === 'keep') continue;
       if (action.kind === 'set') {
@@ -412,9 +422,9 @@ function applyMigrationsWithSchemaVersion(
     true,
   );
   // Schema 5 intentionally fails closed when a locale-less fingerprint has
-  // conflicting outcomes. Schema 6 is an independent additive boundary fix:
-  // it still runs so cloud hydration cannot overwrite the local opt-in
-  // migration while schema 5 remains retryable at its prior version.
+  // conflicting outcomes. Schema 6/7/8 are independent additive boundary fixes:
+  // they still run so cloud hydration cannot overwrite the local opt-in
+  // migrations while schema 5 remains retryable at its prior version.
   return { ...migrated, dataChanged: migrated.data !== data };
 }
 

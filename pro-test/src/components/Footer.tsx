@@ -12,6 +12,7 @@ export const Footer = () => (
       </div>
       <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
         <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>
+        <a href="/sources/?utm_source=welcome-footer" className="hover:text-wm-text transition-colors">Sources</a>
         <a href="/countries/" className="hover:text-wm-text transition-colors">Countries</a>
         <a href="/chokepoints/" className="hover:text-wm-text transition-colors">Chokepoints</a>
         <a href="/crises/" className="hover:text-wm-text transition-colors">Crises</a>

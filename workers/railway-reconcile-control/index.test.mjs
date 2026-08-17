@@ -1196,7 +1196,9 @@ test('dispatch holds never age out and require an exact RUN_BOUND recovery to co
     headSha,
   });
   assert.equal(held.status, 201);
-  assert.equal((await responseBody(held)).dispatchHold.state, 'DISPATCH_HELD');
+  const heldData = await responseBody(held);
+  assert.equal(heldData.dispatchHold.state, 'DISPATCH_HELD');
+  assert.equal(heldData.dispatchHold.failedHeadRetryAuthorized, false);
 
   clock.now += 7 * 24 * 60 * 60 * 1000;
   const blocked = await send(control, clock, '/v1/mutation/acquire', 'mutation', {
@@ -1250,6 +1252,7 @@ test('dispatch holds never age out and require an exact RUN_BOUND recovery to co
     runId: '31190000001',
   });
   assert.equal(lease.dispatchHold.state, 'LEASE_ACQUIRED');
+  assert.equal(lease.dispatchHold.failedHeadRetryAuthorized, false);
   assert.equal(lease.dispatchHold.linkedAttemptId, lease.attempt.attemptId);
   assert.equal(lease.attempt.recoveryAttemptId, recoveryAttemptId);
   assert.equal(lease.attempt.runId, '31190000001');
@@ -2127,6 +2130,24 @@ test('operator-authorized retry hold derives source provenance from the operator
   assert.equal(snapshot.dispatchHolds.length, 1);
   assert.equal(snapshot.dispatchHolds[0].sourceRunId, '41181545180');
   assert.equal(snapshot.dispatchHolds[0].sourceRunAttempt, 3);
+  assert.equal(snapshot.dispatchHolds[0].failedHeadRetryAuthorized, true);
+});
+
+test('one-person operator resolution records the same actor and audit identity', async () => {
+  const { clock, control } = makeControl();
+  const headSha = '7'.repeat(40);
+  const lease = await createManualBarrier(control, clock, { headSha });
+  const resolved = await send(control, clock, '/v1/operator/resolve', 'operator', operatorRequest(
+    lease.attempt.attemptId,
+    headSha,
+    'authorize_current_main_retry',
+    { approver: 'oncall-engineer' },
+  ));
+  assert.equal(resolved.status, 200);
+  const snapshot = await responseBody(await getStatus(control, clock));
+  assert.equal(snapshot.currentAttempt.actor, 'oncall-engineer');
+  assert.equal(snapshot.currentAttempt.approver, 'oncall-engineer');
+  assert.equal(snapshot.dispatchHolds[0].failedHeadRetryAuthorized, true);
 });
 
 test('authorized retry carries bounded superseded run lineage through admission and acceptance', async () => {
@@ -2550,16 +2571,13 @@ test('operator resolution rejects superseded attempts and mismatched barriers wi
   assert.equal((await responseBody(mismatchedBarrier)).error.code, 'BARRIER_MISMATCH');
 });
 
-test('operator resolution rejects unsafe decisions, shared approvers, and injectable reasons', async () => {
+test('operator resolution rejects unsafe decisions and injectable reasons', async () => {
   const { clock, control } = makeControl();
   const lease = await createManualBarrier(control, clock, {
     headSha: 'f'.repeat(40),
   });
   const cases = [
     operatorRequest(lease.attempt.attemptId, lease.attempt.headSha, 'resolve_pre_mutation_hold'),
-    operatorRequest(lease.attempt.attemptId, lease.attempt.headSha, 'authorize_current_main_retry', {
-      approver: 'oncall-engineer',
-    }),
     operatorRequest(lease.attempt.attemptId, lease.attempt.headSha, 'authorize_current_main_retry', {
       reason: 'See [proof](https://evil.test) before retry.',
     }),

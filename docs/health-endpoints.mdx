@@ -36,8 +36,8 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN",
   "summary": {
-    "total": 257,
-    "ok": 257,
+    "total": 272,
+    "ok": 272,
     "warn": 0,
     "onDemandWarn": 0,
     "staleContent": 0,
@@ -66,26 +66,11 @@ The consumer-prices-core service exposes `GET /wm/consumer-prices/v1/coverage?ma
 
 This operational contract complements, rather than replaces, the source-quality work in [#5445](https://github.com/koala73/worldmonitor/issues/5445) and [#5811](https://github.com/koala73/worldmonitor/issues/5811).
 
-#### Coverage schema rollout handshake
-
-The Edge health registry deploys with the PR that adds a market, but the keys it reads can only appear on consumer-prices-core's next daily scrape (02:00 UTC) → aggregate (02:15) → publish (02:30) window. [#6059](https://github.com/koala73/worldmonitor/issues/6059) closes that window with two independent gates, both required:
-
-1. **Activation.** After it writes a coverage snapshot that actually attempted pages for a market, the daily publisher (`consumer-prices-core/src/jobs/publish.ts`, and only it) `SET`s `seed-activated:consumer-prices:coverage:v1:<market>` with **no TTL**. The marker is durable and one-way — once it exists, that market is strict forever and absent, empty, stale, or below-threshold coverage classifies exactly as it would without the handshake. A truthful-but-empty snapshot (no active retailers, or retailers with zero recorded runs) does **not** activate. The `v1` segment is the coverage schema version, so a future schema change opens its own separately-reviewed window rather than inheriting activation earned by the old shape.
-2. **Deadline.** Softening also stops at a per-market wall-clock timestamp compiled into `api/health.js`, whether or not the producer ever ran. A missed or failed first tick therefore escalates to `EMPTY` (crit) on its own, within one complete scrape/aggregate/publish window.
-
-Every one of the eight coverage checks also carries `activated` (true once its durable marker exists) in **all** statuses, so rollout progress is auditable from the payload and an `EMPTY` market can be told apart as "activated, then broke" rather than "never ran" without probing Redis by hand.
-
-**If a market is still `ROLLOUT_PENDING` as its deadline approaches**, the producer — not the health reader — is what needs attention. Check the `seed-consumer-prices-publish` service logs for that market: `coverage-activation:<market> failed` means the snapshot published but the marker write did not (it retries next run), while `coverage:<market> published without attempted pages — activation marker withheld` means no retailer page was attempted for that market at all, which is a scrape problem, not a rollout one. `scripts/seed-consumer-prices.mjs --force` can republish a single market's data as a last resort, but it deliberately does **not** activate: its coverage key carries a 30-minute TTL, and a permanent activation earned from a 30-minute artifact would leave that market in an unrecoverable `EMPTY` (crit) once the data expired. Only the daily publisher, which writes a 26h key, activates a market.
-
-Only a wholly absent coverage key is softened. Once the key exists the producer has run, so `EMPTY_DATA`, `COVERAGE_DEGRADED`, `COVERAGE_PARTIAL`, and `STALE_SEED` all stay strict — coverage counts are never synthesized, and success is never inferred from unrelated canonical consumer-price keys. `scripts/check-seed-freshness.mjs` re-checks each `rolloutPendingUntil` against the wall clock rather than trusting the status string, so an expired or unparseable deadline (or a stale cached compact snapshot) reports the problem normally.
-
-Two limits are deliberate. First, softening keys on "the coverage key is absent" is not identical to "the producer has not run": if a scheduled run publishes every other snapshot for a market but `buildCoverageSnapshot` alone throws, that market reads `ROLLOUT_PENDING` rather than a coverage failure until its deadline passes. Narrowing this by inferring health from sibling keys is deliberately not done — it is the fabricated-success inference the design forbids, and seven of the eight markets have no sibling health keys registered anyway. Second, `overall` becomes `WARNING` (never `UNHEALTHY`) for the duration of the window, so a keyword monitor configured per [Integration with Monitoring Tools](#integration-with-monitoring-tools) — which alerts whenever `"status":"HEALTHY"` is absent — will fire during a rollout. That threshold already fires on any ordinary `STALE_SEED` warn, so this adds no new alert class, but it is worth knowing before a planned schema rollout.
-
 ### Relay ingestion telemetry
 
 The relay's public `GET /health` remains HTTP 200 for Railway/process-liveness probes, but its top-level JSON `status` now mirrors the aggregate ingestion verdict and can be `degraded`; `ingestion.status` carries the same application-level result. It becomes `degraded` when aviation or RSS served coverage falls below its configured floor, or when configured AIS is disconnected, has no usable current-connection position data, or serves zero snapshots after they are requested. AIS WebSocket upgrades time out after 30 seconds by default, and position readiness expires when an open stream stops delivering accepted position reports for five minutes by default; either failure re-enters the bounded reconnect schedule, while retained vessel data remains a stale fallback. Deployments intentionally missing AIS credentials report `enabled: false` and `status: "disabled"`; that optional adapter does not degrade aggregate health.
 
-`GET /health` also adds upstream attempt, throttle, failure, cooldown, position age, and position-freshness threshold details to explain the current verdict. A run of consecutive HTTP 429 upgrade rejections is reported as `consecutiveThrottles`, and once it reaches `AIS_THROTTLE_ESCALATE_AFTER` the reconnect ceiling switches from `AIS_RECONNECT_MAX_MS` to the much longer `AIS_THROTTLE_RECONNECT_MAX_MS` and `throttleEscalated` becomes `true`. A 429 arrives before the API key is sent, so it identifies an egress-IP rate limit rather than a transient stream fault; escalating stops the relay contributing refused requests to the provider's sliding window, which can otherwise sustain the block. Any non-throttle outcome — a different handshake error, a close without a recorded error, or an accepted frame — resets the counter and restores the ordinary ceiling, so ordinary disconnects keep the responsive schedule. `GET /metrics` remains the operational counter surface: it exposes rolling-window per-route counters plus process-lifetime AIS connection attempts, successful streams, throttles, terminal failures, reconnect state, and the same position-freshness telemetry. It also reports timeout, authentication rejection, fallback, served coverage, and RSS feed backoff. AIS snapshot `unauthorizedClient` is tracked separately from upstream authentication failures so client traffic cannot be mistaken for provider health. The `theaterPosture` section attributes each theater-posture publication cycle to the upstream that actually fed it (`opensky`, `adsb.lol`, `wingbits`, or `vessel-only`), so healthy publication through the fallback chain is never mistaken for OpenSky recovery; the same source is written as `sourceVersion` on `seed-meta:theater-posture` (with a `producer` field distinguishing the relay loop from the seed-military-flights writer). Unlike the rolling-window route counters, `theaterPosture.sourceCountsSinceBoot` is process-lifetime (the seed cadence exceeds the metrics window); `lastRun` carries the latest cycle's source, counts, and write outcomes.
+`GET /health` also adds upstream attempt, throttle, failure, cooldown, position age, and position-freshness threshold details to explain the current verdict. A run of consecutive HTTP 429 upgrade rejections is reported as `consecutiveThrottles`, and once it reaches `AIS_THROTTLE_ESCALATE_AFTER` the reconnect ceiling switches from `AIS_RECONNECT_MAX_MS` to the much longer `AIS_THROTTLE_RECONNECT_MAX_MS` and `throttleEscalated` becomes `true`. A 429 arrives before the API key is sent, so it identifies an egress-IP rate limit rather than a transient stream fault; escalating stops the relay contributing refused requests to the provider's sliding window, which can otherwise sustain the block. Any non-throttle outcome — a different handshake error, a close without a recorded error, or an accepted frame — resets the counter and restores the ordinary ceiling, so ordinary disconnects keep the responsive schedule. `GET /metrics` remains the operational counter surface: it exposes rolling-window per-route counters plus process-lifetime AIS connection attempts, successful streams, throttles, terminal failures, reconnect state, and the same position-freshness telemetry. It also reports timeout, authentication rejection, fallback, served coverage, and RSS feed backoff. AIS snapshot `unauthorizedClient` is tracked separately from upstream authentication failures so client traffic cannot be mistaken for provider health. The `theaterPosture` section attributes each successful theater-posture publication cycle to the upstream that actually fed it (`opensky`, `adsb.lol`, `wingbits`, or `vessel-only`), so healthy publication through the fallback chain is never mistaken for OpenSky recovery; the same source is written as `sourceVersion` on `seed-meta:theater-posture` (with a `producer` field distinguishing the relay loop from the seed-military-flights writer). Unlike the rolling-window route counters, `theaterPosture.sourceCountsSinceBoot` and `emptyRejectionsSinceBoot` are process-lifetime because the seed cadence exceeds the metrics window. `lastRun` carries the latest cycle's source and counts. Published cycles require both the canonical envelope and seed metadata to succeed and include `published: true`, `seededAt`, and write outcomes; a replica-envelope failure is exposed through `redisOk` without hiding a successful canonical publication. Failed canonical or seed-metadata writes include `published: false`, `attemptedAt`, and `reason: "write-failed"`, and do not increment the source counter. Rejected zero-input cycles also include `published: false` and `attemptedAt`, use `reason: "no-input-records"`, and do not replace the last-known-good envelopes or `seed-meta:theater-posture`.
 
 ### Key Classifications
 
@@ -109,8 +94,8 @@ Keys are grouped into three tiers that determine alert severity:
 | `STALE_CONTENT` | Warn | Seeder is fresh but the upstream content stopped advancing (frozen feed); counted in `summary.staleContent` |
 | `COVERAGE_PARTIAL` | Warn | Aggregate records or a required subgroup is below the key's declared coverage floor (for example, 139/174 PortWatch countries or an empty prediction-market pool) |
 | `COVERAGE_DEGRADED` | Warn | The producer's own coverage diagnostics are missing, or its completion ratio is below the key's `minSuccessRate` (for example, a consumer-price market that completed 4 of 12 retailer pages) |
-| `ROLLOUT_PENDING` | Warn | A newly deployed schema whose producer has not reached its first scheduled run yet. **Bounded**: the entry carries a `rolloutPendingUntil` deadline compiled into `api/health.js`, and the state becomes `EMPTY` (crit) once that passes or once the producer writes its durable activation marker. Counted in `summary.rolloutPending` |
-| `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run, **or** a producer that serves last-known-good has failed often enough to cross its declared failure contract (see below) |
+| `ROLLOUT_PENDING` | Warn | A newly deployed schema whose producer has not reached its first scheduled run yet. **Bounded**: the health runtime persists a deployment-relative `rolloutPendingUntil` deadline in Redis, and the state becomes `EMPTY` (crit) once that passes or once the producer writes its durable activation marker. Counted in `summary.rolloutPending` |
+| `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run, a producer that serves last-known-good has failed often enough to cross its declared failure contract (see below), **or** the resilience static index reports one or more failed source adapters |
 | `REDIS_PARTIAL` | Warn | A single per-command Redis error on this key's STRLEN/GET (not a full outage) |
 | `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet (expected until first request); counted in `summary.onDemandWarn` |
 | `EMPTY` | Crit | Bootstrap or seeded standalone key has no data. Outranks any concurrent producer fault, which would otherwise report the softer `SEED_ERROR` (see below) |
@@ -189,6 +174,53 @@ reason. (`SOURCE_BLOCKED` publishes no `errorCode`; its cause is the status
 itself.) `lastSynthesisFailureCode` is broader still: like the other
 last-known-good diagnostics above, it is published on every status whenever the
 producer recorded one.
+
+The `resilienceStaticIndex` check also publishes `failedDatasets` when its
+static-index seed metadata names failed source adapters. This is a validated,
+deduplicated list of at most 50 adapter keys. A non-empty list makes the check
+`SEED_ERROR` and remains visible in the public `?compact=1` problem projection.
+The sibling `resilienceStaticFao` check shares the producer heartbeat but does
+not inherit failures for unrelated adapters.
+
+### JODI China Row
+
+`jodiOil`, `jodiGas` and `lngVulnerability` publish an extra `chinaRow` block
+whenever their producer recorded one:
+
+| Field | Meaning |
+|-------|---------|
+| `ok` | Whether China parsed into a usable record this run |
+| `reason` | Why it did not, from a closed vocabulary: `china-missing`, `china-invalid-month`, `china-stale`, `china-no-measurements` |
+| `dataMonth` | China's observation month, when it has one |
+| `ageMonths` | How many months behind the run that observation month is |
+| `unavailableSince` | Epoch milliseconds of the first run that **recorded** the gap, carried forward across runs. Best-effort: a run that cannot read the previous `seed-meta` (Redis blip, first run after deploy) re-dates it to that run. Read it as "first run that recorded this gap", never as a measured outage start |
+
+The block never moves the status. China's rows going unusable is an upstream
+fact no retry clears — every China row in both JODI files has carried
+`ASSESSMENT_CODE 3` ("null/uncertain") since at least 2026-08 — so grading it
+would be a warning nobody can act on. What it must not be is silent: the
+seeders publish the other 50-57 countries regardless of China, and this block
+is what names the country that dropped out.
+
+It describes the producer's **last completed publish**, like every other
+`seed-meta`-derived field: on a run that refused or failed, the previous
+block stays in place and ages alongside `seedAgeMin`. A producer that reported
+`status: "error"` publishes no block at all rather than relaying a verdict it
+never reached this run. The block is also **operator-only** — it names a
+country, so `?compact=1` strips it under the same rule as `contentFreshness`
+and the decision-group breakdown.
+
+Whether the *dataset* is still advancing is a separate, graded signal: both
+seeders declare `newestItemAt`/`maxContentAgeMin` from the newest month a
+quorum of countries reports a measurement for, so a JODI file that stops
+publishing reads `STALE_CONTENT` rather than passing as fresh, and one
+fast-reporting country cannot vouch for a frozen file. Countries whose every
+field parsed to null are not published at all, so the seeders' country floors
+count coverage rather than rows.
+
+Do not confuse `checks.jodiGas.chinaRow` with the `checks.chinaCoverage` entry
+below: the first is one country's row inside one source, the second is the
+fleet-wide China coverage summary.
 
 ### China Coverage Projection
 

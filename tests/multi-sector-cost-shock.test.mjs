@@ -13,13 +13,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, '..');
-const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
+import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 
 // ========================================================================
 // 1. Pure helper: _multi-sector-shock.ts
@@ -232,172 +226,17 @@ describe('computeMultiSectorShocks', () => {
 });
 
 // ========================================================================
-// 2. sebuf handler: server/worldmonitor/supply-chain/v1/get-multi-sector-cost-shock.ts
+// Premium enforcement. Membership in PREMIUM_RPC_PATHS is what gates the
+// endpoint, so assert against the real Set rather than grepping the module
+// for a path string — a path moved into a comment satisfies the grep.
+//
+// The handler, client-service, panel and country-intel assertions that used to
+// follow all restated lines of source. The panel is exercised by booting the
+// dashboard in e2e/variant-live-smoke.spec.ts.
 // ========================================================================
 
-describe('getMultiSectorCostShock sebuf handler', () => {
-  const src = readSrc('server/worldmonitor/supply-chain/v1/get-multi-sector-cost-shock.ts');
-
-  it('exports getMultiSectorCostShock as the sebuf handler entry point', () => {
-    assert.match(src, /export async function getMultiSectorCostShock/);
-  });
-
-  it('uses isCallerPremium for PRO-gating', () => {
-    assert.match(src, /isCallerPremium\(ctx\.request\)/);
-  });
-
-  it('validates iso2 with a 2-letter regex', () => {
-    assert.match(src, /\/\^\[A-Z\]\{2\}\$\/\.test/);
-  });
-
-  it('validates chokepointId against the chokepoint registry', () => {
-    assert.match(src, /CHOKEPOINT_REGISTRY\.some/);
-  });
-
-  it('clamps closureDays via clampClosureDays', () => {
-    assert.match(src, /clampClosureDays/);
-  });
-
-  it('reads seeded country products from the raw bilateral-hs4 Redis key', () => {
-    assert.match(src, /comtrade:bilateral-hs4:\$\{iso2\}:v1/);
-    assert.match(src, /getCachedJson\(productsKey, true\)/);
-  });
-
-  it('reads chokepoint status for war risk tier', () => {
-    assert.match(src, /CHOKEPOINT_STATUS_KEY/);
-  });
-
-  it('returns sectors, totalAddedCost, closureDays, and warRiskTier on the response', () => {
-    assert.match(src, /sectors/);
-    assert.match(src, /totalAddedCost/);
-    assert.match(src, /closureDays/);
-    assert.match(src, /warRiskTier/);
-  });
-
-  it('emits the empty sector skeleton when no seeded import data exists', () => {
-    assert.match(src, /emptySectorSkeleton/);
-    assert.match(src, /No seeded import data available for this country/);
-  });
-});
-
-// ========================================================================
-// 3. Client service: src/services/supply-chain/index.ts
-// ========================================================================
-
-describe('supply-chain client service: fetchMultiSectorCostShock', () => {
-  const src = readSrc('src/services/supply-chain/index.ts');
-
-  it('exports fetchMultiSectorCostShock', () => {
-    assert.match(src, /export async function fetchMultiSectorCostShock/);
-  });
-
-  it('re-exports MultiSectorShock and MultiSectorShockResponse aliases for callsites', () => {
-    assert.match(src, /export type MultiSectorShockResponse = GetMultiSectorCostShockResponse/);
-    assert.match(src, /export type MultiSectorShock = MultiSectorCostShock/);
-  });
-
-  it('calls the generated sebuf client.getMultiSectorCostShock', () => {
-    assert.match(src, /client\.getMultiSectorCostShock\(/);
-  });
-
-  it('passes iso2, chokepointId, and closureDays through the typed RPC request', () => {
-    assert.match(src, /\{ iso2, chokepointId, closureDays \}/);
-  });
-
-  it('supports AbortSignal passthrough via call options', () => {
-    assert.match(src, /signal\?: AbortSignal/);
-    assert.match(src, /signal: options\?\.signal/);
-  });
-});
-
-// ========================================================================
-// 4. Premium paths: get-multi-sector-cost-shock is PRO-gated at the gateway.
-// ========================================================================
-
-describe('premium-paths: get-multi-sector-cost-shock registration', () => {
-  const src = readSrc('src/shared/premium-paths.ts');
-
-  it('includes /api/supply-chain/v1/get-multi-sector-cost-shock', () => {
-    assert.match(src, /\/api\/supply-chain\/v1\/get-multi-sector-cost-shock/);
-  });
-});
-
-// ========================================================================
-// 5. CountryDeepDivePanel: Cost Shock Calculator card + slider.
-// ========================================================================
-
-describe('CountryDeepDivePanel Cost Shock Calculator', () => {
-  const src = readSrc('src/components/CountryDeepDivePanel.ts');
-
-  it('imports fetchMultiSectorCostShock', () => {
-    assert.match(src, /import[^;]*fetchMultiSectorCostShock/);
-  });
-
-  it('declares a Cost Shock Calculator section card', () => {
-    assert.match(src, /Cost Shock Calculator/);
-  });
-
-  it('registers updateMultiSectorCostShock public method', () => {
-    assert.match(src, /updateMultiSectorCostShock\(/);
-  });
-
-  it('builds a range input slider with min=1 and max=90', () => {
-    assert.match(src, /slider\.type = 'range'/);
-    assert.match(src, /slider\.min = '1'/);
-    assert.match(src, /slider\.max = '90'/);
-  });
-
-  it('listens for input events on the slider', () => {
-    assert.match(src, /slider\.addEventListener\('input'/);
-  });
-
-  it('debounces re-fetches by 300ms', () => {
-    assert.match(src, /scheduleCostShockRefetch/);
-    assert.match(src, /setTimeout\([^,]+,\s*300\)/);
-  });
-
-  it('aborts prior in-flight fetches when a new slider value arrives', () => {
-    assert.match(src, /costShockCalcAbort\?\.abort\(\)/);
-    assert.match(src, /new AbortController\(\)/);
-  });
-
-  it('renders a sector table with Total row', () => {
-    assert.match(src, /renderMultiSectorShockRows/);
-    assert.match(src, /cdp-cost-shock-calc-total-row/);
-  });
-
-  it('sorts rows by totalCostShock descending', () => {
-    assert.match(src, /\.sort\(\(a, b\) => b\.totalCostShock - a\.totalCostShock\)/);
-  });
-
-  it('gates the card as PRO when the user is not premium', () => {
-    assert.match(src, /makeProLocked\('Upgrade to PRO for multi-sector cost shock modelling'\)/);
-  });
-
-  it('resetPanelContent clears all cost shock calculator state', () => {
-    assert.match(src, /this\.costShockCalcBody = null;/);
-    assert.match(src, /this\.costShockCalcTable = null;/);
-    assert.match(src, /this\.costShockCalcAbort\?\.abort\(\);/);
-    assert.match(src, /this\.costShockCalcDebounceTimer[\s\S]*?clearTimeout/);
-  });
-});
-
-// ========================================================================
-// 6. country-intel.ts wires the initial fetch after primary chokepoint.
-// ========================================================================
-
-describe('country-intel.ts: multi-sector cost shock fetch', () => {
-  const src = readSrc('src/app/country-intel.ts');
-
-  it('imports fetchMultiSectorCostShock from services/supply-chain', () => {
-    assert.match(src, /fetchMultiSectorCostShock/);
-  });
-
-  it('calls fetchMultiSectorCostShock with default 30-day window', () => {
-    assert.match(src, /fetchMultiSectorCostShock\(code, top\.primaryChokepointId, 30\)/);
-  });
-
-  it('clears the card on catch paths', () => {
-    assert.match(src, /updateMultiSectorCostShock\?\.\(null\)/);
+describe('multi-sector cost shock is premium-gated', () => {
+  it('is in PREMIUM_RPC_PATHS', () => {
+    assert.ok(PREMIUM_RPC_PATHS.has('/api/supply-chain/v1/get-multi-sector-cost-shock'));
   });
 });

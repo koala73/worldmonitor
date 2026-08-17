@@ -44,6 +44,17 @@ async function loadService() {
   return (await import('@/services/economic')).getFxPanelData;
 }
 
+// #6677: the FIRST dynamic import of the economic module graph pays for the
+// whole graph's transform (1.2MB of generated clients plus the i18n locale
+// glob), and that wall time is billed to whichever test runs it — under load
+// it lands ~10ms over the 5000ms vitest default and reddens this file as a
+// false positive. Subsequent resetModules() imports take ~35ms because they
+// reuse the transform cache and only re-execute. Importing the graph once at
+// module scope moves the transform cost into the file's import phase, which
+// vitest does not bill to any testTimeout. The vi.mock calls above still
+// apply to every later re-import, so the reset semantics are unchanged.
+await import('@/services/economic');
+
 const YOY = {
   rates: [
     { countryCode: 'AR', currency: 'ARS', yoyChange: -38.4, drawdown24m: -41, asOf: '2026-08-01' },

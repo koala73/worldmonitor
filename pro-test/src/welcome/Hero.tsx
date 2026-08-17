@@ -16,7 +16,11 @@ const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, (min-width: 640px) calc(10
 const HERO_PROOF_STATS = [
   { valueKey: 'welcome.depth.s1v', labelKey: 'welcome.depth.s1l' },
   { valueKey: 'welcome.depth.s2v', labelKey: 'welcome.depth.s2l' },
-  { valueKey: 'welcome.depth.s3v', labelKey: 'welcome.depth.s3l' },
+  {
+    valueKey: 'welcome.depth.s3v',
+    labelKey: 'welcome.depth.s3l',
+    href: '/sources/?utm_source=welcome-hero',
+  },
   { valueKey: 'welcome.depth.s15v', labelKey: 'welcome.depth.s15l' },
 ] as const;
 
@@ -27,15 +31,26 @@ const HeroProofRail = () => (
     transition={{ duration: 0.6, delay: 0.28 }}
     className="mt-8 mx-auto grid w-full max-w-[22rem] sm:max-w-3xl grid-cols-2 sm:grid-cols-4 overflow-hidden rounded-sm border border-wm-border bg-wm-card/70 text-left backdrop-blur-sm"
   >
-    {HERO_PROOF_STATS.map(({ valueKey, labelKey }, i) => (
-      <div
-        key={valueKey}
-        className={`px-4 py-3 ${i % 2 === 1 ? 'border-l border-wm-border' : ''} ${i > 1 ? 'border-t border-wm-border sm:border-t-0' : ''} ${i > 0 ? 'sm:border-l sm:border-wm-border' : ''}`}
-      >
-        <div className="font-display text-2xl font-bold text-wm-text">{t(valueKey)}</div>
-        <div className="mt-1 font-mono text-[10px] uppercase tracking-[1px] leading-relaxed break-words text-wm-muted">{t(labelKey)}</div>
-      </div>
-    ))}
+    {HERO_PROOF_STATS.map((stat, i) => {
+      const className = `px-4 py-3 ${i % 2 === 1 ? 'border-l border-wm-border' : ''} ${i > 1 ? 'border-t border-wm-border sm:border-t-0' : ''} ${i > 0 ? 'sm:border-l sm:border-wm-border' : ''}`;
+      const content = (
+        <>
+          <div className="font-display text-2xl font-bold text-wm-text">{t(stat.valueKey)}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[1px] leading-relaxed break-words text-wm-muted">{t(stat.labelKey)}</div>
+        </>
+      );
+      return 'href' in stat ? (
+        <a
+          key={stat.valueKey}
+          href={stat.href}
+          data-umami-event="welcome-cta"
+          data-umami-event-target="welcome-sources-proof"
+          className={`${className} hover:bg-wm-green/5 transition-colors`}
+        >
+          {content}
+        </a>
+      ) : <div key={stat.valueKey} className={className}>{content}</div>;
+    })}
   </motion.div>
 );
 
@@ -48,7 +63,7 @@ const ConsoleFrame = () => (
   >
     <div className="absolute -inset-8 bg-wm-green/5 blur-[60px] rounded-full pointer-events-none" aria-hidden="true" />
     <a
-      href={`${DASHBOARD_PATH}?ref=welcome-plate`}
+      href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=plate`}
       data-umami-event="welcome-cta"
       data-umami-event-target="welcome-plate"
       className="relative block border border-wm-border rounded-md overflow-hidden border-glow bg-wm-card hover:border-wm-green/40 transition-colors"
@@ -114,7 +129,7 @@ export const Hero = () => (
         className="mt-9 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4"
       >
         <a
-          href={`${DASHBOARD_PATH}?ref=welcome-hero`}
+          href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=hero`}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-hero"
           className="w-full sm:w-auto justify-center bg-wm-green text-wm-bg px-5 sm:px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wide sm:tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"

@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
+import { detectTrafficAnomaly } from '../shared/chokepoint-traffic-anomaly.js';
+import { computeFlowEstimate } from '../scripts/seed-chokepoint-flows.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '..');
@@ -128,11 +130,27 @@ describe('chokepoint methodology docs match scoring code', () => {
   });
 
   it('documents live-flow and transit-anomaly eligibility gates', () => {
-    assert.match(flowSeeder, /history\.length\s*<\s*40/, 'flow seeder should keep the 40-day total-history gate');
-    assert.match(flowSeeder, /prev90\.length\s*<\s*20/, 'flow seeder should keep the 20-baseline-day gate');
-    assert.match(flowSeeder, /baseline90d\s*<\s*\(useDwt\s*\?\s*1\s*:\s*0\.5\)/, 'flow seeder should keep thin-baseline floors');
-    assert.match(scoring, /history\.length\s*<\s*37/, 'traffic anomaly should keep the 37-day history gate');
-    assert.match(scoring, /baselineAvg7\s*<\s*14/, 'traffic anomaly should keep the 14-transit floor');
+    // Prove the gates by running the real functions rather than grepping for
+    // the comparison literals — the numbers in the doc have to describe what
+    // the code actually rejects, and a moved or renamed constant should not be
+    // able to break this check without changing behaviour.
+    const days = (count, total, startOffset = 0) =>
+      Array.from({ length: count }, (_, i) => ({
+        date: new Date(Date.now() - (startOffset + i) * 86_400_000).toISOString().slice(0, 10),
+        tanker: total,
+        capTanker: 0,
+        total,
+      }));
+
+    // Flow seeder: 40 total days, 20 baseline days, and a thin-baseline floor.
+    assert.equal(computeFlowEstimate(days(39, 60), 21), null, '39 days must miss the 40-day gate');
+    assert.ok(computeFlowEstimate(days(40, 60), 21), '40 days must clear the gate');
+    assert.equal(computeFlowEstimate(days(97, 0), 21), null, 'a zero baseline must miss the thin-baseline floor');
+
+    // Traffic anomaly: 37 days of history and a 14-transit weekly baseline.
+    assert.equal(detectTrafficAnomaly(days(36, 100), 'war_zone').signal, false, '36 days must miss the 37-day gate');
+    assert.equal(detectTrafficAnomaly(days(37, 1), 'war_zone').dropPct, 0, 'a sub-14 weekly baseline must report no drop');
+    assert.ok(detectTrafficAnomaly([...days(7, 0), ...days(30, 100, 7)], 'war_zone').signal, '37 days above the floor must score');
 
     for (const expected of [
       /at least 40 total days/i,

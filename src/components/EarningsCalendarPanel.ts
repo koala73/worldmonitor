@@ -87,28 +87,28 @@ function renderEntry(e: EarningsEntry): string {
         : t('components.earningsCalendar.surprise.inLine');
     const pct = surprisePct(e.epsActual, e.epsEstimate);
     epsHtml = `
-      <span style="font-size:11px;font-weight:600;color:var(--text)">${escapeHtml(t('components.earningsCalendar.epsActual', { value: epsActFmt }))}</span>
-      <span style="font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;${badgeStyle}">${escapeHtml(badgeLabel)}${pct ? ` ${escapeHtml(pct)}` : ''}</span>`;
+      <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text)">${escapeHtml(t('components.earningsCalendar.epsActual', { value: epsActFmt }))}</span>
+      <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:1px 4px;border-radius:3px;${badgeStyle}">${escapeHtml(badgeLabel)}${pct ? ` ${escapeHtml(pct)}` : ''}</span>`;
   } else if (epsEstFmt) {
-    epsHtml = `<span style="font-size:11px;color:var(--text-dim)">${escapeHtml(t('components.earningsCalendar.epsEstimate', { value: epsEstFmt }))}</span>`;
+    epsHtml = `<span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(t('components.earningsCalendar.epsEstimate', { value: epsEstFmt }))}</span>`;
   }
 
   // Revenue section
   let revHtml = '';
   if (e.hasActuals && revActFmt) {
-    revHtml = `<span style="font-size:10px;color:var(--text-dim)">${escapeHtml(t('components.earningsCalendar.revenueActual', { value: revActFmt }))}</span>`;
+    revHtml = `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(t('components.earningsCalendar.revenueActual', { value: revActFmt }))}</span>`;
   } else if (revEstFmt) {
-    revHtml = `<span style="font-size:10px;color:rgba(255,255,255,0.25)">${escapeHtml(t('components.earningsCalendar.revenueEstimate', { value: revEstFmt }))}</span>`;
+    revHtml = `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:rgba(255,255,255,0.25)">${escapeHtml(t('components.earningsCalendar.revenueEstimate', { value: revEstFmt }))}</span>`;
   }
 
   return `
     <div style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
       <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;padding-top:1px">
-        ${hourLabel ? `<span style="font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;${hourStyle};letter-spacing:0.04em">${escapeHtml(hourLabel)}</span>` : ''}
+        ${hourLabel ? `<span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:2px 5px;border-radius:3px;${hourStyle};letter-spacing:0.04em">${escapeHtml(hourLabel)}</span>` : ''}
       </div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(e.company)}</div>
-        <div style="font-size:10px;color:var(--text-dim);letter-spacing:0.04em">${escapeHtml(e.symbol)}</div>
+        <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(e.company)}</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);letter-spacing:0.04em">${escapeHtml(e.symbol)}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0">
         ${epsHtml ? `<div style="display:flex;align-items:center;gap:5px">${epsHtml}</div>` : ''}
@@ -121,7 +121,7 @@ function renderGroup(date: string, entries: EarningsEntry[], isFirst: boolean): 
   const borderStyle = isFirst ? '' : 'border-top:1px solid rgba(255,255,255,0.06);';
   return `
     <div style="${borderStyle}padding-top:${isFirst ? '0' : '10'}px;padding-bottom:2px">
-      <div style="font-size:10px;font-weight:700;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.06em;padding:0 0 5px">${escapeHtml(dateLabel(date))}</div>
+      <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.06em;padding:0 0 5px">${escapeHtml(dateLabel(date))}</div>
       ${entries.map(renderEntry).join('')}
     </div>`;
 }
