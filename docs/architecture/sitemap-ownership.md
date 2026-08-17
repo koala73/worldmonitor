@@ -36,6 +36,9 @@ not claim those URLs. Canonical treatment for the pilot pages:
 - `/use-cases/verify-breaking-news/` owns the evergreen verification procedure;
   the OSINT blog article remains dated supporting editorial with no redirect
   (#6850).
+- `/use-cases/monitor-supply-chain-disruptions/` owns the evergreen supply-chain
+  monitoring workflow; `/chokepoints/` and commodity surfaces remain evidence;
+  the supply-chain blog article remains distinct supporting editorial (#6851).
 
 Static-page dates are the latest Git commit date among the declared material
 sources. They are not file mtimes and never use build or deploy time. When a

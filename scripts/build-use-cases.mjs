@@ -26,6 +26,13 @@ export const USE_CASE_PAGES = [
     hubCard:
       'Capture a claim, assess sources, test independent World Monitor signals, record contradictions and freshness gaps, then choose a qualified next action.',
   },
+  {
+    slug: 'monitor-supply-chain-disruptions',
+    title: 'Monitor Supply-Chain Disruptions',
+    path: '/use-cases/monitor-supply-chain-disruptions/',
+    hubCard:
+      'Define exposure, baseline routes and risk, detect disruption signals, test transmission paths, record uncertainty, and escalate into an exact product state.',
+  },
 ];
 const UMAMI_SCRIPT_TAG =
   '<script async defer src="https://abacus.worldmonitor.app/script.js" '
@@ -95,7 +102,7 @@ function renderUseCasesIndex({ tpl, baseUrl, lastmod }) {
       <div class="grid">
 ${cards}
       </div>
-      <p class="source">Live country evidence stays on <a href="/countries/">/countries/</a>. Supporting editorial includes the <a href="/blog/posts/country-risk-monitoring-workflow-for-analysts/">country-risk monitoring workflow article</a> and the <a href="/blog/posts/verify-breaking-news-osint-workflow-journalists/">OSINT breaking-news verification article</a>.</p>`;
+      <p class="source">Live country evidence stays on <a href="/countries/">/countries/</a>. Chokepoint evidence stays on <a href="/chokepoints/">/chokepoints/</a>. Supporting editorial includes the <a href="/blog/posts/country-risk-monitoring-workflow-for-analysts/">country-risk monitoring workflow article</a>, the <a href="/blog/posts/verify-breaking-news-osint-workflow-journalists/">OSINT breaking-news verification article</a>, and the <a href="/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/">supply-chain monitoring article</a>.</p>`;
   return pageDocument({
     baseUrl,
     path,
@@ -391,9 +398,157 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
   });
 }
 
+function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
+  const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
+  const path = '/use-cases/monitor-supply-chain-disruptions/';
+  const description =
+    'Monitor supply-chain disruption with World Monitor: define exposure, baseline routes, detect signals, test transmission paths, record uncertainty, then act.';
+  assertMetaDescription(description, 'monitor-supply-chain-disruptions');
+
+  const dashboardHref = withUtmSource(
+    withContentAttribution(
+      '/?chokepoint=bab_el_mandeb&layers=ais,tradeRoutes,hotspots,sanctions,flights,cables&timeRange=24h',
+      {
+        campaign: 'monitor-supply-chain-disruptions',
+        destination: 'dashboard',
+        placement: 'use-case-cta-dashboard',
+      },
+    ),
+    'seo-use-case',
+  );
+  const proHref = withUtmSource(
+    withContentAttribution('/pro', {
+      campaign: 'monitor-supply-chain-disruptions',
+      destination: 'pro',
+      placement: 'use-case-cta-pro',
+    }),
+    'seo-use-case',
+  );
+  const apiHref = withUtmSource(
+    withContentAttribution('/docs/api-reference', {
+      campaign: 'monitor-supply-chain-disruptions',
+      destination: 'api',
+      placement: 'use-case-cta-api',
+    }),
+    'seo-use-case',
+  );
+  const mcpHref = withUtmSource(
+    withContentAttribution('/docs/mcp-quickstart', {
+      campaign: 'monitor-supply-chain-disruptions',
+      destination: 'mcp',
+      placement: 'use-case-cta-mcp',
+    }),
+    'seo-use-case',
+  );
+
+  const body = `      <p class="eyebrow">Use case</p>
+      <h1>Monitor supply-chain disruptions</h1>
+      <p class="lede"><strong>Direct answer:</strong> define the exposure first, keep a routine baseline, then switch to incident mode only when a signal can touch that exposure. Separate observed evidence, forecasts, and analyst inference before you escalate.</p>
+
+      <h2>Who this is for</h2>
+      <p>Procurement, logistics risk, commodity, and corporate security teams who need a monitoring procedure across chokepoints, maritime activity, country risk, sanctions, and markets.</p>
+      <p><strong>Not for:</strong> ERP inventory planning, shipment tracking, route optimization, or guaranteed forecasts of price, shortage, delay, or downstream impact. World Monitor does not replace specialist logistics platforms.</p>
+
+      <h2>Workflow inputs and output</h2>
+      <ul>
+        <li><strong>User:</strong> an operator accountable for a named commodity, supplier geography, facility, route, or chokepoint exposure.</li>
+        <li><strong>Decision:</strong> keep routine watch, reassess exposure fit, brief stakeholders, or escalate alerting/automation.</li>
+        <li><strong>Trigger:</strong> a scheduled check, a chokepoint/maritime anomaly, a sanctions/trade-policy change, or a supplier-country risk move.</li>
+        <li><strong>Expected output:</strong> a dated note with baseline, detected signal, exposure fit, transmission hypotheses, uncertainty, and the next product action.</li>
+      </ul>
+
+      <h2>Routine monitoring checklist</h2>
+      <ol>
+        <li><strong>Define the exposure.</strong> Name the commodity, supplier geography, facility, route, chokepoint, market, and decision horizon.</li>
+        <li><strong>Establish a baseline.</strong> Record normal route conditions, country-risk bands, price ranges, policy restrictions, and usual data latency for each exposure.</li>
+        <li><strong>Run the daily scan.</strong> Check unusual maritime or route activity, security events near the exposure, weather/disaster signals, sanctions or trade-policy changes, and market confirmation — without treating any single ticker move as proof of disruption.</li>
+        <li><strong>Set watch thresholds.</strong> Write explicit reassess and escalate conditions before an incident starts.</li>
+      </ol>
+
+      <h2>Incident-response checklist</h2>
+      <ol>
+        <li><strong>Identify the first-order constraint.</strong> Is the signal a closed waterway, delayed berth, sanctions change, facility risk, or market spike?</li>
+        <li><strong>Test exposure fit.</strong> Confirm the event can reach <em>your</em> suppliers, routes, or customers — not only the same region in headlines.</li>
+        <li><strong>Map transmission paths.</strong> Consider substitute capacity, country dependencies, prices, lead times, and downstream sectors as hypotheses, not deterministic outcomes.</li>
+        <li><strong>Separate evidence classes.</strong> Label observed AIS/port/chokepoint signals, model or forecast outputs, and analyst inference in distinct lines.</li>
+        <li><strong>Record stale, missing, or contradictory sources.</strong> Then choose watch, reassess, or escalate and open the exact product state below.</li>
+      </ol>
+
+      <h2>Product proof used by this workflow</h2>
+      <ul>
+        <li>Chokepoint and waterway pages plus live <code>chokepoint=</code> map deep links.</li>
+        <li>AIS / trade-route layers, hotspot escalation, sanctions context, flights, and cable/infrastructure adjacency where relevant.</li>
+        <li>Country risk and resilience pages for supplier geographies.</li>
+        <li>Commodity Monitor and related market surfaces for confirmation — labeled as markets, not causal proof.</li>
+        <li>Optional Pro alerts plus API/MCP automation for continuing watch.</li>
+      </ul>
+
+      <h2>Worked example: Red Sea container exposure</h2>
+      <p>Exposure is Asia–Europe containerized electronics that normally transit Bab el-Mandeb / Suez, with a Vietnam assembly node and a Netherlands DC.</p>
+      <p><strong>Observed:</strong> AIS density and chokepoint stress near Bab el-Mandeb rise inside the watch window; several carriers announce Cape diversions.</p>
+      <p><strong>Forecast / market:</strong> freight indices and energy prices move; treat them as market signals, not proof your SKU will stock out.</p>
+      <p><strong>Inference:</strong> lead times may extend if substitute Cape capacity stays constrained — recorded as analyst judgment with a reassess date. Contradictory calm on an alternate Pacific lane stays in the note so the team does not over-generalize “global shipping is broken.”</p>
+
+      <h2>Provenance, freshness, and limits</h2>
+      <ul>
+        <li><strong>Provenance:</strong> chokepoint methodology, AIS aggregators, sanctions lists, country indexes, and market feeds each have distinct publishers.</li>
+        <li><strong>Freshness:</strong> maritime and hotspot layers can move within hours; resilience and some policy datasets refresh more slowly. Stamp observation time.</li>
+        <li><strong>Blind spots:</strong> dark shipping, delayed AIS in thin-coverage regions, model latency, and commodity series that lag the physical constraint.</li>
+        <li><strong>What World Monitor cannot prove:</strong> that an event will cause a specific price, shortage, delay, or customer impact.</li>
+      </ul>
+
+      <h2>Exact next action</h2>
+      <p>Open the Bab el-Mandeb chokepoint state with AIS, trade routes, hotspots, sanctions, flights, and cables for a 24-hour window, then retarget to your exposure list.</p>
+      <p><a class="cta" data-use-case-handoff data-dashboard-link href="${escapeHtml(dashboardHref)}">Open Bab el-Mandeb disruption map →</a></p>
+      <p>Secondary handoffs when they continue this workflow:</p>
+      <ul class="related">
+        <li><a data-use-case-handoff href="${escapeHtml(proHref)}">Pro alerting</a></li>
+        <li><a data-use-case-handoff href="${escapeHtml(apiHref)}">API reference</a></li>
+        <li><a data-use-case-handoff href="${escapeHtml(mcpHref)}">MCP quickstart</a></li>
+      </ul>
+
+      <h2>Supporting material</h2>
+      <ul class="related">
+        <li><a href="/use-cases/">All use cases</a></li>
+        <li><a href="/use-cases/monitor-country-risk/">Monitor country risk</a></li>
+        <li><a href="/chokepoints/">Chokepoint reference corpus</a></li>
+        <li><a href="/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/">Supply-chain monitoring article</a></li>
+        <li><a href="/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/">Trade routes and chokepoints article</a></li>
+        <li><a href="/docs/methodology/chokepoints">Chokepoint methodology</a></li>
+      </ul>
+      <p class="source">Canonical treatment (#6851): this page owns the evergreen supply-chain monitoring workflow. <a href="/chokepoints/">/chokepoints/</a> and commodity surfaces remain factual evidence. The <a href="/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/">supply-chain blog article</a> remains distinct supporting editorial — no redirect.</p>`;
+
+  return pageDocument({
+    baseUrl,
+    path,
+    title: 'Monitor Supply-Chain Disruptions | World Monitor Use Cases',
+    description,
+    lastmod,
+    ogType: 'article',
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Monitor supply-chain disruptions',
+      description,
+      url: absoluteUrl(baseUrl, path),
+      inLanguage: 'en-US',
+      dateModified: lastmod,
+    },
+    breadcrumbs: breadcrumbLd(baseUrl, [
+      { name: 'Home', path: '/' },
+      { name: 'Use cases', path: '/use-cases/' },
+      { name: 'Monitor supply-chain disruptions', path },
+    ]),
+    body,
+    inlineScript: HANDOFF_PRESERVE_SCRIPT,
+    footerBody: `${UMAMI_SCRIPT_TAG}World Monitor use-case corpus. Evergreen workflows use committed product evidence; live API results belong on dashboard and country pages.`,
+  });
+}
+
 const USE_CASE_RENDERERS = {
   'monitor-country-risk': renderCountryRiskUseCase,
   'verify-breaking-news': renderVerifyBreakingNewsUseCase,
+  'monitor-supply-chain-disruptions': renderSupplyChainDisruptionsUseCase,
 };
 
 export function writeUseCasesSection({ outDir, baseUrl, tpl, lastmod = USE_CASES_CONTENT_VERSION }) {
@@ -421,4 +576,5 @@ export const __test = {
   renderUseCasesIndex,
   renderCountryRiskUseCase,
   renderVerifyBreakingNewsUseCase,
+  renderSupplyChainDisruptionsUseCase,
 };
