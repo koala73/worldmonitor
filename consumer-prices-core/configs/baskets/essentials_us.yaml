@@ -90,8 +90,9 @@ basket:
       weight: 0.07
       baseUnit: ml
       substitutionGroup: water_still
-      minBaseQty: 6000
-      maxBaseQty: 10000
+      # 24×16 fl oz ≈ 11,356 ml; 24×16.9 fl oz ≈ 11,995 ml. Ceiling covers both.
+      minBaseQty: 10000
+      maxBaseQty: 12500
       negativeTokens: ["sparkling", "flavored", "flavoured"]
 
     - id: sugar_1kg
