@@ -65,7 +65,13 @@ export class GdeltIntelPanel extends Panel {
     const cached = this.topicData.get(topic.id);
     if (cached && Date.now() - cached.fetchedAt.getTime() < 5 * 60 * 1000) {
       this.renderTopicSummary(this.timelineData.get(topic.id) ?? null);
+      // #6679 instance A: a cached-topic switch is not a proven recovery.
+      // renderArticles routes through setContentNodes, whose full
+      // clearErrorState() resets the backoff rung — preserve it across the
+      // write so a still-failing topic keeps its exponential ladder.
+      const rung = this.retryRung;
       this.renderArticles(cached.articles);
+      this.retryRung = rung;
     } else {
       this.loadActiveTopic();
     }
@@ -141,11 +147,20 @@ export class GdeltIntelPanel extends Panel {
   }
 
   private renderArticles(articles: GdeltArticle[]): void {
+    // #6679 instance B: fetchGdeltArticles runs behind gdeltBreaker and
+    // resolves to [] on every failure branch (never rejects), so a GDELT
+    // outage arrives here as an empty list. An empty render is not a proven
+    // recovery — preserve the backoff rung across setContentNodes's full
+    // clearErrorState(), or a failing source is pinned at the 15s floor.
+    const rung = this.retryRung;
     if (articles.length === 0) {
       this.setContentNodes(h('div', { className: 'empty-state' }, t('components.gdelt.empty')));
+      this.retryRung = rung;
       return;
     }
 
+    // A non-empty render from loadActiveTopic's success path IS a proven
+    // recovery — the full clear (including the rung reset) is correct here.
     this.setContentNodes(
       h('div', { className: 'gdelt-intel-articles' },
         ...articles.map(article => this.buildArticle(article)),
