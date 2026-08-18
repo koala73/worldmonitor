@@ -460,6 +460,16 @@ test('manifest and scanner references record a path only', () => {
   }
 });
 
+test('scanUpstreamHosts does not crash on empty leftover api/[domain]/v1 trees', () => {
+  const fixture = makeFixtureCheckout();
+  try {
+    mkdirSync(join(fixture.dir, 'api', '[__docs_stats_probe__]', 'v1'), { recursive: true });
+    assert.doesNotThrow(() => scanUpstreamHosts(fixture.dir));
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('ledger stats match validated stats when the committed manifest is current', () => {
   const inventory = scanUpstreamHosts(rootDir);
   const manifest = loadManifest(rootDir);

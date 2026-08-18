@@ -843,11 +843,23 @@ function read(rootDir, path) {
   return readFileSync(join(rootDir, path), 'utf8');
 }
 
+function readdirPresentSync(absoluteDir) {
+  try {
+    return readdirSync(absoluteDir, { withFileTypes: true });
+  } catch (error) {
+    // Parallel test:data can mkdir/rm empty leftover trees under api/ (see
+    // tests/docs-stats-api-endpoints.test.mts) while docs-stats --check walks
+    // SOURCE_ROOTS. A vanished directory is not an inventory finding.
+    if (error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) return [];
+    throw error;
+  }
+}
+
 function walkSourceFiles(rootDir) {
   const files = [];
   const visit = (relativeDir) => {
     const absoluteDir = join(rootDir, relativeDir);
-    for (const entry of readdirSync(absoluteDir, { withFileTypes: true })) {
+    for (const entry of readdirPresentSync(absoluteDir)) {
       const relativePath = join(relativeDir, entry.name).replaceAll('\\', '/');
       if (entry.isDirectory()) {
         if (['node_modules', '.git', 'generated', 'e2e', 'fixtures', '__fixtures__', 'test', 'tests'].includes(entry.name)) continue;
