@@ -202,6 +202,80 @@ export function parseBriefSynthesis(rawText, storyCount) {
 }
 
 /**
+ * The ground text a story's claims must be found in: the story TEXT only.
+ *
+ * Exported so the string this gate actually turns on can be read directly by a
+ * unit test or a replay script. It was a local closure, and both the #6019 and
+ * #6119 investigations had to rebuild a live-digest harness to see it.
+ *
+ * `primarySource` is deliberately NOT here — see `maskAttributedSources`.
+ */
+export const storyGroundText = (story) => [
+  story?.primaryTitle,
+  ...(Array.isArray(story?.memberTitles) ? story.memberTitles : []),
+].filter(Boolean).join(' — ');
+
+const REGEX_METACHARACTERS = /[.*+?^${}()|[\]\\]/g;
+
+/**
+ * Blank the outlet labels the prompt showed the model, so the model may NAME
+ * its source without that name grounding anything else.
+ *
+ * synthesisUserPrompt renders each story as
+ *   `N. <primaryTitle> (<primarySource>, K sources)`
+ * and the system prompt says "Use ONLY facts present in the numbered story
+ * text". primarySource IS in that text, so a lead writing "Reuters reported …"
+ * is obeying the prompt — and was rejected as a hallucinated proper noun for
+ * naming something the prompt itself supplied. On 2026-08-18 that cost 13
+ * INSIGHTS_SYNTHESIS_LEAD_PROPER_NOUN alarms in 10.5h, and because the provider
+ * loop advances on gate rejection (seed-insights.mjs) it silently demoted the
+ * chain from the paid model to a free one.
+ *
+ * The obvious repair — appending primarySource to the ground text — is wrong,
+ * because the ground text is TOKENISED, not matched as a phrase:
+ * validateNoHallucinatedProperNouns grounds a single-token claim against any
+ * token inside any ground sequence (brief-llm-core.js). Adding the label would
+ * donate each of its words to the free grounding pool, so
+ * `primarySource: 'Iran International'` would ground a lead asserting that
+ * *Iran* deployed security forces — the exact swap the system prompt forbids
+ * ("write 'US', not 'Washington'"). 40+ of the 416 labels in source-tiers.json
+ * carry a country, capital or institution token. Worse, the same ground string
+ * feeds validateNoHallucinatedFacts, so `'France 24'` (a live source here)
+ * would ground a fabricated "24 people were killed" — the digits are a
+ * tokenisation artefact of a brand name, not a fact about the story.
+ *
+ * Masking gets the semantics right instead: the label is an ATTRIBUTION, never
+ * a claim. "Reuters reported X" and "Al Jazeera reported X" both pass — the
+ * multi-word case a whitespace-only allowance would have lost — while "Iran
+ * deployed …" and "24 people were killed" still face the un-widened ground and
+ * still reject. Only whole labels are masked, so a sibling cluster label the
+ * prompt never showed ('AP News' in `sources`) grounds nothing.
+ *
+ * Only the gate's VIEW changes; the published lead and lines keep their text.
+ *
+ * @param {string} text
+ * @param {Array<unknown>} sources primarySource of each story in scope
+ * @returns {string}
+ */
+export function maskAttributedSources(text, sources) {
+  if (typeof text !== 'string' || text.length === 0) return text;
+  let masked = text;
+  for (const source of Array.isArray(sources) ? sources : []) {
+    if (typeof source !== 'string') continue;
+    const label = source.trim();
+    if (!label) continue;
+    // Escape first, THEN relax runs of whitespace — a label may carry regex
+    // metacharacters ('+972 Magazine', '24.hu', 'CAC (China)').
+    const pattern = label.replace(REGEX_METACHARACTERS, '\\$&').replace(/\s+/g, '\\s+');
+    masked = masked.replace(
+      new RegExp(`(^|[^\\p{L}\\p{N}])${pattern}(?![\\p{L}\\p{N}])`, 'giu'),
+      '$1',
+    );
+  }
+  return masked;
+}
+
+/**
  * #4921/#4928: assemble the synthesized brief from a raw LLM response —
  * pure and fully unit-testable. Applies the whole contract:
  *   - parse (fence-tolerant JSON, ≥half the stories lined)
@@ -222,6 +296,7 @@ export function parseBriefSynthesis(rawText, storyCount) {
  *   sources: Array<{ title: string; source: string; url: string }>;
  *   hallucinatedLines: number;
  *   strippedCitations: number;
+ *   sourceAttributions: number;
  * }} null → caller falls back to the legacy single-headline path.
  *
  * #5947: the seeder now calls `composeSynthesizedBriefResult` below so it can
@@ -270,31 +345,20 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   if (!parsed) return reject(BRIEF_REJECTIONS.PARSE);
 
   const groundingStories = topStories.map((story) => ({ headline: story.primaryTitle }));
-  // The ground text must cover everything the MODEL was shown about a story,
-  // or the gate rejects the model for obeying its own prompt.
-  //
-  // synthesisUserPrompt renders each story as
-  //   `N. <primaryTitle> (<primarySource>, K sources)`
-  // and the system prompt says "Use ONLY facts present in the numbered story
-  // text". primarySource IS in that text, so a lead naming the outlet — "Reuters
-  // reported ..." — is following instructions. It was omitted here, so that name
-  // grounded against nothing and the sentence was rejected as a hallucinated
-  // proper noun.
-  //
-  // 2026-08-18: newsInsights alarmed 13 times in 10.5h, every one
-  // INSIGHTS_SYNTHESIS_LEAD_PROPER_NOUN, with the chain falling through the PAID
-  // model to a free one because the provider loop advances on gate rejection
-  // (seed-insights.mjs) — a frontier model failing this routinely is the gate
-  // over-rejecting, not the model hallucinating.
+  // `storyGroundText` (module level) is the story TEXT only; the outlet label
+  // reaches the gate through `maskAttributedSources` instead. Both are shared by
+  // THREE call sites below — the lead proper-noun gate, the lead numeric-fact
+  // gate, and the per-story line gate — so a change here ripples to all three.
   //
   // memberTitles is the mirror case and stays: it is in the ground text but NOT
   // in the prompt, which only makes the gate more permissive and cannot cause a
   // false rejection.
-  const storyGroundText = (story) => [
-    story.primaryTitle,
-    story.primarySource,
-    ...(Array.isArray(story.memberTitles) ? story.memberTitles : []),
-  ].filter(Boolean).join(' — ');
+  //
+  // How often a lead actually names its outlet, so the accept side is legible.
+  // The reject side already reports a reason; without this, the alarm going
+  // quiet cannot distinguish "stopped over-rejecting" from "started
+  // under-rejecting".
+  let sourceAttributions = 0;
 
   // Lead gates (#4928 external review — citation-SCOPED, not corpus-wide):
   // every lead sentence must carry at least one citation, and its proper
@@ -331,10 +395,19 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     // Contract: every claim is cited. An uncited sentence is unverifiable.
     if (cited.length === 0) return reject(BRIEF_REJECTIONS.LEAD_UNCITED);
     const scopedGround = cited.map((n) => storyGroundText(topStories[n - 1])).join(' — ');
+    // Fail CLOSED on empty ground. Both validators return ok:true for an empty
+    // ground string, so an untitled cluster would accept every proper noun and
+    // every number in the sentence — a dead gate that looks like a healthy one.
+    if (!scopedGround.trim()) return reject(BRIEF_REJECTIONS.LEAD_GROUNDING);
+    // The lead may NAME the outlets of the stories it cites — the prompt showed
+    // it those labels. Blank them so they ground nothing else, scoped to the
+    // cited stories so one story's outlet cannot license a claim about another.
+    const attributed = maskAttributedSources(sentence, cited.map((n) => topStories[n - 1]?.primarySource));
+    if (attributed !== sentence) sourceAttributions++;
     // Both validators still run before either can reject, so shadow mode
     // observes exactly what it observed before the reasons were split out.
-    const sentenceValidation = validateNoHallucinatedProperNouns(sentence, scopedGround);
-    const factValidation = validateNoHallucinatedFacts(sentence, scopedGround);
+    const sentenceValidation = validateNoHallucinatedProperNouns(attributed, scopedGround);
+    const factValidation = validateNoHallucinatedFacts(attributed, scopedGround);
     if (validatorMode === 'enforce') {
       if (!sentenceValidation.ok) return reject(BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
       if (!factValidation.ok) return reject(BRIEF_REJECTIONS.LEAD_NUMERIC_FACT);
@@ -358,7 +431,13 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     // its ONLY correct citation is [n]: strip every bracket marker and
     // append the canonical one.
     const bare = lineByIndex.get(n).replace(/\s*\[\d{1,3}\]/g, '').trim();
-    const validation = validateNoHallucinatedProperNouns(bare, storyGroundText(story));
+    // Same attribution rule as the lead, scoped to THIS story's outlet: the line
+    // may name it, and naming it grounds nothing else. The published text stays
+    // `bare` — only the gate's view is masked.
+    const validation = validateNoHallucinatedProperNouns(
+      maskAttributedSources(bare, [story.primarySource]),
+      storyGroundText(story),
+    );
     if (!validation.ok) {
       hallucinatedLines++;
       if (validatorMode === 'enforce') return { n, text: `${headline} [${n}]` };
@@ -378,7 +457,7 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   });
 
   return {
-    brief: { lead: leadCheck.text, lines, sources, hallucinatedLines, strippedCitations },
+    brief: { lead: leadCheck.text, lines, sources, hallucinatedLines, strippedCitations, sourceAttributions },
     rejection: null,
   };
 }

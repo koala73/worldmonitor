@@ -866,6 +866,16 @@ async function fetchInsights() {
     if (composed.hallucinatedLines > 0) {
       console.warn(`  [brief_hallucination ${BRIEF_VALIDATOR_MODE.toUpperCase()}] ${composed.hallucinatedLines}/${topStories.length} synthesis lines flagged`);
     }
+    if (composed.sourceAttributions > 0) {
+      // Accept-side counterpart to the `validate_reject` reason below: how many
+      // lead sentences named their own outlet. Only the reject path was ever
+      // reported, so a quiet alarm could not be told apart from a gate that had
+      // started accepting too much. A count is enough to see that — the reason
+      // vocabulary stays a bounded literal on purpose (these reach seed-meta and
+      // Railway logs, where the payload may be sensitive), so no offending text
+      // is logged here either.
+      console.log(`  [brief_attribution] ${composed.sourceAttributions} lead sentence(s) named their source outlet`);
+    }
     console.log(`  Brief synthesized (top-${topStories.length}) via ${briefProvider} (${briefModel})`);
   } else {
     console.warn(
