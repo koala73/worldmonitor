@@ -1132,9 +1132,9 @@ export async function fetchAllDatasetMaps() {
   return { datasetMaps, failedDatasets };
 }
 
-// #6562 item 1: the bundle timeout was derived from a design worst case, not a
-// run. This times the same concurrent adapter fan-out a non-skipped seed uses
-// (Redis publish is a single pipeline after this and is not the long pole).
+// Diagnostic adapter timing only. This deliberately omits Redis reads, lock
+// lifecycle, recovery, payload construction, publish, and result logging, so it
+// must not be used as full-run timeout or bundle-placement evidence.
 export async function measureResilienceStaticFetch({
   fetchAll = fetchAllDatasetMaps,
   now = Date.now,
@@ -1304,15 +1304,17 @@ export async function main() {
   }
 }
 
-export async function runMeasureFetchOnly({ measure = measureResilienceStaticFetch } = {}) {
+export async function runMeasureFetchOnly({
+  measure = measureResilienceStaticFetch,
+  write = console.log,
+} = {}) {
   const result = await measure();
-  console.log(JSON.stringify(result, null, 2));
-  // Any failed adapter disqualifies the run. The citation this feeds records
-  // "11/11 adapters", and a partial fan-out measures SHORTER than a healthy one
+  // Any failed adapter disqualifies even this diagnostic. A partial fan-out
+  // measures SHORTER than a healthy one
   // — six of the eleven adapters share fetchWorldBankIndicatorRows/fetchJson,
   // which has no proxy fallback, so one api.worldbank.org block fails all six in
-  // milliseconds. Exiting 0 there would hand the operator a fast, citable, wrong
-  // number in the one direction that argues the timeout down.
+  // milliseconds. Exiting 0 there would hand the operator a fast, wrong number
+  // in the one direction that argues the timeout down.
   if (result.adapterCount === 0) {
     throw new Error('Resilience-Static fetch measurement ran no adapters — nothing was measured');
   }
@@ -1323,6 +1325,8 @@ export async function runMeasureFetchOnly({ measure = measureResilienceStaticFet
       + `(${result.failedDatasets.join(', ')}). Re-run when all adapters are reachable.`,
     );
   }
+  write(JSON.stringify(result, null, 2));
+  return result;
 }
 
 export const MEASURE_FETCH_ONLY_FLAG = '--measure-fetch-only';
