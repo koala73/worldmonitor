@@ -40,7 +40,7 @@ const CONTENT_MEASURE_UNITS = new Set(['g', 'ml']);
 const DENSITY_G_PER_ML_MIN = 0.8;
 const DENSITY_G_PER_ML_MAX = 1.2;
 
-export type SizeWindowStatus = 'pass' | 'fail' | 'unit-mismatch' | 'unknown';
+export type SizeWindowStatus = 'pass' | 'fail' | 'unit-mismatch' | 'unknown' | 'unreadable';
 
 export interface ValidatorInput {
   canonicalName: string;
@@ -140,7 +140,12 @@ function evaluateSizeWindow(
   if (item.minBaseQty == null && item.maxBaseQty == null) return noSize;
   if (!sizeText) return noSize;
   const parsed = parseSize(sizeText);
-  if (!parsed) return noSize;
+  if (!parsed) {
+    // #6868: a size that was PRESENT but could not be read is a failure to
+    // verify, not an absence of something to verify. Scoring treats the two
+    // differently; the status carries which one happened.
+    return { status: 'unreadable' as const, baseQty: null, baseUnit: null };
+  }
 
   const min = item.minBaseQty ?? 0;
   const max = item.maxBaseQty ?? Number.POSITIVE_INFINITY;
@@ -148,7 +153,9 @@ function evaluateSizeWindow(
   if (parsed.baseUnit !== item.baseUnit) {
     // A count unit on either side carries no content information at all.
     if (!CONTENT_MEASURE_UNITS.has(item.baseUnit) || !CONTENT_MEASURE_UNITS.has(parsed.baseUnit)) {
-      return { status: 'unknown', baseQty: parsed.baseQuantity, baseUnit: parsed.baseUnit };
+      // #6867's deliberate count-unit carve-out: no content information on
+      // one side, so nothing was verified either way (#6868 split).
+      return { status: 'unreadable', baseQty: parsed.baseQuantity, baseUnit: parsed.baseUnit };
     }
     // Both sides measure content, in different dimensions. Convert across the
     // density band and reject only when NO plausible density lands the product
@@ -218,7 +225,15 @@ export function validateSearchHit(input: ValidatorInput): ValidatorResult {
   // Score combines positive signals even when hard-failing, so candidate rows
   // retain their relative quality for later review.
   // Weights: token overlap 0.55, size 0.35 (or 0.2 neutral when unknown), class-clean 0.10.
-  const sizeComponent = sizeEval.status === 'pass' ? 0.35 : sizeEval.status === 'unknown' ? 0.2 : 0;
+  // 'unreadable' — a size was present but nothing could be verified (#6868) —
+  // drops to 0.05: at full token overlap the hit lands at 0.70, below
+  // AUTO_MATCH_THRESHOLD, so it records as a reviewable candidate instead of
+  // publishing as a verified price. Structurally-absent sizes keep 0.2.
+  const sizeComponent =
+    sizeEval.status === 'pass' ? 0.35
+    : sizeEval.status === 'unknown' ? 0.2
+    : sizeEval.status === 'unreadable' ? 0.05
+    : 0;
   const classClean = nonFood || negHit ? 0 : 0.1;
   const score = Math.min(1, Math.max(0, overlap * 0.55 + sizeComponent + classClean));
 

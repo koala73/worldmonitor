@@ -307,7 +307,9 @@ describe('validateSearchHit — wrong-product admissions (#6267)', () => {
       item: item({ baseUnit: 'ct', minBaseQty: 10, maxBaseQty: 15 }),
     });
     expect(r.ok).toBe(true);
-    expect(r.signals.sizeWindow).toBe('unknown');
+    // #6868: the count-unit carve-out is a deliberate could-not-verify, not
+    // the neutral nothing-to-verify.
+    expect(r.signals.sizeWindow).toBe('unreadable');
     expect(r.signals.extractedBaseQty).toBe(660);
   });
 
@@ -397,7 +399,9 @@ describe('validateSearchHit — wrong-product admissions (#6267)', () => {
       sizeText: '12 pcs',
       item: item({ baseUnit: 'g', minBaseQty: 350, maxBaseQty: 450 }),
     });
-    expect(r.signals.sizeWindow).toBe('unknown');
+    // #6868: the count-unit carve-out stays a non-reject, but it is now
+    // labeled could-not-verify rather than neutral — nothing was checked.
+    expect(r.signals.sizeWindow).toBe('unreadable');
     expect(r.ok).toBe(true);
   });
 
@@ -456,5 +460,55 @@ describe('validateSearchHit — non-food and token overlap', () => {
     expect(r.ok).toBe(false);
     expect(r.reasons).toContain('empty-product-name');
     expect(r.score).toBe(0);
+  });
+});
+
+// ── #6868: "could not verify" is not "nothing to verify" ──────────────────────
+describe('unreadable size scoring (#6868)', () => {
+  const waterItem = item({ baseUnit: 'ml', minBaseQty: 6000, maxBaseQty: 10000 });
+
+  it('a present-but-unparseable sizeText is unreadable, not unknown', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Drinking Water 24 Pack 16oz',
+      productName: 'Drinking Water 24 Pack 16oz',
+      sizeText: '24 unidades',
+      item: waterItem,
+    });
+    expect(r.signals.sizeWindow).toBe('unreadable');
+  });
+
+  it('no longer reaches auto on token overlap alone (0.70 < 0.75)', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Drinking Water 24 Pack 16oz',
+      productName: 'Drinking Water 24 Pack 16oz',
+      sizeText: 'pack 12x lx',
+      item: waterItem,
+    });
+    expect(r.signals.tokenOverlap).toBe(1);
+    expect(r.score).toBeCloseTo(0.55 + 0.05 + 0.1);
+    expect(r.score).toBeLessThan(AUTO_MATCH_THRESHOLD);
+  });
+
+  it('a structurally-absent size keeps the neutral 0.2 and still clears auto', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Drinking Water 24 Pack 16oz',
+      productName: 'Drinking Water 24 Pack 16oz',
+      sizeText: undefined,
+      item: waterItem,
+    });
+    expect(r.signals.sizeWindow).toBe('unknown');
+    expect(r.score).toBeCloseTo(0.55 + 0.2 + 0.1);
+    expect(r.score).toBeGreaterThanOrEqual(AUTO_MATCH_THRESHOLD);
+  });
+
+  it('no window configured stays neutral unknown', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Drinking Water 24 Pack 16oz',
+      productName: 'Drinking Water 24 Pack 16oz',
+      sizeText: 'pack 12x lx',
+      item: item({}),
+    });
+    expect(r.signals.sizeWindow).toBe('unknown');
+    expect(r.score).toBeCloseTo(0.55 + 0.2 + 0.1);
   });
 });
