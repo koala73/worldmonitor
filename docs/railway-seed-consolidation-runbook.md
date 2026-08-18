@@ -973,8 +973,8 @@ All new services share these settings:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services (including the retired defense-patents producer) |
 | **Net savings** | 3 slots |
-| **Members** | Defense Industrial Base (10d), Submarine Cables (weekly), Defense Patents (weekly), Chokepoint Baselines (400d, runs rarely) |
-| **Wall-time budget** | `maxBundleMs: 570_000` in `scripts/seed-bundle-static-ref.mjs`. Since #6806 the four members reserve 470s in total (110 + 100 + 190 + 70), so **every due member is admissible on every tick** — there is no ordering, priority, or deferral question left in this bundle. Keep the total under 570s: adding a member that does not fit alongside the others reintroduces the starvation the split removed. |
+| **Members** | Defense Industrial Base (10d), Submarine Cables (weekly), Defense Patents (weekly), Chokepoint Baselines (400d, runs rarely), Demographics Capability (20d) |
+| **Wall-time budget** | `maxBundleMs: 570_000` in `scripts/seed-bundle-static-ref.mjs`. The five members reserve 545s in total, including the runner's 10s kill grace for each member (110 + 100 + 190 + 70 + 75). The runner starts every freshness gate concurrently; its heartbeat plus the slowest three-read gate have 20s of bounded preflight, leaving 5s for process overhead. Therefore **every due member is admissible on every tick**. Do not add another member without moving or reducing measured work; that would restore the starvation the split removed. |
 | **Required variable** | `USPTO_API_KEY=${{shared.USPTO_API_KEY}}` |
 
 Defense Patents is an intentional data-series migration, not a continuation of
@@ -998,6 +998,13 @@ retries the portal instead of treating the partial pass as complete.
 Strict health-probe registration is a staged follow-up after the first Railway
 run publishes both seed-meta keys; the follow-up must cite real Railway
 pre-seed evidence under the health-probe cutover contract.
+
+Demographics Capability publishes `demographics:capability:v1` from three
+independently settled stages: UN WPP age structure, UNESCO UIS indicators via
+World Bank WDI, and ILOSTAT industrial workforce data. A failed stage retains
+only its prior section and its original fetch timestamp. The 20-day eligibility
+window keeps the 30-day data TTL alive while the observation-year content clock
+detects old source material.
 
 ### Bundle 3 heavy: seed-bundle-static-ref-heavy (planned, #6806)
 

@@ -88,6 +88,60 @@ export interface FoodStockRecord {
   source: string;
 }
 
+export interface GetDemographicsCapabilityRequest {
+  countryCode: string;
+}
+
+export interface GetDemographicsCapabilityResponse {
+  countryCode: string;
+  available: boolean;
+  fetchedAt: string;
+  stages: DemographicsCapabilityStage[];
+  ageStructure?: DemographicsAgeStructure;
+  education?: DemographicsEducation;
+  industrialWorkforce?: DemographicsIndustrialWorkforce;
+}
+
+export interface DemographicsCapabilityStage {
+  name: string;
+  status: string;
+  fetchedAt: string;
+  recordCount: number;
+  newestObservationYear: number;
+}
+
+export interface DemographicsAgeStructure {
+  available: boolean;
+  medianAgeYears?: CapabilityObservation;
+  oldAgeDependencyRatioPercent?: CapabilityObservation;
+  totalDependencyRatioPercent?: CapabilityObservation;
+  workingAgePopulationPeople?: CapabilityObservation;
+  workingAgePopulationProjected10yPeople?: CapabilityObservation;
+}
+
+export interface CapabilityObservation {
+  available: boolean;
+  value: number;
+  year: number;
+  source: string;
+  unit: string;
+}
+
+export interface DemographicsEducation {
+  available: boolean;
+  tertiaryEnrollmentGrossPercent?: CapabilityObservation;
+  stemGraduatesSharePercent?: CapabilityObservation;
+  researchersPerMillion?: CapabilityObservation;
+}
+
+export interface DemographicsIndustrialWorkforce {
+  available: boolean;
+  craftTradesEmploymentPeople?: CapabilityObservation;
+  plantMachineOperatorsEmploymentPeople?: CapabilityObservation;
+  trainedIndustrialWorkforcePeople?: CapabilityObservation;
+  manufacturingEmploymentSharePercent?: CapabilityObservation;
+}
+
 export interface GetResilienceRankingRequest {
 }
 
@@ -207,6 +261,7 @@ export interface RouteDescriptor {
 export interface ResilienceServiceHandler {
   getResilienceScore(ctx: ServerContext, req: GetResilienceScoreRequest): Promise<GetResilienceScoreResponse>;
   getFoodStocks(ctx: ServerContext, req: GetFoodStocksRequest): Promise<GetFoodStocksResponse>;
+  getDemographicsCapability(ctx: ServerContext, req: GetDemographicsCapabilityRequest): Promise<GetDemographicsCapabilityResponse>;
   getResilienceRanking(ctx: ServerContext, req: GetResilienceRankingRequest): Promise<GetResilienceRankingResponse>;
   getResilienceRuntimeManifest(ctx: ServerContext, req: GetResilienceRuntimeManifestRequest): Promise<GetResilienceRuntimeManifestResponse>;
 }
@@ -290,6 +345,53 @@ export function createResilienceServiceRoutes(
 
           const result = await handler.getFoodStocks(ctx, body);
           return new Response(JSON.stringify(result as GetFoodStocksResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/resilience/v1/get-demographics-capability",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetDemographicsCapabilityRequest = {
+            countryCode: params.get("countryCode") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getDemographicsCapability", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getDemographicsCapability(ctx, body);
+          return new Response(JSON.stringify(result as GetDemographicsCapabilityResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -93,7 +93,7 @@ export const TOP_N = 20;
  * 2.6 MB source YAML does not produce an empty document. The plausible failure
  * is a PARTIAL generation: a codegen or injector change that emits a handful of
  * operations, which would report a delighted 900 KB of headroom. The bundle has
- * grown monotonically through 193 -> 217 -> 218 operations; 100 is far below
+ * grown monotonically through 193 -> 217 -> 219 operations; 100 is far below
  * anything real and far above anything a broken generator would produce.
  */
 export const MIN_PLAUSIBLE_OPERATIONS = 100;

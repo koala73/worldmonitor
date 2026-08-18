@@ -3,6 +3,7 @@ syntax = "proto3";
 package worldmonitor.resilience.v1;
 
 import "sebuf/http/annotations.proto";
+import "worldmonitor/resilience/v1/get_demographics_capability.proto";
 import "worldmonitor/resilience/v1/get_food_stocks.proto";
 import "worldmonitor/resilience/v1/get_resilience_ranking.proto";
 import "worldmonitor/resilience/v1/get_resilience_runtime_manifest.proto";
@@ -18,6 +19,11 @@ service ResilienceService {
   // GetFoodStocks returns per-country and WORLD cereal stocks-to-use from the seeded USDA PSD snapshot.
   rpc GetFoodStocks(GetFoodStocksRequest) returns (GetFoodStocksResponse) {
     option (sebuf.http.config) = {path: "/get-food-stocks", method: HTTP_METHOD_GET};
+  }
+
+  // GetDemographicsCapability returns age, education and industrial-workforce observations for one country.
+  rpc GetDemographicsCapability(GetDemographicsCapabilityRequest) returns (GetDemographicsCapabilityResponse) {
+    option (sebuf.http.config) = {path: "/get-demographics-capability", method: HTTP_METHOD_GET};
   }
 
   rpc GetResilienceRanking(GetResilienceRankingRequest) returns (GetResilienceRankingResponse) {

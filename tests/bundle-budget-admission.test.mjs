@@ -29,6 +29,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   ADMISSION_HEADROOM_MS,
+  BUNDLE_PREFLIGHT_HEADROOM_MS,
   DEFAULT_SECTION_TIMEOUT_MS,
   KILL_GRACE_MS,
   sectionWorstCaseMs,
@@ -259,11 +260,18 @@ test('#6806: static-ref splits light from heavy, and neither half has an orderin
   // This is what the split bought, and it is the assertion that fails first if
   // someone moves an expensive member back.
   const KILL_GRACE_MS = 10_000;
-  const lightTotal = light.sections.reduce((sum, s) => sum + s.timeoutMs + KILL_GRACE_MS, 0);
+  const lightTotal = light.sections.reduce((sum, s) => sum + s.timeoutMs + KILL_GRACE_MS, 0)
+    + BUNDLE_PREFLIGHT_HEADROOM_MS;
   assert.ok(
     lightTotal <= light.maxBundleMs,
-    `seed-bundle-static-ref.mjs reserves ${lightTotal}ms of its ${light.maxBundleMs}ms budget. `
-    + 'Every member must fit on the same tick, or the ordering question this split removed is back.',
+    `seed-bundle-static-ref.mjs reserves ${lightTotal}ms including bounded preflight of its ${light.maxBundleMs}ms budget. `
+    + 'Every member and the runner preflight must fit on the same tick, or the ordering question this split removed is back.',
+  );
+  const lightSrc = readFileSync(join(SCRIPTS_DIR, 'seed-bundle-static-ref.mjs'), 'utf-8');
+  assert.match(
+    lightSrc,
+    /prefetchFreshness:\s*true/,
+    'the bounded preflight in the simultaneous-fit arithmetic must be enabled at runtime',
   );
 
   // The heavy half CANNOT have that property — Railway's 10-minute kill means no

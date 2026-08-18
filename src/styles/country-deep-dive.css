@@ -883,6 +883,23 @@
   border-top: 1px solid var(--border);
 }
 
+.cdp-demographics-capability {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cdp-demographics-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cdp-demographics-group + .cdp-demographics-group {
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
 .cdp-base-item {
   display: flex;
   justify-content: space-between;

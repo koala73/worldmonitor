@@ -10,7 +10,7 @@ The inventory is **generated, not hand-written**: `scripts/source-attribution.mj
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **746 active source hosts** representing **740 active providers** (**316 structured/API**, **463 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced.
+This generated inventory covers **748 active source hosts** representing **742 active providers** (**318 structured/API**, **463 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -76,7 +76,6 @@ This generated inventory covers **746 active source hosts** representing **740 a
 | api.usaspending.gov (api.usaspending.gov) | structured — scripts/ais-relay.cjs, scripts/seed-usa-spending.mjs |
 | api.weather.gov (api.weather.gov) | structured — scripts/_weather-alert-select.mjs |
 | api.windy.com (api.windy.com) | structured — scripts/seed-webcams.mjs, server/worldmonitor/webcam/v1/get-webcam-image.ts |
-| api.worldbank.org (api.worldbank.org) | structured — scripts/_defense-industrial-source.mjs, scripts/ais-relay.cjs, scripts/seed-bis-lbs.mjs, scripts/seed-education-attainment.mjs, +9 more |
 | api.wto.org (api.wto.org) | structured — scripts/seed-supply-chain-trade.mjs, server/worldmonitor/trade/v1/_shared.ts |
 | apnews.com (apnews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | arabianbusiness.com (arabianbusiness.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
@@ -316,6 +315,7 @@ This generated inventory covers **746 active source hosts** representing **740 a
 | Hyperliquid (api.hyperliquid.xyz) | structured — scripts/seed-hyperliquid-flow.mjs |
 | ici.radio-canada.ca (ici.radio-canada.ca) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | iea.org (iea.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| ILOSTAT (sdmx.ilo.org) | structured — scripts/_demographics-capability-source.mjs |
 | in.usembassy.gov (in.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
 | inc42.com (inc42.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
 | index.hu (index.hu) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
@@ -378,7 +378,7 @@ This generated inventory covers **746 active source hosts** representing **740 a
 | lowyinstitute.org (lowyinstitute.org) | feed — src/config/feeds.ts |
 | macleans.ca (macleans.ca) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | Mada Masr (madamasr.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
-| Manitoba 511 (www.manitoba511.ca) | structured — scripts/lib/provincial-511.mjs, scripts/source-attribution.mjs |
+| Manitoba 511 (www.manitoba511.ca) | structured — scripts/lib/provincial-511.mjs |
 | maps.worldmonitor.app (maps.worldmonitor.app) | structured — src/services/country-geometry.ts |
 | mapservices.weather.noaa.gov (mapservices.weather.noaa.gov) | structured — scripts/seed-natural-events.mjs |
 | marketwatch.com (marketwatch.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
@@ -620,6 +620,7 @@ This generated inventory covers **746 active source hosts** representing **740 a
 | understandingwar.org (understandingwar.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | UNDP Human Development Report (hdr.undp.org) | structured — scripts/benchmark-resilience-external.mjs |
 | unhcr.org (unhcr.org) | feed — src/config/feeds.ts |
+| United Nations Population Division (population.un.org) | structured — scripts/_demographics-capability-source.mjs |
 | urlhaus-api.abuse.ch (urlhaus-api.abuse.ch) | structured — scripts/ais-relay.cjs, scripts/seed-cyber-threats.mjs, server/worldmonitor/cyber/v1/_shared.ts |
 | USDA FAS PSD (api.fas.usda.gov) | structured — scripts/seed-food-stocks.mjs |
 | USDA FAS PSD (apps.fas.usda.gov) | Excluded / candidate — No current fetch observed |
@@ -634,7 +635,7 @@ This generated inventory covers **746 active source hosts** representing **740 a
 | vnexpress.net (vnexpress.net) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | vs-hls-push-uk.live.fastly.md.bbci.co.uk (vs-hls-push-uk.live.fastly.md.bbci.co.uk) | feed — src/components/LiveNewsPanel.ts |
 | vsquare.org (vsquare.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
-| W3C schema reference (www.w3.org) | structured — api/fwdstart.js |
+| W3C schema reference (www.w3.org) | structured — api/fwdstart.js, src/embed/panels/fear-greed.ts |
 | wa.me (wa.me) | structured — server/worldmonitor/leads/v1/register-interest.ts, src/services/story-share.ts |
 | wabi-europe-north-b-api.analysis.windows.net (wabi-europe-north-b-api.analysis.windows.net) | structured — scripts/seed-hormuz.mjs |
 | WAFA English (english.wafa.ps) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
@@ -652,6 +653,7 @@ This generated inventory covers **746 active source hosts** representing **740 a
 | Wired (www.wired.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | workos.com (workos.com) | structured — api/oauth-authorization-server.ts |
 | World Air Quality Index (WAQI) (api.waqi.info) | structured — scripts/seed-health-air-quality.mjs |
+| World Bank Open Data (api.worldbank.org) | structured — scripts/_defense-industrial-source.mjs, scripts/_demographics-capability-source.mjs, scripts/ais-relay.cjs, scripts/seed-bis-lbs.mjs, +10 more |
 | World Monitor hosted API (api.worldmonitor.app) | structured — api/a2a.ts, api/internal/mcp-grant-mint.ts, api/mcp/downstream.ts, scripts/ais-relay.cjs, +18 more |
 | World Monitor proxy (proxy.worldmonitor.app) | structured — api/widget-agent.ts, scripts/seed-security-advisories.mjs, src/utils/proxy.ts |
 | World Monitor web app (worldmonitor.app) | feed+structured — api/_agent-metadata.ts, api/a2a.ts, api/ask.ts, api/fwdstart.js, +39 more |

@@ -906,8 +906,17 @@ function makefileVar(text, name) {
   return match[1];
 }
 
+function readdirPresentSync(abs) {
+  try {
+    return readdirSync(abs, { withFileTypes: true });
+  } catch (error) {
+    if (error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) return [];
+    throw error;
+  }
+}
+
 function walk(rel, out = []) {
-  for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+  for (const e of readdirPresentSync(join(ROOT, rel))) {
     const child = `${rel}/${e.name}`;
     if (e.isDirectory()) walk(child, out);
     else out.push(child);
@@ -919,7 +928,7 @@ function walk(rel, out = []) {
 // endpoints. Git cannot track empty trees, so a readdir count that includes
 // them writes a stats.json CI cannot reproduce.
 function dirHasFiles(rel) {
-  for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+  for (const e of readdirPresentSync(join(ROOT, rel))) {
     if (e.name.startsWith('.')) continue;
     const child = `${rel}/${e.name}`;
     if (e.isFile()) return true;

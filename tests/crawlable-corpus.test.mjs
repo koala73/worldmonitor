@@ -133,6 +133,31 @@ describe('sources catalog domain assignment', () => {
     assert.equal(catalog[0].domainId, 'infrastructure');
   });
 
+  it('assigns the demographics providers to finance and economics', () => {
+    const catalog = buildSourceCatalog([
+      {
+        provider: 'United Nations Population Division',
+        host: 'population.un.org',
+        kind: 'structured',
+        references: [{ path: 'scripts/_demographics-capability-source.mjs' }],
+      },
+      {
+        provider: 'ILOSTAT',
+        host: 'sdmx.ilo.org',
+        kind: 'structured',
+        references: [{ path: 'scripts/_demographics-capability-source.mjs' }],
+      },
+    ]);
+
+    assert.deepEqual(
+      Object.fromEntries(catalog.map((row) => [row.provider, row.domainId])),
+      {
+        ILOSTAT: 'finance',
+        'United Nations Population Division': 'finance',
+      },
+    );
+  });
+
   it('still fails closed when a structured provider has no catalog domain', () => {
     assert.throws(
       () => buildSourceCatalog([{

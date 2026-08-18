@@ -557,6 +557,37 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_demographics_capability`
+
+Country age structure, education capacity, and industrial-workforce observations from UN WPP, World Bank/UNESCO UIS, and ILOSTAT. The three groups are independent: one source can be unavailable while the other groups remain usable.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | yes | ISO 3166-1 alpha-2 country code, for example `DE`. Case-insensitive. |
+
+- **API endpoint:** `GET /api/resilience/v1/get-demographics-capability`
+- **Kind:** subscription RPC proxy over the annual demographics seed.
+- **Freshness:** read each observation's `year`; it is the source observation year, not the seed run year. Stage metadata reports whether the current snapshot is `fresh`, retained a last-good stage, or is unavailable.
+
+Each observation returns `available`, `value`, `year`, `source`, and `unit`. Always check `available` before reading `value`: an unavailable proto3 number is serialized as zero. The combined trained-industrial-workforce observation is published only when the two underlying ILOSTAT occupation groups form a valid same-year cohort.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_demographics_capability","arguments":{"country_code":"DE"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_mineral_production`
 
 Country shares of mine and refinery production, plus HHI, from the annual USGS Mineral Commodity Summaries seed (BGS fills commodities MCS lacks, notably uranium). Use this for "who refines X" / "what does country Y produce". Deposit locations stay on `get_commodity_geo`.
