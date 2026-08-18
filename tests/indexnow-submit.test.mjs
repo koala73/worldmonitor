@@ -277,9 +277,15 @@ describe('IndexNow submission', () => {
       'scripts/build-sitemap.mjs',
       'middleware.ts',
       'src/config/variant-meta.ts',
-      // Every variant root is rewritten to the welcome page, so its sources and
-      // committed output change what the submitted root URLs serve.
-      'public/pro/welcome.html',
+      // Every variant root is rewritten to the welcome page, so its sources
+      // change what the submitted root URLs serve. public/pro/ is gitignored
+      // since #6898, so the built page can never appear in a commit diff — the
+      // pro-test/ subtree stands in for it. prerender.mjs and vite.config.ts are
+      // pinned explicitly: they author the served HTML but sit outside
+      // pro-test/src/, so a named-file trigger list silently drops them.
+      'pro-test/welcome.html',
+      'pro-test/prerender.mjs',
+      'pro-test/vite.config.ts',
       'pro-test/src/welcome.ts',
       `public/${variantKeyPath}`,
     ];

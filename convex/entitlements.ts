@@ -12,7 +12,7 @@
 import type { QueryCtx } from "./_generated/server";
 import { query, internalQuery } from "./_generated/server";
 import { v } from "convex/values";
-import { getFeaturesForPlan, type PlanFeatures } from "./lib/entitlements";
+import { getFeaturesForPlan, mergeEntitlementFeatures } from "./lib/entitlements";
 import { resolveUserId } from "./lib/auth";
 
 const FREE_TIER_DEFAULTS = {
@@ -47,18 +47,11 @@ async function getEntitlementsHandler(
   // (preserves any per-user overrides). New fields the row lacks (e.g.
   // `mcpAccess` post-plan-2026-05-10-001 U10) inherit the catalog default
   // for the user's plan.
-  const catalogDefaults = getFeaturesForPlan(entitlement.planKey);
-  const mergedFeatures: PlanFeatures = {
-    ...catalogDefaults,
-    ...entitlement.features,
-    // `planLimits` is a nested catalog object. Merge it independently so a
-    // legacy row that predates a new dimension inherits that dimension
-    // without losing the plan-specific limits it already stores.
-    planLimits: {
-      ...catalogDefaults.planLimits,
-      ...entitlement.features.planLimits,
-    } as PlanFeatures["planLimits"],
-  };
+  // `planLimits` is nested, so the shared helper merges it independently.
+  const mergedFeatures = mergeEntitlementFeatures(
+    entitlement.planKey,
+    entitlement.features,
+  );
   return {
     planKey: entitlement.planKey,
     features: mergedFeatures,

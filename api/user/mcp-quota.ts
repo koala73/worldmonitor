@@ -42,8 +42,17 @@ import { getCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { resolveClerkSession } from '../../server/_shared/auth-session';
-import { getEntitlements } from '../../server/_shared/entitlement-check';
+import {
+  getEntitlements,
+  isEntitlementBackendConfigured,
+  type CachedEntitlements,
+} from '../../server/_shared/entitlement-check';
+import { checkProMcpAccess } from '../../server/_shared/pro-mcp-gate';
 import { resolveDailyLimit, resolvePlanDrivenMcpAllowance } from '../mcp/quota';
+import {
+  FREE_ACCOUNT_CALLS_PER_DAY,
+  freeAccountCallsKey,
+} from '../mcp/free-account-allowance';
 import {
   dailyCounterKey,
   secondsUntilUtcMidnight,
@@ -60,16 +69,11 @@ export interface QuotaDeps {
    */
   redisGet: (key: string) => Promise<string | null>;
   /**
-   * Cached entitlement read for the plan allowance. Only `planKey` and
-   * `features.planLimits.mcpCallsPerDay` are consumed; null/throw fall back
-   * to the plan default via `resolveDailyLimit`.
+   * Cached entitlement read for both the plan allowance and the shared Pro MCP
+   * decision. Keep this as the complete cached shape so the compiler checks
+   * every field consumed by `checkProMcpAccess`.
    */
-  getEntitlements: (userId: string) => Promise<{
-    planKey?: string;
-    features?: {
-      planLimits?: { mcpCallsPerDay?: number | null };
-    };
-  } | null>;
+  getEntitlements: (userId: string) => Promise<CachedEntitlements | null>;
   /** Injectable for deterministic tests. */
   now: () => Date;
 }
@@ -116,7 +120,6 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   }
 
   const now = deps.now();
-  const key = dailyCounterKey(userId, now);
 
   // Plan allowance first — `used` is clamped to THIS number, not to the
   // historical 50. An unreadable entitlement leaves `planDailyLimit`
@@ -125,9 +128,20 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   // API-tier plan's catalog allowance is NOT what the meter applies, so it
   // must not be what this endpoint displays.
   let planDailyLimit: number | null | undefined;
+  // #6716 F7: which METER applies decides which counter to read. A caller the
+  // Pro gate classifies as `free_account` is metered by
+  // `reserveFreeAccountAllowance` against `mcp:free-acct:calls:*`, NOT by
+  // `reserveQuota` against `dailyCounterKey`. Reading the Pro key for such a
+  // caller reports a permanent `used: 0` — the display/enforcement drift this
+  // endpoint exists to prevent. Resolve the meter from the same verdict the
+  // enforcement site uses, then read that meter's key.
+  let onFreeAllowance = false;
   try {
     const ent = await deps.getEntitlements(userId);
     planDailyLimit = resolvePlanDrivenMcpAllowance(ent?.planKey, ent?.features?.planLimits?.mcpCallsPerDay);
+    onFreeAllowance = checkProMcpAccess(ent, now.getTime(), {
+      backendConfigured: isEntitlementBackendConfigured(),
+    })?.kind === 'free_account';
   } catch (err) {
     console.warn(
       '[mcp-quota] entitlement lookup failed:',
@@ -137,7 +151,15 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
       tags: { route: 'api/user/mcp-quota', step: 'entitlements' },
     });
   }
-  const limit = resolveDailyLimit(planDailyLimit);
+  // The free ceiling is NOT a plan allowance — it comes from the constant the
+  // reservation enforces, so the catalog's free `mcpCallsPerDay: 0` cannot make
+  // this endpoint under-report.
+  const limit = onFreeAllowance
+    ? FREE_ACCOUNT_CALLS_PER_DAY
+    : resolveDailyLimit(planDailyLimit);
+  const key = onFreeAllowance
+    ? freeAccountCallsKey(userId, now.getTime())
+    : dailyCounterKey(userId, now);
 
   let raw: string | null = null;
   try {

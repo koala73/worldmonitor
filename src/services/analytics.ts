@@ -524,6 +524,20 @@ export function track(event: UmamiEvent, data?: Record<string, unknown>): void {
   }
 }
 
+/**
+ * Sends a deliberately closed telemetry payload without automatic content
+ * attribution. Agent search uses this path because #6212 permits only its
+ * explicit tool/outcome and aggregate search fields.
+ */
+export function trackPrivacyRestricted(
+  event: UmamiEvent,
+  data?: Record<string, unknown>,
+): void {
+  if (!sendUmamiCall({ kind: 'track', event, data })) {
+    queueUmamiCall({ kind: 'track', event, data });
+  }
+}
+
 /** Fire once for a freshly captured content landing, not on every reload. */
 export function trackContentHandoff(): void {
   const attribution = getContentAttributionForAnalytics();
@@ -1143,8 +1157,12 @@ export function trackSearchUsed(queryLength: number, resultCount: number): void 
   track('search-used', { queryLength, resultCount });
 }
 
-export function trackSearchResultSelected(resultType: string): void {
-  track('search-result-selected', { type: resultType });
+export function trackSearchResultSelected(
+  resultType: string,
+  options?: { includeAttribution?: boolean },
+): void {
+  const tracker = options?.includeAttribution === false ? trackPrivacyRestricted : track;
+  tracker('search-result-selected', { type: resultType });
 }
 
 // ---------------------------------------------------------------------------

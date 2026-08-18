@@ -13,7 +13,6 @@ import {
   idleChipCommandIds,
   panelCommandTargetId,
   resolveIdleSelectionTerm,
-  resultMatchesSearchScope,
   type SearchScope,
 } from '@/components/search-scope';
 import {
@@ -21,12 +20,25 @@ import {
   type OverlayCloseOrigin,
   type OverlayId,
 } from '@/utils/overlay-history';
+import {
+  querySearchIndex,
+  searchSourceItemsEqual,
+  type SearchIndexQueryResult,
+} from '@/components/search-engine';
+import {
+  searchMatchIdentity,
+  type SearchCommandMatch,
+  type SearchMatch,
+  type SearchResult,
+  type SearchResultType,
+  type SearchableSource,
+} from '@/components/search-types';
 
-
-interface CommandResult {
-  command: Command;
-  score: number;
-}
+export type {
+  SearchMatch,
+  SearchResult,
+  SearchResultType,
+} from '@/components/search-types';
 
 const CATEGORY_KEYS: Record<string, string> = {
   navigate: 'commands.categories.navigate',
@@ -75,25 +87,8 @@ function resolveCategoryLabel(cmd: Command): string {
   return key ? t(key, { defaultValue: cmd.category }) : cmd.category;
 }
 
-export type SearchResultType = 'country' | 'news' | 'hotspot' | 'market' | 'prediction' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator' | 'techcompany' | 'ailab' | 'startup' | 'techevent' | 'techhq' | 'accelerator' | 'exchange' | 'financialcenter' | 'centralbank' | 'commodityhub' | 'flight';
-
-export interface SearchResult {
-  type: SearchResultType;
-  id: string;
-  title: string;
-  subtitle?: string;
-  data: unknown;
-}
-
-interface SearchableSource {
-  type: SearchResultType;
-  items: { id: string; title: string; subtitle?: string; data: unknown }[];
-}
-
 const RECENT_SEARCHES_KEY = 'worldmonitor_recent_searches';
 const MAX_RECENT = 8;
-const MAX_RESULTS = 24;
-const MAX_COMMANDS = 5;
 
 interface SearchModalOptions {
   placeholder?: string;
@@ -141,8 +136,9 @@ export class SearchModal {
   private lastSearchedQuery = '';
   private viewportHandler: (() => void) | null = null;
   private sources: SearchableSource[] = [];
+  private searchIndexRevision = 0;
   private results: SearchResult[] = [];
-  private commandResults: CommandResult[] = [];
+  private commandResults: SearchCommandMatch[] = [];
   private selectedIndex = 0;
   private recentSearches: string[] = [];
   private onSelect?: (result: SearchResult) => void;
@@ -169,6 +165,8 @@ export class SearchModal {
    * not set (back-compat for any instantiator that doesn't wire it).
    */
   private layerExecutableFn: (layerKey: string) => boolean = () => true;
+  private commandVisibleFn: (command: Command) => boolean = () => true;
+  private resultVisibleFn: (result: SearchResult) => boolean = () => true;
   private isMobile: boolean;
   /** When true, results area shows the full command list (opt-in). Sourced from getAllCommands(); no separate list to maintain. */
   private showingAllCommands = false;
@@ -182,14 +180,92 @@ export class SearchModal {
     this.loadRecentSearches();
   }
 
-  public registerSource(type: SearchResultType, items: SearchableSource['items']): void {
+  public registerSource(
+    type: SearchResultType,
+    items: SearchableSource['items'],
+    options?: { updateVisibleMetrics?: boolean },
+  ): void {
     const existingIndex = this.sources.findIndex(s => s.type === type);
+    let indexChanged = true;
     if (existingIndex >= 0) {
+      const existing = this.sources[existingIndex];
+      indexChanged = !existing || !this.searchItemsEqual(existing.items, items);
+      // Always replace the payload so selection revalidation dispatches the
+      // freshest live object even when its indexed text did not change.
       this.sources[existingIndex] = { type, items };
     } else {
       this.sources.push({ type, items });
     }
-    this.updateIndexMetrics();
+    if (indexChanged) this.searchIndexRevision += 1;
+    if (options?.updateVisibleMetrics !== false) this.updateIndexMetrics();
+  }
+
+  /** Search the current index without opening or mutating the modal. */
+  public search(rawInput: string, scope: SearchScope = this.activeScope): SearchIndexQueryResult {
+    // Viewport width can change while the lazy manager stays alive. Re-read
+    // the responsive mode so programmatic and visible searches use identical
+    // caps/order at the current viewport. Do not mutate the current open
+    // session's mode: close/history semantics must match how it was opened.
+    const currentViewportIsMobile = isMobileDevice();
+    return querySearchIndex({
+      rawInput,
+      scope,
+      sources: this.sources,
+      commands: getAllCommands(),
+      isMobile: currentViewportIsMobile,
+      flightPrefixEnabled: !!this.onFlightSearch,
+      isPanelCommandVisible: (panelId) => this.isPanelCommandVisible(panelId),
+      isLayerCommandExecutable: (layerKey) => this.layerExecutableFn(layerKey),
+      isCommandVisible: (command) => this.commandVisibleFn(command),
+      isResultVisible: (result) => this.resultVisibleFn(result),
+      resolveCommandLabel,
+      resolveCommandCategoryLabel: resolveCategoryLabel,
+    });
+  }
+
+  public getSearchIndexRevision(): number {
+    return this.searchIndexRevision;
+  }
+
+  /** Resolve a previously issued identity from registered sources, not the ranked window. */
+  public resolveMatchByIdentity(identity: string): SearchMatch | undefined {
+    for (const source of this.sources) {
+      for (const item of source.items) {
+        const match: SearchMatch = {
+          kind: 'result',
+          score: 0,
+          result: {
+            type: source.type,
+            id: item.id,
+            title: item.title,
+            subtitle: item.subtitle,
+            data: item.data,
+          },
+        };
+        if (searchMatchIdentity(match) === identity) return match;
+      }
+    }
+    for (const command of getAllCommands()) {
+      const match: SearchMatch = {
+        kind: 'command',
+        score: 0,
+        title: resolveCommandLabel(command),
+        subtitle: resolveCategoryLabel(command),
+        command,
+      };
+      if (searchMatchIdentity(match) === identity) return match;
+    }
+    return undefined;
+  }
+
+  /** Drop debounce, close, and mobile-population work during manager teardown. */
+  public cancelPendingWork(): void {
+    this.debouncedSearch.cancel();
+    this.mobileInitialPopulationGeneration += 1;
+    if (this.closeTimeoutId) {
+      clearTimeout(this.closeTimeoutId);
+      this.closeTimeoutId = null;
+    }
   }
 
   public setOnSelect(callback: (result: SearchResult) => void): void {
@@ -212,14 +288,20 @@ export class SearchModal {
     if (this.overlay) this.handleSearch();
   }
 
-  public setActivePanels(panelIds: string[]): void {
-    this.activePanelIds = new Set(panelIds);
-    this.updateIndexMetrics();
+  public setActivePanels(panelIds: string[], options?: { updateVisibleMetrics?: boolean }): void {
+    const next = new Set(panelIds);
+    if (this.stringSetsEqual(this.activePanelIds, next)) return;
+    this.activePanelIds = next;
+    this.searchIndexRevision += 1;
+    if (options?.updateVisibleMetrics !== false) this.updateIndexMetrics();
   }
 
-  public setAvailablePanels(panelIds: string[]): void {
-    this.availablePanelIds = new Set(panelIds);
-    this.updateIndexMetrics();
+  public setAvailablePanels(panelIds: string[], options?: { updateVisibleMetrics?: boolean }): void {
+    const next = new Set(panelIds);
+    if (this.stringSetsEqual(this.availablePanelIds, next)) return;
+    this.availablePanelIds = next;
+    this.searchIndexRevision += 1;
+    if (options?.updateVisibleMetrics !== false) this.updateIndexMetrics();
   }
 
   /** A panel command is shown iff enabled OR available-to-add (back-compat: active-only when no available set). */
@@ -236,7 +318,31 @@ export class SearchModal {
 
   public setLayerExecutableFn(fn: (layerKey: string) => boolean): void {
     this.layerExecutableFn = fn;
+    this.searchIndexRevision += 1;
     this.updateIndexMetrics();
+  }
+
+  public setCommandVisibleFn(fn: (command: Command) => boolean): void {
+    this.commandVisibleFn = fn;
+    this.searchIndexRevision += 1;
+    this.updateIndexMetrics();
+  }
+
+  public setResultVisibleFn(fn: (result: SearchResult) => boolean): void {
+    this.resultVisibleFn = fn;
+    this.searchIndexRevision += 1;
+    this.updateIndexMetrics();
+  }
+
+  private searchItemsEqual(
+    left: SearchableSource['items'],
+    right: SearchableSource['items'],
+  ): boolean {
+    return searchSourceItemsEqual(left, right);
+  }
+
+  private stringSetsEqual(left: Set<string>, right: Set<string>): boolean {
+    return left.size === right.size && [...left].every((value) => right.has(value));
   }
 
   public open(replaceOverlayId?: OverlayId): void {
@@ -258,9 +364,6 @@ export class SearchModal {
     }
     if (this.overlay) return;
     this.isMobile = isMobileDevice();
-    // Clear stale flight results from previous session so they don't bleed through.
-    const flightIdx = this.sources.findIndex(s => s.type === 'flight');
-    if (flightIdx >= 0) this.sources[flightIdx] = { type: 'flight', items: [] };
     this.currentFlightCallsign = null;
     this.flightSearchFired = false;
     this.selectedIndex = 0;
@@ -322,6 +425,11 @@ export class SearchModal {
 
   public isOpen(): boolean {
     return this.overlay !== null;
+  }
+
+  /** Close the palette before an agent reveals a selected dashboard target. */
+  public closeForProgrammaticSelection(): void {
+    if (this.overlay) this.close();
   }
 
   /**
@@ -494,6 +602,7 @@ export class SearchModal {
 
   private getVisibleCommandCount(): number {
     return getAllCommands().filter((command) => {
+      if (!this.commandVisibleFn(command)) return false;
       const panelId = panelCommandTargetId(command.id);
       if (panelId && !this.isPanelCommandVisible(panelId)) return false;
       if (command.id.startsWith('layer:') && !this.layerExecutableFn(command.id.slice(6))) return false;
@@ -506,41 +615,6 @@ export class SearchModal {
     const commandCount = this.overlay?.querySelector<HTMLElement>('[data-search-command-count]');
     if (entityCount) entityCount.textContent = String(this.getIndexedEntityCount());
     if (commandCount) commandCount.textContent = String(this.getVisibleCommandCount());
-  }
-
-  private matchCommands(query: string): CommandResult[] {
-    if (query.length < 2) return [];
-    const matched: CommandResult[] = [];
-    for (const cmd of getAllCommands()) {
-      if (!commandMatchesSearchScope(this.activeScope, cmd.category)) continue;
-      const panelId = panelCommandTargetId(cmd.id);
-      if (panelId) {
-        if (!this.isPanelCommandVisible(panelId)) continue;
-      }
-      // Hide layer commands whose layer can't render under the current
-      // map renderer / DeckGL mode. Without this, CMD+K surfaces toggles
-      // that silently no-op (e.g. storageFacilities in globe mode, or
-      // flat-only DeckGL layers while on the SVG/mobile fallback).
-      if (cmd.id.startsWith('layer:')) {
-        const layerKey = cmd.id.slice(6);
-        if (!this.layerExecutableFn(layerKey)) continue;
-      }
-      const label = resolveCommandLabel(cmd).toLowerCase();
-      const allTerms = [...cmd.keywords, label];
-      let bestScore = 0;
-      for (const term of allTerms) {
-        if (term.includes(query) || (term.length >= 3 && query.includes(term))) {
-          const isExact = term === query;
-          const isPrefix = term.startsWith(query);
-          const score = isExact ? 3 : isPrefix ? 2 : 1;
-          if (score > bestScore) bestScore = score;
-        }
-      }
-      if (bestScore > 0) {
-        matched.push({ command: cmd, score: bestScore });
-      }
-    }
-    return matched.sort((a, b) => b.score - a.score).slice(0, MAX_COMMANDS);
   }
 
   private handleSearch(): void {
@@ -567,83 +641,11 @@ export class SearchModal {
 
     this.onQueryChange?.(rawInput);
 
-    const byType = new Map<SearchResultType, (SearchResult & { _score: number })[]>();
-
-    // "flight {callsign}" prefix: bypass command matching entirely — "flight ek36" contains
-    // substrings like "light" that spuriously match unrelated commands (e.g. "Switch to light mode").
-    // Honor exclusive channels: panels/actions never surface flight entities.
-    this.currentFlightCallsign = null;
+    const matches = this.search(rawInput, this.activeScope);
+    this.currentFlightCallsign = matches.flightCallsign;
     this.flightSearchFired = false;
-    const flightPrefixAllowed =
-      rawInput.startsWith('flight ')
-      && !!this.onFlightSearch
-      && resultMatchesSearchScope(this.activeScope, 'flight');
-    if (flightPrefixAllowed) {
-      const callsign = rawInput.slice(7).trim().toUpperCase();
-      if (callsign.length > 0) {
-        this.currentFlightCallsign = callsign;
-        this.commandResults = [];
-        const flightSource = this.sources.find(s => s.type === 'flight');
-        if (flightSource?.items.length) {
-          byType.set('flight', flightSource.items
-            .filter(item => item.title.toUpperCase().includes(callsign))
-            .map(item => ({
-              type: 'flight' as SearchResultType,
-              id: item.id,
-              title: item.title,
-              subtitle: item.subtitle,
-              data: item.data,
-              _score: item.title.toUpperCase().startsWith(callsign) ? 2 : 1,
-            })) as (SearchResult & { _score: number })[]);
-        }
-      }
-    } else {
-      this.commandResults = this.matchCommands(query);
-    }
-
-    for (const source of this.sources) {
-      if (!resultMatchesSearchScope(this.activeScope, source.type)) continue;
-      for (const item of source.items) {
-        const titleLower = item.title.toLowerCase();
-        const subtitleLower = item.subtitle?.toLowerCase() || '';
-
-        if (titleLower.includes(query) || subtitleLower.includes(query)) {
-          const isPrefix = titleLower.startsWith(query) || subtitleLower.startsWith(query);
-          const result = {
-            type: source.type,
-            id: item.id,
-            title: item.title,
-            subtitle: item.subtitle,
-            data: item.data,
-            _score: isPrefix ? 2 : 1,
-          } as SearchResult & { _score: number };
-
-          if (!byType.has(source.type)) byType.set(source.type, []);
-          byType.get(source.type)!.push(result);
-        }
-      }
-    }
-
-    const priority: SearchResultType[] = [
-      'flight',
-      'news', 'prediction', 'market', 'earthquake', 'outage',
-      'conflict', 'hotspot', 'country',
-      'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',
-      'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator',
-      // Map-channel finance entities (must stay in sync with MAP_RESULT_TYPES).
-      'exchange', 'financialcenter', 'centralbank', 'commodityhub',
-    ];
-
-    const maxResults = this.isMobile ? 5 : MAX_RESULTS;
-    this.results = [];
-    for (const type of priority) {
-      const matches = byType.get(type) || [];
-      matches.sort((a, b) => b._score - a._score);
-      const limit = this.isMobile ? 2 : (type === 'news' ? 6 : type === 'country' ? 4 : 3);
-      this.results.push(...matches.slice(0, limit));
-      if (this.results.length >= maxResults) break;
-    }
-    this.results = this.results.slice(0, maxResults);
+    this.commandResults = matches.commandMatches;
+    this.results = matches.entityMatches.map((match) => match.result);
 
     trackSearchUsed(query.length, this.results.length + this.commandResults.length);
     this.selectedIndex = 0;
@@ -822,6 +824,7 @@ export class SearchModal {
     const allCommands = getAllCommands();
     const commands = allCommands.filter(cmd => {
       if (!commandMatchesSearchScope(this.activeScope, cmd.category)) return false;
+      if (!this.commandVisibleFn(cmd)) return false;
       const panelId = panelCommandTargetId(cmd.id);
       if (panelId) {
         if (!this.isPanelCommandVisible(panelId)) return false;

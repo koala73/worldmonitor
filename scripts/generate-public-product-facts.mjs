@@ -19,7 +19,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRODUCT_CATALOG, PUBLIC_PRODUCT_METADATA } from '../convex/config/productCatalog.ts';
-import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHECK = process.argv.includes('--check');
@@ -243,10 +243,10 @@ for (const [path, groups] of applicationJsonLdGroups) {
 // so adding tools cannot leave a syntactically valid but incomplete card.
 transform('public/.well-known/mcp/server-card.json', (source) => {
   const card = JSON.parse(source);
-  card.tools = TOOL_REGISTRY.map(({ name, description, _freeTier }) => ({
-    name,
-    description,
-    ...(_freeTier === true ? { _meta: { 'worldmonitor/access': 'free' } } : {}),
+  card.tools = TOOL_REGISTRY.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    _meta: { 'worldmonitor/access': toolAccess(tool) },
   }));
   return json(card);
 });

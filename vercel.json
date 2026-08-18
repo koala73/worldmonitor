@@ -1,4 +1,5 @@
 {
+  "buildCommand": "npm run build:full",
   "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "crons": [],
   "redirects": [

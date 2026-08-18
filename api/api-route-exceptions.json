@@ -157,6 +157,27 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/upgrade.ts",
+      "category": "external-protocol",
+      "reason": "MCP paid-funnel (#6716) structured denial builders and upgrade-URL re-exports. Part of the streamable-HTTP MCP surface — not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/upgrade-constants.ts",
+      "category": "external-protocol",
+      "reason": "MCP free-account allowance numeric constants (#6716). Supporting module for the MCP transport; listed so the sebuf contract script accepts the api/mcp/ tree.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/free-account-allowance.ts",
+      "category": "external-protocol",
+      "reason": "MCP free-account idle-gap + call-ceiling meter (#6716). Redis-backed reservation used only by api/mcp/dispatch.ts — not a public HTTP route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/security/report.js",
       "category": "external-protocol",
       "reason": "Browser Reporting API collector for COOP/COEP reports. Request body and content type are dictated by the Reporting API, not a product data API contract.",

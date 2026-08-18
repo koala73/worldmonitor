@@ -360,13 +360,20 @@ describe('#5697 NLP MCP tools', () => {
       }
     });
 
-    it('enforces the Pro entitlement gate before fetching', async () => {
+    it('is outside the free allowance entirely — it fetches downstream (#6716)', async () => {
+      // classify_event routes through server/gateway.ts, whose own
+      // checkProMcpAccess re-check refuses a free entitlement. Charging an
+      // allowance slot here would spend one of five daily calls on a gateway
+      // 401, so the refusal happens first — before the meter and before any
+      // upstream request.
       const { response, body } = await callTool('classify_event', { text: 'headline' }, {
         getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
       });
-      assert.equal(response.status, 401);
-      assert.equal(body.error.code, -32001);
-      assert.equal(requests.length, 0);
+      assert.equal(response.status, 403);
+      assert.equal(body.error.code, -32002);
+      assert.equal(body.error.data?.reason, 'upgrade-required');
+      assert.ok(body.error.data?.upgradeUrl);
+      assert.equal(requests.length, 0, 'no upstream request');
     });
   });
 

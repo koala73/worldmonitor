@@ -53,6 +53,7 @@ describe('dashboard content attribution analytics', () => {
     analytics.trackSignUp('clerk');
     analytics.trackCheckoutStart('pdt_0Nbtt71uObulf7fGXhQup', true);
     analytics.track('mcp-connect-success', { toolCount: 3 });
+    analytics.trackSearchResultSelected('country', { includeAttribution: false });
     analytics.trackContentHandoff();
 
     assert.deepEqual(calls.map(({ name, data }) => ({
@@ -90,6 +91,14 @@ describe('dashboard content attribution analytics', () => {
         contentPlacement: 'article-cta-pro',
         landingPageFamily: 'pricing',
       } },
+      { name: 'search-result-selected', data: {
+        contentSource: undefined,
+        contentMedium: undefined,
+        contentCampaign: undefined,
+        contentDestination: undefined,
+        contentPlacement: undefined,
+        landingPageFamily: undefined,
+      } },
       { name: 'content-handoff', data: {
         contentSource: 'worldmonitor-blog',
         contentMedium: 'owned-content',
@@ -102,5 +111,6 @@ describe('dashboard content attribution analytics', () => {
     assert.equal(calls[2]?.data?.toolCount, 3);
     assert.equal('prompt' in (calls[2]?.data ?? {}), false);
     assert.equal('accountHistory' in (calls[2]?.data ?? {}), false);
+    assert.deepEqual(calls[3]?.data, { type: 'country' });
   });
 });

@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
@@ -237,7 +238,11 @@ const assertJsonLdOffersMatchCatalog = (sourceOffers, deployedOffers) => {
   }
 };
 
-test('/pro JSON-LD offers match productCatalog.ts prices and marketing features', () => {
+// Compares the committed pro-test source against the BUILT public/pro/index.html,
+// which `npm run build:pro` produces rather than git (#6898). The guard suites
+// below run on source fixtures and stay unconditional.
+guardProBuiltOutput();
+test('/pro JSON-LD offers match productCatalog.ts prices and marketing features', { skip: shouldSkipProBuiltOutput() }, () => {
   assertJsonLdOffersMatchCatalog(
     jsonLdOffersFor('pro-test/index.html'),
     jsonLdOffersFor('public/pro/index.html')

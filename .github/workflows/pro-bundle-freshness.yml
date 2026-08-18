@@ -1,15 +1,19 @@
 name: Pro bundle freshness
 
-# Rebuilds pro-test on any PR that touches pro-test/**, public/pro/**, or
-# the catalog/generator that feed pro-test's generated pricing model, and
-# fails if generated config, locale placeholders, or committed public/pro/
-# do not match the regenerated and rebuilt output.
+# Rebuilds pro-test on any PR that touches pro-test/** or the catalog/generator
+# that feed pro-test's generated pricing model, and fails if the pro build
+# breaks or if the generated config and locale placeholders it compiles against
+# do not match the regenerated output.
 #
-# Why: public/pro/ is committed to the repo and served verbatim by Vercel.
-# The root build script does NOT run pro-test's vite build, so if a PR
-# changes pro-test/src/** or catalog-fed pricing copy but forgets to commit
-# the regenerated bundle, the deploy silently ships stale JS. Happened with
-# PR #3227 -> #3228 and catalog copy drift in #4563 -> #4574.
+# Scope note (#6898): public/pro/ used to be committed and served verbatim, so
+# this job also diffed the rebuilt bundle against those bytes -- the class that
+# shipped stale JS in #3227 -> #3228 and #4563 -> #4574. Vercel now builds
+# public/pro/ during the deploy (build:full chains build:pro) and the artifact
+# is gitignored, so that half is gone: a stale bundle is no longer reachable
+# and a broken build fails the deploy instead. What remains is still real --
+# the GENERATED CONFIG (tiers.json, pro locales, product facts, catalog
+# mirrors) is committed, so it can still go stale -- plus the build-succeeds
+# signal, which is now load-bearing precisely because the deploy depends on it.
 
 on:
   pull_request:
@@ -19,7 +23,6 @@ on:
       - 'scripts/generate-public-product-facts.mjs'
       - 'shared/content-attribution.ts'
       - 'pro-test/**'
-      - 'public/pro/**'
 
 permissions:
   contents: read
@@ -50,8 +53,24 @@ jobs:
       - name: Build pro-test
         run: cd pro-test && npm run build
 
-      - name: Verify generated product config, pro locales, and public/pro/ match build output
+      - name: Verify the built bundle exists and generated config matches
         run: |
+          # The build step above is the deploy's own command, so assert on its
+          # OUTPUT and not just its exit code: these two pages are what Vercel
+          # serves at / and /pro, they are named by vite.config.ts
+          # rollupOptions.input, and nothing committed covers for them any more.
+          # A config edit that renames or drops an entry now ships a 404.
+          for page in public/pro/index.html public/pro/welcome.html; do
+            if [ ! -s "$page" ]; then
+              echo "::error::$page missing or empty after 'cd pro-test && npm run build'."
+              echo "Vercel builds public/pro/ during the deploy (#6898), so this would ship a 404 at /pro."
+              exit 1
+            fi
+          done
+          # public/product-facts.json is deliberately absent below: it is
+          # gitignored, and `git diff --exit-code` on an untracked path exits 0,
+          # so listing it reads as coverage while never being able to fail.
+          # tests/public-product-facts.test.mjs is what actually guards it.
           if ! git diff --exit-code \
             api/_product-catalog.generated.js \
             pro-test/index.html \
@@ -59,23 +78,14 @@ jobs:
             pro-test/src/generated/tiers.json \
             pro-test/src/locales/ \
             pro-test/welcome.html \
-            public/product-facts.json \
-            public/pro/ \
             scripts/shared/product-catalog.generated.json \
             scripts/shared/product-facts.generated.json \
             shared/product-catalog.generated.json \
             shared/product-facts.generated.json \
             src/config/product-ids.generated.ts \
             src/config/products.generated.ts; then
-            echo "::error::Product catalog, generated config, pro locales, or public/pro/ is stale."
-            echo "Vercel ships whatever is committed under public/pro/ — it does NOT rebuild pro-test on deploy."
-            echo "Run 'npm run product:facts', then 'cd pro-test && npm run build', and commit generated config, public facts, pro locales, plus public/pro/."
-            exit 1
-          fi
-          UNTRACKED=$(git ls-files --others --exclude-standard public/pro/)
-          if [ -n "$UNTRACKED" ]; then
-            echo "::error::Untracked files in public/pro/ after rebuild:"
-            echo "$UNTRACKED"
-            echo "Run 'git add public/pro/' and commit the regenerated bundle."
+            echo "::error::Product catalog, generated config, or pro locales is stale."
+            echo "public/pro/ itself is built on deploy and is not diffed here, but the generated config it compiles against is committed."
+            echo "Run 'npm run product:facts' and commit generated config, public facts, and pro locales."
             exit 1
           fi

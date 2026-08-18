@@ -823,7 +823,7 @@ const SEED_META = {
   // scripts/seed-portwatch-port-activity.mjs and CHINA_CORRIDOR_KEYS in
   // get-china-corridor-control-towers.ts, and it exists so a producer-side
   // change cannot narrow the alarm scope without health noticing.
-  portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174, requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 2 * 72 * 60 }, contentFreshnessActivation: 'portwatchContentFreshness' },
+  portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174, requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 10 * 24 * 60 }, contentFreshnessActivation: 'portwatchContentFreshness' },
   corridorrisk:        { key: 'seed-meta:supply_chain:corridorrisk',         maxStaleMin: 120 },
   chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits',  maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,

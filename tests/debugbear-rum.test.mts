@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 import {
   DEBUGBEAR_RUM_SAMPLE_RATE,
@@ -281,8 +282,12 @@ describe('DebugBear RUM marketing loader', () => {
   });
 });
 
-describe('DebugBear RUM marketing build output', () => {
-  it('/pro and root welcome can reach the DebugBear loader in committed assets', () => {
+// public/pro/ is built by `npm run build:pro`, not committed (#6898): skip when the
+// checkout has not built it, fail when WM_EXPECT_BUILT_OUTPUT=1 says CI did.
+describe('DebugBear RUM marketing build output', { skip: shouldSkipProBuiltOutput() }, () => {
+  guardProBuiltOutput();
+
+  it('/pro and root welcome can reach the DebugBear loader in built assets', () => {
     for (const page of ['public/pro/index.html', 'public/pro/welcome.html']) {
       const entries = proPageModuleEntries(page);
       assert.ok(entries.length > 0, `${page}: no module entry found`);

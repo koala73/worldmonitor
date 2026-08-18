@@ -1,8 +1,18 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput, withoutUnbuiltProPaths } from './_lib/pro-built-output.mjs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+
+// public/pro/ is built by `npm run build:pro`, not committed (#6898). Only the
+// apex-HTML case reads a /pro page exclusively, so only it skips when unbuilt.
+// The production-HTML sweep also covers three COMMITTED files, so it drops just
+// the built paths from its population instead of skipping wholesale -- gating
+// the whole case would have taken index.html and both pro-test sources with it.
+// guardProBuiltOutput() still fails outright when WM_EXPECT_BUILT_OUTPUT=1.
+const skip = shouldSkipProBuiltOutput();
+guardProBuiltOutput();
 
 const PRODUCTION_HTML = [
   'index.html',
@@ -21,7 +31,9 @@ function visibleWelcomeRoot(html) {
 }
 
 test('production HTML contains no crawler-only prerender block or off-screen hide contract', () => {
-  for (const path of PRODUCTION_HTML) {
+  const scanned = withoutUnbuiltProPaths(PRODUCTION_HTML);
+  assert.ok(scanned.length > 0, 'production-HTML population is empty — this guard would pass vacuously');
+  for (const path of scanned) {
     const html = read(path);
     assert.doesNotMatch(html, /id=["']seo-prerender["']/i, `${path} must not ship #seo-prerender`);
     assert.doesNotMatch(html, /html\.js\s+#seo-prerender/i, `${path} must not CSS-hide crawler copy`);
@@ -33,7 +45,7 @@ test('production HTML contains no crawler-only prerender block or off-screen hid
   }
 });
 
-test('apex HTML exposes one visible SSR content hierarchy and all primary reference links', () => {
+test('apex HTML exposes one visible SSR content hierarchy and all primary reference links', { skip }, () => {
   const root = visibleWelcomeRoot(read('public/pro/welcome.html'));
   assert.equal([...root.matchAll(/<h1\b/gi)].length, 1, 'the visible welcome root should contain one H1');
   const hiddenContentNodes = [...root.matchAll(/<[a-z][a-z0-9:-]*\b[^>]*\bstyle="([^"]*)"[^>]*>/gi)]
