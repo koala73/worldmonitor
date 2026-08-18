@@ -245,15 +245,98 @@ describe('validateSearchHit — quantity window', () => {
     expect(r.signals.sizeWindow).toBe('pass');
   });
 
-  it('treats unknown size as neutral (does not hard-fail)', () => {
+  it('treats a structurally-absent size as neutral (does not hard-fail)', () => {
     const r = validateSearchHit({
       canonicalName: 'Plain Yogurt 500g',
       productName: 'Plain Yogurt',
       sizeText: undefined,
       item: item({ baseUnit: 'g', minBaseQty: 450, maxBaseQty: 550 }),
     });
-    expect(r.signals.sizeWindow).toBe('unknown');
+    expect(r.signals.sizeWindow).toBe('absent');
     expect(r.ok).toBe(true);
+  });
+});
+
+// #6868: `unknown` used to score 0.2 whether there was nothing to check or the
+// parser/carve-out simply declined to judge. Full token overlap then landed at
+// 0.85 and published as `auto`. Split the neutral bucket so "could not verify"
+// no longer clears AUTO_MATCH_THRESHOLD on overlap alone.
+describe('validateSearchHit — absent vs unverified size (#6868)', () => {
+  // Nothing to verify keeps the old 0.2 weight, so a full-overlap hit still
+  // publishes. Without this fixture a future edit that lowers every non-pass
+  // size to 0.05 would silently demote every retailer that omits sizeText.
+  it('keeps a missing sizeText above the auto-match threshold', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Plain Yogurt 500g',
+      productName: 'Al Ain Plain Yogurt',
+      sizeText: undefined,
+      item: item({ baseUnit: 'g', minBaseQty: 450, maxBaseQty: 550 }),
+    });
+    expect(r.signals.sizeWindow).toBe('absent');
+    expect(r.ok).toBe(true);
+    expect(r.score).toBeGreaterThanOrEqual(AUTO_MATCH_THRESHOLD);
+    // 1.0*0.55 + 0.2 + 0.1 = 0.85
+    expect(r.score).toBeCloseTo(0.85);
+  });
+
+  it('keeps an item with no quantity window above the auto-match threshold', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Plain Yogurt 500g',
+      productName: 'Al Ain Plain Yogurt 500g',
+      sizeText: '500g',
+      item: item({ baseUnit: 'g' }), // no min/max → nothing to verify
+    });
+    expect(r.signals.sizeWindow).toBe('absent');
+    expect(r.ok).toBe(true);
+    expect(r.score).toBeGreaterThanOrEqual(AUTO_MATCH_THRESHOLD);
+  });
+
+  // The largest route into the old neutral bucket: sizeText is present but
+  // parseSize cannot read it (`pack`, `unidades`, `pint`, …). Overlap alone
+  // must no longer publish.
+  it('demotes an unparseable sizeText below the auto-match threshold', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Drinking Water 24 Pack 16oz',
+      productName: 'Great Value Drinking Water 24 Pack',
+      sizeText: '24 pack',
+      item: item({
+        baseUnit: 'ml', minBaseQty: 6000, maxBaseQty: 10000,
+        negativeTokens: ['sparkling', 'flavored', 'flavoured'],
+      }),
+    });
+    expect(r.signals.sizeWindow).toBe('unverified');
+    expect(r.ok).toBe(true);
+    expect(r.score).toBeLessThan(AUTO_MATCH_THRESHOLD);
+    // 1.0*0.55 + 0.05 + 0.1 = 0.70
+    expect(r.score).toBeCloseTo(0.7);
+  });
+
+  it('demotes other common unparseable unit tokens the same way', () => {
+    for (const sizeText of ['12 unidades', '2 pint', '6 count', '1 litro']) {
+      const r = validateSearchHit({
+        canonicalName: 'Full Fat Fresh Milk 1L',
+        productName: 'Full Fat Fresh Milk',
+        sizeText,
+        item: item({ baseUnit: 'ml', minBaseQty: 900, maxBaseQty: 1100 }),
+      });
+      expect(r.signals.sizeWindow, sizeText).toBe('unverified');
+      expect(r.score, sizeText).toBeLessThan(AUTO_MATCH_THRESHOLD);
+    }
+  });
+
+  // Deliberate carve-outs (count packaging weight, density-reconcilable
+  // cross-dimension) are also "could not verify" — they decline to hard-reject
+  // but must not score as if nothing was checked.
+  it('scores a count-item packaging-weight carve-out as unverified', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Fresh Eggs 10 Pack',
+      productName: 'Farm Table Fresh Eggs (10+2Free) 660g',
+      sizeText: '660g',
+      item: item({ baseUnit: 'ct', minBaseQty: 10, maxBaseQty: 15 }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.signals.sizeWindow).toBe('unverified');
+    expect(r.score).toBeLessThan(AUTO_MATCH_THRESHOLD);
   });
 });
 
@@ -307,7 +390,9 @@ describe('validateSearchHit — wrong-product admissions (#6267)', () => {
       item: item({ baseUnit: 'ct', minBaseQty: 10, maxBaseQty: 15 }),
     });
     expect(r.ok).toBe(true);
-    expect(r.signals.sizeWindow).toBe('unknown');
+    // Carve-out: not a hard reject, but #6868 scores it as unverified rather
+    // than the old neutral `unknown` that published at 0.85.
+    expect(r.signals.sizeWindow).toBe('unverified');
     expect(r.signals.extractedBaseQty).toBe(660);
   });
 
@@ -323,7 +408,7 @@ describe('validateSearchHit — wrong-product admissions (#6267)', () => {
       item: item({ baseUnit: 'ml', minBaseQty: 1200, maxBaseQty: 1600 }),
     });
     expect(r.ok).toBe(true);
-    expect(r.signals.sizeWindow).toBe('unknown');
+    expect(r.signals.sizeWindow).toBe('unverified');
   });
 
   // Mirror of the case above. The US basket declares "Plain Yogurt 32oz" in
@@ -337,7 +422,7 @@ describe('validateSearchHit — wrong-product admissions (#6267)', () => {
       item: item({ baseUnit: 'g', minBaseQty: 800, maxBaseQty: 1000 }),
     });
     expect(r.ok).toBe(true);
-    expect(r.signals.sizeWindow).toBe('unknown');
+    expect(r.signals.sizeWindow).toBe('unverified');
   });
 
   // A real 1L bottle of cooking oil weighs ~910g, and Indian storefronts print
@@ -352,7 +437,7 @@ describe('validateSearchHit — wrong-product admissions (#6267)', () => {
       item: item({ baseUnit: 'ml', minBaseQty: 900, maxBaseQty: 1100 }),
     });
     expect(r.ok).toBe(true);
-    expect(r.signals.sizeWindow).toBe('unknown');
+    expect(r.signals.sizeWindow).toBe('unverified');
   });
 
   // The other half of the same rule, and the reason it keys on magnitude
@@ -380,7 +465,7 @@ describe('validateSearchHit — wrong-product admissions (#6267)', () => {
       productName: 'YAHHU Drinking Water Quality Coliforms Test Kit Powder',
       sizeText: '0.04 oz',
       item: item({
-        baseUnit: 'ml', minBaseQty: 6000, maxBaseQty: 10000,
+        baseUnit: 'ml', minBaseQty: 10000, maxBaseQty: 12000,
         negativeTokens: ['sparkling', 'flavored', 'flavoured'],
       }),
     });
@@ -397,7 +482,7 @@ describe('validateSearchHit — wrong-product admissions (#6267)', () => {
       sizeText: '12 pcs',
       item: item({ baseUnit: 'g', minBaseQty: 350, maxBaseQty: 450 }),
     });
-    expect(r.signals.sizeWindow).toBe('unknown');
+    expect(r.signals.sizeWindow).toBe('unverified');
     expect(r.ok).toBe(true);
   });
 

@@ -215,6 +215,8 @@ test('Alberta alerts stay isolated from the relay, the weather key, and the road
   // the 511 rate limiter.
   assert.doesNotMatch(SEEDER_SOURCE, /CANONICAL_KEY = 'weather:alerts:v1'/);
   assert.doesNotMatch(SEEDER_SOURCE, /canadaRoads|_511-rate-limit|fetch\.bind/);
+  assert.match(SEEDER_SOURCE, /extraKeys/);
+  assert.match(SEEDER_SOURCE, /CANADA_ALERTS_LEGACY_KEY/);
   assert.doesNotMatch(LIB_SOURCE, /weather:alerts:v1|canadaRoads|fetch\.bind|511on\.ca/);
   assert.doesNotMatch(RELAY_SOURCE, /alberta\.ca|alberta-aea|canadaAlerts|feed-full\.atom/);
 
@@ -234,7 +236,7 @@ test('canadaAlerts is a distinct MapLayers key from weather and canadaRoads', ()
   assert.match(types, /canadaAlerts:\s*boolean/);
   assert.doesNotMatch(types, /albertaAea\?: boolean/);
   assert.match(layers, /canadaAlerts:\s+def\('canadaAlerts'/);
-  assert.match(layers, /Canada Alerts \(Alberta Emergency Alert\)/);
+  assert.match(layers, /Canada Alerts \(AB \+ BC\)/);
   assert.doesNotMatch(layers, /canadaRoads:\s+def\('canadaAlerts'/);
   assert.match(client, /getHydratedData\('canadaAlerts'\)/);
   assert.match(client, /keys=canadaAlerts/);

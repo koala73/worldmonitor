@@ -330,7 +330,7 @@ export async function buildMoversSnapshot(
        FROM retailer_products rp
        JOIN retailers r ON r.id = rp.retailer_id AND r.market_code = $1 AND r.active = true
        JOIN price_observations po ON po.retailer_product_id = rp.id AND po.in_stock = true
-       ORDER BY rp.id, po.observed_at DESC
+       ORDER BY rp.id, po.observed_at DESC, po.id DESC
      ),
      past AS (
        SELECT DISTINCT ON (rp.id) rp.id, po.price AS past_price
@@ -339,7 +339,7 @@ export async function buildMoversSnapshot(
        JOIN price_observations po ON po.retailer_product_id = rp.id
          AND po.observed_at BETWEEN NOW() - ($2 || ' days')::INTERVAL - INTERVAL '1 day'
                                  AND NOW() - ($2 || ' days')::INTERVAL
-       ORDER BY rp.id, po.observed_at DESC
+       ORDER BY rp.id, po.observed_at DESC, po.id DESC
      )
      SELECT l.id AS product_id, l.raw_title, l.category_text, l.retailer_slug,
             l.price AS current_price, l.currency_code,
@@ -424,7 +424,7 @@ export async function buildRetailerSpreadSnapshot(
          SELECT price, observed_at
          FROM price_observations
          WHERE retailer_product_id = rp.id AND in_stock = true
-         ORDER BY observed_at DESC LIMIT 1
+         ORDER BY observed_at DESC, id DESC LIMIT 1
        ) po ON true
        WHERE b.slug = $1
        GROUP BY r.id, r.slug, r.name, r.currency_code, bi.id

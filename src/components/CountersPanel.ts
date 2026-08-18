@@ -55,9 +55,9 @@ export class CountersPanel extends Panel {
       grid.appendChild(card);
     }
 
-    // Clear loading state and append the grid
-    this.content.innerHTML = '';
-    this.content.appendChild(grid);
+    // Route through the sanctioned helper (#6557): clears the error state
+    // and cancels any pending debounced write alongside the replace.
+    this.setContentNodes(grid);
   }
 
   /**

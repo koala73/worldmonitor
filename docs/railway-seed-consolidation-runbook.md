@@ -973,8 +973,8 @@ All new services share these settings:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services (including the retired defense-patents producer) |
 | **Net savings** | 3 slots |
-| **Members** | Arms Suppliers (10d), Defense Industrial Base (10d), Submarine Cables (weekly), Defense Patents (weekly), Chokepoint Baselines (400d, runs rarely), Military Bases (30d, runs rarely), Mineral Production (60d, runs rarely) |
-| **Wall-time budget** | `maxBundleMs: 570_000` in `scripts/seed-bundle-static-ref.mjs`. The daily tick exists so this budget can defer lower-priority members rather than starve them; a member's own `timeoutMs` is a per-member cap inside that total, not an independent budget. |
+| **Members** | Defense Industrial Base (10d), Submarine Cables (weekly), Defense Patents (weekly), Chokepoint Baselines (400d, runs rarely) |
+| **Wall-time budget** | `maxBundleMs: 570_000` in `scripts/seed-bundle-static-ref.mjs`. Since #6806 the four members reserve 470s in total (110 + 100 + 190 + 70), so **every due member is admissible on every tick** — there is no ordering, priority, or deferral question left in this bundle. Keep the total under 570s: adding a member that does not fit alongside the others reintroduces the starvation the split removed. |
 | **Required variable** | `USPTO_API_KEY=${{shared.USPTO_API_KEY}}` |
 
 Defense Patents is an intentional data-series migration, not a continuation of
@@ -999,33 +999,45 @@ Strict health-probe registration is a staged follow-up after the first Railway
 run publishes both seed-meta keys; the follow-up must cite real Railway
 pre-seed evidence under the health-probe cutover contract.
 
-### Bundle 3 siblings (planned, #6806)
+### Bundle 3 heavy: seed-bundle-static-ref-heavy (planned, #6806)
 
-Arms-Suppliers (460s worst case) and Military-Bases (410s worst case) cannot
-share leftover's 570s tick. These two 1-section bundles are the structural
-fix. They land as `lifecycle: planned` until Railway services exist. Leftover
-`seed-bundle-static-ref` still lists both members until each new service has
-written a `bundle:heartbeat:*` (add-then-remove). Do not strip leftover in
-the same merge that only adds these files.
+Arms-Suppliers (460s worst case) and Military-Bases (410s) cannot share a 570s
+tick — Railway kills a cron container at 10 minutes, so that ceiling is not
+negotiable. They CAN share a bundle: the runner defers whichever loses the tick
+to the next daily fire, and at 10-day and 30-day cadences a one-day deferral
+costs nothing. One service carries all three heavy members instead of three
+1-section services, because Railway caps a project at 100 and the fleet is at 81.
 
-| Setting | seed-bundle-arms-suppliers | seed-bundle-military-bases |
-|---|---|---|
-| **Service name** | `seed-bundle-arms-suppliers` | `seed-bundle-military-bases` |
-| **Start command** | `node scripts/seed-bundle-arms-suppliers.mjs` | `node scripts/seed-bundle-military-bases.mjs` |
-| **Cron schedule** | `0 4 * * *` (daily 04:00 UTC) | `0 5 * * *` (daily 05:00 UTC) |
-| **Lifecycle** | `planned` until provisioned | `planned` until provisioned |
-| **Members** | Arms-Suppliers only (450s / 10d) | Military-Bases only (400s / 30d) |
-| **Wall-time budget** | `maxBundleMs: 570_000` | `maxBundleMs: 570_000` |
-| **Required variable** | none (`USPTO_API_KEY` stays on leftover) | none (R2 vars are project-level; confirm at provision) |
-| **Heartbeat** | `bundle:heartbeat:arms-suppliers` | `bundle:heartbeat:military-bases` |
+| Setting | Value |
+|---|---|
+| **Service name** | `seed-bundle-static-ref-heavy` |
+| **Start command** | `node scripts/seed-bundle-static-ref-heavy.mjs` |
+| **Cron schedule** | `0 4 * * *` (daily 04:00 UTC, staggered off leftover's 03:00) |
+| **Lifecycle** | `planned` until provisioned |
+| **Members** | Mineral-Production (180s / 60d), Arms-Suppliers (450s / 10d), Military-Bases (400s / 30d) |
+| **Wall-time budget** | `maxBundleMs: 570_000` |
+| **Required variable** | none (`USPTO_API_KEY` stays on leftover; R2 vars are project-level, confirm at provision) |
+| **Heartbeat** | `bundle:heartbeat:static-ref-heavy` |
 
-Start commands in this table keep the `scripts/` prefix so they match the
-other bundle rows and the registry-coverage grep. Railway's actual start
-command is `node seed-bundle-arms-suppliers.mjs` / `node seed-bundle-military-bases.mjs`
-because `deployMode: nixpacks-root-scripts` sets `rootDirectory` to `scripts/`.
-Clone `seed-bundle-static-ref` twice; do not reuse service id
-`4dd3934d-e5f7-4af8-b34b-c1796226800b`. Stagger is intentional — three 400s
-jobs at 03:00 would contend Redis / R2 / upstreams.
+**The lead slot rotates by day and that is load-bearing.** A member that never
+publishes never stops being due, so a fixed order hands it the first slot every
+single tick. That is not hypothetical: Arms-Suppliers has never written
+`seed-meta:military:arms-suppliers-complete`, and on 2026-08-18 it took 371s of
+leftover's budget, leaving 177s against Mineral-Production's 190s reservation —
+deferring it by 13 seconds on the tick its acknowledgement expired. The bundle
+rotates `dayIndex % 3` (days since epoch, not `getUTCDay()`, which stutters
+across the week boundary and would give one member two consecutive lead days),
+so each member leads every third tick and a permanently failing member can
+consume at most one lead slot in three. `seed-bundle-macro.mjs` uses the same
+device for the same reason.
+
+Start commands in this table keep the `scripts/` prefix so they match the other
+bundle rows and the registry-coverage grep. Railway's actual start command is
+`node seed-bundle-static-ref-heavy.mjs` because `deployMode:
+nixpacks-root-scripts` sets `rootDirectory` to `scripts/`. Clone
+`seed-bundle-static-ref`; do not reuse service id
+`4dd3934d-e5f7-4af8-b34b-c1796226800b`. The 04:00 stagger is intentional — a
+400s job at 03:00 would contend Redis / R2 / upstreams with leftover.
 
 ### Bundle 4: seed-bundle-resilience
 
