@@ -314,6 +314,7 @@ const STANDALONE_KEYS = {
   hkoWarnings:        'weather:hko-warnings:v1',
   canadaAlertsAbSource: 'alerts:canada:alberta-aea:v1',
   canadaAlertsBcSource: 'alerts:canada:bc-evacuation:v1',
+  canadaAlertsSkSource: 'alerts:canada:saskalert:v1',
   humanitarianSummary: 'conflict:humanitarian:v1',
   // #4920 completeness measurement (daily GH Actions publishers) — ops
   // keys: health-monitored but NOT bootstrap-hydrated into page loads.
@@ -758,6 +759,11 @@ const SEED_META = {
     key: 'seed-meta:alerts:bc-emergency-info',
     maxStaleMin: 45,
     cutover: { mode: 'expiring-ack', fromKey: null, issue: 6659, status: 'EMPTY' },
+  },
+  canadaAlertsSkSource: {
+    key: 'seed-meta:alerts:saskalert',
+    maxStaleMin: 45,
+    cutover: { mode: 'expiring-ack', fromKey: null, issue: 6659, status: 'STALE_SEED' },
   },
   // seed-meta is `seed-meta:${domain}:${resource}` from runSeed('transit', 'ttc-alerts'),
   // so the key takes a HYPHEN — it is NOT the canonical transit:ttc:alerts:v1 with
@@ -1354,7 +1360,7 @@ function parseFredRatesRolloutUntil(results) {
 }
 
 const EMPTY_DATA_OK_KEYS = new Set([
-  'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts', 'canadaRoads', 'albertaRoads', 'torontoRoads', 'bcOpen511', 'canadaAlerts', 'canadaAlertsAbSource', 'canadaAlertsBcSource',
+  'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts', 'canadaRoads', 'albertaRoads', 'torontoRoads', 'bcOpen511', 'canadaAlerts', 'canadaAlertsAbSource', 'canadaAlertsBcSource', 'canadaAlertsSkSource',
   'earningsCalendar', 'econCalendar', 'cotPositioning',
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
   'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
@@ -1410,6 +1416,7 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
   'canadaAlerts',
   'canadaAlertsAbSource',
   'canadaAlertsBcSource',
+  'canadaAlertsSkSource',
 ]);
 
 // Keys where a present payload with meta recordCount=0 is valid, but the data

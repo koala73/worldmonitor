@@ -279,17 +279,18 @@ describe('layer explanation metadata', () => {
     }
   });
 
-  test('canadaAlerts explanation discloses Alberta and B.C. coverage', () => {
+  test('canadaAlerts explanation discloses Alberta, B.C., and Saskatchewan coverage', () => {
     const canadaAlerts = getLayerExplanation('canadaAlerts');
 
-    assert.equal(LAYER_REGISTRY.canadaAlerts.fallbackLabel, 'Canada Alerts (AB + BC)');
+    assert.equal(LAYER_REGISTRY.canadaAlerts.fallbackLabel, 'Canada Alerts (AB + BC + SK)');
     assert.match(canadaAlerts.source, /Alberta Emergency Alert/i);
     assert.match(canadaAlerts.source, /OGL-BC Evacuation Orders and Alerts/i);
+    assert.match(canadaAlerts.source, /SaskAlert/i);
     assert.ok(
-      canadaAlerts.limitations.some(limitation => /limited to Alberta and British Columbia/i.test(limitation)),
+      canadaAlerts.limitations.some(limitation => /Alberta, British Columbia, and Saskatchewan/i.test(limitation)),
       'canadaAlerts limitations must state the supported provincial scope',
     );
-    for (const path of ['scripts/seed-alberta-emergency-alert.mjs', 'scripts/seed-bc-emergency-info.mjs', 'api/health.js', 'src/services/canada-alerts.ts']) {
+    for (const path of ['scripts/seed-alberta-emergency-alert.mjs', 'scripts/seed-bc-emergency-info.mjs', 'scripts/seed-saskalert.mjs', 'api/health.js', 'src/services/canada-alerts.ts']) {
       assert.ok(canadaAlerts.evidence.includes(path), `canadaAlerts evidence must cite ${path}`);
     }
   });

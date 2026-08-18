@@ -1192,7 +1192,7 @@
         "radiationSpike": "輻射峰值",
         "radiationElevated": "輻射升高",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1300,7 +1300,7 @@
           "geoBoundaries": "非軍事區、停火線和爭議邊界",
           "ciiChoropleth": "國家不穩定指數熱力圖 — 按CII評分為國家著色（綠色=穩定，紅色=危急）",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert and B.C. Evacuation Orders and Alerts"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "影響範圍：地震、天氣、抗議、中斷"
@@ -1672,7 +1672,9 @@
     "breakingNews": {
       "critical": "緊急",
       "high": "重要",
-      "dismiss": "忽略"
+      "dismiss": "忽略",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "突發警報",
@@ -3262,7 +3264,8 @@
     "retry": "Retry",
     "refresh": "Refresh",
     "all": "全部",
-    "cancel": "取消"
+    "cancel": "取消",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "顯示",

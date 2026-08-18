@@ -373,7 +373,7 @@ export class ConsumerPricesPanel extends Panel {
         break;
       case 'movers':
         bodyHtml = rangeHtml + (categoryFilter
-          ? `<div class="cp-filter-bar">Filtered: <strong>${escapeHtml(categoryFilter)}</strong> <button data-clear-filter>✕</button></div>`
+          ? `<div class="cp-filter-bar">Filtered: <strong>${escapeHtml(categoryFilter)}</strong> <button data-clear-filter aria-label="Clear category filter">✕</button></div>`
           : '') + this.renderMovers();
         break;
       case 'spread':

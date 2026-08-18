@@ -241,6 +241,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Alberta Emergency Alert, Government of Alberta. https://www.alberta.ca/alberta-emergency-alert.aspx',
     status: 'terms-review',
   },
+  'emergencyalert.saskatchewan.ca': {
+    provider: 'SaskAlert',
+    license: 'Public SaskAlert mobile JSON at /sapublic/feed.json plus same-host CAP 1.2 JSON details. Government of Saskatchewan website terms exclude some connected subsites; this host is the official public alert feed authorized for canadaAlerts ingest under #6659. Not Pelmorex LMD.',
+    attribution: 'SaskAlert, Government of Saskatchewan. https://emergencyalert.saskatchewan.ca/',
+    status: 'terms-review',
+  },
   'api.elections.kalshi.com': {
     provider: 'Kalshi',
     license: 'Kalshi API terms; commercial-use and redistribution terms require review',
@@ -732,13 +738,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '832bf346b66ce9e423ae015c74f49fd4e0185c13e9947bee0331e2b0ae96a5b8',
-  reason: 'Add the Parallel Search MCP identity for search.parallel.ai as an excluded user-configured MCP connector, matching the Robtex, Linear, Airtable, and Cloudflare MCP rows, while retaining the reviewed B.C. Evacuation Orders and Alerts identity and the prior publisher identities.',
+  sha256: '1ba8f66f93005892bafe66446c06638e1c068f829492192a609eb2320e6a4d7b',
+  reason: 'Add the SaskAlert public JSON identity for emergencyalert.saskatchewan.ca under #6659, while retaining the reviewed B.C. Evacuation Orders and Alerts identity and the prior publisher identities.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'PR #6447 (vendor-disclosed contribution; Parallel customer terms served from the endpoint via x-parallel-terms); Issue #6659 source-rights probe; B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33',
+  reviewReference: 'Issue #6659 SaskAlert public JSON ingest; PR #6447 (vendor-disclosed contribution; Parallel customer terms served from the endpoint via x-parallel-terms); B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {

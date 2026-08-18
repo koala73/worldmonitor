@@ -3311,6 +3311,23 @@
       ]
     },
     {
+      "host": "emergencyalert.saskatchewan.ca",
+      "provider": "SaskAlert",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public SaskAlert mobile JSON at /sapublic/feed.json plus same-host CAP 1.2 JSON details. Government of Saskatchewan website terms exclude some connected subsites; this host is the official public alert feed authorized for canadaAlerts ingest under #6659. Not Pelmorex LMD.",
+      "attribution": "SaskAlert, Government of Saskatchewan. https://emergencyalert.saskatchewan.ca/",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/saskalert.mjs"
+        },
+        {
+          "path": "scripts/source-attribution.mjs"
+        }
+      ]
+    },
+    {
       "host": "en.irna.ir",
       "provider": "en.irna.ir",
       "kind": "feed",

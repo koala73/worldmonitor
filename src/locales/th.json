@@ -1192,7 +1192,7 @@
         "radiationSpike": "การเพิ่มขึ้นของรังสี",
         "radiationElevated": "รังสีสูงขึ้น",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "แผ่นดินไหว",
@@ -1300,7 +1300,7 @@
           "geoBoundaries": "เขตปลอดทหาร แนวหยุดยิง และพรมแดนที่เป็นข้อพิพาท",
           "ciiChoropleth": "แผนที่ความร้อนดัชนีความไม่มั่นคงของประเทศ — ระบายสีประเทศตามคะแนน CII (เขียว=มั่นคง, แดง=วิกฤต)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert and B.C. Evacuation Orders and Alerts"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "ส่งผลต่อ: แผ่นดินไหว, สภาพอากาศ, การประท้วง, การหยุดชะงัก"
@@ -1672,7 +1672,9 @@
     "breakingNews": {
       "critical": "วิกฤต",
       "high": "สูง",
-      "dismiss": "ปิด"
+      "dismiss": "ปิด",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "การแจ้งเตือนด่วน",
@@ -3262,7 +3264,8 @@
     "retry": "ลองใหม่",
     "refresh": "รีเฟรช",
     "all": "ทั้งหมด",
-    "cancel": "ยกเลิก"
+    "cancel": "ยกเลิก",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "การแสดงผล",
