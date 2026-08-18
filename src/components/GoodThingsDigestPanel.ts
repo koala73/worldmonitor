@@ -67,6 +67,15 @@ export class GoodThingsDigestPanel extends Panel {
       this.cardElements.push(card);
     }
     this.setContentNodes(list);
+    if (this.isLocked) {
+      // setContentNodes bails on a locked panel, so `list` was never attached.
+      // The liveness guard below reads this.element, which stays connected
+      // while locked, so it would not stop the batch from writing summaries
+      // into an orphaned subtree. Drop the handles instead, as the empty
+      // branch above does.
+      this.cardElements = [];
+      return;
+    }
 
     // Summarize in parallel with progressive updates
     const signal = this.summaryAbort.signal;
