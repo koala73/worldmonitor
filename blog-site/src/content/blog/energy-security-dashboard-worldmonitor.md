@@ -1,6 +1,6 @@
 ---
 title: "The Energy Security Dashboard: Oil, Gas, and Grid Risk on One Screen"
-description: "Explore WorldMonitor's energy dashboard: 26 panels covering chokepoints, 88 pipelines, gas storage, fuel shortages, crisis policies, and prices."
+description: "Explore WorldMonitor's energy dashboard: panels covering chokepoints, pipelines, gas storage, fuel shortages, crisis policies, and prices."
 metaTitle: "Energy Security Dashboard | WorldMonitor"
 keywords: "energy security dashboard, oil and gas monitoring, energy intelligence platform, European gas storage levels, pipeline status map, energy crisis tracker, Strait of Hormuz monitoring"
 audience: "Energy analysts, commodity traders, utilities and policy researchers, logistics teams, macro investors"
@@ -11,15 +11,15 @@ modifiedDate: "2026-07-22"
 
 Energy is the transmission belt between geopolitics and everything else. A strait closes, a pipeline drops pressure, a cold snap lands on thin storage — and within weeks the same event has become a freight story, an inflation story, and a political story. That's why energy analysis can't live inside a single market feed: the causes are physical and geopolitical, and only the consequences are financial.
 
-WorldMonitor's [energy-shock monitoring workflow](/blog/posts/energy-shock-monitoring-chokepoints-worldmonitor/) taught readers to assemble that picture by hand across the main dashboard. Now there's a purpose-built instrument: **energy.worldmonitor.app**, a dedicated energy dashboard with 26 panels arranged around one question — *is energy flowing, and at what price?*
+WorldMonitor's [energy-shock monitoring workflow](/blog/posts/energy-shock-monitoring-chokepoints-worldmonitor/) taught readers to assemble that picture by hand across the main dashboard. Now there's a purpose-built instrument: **energy.worldmonitor.app**, a dedicated energy dashboard with panels arranged around one question — *is energy flowing, and at what price?*
 
 ## The physical layer: flows, chokepoints, infrastructure
 
-The dashboard opens on the **Energy Atlas map** and a **Chokepoint Status strip** covering the [13 monitored waterways](/blog/posts/what-is-a-maritime-chokepoint/), seven of which publish live oil-and-gas flow estimates against EIA baselines. The **Strait of Hormuz Tracker** gets its own panel, because roughly a fifth of global oil transit deserves one.
+The dashboard opens on the **Energy Atlas map** and a **Chokepoint Status strip** covering the [canonical monitored-waterway registry](/blog/posts/what-is-a-maritime-chokepoint/). Waterways with EIA baselines publish live oil-and-gas flow estimates. The **Strait of Hormuz Tracker** gets its own panel, because roughly a fifth of global oil transit deserves one.
 
 Around the chokepoints sits the fixed infrastructure:
 
-- **Oil & Gas Pipeline Status** — 88 mapped pipelines with status tracking.
+- **Oil & Gas Pipeline Status** — the mapped pipeline registry with status tracking.
 - **Strategic Storage Atlas** — where the buffers physically are.
 - **Global Fuel Shortage Registry** — where the buffers have already failed.
 - **Energy Disruptions Log** — the running record of outages, attacks, and force majeure events.
@@ -48,7 +48,7 @@ The `get_energy_intelligence` MCP tool returns the core bundle — petroleum sto
 
 ## Limits
 
-Live flow estimates cover seven of the 13 chokepoints — the ones with EIA baselines. Gas-storage depth is strongest for Europe, where GIE's AGSI+ transparency regime exists; most of the world publishes nothing comparable. Electricity data inherits Ember's reporting cadence, and retail fuel-price coverage varies by country. The dashboard's job is to show you what's knowable and label what isn't — not to interpolate confidence where the world doesn't publish data.
+Live flow estimates cover the chokepoints with EIA baselines. Gas-storage depth is strongest for Europe, where GIE's AGSI+ transparency regime exists; most of the world publishes nothing comparable. Electricity data inherits Ember's reporting cadence, and retail fuel-price coverage varies by country. The dashboard's job is to show you what's knowable and label what isn't — not to interpolate confidence where the world doesn't publish data.
 
 ## Primary Energy Sources
 

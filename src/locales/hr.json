@@ -1439,7 +1439,7 @@
         "ucdpEvents": "Događaji Oružanih Konfliktaa",
         "displacementFlows": "Tokovi Raseljenih",
         "climateAnomalies": "Klimatske Anomalije",
-        "weatherAlerts": "Vremenska upozorenja za SAD (NWS)",
+        "weatherAlerts": "Vremenska upozorenja za SAD i Kanadu (NWS, ECCC)",
         "strategicWaterways": "Uska Grla",
         "economicCenters": "Ekonomski Centri",
         "criticalMinerals": "Kritični Minerali",
@@ -1520,7 +1520,7 @@
           "infraDatacenters": "AI compute klasteri >=10.000 GPU-a",
           "infraOutages": "Internetske crne točke i prekidi usluga",
           "naturalEventsTech": "Zemljotresi, oluje, požari (mogu utjecati na podatkovne centre)",
-          "weatherAlerts": "Upozorenja za ekstremne vremenske prilike u SAD-u (NWS)",
+          "weatherAlerts": "Upozorenja za ekstremne vremenske prilike u SAD-u i Kanadi (NWS, ECCC)",
           "economicCenters": "Berzanske bolnice i središnje banke",
           "countriesOverlay": "Oznake imena država",
           "financeExchanges": "Glavne svjetske berze po razredu tržišta",
@@ -1532,7 +1532,7 @@
           "financeOutages": "Internetski prekidi koji mogu utjecati na rad tržišta",
           "financeCyberThreats": "Sigurnosni incidenti oko financijske infrastrukture",
           "macroWaterways": "Strateška uska grla za robno brodarstvo",
-          "weatherAlertsMarket": "Ekstremne vremenske prilike u SAD-u važne za tržište (NWS)",
+          "weatherAlertsMarket": "Ekstremne vremenske prilike u SAD-u i Kanadi važne za tržište (NWS, ECCC)",
           "naturalEventsMacro": "Zemljotresi, požari, poplave i ostali prirodni poremećaji",
           "timeRecent": "Filtriraj vremenski ovisne podatke na nedavne sate",
           "timeExtended": "Prikaži podatke iz prošlog tjedna, mjeseca ili cijelog vremena",
@@ -2604,13 +2604,14 @@
     },
     "sanctionsPressure": {
       "title": "Sankcije i Označavanja",
-      "infoTooltip": "OFAC sankcijama označavanja iz SDN i Consolidated Lists. Prikazuje koje zemlje suočavaju najveću tlak označavanja, koji programi ga pokrivaju i što je novo dodano od posljednje ažuriranja.",
+      "infoTooltip": "OFAC SDN i Consolidated Lists plus SEMA/JVCFOA oznake Global Affairs Canada. Prikazuje koje zemlje suočavaju najveću tlak označavanja, koji programi ga pokrivaju i što je novo dodano od posljednje ažuriranja.",
       "loading": "Učitavanje podataka sankcija...",
       "unavailable": "Podaci sankcija nisu dostupni.",
       "summary": {
         "new": "Novo",
         "vessels": "Plovila",
-        "aircraft": "Zrakoplov"
+        "aircraft": "Zrakoplov",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Zemlje pod sankcijama",
@@ -2625,11 +2626,12 @@
       "footer": {
         "updated": "Ažurirano {{time}}",
         "dataset": "skup podataka {{date}}",
-        "source": "Izvor: OFAC"
+        "source": "Izvor: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} novo",
-        "new": "novo"
+        "new": "novo",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} designacija",
       "designations_other": "{{count}} designacija",
@@ -3107,6 +3109,7 @@
     "moreEvents": "više događaja",
     "monitoring": "Praćenje",
     "viewUSGS": "Pogledaj na USGS",
+    "viewNRCan": "Pogledaj na Earthquakes Canada",
     "expired": "Isteklo",
     "timeAgo": {
       "s": "prije {{count}}s",

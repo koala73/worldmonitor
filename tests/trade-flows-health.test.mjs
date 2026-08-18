@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import { __testing__ } from '../api/health.js';
 import { TRADE_FLOW_META_KEY, TRADE_TTL } from '../scripts/seed-supply-chain-trade.mjs';
 
-const { classifyKey, STANDALONE_KEYS, SEED_META, ROLLOUT_PENDING_UNTIL_MS } = __testing__;
+const { classifyKey, STANDALONE_KEYS, SEED_META } = __testing__;
 
 test('the producer and health agree on the meta key, value-to-value', () => {
   // Three independently-typed copies of this string: the seeder writes it,
@@ -68,9 +68,7 @@ function classifyWithMeta(meta, { ageMin = 1, recordCount = 256, present = true 
   );
 }
 
-// Default clock sits past the deploy-window grace so the ordinary arms below
-// exercise the strict behavior, not the rollout softening.
-const STRICT_NOW = Math.max(NOW, (__testing__.ROLLOUT_PENDING_UNTIL_MS?.tradeFlows ?? 0) + 86_400_000);
+const STRICT_NOW = NOW;
 const classify = (over) => classifyAt(STRICT_NOW, over);
 
 test('a healthy run reads OK', () => {
@@ -148,13 +146,9 @@ test('the absent-fleet alarm is not softened by any exemption list', () => {
   // the handler serves from the v1 bridge meanwhile — so it is deliberately left
   // to self-heal on the first run rather than softened.
   //
-  // Both softening routes were considered and rejected: EMPTY_DATA_OK_KEYS is
-  // permanent and would blunt the very alarm this issue added, and
-  // ROLLOUT_PENDING_UNTIL_MS is a reviewed exemption scoped to the
-  // consumer-price coverage keys, with a teardown protocol that assumes the map
-  // empties. This test pins that neither was used.
-  assert.equal(ROLLOUT_PENDING_UNTIL_MS.tradeFlows, undefined,
-    'tradeFlows must not join the consumer-price-scoped rollout registry');
+  // A permanent empty-data exemption would blunt the very alarm this issue
+  // added. Runtime rollout windows are supplied explicitly by the health sweep,
+  // so this direct classifier call also proves tradeFlows has no rollout grace.
   assert.ok(!__testing__.EMPTY_DATA_OK_KEYS?.has?.('tradeFlows'),
     'a permanent empty-data exemption would blunt the absent-fleet alarm forever');
 

@@ -50,29 +50,39 @@ export async function fetchAll() {
   const now = Date.now();
   const events = (body.features ?? [])
     .filter(f => f.attributes?.eventid != null)
-    .map(f => {
-      const a = f.attributes;
-      return {
-        eventId: Number(a.eventid),
-        eventType: String(a.eventtype || ''),
-        eventName: String(a.eventname || ''),
-        alertLevel: String(a.alertlevel || '').toUpperCase(),
-        country: String(a.country || ''),
-        fromDate: a.fromdate ? new Date(a.fromdate).toISOString().slice(0, 10) : '',
-        toDate: a.todate ? new Date(a.todate).toISOString().slice(0, 10) : null,
-        active: !a.todate || a.todate > now,
-        severityText: String(a.severitytext || ''),
-        lat: Number(a.lat ?? 0),
-        lon: Number(a.long ?? 0),
-        affectedPorts: a.affectedports
-          ? String(a.affectedports).split(',').map(s => s.trim()).filter(Boolean)
-          : [],
-        affectedPortCount: Number(a.n_affectedports ?? 0),
-      };
-    });
+    .map(f => adaptDisruptionFeature(f.attributes, now));
 
   if (!events.length) throw new Error('No disruption events returned from ArcGIS');
   return { events, fetchedAt: new Date().toISOString() };
+}
+
+/**
+ * Adapt one ArcGIS disruption feature's attributes into the published shape.
+ *
+ * Pure and exported so the field coercions are exercised against this function
+ * rather than a re-implementation: an event with no `todate` is open-ended and
+ * therefore ACTIVE (not expired), `affectedports` is a comma-separated string
+ * that must survive stray whitespace and empty segments, and `alertlevel` is
+ * upper-cased because downstream hazard matching compares against 'RED'/'ORANGE'.
+ */
+export function adaptDisruptionFeature(a, now = Date.now()) {
+  return {
+    eventId: Number(a.eventid),
+    eventType: String(a.eventtype || ''),
+    eventName: String(a.eventname || ''),
+    alertLevel: String(a.alertlevel || '').toUpperCase(),
+    country: String(a.country || ''),
+    fromDate: a.fromdate ? new Date(a.fromdate).toISOString().slice(0, 10) : '',
+    toDate: a.todate ? new Date(a.todate).toISOString().slice(0, 10) : null,
+    active: !a.todate || a.todate > now,
+    severityText: String(a.severitytext || ''),
+    lat: Number(a.lat ?? 0),
+    lon: Number(a.long ?? 0),
+    affectedPorts: a.affectedports
+      ? String(a.affectedports).split(',').map(s => s.trim()).filter(Boolean)
+      : [],
+    affectedPortCount: Number(a.n_affectedports ?? 0),
+  };
 }
 
 export function validateFn(data) {

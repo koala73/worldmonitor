@@ -68,7 +68,7 @@ const LICENSED_DIRECT_HOSTS = DIRECT_FETCH_HOSTS.filter(
   (host) => host !== 'feeds.businessinsider.com' && host !== 'feeds.cms.handelsblatt.com',
 );
 
-const GOOGLE_NEWS_ORIGINS = ['interfax.com', 'prnewswire.com', 'coinbase.com', 'binance.com', 'jin10.com'] as const;
+const SITE_SCOPED_PUBLISHER_HOSTS = ['interfax.com', 'prnewswire.com', 'coinbase.com', 'binance.com', 'jin10.com'] as const;
 
 let client: ClientFeedsModule;
 let server: ServerFeedsModule;
@@ -155,21 +155,19 @@ describe('direct licensed news feed pack', () => {
     assert.equal(publisherFamilyFor('Interfax EN'), publisherFamilyFor('Interfax RU'));
   });
 
-  it('records acquired publisher rights for direct and Google News-origin rows', () => {
+  it('records acquired publisher rights for direct and site-scoped publisher hosts', () => {
     const manifest = JSON.parse(
       readFileSync(join(repoRoot, 'shared/source-attribution-manifest.json'), 'utf8'),
     ) as {
-      entries: Array<{ host: string; status: string }>;
-      logicalEntries: Array<{ host: string; status: string; observed: boolean }>;
+      entries: Array<{ host: string; status: string; observed: boolean }>;
     };
     const entries = new Map(manifest.entries.map((entry) => [entry.host, entry]));
     for (const host of LICENSED_DIRECT_HOSTS) {
       assert.equal(entries.get(host)?.status, 'reviewed', `${host} publisher rights must be reviewed`);
     }
-    const logical = new Map(manifest.logicalEntries.map((entry) => [entry.host, entry]));
-    for (const host of GOOGLE_NEWS_ORIGINS) {
-      assert.equal(logical.get(host)?.status, 'reviewed', `${host} publisher rights must be reviewed`);
-      assert.equal(logical.get(host)?.observed, true, `${host} must be an active logical source`);
+    for (const host of SITE_SCOPED_PUBLISHER_HOSTS) {
+      assert.equal(entries.get(host)?.status, 'reviewed', `${host} publisher rights must be reviewed`);
+      assert.equal(entries.get(host)?.observed, true, `${host} must be an active source host`);
     }
   });
 });

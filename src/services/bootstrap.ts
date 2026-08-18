@@ -31,6 +31,23 @@ export interface BootstrapHydrationState {
 }
 
 const EMPTY_TIER_STATE: BootstrapTierHydrationState = { source: 'none', updatedAt: null };
+
+/**
+ * Abort budgets per tier and runtime. Named and exported so the budget is
+ * assertable directly — it was previously pinned by regex-scanning this file
+ * for bare numeric literals, which matched any number in the module.
+ *
+ * The web numbers are load-bearing: the fast tier sits on the first-paint
+ * critical path, and the slow tier was raised 1.8s → 3.0s to stop a hydration
+ * cascade where aborted tier fetches left panels in empty-state. Desktop gets
+ * longer budgets for different network and dependency-loading constraints.
+ * Do not move these without RUM / Sentry evidence.
+ */
+export const BOOTSTRAP_TIER_TIMEOUT_MS = {
+  web: { fast: 1_200, slow: 3_000 },
+  desktop: { fast: 5_000, slow: 8_000 },
+} as const;
+
 let lastHydrationState: BootstrapHydrationState = {
   source: 'none',
   tiers: {
@@ -330,7 +347,10 @@ function scheduleSlowTierFetch(generation: number, onSlowSettled?: () => void): 
 
       const slowCtrl = new AbortController();
       activeSlowCtrl = slowCtrl;
-      const slowTimeout = setTimeout(() => slowCtrl.abort(), desktop ? 8_000 : 3_000);
+      const slowTimeout = setTimeout(
+        () => slowCtrl.abort(),
+        desktop ? BOOTSTRAP_TIER_TIMEOUT_MS.desktop.slow : BOOTSTRAP_TIER_TIMEOUT_MS.web.slow,
+      );
 
       void fetchTier('slow', slowCtrl.signal, isCurrentGeneration)
         .then((slowState) => {
@@ -424,7 +444,10 @@ export async function fetchBootstrapData(onSlowSettled?: () => void): Promise<vo
   // - 3.0 s is a conservative bump to avoid that cascade. Further tuning should be driven by RUM / Sentry
   //   data once available; do not move this without evidence.
   // - Desktop budgets (5 s / 8 s) are unchanged — different network and dependency-loading constraints.
-  const fastTimeout = setTimeout(() => fastCtrl.abort(), desktop ? 5_000 : 1_200);
+  const fastTimeout = setTimeout(
+    () => fastCtrl.abort(),
+    desktop ? BOOTSTRAP_TIER_TIMEOUT_MS.desktop.fast : BOOTSTRAP_TIER_TIMEOUT_MS.web.fast,
+  );
   try {
     const fastState = await fetchTier('fast', fastCtrl.signal, isCurrentGeneration);
     if (!isCurrentGeneration()) return;

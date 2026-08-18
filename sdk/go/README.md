@@ -45,7 +45,7 @@ func main() {
 }
 ```
 
-Data calls (`tools/call`) need a user API key — get one at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). Listing tools, prompts, and resources is public.
+`get_sources` is the sole credential-free, daily-quota-free data tool; anonymous calls use a separate fail-closed 10/minute/IP ceiling. Every other data-bearing `tools/call` needs a subscription API key — get one at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). Listing tools, prompts, and resources is public.
 
 ## Server-side projection
 

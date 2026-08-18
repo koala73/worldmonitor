@@ -1313,7 +1313,7 @@
         "ucdpEvents": "Fegyveres konfliktus események",
         "displacementFlows": "Kényszermigrációs áramlások",
         "climateAnomalies": "Éghajlati anomáliák",
-        "weatherAlerts": "Egyesült államokbeli időjárási riasztások (NWS)",
+        "weatherAlerts": "Egyesült államokbeli és kanadai időjárási riasztások (NWS, ECCC)",
         "strategicWaterways": "Szűk átjárók",
         "economicCenters": "Gazdasági központok",
         "criticalMinerals": "Kritikus ásványok",
@@ -1394,7 +1394,7 @@
           "infraDatacenters": "AI számítási fürtök >=10 000 GPU-val",
           "infraOutages": "Internet leállások és szolgáltatáskiesések",
           "naturalEventsTech": "Földrengések, viharok, tüzek (adatközpontokat érinthetnek)",
-          "weatherAlerts": "Súlyos időjárási figyelmeztetések az Egyesült Államokban (NWS)",
+          "weatherAlerts": "Súlyos időjárási figyelmeztetések az Egyesült Államokban és Kanadában (NWS, ECCC)",
           "economicCenters": "Értéktőzsdék és központi bankok",
           "countriesOverlay": "Ország név átfedések",
           "financeExchanges": "Fő globális tőzsdék piaci szint szerint",
@@ -1406,7 +1406,7 @@
           "financeOutages": "Internet-kiesések, amelyek hatással lehetnek a piaci működésre",
           "financeCyberThreats": "Biztonsági incidensek a pénzügyi infrastruktúra körül",
           "macroWaterways": "Stratégiai szűk keresztmetszetek az áruszállításhoz",
-          "weatherAlertsMarket": "Piaci jelentőségű súlyos időjárási események az Egyesült Államokban (NWS)",
+          "weatherAlertsMarket": "Piaci jelentőségű súlyos időjárási események az Egyesült Államokban és Kanadában (NWS, ECCC)",
           "naturalEventsMacro": "Földrengések, tüzek, árvizek és egyéb természeti katasztrófák",
           "timeRecent": "Időalapú adatok szűrése az utóbbi órákra",
           "timeExtended": "Adatok megjelenítése az elmúlt hétből, hónapból vagy minden időből",
@@ -2427,13 +2427,14 @@
     },
     "sanctionsPressure": {
       "title": "Szankciók & Kijelölések",
-      "infoTooltip": "OFAC szankció kijelölések az SDN és Konszolidált Listáról. Megmutatja, mely országok szembenéznek a legmagasabb kijelölési nyomással, mely programok hajtják azt, és mi lett újonnan hozzáadva az utolsó frissítés óta.",
+      "infoTooltip": "OFAC SDN és Konszolidált Listák, plusz a kanadai Global Affairs SEMA/JVCFOA kijelölések. Megmutatja, mely országok szembenéznek a legmagasabb kijelölési nyomással, mely programok hajtják azt, és mi lett újonnan hozzáadva az utolsó frissítés óta.",
       "loading": "Szankció adatok betöltése...",
       "unavailable": "Szankció adatok nem érhetőek el.",
       "summary": {
         "new": "Új",
         "vessels": "Hajók",
-        "aircraft": "Repülőgép"
+        "aircraft": "Repülőgép",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Szankcionált országok",
@@ -2448,11 +2449,12 @@
       "footer": {
         "updated": "Frissítve: {{time}}",
         "dataset": "adatkészlet {{date}}",
-        "source": "Forrás: OFAC"
+        "source": "Forrás: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} új",
-        "new": "új"
+        "new": "új",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} bejelentés",
       "designations_other": "{{count}} bejelentés",
@@ -2898,6 +2900,7 @@
     "moreEvents": "további események",
     "monitoring": "Monitorozás",
     "viewUSGS": "Megtekintés az USGS-en",
+    "viewNRCan": "Megtekintés az Earthquakes Canada-n",
     "expired": "Lejárt",
     "timeAgo": {
       "s": "{{count}}s ezzel ezelőtt",

@@ -209,6 +209,18 @@ export function shouldInstallDependencies({
   return forceInstall || !existsSync(resolve(rootDir, 'node_modules/.package-lock.json'));
 }
 
+export function assertNodeModulesNotSymlink(rootDir = process.cwd(), label = 'node_modules') {
+  const target = resolve(rootDir, 'node_modules');
+  try {
+    if (lstatSync(target).isSymbolicLink()) {
+      throw new Error(`${label} is a symlink; copy, hardlink, or npm ci — never symlink`);
+    }
+  } catch (error) {
+    if (error?.code === 'ENOENT') return;
+    throw error;
+  }
+}
+
 export function installDependencies({
   cacheDir = DEFAULT_NPM_CACHE,
   dryRun = false,
@@ -216,7 +228,11 @@ export function installDependencies({
   log = console.log,
   rootDir = process.cwd(),
 } = {}) {
-  const args = ['ci', '--cache', cacheDir];
+  assertNodeModulesNotSymlink(
+    rootDir,
+    basename(rootDir) === 'pro-test' ? 'pro-test/node_modules' : 'node_modules',
+  );
+  const args = ['ci', '--cache', cacheDir, '--prefer-offline'];
   if (ignoreScripts) args.push('--ignore-scripts');
 
   if (dryRun) {
@@ -451,16 +467,27 @@ export function bootstrapWorktree(options = {}) {
   assertNoForbiddenEnvDumps(rootDir);
 
   if (!options.skipInstall) {
+    const installOpts = {
+      cacheDir: options.cacheDir || DEFAULT_NPM_CACHE,
+      dryRun: options.dryRun,
+      ignoreScripts: options.ignoreScripts,
+      log,
+    };
     if (shouldInstallDependencies({ forceInstall: options.forceInstall, rootDir })) {
-      installDependencies({
-        cacheDir: options.cacheDir || DEFAULT_NPM_CACHE,
-        dryRun: options.dryRun,
-        ignoreScripts: options.ignoreScripts,
-        log,
-        rootDir,
-      });
+      installDependencies({ ...installOpts, rootDir });
     } else {
+      assertNodeModulesNotSymlink(rootDir, 'node_modules');
       log('[worktree] verified npm install present; skipping npm ci');
+    }
+
+    const proTestRoot = resolve(rootDir, 'pro-test');
+    if (existsSync(resolve(proTestRoot, 'package.json'))) {
+      if (shouldInstallDependencies({ forceInstall: options.forceInstall, rootDir: proTestRoot })) {
+        installDependencies({ ...installOpts, rootDir: proTestRoot });
+      } else {
+        assertNodeModulesNotSymlink(proTestRoot, 'pro-test/node_modules');
+        log('[worktree] verified pro-test npm install present; skipping npm ci');
+      }
     }
   }
 

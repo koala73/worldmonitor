@@ -228,13 +228,23 @@ export type {
 } from './smart-poll-loop';
 
 export async function waitForSidecarReady(timeoutMs = 3000): Promise<boolean> {
+  // Resolve the Tauri-confirmed port first. The main app window otherwise never
+  // calls resolveLocalApiPort, so getApiBaseUrl would fall back to the guessed
+  // default port and could report not-ready for a sidecar that is actually up
+  // on an EADDRINUSE-fallback port — a false alarm now that the caller acts on
+  // the result (#6779).
+  await resolveLocalApiPort();
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) return false;
   const pollInterval = 200;
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${baseUrl}/api/service-status`, { method: 'GET' });
+      // Probe the sidecar's own dependency-free liveness endpoint, not the
+      // generic /api/service-status page — /api/sidecar-health is served only
+      // by the local Node sidecar, so a 200 confirms *this* process is up on
+      // the resolved port rather than something else answering on it (#6779).
+      const res = await fetch(`${baseUrl}/api/sidecar-health`, { method: 'GET' });
       if (res.ok) return true;
     } catch {
       // sidecar not ready yet

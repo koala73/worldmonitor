@@ -4,6 +4,26 @@ import test from 'node:test';
 const never = <T>(): Promise<T> => new Promise<T>(() => {});
 const after = <T>(ms: number, value: T): Promise<T> => new Promise((resolve) => setTimeout(() => resolve(value), ms));
 
+/**
+ * Deadlock detector, not a latency budget.
+ *
+ * These tests stub a fetch that never resolves (or resolves later than the
+ * code's own abort timer), so a promise that settles AT ALL proves the timeout
+ * fired — the elapsed time proves nothing extra. Racing a tight millisecond
+ * budget instead measured the runner's load and flaked on a busy CI box while
+ * passing in isolation. The deadline here only exists so a genuine hang fails
+ * this test rather than stalling the whole suite; the assertions that follow
+ * each call are what pin the timeout behaviour.
+ */
+const HANG_DEADLINE_MS = 15_000;
+
+async function settlesWithoutHanging<T>(work: Promise<T>, label: string): Promise<T> {
+  const pending = Symbol('pending');
+  const outcome = await Promise.race([work, after(HANG_DEADLINE_MS, pending)]);
+  assert.notEqual(outcome, pending, `${label} never settled — the abort path did not fire`);
+  return outcome as T;
+}
+
 // Captured at module load, before any test swaps globalThis.fetch for a stub.
 // The Clerk plan-lookup test needs a working fetch for its local JWKS server.
 const realFetch = globalThis.fetch;
@@ -171,11 +191,9 @@ test('__resetWmSessionForTests restores the default mint timeout', async () => {
   mod.__setWmSessionFetchTimeoutForTests(50);
   mod.__resetWmSessionForTests();
 
-  const outcome = await Promise.race([
-    mod.ensureWmSession().then(() => 'settled'),
-    after(500, 'still-pending'),
-  ]);
-  assert.equal(outcome, 'settled');
+  // The stubbed fetch resolves at 100ms but the session timeout is 50ms, so
+  // ensureWmSession can only settle by aborting its own request.
+  await settlesWithoutHanging(mod.ensureWmSession(), 'ensureWmSession');
 });
 
 test('clerk plan lookup must not pin the gateway when Clerk never responds', async () => {
@@ -245,13 +263,12 @@ test('clerk plan lookup must not pin the gateway when Clerk never responds', asy
       .setExpirationTime('1h')
       .sign(privateKey);
 
-    const settled = await Promise.race([
+    // The Clerk stub never resolves, so validateBearerToken settling at all is
+    // the proof that CLERK_PLAN_LOOKUP_TIMEOUT_MS aborted the lookup.
+    const session = await settlesWithoutHanging(
       mod.validateBearerToken(token),
-      after(500, 'still-pending' as const),
-    ]);
-    assert.notEqual(settled, 'still-pending', 'a stalled Clerk plan lookup must not keep the request pending');
-
-    const session = settled as { valid: boolean; role?: string };
+      'validateBearerToken with a stalled Clerk plan lookup',
+    ) as { valid: boolean; role?: string };
     assert.equal(session.valid, true);
     assert.equal(session.role, 'free', 'a timed-out plan lookup degrades to free, exactly like an HTTP error');
     assert.equal(clerkCalls, 1);

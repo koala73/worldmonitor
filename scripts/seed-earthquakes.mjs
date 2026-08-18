@@ -1,6 +1,23 @@
 #!/usr/bin/env node
 
+// Railway service config (set up manually via Railway dashboard or `railway service`):
+//   - Service name: seed-earthquakes
+//   - Builder: NIXPACKS (root Dockerfile not used for this seed)
+//   - rootDirectory: scripts
+//   - startCommand: node seed-earthquakes.mjs
+//   - Cron schedule: "*/5 * * * *" (every 5min UTC)
+
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import {
+  EARTHQUAKES_MAX_CONTENT_AGE_MIN,
+  NRCAN_ATOM_URL,
+  earthquakesAfterPublish,
+  earthquakesContentMeta,
+  earthquakesPublishTransform,
+  fetchMergedEarthquakes,
+  fetchNrcanAtom,
+  parseUsgsGeojson,
+} from './seismology/nrcan-atom.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -63,33 +80,27 @@ function enrichWithTestSite(eq) {
   return eq;
 }
 
-async function fetchEarthquakes() {
-  const resp = await fetch(USGS_FEED_URL, {
+async function fetchUsgs(fetchFn) {
+  const resp = await fetchFn(USGS_FEED_URL, {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(15_000),
   });
   if (!resp.ok) throw new Error(`USGS API error: ${resp.status}`);
-
-  const geojson = await resp.json();
-  const features = geojson.features || [];
-
-  const earthquakes = features
-    .filter((f) => f?.properties && f?.geometry?.coordinates)
-    .map((f) => ({
-      id: String(f.id || ''),
-      place: String(f.properties?.place || ''),
-      magnitude: f.properties?.mag ?? 0,
-      depthKm: f.geometry?.coordinates?.[2] ?? 0,
-      location: {
-        latitude: f.geometry?.coordinates?.[1] ?? 0,
-        longitude: f.geometry?.coordinates?.[0] ?? 0,
-      },
-      occurredAt: f.properties?.time ?? 0,
-      sourceUrl: String(f.properties?.url || ''),
-    }));
-
-  return { earthquakes: earthquakes.map(enrichWithTestSite) };
+  return parseUsgsGeojson(await resp.json());
 }
+
+async function fetchEarthquakes() {
+  const cache = new Map();
+  const merged = await fetchMergedEarthquakes({
+    fetchUsgs: () => fetchUsgs(globalThis.fetch),
+    fetchNrcan: () => fetchNrcanAtom({ fetchFn: globalThis.fetch, cache, url: NRCAN_ATOM_URL }),
+  });
+  return {
+    ...merged,
+    earthquakes: merged.earthquakes.map(enrichWithTestSite),
+  };
+}
+
 
 function validate(data) {
   return Array.isArray(data?.earthquakes) && data.earthquakes.length >= 1;
@@ -102,10 +113,14 @@ export function declareRecords(data) {
 runSeed('seismology', 'earthquakes', CANONICAL_KEY, fetchEarthquakes, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'usgs-4.5-week-nuclear-v1',
+  sourceVersion: 'usgs-4.5-week-nrcan-atom-v1',
   declareRecords,
   schemaVersion: 1,
   maxStaleMin: 30,
+  contentMeta: earthquakesContentMeta,
+  maxContentAgeMin: EARTHQUAKES_MAX_CONTENT_AGE_MIN,
+  publishTransform: earthquakesPublishTransform,
+  afterPublish: earthquakesAfterPublish,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

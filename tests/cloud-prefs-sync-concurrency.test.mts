@@ -13,6 +13,8 @@ const stubs: Record<string, string> = {
   '@/services/clerk': 'export const getClerkToken = async () => globalThis.__cloudPrefsToken;',
   '@/config/feeds': [
     "export const CANADA_ARCTIC_OPT_IN_SOURCES = ['Globe and Mail', 'Global News', 'Yle News', 'NRK', 'Aftenposten', 'DR Nyheder', 'Arctic Today'];",
+    "export const CANADA_DEPTH_OPT_IN_SOURCES = [];",
+    "export const CRISIS_FLOOR_OPT_IN_SOURCES = ['WAFA English'];",
     'export const FEEDS = {};',
     'export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [];',
     'export const INTEL_SOURCES = [];',
@@ -480,8 +482,8 @@ describe('cloud preference write serialization', () => {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
     });
 
-    assert.equal(result.localSchemaVersion, 6);
-    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [6, 6]);
+    assert.equal(result.localSchemaVersion, 8);
+    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [8, 8]);
   });
 
   it('preserves edits made for a new account while its sign-in waits in the queue', async () => {
@@ -563,7 +565,7 @@ describe('cloud preference write serialization', () => {
 
   it('keeps a sign-in retry pending after its timer fires until the request settles', async () => {
     await runHarness(async (cloudPrefs, controls) => {
-      controls.seedRow('test-token', {}, 1, 6);
+      controls.seedRow('test-token', {}, 1, 7);
       controls.failNextGetTemporarily();
 
       await cloudPrefs.onSignIn('user-1', 'full', { handoffGeneration: 41 });
@@ -600,7 +602,7 @@ describe('cloud preference write serialization', () => {
 
   it('emits a scoped terminal event even when cloud apply changes no keys', async () => {
     await runHarness(async (cloudPrefs, controls) => {
-      controls.seedRow('test-token', {}, 1, 6);
+      controls.seedRow('test-token', {}, 1, 7);
       await cloudPrefs.onSignIn('user-1', 'full', { handoffGeneration: 73 });
 
       assert.equal(
@@ -648,14 +650,14 @@ describe('cloud preference write serialization', () => {
       controls.seedRow('user-a-token', {
         [sourceOwnership]: '["source-a"]',
         [layerOwnership]: '["resilienceScore"]',
-      }, 1, 6);
+      }, 1, 7);
       controls.setToken('user-a-token');
       await cloudPrefs.onSignIn('user-a', 'full');
       assert.equal(localStorage.getItem(sourceOwnership), '["source-a"]');
       assert.equal(localStorage.getItem(layerOwnership), '["resilienceScore"]');
 
       cloudPrefs.onSignOut();
-      controls.seedRow('user-b-token', { 'worldmonitor-theme': 'light' }, 1, 6);
+      controls.seedRow('user-b-token', { 'worldmonitor-theme': 'light' }, 1, 7);
       controls.setToken('user-b-token');
       await cloudPrefs.onSignIn('user-b', 'full');
 

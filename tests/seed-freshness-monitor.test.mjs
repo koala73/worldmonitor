@@ -531,21 +531,56 @@ describe('scheduled seed freshness monitor', () => {
         'a recovered gdeltIntel failure must block the committed acceptance gate',
       );
       assert.deepEqual(gdeltFailure.acknowledged, []);
+      // These three recovered or changed status; the monitor reported them as
+      // "no longer reported; remove it" and #6799 pruned them. staticRefBundleTick
+      // and bocValet publish again, and statcanWds's EMPTY never returns — it
+      // moved to STALE_CONTENT, which that entry could never have matched.
+      for (const [name, why] of [
+        ['staticRefBundleTick', 'the static-ref heartbeat publishes again'],
+        ['bocValet', 'the Bank of Canada Valet probe publishes again'],
+        ['statcanWds', 'its EMPTY escalated to STALE_CONTENT and the content budget now covers the real cadence'],
+      ]) {
+        assert.equal(
+          committed.acknowledged.some((entry) => entry.name === name),
+          false,
+          `${name} recovered (${why}); do not suppress a future recurrence`,
+        );
+      }
+
       const mineral = committed.acknowledged.find((entry) => entry.name === 'mineralProduction');
       assert.ok(mineral, 'mineralProduction stays acknowledged until the first post-recovery tick publishes');
       assert.equal(mineral.status, 'EMPTY');
-      assert.equal(mineral.expiresAt, '2026-08-15T03:00:00.000Z');
-      assert.equal(mineral.cutover?.firstScheduledRunAt, '2026-08-15T03:00:00.000Z');
+      // Re-anchored in #6799 onto the first static-ref tick after the
+      // Arms-Suppliers concurrency fix (#6807) frees the budget this section
+      // was being deferred out of.
+      assert.equal(mineral.expiresAt, '2026-08-18T03:00:00.000Z');
+      assert.equal(mineral.cutover?.firstScheduledRunAt, '2026-08-18T03:00:00.000Z');
       assert.equal(mineral.cutover?.probeKey, 'seed-meta:supply-chain:mineral-production');
-      const staticRefTick = committed.acknowledged.find((entry) => entry.name === 'staticRefBundleTick');
-      assert.ok(staticRefTick, 'the new tick-execution probe needs an expiring ack until the first post-deploy cron');
-      assert.equal(staticRefTick.status, 'EMPTY');
-      assert.equal(staticRefTick.issue, 6691);
-      assert.equal(staticRefTick.expiresAt, '2026-08-15T03:00:00.000Z');
-      assert.equal(staticRefTick.cutover?.probeKey, 'bundle:heartbeat:static-ref');
-      assert.equal(staticRefTick.cutover?.firstScheduledRunAt, '2026-08-15T03:00:00.000Z');
       const staticRefService = readRailwayServices().find((entry) => entry.service === 'seed-bundle-static-ref');
       assert.equal(staticRefService?.cronSchedule, '0 3 * * *');
+      const owned6806 = committed.acknowledged
+        .filter((entry) => entry.issue === 6806)
+        .map((entry) => entry.name)
+        .sort();
+      assert.deepEqual(
+        owned6806,
+        ['armsSuppliersBundleTick', 'militaryBasesBundleTick'],
+        '#6806 must own both new 1-section bundle-tick acks',
+      );
+      for (const [name, serviceName, cron, probeKey, expiresAt] of [
+        ['armsSuppliersBundleTick', 'seed-bundle-arms-suppliers', '0 4 * * *', 'bundle:heartbeat:arms-suppliers', '2026-08-18T04:00:00.000Z'],
+        ['militaryBasesBundleTick', 'seed-bundle-military-bases', '0 5 * * *', 'bundle:heartbeat:military-bases', '2026-08-18T05:00:00.000Z'],
+      ]) {
+        const entry = committed.acknowledged.find((item) => item.name === name);
+        assert.ok(entry, `${name} must be acknowledged until first sibling fire`);
+        assert.equal(entry.status, 'EMPTY');
+        assert.equal(entry.expiresAt, expiresAt);
+        assert.equal(entry.cutover?.firstScheduledRunAt, expiresAt);
+        assert.equal(entry.cutover?.probeKey, probeKey);
+        const service = readRailwayServices().find((item) => item.service === serviceName);
+        assert.equal(service?.cronSchedule, cron);
+        assert.equal(service?.lifecycle, 'planned');
+      }
       assert.ok(
         Date.parse(committed.expiresAt) > Date.parse('2026-07-28'),
         'committed baseline must not ship already expired',
@@ -560,16 +595,38 @@ describe('scheduled seed freshness monitor', () => {
       // merged and closed, four degraded sources were suppressed against a
       // closed PR with nobody owning them. Distinct issue numbers is the
       // cheapest offline proxy for "somebody actually filed these".
+      // #6806 is the one allowed repeat: it owns both new 1-section bundle-tick
+      // probes as a single add-then-remove cutover.
       const issues = committed.acknowledged.map((entry) => entry.issue);
       assert.ok(
         !issues.includes(5771),
         'recovered chinaCoverage degradation must not remain acknowledged',
       );
-      assert.equal(
-        new Set(issues).size,
-        issues.length,
-        'each acknowledged degradation needs its OWN tracking issue, not one shared number',
-      );
+      const namesByIssue = new Map();
+      for (const entry of committed.acknowledged) {
+        const names = namesByIssue.get(entry.issue) ?? [];
+        names.push(entry.name);
+        namesByIssue.set(entry.issue, names);
+      }
+      const allowedSharedIssues = new Map([
+        [6806, ['armsSuppliersBundleTick', 'militaryBasesBundleTick']],
+      ]);
+      for (const [issue, names] of namesByIssue) {
+        const allowed = allowedSharedIssues.get(issue);
+        if (allowed) {
+          assert.deepEqual(
+            [...names].sort(),
+            [...allowed].sort(),
+            `#${issue} may only cover ${allowed.join(', ')}`,
+          );
+          continue;
+        }
+        assert.equal(
+          names.length,
+          1,
+          `issue #${issue} is shared by ${names.join(', ')} — each acknowledged degradation needs its OWN tracking issue`,
+        );
+      }
       for (const entry of committed.acknowledged) {
         assert.doesNotMatch(
           entry.reason,
@@ -793,6 +850,105 @@ describe('scheduled seed freshness monitor', () => {
         'Ingestion operational acceptance failed: 1 unacknowledged problem(s).',
         '- supplyChainTrade: status=STALE_SEED records=3 age=900m max=360m',
       ]);
+    });
+
+    it('a STALE_CONTENT row prints the clock that fired, not the one that did not', () => {
+      // Health runs two independent clocks. STALE_CONTENT is decided by
+      // contentAgeMin vs maxContentAgeMin, but this line used to print the SEED
+      // pair unconditionally — which for that status is ALWAYS inside budget.
+      // Production read `euFsi: status=STALE_CONTENT age=1200m max=5760m`, so
+      // the only available conclusion was that the monitor was wrong. The
+      // numbers that explain it were on the wire and were being dropped by the
+      // projection before the formatter ever saw them.
+      const payload = {
+        status: 'DEGRADED',
+        checkedAt: '2026-08-17T10:00:00.000Z',
+        summary: { total: 1, ok: 0, warn: 1, crit: 0 },
+        problems: {
+          euFsi: {
+            status: 'STALE_CONTENT',
+            records: 252,
+            seedAgeMin: 1200,
+            maxStaleMin: 5760,
+            contentAgeMin: 19230,
+            maxContentAgeMin: 14400,
+          },
+        },
+      };
+      const [problem] = findOperationalProblems(payload);
+      assert.equal(problem.contentAgeMin, 19230, 'the projection must carry the content clock');
+      assert.equal(problem.maxContentAgeMin, 14400);
+
+      const report = formatAcceptanceReport(
+        baselineResult({ blocking: [problem] }),
+        '2026-08-17T10:00:00.000Z',
+      );
+      const line = report.errors.find((row) => row.includes('euFsi'));
+      assert.match(line, /contentAge=19230m maxContentAge=14400m/, 'the breached pair must be named');
+      assert.match(line, /seed age=1200m ok/, 'and the healthy clock marked as such, not omitted');
+      assert.doesNotMatch(
+        line,
+        /\bage=1200m max=5760m/,
+        'the bare seed pair must not be presented as the reason for a content breach',
+      );
+    });
+
+    it('names an UNREADABLE content clock rather than falling back to the seed pair', () => {
+      // health scores `contentAgeMin == null` as stale (fail-closed), so a source
+      // can be STALE_CONTENT because nothing in the payload carries a date at
+      // all. jodiGas reads exactly this way in production. Printing the seed
+      // pair here would reproduce the original bug on the other branch: the
+      // reader again sees a clock that is comfortably inside budget.
+      const problem = {
+        name: 'jodiGas',
+        status: 'STALE_CONTENT',
+        records: 57,
+        seedAgeMin: 8793,
+        maxStaleMin: 57600,
+        contentAgeMin: null,
+        maxContentAgeMin: 267840,
+      };
+      const report = formatAcceptanceReport(
+        baselineResult({ blocking: [problem] }),
+        '2026-08-17T10:00:00.000Z',
+      );
+      const line = report.errors.find((row) => row.includes('jodiGas'));
+      assert.match(line, /contentAge=unknown/, 'an unreadable clock must be named as unreadable');
+      assert.match(line, /scored stale/, 'and the fail-closed scoring made explicit');
+      assert.doesNotMatch(
+        line,
+        /\bage=8793m max=57600m/,
+        'the passing seed pair must not be offered as the reason',
+      );
+    });
+
+    it('does not present the seed pair when the content clock is operator-only', () => {
+      // health also reaches STALE_CONTENT via requireContentFreshness — a
+      // per-country verdict. That detail names WHICH country is stale, so
+      // api/health.js strips it from the public compact shape (#6060) this
+      // monitor reads, and the row arrives with NO content fields at all.
+      // portwatchPortActivity reads exactly this way. Falling back to the seed
+      // pair here reproduced the original bug a third time: `age=297m
+      // max=2160m` is inside budget and explains nothing.
+      const problem = {
+        name: 'portwatchPortActivity',
+        status: 'STALE_CONTENT',
+        records: 174,
+        seedAgeMin: 297,
+        maxStaleMin: 2160,
+      };
+      const report = formatAcceptanceReport(
+        baselineResult({ blocking: [problem] }),
+        '2026-08-17T17:00:00.000Z',
+      );
+      const line = report.errors.find((row) => row.includes('portwatchPortActivity'));
+      assert.match(line, /contentAge=operator-only/, 'the withheld clock must be named as withheld');
+      assert.match(line, /detailed \/api\/health/, 'and the operator pointed at where it lives');
+      assert.doesNotMatch(
+        line,
+        /\bage=297m max=2160m/,
+        'the passing seed pair must never stand in as the reason for a content verdict',
+      );
     });
 
     it('still reports the blocking problems on the run where the baseline expires', () => {

@@ -1,6 +1,6 @@
 ---
 title: "Aviation Intelligence: Airports, Airspace, and Flight Prices as Signals"
-description: "WorldMonitor tracks 115 airports, FAA delays, NOTAM closures, military aircraft, GPS jamming, and live Google Flights prices — because aviation reacts to risk first."
+description: "Track global airports, FAA delays, NOTAM closures, military aircraft, GPS jamming, and live flight prices with WorldMonitor."
 metaTitle: "Aviation Intelligence Dashboard | WorldMonitor"
 keywords: "aviation intelligence dashboard, airport delay monitoring, NOTAM airspace closures, military aircraft tracking, flight prices API, GPS jamming map"
 audience: "Airline and ops teams, travel security managers, OSINT analysts, journalists, frequent travelers"
@@ -15,7 +15,7 @@ WorldMonitor gives that layer a dedicated panel — and wires it into the same m
 
 ## The six-tab Aviation Intelligence panel
 
-The **Aviation Intelligence panel** covers 115 monitored airports worldwide across six tabs:
+The **Aviation Intelligence panel** covers the registered worldwide airport watchlist across six tabs:
 
 - **Ops** — operational status and delay conditions, including FAA delay programs for US hubs.
 - **Flights** — flight activity for the airports you care about.

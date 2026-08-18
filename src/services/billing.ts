@@ -184,6 +184,17 @@ export function getSubscription(): SubscriptionInfo | null {
   return currentSubscription;
 }
 
+/**
+ * Whether the subscription watch has produced a value at least once (including
+ * a legitimate `null` — no row, or a query error). Callers use this to tell an
+ * unresolved watch apart from a settled "no subscription": `getSubscription()`
+ * returns `null` in both cases, but only the settled null means the user truly
+ * has no own subscription row (e.g. a Business Pro grant invitee).
+ */
+export function isSubscriptionLoaded(): boolean {
+  return subscriptionLoaded;
+}
+
 export type ProActivationClaimOutcome =
   | 'claimed'
   | 'not_eligible'

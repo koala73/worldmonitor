@@ -6,7 +6,7 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/pagination.proto";
 import "worldmonitor/seismology/v1/earthquake.proto";
 
-// ListEarthquakesRequest specifies filters for retrieving earthquake data from USGS.
+// ListEarthquakesRequest specifies filters for retrieving earthquake data from USGS and Earthquakes Canada (NRCan).
 message ListEarthquakesRequest {
   // Start of time range (inclusive), Unix epoch milliseconds.
   // Accepted but currently ignored; no-op until this handler supports the parameter.

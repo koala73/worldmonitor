@@ -12,7 +12,6 @@ import {
   isLayerExecutable,
   isLayerEntitled,
 } from '@/config/map-layer-definitions';
-import type { MapRenderer } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
 import { TIER1_COUNTRIES } from '@/services/country-instability';
@@ -209,12 +208,12 @@ export class SearchManager implements AppModule {
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
 
     this.syncPanelSearchIndex();
-    // Filter CMD+K layer commands by (a) variant-allowed, (b) renderer
-    // compatibility, (c) DeckGL state for deckGLOnly layers, (d) premium
-    // entitlement for locked layers. Without (a)–(c), layer commands surface
-    // where they'd silently fail the variant/renderer guard (e.g.
-    // `layer:storageFacilities` on tech/finance/commodity/happy, or globe /
-    // SVG-mobile). Without (d), free users could enable locked layers like
+    // Filter CMD+K layer commands by (a) variant-allowed, (b) renderer-kind
+    // compatibility (a deck-only layer can't run on the SVG fallback or the
+    // globe), (c) premium entitlement for locked layers. Without (a)–(b), layer
+    // commands surface where they'd silently fail the variant/renderer guard
+    // (e.g. `layer:storageFacilities` on tech/finance/commodity/happy, or globe
+    // / SVG-mobile). Without (c), free users could enable locked layers like
     // resilienceScore, leaving a checked+disabled checkbox (#6045).
     // Currently-on locked layers stay visible so free users can turn them off
     // if stuck state survived from an older session.
@@ -223,13 +222,13 @@ export class SearchManager implements AppModule {
       if (!(key in this.ctx.mapLayers)) return false;
       const variantAllowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
       if (!variantAllowed.has(key)) return false;
-      const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
-      const isDeckGL = this.ctx.map?.isDeckGLActive?.() ?? false;
+      const kind = this.ctx.map?.isGlobeMode?.()
+        ? 'globe'
+        : (this.ctx.map?.isDeckGLActive?.() ? 'deck' : 'svg');
       return isLayerCommandAllowed(
         key,
         this.ctx.mapLayers[key],
-        renderer,
-        isDeckGL,
+        kind,
         hasPremiumAccess(getAuthState()),
       );
     });
@@ -486,20 +485,21 @@ export class SearchManager implements AppModule {
       case 'layers': {
         const allowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
         // Preset paths (`layers:all`, `layers:infra`, …) also need the
-        // renderer + DeckGL gate that per-layer toggles go through. Without
+        // renderer-kind gate that per-layer toggles go through. Without
         // it, a user in globe mode or on the SVG fallback can run
-        // `layers:infra` and silently flip `deckGLOnly` layers on — those
+        // `layers:infra` and silently flip deck-only layers on — those
         // layers set to `true` in state but produce no rendered output,
         // and since the picker hides them under the current renderer the
         // user has no way to toggle them back off without switching
         // modes. Codex P2 on PR #3366.
         // Premium entitlement is also required for locked layers (#6045).
-        const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
-        const isDeckGL = this.ctx.map?.isDeckGLActive?.() ?? false;
+        const kind = this.ctx.map?.isGlobeMode?.()
+          ? 'globe'
+          : (this.ctx.map?.isDeckGLActive?.() ? 'deck' : 'svg');
         const premium = hasPremiumAccess(getAuthState());
         const executable = (k: keyof MapLayers): boolean =>
           allowed.has(k)
-          && isLayerExecutable(k, renderer, isDeckGL)
+          && isLayerExecutable(k, kind)
           && isLayerEntitled(k, premium);
         if (action === 'all') {
           for (const key of Object.keys(this.ctx.mapLayers)) {
@@ -531,16 +531,16 @@ export class SearchManager implements AppModule {
         // Renderer / DeckGL gate. Mirrors the filter applied in SearchModal
         // so direct activation paths (keyboard-accelerator, programmatic
         // dispatch, etc.) don't flip a layer on that can't render.
-        const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
-        const isDeckGL = this.ctx.map?.isDeckGLActive?.() ?? false;
+        const kind = this.ctx.map?.isGlobeMode?.()
+          ? 'globe'
+          : (this.ctx.map?.isDeckGLActive?.() ? 'deck' : 'svg');
         const currentValue = this.ctx.mapLayers[layerKey];
         // Locked premium layers: free users may turn them OFF (heal stuck
         // state) but must not turn them ON (#6045).
         if (!isLayerCommandAllowed(
           layerKey,
           currentValue,
-          renderer,
-          isDeckGL,
+          kind,
           hasPremiumAccess(getAuthState()),
         )) return;
         let newValue = !currentValue;
@@ -602,12 +602,13 @@ export class SearchManager implements AppModule {
           const variantAllowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
           if (!variantAllowed.has(layerKey)) break;
           const currentValue = this.ctx.mapLayers[layerKey];
-          const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
+          const kind = this.ctx.map?.isGlobeMode?.()
+            ? 'globe'
+            : (this.ctx.map?.isDeckGLActive?.() ? 'deck' : 'svg');
           if (!isLayerCommandAllowed(
             layerKey,
             currentValue,
-            renderer,
-            this.ctx.map?.isDeckGLActive?.() ?? false,
+            kind,
             hasPremiumAccess(getAuthState()),
           )) break;
           let newValue = !currentValue;

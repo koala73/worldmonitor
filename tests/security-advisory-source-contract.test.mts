@@ -168,8 +168,8 @@ describe('security advisory source contract', () => {
 
     assert.match(
       dataSourcesSection,
-      new RegExp(`fetches all ${feeds.length} feeds hourly`),
-      'docs/data-sources.mdx feed count must match ADVISORY_FEEDS.',
+      /fetches the complete advisory feed registry hourly/,
+      'docs/data-sources.mdx must describe the authoritative ADVISORY_FEEDS registry.',
     );
 
     for (const country of sourceCountries) {

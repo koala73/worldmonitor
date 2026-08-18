@@ -201,8 +201,10 @@ describe('looksLikeQuantityAsPrice', () => {
   it('falls back to the canonical size when sizeText is blank or unparseable', () => {
     expect(looksLikeQuantityAsPrice(400, '', { baseUnit: 'g' }, 'White Bread 400g')).toBe(true);
     expect(looksLikeQuantityAsPrice(400, '   ', { baseUnit: 'g' }, 'White Bread 400g')).toBe(true);
-    // `gm` and `pack` are absent from UNIT_MAP, so parseSize returns null.
-    expect(looksLikeQuantityAsPrice(400, '400 gm', { baseUnit: 'g' }, 'White Bread 400g')).toBe(true);
+    // `loaf` and `pack` are absent from UNIT_MAP, so parseSize returns null.
+    // (`gm` used to sit here; #6267 mapped it to grams, which would have let
+    // this case pass through the direct path and stop exercising the fallback.)
+    expect(looksLikeQuantityAsPrice(400, '400 loaf', { baseUnit: 'g' }, 'White Bread 400g')).toBe(true);
     expect(looksLikeQuantityAsPrice(400, '24 pack', { baseUnit: 'g' }, 'White Bread 400g')).toBe(true);
   });
 

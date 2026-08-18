@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { afterEach, test } from 'node:test';
 import { PUBLIC_PRODUCT_FACTS } from './_product-catalog.generated.js';
+import { PUBLIC_INVENTORY_FACTS } from './_inventory-facts.generated.js';
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -85,7 +86,8 @@ test('GET fallback publishes generated lifecycle, pricing, and capability facts'
   assert.equal(body.product.lifecycle, 'launched');
   assert.equal(body.product.pricingUrl, 'https://www.worldmonitor.app/pro#pricing');
   assert.equal(body.currency, 'USD');
-  assert.equal(body.capabilities.mcpTools, PUBLIC_PRODUCT_FACTS.capabilities.mcpTools);
+  assert.equal(body.capabilities.mcpTools, PUBLIC_INVENTORY_FACTS.capabilities.mcpTools);
+  assert.equal(body._generated, PUBLIC_PRODUCT_FACTS._generated);
   const proMonthly = PUBLIC_PRODUCT_FACTS.plans.find((plan) => plan.planKey === 'pro_monthly');
   const proAnnual = PUBLIC_PRODUCT_FACTS.plans.find((plan) => plan.planKey === 'pro_annual');
   assert.ok(body.plans.some((plan) => (
@@ -122,6 +124,7 @@ test('GET cache cannot override generated public lifecycle and capability facts'
   assert.equal(body.product.pricingUrl, PUBLIC_PRODUCT_FACTS.product.pricingUrl);
   assert.equal(body.currency, PUBLIC_PRODUCT_FACTS.currency);
   assert.deepEqual(body.plans, PUBLIC_PRODUCT_FACTS.plans);
-  assert.equal(body.capabilities.mcpTools, PUBLIC_PRODUCT_FACTS.capabilities.mcpTools);
+  assert.equal(body.capabilities.mcpTools, PUBLIC_INVENTORY_FACTS.capabilities.mcpTools);
+  assert.equal(body._generated, PUBLIC_PRODUCT_FACTS._generated);
   assert.deepEqual(body.tiers, [{ name: 'Cached tier' }]);
 });

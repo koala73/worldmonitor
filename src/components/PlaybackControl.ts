@@ -23,7 +23,7 @@ export class PlaybackControl {
           <button class="playback-close" aria-label="${t('components.playback.close')}">×</button>
         </div>
         <div class="playback-slider-container">
-          <input type="range" class="playback-slider" min="0" max="100" value="100">
+          <input type="range" class="playback-slider" min="0" max="100" value="100" aria-label="${t('components.playback.historicalPlayback')}">
           <div class="playback-time">${t('components.playback.live')}</div>
         </div>
         <div class="playback-controls">

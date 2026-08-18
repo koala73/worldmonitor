@@ -450,7 +450,7 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
     // static file; this guard fails loudly if the registry adds/removes/renames
     // a tool or edits a description without regenerating the card, so scanners
     // never preview a stale tool inventory. Regenerate with:
-    //   npx tsx -e "import('./api/mcp/registry/index.ts').then(m=>console.log(JSON.stringify(m.TOOL_REGISTRY.map(t=>({name:t.name,description:t.description})),null,2)))"
+    //   npm run product:facts
     it('server-card.json exposes the orank-required top-level fields AND tools[] mirrors the registry', () => {
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
 
@@ -470,8 +470,12 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.equal(card.name, card.serverInfo.name, 'top-level name must mirror serverInfo.name');
 
       // tools[] must be a name+description projection of the live registry,
-      // in the same order.
-      const expected = TOOL_REGISTRY.map((t) => ({ name: t.name, description: t.description }));
+      // plus the registry-derived free-access marker, in the same order.
+      const expected = TOOL_REGISTRY.map((t) => ({
+        name: t.name,
+        description: t.description,
+        ...(t._freeTier === true ? { _meta: { 'worldmonitor/access': 'free' } } : {}),
+      }));
       assert.deepEqual(
         card.tools,
         expected,

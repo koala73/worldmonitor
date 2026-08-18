@@ -133,9 +133,9 @@ export class GdeltIntelPanel extends Panel {
     // inserted after that sweep would paint above the "Upgrade to Pro" CTA — the
     // exact leak the migrated writes now refuse. `unlockPanel` re-shows every
     // sibling in that same range, so this hide clears itself on unlock rather
-    // than stranding the summary hidden. Checked via the class rather than
-    // `_locked`, which is private with no protected accessor.
-    if (this.element.classList.contains('panel-is-locked')) {
+    // than stranding the summary hidden. Uses the base-class lock accessor
+    // (#6714) instead of the former class-name proxy.
+    if (this.isLocked) {
       this.summaryEl.style.display = 'none';
     }
   }

@@ -334,16 +334,19 @@ test('BC Open511 shares canadaRoads and does not invent a second MapLayers key',
   const types = readFileSync(new URL('../src/types/index.ts', import.meta.url), 'utf8');
   const layers = readFileSync(new URL('../src/config/map-layer-definitions.ts', import.meta.url), 'utf8');
   const client = readFileSync(new URL('../src/services/canada-roads.ts', import.meta.url), 'utf8');
+  // The descriptors moved to canada-roads-core.ts in #6763 so tests could import
+  // the real list rather than clone it, and both loader maps are now derived
+  // from that list — so the per-key literals this used to grep for are gone.
+  const core = readFileSync(new URL('../src/services/canada-roads-core.ts', import.meta.url), 'utf8');
   assert.match(types, /canadaRoads: boolean/);
   assert.doesNotMatch(types, /bcOpen511\?: boolean/);
   assert.match(layers, /canadaRoads:\s+def\('canadaRoads'/);
   assert.doesNotMatch(layers, /bcOpen511:\s+def\(/);
-  assert.match(client, /getHydratedData\('canadaRoads'\)/);
-  assert.match(client, /getHydratedData\('bcOpen511'\)/);
   assert.match(client, /unionCanadaRoadRecords/);
-  assert.match(client, /ontario-511/);
-  assert.match(client, /bc-open511/);
-  assert.match(client, /key: 'bcOpen511', source: 'bc-open511'/);
+  assert.match(client, /HYDRATED_LOADERS[\s\S]{0,200}CANADA_ROAD_SOURCES\.map/);
+  assert.match(core, /ontario-511/);
+  assert.match(core, /bc-open511/);
+  assert.match(core, /key: 'bcOpen511', source: 'bc-open511'/);
 });
 
 test('bc open511 runs as a bundle member, not its own */15 service', () => {
@@ -358,31 +361,36 @@ test('bc open511 runs as a bundle member, not its own */15 service', () => {
   );
 });
 
-test('bootstrap keeps canadaRoads on the fast tier; bcOpen511 is on-demand (~797 KB)', () => {
+test('bootstrap fetches bcOpen511 and its Ontario sibling on demand, never on a tier', () => {
+  // Was: 'keeps canadaRoads on the fast tier; bcOpen511 is on-demand (~797 KB)'.
+  // Holding BC back while Ontario rode FAST was the #6763 bug — a tier is not
+  // layer-gated, so the sibling this file was protecting the payload from
+  // shipped 306,757 B to every visitor anyway.
   const src = readFileSync(new URL('../shared/bootstrap-tier-keys.js', import.meta.url), 'utf8');
   assert.match(src, /canadaRoads: 'infra:ontario-511:v1'/);
   assert.match(src, /bcOpen511: 'infra:bc-open511:v1'/);
   const fast = src.slice(src.indexOf('const FAST_KEY_NAMES'), src.indexOf('const ON_DEMAND_KEY_NAMES'));
   const onDemand = src.slice(src.indexOf('const ON_DEMAND_KEY_NAMES'));
-  assert.match(fast, /'canadaRoads'/);
-  assert.doesNotMatch(fast, /'bcOpen511'/);
-  assert.match(onDemand, /'bcOpen511'/);
+  for (const key of ['canadaRoads', 'bcOpen511']) {
+    assert.doesNotMatch(fast, new RegExp(`'${key}'`), `${key} must not ride the fast tier`);
+    assert.match(onDemand, new RegExp(`'${key}'`), `${key} must be on-demand`);
+  }
 });
 
-test('seed-freshness-baseline acknowledges the BC Open511 cutover', () => {
+test('BC Open511 is live, so it carries no freshness acknowledgement', () => {
+  // Was: pinned the expiring-ack dates for a probe that had never published.
+  // seed-bundle-canada is provisioned and bcOpen511 now reads healthy, so the
+  // ack was removed as SATISFIED. Asserting its absence is what stops it being
+  // reinstated: an acknowledgement that outlives its problem is a suppression
+  // with nothing to suppress, and would silently absorb a FUTURE BC outage.
   const baseline = JSON.parse(readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8'));
   const row = baseline.acknowledged.find((a) => a.issue === 6611 || a.name === 'bcOpen511');
-  assert.ok(row);
-  assert.equal(row.status, 'EMPTY');
-  assert.equal(row.cutover.probeKey, 'seed-meta:infra:bc-open511');
-  // Widened by the member's own gate: on intervalMs 30min the first publish can
-  // land half an hour after the bundle is provisioned, so an expiry pinned to
-  // the provisioning instant would red the monitor while the seeder works.
-  assert.equal(row.expiresAt, '2026-08-16T21:15:00.000Z');
-  assert.equal(row.cutover.firstScheduledRunAt, '2026-08-16T21:15:00.000Z');
-  assert.equal(row.cutover.activatedAt, '2026-08-15T21:30:00.000Z');
-  const gapMs = Date.parse(row.cutover.firstScheduledRunAt) - Date.parse(row.cutover.activatedAt);
-  assert.ok(gapMs > 0 && gapMs < 24 * 60 * 60 * 1000, 'rollout window must stay under the 24h cap');
+  assert.equal(row, undefined, 'bcOpen511 publishes now; it must not be acknowledged as a known-empty probe');
+
+  // The probe itself must still exist, or "no ack" would be trivially true
+  // because nothing is watching the key at all.
+  const health = readFileSync(new URL('../api/health.js', import.meta.url), 'utf8');
+  assert.match(health, /bcOpen511:\s*\{[\s\S]{0,120}?key:\s*'seed-meta:infra:bc-open511'/);
 });
 
 test('following next_url without status=ACTIVE still requests ACTIVE pages', async () => {
