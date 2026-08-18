@@ -4,6 +4,8 @@ import {
   pickBriefCluster,
   briefSystemPrompt,
   briefUserPrompt,
+  synthesisSystemPrompt,
+  maskAttributedSources,
   composeSynthesizedBrief,
   composeSynthesizedBriefResult,
   BRIEF_REJECTIONS,
@@ -112,6 +114,58 @@ describe('briefUserPrompt', () => {
 
   it('instructs using only facts from the provided headline', () => {
     assert.match(briefUserPrompt('X'), /only facts from this headline/i);
+  });
+});
+
+describe('synthesis attribution contract', () => {
+  it('tells the model to copy exact outlet labels and use canonical attribution forms', () => {
+    const prompt = synthesisSystemPrompt('2026-08-18');
+    assert.match(prompt, /copy its label exactly \(including capitalization\)/);
+    assert.match(prompt, /reported\/reports\/said\/says\/wrote\/writes/);
+    assert.match(prompt, /According to <outlet>/);
+  });
+
+  it('masks the longer prefix-related label regardless of source order', () => {
+    const text = 'ABC News Australia reported port workers extended the walkout.';
+    const expected = ' reported port workers extended the walkout.';
+
+    assert.equal(maskAttributedSources(text, ['ABC News', 'ABC News Australia']), expected);
+    assert.equal(maskAttributedSources(text, ['ABC News Australia', 'ABC News']), expected);
+  });
+
+  it('matches labels exactly by case, so WHO does not consume lowercase who', () => {
+    const pronoun = 'Officials who monitored the outbreak issued guidance.';
+    assert.equal(maskAttributedSources(pronoun, ['WHO']), pronoun);
+    assert.equal(maskAttributedSources('WHO reported new guidance.', ['WHO']), ' reported new guidance.');
+  });
+
+  it('accepts the canonical According-to form', () => {
+    assert.equal(
+      maskAttributedSources('According to Reuters, prices rose.', ['Reuters']),
+      ', prices rose.',
+    );
+  });
+
+  it('escapes special source labels and permits flexible whitespace', () => {
+    const fixtures = [
+      ['+972   Magazine reported unrest spread.', '+972 Magazine', ' reported unrest spread.'],
+      ['24.hu said talks resumed.', '24.hu', ' said talks resumed.'],
+      ['CAC (China) wrote that rules changed.', 'CAC (China)', ' wrote that rules changed.'],
+    ];
+
+    for (const [text, source, expected] of fixtures) {
+      assert.equal(maskAttributedSources(text, [source]), expected, source);
+    }
+  });
+
+  it('does not mask special source labels used outside an attribution', () => {
+    for (const [text, source] of [
+      ['The +972 Magazine office expanded.', '+972 Magazine'],
+      ['24.hu launched a service.', '24.hu'],
+      ['CAC (China) deployed inspectors.', 'CAC (China)'],
+    ]) {
+      assert.equal(maskAttributedSources(text, [source]), text, source);
+    }
   });
 });
 
@@ -509,6 +563,13 @@ describe('composeSynthesizedBriefResult names which gate rejected (#5947)', () =
     assert.equal(out.brief.sourceAttributions, 1, 'the accept side must report that the lead named its outlet');
   });
 
+  it('accepts an According-to attribution naming the outlet', () => {
+    const out = compose('According to Reuters, apple prices rose sharply in Chile last quarter [1].');
+    assert.equal(out.rejection, null);
+    assert.ok(out.brief);
+    assert.equal(out.brief.sourceAttributions, 1);
+  });
+
   it('still rejects a proper noun in NEITHER the headline nor the source', () => {
     // Bounded: an outlet the model was never given is still a hallucination.
     // NOTE this case alone cannot detect a WIDENING — it rejects identically
@@ -554,9 +615,38 @@ describe('composeSynthesizedBriefResult names which gate rejected (#5947)', () =
     assert.equal(attributed.rejection, null, 'a multi-word outlet must still be nameable');
     assert.match(attributed.brief.lead, /Iran International/);
 
+    const outletAsActor = composeIran(
+      'Fuel protests spread in Mashhad, and Iran International deployed security forces [1].',
+    );
+    assert.equal(outletAsActor.brief, null, 'an outlet label outside an attribution must stay gated');
+    assert.equal(outletAsActor.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+
     const mined = composeIran('Fuel protests spread in Mashhad, and Iran deployed security forces [1].');
     assert.equal(mined.brief, null, 'the outlet label must not ground an actor the story never names');
     assert.equal(mined.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+
+  it('does not count a lowercase relative pronoun as a WHO attribution', () => {
+    const whoStory = [{
+      primaryTitle: 'Vaccination rates increased in Kenya as health officials monitored the campaign',
+      primarySource: 'WHO',
+      primaryLink: 'http://vaccination',
+      sources: ['WHO', 'Reuters'],
+      memberTitles: ['Vaccination rates increased in Kenya as health officials monitored the campaign'],
+    }];
+    const composeWho = (lead) => composeSynthesizedBriefResult(
+      JSON.stringify({ lead, lines: [{ n: 1, text: 'Vaccination rates increased in Kenya [1]' }] }),
+      whoStory,
+      { validatorMode: 'enforce' },
+    );
+
+    const pronoun = composeWho('Vaccination rates increased in Kenya as officials who monitored the campaign reported [1].');
+    assert.equal(pronoun.rejection, null);
+    assert.equal(pronoun.brief.sourceAttributions, 0, 'lowercase who is not the uppercase outlet label');
+
+    const attributed = composeWho('WHO reported vaccination rates increased in Kenya [1].');
+    assert.equal(attributed.rejection, null);
+    assert.equal(attributed.brief.sourceAttributions, 1);
   });
 
   it('does not let digits in an outlet label ground a fabricated number', () => {
@@ -611,6 +701,31 @@ describe('composeSynthesizedBriefResult names which gate rejected (#5947)', () =
     );
     assert.equal(minedLine.brief.hallucinatedLines, 1, 'an ungrounded proper noun on a line still counts');
     assert.match(minedLine.brief.lines[0].text, /Regional apple prices/, 'and the line degrades to its headline');
+  });
+
+  it('degrades a story line that uses its outlet label as an actor', () => {
+    const iranStory = [{
+      primaryTitle: 'Fuel protests spread in Mashhad as queues lengthen at stations',
+      primarySource: 'Iran International',
+      primaryLink: 'http://fuel',
+      sources: ['Iran International', 'AFP'],
+      memberTitles: ['Fuel protests spread in Mashhad as queues lengthen at stations'],
+    }];
+    const out = composeSynthesizedBriefResult(
+      JSON.stringify({
+        lead: 'Fuel protests spread in Mashhad as queues lengthened [1].',
+        lines: [{ n: 1, text: 'Iran International deployed security forces in Mashhad [1]' }],
+      }),
+      iranStory,
+      { validatorMode: 'enforce' },
+    );
+
+    assert.equal(out.rejection, null);
+    assert.equal(out.brief.hallucinatedLines, 1);
+    assert.equal(
+      out.brief.lines[0].text,
+      'Fuel protests spread in Mashhad as queues lengthen at stations [1]',
+    );
   });
 
   it('scopes the outlet allowance to the stories the sentence cites', () => {

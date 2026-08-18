@@ -117,6 +117,7 @@ Rules:
 - Use ONLY facts present in the numbered story text. Do not add names, places, dates, numbers, or context that are not explicitly there.
 - Do not invent proper nouns (people, organizations, countries) that are not in the story text.
 - Two numbered stories can describe the SAME event in different words. A lead claim may combine them, but it MUST carry the citation of EVERY story it drew from — write [3][7], not just [3]. Any name, place, or number you take from a story you did not cite counts as invented.
+- If you name an outlet, copy its label exactly (including capitalization) and use it only as an attribution: "<outlet> reported/reports/said/says/wrote/writes ..." or "According to <outlet>, ...".
 - Write acronyms WITHOUT periods: "US", "UN", "EU", "UK" — never "U.S.", "U.N.". A trailing period there reads as the end of a sentence.
 - Refer to an actor by the name the story uses. Do not swap in a capital city, nickname, or synonym for it — write "US", not "Washington"; "Iran", not "Tehran" — unless that word is in the story text.
 - NEVER start with "Breaking news", "Good evening", "Tonight", or TV-style openings.`;
@@ -244,12 +245,12 @@ const REGEX_METACHARACTERS = /[.*+?^${}()|[\]\\]/g;
  * would ground a fabricated "24 people were killed" — the digits are a
  * tokenisation artefact of a brand name, not a fact about the story.
  *
- * Masking gets the semantics right instead: the label is an ATTRIBUTION, never
- * a claim. "Reuters reported X" and "Al Jazeera reported X" both pass — the
- * multi-word case a whitespace-only allowance would have lost — while "Iran
- * deployed …" and "24 people were killed" still face the un-widened ground and
- * still reject. Only whole labels are masked, so a sibling cluster label the
- * prompt never showed ('AP News' in `sources`) grounds nothing.
+ * Masking gets the semantics right only when the label is used as an explicit
+ * attribution. "Reuters reported X" and "According to Al Jazeera, X" pass,
+ * while "Iran International deployed …" and "24 people were killed" still face
+ * the un-widened ground and still reject. Labels are exact-case, normalized,
+ * deduplicated and checked longest-first, so `WHO` cannot mask the pronoun
+ * `who`, and `ABC News` cannot partially mask `ABC News Australia`.
  *
  * Only the gate's VIEW changes; the published lead and lines keep their text.
  *
@@ -258,21 +259,51 @@ const REGEX_METACHARACTERS = /[.*+?^${}()|[\]\\]/g;
  * @returns {string}
  */
 export function maskAttributedSources(text, sources) {
-  if (typeof text !== 'string' || text.length === 0) return text;
+  return maskAttributedSourcesResult(text, sources).text;
+}
+
+/**
+ * Internal form used by the composer so telemetry counts qualified
+ * attributions, rather than any incidental occurrence of an outlet label.
+ *
+ * @param {string} text
+ * @param {Array<unknown>} sources
+ * @returns {{ text: string; matches: number }}
+ */
+function maskAttributedSourcesResult(text, sources) {
+  if (typeof text !== 'string' || text.length === 0) return { text, matches: 0 };
   let masked = text;
-  for (const source of Array.isArray(sources) ? sources : []) {
-    if (typeof source !== 'string') continue;
-    const label = source.trim();
-    if (!label) continue;
+  let matches = 0;
+  const labels = [...new Set(
+    (Array.isArray(sources) ? sources : [])
+      .filter((source) => typeof source === 'string')
+      .map((source) => source.trim().replace(/\s+/g, ' '))
+      .filter(Boolean),
+  )].sort((a, b) => b.length - a.length);
+
+  for (const label of labels) {
     // Escape first, THEN relax runs of whitespace — a label may carry regex
     // metacharacters ('+972 Magazine', '24.hu', 'CAC (China)').
     const pattern = label.replace(REGEX_METACHARACTERS, '\\$&').replace(/\s+/g, '\\s+');
-    masked = masked.replace(
-      new RegExp(`(^|[^\\p{L}\\p{N}])${pattern}(?![\\p{L}\\p{N}])`, 'giu'),
-      '$1',
+    const sourceFirst = new RegExp(
+      `(^|[^\\p{L}\\p{N}])${pattern}(?=\\s+(?:reported|reports|said|says|wrote|writes)\\b)`,
+      'gu',
     );
+    masked = masked.replace(sourceFirst, (_match, prefix) => {
+      matches++;
+      return prefix;
+    });
+
+    const accordingTo = new RegExp(
+      `(^|[^\\p{L}\\p{N}])[Aa]ccording\\s+to\\s+${pattern}(?=\\s*[,:])`,
+      'gu',
+    );
+    masked = masked.replace(accordingTo, (_match, prefix) => {
+      matches++;
+      return prefix;
+    });
   }
-  return masked;
+  return { text: masked, matches };
 }
 
 /**
@@ -402,8 +433,12 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     // The lead may NAME the outlets of the stories it cites — the prompt showed
     // it those labels. Blank them so they ground nothing else, scoped to the
     // cited stories so one story's outlet cannot license a claim about another.
-    const attributed = maskAttributedSources(sentence, cited.map((n) => topStories[n - 1]?.primarySource));
-    if (attributed !== sentence) sourceAttributions++;
+    const attribution = maskAttributedSourcesResult(
+      sentence,
+      cited.map((n) => topStories[n - 1]?.primarySource),
+    );
+    const attributed = attribution.text;
+    if (attribution.matches > 0) sourceAttributions++;
     // Both validators still run before either can reject, so shadow mode
     // observes exactly what it observed before the reasons were split out.
     const sentenceValidation = validateNoHallucinatedProperNouns(attributed, scopedGround);
