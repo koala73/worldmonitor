@@ -498,6 +498,7 @@ const STANDALONE_KEYS = {
   // start, including skip-all ticks. Detects Railway cron-scheduler freeze
   // (#6691) that member seed-meta budgets (17.5d+) cannot see.
   staticRefBundleTick:           'bundle:heartbeat:static-ref',
+  staticRefHeavyBundleTick:      'bundle:heartbeat:static-ref-heavy',
   telegramFeed:                  'intelligence:telegram-feed:v1',
   digestNotifications:           'digest:last-run',
   webcams:                       'webcam:cameras:active',
@@ -917,7 +918,7 @@ const SEED_META = {
       issue: 6676,
       status: 'EMPTY',
     },
-  }, // daily seed-bundle-macro 08:00 UTC. Toronto-today 409 "not released yet" is quiet like 404; CPI/LFS still POST. EMPTY ack #6676 expires 2026-08-16T08:00Z (real cron tick, not 13:00Z). Floor is the two resilience cubes (CPI YoY + LFS).
+  }, // daily seed-bundle-macro 08:00 UTC. Toronto-today 409 "not released yet" is quiet like 404; CPI/LFS still POST. First-publish EMPTY ack #6676 retired after recovery. Floor is the two resilience cubes (CPI YoY + LFS).
   eurostatCountryData: { key: 'seed-meta:economic:eurostat-country-data', maxStaleMin: 4320 }, // daily seed; 4320min = 3 days = 3x interval
   eurostatHousePrices: { key: 'seed-meta:economic:eurostat-house-prices', maxStaleMin: 60 * 24 * 50 }, // weekly cron, annual data; 50d threshold = 35d TTL + 15d buffer
   eurostatGovDebtQ:    { key: 'seed-meta:economic:eurostat-gov-debt-q',   maxStaleMin: 60 * 24 * 14 }, // 2d cron, quarterly data; 14d threshold matches TTL + quarterly release drift
@@ -1012,6 +1013,21 @@ const SEED_META = {
       mode: 'expiring-ack',
       fromKey: null,
       issue: 6691,
+      status: 'EMPTY',
+    },
+  },
+  // The heavy half of static-ref: Arms-Suppliers, Military-Bases and
+  // Mineral-Production on one rotating daily tick (#6806). One heartbeat, not
+  // three — Railway's 10-minute container kill means no two of those members
+  // can share a tick, but they share a BUNDLE and the runner defers the loser
+  // to tomorrow, which is free at 10/30/60-day cadences.
+  staticRefHeavyBundleTick: {
+    key: 'bundle:heartbeat:static-ref-heavy',
+    maxStaleMin: 2880, // daily cron `0 4 * * *`; 48h = 2× cadence
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6806,
       status: 'EMPTY',
     },
   },
@@ -1174,8 +1190,8 @@ const ON_DEMAND_KEYS = new Set([
   // marker after its first successful publish; from then on it is strict forever.
   'cbrRates',
   // Same deploy-before-first-tick bridge as cbrRates for the two Canada
-  // national-statistics seeders (#6616). Softening lifts once the durable
-  // activation marker exists.
+  // national-statistics seeders: bocValet (#6616) and statcanWds (#6676).
+  // Softening lifts once the durable activation marker exists.
   'bocValet',
   'statcanWds',
   'riskScoresLive',

@@ -127,25 +127,43 @@ describe('defense-industrial source parsing', () => {
 });
 
 describe('defense-industrial deployment wiring', () => {
-  it('runs in the static-reference bundle before the 30-day TTL expires', () => {
+  it('runs on a scheduled bundle before the 30-day TTL expires', () => {
+    // The two SIPRI seeders live in DIFFERENT bundles since #6806. Suppliers is
+    // the 450s member that consumed leftover's budget on every tick, so it moved
+    // to seed-bundle-static-ref-heavy; Defense-Industrial is 100s and stayed.
+    // Both still have to be wired to a cron and a watch-path closure, which is
+    // what this asserts — one seeder unwired is a silent 30-day TTL expiry.
     const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-    const bundle = readFileSync(join(root, 'scripts/seed-bundle-static-ref.mjs'), 'utf8');
+    const light = readFileSync(join(root, 'scripts/seed-bundle-static-ref.mjs'), 'utf8');
+    const heavy = readFileSync(join(root, 'scripts/seed-bundle-static-ref-heavy.mjs'), 'utf8');
     const registry = JSON.parse(readFileSync(join(root, 'scripts/railway-services.json'), 'utf8'));
-    const service = registry.find((entry) => entry.service === 'seed-bundle-static-ref');
+    const lightService = registry.find((entry) => entry.service === 'seed-bundle-static-ref');
+    const heavyService = registry.find((entry) => entry.service === 'seed-bundle-static-ref-heavy');
 
-    assert.match(bundle, /label:\s*'Arms-Suppliers'/);
-    assert.match(bundle, /script:\s*'seed-defense-industrial-suppliers\.mjs'/);
-    assert.match(bundle, /timeoutMs:\s*450_000/);
-    assert.match(bundle, /label:\s*'Defense-Industrial'/);
-    assert.match(bundle, /script:\s*'seed-defense-industrial\.mjs'/);
-    assert.match(bundle, /seedMetaKey:\s*'military:arms-suppliers-complete'/);
-    assert.match(bundle, /canonicalKey:\s*'military:arms-suppliers:complete:v1'/);
-    assert.match(bundle, /intervalMs:\s*10 \* DAY/);
-    assert.match(bundle, /maxBundleMs:\s*570_000/);
-    assert.ok(service.watchPatterns.includes('scripts/_defense-industrial-source.mjs'));
-    assert.ok(service.watchPatterns.includes('scripts/seed-defense-industrial.mjs'));
-    assert.ok(service.watchPatterns.includes('scripts/seed-defense-industrial-suppliers.mjs'));
-    assert.equal(service.cronSchedule, '0 3 * * *');
+    assert.match(heavy, /label:\s*'Arms-Suppliers'/);
+    assert.match(heavy, /script:\s*'seed-defense-industrial-suppliers\.mjs'/);
+    assert.match(heavy, /timeoutMs:\s*450_000/);
+    assert.match(heavy, /seedMetaKey:\s*'military:arms-suppliers-complete'/);
+    assert.match(heavy, /canonicalKey:\s*'military:arms-suppliers:complete:v1'/);
+    assert.match(heavy, /intervalMs:\s*10 \* DAY/);
+    assert.match(heavy, /maxBundleMs:\s*570_000/);
+
+    assert.match(light, /label:\s*'Defense-Industrial'/);
+    assert.match(light, /script:\s*'seed-defense-industrial\.mjs'/);
+    assert.match(light, /maxBundleMs:\s*570_000/);
+
+    // Both seeders import _defense-industrial-source.mjs, so BOTH closures need
+    // it. Dropping it from either side ships a service that cannot redeploy when
+    // the shared source changes.
+    for (const service of [lightService, heavyService]) {
+      assert.ok(service, 'both SIPRI bundles must be registered');
+      assert.ok(service.watchPatterns.includes('scripts/_defense-industrial-source.mjs'));
+    }
+    assert.ok(lightService.watchPatterns.includes('scripts/seed-defense-industrial.mjs'));
+    assert.ok(heavyService.watchPatterns.includes('scripts/seed-defense-industrial-suppliers.mjs'));
+    assert.equal(lightService.cronSchedule, '0 3 * * *');
+    assert.equal(heavyService.cronSchedule, '0 4 * * *');
+
     const supplierSeeder = readFileSync(join(root, 'scripts/seed-defense-industrial-suppliers.mjs'), 'utf8');
     assert.match(supplierSeeder, /contentMeta:\s*supplierContentMeta/);
     assert.match(supplierSeeder, /transform:\s*buildArmsSupplierCompletion/);

@@ -32,6 +32,7 @@ import {
   LFS_PRODUCT_ID,
 } from '../scripts/lib/statcan-wds.mjs';
 import { DAY_MIN } from '../scripts/_content-age-helpers.mjs';
+import { __testing__ as healthTesting } from '../api/health.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const changedDoc = JSON.parse(readFileSync(resolve(here, 'fixtures/statcan-wds/changed-cube-list.json'), 'utf8'));
@@ -361,7 +362,7 @@ test('StatCan scored freshness is invariant across UTC, Toronto, and Dubai proce
   ]);
 });
 
-test('the StatCan and BoC EMPTY waivers are retired, and the 08:00 cron stays documented', () => {
+test('the StatCan and BoC EMPTY waivers are retired with independent issue ownership', () => {
   // Was: pinned both waivers' exact anchors, to prove they used the real 08:00
   // UTC tick rather than a mistaken 13:00 one. Both probes now publish, so the
   // monitor reports them as "no longer reported; remove it" and #6799 pruned
@@ -382,6 +383,14 @@ test('the StatCan and BoC EMPTY waivers are retired, and the 08:00 cron stays do
       `${name} publishes again; do not suppress a future recurrence`,
     );
   }
+
+  assert.match(seederSrc, /Issue #6676\./, 'the StatCan seeder must point to its own tracking issue');
+  assert.doesNotMatch(seederSrc, /Issue #6616\./, 'the StatCan seeder must not point to the BoC issue');
+  assert.equal(
+    healthTesting.SEED_META.statcanWds.cutover?.issue,
+    6676,
+    'the StatCan health cutover must point to its own tracking issue',
+  );
 
   // The 13:00 anchor was never a real cron. Keep it out of every surface.
   assert.doesNotMatch(healthSrc, /2026-08-16T13:00/);
