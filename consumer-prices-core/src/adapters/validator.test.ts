@@ -380,7 +380,7 @@ describe('validateSearchHit — wrong-product admissions (#6267)', () => {
       productName: 'YAHHU Drinking Water Quality Coliforms Test Kit Powder',
       sizeText: '0.04 oz',
       item: item({
-        baseUnit: 'ml', minBaseQty: 6000, maxBaseQty: 10000,
+        baseUnit: 'ml', minBaseQty: 10000, maxBaseQty: 12000,
         negativeTokens: ['sparkling', 'flavored', 'flavoured'],
       }),
     });

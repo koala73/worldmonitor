@@ -1850,7 +1850,7 @@ export class DeckGLMap {
     const filteredImageryScenes = mapLayers.satellites ? this.filterByTimeCached(this.imageryScenes, (s) => s.datetime) : [];
     const filteredWeatherAlerts = mapLayers.weather ? this.filterByTimeCached(this.weatherAlerts, (alert) => alert.onset) : [];
     const canadaRoadItems = mapLayers.canadaRoads ? this.canadaRoads : [];
-    const canadaAlertItems = mapLayers.canadaAlerts ? this.filterByTimeCached(this.canadaAlerts, (alert) => alert.onset) : [];
+    const canadaAlertItems = mapLayers.canadaAlerts ? this.filterByTimeCached(this.canadaAlerts, (alert) => alert.updatedAt) : [];
     const filteredOutages = mapLayers.outages ? this.filterByTimeCached(this.outages, (outage) => outage.pubDate) : [];
     const filteredCableAdvisories = mapLayers.cables ? this.filterByTimeCached(this.cableAdvisories, (advisory) => advisory.reported) : [];
     const filteredFlightDelays = mapLayers.flights ? this.filterByTimeCached(this.flightDelays, (delay) => delay.updatedAt) : [];
@@ -2032,7 +2032,7 @@ export class DeckGLMap {
       this.layerCache.delete('canada-roads-layer');
       this.layerCache.delete('canada-roads-paths-layer');
     }
-    // canadaAlerts layer (Alberta Emergency Alert; ScatterplotLayer dots)
+    // canadaAlerts layer (AB + BC provincial alerts; ScatterplotLayer dots)
     if (mapLayers.canadaAlerts && canadaAlertItems.length > 0) {
       layers.push(this.createCanadaAlertsLayer(canadaAlertItems));
     } else {

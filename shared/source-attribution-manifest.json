@@ -2004,6 +2004,20 @@
       ]
     },
     {
+      "host": "catalogue.data.gov.bc.ca",
+      "provider": "B.C. Evacuation Orders and Alerts",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence - British Columbia (OGL-BC). The B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33 explicitly assigns OGL-BC to this ArcGIS layer.",
+      "attribution": "Contains information licensed under the Open Government Licence - British Columbia. https://catalogue.data.gov.bc.ca/dataset/7efd46d0-b5d3-4dff-af80-d376c42aec33",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/bc-emergency-info.mjs"
+        }
+      ]
+    },
+    {
       "host": "cbcnewshd-f.akamaihd.net",
       "provider": "cbcnewshd-f.akamaihd.net",
       "kind": "feed",
@@ -7846,6 +7860,20 @@
       "references": [
         {
           "path": "server/worldmonitor/market/v1/stock-news-search.ts"
+        }
+      ]
+    },
+    {
+      "host": "services6.arcgis.com",
+      "provider": "B.C. Evacuation Orders and Alerts",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence - British Columbia (OGL-BC). The B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33 explicitly assigns OGL-BC to this ArcGIS layer.",
+      "attribution": "Contains information licensed under the Open Government Licence - British Columbia. https://catalogue.data.gov.bc.ca/dataset/7efd46d0-b5d3-4dff-af80-d376c42aec33",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/bc-emergency-info.mjs"
         }
       ]
     },

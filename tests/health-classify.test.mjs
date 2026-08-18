@@ -1745,8 +1745,7 @@ test('classifyKey: webcams active pointer is registered with seed-meta freshness
 
 const BUNDLE_TICKS = [
   ['staticRefBundleTick', 'static-ref', 'scripts/seed-bundle-static-ref.mjs', 6691],
-  ['armsSuppliersBundleTick', 'arms-suppliers', 'scripts/seed-bundle-arms-suppliers.mjs', 6806],
-  ['militaryBasesBundleTick', 'military-bases', 'scripts/seed-bundle-military-bases.mjs', 6806],
+  ['staticRefHeavyBundleTick', 'static-ref-heavy', 'scripts/seed-bundle-static-ref-heavy.mjs', 6806],
 ];
 
 test('classifyKey: each bundle tick heartbeat goes EMPTY when the cron never fired and STALE when it freezes', () => {

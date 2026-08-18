@@ -359,6 +359,7 @@ describe('crawlable content corpus deployment contracts', () => {
     assert.ok(vercelIgnoreSource.includes("'docs/snapshots/'"));
     for (const path of [
       'docs/docs.json',
+      'scripts/build-use-cases.mjs',
       'scripts/crawlable-sources-page.mjs',
       'scripts/source-origin.mjs',
       'scripts/source-origin.d.mts',
@@ -388,6 +389,7 @@ describe('crawlable content corpus deployment contracts', () => {
 
       for (const path of [
         'docs/docs.json',
+        'scripts/build-use-cases.mjs',
         'scripts/crawlable-sources-page.mjs',
         'scripts/source-origin.mjs',
         'scripts/source-origin.d.mts',

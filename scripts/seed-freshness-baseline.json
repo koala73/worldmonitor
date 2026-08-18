@@ -25,39 +25,63 @@
   "expiresAt": "2026-08-27",
   "acknowledged": [
     {
+      "name": "canadaAlerts",
+      "status": "EMPTY",
+      "issue": 6659,
+      "reason": "canadaAlerts now probes seed-meta:alerts:canada-union. The union key cannot exist until the first Canada bundle tick materializes it, so EMPTY is acknowledged only through that first Railway */5 tick.",
+      "expiresAt": "2026-08-19T12:05:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:alerts:canada-union",
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:05:00.000Z"
+      }
+    },
+    {
+      "name": "canadaAlertsAbSource",
+      "status": "EMPTY",
+      "issue": 6659,
+      "reason": "The Alberta sibling health row is new and cannot publish until its first Canada bundle tick runs. EMPTY is acknowledged only through that first Railway */5 tick; it must block immediately afterward.",
+      "expiresAt": "2026-08-19T12:05:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:alerts:alberta-aea",
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:05:00.000Z"
+      }
+    },
+    {
+      "name": "canadaAlertsBcSource",
+      "status": "EMPTY",
+      "issue": 6659,
+      "reason": "The B.C. source health row is new and cannot publish until its first Canada bundle tick runs. EMPTY is acknowledged only through that first Railway */5 tick; it must block immediately afterward.",
+      "expiresAt": "2026-08-19T12:05:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:alerts:bc-emergency-info",
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:05:00.000Z"
+      }
+    },
+    {
       "name": "mineralProduction",
       "status": "EMPTY",
       "issue": 6439,
-      "reason": "USGS/BGS mineral-production probe has never published. Root cause found in #6799: seed-bundle-static-ref admits a section only when its DECLARED worst case fits the budget left on the tick, and Arms-Suppliers burned 390s of the 570s budget before failing gracefully, so this section was deferred on every tick and never ran. The concurrency fix (#6807) brings Arms-Suppliers to ~277s, which leaves room for this 190s reservation. Re-anchored to the first 03:00 UTC tick after that deploy; EMPTY after it is a real problem.",
-      "expiresAt": "2026-08-18T03:00:00.000Z",
+      "reason": "Re-anchored to seed-bundle-static-ref-heavy's first tick (#6806). The previous acknowledgement expired at 2026-08-18T03:00Z on the very tick that deferred this section by 13 seconds: Arms-Suppliers measured 371s of leftover's 570s budget and Submarine-Cables took 22s more, leaving 177s against a 190s reservation. The concurrency fix (#6807) was not enough because the ordering question survived it. Mineral-Production now sits in a 3-member bundle whose lead slot rotates daily, so it leads every third tick and fits behind either heavy member on the other two (371+190=561s, 335+190=525s). EMPTY after its first scheduled run is a real problem.",
+      "expiresAt": "2026-08-19T04:00:00.000Z",
       "cutover": {
         "probeKey": "seed-meta:supply-chain:mineral-production",
-        "activatedAt": "2026-08-17T04:00:00.000Z",
-        "firstScheduledRunAt": "2026-08-18T03:00:00.000Z"
+        "activatedAt": "2026-08-18T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T04:00:00.000Z"
       }
     },
     {
-      "name": "armsSuppliersBundleTick",
+      "name": "staticRefHeavyBundleTick",
       "status": "EMPTY",
       "issue": 6806,
-      "reason": "New 1-section arms-suppliers cron (#6806 PR1). The heartbeat key does not exist until the planned Railway service is provisioned and fires `0 4 * * *`. EMPTY before that first scheduled tick is the deploy window, not a frozen scheduler.",
-      "expiresAt": "2026-08-18T04:00:00.000Z",
+      "reason": "New seed-bundle-static-ref-heavy cron (#6806), one service carrying Arms-Suppliers, Military-Bases and Mineral-Production. The heartbeat key does not exist until the Railway service is provisioned and fires `0 4 * * *`. EMPTY before that first scheduled tick is the deploy window, not a frozen scheduler. This entry replaces the two planned 1-section siblings: Railway's service budget is capped at 100 and the fleet is at 81, so three isolated services for three low-cadence members was not a trade worth making when the runner's per-tick deferral already separates them.",
+      "expiresAt": "2026-08-19T04:00:00.000Z",
       "cutover": {
-        "probeKey": "bundle:heartbeat:arms-suppliers",
-        "activatedAt": "2026-08-17T17:40:00.000Z",
-        "firstScheduledRunAt": "2026-08-18T04:00:00.000Z"
-      }
-    },
-    {
-      "name": "militaryBasesBundleTick",
-      "status": "EMPTY",
-      "issue": 6806,
-      "reason": "New 1-section military-bases cron (#6806 PR1). Same add-then-remove cutover as arms-suppliers: EMPTY until the planned service's first `0 5 * * *` fire is expected. After expiry, silence is a real frozen scheduler.",
-      "expiresAt": "2026-08-18T05:00:00.000Z",
-      "cutover": {
-        "probeKey": "bundle:heartbeat:military-bases",
-        "activatedAt": "2026-08-17T17:40:00.000Z",
-        "firstScheduledRunAt": "2026-08-18T05:00:00.000Z"
+        "probeKey": "bundle:heartbeat:static-ref-heavy",
+        "activatedAt": "2026-08-18T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T04:00:00.000Z"
       }
     }
   ]
