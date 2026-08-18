@@ -141,7 +141,23 @@ describe('content attribution contract', () => {
     assert.equal(inferLandingPageFamily('/pro'), 'pricing');
     assert.equal(inferLandingPageFamily('/mcp'), 'developer_mcp');
     assert.equal(inferLandingPageFamily('/docs/api-reference'), 'documentation');
+    assert.equal(inferLandingPageFamily('/use-cases'), 'use-cases');
+    assert.equal(inferLandingPageFamily('/use-cases/monitor-country-risk/'), 'use-cases');
     assert.equal(inferLandingPageFamily('/crafted-by-a-user'), 'unknown');
+  });
+
+  it('accepts the bounded use-cases attribution identity', () => {
+    const attribution = normalizeContentAttribution({
+      source: 'worldmonitor-use-cases',
+      medium: 'owned-content',
+      campaign: 'monitor-country-risk',
+      destination: 'dashboard',
+      placement: 'use-case-cta-dashboard',
+      landingPageFamily: 'use-cases',
+    });
+    assert.equal(attribution.source, 'worldmonitor-use-cases');
+    assert.equal(attribution.placement, 'use-case-cta-dashboard');
+    assert.equal(attribution.landingPageFamily, 'use-cases');
   });
 
   it('captures a direct handoff once, cleans the URL, and persists the record', () => {

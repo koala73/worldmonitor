@@ -31,13 +31,15 @@ function section(label) {
   return found;
 }
 
-test('declares exactly the six Canada members', () => {
+test('declares exactly the eight Canada members', () => {
   assert.deepEqual(
     sections.map((s) => s.label).sort(),
     [
       'Alberta-Emergency-Alert',
+      'BC-Emergency-Info',
       'BC-Open511',
       'Provincial-511',
+      'SaskAlert',
       'TTC-Alerts',
       'Toronto-Roads',
       'VIA-Rail-Live',
@@ -55,6 +57,8 @@ test('per-member cadence is the declared one, not TTC\'s cron inherited', () => 
     ['Toronto-Roads', 2 * HOUR],
     ['BC-Open511', 30 * MIN],
     ['Alberta-Emergency-Alert', 15 * MIN],
+    ['BC-Emergency-Info', 15 * MIN],
+    ['SaskAlert', 15 * MIN],
     ['VIA-Rail-Live', 15 * MIN],
     ['TTC-Alerts', 5 * MIN],
   ];
@@ -77,7 +81,9 @@ test('seed-meta keys follow runSeed(domain, resource), not the canonical key', (
     'Provincial-511': ['seed-meta:infra:ontario-511', 'infra:ontario-511:v1'],
     'Toronto-Roads': ['seed-meta:infra:toronto-roads', 'infra:toronto-roads:v1'],
     'BC-Open511': ['seed-meta:infra:bc-open511', 'infra:bc-open511:v1'],
-    'Alberta-Emergency-Alert': ['seed-meta:alerts:alberta-aea', 'alerts:alberta-aea:v1'],
+    'Alberta-Emergency-Alert': ['seed-meta:alerts:alberta-aea', 'alerts:canada:alberta-aea:v1'],
+    'BC-Emergency-Info': ['seed-meta:alerts:bc-emergency-info', 'alerts:canada:bc-evacuation:v1'],
+    'SaskAlert': ['seed-meta:alerts:saskalert', 'alerts:canada:saskalert:v1'],
     'VIA-Rail-Live': ['seed-meta:transit:viarail-live', 'transit:viarail:live'],
     // The canonical key is transit:ttc:alerts:v1 but the resource is
     // 'ttc-alerts', so the meta key takes a HYPHEN. api/health.js watched
@@ -223,7 +229,7 @@ test('every member’s TTL and health staleness budget cover its bundle interval
     checked += 1;
   }
 
-  assert.equal(checked, 6, 'all six members must be checked, or this guard is partly vacuous');
+  assert.equal(checked, 8, 'all eight members must be checked, or this guard is partly vacuous');
 });
 
 describe('per-member kill switch (#6711)', () => {

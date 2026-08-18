@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { query } from '../client.js';
+import { query, type QueryExecutor } from '../client.js';
 import type { PriceObservation } from '../models.js';
 
 export interface InsertObservationInput {
@@ -21,21 +21,28 @@ export function hashPayload(payload: Record<string, unknown>): string {
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0, 64);
 }
 
-export async function insertObservation(input: InsertObservationInput): Promise<string> {
+export async function insertObservation(
+  input: InsertObservationInput,
+  execute: QueryExecutor = query,
+): Promise<string> {
   const rawHash = hashPayload(input.rawPayloadJson);
 
-  const existing = await query<{ id: string }>(
-    `SELECT id FROM price_observations WHERE retailer_product_id = $1 AND raw_hash = $2 ORDER BY observed_at DESC LIMIT 1`,
-    [input.retailerProductId, rawHash],
+  // Deduplicate only consecutive identical payloads. Searching the full
+  // history can return an older row after a different observation became
+  // latest; callers could then promote a match while the intervening evidence
+  // remained the row aggregates selected.
+  const existing = await execute<{ id: string; raw_hash: string }>(
+    `SELECT id, raw_hash FROM price_observations WHERE retailer_product_id = $1 ORDER BY observed_at DESC, id DESC LIMIT 1`,
+    [input.retailerProductId],
   );
-  if (existing.rows.length > 0) return existing.rows[0].id;
+  if (existing.rows[0]?.raw_hash === rawHash) return existing.rows[0].id;
 
-  const result = await query<{ id: string }>(
+  const result = await execute<{ id: string }>(
     `INSERT INTO price_observations
       (retailer_product_id, scrape_run_id, observed_at, price, list_price, promo_price,
        currency_code, unit_price, unit_basis_qty, unit_basis_unit, in_stock, promo_text,
        raw_payload_json, raw_hash)
-     VALUES ($1,$2,NOW(),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+     VALUES ($1,$2,clock_timestamp(),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
      RETURNING id`,
     [
       input.retailerProductId,
@@ -65,7 +72,7 @@ export async function getLatestObservations(
     `SELECT DISTINCT ON (retailer_product_id) *
      FROM price_observations
      WHERE retailer_product_id = ANY($1) AND in_stock = true
-     ORDER BY retailer_product_id, observed_at DESC`,
+     ORDER BY retailer_product_id, observed_at DESC, id DESC`,
     [retailerProductIds],
   );
   return result.rows;

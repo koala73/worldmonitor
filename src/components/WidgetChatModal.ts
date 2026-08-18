@@ -6,6 +6,7 @@ import { escapeHtml } from '@/utils/sanitize';
 import { widgetAgentHealthUrl, widgetAgentUrl } from '@/utils/proxy';
 import { wrapWidgetHtml, wrapProWidgetHtml } from '@/utils/widget-sanitizer';
 import { track } from '@/services/analytics';
+import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import { reportEntitlementDesync } from '@/services/entitlement-desync-telemetry';
 import { classifyPremiumDenial, type ClientEntitlementBelief } from '@/services/premium-denial';
 import { readClientEntitlementBelief } from '@/services/panel-gating';
@@ -47,6 +48,7 @@ const PRO_EXAMPLE_PROMPT_KEYS = [
 ] as const;
 
 let overlay: HTMLElement | null = null;
+let focusTrap: FocusTrap | null = null;
 let abortController: AbortController | null = null;
 let clientTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -100,6 +102,9 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
 
   overlay = document.createElement('div');
   overlay.className = 'modal-overlay active';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', options.mode === 'modify' ? t('widgets.modifyTitle') : t('widgets.chatTitle'));
 
   const modal = document.createElement('div');
   modal.className = 'modal widget-chat-modal';
@@ -180,6 +185,8 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
 
   const escHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') closeWidgetChatModal(); };
   document.addEventListener('keydown', escHandler);
+  focusTrap = createFocusTrap(overlay);
+  focusTrap.activate();
 
   actionBtn.addEventListener('click', () => {
     if (!pendingSaveSpec) return;
@@ -422,6 +429,8 @@ export function closeWidgetChatModal(): void {
   if (overlay) {
     const o = overlay as HTMLElement & { _escHandler?: (e: KeyboardEvent) => void };
     if (o._escHandler) document.removeEventListener('keydown', o._escHandler);
+    focusTrap?.deactivate();
+    focusTrap = null;
     overlay.remove();
     overlay = null;
   }

@@ -40,7 +40,7 @@ const CONTENT_MEASURE_UNITS = new Set(['g', 'ml']);
 const DENSITY_G_PER_ML_MIN = 0.8;
 const DENSITY_G_PER_ML_MAX = 1.2;
 
-export type SizeWindowStatus = 'pass' | 'fail' | 'unit-mismatch' | 'unknown';
+export type SizeWindowStatus = 'pass' | 'fail' | 'unit-mismatch' | 'absent' | 'unverified';
 
 export interface ValidatorInput {
   canonicalName: string;
@@ -136,11 +136,15 @@ function evaluateSizeWindow(
   sizeText: string | undefined,
   item: ValidatorInput['item'],
 ): { status: SizeWindowStatus; baseQty: number | null; baseUnit: string | null } {
-  const noSize = { status: 'unknown' as const, baseQty: null, baseUnit: null };
-  if (item.minBaseQty == null && item.maxBaseQty == null) return noSize;
-  if (!sizeText) return noSize;
+  // `absent` = nothing to verify (no window configured, or no sizeText at all).
+  // `unverified` = a size was present but we declined or failed to judge it
+  // (unparseable text, or a deliberate carve-out). Downstream scoring treats
+  // these differently — see sizeComponent in validateSearchHit (#6868).
+  const absent = { status: 'absent' as const, baseQty: null, baseUnit: null };
+  if (item.minBaseQty == null && item.maxBaseQty == null) return absent;
+  if (!sizeText) return absent;
   const parsed = parseSize(sizeText);
-  if (!parsed) return noSize;
+  if (!parsed) return { status: 'unverified', baseQty: null, baseUnit: null };
 
   const min = item.minBaseQty ?? 0;
   const max = item.maxBaseQty ?? Number.POSITIVE_INFINITY;
@@ -148,7 +152,7 @@ function evaluateSizeWindow(
   if (parsed.baseUnit !== item.baseUnit) {
     // A count unit on either side carries no content information at all.
     if (!CONTENT_MEASURE_UNITS.has(item.baseUnit) || !CONTENT_MEASURE_UNITS.has(parsed.baseUnit)) {
-      return { status: 'unknown', baseQty: parsed.baseQuantity, baseUnit: parsed.baseUnit };
+      return { status: 'unverified', baseQty: parsed.baseQuantity, baseUnit: parsed.baseUnit };
     }
     // Both sides measure content, in different dimensions. Convert across the
     // density band and reject only when NO plausible density lands the product
@@ -160,7 +164,7 @@ function evaluateSizeWindow(
         : [parsed.baseQuantity * DENSITY_G_PER_ML_MIN, parsed.baseQuantity * DENSITY_G_PER_ML_MAX];
     const plausible = hi >= min && lo <= max;
     return {
-      status: plausible ? 'unknown' : 'unit-mismatch',
+      status: plausible ? 'unverified' : 'unit-mismatch',
       baseQty: parsed.baseQuantity,
       baseUnit: parsed.baseUnit,
     };
@@ -176,7 +180,7 @@ export function validateSearchHit(input: ValidatorInput): ValidatorResult {
     tokenOverlap: 0,
     negativeTokenHit: null,
     nonFoodIndicatorHit: null,
-    sizeWindow: 'unknown',
+    sizeWindow: 'absent',
     extractedBaseQty: null,
     extractedBaseUnit: null,
   };
@@ -217,8 +221,15 @@ export function validateSearchHit(input: ValidatorInput): ValidatorResult {
 
   // Score combines positive signals even when hard-failing, so candidate rows
   // retain their relative quality for later review.
-  // Weights: token overlap 0.55, size 0.35 (or 0.2 neutral when unknown), class-clean 0.10.
-  const sizeComponent = sizeEval.status === 'pass' ? 0.35 : sizeEval.status === 'unknown' ? 0.2 : 0;
+  // Weights: token overlap 0.55, size 0.35 on pass / 0.2 when absent / 0.05
+  // when unverified (#6868), class-clean 0.10. The absent/unverified split
+  // keeps "nothing to check" publishing at 0.85 while "could not verify"
+  // lands at 0.70 — below AUTO_MATCH_THRESHOLD — on full overlap alone.
+  const sizeComponent =
+    sizeEval.status === 'pass' ? 0.35
+    : sizeEval.status === 'absent' ? 0.2
+    : sizeEval.status === 'unverified' ? 0.05
+    : 0;
   const classClean = nonFood || negHit ? 0 : 0.1;
   const score = Math.min(1, Math.max(0, overlap * 0.55 + sizeComponent + classClean));
 

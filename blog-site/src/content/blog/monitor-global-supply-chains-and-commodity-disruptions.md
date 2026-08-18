@@ -192,6 +192,8 @@ Enterprise supply chain risk platforms (Resilinc, Everstream Analytics, Interos)
 
 It's not a replacement for a full supply chain management platform. It's the situational awareness layer that tells you where to look, before your logistics system shows delays. See how World Monitor compares to [traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
 
+For the evergreen monitoring procedure that keeps this workflow durable and product-handoff oriented, see [Monitor supply-chain disruptions](/use-cases/monitor-supply-chain-disruptions/). This article remains supporting editorial around Commodity Monitor surfaces.
+
 ## Frequently Asked Questions
 
 **How often are commodity prices updated?**

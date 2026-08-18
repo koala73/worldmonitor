@@ -482,7 +482,7 @@
         "outages": "Переключить интернет-отключения",
         "tradeRoutes": "Переключить торговые маршруты",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Переключить на тёмную тему",
@@ -1196,7 +1196,7 @@
         "radiationSpike": "Всплеск радиации",
         "radiationElevated": "Повышенный уровень радиации",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "Землетрясение",
@@ -1304,7 +1304,7 @@
           "geoBoundaries": "Демилитаризованные зоны, линии прекращения огня и спорные границы",
           "ciiChoropleth": "Тепловая карта индекса нестабильности стран — цвета по CII (зелёный=стабильно, красный=критично)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Влияет на: Землетрясения, Погода, Протесты, Сбои"
@@ -1678,7 +1678,9 @@
     "breakingNews": {
       "critical": "СРОЧНО",
       "high": "ВАЖНО",
-      "dismiss": "Скрыть"
+      "dismiss": "Скрыть",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Срочные оповещения",
@@ -3298,7 +3300,8 @@
     "retry": "Retry",
     "refresh": "Refresh",
     "all": "Все",
-    "cancel": "Отмена"
+    "cancel": "Отмена",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "Отображение",

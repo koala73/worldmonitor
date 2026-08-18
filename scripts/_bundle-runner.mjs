@@ -207,6 +207,22 @@ export function sectionWorstCaseMs(section) {
 export const ADMISSION_HEADROOM_MS = 3 * REDIS_READ_TIMEOUT_MS;
 
 /**
+ * Age multiple at which a deferral stops reading as ordinary budget pressure
+ * and starts reading as a stall (#6562 item 4). starvedTick only fires when a
+ * tick publishes nothing; a section can instead be squeezed out on every tick
+ * while healthy siblings keep the bundle green — `ran > 0`, exit 0, and the
+ * deferral is indistinguishable from pressure. At deferral time the runner
+ * already holds the section's seed-meta age, so a deferral whose data is older
+ * than this multiple of the section's own interval is reported loudly
+ * regardless of what else ran. The multiple must clear the 0.8x freshness
+ * floor that makes an ordinary due section deferrable; 2x means at least one
+ * full interval was missed while the section kept losing the budget race. A
+ * single transient blip cannot reach it, so this does not reintroduce the
+ * alert fatigue the GRACEFUL_FAIL exemption exists to prevent.
+ */
+export const STALL_AGE_INTERVAL_MULTIPLE = 2;
+
+/**
  * Sections that can never be admitted, whatever else the tick does. A section
  * whose worst case plus ADMISSION_HEADROOM_MS exceeds the budget fails the
  * runtime admission test even as the first section of an otherwise empty tick.
@@ -496,7 +512,7 @@ export async function runBundle(label, sections, opts = {}) {
     console.log(`[Bundle:${label}] tick heartbeat ${bundleHeartbeatKey(label)}`);
   }
 
-  let ran = 0, skipped = 0, deferred = 0, failed = 0, gracefulFailed = 0;
+  let ran = 0, skipped = 0, deferred = 0, failed = 0, gracefulFailed = 0, stalled = 0;
 
   let disabled = 0;
   for (const section of sections) {
@@ -545,6 +561,20 @@ export async function runBundle(label, sections, opts = {}) {
       const needSec = Math.round(worstCase / 1000);
       console.log(`  [${section.label}] Deferred, needs ${needSec}s (timeout+grace) but only ${remainingSec}s left in bundle budget`);
       deferred++;
+      // #6562 item 4: a deferral is only pressure while the data can still
+      // afford to wait for a later tick. Once the section's seed-meta age
+      // exceeds STALL_AGE_INTERVAL_MULTIPLE of its own interval, it has been
+      // losing the budget race across whole intervals — a stall, and it must
+      // be loud regardless of what else ran (see the exit gate below).
+      if (freshness?.fetchedAt != null && Date.now() - freshness.fetchedAt > section.intervalMs * STALL_AGE_INTERVAL_MULTIPLE) {
+        const ageMin = Math.round((Date.now() - freshness.fetchedAt) / 60_000);
+        const intervalMin = Math.round(section.intervalMs / 60_000);
+        console.error(
+          `  [${section.label}] Deferred, but its data is ${ageMin}min old — over ${STALL_AGE_INTERVAL_MULTIPLE}x its ${intervalMin}min interval. `
+          + 'This is starvation, not pressure: the section keeps losing the budget race while the bundle stays green.',
+        );
+        stalled++;
+      }
       continue;
     }
 
@@ -589,9 +619,11 @@ export async function runBundle(label, sections, opts = {}) {
   const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
   // `disabled:` is appended ONLY when non-zero. This line is the documented
   // observability contract for bundle ticks — tools key off it — so the shape
-  // stays byte-identical when no kill switch is set.
+  // stays byte-identical when no kill switch is set. `stalled:` (this PR)
+  // rides along at the tail for the same reason: it is the starvation signal
+  // #6562 item 4 exists to surface.
   const disabledField = disabled > 0 ? ` disabled:${disabled}` : '';
-  console.log(`[Bundle:${label}] Finished in ${totalSec}s, ran:${ran} skipped:${skipped} deferred:${deferred}${disabledField} failed:${failed} graceful:${gracefulFailed}`);
+  console.log(`[Bundle:${label}] Finished in ${totalSec}s, ran:${ran} skipped:${skipped} deferred:${deferred}${disabledField} failed:${failed} graceful:${gracefulFailed} stalled:${stalled}`);
   // A tick that completed no section while deferring a due one accomplished
   // nothing AND shed work. Deferral only pays for itself if the deferred
   // section runs on a later tick, so this state repeating is a stalled
@@ -620,11 +652,21 @@ export async function runBundle(label, sections, opts = {}) {
       `[Bundle:${label}] ran:0 while ${deferred} due section(s) were deferred — this tick published nothing and shed work. `
       + 'Exiting non-zero: a fully-deferred tick is indistinguishable from a healthy no-op, so it must not report success.',
     );
+  } else if (stalled > 0) {
+    // #6562 item 4: partial starvation. starvedTick above stays scoped to the
+    // published-nothing tick; this branch covers the section that fits the
+    // budget on its own but never beside its siblings. The GRACEFUL_FAIL
+    // exemption does not soften this: a 2x-interval-old deferral cannot be
+    // produced by a single transient blip, so exiting non-zero here pages on
+    // a genuinely stalled member, not on alert fatigue.
+    console.error(
+      `[Bundle:${label}] ${stalled} deferred section(s) are older than ${STALL_AGE_INTERVAL_MULTIPLE}x their interval — starvation while the bundle reported progress. Exiting non-zero.`,
+    );
   } else if (failed === 0 && gracefulFailed > 0) {
     // Graceful-only run (transient skips, no hard failures): exit 0 so Railway
     // does not paint CRASHED and fire a spurious alert. Real staleness is caught
     // independently by the /api/health freshness monitor keyed on seed-meta TTL.
     console.log(`[Bundle:${label}] ${gracefulFailed} graceful fetch skip(s), no hard failures — no data lost, exiting 0 (not a crash)`);
   }
-  process.exit(failed > 0 || starvedTick ? 1 : 0);
+  process.exit(failed > 0 || starvedTick || stalled > 0 ? 1 : 0);
 }

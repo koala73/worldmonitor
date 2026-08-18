@@ -84,6 +84,12 @@ const publisherMetadataFeed = (provider) => ({
  * become a provider rename or regroup.
  */
 export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
+  'bc-evacuation-orders-alerts': Object.freeze({
+    provider: 'B.C. Evacuation Orders and Alerts',
+    memberHosts: Object.freeze(['catalogue.data.gov.bc.ca', 'services6.arcgis.com']),
+    reason: 'The B.C. catalogue record supplies the licence for the ArcGIS evacuation dataset.',
+    reviewReference: 'Issue #6659 source-rights probe',
+  }),
   interfax: Object.freeze({
     provider: 'Interfax',
     memberHosts: Object.freeze(['interfax.com', 'www.interfax.ru']),
@@ -215,10 +221,30 @@ const PROVIDER_OVERRIDES = {
     attribution: 'DriveBC Open511 (Province of British Columbia). Licensed under OGL-BC. https://api.open511.gov.bc.ca/help',
     status: 'reviewed',
   },
+  'catalogue.data.gov.bc.ca': {
+    provider: 'B.C. Evacuation Orders and Alerts',
+    identityGroup: 'bc-evacuation-orders-alerts',
+    license: 'Open Government Licence - British Columbia (OGL-BC). The B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33 explicitly assigns OGL-BC to this ArcGIS layer.',
+    attribution: 'Contains information licensed under the Open Government Licence - British Columbia. https://catalogue.data.gov.bc.ca/dataset/7efd46d0-b5d3-4dff-af80-d376c42aec33',
+    status: 'reviewed',
+  },
+  'services6.arcgis.com': {
+    provider: 'B.C. Evacuation Orders and Alerts',
+    identityGroup: 'bc-evacuation-orders-alerts',
+    license: 'Open Government Licence - British Columbia (OGL-BC). The B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33 explicitly assigns OGL-BC to this ArcGIS layer.',
+    attribution: 'Contains information licensed under the Open Government Licence - British Columbia. https://catalogue.data.gov.bc.ca/dataset/7efd46d0-b5d3-4dff-af80-d376c42aec33',
+    status: 'reviewed',
+  },
   'www.alberta.ca': {
     provider: 'Alberta Emergency Alert',
     license: 'Alberta.ca terms of use. Open Government Licence - Alberta exists on the open.alberta.ca licence page but is not bound to the AEA Atom feed on a live dataset page (the alberta-emergency-alert.aspx page has no OGL statement).',
     attribution: 'Alberta Emergency Alert, Government of Alberta. https://www.alberta.ca/alberta-emergency-alert.aspx',
+    status: 'terms-review',
+  },
+  'emergencyalert.saskatchewan.ca': {
+    provider: 'SaskAlert',
+    license: 'Public SaskAlert mobile JSON at /sapublic/feed.json plus same-host CAP 1.2 JSON details. Government of Saskatchewan website terms exclude some connected subsites; this host is the official public alert feed authorized for canadaAlerts ingest under #6659. Not Pelmorex LMD.',
+    attribution: 'SaskAlert, Government of Saskatchewan. https://emergencyalert.saskatchewan.ca/',
     status: 'terms-review',
   },
   'api.elections.kalshi.com': {
@@ -579,6 +605,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Excluded from the provider count: user-configured MCP connector.',
     status: 'excluded',
   },
+  'search.parallel.ai': {
+    provider: 'Parallel Search MCP',
+    license: 'Excluded: optional user-configured MCP connector',
+    attribution: 'Excluded from the provider count: user-configured MCP connector.',
+    status: 'excluded',
+  },
   'api.example.com': {
     provider: 'Example API placeholder',
     license: 'Excluded: documentation/test placeholder',
@@ -706,9 +738,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '05ff5054ce1a277d10772f75031895a7bf3916c4097305b45907f794cc130faf',
-  reason: 'Add reviewed Polish publisher identities for PAP, Gazeta Wyborcza, Polityka, Onet, OKO.press, and TVP Info while retaining the prior site-scoped and crisis-desk identities.',
-  reviewReference: 'PR #6662; PR #6670; PR #6736; PR #6840; issues #6813-#6830; Annahar Lebanon follow-up; Polish depth follow-up',
+  sha256: '1ba8f66f93005892bafe66446c06638e1c068f829492192a609eb2320e6a4d7b',
+  reason: 'Add the SaskAlert public JSON identity for emergencyalert.saskatchewan.ca under #6659, while retaining the reviewed B.C. Evacuation Orders and Alerts identity and the prior publisher identities.',
+  // A URL cited here is scanned like any other: this file sits inside
+  // SOURCE_ROOTS, so citing a host that is not already a registered source
+  // invents a provider row for it. The B.C. catalogue URLs above are safe
+  // because that host is itself an observed source; parallel.ai is not.
+  reviewReference: 'Issue #6659 SaskAlert public JSON ingest; PR #6447 (vendor-disclosed contribution; Parallel customer terms served from the endpoint via x-parallel-terms); B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {

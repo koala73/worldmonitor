@@ -990,7 +990,7 @@ export class GlobeMap {
           }
           if (isAllowedPreviewUrl(d.previewUrl)) {
             const safeHref = escapeHtml(new URL(d.previewUrl!).href);
-            label += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview">`;
+            label += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview" alt="">`;
           }
           return label;
         }
@@ -1702,7 +1702,7 @@ export class GlobeMap {
       }
       if (isAllowedPreviewUrl(d.previewUrl)) {
         const safeHref = escapeHtml(new URL(d.previewUrl!).href);
-        html += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview">`;
+        html += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview" alt="">`;
       }
     } else if (d._kind === 'webcam') {
       html = '';
@@ -1951,9 +1951,9 @@ export class GlobeMap {
     setTrustedHtml(el, trustedHtml(`
       <span class="globe-beta-badge">BETA</span>
       <div class="zoom-controls">
-        <button class="map-btn zoom-in"    title="Zoom in">+</button>
-        <button class="map-btn zoom-out"   title="Zoom out">-</button>
-        <button class="map-btn zoom-reset" title="Reset view">&#8962;</button>
+        <button class="map-btn zoom-in"    title="Zoom in" aria-label="Zoom in">+</button>
+        <button class="map-btn zoom-out"   title="Zoom out" aria-label="Zoom out">-</button>
+        <button class="map-btn zoom-reset" title="Reset view" aria-label="Reset view">&#8962;</button>
       </div>`, "legacy direct innerHTML migration"));
     this.container.appendChild(el);
     el.addEventListener('click', (e) => {

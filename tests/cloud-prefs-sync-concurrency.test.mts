@@ -667,3 +667,164 @@ describe('cloud preference write serialization', () => {
     });
   });
 });
+
+// #4746 - two same-user tabs share one KEY_DIRTY_KEYS entry. A faithful
+// simulation needs each tab's install() patch to fire only for that tab's
+// writes, so each tab gets its own Storage prototype over one shared backing
+// map (a single shared prototype would stack both patches and make tab A
+// observe tab B's writes, which real renderer isolation never does).
+async function runTwoTabDirtyKeyHarness(
+  drive: (
+    tabA: Awaited<ReturnType<typeof loadCloudPrefsModule>>,
+    tabB: Awaited<ReturnType<typeof loadCloudPrefsModule>>,
+    readPersistedDirtyKeys: () => string[],
+    withTabA: <T>(fn: () => Promise<T>) => Promise<T>,
+    withTabB: <T>(fn: () => Promise<T>) => Promise<T>,
+  ) => Promise<void>,
+): Promise<void> {
+  const backing = new Map<string, string>();
+  const makeStorageClass = () => class SharedBackingStorage {
+    get length(): number { return backing.size; }
+    getItem(key: string): string | null { return backing.has(key) ? backing.get(key)! : null; }
+    setItem(key: string, value: string): void { backing.set(key, String(value)); }
+    removeItem(key: string): void { backing.delete(key); }
+    clear(): void { backing.clear(); }
+    key(index: number): string | null { return [...backing.keys()][index] ?? null; }
+  };
+  const StorageA = makeStorageClass();
+  const StorageB = makeStorageClass();
+  const storageA = new StorageA();
+  const storageB = new StorageB();
+  const documentListeners = new Map<string, Array<() => void>>();
+  const originals = {
+    CustomEvent: globalThis.CustomEvent,
+    Storage: globalThis.Storage,
+    document: globalThis.document,
+    localStorage: globalThis.localStorage,
+    window: globalThis.window,
+  };
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const originalCloudPrefsToken = Object.getOwnPropertyDescriptor(globalThis, '__cloudPrefsToken');
+  const originalFetch = globalThis.fetch;
+
+  const installGlobals = (StorageClass: unknown, storageInstance: unknown): void => {
+    Object.assign(globalThis, {
+      __cloudPrefsToken: 'two-tab-token',
+      CustomEvent: class TestCustomEvent {
+        detail: unknown;
+        type: string;
+        constructor(type: string, init?: { detail?: unknown }) {
+          this.type = type;
+          this.detail = init?.detail;
+        }
+      },
+      Storage: StorageClass,
+      document: {
+        visibilityState: 'visible',
+        addEventListener(type: string, listener: () => void) {
+          const arr = documentListeners.get(type) ?? [];
+          arr.push(listener);
+          documentListeners.set(type, arr);
+        },
+        body: { appendChild() {} },
+        createElement() { return { addEventListener() {}, className: '', innerHTML: '', remove() {} }; },
+        querySelector() { return null; },
+      },
+      localStorage: storageInstance,
+      window: {
+        addEventListener() {},
+        dispatchEvent() { return true; },
+      },
+    });
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: { onLine: true },
+    });
+  };
+
+  globalThis.fetch = (async (_input: unknown, init: RequestInit = {}) => {
+    const method = init.method ?? 'GET';
+    if (method === 'GET') {
+      return Response.json({ data: {}, schemaVersion: 2, syncVersion: 0 });
+    }
+    return Response.json({ ok: true, syncVersion: 1 });
+  }) as typeof fetch;
+
+  const readPersistedDirtyKeys = (): string[] => {
+    const raw = backing.get('wm-cloud-prefs-dirty-keys');
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw) as { keys?: unknown };
+      return Array.isArray(parsed.keys) ? parsed.keys.filter((k): k is string => typeof k === 'string') : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const withTabA = async <T>(fn: () => Promise<T>): Promise<T> => {
+    installGlobals(StorageA, storageA);
+    return fn();
+  };
+  const withTabB = async <T>(fn: () => Promise<T>): Promise<T> => {
+    installGlobals(StorageB, storageB);
+    return fn();
+  };
+
+  try {
+    const tabA = await withTabA(() => loadCloudPrefsModule());
+    const tabB = await withTabB(() => loadCloudPrefsModule());
+    await drive(tabA, tabB, readPersistedDirtyKeys, withTabA, withTabB);
+  } finally {
+    Object.assign(globalThis, originals);
+    if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+    if (originalCloudPrefsToken) Object.defineProperty(globalThis, '__cloudPrefsToken', originalCloudPrefsToken);
+    else delete (globalThis as { __cloudPrefsToken?: unknown }).__cloudPrefsToken;
+    globalThis.fetch = originalFetch;
+  }
+}
+describe('two-tab dirty-key persistence (#4746)', () => {
+  it('unions markers across concurrent same-user tabs and settles only the uploading tab keys', async () => {
+    await runTwoTabDirtyKeyHarness(async (tabA, tabB, readPersistedDirtyKeys, withTabA, withTabB) => {
+      // Each tab signs in and installs while ITS Storage prototype is the
+      // global one, so its write patch lands on its own prototype. Writes and
+      // uploads then run through the same per-tab globals — exactly the
+      // renderer isolation two real tabs have over one shared profile.
+      await withTabA(async () => {
+        await tabA.onSignIn('user-1', 'full');
+        tabA.install('full');
+      });
+      await withTabB(async () => {
+        await tabB.onSignIn('user-1', 'full');
+        tabB.install('full');
+      });
+
+      // Tab A dirties the watchlist key. Old code: disk = {A}.
+      await withTabA(async () => {
+        globalThis.localStorage.setItem('wm-market-watchlist-v1', 'tab-a-edit');
+      });
+      assert.deepEqual(readPersistedDirtyKeys(), ['wm-market-watchlist-v1']);
+
+      // Tab B (same user, same browser profile) dirties a different key.
+      // Old wholesale overwrite: disk = {B}, A's marker lost.
+      await withTabB(async () => {
+        globalThis.localStorage.setItem('worldmonitor-theme', 'tab-b-edit');
+      });
+      assert.deepEqual(
+        [...readPersistedDirtyKeys()].sort(),
+        ['wm-market-watchlist-v1', 'worldmonitor-theme'],
+        'the second tab write must union, not clobber, the first tab marker',
+      );
+
+      // Tab A uploads and settles only its own key: B's still-pending marker
+      // must survive on disk for B's own upload/hydrate.
+      await withTabA(async () => {
+        await tabA.syncNow();
+      });
+      assert.deepEqual(
+        readPersistedDirtyKeys(),
+        ['worldmonitor-theme'],
+        'a settled upload must remove only the keys that tab durably synced',
+      );
+    });
+  });
+});

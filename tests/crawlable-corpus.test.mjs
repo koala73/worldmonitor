@@ -109,6 +109,18 @@ describe('sources catalog domain assignment', () => {
     assert.equal(catalog[0].domainId, 'infrastructure');
   });
 
+  it('assigns SaskAlert to environment instead of failing the corpus build', () => {
+    const catalog = buildSourceCatalog([
+      {
+        provider: 'SaskAlert',
+        host: 'emergencyalert.saskatchewan.ca',
+        kind: 'structured',
+        references: [{ path: 'scripts/lib/saskalert.mjs' }],
+      },
+    ]);
+    assert.equal(catalog[0].domainId, 'environment');
+  });
+
   it('still fails closed when a structured provider has no catalog domain', () => {
     assert.throws(
       () => buildSourceCatalog([{
@@ -506,6 +518,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.crises.count, 4);
       assert.equal(manifest.sections.tools.count, 2);
       assert.equal(manifest.sections.research.count, 1);
+      assert.equal(manifest.sections.useCases.count, 3);
       assert.equal(manifest.sections.sources.count, 1);
       assert.equal(manifest.generatorContentVersion, '2026-08-12');
       const sitemapEntries = buildSitemapEntries({
@@ -535,6 +548,8 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.tools.routes,
         manifest.sections.research.index,
         ...manifest.sections.research.routes,
+        manifest.sections.useCases.index,
+        ...manifest.sections.useCases.routes,
         manifest.sections.changelog.index,
         ...manifest.sections.changelog.routes,
         manifest.sections.sources.index,

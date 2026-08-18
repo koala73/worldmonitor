@@ -8,6 +8,7 @@ public/crises/
 public/tools/
 public/reference/
 public/research/
+public/use-cases/
 public/sources/
 public/crawlable-corpus.json
 # Volatile inventory metrics are derived during install/build. Stable product
@@ -50,6 +51,10 @@ CLAUDE.md
 .windsurf/
 skills/
 !api/skills/
+# Cursor project skills (agentskills.io). The `skills/` rule above would
+# otherwise hide `.agents/skills/` and keep `/sentry-triage` local-only.
+!.agents/skills/
+!.agents/skills/**/
 ideas/
 docs/internal/
 docs/ideation/

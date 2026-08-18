@@ -1850,7 +1850,7 @@ export class DeckGLMap {
     const filteredImageryScenes = mapLayers.satellites ? this.filterByTimeCached(this.imageryScenes, (s) => s.datetime) : [];
     const filteredWeatherAlerts = mapLayers.weather ? this.filterByTimeCached(this.weatherAlerts, (alert) => alert.onset) : [];
     const canadaRoadItems = mapLayers.canadaRoads ? this.canadaRoads : [];
-    const canadaAlertItems = mapLayers.canadaAlerts ? this.filterByTimeCached(this.canadaAlerts, (alert) => alert.onset) : [];
+    const canadaAlertItems = mapLayers.canadaAlerts ? this.filterByTimeCached(this.canadaAlerts, (alert) => alert.updatedAt) : [];
     const filteredOutages = mapLayers.outages ? this.filterByTimeCached(this.outages, (outage) => outage.pubDate) : [];
     const filteredCableAdvisories = mapLayers.cables ? this.filterByTimeCached(this.cableAdvisories, (advisory) => advisory.reported) : [];
     const filteredFlightDelays = mapLayers.flights ? this.filterByTimeCached(this.flightDelays, (delay) => delay.updatedAt) : [];
@@ -2032,7 +2032,7 @@ export class DeckGLMap {
       this.layerCache.delete('canada-roads-layer');
       this.layerCache.delete('canada-roads-paths-layer');
     }
-    // canadaAlerts layer (Alberta Emergency Alert; ScatterplotLayer dots)
+    // canadaAlerts layer (AB + BC + SK provincial alerts; ScatterplotLayer dots)
     if (mapLayers.canadaAlerts && canadaAlertItems.length > 0) {
       layers.push(this.createCanadaAlertsLayer(canadaAlertItems));
     } else {
@@ -5082,7 +5082,7 @@ export class DeckGLMap {
         let imgHtml = `<div class="deckgl-tooltip"><strong>&#128752; ${text(obj.satellite)}</strong><br/>${text(obj.datetime)}<br/>Res: ${Number(obj.resolutionM)}m \u00B7 ${text(obj.mode)}`;
         if (isAllowedPreviewUrl(obj.previewUrl)) {
           const safeHref = escapeHtml(new URL(obj.previewUrl).href);
-          imgHtml += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview">`;
+          imgHtml += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview" alt="">`;
         }
         imgHtml += '</div>';
         return { html: imgHtml };
@@ -5487,9 +5487,9 @@ export class DeckGLMap {
     controls.className = 'map-controls deckgl-controls';
     setTrustedHtml(controls, trustedHtml(`
       <div class="zoom-controls">
-        <button class="map-btn zoom-in" title="${t('components.deckgl.zoomIn')}">+</button>
-        <button class="map-btn zoom-out" title="${t('components.deckgl.zoomOut')}">-</button>
-        <button class="map-btn zoom-reset" title="${t('components.deckgl.resetView')}">&#8962;</button>
+        <button class="map-btn zoom-in" title="${t('components.deckgl.zoomIn')}" aria-label="${t('components.deckgl.zoomIn')}">+</button>
+        <button class="map-btn zoom-out" title="${t('components.deckgl.zoomOut')}" aria-label="${t('components.deckgl.zoomOut')}">-</button>
+        <button class="map-btn zoom-reset" title="${t('components.deckgl.resetView')}" aria-label="${t('components.deckgl.resetView')}">&#8962;</button>
       </div>
       <div class="view-selector">
         <select class="view-select" aria-label="${t('header.selectRegion')}">

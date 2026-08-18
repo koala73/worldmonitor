@@ -79,6 +79,8 @@ Total setup time: about half an hour. Annual cost: less than one hour of the con
 
 Use the workflow to prioritize deeper checks in authoritative datasets, including [World Bank Data](https://data.worldbank.org/) and the [US Treasury sanctions programs and country information](https://ofac.treasury.gov/sanctions-programs-and-country-information). Preserve the source timestamp and distinguish observed facts from analyst inference.
 
+For the evergreen task page that keeps this procedure durable and product-handoff oriented, see [Monitor country risk](/use-cases/monitor-country-risk/). Live country evidence remains on [/countries/](/countries/).
+
 ## Frequently Asked Questions
 
 **What is the difference between country risk and country instability?**

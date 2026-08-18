@@ -2,8 +2,8 @@
 
 // Canada ingest bundle.
 //
-// WHY A BUNDLE, NOT SIX SERVICES: the Canada pack (#6604-#6624) introduced six
-// seeders. Provisioned individually they would consume six Railway slots against
+// WHY A BUNDLE, NOT EIGHT SERVICES: the Canada pack (#6604-#6659) introduced
+// seeders. Provisioned individually they would consume a Railway slot each against
 // a fleet whose own runbook targets 65 services, for a combined measured tick
 // cost of ~33s — 6% of this runner's 570s admission budget. #6670 already made
 // the same call for BoC/StatCan by joining seed-bundle-macro rather than adding
@@ -54,7 +54,11 @@ const CANADA_SECTIONS = [
   { label: 'BC-Open511', script: 'seed-open511.mjs', seedMetaKey: 'seed-meta:infra:bc-open511', canonicalKey: 'infra:bc-open511:v1', intervalMs: 30 * MIN, timeoutMs: 120_000 },
   // Emergency alerts stay at 15 minutes: the payload is tiny and the whole point
   // of the layer is timeliness.
-  { label: 'Alberta-Emergency-Alert', script: 'seed-alberta-emergency-alert.mjs', seedMetaKey: 'seed-meta:alerts:alberta-aea', canonicalKey: 'alerts:alberta-aea:v1', intervalMs: 15 * MIN, timeoutMs: 60_000 },
+  { label: 'Alberta-Emergency-Alert', script: 'seed-alberta-emergency-alert.mjs', seedMetaKey: 'seed-meta:alerts:alberta-aea', canonicalKey: 'alerts:canada:alberta-aea:v1', intervalMs: 15 * MIN, timeoutMs: 60_000 },
+  // OGL-BC GeoJSON evacuation Alert/Order polygons. The seeder writes a
+  // province snapshot, then rebuilds the same canadaAlerts union as Alberta.
+  { label: 'BC-Emergency-Info', script: 'seed-bc-emergency-info.mjs', seedMetaKey: 'seed-meta:alerts:bc-emergency-info', canonicalKey: 'alerts:canada:bc-evacuation:v1', intervalMs: 15 * MIN, timeoutMs: 60_000, dependsOn: ['Alberta-Emergency-Alert'] },
+  { label: 'SaskAlert', script: 'seed-saskalert.mjs', seedMetaKey: 'seed-meta:alerts:saskalert', canonicalKey: 'alerts:canada:saskalert:v1', intervalMs: 15 * MIN, timeoutMs: 60_000, dependsOn: ['BC-Emergency-Info'] },
   // Unofficial mobile JSON. 404 / shape-break degrades to sourceState
   // 'unavailable' and keeps last-good; it never raises SEED_ERROR.
   { label: 'VIA-Rail-Live', script: 'seed-viarail-live.mjs', seedMetaKey: 'seed-meta:transit:viarail-live', canonicalKey: 'transit:viarail:live', intervalMs: 15 * MIN, timeoutMs: 60_000 },

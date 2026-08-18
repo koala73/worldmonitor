@@ -17,6 +17,7 @@ on:
       - 'convex/config/productCatalog.ts'
       - 'scripts/generate-product-config.mjs'
       - 'scripts/generate-public-product-facts.mjs'
+      - 'shared/content-attribution.ts'
       - 'pro-test/**'
       - 'public/pro/**'
 

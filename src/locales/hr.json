@@ -559,7 +559,7 @@
         "outages": "Uključi/isključi ispade interneta",
         "tradeRoutes": "Uključi/isključi trgovačke rute",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Prebedi na tamni način",
@@ -1459,7 +1459,7 @@
         "speciesRecovery": "Oporavak vrsta",
         "renewableInstallations": "Čista energija",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "Zemljotres",
@@ -1567,7 +1567,7 @@
           "geoBoundaries": "Demilitarizirane zone, linije primirja i sporne granice",
           "ciiChoropleth": "Indeks nestabilnosti države toplinska mapa — boji zemlje po CII rezultatu (zelena=stabilna, crvena=kritična)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Utječe na: Zemljotresi, Vrijeme, Protesti, Prekidi"
@@ -1967,7 +1967,9 @@
       "critical": "KRITIČNO",
       "high": "VISOKO",
       "dismiss": "Odbaci",
-      "enableNotifications": "Omogući obavijesti na računalu"
+      "enableNotifications": "Omogući obavijesti na računalu",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Slomljivi alarmi",
@@ -3546,7 +3548,8 @@
     "currentVariant": "(trenutno)",
     "retry": "Pokušaj ponovno",
     "refresh": "Osvježi",
-    "all": "Sve"
+    "all": "Sve",
+    "dismiss": "Dismiss"
   },
   "connectivity": {
     "offlineCached": "Offline — prikazujem memorizirane podatke od {{freshness}}.",

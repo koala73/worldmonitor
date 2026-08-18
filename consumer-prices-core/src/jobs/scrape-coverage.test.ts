@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classifyMatchAdmission,
   classifyValidatorOutcome,
   createScrapeRunStatement,
   DEFAULT_RUN_BUDGET_MS,
@@ -14,6 +15,38 @@ import {
 } from './scrape-coverage.js';
 
 describe('scrape coverage persistence and validator admission contracts', () => {
+  it('uses one admission policy for legacy, auto, and candidate matches', () => {
+    expect(classifyMatchAdmission(undefined)).toEqual({
+      score: 1,
+      status: 'auto',
+      evidence: {},
+    });
+
+    const signals = {
+      tokenOverlap: 1,
+      negativeTokenHit: null,
+      nonFoodIndicatorHit: null,
+      sizeWindow: 'unverified' as const,
+      extractedBaseQty: null,
+      extractedBaseUnit: null,
+    };
+    expect(classifyMatchAdmission({ ok: true, score: 0.7, reasons: [], signals })).toEqual({
+      score: 0.7,
+      status: 'candidate',
+      evidence: { validator: { reasons: [], signals } },
+    });
+    expect(classifyMatchAdmission({ ok: true, score: 0.9, reasons: [], signals })).toEqual({
+      score: 0.9,
+      status: 'auto',
+      evidence: { validator: { reasons: [], signals } },
+    });
+    expect(classifyMatchAdmission({ ok: false, score: 0.95, reasons: ['title-mismatch'], signals })).toEqual({
+      score: 0.95,
+      status: 'candidate',
+      evidence: { validator: { reasons: ['title-mismatch'], signals } },
+    });
+  });
+
   it('persists rejection counts at run creation and completion', () => {
     const create = createScrapeRunStatement('retailer-1');
     expect(create.sql).toContain('rejected_count');
@@ -169,17 +202,19 @@ describe('failure reason tally', () => {
     tally.recordPageFailure([{ provider: 'firecrawl', reason: 'title-mismatch' }]);
     tally.recordParsedZeroProducts();
     tally.recordPinValidatorRejection();
+    tally.recordMatchAdmissionPersistenceFailure();
 
     expect(tally.toJSON()).toEqual({
       'missing-price': 2,
       'title-mismatch': 1,
       'parsed-zero-products': 1,
       'pin-validator-rejected': 1,
+      'match-admission-persist-failed': 1,
     });
     // Every errorsCount++ site in scrape.ts has a matching record* call, so the
     // tally totals the run's errors exactly. A drift here means a new error
     // path shipped without attribution.
-    expect(tally.total).toBe(5);
+    expect(tally.total).toBe(6);
   });
 
   it('omits reasons that never fired rather than emitting zeros', () => {
