@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { describe, test } from 'node:test';
+import { describe, mock, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -95,11 +95,18 @@ describe('GetDemographicsCapability handler read behavior', () => {
   });
 
   test('returns no-store unavailable response on a Redis read error', async () => {
-    const handler = createGetDemographicsCapability(async () => ({ status: 'error', error: new Error('redis down') }));
-    const request = new Request('https://example.test/api/resilience/v1/get-demographics-capability?countryCode=DE');
-    const result = await handler({ request } as never, { countryCode: 'DE' });
-    assert.equal(result.available, false);
-    assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], '1');
+    const warn = mock.method(console, 'warn', () => {});
+    try {
+      const handler = createGetDemographicsCapability(async () => ({ status: 'error', error: new Error('redis down') }));
+      const request = new Request('https://example.test/api/resilience/v1/get-demographics-capability?countryCode=DE');
+      const result = await handler({ request } as never, { countryCode: 'DE' });
+      assert.equal(result.available, false);
+      assert.equal(drainResponseHeaders(request)?.['X-No-Cache'], '1');
+      assert.equal(warn.mock.callCount(), 1);
+      assert.match(String(warn.mock.calls[0].arguments[0]), /\[demographics-capability\] demographics:capability:v1 read failed: redis down/);
+    } finally {
+      warn.mock.restore();
+    }
   });
 
   test('reads the canonical unprefixed key', async () => {

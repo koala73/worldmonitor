@@ -16,6 +16,14 @@ import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 export const DEMOGRAPHICS_CAPABILITY_KEY = 'demographics:capability:v1';
 
+function logReadFailure(key: string, error: unknown): void {
+  if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+    console.error(`[REDIS-TIMEOUT] readCachedJson key=${key}`);
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(`[demographics-capability] ${key} read failed: ${message}`);
+}
+
 type CacheReader = (key: string, raw?: boolean) => Promise<CacheReadResult>;
 type UnknownRecord = Record<string, unknown>;
 type MetricRule = {
@@ -266,6 +274,10 @@ export function createGetDemographicsCapability(
     }
 
     const read = await cacheReader(DEMOGRAPHICS_CAPABILITY_KEY, true);
+    if (read.status === 'error') {
+      logReadFailure(DEMOGRAPHICS_CAPABILITY_KEY, read.error);
+      return markNoStoreFallbackResponse(ctx.request, emptyResponse(countryCode));
+    }
     if (read.status !== 'hit') {
       return markNoStoreFallbackResponse(ctx.request, emptyResponse(countryCode));
     }

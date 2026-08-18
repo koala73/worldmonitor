@@ -21,11 +21,47 @@ import {
   fetchWppStage,
   validateDemographicsPayload,
 } from './_demographics-capability-source.mjs';
-import { loadEnvFile, readSeedSnapshot, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, readSeedSnapshot, runSeed, writeFreshnessMetadataSafely } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
 export const declareRecords = declareDemographicsRecords;
+export const DEMOGRAPHICS_CAPABILITY_COMPLETION_RESOURCE = 'capability-complete';
+
+/**
+ * Stamp the bundle completion marker only after a fully fresh three-stage
+ * publish. Partial/DEGRADED runs still write seed-meta via runSeed, and the
+ * interval gate treats an older or missing completion as due.
+ */
+export async function recordDemographicsCapabilityCompletedRun(
+  snapshot,
+  writeMetadataFn = writeFreshnessMetadataSafely,
+  now = Date.now(),
+) {
+  await writeMetadataFn(
+    'demographics',
+    DEMOGRAPHICS_CAPABILITY_COMPLETION_RESOURCE,
+    declareDemographicsRecords(snapshot),
+    DEMOGRAPHICS_CAPABILITY_SOURCE_VERSION,
+    DEMOGRAPHICS_CAPABILITY_TTL_SECONDS,
+    now,
+  );
+}
+
+export async function demographicsCapabilityAfterPublish(
+  data,
+  writeMetadataFn = writeFreshnessMetadataSafely,
+  now = Date.now(),
+) {
+  const coverage = demographicsStageCoverageMeta(data);
+  if (coverage.status === 'complete') {
+    await recordDemographicsCapabilityCompletedRun(data, writeMetadataFn, now);
+  }
+  return {
+    completionState: coverage.status === 'complete' ? 'OK' : 'DEGRADED',
+    freshnessMetaPatch: { coverage },
+  };
+}
 
 const DEFAULT_STAGE_FETCHERS = Object.freeze({
   wpp: fetchWppStage,
@@ -96,13 +132,7 @@ if (process.argv[1]?.endsWith('seed-demographics-capability.mjs')) {
     maxStaleMin: DEMOGRAPHICS_CAPABILITY_MAX_STALE_MIN,
     contentMeta: demographicsContentMeta,
     maxContentAgeMin: DEMOGRAPHICS_CAPABILITY_MAX_CONTENT_AGE_MIN,
-    afterPublish: async (data) => {
-      const coverage = demographicsStageCoverageMeta(data);
-      return {
-        completionState: coverage.status === 'complete' ? 'OK' : 'DEGRADED',
-        freshnessMetaPatch: { coverage },
-      };
-    },
+    afterPublish: (data) => demographicsCapabilityAfterPublish(data),
     emptyDataIsFailure: true,
     fetchPhaseTimeoutMs: 55_000,
     lockTtlMs: 70_000,

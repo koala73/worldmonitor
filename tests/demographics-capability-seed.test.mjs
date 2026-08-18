@@ -14,7 +14,11 @@ import {
   parseWppCapability,
   validateDemographicsStageCoverage,
 } from '../scripts/_demographics-capability-source.mjs';
-import { fetchDemographicsCapability } from '../scripts/seed-demographics-capability.mjs';
+import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
+import {
+  demographicsCapabilityAfterPublish,
+  fetchDemographicsCapability,
+} from '../scripts/seed-demographics-capability.mjs';
 import { resolveSourceOrigin } from '../scripts/source-origin.mjs';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/demographics-capability/${name}`, import.meta.url), 'utf8');
@@ -91,6 +95,26 @@ describe('demographics partial-stage publication', () => {
       },
     },
   };
+
+  it('marks a failed first-publish stage unavailable without inventing its section', () => {
+    const payload = buildDemographicsPayload({
+      wpp: { status: 'fulfilled', value: { countries: { DE: { medianAgeYears: { value: 46, year: 2026, source: 'new WPP' } } }, fetchedAt: '2026-08-18T00:00:00.000Z', newestObservationYear: 2026 } },
+      education: { status: 'rejected', reason: new Error('WB unavailable') },
+      ilostat: { status: 'fulfilled', value: { countries: { DE: { trainedIndustrialWorkforcePeople: { value: 7_100_000, year: 2025, source: 'new ILO' } } }, fetchedAt: '2026-08-18T00:00:02.000Z', newestObservationYear: 2025 } },
+    }, null, { generatedAt: '2026-08-18T00:00:03.000Z' });
+
+    assert.deepEqual(payload.stages.education, {
+      status: 'unavailable',
+      fetchedAt: null,
+      recordCount: 0,
+      newestObservationYear: null,
+    });
+    assert.equal(payload.stages.wpp.status, 'fresh');
+    assert.equal(payload.stages.ilostat.status, 'fresh');
+    assert.equal(payload.countries.DE.education, undefined);
+    assert.equal(payload.countries.DE.ageStructure.medianAgeYears.value, 46);
+    assert.equal(payload.countries.DE.industrialWorkforce.trainedIndustrialWorkforcePeople.value, 7_100_000);
+  });
 
   it('publishes healthy stages and retains only a failed stage with its original fetchedAt', () => {
     const payload = buildDemographicsPayload({
@@ -202,6 +226,42 @@ describe('demographics partial-stage publication', () => {
       rejectedCount: 0,
     });
   });
+
+  it('stamps the completion marker only after a fully fresh three-stage publish', async () => {
+    const writes = [];
+    const completeResult = await demographicsCapabilityAfterPublish(previous, async (...args) => {
+      writes.push(args);
+    }, 1_755_500_000_000);
+    assert.deepEqual(completeResult, {
+      completionState: 'OK',
+      freshnessMetaPatch: {
+        coverage: {
+          status: 'complete',
+          completedPages: 3,
+          failedPages: 0,
+          completionRatio: 1,
+          rejectedCount: 0,
+        },
+      },
+    });
+    assert.deepEqual(writes, [[
+      'demographics',
+      'capability-complete',
+      1,
+      'demographics-capability-v1',
+      30 * 24 * 60 * 60,
+      1_755_500_000_000,
+    ]]);
+
+    const partialWrites = [];
+    const partial = structuredClone(previous);
+    partial.stages.education.status = 'retained';
+    const partialResult = await demographicsCapabilityAfterPublish(partial, async (...args) => {
+      partialWrites.push(args);
+    }, 1_755_500_000_000);
+    assert.equal(partialResult.completionState, 'DEGRADED');
+    assert.equal(partialWrites.length, 0);
+  });
 });
 
 describe('demographics production registration', () => {
@@ -245,9 +305,36 @@ describe('demographics production registration', () => {
     assert.equal(entry.coverage.status, 'partial');
   });
 
+  it('does not let a partial publish satisfy the 20-day interval gate', async () => {
+    const now = Date.now();
+    const section = {
+      freshnessMetaKey: 'seed-meta:demographics:capability',
+      completionMetaKey: 'seed-meta:demographics:capability-complete',
+      canonicalKey: 'demographics:capability:v1',
+      requireCanonical: true,
+    };
+    const partial = await readSectionFreshness(section, async (key) => {
+      if (key === 'demographics:capability:v1') return { _seed: { fetchedAt: now } };
+      if (key === 'seed-meta:demographics:capability') return { fetchedAt: now };
+      return null;
+    });
+    assert.equal(partial, null);
+
+    const complete = await readSectionFreshness(section, async (key) => {
+      if (key === 'demographics:capability:v1') return { _seed: { fetchedAt: now } };
+      if (key === 'seed-meta:demographics:capability') return { fetchedAt: now };
+      if (key === 'seed-meta:demographics:capability-complete') return { fetchedAt: now };
+      return null;
+    });
+    assert.deepEqual(complete, { fetchedAt: now });
+  });
+
   it('fits the fifth member in the static-reference bundle and watches its runtime closure', () => {
     const bundle = repoFile('scripts/seed-bundle-static-ref.mjs');
-    assert.match(bundle, /label: 'Demographics-Capability'[\s\S]*intervalMs: 20 \* DAY[\s\S]*timeoutMs: 65_000/);
+    assert.match(
+      bundle,
+      /label: 'Demographics-Capability'[\s\S]*freshnessMetaKey: 'seed-meta:demographics:capability'[\s\S]*completionMetaKey: 'seed-meta:demographics:capability-complete'[\s\S]*requireCanonical: true[\s\S]*intervalMs: 20 \* DAY[\s\S]*timeoutMs: 65_000/,
+    );
     const service = JSON.parse(repoFile('scripts/railway-services.json'))
       .find((entry) => entry.service === 'seed-bundle-static-ref');
     for (const path of [

@@ -39,8 +39,9 @@ await runBundle('static-ref', [
   { label: 'Defense-Patents', script: 'seed-defense-patents.mjs', seedMetaKey: 'military:defense-patents', canonicalKey: 'patents:defense:latest', intervalMs: WEEK, timeoutMs: 180_000, requiredEnv: ['USPTO_API_KEY'] },
   { label: 'Chokepoint-Baselines', script: 'seed-chokepoint-baselines.mjs', seedMetaKey: 'energy:chokepoint-baselines', canonicalKey: 'energy:chokepoint-baselines:v1', intervalMs: 400 * DAY, timeoutMs: 60_000 },
   // The data changes annually, but the 20-day refresh interval keeps the
-  // deliberately short 30-day canonical TTL alive and retries a failed source
-  // on the next daily bundle tick. All three upstream stages settle inside the
-  // one bounded process and retain their own last-good section independently.
-  { label: 'Demographics-Capability', script: 'seed-demographics-capability.mjs', seedMetaKey: 'demographics:capability', canonicalKey: 'demographics:capability:v1', intervalMs: 20 * DAY, timeoutMs: 65_000 },
+  // deliberately short 30-day canonical TTL alive. A mixed last-good publish
+  // still stamps seed-meta now, so the completion marker is the only signal
+  // that all three stages were fresh. Without it the daily tick retries
+  // instead of sleeping ~16 days on a partial stack.
+  { label: 'Demographics-Capability', script: 'seed-demographics-capability.mjs', seedMetaKey: 'demographics:capability', canonicalKey: 'demographics:capability:v1', freshnessMetaKey: 'seed-meta:demographics:capability', completionMetaKey: 'seed-meta:demographics:capability-complete', requireCanonical: true, intervalMs: 20 * DAY, timeoutMs: 65_000 },
 ], { maxBundleMs: 570_000, prefetchFreshness: true });
