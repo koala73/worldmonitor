@@ -1304,17 +1304,49 @@ export async function main() {
   }
 }
 
-async function runMeasureFetchOnly() {
-  const result = await measureResilienceStaticFetch();
+export async function runMeasureFetchOnly({ measure = measureResilienceStaticFetch } = {}) {
+  const result = await measure();
   console.log(JSON.stringify(result, null, 2));
-  if (result.adapterCount === 0 || result.failedDatasets.length === result.adapterCount) {
-    throw new Error('Resilience-Static fetch measurement produced no successful adapters');
+  // Any failed adapter disqualifies the run. The citation this feeds records
+  // "11/11 adapters", and a partial fan-out measures SHORTER than a healthy one
+  // — six of the eleven adapters share fetchWorldBankIndicatorRows/fetchJson,
+  // which has no proxy fallback, so one api.worldbank.org block fails all six in
+  // milliseconds. Exiting 0 there would hand the operator a fast, citable, wrong
+  // number in the one direction that argues the timeout down.
+  if (result.adapterCount === 0) {
+    throw new Error('Resilience-Static fetch measurement ran no adapters — nothing was measured');
+  }
+  if (result.failedDatasets.length > 0) {
+    throw new Error(
+      `Resilience-Static fetch measurement is not representative: `
+      + `${result.failedDatasets.length}/${result.adapterCount} adapter(s) failed `
+      + `(${result.failedDatasets.join(', ')}). Re-run when all adapters are reachable.`,
+    );
   }
 }
 
+export const MEASURE_FETCH_ONLY_FLAG = '--measure-fetch-only';
+const KNOWN_CLI_FLAGS = new Set([MEASURE_FETCH_ONLY_FLAG]);
+
+// Exported so the dispatch is asserted behaviourally rather than by grepping the
+// file for the flag string. An unrecognised argument must NOT fall through to
+// main(): main() acquires the lock, fetches, and PUBLISHES, so a typo'd
+// `--measure-fetch` would run a real seed when the operator asked to measure.
+export function resolveEntry(argv) {
+  const unknown = argv.slice(2).filter((arg) => !KNOWN_CLI_FLAGS.has(arg));
+  if (unknown.length > 0) {
+    throw new Error(
+      `Unknown argument: ${unknown[0]}. Usage: node scripts/seed-resilience-static.mjs [${MEASURE_FETCH_ONLY_FLAG}]`,
+    );
+  }
+  return argv.includes(MEASURE_FETCH_ONLY_FLAG) ? runMeasureFetchOnly : main;
+}
+
 if (process.argv[1]?.endsWith('seed-resilience-static.mjs')) {
-  const entry = process.argv.includes('--measure-fetch-only') ? runMeasureFetchOnly : main;
-  entry().catch((error) => {
+  // resolveEntry throws synchronously on an unknown argument; wrapping the call
+  // keeps that on the same FATAL path as any runtime failure instead of dumping
+  // a raw stack trace.
+  Promise.resolve().then(() => resolveEntry(process.argv)()).catch((error) => {
     const cause = error?.cause ? ` (cause: ${error.cause.message || error.cause})` : '';
     console.error(`FATAL: ${error.message || error}${cause}`);
     process.exit(1);
