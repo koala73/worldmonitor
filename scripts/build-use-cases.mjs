@@ -9,7 +9,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
-export const USE_CASES_CONTENT_VERSION = '2026-08-17';
+export const USE_CASES_CONTENT_VERSION = '2026-08-18';
 
 export const USE_CASE_PAGES = [
   {
