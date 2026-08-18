@@ -2,6 +2,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { initTestI18n } from './helpers/i18n.mts';
 import { TelegramIntelPanel } from '@/components/TelegramIntelPanel';
+import type { TelegramItem } from '@/services/telegram-intel';
 
 beforeAll(async () => {
   await initTestI18n();
@@ -11,10 +12,10 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
-function telegramItem(overrides: Record<string, unknown> = {}) {
+function telegramItem(overrides: Partial<Omit<TelegramItem, 'source'>> = {}): TelegramItem {
   return {
     id: 'IDFofficial:1',
-    source: 'telegram',
+    source: 'telegram' as const,
     channel: 'IDFofficial',
     channelTitle: 'IDF Official',
     url: 'https://t.me/IDFofficial/1',
