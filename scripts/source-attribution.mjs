@@ -1348,12 +1348,7 @@ export function isSourceAttributionManifestError(error) {
   return error instanceof Error && error.message.startsWith('source-attribution: invalid manifest');
 }
 
-/**
- * Count the committed ledger without requiring scan-parity. Inventory-fact
- * generation uses this fallback so a stale attribution row cannot brick
- * `api/_inventory-facts.generated.js` and the desktop/Vite import of
- * `api/product-catalog.js`. `sources:check` and `docs:check` still validate.
- */
+/** Count the committed ledger without requiring scan-parity. */
 export function sourceAttributionLedgerStats(manifest, { observedHosts } = {}) {
   if (!manifest || !Array.isArray(manifest.entries)) {
     throw new Error('source-attribution: manifest entries must be an array');
@@ -1439,10 +1434,10 @@ function updateDocs(rootDir, section) {
   writeFileSync(path, updated);
 }
 
-export function buildSourceAttributionStats({ rootDir = ROOT } = {}) {
-  const inventory = scanUpstreamHosts(rootDir);
+export function buildSourceAttributionStats({ rootDir = ROOT, validate = true } = {}) {
   const manifest = loadManifest(rootDir);
-  return sourceAttributionStats(inventory, manifest);
+  if (!validate) return sourceAttributionLedgerStats(manifest);
+  return sourceAttributionStats(scanUpstreamHosts(rootDir), manifest);
 }
 
 function printStats(stats, log = console.log) {

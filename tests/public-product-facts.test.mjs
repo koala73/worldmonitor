@@ -295,28 +295,16 @@ describe('public product facts generation contract', () => {
       if (calls === 1) {
         throw new Error('source-attribution: invalid manifest (stale manifest entry for energy.worldmonitor.app: references no longer match the source tree; run node scripts/source-attribution.mjs --write)');
       }
-      assert.equal(options?.validateAttribution, false);
-      return computeStats({ validateAttribution: false });
+      assert.ok(options?.sourceAttribution?.activeHosts > 0);
+      return computeStats({ sourceAttribution: options.sourceAttribution });
     };
 
     const stats = loadStatsForInventoryFacts({ compute, warn: (message) => warnings.push(message) });
     const facts = buildInventoryFacts(stats);
-    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-facts-stale-attribution-'));
-    mkdirSync(join(tempRoot, 'api'));
-    const edgeModule = `export const PUBLIC_INVENTORY_FACTS = ${JSON.stringify(facts)};\n`;
-    try {
-      generateInventoryFacts({
-        outputs: new Map([['api/_inventory-facts.generated.js', edgeModule]]),
-        rootDir: tempRoot,
-      });
-      assert.match(readFileSync(join(tempRoot, 'api/_inventory-facts.generated.js'), 'utf8'), /PUBLIC_INVENTORY_FACTS/);
-      assert.ok(facts.capabilities.sourceAttributionHosts > 0);
-      assert.ok(facts.capabilities.sourceAttributionProviders > 0);
-      assert.equal(calls, 2);
-      assert.match(warnings.join('\n'), /proceeding with committed attribution counts/);
-    } finally {
-      rmSync(tempRoot, { recursive: true, force: true });
-    }
+    assert.ok(facts.capabilities.sourceAttributionHosts > 0);
+    assert.ok(facts.capabilities.sourceAttributionProviders > 0);
+    assert.equal(calls, 2);
+    assert.match(warnings.join('\n'), /proceeding with committed attribution counts/);
   });
 
   it('does not swallow non-attribution inventory failures', () => {

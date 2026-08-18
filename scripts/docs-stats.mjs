@@ -17,11 +17,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
-import {
-  buildSourceAttributionStats,
-  loadManifest,
-  sourceAttributionLedgerStats,
-} from './source-attribution.mjs';
+import { buildSourceAttributionStats } from './source-attribution.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
@@ -932,7 +928,7 @@ function dirHasFiles(rel) {
   return false;
 }
 
-function computeStats({ validateAttribution = true } = {}) {
+function computeStats({ sourceAttribution: injectedAttribution } = {}) {
   const makefile = read('Makefile');
   const serverCard = parseJson('public/.well-known/mcp/server-card.json');
   const mcpApps = parseMcpAppsInventory();
@@ -1017,9 +1013,7 @@ function computeStats({ validateAttribution = true } = {}) {
   // several feed URLs, while a structured endpoint may never appear in the
   // curated-feed registry. The attribution checker owns manifest coverage;
   // docs-stats pins the public count surfaces to the same live number.
-  const sourceAttribution = validateAttribution
-    ? buildSourceAttributionStats({ rootDir: ROOT })
-    : sourceAttributionLedgerStats(loadManifest(ROOT));
+  const sourceAttribution = injectedAttribution ?? buildSourceAttributionStats({ rootDir: ROOT });
 
   // ---- Operational source counts used by data-source and methodology docs ----
   const airportCount = (read('src/config/airports.ts').match(/\biata:\s*'/g) || []).length;

@@ -6,6 +6,7 @@ import {
   PROVIDER_IDENTITY_GROUPS,
   PROVIDER_IDENTITY_REVIEW,
   buildManifest,
+  buildSourceAttributionStats,
   checkSourceAttribution,
   loadManifest,
   matchGeneratedAttributionSection,
@@ -464,6 +465,7 @@ test('ledger stats match validated stats when the committed manifest is current'
   const validated = sourceAttributionStats(inventory, manifest);
   const ledger = sourceAttributionLedgerStats(manifest, { observedHosts: inventory.length });
   assert.deepEqual(ledger, validated);
+  assert.deepEqual(buildSourceAttributionStats({ rootDir, validate: false }), sourceAttributionLedgerStats(manifest));
 });
 
 test('ledger stats remain countable when scan-parity validation would fail', () => {

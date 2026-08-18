@@ -4,17 +4,16 @@
  *
  * These outputs are intentionally gitignored. Install and build commands must
  * generate them before API, Railway, or static-product consumers run.
- *
- * Attribution scan-parity failures stay in `sources:check`. This generator
- * falls back to committed ledger counts so a stale row cannot prevent the
- * Edge/desktop import of `api/_inventory-facts.generated.js`.
  */
 
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { computeStats } from './docs-stats.mjs';
-import { isSourceAttributionManifestError } from './source-attribution.mjs';
+import {
+  buildSourceAttributionStats,
+  isSourceAttributionManifestError,
+} from './source-attribution.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -25,10 +24,11 @@ const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
 /**
  * Inventory facts are a boot artifact. A stale attribution ledger is a
  * `sources:check` / `docs:check` failure, not a reason to skip writing
- * `api/_inventory-facts.generated.js` and brick the desktop Vite import.
+ * `api/_inventory-facts.generated.js`.
  */
 export function loadStatsForInventoryFacts({
   compute = computeStats,
+  fallbackAttribution = () => buildSourceAttributionStats({ validate: false }),
   warn = console.warn,
 } = {}) {
   try {
@@ -36,7 +36,7 @@ export function loadStatsForInventoryFacts({
   } catch (error) {
     if (!isSourceAttributionManifestError(error)) throw error;
     warn(`inventory facts: proceeding with committed attribution counts; ${error.message}`);
-    return compute({ validateAttribution: false });
+    return compute({ sourceAttribution: fallbackAttribution() });
   }
 }
 
