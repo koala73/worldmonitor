@@ -65,7 +65,7 @@ function extractDeclaredSize(canonicalName: string): string | null {
  */
 function declaredQtyInItemUnits(parsed: ParsedSize, baseUnit: string): number | null {
   if (parsed.baseUnit === baseUnit) return parsed.baseQuantity;
-  if (baseUnit === 'ml' && /^oz|ounce$/i.test(parsed.sizeUnit)) {
+  if (baseUnit === 'ml' && /^(?:oz|ounce)s?$/i.test(parsed.sizeUnit)) {
     return parsed.packCount * parsed.sizeValue * FL_OZ_TO_ML;
   }
   return null;
@@ -135,17 +135,30 @@ describe('basket corpus vs the #6267 size rules', () => {
   // quantity window admits it — the two halves of the item must agree.
   it('admits every parseable declared pack inside its own quantity window', () => {
     const outside: string[] = [];
-    let checked = 0;
+    const uncheckable: string[] = [];
+    const checked: string[] = [];
     for (const basket of loadAllBasketConfigs()) {
       for (const item of basket.items) {
-        if (item.minBaseQty == null && item.maxBaseQty == null) continue;
+        const label = `${basket.slug}/${item.id}`;
         const sizeText = extractDeclaredSize(item.canonicalName);
         if (!sizeText) continue;
         const parsed = parseSize(sizeText);
-        if (!parsed) continue;
+        if (!parsed) {
+          uncheckable.push(`${label} extracted but could not reparse "${sizeText}"`);
+          continue;
+        }
+        if (item.minBaseQty == null && item.maxBaseQty == null) {
+          uncheckable.push(`${label} parses as "${sizeText}" but has no quantity window`);
+          continue;
+        }
         const qty = declaredQtyInItemUnits(parsed, item.baseUnit);
-        if (qty == null) continue;
-        checked++;
+        if (qty == null) {
+          uncheckable.push(
+            `${label} cannot convert ${parsed.sizeUnit}/${parsed.baseUnit} to ${item.baseUnit}`,
+          );
+          continue;
+        }
+        checked.push(label);
         const min = item.minBaseQty ?? 0;
         const max = item.maxBaseQty ?? Number.POSITIVE_INFINITY;
         if (qty < min || qty > max) {
@@ -157,12 +170,59 @@ describe('basket corpus vs the #6267 size rules', () => {
         }
       }
     }
-    // Population sanity: most measure items declare a size we can resolve.
-    expect(checked).toBeGreaterThanOrEqual(90);
+    expect(
+      uncheckable,
+      'every extracted canonical quantity must be checked against a compatible window',
+    ).toEqual([]);
+    // Population sanity plus a target assertion: a large unrelated cohort can
+    // no longer hide the US water item disappearing from the checked set.
+    expect(checked.length).toBeGreaterThanOrEqual(90);
+    expect(checked).toContain('essentials-us/water_1_5l');
     expect(
       outside,
       'a basket item must admit the pack its own canonicalName describes',
     ).toEqual([]);
+  });
+
+  it('converts every parser-supported ounce spelling for liquid config checks', () => {
+    for (const unit of ['oz', 'ozs', 'ounce', 'ounces']) {
+      const parsed = parseSize(`24 Pack 16 ${unit}`);
+      expect(parsed, `${unit} must remain parseable`).not.toBeNull();
+      if (!parsed) continue;
+      expect(declaredQtyInItemUnits(parsed, 'ml')).toBeCloseTo(24 * 16 * FL_OZ_TO_ML);
+    }
+  });
+
+  describe('US drinking-water quantity boundaries (#6869)', () => {
+    const water = loadAllBasketConfigs()
+      .find((basket) => basket.slug === 'essentials-us')
+      ?.items.find((item) => item.id === 'water_1_5l');
+
+    if (!water) throw new Error('essentials-us/water_1_5l is missing');
+
+    it('admits the 24 x 16.9 fl oz upper-bound pack', () => {
+      const result = validateSearchHit({
+        canonicalName: water.canonicalName,
+        productName: 'Purified Drinking Water 24 Pack',
+        sizeText: '24 x 16.9 fl oz',
+        item: water,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.signals.sizeWindow).toBe('pass');
+    });
+
+    it('rejects a 32 x 16 oz pack across the density band', () => {
+      const result = validateSearchHit({
+        canonicalName: water.canonicalName,
+        productName: 'Purified Drinking Water 32 Pack',
+        sizeText: '32 x 16 oz',
+        item: water,
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.signals.sizeWindow).toBe('unit-mismatch');
+    });
   });
 
   // POSITIVE CONTROL. Everything above asserts that nothing happens, and a rule
