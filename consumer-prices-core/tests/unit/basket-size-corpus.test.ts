@@ -154,3 +154,38 @@ describe('basket corpus vs the #6267 size rules', () => {
     });
   });
 });
+
+describe('US drinking water: the window admits the pack it declares (#6869)', () => {
+  // 24 x 16 fl oz = 11,356 ml sat ABOVE the old 10,000 ceiling, so the item
+  // could only ever price through sizes that failed to parse — a price that
+  // survived because the window never ran. The raised window admits both the
+  // declared 16oz pack and the very common 16.9oz bottle, while the 32-packs
+  // Walmart actually serves (~1.6x the intended pack) stay rejected.
+  const us = loadAllBasketConfigs().find((b) => b.slug === 'essentials-us');
+  const water = us?.items.find((it) => it.id === 'water_1_5l');
+
+  it('finds the item (guard against silent config moves)', () => {
+    expect(water).toBeTruthy();
+  });
+
+  // Same-unit sizes, so the verdict exercises the hard window rather than the
+  // cross-dimension density band: the declared pack expressed in the item's
+  // own ml, and the 32-pack retailers actually serve.
+  const cases: Array<[string, SizeWindowStatus]> = [
+    ['24 x 473 ml', 'pass'],
+    ['11.4 L', 'pass'],
+    ['32 x 500 ml', 'fail'],
+  ];
+
+  for (const [sizeText, expected] of cases) {
+    it(`"${sizeText}" -> ${expected}`, () => {
+      const r = validateSearchHit({
+        canonicalName: water!.canonicalName,
+        productName: 'Aquafina Purified Drinking Water',
+        sizeText,
+        item: water!,
+      });
+      expect(r.signals.sizeWindow).toBe(expected);
+    });
+  }
+});

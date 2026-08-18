@@ -90,8 +90,13 @@ basket:
       weight: 0.07
       baseUnit: ml
       substitutionGroup: water_still
-      minBaseQty: 6000
-      maxBaseQty: 10000
+      # 24 x 16 fl oz = 11,356 ml and 24 x 16.9 fl oz = 11,995 ml; the old
+      # 6,000-10,000 ceiling sat below the pack the canonical name itself
+      # declares, so any correctly-parsed hit for THIS product hard-failed the
+      # window (#6869). 12,500 admits both bottle sizes while still rejecting
+      # the 32-packs retailers actually serve (~15,331 g at water density).
+      minBaseQty: 10000
+      maxBaseQty: 12500
       negativeTokens: ["sparkling", "flavored", "flavoured"]
 
     - id: sugar_1kg
