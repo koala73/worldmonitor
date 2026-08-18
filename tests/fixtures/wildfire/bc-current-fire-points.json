@@ -1,0 +1,159 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP.C20125",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.829633,
+          52.023417
+        ]
+      },
+      "geometry_name": "SHAPE",
+      "properties": {
+        "FIRE_NUMBER": "C20125",
+        "FIRE_YEAR": 2026,
+        "RESPONSE_TYPE_DESC": "Full",
+        "IGNITION_DATE": "2026-04-24Z",
+        "FIRE_OUT_DATE": "2026-04-30Z",
+        "FIRE_STATUS": "Out",
+        "FIRE_CAUSE": "Person",
+        "FIRE_CENTRE": 7,
+        "ZONE": 2,
+        "FIRE_ID": 125,
+        "FIRE_TYPE": "Fire",
+        "INCIDENT_NAME": "C20125",
+        "GEOGRAPHIC_DESCRIPTION": "S of Knife Creek",
+        "LATITUDE": 52.0234,
+        "LONGITUDE": -121.8296,
+        "CURRENT_SIZE": 0.1,
+        "FIRE_URL": "https://wildfiresituation.nrs.gov.bc.ca/incidents?fireYear=2026&incidentNumber=C20125",
+        "FIRE_OF_NOTE_IND": "N",
+        "WAS_FIRE_OF_NOTE_IND": "N",
+        "FEATURE_CODE": "JA70003000",
+        "OBJECTID": 80734949,
+        "SE_ANNO_CAD_DATA": null
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP.C31543",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.019983,
+          52.648879
+        ]
+      },
+      "geometry_name": "SHAPE",
+      "properties": {
+        "FIRE_NUMBER": "C31543",
+        "FIRE_YEAR": 2026,
+        "RESPONSE_TYPE_DESC": "Modified",
+        "IGNITION_DATE": "2026-08-11Z",
+        "FIRE_OUT_DATE": null,
+        "FIRE_STATUS": "Out of Control",
+        "FIRE_CAUSE": "Lightning",
+        "FIRE_CENTRE": 7,
+        "ZONE": 3,
+        "FIRE_ID": 1543,
+        "FIRE_TYPE": "Fire",
+        "INCIDENT_NAME": "C31543",
+        "GEOGRAPHIC_DESCRIPTION": null,
+        "LATITUDE": 52.6489,
+        "LONGITUDE": -121.02,
+        "CURRENT_SIZE": 0.009,
+        "FIRE_URL": "https://wildfiresituation.nrs.gov.bc.ca/incidents?fireYear=2026&incidentNumber=C31543",
+        "FIRE_OF_NOTE_IND": "N",
+        "WAS_FIRE_OF_NOTE_IND": "N",
+        "FEATURE_CODE": "JA70003000",
+        "OBJECTID": 80735666,
+        "SE_ANNO_CAD_DATA": null
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP.C41588",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.870683,
+          51.51885
+        ]
+      },
+      "geometry_name": "SHAPE",
+      "properties": {
+        "FIRE_NUMBER": "C41588",
+        "FIRE_YEAR": 2026,
+        "RESPONSE_TYPE_DESC": "Full",
+        "IGNITION_DATE": "2026-08-13Z",
+        "FIRE_OUT_DATE": null,
+        "FIRE_STATUS": "Under Control",
+        "FIRE_CAUSE": "Lightning",
+        "FIRE_CENTRE": 7,
+        "ZONE": 4,
+        "FIRE_ID": 1588,
+        "FIRE_TYPE": "Fire",
+        "INCIDENT_NAME": "C41588",
+        "GEOGRAPHIC_DESCRIPTION": "1.5km W of Dog Creek Rd ",
+        "LATITUDE": 51.5189,
+        "LONGITUDE": -121.8707,
+        "CURRENT_SIZE": 0.009,
+        "FIRE_URL": "https://wildfiresituation.nrs.gov.bc.ca/incidents?fireYear=2026&incidentNumber=C41588",
+        "FIRE_OF_NOTE_IND": "N",
+        "WAS_FIRE_OF_NOTE_IND": "N",
+        "FEATURE_CODE": "JA70003000",
+        "OBJECTID": 80735724,
+        "SE_ANNO_CAD_DATA": null
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "WHSE_LAND_AND_NATURAL_RESOURCE.PROT_CURRENT_FIRE_PNTS_SP.V10742",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.45475,
+          49.89345
+        ]
+      },
+      "geometry_name": "SHAPE",
+      "properties": {
+        "FIRE_NUMBER": "V10742",
+        "FIRE_YEAR": 2026,
+        "RESPONSE_TYPE_DESC": null,
+        "IGNITION_DATE": "2026-07-02Z",
+        "FIRE_OUT_DATE": null,
+        "FIRE_STATUS": "Fire of Note",
+        "FIRE_CAUSE": "Person",
+        "FIRE_CENTRE": 2,
+        "ZONE": 1,
+        "FIRE_ID": 742,
+        "FIRE_TYPE": "Fire",
+        "INCIDENT_NAME": "Brunswick Creek",
+        "GEOGRAPHIC_DESCRIPTION": "Brunswick Creek",
+        "LATITUDE": 49.8935,
+        "LONGITUDE": -121.4548,
+        "CURRENT_SIZE": 8890.4,
+        "FIRE_URL": "https://wildfiresituation.nrs.gov.bc.ca/incidents?fireYear=2026&incidentNumber=V10742",
+        "FIRE_OF_NOTE_IND": "Y",
+        "WAS_FIRE_OF_NOTE_IND": "Y",
+        "FEATURE_CODE": "JA70003000",
+        "OBJECTID": 80735619,
+        "SE_ANNO_CAD_DATA": null
+      }
+    }
+  ],
+  "totalFeatures": 4,
+  "numberMatched": 4,
+  "numberReturned": 4,
+  "timeStamp": "2026-08-13T22:58:08.639Z",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "urn:ogc:def:crs:EPSG::4326"
+    }
+  }
+}

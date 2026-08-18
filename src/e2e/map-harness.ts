@@ -457,6 +457,8 @@ const internals = map as unknown as {
   serverBaseClusters?: unknown[];
   serverBasesLoaded?: boolean;
   fetchServerBases?: () => void;
+  aptGroups?: typeof APT_GROUPS;
+  aptGroupsLoaded?: boolean;
 };
 
 internals.loadLiveTankers = async (): Promise<void> => {
@@ -469,6 +471,11 @@ const seedHarnessBases = (): void => {
   internals.serverBasesLoaded = true;
 };
 
+const seedHarnessAptGroups = (): void => {
+  internals.aptGroups = APT_GROUPS;
+  internals.aptGroupsLoaded = true;
+};
+
 // Keep the harness deterministic: the live RPC path can legitimately return an
 // empty viewport payload in local/dev runs, which would wipe the shared
 // `bases-layer` snapshot even though the harness is meant to exercise the
@@ -477,6 +484,7 @@ internals.fetchServerBases = (): void => {
   seedHarnessBases();
 };
 seedHarnessBases();
+seedHarnessAptGroups();
 
 const buildLayerState = (enabledLayers: HarnessLayerKey[]): MapLayers => {
   const next: MapLayers = { ...allLayersDisabled };
@@ -873,7 +881,8 @@ const VISUAL_SCENARIOS: VisualScenario[] = [
   {
     id: 'apt-groups-z5',
     variant: 'full',
-    enabledLayers: [],
+    // APT markers are gated on cyberThreats in DeckGLMap (lazy-loaded).
+    enabledLayers: ['cyberThreats'],
     camera: toCamera(aptLon, aptLat, 5.1),
     expectedDeckLayers: ['apt-groups-layer'],
     expectedSelectors: [],
@@ -1192,6 +1201,8 @@ const seedAllDynamicData = (): void => {
       testSiteName: '',
       concernScore: 0,
       concernLevel: '',
+      source: 'usgs',
+      category: '',
     },
   ];
 
@@ -1463,6 +1474,7 @@ const seedAllDynamicData = (): void => {
     },
   ]);
   map.setNewsLocations(SEEDED_NEWS_LOCATIONS);
+  seedHarnessAptGroups();
   map.setRenderPaused(false);
   map.render();
 };

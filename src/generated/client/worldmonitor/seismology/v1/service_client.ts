@@ -26,6 +26,8 @@ export interface Earthquake {
   testSiteName?: string;
   concernScore?: number;
   concernLevel?: string;
+  source: string;
+  category: string;
 }
 
 export interface GeoCoordinates {

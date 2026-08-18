@@ -1019,7 +1019,7 @@
         "ucdpEvents": "Eventi UCDP",
         "displacementFlows": "Flussi di sfollamento",
         "climateAnomalies": "Anomalie climatiche",
-        "weatherAlerts": "Allerte meteo negli Stati Uniti (NWS)",
+        "weatherAlerts": "Allerte meteo negli Stati Uniti e in Canada (NWS, ECCC)",
         "strategicWaterways": "Vie d’acqua strategiche",
         "economicCenters": "Centri economici",
         "criticalMinerals": "Minerali critici",
@@ -1109,7 +1109,7 @@
           "infraDatacenters": "Cluster di calcolo AI >=10.000 GPU",
           "infraOutages": "Blackout di Internet e interruzioni del servizio",
           "naturalEventsTech": "Terremoti, tempeste, incendi (possono interessare i data center)",
-          "weatherAlerts": "Allerte meteo severe negli Stati Uniti (NWS)",
+          "weatherAlerts": "Allerte meteo severe negli Stati Uniti e in Canada (NWS, ECCC)",
           "economicCenters": "Borse e banche centrali",
           "countriesOverlay": "Sovrapposizioni del nome del paese",
           "financeExchanges": "Principali borse globali per livello di mercato",
@@ -1121,7 +1121,7 @@
           "financeOutages": "Interruzioni di Internet che possono avere un impatto sulle operazioni di mercato",
           "financeCyberThreats": "Eventi di sicurezza relativi alle infrastrutture finanziarie",
           "macroWaterways": "Punti di strozzatura strategici per la spedizione delle merci",
-          "weatherAlertsMarket": "Eventi meteorologici gravi negli Stati Uniti rilevanti per il mercato (NWS)",
+          "weatherAlertsMarket": "Eventi meteorologici gravi negli Stati Uniti e in Canada rilevanti per il mercato (NWS, ECCC)",
           "naturalEventsMacro": "Terremoti, incendi, inondazioni e altri disagi naturali",
           "timeRecent": "Filtra i dati basati sul tempo fino alle ultime ore",
           "timeExtended": "Mostra i dati della settimana, del mese o di tutti i tempi precedenti",
@@ -2367,13 +2367,14 @@
     },
     "sanctionsPressure": {
       "title": "Sanzioni e designazioni",
-      "infoTooltip": "Designazioni OFAC dalle liste SDN e consolidate. Mostra quali paesi affrontano la maggiore pressione di designazione, quali programmi la guidano e cosa è stato aggiunto di recente dall'ultimo aggiornamento.",
+      "infoTooltip": "Liste SDN e consolidate OFAC più le designazioni SEMA/JVCFOA di Global Affairs Canada. Mostra quali paesi affrontano la maggiore pressione di designazione, quali programmi la guidano e cosa è stato aggiunto di recente dall'ultimo aggiornamento.",
       "loading": "Caricamento dati sanzioni in corso...",
       "unavailable": "Dati sanzioni non disponibili.",
       "summary": {
         "new": "Nuovo",
         "vessels": "Navi",
-        "aircraft": "Aeromobili"
+        "aircraft": "Aeromobili",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Paesi sanzionati",
@@ -2388,11 +2389,12 @@
       "footer": {
         "updated": "Aggiornato {{time}}",
         "dataset": "dataset {{date}}",
-        "source": "Fonte: OFAC"
+        "source": "Fonte: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nuovo",
-        "new": "nuovo"
+        "new": "nuovo",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} designazione",
       "designations_other": "{{count}} designazioni",
@@ -2838,6 +2840,7 @@
     "moreEvents": "altri eventi",
     "monitoring": "Monitoraggio",
     "viewUSGS": "Visualizza su USGS",
+    "viewNRCan": "Visualizza su Earthquakes Canada",
     "expired": "Scaduto",
     "timeAgo": {
       "s": "{{count}}s fa",

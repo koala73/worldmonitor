@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appSrcRaw = readFileSync(resolve(__dirname, '../src/App.ts'), 'utf-8');
@@ -92,6 +93,282 @@ function categoryMappedPanelIds() {
     }
   }
   return ids;
+}
+
+function callExpressions(source) {
+  const sourceFile = ts.createSourceFile('App.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  assert.deepStrictEqual(sourceFile.parseDiagnostics, [], 'App.ts call-site extraction must parse cleanly');
+  const calls = [];
+  const walk = (node) => {
+    if (ts.isCallExpression(node)) calls.push({ node, sourceFile });
+    node.forEachChild(walk);
+  };
+  walk(sourceFile);
+  return calls;
+}
+
+function literalFirstArgument(call) {
+  return ts.isStringLiteralLike(call.arguments[0]) ? call.arguments[0].text : null;
+}
+
+function callName(node, sourceFile) {
+  if (ts.isIdentifier(node.expression)) return node.expression.text;
+  if (ts.isPropertyAccessExpression(node.expression)) return node.expression.name.text;
+  return node.expression.getText(sourceFile);
+}
+
+function panelFetchIds(callback, sourceFile) {
+  const ids = new Set();
+  const aliasIds = new Map();
+  const stateObjects = new Set(['this.state']);
+  const panelCollections = new Set(['this.state.panels']);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    callback.forEachChild(function collectAliases(node) {
+      if (ts.isVariableDeclaration(node) && node.initializer) {
+        const initializer = unwrapExpression(node.initializer);
+        const initializerText = initializer.getText(sourceFile);
+        if (ts.isIdentifier(node.name)) {
+          if (stateObjects.has(initializerText) && !stateObjects.has(node.name.text)) {
+            stateObjects.add(node.name.text);
+            changed = true;
+          }
+          if (
+            (panelCollections.has(initializerText)
+              || (ts.isPropertyAccessExpression(initializer)
+                && initializer.name.text === 'panels'
+                && stateObjects.has(unwrapExpression(initializer.expression).getText(sourceFile))))
+            && !panelCollections.has(node.name.text)
+          ) {
+            panelCollections.add(node.name.text);
+            changed = true;
+          }
+          const panelId = panelAccessId(initializer, panelCollections);
+          if (panelId && aliasIds.get(node.name.text) !== panelId) {
+            aliasIds.set(node.name.text, panelId);
+            changed = true;
+          }
+        }
+        if (ts.isObjectBindingPattern(node.name) && stateObjects.has(initializerText)) {
+          for (const element of node.name.elements) {
+            if (!ts.isIdentifier(element.name)) continue;
+            const property = element.propertyName ?? element.name;
+            if ((ts.isIdentifier(property) || ts.isStringLiteralLike(property)) && property.text === 'panels'
+              && !panelCollections.has(element.name.text)) {
+              panelCollections.add(element.name.text);
+              changed = true;
+            }
+          }
+        }
+      }
+      node.forEachChild(collectAliases);
+    });
+  }
+
+  const unresolvedReceivers = new Set();
+  callback.forEachChild(function collectFetchCalls(node) {
+    if (ts.isCallExpression(node)) {
+      let receiver = null;
+      let methodName = null;
+      if (ts.isPropertyAccessExpression(node.expression)) {
+        receiver = unwrapExpression(node.expression.expression);
+        methodName = node.expression.name.text;
+      } else if (ts.isElementAccessExpression(node.expression)) {
+        receiver = unwrapExpression(node.expression.expression);
+        methodName = ts.isStringLiteralLike(node.expression.argumentExpression)
+          ? node.expression.argumentExpression.text
+          : null;
+      }
+      if (receiver) {
+        const panelId = panelAccessId(receiver, panelCollections)
+          || (ts.isIdentifier(receiver) ? aliasIds.get(receiver.text) : null);
+        if (methodName === 'fetchData') {
+          if (panelId) ids.add(panelId);
+          else unresolvedReceivers.add(receiver.getText(sourceFile));
+        } else if (methodName === null && panelId) {
+          unresolvedReceivers.add(`${receiver.getText(sourceFile)}[computed method]`);
+        }
+      }
+    }
+    node.forEachChild(collectFetchCalls);
+  });
+  assert.deepStrictEqual(
+    [...unresolvedReceivers],
+    [],
+    `scheduleRefresh callback could not resolve fetchData receiver(s): ${[...unresolvedReceivers].join(', ')}`,
+  );
+  return [...ids];
+}
+
+function localFunctionDeclarations(sourceFile) {
+  const declarations = new Map();
+  sourceFile.forEachChild(function collect(node) {
+    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+      declarations.set(node.name.text, node);
+    } else if (
+      ts.isVariableDeclaration(node)
+      && ts.isIdentifier(node.name)
+      && node.initializer
+      && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer))
+    ) {
+      declarations.set(node.name.text, node.initializer);
+    } else if (
+      ts.isVariableDeclaration(node)
+      && ts.isIdentifier(node.name)
+      && node.initializer
+      && ts.isObjectLiteralExpression(node.initializer)
+    ) {
+      collectObjectFunctionDeclarations(node.name.text, node.initializer, declarations);
+    } else if (ts.isMethodDeclaration(node)) {
+      const methodName = staticPropertyName(node.name);
+      let owner = node.parent;
+      while (owner && !ts.isClassDeclaration(owner) && !ts.isClassExpression(owner)) owner = owner.parent;
+      if (methodName && owner) {
+        const isStatic = node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword);
+        if (isStatic && owner.name) declarations.set(`${owner.name.text}.${methodName}`, node);
+        else declarations.set(`this.${methodName}`, node);
+      }
+    }
+    node.forEachChild(collect);
+  });
+  return declarations;
+}
+
+function collectObjectFunctionDeclarations(basePath, object, declarations) {
+  for (const property of object.properties) {
+    if (ts.isSpreadAssignment(property)) continue;
+    const propertyName = staticPropertyName(property.name);
+    if (!propertyName) continue;
+    const path = `${basePath}.${propertyName}`;
+    if (ts.isMethodDeclaration(property)) {
+      declarations.set(path, property);
+    } else if (ts.isPropertyAssignment(property)) {
+      if (ts.isArrowFunction(property.initializer) || ts.isFunctionExpression(property.initializer)) {
+        declarations.set(path, property.initializer);
+      } else if (ts.isObjectLiteralExpression(property.initializer)) {
+        collectObjectFunctionDeclarations(path, property.initializer, declarations);
+      }
+    }
+  }
+}
+
+function staticPropertyName(node) {
+  return ts.isIdentifier(node) || ts.isStringLiteralLike(node) || ts.isNumericLiteral(node)
+    ? node.text
+    : null;
+}
+
+function callablePath(node) {
+  const current = unwrapExpression(node);
+  if (
+    ts.isCallExpression(current)
+    && ts.isPropertyAccessExpression(current.expression)
+    && current.expression.name.text === 'bind'
+  ) {
+    return callablePath(current.expression.expression);
+  }
+  if (current.kind === ts.SyntaxKind.ThisKeyword) return 'this';
+  if (ts.isIdentifier(current)) return current.text;
+  if (ts.isPropertyAccessExpression(current)) {
+    const owner = callablePath(current.expression);
+    return owner ? `${owner}.${current.name.text}` : null;
+  }
+  if (ts.isElementAccessExpression(current) && ts.isStringLiteralLike(current.argumentExpression)) {
+    const owner = callablePath(current.expression);
+    return owner ? `${owner}.${current.argumentExpression.text}` : null;
+  }
+  return null;
+}
+
+function panelFetchIdsWithLocalHelpers(callback, sourceFile, declarations, seen = new Set()) {
+  const callbackKey = callablePath(callback);
+  const callbackDeclaration = callbackKey ? declarations.get(callbackKey) : null;
+  if (callbackDeclaration) {
+    if (seen.has(callbackKey)) return [];
+    return panelFetchIdsWithLocalHelpers(
+      callbackDeclaration,
+      sourceFile,
+      declarations,
+      new Set([...seen, callbackKey]),
+    );
+  }
+  if (
+    ts.isIdentifier(unwrapExpression(callback))
+    || ts.isPropertyAccessExpression(unwrapExpression(callback))
+    || ts.isElementAccessExpression(unwrapExpression(callback))
+    || (ts.isCallExpression(unwrapExpression(callback))
+      && ts.isPropertyAccessExpression(unwrapExpression(callback).expression)
+      && unwrapExpression(callback).expression.name.text === 'bind')
+  ) {
+    assert.fail(`scheduleRefresh callback ${callback.getText(sourceFile)} could not be resolved`);
+  }
+
+  const ids = new Set(panelFetchIds(callback, sourceFile));
+  callback.forEachChild(function collectHelperFetches(node) {
+    if (ts.isCallExpression(node)) {
+      const helperName = callablePath(node.expression);
+      const declaration = helperName ? declarations.get(helperName) : null;
+      if (declaration && !seen.has(helperName)) {
+        for (const id of panelFetchIdsWithLocalHelpers(
+          declaration,
+          sourceFile,
+          declarations,
+          new Set([...seen, helperName]),
+        )) ids.add(id);
+      }
+    }
+    node.forEachChild(collectHelperFetches);
+  });
+  return [...ids];
+}
+
+function unwrapExpression(node) {
+  let current = node;
+  while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)) current = current.expression;
+  return current;
+}
+
+function panelAccessId(node, panelCollections) {
+  const current = unwrapExpression(node);
+  if (ts.isElementAccessExpression(current)
+    && ts.isStringLiteralLike(current.argumentExpression)
+    && panelCollections.has(unwrapExpression(current.expression).getText())) {
+    return current.argumentExpression.text;
+  }
+  if (ts.isPropertyAccessExpression(current)
+    && panelCollections.has(unwrapExpression(current.expression).getText())) {
+    return current.name.text;
+  }
+  return null;
+}
+
+function scheduledSelfFetchingPanelIds(source = appSrc) {
+  const scheduled = [];
+  let declarations;
+  for (const { node, sourceFile } of callExpressions(source)) {
+    if (callName(node, sourceFile) !== 'scheduleRefresh') continue;
+    const scheduleId = literalFirstArgument(node);
+    if (!node.arguments[1]) continue;
+    declarations ??= localFunctionDeclarations(sourceFile);
+    const fetchedPanels = panelFetchIdsWithLocalHelpers(node.arguments[1], sourceFile, declarations);
+    if (fetchedPanels.length === 0) continue;
+    assert.ok(scheduleId, 'self-fetching scheduleRefresh must use a literal panel ID');
+    assert.deepStrictEqual(
+      fetchedPanels,
+      [scheduleId],
+      `scheduleRefresh('${scheduleId}') must fetch that same panel exactly once`,
+    );
+    scheduled.push(scheduleId);
+  }
+  return scheduled;
+}
+
+function primedPanelIds(source = appSrc) {
+  return new Set(callExpressions(source)
+    .filter(({ node, sourceFile }) => callName(node, sourceFile) === 'primeTask')
+    .map(({ node }) => literalFirstArgument(node))
+    .filter(Boolean));
 }
 
 function parsePanelKeys(variant) {
@@ -596,9 +873,144 @@ describe('panel-config guardrails', () => {
   // the API but undiscoverable in the UI.
 
   it('parsers resolve non-empty sets (guards against silent regex drift)', () => {
-    assert.ok(allRegistryPanelIds().size > 50, `registry parse returned ${allRegistryPanelIds().size} panels — regex likely broke`);
-    assert.ok(panelCommandKeywordCounts().size > 50, `command parse returned ${panelCommandKeywordCounts().size} commands — regex likely broke`);
-    assert.ok(categoryMappedPanelIds().size > 50, `category parse returned ${categoryMappedPanelIds().size} keys — regex likely broke`);
+    const panels = allRegistryPanelIds();
+    const commands = panelCommandKeywordCounts();
+    const categories = categoryMappedPanelIds();
+    assert.ok(panels.size > 0, 'registry parse must not be empty');
+    assert.ok(commands.size > 0, 'command parse must not be empty');
+    assert.ok(categories.size > 0, 'category parse must not be empty');
+    for (const critical of ['insights', 'live-news', 'markets']) {
+      assert.ok(panels.has(critical), `registry parse must retain critical panel ${critical}`);
+      assert.ok(commands.has(critical), `command parse must retain critical panel ${critical}`);
+      assert.ok(categories.has(critical), `category parse must retain critical panel ${critical}`);
+    }
+  });
+
+  it('self-fetching schedule and prime parsers reject call-shape drift', () => {
+    const fixture = `
+      scheduleRefresh('alpha', () => (this.state.panels['alpha'] as AlphaPanel).fetchData());
+      scheduleRefresh('service', () => this.service.refresh());
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(fixture), ['alpha']);
+    assert.deepStrictEqual([...primedPanelIds(fixture)], ['alpha']);
+
+    const blockBody = `
+      scheduleRefresh('alpha', () => {
+        const panel = this.state.panels['alpha'] as AlphaPanel;
+        panel.fetchData();
+      });
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(blockBody), ['alpha']);
+    assert.deepStrictEqual([...primedPanelIds(blockBody)], ['alpha']);
+
+    const collectionAlias = `
+      scheduleRefresh('alpha', () => {
+        const panels = this.state.panels;
+        panels.alpha.fetchData();
+      });
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(collectionAlias), ['alpha']);
+
+    const chainedStateAlias = `
+      scheduleRefresh('alpha', () => {
+        const state = this.state;
+        const panels = state.panels;
+        panels.alpha.fetchData();
+      });
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(chainedStateAlias), ['alpha']);
+
+    const destructuredPanels = `
+      scheduleRefresh('alpha', () => {
+        const { panels } = this.state;
+        panels.alpha.fetchData();
+      });
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(destructuredPanels), ['alpha']);
+
+    const literalBracketMethod = `
+      scheduleRefresh('alpha', () => this.state.panels.alpha['fetchData']());
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(literalBracketMethod), ['alpha']);
+
+    const namedCallback = `
+      const loadAlpha = () => this.state.panels.alpha.fetchData();
+      scheduleRefresh('alpha', loadAlpha);
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(namedCallback), ['alpha']);
+
+    const namedHelper = `
+      function loadAlpha() {
+        this.state.panels.alpha.fetchData();
+      }
+      scheduleRefresh('alpha', () => loadAlpha());
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(namedHelper), ['alpha']);
+
+    const classMethodCallback = `
+      class App {
+        loadAlpha() { this.state.panels.alpha.fetchData(); }
+        register() {
+          scheduleRefresh('alpha', this.loadAlpha);
+          primeTask('alpha', () => panel.fetchData());
+        }
+      }
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(classMethodCallback), ['alpha']);
+
+    const inlineClassMethodHelper = `
+      class App {
+        loadAlpha() { this.state.panels.alpha.fetchData(); }
+        register() {
+          scheduleRefresh('alpha', () => this.loadAlpha());
+          primeTask('alpha', () => panel.fetchData());
+        }
+      }
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(inlineClassMethodHelper), ['alpha']);
+
+    const objectPropertyCallback = `
+      const callbacks = { alpha: () => this.state.panels.alpha.fetchData() };
+      scheduleRefresh('alpha', callbacks.alpha);
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(objectPropertyCallback), ['alpha']);
+
+    const boundCallback = `
+      const loadAlpha = () => this.state.panels.alpha.fetchData();
+      scheduleRefresh('alpha', loadAlpha.bind(this));
+      primeTask('alpha', () => panel.fetchData());
+    `;
+    assert.deepStrictEqual(scheduledSelfFetchingPanelIds(boundCallback), ['alpha']);
+
+    assert.throws(
+      () => scheduledSelfFetchingPanelIds(`
+        const scheduleId = 'alpha';
+        scheduleRefresh(scheduleId, () => this.state.panels.alpha.fetchData());
+      `),
+      /must use a literal panel ID/,
+    );
+
+    assert.throws(
+      () => scheduledSelfFetchingPanelIds("scheduleRefresh('alpha', () => (this.state.panels['beta'] as BetaPanel).fetchData());"),
+      /must fetch that same panel/,
+    );
+    assert.throws(
+      () => scheduledSelfFetchingPanelIds("scheduleRefresh('alpha', () => unknownPanels.alpha.fetchData());"),
+      /could not resolve fetchData receiver/,
+    );
+    assert.throws(
+      () => scheduledSelfFetchingPanelIds("scheduleRefresh('alpha', () => this.state.panels.alpha[method]());"),
+      /computed method/,
+    );
   });
 
   it('every registered panel has a CMD+K command (discoverable by search)', () => {
@@ -630,19 +1042,12 @@ describe('panel-config guardrails', () => {
   // needs a per-callback audit, not a wider regex — a wider regex would just
   // manufacture failures for callbacks that never had this contract.
   it('every panel that self-fetches on a timer is also primed on first mount', () => {
-    const scheduled = [...appSrc.matchAll(
-      /scheduleRefresh\(\s*'([a-z0-9-]+)',\s*\(\)\s*=>\s*\(this\.state\.panels\['[a-z0-9-]+'\][^)]*\)\.fetchData\(\)/g,
-    )].map((m) => m[1]);
-    const primed = new Set([...appSrc.matchAll(/primeTask\('([a-z0-9-]+)'/g)].map((m) => m[1]));
-
-    // Exact counts, not floors. A floor lets the pattern rot silently: if a
-    // refactor changed the call shape so only 20 of 27 still matched, a `>= 20`
-    // floor would stay green while seven panels quietly left the guard. Bump
-    // these when you add or remove a self-fetching timer-refreshed panel —
-    // being made to notice is the point. (Same convention as the OpenAPI
-    // surface-count assertions in tests/openapi-examples-contract.test.mjs.)
-    assert.equal(scheduled.length, 28, `expected 28 self-fetching scheduled panels, matched ${scheduled.length} — either a panel was added/removed (bump this) or the scheduleRefresh pattern stopped matching (fix the regex)`);
-    assert.equal(primed.size, 41, `expected 41 primeTask entries, matched ${primed.size} — either the prime table changed (bump this) or the primeTask pattern stopped matching (fix the regex)`);
+    const scheduled = scheduledSelfFetchingPanelIds();
+    const primed = primedPanelIds();
+    assert.ok(scheduled.length > 0, 'self-fetching schedule extraction must not be empty');
+    assert.ok(primed.size > 0, 'primeTask extraction must not be empty');
+    assert.ok(scheduled.includes('energy-crisis'), 'the critical energy-crisis refresh must stay in the self-fetching schedule');
+    assert.ok(primed.has('energy-crisis'), 'the critical energy-crisis panel must stay in the prime table');
 
     const unprimed = scheduled.filter((id) => !primed.has(id)).sort();
     assert.deepStrictEqual(

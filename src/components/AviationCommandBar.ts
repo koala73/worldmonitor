@@ -321,7 +321,7 @@ export class AviationCommandBar {
           <span>✈️ Aviation Command</span>
           <button id="aviation-cmd-close">×</button>
         </div>
-        <input id="aviation-cmd-input" type="text" placeholder="ops Dubai  ·  flight EK3  ·  fly London Dubai  ·  brief" autocomplete="off" spellcheck="false">
+        <input id="aviation-cmd-input" type="text" placeholder="ops Dubai  ·  flight EK3  ·  fly London Dubai  ·  brief" aria-label="Aviation command" autocomplete="off" spellcheck="false">
         <div id="aviation-cmd-suggestions"></div>
         <div id="aviation-cmd-result"></div>
         <div id="aviation-cmd-history-list"></div>

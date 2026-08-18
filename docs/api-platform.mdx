@@ -15,7 +15,7 @@ Single round-trip hydration for the dashboard. Returns **all bootstrap-registere
 - **Anonymous weather**: `?keys=weatherAlerts` is public **only when no API key header is sent**. If you attach `X-WorldMonitor-Key` / `X-Api-Key`, the request is fully validated even for weather — a malformed key returns `401`, a key without current API access returns `403`. Callers that always send a key must send a valid, entitled key (or omit the header to use the anonymous weather path). This URL is `no-store`, which is what makes that contract hold at the edge as well as the origin: nothing caches it, so an invalid key can never be answered by a warm anonymous entry.
 - **Public weather**: `?keys=weatherAlerts&public=1` is the CDN-cached weather read. Like `?tier=fast&public=1`, it returns the same shared seed payload to every caller and ignores any credentials you attach — a CDN hit precedes auth, so the marker is what lets the response be cached safely. Prefer it for high-volume anonymous reads; use the bare URL when you need your key validated.
 - **Server-to-server**: call `https://api.worldmonitor.app/api/bootstrap` directly with `X-WorldMonitor-Key: wm_...`. There is no separate gateway host, token exchange, activation step, or IP allow-list requirement for this endpoint.
-- **Cache**: only the explicitly-marked `?...&public=1` URLs are shared-cacheable, because only they answer every caller identically. `?tier=fast&public=1` / `?tier=slow&public=1` use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`. Single-key public URLs: on-demand keys (`?keys=<onDemandName>&public=1`) inherit the slow profile — browser `max-age=300`, CDN `s-maxage=7200` — unless the key declares its own, which today only `chinaDecisionSignals` does (browser `max-age=60`, CDN `s-maxage=900`); `?keys=weatherAlerts&public=1` uses `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` with the fast-tier CDN shield. Everything else — key-authenticated, session-authenticated, the unmarked `?tier=...` URLs, and the anonymous `?keys=weatherAlerts` path — uses `Cache-Control: no-store` and emits no CDN cache headers. That split is deliberate: a CDN hit precedes auth, so a URL whose answer depends on credentials must never be cacheable.
+- **Cache**: only the explicitly-marked `?...&public=1` URLs are shared-cacheable, because only they answer every caller identically. `?tier=fast&public=1` / `?tier=slow&public=1` use browser `max-age=60` / `max-age=300` and CDN `s-maxage=600` / `s-maxage=7200`. Single-key public URLs: on-demand keys (`?keys=<onDemandName>&public=1`) inherit the slow profile — browser `max-age=300`, CDN `s-maxage=7200` — unless the key declares its own, which every key published more often than that shield does: `chinaDecisionSignals` (browser `max-age=60`, CDN `s-maxage=900`), `canadaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `albertaRoads` (browser `max-age=60`, CDN `s-maxage=900`), `marketCorrelationSeries` (browser `max-age=60`, CDN `s-maxage=900`) and `bcOpen511` (browser `max-age=60`, CDN `s-maxage=1800`); `?keys=weatherAlerts&public=1` uses `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` with the fast-tier CDN shield. Everything else — key-authenticated, session-authenticated, the unmarked `?tier=...` URLs, and the anonymous `?keys=weatherAlerts` path — uses `Cache-Control: no-store` and emits no CDN cache headers. That split is deliberate: a CDN hit precedes auth, so a URL whose answer depends on credentials must never be cacheable.
 - **Rate limit**: user API key validation on this endpoint has a fail-closed fixed 60 s per-IP pre-validation limit of 600 attempts, separate from the default API sliding-window limiter.
 - **Shape**: `{ "data": { "earthquakes": ..., "outages": ..., "marketQuotes": ... }, "missing": [] }` — ~40+ unwrapped seeded-domain payloads nested under `data`, plus a `missing` list for cache keys not present in Redis.
 
@@ -81,8 +81,8 @@ Monitor via UptimeRobot / Better Stack with `?compact=1` — alert on any status
   "status": "HEALTHY",
   "checkedAt": "2026-08-07T12:00:00Z",
   "summary": {
-    "total": 270,
-    "ok": 270,
+    "total": 274,
+    "ok": 274,
     "warn": 0,
     "onDemandWarn": 0,
     "staleContent": 0,
@@ -142,10 +142,6 @@ Returns country metadata: centroid, bbox, capital, ISO codes.
 ### `GET /api/reverse-geocode?lat=40.7&lon=-74.0`
 
 Reverse geocodes a lat/lon to the nearest country + city via OpenStreetMap Nominatim. Results are cached on a 0.1-degree grid for seven days, and the route is limited to 60 req/min/IP.
-
-### `GET /api/data/city-coords?q=Tokyo`
-
-City name → coordinates lookup.
 
 ## Utilities
 

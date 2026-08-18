@@ -17,6 +17,7 @@ import {
 // (api/rss-proxy.js) so dev and prod agree on allow/deny. Previously a
 // hand-maintained Set here had drifted ~138 domains from prod.
 import { isAllowedDomain } from './api/_rss-allowed-domain-match.js';
+import { rssFetchHeadersForHost } from './api/_rss-fetch-headers.js';
 import { validateGeneratedRequest } from './server/request-validator';
 
 // Env-dependent constants moved inside defineConfig function
@@ -738,10 +739,7 @@ function rssProxyPlugin(): Plugin {
 
           const response = await fetch(feedUrl, {
             signal: controller.signal,
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': 'application/rss+xml, application/xml, text/xml, */*',
-            },
+            headers: rssFetchHeadersForHost(parsed.hostname),
             redirect: 'follow',
           });
           clearTimeout(timer);

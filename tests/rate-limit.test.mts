@@ -489,7 +489,8 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
 
     assert.match(src, /import\s+\{\s*captureSilentError\s+\}\s+from\s+['"]\.\.\/\.\.\/api\/_sentry-edge\.js['"]/);
     assert.match(src, /captureSilentError\(err,\s*\{/);
-    assert.match(src, /surface:\s*'server'/);
+    assert.match(src, /surface:\s*'api'\s*\|\s*'server'\s*=\s*'server'/);
+    assert.match(src, /tags:\s*\{\s*surface,\s*component:\s*'rate-limit'/);
     // Group on the collapsed stage, never the raw one. The raw `stage` embeds
     // the caller's pathname, so using it here mints one Sentry issue per route
     // for a single Redis slowdown (#6454). The semantics of the collapse are
@@ -850,6 +851,7 @@ describe('rateLimitFingerprintStage — Sentry grouping for a degraded limiter (
       // grow with traffic and each deserves its own issue.
       assert.equal(fn('checkRateLimit:missing-config'), 'checkRateLimit:missing-config');
       assert.equal(fn('checkRateLimit:timeout'), 'checkRateLimit:timeout');
+      assert.equal(fn('mcpFreeTierRateLimit:edge-proof'), 'mcpFreeTierRateLimit:edge-proof');
       assert.equal(fn('checkScopedRateLimit:/api/skills/fetch-agentskills:missing-config'), 'checkScopedRateLimit:missing-config');
       assert.notEqual(
         fn('checkRateLimit:timeout'),

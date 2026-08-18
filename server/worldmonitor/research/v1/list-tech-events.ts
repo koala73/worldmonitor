@@ -18,7 +18,7 @@ import type {
   TechEvent,
   TechEventCoords,
 } from '../../../../src/generated/server/worldmonitor/research/v1/service_server';
-import { CITY_COORDS } from '../../../../api/data/city-coords';
+import { CITY_COORDS } from '../../../_shared/city-coords';
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import { CHROME_UA } from '../../../_shared/constants';
 import { resolveTechEventsPaging, type TechEventsPagingPresence } from './_tech-events-paging';

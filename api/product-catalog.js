@@ -25,6 +25,8 @@ import {
   PUBLIC_TIER_GROUPS,
   TIER_CONFIG,
 } from './_product-catalog.generated.js';
+// @ts-expect-error — build-generated JS module
+import { PUBLIC_INVENTORY_FACTS } from './_inventory-facts.generated.js';
 // @ts-expect-error — JS module
 import { unwrapEnvelope } from './_seed-envelope.js';
 
@@ -54,7 +56,11 @@ function json(body, status, cors, cacheControl, source) {
 }
 
 function withPublicFacts(payload) {
-  return { ...payload, ...PUBLIC_PRODUCT_FACTS };
+  return {
+    ...payload,
+    ...PUBLIC_PRODUCT_FACTS,
+    capabilities: PUBLIC_INVENTORY_FACTS.capabilities,
+  };
 }
 
 async function getFromCache() {

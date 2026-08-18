@@ -129,6 +129,8 @@ const stubSources: Record<string, string> = {
   './checkout-banner-state': `
     export const CLASSIC_AUTO_DISMISS_MS = 5000;
     export const EXTENDED_UNLOCK_TIMEOUT_MS = 30000;
+    export const ENTITLEMENT_POLL_MS = 1000;
+    export const LATE_ACTIVATION_GRACE_MS = 300000;
     export const maskEmail = (email) => email ?? null;
   `,
   // Only the storage read is faked — it is the harness's control knob for

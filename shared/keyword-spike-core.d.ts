@@ -32,6 +32,13 @@ export interface CorpusStory {
   title: string;
   lastSeenMs: number;
   sources?: string[];
+  link?: string;
+}
+
+export interface CorpusSampleHeadline {
+  title: string;
+  source: string;
+  link: string;
 }
 
 export interface CorpusSpike {
@@ -41,7 +48,8 @@ export interface CorpusSpike {
   multiplier: number;
   windowMs: number;
   uniqueSources: number;
-  sampleHeadlines: string[];
+  sourceNames: string[];
+  sampleHeadlines: CorpusSampleHeadline[];
 }
 
 export declare function toTermKey(term: string): string;

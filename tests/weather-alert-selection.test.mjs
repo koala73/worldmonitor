@@ -3,13 +3,25 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  ECCC_ALERTS_URL,
+  ECCC_ALERTS_URLS,
+  ECCC_HOST,
+  ECCC_LIVE_STATUSES,
+  ECCC_MAX_BYTES,
   MAX_ALERTS,
+  PER_SOURCE_FLOOR,
+  WEATHER_ALERTS_SOURCE_VERSION,
   calculateCentroid,
   eligibleAlertCount,
   extractCoordinates,
+  fetchApprovedWeatherJson,
+  fetchEcccAlertFeatures,
   formatTruncationWarning,
+  mapEcccRiskToSeverity,
+  mergeAlertSources,
   requireAlertFeatures,
   selectAlerts,
+  selectEcccAlerts,
   validateSelectedAlerts,
   weatherAlertNotifyLocation,
 } from '../scripts/_weather-alert-select.mjs';
@@ -320,5 +332,132 @@ describe('weather_alert notification location payload', () => {
       /eventType:\s*'weather_alert',\s*payload:\s*\{(?:[^{}]|\{[^{}]*\})*\.\.\.weatherAlertNotifyLocation\(a\),/,
       'ais-relay must spread weatherAlertNotifyLocation(a) INSIDE the weather_alert payload object so the already-computed centroid is published',
     );
+  });
+});
+
+const ECCC_POLYGON = {
+  type: 'Polygon',
+  coordinates: [[[-80, 43], [-79, 43], [-79, 44], [-80, 44], [-80, 43]]],
+};
+function ecccFeature({ id, status_en = 'issued', risk_colour_en = 'red', alert_type = 'warning', geometry = ECCC_POLYGON, overrides = {} } = {}) {
+  return {
+    id,
+    geometry,
+    properties: {
+      alert_code: 'TOR',
+      alert_type,
+      alert_name_en: 'tornado warning',
+      alert_short_name_en: 'Tornado',
+      alert_text_en: 'A tornado warning is in effect.',
+      risk_colour_en,
+      feature_name_en: 'Toronto',
+      province: 'ON',
+      status_en,
+      validity_datetime: '2026-08-13T18:00:00.000Z',
+      expiration_datetime: '2026-08-13T22:00:00.000Z',
+      ...overrides,
+    },
+  };
+}
+
+describe('ECCC weather alert normalisation', () => {
+  it('maps an issued polygon feature onto the existing record with CA/eccc stamps and a centroid', () => {
+    const [alert] = selectEcccAlerts([ecccFeature({ id: 'ca-issued-1' })]);
+    assert.equal(alert.id, 'ca-issued-1');
+    assert.equal(alert.countryCode, 'CA');
+    assert.equal(alert.source, 'eccc');
+    assert.equal(alert.severity, 'Extreme');
+    assert.equal(alert.event, 'tornado warning');
+    assert.match(alert.headline, /tornado warning/);
+    assert.equal(alert.areaDesc, 'Toronto, ON');
+    assert.equal(alert.coordinates.length, 5);
+    assert.ok(Array.isArray(alert.centroid));
+    assert.equal(alert.centroid.length, 2);
+    // TRUE centre of the closed ring, not the closing-vertex-biased average.
+    // ECCC_POLYGON repeats its first vertex to close; averaging all five points
+    // counts it twice and yields -79.6 / 43.4. main fixed calculateCentroid to
+    // drop the duplicate (the same fix the NWS fixture pins), so this branch's
+    // original expectation was the biased value.
+    assert.equal(alert.centroid[0], -79.5);
+    assert.equal(alert.centroid[1], 43.5);
+  });
+
+  it('drops status_en=ended and status_en=active; keeps issued and continued', () => {
+    const features = [
+      ecccFeature({ id: 'ended-keep-out', status_en: 'ended' }),
+      ecccFeature({ id: 'issued-keep', status_en: 'issued' }),
+      ecccFeature({ id: 'continued-keep', status_en: 'continued' }),
+      ecccFeature({ id: 'active-keep-out', status_en: 'active' }),
+      ecccFeature({ id: 'ended-2', status_en: 'ended', risk_colour_en: 'orange' }),
+    ];
+    const alerts = selectEcccAlerts(features);
+    assert.deepEqual(alerts.map(a => a.id), ['issued-keep', 'continued-keep']);
+    assert.ok(!alerts.some(a => a.id === 'ended-keep-out'));
+    assert.ok(!alerts.some(a => a.id === 'ended-2'));
+    assert.ok(!alerts.some(a => a.id === 'active-keep-out'));
+  });
+
+  it('excludes ended ids from a merged published payload', () => {
+    const nws = selectAlerts([feature('Severe', 1)]);
+    const eccc = selectEcccAlerts([
+      ecccFeature({ id: 'ended-keep-out', status_en: 'ended' }),
+      ecccFeature({ id: 'ca-issued', status_en: 'issued' }),
+    ]);
+    const published = mergeAlertSources({ nws, eccc });
+    assert.ok(published.some(a => a.id === 'alert-1'));
+    assert.ok(published.some(a => a.id === 'ca-issued' && a.countryCode === 'CA'));
+    assert.ok(!published.some(a => a.id === 'ended-keep-out'));
+  });
+
+  it('maps ECCC risk colours onto the NWS severity vocabulary', () => {
+    assert.equal(mapEcccRiskToSeverity('red'), 'Extreme');
+    assert.equal(mapEcccRiskToSeverity('orange'), 'Severe');
+    assert.equal(mapEcccRiskToSeverity('yellow'), 'Moderate');
+    assert.equal(mapEcccRiskToSeverity('green'), 'Minor');
+    assert.equal(mapEcccRiskToSeverity(undefined, 'warning'), 'Severe');
+    assert.equal(mapEcccRiskToSeverity('purple'), 'Unknown');
+  });
+
+  it('drops unmapped ECCC severity so it cannot pass isEligible', () => {
+    const alerts = selectEcccAlerts([
+      ecccFeature({ id: 'unknown-colour', risk_colour_en: 'purple', alert_type: 'other' }),
+      ecccFeature({ id: 'yellow-ok', risk_colour_en: 'yellow' }),
+    ]);
+    assert.deepEqual(alerts.map(a => a.id), ['yellow-ok']);
+    assert.equal(alerts[0].severity, 'Moderate');
+  });
+});
+
+describe('NWS + ECCC merge and per-source caps', () => {
+  it('still publishes ECCC when NWS is missing (failed source)', () => {
+    const eccc = selectEcccAlerts([ecccFeature({ id: 'ca-only' })]);
+    const published = mergeAlertSources({ nws: null, eccc });
+    assert.deepEqual(published.map(a => a.id), ['ca-only']);
+    assert.equal(published[0].source, 'eccc');
+  });
+
+  it('still publishes NWS when ECCC is missing (failed source)', () => {
+    const nws = selectAlerts([feature('Severe', 7)]);
+    const published = mergeAlertSources({ nws, eccc: undefined });
+    assert.deepEqual(published.map(a => a.id), ['alert-7']);
+    assert.equal(published[0].source, 'nws');
+  });
+
+  it('keeps a per-source floor so CA alerts are not dropped behind US small-craft', () => {
+    const nws = Array.from({ length: MAX_ALERTS }, (_, i) => selectAlerts([feature('Minor', i)])[0]);
+    const eccc = Array.from({ length: 10 }, (_, i) => selectEcccAlerts([
+      ecccFeature({ id: `ca-extreme-${i}`, risk_colour_en: 'red' }),
+    ])[0]);
+    const published = mergeAlertSources({ nws, eccc });
+    assert.equal(published.length, MAX_ALERTS);
+    const ca = published.filter(a => a.source === 'eccc');
+    assert.equal(ca.length, 10, 'all 10 Extreme CA alerts must survive the US Minor flood');
+    assert.ok(published.filter(a => a.source === 'nws').length >= PER_SOURCE_FLOOR);
+  });
+
+  it('publishes an empty merged set as valid quiet (zeroIsValid purge path)', () => {
+    const published = mergeAlertSources({ nws: [], eccc: [] });
+    assert.deepEqual(published, []);
+    assert.equal(validateSelectedAlerts({ alerts: published }), true);
   });
 });

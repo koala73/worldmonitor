@@ -1124,7 +1124,7 @@
         "ucdpEvents": "Événements UCDP",
         "displacementFlows": "Flux de déplacement",
         "climateAnomalies": "Anomalies climatiques",
-        "weatherAlerts": "Alertes météo aux États-Unis (NWS)",
+        "weatherAlerts": "Alertes météo aux États-Unis et au Canada (NWS, ECCC)",
         "strategicWaterways": "Voies navigables stratégiques",
         "economicCenters": "Centres économiques",
         "criticalMinerals": "Minéraux critiques",
@@ -1207,7 +1207,7 @@
           "infraDatacenters": "Clusters de calcul IA >=10 000 GPU",
           "infraOutages": "Pannes d'Internet et interruptions de service",
           "naturalEventsTech": "Tremblements de terre, tempêtes, incendies (peuvent affecter les centres de données)",
-          "weatherAlerts": "Alertes de temps violent aux États-Unis (NWS)",
+          "weatherAlerts": "Alertes de temps violent aux États-Unis et au Canada (NWS, ECCC)",
           "economicCenters": "Bourses et banques centrales",
           "countriesOverlay": "Superpositions de noms de pays",
           "financeExchanges": "Principales bourses mondiales par niveau de marché",
@@ -1219,7 +1219,7 @@
           "financeOutages": "Perturbations Internet pouvant impacter les opérations de marché",
           "financeCyberThreats": "Événements de sécurité autour des infrastructures financières",
           "macroWaterways": "Points d'étranglement stratégiques pour le transport de marchandises",
-          "weatherAlertsMarket": "Événements météorologiques violents aux États-Unis pertinents pour le marché (NWS)",
+          "weatherAlertsMarket": "Événements météorologiques violents aux États-Unis et au Canada pertinents pour le marché (NWS, ECCC)",
           "naturalEventsMacro": "Tremblements de terre, incendies, inondations et autres perturbations naturelles",
           "timeRecent": "Filtrer les données temporelles selon les heures récentes",
           "timeExtended": "Afficher les données de la semaine, du mois ou de toute la période écoulée",
@@ -2367,13 +2367,14 @@
     },
     "sanctionsPressure": {
       "title": "Sanctions et désignations",
-      "infoTooltip": "Désignations des sanctions OFAC provenant des listes SDN et consolidées. Affiche quels pays font face à la plus forte pression de désignation, quels programmes la pilotent et ce qui a été récemment ajouté depuis la dernière mise à jour.",
+      "infoTooltip": "Listes SDN et consolidées de l’OFAC plus les désignations SEMA/JVCFOA d’Affaires mondiales Canada. Affiche quels pays font face à la plus forte pression de désignation, quels programmes la pilotent et ce qui a été récemment ajouté depuis la dernière mise à jour.",
       "loading": "Chargement des données de sanctions...",
       "unavailable": "Données de sanctions indisponibles.",
       "summary": {
         "new": "Nouveau",
         "vessels": "Navires",
-        "aircraft": "Aéronefs"
+        "aircraft": "Aéronefs",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Pays sanctionnés",
@@ -2388,11 +2389,12 @@
       "footer": {
         "updated": "Mise à jour {{time}}",
         "dataset": "ensemble de données {{date}}",
-        "source": "Source : OFAC"
+        "source": "Source : OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nouveau(x)",
-        "new": "nouveau"
+        "new": "nouveau",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} désignation",
       "designations_other": "{{count}} désignations",
@@ -2838,6 +2840,7 @@
     "moreEvents": "autres événements",
     "monitoring": "Surveillance",
     "viewUSGS": "Voir sur USGS",
+    "viewNRCan": "Voir sur Earthquakes Canada",
     "expired": "Expiré",
     "timeAgo": {
       "s": "il y a {{count}} s",

@@ -38,6 +38,7 @@ import {
 } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
+import { applyCanadaRoadsOptInMigration } from '@/services/canada-roads-opt-in';
 import {
   initDB,
   cleanOldSnapshots,
@@ -115,6 +116,8 @@ import { applyFontScale, FONT_SCALE_STORAGE_KEY } from '@/services/font-scale-se
 
 import {
   CANADA_ARCTIC_OPT_IN_SOURCES,
+  CANADA_DEPTH_OPT_IN_SOURCES,
+  CRISIS_FLOOR_OPT_IN_SOURCES,
   computeDefaultDisabledSources,
   computeLegacyDefaultDisabledSources,
   FEEDS,
@@ -197,6 +200,8 @@ import {
   migrateStrategicDefaultsV4,
   migrateRegionalFeedRolloutDefaultsV5,
   migrateCanadaArcticOptInsV6,
+  migrateCanadaDepthOptInsV7,
+  migrateCrisisDeskOptInsV8,
 } from '@/utils/cloud-prefs-migrations';
 import {
   getConvexClient,
@@ -991,6 +996,13 @@ export class App {
       // tier is settled. Do not run while Pro status is still resolving.
       // Persist immediately so dirty storage doesn't reintroduce the layer.
       mapLayers = this.sanitizeMapLayersForTier(mapLayers);
+
+      mapLayers = applyCanadaRoadsOptInMigration(
+        mapLayers,
+        localStorage,
+        (layers) => saveToStorage(STORAGE_KEYS.mapLayers, layers),
+      );
+
       panelSettings = loadFromStorage<Record<string, PanelConfig>>(
         STORAGE_KEYS.panels,
         DEFAULT_PANELS
@@ -1306,6 +1318,56 @@ export class App {
           }
         }
         localStorage.setItem(canadaArcticKey, 'done');
+      }
+      // #6604/#6605 — Canada depth pack: new opt-in names need a NEW key.
+      // Do not reuse worldmonitor-canada-arctic-optin-v1 (already fired).
+      const canadaDepthKey = 'worldmonitor-canada-depth-optin-v1';
+      if (!localStorage.getItem(canadaDepthKey)) {
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateCanadaDepthOptInsV7({
+          [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current),
+        }, CANADA_DEPTH_OPT_IN_SOURCES);
+        const rawUpdated = migrated[STORAGE_KEYS.disabledFeeds];
+        if (typeof rawUpdated === 'string') {
+          let updated: unknown;
+          try { updated = JSON.parse(rawUpdated); } catch { updated = null; }
+          if (
+            Array.isArray(updated)
+            && updated.every((name): name is string => typeof name === 'string')
+            && JSON.stringify(updated) !== JSON.stringify(current)
+          ) {
+            saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+            console.log(
+              `[App] Canada depth opt-in (#6604/#6605): disabled ${updated.length - current.length} newly cataloged source(s)`,
+            );
+          }
+        }
+        localStorage.setItem(canadaDepthKey, 'done');
+      }
+      // #6813-#6830 — validated crisis desks: preserve every reviewed depth,
+      // backup, and locale-primary source as opt-in for returning profiles.
+      const crisisDeskOptInKey = 'worldmonitor-crisis-desk-optin-v1';
+      if (!localStorage.getItem(crisisDeskOptInKey)) {
+        const current = loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []);
+        const migrated = migrateCrisisDeskOptInsV8({
+          [STORAGE_KEYS.disabledFeeds]: JSON.stringify(current),
+        }, CRISIS_FLOOR_OPT_IN_SOURCES);
+        const rawUpdated = migrated[STORAGE_KEYS.disabledFeeds];
+        if (typeof rawUpdated === 'string') {
+          let updated: unknown;
+          try { updated = JSON.parse(rawUpdated); } catch { updated = null; }
+          if (
+            Array.isArray(updated)
+            && updated.every((name): name is string => typeof name === 'string')
+            && JSON.stringify(updated) !== JSON.stringify(current)
+          ) {
+            saveToStorage(STORAGE_KEYS.disabledFeeds, updated);
+            console.log(
+              `[App] Crisis-desk opt-ins (#6813-#6830): disabled ${updated.length - current.length} newly cataloged source(s)`,
+            );
+          }
+        }
+        localStorage.setItem(crisisDeskOptInKey, 'done');
       }
       // Locale boost: additively enable locale-matched sources (runs once per locale).
       // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →
@@ -1826,10 +1888,15 @@ export class App {
       initAisStream();
     }
 
-    // Wait for sidecar readiness on desktop so bootstrap hits a live server
+    // Wait for sidecar readiness on desktop so bootstrap hits a live server.
+    // Consume the result: a sidecar that never answered its own health probe
+    // should leave a signal rather than being silently treated as ready (#6779).
     if (isDesktopRuntime()) {
-      await waitForSidecarReady(3000);
-      markLcpDebug('wm:boot:sidecar-ready');
+      const sidecarReady = await waitForSidecarReady(3000);
+      markLcpDebug(sidecarReady ? 'wm:boot:sidecar-ready' : 'wm:boot:sidecar-not-ready');
+      if (!sidecarReady) {
+        console.warn('[boot] Local sidecar did not report ready within 3s; bootstrap may fall back to cloud.');
+      }
     }
 
     // Anonymous browser session token (issue #3541). Server's validateApiKey
@@ -1841,7 +1908,16 @@ export class App {
     if (!isDesktopRuntime()) {
       window.addEventListener(WM_SESSION_DEGRADED_EVENT, this.handleWmSessionDegraded);
       installWmSessionFetchInterceptor();
-      await ensureWmSession();
+      // Guarded like every other call site (the interceptor's own, and both
+      // periodic-refresh handlers). ensureWmSession() genuinely rejects on the
+      // old WebView / Smart-TV engines this module targets — `new
+      // AbortController()` and the timeout setTimeout sit outside mintSession's
+      // try — and init() has no try/catch, so a bare await would abort boot
+      // here: no bootstrap hydration, no auth, no UI. main.ts catches that with
+      // `.catch(console.error)`, so it would not even reach Sentry. Session
+      // establishment is best-effort at this point; the refresh-on-401 layer is
+      // the safety net.
+      await ensureWmSession().catch(() => false);
       markLcpDebug('wm:boot:session-ready');
     }
 
@@ -3078,7 +3154,10 @@ export class App {
         { name: 'global-tenders', fn: () => this.dataLoader.loadGlobalTenders(), intervalMs: REFRESH_INTERVALS.spending, condition: () => hasPremiumAccess() && this.isPanelNearViewport('global-procurement') },
         { name: 'bis', fn: () => this.dataLoader.loadBisData(), intervalMs: REFRESH_INTERVALS.bis, condition: () => this.isPanelNearViewport('economic') },
         { name: 'oil', fn: () => this.dataLoader.loadOilAnalytics(), intervalMs: REFRESH_INTERVALS.oil, condition: () => this.isPanelNearViewport('energy-complex') },
-        { name: 'firms', fn: () => this.dataLoader.loadFirmsData(), intervalMs: REFRESH_INTERVALS.firms, condition: () => this.shouldRefreshFirms() },
+        // inFlight key 'fires' matches the hydration loader and loadDataForLayer
+        // (the map-layer key), like every other layer refresh here — so all three
+        // firms call sites one-flight the guard-less loadFirmsData (#6770).
+        { name: 'fires', fn: () => this.dataLoader.loadFirmsData(), intervalMs: REFRESH_INTERVALS.firms, condition: () => this.shouldRefreshFirms() },
         { name: 'ais', fn: () => this.dataLoader.loadAisSignals(), intervalMs: REFRESH_INTERVALS.ais, condition: () => this.state.mapLayers.ais },
         { name: 'cables', fn: () => this.dataLoader.loadCableActivity(), intervalMs: REFRESH_INTERVALS.cables, condition: () => this.state.mapLayers.cables },
         { name: 'cableHealth', fn: () => this.dataLoader.loadCableHealth(), intervalMs: REFRESH_INTERVALS.cableHealth, condition: () => this.state.mapLayers.cables },
@@ -3094,7 +3173,10 @@ export class App {
 
     if (SITE_VARIANT === 'finance') {
       this.refreshScheduler.scheduleRefresh(
-        'stock-analysis',
+        // inFlight lock key matches the hydration loader's runGuarded key so
+        // boot and refresh one-flight each other (loadStockAnalysis has no
+        // internal guard). The panel/viewport key stays kebab below (#6770).
+        'stockAnalysis',
         () => this.dataLoader.loadStockAnalysis(),
         REFRESH_INTERVALS.stockAnalysis,
         () => hasPremiumAccess() && this.isPanelNearViewport('stock-analysis'),
@@ -3106,7 +3188,9 @@ export class App {
         () => hasPremiumAccess() && this.isPanelNearViewport('daily-market-brief'),
       );
       this.refreshScheduler.scheduleRefresh(
-        'stock-backtest',
+        // inFlight lock key matches the hydration loader's runGuarded key
+        // (loadStockBacktest has no internal guard); panel key stays kebab (#6770).
+        'stockBacktest',
         () => this.dataLoader.loadStockBacktest(),
         REFRESH_INTERVALS.stockBacktest,
         () => hasPremiumAccess() && this.isPanelNearViewport('stock-backtest'),

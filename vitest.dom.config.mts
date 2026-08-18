@@ -1,6 +1,18 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
+function optionalPositiveInteger(name: string): number | undefined {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') return undefined;
+  const value = Number(raw);
+  if (!/^[1-9]\d*$/.test(raw) || !Number.isSafeInteger(value)) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return value;
+}
+
+const prepushMaxWorkers = optionalPositiveInteger('VITEST_MAX_THREADS');
+
 /**
  * DOM-behavioral test project (#5634).
  *
@@ -26,6 +38,9 @@ export default defineConfig({
   },
   test: {
     environment: 'happy-dom',
+    // Local pre-push exports this cap so several worktrees cannot each fan out
+    // to every core. CI leaves it unset and retains Vitest's full-width default.
+    ...(prepushMaxWorkers === undefined ? {} : { maxWorkers: prepushMaxWorkers }),
     // Both extensions on purpose: `tests/` is 573 `.test.mjs` to 416
     // `.test.mts`, so an `.mts`-only glob would silently never run a file a
     // contributor named after the repo's more common convention — the exact

@@ -661,7 +661,7 @@
       "infoTooltip": "<strong>Renewable Energy</strong> Share of electricity generation from renewables by region and year, plus US installed capacity for solar, wind, and coal (MW). Sources: World Bank (EG.ELC.RNEW.ZS) and EIA."
     },
     "sanctionsPressure": {
-      "infoTooltip": "OFAC sanctions designations from the SDN and Consolidated Lists. Shows which countries face the highest designation pressure, what programs are driving it, and what has been newly added since the last update.",
+      "infoTooltip": "OFAC SDN and Consolidated Lists plus Global Affairs Canada SEMA/JVCFOA designations. Shows which countries face the highest designation pressure, what programs are driving it, and what has been newly added since the last update.",
       "title": "Sanctions & Designations"
     },
     "satelliteFires": {

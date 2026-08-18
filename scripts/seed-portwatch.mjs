@@ -41,7 +41,17 @@ function epochToTimestamp(epochMs) {
   return `timestamp '${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}'`;
 }
 
-function computeWow(history) {
+/**
+ * Week-over-week change in total transits, as a percentage to one decimal.
+ *
+ * Needs 14 days: the trailing 7 compared against the 7 before them. A zero
+ * prior week reports 0 rather than dividing by it — an infinite spike on a
+ * chokepoint that simply had no traffic last week is noise, not signal.
+ *
+ * Exported so the arithmetic is tested against this function rather than a
+ * copy of it.
+ */
+export function computeWow(history) {
   if (history.length < 14) return 0;
   const sorted = [...history].sort((a, b) => b.date.localeCompare(a.date));
   let thisWeek = 0;

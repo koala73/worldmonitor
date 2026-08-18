@@ -28,7 +28,9 @@ export class HeroSpotlightPanel extends Panel {
    */
   public setHeroStory(item: NewsItem | undefined): void {
     if (!item) {
-      setTrustedHtml(this.content, trustedHtml('<div class="hero-card-empty">No hero story available today</div>', "legacy direct innerHTML migration"));
+      // #6557: a settled empty state is authoritative content — clear the
+      // error state alongside the replace via the sanctioned helper.
+      this.setTrustedContent(trustedHtml('<div class="hero-card-empty">No hero story available today</div>', "legacy direct innerHTML migration"));
       return;
     }
 
@@ -50,7 +52,9 @@ export class HeroSpotlightPanel extends Panel {
       ? `<button class="hero-card-location-btn" data-lat="${item.lat}" data-lon="${item.lon}" type="button">Show on map</button>`
       : '';
 
-    setTrustedHtml(this.content, trustedHtml(`<div class="hero-card">
+    // #6557: a successful data render is authoritative content — route
+    // through the sanctioned helper so the error state clears atomically.
+    this.setTrustedContent(trustedHtml(`<div class="hero-card">
   ${imageHtml}
   <div class="hero-card-body">
     <span class="hero-card-source">${escapeHtml(item.source)}</span>

@@ -105,7 +105,7 @@ If an event falls outside the priority centroid table, the fallback density uses
 
 ### Strategic Theater Posture Assessment
 
-Nine operational theaters are continuously assessed for military posture escalation:
+The operational-theater registry is continuously assessed for military posture escalation:
 
 | Theater               | Key Trigger                                 |
 | --------------------- | ------------------------------------------- |
@@ -165,7 +165,7 @@ Enrichment queries are batched (up to 50 aircraft per request) and cached with a
 
 ### Undersea Cable Health Monitoring
 
-Beyond displaying static cable routes on the map, the system actively monitors cable health by cross-referencing two live data sources:
+Beyond displaying static cable routes on the map, the system actively monitors cable health by cross-referencing its live sources:
 
 1. **NGA Navigational Warnings** — the U.S. National Geospatial-Intelligence Agency publishes maritime safety broadcasts that frequently mention cable repair operations. The system filters these warnings for cable-related keywords (`CABLE`, `CABLESHIP`, `SUBMARINE CABLE`, `FIBER OPTIC`, etc.) and extracts structured data: vessel names, DMS/decimal coordinates, advisory severity, and repair ETAs. Each warning is matched to the nearest cataloged undersea cable within a 5° geographic radius.
 

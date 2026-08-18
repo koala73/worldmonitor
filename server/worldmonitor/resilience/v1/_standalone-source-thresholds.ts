@@ -6,6 +6,7 @@
 // surface in operational health.
 export const STANDALONE_SOURCE_META_MAX_STALE_MIN: Readonly<Record<string, number>> = {
   'seed-meta:economic:imf-macro': 100800,
+  'seed-meta:economic:statcan-wds': 4320,
   'seed-meta:economic:national-debt': 86400,
   'seed-meta:economic:imf-labor': 100800,
   'seed-meta:economic:bis': 10080,

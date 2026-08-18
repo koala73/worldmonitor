@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 /**
- * docs-stats — single source of truth for the capability counts quoted in docs.
+ * docs-stats — derived inventory metrics plus fixed documentation contracts.
  *
- * Default mode  : recompute every stat from code and write docs/generated/stats.json.
- * --check mode  : recompute, then assert that every registered doc claim still
- *                 matches the live number. Exits non-zero on drift (CI gate).
+ * --check mode recomputes every stat and asserts that each registered doc
+ * contract still matches repository truth. Inventory artifacts are written
+ * atomically by scripts/generate-inventory-facts.mjs.
  *
- * Why this exists: capability counts (map layers, services, protos, locales,
- * workflows, freshness sources, feeds) were hand-maintained across README,
- * ARCHITECTURE.md, and docs/*.mdx and drifted independently. Every number a doc
- * quotes must be derivable here and registered in CLAIMS below.
+ * Volatile capability counts are build artifacts for runtime/product display,
+ * not hand-edited acceptance criteria. CLAIMS below retains only fixed
+ * compatibility contracts that are behaviorally exact.
  *
- * Stats are parsed from source text (no TS execution / import-graph / env deps)
- * so this runs anywhere Node runs, including bare CI.
+ * Stats are parsed from source text without executing TypeScript, loading its
+ * import graph, or requiring installed packages. This keeps the generator
+ * usable in dependency-free CI and container build stages.
  */
-import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { buildSourceAttributionStats } from './source-attribution.mjs';
@@ -62,6 +62,200 @@ function findTopLevelObjectBlocks(source) {
     if (close === -1) return source.slice(start);
     return source.slice(start, start + close);
   });
+}
+
+function stripCommentsAndTemplates(source) {
+  let output = '';
+  let state = 'code';
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    const next = source[index + 1];
+    if (state === 'code') {
+      if (character === '/' && next === '/') {
+        output += '  ';
+        state = 'line-comment';
+        index += 1;
+      } else if (character === '/' && next === '*') {
+        output += '  ';
+        state = 'block-comment';
+        index += 1;
+      } else if (character === '`') {
+        output += ' ';
+        state = 'template';
+      } else {
+        output += character;
+        if (character === "'") state = 'single-quote';
+        if (character === '"') state = 'double-quote';
+      }
+      continue;
+    }
+    if (state === 'line-comment') {
+      output += character === '\n' ? '\n' : ' ';
+      if (character === '\n') state = 'code';
+      continue;
+    }
+    if (state === 'block-comment') {
+      if (character === '*' && next === '/') {
+        output += '  ';
+        state = 'code';
+        index += 1;
+      } else {
+        output += character === '\n' ? '\n' : ' ';
+      }
+      continue;
+    }
+    if (state === 'template') {
+      output += character === '\n' ? '\n' : ' ';
+      if (character === '\\') {
+        if (next === '\n') output += '\n';
+        else output += ' ';
+        index += 1;
+      } else if (character === '`') {
+        state = 'code';
+      }
+      continue;
+    }
+    output += character;
+    if (character === '\\') {
+      output += next ?? '';
+      index += 1;
+    } else if (
+      (state === 'single-quote' && character === "'")
+      || (state === 'double-quote' && character === '"')
+    ) {
+      state = 'code';
+    }
+  }
+  if (state === 'block-comment' || state === 'template' || state.endsWith('quote')) {
+    throw new Error(`docs-stats: unterminated ${state} in LAYER_REGISTRY`);
+  }
+  return output;
+}
+
+function readCallArguments(source, argumentsStart) {
+  const argumentsList = [];
+  let current = '';
+  let quote = null;
+  let depth = 0;
+  for (let index = argumentsStart; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote) {
+      current += character;
+      if (character === '\\') {
+        current += source[index + 1] ?? '';
+        index += 1;
+      } else if (character === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (character === "'" || character === '"') {
+      quote = character;
+      current += character;
+    } else if ('([{'.includes(character)) {
+      depth += 1;
+      current += character;
+    } else if (')]}'.includes(character)) {
+      if (character === ')' && depth === 0) {
+        argumentsList.push(current.trim());
+        return { args: argumentsList, end: index };
+      }
+      depth -= 1;
+      if (depth < 0) throw new Error('docs-stats: unbalanced LAYER_REGISTRY def() call');
+      current += character;
+    } else if (character === ',' && depth === 0) {
+      argumentsList.push(current.trim());
+      current = '';
+    } else {
+      current += character;
+    }
+  }
+  throw new Error('docs-stats: unterminated LAYER_REGISTRY def() call');
+}
+
+function parseLayerRegistry(source) {
+  const start = source.indexOf('export const LAYER_REGISTRY');
+  const end = source.indexOf('export const V1_LAYER_EXPLANATION_KEYS', start);
+  if (start === -1 || end === -1) {
+    throw new Error('docs-stats: could not find the complete LAYER_REGISTRY block');
+  }
+  const registryBlock = stripCommentsAndTemplates(source.slice(start, end));
+  let cursor = registryBlock.indexOf('{');
+  if (cursor === -1) throw new Error('docs-stats: LAYER_REGISTRY must be an object literal');
+  cursor += 1;
+  const declaredKeys = [];
+  const mismatchedKeys = [];
+  const lockedKeys = [];
+  while (cursor < registryBlock.length) {
+    while (/\s|,/.test(registryBlock[cursor] ?? '')) cursor += 1;
+    if (registryBlock[cursor] === '}') break;
+    if (registryBlock.startsWith('...', cursor)) {
+      throw new Error('docs-stats: LAYER_REGISTRY spread properties are not supported');
+    }
+    if (registryBlock[cursor] === '[') {
+      throw new Error('docs-stats: LAYER_REGISTRY computed properties are not supported');
+    }
+
+    let key = '';
+    const quote = registryBlock[cursor] === "'" || registryBlock[cursor] === '"'
+      ? registryBlock[cursor]
+      : null;
+    if (quote) {
+      cursor += 1;
+      while (cursor < registryBlock.length && registryBlock[cursor] !== quote) {
+        if (registryBlock[cursor] === '\\') {
+          throw new Error('docs-stats: LAYER_REGISTRY property keys must not use escapes');
+        }
+        key += registryBlock[cursor];
+        cursor += 1;
+      }
+      if (registryBlock[cursor] !== quote) {
+        throw new Error('docs-stats: unterminated LAYER_REGISTRY property key');
+      }
+      cursor += 1;
+    } else {
+      const identifier = registryBlock.slice(cursor).match(/^[A-Za-z_$][\w$]*/)?.[0];
+      if (!identifier) throw new Error('docs-stats: every LAYER_REGISTRY property must have a static key');
+      key = identifier;
+      cursor += identifier.length;
+    }
+    if (!/^[A-Za-z_$][\w$]*$/.test(key)) {
+      throw new Error(`docs-stats: invalid LAYER_REGISTRY property key ${key}`);
+    }
+    while (/\s/.test(registryBlock[cursor] ?? '')) cursor += 1;
+    if (registryBlock[cursor] !== ':') {
+      throw new Error(`docs-stats: LAYER_REGISTRY property ${key} must be an assignment`);
+    }
+    cursor += 1;
+    while (/\s/.test(registryBlock[cursor] ?? '')) cursor += 1;
+    if (!registryBlock.startsWith('def(', cursor)) {
+      throw new Error(`docs-stats: LAYER_REGISTRY property ${key} must use def()`);
+    }
+    const { args, end: callEnd } = readCallArguments(registryBlock, cursor + 4);
+    cursor = callEnd + 1;
+    declaredKeys.push(key);
+    const definitionKey = args[0]?.match(/^(['"])([A-Za-z_$][\w$]*)\1$/)?.[2];
+    if (!definitionKey) {
+      throw new Error(`docs-stats: LAYER_REGISTRY property ${key} needs a static def() key`);
+    }
+    if (key !== definitionKey) mismatchedKeys.push(`${key} -> ${definitionKey}`);
+    if (/^(['"])locked\1$/.test(args[5] ?? '')) lockedKeys.push(key);
+  }
+  if (declaredKeys.length === 0) {
+    throw new Error('docs-stats: LAYER_REGISTRY extraction was empty');
+  }
+  if (new Set(declaredKeys).size !== declaredKeys.length) {
+    throw new Error('docs-stats: LAYER_REGISTRY contains duplicate keys');
+  }
+  if (mismatchedKeys.length > 0) {
+    throw new Error(
+      `docs-stats: every LAYER_REGISTRY property must be a matching def('<key>', ...) call; mismatched: ${mismatchedKeys.join(', ')}`,
+    );
+  }
+  return {
+    keys: sorted(declaredKeys),
+    lockedKeys: sorted(lockedKeys),
+  };
 }
 
 function parseMcpAppsInventory({
@@ -220,18 +414,20 @@ function parseBootstrapCacheContract(source = read('api/bootstrap.js')) {
     );
   }
 
-  // `const cacheTier = tier ?? (auth.kind === 'public-on-demand' ? 'slow' : null)`
+  const successBlock = source.match(/function successCacheHeaders\([\s\S]*?\n\}/)?.[0];
+  if (!successBlock) throw new Error('docs-stats: could not parse successCacheHeaders in api/bootstrap.js');
+
+  // `const tier = requestedTier ?? (authKind === 'public-on-demand' ? 'slow' : null)`
   // — the tier a marked single-key on-demand URL inherits when it declares no
-  // profile of its own.
-  const onDemandDefaultTier = source.match(
-    /const cacheTier = tier \?\? \(auth\.kind === 'public-on-demand' \? '(\w+)' : null\);/,
+  // profile of its own. Read inside successCacheHeaders, where the default now
+  // lives, for the same reason as the fallbacks below: bounded to the emitter so
+  // a removed default throws instead of matching something unrelated.
+  const onDemandDefaultTier = successBlock.match(
+    /const tier = requestedTier \?\? \(authKind === 'public-on-demand' \? '(\w+)' : null\);/,
   )?.[1];
   if (!onDemandDefaultTier || !tierCache[onDemandDefaultTier]) {
     throw new Error('docs-stats: could not parse the public-on-demand default cache tier in api/bootstrap.js');
   }
-
-  const successBlock = source.match(/function successCacheHeaders\([\s\S]*?\n\}/)?.[0];
-  if (!successBlock) throw new Error('docs-stats: could not parse successCacheHeaders in api/bootstrap.js');
 
   // The tier-less fallbacks — what `?keys=weatherAlerts&public=1` gets, since a
   // marked single-key URL carries no `tier` param and weatherAlerts declares no
@@ -247,17 +443,23 @@ function parseBootstrapCacheContract(source = read('api/bootstrap.js')) {
     throw new Error('docs-stats: could not parse the tier-less public cache fallbacks in api/bootstrap.js');
   }
 
-  // Pin the WIRING, not just the constants. Parsing `cacheTier` proves the
-  // value is COMPUTED, never that it reaches the emitter: swap the call to
-  // `successCacheHeaders(tier, ...)` and on-demand inheritance stops while
-  // every parsed value stays byte-identical and the pages keep publishing it.
-  // Same for the profile lookup — without it the per-key overrides are dead.
+  // Pin the WIRING, not just the constants. Parsing the on-demand default proves
+  // the value is COMPUTED, never that it reaches the emitter; same for the
+  // profile lookup, without which the per-key overrides are dead.
+  //
+  // The default used to be computed at the call site and passed in, so this
+  // checked that the caller passed the computed value rather than the raw
+  // `tier`. #6763 moved it inside successCacheHeaders — there is now one
+  // resolution path and no call-site variant that can silently drop
+  // inheritance — so what is pinned here is that the handler still routes its
+  // success response through that emitter at all.
+  //
   // A source gate cannot prove runtime behavior (api/bootstrap-auth.test.mjs
   // does that); this narrows the gap between "the constant says X" and "the
   // handler emits X" to a rename, which throws rather than passing quietly.
-  if (!/successCacheHeaders\(\s*cacheTier,\s*auth\.kind,\s*cors,\s*onDemandKey,?\s*\)/.test(source)) {
+  if (!/successCacheHeaders\(\s*tier,\s*auth\.kind,\s*cors,\s*onDemandKey,?\s*\)/.test(source)) {
     throw new Error(
-      'docs-stats: api/bootstrap.js no longer calls successCacheHeaders(cacheTier, auth.kind, cors, onDemandKey) '
+      'docs-stats: api/bootstrap.js no longer calls successCacheHeaders(tier, auth.kind, cors, onDemandKey) '
       + '— the documented per-auth-kind cache contract may no longer be what it emits',
     );
   }
@@ -360,7 +562,7 @@ function parseBootstrapKeyTiers(source = read('shared/bootstrap-tier-keys.js')) 
 // Text-parsed rather than imported, like every other stat here: the docs-stats
 // CI job runs on bare Node with no `npm install`, and the runtime registry size
 // additionally depends on process.env.IRAN_EVENTS_ENABLED — an env-dependent
-// number must not land in the committed docs/generated/stats.json.
+// number must not land in the build-owned docs/generated/stats.json.
 //
 // The two object literals are NOT the whole registry: health.js mutates them
 // after declaration. Hardcoding that arithmetic is the same trap the docs fell
@@ -733,8 +935,8 @@ function computeStats() {
 
   // ---- Map layers (src/config/map-layer-definitions.ts) ----
   const mld = read('src/config/map-layer-definitions.ts');
-  const registryBlock = mld.slice(mld.indexOf('LAYER_REGISTRY'), mld.indexOf('VARIANT_LAYER_ORDER'));
-  const layerDefinitions = (registryBlock.match(/^\s+\w+:\s+def\(/gm) || []).length;
+  const { keys: layerKeys, lockedKeys: lockedLayerKeys } = parseLayerRegistry(mld);
+  const layerDefinitions = layerKeys.length;
 
   // Web-locked premium layers: literal 'locked' in the def() call. Desktop-only
   // locks use the `_desktop ? 'locked' : undefined` ternary and stay free on web,
@@ -747,11 +949,6 @@ function computeStats() {
   // VITE_ENABLE_CYBER_LAYER=true) and VARIANT_LAYER_ORDER means no single site
   // shows the whole registry. Plan copy therefore names the Pro-only layer
   // instead of quoting a free total — see validatePlanLayerEntitlementCopy.
-  const lockedLayerKeys = registryBlock
-    .split('\n')
-    .filter((line) => line.includes("'locked'") && !line.includes("? 'locked'"))
-    .map((line) => line.match(/^\s+(\w+):/)?.[1])
-    .filter(Boolean);
   const lockedLayerDefinitions = lockedLayerKeys.length;
 
   const variantBlock = mld.slice(mld.indexOf('VARIANT_LAYER_ORDER'), mld.indexOf('export function getLayersForVariant'));
@@ -885,7 +1082,7 @@ function computeStats() {
   const populationPriorityCountries = (populationBlock[1].match(/^\s+[A-Z]{3}:\s*\{/gm) || []).length;
 
   return {
-    _generated: 'scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`',
+    _generated: 'scripts/generate-inventory-facts.mjs — build artifact; do not commit',
     layerDefinitions,
     lockedLayerDefinitions,
     lockedLayerKeys,
@@ -933,229 +1130,207 @@ function computeStats() {
 }
 
 /**
- * Registered doc claims. Each entry pins one number in one doc to a live stat.
- * `value` returns the expected number; `min:true` treats the doc number as a
- * floor (doc says "500+" → live must be >= 500). The regex must capture the
- * number in group 1 and be unique enough to match the intended sentence.
+ * Registered exact document claims.
+ *
+ * Extensible inventories deliberately do not appear here. Their composition
+ * changes independently in parallel work, so hand-maintained prose totals
+ * create conflict-prone, self-updating release chores. Inventory publication
+ * is instead protected by the authoritative registry, generated artifacts,
+ * and set/parity validators at their owning boundaries.
+ *
+ * Keep only facts that are not extensible inventory cardinalities. `value`
+ * returns the expected value; `min:true` treats a published number as a real
+ * product floor. The regex must capture group 1.
  */
 function claims(s) {
   return [
-    { file: 'README.md', re: /(\d+)\s+map layer types/, value: s.layerDefinitions },
-    { file: 'README.md', re: /Protocol Buffers \((\d+)\s+protos/, value: s.protoFiles },
-    { file: 'README.md', re: /(\d+)\s+services\)/, value: s.protoServices },
-    { file: 'README.md', re: /(\d+)\s+languages/, value: s.locales },
-    { file: 'public/llms.txt', re: /(\d+)\s+languages with RTL support/, value: s.locales },
-    { file: 'public/llms-full.txt', re: /(\d+)\s+languages with RTL support/, value: s.locales },
-    { file: 'public/llms-full.txt', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'README.md', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
-    { file: 'README.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'README.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
-    { file: 'README.md', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'docs/overview.mdx', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
-    { file: 'docs/overview.mdx', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'docs/overview.mdx', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'docs/overview.mdx', re: /interface supports (\d+)\s+languages/, value: s.locales },
-    { file: 'docs/overview.mdx', re: /lists (\d+)\s+active providers/, value: s.sourceAttribution.providerCount },
-    { file: 'docs/overview.mdx', re: /active providers, (\d+)\s+upstream hosts/, value: s.sourceAttribution.activeHosts },
-    { file: 'docs/overview.mdx', re: /upstream hosts, (\d+)\s+structured endpoints/, value: s.sourceAttribution.structuredHosts },
-    { file: 'docs/overview.mdx', re: /structured endpoints, and (\d+)\s+news and OSINT feeds/, value: s.sourceAttribution.feedHosts },
-    { file: 'docs/zh/overview.mdx', re: /界面支持 (\d+)\s*种语言/, value: s.locales },
-    { file: 'docs/zh/overview.mdx', re: /列出 (\d+)\s*个活跃提供方/, value: s.sourceAttribution.providerCount },
-    { file: 'docs/zh/overview.mdx', re: /活跃提供方、(\d+)\s*个上游主机/, value: s.sourceAttribution.activeHosts },
-    { file: 'docs/zh/overview.mdx', re: /上游主机、(\d+)\s*个结构化端点/, value: s.sourceAttribution.structuredHosts },
-    { file: 'docs/zh/overview.mdx', re: /结构化端点和 (\d+)\s*个新闻及 OSINT 数据流/, value: s.sourceAttribution.feedHosts },
-
-    // ---- Translated READMEs ----
-    // Same claims as README.md, pinned in each language. Without these the
-    // translations silently rot: README.zh-CN.md sat at 279 protos while
-    // README.md had already moved to 281.
-    { file: 'README.zh-CN.md', re: /(\d+)\s*种地图图层/, value: s.layerDefinitions },
-    { file: 'README.zh-CN.md', re: /Protocol Buffers（(\d+)\s*个 proto/, value: s.protoFiles },
-    { file: 'README.zh-CN.md', re: /(\d+)\s*项服务/, value: s.protoServices },
-    { file: 'README.zh-CN.md', re: /(\d+)\s*种语言/, value: s.locales },
-    { file: 'README.zh-CN.md', re: /(\d+)\+\s*精选新闻源/, value: s.feedDefinitions, min: true },
-    { file: 'README.zh-CN.md', re: /(\d+)\+\s*个外部上游主机/, value: s.sourceAttributionHosts, min: true },
-    { file: 'README.zh-CN.md', re: /(\d+)\s*家证券交易所/, value: s.stockExchangeCount },
-    { file: 'README.ja-JP.md', re: /(\d+)\s*以上の外部プロバイダー/, value: s.sourceAttribution.providerCount, min: true },
-    { file: 'README.ja-JP.md', re: /(\d+)\s*種類のマップレイヤー/, value: s.layerDefinitions },
-    { file: 'README.ja-JP.md', re: /Protocol Buffers \((\d+)\s*proto/, value: s.protoFiles },
-    { file: 'README.ja-JP.md', re: /(\d+)\s*サービス\)/, value: s.protoServices },
-    { file: 'README.ja-JP.md', re: /(\d+)\s*言語対応/, value: s.locales },
-    { file: 'README.ja-JP.md', re: /(\d+)\s*以上の厳選ニュースフィード/, value: s.feedDefinitions, min: true },
-    { file: 'README.ja-JP.md', re: /(\d+)\s*の証券取引所/, value: s.stockExchangeCount },
-
-    // ---- Root contributor/agent/security docs ----
-    { file: 'AGENTS.md', re: /with (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
-    { file: 'AGENTS.md', re: /(\d+)\+\s+Vercel Edge API endpoint entries/, value: s.apiEndpointEntries, min: true },
-    { file: 'AGENTS.md', re: /(\d+)\s+freshness-tracked source groups/, value: s.freshnessSources },
-    { file: 'AGENTS.md', re: /components\/\s+# (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
-    { file: 'AGENTS.md', re: /services\/\s+# Business logic \((\d+)\s+service modules and domain directories\)/, value: s.serviceTopLevelEntries },
+    // The generator version is a toolchain compatibility contract, not an
+    // inventory total. Its documented value must stay exact.
     { file: 'AGENTS.md', re: /requires buf \+ sebuf (v\d+\.\d+\.\d+) plugins/, value: s.sebufVersion },
-
-    { file: 'ARCHITECTURE.md', re: /base class \((\d+)\s+classes\b/, value: s.panelClasses },
-    { file: 'ARCHITECTURE.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'CONTRIBUTING.md', re: /Service and message definitions across (\d+)\s+domains/, value: s.protoDomainFolders },
-    { file: 'CONTRIBUTING.md', re: /produces (\d+)\s+app variants/, value: s.variantCount },
-    { file: 'CONTRIBUTING.md', re: /UI components — (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
-    { file: 'CONTRIBUTING.md', re: /i18n JSON files \((\d+)\s+languages\)/, value: s.locales },
-    { file: 'CONTRIBUTING.md', re: /Sebuf handler implementations for all (\d+)\s+server handler domains/, value: s.serverDomains },
     { file: 'CONTRIBUTING.md', re: /currently \*\*(v\d+\.\d+\.\d+)\*\*/, value: s.sebufVersion },
-    { file: 'CONTRIBUTING.md', re: /expand our (\d+)\+\s+feed collection/, value: s.feedDefinitions, min: true },
-    { file: 'SECURITY.md', re: /All (\d+)\s+domain APIs are served through Sebuf/, value: s.serverDomains },
-    { file: 'index.html', re: /"(\d+)\s+language support with RTL"/, value: s.locales },
-    { file: 'index.html', re: /(\d+)(?:\+)?\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'index.html', re: /(\d+)\s+active providers/, value: s.sourceAttribution.providerCount },
-
-    { file: 'docs/architecture.mdx', re: /(\d+)\s+service domains, and (?:\d+)\s+map layers/, value: s.protoServices },
-    { file: 'docs/architecture.mdx', re: /(\d+)\s+map layers\./, value: s.layerDefinitions },
-    { file: 'docs/architecture.mdx', re: /\*\*(\d+)\s+service domains\*\* cover/, value: s.protoServices },
-    { file: 'docs/architecture.mdx', re: /All (\d+)\s+map layer toggle definitions/, value: s.layerDefinitions },
-
-    { file: 'docs/map-engine.mdx', re: /\*\*(\d+)\s+data layers\*\*/, value: s.layerDefinitions },
-    { file: 'docs/map-engine.mdx', re: /full \((\d+)\b/, value: s.variantLayers.full },
-    { file: 'docs/map-engine.mdx', re: /tech \((\d+)\b/, value: s.variantLayers.tech },
-    { file: 'docs/map-engine.mdx', re: /finance \((\d+)\b/, value: s.variantLayers.finance },
-    { file: 'docs/map-engine.mdx', re: /happy \((\d+)\b/, value: s.variantLayers.happy },
-    { file: 'docs/map-engine.mdx', re: /commodity \((\d+)\b/, value: s.variantLayers.commodity },
-    { file: 'docs/map-engine.mdx', re: /energy \((\d+)\b/, value: s.variantLayers.energy },
-
-    { file: 'docs/features.mdx', re: /(\d+)\s+data layers/, value: s.layerDefinitions },
-
-    { file: 'docs/agent-discovery.mdx', re: /all (\d+)\s+services/, value: s.protoServices },
-    { file: 'docs/api-reference.mdx', re: /all (\d+)\s+generated services/, value: s.protoServices },
-
-    { file: 'docs/mcp-overview.mdx', re: /same (\d+)\s+tools/, value: s.mcpToolCount },
-
-    // ---- MCP tool count on public agent-discovery and marketing surfaces (#5389) ----
-    { file: 'public/home.md', re: /(\d+)-tool MCP server/, value: s.mcpToolCount },
-    { file: 'public/home.md', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'public/agents.md', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'public/agents.md', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'public/developers.md', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'public/llms.txt', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'public/llms.txt', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'public/llms-full.txt', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'public/llms-full.txt', re: /(\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'public/llms-full.txt', re: /MCP server endpoint, (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'public/ai-search.md', re: /- (\d+)\s+MCP tools/, value: s.mcpToolCount },
-    { file: 'public/ai-search.md', re: /- (\d+)\s+supported languages/, value: s.locales },
-    // The rest of ai-search.md's Data Coverage bullets that have a generated
-    // source of truth. The locale line above is the one that had already
-    // drifted (24 vs 26) precisely because nothing pinned it; these siblings
-    // were one capability change away from the same fate.
-    { file: 'public/ai-search.md', re: /- (\d+)\s+map layer types/, value: s.layerDefinitions },
-    { file: 'public/ai-search.md', re: /- (\d+)\s+concrete panel implementations/, value: s.panelClasses },
-    { file: 'public/ai-search.md', re: /- (\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'public/ai-search.md', re: /- (\d+)\s+live Country Instability Index countries/, value: s.tier1Countries },
-    { file: 'public/ai-search.md', re: /- (\d+)-country resilience rankings/, value: s.rankableUniverseCountries },
-    { file: 'public/sdks.md', re: /every one of the (\d+)\s+\[MCP tools\]/, value: s.mcpToolCount },
-    { file: 'public/agent.txt', re: /(\d+)\s+tools; tools\/list for the live inventory/, value: s.mcpToolCount },
-    { file: 'public/pricing.md', re: /MCP access and (\d+)\s+tools under one key/, value: s.mcpToolCount },
-    { file: 'docs/pricing.mdx', re: /MCP access \((\d+)\s+tools under one key/, value: s.mcpToolCount },
-    { file: 'docs/cli.mdx', re: /any of the (\d+)\s+MCP tools/, value: s.mcpToolCount },
-    { file: 'docs/cli.mdx', re: /every one of the (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'docs/cli.mdx', re: /for all (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'docs/mcp-quickstart.mdx', re: /one of (\d+)\s+tools/, value: s.mcpToolCount },
-    { file: 'pro-test/src/locales/en.json', re: /(\d+)\s+MCP tools — risk scores/, value: s.mcpToolCount },
-    { file: 'pro-test/src/locales/en.json', re: /One key\. (\d+)\s+MCP tools/, value: s.mcpToolCount },
-    { file: 'pro-test/src/locales/en.json', re: /SDKs — (\d+)\s+tools under one key/, value: s.mcpToolCount },
-    { file: 'pro-test/src/locales/en.json', re: /"freeF2": "500\+ feeds, (\d+)\+ sources/, value: s.sourceAttributionHosts, min: true },
-    { file: 'pro-test/src/locales/en.json', re: /"s3v": "(\d+)\+"/, value: s.sourceAttribution.providerCount, min: true },
-    { file: 'pro-test/src/locales/en.json', re: /"a3": "(\d+)\+ providers/, value: s.sourceAttribution.providerCount, min: true },
-
-    // ---- Map layers in plan copy (#5387) ----
-    // Plan copy quotes the registry TOTAL and names the Pro-only layer; it never
-    // quotes a free total (see the lockedLayerKeys comment in computeStats).
-    // validatePlanLayerEntitlementCopy asserts the naming half.
-    { file: 'public/home.md', re: /(\d+)\s+data layers, \d+\+\s+observed upstream hosts, and \d+\+\s+curated news feeds/, value: s.layerDefinitions },
-    { file: 'public/home.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'middleware.ts', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'public/pricing.md', re: /Includes: (\d+)\s+map layers \(all free except Resilience/, value: s.layerDefinitions },
-    { file: 'public/pricing.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'public/pricing.md', re: /"(\d+)\s+map layers \(Resilience is Pro\)"/, value: s.layerDefinitions },
-    { file: 'docs/pricing.mdx', re: /\*\*Free\*\* — (\d+)\s+map layers \(all free except Resilience/, value: s.layerDefinitions },
-    { file: 'docs/pricing.mdx', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'docs/accounts.mdx', re: /(\d+)\s+map layers \(all but the Pro-only Resilience layer\)/, value: s.layerDefinitions },
-    { file: 'docs/zh/pricing.mdx', re: /\*\*Free\*\* — (\d+)\s*个地图图层/, value: s.layerDefinitions },
-    { file: 'docs/zh/accounts.mdx', re: /Free 套餐下列出的所有功能 — (\d+)\s*个地图图层/, value: s.layerDefinitions },
-
-    // ---- CII vs CRI country coverage (#5391) ----
-    { file: 'public/home.md', re: /CII v8 for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
-    { file: 'public/home.md', re: /(\d+)-country resilience scores/, value: s.rankableUniverseCountries },
-    { file: 'README.md', re: /CII v8 stress scoring for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
-    { file: 'docs/country-instability-index.mdx', re: /CII v8 stability scoring for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
-    { file: 'public/llms-full.txt', re: /resilience scores for the (\d+)-country public rankable universe/, value: s.rankableUniverseCountries },
-
-    { file: 'docs/mcp-apps.mdx', re: /current fleet ships (\d+)\s+MCP Apps/, value: s.mcpAppCount },
-    { file: 'docs/mcp-quickstart.mdx', re: /WorldMonitor exposes (\d+)\s+live tools/, value: s.mcpToolCount },
-    { file: 'docs/mcp-quickstart.mdx', re: /receives (\d+)\s+compressed tool descriptions/, value: s.mcpToolCount },
-    { file: 'public/mcp-server.md', re: /server ships \*\*(\d+)\s+tools\*\*/, value: s.mcpToolCount },
-    { file: 'public/product-facts.json', re: /"panelImplementations":\s*(\d+)/, value: s.panelClasses },
-
-    { file: 'docs/data-sources.mdx', re: /monitors (\d+)\s+data sources/, value: s.freshnessSources },
-    { file: 'docs/data-sources.mdx', re: /fuses \*\*(\d+) active providers/, value: s.sourceAttribution.providerCount },
-    { file: 'docs/data-sources.mdx', re: /active providers across (\d+) upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'docs/source-attribution.mdx', re: /\*\*(\d+) active upstream hosts\*\*/, value: s.sourceAttributionHosts },
-    { file: 'docs/source-attribution.mdx', re: /representing \*\*(\d+) active providers\*\*/, value: s.sourceAttribution.providerCount },
-    { file: 'docs/data-sources.mdx', re: /across (\d+)\s+monitored airports/, value: s.airportCount },
-    { file: 'docs/data-sources.mdx', re: /^(\d+)\s+airports across 5 regions/m, value: s.airportCount },
-    { file: 'docs/data-sources.mdx', re: /(\d+)\s+global stock exchanges/, value: s.stockExchangeCount },
-    { file: 'docs/data-sources.mdx', re: /(\d+)\s+central-bank and supranational finance institutions/, value: s.centralBankInstitutionCount },
-    { file: 'docs/features.mdx', re: /signals from (\d+)\s+central-bank and supranational finance institutions/, value: s.centralBankInstitutionCount },
-    { file: 'docs/overview.mdx', re: /(\d+)\s+central-bank and supranational finance institutions/, value: s.centralBankInstitutionCount },
-    { file: 'docs/architecture.mdx', re: /stock exchanges \((\d+)\)/, value: s.stockExchangeCount },
-    { file: 'docs/architecture.mdx', re: /central-bank and supranational finance institutions \((\d+)\)/, value: s.centralBankInstitutionCount },
-    { file: 'docs/COMMUNITY-PROMOTION-GUIDE.md', re: /"(\d+)\s+global stock exchanges mapped/, value: s.stockExchangeCount },
-    { file: 'docs/COMMUNITY-PROMOTION-GUIDE.md', re: /Finance variant with (\d+)\s+exchanges/, value: s.stockExchangeCount },
-    { file: 'docs/PRESS_KIT.md', re: /\| Stock exchanges mapped \| (\d+) \|/, value: s.stockExchangeCount },
-    { file: 'docs/PRESS_KIT.md', re: /\| Panel implementations \| (\d+) concrete classes \|/, value: s.panelClasses },
-    { file: 'public/llms-full.txt', re: /Stock Exchanges\*\*: (\d+)\s+global exchanges/, value: s.stockExchangeCount },
-    { file: 'public/llms-full.txt', re: /Central Banks & Institutions\*\*: (\d+)\s+central-bank and supranational finance institutions/, value: s.centralBankInstitutionCount },
-    { file: 'public/llms-full.txt', re: /Unique layers: (\d+)\s+stock exchanges/, value: s.stockExchangeCount },
-    { file: 'public/llms-full.txt', re: /Unique layers: \d+\s+stock exchanges, \d+\s+financial centers, (\d+)\s+central-bank and supranational finance institutions/, value: s.centralBankInstitutionCount },
-    { file: 'docs/data-sources.mdx', re: /^(\d+)\s+enabled channels in the default `full` Telegram channel set/m, value: s.telegramFullEnabledChannels },
-    { file: 'docs/data-sources.mdx', re: /\*\*Tier 1\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['1'] },
-    { file: 'docs/data-sources.mdx', re: /\*\*Tier 2\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['2'] },
-    { file: 'docs/data-sources.mdx', re: /\*\*Tier 3\*\* \| (\d+)\s+\|/, value: s.telegramFullTierCounts['3'] },
-    { file: 'docs/algorithms.mdx', re: /local (\d+)-country priority population table/, value: s.populationPriorityCountries },
-    { file: 'docs/algorithms.mdx', re: /and (\d+)\s+tracked world-leader names/, value: s.leaderNames },
-
-    // ---- Blog posts (blog-site/) — capability counts quoted in evergreen developer/overview posts ----
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /typed API: (\d+)\s+services/, value: s.protoServices },
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /typed API: \d+\s+services, (\d+)\s+proto files/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /\*\*(\d+)\s+proto files\*\* defining/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /\*\*(\d+)\s+typed service domains\*\*/, value: s.protoServices },
-    // Heading labels the table below it, which is enumerated from server/worldmonitor/* dirs → pin to serverDomains (not protoServices; the two equal 34 today but a domain with two `service` blocks would diverge them).
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /##\s+(\d+)\s+Service Domains/, value: s.serverDomains },
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /Protocol Buffers \((\d+)\s+files\)/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /worldmonitor\)\. (\d+)\s+services, \d+\s+proto files, and a global/, value: s.protoServices },
-    { file: 'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md', re: /worldmonitor\)\. \d+\s+services, (\d+)\s+proto files, and a global/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /generated from (\d+)\s+Protocol Buffer definitions into \d+\s+REST service specifications/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /generated from \d+\s+Protocol Buffer definitions into (\d+)\s+REST service specifications/, value: s.protoServices },
-    // The explainer's remaining capability counts. These live here rather than
-    // in tests/blog-seo-contract.test.mjs because the `unit` job that runs it is
-    // gated on changes.code, whose filter drops every .md path — the contract
-    // guarding this markdown page skipped the markdown-only PRs most likely to
-    // break it. docs-stats is always-on. Shape assertions that a numeric pin
-    // cannot express live in validateCategoryExplainerCopy below.
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\+\s+observed upstream hosts/, value: s.sourceAttributionHosts },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+map-layer types/, value: s.layerDefinitions },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+Tier-1 countries/, value: s.tier1Countries },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /\*\*(\d+)-country\*\* public Country Resilience Index universe/, value: s.rankableUniverseCountries },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+central-bank or supranational institutions/, value: s.centralBankInstitutionCount },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /(\d+)\s+interface languages/, value: s.locales },
-    { file: 'blog-site/src/content/blog/what-is-worldmonitor-real-time-global-intelligence.md', re: /Model Context Protocol server with (\d+)\s+live tools/, value: s.mcpToolCount },
-    { file: 'blog-site/src/content/blog/ai-powered-intelligence-without-the-cloud.md', re: /architecture \((\d+)\s+proto files, \d+\s+typed services\)/, value: s.protoFiles },
-    { file: 'blog-site/src/content/blog/ai-powered-intelligence-without-the-cloud.md', re: /architecture \(\d+\s+proto files, (\d+)\s+typed services\)/, value: s.protoServices },
-    { file: 'blog-site/src/content/blog/worldmonitor-vs-traditional-intelligence-tools.md', re: /using the (\d+)\s+typed API services/, value: s.protoServices },
-
-    // /api/health `summary.total` (#6300) is pinned by validateHealthSummaryDocs
-    // rather than by claims: a claim runs `text.match()`, which reads only the
-    // FIRST match on a page, so a second example body appended below the pinned
-    // one would publish an unpinned number. The validator checks every block.
   ];
+}
+
+const ENGLISH_VOLATILE_INVENTORY_CLAIM_RE = /\b\d[\d,]*(?:\s*[–-]\s*\d[\d,]*)?(?:\+)?\s+(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|other|live|curated|interactive|interchangeable|documented|registered|observed|monitored|supported|news|data source|data|intelligence|separate|local|edge|typed|specialized|dashboard|military|strategic|operational|associated|government|advisory|installable|public|proto-backed|positive-news|mapped|tracked)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|credentials|API handlers|API endpoints|endpoints|operations|functions|domains|specs|layers|map layers|panels|variants|languages|locales|airports|bases|theaters|ports|pipelines|waterways|chokepoints|cables|satellites|clusters|routes|data ?centers|datacenters|entities|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\b/i;
+const ENGLISH_WORD_VOLATILE_INVENTORY_CLAIM_RE = /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|other|live|curated|interchangeable|documented|registered|observed|monitored|supported|news|data|intelligence|separate|local|typed|specialized|dashboard|military|strategic|operational|associated|government|advisory|installable|public|proto-backed|positive-news|mapped|tracked)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|layers|map layers|panels|variants|languages|locales|airports|bases|theaters|ports|pipelines|waterways|chokepoints|cables|satellites|clusters|routes|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\b/i;
+const ENGLISH_INTERCHANGEABLE_SURFACES_RE = /\b(?:\d[\d,]*|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+interchangeable\s+surfaces\b/i;
+const HYPHENATED_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|\s)\d[\d,]*(?:\+)?-(?:tool|feed|source|provider|service|stream|connector|endpoint|operation|function|domain|spec|layer|panel|variant|language|locale|airport|base|theater|port|pipeline|waterway|chokepoint|cable|satellite|cluster|route|webcam|camera|channel|skill|recipe)s?\b/i;
+const LABEL_FIRST_VOLATILE_INVENTORY_CLAIM_RE = /\b(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|map layers|panels|languages|locales|airports|webcams|cameras|news channels|channels|agent skills|agent recipes|skills|recipes)\s*:\s*\d[\d,]*(?:\+)?\b/i;
+const MARKDOWN_TABLE_VOLATILE_INVENTORY_CLAIM_RE = /\|\s*(?:(?:live|video|news|data|map|military|AI|strategic|undersea|intelligence|Telegram|prediction)\s+)*(?:tools|feeds|sources|providers|services|streams|connectors|API handlers|API endpoints|endpoints|operations|functions|domains|specs|layers|panels|variants|languages|locales|airports|bases|theaters|ports|pipelines|waterways|chokepoints|satellites|clusters|routes|datacenters|cameras|webcams|channels|events)(?:\s+(?:supported|monitored|mapped|tracked|available))?\s*\|\s*\d[\d,]*(?:\+)?(?=\s*(?:\([^|\n]*\)\s*)?\|)/i;
+const CHINESE_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|[^A-Za-z0-9])\d[\d,]*\s*(?:(?:\+|多|以上)\s*)?(?:个|项)?\s*(?:(?:实时|精选|已注册|已观察|监控|受监控|独立|上游|生成的|可安装|公开|智能体|Vercel|Edge|边缘|数据|新闻|API|OSINT|军事|战略|作战)\s*)*(?:数据源|信息源|新闻源|服务(?:领域)?|工具|技能|配方|提供商|处理器|操作|地图图层|数据图层|图层|面板|语言|区域设置|机场|基地(?:数据库)?|战区|戰區|港口|管道|水道|咽喉要道|海底电缆|卫星|衛星|集群|路线|路線|数据中心|实体|边缘函数|函数|频道|頻道)(?=$|[\s，。、；：）)】<])/i;
+const JAPANESE_VOLATILE_INVENTORY_CLAIM_RE = /(?:^|[^A-Za-z0-9])\d[\d,]*\s*(?:\+|以上)?\s*(?:個|個の|つの|件の|項目の|の)?\s*(?:(?:MCP|OpenAPI|Vercel|Telegram|YouTube|OSINT|AI|ライブ|登録済み|監視対象|専門|ダッシュボード)\s*)*(?:ツール|フィード|データソース|情報源|プロバイダー|サービス|ストリーム|コネクター|APIハンドラー|APIエンドポイント|エンドポイント|オペレーション|関数|ドメイン|仕様|マップレイヤー|パネル|バリアント|言語|ロケール|空港|データセンター|ウェブカメラ|チャンネル|エージェントスキル|Edge Functions|ダッシュボード)(?=$|[\s、。；：）)】<をがはにでへとも]|から|まで|より)/i;
+const POSTFIX_VOLATILE_INVENTORY_CLAIM_RE = /(?:Vercel\s+)?Edge Functions\s*[（(]\s*\d[\d,]*\s*(?:\+|以上)\s*[）)]/i;
+export const VOLATILE_INVENTORY_CLAIM_RE = new RegExp(
+  `(?:${ENGLISH_VOLATILE_INVENTORY_CLAIM_RE.source}|${ENGLISH_WORD_VOLATILE_INVENTORY_CLAIM_RE.source}|${ENGLISH_INTERCHANGEABLE_SURFACES_RE.source}|${HYPHENATED_VOLATILE_INVENTORY_CLAIM_RE.source}|${LABEL_FIRST_VOLATILE_INVENTORY_CLAIM_RE.source}|${MARKDOWN_TABLE_VOLATILE_INVENTORY_CLAIM_RE.source}|${CHINESE_VOLATILE_INVENTORY_CLAIM_RE.source}|${JAPANESE_VOLATILE_INVENTORY_CLAIM_RE.source}|${POSTFIX_VOLATILE_INVENTORY_CLAIM_RE.source})`,
+  'i',
+);
+
+export const ACQUISITION_CLAIM_ROOTS = [
+  'index.html',
+  'README.md',
+  'README.zh-CN.md',
+  'README.ja-JP.md',
+  'server.json',
+  'cli',
+  'docs',
+  'public',
+  'public/.well-known/ai-catalog.json',
+  'public/.well-known/agent-skills',
+  'public/api/llms.txt',
+  'pro-test/src/locales',
+  'pro-test/index.html',
+  'pro-test/welcome.html',
+  'blog-site/src/content/blog',
+  'scripts/build-agent-skills-index.mjs',
+];
+const ACQUISITION_CLAIM_EXCLUDES = [
+  'docs/audits/',
+  'docs/api/',
+  'docs/brainstorms/',
+  'docs/archive/',
+  'docs/changelog.mdx',
+  'docs/zh/changelog.mdx',
+  'docs/Docs_To_Review/',
+  'docs/desktop-parity-matrix.md',
+  'docs/generated/',
+  'docs/internal/',
+  'docs/ideation/',
+  'docs/perf/',
+  'docs/plans/',
+  'docs/research/',
+  'docs/railway-seed-consolidation-runbook.md',
+  'docs/solutions/',
+  'docs/source-attribution.mdx',
+  'public/blog/',
+  'public/pro/',
+  'public/openapi',
+];
+const ACQUISITION_CLAIM_EXTENSIONS = /\.(?:astro|html|json|md|mdx|mjs|txt)$/;
+
+function isCurrentAcquisitionClaimSurface(path) {
+  return (
+    ['index.html', 'README.md', 'README.zh-CN.md', 'README.ja-JP.md', 'server.json', 'cli/README.md',
+      'pro-test/index.html', 'pro-test/welcome.html', 'scripts/build-agent-skills-index.mjs'].includes(path)
+    || /^docs\/.+\.(?:md|mdx)$/.test(path)
+    || /^public\/[^/]+\.(?:md|txt|json)$/.test(path)
+    || /^public\/(?:[^/]+\/)*llms\.txt$/.test(path)
+    || path === 'public/.well-known/ai-catalog.json'
+    || /^public\/\.well-known\/agent-skills\/[^/]+\/SKILL\.md$/.test(path)
+    || /^pro-test\/src\/locales\/[^/]+\.json$/.test(path)
+    || /^blog-site\/src\/content\/blog\/[^/]+\.md$/.test(path)
+  );
+}
+
+export function collectCurrentAcquisitionClaimFiles() {
+  const files = new Set();
+  const visit = (path) => {
+    if (ACQUISITION_CLAIM_EXCLUDES.some((prefix) => path.startsWith(prefix))) return;
+    const absolute = join(ROOT, path);
+    let stat;
+    try {
+      stat = statSync(absolute);
+    } catch {
+      if (ACQUISITION_CLAIM_ROOTS.includes(path)) {
+        throw new Error(`docs-stats: required acquisition claim root is missing: ${path}`);
+      }
+      return;
+    }
+    if (stat.isDirectory()) {
+      for (const entry of readdirSync(absolute)) visit(`${path}/${entry}`);
+      return;
+    }
+    if (ACQUISITION_CLAIM_EXTENSIONS.test(path) && isCurrentAcquisitionClaimSurface(path)) {
+      files.add(path);
+    }
+  };
+  for (const path of ACQUISITION_CLAIM_ROOTS) visit(path);
+  return [...files].sort();
+}
+
+export function retainedExactContractCoverageFailures(contracts, observedContracts) {
+  return contracts
+    .filter((contract) => !observedContracts.has(contract))
+    .map((contract) => `${contract.path}: retained exact count contract is missing or changed: ${contract.text}`);
+}
+
+export function validateVolatileInventoryClaims() {
+  const retainedExactContracts = [
+    { path: 'docs/signal-intelligence.mdx', text: /(?:3\+ source types|6\+ sources\/hour)/ },
+    { path: 'docs/ai-intelligence.mdx', text: /8\+ feeds in 2 hours/ },
+    { path: 'docs/data-sources.mdx', text: /Natural disasters from 3 sources/ },
+    { path: 'docs/zh/data-sources.mdx', text: /来自 3 个数据源的自然灾害/ },
+    { path: 'docs/data-sources.mdx', text: /25 feed categories would have generated 25,000 edge invocations/ },
+    { path: 'docs/tradingview-screener-integration.md', text: /41\/41 operations/ },
+    { path: 'docs/api-versioning.mdx', text: /version 1 operation/ },
+    { path: 'docs/architecture.mdx', text: /protoc-gen-openapiv3.*OpenAPI 3\.1\.0 specs/ },
+    { path: 'docs/PRESS_KIT.md', text: /72 indicators, 21 active dimensions, 6 domains/ },
+    { path: 'docs/documentation.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
+    { path: 'docs/features.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
+    { path: 'docs/overview.mdx', text: /72 indicators across 21 active dimensions and 6 domains/ },
+    { path: 'public/llms-full.txt', text: /72 indicators across 21 active dimensions, 6 domains/ },
+    { path: 'blog-site/src/content/blog/country-instability-index-methodology-explained.md', text: /72 indicators, 21 active dimensions, and 6 domains/ },
+    { path: 'blog-site/src/content/blog/country-resilience-index-methodology-explained.md', text: /72 indicators across 21 active dimensions and 6 domains/ },
+    { path: 'blog-site/src/content/blog/country-resilience-index-methodology-explained.md', text: /six domains/i },
+    { path: 'blog-site/src/content/blog/country-risk-monitoring-workflow-for-analysts.md', text: /72 indicators, 21 active dimensions, and 6 domains/ },
+    // Fixed resilience schema. tests/resilience-doc-parity.test.mts derives
+    // these values from the scorer registry and validates this exact page.
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /196 countries using 72 indicators across 21 dimensions and 6 domains/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /pillars\[\].*six domains/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /72 indicators across 21 active dimensions and 6 domains.*3 pillars.*2 structurally-retired dimensions/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /196-country public rankable universe.*72 indicators across 21 active dimensions and 6 domains.*2 structurally-retired dimensions/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /organized into 6 domains/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /6 domains are regrouped into 3 pillars/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /average of 5 domains and 13 dimensions/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /5-domain \/ 13-dimension structure.*6 new recovery dimensions/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /six-domain weighted aggregate.*rollback path/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /five-domain flat structure.*six-domain structure.*six new dimensions.*three-pillar outer layer/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /Re-anchored release-gate bands.*6-domain formula's/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /The 6-domain formula lives alongside the pillar combine/ },
+    { path: 'docs/methodology/country-resilience-index.mdx', text: /current registry contains 72 indicators across 21 active dimensions and 6 domains.*2 structurally-retired dimensions/ },
+    // Fixed scoring limits, not extensible source inventories.
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /Corroboration score is capped at five sources/ },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /per entity-level source, capped at five sources/ },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`critical-developing`.*\+5 sources/ },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`high-event`.*\+5 sources/ },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`sanctions-regulatory`.*\+5 sources/ },
+    { path: 'docs/methodology/news-digest-and-briefing.mdx', text: /`med`.*\+5 sources/ },
+    { path: 'docs/mcp-tools-reference.mdx', text: /current four feeds, 5 is a compatibility safety threshold/ },
+    { path: 'docs/mcp-tools-reference.mdx', text: /across seven domains/ },
+    { path: 'docs/mcp-tools-reference.mdx', text: /between two airports/ },
+    { path: 'docs/webcam-layer.mdx', text: /up to 4 webcams simultaneously/ },
+    { path: 'docs/webcam-layer.mdx', text: /more than 4 webcams are pinned/ },
+    { path: 'docs/webcam-layer.mdx', text: /Maximum 4 webcams can be active/ },
+    { path: 'docs/algorithms.mdx', text: /38\+ (?:associated )?military bases/ },
+    { path: 'docs/algorithms.mdx', text: /five operational theaters/ },
+    // Fixed scoring universe: tests/chokepoint-scenario-doc-parity.test.mjs
+    // derives the exact registry membership and validates this methodology.
+    { path: 'docs/methodology/chokepoints.mdx', text: /13 monitored waterways/ },
+    { path: 'blog-site/src/content/blog/alerts-notification-channels-worldmonitor.md', text: /six channels/i },
+    { path: 'blog-site/src/content/blog/aviation-intelligence-airports-airspace-flight-prices.md', text: /between any two airports/ },
+    { path: 'blog-site/src/content/blog/build-supply-chain-early-warning-system-api.md', text: /Three signals, three endpoints/ },
+    { path: 'blog-site/src/content/blog/free-geopolitical-data-apis-2026.md', text: /ingest ten feeds/ },
+    { path: 'blog-site/src/content/blog/supply-chain-early-warning-dashboard-worldmonitor-api.md', text: /five panels/ },
+    { path: 'pro-test/src/locales/ja.json', text: /25ダッシュボード/ },
+    { path: 'pro-test/src/locales/ja.json', text: /紛争は1つのマップレイヤー/ },
+  ];
+  const failures = [];
+  const observedRetainedContracts = new Set();
+  const visit = (path) => {
+    for (const [index, line] of read(path).split('\n').entries()) {
+      if (/\btool errors\b/i.test(line)) continue;
+      if (/\bTier \d+(?:[–-]\d+)? sources\b/i.test(line)) continue;
+      const retained = retainedExactContracts.filter((entry) => entry.path === path && entry.text.test(line));
+      if (retained.length > 0) {
+        for (const contract of retained) observedRetainedContracts.add(contract);
+        continue;
+      }
+      if (!VOLATILE_INVENTORY_CLAIM_RE.test(line)) continue;
+      failures.push(`${path}:${index + 1}: hand-authored acquisition copy must use registry-derived or semantic inventory wording: ${line.trim()}`);
+    }
+  };
+  for (const path of collectCurrentAcquisitionClaimFiles()) visit(path);
+  failures.push(...retainedExactContractCoverageFailures(retainedExactContracts, observedRetainedContracts));
+  return failures;
 }
 
 function findDocsJsonPages(node, out = []) {
@@ -1615,7 +1790,6 @@ const CATEGORY_EXPLAINER_OPENING =
 // Wide enough that ordinary copy edits pass; narrow enough that the definition
 // cannot decay into a one-liner or swell back into the old narrative lede.
 const CATEGORY_EXPLAINER_OPENING_WORDS = { min: 35, max: 80 };
-const COUNT_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 const CATEGORY_EXPLAINER_REQUIRED_LINKS = [
   'https://www.worldmonitor.app/docs/data-sources',
   'https://www.worldmonitor.app/pricing.md',
@@ -1668,25 +1842,6 @@ export function validateCategoryExplainerCopy(stats, readFile = read) {
     }
   }
 
-  // The variant count is spelled out in the copy, so no numeric claims() regex
-  // can reach it. Derive the word from the registry anyway: with "Six" pinned
-  // as a literal, variantCount=7 left this the one capability claim in the
-  // contract that stayed green while every numeric sibling went red.
-  const variantWord = COUNT_WORDS[stats.variantCount];
-  if (!variantWord) {
-    failures.push(`${file}: no spelled-out word for variantCount ${stats.variantCount} — extend COUNT_WORDS`);
-  } else if (!new RegExp(`\\b${variantWord} dashboard variants\\b`, 'i').test(body)) {
-    failures.push(`${file}: copy must say "${variantWord} dashboard variants" to match variantCount ${stats.variantCount}`);
-  }
-  // The count word alone stays true if a variant is added to the enumeration
-  // without moving the count, or dropped out of it.
-  const variantList = body.match(/dashboard variants\*\*: (.+)/);
-  if (!variantList) {
-    failures.push(`${file}: missing the enumerated dashboard-variant list`);
-  } else if (variantList[1].split(',').length !== stats.variantCount) {
-    failures.push(`${file}: enumerates ${variantList[1].split(',').length} dashboard variants, code has ${stats.variantCount} — ${variantList[1]}`);
-  }
-
   for (const link of CATEGORY_EXPLAINER_REQUIRED_LINKS) {
     if (!body.includes(link)) failures.push(`${file}: citation surface must link ${link}`);
   }
@@ -1695,6 +1850,18 @@ export function validateCategoryExplainerCopy(stats, readFile = read) {
   }
   for (const [pattern, what] of CATEGORY_EXPLAINER_RETIRED_COPY) {
     if (pattern.test(body)) failures.push(`${file}: reintroduces ${what}`);
+  }
+  const variantLine = body.match(/^- Dashboard variants \(registry keys\):\s*(.+)$/m)?.[1];
+  if (!variantLine) {
+    failures.push(`${file}: missing the enumerated dashboard-variant list`);
+  } else {
+    const documentedVariants = [...variantLine.matchAll(/`([^`]+)`/g)].map((match) => match[1]);
+    const expectedVariants = Object.keys(stats.variantLayers).sort();
+    if (!sameStringSet(documentedVariants, expectedVariants)) {
+      failures.push(
+        `${file}: dashboard variants drift (${describeSetDelta(documentedVariants, expectedVariants)})`,
+      );
+    }
   }
   return failures;
 }
@@ -1712,6 +1879,7 @@ const DOC_VALIDATORS = [
   validateHealthSummaryDocs,
   validatePlanLayerEntitlementCopy,
   validateCategoryExplainerCopy,
+  validateVolatileInventoryClaims,
 ];
 
 function main() {
@@ -1719,10 +1887,8 @@ function main() {
   const stats = computeStats();
 
   if (!check) {
-    mkdirSync(join(ROOT, 'docs/generated'), { recursive: true });
-    writeFileSync(join(ROOT, 'docs/generated/stats.json'), JSON.stringify(stats, null, 2) + '\n');
-    console.log('docs/generated/stats.json written:');
-    console.log(JSON.stringify(stats, null, 2));
+    console.error('docs-stats only validates claims; run `npm run inventory:facts` to write generated stats.');
+    process.exitCode = 1;
     return;
   }
 
@@ -1767,7 +1933,7 @@ function main() {
   if (failures.length) {
     console.error(`docs-stats --check FAILED (${failures.length}):`);
     for (const f of failures) console.error('  ✗ ' + f);
-    console.error('\nFix the doc number, or run `npm run docs:stats` if the code total legitimately changed.');
+    console.error('\nFix the documented contract or its authoritative registry.');
     process.exit(1);
   }
   console.log(`docs-stats --check OK — ${claims(stats).length} doc claims match code.`);
@@ -1782,6 +1948,7 @@ export {
   sameStringSet,
   describeSetDelta,
   parseMcpAppsInventory,
+  parseLayerRegistry,
   validateMcpAppsDocs,
   parseBootstrapCacheContract,
   parseBootstrapKeyTiers,

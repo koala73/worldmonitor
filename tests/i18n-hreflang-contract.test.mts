@@ -234,6 +234,6 @@ describe('international SEO application-locale mode (#5666)', () => {
 
   it('never lists pseudo-localized query URLs in sitemap or robots output', () => {
     assert.doesNotMatch(read('public/sitemap.xml'), /[?&]lang=/i);
-    assert.doesNotMatch(read('public/robots.txt'), /[?&]lang=/i);
+    assert.doesNotMatch(read('public/robots.www.txt'), /[?&]lang=/i);
   });
 });

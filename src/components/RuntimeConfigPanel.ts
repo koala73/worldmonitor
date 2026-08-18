@@ -326,10 +326,10 @@ export class RuntimeConfigPanel extends Panel {
           <span class="runtime-secret-status ${statusClass}">${escapeHtml(status)}</span>
           <span class="runtime-secret-check ${checkClass}">&#x2713;</span>
           ${helpText ? `<div class="runtime-secret-meta">${escapeHtml(helpText)}</div>` : ''}
-          <select data-model-select class="${inputClass}" ${isDesktopRuntime() ? '' : 'disabled'}>
+          <select data-model-select class="${inputClass}" aria-label="${escapeHtml(key)} model" ${isDesktopRuntime() ? '' : 'disabled'}>
             ${storedModel ? `<option value="${escapeHtml(storedModel)}" selected>${escapeHtml(storedModel)}</option>` : '<option value="" selected disabled>Loading models...</option>'}
           </select>
-          <input type="text" data-model-manual class="${inputClass} hidden-input" placeholder="Or type model name" autocomplete="off" ${isDesktopRuntime() ? '' : 'disabled'} ${storedModel ? `value="${escapeHtml(storedModel)}"` : ''}>
+          <input type="text" data-model-manual class="${inputClass} hidden-input" placeholder="Or type model name" aria-label="${escapeHtml(key)} model" autocomplete="off" ${isDesktopRuntime() ? '' : 'disabled'} ${storedModel ? `value="${escapeHtml(storedModel)}"` : ''}>
           ${hintText ? `<span class="runtime-secret-hint">${escapeHtml(hintText)}</span>` : ''}
         </div>
       `;
@@ -346,7 +346,7 @@ export class RuntimeConfigPanel extends Panel {
         <span class="runtime-secret-check ${checkClass}">&#x2713;</span>
         ${helpText ? `<div class="runtime-secret-meta">${escapeHtml(helpText)}</div>` : ''}
         <div class="runtime-input-wrapper${showGetKey ? ' has-suffix' : ''}">
-          <input type="${PLAINTEXT_KEYS.has(key) ? 'text' : 'password'}" data-secret="${key}" placeholder="${pending ? t('modals.runtimeConfig.placeholder.staged') : t('modals.runtimeConfig.placeholder.setSecret')}" autocomplete="off" ${isDesktopRuntime() ? '' : 'disabled'} class="${inputClass}" ${pending ? `value="${PLAINTEXT_KEYS.has(key) ? escapeHtml(this.pendingSecrets.get(key) || '') : MASKED_SENTINEL}"` : (PLAINTEXT_KEYS.has(key) && state.present ? `value="${escapeHtml(getRuntimeConfigSnapshot().secrets[key]?.value || '')}"` : '')}>
+          <input type="${PLAINTEXT_KEYS.has(key) ? 'text' : 'password'}" data-secret="${key}" aria-label="${escapeHtml(key)}" placeholder="${pending ? t('modals.runtimeConfig.placeholder.staged') : t('modals.runtimeConfig.placeholder.setSecret')}" autocomplete="off" ${isDesktopRuntime() ? '' : 'disabled'} class="${inputClass}" ${pending ? `value="${PLAINTEXT_KEYS.has(key) ? escapeHtml(this.pendingSecrets.get(key) || '') : MASKED_SENTINEL}"` : (PLAINTEXT_KEYS.has(key) && state.present ? `value="${escapeHtml(getRuntimeConfigSnapshot().secrets[key]?.value || '')}"` : '')}>
           ${getKeyHtml}
         </div>
         ${hintText ? `<span class="runtime-secret-hint">${escapeHtml(hintText)}</span>` : ''}

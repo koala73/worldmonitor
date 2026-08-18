@@ -7,7 +7,7 @@
  * curated source→country map in shared/source-geography.json, and enforces
  * the policy in shared/geo-coverage-policy.json:
  *
- *   - strategic floors: min EN default-on local sources per keyCountry
+ *   - strategic floors: minimum globally default-on local sources per keyCountry
  *   - zeroDefaultOnAllowlist: exact set of keyCountries allowed to have zero
  *     default-on local sources (fails both on undocumented gaps and on stale
  *     allowlist entries once coverage lands)
@@ -107,8 +107,8 @@ async function bundleFeedsModule(repoRoot) {
   }
 }
 
-/** Return the default-enabled catalog sources that are reachable for EN. */
-export function getEnglishDefaultEnabledSources(feeds) {
+/** Return catalog sources enabled globally, including approved strategic non-English desks. */
+export function getGloballyDefaultEnabledSources(feeds) {
   const defaultEnabled = feeds.getAllDefaultEnabledSources();
   const allFeeds = [
     ...Object.values(feeds.FULL_FEEDS).flat(),
@@ -116,7 +116,8 @@ export function getEnglishDefaultEnabledSources(feeds) {
   ];
   return new Set(
     allFeeds
-      .filter((feed) => defaultEnabled.has(feed.name) && (!feed.lang || feed.lang === 'en'))
+      .filter((feed) => defaultEnabled.has(feed.name)
+        && (!feed.lang || feed.lang === 'en' || feed.strategicDefault))
       .map((feed) => feed.name),
   );
 }
@@ -171,13 +172,15 @@ export async function loadGeoCoverageInputs(repoRoot = DEFAULT_REPO_ROOT, paths 
       ...Object.values(feeds.FULL_FEEDS).flat().map((f) => f.name),
       ...feeds.INTEL_SOURCES.map((f) => f.name),
     ]);
-    const defaultEnabled = getEnglishDefaultEnabledSources(feeds);
+    const defaultEnabled = getGloballyDefaultEnabledSources(feeds);
     const requiredMappedSourceNames = new Set([
       ...feeds.FRONTLINE_EUROPE_PROTECTED_SOURCES,
       ...feeds.REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
       ...feeds.REGIONAL_FEED_ROLLOUT_OPT_IN_SOURCES,
       ...feeds.CANADA_EN_DEFAULT_SOURCES,
       ...feeds.CANADA_ARCTIC_OPT_IN_SOURCES,
+      ...feeds.CANADA_DEPTH_OPT_IN_SOURCES,
+      ...feeds.CRISIS_DESK_ROLLOUT_SOURCES,
       ...feeds.THEATER_PRESETS.flatMap((preset) => preset.sourceNames),
     ]);
     const validIso2 = new Set([...Object.keys(iso2ToRegion), ...byIso.keys()]);
@@ -329,7 +332,7 @@ export function evaluateGeoCoverage(rows) {
 export function formatGeoCoverageHuman({ rows, regions, violations, catalogSize, defaultEnabledSize, policy }) {
   const lines = [];
   lines.push('Geographic coverage health — keyCountries vs feed catalog');
-  lines.push(`Catalog: ${catalogSize} sources (full variant + intel), ${defaultEnabledSize} default-on (EN)`);
+  lines.push(`Catalog: ${catalogSize} sources (full variant + intel), ${defaultEnabledSize} globally default-on`);
   lines.push(`Floors: ${Object.entries(policy.floors).map(([iso, n]) => `${iso}≥${n}`).join(' ') || '(none)'}`);
   lines.push('');
   const byIso = new Map(rows.map((row) => [row.iso2, row]));
@@ -355,7 +358,7 @@ export function formatGeoCoverageHuman({ rows, regions, violations, catalogSize,
     }
     lines.push('');
   }
-  lines.push('* = default-on (EN). Floors and the zero-default-on allowlist live in shared/geo-coverage-policy.json.');
+  lines.push('* = globally default-on. Floors and the zero-default-on allowlist live in shared/geo-coverage-policy.json.');
   lines.push('');
   if (violations.length > 0) {
     lines.push(`VIOLATIONS (${violations.length}):`);

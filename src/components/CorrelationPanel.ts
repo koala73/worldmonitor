@@ -108,13 +108,14 @@ export class CorrelationPanel extends Panel {
         className: 'correlation-empty',
         style: 'padding:12px;text-align:center;opacity:0.5;font-size:calc(11px * var(--wm-panel-effective-scale, 1));',
       }, t('components.correlation.empty'));
-      replaceChildren(this.content, ...(supplement ? [supplement] : []), empty);
+      // #6557: a settled empty state is authoritative content.
+      this.setContentNodes(...(supplement ? [supplement] : []), empty);
       return;
     }
 
     const cardEls = cards.map(card => this.buildCard(card));
-    replaceChildren(
-      this.content,
+    // #6557: success render with data — route through the sanctioned helper.
+    this.setContentNodes(
       ...(supplement ? [supplement] : []),
       h('div', { className: 'correlation-cards' }, ...cardEls),
     );

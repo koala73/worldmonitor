@@ -222,7 +222,9 @@ export class ChatAnalystPanel extends Panel {
     wrapper.appendChild(quickBar);
     wrapper.appendChild(inputRow);
 
-    replaceChildren(this.content, wrapper);
+    // Route through the sanctioned helper (#6557): the chat UI IS the panel's
+    // authoritative content — atomic replace with error-state clear.
+    this.setContentNodes(wrapper);
 
     this.showWelcome();
     this.updateDashboardControlUi();
