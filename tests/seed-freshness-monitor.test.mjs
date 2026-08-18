@@ -550,11 +550,13 @@ describe('scheduled seed freshness monitor', () => {
       const mineral = committed.acknowledged.find((entry) => entry.name === 'mineralProduction');
       assert.ok(mineral, 'mineralProduction stays acknowledged until the first post-recovery tick publishes');
       assert.equal(mineral.status, 'EMPTY');
-      // Re-anchored in #6799 onto the first static-ref tick after the
-      // Arms-Suppliers concurrency fix (#6807) frees the budget this section
-      // was being deferred out of.
-      assert.equal(mineral.expiresAt, '2026-08-18T03:00:00.000Z');
-      assert.equal(mineral.cutover?.firstScheduledRunAt, '2026-08-18T03:00:00.000Z');
+      // Re-anchored in #6806 onto the first seed-bundle-static-ref-heavy tick.
+      // The previous anchor (2026-08-18T03:00Z) expired on the very tick that
+      // deferred this section by 13 seconds: the #6807 concurrency fix cut
+      // Arms-Suppliers to 371s but left it FIRST and permanently due, so the
+      // budget it freed was consumed before Mineral-Production was offered it.
+      assert.equal(mineral.expiresAt, '2026-08-19T04:00:00.000Z');
+      assert.equal(mineral.cutover?.firstScheduledRunAt, '2026-08-19T04:00:00.000Z');
       assert.equal(mineral.cutover?.probeKey, 'seed-meta:supply-chain:mineral-production');
       const staticRefService = readRailwayServices().find((entry) => entry.service === 'seed-bundle-static-ref');
       assert.equal(staticRefService?.cronSchedule, '0 3 * * *');
@@ -564,15 +566,14 @@ describe('scheduled seed freshness monitor', () => {
         .sort();
       assert.deepEqual(
         owned6806,
-        ['armsSuppliersBundleTick', 'militaryBasesBundleTick'],
-        '#6806 must own both new 1-section bundle-tick acks',
+        ['staticRefHeavyBundleTick'],
+        '#6806 owns ONE consolidated bundle-tick ack — not one per member',
       );
       for (const [name, serviceName, cron, probeKey, expiresAt] of [
-        ['armsSuppliersBundleTick', 'seed-bundle-arms-suppliers', '0 4 * * *', 'bundle:heartbeat:arms-suppliers', '2026-08-18T04:00:00.000Z'],
-        ['militaryBasesBundleTick', 'seed-bundle-military-bases', '0 5 * * *', 'bundle:heartbeat:military-bases', '2026-08-18T05:00:00.000Z'],
+        ['staticRefHeavyBundleTick', 'seed-bundle-static-ref-heavy', '0 4 * * *', 'bundle:heartbeat:static-ref-heavy', '2026-08-19T04:00:00.000Z'],
       ]) {
         const entry = committed.acknowledged.find((item) => item.name === name);
-        assert.ok(entry, `${name} must be acknowledged until first sibling fire`);
+        assert.ok(entry, `${name} must be acknowledged until the first fire`);
         assert.equal(entry.status, 'EMPTY');
         assert.equal(entry.expiresAt, expiresAt);
         assert.equal(entry.cutover?.firstScheduledRunAt, expiresAt);
@@ -580,6 +581,15 @@ describe('scheduled seed freshness monitor', () => {
         const service = readRailwayServices().find((item) => item.service === serviceName);
         assert.equal(service?.cronSchedule, cron);
         assert.equal(service?.lifecycle, 'planned');
+      }
+      // The consolidation is the point: Railway caps a project at 100 services
+      // and the fleet is at 81. Three low-cadence members do not get three.
+      for (const retired of ['seed-bundle-arms-suppliers', 'seed-bundle-military-bases']) {
+        assert.equal(
+          readRailwayServices().find((item) => item.service === retired),
+          undefined,
+          `${retired} was consolidated into seed-bundle-static-ref-heavy — do not re-add a 1-section sibling`,
+        );
       }
       assert.ok(
         Date.parse(committed.expiresAt) > Date.parse('2026-07-28'),
@@ -595,8 +605,9 @@ describe('scheduled seed freshness monitor', () => {
       // merged and closed, four degraded sources were suppressed against a
       // closed PR with nobody owning them. Distinct issue numbers is the
       // cheapest offline proxy for "somebody actually filed these".
-      // #6806 is the one allowed repeat: it owns both new 1-section bundle-tick
-      // probes as a single add-then-remove cutover.
+      // #6806 previously owned two entries (one per 1-section sibling). The
+      // consolidation onto seed-bundle-static-ref-heavy collapsed them into one,
+      // so the repeat carve-out is no longer needed.
       const issues = committed.acknowledged.map((entry) => entry.issue);
       assert.ok(
         !issues.includes(5771),
@@ -608,9 +619,13 @@ describe('scheduled seed freshness monitor', () => {
         names.push(entry.name);
         namesByIssue.set(entry.issue, names);
       }
-      const allowedSharedIssues = new Map([
-        [6806, ['armsSuppliersBundleTick', 'militaryBasesBundleTick']],
-      ]);
+      // Empty on purpose. #6806 held the only carve-out while it owned one
+      // bundle-tick ack per 1-section sibling; consolidating those onto
+      // seed-bundle-static-ref-heavy collapsed them to a single entry, which
+      // restores the plain invariant that every acknowledgement owns its own
+      // tracking issue. Re-adding a carve-out means a change is suppressing two
+      // degradations behind one issue — justify that here or split the issue.
+      const allowedSharedIssues = new Map();
       for (const [issue, names] of namesByIssue) {
         const allowed = allowedSharedIssues.get(issue);
         if (allowed) {

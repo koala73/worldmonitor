@@ -823,15 +823,15 @@ describe('planned Railway service lifecycle', () => {
       // planned would exempt the one service most likely to drift — six member
       // scripts behind a single */5 cron — from the watch-path and deploy-drift
       // checks that exist to catch exactly that.
-      // seed-bundle-arms-suppliers / seed-bundle-military-bases (#6806 PR1) are
-      // planned until Railway clones exist. Flip off planned only after
-      // provision; leftover still hosts both sections until then (D6).
+      // seed-bundle-static-ref-heavy (#6806) is planned until the Railway clone
+      // exists. ONE service carries Arms-Suppliers, Military-Bases and
+      // Mineral-Production; the two 1-section siblings it replaced were never
+      // provisioned. Flip off planned only after provision.
       'seed-crypto-sectors',
       'seed-market-quotes',
       'seed-service-statuses',
       'seed-weather-alerts',
-      'seed-bundle-arms-suppliers',
-      'seed-bundle-military-bases',
+      'seed-bundle-static-ref-heavy',
     ].sort();
     const plannedEntries = RAILWAY_SERVICE_REGISTRY.filter(
       (entry) => entry.lifecycle === 'planned',
