@@ -475,7 +475,7 @@
     },
     {
       "name": "get_sources",
-      "description": "WorldMonitor's live source inventory, for deciding whether and how far to trust what the other tools return. Two separate populations: `providers` are the upstream hosts data is fetched from (with licence and attribution status), and `outlets` are named news organisations carrying an editorial tier plus propaganda-risk and source-type provenance. They are keyed differently and are not merged — a provider is a host, an outlet is a masthead. Defaults to `summary` (counts only); pass a view to enumerate. Static registry read — no network, no cache, always current with the deployed build.",
+      "description": "WorldMonitor's live source inventory, for deciding whether and how far to trust what the other tools return. Two separate populations: `providers` are upstream hosts data is fetched from (with licence and attribution status), and `outlets` are named public source identities carrying an editorial tier plus propaganda-risk and source-type provenance. Platform channels include stable platform identities instead of pretending every source is a newsroom masthead. Defaults to `summary` (counts only); pass a view to enumerate. Static registry read — no network, no cache, always current with the deployed build.",
       "_meta": {
         "worldmonitor/access": "free"
       }
