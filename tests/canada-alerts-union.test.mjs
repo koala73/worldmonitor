@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   CANADA_ALERTS_KEY,
@@ -8,6 +11,11 @@ import {
   buildCanadaAlertsUnion,
   rebuildCanadaAlertsUnion,
 } from '../scripts/lib/canada-alerts-union.mjs';
+
+const UNION_SOURCE = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts/lib/canada-alerts-union.mjs'),
+  'utf8',
+);
 
 const NOW = 1_786_960_000_000;
 
@@ -145,7 +153,10 @@ test('preserves last-good union when a province snapshot is missing', async () =
     },
     writeKey: async (...args) => writes.push(['data', ...args]),
     writeMeta: async (...args) => writes.push(['meta', ...args]),
-    extendTtl: async (...args) => writes.push(['ttl', ...args]),
+    extendTtl: async (...args) => {
+      writes.push(['ttl', ...args]);
+      return true;
+    },
   });
 
   assert.equal(result.preserved, true);
@@ -214,4 +225,35 @@ test('propagates strict peer read failures without publishing an aggregate', asy
     /synthetic strict read failure/,
   );
   assert.deepEqual(writes, []);
+});
+
+test('rewrites the union when last-good TTL extend does not confirm', async () => {
+  const existing = { alerts: [ab, bc] };
+  const writes = [];
+  const result = await rebuildCanadaAlertsUnion({
+    nowMs: NOW,
+    currentSource: { province: 'AB', snapshot: { alerts: [ab] } },
+    readSnapshot: async (key) => {
+      if (key === CANADA_ALERTS_KEY) return existing;
+      return null;
+    },
+    writeKey: async (...args) => writes.push(['data', ...args]),
+    writeMeta: async (...args) => writes.push(['meta', ...args]),
+    extendTtl: async (...args) => {
+      writes.push(['ttl', ...args]);
+      return false;
+    },
+  });
+
+  assert.equal(result.preserved, false);
+  assert.equal(writes[0][0], 'ttl');
+  assert.equal(writes[1][0], 'data');
+  assert.deepEqual(writes[1][2], { alerts: [ab] });
+  assert.equal(writes[2][0], 'meta');
+  assert.equal(writes[2][8].preserved, undefined);
+});
+
+test('defaults union metadata writes to the non-throwing seed-meta helper', () => {
+  assert.match(UNION_SOURCE, /writeMeta = writeFreshnessMetadataSafely/);
+  assert.match(UNION_SOURCE, /import \{[\s\S]*writeFreshnessMetadataSafely[\s\S]*\} from '\.\.\/_seed-utils\.mjs'/);
 });

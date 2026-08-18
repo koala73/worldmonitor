@@ -4,7 +4,7 @@ import {
   extendExistingTtl,
   readSeedSnapshot,
   writeExtraKey,
-  writeFreshnessMetadata,
+  writeFreshnessMetadataSafely,
 } from '../_seed-utils.mjs';
 
 export const CANADA_ALERTS_KEY = 'alerts:canada:v1';
@@ -88,7 +88,7 @@ export async function rebuildCanadaAlertsUnion({
   currentSource,
   readSnapshot = readSeedSnapshot,
   writeKey = writeExtraKey,
-  writeMeta = writeFreshnessMetadata,
+  writeMeta = writeFreshnessMetadataSafely,
   extendTtl = extendExistingTtl,
 } = {}) {
   const inputs = await Promise.all(CANADA_ALERT_SOURCES.map(async (source) => {
@@ -119,9 +119,11 @@ export async function rebuildCanadaAlertsUnion({
       ? existing.alerts
       : [];
     if (existingAlerts.length > 0) {
-      await extendTtl([CANADA_ALERTS_KEY], CANADA_ALERTS_TTL_SECONDS);
-      preserved = true;
-      publishedCount = existingAlerts.length;
+      const extended = await extendTtl([CANADA_ALERTS_KEY], CANADA_ALERTS_TTL_SECONDS);
+      if (extended === true) {
+        preserved = true;
+        publishedCount = existingAlerts.length;
+      }
     }
   }
 

@@ -201,6 +201,12 @@ test('exposes the zero-valid envelope and content-age contract', () => {
   });
 });
 
+test('map time filter uses DATE_MODIFIED so long-running evacuations stay visible', () => {
+  const deck = readFileSync(join(root, 'src/components/DeckGLMap.ts'), 'utf8');
+  assert.match(deck, /filterByTimeCached\(this\.canadaAlerts, \(alert\) => alert\.updatedAt\)/);
+  assert.doesNotMatch(deck, /filterByTimeCached\(this\.canadaAlerts, \(alert\) => alert\.onset\)/);
+});
+
 test('registers the province seeder in the Canada bundle without touching roads or weather', () => {
   const seeder = readFileSync(join(root, 'scripts/seed-bc-emergency-info.mjs'), 'utf8');
   const bundle = readFileSync(join(root, 'scripts/seed-bundle-canada.mjs'), 'utf8');
