@@ -2032,7 +2032,7 @@ export class DeckGLMap {
       this.layerCache.delete('canada-roads-layer');
       this.layerCache.delete('canada-roads-paths-layer');
     }
-    // canadaAlerts layer (AB + BC provincial alerts; ScatterplotLayer dots)
+    // canadaAlerts layer (AB + BC + SK provincial alerts; ScatterplotLayer dots)
     if (mapLayers.canadaAlerts && canadaAlertItems.length > 0) {
       layers.push(this.createCanadaAlertsLayer(canadaAlertItems));
     } else {

@@ -1,0 +1,44 @@
+{
+  "updated": "2026-08-18T00:22:01-06:00",
+  "id": "https://emergencyalert.saskatchewan.ca/sapublic/feed.json",
+  "title": "SaskAlert - Public - Mobile",
+  "entries": [
+    {
+      "id": "urn:oid:2.49.0.1.124.0639846732.2026-1",
+      "identifier": "urn:oid:2.49.0.1.124.0639846732.2026",
+      "state": "ended",
+      "level": "advisory",
+      "type_en": "Cancelled",
+      "event_en": "thunderstorm",
+      "summary_en": "Southwestern Saskatchewan. Dollard, Eastend, Ravenscrag, Frontier and Claydon.",
+      "point": "49.116661 -108.843838",
+      "html_link": "https://emergencyalert.saskatchewan.ca/#/incidents/urn:oid:2.49.0.1.124.1647934717.2026",
+      "cap_link": "https://emergencyalert.saskatchewan.ca/sapublic/2026/52727.json",
+      "sender": "cap-pac@canada.ca",
+      "author_en": "Environment Canada",
+      "coverage_en": "Saskatchewan",
+      "updated": "2026-08-18T00:22:01-06:00",
+      "sent": "2026-08-18T00:52:24-00:00"
+    },
+    {
+      "id": "E746FB63-2A32-48EC-8AAF-D30FFC1CDDE0-1",
+      "identifier": "E746FB63-2A32-48EC-8AAF-D30FFC1CDDE0",
+      "state": "active",
+      "level": "advisory",
+      "type_en": "Issued",
+      "event_en": "Drinking Water",
+      "summary_en": "A Precautionary Drinking Water Advisory remains in affect for the Village of Macoun.",
+      "point": "49.314226 -103.261935",
+      "html_link": "https://emergencyalert.saskatchewan.ca/#/incidents/E746FB63-2A32-48EC-8AAF-D30FFC1CDDE0",
+      "cap_link": "https://emergencyalert.saskatchewan.ca/sapublic/2026/48404.json",
+      "sender": "SKMacoun",
+      "author_en": "SK Macoun",
+      "source": "NAADS",
+      "updated": "2026-08-18T00:22:01-06:00",
+      "sent": "2026-05-19T11:34:08-06:00",
+      "area": [
+        { "name_en": "Village of Macoun", "geocode": ["4702041"] }
+      ]
+    }
+  ]
+}

@@ -665,7 +665,7 @@ export interface MapLayers {
   weather: boolean;
   /** Official Canada road events and conditions from Ontario, Alberta, Toronto, and British Columbia. */
   canadaRoads: boolean;
-  /** Alberta and B.C. province-owned emergency alerts (#6610, #6659). */
+  /** Alberta, B.C., and Saskatchewan province-owned emergency alerts (#6610, #6659). */
   canadaAlerts: boolean;
   economic: boolean;
   waterways: boolean;

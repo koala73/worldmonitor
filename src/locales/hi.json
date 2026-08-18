@@ -1333,7 +1333,7 @@
         "speciesRecovery": "प्रजाति पुनर्प्राप्ति",
         "renewableInstallations": "स्वच्छ ऊर्जा",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "भूकंप",
@@ -1441,7 +1441,7 @@
           "geoBoundaries": "विसैन्यीकृत क्षेत्र, युद्धविराम रेखाएं और विवादित सीमाएं",
           "ciiChoropleth": "देश अस्थिरता सूचकांक हीटमैप — CII स्कोर के अनुसार देशों को रंगों में दर्शाता है (हरा=स्थिर, लाल=गंभीर)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert and B.C. Evacuation Orders and Alerts"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "प्रभाव: भूकंप, मौसम, प्रदर्शन, व्यवधान"

@@ -1184,7 +1184,7 @@
         "radiationSpike": "Skokový nárůst radiace",
         "radiationElevated": "Zvýšená radiace",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "Zemětřesení",
@@ -1292,7 +1292,7 @@
           "geoBoundaries": "Demilitarizované zóny, linie příměří a sporné hranice",
           "ciiChoropleth": "Tepelná mapa Country Instability Index — zbarvuje země podle skóre CII (zelená=stabilní, červená=kritická)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert and B.C. Evacuation Orders and Alerts"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Ovlivňuje: Zemětřesení, Počasí, Protesty, Výpadky"

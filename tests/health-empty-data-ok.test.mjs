@@ -50,6 +50,7 @@ const AUDITED_PRESENT_PAYLOAD_KEYS = [
   'canadaAlerts',
   'canadaAlertsAbSource',
   'canadaAlertsBcSource',
+  'canadaAlertsSkSource',
 ];
 
 function classifyMissing(name, meta) {

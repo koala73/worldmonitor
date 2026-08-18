@@ -1146,7 +1146,7 @@
         "radiationSpike": "Pic de radiation",
         "radiationElevated": "Radiation élevée",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "Tremblement de terre",
@@ -1254,7 +1254,7 @@
           "geoBoundaries": "Zones démilitarisées, lignes de cessez-le-feu et frontières contestées",
           "ciiChoropleth": "Carte thermique de l'indice d'instabilité — colore les pays selon le score CII (vert=stable, rouge=critique)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert and B.C. Evacuation Orders and Alerts"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Affecte : tremblements de terre, conditions météorologiques, manifestations, pannes"

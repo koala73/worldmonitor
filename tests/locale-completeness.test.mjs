@@ -162,7 +162,7 @@ describe('locale completeness', () => {
       }
     });
 
-    it(`${file} discloses the AB + BC scope for the canadaAlerts layer`, () => {
+    it(`${file} discloses the AB + BC + SK scope for the canadaAlerts layer`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
       const values = [
         locale.components.deckgl.layers.canadaAlerts,
@@ -171,7 +171,7 @@ describe('locale completeness', () => {
       ];
       for (const value of values) {
         assert.equal(typeof value, 'string');
-        assert.match(value, /Canada|provincial|AB \+ BC/i, `${file} canadaAlerts copy must identify Canadian provincial scope`);
+        assert.match(value, /Canada|provincial|AB \+ BC \+ SK/i, `${file} canadaAlerts copy must identify Canadian provincial scope`);
         assert.doesNotMatch(value, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
       }
     });
@@ -191,7 +191,7 @@ describe('locale completeness', () => {
       }
     });
 
-    it(`${file} discloses the AB + BC scope for the canadaAlerts layer`, () => {
+    it(`${file} discloses the AB + BC + SK scope for the canadaAlerts layer`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
       const values = [
         locale.components.deckgl.layers.canadaAlerts,
@@ -200,7 +200,7 @@ describe('locale completeness', () => {
       ];
       for (const value of values) {
         assert.equal(typeof value, 'string');
-        assert.match(value, /Canada|provincial|AB \+ BC/i, `${file} canadaAlerts copy must identify Canadian provincial scope`);
+        assert.match(value, /Canada|provincial|AB \+ BC \+ SK/i, `${file} canadaAlerts copy must identify Canadian provincial scope`);
         assert.doesNotMatch(value, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
       }
     });

@@ -1194,7 +1194,7 @@
         "radiationSpike": "Vârf de radiații",
         "radiationElevated": "Radiații ridicate",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "Cutremur",
@@ -1302,7 +1302,7 @@
           "geoBoundaries": "Zone demilitarizate, linii de încetare a focului și granițe disputate",
           "ciiChoropleth": "Harta termică a instabilității — colorează țările după scorul CII (verde=stabil, roșu=critic)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert and B.C. Evacuation Orders and Alerts"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Afectează: cutremure, vreme, proteste, întreruperi"

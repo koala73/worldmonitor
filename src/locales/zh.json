@@ -1192,7 +1192,7 @@
         "radiationSpike": "辐射峰值",
         "radiationElevated": "辐射升高",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (AB + BC)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1300,7 +1300,7 @@
           "geoBoundaries": "非军事区、停火线和争议边界",
           "ciiChoropleth": "国家不稳定指数热力图 — 按CII评分为国家着色（绿色=稳定，红色=危急）",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert and B.C. Evacuation Orders and Alerts"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "影响范围：地震、天气、抗议、中断"
