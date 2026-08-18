@@ -1,9 +1,52 @@
 ---
-title: "嵌入实时地图"
-description: "只需一段 iframe 代码片段，即可将 World Monitor 公开的实时地图嵌入新闻文章、企业仪表盘、内部工具或作战室页面。本文档提供推荐尺寸、图层与主题参数、初始坐标缩放、深色模式、多种示例代码，以及常见集成场景的最佳实践与嵌入调优注意事项，帮助快速上线可交互态势地图。"
+title: "嵌入 World Monitor 面板"
+description: "通过一段 script 或 iframe，将白名单内的 World Monitor 面板嵌入合作方产品。实时地图公开；需密钥的面板按嵌入账户的 API 密钥校验，而不是按页面访客校验。"
 ---
 
-World Monitor 在 `/embed` 提供一个仅含地图的公开 iframe。
+World Monitor 在 `/embed` 提供合作方嵌入。WebMCP 不是嵌入机制 —— 它注册工具，让浏览器智能体驱动 World Monitor 站点。要把允许列表中的面板拉进其他产品，请使用 `/embed` 或下方加载器。
+
+## 可复制加载器
+
+合作方应只放一个 script 标签。加载器创建 iframe，并在加载后把嵌入账户的 API 密钥通过 `postMessage` 传入。**不要把 API 密钥放进 iframe URL。**
+
+```html
+<script
+  src="https://www.worldmonitor.app/embed.js"
+  data-panel="chokepoint-strip"
+  data-key="YOUR_WM_API_KEY"
+  data-theme="dark"
+  data-height="360"
+  async
+></script>
+```
+
+将 `YOUR_WM_API_KEY` 替换为嵌入账户的 World Monitor 用户 API 密钥（`wm_…`）或企业密钥。该密钥应可独立于仪表盘登录轮换。查询字符串中的密钥会被拒绝。
+
+公开实时地图（无需密钥）：
+
+```html
+<script
+  src="https://www.worldmonitor.app/embed.js"
+  data-panel="map"
+  data-theme="dark"
+  data-height="420"
+  async
+></script>
+```
+
+## 允许嵌入的面板
+
+| `panel` | 名称 | 授权 |
+| --- | --- | --- |
+| `map`（别名：`live-map`、`live_map`、`livemap`） | 实时地图 | 公开，无需 API 密钥。省略 `panel` 时的默认值。 |
+| `chokepoint-strip`（别名：`chokepoints`、`chokepoint`、`chokepoint-monitor`） | 咽喉要道监测 | 具备 API 访问权限的嵌入 API 密钥。 |
+| `fear-greed`（别名：`feargreed`、`fear_greed`、`markets-fear-greed`） | 恐惧与贪婪 | 具备 API 访问权限的嵌入 API 密钥。 |
+
+未知 `panel` 不会渲染。X / 推文正文面板不可嵌入：合作方只获得派生事实和永久链接，不会获得帖子正文。
+
+## iframe（实时地图）
+
+地图仍可作为直接 iframe 使用。省略 `panel` 时保持历史的仅地图契约。
 
 ```html
 <iframe
@@ -16,18 +59,36 @@ World Monitor 在 `/embed` 提供一个仅含地图的公开 iframe。
 ></iframe>
 ```
 
+需密钥的面板也可以使用 `/embed?panel=fear-greed` iframe，但宿主页必须在 iframe 加载后 `postMessage` `{ source: "worldmonitor-embed", type: "credential", key }`。优先使用 script 加载器。
+
 ## 查询参数
 
 | 参数 | 示例 | 说明 |
 | --- | --- | --- |
-| `layers` | `conflicts,earthquakes,weather` | 仅限白名单内的公开图层。支持的值：`conflicts`、`earthquakes`、`protests`、`weather`。未知、高级、需认证或高频图层将被忽略。 |
-| `center` | `25.2,55.3` | 纬度和经度，会被限制在有效范围内。 |
-| `zoom` | `4` | 限制在 `1` 与 `10` 之间。 |
+| `panel` | `chokepoint-strip` | 白名单面板 id。默认 `map`。 |
+| `layers` | `conflicts,earthquakes,weather` | 仅地图。白名单内的公开图层：`conflicts`、`earthquakes`、`protests`、`weather`，以及文档中的静态地图图层。未知、高级、需认证或高频图层将被忽略。 |
+| `center` | `25.2,55.3` | 仅地图。纬度和经度，会被限制在有效范围内。 |
+| `zoom` | `4` | 仅地图。限制在 `1` 与 `10` 之间。 |
 | `theme` | `dark` | `dark` 或 `light`。 |
 | `variant` | `full` | `full`、`tech`、`finance`、`commodity`、`happy` 或 `energy` 之一。 |
+| `key` | — | **不接受。** 密钥只能通过加载器以 `X-WorldMonitor-Key` 传递，不得出现在查询字符串中。 |
 
-## 范围
+加载器 `data-*` 属性：
 
-该嵌入路由有意仅提供地图。它不会暴露任意面板、账户状态、高级图层、已保存的偏好设置、Clerk 认证或通知状态。使用仪表盘的 **Embed（嵌入）** 按钮，即可为当前的公开地图视图生成代码片段。
+| 属性 | 示例 | 说明 |
+| --- | --- | --- |
+| `data-panel` | `fear-greed` | 与 `?panel=` 相同的允许列表。 |
+| `data-key` | `YOUR_WM_API_KEY` | 嵌入账户密钥。公开地图可省略。 |
+| `data-theme` | `dark` | 传到 iframe。 |
+| `data-height` | `360` | iframe 高度（像素），限制在 120–1200。 |
+
+## 授权
+
+需密钥的面板校验的是**嵌入账户**，而不是宿主页的访客：
+
+- iframe 以 `credentials: 'omit'` 和 `X-WorldMonitor-Key` 请求 `/api/embed/entitlement?panel=`。
+- 访客 cookie 和匿名 `wms_` 会话令牌会被忽略。
+- `WORLDMONITOR_VALID_KEYS` 中的企业密钥，以及所有者具有 `features.apiAccess` 的用户密钥（`wm_`）可通过。
+- 使用仪表盘的 **Embed（嵌入）** 按钮，即可为当前的公开地图视图生成代码片段。
 
 每个嵌入都包含一个指向 World Monitor 的永久归属链接，并带有来源活动参数。

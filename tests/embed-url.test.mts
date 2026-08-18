@@ -2,7 +2,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildEmbedIframeSnippet,
+  buildEmbedLoaderSnippet,
   buildEmbedMapUrl,
+  buildEmbedPanelUrl,
   createBlankMapLayers,
   embedLayerIdsFromMapLayers,
   parseEmbedParams,
@@ -20,6 +22,24 @@ describe('embed URL contract', () => {
     assert.equal(parsed.zoom, 1);
     assert.equal(parsed.theme, 'dark');
     assert.equal(parsed.variant, 'full');
+    assert.equal(parsed.panel, 'map');
+    assert.equal(parsed.requestedPanel, '');
+  });
+
+  it('accepts allowlisted ?panel= ids and keeps unknown ids from rendering', () => {
+    assert.equal(parseEmbedParams('?panel=chokepoint-strip').panel, 'chokepoint-strip');
+    assert.equal(parseEmbedParams('?panel=fear-greed').panel, 'fear-greed');
+    assert.equal(parseEmbedParams('?panel=live-map').panel, 'map');
+    const unknown = parseEmbedParams('?panel=intel');
+    assert.equal(unknown.panel, null);
+    assert.equal(unknown.requestedPanel, 'intel');
+  });
+
+  it('never treats a query-string key as an embedding credential', () => {
+    const parsed = parseEmbedParams('?panel=fear-greed&key=wm_0123456789abcdef0123456789abcdef01234567');
+    assert.equal(parsed.panel, 'fear-greed');
+    assert.equal('key' in parsed, false);
+    assert.equal(parsed.apiKey, undefined);
   });
 
   it('accepts public live and static map layers while mapping earthquakes to the natural map layer', () => {
@@ -124,5 +144,27 @@ describe('embed URL contract', () => {
     assert.ok(snippet.includes('referrerpolicy="strict-origin-when-cross-origin"'));
     assert.ok(snippet.includes('&quot;&gt;&lt;script&gt;'));
     assert.ok(!snippet.includes('"><script>'));
+  });
+
+  it('builds panel URLs and a script-tag loader snippet without putting the API key in the iframe URL', () => {
+    const url = buildEmbedPanelUrl('https://www.worldmonitor.app/embed', {
+      panel: 'fear-greed',
+      theme: 'light',
+    });
+    const parsed = new URL(url);
+    assert.equal(parsed.searchParams.get('panel'), 'fear-greed');
+    assert.equal(parsed.searchParams.get('theme'), 'light');
+    assert.equal(parsed.searchParams.has('key'), false);
+
+    const snippet = buildEmbedLoaderSnippet({
+      src: 'https://www.worldmonitor.app/embed.js',
+      panel: 'chokepoint-strip',
+      theme: 'dark',
+      height: '360',
+    });
+    assert.ok(snippet.includes('src="https://www.worldmonitor.app/embed.js"'));
+    assert.ok(snippet.includes('data-panel="chokepoint-strip"'));
+    assert.ok(snippet.includes('data-key="YOUR_WM_API_KEY"'));
+    assert.ok(!snippet.includes('wm_'), 'documented snippet must use a placeholder, not a real key');
   });
 });

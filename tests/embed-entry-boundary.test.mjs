@@ -13,6 +13,11 @@ describe('embed entry boundary', () => {
       'src/embed-main.ts',
       'src/embed/embed-data-loader.ts',
       'src/embed/embed-url.ts',
+      'src/embed/embed-credential.ts',
+      'src/embed/embed-fetch.ts',
+      'src/embed/panels/map.ts',
+      'src/embed/panels/chokepoint-strip.ts',
+      'src/embed/panels/fear-greed.ts',
     ];
     const source = files.map((file) => readFileSync(resolve(root, file), 'utf-8')).join('\n');
     assert.ok(
@@ -28,6 +33,9 @@ describe('embed entry boundary', () => {
       '@/services/cloud-preferences',
       '@/services/push-notifications',
       '@/services/runtime',
+      '@/components/Panel',
+      '@/components/ChokepointStripPanel',
+      '@/components/FearGreedPanel',
     ];
     for (const token of forbidden) {
       assert.ok(!source.includes(token), `embed entry must not import ${token}`);
