@@ -39,6 +39,8 @@ const protocolPath = new URL('protocol.json', fixtureDirectory);
 const protocol = JSON.parse(readFileSync(protocolPath, 'utf8')) as JsonObject;
 
 const APPROVED_THRESHOLD_DIGEST = '29ce1d431086f3b7a9a955776f0c2c009d87c809f810f32f8b10aef53f8ecfc2';
+const APPROVED_BASE_RATE_AUDIT_DIGEST = 'b0c32244293f9231723572ba22bc9f42703ef798e29b94fdb0d930983c17092b';
+const APPROVED_REDISCOVERY_AUDIT_DIGEST = 'b376056a7f3ebecf95d74ff22a67ea709c34f1961872ae7786e8846687c69717';
 
 // The engine takes the approved digest as an argument so this literal can stay outside it. Every
 // call site below goes through this wrapper, which supplies the one approved anchor.
@@ -180,6 +182,7 @@ function validateStage0Aggregates(candidate: JsonObject): void {
   assert.ok(isEvidenceDigest(baseRate.privateSelectionManifestSha256));
   assert.ok(isEvidenceDigest(baseRate.privateEvidenceSha256));
   assert.ok(isEvidenceDigest(baseRate.aggregateEvidenceSha256));
+  assert.equal(baseRate.aggregateEvidenceSha256, APPROVED_BASE_RATE_AUDIT_DIGEST);
   assert.equal(auditDigest(baseRate), baseRate.aggregateEvidenceSha256);
 
   assert.equal(rediscovery.attemptId, 'cm_rediscovery_attempt_20260818');
@@ -200,6 +203,7 @@ function validateStage0Aggregates(candidate: JsonObject): void {
   assert.ok(isEvidenceDigest(rediscovery.privatePairManifestSha256));
   assert.ok(isEvidenceDigest(rediscovery.privateEvidenceSha256));
   assert.ok(isEvidenceDigest(rediscovery.aggregateEvidenceSha256));
+  assert.equal(rediscovery.aggregateEvidenceSha256, APPROVED_REDISCOVERY_AUDIT_DIGEST);
   assert.equal(auditDigest(rediscovery), rediscovery.aggregateEvidenceSha256);
 }
 
@@ -407,6 +411,16 @@ describe('Company Monitoring U0 evaluation contract', () => {
       }],
       ['declared-year drift', (candidate) => {
         asObject(candidate.rediscovery, 'rediscovery').declaredYear = 2024;
+      }],
+      ['base-rate private evidence and audit digest rewrite', (candidate) => {
+        const baseRate = asObject(candidate.baseRate, 'baseRate');
+        baseRate.privateEvidenceSha256 = 'f'.repeat(64);
+        baseRate.aggregateEvidenceSha256 = auditDigest(baseRate);
+      }],
+      ['rediscovery private evidence and audit digest rewrite', (candidate) => {
+        const rediscovery = asObject(candidate.rediscovery, 'rediscovery');
+        rediscovery.privateEvidenceSha256 = 'f'.repeat(64);
+        rediscovery.aggregateEvidenceSha256 = auditDigest(rediscovery);
       }],
     ];
     for (const [label, mutate] of cases) {
