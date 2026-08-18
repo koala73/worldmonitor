@@ -90,10 +90,21 @@ function isConfirmedFreeMcpAccount(
   if (!entitlements || typeof entitlements !== 'object') return false;
 
   const candidate = entitlements as {
+    planKey?: unknown;
     features?: { tier?: unknown; mcpAccess?: unknown };
     validUntil?: unknown;
   };
-  return candidate.features?.tier === 0
+  // `planKey === 'free'` is required so the free verdict is POSITIVELY
+  // confirmed rather than inferred from the absence of Pro. Every shape that
+  // legitimately reaches here as a free account carries it — the no-row
+  // synthesis in convex/entitlements.ts (FREE_TIER_DEFAULTS) and the edge
+  // fallback in server/_shared/entitlement-check.ts both set it — so this
+  // narrows nothing real. What it excludes is a row whose stored `features`
+  // were overridden to a tier-0 shape while `planKey` still names a paid plan:
+  // that is a data fault, and a data fault should fail closed rather than land
+  // on an allowance by looking enough like a free account.
+  return candidate.planKey === 'free'
+    && candidate.features?.tier === 0
     && candidate.features.mcpAccess === false
     && typeof candidate.validUntil === 'number'
     && Number.isFinite(candidate.validUntil);

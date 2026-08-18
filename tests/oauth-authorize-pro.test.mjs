@@ -52,7 +52,10 @@ const BASE_CLIENT_REDIS = {
 
 const PRO_ENT = { features: { tier: 1, mcpAccess: true }, validUntil: FIXED_NOW + 86_400_000 };
 const PRO_ENT_NO_MCP_ACCESS = { features: { tier: 1, mcpAccess: false }, validUntil: FIXED_NOW + 86_400_000 };
-const FREE_ENT = { features: { tier: 0, mcpAccess: false }, validUntil: FIXED_NOW + 86_400_000 };
+// `planKey: 'free'` is load-bearing: the free verdict is positively confirmed,
+// not inferred from the absence of Pro, so a fixture without it classifies as
+// insufficient_tier and would test the wrong branch.
+const FREE_ENT = { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: FIXED_NOW + 86_400_000 };
 const EXPIRED_PRO_ENT = { features: { tier: 1, mcpAccess: true }, validUntil: FIXED_NOW - 1000 };
 
 async function makeGrantToken(overrides = {}) {
@@ -357,12 +360,31 @@ describe('authorizeProHandler — forgery defense', () => {
 describe('authorizeProHandler — entitlement re-check', () => {
   // #6716: the free-account allowance is a call-site-only decision. OAuth
   // credential issuance remains strict at every layer.
-  it('a free-tier row is refused and no token is issued (#6716)', async () => {
+  it('a canonical free row completes authorization and issues a token (#6716)', async () => {
+    // The last of the three edge gates. grant-context and grant-mint admit a
+    // confirmed free account, so refusing here would let one clear consent and
+    // mint a grant only to fail on the final redirect.
     const grant = await makeGrantToken();
     const { deps, issueCalls } = await makeDeps({ getEntitlements: async () => FREE_ENT });
     const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
-    assert.equal(res.status, 403);
+    assert.notEqual(res.status, 403);
     assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(issueCalls.length, 1, 'the free funnel needs a credential to meter');
+  });
+
+  it('a tier-0 shape carrying a PAID planKey is still refused (#6716)', async () => {
+    // Feature-override data fault: it resembles a free row but its planKey says
+    // otherwise, so it must fail closed rather than land on the allowance.
+    const grant = await makeGrantToken();
+    const { deps, issueCalls } = await makeDeps({
+      getEntitlements: async () => ({
+        planKey: 'pro_monthly',
+        features: { tier: 0, mcpAccess: false },
+        validUntil: FIXED_NOW + 86_400_000,
+      }),
+    });
+    const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
+    assert.equal(res.status, 403);
     assert.equal(issueCalls.length, 0);
   });
 
@@ -374,7 +396,7 @@ describe('authorizeProHandler — entitlement re-check', () => {
     assert.equal(issueCalls.length, 0);
   });
 
-  it('getEntitlements returns null (Convex CONFIRMED no row) → refuses issuance (#6716)', async () => {
+  it('getEntitlements returns null (Convex CONFIRMED no row) → connects; token IS issued (#6716)', async () => {
     // Was named "Convex blip", but a blip has not produced a null since the
     // lookup-failure marker landed — it returns a verificationUnavailable row
     // and takes the retryable path asserted in the #5622 block below. A null
@@ -389,8 +411,11 @@ describe('authorizeProHandler — entitlement re-check', () => {
     try {
       const { deps, issueCalls } = await makeDeps({ getEntitlements: async () => null });
       const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
-      assert.equal(res.status, 403);
-      assert.equal(issueCalls.length, 0);
+      // #6716: a CONFIRMED no-row is a never-subscribed account — the funnel's
+      // target. The UNCONFIGURED half below still refuses, which is the
+      // distinction this test exists to keep separate.
+      assert.notEqual(res.status, 403);
+      assert.equal(issueCalls.length, 1);
     } finally {
       if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
       else process.env.CONVEX_SITE_URL = originalSiteUrl;
@@ -547,12 +572,14 @@ describe('authorizeProHandler — billing-verification denials (#5622)', () => {
     assert.match(await res.text(), /Subscription Lapsed/);
   });
 
-  it('a CONFIRMED free row is a terminal 403 with no verification header (#6716)', async () => {
+  it('a CONFIRMED free row authorizes, and carries no verification header (#6716)', async () => {
+    // The #5622 contract under test is retryable-vs-terminal, and it holds:
+    // the verification headers stay reserved for states we could not verify.
     const grant = await makeGrantToken();
     const { deps } = await makeDeps({ getEntitlements: async () => FREE_ENT });
     const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
 
-    assert.equal(res.status, 403);
+    assert.notEqual(res.status, 403);
     assert.equal(res.headers.get('X-Billing-Verification'), null);
     assert.equal(res.headers.get('Retry-After'), null);
   });

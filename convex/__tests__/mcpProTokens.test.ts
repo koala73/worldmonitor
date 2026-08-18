@@ -90,12 +90,21 @@ describe("issueProMcpToken", () => {
     expect(result.tokenId).toBeTruthy();
   });
 
-  test("rejects a user with no entitlement row — allowance is call-site only (#6716)", async () => {
+  // #6716 — a CONFIRMED free account may hold a token. The row proves IDENTITY:
+  // validateProMcpToken returns only {userId, lastUsedAt}, and api/mcp/auth.ts
+  // re-derives the entitlement on every gated call, admitting a non-subscriber
+  // onto the metered allowance over cache-backed tools only. Inside Convex a
+  // missing row is unambiguous — this is a direct ctx.db read, so there is no
+  // "backend unconfigured" state to confuse with an absent row.
+  test("issues for a user with no entitlement row (never subscribed) (#6716)", async () => {
     const t = convexTest(schema, modules);
 
-    await expect(
-      t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: "user-free" }),
-    ).rejects.toThrow(/PRO_REQUIRED/);
+    const { tokenId } = await t.mutation(internal.mcpProTokens.issueProMcpToken, {
+      userId: "user-free",
+    });
+    expect(tokenId).toBeTruthy();
+    const validated = await t.query(internal.mcpProTokens.validateProMcpToken, { tokenId });
+    expect(validated?.userId).toBe("user-free");
   });
 
   test("rejects a lapsed subscriber (#6716)", async () => {
@@ -107,7 +116,7 @@ describe("issueProMcpToken", () => {
     ).rejects.toThrow(/PRO_REQUIRED/);
   });
 
-  test("rejects an active free entitlement without inserting a token", async () => {
+  test("issues for an active canonical free entitlement (#6716)", async () => {
     const t = convexTest(schema, modules);
     await t.run(async (ctx) => {
       await ctx.db.insert("entitlements", {
@@ -119,11 +128,12 @@ describe("issueProMcpToken", () => {
       });
     });
 
-    await expect(
-      t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: "user-free" }),
-    ).rejects.toThrow(/PRO_REQUIRED/);
+    const { tokenId } = await t.mutation(internal.mcpProTokens.issueProMcpToken, {
+      userId: "user-free",
+    });
+    expect(tokenId).toBeTruthy();
     const rows = await t.run(async (ctx) => ctx.db.query("mcpProTokens").collect());
-    expect(rows).toHaveLength(0);
+    expect(rows).toHaveLength(1);
   });
 
   test("rejects a stored Pro override with mcpAccess disabled", async () => {
@@ -562,7 +572,7 @@ describe("HTTP route /api/internal-issue-pro-mcp-token", () => {
     expect(body.tokenId).toBeTruthy();
   });
 
-  test("tier-0 → 403, no token is issued (#6716)", async () => {
+  test("tier-0 → 200, a token is issued (#6716)", async () => {
     const t = convexTest(schema, modules);
 
     const res = await t.fetch("/api/internal-issue-pro-mcp-token", {
@@ -573,10 +583,10 @@ describe("HTTP route /api/internal-issue-pro-mcp-token", () => {
       },
       body: JSON.stringify({ userId: "user-free" }),
     });
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(200);
     const body = (await res.json()) as { tokenId?: string; error?: string };
-    expect(body.error).toBe("PRO_REQUIRED");
-    expect(body.tokenId).toBeUndefined();
+    expect(body.error).toBeUndefined();
+    expect(body.tokenId).toBeTruthy();
   });
 
   test("the route refuses without the shared secret", async () => {

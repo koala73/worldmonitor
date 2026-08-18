@@ -55,13 +55,39 @@ export const issueProMcpToken = internalMutation({
     const mergedFeatures = entitlement
       ? mergeEntitlementFeatures(entitlement.planKey, entitlement.features)
       : null;
-    if (
-      !entitlement
-      || !mergedFeatures
-      || entitlement.validUntil < Date.now()
-      || mergedFeatures.tier < 1
-      || mergedFeatures.mcpAccess !== true
-    ) {
+    const isPro = Boolean(
+      entitlement
+      && mergedFeatures
+      && entitlement.validUntil >= Date.now()
+      && mergedFeatures.tier >= 1
+      && mergedFeatures.mcpAccess === true,
+    );
+    // #6716 — a CONFIRMED free account may also hold a token.
+    //
+    // Comment-enforced mirror of `isConfirmedFreeMcpAccount` in
+    // server/_shared/pro-mcp-gate.ts; the Convex runtime cannot import from
+    // server/_shared, which is why that file's header already lists this
+    // function as a hand-spelled mirror. Keep the two predicates in step.
+    //
+    // No row at all is the never-subscribed case, and here that is
+    // unambiguous: this is a direct ctx.db read, so there is no
+    // "backend unconfigured" state to confuse with an absent row the way the
+    // edge has. A stored row must be a complete tier-0 `free` shape — an
+    // expired or disabled paid row, or a row whose features were overridden to
+    // look tier-0 while planKey names a paid plan, is a data fault and still
+    // fails closed.
+    const isConfirmedFreeAccount = !entitlement || Boolean(
+      mergedFeatures
+      && entitlement.planKey === "free"
+      && mergedFeatures.tier === 0
+      && mergedFeatures.mcpAccess === false,
+    );
+    // The token proves IDENTITY, not entitlement: `validateProMcpToken` returns
+    // only `{userId, lastUsedAt}`, and api/mcp/auth.ts re-derives the verdict on
+    // every gated call. Issuing to a free account therefore grants nothing on
+    // its own — the allowance and its cache-backed-tool restriction are applied
+    // at the call site.
+    if (!isPro && !isConfirmedFreeAccount) {
       throw new ConvexError("PRO_REQUIRED");
     }
 

@@ -441,9 +441,13 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
   const gate = checkProMcpAccess(ent, deps.now(), {
     backendConfigured: isEntitlementBackendConfigured(),
   });
-  // #6716: free-account admission is call-site only. The final OAuth gate must
-  // agree with grant-context, grant-mint, and Convex issuance.
-  if (gate) {
+  // #6716: a CONFIRMED free account completes authorization. This is the last
+  // of the three edge gates and it must agree with grant-context, grant-mint,
+  // and Convex issuance — a free account that cleared consent and minted a
+  // grant only to fail on the final redirect is worse than one refused up
+  // front. Their token meters against the free allowance on every gated call
+  // and is restricted to cache-backed tools.
+  if (gate && gate.kind !== 'free_account') {
     if (gate.kind === 'billing_verification') {
       return billingVerificationPage(gate.denial);
     }
