@@ -713,7 +713,17 @@ const SEED_META = {
   //
   // Gated by the active-version pointer via ACTIVATION_MARKERS so a deploy that
   // has never seeded reads as pending instead of CRIT.
-  militaryBasesSeed: { key: 'seed-meta:military:bases', maxStaleMin: 86_400, minRecordCount: 100_000 },
+  //
+  // status is STALE_SEED, not EMPTY: this is a META-ONLY probe (no
+  // STANDALONE_KEYS entry), so an absent seed-meta is classified on the seed
+  // clock rather than the data-presence branch. Measured against this file, not
+  // assumed — classifyKey returns STALE_SEED for "never published".
+  militaryBasesSeed: {
+    key: 'seed-meta:military:bases',
+    maxStaleMin: 86_400,
+    minRecordCount: 100_000,
+    cutover: { mode: 'expiring-ack', fromKey: null, issue: 6845, status: 'STALE_SEED' },
+  },
   militaryCii:      { key: 'seed-meta:intelligence:military-cii',  maxStaleMin: 45 }, // seed-military-cii cron ~10min; 45 = generous grace (relay-dependent; preserve-last-good runs still refresh meta)
   defensePatents:   { key: 'seed-meta:military:defense-patents',  maxStaleMin: 25200 },
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 240 }, // CelesTrak every 120min; 240min = absorbs one missed cycle
@@ -1255,10 +1265,12 @@ const ON_DEMAND_KEYS = new Set([
   // absence must be EMPTY/CRIT rather than on-demand.
   'macroSignals', 'chokepoints', 'minerals', 'giving',
   'cyberThreatsRpc', 'militaryBases', 'displacement',
-  // #6845 item 3: same deploy-before-first-tick bridge as cbrRates above —
-  // the seed-activated marker written by seed-military-bases.mjs turns the
-  // militaryBasesSeed staleness alarm on for good after the first publish.
-  'militaryBasesSeed',
+  // militaryBasesSeed is deliberately NOT listed here. On-demand softening only
+  // covers EMPTY / EMPTY_DATA / EMPTY_ON_DEMAND, and a meta-only probe with no
+  // STANDALONE_KEYS entry classifies an absent seed-meta as STALE_SEED — which
+  // this set cannot soften. Listing it read like protection while providing
+  // none; the never-published case is carried by the expiring acknowledgement
+  // on the SEED_META entry instead, which expires and then alarms for real.
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
   // marketImplications removed 2026-05-01 — see policy block above. Homepage panel,
