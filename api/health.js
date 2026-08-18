@@ -341,6 +341,13 @@ const STANDALONE_KEYS = {
   cbrRates:              'economic:cbr-rates:v1',
   bocValet:              'economic:boc-valet:v1',
   statcanWds:            'economic:statcan-wds:v1',
+  // SGE physical premiums. The dashboard fetches them on demand via
+  // GET /api/market/v1/get-physical-premiums, not bootstrap hydration.
+  // classifyKey only treats ON_DEMAND_KEYS as pending when allowOnDemand is
+  // true, and that flag is set only on the STANDALONE_KEYS walk. Keeping this
+  // here (not in BOOTSTRAP_KEYS) is what makes the activation-marker cutover
+  // pending before the first successful publish and strict after it.
+  physicalPremiums:      'market:physical-premium:v1',
   bisPropertyResidential: 'economic:bis:property-residential:v1',
   bisPropertyCommercial:  'economic:bis:property-commercial:v1',
   imfMacro:             'economic:imf:macro:v2',
@@ -616,6 +623,18 @@ const SEED_META = {
   // measured floor without alarming on the known-dead eight.
   countryStockIndexes: { key: 'seed-meta:market:country-indexes', maxStaleMin: 30, minRecordCount: 30 },
   commodityQuotes:  { key: 'seed-meta:market:commodities',    maxStaleMin: 30 },
+  physicalPremiums: {
+    key: 'seed-meta:market:physical-premium',
+    maxStaleMin: 4320,
+    minRecordCount: 2,
+    activationKey: 'seed-activated:market:physical-premium',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 6436,
+      activationKey: 'seed-activated:market:physical-premium',
+    },
+  },
   goldExtended:     { key: 'seed-meta:market:gold-extended',  maxStaleMin: 30 },
   goldEtfFlows:     { key: 'seed-meta:market:gold-etf-flows', maxStaleMin: 2880 }, // SPDR publishes daily; 2× = 48h tolerance
   goldCbReserves:   { key: 'seed-meta:market:gold-cb-reserves', maxStaleMin: 44640 }, // IMF IFS is monthly w/ ~2-3mo lag; 31d tolerance
@@ -1228,6 +1247,10 @@ const ON_DEMAND_KEYS = new Set([
   // Softening lifts once the durable activation marker exists.
   'bocValet',
   'statcanWds',
+  // Scheduled producer. The marker is written only after a successful
+  // publish of the canonical snapshot. Before that first publish, absence is
+  // pending activation; after it, missing or stale data is strict.
+  'physicalPremiums',
   'riskScoresLive',
   'usniFleetStale', 'positiveEventsLive',
   'bisPolicy', 'bisExchange', 'bisCredit',
@@ -1297,6 +1320,7 @@ const ACTIVATION_MARKERS = {
   cbrRates: 'seed-activated:economic:cbr-rates',
   bocValet: 'seed-activated:economic:boc-valet',
   statcanWds: 'seed-activated:economic:statcan-wds',
+  physicalPremiums: SEED_META.physicalPremiums.activationKey,
   newsFeedHealth: 'seed-activated:news:feed-health',
   newsRecallBenchmark: 'seed-activated:news:recall-benchmark',
   // Written by scripts/_seed-history.mjs on every ingest-health report,

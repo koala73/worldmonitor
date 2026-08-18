@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { loadEnvFile, runSeed, getRedisCredentials } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
+import { regionForCountry } from './shared/geography.js';
 
 loadEnvFile(import.meta.url);
 
@@ -108,6 +109,16 @@ const REGION_THEATER_MAP = {
   'global markets': 'Global Markets',
 };
 
+const WEATHER_REGION_THEATER = Object.freeze({
+  'east-asia': 'East Asia',
+  europe: 'Western Europe',
+  latam: 'Latin America',
+  mena: 'Middle East',
+  'north-america': 'North America',
+  'south-asia': 'South Asia',
+  'sub-saharan-africa': 'Sub-Saharan Africa',
+});
+
 function normalizeTheater(raw) {
   if (!raw) return 'Global';
   const lower = String(raw).toLowerCase();
@@ -116,6 +127,11 @@ function normalizeTheater(raw) {
   }
   // Title-case the raw value as fallback
   return String(raw).trim().replace(/\b\w/g, c => c.toUpperCase()) || 'Global';
+}
+
+function weatherTheaterForCountry(countryCode) {
+  const regionId = regionForCountry(countryCode);
+  return WEATHER_REGION_THEATER[regionId] || normalizeTheater(countryCode);
 }
 
 // ── Signal category mapping for composite detection ────────────────────────────
@@ -766,11 +782,16 @@ function extractWeatherExtreme(d) {
   // seed-weather-alerts.mjs:49) and publishes no category field.
   const extreme = alerts.filter(a => enumMatches(a.severity, 'extreme'));
   if (extreme.length === 0) return [];
-  // The alert carries areaDesc ('Kern County, CA; Tulare County, CA') and no
-  // country/region. Bucketing by that string would give almost every alert its
-  // own theater, which can never join a composite. The feed is NWS-only, so the
-  // theater is North America by construction.
-  const regionMap = new Map([['North America', extreme.length]]);
+  // Extreme alerts now include SWIC members outside North America. Missing
+  // countryCode (legacy NWS rows) still buckets as North America; other ISO2
+  // values use the canonical macro-theater vocabulary so weather can join
+  // other signal categories in composite escalation.
+  const regionMap = new Map();
+  for (const alert of extreme) {
+    const cc = String(alert?.countryCode || '').toUpperCase();
+    const theater = cc ? weatherTheaterForCountry(cc) : 'North America';
+    regionMap.set(theater, (regionMap.get(theater) || 0) + 1);
+  }
   const signals = [];
   for (const [theater, count] of regionMap) {
     const score = BASE_WEIGHT['CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME'] * Math.min(2, 1 + count / 5);
@@ -786,7 +807,9 @@ function extractWeatherExtreme(d) {
       signalCount: 0,
     });
   }
-  return signals.slice(0, 2);
+  return signals
+    .sort((a, b) => (b.severityScore - a.severityScore) || a.theater.localeCompare(b.theater))
+    .slice(0, 2);
 }
 
 const GDELT_TONE_TOPICS = ['military', 'nuclear', 'maritime'];

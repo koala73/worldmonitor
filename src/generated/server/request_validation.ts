@@ -2,7 +2,7 @@
 // Source: proto/worldmonitor/**/*.proto buf.validate annotations.
 
 export const GENERATED_PROTO_VALIDATION_RULE_COUNT = 525;
-export const GENERATED_REQUEST_METHOD_COUNT = 156;
+export const GENERATED_REQUEST_METHOD_COUNT = 157;
 
 export const GENERATED_REQUEST_TYPES = {
   "analyzeStock": "worldmonitor.market.v1.AnalyzeStockRequest",
@@ -55,6 +55,7 @@ export const GENERATED_REQUEST_TYPES = {
   "getIntelTimeline": "worldmonitor.intelligence.v1.GetIntelTimelineRequest",
   "getMineralProduction": "worldmonitor.supply_chain.v1.GetMineralProductionRequest",
   "getMultiSectorCostShock": "worldmonitor.supply_chain.v1.GetMultiSectorCostShockRequest",
+  "getPhysicalPremiums": "worldmonitor.market.v1.GetPhysicalPremiumsRequest",
   "getPipelineDetail": "worldmonitor.supply_chain.v1.GetPipelineDetailRequest",
   "getPizzintStatus": "worldmonitor.intelligence.v1.GetPizzintStatusRequest",
   "getPopulationExposure": "worldmonitor.displacement.v1.GetPopulationExposureRequest",
@@ -1134,6 +1135,9 @@ export const GENERATED_MESSAGE_RULES = {
         "stringMaxLen": 32
       }
     }
+  },
+  "worldmonitor.market.v1.GetPhysicalPremiumsRequest": {
+    "fields": {}
   },
   "worldmonitor.market.v1.GetSectorSummaryRequest": {
     "fields": {}

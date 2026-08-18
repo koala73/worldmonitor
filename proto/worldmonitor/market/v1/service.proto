@@ -26,6 +26,7 @@ import "worldmonitor/market/v1/get_insider_transactions.proto";
 import "worldmonitor/market/v1/get_market_breadth_history.proto";
 import "worldmonitor/market/v1/get_gold_intelligence.proto";
 import "worldmonitor/market/v1/get_hyperliquid_flow.proto";
+import "worldmonitor/market/v1/get_physical_premiums.proto";
 
 // MarketService provides APIs for financial market data from Finnhub, Yahoo Finance, and CoinGecko.
 service MarketService {
@@ -46,6 +47,12 @@ service MarketService {
   // (shared/commodities.json) are supported.
   rpc ListCommodityQuotes(ListCommodityQuotesRequest) returns (ListCommodityQuotesResponse) {
     option (sebuf.http.config) = {path: "/list-commodity-quotes", method: HTTP_METHOD_GET};
+  }
+
+  // GetPhysicalPremiums compares SGE gold/silver benchmark prints with the
+  // existing COMEX futures snapshot and returns every conversion input.
+  rpc GetPhysicalPremiums(GetPhysicalPremiumsRequest) returns (GetPhysicalPremiumsResponse) {
+    option (sebuf.http.config) = {path: "/get-physical-premiums", method: HTTP_METHOD_GET};
   }
 
   // GetSectorSummary retrieves market sector performance data from Finnhub.

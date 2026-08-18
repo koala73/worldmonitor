@@ -238,6 +238,7 @@ function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
     pubDate: new Date(p.publishedAt),
     isAlert: p.isAlert,
     importanceScore: p.importanceScore || undefined,
+    credibilityScore: Number.isFinite(p.credibilityScore) ? p.credibilityScore : undefined,
     corroborationCount: p.corroborationCount || undefined,
     storyMeta: p.storyMeta && p.storyMeta.phase !== 'STORY_PHASE_UNSPECIFIED' ? {
       firstSeen:    p.storyMeta.firstSeen,
@@ -254,6 +255,7 @@ function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
     ...(p.locationName && { locationName: p.locationName }),
     ...(p.location && { lat: p.location.latitude, lon: p.location.longitude }),
     ...(p.importanceScore ? { importanceScore: p.importanceScore } : {}),
+    ...(Number.isFinite(p.credibilityScore) ? { credibilityScore: p.credibilityScore } : {}),
     ...(p.corroborationCount ? { corroborationCount: p.corroborationCount } : {}),
     // Cleaned RSS description (U3 proto field 12). Only populated when the
     // upstream feed carried a usable <description>/<content:encoded>/<summary>;
@@ -426,6 +428,7 @@ export class DataLoaderManager implements AppModule {
   private readonly marketLoadGuard = new LatestRequestGuard();
   private globalTenderGeneration = 0;
   private globalTenderFilters: GlobalTenderFilters = {};
+  private activeGlobalTenderScopedGeneration: number | null = null;
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
   private marketImplicationsFrameworkUnsubscribe: (() => void) | null = null;
   private cachedSatRecs: SatRecEntry[] | null = null;
@@ -553,6 +556,8 @@ export class DataLoaderManager implements AppModule {
   }
 
   destroy(): void {
+    this.globalTenderGeneration += 1;
+    this.activeGlobalTenderScopedGeneration = null;
     this.stopSatellitePropagation();
     if (this.imageryRetryTimer) { clearTimeout(this.imageryRetryTimer); this.imageryRetryTimer = null; }
     this.applyTimeRangeFilterToNewsPanelsDebounced.cancel();
@@ -2161,7 +2166,7 @@ export class DataLoaderManager implements AppModule {
       return;
     }
     const {
-      fetchMultipleStocks, fetchCommodityQuotes, fetchSectors, warmCommodityCache, warmSectorCache,
+      fetchMultipleStocks, fetchCommodityQuotes, fetchPhysicalPremiums, fetchSectors, warmCommodityCache, warmSectorCache,
       fetchCrypto, fetchCryptoSectors, fetchDefiTokens, fetchAiTokens, fetchOtherTokens,
     } = marketMod;
     try {
@@ -2365,6 +2370,16 @@ export class DataLoaderManager implements AppModule {
         }
         if (!metalsLoaded) commoditiesPanel?.renderCommodities([]);
         if (!energyLoaded) energyPanel?.updateTape([]);
+      }
+
+      if (commoditiesPanel) {
+        try {
+          const physicalPremiums = await fetchPhysicalPremiums();
+          if (isCurrent()) commoditiesPanel.updatePhysicalPremiums(physicalPremiums);
+        } catch {
+          // The physical comparison is an optional tab; a failure must not
+          // downgrade the existing commodity tape or its provider status.
+        }
       }
 
       // Load ECB FX rates for CommoditiesPanel FX tab
@@ -3739,42 +3754,86 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  async loadGlobalTenders(filters?: GlobalTenderFilters, append = false): Promise<void> {
+  async loadGlobalTenders(filters?: GlobalTenderFilters, append = false, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return;
     const procurementPanel = this.ctx.panels['global-procurement'] as GlobalProcurementPanel | undefined;
     if (!procurementPanel) return;
+    if (
+      filters === undefined
+      && signal === undefined
+      && this.activeGlobalTenderScopedGeneration !== null
+    ) return;
     const requestGeneration = ++this.globalTenderGeneration;
+    this.activeGlobalTenderScopedGeneration = signal ? requestGeneration : null;
+    const previousGlobalTenderFilters = { ...this.globalTenderFilters };
     const requestFilters = filters ?? this.globalTenderFilters;
     this.globalTenderFilters = { ...requestFilters, cursor: '' };
-    procurementPanel.setRequestHandler((nextFilters, shouldAppend) => {
-      void this.loadGlobalTenders(nextFilters, shouldAppend);
-    });
-    if (!hasPremiumAccess()) {
-      procurementPanel?.clear();
-      return;
-    }
-    procurementPanel.setLoading(true, append);
+    let canceledFiltersRestored = false;
+    const releaseScopedRequest = () => {
+      if (this.activeGlobalTenderScopedGeneration === requestGeneration) {
+        this.activeGlobalTenderScopedGeneration = null;
+      }
+    };
+    const restoreCanceledFilters = () => {
+      if (
+        canceledFiltersRestored
+        || signal?.aborted !== true
+        || requestGeneration !== this.globalTenderGeneration
+      ) return;
+      canceledFiltersRestored = true;
+      this.globalTenderFilters = previousGlobalTenderFilters;
+    };
+    signal?.addEventListener('abort', () => {
+      restoreCanceledFilters();
+      releaseScopedRequest();
+    }, { once: true });
+    const isCanceledOrStale = () => {
+      restoreCanceledFilters();
+      return signal?.aborted === true || requestGeneration !== this.globalTenderGeneration;
+    };
     try {
-      const { fetchGlobalTenders } = await import('@/services/global-tenders');
-      const data = await fetchGlobalTenders(requestFilters);
-      if (requestGeneration !== this.globalTenderGeneration) return;
+      procurementPanel.setRequestHandler((nextFilters, shouldAppend, requestSignal) => {
+        return this.loadGlobalTenders(nextFilters, shouldAppend, requestSignal);
+      });
       if (!hasPremiumAccess()) {
+        if (isCanceledOrStale()) return;
         procurementPanel.clear();
         return;
       }
-      procurementPanel.update(data, append);
-      this.ctx.statusPanel?.updateApi('Global Procurement', {
-        status: !data.dataAvailable ? 'error' : ['partial', 'stale'].includes(data.availability) ? 'warning' : 'ok',
-      });
-    } catch (error) {
-      if (requestGeneration !== this.globalTenderGeneration || !hasPremiumAccess()) return;
-      console.warn('[App] Global tenders failed:', error);
-      procurementPanel.showUnavailable();
-      this.ctx.statusPanel?.updateApi('Global Procurement', { status: 'error' });
+      if (isCanceledOrStale()) return;
+      procurementPanel.setLoading(true, append);
+      try {
+        const { fetchGlobalTenders } = await import('@/services/global-tenders');
+        if (isCanceledOrStale()) return;
+        const data = await fetchGlobalTenders(requestFilters, signal);
+        if (isCanceledOrStale()) return;
+        if (!hasPremiumAccess()) {
+          if (isCanceledOrStale()) return;
+          procurementPanel.clear();
+          return;
+        }
+        if (isCanceledOrStale()) return;
+        procurementPanel.update(data, append);
+        if (isCanceledOrStale()) return;
+        this.ctx.statusPanel?.updateApi('Global Procurement', {
+          status: !data.dataAvailable ? 'error' : ['partial', 'stale'].includes(data.availability) ? 'warning' : 'ok',
+        });
+      } catch (error) {
+        if (isCanceledOrStale() || !hasPremiumAccess()) return;
+        console.warn('[App] Global tenders failed:', error);
+        if (isCanceledOrStale()) return;
+        procurementPanel.showUnavailable();
+        if (isCanceledOrStale()) return;
+        this.ctx.statusPanel?.updateApi('Global Procurement', { status: 'error' });
+      }
+    } finally {
+      releaseScopedRequest();
     }
   }
 
   async clearGlobalTenders(): Promise<void> {
     this.globalTenderGeneration += 1;
+    this.activeGlobalTenderScopedGeneration = null;
     this.globalTenderFilters = {};
     const procurementPanel = this.ctx.panels['global-procurement'] as GlobalProcurementPanel | undefined;
     procurementPanel?.clear();

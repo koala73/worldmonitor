@@ -264,20 +264,22 @@ describe('layer explanation metadata', () => {
   });
 
 
-  test('weather explanation discloses US + Canada (NWS, ECCC) coverage', () => {
+  test('weather explanation discloses NWS, ECCC, and WMO SWIC coverage', () => {
     const weather = getLayerExplanation('weather');
 
-    assert.equal(LAYER_REGISTRY.weather.fallbackLabel, 'US + Canada Weather Alerts (NWS, ECCC)');
+    assert.equal(LAYER_REGISTRY.weather.fallbackLabel, 'Severe Weather Alerts (NWS, ECCC, WMO SWIC)');
     assert.match(weather.source, /National Weather Service \(NWS\)/i);
     assert.match(weather.source, /Environment and Climate Change Canada \(ECCC\)/i);
+    assert.match(weather.source, /WMO Severe Weather Information Centre \(SWIC\)/i);
     assert.ok(
-      weather.limitations.some(limitation => /outside the United States and Canada/i.test(limitation)),
-      'weather limitations must state that official warnings outside the United States and Canada are absent',
+      weather.limitations.some(limitation => /country-level points/i.test(limitation)),
+      'weather limitations must say SWIC geocoded alerts render as country-level points',
     );
-    // Require the citations this card's claims actually rest on, without pinning the array
-    // exactly — the v1 loop above already asserts every evidence path exists on disk, so a
-    // later addition stays covered instead of reddening this assertion.
-    for (const path of ['scripts/ais-relay.cjs', 'api/health.js', 'src/services/weather.ts']) {
+    assert.ok(
+      !weather.limitations.some(limitation => /outside the United States and Canada/i.test(limitation)),
+      'weather limitations must not still claim coverage is US + Canada only',
+    );
+    for (const path of ['scripts/ais-relay.cjs', 'scripts/_weather-alert-select.mjs', 'api/health.js', 'src/services/weather.ts']) {
       assert.ok(weather.evidence.includes(path), `weather evidence must cite ${path}`);
     }
   });

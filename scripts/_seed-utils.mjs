@@ -1719,8 +1719,10 @@ export async function fetchYahooFxRatesWithProvenance(fxSymbols, fallbacks = {})
  * Returns null on any error by default — scripts must handle first-run (no prev
  * data). Pass strict:true when overwriting without the prior snapshot would lose
  * accumulated state; missing keys still return null, while read failures throw.
+ * Pass includeEnvelopeMeta:true when a cross-seed calculation must bind the
+ * payload and its fetchedAt clock to the same atomic Redis GET.
  */
-export async function readSeedSnapshot(canonicalKey, { strict = false } = {}) {
+export async function readSeedSnapshot(canonicalKey, { strict = false, includeEnvelopeMeta = false } = {}) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
@@ -1763,7 +1765,8 @@ export async function readSeedSnapshot(canonicalKey, { strict = false } = {}) {
     // Envelope-aware: WoW/prev baselines (bigmac, grocery-basket, fear-greed)
     // must see bare legacy-shape data whether the last write was pre- or post-
     // contract-migration. unwrapEnvelope is a no-op on legacy values.
-    return unwrapEnvelope(parsed).data;
+    const envelope = unwrapEnvelope(parsed);
+    return includeEnvelopeMeta ? { data: envelope.data, meta: envelope._seed } : envelope.data;
   } catch (error) {
     if (strict) throw error;
     return null;

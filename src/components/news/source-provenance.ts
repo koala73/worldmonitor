@@ -1,4 +1,5 @@
 import {
+  computeCredibilityScore,
   describePropagandaBadge,
   getSourcePropagandaRisk,
   getSourceTier,
@@ -53,6 +54,34 @@ export function getPrimarySourceProvenanceBadges(sourceName: string): PrimarySou
     : null;
 
   return { risk, tier: tierBadge };
+}
+
+export function resolveCredibilityScore(
+  sourceName: string,
+  item?: { credibilityScore?: number; corroborationCount?: number },
+): number {
+  if (item && Number.isFinite(item.credibilityScore)) {
+    return Math.round(item.credibilityScore as number);
+  }
+  return computeCredibilityScore({
+    sourceTier: getSourceTier(sourceName),
+    propagandaRisk: getSourcePropagandaRisk(sourceName).risk,
+    independentCorroborationCount: item?.corroborationCount ?? 1,
+  });
+}
+
+/**
+ * Compact 0-100 credibility badge. Distinct from the event-risk badge:
+ * this is source reliability, not newsworthiness.
+ */
+export function renderCredibilityBadge(
+  sourceName: string,
+  item?: { credibilityScore?: number; corroborationCount?: number },
+): string {
+  const score = resolveCredibilityScore(sourceName, item);
+  const band = score < 40 ? 'low' : score < 70 ? 'medium' : 'high';
+  const title = `Credibility ${score}/100 — source reliability, not newsworthiness. State-controlled media scores low even when the story is highly newsworthy.`;
+  return `<span class="credibility-score-badge band-${band}" title="${escapeHtml(title)}">CRED ${score}</span>`;
 }
 
 /**

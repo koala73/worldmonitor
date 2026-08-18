@@ -81,6 +81,15 @@ test('readSeedSnapshot: strict mode accepts a valid envelope and unwraps it', as
   assert.deepEqual(await readSeedSnapshot('rolling:baseline:v1', { strict: true }), { samples: [1] });
 });
 
+test('readSeedSnapshot: can return data and envelope meta from one Redis read', async () => {
+  const meta = { fetchedAt: 1, recordCount: 1, sourceVersion: 'v1', schemaVersion: 1, state: 'OK' };
+  mockFetch({ _seed: meta, data: { samples: [1] } });
+  assert.deepEqual(
+    await readSeedSnapshot('rolling:baseline:v1', { strict: true, includeEnvelopeMeta: true }),
+    { data: { samples: [1] }, meta },
+  );
+});
+
 test('readSeedSnapshot: strict mode accepts a valid legacy payload', async () => {
   mockFetch({ samples: [1], fetchedAt: 1 });
   assert.deepEqual(await readSeedSnapshot('rolling:baseline:v1', { strict: true }), { samples: [1], fetchedAt: 1 });

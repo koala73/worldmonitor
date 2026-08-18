@@ -10,7 +10,7 @@
     "A temporary rollout entry may add an entry-level `expiresAt` bounded to the first",
     "scheduled cron window. At or after that instant, its live problem blocks even when",
     "the root expiresAt is later. A health-probe cutover requires either a completed",
-    "Railway-side pre-seed or this owner-bound, expiring acknowledgement.",
+    "Railway-side pre-seed, a one-way durable activation marker, or this owner-bound, expiring acknowledgement.",
     "",
     "Entries are matched on name:status exactly. A source that recovers is reported as",
     "'recovered' on the next run (prune it); a source that fails with a DIFFERENT status",

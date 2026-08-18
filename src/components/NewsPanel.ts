@@ -12,6 +12,7 @@ import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import {
   renderCorroboratingSourceRisk,
+  renderCredibilityBadge,
   renderPrimarySourceProvenance,
 } from './news/source-provenance';
 import {
@@ -552,6 +553,7 @@ export class NewsPanel extends Panel {
       <div class="item ${item.isAlert ? 'alert' : ''}" ${item.monitorColor ? `style="border-inline-start-color: ${escapeHtml(item.monitorColor)}"` : ''}>
         <div class="item-source">
           ${escapeHtml(item.source)}
+          ${renderCredibilityBadge(item.source, item)}
           ${item.lang && item.lang !== getCurrentLanguage() ? `<span class="lang-badge">${item.lang.toUpperCase()}</span>` : ''}
           ${item.storyMeta?.phase === 'breaking' ? '<span class="phase-badge breaking">BREAKING</span>' : ''}
           ${item.storyMeta?.phase === 'developing' ? `<span class="phase-badge developing">DEVELOPING${item.storyMeta.mentionCount > 1 ? ` ×${item.storyMeta.mentionCount}` : ''}</span>` : ''}
@@ -805,6 +807,7 @@ export class NewsPanel extends Panel {
         <div class="item-source">
           ${tierBadge}
           ${escapeHtml(cluster.primarySource)}
+          ${renderCredibilityBadge(cluster.primarySource, cluster.allItems.find(item => item.source === cluster.primarySource) ?? cluster.allItems[0])}
           ${primaryPropBadge}
           ${langBadge}
           ${newTag}

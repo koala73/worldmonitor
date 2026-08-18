@@ -57,6 +57,7 @@ export interface NewsItem {
   storyMeta?: StoryMeta;
   snippet: string;
   tickers: string[];
+  credibilityScore: number;
 }
 
 export interface ThreatClassification {

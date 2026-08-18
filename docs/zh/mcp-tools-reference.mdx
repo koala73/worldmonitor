@@ -733,7 +733,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **交叉印证：** 每个顶级故事都包含 `uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`、`sources` 中参与报道的媒体名称，以及 `memberTitles` 中该聚类的全部标题，另有 `lastUpdated`、`upstreamImportanceScore` 和 `effectiveImportanceScore`。
+- **交叉印证：** 每个顶级故事都包含 `uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`、`sources` 中参与报道的媒体名称，以及 `memberTitles` 中该聚类的全部标题，另有 `lastUpdated`、`upstreamImportanceScore`、`effectiveImportanceScore` 和 `credibilityScore`（0-100 来源可靠性，与重要性不同；国家控制媒体上限为 40）。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
 
 <CodeGroup>
@@ -813,7 +813,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_news_clusters`
 
-使用与仪表盘完全相同的 Jaccard 聚类（0.5 标题分词相似度）对实时头条摘要计算当前话题簇，因此 agent 看到的故事分组与 UI 一致。每个簇报告主标题、成员数、`distinctSourceCount`（`min_sources` 所过滤的交叉印证信号）、来源名称、热门关键词（过滤停用词与泛化词）、聚合威胁级别/类别以及时间跨度。服务器端主标题按新近度选取，因为摘要条目不携带每来源层级。
+使用与仪表盘完全相同的 Jaccard 聚类（0.5 标题分词相似度）对实时头条摘要计算当前话题簇，因此 agent 看到的故事分组与 UI 一致。每个簇报告主标题、成员数、`distinctSourceCount`（`min_sources` 所过滤的交叉印证信号）、来源名称、热门关键词（过滤停用词与泛化词）、聚合威胁级别/类别、时间跨度，以及主来源的 `credibilityScore`（0-100 来源可靠性，与重要性不同）。服务器端主标题按新近度选取，因为摘要条目不携带每来源层级。
 
 **参数（工具专用）：**
 

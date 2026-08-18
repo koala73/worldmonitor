@@ -1323,7 +1323,7 @@
         "ucdpEvents": "Matukio ya Migogoro ya Silaha",
         "displacementFlows": "Mitiririko ya Uhamisho",
         "climateAnomalies": "Matatizo ya Hali ya Hewa",
-        "weatherAlerts": "Tahadhari za Hali ya Hewa za Marekani na Kanada (NWS, ECCC)",
+        "weatherAlerts": "Tahadhari za hali mbaya ya hewa (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Chokepoints",
         "economicCenters": "Vituo vya Uchumi",
         "criticalMinerals": "Madini Muhimu",
@@ -1404,7 +1404,7 @@
           "infraDatacenters": "AI inakokotoa makundi >=10,000 GPU",
           "infraOutages": "Kukatika kwa mtandao na kukatizwa kwa huduma",
           "naturalEventsTech": "Matetemeko ya ardhi, dhoruba, moto (huenda ikaathiri vituo vya data)",
-          "weatherAlerts": "Tahadhari za hali ya hewa kali nchini Marekani na Kanada (NWS, ECCC)",
+          "weatherAlerts": "Tahadhari rasmi za hali mbaya ya hewa kutoka huduma za kitaifa za hali ya hewa (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Soko la hisa na benki kuu",
           "countriesOverlay": "Viwekelezo vya majina ya nchi",
           "financeExchanges": "Mabadilishano makuu ya kimataifa kulingana na kiwango cha soko",
@@ -1416,7 +1416,7 @@
           "financeOutages": "Ukatizi wa mtandao ambao unaweza kuathiri shughuli za soko",
           "financeCyberThreats": "Matukio ya usalama karibu na miundombinu ya kifedha",
           "macroWaterways": "Vituo vya kimkakati vya kusafirisha bidhaa",
-          "weatherAlertsMarket": "Matukio ya hali ya hewa kali nchini Marekani na Kanada yenye umuhimu wa soko (NWS, ECCC)",
+          "weatherAlertsMarket": "Tahadhari rasmi za hali mbaya ya hewa zenye umuhimu kwa masoko (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Matetemeko ya ardhi, moto, mafuriko, na usumbufu mwingine wa asili",
           "timeRecent": "Chuja data kulingana na saa hadi saa za hivi majuzi",
           "timeExtended": "Onyesha data kutoka wiki iliyopita, mwezi au wakati wote",
@@ -2001,7 +2001,17 @@
       "infoTooltip": "<strong>Ramani ya joto ya Sekta</strong> Utendaji wa sekta ya S&P 500 kwa muhtasari. Ukali wa rangi huonyesha ukubwa wa mabadiliko ya kila siku. Kijani = faida, Nyekundu = hasara."
     },
     "commodities": {
-      "infoTooltip": "<strong>Bidhaa</strong> Tepu ya bidhaa isiyo ya nishati inayoweza kuuzwa inayolenga metali na nyenzo. Bei za nishati zinaishi katika Nishati Complex; viashiria vya mkazo mkubwa huishi katika Stress ya Macro."
+      "infoTooltip": "<strong>Bidhaa</strong> Tepu ya bidhaa isiyo ya nishati inayoweza kuuzwa inayolenga metali na nyenzo. Bei za nishati zinaishi katika Nishati Complex; viashiria vya mkazo mkubwa huishi katika Stress ya Macro.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Bei za moja kwa moja, mabadiliko ya saa 24, na sauti ya sarafu kuu za cryptocurrency. Data imechukuliwa kutoka CoinGecko."

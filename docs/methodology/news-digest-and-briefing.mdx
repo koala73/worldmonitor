@@ -175,6 +175,33 @@ Within each category, items sort by `importanceScore` descending, then
 publication time descending. The feed digest returns at most `20` items per
 category.
 
+## Credibility Score
+
+`credibilityScore` is a separate 0-100 field on the same `NewsItem`. It does
+not replace `importanceScore`. It measures source reliability, not
+newsworthiness, so a highly newsworthy RT story can score high on importance
+and low on credibility.
+
+The canonical public methodology is
+[News Credibility Score](/methodology/news-credibility). The digest computes
+it in `shared/news-credibility.js` after the same classification and
+corroboration pass:
+
+| Component | Weight |
+| --- | --- |
+| Propaganda risk | `0.50` |
+| Source tier | `0.30` |
+| Independent corroboration | `0.20` |
+
+High propaganda-risk sources (state-controlled media) are capped at `40`.
+Unreviewed sources use propaganda risk `unknown` (`35`), never `low`.
+Severity, recency, and the diplomacy/flashpoint boost are **not** inputs.
+Third-party AllSides/MBFC ratings are reserved and not applied.
+
+The news list renders a `CRED NN` badge on both the flat list and clustered
+cards. MCP `get_news_intelligence` and `get_news_clusters` expose the same
+field. Relevance sort remains `importanceScore`.
+
 ## Story Tracking
 
 The digest persists sliced stories to Redis so later digest notifications and

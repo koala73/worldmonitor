@@ -370,13 +370,15 @@ interface EcbFxRateItem {
   change1d?: number | null;
 }
 
-type CommoditiesTab = 'commodities' | 'fx' | 'xau';
+type CommoditiesTab = 'commodities' | 'physical' | 'fx' | 'xau';
 
 // Use the generated types directly — never hand-roll a subset, which silently
 // drifts when the proto gains fields.
 import type {
+  GetPhysicalPremiumsResponse,
   GetHyperliquidFlowResponse,
   HyperliquidAssetFlow,
+  PhysicalPremium,
 } from '@/generated/client/worldmonitor/market/v1/service_client';
 
 function parseFiniteNumber(s: string): number | null {
@@ -500,6 +502,7 @@ export class CommoditiesPanel extends Panel {
   private _tab: CommoditiesTab = 'commodities';
   private _commodityData: Array<{ display: string; price: number | null; change: number | null; sparkline?: number[]; symbol?: string }> = [];
   private _fxRates: EcbFxRateItem[] = [];
+  private _physicalPremiums: PhysicalPremium[] = [];
 
   constructor() {
     super({ id: 'commodities', title: t('panels.commodities'), infoTooltip: t('components.commodities.infoTooltip') });
@@ -509,6 +512,7 @@ export class CommoditiesPanel extends Panel {
       const tab = btn?.dataset.tab;
       if (
         tab === 'commodities' ||
+        tab === 'physical' ||
         tab === 'fx' ||
         (tab === 'xau' && SITE_VARIANT === 'commodity')
       ) {
@@ -528,14 +532,41 @@ export class CommoditiesPanel extends Panel {
     this._render();
   }
 
-  private _buildTabBar(hasFx: boolean, hasXau: boolean): string {
-    const firstTabLabel = 'Commodities';
+  public updatePhysicalPremiums(response: GetPhysicalPremiumsResponse): void {
+    this._physicalPremiums = response.premiums;
+    this._render();
+  }
+
+  private _buildTabBar(hasPhysical: boolean, hasFx: boolean, hasXau: boolean): string {
+    const firstTabLabel = t('components.commodities.commodities');
     const tabs: string[] = [
       `<button class="panel-tab${this._tab === 'commodities' ? ' active' : ''}" data-tab="commodities" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">${firstTabLabel}</button>`,
     ];
+    if (hasPhysical) tabs.push(`<button class="panel-tab${this._tab === 'physical' ? ' active' : ''}" data-tab="physical" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">${t('components.commodities.physicalPremiums')}</button>`);
     if (hasFx) tabs.push(`<button class="panel-tab${this._tab === 'fx' ? ' active' : ''}" data-tab="fx" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">EUR FX</button>`);
     if (hasXau) tabs.push(`<button class="panel-tab${this._tab === 'xau' ? ' active' : ''}" data-tab="xau" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:3px 10px">XAU/FX</button>`);
     return tabs.length > 1 ? `<div style="display:flex;gap:4px;margin-bottom:8px">${tabs.join('')}</div>` : '';
+  }
+
+  private _renderPhysicalPremiums(): string {
+    const rows = this._physicalPremiums.map((premium) => {
+      if (!premium.physical || !premium.paper) return '';
+      const metalKey = premium.metal === 'gold' ? 'gold' : 'silver';
+      const metal = t(`components.commodities.metals.${metalKey}`);
+      const unit = premium.physical.unit === 'kilogram' ? 'kg' : 'g';
+      const physicalPrice = premium.physical.price.toLocaleString(undefined, { maximumFractionDigits: 2 });
+      const paperPrice = premium.paper.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const premiumUsd = `${premium.premiumUsdPerOz >= 0 ? '+' : '-'}$${Math.abs(premium.premiumUsdPerOz).toFixed(2)}`;
+      const premiumPct = `${premium.premiumPct >= 0 ? '+' : ''}${premium.premiumPct.toFixed(2)}%`;
+      return `<div class="commodity-item physical-premium-item">
+        <div class="commodity-name">${escapeHtml(metal)}</div>
+        <div class="commodity-price">${escapeHtml(t('components.commodities.physical'))}: CNY ${escapeHtml(physicalPrice)}/${unit}</div>
+        <div class="commodity-price">${escapeHtml(t('components.commodities.paper'))}: $${escapeHtml(paperPrice)}/oz</div>
+        <div class="commodity-change ${getChangeClass(premium.premiumPct)}">${escapeHtml(t('components.commodities.premium'))}: ${escapeHtml(premiumUsd)}/oz (${escapeHtml(premiumPct)})</div>
+        <div style="margin-top:4px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)" title="${escapeHtml(premium.physical.source)}">${escapeHtml(premium.physical.source)}<br>${escapeHtml(t('components.commodities.asOf', { date: premium.physical.asOf }))}</div>
+      </div>`;
+    });
+    return `<div class="commodities-grid">${rows.join('')}</div>`;
   }
 
   private _renderXau(): string {
@@ -570,10 +601,17 @@ export class CommoditiesPanel extends Panel {
   }
 
   private _render(): void {
+    const hasPhysical = this._physicalPremiums.length > 0;
     const hasFx = this._fxRates.length > 0;
     const hasXau = SITE_VARIANT === 'commodity' && this._commodityData.some(d => d.symbol === 'GC=F' && d.price !== null);
     if (this._tab === 'xau' && !hasXau) this._tab = 'commodities';
-    const tabBar = this._buildTabBar(hasFx, hasXau);
+    if (this._tab === 'physical' && !hasPhysical) this._tab = 'commodities';
+    const tabBar = this._buildTabBar(hasPhysical, hasFx, hasXau);
+
+    if (this._tab === 'physical' && hasPhysical) {
+      this.setSafeContent(unsafeRawHtml(tabBar + this._renderPhysicalPremiums(), 'legacy Panel.setContent() migration'));
+      return;
+    }
 
     if (this._tab === 'fx' && hasFx) {
       const items = this._fxRates.map(r => {
@@ -609,7 +647,7 @@ export class CommoditiesPanel extends Panel {
       (d) => typeof d.price === 'number' && Number.isFinite(d.price) && !d.symbol?.endsWith('=X'),
     );
     if (validData.length === 0) {
-      if (!hasFx) {
+      if (!hasFx && !hasPhysical) {
         this.showRetrying(t('common.failedCommodities'));
         return;
       }

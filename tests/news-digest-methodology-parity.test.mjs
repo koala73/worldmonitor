@@ -687,6 +687,34 @@ describe('news digest methodology parity', () => {
     }
   });
 
+  it('documents credibilityScore as distinct from importanceScore', () => {
+    const credibilityDoc = readFileSync(
+      resolve(repoRoot, 'docs/methodology/news-credibility.mdx'),
+      'utf8',
+    );
+    assert.ok(credibilityDoc.includes('`0.50`'), 'credibility methodology must document propaganda-risk weight');
+    assert.ok(credibilityDoc.includes('`0.30`'), 'credibility methodology must document source-tier weight');
+    assert.ok(credibilityDoc.includes('`0.20`'), 'credibility methodology must document corroboration weight');
+    assert.ok(credibilityDoc.includes('`40`'), 'credibility methodology must document the high-risk cap');
+    assertDocMatches(/## Credibility Score/, 'digest methodology credibility section');
+    assertDocIncludes('`0.50`', 'credibility propaganda-risk weight on digest methodology');
+    assertDocIncludes('capped at `40`', 'credibility high-risk cap on digest methodology');
+
+    const credibilityDescription = openApiDescription('NewsItem', 'credibilityScore');
+    assert.ok(
+      credibilityDescription.includes('distinct from importance_score'),
+      'NewsItem.credibilityScore OpenAPI must stay distinct from importanceScore',
+    );
+    assert.ok(
+      credibilityDescription.includes('capped at 40'),
+      'NewsItem.credibilityScore OpenAPI must document the state-media cap',
+    );
+    assert.ok(
+      newsItemProtoText.includes('int32 credibility_score = 14;'),
+      'NewsItem proto must keep credibility_score distinct from importance_score = 9',
+    );
+  });
+
   it('documents diplomacy severity promotion scope', () => {
     const promotionBody = extractFunctionBody(digestSrc, 'promoteDiplomacySeverity');
     assert.ok(

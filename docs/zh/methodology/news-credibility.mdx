@@ -1,0 +1,104 @@
+---
+title: "新闻可信度评分"
+description: "WorldMonitor 如何将每条头条的来源可靠性与新闻重要性分开评分 — 来源层级、宣传风险、独立佐证，以及国家媒体上限。"
+---
+
+本页是每条头条 `credibilityScore` 字段的规范公开方法论，该字段位于
+`NewsItem`（`GET /api/news/v1/list-feed-digest`，proto
+`worldmonitor.news.v1.NewsItem.credibility_score`）。
+
+`credibilityScore` 与 `importanceScore` 回答的是不同问题。把两者混为一谈，
+是老练买家最先发现的缺陷。
+
+| 分数 | 问题 | 典型高分 |
+| --- | --- | --- |
+| `importanceScore` | 此刻这件事有多值得报道？ | 外交/引爆点上的 RT 突发快讯 |
+| `credibilityScore` | 我应在多大程度上信任该来源对这件事的报道？ | 路透社报道的同一件事 |
+
+一家国家控制的媒体可以同时在重要性上得**高分**、在可信度上得**低分**。
+这种拆分就是产品本身。
+
+该管道是自动化的。没有人工审阅队列。质量来自已有的来源层级表、默认失败关闭
+的宣传风险登记，以及摘要中的佐证计数。第三方偏见/事实性评级（AllSides、
+MBFC）已预留，**当前不应用**。
+
+## 输入
+
+只有与真实性相关的输入进入该分数。严重性、时效性和外交/引爆点加成仍留在
+`importanceScore` 上。
+
+| 分量 | 权重 | 来源 |
+| --- | --- | --- |
+| 宣传风险 | `0.50` | `shared/source-provenance.ts` `SOURCE_PROPAGANDA_RISK` |
+| 来源层级 | `0.30` | `shared/source-tiers.json` |
+| 独立佐证 | `0.20` | 摘要的报道身份 / 实体佐证计数 |
+
+权重之和为 `1.0`。实现是 `shared/news-credibility.js`
+（`computeCredibilityScore`）。摘要在分类和佐证之后写入该字段，与
+`importanceScore` 并列，而不是替换它。
+
+## 分量映射
+
+来源层级映射为：
+
+| 层级 | 分数 | 含义 |
+| --- | --- | --- |
+| `1` | `100` | 通讯社 / 官方 |
+| `2` | `75` | 主流成熟媒体 |
+| `3` | `50` | 专业 / 区域 |
+| `4`（默认） | `25` | 聚合器、博客或未列入的信息流 |
+
+宣传风险映射为：
+
+| 风险 | 分数 | 含义 |
+| --- | --- | --- |
+| `low` | `100` | 已审阅的独立新闻 |
+| `medium` | `50` | 国家附属或已知编辑倾向 |
+| `unknown` | `35` | 尚未审阅 — 失败关闭，绝不视为独立 |
+| `high` | `12` | 国家控制媒体 |
+
+未列入的来源默认为 `unknown`，而不是 `low`。该失败关闭默认与来源溯源徽章
+使用同一契约。
+
+独立佐证使用摘要已有的佐证计数（报道身份聚类大小与实体级佐证中的较大者），
+上限为五个来源，在 `0.20` 权重之前每个来源计 `20` 分。这与
+`importanceScore` 已消费的佐证信号相同；不是第二次聚类。
+
+## 高风险上限
+
+加权和四舍五入并限制在 `0–100` 之后，宣传风险为 `high` 的来源被限制在
+`40`。
+
+该上限是国家媒体的验收门。RT 或 TASS 条目在独立媒体也报道该事件时仍可获得
+佐证分，但不能看起来像高可信度通讯社。路透社在没有额外佐证时约为 `80`；
+RT 在没有佐证时约为 `20` 出头。
+
+## 该分数不是什么
+
+- 它**不是**在声明底层事件为假。国家媒体最先报道的真实事件，在独立媒体佐证
+  之前，其*来源*可信度仍然低。
+- 它**不是** AllSides 或 MBFC。在专用采集存在之前，这些评级不在范围内。
+- 它**不用于**新闻列表排序。相关性排序仍是 `importanceScore`，然后是发布时间。
+  可信度被展示，而不是替代新闻重要性。
+- 同一生态系统膨胀仍是已知限制：五个俄罗斯国家编辑部聚在同一标题上，仍然共享
+  一个高风险上限，但佐证计数是摘要已有的出版家族信号，而不是新的独立性分类器。
+
+## 表面
+
+| 表面 | 字段 |
+| --- | --- |
+| 信息流摘要 API | `NewsItem.credibilityScore` |
+| 新闻列表 UI | 平铺条目与聚类卡片上的 `CRED NN` 徽章 |
+| Insights / MCP `get_news_intelligence` | `topStories[].credibilityScore` |
+| MCP `get_news_clusters` | 主来源的 `clusters[].credibilityScore` |
+
+## 源文件
+
+- 评分器：`shared/news-credibility.js`
+- 摘要写入器：`server/worldmonitor/news/v1/list-feed-digest.ts`
+- API 契约：`proto/worldmonitor/news/v1/news_item.proto`
+- 溯源登记：`shared/source-provenance.ts`
+- 层级表：`shared/source-tiers.json`
+- 新闻列表渲染：`src/components/news/source-provenance.ts`、
+  `src/components/NewsPanel.ts`
+- 管道姊妹页：[新闻摘要与简报](/zh/methodology/news-digest-and-briefing)

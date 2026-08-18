@@ -708,6 +708,22 @@ export function preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage) {
   return chinaNewsCoverage ? { ...existing, chinaNewsCoverage } : existing;
 }
 
+export function normalizeDigestItemsForInsights(items) {
+  return items.map(item => ({
+    title: sanitizeTitle(item.title || item.headline || ''),
+    source: item.source || item.feed || '',
+    link: item.link || item.url || '',
+    pubDate: item.pubDate || item.publishedAt || item.date || new Date().toISOString(),
+    isAlert: item.isAlert || false,
+    tier: item.tier,
+    threat: normalizeThreat(item.threat),
+    importanceScore: item.importanceScore,
+    ...(Number.isFinite(item.credibilityScore) ? { credibilityScore: item.credibilityScore } : {}),
+    corroborationCount: item.corroborationCount ?? item.storyMeta?.sourceCount,
+    storyMeta: item.storyMeta,
+  })).filter(item => item.title.length > 10);
+}
+
 async function fetchInsights() {
   const digest = await readOrWarmDigest('en');
   if (!digest) {
@@ -751,18 +767,7 @@ async function fetchInsights() {
 
   console.log(`  Digest items: ${items.length}`);
 
-  const normalizedItems = items.map(item => ({
-    title: sanitizeTitle(item.title || item.headline || ''),
-    source: item.source || item.feed || '',
-    link: item.link || item.url || '',
-    pubDate: item.pubDate || item.publishedAt || item.date || new Date().toISOString(),
-    isAlert: item.isAlert || false,
-    tier: item.tier,
-    threat: normalizeThreat(item.threat),
-    importanceScore: item.importanceScore,
-    corroborationCount: item.corroborationCount ?? item.storyMeta?.sourceCount,
-    storyMeta: item.storyMeta,
-  })).filter(item => item.title.length > 10);
+  const normalizedItems = normalizeDigestItemsForInsights(items);
 
   const clusters = clusterItems(normalizedItems);
   console.log(`  Clusters: ${clusters.length}`);
@@ -937,6 +942,7 @@ async function fetchInsights() {
       corroborationSourceCount: story.corroborationSourceCount ?? 0,
       importanceScore: story.importanceScore,
       effectiveImportanceScore: story.effectiveImportanceScore,
+      ...(Number.isFinite(story.credibilityScore) ? { credibilityScore: story.credibilityScore } : {}),
       velocity: { level: 'normal', sourcesPerHour: 0 },
       isAlert: story.isAlert,
       category,

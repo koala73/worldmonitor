@@ -30,3 +30,7 @@ export const SOURCE_TIERS: Record<string, number> = {
 export function getSourceTier(sourceName: string): number {
   return SOURCE_TIERS[sourceName] ?? 4;
 }
+
+export function hasSourceTier(sourceName: string): boolean {
+  return Object.prototype.hasOwnProperty.call(SOURCE_TIERS, sourceName);
+}

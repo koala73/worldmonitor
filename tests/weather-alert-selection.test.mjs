@@ -10,20 +10,33 @@ import {
   ECCC_MAX_BYTES,
   MAX_ALERTS,
   PER_SOURCE_FLOOR,
+  SWIC_ALERTS_URL,
+  SWIC_HOST,
+  SWIC_MAX_BYTES,
+  SWIC_MEMBERS_URL,
+  SWIC_SOURCE_DECISION,
   WEATHER_ALERTS_SOURCE_VERSION,
   calculateCentroid,
+  carryFailedWeatherAlertSources,
+  countryCodeFromSwicUrl,
   eligibleAlertCount,
   extractCoordinates,
   fetchApprovedWeatherJson,
   fetchEcccAlertFeatures,
   formatTruncationWarning,
+  indexSwicMembers,
   mapEcccRiskToSeverity,
+  mapSwicSeverity,
   mergeAlertSources,
   requireAlertFeatures,
   selectAlerts,
   selectEcccAlerts,
+  selectSwicAlerts,
   validateSelectedAlerts,
+  weatherAlertsAfterPublish,
+  weatherAlertNotifyCountryCode,
   weatherAlertNotifyLocation,
+  weatherAlertNotifySource,
 } from '../scripts/_weather-alert-select.mjs';
 
 const SEEDER_SOURCE = readFileSync(
@@ -459,5 +472,260 @@ describe('NWS + ECCC merge and per-source caps', () => {
     const published = mergeAlertSources({ nws: [], eccc: [] });
     assert.deepEqual(published, []);
     assert.equal(validateSelectedAlerts({ alerts: published }), true);
+  });
+});
+
+function swicItem({
+  id = 'IN-1',
+  mid = '066',
+  s = 4,
+  u = 4,
+  c = 3,
+  event = 'Heavy Rain',
+  headline = 'Heavy Rain is likely',
+  areaDesc = 'Panchkula district of Haryana',
+  url = 'in-ndma-xx/2026/08/18/12/00/00-abc.xml',
+  extras = {},
+} = {}) {
+  return {
+    id, mid, s, u, c, event, headline, areaDesc, url,
+    sent: '2026-08-18 12:00:00',
+    effective: '2026-08-18 12:00:00',
+    expires: '2026-08-18 15:00:00',
+    ...extras,
+  };
+}
+
+function swicMember({ mid = '066', code = 'IND', lat = 20.59, lng = 78.96, dept = 'India Meteorological Department' } = {}) {
+  return { mid, name: 'India', dept, lat, lng, code };
+}
+
+describe('WMO SWIC adapter on weather:alerts:v1', () => {
+  it('records an accepted source-decision with a 2 MiB host ceiling', () => {
+    assert.equal(SWIC_SOURCE_DECISION.host, SWIC_HOST);
+    assert.equal(SWIC_SOURCE_DECISION.status, 'accepted');
+    assert.equal(SWIC_SOURCE_DECISION.reason, 'RAILWAY_PREFLIGHT_OK');
+    assert.equal(SWIC_SOURCE_DECISION.requestCount, 2);
+    assert.equal(SWIC_MAX_BYTES, 2 * 1024 * 1024);
+    assert.ok(SWIC_MAX_BYTES > 256 * 1024);
+    assert.match(SWIC_ALERTS_URL, /^https:\/\/severeweather\.wmo\.int\/json\/wmo_all\.json$/);
+    assert.match(SWIC_MEMBERS_URL, /^https:\/\/severeweather\.wmo\.int\/json\/wmo_member\.json$/);
+    assert.equal(WEATHER_ALERTS_SOURCE_VERSION, 'nws+eccc+swic-v1');
+    assert.match(SEEDER_SOURCE, /CANONICAL_KEY = 'weather:alerts:v1'/);
+    assert.match(SEEDER_SOURCE, /fetchSwicAlertCatalog/);
+    assert.match(
+      SEEDER_SOURCE,
+      /readCanonicalValue\(CANONICAL_KEY\)/,
+      'the standalone writer must read the current envelope before a degraded overwrite',
+    );
+    assert.match(
+      SEEDER_SOURCE,
+      /carryFailedWeatherAlertSources/,
+      'the standalone writer must carry only the failed source slices',
+    );
+    assert.match(
+      SEEDER_SOURCE,
+      /afterPublish:\s*weatherAlertsAfterPublish/,
+      'degraded source state must reach seed-meta through freshnessMetaPatch',
+    );
+    assert.doesNotMatch(SEEDER_SOURCE, /weather:alerts:canada/);
+    assert.doesNotMatch(AIS_RELAY_SOURCE, /canada_weather_alert/);
+    assert.match(AIS_RELAY_SOURCE, /eventType:\s*'weather_alert'/);
+  });
+
+  it('maps CAP s codes onto the NWS severity vocabulary', () => {
+    assert.equal(mapSwicSeverity(1), 'Minor');
+    assert.equal(mapSwicSeverity(2), 'Moderate');
+    assert.equal(mapSwicSeverity(3), 'Severe');
+    assert.equal(mapSwicSeverity(4), 'Extreme');
+    assert.equal(mapSwicSeverity(0), 'Unknown');
+  });
+
+  it('derives ISO2 from the CAP url prefix and the member ISO3 code', () => {
+    assert.equal(countryCodeFromSwicUrl('in-ndma-xx/2026/08/18/x.xml'), 'IN');
+    assert.equal(countryCodeFromSwicUrl('cn-cma-xx/foo.xml'), 'CN');
+    assert.equal(countryCodeFromSwicUrl(''), null);
+    const members = indexSwicMembers([{ ra: 2, members: [swicMember()] }]);
+    const [alert] = selectSwicAlerts([swicItem({ url: '' })], members);
+    assert.equal(alert.countryCode, 'IN');
+  });
+
+  it('renders geocode-only records as country-centroid points, not polygons', () => {
+    const members = indexSwicMembers([{ ra: 2, members: [swicMember({ lat: 20.5, lng: 78.9 })] }]);
+    const [alert] = selectSwicAlerts([swicItem()], members);
+    assert.equal(alert.source, 'swic');
+    assert.equal(alert.geometryPrecision, 'country');
+    assert.deepEqual(alert.coordinates, []);
+    assert.deepEqual(alert.centroid, [78.9, 20.5]);
+    assert.equal(alert.areaDesc, 'Panchkula district of Haryana');
+    const location = weatherAlertNotifyLocation(alert);
+    assert.equal(location.lat, 20.5);
+    assert.equal(location.lon, 78.9);
+    assert.equal(location.geometry, undefined);
+  });
+
+  it('normalizes offset-free SWIC timestamps to explicit UTC instants', () => {
+    const originalTimezone = process.env.TZ;
+    process.env.TZ = 'America/New_York';
+    try {
+      const members = indexSwicMembers([{ ra: 2, members: [swicMember()] }]);
+      const [alert] = selectSwicAlerts([swicItem()], members);
+      assert.equal(alert.onset, '2026-08-18T12:00:00.000Z');
+      assert.equal(alert.expires, '2026-08-18T15:00:00.000Z');
+      assert.equal(new Date(alert.expires).toISOString(), '2026-08-18T15:00:00.000Z');
+    } finally {
+      if (originalTimezone === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTimezone;
+    }
+  });
+
+  it('uses item geometry as the polygon tier when SWIC publishes a ring', () => {
+    const members = indexSwicMembers([{ ra: 2, members: [swicMember()] }]);
+    const ring = [[78, 20], [79, 20], [79, 21], [78, 21], [78, 20]];
+    const [alert] = selectSwicAlerts([swicItem({
+      extras: { geometry: { type: 'Polygon', coordinates: [ring] } },
+    })], members);
+    assert.equal(alert.geometryPrecision, 'polygon');
+    assert.deepEqual(alert.coordinates, ring);
+    assert.equal(weatherAlertNotifyLocation(alert).geometry.type, 'Polygon');
+  });
+
+  it('skips US and CA SWIC rows so NWS/ECCC keep the polygon-tier slots', () => {
+    const members = indexSwicMembers([{
+      ra: 4,
+      members: [
+        { mid: '093', name: 'United States', dept: 'NWS', lat: 39, lng: -98, code: 'USA' },
+        { mid: '056', name: 'Canada', dept: 'ECCC', lat: 56, lng: -106, code: 'CAN' },
+        swicMember(),
+      ],
+    }]);
+    const alerts = selectSwicAlerts([
+      swicItem({ id: 'us-1', mid: '093', url: 'us-nws-en/x.xml' }),
+      swicItem({ id: 'ca-1', mid: '056', url: 'ca-eccc-en/x.xml' }),
+      swicItem({ id: 'in-1', mid: '066', url: 'in-ndma-xx/x.xml' }),
+    ], members);
+    assert.deepEqual(alerts.map((a) => a.id), ['in-1']);
+  });
+
+  it('drops Unknown SWIC severity and rows with no placeable centroid', () => {
+    const members = indexSwicMembers([{ ra: 2, members: [swicMember({ lat: 999, lng: 999 })] }]);
+    const alerts = selectSwicAlerts([
+      swicItem({ id: 'unknown', s: 0 }),
+      swicItem({ id: 'no-geo', extras: { url: '' } }),
+    ], members);
+    assert.deepEqual(alerts, []);
+  });
+
+  it('still publishes SWIC when NWS is missing, and NWS when SWIC is missing', () => {
+    const members = indexSwicMembers([{ ra: 2, members: [swicMember()] }]);
+    const swic = selectSwicAlerts([swicItem({ id: 'in-only' })], members);
+    const nws = selectAlerts([feature('Severe', 7)]);
+    assert.deepEqual(mergeAlertSources({ nws: null, eccc: [], swic }).map((a) => a.id), ['in-only']);
+    assert.deepEqual(mergeAlertSources({ nws, eccc: [], swic: undefined }).map((a) => a.id), ['alert-7']);
+  });
+
+  it('carries only the failed source slices from the previous weather envelope', () => {
+    const carried = carryFailedWeatherAlertSources([
+      { id: 'nws-old', source: 'nws' },
+      { id: 'eccc-old', source: 'eccc' },
+      { id: 'swic-old', source: 'swic' },
+      { id: 'legacy-untagged' },
+    ], ['nws', 'swic']);
+
+    assert.deepEqual(carried.nws.map((alert) => alert.id), ['nws-old']);
+    assert.deepEqual(carried.eccc, []);
+    assert.deepEqual(carried.swic.map((alert) => alert.id), ['swic-old']);
+  });
+
+  it('projects standalone source degradation into freshness metadata', () => {
+    assert.deepEqual(
+      weatherAlertsAfterPublish({
+        alerts: [],
+        sourceState: 'degraded',
+        errorCode: 'WEATHER_ALERT_SOURCE_INCOMPLETE',
+        failedSources: ['swic'],
+        skipReason: 'swic-unavailable',
+      }),
+      {
+        freshnessMetaPatch: {
+          sourceState: 'degraded',
+          errorCode: 'WEATHER_ALERT_SOURCE_INCOMPLETE',
+          failedSources: ['swic'],
+          skipReason: 'swic-unavailable',
+        },
+      },
+    );
+    assert.deepEqual(
+      weatherAlertsAfterPublish({ alerts: [] }),
+      { freshnessMetaPatch: { sourceState: 'ok' } },
+    );
+  });
+
+  it('keeps a SWIC floor so Extreme India alerts survive a US Minor flood', () => {
+    const members = indexSwicMembers([{ ra: 2, members: [swicMember()] }]);
+    const nws = Array.from({ length: MAX_ALERTS }, (_, i) => selectAlerts([feature('Minor', i)])[0]);
+    const swic = Array.from({ length: 10 }, (_, i) => selectSwicAlerts([
+      swicItem({ id: `in-extreme-${i}`, s: 4 }),
+    ], members)[0]);
+    const published = mergeAlertSources({ nws, eccc: [], swic });
+    assert.equal(published.length, MAX_ALERTS);
+    assert.equal(published.filter((a) => a.source === 'swic').length, 10);
+    assert.ok(published.filter((a) => a.source === 'nws').length >= PER_SOURCE_FLOOR);
+  });
+
+  it('derives weather_alert source and countryCode instead of hardcoding NWS/US', () => {
+    const members = indexSwicMembers([{ ra: 2, members: [swicMember()] }]);
+    const [swic] = selectSwicAlerts([swicItem()], members);
+    assert.equal(weatherAlertNotifySource(swic), 'WMO SWIC');
+    assert.equal(weatherAlertNotifyCountryCode(swic), 'IN');
+    assert.equal(weatherAlertNotifySource({ source: 'eccc', countryCode: 'CA' }), 'ECCC');
+    assert.equal(weatherAlertNotifyCountryCode({ source: 'eccc', countryCode: 'CA' }), 'CA');
+    assert.equal(weatherAlertNotifyCountryCode({ source: 'swic' }), undefined);
+    assert.match(
+      AIS_RELAY_SOURCE,
+      /source:\s*weatherAlertNotifySource\(a\)/,
+    );
+    assert.match(
+      AIS_RELAY_SOURCE,
+      /weatherAlertNotifyCountryCode\(a\)/,
+    );
+    assert.doesNotMatch(
+      AIS_RELAY_SOURCE,
+      /countryCode:\s*a\.countryCode\s*\|\|\s*\(a\.source === 'eccc' \? 'CA' : 'US'\)/,
+    );
+  });
+
+  it('pins the SWIC host, rejects redirects, and caps response bytes', async () => {
+    await assert.rejects(
+      fetchApprovedWeatherJson('https://example.test/wmo_all.json', {
+        allowedHosts: [SWIC_HOST],
+        maxBytes: SWIC_MAX_BYTES,
+      }),
+      /UNTRUSTED_SOURCE_HOST/,
+    );
+
+    let init;
+    const payload = await fetchApprovedWeatherJson(SWIC_ALERTS_URL, {
+      allowedHosts: [SWIC_HOST],
+      maxBytes: SWIC_MAX_BYTES,
+      accept: 'application/json',
+      fetchFn: async (_url, options) => {
+        init = options;
+        return new Response(JSON.stringify({ itemCount: 0, items: [] }), {
+          headers: { 'content-type': 'application/json' },
+        });
+      },
+    });
+    assert.equal(init.redirect, 'error');
+    assert.deepEqual(payload, { itemCount: 0, items: [] });
+
+    await assert.rejects(
+      fetchApprovedWeatherJson(SWIC_ALERTS_URL, {
+        allowedHosts: [SWIC_HOST],
+        maxBytes: 10,
+        fetchFn: async () => new Response('{"this":"payload is too large"}'),
+      }),
+      /RESPONSE_TOO_LARGE/,
+    );
   });
 });
