@@ -38,7 +38,7 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | `409` | `Idempotency-Key` request still in progress, or another conflict such as duplicate webhook registration. | Yes for keyed in-flight requests — honor `Retry-After: 2`; otherwise no |
 | `422` | `Idempotency-Key` reused with a different request body. | No — resend the original body or use a new key |
 | `413` | Payload too large | No |
-| `429` | Rate limited | Yes — honor `Retry-After` |
+| `429` | Rate limited - an authenticated REST key exceeded its per-minute burst limit or daily plan allowance, or another route-specific limit | Yes - honor `Retry-After` |
 | `500` | Server bug | Yes — with backoff, then report |
 | `502` | Upstream / Convex / Dodo failure | Yes — exponential backoff |
 | `503` | Service unavailable — missing env or dependency down; billing verification in progress (`renewal_verification_pending` / `renewal_verification_failed` — dynamic `Retry-After`, 1-60s); or billing backend unreachable (`entitlement_verification_unavailable` — fixed `Retry-After: 5`) | Yes — honor `Retry-After`, else exponential backoff |
@@ -64,6 +64,7 @@ Generated RPC handlers preserve the same billing decision in their native error 
 | `invalid_date_shape` | Date param not `YYYY-MM-DD`. |
 | `brief_not_found` | No composed brief for the requested `{userId, issueSlot}`. |
 | `Too many requests` | 429 fired; honor `Retry-After`. |
+| `Daily request limit reached` | The authenticated REST key exceeded its daily plan allowance. The response has `limit_type: "daily"`; retry after `Retry-After`, which reaches the next UTC midnight. |
 | `Service temporarily unavailable` | Upstash or another hard dependency missing at request time. |
 | `service_unavailable` | Signing secret / required env not configured. |
 | `Failed to enqueue scenario job` | Redis pipeline failure on `/api/scenario/v1/run-scenario`. |
@@ -87,6 +88,15 @@ If the first request is still running, the retry returns `409 idempotency_confli
 For mutations this avoids duplicating the side effect, including async enqueues such as `POST /api/scenario/v1/run-scenario`. For batch-read POSTs, replay returns the cached snapshot and that snapshot can be up to 24 hours stale. A `409 idempotency_conflict` means the original keyed request is still running and keeps its in-flight lock until it completes. If the original execution itself returns a retryable status (`408`, `409`, `429`, or 5xx), that response is not cached and the processing lock is released, so a later retry may re-execute the operation and should only be sent when the endpoint contract is safe for that retry or the client can tolerate re-execution.
 
 ## Retry strategy
+
+### Rate-limit 429s
+
+For authenticated REST API keys, a 429 response identifies the active plan limit with `limit_type`:
+
+- `per_minute` means the per-minute burst limit was exceeded. Retry after the burst window resets.
+- `daily` means the daily plan allowance was exceeded. The request at the allowance is accepted; the next request is rejected until the UTC-day reset. It is not a billable overage.
+
+The API sends `Retry-After` on both responses. SDK REST calls surface these responses through their existing API transport errors; see [Official SDKs](/sdks#rest-rate-limit-errors).
 
 **`Retry-After` is authoritative — never retry earlier than it asks.** When a response carries the header, wait exactly that long; it replaces the backoff schedules below rather than racing them. Retrying sooner is not merely impolite here: on a billing-verification 503 the server briefly caches the transient answer per caller, and that cache window sits just inside the delay it advertises. An early retry is therefore served the identical failure it just received, spending quota on an attempt that cannot succeed. Against `entitlement_verification_unavailable` (fixed `Retry-After: 5`), a generic 1s/2s/4s schedule wastes its early attempts inside that window and only its third can succeed — where one request sent after the advertised delay would have. Tight client-side loops fare worse still: three attempts inside two seconds all land in the same cached failure.
 
