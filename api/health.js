@@ -687,10 +687,22 @@ const SEED_META = {
   militaryForecastInputs: { key: 'seed-meta:military-forecast-inputs', maxStaleMin: 30 },
   militarySurges:     { key: 'seed-meta:military-surges',      maxStaleMin: 30 },
   // #6845 item 3: staleness was invisible — the bases corpus was monitored
-  // only through the presence of military:bases:active. 30-day Military-Bases
-  // cadence (seed-bundle-static-ref); 60d = one fully missed cycle. Gated by
-  // the active-version pointer via ACTIVATION_MARKERS so a deploy that has
-  // never seeded reads as pending instead of CRIT.
+  // only through the presence of military:bases:active, which is a pointer, not
+  // a clock: it stayed green while the corpus behind it aged indefinitely.
+  //
+  // Cadence: Military-Bases runs on seed-bundle-static-ref-heavy, NOT
+  // seed-bundle-static-ref — #6806 split the three expensive members onto their
+  // own daily cron because they could not share leftover's 570s tick. The
+  // member's own intervalMs is unchanged at 30 * DAY, so 86_400min (60d) is
+  // still two intervals.
+  //
+  // The heavy bundle rotates its lead slot (dayIndex % 3), so a member that has
+  // become due waits at most ~3 days for a tick it can be admitted on. Worst
+  // case is therefore ~33d, not 30d — comfortably inside the 60d budget, and
+  // the reason this is not sized any tighter.
+  //
+  // Gated by the active-version pointer via ACTIVATION_MARKERS so a deploy that
+  // has never seeded reads as pending instead of CRIT.
   militaryBasesSeed: { key: 'seed-meta:military:bases', maxStaleMin: 86_400, minRecordCount: 100_000 },
   militaryCii:      { key: 'seed-meta:intelligence:military-cii',  maxStaleMin: 45 }, // seed-military-cii cron ~10min; 45 = generous grace (relay-dependent; preserve-last-good runs still refresh meta)
   defensePatents:   { key: 'seed-meta:military:defense-patents',  maxStaleMin: 25200 },

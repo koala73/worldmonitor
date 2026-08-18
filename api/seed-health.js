@@ -135,7 +135,8 @@ const SEED_DOMAINS = {
   // #6845 item 3: staleness was invisible — this endpoint had no entry for the
   // bases corpus at all, and /api/health checked only the presence of
   // military:bases:active. The seeder runs on Military-Bases' 30-day cadence
-  // (seed-bundle-static-ref), so intervalMin = one cadence and stale fires at
+  // (seed-bundle-static-ref-HEAVY since #6806 moved the three expensive members
+  // off leftover), so intervalMin = one cadence and stale fires at
   // 2x = one fully missed cycle. activationKey is the active-version pointer
   // itself: atomicSwitch writes it atomically with seed-meta, so a deployment
   // that has never published reads as pending-activation rather than missing,
