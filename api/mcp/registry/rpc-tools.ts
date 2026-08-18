@@ -544,6 +544,18 @@ const DEFENSE_INDUSTRIAL_METRIC_SCHEMA = {
   },
 };
 
+const DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA = {
+  type: 'object' as const,
+  description: 'A source observation. Read available before value; an unavailable proto3 numeric field is zero.',
+  properties: {
+    available: { type: 'boolean' as const },
+    value: { type: 'number' as const },
+    year: { type: 'integer' as const, description: 'Source observation year.' },
+    source: { type: 'string' as const },
+    unit: { type: 'string' as const },
+  },
+};
+
 export const RPC_TOOLS: ToolDef[] = [
   {
     name: 'get_defense_industrial_base',
@@ -1285,6 +1297,91 @@ export const RPC_TOOLS: ToolDef[] = [
     },
     _apiPaths: [
       'GET /api/resilience/v1/get-food-stocks',
+    ],
+  },
+  {
+    name: 'get_demographics_capability',
+    _outputBudgetBytes: 32768,
+    description: 'Country demographics capability observations from UN WPP, World Bank/UNESCO UIS, and ILOSTAT. Returns age structure, education and industrial-workforce groups independently, with observation year, source, unit and explicit availability for every metric. Requires an ISO-2 country code and a WorldMonitor subscription.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country_code: {
+          type: 'string',
+          description: 'Required ISO 3166-1 alpha-2 country code (for example "DE"). Case-insensitive.',
+        },
+      },
+      required: ['country_code'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        countryCode: { type: 'string' },
+        available: { type: 'boolean', description: 'True when at least one validated observation is available.' },
+        fetchedAt: { type: 'string', description: 'ISO-8601 snapshot generation time.' },
+        stages: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'wpp, education, or ilostat.' },
+              status: { type: 'string', description: 'fresh, retained, or unavailable.' },
+              fetchedAt: { type: 'string' },
+              recordCount: { type: 'number' },
+              newestObservationYear: { type: 'number' },
+            },
+          },
+        },
+        ageStructure: {
+          type: 'object',
+          description: 'UN WPP age and working-age population observations. Read each metric available flag before value.',
+          properties: {
+            available: { type: 'boolean' },
+            medianAgeYears: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
+            oldAgeDependencyRatioPercent: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
+            totalDependencyRatioPercent: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
+            workingAgePopulationPeople: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
+            workingAgePopulationProjected10yPeople: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
+          },
+        },
+        education: {
+          type: 'object',
+          description: 'World Bank WDI and UNESCO UIS education observations. Read each metric available flag before value.',
+          properties: {
+            available: { type: 'boolean' },
+            tertiaryEnrollmentGrossPercent: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
+            stemGraduatesSharePercent: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
+            researchersPerMillion: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
+          },
+        },
+        industrialWorkforce: {
+          type: 'object',
+          description: 'ILOSTAT workforce observations. The combined trained workforce is available only for a valid same-year ISCO 7+8 cohort.',
+          properties: {
+            available: { type: 'boolean' },
+            craftTradesEmploymentPeople: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
+            plantMachineOperatorsEmploymentPeople: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
+            trainedIndustrialWorkforcePeople: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
+            manufacturingEmploymentSharePercent: DEMOGRAPHICS_OBSERVATION_OUTPUT_SCHEMA,
+          },
+        },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _coverageKeys: ['demographics:capability:v1'],
+    _execute: async (params, base, context) => {
+      const countryCode = String(params.country_code ?? '').trim().toUpperCase();
+      const url = `${base}/api/resilience/v1/get-demographics-capability?countryCode=${encodeURIComponent(countryCode)}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const res = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(8_000),
+      });
+      await assertToolFetchOk(res, 'get-demographics-capability');
+      return res.json();
+    },
+    _apiPaths: [
+      'GET /api/resilience/v1/get-demographics-capability',
     ],
   },
   {

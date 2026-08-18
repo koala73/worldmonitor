@@ -299,6 +299,13 @@
       }
     },
     {
+      "name": "get_demographics_capability",
+      "description": "Country demographics capability observations from UN WPP, World Bank/UNESCO UIS, and ILOSTAT. Returns age structure, education and industrial-workforce groups independently, with observation year, source, unit and explicit availability for every metric. Requires an ISO-2 country code and a WorldMonitor subscription.",
+      "_meta": {
+        "worldmonitor/access": "subscription"
+      }
+    },
+    {
       "name": "get_consumer_prices",
       "description": "Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires country_code (currently only 'ae' is seeded).",
       "_meta": {

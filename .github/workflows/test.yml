@@ -513,7 +513,7 @@ jobs:
     # No secrets are injected here. The smoke allows provider-level
     # unavailable/stale states and gates app-level boot, variant, 401,
     # page-error, and expected-panel invariants.
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -537,8 +537,21 @@ jobs:
       # cache hit on an image that no longer ships a needed lib would fail at
       # chromium launch. Exactly one apt pass runs either way: --with-deps on a
       # miss (above), install-deps alone on a hit.
-      - run: npx playwright install-deps chromium
+      #
+      # install-deps has hung on apt for the full 15-minute job budget (PR
+      # #6923 run 32156387036), cancelling the smoke tests before they started.
+      # Cap the apt step and fall back to a full --with-deps install instead of
+      # letting a stuck mirror redden the required gate.
+      - name: Install Playwright OS libraries
+        id: playwright-install-deps
         if: steps.playwright-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 8
+        continue-on-error: true
+        run: npx playwright install-deps chromium
+      - name: Repair Playwright install after OS-deps timeout
+        if: steps.playwright-cache.outputs.cache-hit == 'true' && steps.playwright-install-deps.outcome == 'failure'
+        timeout-minutes: 10
+        run: npx playwright install --with-deps chromium
       # One invocation for all three smoke specs: each `playwright test` run
       # boots its own vite dev server (reuseExistingServer is false), so three
       # separate steps paid three boots; the specs are independent and share

@@ -60,6 +60,20 @@ describe('docs-stats api endpoint inventory', () => {
     assert.equal(computeStats().apiEndpointEntries, baseline, 'probe directory must be cleaned up');
   });
 
+  // Parallel test:data can run this file next to
+  // tests/docs-stats-plan-layer-entitlement.test.mts, which spawns
+  // `docs-stats --check` and walks api/ via source-attribution. The leftover
+  // must not crash that walk if it is listed then removed.
+  it('leaves source-attribution able to walk api/ while the leftover exists', () => {
+    const leftover = resolve(REPO_ROOT, 'api/[__docs_stats_probe__]');
+    mkdirSync(resolve(leftover, 'v1'), { recursive: true });
+    try {
+      assert.doesNotThrow(() => computeStats());
+    } finally {
+      rmSync(leftover, { recursive: true, force: true });
+    }
+  });
+
   it('still counts a leftover directory once it contains a real file', () => {
     const populated = resolve(REPO_ROOT, 'api/[__docs_stats_probe2__]');
     const baseline = computeStats().apiEndpointEntries;

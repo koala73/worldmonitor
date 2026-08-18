@@ -205,6 +205,10 @@ export function sectionWorstCaseMs(section) {
  * timeout keeps the two numbers linked instead of drifting apart.
  */
 export const ADMISSION_HEADROOM_MS = 3 * REDIS_READ_TIMEOUT_MS;
+// The heartbeat uses one bounded Redis request. With `prefetchFreshness`,
+// section freshness can use up to three reads but the slowest section, not the
+// section count, controls this preflight budget.
+export const BUNDLE_PREFLIGHT_HEADROOM_MS = REDIS_READ_TIMEOUT_MS + ADMISSION_HEADROOM_MS;
 
 /**
  * Age multiple at which a deferral stops reading as ordinary budget pressure
@@ -355,7 +359,7 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs }) {
  *   dependsOn?: string[],    // labels that MUST run earlier in the array
  *   requiredEnv?: string[],  // deployment config required before any section runs
  * }>} sections
- * @param {{ maxBundleMs?: number }} [opts]
+ * @param {{ maxBundleMs?: number, prefetchFreshness?: boolean }} [opts]
  */
 /**
  * Env var carrying the per-member kill switch for a bundle, e.g.
@@ -512,6 +516,16 @@ export async function runBundle(label, sections, opts = {}) {
     console.log(`[Bundle:${label}] tick heartbeat ${bundleHeartbeatKey(label)}`);
   }
 
+  // Bundles with a simultaneous-fit invariant can opt into a bounded preflight:
+  // all interval clocks start together so member count cannot consume the wall
+  // budget before the first child. Keep the default sequential behavior for
+  // large bundles, where an unbounded fan-out would create a Redis burst.
+  const freshnessByLabel = opts.prefetchFreshness
+    ? new Map(await Promise.all(sections.map(async (section) => (
+      [section.label, await readSectionFreshness(section)]
+    ))))
+    : null;
+
   let ran = 0, skipped = 0, deferred = 0, failed = 0, gracefulFailed = 0, stalled = 0;
 
   let disabled = 0;
@@ -538,7 +552,9 @@ export async function runBundle(label, sections, opts = {}) {
     const scriptPath = join(__dirname, section.script);
     const timeout = section.timeoutMs || DEFAULT_SECTION_TIMEOUT_MS;
 
-    const freshness = await readSectionFreshness(section);
+    const freshness = freshnessByLabel
+      ? freshnessByLabel.get(section.label) || null
+      : await readSectionFreshness(section);
     if (freshness?.fetchedAt) {
       const elapsed = Date.now() - freshness.fetchedAt;
       if (elapsed < section.intervalMs * 0.8) {

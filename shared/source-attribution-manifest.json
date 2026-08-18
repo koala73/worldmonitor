@@ -1260,15 +1260,18 @@
     },
     {
       "host": "api.worldbank.org",
-      "provider": "api.worldbank.org",
+      "provider": "World Bank Open Data",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit api.worldbank.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
+      "license": "World Development Indicators are licensed under CC BY 4.0. UNESCO UIS indicators mirrored through WDI also require the UIS attribution stated in the public source documentation.",
+      "attribution": "World Bank Open Data. For education indicators: UNESCO Institute for Statistics via World Bank WDI; include the UIS source URL and extraction date.",
+      "status": "reviewed",
       "references": [
         {
           "path": "scripts/_defense-industrial-source.mjs"
+        },
+        {
+          "path": "scripts/_demographics-capability-source.mjs"
         },
         {
           "path": "scripts/ais-relay.cjs"
@@ -6969,6 +6972,20 @@
       ]
     },
     {
+      "host": "population.un.org",
+      "provider": "United Nations Population Division",
+      "kind": "structured",
+      "observed": true,
+      "license": "UN World Population Prospects 2024 is licensed under CC BY 3.0 IGO.",
+      "attribution": "United Nations, Department of Economic and Social Affairs, Population Division (2024). World Population Prospects 2024.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/_demographics-capability-source.mjs"
+        }
+      ]
+    },
+    {
       "host": "portfolio.hu",
       "provider": "portfolio.hu",
       "kind": "feed",
@@ -7796,6 +7813,20 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "sdmx.ilo.org",
+      "provider": "ILOSTAT",
+      "kind": "structured",
+      "observed": true,
+      "license": "ILOSTAT datasets and metadata published from 3 May 2023 are licensed under CC BY 4.0.",
+      "attribution": "International Labour Organization, ILOSTAT database; include the dataset and extraction date.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/_demographics-capability-source.mjs"
         }
       ]
     },
@@ -12087,9 +12118,6 @@
       "references": [
         {
           "path": "scripts/lib/provincial-511.mjs"
-        },
-        {
-          "path": "scripts/source-attribution.mjs"
         }
       ]
     },
@@ -13695,6 +13723,9 @@
       "references": [
         {
           "path": "api/fwdstart.js"
+        },
+        {
+          "path": "src/embed/panels/fear-greed.ts"
         }
       ]
     },

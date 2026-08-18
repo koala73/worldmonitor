@@ -446,6 +446,9 @@ const STANDALONE_KEYS = {
   // USDA PSD food stocks + FAOSTAT production fill (#6440). RPC/MCP only —
   // not bootstrap-hydrated; country deep-dive fetches on demand.
   foodStocks:               'resilience:food-stocks:v1',
+  // UN WPP + UNESCO/World Bank + ILOSTAT capability data (#6437). The country
+  // deep-dive fetches this seeded key on demand; it is not bootstrap-hydrated.
+  demographicsCapability:   'demographics:capability:v1',
   resilienceRanking:        'resilience:ranking:v28',
   productCatalog:           'product-catalog:v3',
   energySpineCountries:     'energy:spine:v1:_countries',
@@ -998,6 +1001,17 @@ const SEED_META = {
       mode: 'expiring-ack',
       fromKey: null,
       issue: 6440,
+      status: 'EMPTY',
+    },
+  },
+  demographicsCapability: {
+    key: 'seed-meta:demographics:capability',
+    maxStaleMin: 36000, // 25d: static-ref refreshes every 20d; data TTL is 30d.
+    minRecordCount: 150,
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6437,
       status: 'EMPTY',
     },
   },

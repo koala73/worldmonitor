@@ -85,6 +85,18 @@
       }
     },
     {
+      "name": "demographicsCapability",
+      "status": "EMPTY",
+      "issue": 6437,
+      "reason": "The new demographics capability probe cannot exist until the updated seed-bundle-static-ref image runs its first daily 03:00 UTC tick. EMPTY is acknowledged only through that first scheduled run; after it, fewer than 150 countries or no publication must block acceptance.",
+      "expiresAt": "2026-08-19T03:00:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:demographics:capability",
+        "activatedAt": "2026-08-18T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T03:00:00.000Z"
+      }
+    },
+    {
       "name": "manitobaRoads",
       "status": "EMPTY",
       "issue": 6622,

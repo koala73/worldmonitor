@@ -2,7 +2,7 @@
 // Source: proto/worldmonitor/**/*.proto buf.validate annotations.
 
 export const GENERATED_PROTO_VALIDATION_RULE_COUNT = 525;
-export const GENERATED_REQUEST_METHOD_COUNT = 157;
+export const GENERATED_REQUEST_METHOD_COUNT = 158;
 
 export const GENERATED_REQUEST_TYPES = {
   "analyzeStock": "worldmonitor.market.v1.AnalyzeStockRequest",
@@ -36,6 +36,7 @@ export const GENERATED_REQUEST_TYPES = {
   "getCountryRisk": "worldmonitor.intelligence.v1.GetCountryRiskRequest",
   "getCountryStockIndex": "worldmonitor.market.v1.GetCountryStockIndexRequest",
   "getDefenseIndustrialBase": "worldmonitor.military.v1.GetDefenseIndustrialBaseRequest",
+  "getDemographicsCapability": "worldmonitor.resilience.v1.GetDemographicsCapabilityRequest",
   "getDisplacementSummary": "worldmonitor.displacement.v1.GetDisplacementSummaryRequest",
   "getEconomicCalendar": "worldmonitor.economic.v1.GetEconomicCalendarRequest",
   "getEnergyCapacity": "worldmonitor.economic.v1.GetEnergyCapacityRequest",
@@ -1284,6 +1285,9 @@ export const GENERATED_MESSAGE_RULES = {
     }
   },
   "worldmonitor.research.v1.ListTrendingReposRequest": {
+    "fields": {}
+  },
+  "worldmonitor.resilience.v1.GetDemographicsCapabilityRequest": {
     "fields": {}
   },
   "worldmonitor.resilience.v1.GetFoodStocksRequest": {

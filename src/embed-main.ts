@@ -1,22 +1,14 @@
 import './styles/base-layer.css';
 import './styles/happy-theme.css';
 import './styles/embed.css';
-import { MapContainer, type MapContainerState } from '@/components/MapContainer';
 import { initI18n } from '@/services/i18n';
-import { EmbedDataLoader } from '@/embed/embed-data-loader';
-import {
-  buildWorldMonitorAttributionUrl,
-  parseEmbedParams,
-} from '@/embed/embed-url';
-
-function getReferrerHost(): string | null {
-  if (!document.referrer) return null;
-  try {
-    return new URL(document.referrer).host || null;
-  } catch {
-    return null;
-  }
-}
+import { panelRequiresEmbeddingApiKey } from '../shared/embed-panels';
+import { parseEmbedParams } from '@/embed/embed-url';
+import { waitForEmbeddingApiKey } from '@/embed/embed-credential';
+import { fetchEmbedEntitlement } from '@/embed/embed-fetch';
+import { mountEmbedMapPanel } from '@/embed/panels/map';
+import { mountEmbedChokepointStrip } from '@/embed/panels/chokepoint-strip';
+import { mountEmbedFearGreed } from '@/embed/panels/fear-greed';
 
 function mountError(root: HTMLElement, message: string): void {
   root.textContent = '';
@@ -34,45 +26,61 @@ async function bootEmbed(): Promise<void> {
     const params = parseEmbedParams(window.location.search);
     document.documentElement.dataset.theme = params.theme;
     document.documentElement.dataset.variant = params.variant;
+    document.body.dataset.embedPanel = params.panel ?? 'unknown';
     document.body.dataset.embedReady = 'false';
+
+    // Listen before any await so the parent's iframe `load` postMessage is not
+    // dropped while initI18n() fetches locale bundles.
+    const apiKeyPromise = params.panel && panelRequiresEmbeddingApiKey(params.panel)
+      ? waitForEmbeddingApiKey()
+      : Promise.resolve(null);
 
     await initI18n();
 
-    const mapMount = document.createElement('div');
-    mapMount.className = 'wm-embed-map';
-    root.appendChild(mapMount);
+    if (!params.panel) {
+      mountError(root, `Unknown World Monitor embed panel "${params.requestedPanel}".`);
+      document.body.dataset.embedReady = 'error';
+      return;
+    }
 
-    const initialState: MapContainerState = {
-      zoom: params.zoom,
-      pan: { x: 0, y: 0 },
-      view: 'global',
-      layers: params.layers,
-      timeRange: '7d',
-    };
-    const map = new MapContainer(mapMount, initialState, false, { chrome: false });
+    let apiKey: string | null = null;
+    if (panelRequiresEmbeddingApiKey(params.panel)) {
+      apiKey = await apiKeyPromise;
+      if (!apiKey) {
+        mountError(root, 'This World Monitor panel requires an embedding API key from the partner account.');
+        document.body.dataset.embedReady = 'error';
+        return;
+      }
+      const entitlement = await fetchEmbedEntitlement(params.panel, apiKey);
+      if (!entitlement.ok) {
+        const denied = entitlement.status === 403
+          ? 'The embedding account is not entitled to this World Monitor panel.'
+          : 'World Monitor could not verify the embedding API key for this panel.';
+        mountError(root, denied);
+        document.body.dataset.embedReady = 'error';
+        return;
+      }
+    }
 
-    window.requestAnimationFrame(() => {
-      map.setCenter(params.center.lat, params.center.lon, params.zoom);
-    });
+    let destroy: (() => void) | undefined;
+    if (params.panel === 'map') {
+      destroy = await mountEmbedMapPanel(root, params);
+    } else if (params.panel === 'chokepoint-strip') {
+      await mountEmbedChokepointStrip(root, apiKey ?? '');
+    } else if (params.panel === 'fear-greed') {
+      await mountEmbedFearGreed(root, apiKey ?? '');
+    }
 
-    const attribution = document.createElement('a');
-    attribution.className = 'wm-embed-attribution';
-    attribution.href = buildWorldMonitorAttributionUrl(new URL('/dashboard', window.location.origin).toString(), getReferrerHost());
-    attribution.target = '_blank';
-    attribution.rel = 'noopener noreferrer';
-    attribution.textContent = 'Live map by World Monitor';
-    root.appendChild(attribution);
-
-    const loader = new EmbedDataLoader(map, params.layerIds);
-    await loader.start();
+    document.title = params.panel === 'map'
+      ? 'World Monitor Live Map Embed'
+      : 'World Monitor Panel Embed';
     document.body.dataset.embedReady = 'true';
-    window.addEventListener('pagehide', () => {
-      loader.destroy();
-      map.destroy();
-    }, { once: true });
+    if (destroy) {
+      window.addEventListener('pagehide', destroy, { once: true });
+    }
   } catch (error) {
-    console.error('[embed] Failed to boot map:', error);
-    mountError(root, 'World Monitor map embed could not load.');
+    console.error('[embed] Failed to boot panel:', error);
+    mountError(root, 'World Monitor embed could not load.');
     document.body.dataset.embedReady = 'error';
   }
 }

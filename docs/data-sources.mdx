@@ -12,6 +12,7 @@ Data flows one way: Railway seeders and edge functions fetch upstream sources on
 | Domain | What you get | Representative providers |
 |--------|--------------|--------------------------|
 | [Geopolitics & Conflict](#geopolitics-%26-conflict) | Conflict events, protests, displacement, travel advisories, rocket alerts, prediction markets | ACLED, UCDP, GDELT, UNHCR/OCHA, Polymarket |
+| [Demographics & Human Capital](#demographics-%26-human-capital) | Age structure, education capacity, researchers, and industrial workforce | UN WPP, UNESCO UIS, World Bank WDI, ILOSTAT |
 | [Military & Strategic](#military-%26-strategic) | Bases, live military flights, naval activity, satellites, GPS jamming | adsb.lol, Wingbits, CelesTrak, gpsjam.org |
 | [News & OSINT](#news-%26-osint) | Tiered news feeds, Telegram OSINT, live TV and webcams | Reuters, BBC, AP, Al Jazeera, and reviewed Telegram channels |
 | [Finance & Economics](#finance-%26-economics) | Markets, macro series, central banks, crypto, trade flows | FRED, ECB, BIS, Eurostat, World Bank, CoinGecko |
@@ -149,6 +150,29 @@ Polymarket geopolitical markets are queried using tag-based filters (Ukraine, Ir
 Once browser-direct succeeds, the system caches this state and skips fallback tiers on subsequent requests. Country-specific markets are fetched by mapping countries to Polymarket tags with name-variant matching (e.g., "Russia" matches titles containing "Russian", "Moscow", "Kremlin", "Putin").
 
 Markets are filtered to exclude sports and entertainment (100+ exclusion keywords), require meaningful price divergence from 50% or volume above $50K, and are ranked by trading volume. Each variant gets different tag sets — geopolitical focus queries politics/world/ukraine/middle-east tags, while tech focus queries ai/crypto/business tags.
+
+---
+
+## Demographics & Human Capital
+
+The country deep-dive demographics card reads the seeded
+`demographics:capability:v1` snapshot. It reports each numeric observation with
+its source year. The source pipeline does not compute a composite capability
+score.
+
+| Stage | Stored observations | Source and method | Licence and required credit |
+|---|---|---|---|
+| Age structure | Median age; old-age and total dependency ratios; current working-age population; current-release projection for working-age population ten years ahead | [UN World Population Prospects 2024](https://www.un.org/development/desa/pd/content/wpp2024-data-sources), medium variant, both sexes. Current-year values use indicators 67, 84, 86, and 70; the ten-year value also uses indicator 70. | [CC BY 3.0 IGO](https://population.un.org/wpp/about-the-data/data-sources/). Credit United Nations, Department of Economic and Social Affairs, Population Division (2024), *World Population Prospects 2024*. |
+| Education | Gross tertiary enrollment, researchers per million, and the share of tertiary graduates in engineering/manufacturing/construction, natural sciences/mathematics/statistics, and ICT | UNESCO Institute for Statistics indicators mirrored by the [World Bank WDI API](https://api.worldbank.org/). STEM share is emitted only when all three components have the same country and year. | World Bank WDI: [CC BY 4.0](https://datacatalog.worldbank.org/search/dataset/0037712/world-development-indicators). UNESCO UIS Data Browser: [CC BY-SA 4.0](https://databrowser.uis.unesco.org/terms-and-conditions). Credit `Source: UNESCO Institute for Statistics (UIS)`, the UIS URL, and the extraction date. |
+| Industrial workforce | Craft and related trades workers; plant and machine operators and assemblers; their same-year sum; manufacturing share of total employment | [ILOSTAT SDMX API](https://www.ilo.org/resources/ilostat/sdmx-tools). Occupation groups are ISCO-08 major groups 7 and 8. Employment counts convert the SDMX `UNIT_MULT` value to persons. The manufacturing share uses same-year modelled total and manufacturing employment. | [CC BY 4.0](https://www.ilo.org/rights-and-permissions) for ILOSTAT datasets and metadata published from 3 May 2023. Credit the International Labour Organization, the ILOSTAT dataset, and the extraction date. |
+
+The Railway static-reference bundle checks the three stages independently every
+20 days. The Redis value expires after 30 days. If one stage fails, the next
+snapshot retains only that stage from the previous value and keeps its original
+`fetchedAt`; fresh stages still advance. If all stages fail, the seeder does not
+publish. Health uses each stage's observation year, not only the fetch time. A
+ten-year WPP projection keeps its projection year on the metric but does not
+advance the WPP stage freshness clock beyond the current reference year.
 
 ---
 

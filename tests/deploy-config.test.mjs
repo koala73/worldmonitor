@@ -2127,6 +2127,22 @@ describe('embeddable map route guardrails', () => {
     assert.equal(dockerEmbedCsp, getHeaderValueForSource('/embed', 'Content-Security-Policy'));
   });
 
+  it('serves /embed.js as a cross-origin loader without iframe CSP', () => {
+    assert.equal(getHeaderValueForSource('/embed.js', 'Access-Control-Allow-Origin'), '*');
+    assert.equal(getHeaderValueForSource('/embed.js', 'Cache-Control'), 'public, max-age=3600');
+    assert.equal(getHeaderValueForSource('/embed.js', 'Cross-Origin-Resource-Policy'), 'cross-origin');
+    assert.equal(getHeaderValueForSource('/embed.js', 'Content-Security-Policy'), null);
+    assert.equal(getHeaderValueForSource('/embed.js', 'X-Frame-Options'), null);
+
+    const nginxTemplate = readFileSync(resolve(__dirname, '../docker/nginx.conf.template'), 'utf-8');
+    assert.match(nginxTemplate, /location = \/embed\.js \{[\s\S]*?Access-Control-Allow-Origin "\*"/);
+    assert.match(dockerNginxSource, /location = \/embed\.js \{[\s\S]*?Access-Control-Allow-Origin "\*"/);
+    assert.doesNotMatch(
+      dockerNginxSource.match(/location = \/embed\.js \{[\s\S]*?\n    \}/)?.[0] ?? '',
+      /frame-ancestors/,
+    );
+  });
+
   it('self-hosted docker/nginx.conf SPA fallback ships the full dashboard CSP', () => {
     // Image A (root Dockerfile -> docker/nginx.conf, nginx + Node API under
     // supervisord) inlines headers per location instead of including

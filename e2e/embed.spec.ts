@@ -353,3 +353,168 @@ test.describe('public map embed', () => {
     expect(conflictRequests).toHaveLength(0);
   });
 });
+
+test.describe('allowlisted panel embeds', () => {
+  const embeddingKey = 'wm_0123456789abcdef0123456789abcdef01234567';
+
+  async function stubPanelApis(page: Page): Promise<void> {
+    await page.route('**/api/embed/entitlement**', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const panel = url.searchParams.get('panel') ?? '';
+      const key = request.headers()['x-worldmonitor-key'] ?? '';
+      const allowed = key === embeddingKey;
+      await route.fulfill({
+        status: allowed ? 200 : 401,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          allowed,
+          panel,
+          public: false,
+          accountId: allowed ? 'embed-account' : undefined,
+          error: allowed ? undefined : 'embedding_api_key_required',
+        }),
+      });
+    });
+
+    await page.route('**/api/supply-chain/v1/get-chokepoint-status**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          fetchedAt: '2026-08-18T00:00:00.000Z',
+          upstreamUnavailable: false,
+          chokepoints: [
+            {
+              id: 'hormuz_strait',
+              name: 'Strait of Hormuz',
+              lat: 26.6,
+              lon: 56.3,
+              disruptionScore: 12,
+              status: 'normal',
+              activeWarnings: 0,
+              congestionLevel: 'low',
+              affectedRoutes: [],
+              description: '',
+              aisDisruptions: 0,
+              directions: [],
+              directionalDwt: [],
+              warRiskTier: 'WAR_RISK_TIER_NORMAL',
+              flowEstimate: {
+                currentMbd: 17,
+                baselineMbd: 17,
+                flowRatio: 1,
+                disrupted: false,
+                source: 'ais',
+                hazardAlertLevel: '',
+                hazardAlertName: '',
+              },
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.route('**/api/market/v1/get-fear-greed-index**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          compositeScore: 42,
+          compositeLabel: 'Fear',
+          previousScore: 40,
+          seededAt: '2026-08-18T00:00:00.000Z',
+          vix: 18,
+          hySpread: 3,
+          yield10y: 4,
+          putCallRatio: 1,
+          pctAbove200d: 50,
+          cnnFearGreed: 41,
+          cnnLabel: 'Fear',
+          aaiiBull: 30,
+          aaiiBear: 40,
+          fedRate: '4.25',
+          unavailable: false,
+          fsiValue: 0,
+          fsiLabel: '',
+          hygPrice: 0,
+          tltPrice: 0,
+          sectorPerformance: [],
+        }),
+      });
+    });
+  }
+
+  test('renders the live map when panel=map', async ({ page }) => {
+    await stubWorldAtlas(page);
+    await page.goto('/embed?panel=map&layers=conflicts,earthquakes,weather&center=0,0&zoom=1&theme=dark&variant=full');
+    await expect(page.locator('body')).toHaveAttribute('data-embed-panel', 'map');
+    await expect(page.locator('body')).toHaveAttribute('data-embed-ready', 'true');
+    await expect(page.locator('.wm-embed-map')).toBeVisible();
+  });
+
+  test('renders chokepoint-strip from the script loader with an embedding key', async ({ page, baseURL }) => {
+    await stubPanelApis(page);
+    const localBaseUrl = baseURL ?? 'http://127.0.0.1:4173';
+    const keyedRequests: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === '/api/supply-chain/v1/get-chokepoint-status') {
+        keyedRequests.push(request.headers()['x-worldmonitor-key'] ?? '');
+      }
+    });
+
+    const host = await serveThirdPartyHostPage(`
+      <!doctype html>
+      <html>
+        <body style="margin:0;background:#111">
+          <script src="${localBaseUrl}/embed.js" data-panel="chokepoint-strip" data-key="${embeddingKey}" data-theme="dark" data-height="360"></script>
+        </body>
+      </html>
+    `);
+
+    try {
+      await page.goto(host.url);
+      const frame = page.frameLocator('iframe[title="World Monitor embed"]');
+      await expect(frame.locator('body')).toHaveAttribute('data-embed-panel', 'chokepoint-strip');
+      await expect(frame.locator('body')).toHaveAttribute('data-embed-ready', 'true');
+      await expect(frame.locator('.wm-embed-chokepoints')).toBeVisible();
+      await expect(frame.locator('.wm-embed-cp-chip')).toHaveCount(1);
+      expect(keyedRequests.some((key) => key === embeddingKey)).toBe(true);
+    } finally {
+      await host.close();
+    }
+  });
+
+  test('renders fear-greed from the script loader with an embedding key', async ({ page, baseURL }) => {
+    await stubPanelApis(page);
+    const localBaseUrl = baseURL ?? 'http://127.0.0.1:4173';
+    const host = await serveThirdPartyHostPage(`
+      <!doctype html>
+      <html>
+        <body style="margin:0;background:#111">
+          <script src="${localBaseUrl}/embed.js" data-panel="fear-greed" data-key="${embeddingKey}" data-theme="dark" data-height="360"></script>
+        </body>
+      </html>
+    `);
+
+    try {
+      await page.goto(host.url);
+      const frame = page.frameLocator('iframe[title="World Monitor embed"]');
+      await expect(frame.locator('body')).toHaveAttribute('data-embed-panel', 'fear-greed');
+      await expect(frame.locator('body')).toHaveAttribute('data-embed-ready', 'true');
+      await expect(frame.locator('.wm-embed-fear-greed')).toBeVisible();
+      await expect(frame.locator('.wm-embed-fg-score')).toHaveText('42');
+    } finally {
+      await host.close();
+    }
+  });
+
+  test('rejects a keyed panel when the embedding API key is missing', async ({ page }) => {
+    await stubPanelApis(page);
+    await page.goto('/embed?panel=fear-greed&theme=dark');
+    await expect(page.locator('body')).toHaveAttribute('data-embed-panel', 'fear-greed');
+    await expect(page.locator('body')).toHaveAttribute('data-embed-ready', 'error');
+    await expect(page.locator('.wm-embed-error')).toContainText('embedding API key');
+  });
+});

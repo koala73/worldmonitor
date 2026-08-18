@@ -132,7 +132,7 @@ describe('buildCapacityReport — budget arithmetic', () => {
     assert.match(noBytes.reason, /nothing was generated/);
 
     // The PLAUSIBLE failure, which a zero-only check cannot see: a codegen or
-    // injector change that emits a handful of operations instead of 218.
+    // injector change that emits a handful of operations instead of 219.
     const partial = buildCapacityReport(fakeBundle(nOperationSpec(5), 4000));
     assert.equal(partial.status, 'unmeasured');
     assert.match(partial.reason, /only 5 operations/);

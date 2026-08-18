@@ -61,6 +61,7 @@ import { exportCountryEvidenceMarkdown } from '@/utils/export';
 import type { CountryEvidenceBundleInput } from '@/utils/export';
 import { ciiBandForLevel } from './CountryDeepDivePanel-cii';
 import { renderDefenseIndustrialSection } from './CountryDeepDivePanel-defense-industrial';
+import { renderDemographicsCapabilitySection } from './CountryDeepDivePanel-demographics-capability';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
@@ -154,6 +155,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private pendingResilienceEnergyMix: CountryEnergyProfileData | null = null;
   private resilienceWidgetRequestId = 0;
   private foodStocksRequestId = 0;
+  private demographicsCapabilityRequestId = 0;
   private energyBody: HTMLElement | null = null;
   private maritimeBody: HTMLElement | null = null;
   private tradeExposureBody: HTMLElement | null = null;
@@ -310,6 +312,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.historyRegistered = false;
     this.destroyResilienceWidget();
     this.foodStocksRequestId += 1;
+    this.demographicsCapabilityRequestId += 1;
     this.tearDownFollowButton();
     if (this.isMaximizedState) {
       this.isMaximizedState = false;
@@ -2614,12 +2617,23 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     // premium RPCs for a free user cost two guaranteed 401s per deep-dive open
     // and painted a dead "unavailable" card where the sibling cards show the
     // upgrade prompt.
-    const foodStocksIsPro = hasPremiumAccess(getAuthState());
-    if (foodStocksIsPro) {
+    const isPro = hasPremiumAccess(getAuthState());
+    if (isPro) {
       foodStocksBody.append(this.makeLoading(t('countryBrief.loadingFoodStocks')));
       void this.renderFoodStocks(code, foodStocksBody);
     } else {
       foodStocksBody.append(this.makeProLocked(t('countryBrief.foodStocksProLocked')));
+    }
+
+    const [demographicsCard, demographicsBody] = this.sectionCard(
+      t('countryBrief.demographicsCapability.title'),
+      t('countryBrief.demographicsCapability.help'),
+    );
+    if (isPro) {
+      demographicsBody.append(this.makeLoading(t('countryBrief.demographicsCapability.loading')));
+      void this.renderDemographicsCapability(code, demographicsBody);
+    } else {
+      demographicsBody.append(this.makeProLocked(t('countryBrief.demographicsCapability.proLocked')));
     }
 
     const [maritimeCard, maritimeBody] = this.sectionCard('Maritime Activity', 'Port-level tanker call volume and import/export cargo weight over 30 days. ⚠ badge = port running below 50% of its 30-day baseline. Source: IMF PortWatch.');
@@ -2629,8 +2643,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const [tradeCard, tradeBody] = this.sectionCard('Trade Exposure', 'Chokepoints most critical to this country\'s imports by sector');
     this.tradeExposureBody = tradeBody;
     tradeBody.append(this.makeLoading('Loading trade exposure\u2026'));
-
-    const isPro = hasPremiumAccess(getAuthState());
 
     const [costShockCalcCard, costShockCalcBody] = this.sectionCard(
       'Cost Shock Calculator',
@@ -2700,7 +2712,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     marketsBody.append(this.makeLoading(t('countryBrief.loadingMarkets')));
     briefBody.append(this.makeLoading(t('countryBrief.generatingBrief')));
 
-    bodyGrid.append(briefCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), factsExpanded, foodStocksCard, energyCard, maritimeCard, tradeCard, costShockCalcCard, productImportsCard, debtCard, sanctionsCard, comtradeCard, tariffCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, housingCard, marketsCard);
+    bodyGrid.append(briefCard, ...(chinaSummaryCard ? [chinaSummaryCard] : []), factsExpanded, demographicsCard, foodStocksCard, energyCard, maritimeCard, tradeCard, costShockCalcCard, productImportsCard, debtCard, sanctionsCard, comtradeCard, tariffCard, signalsCard, timelineCard, newsCard, militaryCard, infraCard, economicCard, housingCard, marketsCard);
     shell.append(header, summaryGrid, bodyGrid);
     this.content.append(shell);
   }
@@ -2779,25 +2791,65 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       console.warn('[CountryDeepDivePanel] food stocks load failed', error);
       // An aborted request is an expected panel-close/country-switch, not a fault.
       const aborted = (error as { name?: string })?.name === 'AbortError' || this.signal.aborted;
-      if (!aborted) this.captureFoodStocksLoadFailure(error, code);
+      if (!aborted) {
+        this.captureCountryDeepDiveLoadFailure(error, code, {
+          message: 'Food stocks load failed',
+          widget: 'food-stocks',
+        });
+      }
       if (stillCurrent()) body.replaceChildren(this.makeEmpty(t('countryBrief.foodStocksUnavailable')));
     }
   }
 
-  private captureFoodStocksLoadFailure(error: unknown, countryCode: string): void {
-    // Mirrors captureResilienceWidgetLoadFailure. Without this a chunk-load
-    // failure and a real RPC error are both a silent console.warn — the same
-    // blind spot that hid a billing_verification_503 on a sibling resilience RPC
-    // (see the comment in src/services/resilience.ts).
+  private async renderDemographicsCapability(code: string, body: HTMLElement): Promise<void> {
+    const requestId = ++this.demographicsCapabilityRequestId;
+    const stillCurrent = (): boolean => requestId === this.demographicsCapabilityRequestId;
+    const signal = this.signal;
+    try {
+      if (typeof location === 'undefined') {
+        if (stillCurrent()) body.replaceChildren(this.makeEmpty(t('countryBrief.demographicsCapability.unavailable')));
+        return;
+      }
+      const { getDemographicsCapability } = await import('@/services/resilience');
+      if (!stillCurrent() || signal.aborted) return;
+      const data = await getDemographicsCapability({ countryCode: code, signal });
+      if (!stillCurrent()) return;
+      if (!data.available) {
+        body.replaceChildren(this.makeEmpty(t('countryBrief.demographicsCapability.unavailable')));
+        return;
+      }
+      body.replaceChildren(renderDemographicsCapabilitySection(
+        data,
+        (label, value, chipClass) => this.metric(label, value, chipClass),
+        t,
+      ));
+    } catch (error) {
+      console.warn('[CountryDeepDivePanel] demographics capability load failed', error);
+      const aborted = (error as { name?: string })?.name === 'AbortError' || signal.aborted;
+      if (!aborted) {
+        this.captureCountryDeepDiveLoadFailure(error, code, {
+          message: 'Demographics capability load failed',
+          widget: 'demographics-capability',
+        });
+      }
+      if (stillCurrent()) body.replaceChildren(this.makeEmpty(t('countryBrief.demographicsCapability.unavailable')));
+    }
+  }
+
+  private captureCountryDeepDiveLoadFailure(
+    error: unknown,
+    countryCode: string,
+    details: { message: string; widget: string },
+  ): void {
     enqueueSentryCall((Sentry) => {
       Sentry.addBreadcrumb?.({
         category: 'country-deep-dive',
         level: 'warning',
-        message: 'Food stocks load failed',
+        message: details.message,
         data: { countryCode },
       });
       Sentry.captureException?.(error instanceof Error ? error : new Error(String(error)), {
-        tags: { surface: 'country-deep-dive', widget: 'food-stocks' },
+        tags: { surface: 'country-deep-dive', widget: details.widget },
         extra: { countryCode },
       });
     });
@@ -2843,7 +2895,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.resilienceWidget?.destroy();
       this.resilienceWidget = null;
       console.warn('[CountryDeepDivePanel] Failed to load resilience widget', error);
-      this.captureResilienceWidgetLoadFailure(error, code);
+      this.captureCountryDeepDiveLoadFailure(error, code, {
+        message: 'Resilience widget lazy load failed',
+        widget: 'resilience',
+      });
       slot.replaceChildren(this.makeEmpty(t('countryBrief.resilienceScoreUnavailable')));
     };
 
@@ -2866,21 +2921,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       .catch(renderFallback);
 
     return slot;
-  }
-
-  private captureResilienceWidgetLoadFailure(error: unknown, countryCode: string): void {
-    enqueueSentryCall((Sentry) => {
-      Sentry.addBreadcrumb?.({
-        category: 'country-deep-dive',
-        level: 'warning',
-        message: 'Resilience widget lazy load failed',
-        data: { countryCode },
-      });
-      Sentry.captureException?.(error instanceof Error ? error : new Error(String(error)), {
-        tags: { surface: 'country-deep-dive', widget: 'resilience' },
-        extra: { countryCode },
-      });
-    });
   }
 
   private replaceResilienceSlot(slot: HTMLElement, next: HTMLElement): void {
