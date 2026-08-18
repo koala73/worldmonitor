@@ -851,16 +851,16 @@ describe('grant handshake billing-verification denials (#5622)', () => {
       assert.equal((await res.json()).error, 'TIER_VERIFICATION_UNAVAILABLE');
     });
 
-    it(`${label}: a provider-confirmed lapse stays INSUFFICIENT_TIER 403, no Retry-After`, async () => {
-      // Retrying cannot flip a confirmed lapse, and every existing consumer
-      // branch for this code stays correct — only the header is added so a lapse
-      // is distinguishable from a plain free account in logs.
+    it(`${label}: a provider-confirmed lapse connects — dunning is already over (#6716)`, async () => {
+      // Dunning runs while the row is `on_hold`, and isCoveringAt keeps those
+      // users on FULL Pro throughout. A CONFIRMED lapse therefore means the
+      // billing attempts have ended and the account is now simply a free one,
+      // so it takes the free-account door like any other. The RETRYABLE states
+      // above still refuse — that distinction is #5600 and it is intact.
       const { deps } = makeDeps({ getEntitlements: async () => LAPSED_ENT });
       const res = await invoke(deps);
 
-      assert.equal(res.status, 403);
-      assert.equal((await res.json()).error, 'INSUFFICIENT_TIER');
-      assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+      assert.equal(res.status, 200);
       assert.equal(res.headers.get('Retry-After'), null);
     });
 

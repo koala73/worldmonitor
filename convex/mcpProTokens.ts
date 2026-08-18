@@ -76,7 +76,19 @@ export const issueProMcpToken = internalMutation({
     // expired or disabled paid row, or a row whose features were overridden to
     // look tier-0 while planKey names a paid plan, is a data fault and still
     // fails closed.
-    const isConfirmedFreeAccount = !entitlement || Boolean(
+    // Coverage that has ENDED is a free account, matching the normalisation
+    // `getEntitlementsHandler` already applies at read time ("Expired
+    // entitlements fall back to free tier"). That is what makes this a faithful
+    // mirror: the edge never sees an expired paid row — it sees
+    // FREE_TIER_DEFAULTS — so a gate here that read the RAW row and refused
+    // would admit a churned user at the three edge gates and then throw
+    // PRO_REQUIRED on the final step.
+    //
+    // Dunning does not land here either: `isCoveringAt` keeps an `on_hold` row
+    // covering, so its entitlement `validUntil` is still in the future and it
+    // takes the `isPro` branch above with full access.
+    const coverageEnded = !entitlement || entitlement.validUntil < Date.now();
+    const isConfirmedFreeAccount = coverageEnded || Boolean(
       mergedFeatures
       && entitlement.planKey === "free"
       && mergedFeatures.tier === 0

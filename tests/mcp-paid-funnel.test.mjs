@@ -89,10 +89,30 @@ describe('checkProMcpAccess landmine — other surfaces still refuse free', () =
     assert.deepEqual(gate, { kind: 'free_account' });
   });
 
-  it('lapsed billing status is billing_verification, not free allowance', () => {
+  it('a CONFIRMED lapse is a free account — dunning is already over (#6716)', () => {
+    // isCoveringAt keeps `on_hold` rows on FULL Pro while we are still trying
+    // to bill, so a provider-confirmed lapse means those attempts have ended.
     const gate = checkProMcpAccess(LAPSED_ENT, Date.now());
-    assert.equal(gate?.kind, 'billing_verification');
-    assert.equal(gate?.denial?.code, 'subscription_lapsed');
+    assert.equal(gate?.kind, 'free_account');
+  });
+
+  it('a RETRYABLE billing state is NOT a free account (#5600)', () => {
+    // The other half of the seam: renewal pending/failed and an unverifiable
+    // read are statements about the VERIFICATION, not the subscription.
+    // Granting an allowance on a read we could not trust is the flattening
+    // #5600 exists to prevent.
+    for (const marker of [
+      { billingStatus: 'renewal_verification_pending' },
+      { billingStatus: 'renewal_verification_failed' },
+      { verificationUnavailable: true },
+    ]) {
+      const gate = checkProMcpAccess(
+        { planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0, ...marker },
+        Date.now(),
+      );
+      assert.equal(gate?.kind, 'billing_verification', JSON.stringify(marker));
+      assert.equal(gate?.denial?.retryable, true, JSON.stringify(marker));
+    }
   });
 });
 
@@ -113,7 +133,7 @@ describe('MCP call-site free-account reinterpretation', () => {
     assert.equal(result.mcpDailyLimit, FREE_ACCOUNT_CALLS_PER_DAY);
   });
 
-  it('lapsed entitlement returns structured lapsed-subscription denial', async () => {
+  it('a CONFIRMED lapse is admitted onto the metered free allowance (#6716)', async () => {
     const { deps } = makeProDeps({
       getEntitlements: async () => LAPSED_ENT,
       validateProMcpToken: async () => ({ ok: 'valid', userId: PRO_USER_ID }),
@@ -124,12 +144,7 @@ describe('MCP call-site free-account reinterpretation', () => {
       RESOURCE_META_URL,
       CORS,
     );
-    assert.equal(result.ok, false);
-    assert.equal(result.response.status, 403);
-    const body = await result.response.json();
-    assert.equal(body.error?.code, -32002);
-    assert.equal(body.error?.data?.code, 'subscription_lapsed');
-    assert.equal(body.error?.data?.reason, 'lapsed-subscription');
-    assert.equal(body.error?.data?.upgradeUrl, MCP_UPGRADE_URL);
+    assert.equal(result.ok, true, 'a churned account falls to free, it is not walled off');
+    assert.equal(result.freeAccountAllowance, true);
   });
 });

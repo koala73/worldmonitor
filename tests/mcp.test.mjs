@@ -3422,7 +3422,17 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     });
   }
 
-  it('error: subscription_lapsed → distinct JSON-RPC hard denial', async () => {
+  it('error: a provider-CONFIRMED lapse falls to the free allowance (#6716)', async () => {
+    // Dunning happens while the row is `on_hold`, and isCoveringAt keeps those
+    // users on FULL Pro throughout. So a lapse the provider has CONFIRMED means
+    // the billing attempts are over — the account is simply a free one now, and
+    // walling it off would deny the free tier to exactly the population the
+    // funnel wants back. `retryable: false` is documented as true ONLY for a
+    // confirmed lapse, which is what makes this seam safe.
+    //
+    // The sibling test below is the other half of #5600 and must keep passing:
+    // a RETRYABLE state is a statement about the verification, not the
+    // subscription, and must never be flattened into free.
     const { deps, pipe } = makeProDeps({
       getEntitlements: async () => ({
         planKey: 'free',
@@ -3431,22 +3441,16 @@ describe('api/mcp.ts — U7 Pro-path', () => {
         billingStatus: 'subscription_lapsed',
       }),
     });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
 
-    assert.equal(res.status, 403);
-    assert.equal(res.headers.get('Cache-Control'), 'no-store');
-    assert.equal(res.headers.get('Retry-After'), null);
-    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
-    const body = await res.json();
-    assert.equal(body.jsonrpc, '2.0');
-    // -32002, NOT -32001: the catalog reserves -32001 for HTTP 401 auth
-    // failures with OAuth-reauth recovery; a confirmed lapse cannot be fixed
-    // by re-authenticating.
-    assert.equal(body.error?.code, -32002);
-    assert.equal(body.error?.data?.code, 'subscription_lapsed');
-    assert.equal(body.error?.data?.reason, 'lapsed-subscription');
-    assert.ok(body.error?.data?.upgradeUrl);
-    assert.equal(pipe.count, 0);
+    assert.equal(res.status, 200, 'a churned account gets the free tier, not a wall');
+    assert.ok(pipe.count >= 1, 'and is metered by the free-account allowance');
   });
 
   it('error: transient entitlement-lookup failure → retryable 503, not a -32001 re-auth loop', async () => {

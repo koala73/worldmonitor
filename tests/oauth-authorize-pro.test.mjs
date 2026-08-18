@@ -556,20 +556,22 @@ describe('authorizeProHandler — billing-verification denials (#5622)', () => {
     );
   });
 
-  it('a provider-confirmed lapse stays a 403 and says so, with no Retry-After', async () => {
+  it('a provider-confirmed lapse completes authorization onto the free tier (#6716)', async () => {
+    // Dunning runs while the row is `on_hold` and isCoveringAt keeps those
+    // users on FULL Pro, so a CONFIRMED lapse means we have stopped trying to
+    // collect — the account is now a free one and takes the free-account door.
+    // The retryable states above still refuse, which is the #5622/#5600 seam.
     const grant = await makeGrantToken();
     const { deps, issueCalls } = await makeDeps({ getEntitlements: async () => LAPSED_ENT });
     const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
 
-    assert.equal(res.status, 403);
-    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+    assert.notEqual(res.status, 403);
     assert.equal(
       res.headers.get('Retry-After'),
       null,
-      'a confirmed lapse must not invite a retry — renewal is the only way out',
+      'a confirmed lapse is a verified answer, so it must not invite a retry',
     );
-    assert.equal(issueCalls.length, 0);
-    assert.match(await res.text(), /Subscription Lapsed/);
+    assert.equal(issueCalls.length, 1, 'the churned account gets a credential to meter');
   });
 
   it('a CONFIRMED free row authorizes, and carries no verification header (#6716)', async () => {

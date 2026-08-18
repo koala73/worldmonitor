@@ -107,12 +107,39 @@ describe("issueProMcpToken", () => {
     expect(validated?.userId).toBe("user-free");
   });
 
-  test("rejects a lapsed subscriber (#6716)", async () => {
+  test("issues for a churned subscriber whose coverage has ended (#6716)", async () => {
+    // Mirrors getEntitlementsHandler's own normalisation — "Expired
+    // entitlements fall back to free tier" — so the edge sees FREE_TIER_DEFAULTS
+    // for this user and admits them. Refusing here would admit at the three
+    // edge gates and then throw PRO_REQUIRED on the final step.
+    //
+    // Dunning does not reach this state: isCoveringAt keeps an `on_hold` row
+    // covering, so it still has a future validUntil and full Pro access.
     const t = convexTest(schema, modules);
     await seedProEntitlement(t, "user-pro", { validUntil: PAST });
 
+    const { tokenId } = await t.mutation(internal.mcpProTokens.issueProMcpToken, {
+      userId: "user-pro",
+    });
+    expect(tokenId).toBeTruthy();
+  });
+
+  test("still rejects a COVERED row that lacks mcpAccess (#6716)", async () => {
+    // Coverage has NOT ended here, so the churned normalisation does not apply
+    // — this is a plan that simply does not include MCP, and it must fail closed.
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("entitlements", {
+        userId: "user-no-mcp",
+        planKey: "pro_monthly",
+        features: { ...getFeaturesForPlan("pro_monthly"), tier: 1, mcpAccess: false },
+        validUntil: FUTURE,
+        updatedAt: NOW,
+      });
+    });
+
     await expect(
-      t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: "user-pro" }),
+      t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: "user-no-mcp" }),
     ).rejects.toThrow(/PRO_REQUIRED/);
   });
 
