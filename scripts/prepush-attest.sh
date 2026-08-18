@@ -30,6 +30,8 @@
 #   bash scripts/prepush-attest.sh dirty                     # NUL list of offenders
 #   bash scripts/prepush-attest.sh cache-read   <file> <tree> <diff-resolved>
 #   bash scripts/prepush-attest.sh cache-write  <file> <tree> <diff-resolved> <attestable>
+#   bash scripts/prepush-attest.sh gate-cache-read  <dir> <gate> <hash>
+#   bash scripts/prepush-attest.sh gate-cache-write <dir> <gate> <hash> <attestable>
 #
 # Exit codes are three-valued on purpose. A gate that answers "no" and a gate
 # that could not run must never collapse into the same status as "yes":
@@ -41,9 +43,10 @@
 
 mode="${1:-}"
 case "$mode" in
-  changed | changed-live | drift | dirty | cache-read | cache-write) ;;
+  changed | changed-live | drift | dirty | cache-read | cache-write \
+          | gate-cache-read | gate-cache-write) ;;
   *)
-    echo "usage: $0 <changed|changed-live|drift|dirty|cache-read|cache-write> [args]" >&2
+    echo "usage: $0 <changed|changed-live|drift|dirty|cache-read|cache-write|gate-cache-read|gate-cache-write> [args]" >&2
     exit 2
     ;;
 esac
@@ -194,6 +197,46 @@ case "$mode" in
       exit 3
     fi
     printf '%s\n' "$tree" > "$cache_file" || exit 1
+    ;;
+
+  # Per-gate cache (#6765). The whole-tree cache keys every gate on one hash,
+  # so a merge, conflict re-resolve, amend, or regenerated-artifact commit —
+  # each a new HEAD^{tree} — invalidates gates whose inputs did not change.
+  # A gate entry instead names ONE hash of exactly that gate's inputs AND
+  # verified outputs, so an unrelated amend leaves it valid. Layout is one
+  # file per gate under <dir>, holding a single hash line an operator can
+  # inspect and clear.
+  gate-cache-read)
+    cache_dir="${2:-}"
+    gate="${3:-}"
+    hash="${4:-}"
+    [ -n "$cache_dir" ] && [ -n "$gate" ] && [ -n "$hash" ] ||
+      usage_error "<dir> <gate> <hash>"
+    # No diff-resolved or attestable term here by design: callers only reach
+    # for a per-gate read when they already hold ATTESTABLE=true — the hash
+    # names HEAD-tree bytes, and a drifted worktree would make the key a lie
+    # about what actually ran. Keeping that decision at the call site keeps
+    # this primitive honest with a single rule to test.
+    [ -f "$cache_dir/$gate" ] || exit 3
+    grep -qxF "$hash" "$cache_dir/$gate" 2>/dev/null || exit 3
+    ;;
+
+  gate-cache-write)
+    cache_dir="${2:-}"
+    gate="${3:-}"
+    hash="${4:-}"
+    attestable="${5:-}"
+    [ -n "$cache_dir" ] && [ -n "$gate" ] && [ -n "$hash" ] && [ -n "$attestable" ] ||
+      usage_error "<dir> <gate> <hash> <attestable>"
+    if [ "$attestable" != true ]; then
+      # The gate ran against a worktree that is not HEAD. Whatever it proved,
+      # it did not prove it about the bytes the hash names — same refusal the
+      # whole-tree cache-write makes, for the same reason.
+      echo "not gate-caching: the worktree is not byte-identical to HEAD."
+      exit 3
+    fi
+    mkdir -p "$cache_dir" || exit 1
+    printf '%s\n' "$hash" > "$cache_dir/$gate" || exit 1
     ;;
 esac
 

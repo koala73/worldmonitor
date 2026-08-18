@@ -490,3 +490,53 @@ describe('pre-push wiring: the hook must consume these decisions', () => {
     lacks(/find api\/ -name "\*\.js"/, 'working-tree globs rediscover ignored sidecar bundles');
   });
 });
+
+describe('per-gate cache entries key one gate on its own inputs (#6765)', () => {
+  function setup() {
+    const root = makeRepo({ branchFiles: { 'src/a.ts': 'x\n' } });
+    return { root, dir: join(root, 'wm-prepush-gate-cache') };
+  }
+
+  test('write-then-read round-trips a single gate hash', () => {
+    const { root, dir } = setup();
+    assert.equal(attest(root, ['gate-cache-write', dir, 'pro-test-bundle', 'hash-1', 'true']).status, 0);
+    assert.equal(attest(root, ['gate-cache-read', dir, 'pro-test-bundle', 'hash-1']).status, 0);
+    assert.equal(readFileSync(join(dir, 'pro-test-bundle'), 'utf8'), 'hash-1\n');
+  });
+
+  test('a different hash, a different gate, and no file at all are misses', () => {
+    const { root, dir } = setup();
+    attest(root, ['gate-cache-write', dir, 'pro-test-bundle', 'hash-1', 'true']);
+    assert.equal(attest(root, ['gate-cache-read', dir, 'pro-test-bundle', 'hash-2']).status, 3);
+    assert.equal(attest(root, ['gate-cache-read', dir, 'proto-freshness', 'hash-1']).status, 3);
+    assert.equal(attest(root, ['gate-cache-read', join(root, 'absent'), 'pro-test-bundle', 'hash-1']).status, 3);
+  });
+
+  test('a new write replaces the previous hash, it does not accumulate', () => {
+    // One file per gate with one line: a stale entry must never keep a
+    // retired hash alive alongside the current one.
+    const { root, dir } = setup();
+    attest(root, ['gate-cache-write', dir, 'g', 'old', 'true']);
+    assert.equal(attest(root, ['gate-cache-write', dir, 'g', 'new', 'true']).status, 0);
+    assert.equal(readFileSync(join(dir, 'g'), 'utf8'), 'new\n');
+    assert.equal(attest(root, ['gate-cache-read', dir, 'g', 'old']).status, 3);
+    assert.equal(attest(root, ['gate-cache-read', dir, 'g', 'new']).status, 0);
+  });
+
+  test('refuses to write when the worktree is not byte-identical to HEAD', () => {
+    // The hash names HEAD-tree bytes; a gate that ran against a drifted
+    // worktree proved nothing about them. Same refusal, same reason, as the
+    // whole-tree cache-write.
+    const { root, dir } = setup();
+    const { status, stdout } = attest(root, ['gate-cache-write', dir, 'g', 'h', 'false']);
+    assert.equal(status, 3);
+    assert.match(stdout, /not byte-identical to HEAD/);
+    assert.equal(attest(root, ['gate-cache-read', dir, 'g', 'h']).status, 3);
+  });
+
+  test('usage errors stay exit 2', () => {
+    const { root, dir } = setup();
+    assert.equal(attest(root, ['gate-cache-read', dir, 'g']).status, 2);
+    assert.equal(attest(root, ['gate-cache-write', dir, 'g', 'h']).status, 2);
+  });
+});
