@@ -327,6 +327,7 @@ test("toronto restrictions share canadaRoads and do not invent a second MapLayer
     [
       'canadaRoads:ontario-511',
       'albertaRoads:alberta-511',
+      'manitobaRoads:manitoba-511',
       'torontoRoads:toronto-roads',
       'bcOpen511:bc-open511',
     ],
@@ -366,7 +367,7 @@ test("bootstrap fetches every Canada road feed on demand, including Toronto", ()
   assert.match(src, /torontoRoads: 'infra:toronto-roads:v1'/);
   const fast = src.slice(src.indexOf("const FAST_KEY_NAMES"), src.indexOf("const ON_DEMAND_KEY_NAMES"));
   const onDemand = src.slice(src.indexOf("const ON_DEMAND_KEY_NAMES"));
-  for (const key of ["canadaRoads", "albertaRoads", "torontoRoads", "bcOpen511"]) {
+  for (const key of ["canadaRoads", "albertaRoads", "manitobaRoads", "torontoRoads", "bcOpen511"]) {
     assert.doesNotMatch(fast, new RegExp(`'${key}'`), `${key} must not ride the fast tier`);
     assert.match(onDemand, new RegExp(`'${key}'`), `${key} must be on-demand`);
   }

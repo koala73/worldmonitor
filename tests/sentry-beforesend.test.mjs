@@ -1173,6 +1173,45 @@ describe('SyntaxError via deck.gl/maplibre init path (WORLDMONITOR-SP)', () => {
   });
 });
 
+// ─── WORLDMONITOR-ZS: HTML document parsed as JavaScript ──────────────────
+//
+// V8 `SyntaxError: Malformed arrow function parameter list` when an Electron /
+// in-app wrapper loads the SPA document as a script. The only frame is the
+// document path (or an injected third-party frame) — never a hashed /assets
+// chunk. Same `hasAnyStack && !hasFirstParty` family as Unexpected token/keyword.
+describe('HTML-as-JS SyntaxError (WORLDMONITOR-ZS)', () => {
+  const MSG = 'Malformed arrow function parameter list';
+  const documentFrame = { filename: '/dashboard', lineno: 13, function: '?' };
+
+  it('suppresses the V8 HTML-as-JS parse error attributed to the document URL', () => {
+    const event = makeEvent(MSG, 'SyntaxError', [documentFrame]);
+    assert.equal(beforeSend(event), null,
+      'document-URL SyntaxError must be suppressed as HTML-as-JS noise');
+  });
+
+  it('suppresses the type-prefixed value variant', () => {
+    const event = makeEvent(`SyntaxError: ${MSG}`, 'SyntaxError', [documentFrame]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('suppresses the same message with an extension-only stack', () => {
+    const event = makeEvent(MSG, 'SyntaxError', [extensionFrame()]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('does NOT suppress the same SyntaxError with a first-party frame', () => {
+    const event = makeEvent(MSG, 'SyntaxError', [firstPartyFrame()]);
+    assert.ok(beforeSend(event) !== null,
+      'first-party SyntaxError must still reach Sentry');
+  });
+
+  it('does NOT suppress the same SyntaxError with an empty stack', () => {
+    const event = makeEvent(MSG, 'SyntaxError', []);
+    assert.ok(beforeSend(event) !== null,
+      'empty-stack parse error is not proven third-party and must surface');
+  });
+});
+
 // ─── WORLDMONITOR-TG: mainWorldSdk extension-global ReferenceError ─────────
 //
 // A browser-extension SDK injected into the page's main world references its

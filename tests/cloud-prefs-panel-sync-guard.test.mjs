@@ -258,8 +258,13 @@ describe('cloud prefs panel sync guardrails', () => {
     );
     assert.match(
       cloudSyncSrc,
-      /if \(changed\) persistDirtyKeys\(\);/,
-      'successful uploads must clear only the dirty keys that actually settled',
+      /function markDirtyKey\(key: CloudSyncKey\): void \{\s*_dirtyKeys\.add\(key\);\s*persistDirtyKeyAddition\(key\);\s*\}/,
+      'marking a key dirty must union into the persisted set so concurrent same-user tabs cannot clobber each other (#4746)',
+    );
+    assert.match(
+      cloudSyncSrc,
+      /if \(settled\.length > 0\) persistSettledDirtyKeyRemovals\(settled\);/,
+      'successful uploads must clear only the dirty keys that actually settled, by targeted removal — never a wholesale overwrite (#4746)',
     );
     assert.match(
       cloudSyncSrc,

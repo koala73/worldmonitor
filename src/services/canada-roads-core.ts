@@ -33,7 +33,7 @@ export interface CanadaRoadSourceDescriptor {
 }
 
 /**
- * The four road feeds that union onto the `canadaRoads` map layer.
+ * The five road feeds that union onto the `canadaRoads` map layer.
  *
  * Declared here rather than in `canada-roads.ts` so tests can assert against the
  * real descriptors: that module reaches Vite-side imports (`import.meta.env`),
@@ -52,6 +52,7 @@ export interface CanadaRoadSourceDescriptor {
 export const CANADA_ROAD_SOURCES: readonly CanadaRoadSourceDescriptor[] = Object.freeze([
   { key: 'canadaRoads', source: 'ontario-511', jurisdiction: 'ON' },
   { key: 'albertaRoads', source: 'alberta-511', jurisdiction: 'AB' },
+  { key: 'manitobaRoads', source: 'manitoba-511', jurisdiction: 'MB' },
   { key: 'torontoRoads', source: 'toronto-roads', jurisdiction: 'Toronto' },
   { key: 'bcOpen511', source: 'bc-open511', jurisdiction: 'BC' },
 ]);

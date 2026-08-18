@@ -20807,6 +20807,7 @@ body:has(.tauri-titlebar) .breaking-news-container {
   flex-shrink: 0;
 }
 
+.breaking-alert-view-panel,
 .breaking-alert-dismiss {
   background: var(--overlay-heavy);
   border: none;
@@ -20818,8 +20819,15 @@ body:has(.tauri-titlebar) .breaking-news-container {
   flex-shrink: 0;
 }
 
+.breaking-alert-view-panel:hover,
 .breaking-alert-dismiss:hover {
   background: rgba(255, 255, 255, 0.3);
+}
+
+.breaking-alert-view-panel:focus-visible,
+.breaking-alert-dismiss:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
 }
 
 body.has-breaking-alert .panels-grid {

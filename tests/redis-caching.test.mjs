@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -44,13 +44,37 @@ async function importRedisFresh() {
   return import(`${REDIS_MODULE_URL}?t=${Date.now()}-${Math.random().toString(16).slice(2)}`);
 }
 
+function resolveRelativeTsModule(fromDir, specifier) {
+  const candidates = [
+    resolve(fromDir, specifier),
+    resolve(fromDir, `${specifier}.ts`),
+    resolve(fromDir, `${specifier}.js`),
+    resolve(fromDir, `${specifier}.mjs`),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate) && statSync(candidate).isFile()) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 async function importPatchedTsModule(relPath, replacements) {
   const sourcePath = resolve(root, relPath);
+  const sourceDir = dirname(sourcePath);
   let source = readFileSync(sourcePath, 'utf-8');
 
   for (const [specifier, targetPath] of Object.entries(replacements)) {
     source = source.replaceAll(`'${specifier}'`, `'${pathToFileURL(targetPath).href}'`);
   }
+
+  // The patched file is imported from /tmp. Remaining relative specifiers
+  // (e.g. `./_bounds` after a same-directory extract) still resolve against
+  // that temp dir unless they are rewritten to the original sibling path.
+  source = source.replaceAll(/from '((?:\.\.?\/)[^']+)'/g, (match, specifier) => {
+    const targetPath = resolveRelativeTsModule(sourceDir, specifier);
+    return targetPath ? `from '${pathToFileURL(targetPath).href}'` : match;
+  });
 
   const tempDir = mkdtempSync(join(tmpdir(), 'wm-ts-module-'));
   const tempPath = join(tempDir, basename(sourcePath));
@@ -2227,6 +2251,7 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
   async function importListMilitaryFlights() {
     return importPatchedTsModule('server/worldmonitor/military/v1/list-military-flights.ts', {
       './_shared': resolve(root, 'server/worldmonitor/military/v1/_shared.ts'),
+      './_bounds': resolve(root, 'server/worldmonitor/military/v1/_bounds.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
       '../../../_shared/relay': resolve(root, 'server/_shared/relay.ts'),

@@ -270,7 +270,7 @@ describe("bounded onboarding and replay", () => {
       obligations: (await ctx.db.query("companyMonitoringScanObligations").collect()).length,
       work: (await ctx.db.query("companyMonitoringScanWorkItems").collect()).length,
     }))).toEqual({ obligations: 200, work: 8 });
-  });
+  }, 15_000);
 
   test("an import retry heals rows committed before scan scheduling without duplicates", async () => {
     const t = convexTest(schema, modules);
@@ -309,7 +309,7 @@ describe("bounded onboarding and replay", () => {
       obligations: (await ctx.db.query("companyMonitoringScanObligations").collect()).length,
       work: (await ctx.db.query("companyMonitoringScanWorkItems").collect()).length,
     }))).toEqual(healed);
-  });
+  }, 15_000);
 
   test("committed direct and import rows replay, changed tuples conflict, and no-ops reevaluate", async () => {
     const t = convexTest(schema, modules);

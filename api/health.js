@@ -222,6 +222,7 @@ const BOOTSTRAP_KEYS = {
   weatherAlerts:     'weather:alerts:v1',
   canadaRoads:       'infra:ontario-511:v1',
   albertaRoads:      'infra:alberta-511:v1',
+  manitobaRoads:     'infra:manitoba-511:v1',
   torontoRoads:      'infra:toronto-roads:v1',
   bcOpen511:         'infra:bc-open511:v1',
   canadaAlerts:      'alerts:canada:v1',
@@ -314,6 +315,7 @@ const STANDALONE_KEYS = {
   hkoWarnings:        'weather:hko-warnings:v1',
   canadaAlertsAbSource: 'alerts:canada:alberta-aea:v1',
   canadaAlertsBcSource: 'alerts:canada:bc-evacuation:v1',
+  canadaAlertsSkSource: 'alerts:canada:saskalert:v1',
   humanitarianSummary: 'conflict:humanitarian:v1',
   // #4920 completeness measurement (daily GH Actions publishers) — ops
   // keys: health-monitored but NOT bootstrap-hydrated into page loads.
@@ -719,6 +721,16 @@ const SEED_META = {
       status: 'EMPTY',
     },
   },
+  manitobaRoads:    {
+    key: 'seed-meta:infra:manitoba-511',
+    maxStaleMin: 45, // same seed-provincial-511 cron */15; 45 = 3× interval
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6622,
+      status: 'EMPTY',
+    },
+  },
   torontoRoads:     {
     key: 'seed-meta:infra:toronto-roads',
     maxStaleMin: 360, // seed-bundle-canada member interval 2h; 360 = 3× interval. At the old 45 (sized for a */15 cron) a healthy 2h publisher read STALE_SEED permanently, because normal data age reaches 120min.
@@ -758,6 +770,11 @@ const SEED_META = {
     key: 'seed-meta:alerts:bc-emergency-info',
     maxStaleMin: 45,
     cutover: { mode: 'expiring-ack', fromKey: null, issue: 6659, status: 'EMPTY' },
+  },
+  canadaAlertsSkSource: {
+    key: 'seed-meta:alerts:saskalert',
+    maxStaleMin: 45,
+    cutover: { mode: 'expiring-ack', fromKey: null, issue: 6659, status: 'STALE_SEED' },
   },
   // seed-meta is `seed-meta:${domain}:${resource}` from runSeed('transit', 'ttc-alerts'),
   // so the key takes a HYPHEN — it is NOT the canonical transit:ttc:alerts:v1 with
@@ -806,7 +823,7 @@ const SEED_META = {
   // scripts/seed-portwatch-port-activity.mjs and CHINA_CORRIDOR_KEYS in
   // get-china-corridor-control-towers.ts, and it exists so a producer-side
   // change cannot narrow the alarm scope without health noticing.
-  portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174, requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 2 * 72 * 60 }, contentFreshnessActivation: 'portwatchContentFreshness' },
+  portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174, requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 10 * 24 * 60 }, contentFreshnessActivation: 'portwatchContentFreshness' },
   corridorrisk:        { key: 'seed-meta:supply_chain:corridorrisk',         maxStaleMin: 120 },
   chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits',  maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
@@ -1354,7 +1371,7 @@ function parseFredRatesRolloutUntil(results) {
 }
 
 const EMPTY_DATA_OK_KEYS = new Set([
-  'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts', 'canadaRoads', 'albertaRoads', 'torontoRoads', 'bcOpen511', 'canadaAlerts', 'canadaAlertsAbSource', 'canadaAlertsBcSource',
+  'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts', 'canadaRoads', 'albertaRoads', 'manitobaRoads', 'torontoRoads', 'bcOpen511', 'canadaAlerts', 'canadaAlertsAbSource', 'canadaAlertsBcSource', 'canadaAlertsSkSource',
   'earningsCalendar', 'econCalendar', 'cotPositioning',
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
   'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
@@ -1398,10 +1415,11 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
   // so they never refresh metadata alone. Without this, an expired or evicted
   // canonical key alongside a still-refreshing seed-meta classified OK: the map
   // layer goes blank and nothing pages. Same reasoning as `outages`.
-  // albertaRoads is written by the same seeder on the same publish path;
-  // torontoRoads is a different seeder under the same publish contract.
+  // albertaRoads and manitobaRoads are written by the same seeder on the same
+  // publish path; torontoRoads is a different seeder under the same publish contract.
   'canadaRoads',
   'albertaRoads',
+  'manitobaRoads',
   'torontoRoads',
   'bcOpen511',
   // Same contract, and the highest-stakes member of it: the provincial union
@@ -1410,6 +1428,7 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
   'canadaAlerts',
   'canadaAlertsAbSource',
   'canadaAlertsBcSource',
+  'canadaAlertsSkSource',
 ]);
 
 // Keys where a present payload with meta recordCount=0 is valid, but the data

@@ -647,6 +647,8 @@ function sourceDecision({
   robotsStatus,
   termsStatus,
   sourceUrl,
+  proxyFallbacks,
+  proxyDirectReason,
 }) {
   return {
     publisherId,
@@ -661,6 +663,9 @@ function sourceDecision({
     robotsStatus,
     termsStatus,
     sourceUrl,
+    ...(proxyFallbacks > 0
+      ? { proxyFallbacks, proxyDirectReason }
+      : {}),
   };
 }
 
@@ -674,6 +679,14 @@ function requiredSourceError(source, error) {
 export async function fetchChinaMacroSnapshot({
   now = Date.now(),
   fetchFn = globalThis.fetch,
+  // NBS only, and only as a fallback after a connection-level failure. Railway's
+  // egress cannot open a connection to www.stats.gov.cn while the same declared
+  // client succeeds from a laptop, which froze
+  // seed-meta:economic:china-macro-transport at 2026-08-14 with all three
+  // required NBS series on preserved values. Unset PROXY_URL keeps the direct
+  // path byte-for-byte unchanged.
+  proxyUrl = process.env.PROXY_URL || null,
+  proxyFetchFn,
   readCachedFn = readCanonicalValue,
   onDecision = (entry) => console.log(JSON.stringify({
     event: 'china_macro_source_preflight',
@@ -719,13 +732,25 @@ export async function fetchChinaMacroSnapshot({
   const nbsBudget = requestBudget(NBS_MAX_REQUESTS_PER_RUN);
   let nbsRedirectBehavior = 'none';
   let nbsRobotsStatus = 'unknown';
+  // Recorded on the decision entry so a run that only succeeded via the proxy
+  // is distinguishable from one that never needed it. Without this the audit
+  // trail would show a plain 'accepted' and the egress block would look solved
+  // rather than routed around.
+  let nbsProxyFallbacks = 0;
+  let nbsProxyDirectReason = null;
   let nbsError = null;
+  const nbsProxy = {
+    proxyUrl,
+    onProxyFallback: (entry) => { nbsProxyFallbacks += 1; nbsProxyDirectReason = entry.directReason; },
+    ...(proxyFetchFn ? { proxyFetchFn } : {}),
+  };
   try {
     const robots = await checkRobots(fetchFn, NBS_ROBOTS_URL, {
       policy: SOURCE_POLICIES.nbsRobots,
       budget: nbsBudget,
       candidatePaths: [new URL(NBS_LIST_URL).pathname],
       onRedirect: (state) => { nbsRedirectBehavior = state; },
+      ...nbsProxy,
     });
     nbsRobotsStatus = robots.status;
     const listing = await fetchText(fetchFn, NBS_LIST_URL, {
@@ -733,6 +758,7 @@ export async function fetchChinaMacroSnapshot({
       budget: nbsBudget,
       assertTargetAllowed: (url) => assertRobotsAllowed(robots.text, [url.pathname]),
       onRedirect: (state) => { nbsRedirectBehavior = state; },
+      ...nbsProxy,
     });
     const industrialUrl = findReleaseUrl(
       listing.text,
@@ -765,6 +791,7 @@ export async function fetchChinaMacroSnapshot({
         budget: nbsBudget,
         assertTargetAllowed: (target) => assertRobotsAllowed(robots.text, [target.pathname]),
         onRedirect: (state) => { nbsRedirectBehavior = state; },
+        ...nbsProxy,
       });
       pages.push(page);
     }
@@ -793,6 +820,12 @@ export async function fetchChinaMacroSnapshot({
       redirectBehavior: nbsRedirectBehavior,
       requestCount: nbsBudget.count,
       sourceUrl: listing.url,
+      // Present only when the direct route failed and the proxy carried it.
+      // A run that needed no fallback records neither field, so the audit trail
+      // never claims a hop that did not happen.
+      ...(nbsProxyFallbacks > 0
+        ? { proxyFallbacks: nbsProxyFallbacks, proxyDirectReason: nbsProxyDirectReason }
+        : {}),
     }));
   } catch (error) {
     nbsError = error;

@@ -159,12 +159,22 @@ function setStoredSessionExp(_token: string, expMs: number): void {
 const FAR_FUTURE = Date.now() + 12 * 60 * 60 * 1000;
 const PAST = Date.now() - 1000;
 
-// Force the in-memory `cached` state by calling the module's API. ensureWmSession
-// reads sessionStorage when cached is null — set the storage and prime via
-// getWmSessionToken doesn't help because that only reads cached. We rely on
-// ensureWmSession's storage path to populate `cached`.
+// Force the in-memory `cached` expiry the way a successful mint does.
+// ensureWmSession no longer copies sessionStorage `{exp}` into `cached`
+// without a token (that leftover is the WG bug), so tests that want
+// "session already established this page" use the dedicated prime hook.
 async function primeCachedFromStorage(): Promise<void> {
-  await mod.ensureWmSession();
+  const raw = memoryStorage.get('wm-session-exp');
+  if (!raw) {
+    await mod.ensureWmSession();
+    return;
+  }
+  const parsed = JSON.parse(raw) as { exp?: unknown };
+  if (typeof parsed.exp !== 'number') {
+    await mod.ensureWmSession();
+    return;
+  }
+  mod.__primeWmSessionCacheForTests(parsed.exp);
 }
 
 describe('wm-session first RPC after mint (WORLDMONITOR-XP)', () => {
@@ -2867,17 +2877,17 @@ describe('wm-session mint cause provenance (#6804)', () => {
     assert.deepEqual(mod.getStruckRoutes(), [], 'and it strikes no route');
   });
 
-  it('names the mint cause when a burst blackout is tipped by a cookie-less replay', async () => {
-    // The modal WORLDMONITOR-WG shape: a dashboard boot burst plus a flaky
-    // transport. The leader's mint fails, records strike #1 and stops below
-    // quorum; the follower then replays with NO cookie (none was ever minted),
-    // so its 401 is guaranteed rather than evidential, and IT tips the quorum —
-    // with a retry_401 verdict that carries no cause of its own.
+  it('does not let a cookie-less follower replay tip a transport-mint blackout', async () => {
+    // The modal WORLDMONITOR-WG residual (USNI + vessel-snapshot on 2026-08-18):
+    // a dashboard boot burst plus a flaky transport. The leader's mint fails
+    // and records strike #1; the follower then replays with NO cookie (none
+    // was ever minted), so its 401 is guaranteed rather than evidential.
+    // Counting that as retry_401 tipped the quorum and blanked every anonymous
+    // panel for 15 minutes over a mint that never issued a session.
     //
-    // The episode was caused entirely by failed mints, so tagging it
-    // `mint_cause: none` would assert something false and send triage looking
-    // at a bystander panel for a cookie problem that does not exist. `none` is
-    // a positive claim now, and it has to be earned.
+    // Two *independent* mint failures still corroborate (the sequential
+    // "TWO routes corroborate" test above). A shared recovery plus a
+    // cookie-less replay must not.
     memoryStorage.clear();
     const captures = captureSink();
 
@@ -2894,17 +2904,49 @@ describe('wm-session mint cause provenance (#6804)', () => {
         wrappedFetch('https://api.worldmonitor.app/api/infrastructure/v1/get-cable-health'),
         wrappedFetch('https://api.worldmonitor.app/api/economic/v1/get-bls-series'),
       ]);
-      assert.equal(mod.isWmSessionDead(), true, 'the burst does black out');
+      assert.equal(
+        mod.isWmSessionDead(),
+        false,
+        'a guaranteed cookie-less 401 must not corroborate a transport mint failure',
+      );
     } finally {
       console.warn = originalWarn;
     }
 
     const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
-    assert.equal(dead.length, 1, 'exactly one capture per degraded episode');
-    assert.equal(
-      dead[0].ctx.tags?.mint_cause,
-      'network',
-      'every mint in this episode failed at the transport level — the tag must say so',
-    );
+    assert.equal(dead.length, 0, 'no blackout — the mint never issued a session');
+  });
+
+  it('remints after a failed reload remint instead of treating stored exp as success', async () => {
+    // Reload leaves sessionStorage `{exp}` and no in-memory wms_ token.
+    // Writing that expiry into `cached` *before* the remint meant a
+    // transport failure left the next ensureWmSession looking fresh, so
+    // every follow-up RPC went cookie-only and 401'd (WORLDMONITOR-XP/WG).
+    memoryStorage.set('wm-session-exp', JSON.stringify({ exp: FAR_FUTURE }));
+    captureSink();
+
+    let mintCalls = 0;
+    currentFetchHandler = (input) => {
+      const url = urlOf(input);
+      if (url.includes('/api/wm-session')) {
+        mintCalls += 1;
+        return Promise.reject(new TypeError('Failed to fetch'));
+      }
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await wrappedFetch('https://api.worldmonitor.app/api/military/v1/get-usni-fleet-report');
+      const mintsAfterFirst = mintCalls;
+      await wrappedFetch('https://api.worldmonitor.app/api/maritime/v1/get-vessel-snapshot');
+      assert.ok(
+        mintCalls > mintsAfterFirst,
+        'a leftover stored exp must not skip remint on the next route',
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 });

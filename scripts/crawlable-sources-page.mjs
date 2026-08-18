@@ -104,6 +104,7 @@ const SOURCE_DOMAIN_MATCHERS = [
 const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['Alberta Emergency Alert', 'environment'],
   ['B.C. Evacuation Orders and Alerts', 'environment'],
+  ['SaskAlert', 'environment'],
   ['Hyperliquid', 'finance'],
   ['api.rainviewer.com', 'environment'],
   ['api.scrapecreators.com', 'news'],
@@ -135,6 +136,7 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['news.usni.org', 'military'],
   ['Ontario 511', 'infrastructure'],
   ['Alberta 511', 'infrastructure'],
+  ['Manitoba 511', 'infrastructure'],
   ['BC Open511', 'infrastructure'],
   ['oauth.reddit.com', 'news'],
   ['overpass-api.de', 'military'],

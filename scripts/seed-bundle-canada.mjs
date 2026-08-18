@@ -2,8 +2,8 @@
 
 // Canada ingest bundle.
 //
-// WHY A BUNDLE, NOT SEVEN SERVICES: the Canada pack (#6604-#6659) introduced seven
-// seeders. Provisioned individually they would consume seven Railway slots against
+// WHY A BUNDLE, NOT EIGHT SERVICES: the Canada pack (#6604-#6659) introduced
+// seeders. Provisioned individually they would consume a Railway slot each against
 // a fleet whose own runbook targets 65 services, for a combined measured tick
 // cost of ~33s — 6% of this runner's 570s admission budget. #6670 already made
 // the same call for BoC/StatCan by joining seed-bundle-macro rather than adding
@@ -39,13 +39,13 @@ import { runBundle, HOUR, MIN } from './_bundle-runner.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 
 const CANADA_SECTIONS = [
-  // Ontario + Alberta share one vendor /api/v2/get adapter and one seeder; the
-  // Alberta host is a config entry on the same script, publishing a second key.
-  // Worst case is 3 endpoints x 3 runSeed attempts staggered 7s apart, plus a
-  // possible 60s wait on the per-host 10-calls/60s token bucket. 180s covers
-  // that with margin — if the limiter sleeps past the timeout the section is
-  // SIGTERM'd, which is a HARD failure rather than runSeed's graceful path.
-  { label: 'Provincial-511', script: 'seed-provincial-511.mjs', seedMetaKey: 'seed-meta:infra:ontario-511', canonicalKey: 'infra:ontario-511:v1', intervalMs: 15 * MIN, timeoutMs: 180_000 },
+  // Ontario, Alberta, and Manitoba share one vendor /api/v2/get adapter and one
+  // seeder; each extra host is a config entry on the same script, publishing its
+  // own key. Worst case is 7 endpoints x 3 runSeed attempts staggered 7s apart,
+  // plus a possible 60s wait on the per-host 10-calls/60s token bucket. 240s
+  // covers that with margin — if the limiter sleeps past the timeout the section
+  // is SIGTERM'd, which is a HARD failure rather than runSeed's graceful path.
+  { label: 'Provincial-511', script: 'seed-provincial-511.mjs', seedMetaKey: 'seed-meta:infra:ontario-511', canonicalKey: 'infra:ontario-511:v1', intervalMs: 15 * MIN, timeoutMs: 240_000 },
   // 3.62MB body, not strictly valid JSON, sanitized then parsed. Road
   // restrictions are construction permits, not live incidents.
   { label: 'Toronto-Roads', script: 'seed-toronto-road-restrictions.mjs', seedMetaKey: 'seed-meta:infra:toronto-roads', canonicalKey: 'infra:toronto-roads:v1', intervalMs: 2 * HOUR, timeoutMs: 180_000 },
@@ -58,6 +58,7 @@ const CANADA_SECTIONS = [
   // OGL-BC GeoJSON evacuation Alert/Order polygons. The seeder writes a
   // province snapshot, then rebuilds the same canadaAlerts union as Alberta.
   { label: 'BC-Emergency-Info', script: 'seed-bc-emergency-info.mjs', seedMetaKey: 'seed-meta:alerts:bc-emergency-info', canonicalKey: 'alerts:canada:bc-evacuation:v1', intervalMs: 15 * MIN, timeoutMs: 60_000, dependsOn: ['Alberta-Emergency-Alert'] },
+  { label: 'SaskAlert', script: 'seed-saskalert.mjs', seedMetaKey: 'seed-meta:alerts:saskalert', canonicalKey: 'alerts:canada:saskalert:v1', intervalMs: 15 * MIN, timeoutMs: 60_000, dependsOn: ['BC-Emergency-Info'] },
   // Unofficial mobile JSON. 404 / shape-break degrades to sourceState
   // 'unavailable' and keeps last-good; it never raises SEED_ERROR.
   { label: 'VIA-Rail-Live', script: 'seed-viarail-live.mjs', seedMetaKey: 'seed-meta:transit:viarail-live', canonicalKey: 'transit:viarail:live', intervalMs: 15 * MIN, timeoutMs: 60_000 },

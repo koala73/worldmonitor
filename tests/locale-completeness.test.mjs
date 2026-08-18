@@ -162,18 +162,16 @@ describe('locale completeness', () => {
       }
     });
 
-    it(`${file} discloses the AB + BC scope for the canadaAlerts layer`, () => {
+    it(`${file} discloses the AB + BC + SK scope for the canadaAlerts layer`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
-      const values = [
-        locale.components.deckgl.layers.canadaAlerts,
-        locale.components.deckgl.layerHelp.descriptions.canadaAlerts,
-        locale.commands.labels.layer.canadaAlerts,
-      ];
-      for (const value of values) {
-        assert.equal(typeof value, 'string');
-        assert.match(value, /Canada|provincial|AB \+ BC/i, `${file} canadaAlerts copy must identify Canadian provincial scope`);
-        assert.doesNotMatch(value, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
-      }
+      const layer = locale.components.deckgl.layers.canadaAlerts;
+      const help = locale.components.deckgl.layerHelp.descriptions.canadaAlerts;
+      assert.equal(typeof layer, 'string');
+      assert.equal(typeof help, 'string');
+      assert.match(layer, /AB \+ BC \+ SK/, `${file} canadaAlerts layer label must name SK`);
+      assert.match(help, /SaskAlert/i, `${file} canadaAlerts help must name SaskAlert`);
+      assert.doesNotMatch(layer, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
+      assert.doesNotMatch(help, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
     });
   }
 
@@ -191,18 +189,16 @@ describe('locale completeness', () => {
       }
     });
 
-    it(`${file} discloses the AB + BC scope for the canadaAlerts layer`, () => {
+    it(`${file} discloses the AB + BC + SK scope for the canadaAlerts layer`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
-      const values = [
-        locale.components.deckgl.layers.canadaAlerts,
-        locale.components.deckgl.layerHelp.descriptions.canadaAlerts,
-        locale.commands.labels.layer.canadaAlerts,
-      ];
-      for (const value of values) {
-        assert.equal(typeof value, 'string');
-        assert.match(value, /Canada|provincial|AB \+ BC/i, `${file} canadaAlerts copy must identify Canadian provincial scope`);
-        assert.doesNotMatch(value, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
-      }
+      const layer = locale.components.deckgl.layers.canadaAlerts;
+      const help = locale.components.deckgl.layerHelp.descriptions.canadaAlerts;
+      assert.equal(typeof layer, 'string');
+      assert.equal(typeof help, 'string');
+      assert.match(layer, /AB \+ BC \+ SK/, `${file} canadaAlerts layer label must name SK`);
+      assert.match(help, /SaskAlert/i, `${file} canadaAlerts help must name SaskAlert`);
+      assert.doesNotMatch(layer, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
+      assert.doesNotMatch(help, /Alberta Emergency Alert only/i, `${file} canadaAlerts copy must not claim Alberta-only coverage`);
     });
   }
 });

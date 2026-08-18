@@ -61,6 +61,18 @@
       }
     },
     {
+      "name": "canadaAlertsSkSource",
+      "status": "STALE_SEED",
+      "issue": 6659,
+      "reason": "The SaskAlert source health row is new and cannot publish until its first Canada bundle tick runs. Never-published classifyKey is STALE_SEED, not EMPTY; acknowledge only through that first Railway */5 tick. EMPTY after a successful publish is a vanished payload and must block.",
+      "expiresAt": "2026-08-19T12:05:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:alerts:saskalert",
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:05:00.000Z"
+      }
+    },
+    {
       "name": "mineralProduction",
       "status": "EMPTY",
       "issue": 6439,
@@ -70,6 +82,18 @@
         "probeKey": "seed-meta:supply-chain:mineral-production",
         "activatedAt": "2026-08-18T12:00:00.000Z",
         "firstScheduledRunAt": "2026-08-19T04:00:00.000Z"
+      }
+    },
+    {
+      "name": "manitobaRoads",
+      "status": "EMPTY",
+      "issue": 6622,
+      "reason": "manitobaRoads now probes seed-meta:infra:manitoba-511. MANITOBA_511_KEY is configured on Railway seed-bundle-canada; the seed-meta key still cannot exist until the first eligible Provincial-511 admission after this seeder deploys. The shared runner can skip the 12:05 and 12:10 ticks while Ontario metadata is inside its 0.8-interval freshness window, so EMPTY is acknowledged only through 12:15 and must block immediately afterward.",
+      "expiresAt": "2026-08-19T12:15:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:infra:manitoba-511",
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:15:00.000Z"
       }
     },
     {

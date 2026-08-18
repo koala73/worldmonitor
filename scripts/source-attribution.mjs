@@ -209,6 +209,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Alberta 511 (Alberta Transportation and Economic Corridors). https://511.alberta.ca/',
     status: 'terms-review',
   },
+  'www.manitoba511.ca': {
+    provider: 'Manitoba 511',
+    license: 'Contains information from the Government of Manitoba, licensed under the OpenMB Information and Data Use License (Manitoba.ca/OpenMB). Manitoba 511 developer copy permits creating traffic apps; no separate developer access agreement is published.',
+    attribution: 'Manitoba 511 (Government of Manitoba). Contains information from the Government of Manitoba, licensed under the OpenMB Information and Data Use License. https://www.manitoba511.ca/',
+    status: 'terms-review',
+  },
   'secure.toronto.ca': {
     provider: 'City of Toronto Open Data',
     license: 'CKAN package_show for road-restrictions: license_id=notspecified, license_title="License not specified" (https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/package_show?id=road-restrictions). Portal dataset page chrome links OGL-Toronto but is not data-bound to this dataset.',
@@ -239,6 +245,12 @@ const PROVIDER_OVERRIDES = {
     provider: 'Alberta Emergency Alert',
     license: 'Alberta.ca terms of use. Open Government Licence - Alberta exists on the open.alberta.ca licence page but is not bound to the AEA Atom feed on a live dataset page (the alberta-emergency-alert.aspx page has no OGL statement).',
     attribution: 'Alberta Emergency Alert, Government of Alberta. https://www.alberta.ca/alberta-emergency-alert.aspx',
+    status: 'terms-review',
+  },
+  'emergencyalert.saskatchewan.ca': {
+    provider: 'SaskAlert',
+    license: 'Public SaskAlert mobile JSON at /sapublic/feed.json plus same-host CAP 1.2 JSON details. Government of Saskatchewan website terms exclude some connected subsites; this host is the official public alert feed authorized for canadaAlerts ingest under #6659. Not Pelmorex LMD.',
+    attribution: 'SaskAlert, Government of Saskatchewan. https://emergencyalert.saskatchewan.ca/',
     status: 'terms-review',
   },
   'api.elections.kalshi.com': {
@@ -732,13 +744,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '832bf346b66ce9e423ae015c74f49fd4e0185c13e9947bee0331e2b0ae96a5b8',
-  reason: 'Add the Parallel Search MCP identity for search.parallel.ai as an excluded user-configured MCP connector, matching the Robtex, Linear, Airtable, and Cloudflare MCP rows, while retaining the reviewed B.C. Evacuation Orders and Alerts identity and the prior publisher identities.',
+  sha256: 'a107d6f8cae94db6d23544594bec285194d6eaed6b002a6f80b358c67d4ea26a',
+  reason: 'Add the Manitoba 511 identity for www.manitoba511.ca on the shared provincial vendor /api/v2/get adapter, while retaining the reviewed SaskAlert, B.C. Evacuation Orders and Alerts, and prior publisher identities.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'PR #6447 (vendor-disclosed contribution; Parallel customer terms served from the endpoint via x-parallel-terms); Issue #6659 source-rights probe; B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33',
+  reviewReference: 'Issue #6622 Manitoba 511 events and alerts; OpenMB Information and Data Use License; https://www.manitoba511.ca/developers/doc; Issue #6659 SaskAlert public JSON ingest; PR #6447 (vendor-disclosed contribution; Parallel customer terms served from the endpoint via x-parallel-terms); B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
@@ -1069,10 +1081,19 @@ export function loadManifest(rootDir = ROOT) {
     // A bare "Unexpected end of JSON input" names no file; say which one.
     throw new Error(`source-attribution: ${MANIFEST_PATH} is not valid JSON (${error.message})`);
   }
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    throw new Error(`source-attribution: invalid manifest (${MANIFEST_PATH} must be an object)`);
+  }
+  if (!Array.isArray(manifest.entries)) {
+    throw new Error(`source-attribution: invalid manifest (${MANIFEST_PATH} entries must be an array)`);
+  }
+  if (manifest.logicalEntries !== undefined && !Array.isArray(manifest.logicalEntries)) {
+    throw new Error(`source-attribution: invalid manifest (${MANIFEST_PATH} logicalEntries must be an array)`);
+  }
   return {
     version: manifest.version || 1,
-    entries: Array.isArray(manifest.entries) ? manifest.entries : [],
-    logicalEntries: Array.isArray(manifest.logicalEntries) ? manifest.logicalEntries : [],
+    entries: manifest.entries,
+    logicalEntries: manifest.logicalEntries || [],
   };
 }
 
@@ -1138,10 +1159,22 @@ export function buildManifest(
   return { version: 1, entries: entries.sort((a, b) => a.host.localeCompare(b.host)), logicalEntries };
 }
 
-export function validateManifest(inventory, manifest) {
+/**
+ * Validate fields the committed ledger owns independently of the source scan.
+ * Build-owned inventory facts may use this ledger only after this passes.
+ */
+export function validateSourceAttributionLedger(manifest) {
   const errors = [];
-  const observedByHost = new Map(inventory.map((entry) => [entry.host, entry]));
-  const manifestEntries = manifest.entries || [];
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    return ['source-attribution manifest must be an object'];
+  }
+  if (!Array.isArray(manifest.entries)) {
+    errors.push('source-attribution manifest entries must be an array');
+  }
+  if (manifest.logicalEntries !== undefined && !Array.isArray(manifest.logicalEntries)) {
+    errors.push('source-attribution manifest logicalEntries must be an array');
+  }
+  const manifestEntries = Array.isArray(manifest.entries) ? manifest.entries : [];
   const manifestByHost = new Map();
   for (const entry of manifestEntries) {
     const label = entry?.host || '(unknown host)';
@@ -1153,6 +1186,9 @@ export function validateManifest(inventory, manifest) {
     if (typeof entry.observed !== 'boolean') errors.push(`manifest entry ${label} observed must be boolean`);
     if (typeof entry.kind !== 'string' || !MANIFEST_KIND_RE.test(entry.kind)) errors.push(`invalid manifest kind for ${label}`);
     if (typeof entry.status !== 'string' || !MANIFEST_STATUSES.has(entry.status)) errors.push(`invalid manifest status for ${label}`);
+    if (typeof entry.provider !== 'string' || !entry.provider.trim() || typeof entry.license !== 'string' || !entry.license.trim() || typeof entry.attribution !== 'string' || !entry.attribution.trim()) {
+      errors.push(`incomplete attribution metadata for ${label}`);
+    }
     const reviewedProvider = PROVIDER_OVERRIDES[entry.host]?.provider;
     if (typeof entry.provider === 'string' && entry.provider !== entry.host && entry.provider !== reviewedProvider) {
       errors.push(`custom provider identity for ${label} must be declared in PROVIDER_OVERRIDES`);
@@ -1175,7 +1211,49 @@ export function validateManifest(inventory, manifest) {
     }
     if (manifestByHost.has(entry.host)) errors.push(`duplicate manifest entry for ${entry.host}`);
     manifestByHost.set(entry.host, entry);
+    const override = PROVIDER_OVERRIDES[entry.host];
+    if (override) {
+      const { identityGroup, ...owned } = override;
+      if (entry.identityGroup !== undefined) {
+        errors.push(`manifest entry ${label} must not carry script-only identityGroup metadata`);
+      }
+      if (entry.observed === true) {
+        for (const [field, value] of Object.entries(owned)) {
+          if (!isDeepStrictEqual(entry[field], value)) {
+            errors.push(`manifest entry ${label} disagrees with script-owned ${field}`);
+          }
+        }
+      }
+    }
   }
+  const logicalEntries = Array.isArray(manifest.logicalEntries) ? manifest.logicalEntries : [];
+  for (const entry of logicalEntries) {
+    const label = entry?.provider || '(unknown provider)';
+    if (!entry || typeof entry !== 'object') {
+      errors.push(`logical attribution entry ${label} must be an object`);
+      continue;
+    }
+    if (typeof entry.host !== 'string' || !entry.host || /\s/.test(entry.host)) errors.push(`invalid logical attribution host ${label}`);
+    if (typeof entry.observed !== 'boolean') errors.push(`logical attribution entry ${label} observed must be boolean`);
+    if (typeof entry.kind !== 'string' || !LOGICAL_KIND_RE.test(entry.kind)) errors.push(`invalid logical attribution kind for ${label}`);
+    if (typeof entry.status !== 'string' || !MANIFEST_STATUSES.has(entry.status)) errors.push(`invalid logical attribution status for ${label}`);
+    if (typeof entry.provider !== 'string' || !entry.provider.trim() || typeof entry.license !== 'string' || !entry.license.trim() || typeof entry.attribution !== 'string' || !entry.attribution.trim()) {
+      errors.push(`incomplete logical attribution metadata for ${label}`);
+    }
+  }
+  errors.push(...validateProviderIdentityGroups({ ...manifest, entries: manifestEntries }));
+  return errors;
+}
+
+export function validateManifest(inventory, manifest) {
+  const errors = validateSourceAttributionLedger(manifest);
+  const observedByHost = new Map(inventory.map((entry) => [entry.host, entry]));
+  const manifestEntries = Array.isArray(manifest?.entries) ? manifest.entries : [];
+  const manifestByHost = new Map(
+    manifestEntries
+      .filter((entry) => entry && typeof entry === 'object')
+      .map((entry) => [entry.host, entry]),
+  );
   for (const entry of inventory) {
     if (!Array.isArray(entry.references) || !Array.isArray(entry.kinds)) {
       // mergeEntry below reads both. Report the bad row instead of letting a
@@ -1207,9 +1285,7 @@ export function validateManifest(inventory, manifest) {
       : `stale manifest entry for ${entry.host}: ${stale.join(', ')} no longer match the source tree; ${REGENERATE_HINT}`);
   }
   for (const entry of manifestEntries) {
-    if (typeof entry.provider !== 'string' || !entry.provider.trim() || typeof entry.license !== 'string' || !entry.license.trim() || typeof entry.attribution !== 'string' || !entry.attribution.trim()) {
-      errors.push(`incomplete attribution metadata for ${entry.host || '(unknown host)'}`);
-    }
+    if (!entry || typeof entry !== 'object') continue;
     if (entry.observed && !observedByHost.has(entry.host)) {
       // Two very different causes, one of which --write resolves destructively:
       // the provider really was removed, or the scanner simply lost sight of a
@@ -1218,21 +1294,6 @@ export function validateManifest(inventory, manifest) {
       errors.push(`manifest marks ${entry.host} observed but scanner found no current reference — ${retirementRequiredMessage(entry.host)} or add it to DYNAMIC_HOSTS`);
     }
   }
-  for (const entry of manifest.logicalEntries || []) {
-    const label = entry?.provider || '(unknown provider)';
-    if (!entry || typeof entry !== 'object') {
-      errors.push(`logical attribution entry ${label} must be an object`);
-      continue;
-    }
-    if (typeof entry.host !== 'string' || !entry.host || /\s/.test(entry.host)) errors.push(`invalid logical attribution host ${label}`);
-    if (typeof entry.observed !== 'boolean') errors.push(`logical attribution entry ${label} observed must be boolean`);
-    if (typeof entry.kind !== 'string' || !LOGICAL_KIND_RE.test(entry.kind)) errors.push(`invalid logical attribution kind for ${label}`);
-    if (typeof entry.status !== 'string' || !MANIFEST_STATUSES.has(entry.status)) errors.push(`invalid logical attribution status for ${label}`);
-    if (typeof entry.provider !== 'string' || !entry.provider.trim() || typeof entry.license !== 'string' || !entry.license.trim() || typeof entry.attribution !== 'string' || !entry.attribution.trim()) {
-      errors.push(`incomplete logical attribution metadata for ${label}`);
-    }
-  }
-  errors.push(...validateProviderIdentityGroups(manifest));
   return errors;
 }
 
@@ -1344,22 +1405,33 @@ export function activeSourceAttributionEntries(manifest) {
     .filter(isActiveSourceAttributionEntry);
 }
 
-export function sourceAttributionStats(inventory, manifest) {
-  const validationErrors = validateManifest(inventory, manifest);
+export function isSourceAttributionManifestError(error) {
+  return error instanceof Error && error.message.startsWith('source-attribution: invalid manifest');
+}
+
+/** Count the committed ledger without requiring scan-parity. */
+export function sourceAttributionLedgerStats(manifest, { observedHosts } = {}) {
+  const validationErrors = validateSourceAttributionLedger(manifest);
   if (validationErrors.length) throw new Error(`source-attribution: invalid manifest (${validationErrors.join('; ')})`);
   const active = activeSourceAttributionEntries(manifest);
-  const structured = active.filter((entry) => entry.kind.split('+').includes('structured'));
-  const feeds = active.filter((entry) => entry.kind.split('+').includes('feed'));
-  const status = active.filter((entry) => entry.kind.split('+').includes('operational-status'));
+  const structured = active.filter((entry) => String(entry.kind || '').split('+').includes('structured'));
+  const feeds = active.filter((entry) => String(entry.kind || '').split('+').includes('feed'));
+  const status = active.filter((entry) => String(entry.kind || '').split('+').includes('operational-status'));
   return {
     activeHosts: active.length,
     structuredHosts: structured.length,
     feedHosts: feeds.length,
     operationalStatusHosts: status.length,
     providerCount: new Set(active.map((entry) => entry.provider)).size,
-    observedHosts: inventory.length,
+    observedHosts: observedHosts ?? manifest.entries.filter((entry) => entry.observed === true).length,
     reviewNeeded: active.filter((entry) => entry.status === 'terms-review').length,
   };
+}
+
+export function sourceAttributionStats(inventory, manifest) {
+  const validationErrors = validateManifest(inventory, manifest);
+  if (validationErrors.length) throw new Error(`source-attribution: invalid manifest (${validationErrors.join('; ')})`);
+  return sourceAttributionLedgerStats(manifest, { observedHosts: inventory.length });
 }
 
 function markdownCell(value) {
@@ -1422,10 +1494,10 @@ function updateDocs(rootDir, section) {
   writeFileSync(path, updated);
 }
 
-export function buildSourceAttributionStats({ rootDir = ROOT } = {}) {
-  const inventory = scanUpstreamHosts(rootDir);
+export function buildSourceAttributionStats({ rootDir = ROOT, validate = true } = {}) {
   const manifest = loadManifest(rootDir);
-  return sourceAttributionStats(inventory, manifest);
+  if (!validate) return sourceAttributionLedgerStats(manifest);
+  return sourceAttributionStats(scanUpstreamHosts(rootDir), manifest);
 }
 
 function printStats(stats, log = console.log) {

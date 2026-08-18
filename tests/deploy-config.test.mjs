@@ -289,8 +289,11 @@ describe('crawlable content corpus deployment contracts', () => {
     '/reference/changelog/page/2/',
   ];
 
-  const getSpaCatchAllRewrite = () => vercelConfig.rewrites.find((r) =>
-    r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
+  // #6575: the negative-lookahead SPA catch-all is gone. The dashboard
+  // document is only served by the explicit /dashboard rewrites plus the
+  // enumerated client-side History routes (/stocks, /stocks/:symbol, /story).
+  const getSpaFallbackRewrites = () => vercelConfig.rewrites.filter((r) =>
+    r.destination === DASHBOARD_HTML_DESTINATION && r.source !== '/dashboard'
   );
 
   const writeFixturePage = (publicDir, relativePath, head = '') => {
@@ -515,25 +518,35 @@ describe('crawlable content corpus deployment contracts', () => {
     }
   });
 
-  it('keeps generated corpus prefixes out of the SPA catch-all while preserving normal app deep links', () => {
-    const catchAll = getSpaCatchAllRewrite();
-    assert.ok(catchAll, 'expected the SPA catch-all rewrite');
-    const catchAllMatcher = sourceToRegExp(catchAll.source);
+  it('serves no SPA fallback for generated corpus paths while keeping real client deep links', () => {
+    // #6575: unknown paths must fall through to the filesystem (404), so the
+    // only dashboard-serving rewrites left are the explicit client History
+    // routes. Corpus HTML keeps resolving as raw static files.
+    const fallbacks = getSpaFallbackRewrites();
+    assert.deepEqual(
+      fallbacks.map((r) => r.source).sort(),
+      ['/stocks', '/stocks/:symbol', '/story'],
+      'the SPA fallback inventory must stay enumerable — every entry is a real client-side route'
+    );
 
-    for (const path of staticCorpusPaths) {
+    for (const path of [...staticCorpusPaths, '/blog/glossary/country-instability-index/']) {
+      const matched = fallbacks.find((r) => sourceToRegExp(r.source).test(path));
       assert.equal(
-        catchAllMatcher.test(path),
-        false,
+        matched,
+        undefined,
         path + ' must resolve as raw static HTML, not /dashboard.html'
       );
     }
 
-    assert.equal(
-      catchAllMatcher.test('/blog/glossary/country-instability-index/'),
-      false,
-      'existing blog glossary pages stay covered by the /blog static exclusion'
-    );
-    assert.equal(catchAllMatcher.test('/country-intel?iso2=UA'), true);
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/stocks' })?.destination, DASHBOARD_HTML_DESTINATION);
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/stocks/AAPL' })?.destination, DASHBOARD_HTML_DESTINATION);
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/story' })?.destination, DASHBOARD_HTML_DESTINATION);
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/stocks/foo/bar' }), null);
+    assert.equal(firstRedirectFor({ host: 'www.worldmonitor.app', path: '/story/' })?.destination, '/story');
+    assert.equal(firstRedirectFor({ host: 'www.worldmonitor.app', path: '/dashboard/' })?.destination, '/dashboard');
+    // Unknown garbage used to soft-404 the dashboard through the catch-all.
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/this-is-not-a-page' }), null);
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/security' }), null);
   });
 
   it('serves static corpus HTML with public revalidating cache headers', () => {
@@ -800,15 +813,15 @@ describe('welcome landing page routing', () => {
     vercelConfig.rewrites.find(
       (r) => r.source === '/' && !(r.has ?? []).some((condition) => condition.type === 'query')
     );
-  const getSpaCatchAllRewrite = () => vercelConfig.rewrites.find((r) =>
-    r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
-  );
+  // #6575: with the SPA catch-all removed, a host that matches no `/` rule
+  // falls through to the filesystem — there is no public/index.* (#4825), so
+  // the result is a real 404, not the dashboard document.
   const rootDestinationForHost = (host) => {
     const rewrite = getRootRewrite();
     assert.ok(rewrite, 'expected a rewrite for /');
     const hostCondition = rewrite.has?.find((condition) => condition.type === 'host');
     if (!hostCondition || new RegExp(hostCondition.value).test(host)) return rewrite.destination;
-    return getSpaCatchAllRewrite()?.destination ?? null;
+    return null;
   };
 
   it('declares / as the app-root welcome rewrite after moving dashboard HTML off root index', () => {
@@ -836,25 +849,22 @@ describe('welcome landing page routing', () => {
     const rewrite = vercelConfig.rewrites.find((r) => r.source === '/index.md');
     assert.ok(rewrite, 'expected a rewrite for /index.md');
     assert.equal(rewrite.destination, '/home.md');
-    const catchAll = getSpaCatchAllRewrite();
-    assert.ok(
-      vercelConfig.rewrites.indexOf(rewrite) < vercelConfig.rewrites.indexOf(catchAll),
-      '/index.md rewrite must precede the SPA catch-all'
-    );
+    // #6575: the SPA catch-all this ordering guarded is gone; /index.md only
+    // needs its own explicit rewrite to win over filesystem resolution.
+    assert.equal(vercelConfig.rewrites.filter((r) => r.source === '/index.md').length, 1);
   });
 
-  it('routes app roots to welcome and leaves non-app roots on the dashboard catch-all', () => {
+  it('routes app roots to welcome; unknown-host and variant roots never soft-404 the dashboard', () => {
     assert.equal(rootDestinationForHost('worldmonitor.app'), '/pro/welcome.html');
     assert.equal(rootDestinationForHost('www.worldmonitor.app'), '/pro/welcome.html');
-    assert.equal(rootDestinationForHost('worldmonitor.app.evil.example'), DASHBOARD_HTML_DESTINATION);
+    // #6575: a host outside the product family gets a real 404 at /.
+    assert.equal(rootDestinationForHost('worldmonitor.app.evil.example'), null);
 
     const variantHosts = getVariantHosts().filter((host) => host !== 'www.worldmonitor.app');
     for (const host of variantHosts) {
-      assert.equal(
-        rootDestinationForHost(host),
-        DASHBOARD_HTML_DESTINATION,
-        `${host}/ welcome rewrite is dead — the / 308 wins in production, and the fallback is the SPA catch-all`
-      );
+      const redirect = firstRedirectFor({ host, path: '/' });
+      assert.equal(redirect?.destination, '/dashboard', `${host}/ must 308 to /dashboard in production`);
+      assert.equal(rootDestinationForHost(host), null, `${host}/ must not also match the www welcome rewrite`);
     }
   });
 
@@ -973,14 +983,14 @@ describe('welcome landing page routing', () => {
     );
   });
 
-  it('does not keep stale welcome exclusions in the SPA catch-all rewrite', () => {
+  it('does not reintroduce a negative-lookahead SPA catch-all rewrite', () => {
     const catchAll = vercelConfig.rewrites.find((r) =>
       r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
     );
-    assert.ok(catchAll, 'expected the SPA catch-all rewrite');
-    assert.ok(
-      !catchAll.source.includes('|welcome|'),
-      'legacy /welcome redirect must not leave welcome excluded from the SPA catch-all rewrite'
+    assert.equal(
+      catchAll,
+      undefined,
+      'unknown paths must 404 instead of soft-404ing the dashboard (#6575); the fallback inventory is /dashboard, /stocks, /stocks/:symbol, /story only'
     );
   });
 
@@ -2046,23 +2056,23 @@ describe('embeddable map route guardrails', () => {
     assert.match(viteConfigSource, /embed:\s*resolve\(__dirname,\s*'embed\.html'\)/);
   });
 
-  it('rewrites /embed to the dedicated embed.html entry before the SPA catch-all', () => {
-    const rewriteIndex = vercelConfig.rewrites.findIndex((r) => r.source === '/embed');
-    const catchAllIndex = vercelConfig.rewrites.findIndex((r) =>
-      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
-    );
-    assert.ok(rewriteIndex !== -1, 'expected /embed rewrite');
-    assert.ok(catchAllIndex !== -1, 'expected SPA catch-all rewrite');
-    assert.ok(rewriteIndex < catchAllIndex, '/embed rewrite must appear before the SPA catch-all');
-    assert.equal(vercelConfig.rewrites[rewriteIndex].destination, '/embed.html');
+  it('rewrites /embed to the dedicated embed.html entry', () => {
+    // #6575: the SPA catch-all this rule used to precede is gone; the explicit
+    // /embed rewrite only needs to beat filesystem resolution, which it does.
+    const rewrite = vercelConfig.rewrites.find((r) => r.source === '/embed');
+    assert.ok(rewrite, 'expected /embed rewrite');
+    assert.equal(rewrite.destination, '/embed.html');
   });
 
-  it('excludes /embed and /embed.html from the SPA catch-all rewrite and cache header', () => {
-    const catchAll = vercelConfig.rewrites.find((r) =>
-      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
-    );
-    assert.ok(catchAll.source.includes('|embed|embed\\.html|'), 'SPA catch-all must exclude the public embed entry');
-    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|embed|embed\\.html|'), 'HTML cache catch-all must exclude the public embed entry');
+  it('keeps /embed and /embed.html off the dashboard document and the SPA cache header', () => {
+    // #6575: no dashboard-serving rewrite may match the public embed entry.
+    for (const path of ['/embed', '/embed.html']) {
+      const shadow = vercelConfig.rewrites.find((r) =>
+        r.destination === DASHBOARD_HTML_DESTINATION && sourceToRegExp(r.source).test(path)
+      );
+      assert.equal(shadow, undefined, path + ' must serve the public embed entry, not the app shell');
+    }
+    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|embed|embed\\.html|'), 'HTML cache catch-all must keep excluding the public embed entry');
     assert.equal(getCacheHeaderValue(SPA_HTML_CACHE_SOURCE), 'private, no-cache, must-revalidate');
   });
 
@@ -2427,18 +2437,17 @@ describe('agent readiness: api-catalog + openapi build', () => {
     );
   });
 
-  it('SPA catch-all rewrite excludes /openapi.json so it serves the static JSON spec, not the app shell', () => {
-    const catchAll = vercelConfig.rewrites.find((r) =>
-      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
+  it('no dashboard-serving rewrite can shadow the static /openapi.json spec', () => {
+    // #6575: the SPA catch-all is gone, so /openapi.json resolves as a static
+    // file by default. Guard that no dashboard rewrite ever matches it again
+    // and that the pinned HTML-cache exclusion stays in place.
+    const shadow = vercelConfig.rewrites.find((r) =>
+      r.destination === DASHBOARD_HTML_DESTINATION && sourceToRegExp(r.source).test('/openapi.json')
     );
-    assert.ok(catchAll, 'expected the SPA catch-all rewrite');
+    assert.equal(shadow, undefined, '/openapi.json must serve the static spec, not the app shell');
     assert.ok(
-      catchAll.source.includes('openapi\\.json'),
-      'SPA catch-all must exclude openapi.json so /openapi.json serves the static spec'
-    );
-    assert.ok(
-      SPA_HTML_CACHE_SOURCE.includes('openapi\\.json'),
-      'HTML cache catch-all must exclude openapi.json'
+      SPA_HTML_CACHE_SOURCE.includes('openapi'),
+      'HTML cache catch-all must keep excluding openapi.json'
     );
   });
 
@@ -2778,16 +2787,16 @@ describe('agent readiness: auth.md walkthrough', () => {
     );
   });
 
-  it('serves /auth.md as markdown and keeps it off the SPA catch-all', () => {
+  it('serves /auth.md as markdown, never the app shell', () => {
     assert.equal(getHeaderValueForSource('/auth.md', 'Content-Type'), 'text/markdown; charset=utf-8');
     assert.equal(getHeaderValueForSource('/auth.md', 'Access-Control-Allow-Origin'), '*');
-    // Excluded from the SPA catch-all rewrite + cache header (like openapi.json)
-    // so the real file is served instead of the dashboard HTML fallback.
-    const catchAll = vercelConfig.rewrites.find((r) =>
-      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
+    // #6575: the SPA catch-all rewrite is gone, so the real file is served (or
+    // a deletion 404s) by default. Guard both directions.
+    const dashboardShadow = (path) => vercelConfig.rewrites.find((r) =>
+      r.destination === DASHBOARD_HTML_DESTINATION && sourceToRegExp(r.source).test(path)
     );
-    assert.ok(catchAll.source.includes('|auth\\.md|'), 'SPA catch-all rewrite must exclude /auth.md');
-    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|auth\\.md|'), 'HTML cache catch-all must exclude /auth.md');
+    assert.equal(dashboardShadow('/auth.md'), undefined, '/auth.md must serve the real file, not the dashboard');
+    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|auth\\.md|'), 'HTML cache catch-all must keep excluding /auth.md');
   });
 
   // pricing.md and support.md are advertised in api-catalog service-meta and
@@ -2800,15 +2809,16 @@ describe('agent readiness: auth.md walkthrough', () => {
   // sitemap-listed, and without the catch-all exclusion the SPA cache-header
   // catch-all (later in the headers array) overrides its max-age rule.
   for (const mdPath of ['/pricing.md', '/support.md', '/agents.md', '/ai-search.md']) {
-    it(`serves ${mdPath} as markdown and keeps it off the SPA catch-all`, () => {
+    it(`serves ${mdPath} as markdown, never the app shell`, () => {
       assert.equal(getHeaderValueForSource(mdPath, 'Content-Type'), 'text/markdown; charset=utf-8');
       assert.equal(getHeaderValueForSource(mdPath, 'Access-Control-Allow-Origin'), '*');
-      const catchAll = vercelConfig.rewrites.find((r) =>
-        r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
+      // #6575: no dashboard-serving rewrite may match the static markdown page.
+      const shadow = vercelConfig.rewrites.find((r) =>
+        r.destination === DASHBOARD_HTML_DESTINATION && sourceToRegExp(r.source).test(mdPath)
       );
-      const frag = `|${mdPath.slice(1).replace('.', '\\.')}|`;
-      assert.ok(catchAll.source.includes(frag), `SPA catch-all rewrite must exclude ${mdPath}`);
-      assert.ok(SPA_HTML_CACHE_SOURCE.includes(frag), `HTML cache catch-all must exclude ${mdPath}`);
+      assert.equal(shadow, undefined, `${mdPath} must serve the real file, not the dashboard`);
+      const token = mdPath.slice(1).replaceAll('.', '\\.');
+      assert.ok(SPA_HTML_CACHE_SOURCE.includes(`|${token}|`), `HTML cache catch-all must keep excluding ${mdPath}`);
       assert.ok(
         existsSync(resolve(__dirname, `../public${mdPath}`)),
         `public${mdPath} must exist — it is advertised in api-catalog service-meta and llms.txt`
@@ -2819,14 +2829,14 @@ describe('agent readiness: auth.md walkthrough', () => {
   // /agent.txt (#4958 follow-up): the when-to-use agent-instruction file
   // (agent.txt convention; telnyx-parity). Same three-way pinning, but plain
   // text rather than markdown.
-  it('serves /agent.txt as plain text and keeps it off the SPA catch-all', () => {
+  it('serves /agent.txt as plain text, never the app shell', () => {
     assert.equal(getHeaderValueForSource('/agent.txt', 'Content-Type'), 'text/plain; charset=utf-8');
     assert.equal(getHeaderValueForSource('/agent.txt', 'Access-Control-Allow-Origin'), '*');
-    const catchAll = vercelConfig.rewrites.find((r) =>
-      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
+    const dashboardShadow = (path) => vercelConfig.rewrites.find((r) =>
+      r.destination === DASHBOARD_HTML_DESTINATION && sourceToRegExp(r.source).test(path)
     );
-    assert.ok(catchAll.source.includes('|agent\\.txt|'), 'SPA catch-all rewrite must exclude /agent.txt');
-    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|agent\\.txt|'), 'HTML cache catch-all must exclude /agent.txt');
+    assert.equal(dashboardShadow('/agent.txt'), undefined, '/agent.txt must serve the real file, not the dashboard');
+    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|agent\\.txt|'), 'HTML cache catch-all must keep excluding /agent.txt');
     const agentTxt = readFileSync(resolve(__dirname, '../public/agent.txt'), 'utf-8');
     assert.match(agentTxt, /When to use/i, 'agent.txt must carry when-to-use guidance');
     assert.ok(agentTxt.includes('https://worldmonitor.app/mcp'), 'agent.txt must point at the MCP server');
@@ -3477,8 +3487,6 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
     { file: 'sdks.md', path: '/sdks.md', h1: '# World Monitor SDKs' },
   ];
 
-  const spaCatchAll = () =>
-    vercelConfig.rewrites.find((r) => r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!'));
 
   for (const page of DEV_PAGES) {
     it(`public/${page.file} opens with the brand-named H1 "${page.h1}"`, () => {
@@ -3486,13 +3494,12 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
       assert.ok(body.startsWith(`${page.h1}\n`), `public/${page.file} must open with "${page.h1}"`);
     });
 
-    it(`${page.path} is excluded from the SPA catch-all (serves the static page, not the app shell)`, () => {
-      const catchAll = spaCatchAll();
-      assert.ok(catchAll, 'expected the SPA catch-all rewrite');
-      assert.ok(
-        !sourceToRegExp(catchAll.source).test(page.path),
-        `${page.path} must be excluded from the SPA catch-all rewrite`
+    it(`${page.path} serves the static page, never the app shell`, () => {
+      // #6575: the SPA catch-all is gone; guard that it stays that way per page.
+      const shadow = vercelConfig.rewrites.find((r) =>
+        r.destination === DASHBOARD_HTML_DESTINATION && sourceToRegExp(r.source).test(page.path)
       );
+      assert.equal(shadow, undefined, `${page.path} must not be rewritten to the app shell`);
       assert.ok(
         !sourceToRegExp(SPA_HTML_CACHE_SOURCE).test(page.path),
         `${page.path} must be excluded from the pinned HTML-cache catch-all`
@@ -3900,15 +3907,17 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
     );
   });
 
-  it('keeps the SPA catch-all rewrite and cache-header regex identical', () => {
-    const catchAllRewrite = vercelConfig.rewrites.find((r) =>
-      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
-    );
-    const catchAllHeader = vercelConfig.headers.find((r) => r.source === catchAllRewrite?.source);
-    assert.ok(catchAllRewrite, 'expected the SPA catch-all rewrite');
-    assert.ok(catchAllHeader, 'expected a cache-header rule whose source matches the SPA catch-all');
-    assert.equal(catchAllRewrite.source, catchAllHeader.source);
-    assert.equal(catchAllRewrite.source, SPA_HTML_CACHE_SOURCE);
+  it('keeps the pinned HTML-cache catch-all header without a serving counterpart', () => {
+    // #6575: the negative-lookahead rewrite is gone (unknown paths 404). The
+    // cache-header catch-all stays as the pinned no-cache rule for HTML-ish
+    // paths; it no longer needs a byte-identical rewrite sibling.
+    const catchAllHeader = vercelConfig.headers.find((r) => r.source === SPA_HTML_CACHE_SOURCE);
+    assert.ok(catchAllHeader, 'expected the pinned SPA cache-header rule');
+    assert.equal(getCacheHeaderValue(SPA_HTML_CACHE_SOURCE), 'private, no-cache, must-revalidate');
+    // The enumerated SPA entry routes keep the no-cache policy.
+    for (const path of ['/dashboard', '/stocks', '/stocks/AAPL', '/story']) {
+      assert.equal(effectiveCacheControl(path), 'private, no-cache, must-revalidate', path + ' must stay no-cache');
+    }
   });
 
   it('variant and api robots keep AI-group rule parity with their own * group (#6835)', () => {
@@ -3955,21 +3964,24 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
     }
   });
 
-  it('keeps leaked source/tmp/server paths out of the SPA catch-all (#6836)', () => {
-    const catchAll = vercelConfig.rewrites.find((r) =>
-      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
-    );
-    assert.ok(catchAll, 'expected the SPA catch-all rewrite');
-    const matcher = sourceToRegExp(catchAll.source);
+  it('keeps leaked source/tmp/server paths off the dashboard document (#6836, #6575)', () => {
     for (const path of [
       '/src/generated/server/worldmonitor/seismology/v1/service_server',
       '/tmp/gem-drops.log',
       '/server/worldmonitor/intelligence/v1/_risk-config.ts',
       '/llms*.txt',
+      '/country-intel',
     ]) {
-      assert.equal(matcher.test(path), false, `${path} must 404 instead of serving dashboard.html`);
+      const shadow = vercelConfig.rewrites.find((r) =>
+        r.destination === DASHBOARD_HTML_DESTINATION && sourceToRegExp(r.source).test(path)
+      );
+      assert.equal(shadow, undefined, `${path} must 404 instead of serving dashboard.html`);
     }
-    assert.equal(matcher.test('/country-intel'), true, 'client-side app routes must still hit the catch-all');
+    // The real client-side History routes keep reaching the SPA document.
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/stocks' })?.destination, DASHBOARD_HTML_DESTINATION);
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/stocks/AAPL' })?.destination, DASHBOARD_HTML_DESTINATION);
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/story' })?.destination, DASHBOARD_HTML_DESTINATION);
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/stocks/foo/bar' }), null);
     assert.ok(SPA_HTML_CACHE_SOURCE.includes('|src|'), 'HTML cache catch-all must exclude /src');
     assert.ok(SPA_HTML_CACHE_SOURCE.includes('|tmp|'), 'HTML cache catch-all must exclude /tmp');
     assert.ok(SPA_HTML_CACHE_SOURCE.includes('|server|'), 'HTML cache catch-all must exclude /server');

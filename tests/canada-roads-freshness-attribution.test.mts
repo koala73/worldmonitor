@@ -41,7 +41,7 @@ function sourceKeys(): string[] {
 test('every road source has its own freshness id', () => {
   const ids = freshnessIds();
   const keys = sourceKeys();
-  assert.equal(keys.length, 4, 'fixture guard: four road sources union onto this layer');
+  assert.equal(keys.length, 5, 'fixture guard: five road sources union onto this layer');
   assert.equal(
     ids.length,
     keys.length,
@@ -94,7 +94,7 @@ test('the loader records per source rather than one blanket ontario_511', () => 
   assert.match(block[0], /dataFreshness\.recordError\(freshnessId/);
 });
 
-test('the canadaRoads panel lists all four sources', () => {
+test('the canadaRoads panel lists all five sources', () => {
   const line = /canadaRoads: \[([^\]]*)\]/.exec(panelsSrc);
   assert.ok(line, 'canadaRoads must map to freshness sources');
   for (const { freshnessId } of freshnessIds()) {

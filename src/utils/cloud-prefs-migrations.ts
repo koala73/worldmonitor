@@ -140,6 +140,44 @@ export function settledDirtyKeys(
   return settled;
 }
 
+/**
+ * #4746: read-modify-write projection for ADDING dirty keys. Two same-user
+ * tabs share one persisted marker set; a wholesale overwrite by the second
+ * tab drops the first tab's pending markers. Union with whatever the entry
+ * already holds (empty for another user's entry — parsePersistedDirtyKeys
+ * refuses cross-user reads — so the write correctly re-scopes it).
+ */
+export function unionPersistedDirtyKeys(
+  raw: string | null,
+  allowedKeys: Iterable<string>,
+  userId: string,
+  additions: Iterable<string>,
+): { userId: string; keys: string[] } {
+  const merged = new Set(parsePersistedDirtyKeys(raw, allowedKeys, userId));
+  const allowed = new Set(allowedKeys);
+  for (const key of additions) {
+    if (typeof key === 'string' && allowed.has(key)) merged.add(key);
+  }
+  return { userId, keys: [...merged] };
+}
+
+/**
+ * #4746: read-modify-write projection for SETTLING dirty keys. Removes only
+ * the settled keys; a wholesale overwrite here would resurrect nothing but
+ * could drop another tab's still-pending markers.
+ */
+export function withoutPersistedDirtyKeys(
+  raw: string | null,
+  allowedKeys: Iterable<string>,
+  userId: string,
+  removals: Iterable<string>,
+): { userId: string; keys: string[] } {
+  const remove = new Set(removals);
+  const keys = parsePersistedDirtyKeys(raw, allowedKeys, userId)
+    .filter((key) => !remove.has(key));
+  return { userId, keys };
+}
+
 export function parsePersistedDirtyKeys(
   raw: string | null,
   allowedKeys: Iterable<string>,

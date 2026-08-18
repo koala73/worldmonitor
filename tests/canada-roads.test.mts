@@ -34,26 +34,31 @@ test('loads hydrated and missing sources independently and preserves valid empty
     getHydrated: (key) => hydrated.get(key),
     fetchMissing: async (descriptor) => {
       onDemand.push(descriptor.key);
-      return descriptor.key === 'torontoRoads'
-        ? { records: [{ ...road('to-1'), district: 'Toronto and East York', currImpact: 'High' }] }
-        : { records: [road('bc-1')] };
+      if (descriptor.key === 'torontoRoads') {
+        return { records: [{ ...road('to-1'), district: 'Toronto and East York', currImpact: 'High' }] };
+      }
+      if (descriptor.key === 'manitobaRoads') return { records: [road('mb-1')] };
+      return { records: [road('bc-1')] };
     },
   });
 
-  assert.deepEqual(onDemand, ['torontoRoads', 'bcOpen511']);
+  assert.deepEqual(onDemand, ['manitobaRoads', 'torontoRoads', 'bcOpen511']);
   assert.deepEqual(result.states, {
     canadaRoads: 'empty',
     albertaRoads: 'available',
+    manitobaRoads: 'available',
     torontoRoads: 'available',
     bcOpen511: 'available',
   });
   assert.deepEqual(result.records?.map(({ source, id }) => `${source}:${id}`), [
     'alberta-511:ab-1',
+    'manitoba-511:mb-1',
     'toronto-roads:to-1',
     'bc-open511:bc-1',
   ]);
-  assert.equal(result.records?.[1]?.district, 'Toronto and East York');
-  assert.equal(result.records?.[1]?.currImpact, 'High');
+  const toronto = result.records?.find((record) => record.source === 'toronto-roads');
+  assert.equal(toronto?.district, 'Toronto and East York');
+  assert.equal(toronto?.currImpact, 'High');
 });
 
 test('one failed tier source does not discard successful siblings', async () => {
@@ -68,6 +73,7 @@ test('one failed tier source does not discard successful siblings', async () => 
 
   assert.equal(result.states.canadaRoads, 'unavailable');
   assert.equal(result.states.albertaRoads, 'empty');
+  assert.equal(result.states.manitobaRoads, 'unavailable');
   assert.equal(result.states.torontoRoads, 'available');
   assert.equal(result.states.bcOpen511, 'unavailable');
   assert.deepEqual(result.records?.map(({ id }) => id), ['to-2']);
@@ -96,6 +102,7 @@ test('malformed and unavailable sources remain distinct', async () => {
   assert.deepEqual(result.states, {
     canadaRoads: 'malformed',
     albertaRoads: 'unavailable',
+    manitobaRoads: 'unavailable',
     torontoRoads: 'unavailable',
     bcOpen511: 'unavailable',
   });
