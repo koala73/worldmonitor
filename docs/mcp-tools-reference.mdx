@@ -2155,9 +2155,9 @@ WorldMonitor's live source inventory — what the data is drawn from and how far
 Two **separate** populations, deliberately not merged:
 
 - **`providers`** — upstream hosts data is fetched from, keyed by host (`acleddata.com`), carrying `kind` (feed / structured / feed+structured / operational-status), attribution-review `status`, and `license`.
-- **`outlets`** — named news organisations, keyed by masthead (`Reuters`), carrying an editorial `tier` and the same `provenance` block the news tools attach to stories (propaganda risk, source type, whether each was declared or reviewed, state affiliation).
+- **`outlets`** — named public source identities (`Reuters`, `IDF Official`), carrying an editorial `tier` and the same `provenance` block the news tools attach to stories (propaganda risk, source type, whether each was declared or reviewed, state affiliation). Platform channels also carry `platformIdentities` with their stable platform and handle.
 
-A provider is a host; an outlet is a masthead. Only 3 of 536 active provider records share a key with the outlet table, so a single merged list would mean inventing attribution for the other 533.
+A provider is a host; an outlet is a public editorial source identity. Only 3 of 536 active provider records share a key with the outlet table, so a single merged list would mean inventing attribution for the other 533.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -2165,6 +2165,7 @@ A provider is a host; an outlet is a masthead. Only 3 of 536 active provider rec
 | `kind` | string | `providers` view only — restrict to one kind. |
 | `tier` | integer 1-4 | `outlets` view only — restrict to one editorial tier. Outlets with no declared tier are never returned by this filter. |
 | `risk` | string (enum) | `outlets` view only — `low` / `medium` / `high` / `unknown`. |
+| `platform` | string (enum) | `outlets` view only — restrict to sources configured on a platform such as `telegram`. |
 | `query` | string | Case-insensitive substring: host and provider in the providers view, outlet name in the outlets view. Applied before `limit`. |
 | `limit` | integer | Rows in an enumerated view. Defaults to 50, capped at 200. Ignored by `summary`. |
 

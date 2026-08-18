@@ -275,7 +275,7 @@ export const TELEGRAM_CHANNEL_TRUST: readonly TelegramChannelTrustEntry[] = [
     name: 'DD Geopolitics',
     tier: 4,
     type: 'intel',
-    risk: 'high',
+    risk: 'medium',
     knownBiases: ['Pro-Russia'],
     note: 'Anonymous partisan aggregator; not independent journalism',
   },
@@ -284,7 +284,7 @@ export const TELEGRAM_CHANNEL_TRUST: readonly TelegramChannelTrustEntry[] = [
     name: 'Fotros Resistance',
     tier: 4,
     type: 'intel',
-    risk: 'high',
+    risk: 'medium',
     knownBiases: ['Iran-aligned resistance'],
     note: 'Partisan resistance channel; treat as advocacy, not reporting',
   },
@@ -293,7 +293,7 @@ export const TELEGRAM_CHANNEL_TRUST: readonly TelegramChannelTrustEntry[] = [
     name: 'Resistance Trench',
     tier: 4,
     type: 'intel',
-    risk: 'high',
+    risk: 'medium',
     knownBiases: ['Iran-aligned resistance'],
     note: 'Partisan resistance channel; treat as advocacy, not reporting',
   },
@@ -302,7 +302,7 @@ export const TELEGRAM_CHANNEL_TRUST: readonly TelegramChannelTrustEntry[] = [
     name: 'Geopolitics Prime',
     tier: 4,
     type: 'intel',
-    risk: 'high',
+    risk: 'medium',
     note: 'State-adjacent geopolitical aggregator; not an independent newsroom',
   },
   {
@@ -448,7 +448,7 @@ export const TELEGRAM_CHANNEL_TRUST: readonly TelegramChannelTrustEntry[] = [
     name: 'Hamas-Israel War',
     tier: 4,
     type: 'intel',
-    risk: 'high',
+    risk: 'medium',
     knownBiases: ['Faction-aligned'],
     note: 'Faction-aligned war aggregator; not an editorial newsroom',
   },
@@ -457,7 +457,7 @@ export const TELEGRAM_CHANNEL_TRUST: readonly TelegramChannelTrustEntry[] = [
     name: 'Quds News',
     tier: 4,
     type: 'intel',
-    risk: 'high',
+    risk: 'medium',
     knownBiases: ['Faction-aligned'],
     note: 'Faction-aligned aggregator; treat as advocacy, not reporting',
   },
@@ -608,11 +608,30 @@ export const TELEGRAM_HANDLE_TO_PUBLIC_NAME: Record<string, string> = Object.fro
   TELEGRAM_CHANNEL_TRUST.map((entry) => [entry.handle, entry.name]),
 );
 
+function normalizeTelegramHandle(handle: string): string {
+  return handle.trim().replace(/^@/, '').toLowerCase();
+}
+
+const TELEGRAM_NORMALIZED_HANDLE_TO_PUBLIC_NAME: ReadonlyMap<string, string> = (() => {
+  const entries = new Map<string, string>();
+  for (const entry of TELEGRAM_CHANNEL_TRUST) {
+    const normalizedHandle = normalizeTelegramHandle(entry.handle);
+    if (entries.has(normalizedHandle)) {
+      throw new Error(`Duplicate Telegram trust handle: ${entry.handle}`);
+    }
+    entries.set(normalizedHandle, entry.name);
+  }
+  return entries;
+})();
+
 /** Resolve the public trust-registry key for a Telegram feed item. */
 export function resolveTelegramSourceName(channelTitle?: string, handle?: string): string {
+  const trimmedHandle = handle?.trim();
+  const mapped = trimmedHandle
+    ? TELEGRAM_NORMALIZED_HANDLE_TO_PUBLIC_NAME.get(normalizeTelegramHandle(trimmedHandle))
+    : undefined;
+  if (mapped) return mapped;
   const title = channelTitle?.trim();
   if (title) return title;
-  const mapped = handle ? TELEGRAM_HANDLE_TO_PUBLIC_NAME[handle] : undefined;
-  if (mapped) return mapped;
-  return handle?.trim() || 'telegram';
+  return trimmedHandle || 'telegram';
 }

@@ -7,12 +7,13 @@
  *
  * This suite:
  *   - registers every enabled Telegram channel in both public registries
- *   - records the before/after alert-drop behaviour
- *   - keeps honestly-tier-4 aggregators dropped
+ *   - records the display-label policy for a future Telegram alert path
+ *   - keeps honestly-tier-4 aggregators explicit in the merged tier registry
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,11 +31,17 @@ import {
   getSourceType,
   describePropagandaBadge,
 } from '../shared/source-provenance.ts';
-import { getSourceTier } from '../server/_shared/source-tiers.ts';
+import { SOURCE_TIERS, getSourceTier } from '../server/_shared/source-tiers.ts';
 import { SOURCE_TOOLS } from '../api/mcp/registry/source-tools.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
+const require = createRequire(import.meta.url);
+const sourceTierPolicyPath = join(repoRoot, 'shared/source-tier-policy.cjs');
+const {
+  createExplicitTierFourSourceSet,
+  isExplicitTierFourSource,
+} = require(sourceTierPolicyPath);
 
 const telegramChannels = JSON.parse(
   readFileSync(join(repoRoot, 'data/telegram-channels.json'), 'utf8'),
@@ -50,17 +57,6 @@ function enabledTelegramChannels() {
     .filter((channel) => channel?.enabled && channel?.handle);
 }
 
-function explicitRelayTier4Set(tiers) {
-  return new Set(
-    Object.entries(tiers).filter(([, tier]) => tier === 4).map(([name]) => name),
-  );
-}
-
-/** Mirrors scripts/ais-relay.cjs RELAY_GATES_READY source-tier skip. */
-function relayWouldDropExplicitTier4(sourceName, tiers) {
-  return explicitRelayTier4Set(tiers).has(sourceName ?? '');
-}
-
 /** Mirrors src/services/breaking-news-alerts.ts keyword-only skip. */
 function clientWouldDropKeywordAlert(sourceName, tiers) {
   const tier = tiers[sourceName] ?? 4;
@@ -70,18 +66,30 @@ function clientWouldDropKeywordAlert(sourceName, tiers) {
 const getSources = SOURCE_TOOLS.find((tool) => tool.name === 'get_sources');
 
 describe('Telegram trust registry (#6600)', () => {
-  it('covers every enabled channel in data/telegram-channels.json', () => {
+  it('matches every enabled channel handle and display label exactly', () => {
     const enabled = enabledTelegramChannels();
     assert.ok(enabled.length >= 64, `expected 64 enabled channels, got ${enabled.length}`);
-    const overlayHandles = new Set(TELEGRAM_CHANNEL_TRUST.map((entry) => entry.handle));
-    const missing = enabled.map((channel) => channel.handle).filter((handle) => !overlayHandles.has(handle));
-    assert.deepEqual(missing, [], `overlay missing handles: ${missing.join(', ')}`);
+    const configuredPairs = enabled
+      .map((channel) => `${channel.handle}\0${channel.label}`)
+      .sort();
+    const overlayPairs = TELEGRAM_CHANNEL_TRUST
+      .map((entry) => `${entry.handle}\0${entry.name}`)
+      .sort();
+
+    assert.deepEqual(overlayPairs, configuredPairs);
+    assert.equal(new Set(enabled.map((channel) => channel.handle)).size, enabled.length);
+    assert.equal(new Set(enabled.map((channel) => channel.label)).size, enabled.length);
+    assert.equal(new Set(TELEGRAM_CHANNEL_TRUST.map((entry) => entry.handle)).size, TELEGRAM_CHANNEL_TRUST.length);
+    assert.equal(new Set(TELEGRAM_CHANNEL_TRUST.map((entry) => entry.name)).size, TELEGRAM_CHANNEL_TRUST.length);
+    assert.equal(
+      new Set(TELEGRAM_CHANNEL_TRUST.map((entry) => entry.handle.replace(/^@/, '').toLowerCase())).size,
+      TELEGRAM_CHANNEL_TRUST.length,
+    );
   });
 
   it('registers each channel in both public registries under the display label', () => {
     for (const entry of TELEGRAM_CHANNEL_TRUST) {
       assert.equal(TELEGRAM_HANDLE_TO_PUBLIC_NAME[entry.handle], entry.name);
-      assert.equal(sourceTiers[entry.name], entry.tier, `${entry.name} source-tiers.json`);
       assert.equal(getSourceTier(entry.name), entry.tier, `${entry.name} getSourceTier`);
       assert.equal(getSourceType(entry.name), entry.type, `${entry.name} SOURCE_TYPES`);
       assert.equal(getSourcePropagandaRisk(entry.name).risk, entry.risk, `${entry.name} propaganda risk`);
@@ -96,6 +104,18 @@ describe('Telegram trust registry (#6600)', () => {
           `${entry.name} should be in the additive Telegram tier map`,
         );
       }
+    }
+  });
+
+  it('keeps additive Telegram tiers out of the canonical RSS tier JSON', () => {
+    const additiveEntries = TELEGRAM_CHANNEL_TRUST.filter((entry) => !entry.reuseExisting);
+    assert.deepEqual(
+      Object.keys(TELEGRAM_SOURCE_TIERS).sort(),
+      additiveEntries.map((entry) => entry.name).sort(),
+    );
+    for (const entry of additiveEntries) {
+      assert.equal(sourceTiers[entry.name], undefined, `${entry.name} must come from the Telegram overlay`);
+      assert.equal(TELEGRAM_SOURCE_TIERS[entry.name], entry.tier);
     }
   });
 
@@ -117,9 +137,23 @@ describe('Telegram trust registry (#6600)', () => {
   });
 });
 
-describe('Telegram alert-drop confirmation (#6600)', () => {
+describe('Telegram alert-tier policy (#6600)', () => {
+  it('executes the same explicit-tier policy module as the relay', () => {
+    const tierFourSources = createExplicitTierFourSourceSet(SOURCE_TIERS);
+
+    assert.equal(isExplicitTierFourSource('telegram', tierFourSources), false);
+    assert.equal(isExplicitTierFourSource('IDF Official', tierFourSources), false);
+    assert.equal(isExplicitTierFourSource('DD Geopolitics', tierFourSources), true);
+    assert.match(aisRelaySrc, /createExplicitTierFourSourceSet\(RELAY_SOURCE_TIERS\)/);
+    assert.match(aisRelaySrc, /isExplicitTierFourSource\(meta\.source, RELAY_TIER4_SOURCES\)/);
+    assert.equal(
+      readFileSync(join(repoRoot, 'scripts/shared/source-tier-policy.cjs'), 'utf8'),
+      readFileSync(sourceTierPolicyPath, 'utf8'),
+    );
+  });
+
   it('documents the current relay gate: only explicit tier-4 keys, not the default-4 fallback', () => {
-    assert.match(aisRelaySrc, /RELAY_TIER4_SOURCES\.has\(meta\.source/);
+    const relayTierFourSources = createExplicitTierFourSourceSet(sourceTiers);
     assert.match(aisRelaySrc, /return RELAY_SOURCE_TIERS\[sourceName\] \?\? 4/);
     const classifyStart = aisRelaySrc.indexOf('async function seedClassifyForVariant');
     const classifyEnd = aisRelaySrc.indexOf('\nasync function seedClassify()', classifyStart);
@@ -133,31 +167,32 @@ describe('Telegram alert-drop confirmation (#6600)', () => {
     // so RELAY_GATES_READY does not drop them.
     assert.equal(getSourceTier('telegram'), 4);
     assert.equal(sourceTiers.telegram, undefined);
-    assert.equal(relayWouldDropExplicitTier4('telegram', sourceTiers), false);
-    assert.equal(clientWouldDropKeywordAlert('telegram', sourceTiers), true);
+    assert.equal(isExplicitTierFourSource('telegram', relayTierFourSources), false);
+    assert.equal(clientWouldDropKeywordAlert('telegram', SOURCE_TIERS), true);
   });
 
-  it('does not silently drop Telegram items that should alert after registration', () => {
+  it('records display-label tier policy for a future Telegram alert path', () => {
     const shouldAlert = TELEGRAM_CHANNEL_TRUST.filter((entry) => entry.tier < 4);
     const remainDropped = TELEGRAM_CHANNEL_TRUST.filter((entry) => entry.tier === 4);
+    const tierFourSources = createExplicitTierFourSourceSet(SOURCE_TIERS);
     assert.ok(shouldAlert.length > 0);
     assert.ok(remainDropped.length > 0, 'honest mapping must keep some aggregators at tier 4');
 
     for (const entry of shouldAlert) {
-      assert.equal(relayWouldDropExplicitTier4(entry.name, sourceTiers), false, entry.name);
+      assert.equal(isExplicitTierFourSource(entry.name, tierFourSources), false, entry.name);
       assert.equal(getSourceTier(entry.name) < 4, true, entry.name);
     }
     for (const entry of remainDropped) {
-      assert.equal(relayWouldDropExplicitTier4(entry.name, sourceTiers), true, `${entry.name} must remain explicitly tier 4`);
-      assert.equal(clientWouldDropKeywordAlert(entry.name, sourceTiers), true);
+      assert.equal(isExplicitTierFourSource(entry.name, tierFourSources), true, `${entry.name} must remain explicitly tier 4`);
+      assert.equal(clientWouldDropKeywordAlert(entry.name, SOURCE_TIERS), true);
     }
 
     // AFTER: looking up the channel label (not source:"telegram") is what the
     // badge renderer and any future alert path must use.
     assert.equal(resolveTelegramSourceName('IDF Official', 'IDFofficial'), 'IDF Official');
-    assert.equal(relayWouldDropExplicitTier4('IDF Official', sourceTiers), false);
-    assert.equal(clientWouldDropKeywordAlert('IDF Official', sourceTiers), false);
-    assert.equal(clientWouldDropKeywordAlert('Clash Report', sourceTiers), true);
+    assert.equal(isExplicitTierFourSource('IDF Official', tierFourSources), false);
+    assert.equal(clientWouldDropKeywordAlert('IDF Official', SOURCE_TIERS), false);
+    assert.equal(clientWouldDropKeywordAlert('Clash Report', SOURCE_TIERS), true);
   });
 });
 
@@ -185,8 +220,8 @@ describe('Telegram trust badges (#6600)', () => {
       getSourceType('DD Geopolitics'),
     );
     assert.ok(dd);
-    assert.equal(dd.risk, 'high');
-    assert.match(dd.label, /State Media|Caution/);
+    assert.equal(dd.risk, 'medium');
+    assert.equal(dd.label, '! Caution');
     assert.equal(getSourceTier('DD Geopolitics'), 4);
 
     const bellingcat = describePropagandaBadge(
@@ -223,10 +258,36 @@ describe('/sources reflects Telegram provenance (#6600)', () => {
     assert.equal(match.provenance.type, 'gov');
     assert.equal(match.provenance.risk, 'high');
     assert.equal(match.provenance.riskReviewed, true);
+    assert.deepEqual(match.platformIdentities, [{ platform: 'telegram', handle: 'IDFofficial' }]);
+  });
+
+  it('enumerates every Telegram source through the platform filter', async () => {
+    const result = await getSources._execute(
+      { view: 'outlets', platform: 'telegram', limit: 100 },
+      '',
+      {},
+      undefined,
+    );
+    assert.equal(result.matched, TELEGRAM_CHANNEL_TRUST.length);
+    assert.deepEqual(
+      result.outlets.map((outlet) => outlet.name).sort(),
+      TELEGRAM_CHANNEL_TRUST.map((entry) => entry.name).sort(),
+    );
+    assert.ok(result.outlets.every((outlet) => (
+      outlet.platformIdentities?.some((identity) => identity.platform === 'telegram')
+    )));
   });
 
   it('does not default an unlisted Telegram platform key to a declared outlet', async () => {
     const result = await getSources._execute({ view: 'outlets', query: 'telegram', limit: 50 }, '', {}, undefined);
     assert.equal(result.outlets.some((outlet) => outlet.name === 'telegram'), false);
+  });
+});
+
+describe('Telegram source-name resolution (#6600)', () => {
+  it('uses the stable handle identity before mutable display titles', () => {
+    assert.equal(resolveTelegramSourceName('IDFofficial', 'IDFofficial'), 'IDF Official');
+    assert.equal(resolveTelegramSourceName('Renamed IDF title', '@idfofficial'), 'IDF Official');
+    assert.equal(resolveTelegramSourceName('Unknown channel title', 'unknown_handle'), 'Unknown channel title');
   });
 });

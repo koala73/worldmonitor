@@ -3459,15 +3459,17 @@ const RELAY_RECENCY_MS = 15 * 60 * 1000; // 15 min — matches client-side recen
 // Formula constants + computeImportanceScore mirror list-feed-digest.ts; parity
 // is enforced by tests/importance-score-parity.test.mjs.
 const RELAY_SOURCE_TIERS = requireShared('source-tiers.json');
+const {
+  createExplicitTierFourSourceSet,
+  isExplicitTierFourSource,
+} = requireShared('source-tier-policy.cjs');
 
 function relayGetSourceTier(sourceName) {
   return RELAY_SOURCE_TIERS[sourceName] ?? 4;
 }
 
 // Derived from the tier map so the tier-4 gate and the tier map stay in lockstep.
-const RELAY_TIER4_SOURCES = new Set(
-  Object.entries(RELAY_SOURCE_TIERS).filter(([, t]) => t === 4).map(([s]) => s),
-);
+const RELAY_TIER4_SOURCES = createExplicitTierFourSourceSet(RELAY_SOURCE_TIERS);
 
 const RELAY_SCORE_WEIGHTS = { severity: 0.55, sourceTier: 0.2, corroboration: 0.15, recency: 0.1 };
 const RELAY_SEVERITY_SCORES = { critical: 100, high: 75, medium: 50, low: 25, info: 0 };
@@ -3949,11 +3951,11 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // recency checks that the client path previously handled.
         // Explicit tier-4 keys only — unlisted names (including platform source
         // "telegram") are NOT in this set even though getSourceTier() defaults
-        // them to 4. Telegram channel lookup must use the public display label
-        // from shared/telegram-channel-trust.ts (#6600). #6654 should do the
-        // same for X account labels rather than a generic "x" platform key.
+        // them to 4. Any future Telegram alert path must use the public display
+        // label from shared/telegram-channel-trust.ts (#6600). #6654 should do
+        // the same for X account labels rather than a generic "x" platform key.
         if (RELAY_GATES_READY) {
-          if (RELAY_TIER4_SOURCES.has(meta.source ?? '')) continue;
+          if (isExplicitTierFourSource(meta.source, RELAY_TIER4_SOURCES)) continue;
           const ageMs = Date.now() - (meta.publishedAt ?? 0);
           if (meta.publishedAt && ageMs > RELAY_RECENCY_MS) continue;
         }

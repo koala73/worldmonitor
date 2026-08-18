@@ -241,7 +241,9 @@ describe('source provenance defaults (#5390)', () => {
     assert.equal(clash.tierBadge, '', 'tier-3 OSINT aggregators do not get the T1/T2 star');
 
     const dd = renderer.renderPrimarySourceProvenance('DD Geopolitics');
-    assert.match(dd.riskBadge, /propaganda-badge high/);
+    assert.match(dd.riskBadge, /propaganda-badge medium/);
+    assert.match(dd.riskBadge, />! Caution</);
+    assert.doesNotMatch(dd.riskBadge, /State Media/);
     assert.equal(dd.tierBadge, '');
   });
 });
