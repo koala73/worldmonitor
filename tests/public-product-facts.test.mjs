@@ -26,7 +26,7 @@ import {
   validateVolatileInventoryClaims,
   VOLATILE_INVENTORY_CLAIM_RE,
 } from '../scripts/docs-stats.mjs';
-import { buildInventoryFacts, generateInventoryFacts } from '../scripts/generate-inventory-facts.mjs';
+import { buildInventoryFacts, generateInventoryFacts, loadStatsForInventoryFacts } from '../scripts/generate-inventory-facts.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path) => readFileSync(resolve(ROOT, path), 'utf8');
@@ -285,6 +285,49 @@ describe('public product facts generation contract', () => {
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  it('still publishes inventory facts when the attribution ledger is stale', () => {
+    const warnings = [];
+    let calls = 0;
+    const compute = (options) => {
+      calls += 1;
+      if (calls === 1) {
+        throw new Error('source-attribution: invalid manifest (stale manifest entry for energy.worldmonitor.app: references no longer match the source tree; run node scripts/source-attribution.mjs --write)');
+      }
+      assert.equal(options?.validateAttribution, false);
+      return computeStats({ validateAttribution: false });
+    };
+
+    const stats = loadStatsForInventoryFacts({ compute, warn: (message) => warnings.push(message) });
+    const facts = buildInventoryFacts(stats);
+    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-facts-stale-attribution-'));
+    mkdirSync(join(tempRoot, 'api'));
+    const edgeModule = `export const PUBLIC_INVENTORY_FACTS = ${JSON.stringify(facts)};\n`;
+    try {
+      generateInventoryFacts({
+        outputs: new Map([['api/_inventory-facts.generated.js', edgeModule]]),
+        rootDir: tempRoot,
+      });
+      assert.match(readFileSync(join(tempRoot, 'api/_inventory-facts.generated.js'), 'utf8'), /PUBLIC_INVENTORY_FACTS/);
+      assert.ok(facts.capabilities.sourceAttributionHosts > 0);
+      assert.ok(facts.capabilities.sourceAttributionProviders > 0);
+      assert.equal(calls, 2);
+      assert.match(warnings.join('\n'), /proceeding with committed attribution counts/);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('does not swallow non-attribution inventory failures', () => {
+    assert.throws(
+      () => loadStatsForInventoryFacts({
+        compute: () => {
+          throw new Error('docs-stats: could not isolate STOCK_EXCHANGES block');
+        },
+      }),
+      /STOCK_EXCHANGES/,
+    );
   });
 
   it('keeps stable product facts separate from build-owned inventory facts', () => {

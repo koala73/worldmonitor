@@ -12,6 +12,7 @@ import {
   renderAttributionSection,
   runSourceAttribution,
   scanUpstreamHosts,
+  sourceAttributionLedgerStats,
   sourceAttributionStats,
   validateManifest,
   validateProviderIdentityGroups,
@@ -455,6 +456,39 @@ test('manifest and scanner references record a path only', () => {
       assert.deepEqual(Object.keys(reference), ['path'], `scanner emitted ${JSON.stringify(reference)}`);
     }
   }
+});
+
+test('ledger stats match validated stats when the committed manifest is current', () => {
+  const inventory = scanUpstreamHosts(rootDir);
+  const manifest = loadManifest(rootDir);
+  const validated = sourceAttributionStats(inventory, manifest);
+  const ledger = sourceAttributionLedgerStats(manifest, { observedHosts: inventory.length });
+  assert.deepEqual(ledger, validated);
+});
+
+test('ledger stats remain countable when scan-parity validation would fail', () => {
+  const stale = {
+    entries: [{
+      host: 'stale.example',
+      provider: 'stale.example',
+      license: 'Provider terms',
+      attribution: 'Credit stale.example.',
+      observed: true,
+      kind: 'structured',
+      status: 'terms-review',
+      references: [{ path: 'scripts/removed-seed.mjs' }],
+    }],
+    logicalEntries: [],
+  };
+  assert.throws(
+    () => sourceAttributionStats([], stale),
+    /invalid manifest/,
+  );
+  const ledger = sourceAttributionLedgerStats(stale);
+  assert.equal(ledger.activeHosts, 1);
+  assert.equal(ledger.providerCount, 1);
+  assert.equal(ledger.structuredHosts, 1);
+  assert.equal(ledger.observedHosts, 1);
 });
 
 test('the committed manifest is a fixpoint of its own generator', () => {

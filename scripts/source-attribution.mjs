@@ -1344,22 +1344,39 @@ export function activeSourceAttributionEntries(manifest) {
     .filter(isActiveSourceAttributionEntry);
 }
 
-export function sourceAttributionStats(inventory, manifest) {
-  const validationErrors = validateManifest(inventory, manifest);
-  if (validationErrors.length) throw new Error(`source-attribution: invalid manifest (${validationErrors.join('; ')})`);
+export function isSourceAttributionManifestError(error) {
+  return error instanceof Error && error.message.startsWith('source-attribution: invalid manifest');
+}
+
+/**
+ * Count the committed ledger without requiring scan-parity. Inventory-fact
+ * generation uses this fallback so a stale attribution row cannot brick
+ * `api/_inventory-facts.generated.js` and the desktop/Vite import of
+ * `api/product-catalog.js`. `sources:check` and `docs:check` still validate.
+ */
+export function sourceAttributionLedgerStats(manifest, { observedHosts } = {}) {
+  if (!manifest || !Array.isArray(manifest.entries)) {
+    throw new Error('source-attribution: manifest entries must be an array');
+  }
   const active = activeSourceAttributionEntries(manifest);
-  const structured = active.filter((entry) => entry.kind.split('+').includes('structured'));
-  const feeds = active.filter((entry) => entry.kind.split('+').includes('feed'));
-  const status = active.filter((entry) => entry.kind.split('+').includes('operational-status'));
+  const structured = active.filter((entry) => String(entry.kind || '').split('+').includes('structured'));
+  const feeds = active.filter((entry) => String(entry.kind || '').split('+').includes('feed'));
+  const status = active.filter((entry) => String(entry.kind || '').split('+').includes('operational-status'));
   return {
     activeHosts: active.length,
     structuredHosts: structured.length,
     feedHosts: feeds.length,
     operationalStatusHosts: status.length,
     providerCount: new Set(active.map((entry) => entry.provider)).size,
-    observedHosts: inventory.length,
+    observedHosts: observedHosts ?? manifest.entries.filter((entry) => entry.observed === true).length,
     reviewNeeded: active.filter((entry) => entry.status === 'terms-review').length,
   };
+}
+
+export function sourceAttributionStats(inventory, manifest) {
+  const validationErrors = validateManifest(inventory, manifest);
+  if (validationErrors.length) throw new Error(`source-attribution: invalid manifest (${validationErrors.join('; ')})`);
+  return sourceAttributionLedgerStats(manifest, { observedHosts: inventory.length });
 }
 
 function markdownCell(value) {
