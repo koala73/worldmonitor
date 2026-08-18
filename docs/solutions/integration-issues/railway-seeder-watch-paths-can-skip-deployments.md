@@ -417,6 +417,16 @@ window, and fails closed only when none exists. It deliberately does not run
 on an ingestion push because Railway may not have deployed or executed that
 revision yet.
 
+Its live health probe remains fail-closed on every actionable source problem.
+The scheduled workflow now projects that strict result into durable
+`ingestion/seed/<source>` statuses. A new or changed problem fails one run;
+unchanged later observations keep the source status red without manufacturing
+another incident, and live recovery posts success. Transport failures,
+malformed health evidence, and expired acknowledgements still fail directly.
+This distinction is operationally important: a red status means "still
+broken", while a newly failed workflow run means "new information needs
+attention".
+
 `Railway Native Deploy Health` is a separate six-hourly workflow and has no
 dependency on the Seed Freshness gate. The gate and deployment drift share an
 upstream: an ungated or red main is exactly when Railway can refuse a push, so

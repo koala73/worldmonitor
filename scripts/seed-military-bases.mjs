@@ -3,7 +3,7 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
-import { loadEnvFile } from './_seed-utils.mjs';
+import { loadEnvFile, GRACEFUL_FETCH_FAILURE_EXIT_CODE } from './_seed-utils.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -24,6 +24,14 @@ const PROGRESS_INTERVAL = 5000;
 // The window it actually has to cover is one in-flight HTTP request, which is
 // seconds; 30s is an order of magnitude over that.
 export const GRACE_PERIOD_MS = 30 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+// Mirrors Military-Bases' `intervalMs` in seed-bundle-static-ref.mjs. The
+// seeder owns the "is the published data already stale" verdict because it is
+// the only party that knows the no-data fallback restored data it could not
+// refresh (#6845): without this, that fallback restores the active version's
+// own timestamp and exits green every day while the data ages forever — due
+// again next tick, indistinguishable from progress.
+export const SECTION_INTERVAL_MS = 30 * DAY_MS;
 const VALIDATION_BATCH_SIZE = 500;
 const USER_AGENT = 'worldmonitor-military-bases-seeder/1.0';
 
@@ -517,7 +525,24 @@ async function main() {
 
   if (!dataPath) {
     console.log('No data file found locally or on R2 — falling back to the published active version.');
-    await backfillSeedMetaFromActiveVersion(redisUrl, redisToken, prefix);
+    // Shallow on purpose (#6845): the corpus was validated when it was
+    // published, no new data arrived, and re-walking all ~125k members costs
+    // ~250 round trips — every day, proving nothing about freshness.
+    const backfilled = await backfillSeedMetaFromActiveVersion(redisUrl, redisToken, prefix, { deep: false });
+    const ageMs = Date.now() - backfilled.fetchedAt;
+    if (ageMs > SECTION_INTERVAL_MS) {
+      console.warn(
+        `  Published data is ${Math.floor(ageMs / DAY_MS)}d old — past the `
+          + `${Math.round(SECTION_INTERVAL_MS / DAY_MS)}d interval, and this fallback could not `
+          + `refresh it. Exiting ${GRACEFUL_FETCH_FAILURE_EXIT_CODE} so this tick is `
+          + 'distinguishable from progress instead of exiting green forever (#6845).',
+      );
+      // exitCode rather than process.exit(): the keep-alive sockets behind the
+      // Redis REST client need to drain, and tearing them down synchronously
+      // trips libuv assertions on some platforms.
+      process.exitCode = GRACEFUL_FETCH_FAILURE_EXIT_CODE;
+      return;
+    }
     return;
   }
 

@@ -19,6 +19,102 @@ const SOURCE = 'SIPRI Arms Transfers Database';
 export const DEFENSE_INDUSTRIAL_TTL_SECONDS = 30 * 24 * 3600;
 export const MIN_COMPLETE_SIPRI_IMPORTER_COUNT = 25;
 
+// A sweep fetches the catalog in CHUNKS across ticks instead of in one pass.
+//
+// Measured 2026-08-18 against atbackend.sipri.org: a single importer POST takes
+// mean 31.8s / p90 37.3s, not the ~10.6s this file was sized on. At concurrency
+// 8 the full ~200-importer refresh therefore needs ~800s, and it cannot be made
+// to fit: Railway hard-kills a cron container at 600s, so no fetch deadline and
+// no bundle budget can hold it. Raising concurrency is not the escape either --
+// sequential samples climbed 23.2s -> 37.3s as they accumulated, which reads as
+// upstream throttling, and the importer POSTs share a host with
+// seed-defense-industrial.
+//
+// So each tick refreshes the SLICE of importers whose data is oldest and lets
+// the rest keep their previous rows. The sweep is complete when every mapped
+// importer holds a row for the current window; only then does the completion
+// marker advance, so a mid-sweep tick leaves seed-meta old, stays "due", and is
+// picked up again on the next eligible tick. No cursor key is needed -- the
+// published snapshot IS the cursor.
+export const SIPRI_SWEEP_CHUNK = 56;
+
+// Stop TAKING new importers past this, then return what completed. The outer
+// fetchPhaseTimeoutMs aborts and discards the WHOLE phase, so without this a
+// slow tick throws away every row it already paid for.
+//
+// The gap to fetchPhaseTimeoutMs (340s) is 120s, and that gap is the point: this
+// budget only stops workers PICKING UP work, it cannot cancel a request already
+// in flight. A live tick on 2026-08-18 took 135s for a single batch of 8 because
+// two importers returned HTTP 500 and retried, so the worst in-flight chain is
+// ~35s + 1s backoff + ~35s + 2s + ~35s = ~110s. A worker that grabs an importer
+// one millisecond inside the budget must still land before the hard deadline.
+export const SIPRI_SWEEP_SOFT_BUDGET_MS = 220_000;
+
+// An importer row counts as current when it carries the live window AND was
+// fetched inside this horizon. The value is bounded on BOTH sides and neither
+// bound is obvious, so it is pinned by test rather than left to judgement:
+//
+//   > sweep duration (~8 days)   Rows refreshed on the first tick must still be
+//                                current on the last one. A shorter horizon
+//                                expires the head of the sweep before the tail
+//                                lands, so `unfetched` never reaches 0, the
+//                                completion marker is never written, and the
+//                                section stays due forever — a livelock that
+//                                looks exactly like the bug this replaced.
+//   < refresh interval (14 days) When the section next comes due, EVERY row must
+//                                read stale so a fresh sweep starts. A longer
+//                                horizon leaves them all current, the sweep has
+//                                nothing to select, and it completes instantly
+//                                without fetching anything — silent staleness.
+//
+// Measured inputs: ~40 importers land per tick once the 220s soft budget and
+// SIPRI's retry behaviour are accounted for, so 200 importers is ~5 ticks; the
+// section leads 2 of every 3 rotation days, so a sweep spans ~8 days. 10 sits
+// between that and the 14-day refresh interval with ~2 days of margin on each
+// side. The section interval was widened 10d -> 14d to buy the upper margin --
+// SIPRI publishes 5-year windows annually, so a fortnightly refresh loses
+// nothing.
+export const SIPRI_SWEEP_HORIZON_MS = 10 * 24 * 3600 * 1000;
+
+/**
+ * Importers still owed a refresh this sweep, oldest first.
+ *
+ * Deliberately derived from the published snapshot rather than a cursor key:
+ * a cursor can disagree with the data (crash between write and publish, a
+ * restored backup, a manual edit) and then silently skip a slice forever. This
+ * cannot -- if a row is missing or stale it is selected, and if it is current
+ * it is not.
+ *
+ * @param {Array<{iso2: string}>} candidates mapped importers from the catalog
+ * @param {any} previousSnapshot last published snapshot
+ * @param {number} windowEndYear the window the current sweep is filling
+ * @param {number} nowMs
+ */
+export function selectSweepImporters(candidates, previousSnapshot, windowEndYear, nowMs = Date.now()) {
+  const rows = previousSnapshot?.importers || {};
+  const ageOf = (iso2) => {
+    const row = rows[iso2];
+    if (!row) return Number.POSITIVE_INFINITY;
+    // A new window invalidates every row at once -- that is the annual re-sweep.
+    if (Number(row?.window?.endYear) !== windowEndYear) return Number.POSITIVE_INFINITY;
+    const at = Date.parse(row?.fetchedAt || '');
+    if (!Number.isFinite(at)) return Number.POSITIVE_INFINITY;
+    return nowMs - at;
+  };
+  // Strictly OUTSIDE the horizon. An earlier draft filtered `age > 0`, which is
+  // true of every row that has ever been written: nothing was ever current,
+  // `unfetched` could never reach 0, and the completion marker would never have
+  // been written. The sweep would have livelocked in exactly the shape of the
+  // bug it replaces.
+  const pending = candidates
+    .map((c) => ({ ...c, age: ageOf(c.iso2) }))
+    .filter((c) => c.age > SIPRI_SWEEP_HORIZON_MS);
+  // Oldest first so a repeatedly-failing importer cannot monopolise the slice:
+  // once fetched its age resets and it sorts to the back.
+  pending.sort((a, b) => b.age - a.age);
+  return pending;
+}
+
 function round4(value) {
   return Math.round(value * 10_000) / 10_000;
 }
@@ -188,24 +284,28 @@ function sipriFilters(importerId, startYear, endYear) {
 export async function fetchSipriSupplierDependencies({
   fetchFn = fetch,
   baseUrl = process.env.SIPRI_ARMS_API_BASE_URL || DEFAULT_SIPRI_BASE_URL,
-  // 8, not 4, and the ceiling below is the reason it can go no higher.
+  // 8 is a POLITENESS ceiling, not a throughput dial. Do not raise it to chase
+  // the deadline — the sweep above is what makes the work fit.
   //
-  // This issues one POST per mapped importer — ~200 of them (the catalog is 385
-  // entries, ~185 of which are non-state actors that map to no ISO2). SIPRI
-  // answers in ~10.6s regardless of payload size; even `getMaxYear`, which
-  // returns four bytes, takes ~6.8s. At concurrency 4 that is 50 requests per
-  // worker, ~547s, against a 390s fetchPhaseTimeoutMs — the fetch phase could
-  // never finish, so it burned the whole deadline and exited 75 on every run.
+  // History: this was 4, then 8 (#6807), each time sized on a ~10.6s per-request
+  // model. Measured 2026-08-18 the real figure is mean 31.8s / p90 37.3s, so the
+  // full ~200-importer pass needs ~800s at concurrency 8 and blew its 390s
+  // deadline on every run — 390.9s then exit 75, which left 179s of the 570s
+  // bundle budget and deferred every remaining section (they each need >=190s).
+  // That is why military:arms-suppliers:complete:v1 had never been written.
   //
-  // That is also why seed-bundle-static-ref published nothing: a 390s failure
-  // inside a 570s bundle budget left 179s, and every remaining due section
-  // needed >=190s. mineralProduction and submarineCables had no key in Redis at
-  // all as a result (#6799).
-  //
-  // At 8 the same work is ~277s, inside the deadline with ~110s of margin.
+  // Raising concurrency does not recover it. Sequential samples climbed
+  // 23.2s -> 37.3s as they accumulated, which reads as upstream throttling, and
+  // these POSTs share a host with seed-defense-industrial — a block here takes
+  // that seeder down too.
   concurrency = 8,
   delayMs = 150,
   logger = console,
+  // The slice this tick is allowed to refresh. Undefined = every mapped
+  // importer, which is the shape the unit tests and any one-shot manual run use.
+  selectImporters = null,
+  softBudgetMs = SIPRI_SWEEP_SOFT_BUDGET_MS,
+  now = () => Date.now(),
 } = {}) {
   const [maxYearValue, catalog] = await Promise.all([
     fetchJson(`${baseUrl}/trades/getMaxYear`, undefined, fetchFn),
@@ -236,14 +336,29 @@ export async function fetchSipriSupplierDependencies({
     }
     importerByIso2.set(importer.iso2, importer);
   }
-  const uniqueImporters = [...importerByIso2.values()];
+  const catalogImporters = [...importerByIso2.values()];
+  // selectImporters returns the slice owed a refresh; everything it leaves out
+  // keeps its previously published row via buildSipriSupplierSnapshot.
+  const uniqueImporters = typeof selectImporters === 'function'
+    ? selectImporters(catalogImporters, maxYear)
+    : catalogImporters;
+  const sweepPending = catalogImporters.length - uniqueImporters.length;
   const output = {};
   const unmapped = new Map();
   const failedImporters = [];
   let cursor = 0;
 
+  const fetchStartedAt = now();
+  let budgetStoppedAt = 0;
   async function worker() {
     while (cursor < uniqueImporters.length) {
+      // Check BEFORE taking work, not after: the outer fetchPhaseTimeoutMs
+      // aborts and discards the entire phase, so a worker that starts a 37s
+      // request it cannot finish costs every row this tick already paid for.
+      if (softBudgetMs > 0 && now() - fetchStartedAt > softBudgetMs) {
+        budgetStoppedAt = uniqueImporters.length - cursor;
+        return;
+      }
       const importer = uniqueImporters[cursor++];
       try {
         const body = sipriFilters(importer.EntityId, startYear, maxYear);
@@ -284,7 +399,26 @@ export async function fetchSipriSupplierDependencies({
       .join(', ');
     logger.warn(`  SIPRI importer requests failed (${failedImporters.length}): ${preview}`);
   }
-  return { importers: output, failedImporters, windowEndYear: maxYear };
+  const unfetched = budgetStoppedAt + sweepPending;
+  if (budgetStoppedAt > 0) {
+    logger.warn(
+      `  SIPRI soft budget reached after ${Math.round((now() - fetchStartedAt) / 1000)}s — `
+      + `${budgetStoppedAt} importer(s) left for the next tick`,
+    );
+  }
+  return {
+    importers: output,
+    failedImporters,
+    windowEndYear: maxYear,
+    sweep: {
+      catalogCount: catalogImporters.length,
+      attempted: uniqueImporters.length,
+      fetched: Object.keys(output).length,
+      // Sections this tick did not even attempt: deliberately deferred by the
+      // slice, plus any the soft budget cut off.
+      unfetched,
+    },
+  };
 }
 
 export async function buildWorldBankIndustrialSnapshot({
@@ -311,39 +445,66 @@ export async function buildSipriSupplierSnapshot({
   // map directly, while production returns stage diagnostics alongside it.
   const fetched = result?.importers || result || {};
   const failures = Array.isArray(result?.failedImporters) ? result.failedImporters : [];
+  const sweep = result?.sweep || null;
   const fetchedAt = now().toISOString();
   const fetchedImporterCount = Object.keys(fetched).length;
-  if (failures.length === 0 && fetchedImporterCount < minimumCompleteImporterCount) {
-    throw new Error(
-      `SIPRI complete refresh returned only ${fetchedImporterCount} positive importer rows; `
-      + `minimum is ${minimumCompleteImporterCount}`,
-    );
-  }
 
-  const importers = Object.fromEntries(Object.entries(fetched).map(([iso2, dependency]) => [
-    iso2,
-    { ...dependency, fetchedAt, retained: false },
-  ]));
+  // Carry EVERY previously published row forward, then overlay this tick's
+  // slice. Before chunking only failures were retained, because a pass either
+  // covered the whole catalog or was a failure; now a healthy tick deliberately
+  // refreshes ~56 of ~200 and the other ~144 must survive untouched, keeping
+  // their original fetchedAt so selectSweepImporters can still see their age.
+  const importers = {};
   let preservedImporterCount = 0;
-  for (const failure of failures) {
-    const previous = previousSnapshot?.importers?.[failure.iso2];
-    if (!previous) continue;
-    importers[failure.iso2] = {
+  for (const [iso2, previous] of Object.entries(previousSnapshot?.importers || {})) {
+    importers[iso2] = {
       ...previous,
       fetchedAt: previous.fetchedAt || previousSnapshot.fetchedAt || '',
       retained: true,
     };
     preservedImporterCount += 1;
   }
+  for (const [iso2, dependency] of Object.entries(fetched)) {
+    if (importers[iso2]) preservedImporterCount -= 1;
+    importers[iso2] = { ...dependency, fetchedAt, retained: false };
+  }
+
+  // The floor applies to the MERGED snapshot, never to one tick's slice. Judging
+  // a chunk by it would reject every healthy sweep tick, since a slice is
+  // smaller than the floor by design.
+  const mergedImporterCount = Object.keys(importers).length;
+  if (failures.length === 0 && mergedImporterCount < minimumCompleteImporterCount) {
+    throw new Error(
+      `SIPRI snapshot holds only ${mergedImporterCount} positive importer rows; `
+      + `minimum is ${minimumCompleteImporterCount}`,
+    );
+  }
+
+  // 'ok' is what writes the completion marker, and the marker is what stops the
+  // section being due. It must therefore mean "the sweep finished", not "this
+  // tick finished" -- otherwise the first chunk would mark the whole refresh
+  // complete and the remaining ~144 importers would never be revisited.
+  const sweepComplete = sweep ? sweep.unfetched === 0 : true;
+  const status = failures.length === 0 && sweepComplete ? 'ok' : 'partial';
 
   return {
     importers,
     stage: {
-      status: failures.length > 0 ? 'partial' : 'ok',
+      status,
       importerCount: fetchedImporterCount,
       failedImporterCount: failures.length,
-      preservedImporterCount,
+      preservedImporterCount: Math.max(0, preservedImporterCount),
       windowEndYear: Number(result?.windowEndYear) || 0,
+      ...(sweep
+        ? {
+          sweep: {
+            catalogCount: sweep.catalogCount,
+            refreshedThisTick: fetchedImporterCount,
+            remaining: sweep.unfetched,
+            complete: sweepComplete,
+          },
+        }
+        : {}),
     },
     fetchedAt,
   };

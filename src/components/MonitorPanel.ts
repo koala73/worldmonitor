@@ -4,7 +4,7 @@ import type { Monitor, NewsItem } from '@/types';
 import { MONITOR_COLORS } from '@/config';
 import { generateId, formatTime, getCSSColor } from '@/utils';
 import { sanitizeUrl } from '@/utils/sanitize';
-import { h, replaceChildren, clearChildren } from '@/utils/dom-utils';
+import { h, replaceChildren } from '@/utils/dom-utils';
 
 export class MonitorPanel extends Panel {
   private monitors: Monitor[] = [];
@@ -17,8 +17,6 @@ export class MonitorPanel extends Panel {
   }
 
   private renderInput(): void {
-    clearChildren(this.content);
-
     const input = h('input', {
       type: 'text',
       className: 'monitor-input',
@@ -37,9 +35,9 @@ export class MonitorPanel extends Panel {
     const monitorsList = h('div', { id: 'monitorsList' });
     const monitorsResults = h('div', { id: 'monitorsResults' });
 
-    this.content.appendChild(inputContainer);
-    this.content.appendChild(monitorsList);
-    this.content.appendChild(monitorsResults);
+    // Route through the sanctioned helper (#6557): the monitor UI is the
+    // panel's authoritative content — atomic replace with error-state clear.
+    this.setContentNodes(inputContainer, monitorsList, monitorsResults);
 
     this.renderMonitorsList();
   }

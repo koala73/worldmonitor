@@ -1,10 +1,15 @@
 #!/usr/bin/env node
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 
 const DEFAULT_HEALTH_URL = 'https://api.worldmonitor.app/api/health?compact=1';
 const BASELINE_URL = new URL('./seed-freshness-baseline.json', import.meta.url);
+// api/health.js only serves a cached verdict for 60 seconds. Allow its maximum
+// 20-second request timeout too, so a valid snapshot cannot be rejected solely
+// because the response arrived at the end of the monitor's fetch window.
+export const MAX_HEALTH_OBSERVATION_AGE_MS = 80 * 1000;
 
 export function validateCompactHealthPayload(payload) {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -376,7 +381,40 @@ export function formatAcceptanceReport(
   return { info, errors, failed: errors.length > 0 };
 }
 
+export function normalizeCheckedAt(checkedAt, now = Date.now()) {
+  if (!isUtcIsoInstant(checkedAt)) {
+    throw new Error('Compact health payload checkedAt must be a valid UTC ISO instant');
+  }
+  const checkedAtMs = Date.parse(checkedAt);
+  const ageMs = now - checkedAtMs;
+  if (ageMs < 0 || ageMs > MAX_HEALTH_OBSERVATION_AGE_MS) {
+    throw new Error('Compact health payload checkedAt is outside the accepted observation window');
+  }
+  return new Date(checkedAtMs).toISOString();
+}
+
+/**
+ * One machine-readable observation, built from the exact same fail-closed split
+ * and report as the human log. The workflow status publisher consumes this;
+ * keeping it here prevents the text and machine verdicts from drifting apart.
+ */
+export function buildAcceptanceObservation(payload, baseline, now = Date.now()) {
+  const checkedAt = normalizeCheckedAt(payload?.checkedAt, now);
+  const acceptance = applyAcceptanceBaseline(findOperationalProblems(payload, now), baseline, now);
+  return {
+    version: 1,
+    checkedAt,
+    acceptance,
+    report: formatAcceptanceReport(acceptance, checkedAt),
+  };
+}
+
 async function main() {
+  const { values } = parseArgs({
+    args: process.argv.slice(2),
+    options: { 'json-output': { type: 'string' } },
+    strict: true,
+  });
   const healthUrl = process.env.HEALTH_URL || DEFAULT_HEALTH_URL;
   const response = await fetch(healthUrl, {
     headers: { 'User-Agent': 'worldmonitor-seed-freshness-monitor/1.0' },
@@ -387,10 +425,10 @@ async function main() {
   }
 
   const payload = await response.json();
-  const report = formatAcceptanceReport(
-    applyAcceptanceBaseline(findOperationalProblems(payload), readAcceptanceBaseline()),
-    payload.checkedAt,
-  );
+  const observation = buildAcceptanceObservation(payload, readAcceptanceBaseline());
+  const outputPath = values['json-output'];
+  if (outputPath) writeFileSync(outputPath, `${JSON.stringify(observation, null, 2)}\n`);
+  const { report } = observation;
   for (const line of report.info) console.log(line);
   for (const line of report.errors) console.error(line);
   if (report.failed) process.exitCode = 1;

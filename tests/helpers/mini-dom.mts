@@ -121,6 +121,13 @@ export class MiniNode extends EventTarget {
     return this.childNodes.filter((child) => child instanceof MiniElement).length;
   }
 
+  contains(other: MiniNode | null): boolean {
+    for (let node: MiniNode | null = other; node; node = node.parentNode) {
+      if (node === this) return true;
+    }
+    return false;
+  }
+
   get textContent(): string {
     return this.childNodes.map((child) => child.textContent ?? '').join('');
   }

@@ -5,9 +5,11 @@ import type { StoryData } from '@/services/story-data';
 import { generateStoryDeepLink, getShareUrls, shareTexts } from '@/services/story-share';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 
 
 let modalEl: HTMLElement | null = null;
+let focusTrap: FocusTrap | null = null;
 let currentDataUrl: string | null = null;
 let currentBlob: Blob | null = null;
 let currentData: StoryData | null = null;
@@ -72,6 +74,10 @@ export function openStoryModal(data: StoryData): void {
   modalEl.querySelector('.story-copy')?.addEventListener('click', () => currentData && copyDeepLink(currentData));
 
   document.body.appendChild(modalEl);
+  focusTrap = createFocusTrap(modalEl, {
+    initialFocus: () => modalEl?.querySelector<HTMLElement>('.story-close-x') ?? null,
+  });
+  focusTrap.activate();
 
   requestAnimationFrame(async () => {
     if (!modalEl) return;
@@ -111,6 +117,8 @@ async function renderAndDisplay(data: StoryData): Promise<void> {
 
 export function closeStoryModal(): void {
   if (modalEl) {
+    focusTrap?.deactivate();
+    focusTrap = null;
     modalEl.remove();
     modalEl = null;
     currentDataUrl = null;

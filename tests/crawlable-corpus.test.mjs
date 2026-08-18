@@ -506,6 +506,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.crises.count, 4);
       assert.equal(manifest.sections.tools.count, 2);
       assert.equal(manifest.sections.research.count, 1);
+      assert.equal(manifest.sections.useCases.count, 3);
       assert.equal(manifest.sections.sources.count, 1);
       assert.equal(manifest.generatorContentVersion, '2026-08-12');
       const sitemapEntries = buildSitemapEntries({
@@ -535,6 +536,8 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.tools.routes,
         manifest.sections.research.index,
         ...manifest.sections.research.routes,
+        manifest.sections.useCases.index,
+        ...manifest.sections.useCases.routes,
         manifest.sections.changelog.index,
         ...manifest.sections.changelog.routes,
         manifest.sections.sources.index,

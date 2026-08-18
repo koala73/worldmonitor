@@ -123,6 +123,9 @@ function makeInstance(initialTab = 'settings') {
     classList: { add() {} },
     querySelector() { return null; },
   };
+  // Full FocusTrap shape, so extending this harness past open() cannot fail on a
+  // missing method rather than on the behavior under test.
+  instance.focusTrap = { activate() {}, deactivate() {} };
   instance.escapeHandler = () => {};
   instance.unsubscribeEntitlement = null;
   instance.unsubscribeEntitlementVerification = null;

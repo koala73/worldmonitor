@@ -6,6 +6,7 @@ import { SITE_VARIANT } from '@/config';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { track, trackMapViewChange, trackThemeChanged } from '@/services/analytics';
 import { getCurrentTheme, setTheme, showToast } from '@/utils';
+import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   overlayHistory,
   type OverlayCloseOrigin,
@@ -22,6 +23,8 @@ type MobilePrimaryNavCallbacks = {
 export class MobilePrimaryNav {
   private readonly listeners = new AbortController();
   private menuOpenFrame: number | null = null;
+  private menuTrap: FocusTrap | null = null;
+  private regionTrap: FocusTrap | null = null;
   private regionOpenFrame: number | null = null;
   private alertScrollFrame: number | null = null;
   private authWidget: AuthHeaderWidget | null = null;
@@ -82,6 +85,7 @@ export class MobilePrimaryNav {
     this.menuOpenFrame = null;
     menu.classList.remove('open');
     overlay.classList.remove('open');
+    this.menuTrap?.deactivate();
     const sheetOpen = document.getElementById('regionBottomSheet')?.classList.contains('open');
     if (!sheetOpen) document.body.style.overflow = '';
     if (origin === 'control') overlayHistory.close('menu');
@@ -101,6 +105,12 @@ export class MobilePrimaryNav {
     this.menuOpenFrame = null;
     this.regionOpenFrame = null;
     this.alertScrollFrame = null;
+    // Teardown, not a user-initiated close: release each trap's document
+    // listener without handing focus back to a control that is also going away.
+    this.menuTrap?.deactivate({ restoreFocus: false });
+    this.menuTrap = null;
+    this.regionTrap?.deactivate({ restoreFocus: false });
+    this.regionTrap = null;
   }
 
   private setupTabBar(): void {
@@ -239,6 +249,8 @@ export class MobilePrimaryNav {
     this.menuOpenFrame = requestAnimationFrame(() => {
       this.menuOpenFrame = null;
       menu.classList.add('open');
+      this.menuTrap ??= createFocusTrap(menu);
+      this.menuTrap.activate();
     });
     document.body.style.overflow = 'hidden';
     const close = (origin: OverlayCloseOrigin) => this.closeMenu(origin);
@@ -255,6 +267,8 @@ export class MobilePrimaryNav {
     this.regionOpenFrame = requestAnimationFrame(() => {
       this.regionOpenFrame = null;
       sheet.classList.add('open');
+      this.regionTrap ??= createFocusTrap(sheet);
+      this.regionTrap.activate();
     });
     const close = (origin: OverlayCloseOrigin) => this.closeRegion(origin);
     if (replaceOverlayId) overlayHistory.replaceInPlace(replaceOverlayId, 'region', close);
@@ -273,6 +287,7 @@ export class MobilePrimaryNav {
     this.regionOpenFrame = null;
     sheet.classList.remove('open');
     backdrop.classList.remove('open');
+    this.regionTrap?.deactivate();
     document.body.style.overflow = '';
     if (origin === 'control') overlayHistory.close('region');
   }

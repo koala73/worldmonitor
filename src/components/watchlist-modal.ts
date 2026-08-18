@@ -17,6 +17,7 @@ import {
 import { MARKET_SYMBOLS, REGION_LABELS, STOCK_CATALOG } from '@/config/markets';
 import { WatchlistEditor } from './WatchlistEditor';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { createFocusTrap } from '@/utils/focus-trap';
 
 
 let activeOverlay: HTMLElement | null = null;
@@ -44,10 +45,12 @@ export function openWatchlistModal(): void {
 
   const close = () => {
     document.removeEventListener('keydown', onDocumentKeydown);
+    focusTrap.deactivate();
     editor.destroy();
     overlay.remove();
     if (activeOverlay === overlay) activeOverlay = null;
   };
+  const focusTrap = createFocusTrap(overlay);
 
   const onDocumentKeydown = (event: KeyboardEvent) => {
     if (event.key === 'Escape') close();
@@ -171,6 +174,8 @@ export function openWatchlistModal(): void {
   document.addEventListener('keydown', onDocumentKeydown);
   renderRegions();
   renderCatalog();
+  // Capture the opener for focus restore; the editor then takes initial focus.
+  focusTrap.activate();
   editor.focus();
 
   modal.querySelector<HTMLButtonElement>('#wmMarketCancelBtn')?.addEventListener('click', close);

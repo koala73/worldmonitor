@@ -192,9 +192,23 @@ describe('Panel content-write invariant (#6557)', () => {
         /this\.cancelPendingContentWrite\(\)/,
         `Panel.${helper} must cancel a pending debounced write, or a queued setSafeContent overwrites the recovered DOM 150ms later`,
       );
-      assert.match(
-        code.trimStart(),
-        /^[^\n]*\n\s*if \(this\._locked\) return;/,
+      // #6714: clearErrorState must run before the bail — it paints nothing —
+      // and the bail must still precede every write. Order by index so
+      // stripped-comment blank lines cannot defeat the pin.
+      const clearIdx = code.indexOf('this.clearErrorState()');
+      const bailIdx = code.indexOf('if (this._locked) return;');
+      const writeIdx = [
+        code.indexOf('this.cancelPendingContentWrite()'),
+        code.indexOf('this.replaceContent('),
+        code.indexOf('setTrustedHtml('),
+        code.indexOf('this.pendingContentHtml ='),
+      ].filter((i) => i !== -1);
+      assert.ok(
+        clearIdx !== -1 && bailIdx !== -1 && clearIdx < bailIdx,
+        `Panel.${helper} must clear the error state BEFORE it bails on _locked — a bail before the clear strands the error chip and backoff rung on a locked panel (#6714)`,
+      );
+      assert.ok(
+        writeIdx.every((i) => i > bailIdx),
         `Panel.${helper} must bail on _locked BEFORE it writes — a bail after the write still paints premium content over the upgrade CTA`,
       );
     }

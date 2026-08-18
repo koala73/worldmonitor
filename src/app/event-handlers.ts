@@ -282,6 +282,7 @@ export class EventHandlerManager implements AppModule {
   private boundMissionKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundEmbedModalKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private missionPresetPopover: HTMLElement | null = null;
+  private missionPresetReturnFocus: HTMLElement | null = null;
   private missionDataRefreshTimer: number | null = null;
   private authStateUnsubscribers: Array<() => void> = [];
   private proGateUnsubscribers: Array<() => void> = [];
@@ -865,6 +866,9 @@ export class EventHandlerManager implements AppModule {
 
   private openMissionPresetPopover(anchor: HTMLElement | null, mobile: boolean): void {
     this.closeMissionPresetPopover();
+    // The desktop trigger (#missionPresetBtn) is display:none on mobile, where the
+    // popover opens from the menu item instead, so remember the real opener.
+    this.missionPresetReturnFocus = anchor ?? document.getElementById('missionPresetBtn');
 
     const active = loadStoredMissionPreset();
     const popover = document.createElement('div');
@@ -973,9 +977,17 @@ export class EventHandlerManager implements AppModule {
       this.missionPresetPopover.removeEventListener('keydown', this.boundMissionKeydownHandler);
       this.boundMissionKeydownHandler = null;
     }
+    const hadFocus = this.missionPresetPopover?.contains(document.activeElement) ?? false;
     this.missionPresetPopover?.remove();
     this.missionPresetPopover = null;
-    document.getElementById('missionPresetBtn')?.setAttribute('aria-expanded', 'false');
+    const trigger = document.getElementById('missionPresetBtn');
+    trigger?.setAttribute('aria-expanded', 'false');
+    // Removing the popover while focus was inside it drops focus to <body>;
+    // hand it back to whichever control opened it. Falling back to the desktop
+    // trigger keeps the pre-existing behavior when no opener was recorded.
+    const opener = this.missionPresetReturnFocus;
+    this.missionPresetReturnFocus = null;
+    if (hadFocus) (opener?.isConnected ? opener : trigger)?.focus();
   }
 
   private getMissionDefaultLayers(): MapLayers {
