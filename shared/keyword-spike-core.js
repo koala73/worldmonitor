@@ -16,7 +16,7 @@
 
 import { SUPPRESSED_TRENDING_TERMS, escapeRegex, tokenize } from './text-analysis-core.js';
 // #6428: spike "source diversity" counts publishers, not feed labels.
-import { publisherFamiliesFor } from './publisher-families.js';
+import { PUBLISHER_FAMILIES, publisherFamilyFor } from './publisher-families.js';
 
 export const CVE_PATTERN = /CVE-\d{4}-\d{4,}/gi;
 export const APT_PATTERN = /APT\d+/gi;
@@ -152,8 +152,40 @@ export function evaluateSpikeDecision({ recentCount, baseline, minSpikeCount, sp
  * 7-day per-term history. Same decision function either way. A caller with no
  * sampled pre-window duration has no defensible baseline, so no spikes emit.
  *
- * stories: Array<{ title, lastSeenMs, sources?: string[] }>
+ * stories: Array<{ title, lastSeenMs, sources?: string[], link?: string }>
  */
+
+function displayNameForLabel(label) {
+  const family = publisherFamilyFor(label);
+  if (!family) return '';
+  return PUBLISHER_FAMILIES[family]?.publisher ?? String(label).trim();
+}
+
+function collectPublisherNames(stories) {
+  const byFamily = new Map();
+  for (const story of stories) {
+    if (!Array.isArray(story.sources)) continue;
+    for (const label of story.sources) {
+      const family = publisherFamilyFor(label);
+      if (!family || byFamily.has(family)) continue;
+      byFamily.set(family, displayNameForLabel(label));
+    }
+  }
+  return {
+    uniqueSources: byFamily.size,
+    sourceNames: [...byFamily.values()].sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+function sampleHeadlineFromStory(story) {
+  const names = collectPublisherNames([story]).sourceNames;
+  return {
+    title: story.title,
+    source: names.join(', '),
+    link: typeof story.link === 'string' ? story.link : '',
+  };
+}
+
 export function computeKeywordSpikesFromStories(stories, {
   nowMs,
   windowMs = ROLLING_WINDOW_MS,
@@ -202,11 +234,8 @@ export function computeKeywordSpikesFromStories(stories, {
     // shipping the term through several of its own feeds used to clear this
     // gate alone — and `uniqueSources` is surfaced to agents by
     // get_keyword_spikes as the diversity evidence for the alert.
-    const uniqueSources = new Set();
-    for (const story of record.recent) {
-      for (const family of publisherFamiliesFor(story.sources)) uniqueSources.add(family);
-    }
-    if (uniqueSources.size < MIN_SPIKE_SOURCE_COUNT) continue;
+    const publishers = collectPublisherNames(record.recent);
+    if (publishers.uniqueSources < MIN_SPIKE_SOURCE_COUNT) continue;
 
     spikes.push({
       term: record.display,
@@ -214,8 +243,12 @@ export function computeKeywordSpikesFromStories(stories, {
       baseline,
       multiplier,
       windowMs,
-      uniqueSources: uniqueSources.size,
-      sampleHeadlines: record.recent.slice(0, maxSampleHeadlines).map(s => s.title),
+      uniqueSources: publishers.uniqueSources,
+      sourceNames: publishers.sourceNames,
+      sampleHeadlines: (record.recent.some((story) => collectPublisherNames([story]).uniqueSources > 0)
+        ? record.recent.filter((story) => collectPublisherNames([story]).uniqueSources > 0)
+        : record.recent
+      ).slice(0, maxSampleHeadlines).map(sampleHeadlineFromStory),
     });
   }
 

@@ -8,6 +8,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
 
 import { isMilitaryCallsign, isMilitaryHex, detectAircraftType, UPSTREAM_TIMEOUT_MS } from './_shared';
+import { hasFiniteRequestBounds, normalizeBounds, type RequestBounds } from './_bounds';
 import { cachedFetchJson, getRawJson, readCachedJson, setCachedJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
@@ -27,13 +28,6 @@ const STALE_SNAPSHOT_NEG_TTL = 30;
 const quantize = (v: number, step: number) => Math.round(v / step) * step;
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 const BBOX_GRID_STEP = 1; // 1-degree grid (~111 km at equator)
-
-interface RequestBounds {
-  south: number;
-  north: number;
-  west: number;
-  east: number;
-}
 
 // Coverage is a property of the SNAPSHOT, not of the producer's query shape.
 //
@@ -66,15 +60,6 @@ function seedCovers(coverage: SeedCoverage, bounds: RequestBounds): boolean {
   );
 }
 
-
-function normalizeBounds(req: ListMilitaryFlightsRequest): RequestBounds {
-  return {
-    south: Math.min(req.swLat, req.neLat),
-    north: Math.max(req.swLat, req.neLat),
-    west: Math.min(req.swLon, req.neLon),
-    east: Math.max(req.swLon, req.neLon),
-  };
-}
 
 function filterFlightsToBounds(
   flights: ListMilitaryFlightsResponse['flights'],
@@ -468,6 +453,9 @@ export async function listMilitaryFlights(
   const redistributableOnly = requiresRedistributableProviders(ctx.request);
   try {
     if (!req.neLat && !req.neLon && !req.swLat && !req.swLon) return emptyResponse();
+    // #6249: a NaN/Infinity corner cannot be normalized into a meaningful
+    // bbox; answer empty instead of letting it reach the relay as garbage.
+    if (!hasFiniteRequestBounds(req)) return emptyResponse();
     const requestBounds = normalizeBounds(req);
 
     // Quantize bbox to a 1° grid so nearby map views share cache entries.

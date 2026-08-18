@@ -130,6 +130,14 @@ function htmlError(
   );
 }
 
+function proRequiredPage(): Response {
+  return htmlError(
+    'Pro Subscription Required',
+    'A WorldMonitor Pro subscription is required for this connection. Please subscribe and try again.',
+    403,
+  );
+}
+
 /**
  * The Pro gate's HTML rendering of the shared billing-verification contract
  * (#5622). Six JSON endpoints adopted that contract in #5600; this page was
@@ -433,13 +441,17 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
   const gate = checkProMcpAccess(ent, deps.now(), {
     backendConfigured: isEntitlementBackendConfigured(),
   });
-  if (gate) {
-    if (gate.kind === 'billing_verification') return billingVerificationPage(gate.denial);
-    return htmlError(
-      'Pro Subscription Required',
-      'A WorldMonitor Pro subscription is required for this connection. Please subscribe and try again.',
-      403,
-    );
+  // #6716: a CONFIRMED free account completes authorization. This is the last
+  // of the three edge gates and it must agree with grant-context, grant-mint,
+  // and Convex issuance — a free account that cleared consent and minted a
+  // grant only to fail on the final redirect is worse than one refused up
+  // front. Their token meters against the free allowance on every gated call
+  // and is restricted to cache-backed tools.
+  if (gate && gate.kind !== 'free_account') {
+    if (gate.kind === 'billing_verification') {
+      return billingVerificationPage(gate.denial);
+    }
+    return proRequiredPage();
   }
 
   // ----- 8. Issue the Convex mcpProTokens row -----
@@ -450,11 +462,7 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
   } catch (err) {
     if (err instanceof ProMcpIssueFailed) {
       if (err.kind === 'pro-required') {
-        return htmlError(
-          'Pro Subscription Required',
-          'A WorldMonitor Pro subscription is required for this connection. Please subscribe and try again.',
-          403,
-        );
+        return proRequiredPage();
       }
       if (err.kind === 'invalid-user-id') {
         return htmlError(

@@ -264,7 +264,25 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
   const gate = checkProMcpAccess(ent, now, {
     backendConfigured: isEntitlementBackendConfigured(),
   });
-  if (gate) return proMcpGateDenialResponse(gate);
+  // #6716: a CONFIRMED free account continues the handshake.
+  //
+  // The free allowance is selected only after a user-bound credential resolves,
+  // and this is one of the four gates on the only path to that credential
+  // (a `wm_` key is not an option — convex/apiKeys.ts requires `apiAccess`,
+  // which the free plan does not have). Refusing here made the allowance
+  // reachable only by accounts that had ALREADY been Pro, while
+  // SERVER_INSTRUCTIONS advertised it to every client on `initialize`.
+  //
+  // This widens ISSUANCE only. `checkProMcpAccess` still returns a denial for
+  // free accounts, `server/gateway.ts` and `server/_shared/premium-check.ts`
+  // still refuse them, and `api/mcp/dispatch.ts` restricts the allowance to
+  // cache-backed tools — so the credential grants nothing on its own.
+  //
+  // Every other denial kind still refuses: `insufficient_tier` (an expired or
+  // disabled paid row, or a malformed entitlement) and `billing_verification`
+  // (a lapse, or a read we could not trust). Minting on an unverifiable read
+  // would hand out credentials during an entitlement outage.
+  if (gate && gate.kind !== 'free_account') return proMcpGateDenialResponse(gate);
 
   // Mint the signed grant first (cheaper to fail before the Redis write).
   const exp = now + GRANT_TTL_MS;

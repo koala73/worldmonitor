@@ -3609,11 +3609,7 @@ async function extractCriticalSignalBundle(inputs) {
   // other's frames within the TTL — strength/confidence magnitudes are
   // model-dependent and probability-coupled.
   const criticalLlmOptions = getForecastLlmCallOptions('critical_signals');
-  const criticalRouteTag = [
-    (criticalLlmOptions.providerOrder || []).join('-') || 'default',
-    criticalLlmOptions.modelOverrides?.openrouter || 'table',
-    criticalLlmOptions.modelOverrides?.groq || 'table',
-  ].join('_').replace(/[^a-zA-Z0-9._/-]/g, '-');
+  const criticalRouteTag = buildCriticalSignalRouteTag(criticalLlmOptions);
   const cacheKey = `forecast:critical-signals:llm:${criticalRouteTag}:${buildCriticalSignalCandidateHash(candidates)}`;
   const fallbackSignalsFromCandidates = (coveredIndexes = new Set()) =>
     extractRegexCriticalNewsSignals(inputs, candidates.filter((item) => !coveredIndexes.has(item.candidateIndex)));
@@ -14683,6 +14679,56 @@ const FORECAST_LLM_PROVIDERS = [
   { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: GROQ_DEFAULT_MODEL, timeout: 20_000 },
 ];
 
+// PER-79 (upstream PR 3/3): generic OpenAI-compatible provider for the
+// forecast seeder. Activated ONLY when LLM_API_URL, LLM_API_KEY, and
+// LLM_MODEL are all set AND none of the named providers above (openrouter,
+// openrouter-free, openrouter-free-backup, groq) have a key. Resolved-time
+// append keeps the existing FORECAST_LLM_PROVIDERS table (and its
+// array-shape tests) intact. LLM_API_URL is the FULL chat/completions
+// endpoint verbatim (see SELF_HOSTING.md) and LLM_MODEL is required — the
+// strict all-three gate means there is no default model. Names only — never
+// echo the env values.
+const FORECAST_GENERIC_LLM_PROVIDER_SPEC = Object.freeze({
+  name: 'generic',
+  // envKey points at the BEARER credential, not the URL: the loop body and
+  // the runnable filter both read process.env[provider.envKey] as the
+  // Authorization token. The URL is captured separately in apiUrl below.
+  envKey: 'LLM_API_KEY',
+  envUrlKey: 'LLM_API_URL',
+  envModelKey: 'LLM_MODEL',
+  defaultTimeout: 60_000,
+});
+
+function isForecastGenericLlmReady() {
+  // All three envs must be present AND non-empty; the contract names only the
+  // names of the variables in any debug output, never their values.
+  return Boolean(
+    process.env.LLM_API_URL
+    && process.env.LLM_API_KEY
+    && process.env.LLM_MODEL,
+  );
+}
+
+function buildForecastGenericLlmProvider() {
+  // Caller (resolveForecastLlmProviders) has already asserted all three envs
+  // are non-empty via isForecastGenericLlmReady(), so reading them verbatim
+  // here is safe — no default fallback exists because the strict all-three
+  // gate forbids partial coverage.
+  const apiUrl = process.env.LLM_API_URL;
+  const model = process.env.LLM_MODEL;
+  const headers = { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA };
+  const apiKey = process.env.LLM_API_KEY;
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+  return {
+    name: FORECAST_GENERIC_LLM_PROVIDER_SPEC.name,
+    envKey: FORECAST_GENERIC_LLM_PROVIDER_SPEC.envKey,
+    apiUrl,
+    model,
+    headers,
+    timeout: FORECAST_GENERIC_LLM_PROVIDER_SPEC.defaultTimeout,
+  };
+}
+
 // market_implications does NOT fall back to groq. Groq's free tier caps at 100k
 // tokens/day and this stage alone needs ~114k (4,749 tokens x 24 hourly runs), so
 // the fallback 429s for most of the day. Reserving 20s of run budget for a provider
@@ -14864,7 +14910,49 @@ function resolveForecastLlmProviders(options = {}) {
         : provider.extraBody,
     });
   }
+  // PER-79 (upstream PR 3/3): append the generic OpenAI-compatible provider
+  // ONLY when all three envs are set AND the chain above matched no named
+  // provider (envKey for both openrouter and groq unset). The env check uses
+  // ONLY the names — never echo or log the values. Kept out of
+  // FORECAST_LLM_PROVIDERS so existing table-shape tests and the per-stage
+  // pinning in critical_signals / market_implications stay exact.
+  if (isForecastGenericLlmReady()
+    && !process.env.OPENROUTER_API_KEY
+    && !process.env.GROQ_API_KEY
+    && !seen.has(FORECAST_GENERIC_LLM_PROVIDER_SPEC.name)) {
+    const generic = buildForecastGenericLlmProvider();
+    const genericModel = generic.model;
+    const failFastOnTimeout = isDeepseekV4FlashModel(genericModel);
+    providers.push({
+      ...generic,
+      timeout: getLlmAttemptTimeoutMs(
+        genericModel,
+        FORECAST_GENERIC_LLM_PROVIDER_SPEC.defaultTimeout,
+        DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS,
+      ),
+      failFastOnTimeout,
+      extraBody: undefined,
+    });
+  }
   return providers.length > 0 ? providers : FORECAST_LLM_PROVIDERS;
+}
+
+// Hosted production must keep the pin-based critical_signals cache tag
+// (#4965): `providerOrder` then the openrouter/groq override slots. Replacing
+// that whole tag with the resolved runnable chain would change the hosted
+// key shape and bust the 20-minute Redis cache for no reason. Append the
+// generic name + model ONLY when generic is actually in the resolved chain
+// (self-host / last-resort). Changing LLM_MODEL then misses the old key
+// instead of serving stale frames into state-derived probabilities.
+function buildCriticalSignalRouteTag(options = {}) {
+  const pinTag = [
+    (options.providerOrder || []).join('-') || 'default',
+    options.modelOverrides?.openrouter || 'table',
+    options.modelOverrides?.groq || 'table',
+  ].join('_');
+  const generic = resolveForecastLlmProviders(options).find((provider) => provider.name === 'generic');
+  const genericSuffix = generic ? `_generic_${generic.model}` : '';
+  return `${pinTag}${genericSuffix}`.replace(/[^a-zA-Z0-9._/-]/g, '-');
 }
 
 function moveForecastLlmProviderToBack(options = {}, providerName = '') {
@@ -19103,6 +19191,7 @@ export {
   parseForecastProviderOrder,
   getForecastLlmCallOptions,
   getMarketImplicationsMinRunBudgetMs,
+  buildCriticalSignalRouteTag,
   FORECAST_LLM_RUN_BUDGET_MS,
   FORECAST_SEED_LOCK_TTL_MS,
   resolveForecastLlmProviders,

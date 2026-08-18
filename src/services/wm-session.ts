@@ -679,12 +679,16 @@ async function attemptWmSession(): Promise<SessionAttempt> {
   if (inflight) return inflight;
 
   const stored = loadFromStorage();
-  if (isFresh(stored)) {
+  // sessionStorage only stores {exp}. After reload the in-memory wms_
+  // token is gone; treating that expiry as a live session would send the
+  // first RPC cookie-only (the XP bug). Remint unless we already have a
+  // token. Do NOT write `cached = stored` first: a failed remint would
+  // then make the next attemptWmSession hit `isFresh(cached)` above and
+  // return OK with no token — the leftover that turned one transport
+  // mint blip into cookie-less 401s on every boot panel (WORLDMONITOR-WG).
+  if (isFresh(stored) && anonymousSessionHeaderToken) {
     cached = stored;
-    // sessionStorage only stores {exp}. After reload the in-memory wms_
-    // token is gone; short-circuiting here would send the first RPC
-    // cookie-only (the XP bug). Remint unless we already have a token.
-    if (anonymousSessionHeaderToken) return SESSION_ATTEMPT_OK;
+    return SESSION_ATTEMPT_OK;
   }
 
   const identityGenerationWhenStarted = sessionIdentityGeneration;
@@ -762,6 +766,14 @@ function withCredentials(init?: RequestInit): RequestInit {
 // instead of silently no-op'ing on the install guard. Without it, future
 // tests that wipe state and expect a fresh install would see a stale
 // `window.fetch` wrapper from a prior test.
+// Test-only: populate `cached` the way a successful mint does, without
+// going through attemptWmSession. The storage-prime helper used to rely
+// on writing `{exp}` into `cached` before remint; that path is gone so a
+// leftover failed remint cannot look like a live session.
+export function __primeWmSessionCacheForTests(exp: number): void {
+  cached = { exp };
+}
+
 export function __resetWmSessionForTests(): void {
   cached = null;
   inflight = null;
@@ -1000,8 +1012,20 @@ export function installWmSessionFetchInterceptor(): void {
     const replayAndReport = async (): Promise<Response> => {
       const replayed = await sendWith(new Headers(headers), requestClone ?? input);
       if (isCurrentSessionIdentity()) {
-        if (replayed.status === 401) noteRecoveryFailure({ reason: 'retry_401' }, path);
-        else noteRouteSuccess(path);
+        if (replayed.status === 401) {
+          // retry_401 means "a demonstrably fresh cookie was rejected".
+          // A 401 after a mint that never succeeded is guaranteed — we
+          // sent neither wms_ nor a newly issued cookie — so it must not
+          // corroborate a transport mint failure into a tab-wide blackout.
+          // The modal WORLDMONITOR-WG residual was exactly that: mint
+          // failed (network), then USNI / vessel-snapshot replayed
+          // cookie-less and tipped the quorum. sessionGeneration ticks
+          // only on a successful mint, which is also what the cookie-only
+          // test fixtures use (body is `{exp}` with no token).
+          if (anonymousSessionHeaderToken || sessionGeneration > 0) {
+            noteRecoveryFailure({ reason: 'retry_401' }, path);
+          }
+        } else noteRouteSuccess(path);
       }
       return replayed;
     };

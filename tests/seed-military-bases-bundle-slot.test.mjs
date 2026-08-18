@@ -103,7 +103,7 @@ test('parseArgs recognizes --force forms', () => {
 });
 
 test('atomicSwitch records the seeding duration so the next tick can be sized from a measurement', async () => {
-  const stub = stubRedis(() => ({ result: VERSION }));
+  const stub = stubRedis(() => ({ result: [1, VERSION, ''] }));
   try {
     await atomicSwitch(URL_BASE, TOKEN, '', VERSION, RECORDS, Number(VERSION), 214_000);
   } finally {
@@ -112,7 +112,8 @@ test('atomicSwitch records the seeding duration so the next tick can be sized fr
 
   const evalCall = stub.calls.find((c) => c.body[0] === 'EVAL');
   assert.ok(evalCall, 'atomicSwitch must publish through the EVAL script');
-  const payload = JSON.parse(evalCall.body.at(-1));
+  const keyCount = Number(evalCall.body[2]);
+  const payload = JSON.parse(evalCall.body[4 + keyCount]);
   assert.equal(payload.recordCount, RECORDS);
   assert.equal(
     payload.durationMs,

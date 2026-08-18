@@ -478,7 +478,7 @@
         "outages": "インターネット障害の切り替え",
         "tradeRoutes": "貿易ルートの切り替え",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "ダークモードに切り替え",
@@ -1192,7 +1192,7 @@
         "radiationSpike": "放射線スパイク",
         "radiationElevated": "放射線上昇",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1300,7 +1300,7 @@
           "geoBoundaries": "非武装地帯、停戦ライン、係争境界線",
           "ciiChoropleth": "国家不安定度指数ヒートマップ — CIIスコアで国を色分け（緑=安定、赤=危機的）",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "影響: 地震、気象、抗議活動、障害"
@@ -1672,7 +1672,9 @@
     "breakingNews": {
       "critical": "緊急",
       "high": "重要",
-      "dismiss": "閉じる"
+      "dismiss": "閉じる",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "速報アラート",
@@ -3262,7 +3264,8 @@
     "retry": "Retry",
     "refresh": "Refresh",
     "all": "すべて",
-    "cancel": "キャンセル"
+    "cancel": "キャンセル",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "ディスプレイ",

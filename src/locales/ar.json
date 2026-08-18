@@ -486,7 +486,7 @@
         "outages": "تبديل انقطاعات الإنترنت",
         "tradeRoutes": "تبديل طرق التجارة",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "التبديل إلى الوضع الداكن",
@@ -1152,7 +1152,7 @@
         "radiationSpike": "ارتفاع حاد في الإشعاع",
         "radiationElevated": "إشعاع مرتفع",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "زلزال",
@@ -1260,7 +1260,7 @@
           "geoBoundaries": "مناطق منزوعة السلاح وخطوط الهدنة والحدود المتنازع عليها",
           "ciiChoropleth": "خريطة حرارية لمؤشر عدم الاستقرار — تلوّن الدول حسب درجة CII (أخضر=مستقر، أحمر=حرج)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "يؤثر على: الزلازل، الطقس، الاحتجاجات، الانقطاعات"
@@ -1800,7 +1800,9 @@
     "breakingNews": {
       "critical": "حرج",
       "dismiss": "تجاهل",
-      "high": "مرتفع"
+      "high": "مرتفع",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "giving": {
       "activityIndex": "مؤشر النشاط",
@@ -3334,7 +3336,8 @@
     "all": "الكل",
     "loadingGiving": "جارٍ تحميل بيانات العطاء العالمي",
     "rateLimitedMarket": "بيانات السوق غير متاحة مؤقتاً (تقييد معدل الطلبات) — ستتم إعادة المحاولة قريباً",
-    "cancel": "إلغاء"
+    "cancel": "إلغاء",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "العرض",

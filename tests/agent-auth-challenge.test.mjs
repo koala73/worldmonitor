@@ -65,12 +65,15 @@ describe('agent-auth WWW-Authenticate challenge (/agent/auth)', () => {
     assert.ok(rewrite, 'expected a rewrite for /agent/auth');
     assert.equal(rewrite.destination, '/api/agent-auth');
 
-    const catchAllIndex = vercelConfig.rewrites.findIndex(
+    // #6575: the dashboard catch-all rewrite is gone — unknown paths 404.
+    // /agent/auth keeps its explicit endpoint rewrite, which cannot be shadowed.
+    const catchAll = vercelConfig.rewrites.find(
       (r) => r.destination === '/dashboard.html' && r.source.startsWith('/((?!'),
     );
-    assert.ok(
-      vercelConfig.rewrites.indexOf(rewrite) < catchAllIndex,
-      '/agent/auth rewrite must precede the SPA catch-all so it is not swallowed',
+    assert.equal(catchAll, undefined, 'dashboard catch-all rewrite must stay removed (#6575)');
+    const dashboardShadow = vercelConfig.rewrites.find(
+      (r) => r.destination === '/dashboard.html' && r.source === '/agent/auth',
     );
+    assert.equal(dashboardShadow, undefined, '/agent/auth must not be rewritten to the dashboard');
   });
 });

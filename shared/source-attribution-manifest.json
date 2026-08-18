@@ -366,6 +366,23 @@
       ]
     },
     {
+      "host": "amna.gr",
+      "provider": "amna.gr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit amna.gr and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "amu.tv",
       "provider": "Amu TV",
       "kind": "feed",
@@ -2004,6 +2021,20 @@
       ]
     },
     {
+      "host": "catalogue.data.gov.bc.ca",
+      "provider": "B.C. Evacuation Orders and Alerts",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence - British Columbia (OGL-BC). The B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33 explicitly assigns OGL-BC to this ArcGIS layer.",
+      "attribution": "Contains information licensed under the Open Government Licence - British Columbia. https://catalogue.data.gov.bc.ca/dataset/7efd46d0-b5d3-4dff-af80-d376c42aec33",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/bc-emergency-info.mjs"
+        }
+      ]
+    },
+    {
       "host": "cbcnewshd-f.akamaihd.net",
       "provider": "cbcnewshd-f.akamaihd.net",
       "kind": "feed",
@@ -2306,6 +2337,23 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit cnn.com and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "cnn.gr",
+      "provider": "cnn.gr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit cnn.gr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
@@ -3297,6 +3345,23 @@
       ]
     },
     {
+      "host": "emergencyalert.saskatchewan.ca",
+      "provider": "SaskAlert",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public SaskAlert mobile JSON at /sapublic/feed.json plus same-host CAP 1.2 JSON details. Government of Saskatchewan website terms exclude some connected subsites; this host is the official public alert feed authorized for canadaAlerts ingest under #6659. Not Pelmorex LMD.",
+      "attribution": "SaskAlert, Government of Saskatchewan. https://emergencyalert.saskatchewan.ca/",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/saskalert.mjs"
+        },
+        {
+          "path": "scripts/source-attribution.mjs"
+        }
+      ]
+    },
+    {
       "host": "en.irna.ir",
       "provider": "en.irna.ir",
       "kind": "feed",
@@ -3499,6 +3564,23 @@
       "references": [
         {
           "path": "scripts/seed-natural-events.mjs"
+        }
+      ]
+    },
+    {
+      "host": "ert.gr",
+      "provider": "ert.gr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit ert.gr and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -5340,6 +5422,23 @@
       ]
     },
     {
+      "host": "liberal.gr",
+      "provider": "liberal.gr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit liberal.gr and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "libyaherald.com",
       "provider": "Libya Herald",
       "kind": "feed",
@@ -6975,6 +7074,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
           "path": "src/config/feeds.ts"
         }
       ]
@@ -7698,6 +7800,20 @@
       ]
     },
     {
+      "host": "search.parallel.ai",
+      "provider": "Parallel Search MCP",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: optional user-configured MCP connector",
+      "attribution": "Excluded from the provider count: user-configured MCP connector.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "src/services/mcp-store.ts"
+        }
+      ]
+    },
+    {
       "host": "search.seznam.cz",
       "provider": "search.seznam.cz",
       "kind": "structured",
@@ -7846,6 +7962,20 @@
       "references": [
         {
           "path": "server/worldmonitor/market/v1/stock-news-search.ts"
+        }
+      ]
+    },
+    {
+      "host": "services6.arcgis.com",
+      "provider": "B.C. Evacuation Orders and Alerts",
+      "kind": "structured",
+      "observed": true,
+      "license": "Open Government Licence - British Columbia (OGL-BC). The B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33 explicitly assigns OGL-BC to this ArcGIS layer.",
+      "attribution": "Contains information licensed under the Open Government Licence - British Columbia. https://catalogue.data.gov.bc.ca/dataset/7efd46d0-b5d3-4dff-af80-d376c42aec33",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/bc-emergency-info.mjs"
         }
       ]
     },
@@ -9690,9 +9820,6 @@
           "path": "scripts/china-macro/calendar.mjs"
         },
         {
-          "path": "scripts/china-macro/source-runtime.mjs"
-        },
-        {
           "path": "scripts/cross-strait-activity/adapters.mjs"
         },
         {
@@ -10593,6 +10720,15 @@
           "path": "src/config/variants/tech.ts"
         }
       ]
+    },
+    {
+      "host": "www.cnn.gr",
+      "provider": "www.cnn.gr",
+      "kind": "feed",
+      "observed": false,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.cnn.gr and link to the original feed publisher.",
+      "status": "excluded"
     },
     {
       "host": "www.coindesk.com",
@@ -11551,6 +11687,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
           "path": "src/config/feeds.ts"
         }
       ]
@@ -11578,6 +11717,9 @@
       "attribution": "Credit www.in.gr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
         {
           "path": "src/config/feeds.ts"
         }
@@ -11833,6 +11975,15 @@
       ]
     },
     {
+      "host": "www.liberal.gr",
+      "provider": "www.liberal.gr",
+      "kind": "feed",
+      "observed": false,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.liberal.gr and link to the original feed publisher.",
+      "status": "excluded"
+    },
+    {
       "host": "www.lighthousereports.com",
       "provider": "www.lighthousereports.com",
       "kind": "feed",
@@ -11894,6 +12045,23 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.manitoba511.ca",
+      "provider": "Manitoba 511",
+      "kind": "structured",
+      "observed": true,
+      "license": "Contains information from the Government of Manitoba, licensed under the OpenMB Information and Data Use License (Manitoba.ca/OpenMB). Manitoba 511 developer copy permits creating traffic apps; no separate developer access agreement is published.",
+      "attribution": "Manitoba 511 (Government of Manitoba). Contains information from the Government of Manitoba, licensed under the OpenMB Information and Data Use License. https://www.manitoba511.ca/",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/provincial-511.mjs"
+        },
+        {
+          "path": "scripts/source-attribution.mjs"
         }
       ]
     },
@@ -12036,6 +12204,9 @@
       "attribution": "Credit www.naftemporiki.gr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
         {
           "path": "src/config/feeds.ts"
         }
@@ -13058,6 +13229,23 @@
       ]
     },
     {
+      "host": "www.tanea.gr",
+      "provider": "www.tanea.gr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.tanea.gr and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "www.techinasia.com",
       "provider": "www.techinasia.com",
       "kind": "feed+structured",
@@ -13644,6 +13832,9 @@
         },
         {
           "path": "scripts/build-sitemap.mjs"
+        },
+        {
+          "path": "scripts/build-use-cases.mjs"
         },
         {
           "path": "scripts/capture-resilience-energy-v2-acceptance.mjs"

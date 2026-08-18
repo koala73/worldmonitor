@@ -6,6 +6,7 @@ import { getCSSColor } from '@/utils';
 import { getSignalContext, type SignalType } from '@/utils/analysis-constants';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 
 // Render-side display ceiling for a keyword spike's evidence list. Independent
 // of the emitter's own cap (MAX_SPIKE_ARTICLES) and deliberately higher, so it
@@ -27,6 +28,7 @@ export class SignalModal {
   private audio: HTMLAudioElement | null = null;
   private onLocationClick?: (lat: number, lon: number) => void;
   private escHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') this.hide(); };
+  private focusTrap: FocusTrap | null = null;
 
   constructor() {
     this.element = document.createElement('div');
@@ -116,8 +118,18 @@ export class SignalModal {
     this.onLocationClick = handler;
   }
 
-  private activateEsc(): void {
+  /**
+   * Wires the dialog's keyboard behavior. `trapFocus` is false for surfaces the
+   * user did not ask for: an unsolicited popup must not pull the caret out of
+   * whatever they were typing in, so those get Escape without focus containment.
+   */
+  private activateEsc(trapFocus = true): void {
     document.addEventListener('keydown', this.escHandler);
+    if (!trapFocus) return;
+    this.focusTrap ??= createFocusTrap(this.element, {
+      initialFocus: () => this.element.querySelector<HTMLElement>('.signal-modal-close'),
+    });
+    this.focusTrap.activate();
   }
 
   public show(signals: CorrelationSignal[]): void {
@@ -127,7 +139,9 @@ export class SignalModal {
     this.currentSignals = [...signals, ...this.currentSignals].slice(0, 50);
     this.renderSignals();
     this.element.classList.add('active');
-    this.activateEsc();
+    // Reached from background correlation and military-surge analysis, not from
+    // a user gesture, so this path does not take focus.
+    this.activateEsc(false);
     this.playSound();
   }
 
@@ -318,6 +332,7 @@ export class SignalModal {
   public hide(): void {
     this.element.classList.remove('active');
     document.removeEventListener('keydown', this.escHandler);
+    this.focusTrap?.deactivate();
   }
 
   private renderSignals(): void {

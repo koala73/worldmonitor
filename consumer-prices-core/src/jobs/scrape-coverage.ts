@@ -1,7 +1,21 @@
 import type { ExtractionFailure, ExtractionFailureReason } from '../adapters/search.js';
+import { AUTO_MATCH_THRESHOLD, type ValidatorResult } from '../adapters/validator.js';
 
 export interface ValidatorOutcome {
   ok: boolean;
+}
+
+export function classifyMatchAdmission(validator: ValidatorResult | undefined) {
+  if (!validator) {
+    return { score: 1, status: 'auto' as const, evidence: {} };
+  }
+  return {
+    score: validator.score,
+    status: validator.ok && validator.score >= AUTO_MATCH_THRESHOLD
+      ? 'auto' as const
+      : 'candidate' as const,
+    evidence: { validator: { reasons: validator.reasons, signals: validator.signals } },
+  };
 }
 
 /**
@@ -14,6 +28,7 @@ export interface ValidatorOutcome {
 export type NonExtractionFailureReason =
   | 'parsed-zero-products'
   | 'pin-validator-rejected'
+  | 'match-admission-persist-failed'
   | 'unknown-error';
 
 export type CoverageFailureReason = ExtractionFailureReason | NonExtractionFailureReason;
@@ -58,6 +73,7 @@ export const COVERAGE_FAILURE_REASONS: readonly CoverageFailureReason[] = [
   ...EXTRACTION_STAGE_ORDER,
   'parsed-zero-products',
   'pin-validator-rejected',
+  'match-admission-persist-failed',
   'unknown-error',
 ];
 
@@ -106,6 +122,10 @@ export class FailureReasonTally {
 
   recordPinValidatorRejection(): void {
     this.bump('pin-validator-rejected');
+  }
+
+  recordMatchAdmissionPersistenceFailure(): void {
+    this.bump('match-admission-persist-failed');
   }
 
   get total(): number {

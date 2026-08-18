@@ -1850,7 +1850,7 @@ export class DeckGLMap {
     const filteredImageryScenes = mapLayers.satellites ? this.filterByTimeCached(this.imageryScenes, (s) => s.datetime) : [];
     const filteredWeatherAlerts = mapLayers.weather ? this.filterByTimeCached(this.weatherAlerts, (alert) => alert.onset) : [];
     const canadaRoadItems = mapLayers.canadaRoads ? this.canadaRoads : [];
-    const canadaAlertItems = mapLayers.canadaAlerts ? this.filterByTimeCached(this.canadaAlerts, (alert) => alert.onset) : [];
+    const canadaAlertItems = mapLayers.canadaAlerts ? this.filterByTimeCached(this.canadaAlerts, (alert) => alert.updatedAt) : [];
     const filteredOutages = mapLayers.outages ? this.filterByTimeCached(this.outages, (outage) => outage.pubDate) : [];
     const filteredCableAdvisories = mapLayers.cables ? this.filterByTimeCached(this.cableAdvisories, (advisory) => advisory.reported) : [];
     const filteredFlightDelays = mapLayers.flights ? this.filterByTimeCached(this.flightDelays, (delay) => delay.updatedAt) : [];
@@ -2032,7 +2032,7 @@ export class DeckGLMap {
       this.layerCache.delete('canada-roads-layer');
       this.layerCache.delete('canada-roads-paths-layer');
     }
-    // canadaAlerts layer (Alberta Emergency Alert; ScatterplotLayer dots)
+    // canadaAlerts layer (AB + BC + SK provincial alerts; ScatterplotLayer dots)
     if (mapLayers.canadaAlerts && canadaAlertItems.length > 0) {
       layers.push(this.createCanadaAlertsLayer(canadaAlertItems));
     } else {
@@ -4986,7 +4986,12 @@ export class DeckGLMap {
       case 'canada-roads-layer':
       case 'canada-roads-paths-layer': {
         const title = obj.headline || obj.roadwayName || t('components.deckgl.layers.canadaRoads');
-        const origin = obj.jurisdiction || (obj.source === 'alberta-511' ? 'AB' : 'ON');
+        const origin = obj.jurisdiction
+          || (obj.source === 'manitoba-511' ? 'MB'
+            : obj.source === 'alberta-511' ? 'AB'
+            : obj.source === 'bc-open511' ? 'BC'
+            : obj.source === 'toronto-roads' ? 'Toronto'
+            : 'ON');
         const detail = obj.lanesAffected || obj.currImpact || obj.district;
         const extra = detail ? `<br/>${text(detail)}` : '';
         return { html: `<div class="deckgl-tooltip"><strong>${text(title)}</strong><br/>${text(origin)} · ${text(obj.severity || obj.eventType || '')}${extra}</div>` };
@@ -5082,7 +5087,7 @@ export class DeckGLMap {
         let imgHtml = `<div class="deckgl-tooltip"><strong>&#128752; ${text(obj.satellite)}</strong><br/>${text(obj.datetime)}<br/>Res: ${Number(obj.resolutionM)}m \u00B7 ${text(obj.mode)}`;
         if (isAllowedPreviewUrl(obj.previewUrl)) {
           const safeHref = escapeHtml(new URL(obj.previewUrl).href);
-          imgHtml += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview">`;
+          imgHtml += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview" alt="">`;
         }
         imgHtml += '</div>';
         return { html: imgHtml };
@@ -5487,9 +5492,9 @@ export class DeckGLMap {
     controls.className = 'map-controls deckgl-controls';
     setTrustedHtml(controls, trustedHtml(`
       <div class="zoom-controls">
-        <button class="map-btn zoom-in" title="${t('components.deckgl.zoomIn')}">+</button>
-        <button class="map-btn zoom-out" title="${t('components.deckgl.zoomOut')}">-</button>
-        <button class="map-btn zoom-reset" title="${t('components.deckgl.resetView')}">&#8962;</button>
+        <button class="map-btn zoom-in" title="${t('components.deckgl.zoomIn')}" aria-label="${t('components.deckgl.zoomIn')}">+</button>
+        <button class="map-btn zoom-out" title="${t('components.deckgl.zoomOut')}" aria-label="${t('components.deckgl.zoomOut')}">-</button>
+        <button class="map-btn zoom-reset" title="${t('components.deckgl.resetView')}" aria-label="${t('components.deckgl.resetView')}">&#8962;</button>
       </div>
       <div class="view-selector">
         <select class="view-select" aria-label="${t('header.selectRegion')}">
@@ -6968,11 +6973,16 @@ export class DeckGLMap {
         this.debouncedFetchAircraft();
       }
     } else {
+      // Invalidate any viewport request that can still resolve after the
+      // layer is disabled. Its response must not repopulate the search source.
+      this.aircraftFetchSeq += 1;
+      this.setLayerReady('flights', false);
       if (this.aircraftFetchTimer) {
         clearInterval(this.aircraftFetchTimer);
         this.aircraftFetchTimer = null;
       }
       this.aircraftPositions = [];
+      this.onAircraftPositionsUpdate?.([]);
     }
   }
 
@@ -6993,8 +7003,12 @@ export class DeckGLMap {
     if (!this.state.layers.flights) return;
     const zoom = this.maplibreMap.getZoom();
     if (zoom < 2) {
+      // Zooming out also makes an in-flight viewport response ineligible.
+      this.aircraftFetchSeq += 1;
+      this.setLayerReady('flights', false);
       if (this.aircraftPositions.length > 0) {
         this.aircraftPositions = [];
+        this.onAircraftPositionsUpdate?.([]);
         this.render();
       }
       return;
@@ -7021,7 +7035,12 @@ export class DeckGLMap {
       this.render();
     }).catch((err) => {
       console.error('[aircraft] fetch error', err);
-      this.setLayerLoading('flights', false);
+      if (seq === this.aircraftFetchSeq) {
+        this.aircraftPositions = [];
+        this.onAircraftPositionsUpdate?.([]);
+        this.setLayerReady('flights', false);
+        this.render();
+      }
     });
   }
 
@@ -8085,6 +8104,7 @@ export class DeckGLMap {
 
   public destroy(): void {
     this.destroyed = true;
+    this.aircraftFetchSeq += 1;
     this.settleViewportMovement(false);
     this.stopTradeAnimation();
     this.activeFlightTrails.clear();

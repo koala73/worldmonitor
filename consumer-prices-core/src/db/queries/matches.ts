@@ -1,4 +1,26 @@
-import { query } from '../client.js';
+import { query, type QueryExecutor } from '../client.js';
+
+/**
+ * Quarantine a direct pin when a fresh validator score no longer qualifies
+ * for automatic publication. The status predicate is the concurrency and
+ * curation boundary: human-approved matches remain approved, while only the
+ * machine-owned `auto` state can move back to `candidate`.
+ */
+export async function demoteAutoProductMatchToCandidate(input: {
+  matchId: string;
+  matchScore: number;
+  evidence?: Record<string, unknown>;
+}, execute: QueryExecutor = query): Promise<boolean> {
+  const result = await execute(
+    `UPDATE product_matches
+     SET match_score = $2,
+         match_status = 'candidate',
+         evidence_json = $3
+     WHERE id = $1 AND match_status = 'auto'`,
+    [input.matchId, input.matchScore, JSON.stringify(input.evidence ?? {})],
+  );
+  return result.rowCount === 1;
+}
 
 export async function upsertProductMatch(input: {
   retailerProductId: string;
@@ -7,8 +29,8 @@ export async function upsertProductMatch(input: {
   matchScore: number;
   matchStatus: 'auto' | 'approved' | 'candidate';
   evidence?: Record<string, unknown>;
-}): Promise<void> {
-  await query(
+}, execute: QueryExecutor = query): Promise<void> {
+  await execute(
     `INSERT INTO product_matches
        (retailer_product_id, canonical_product_id, basket_item_id, match_score, match_status, evidence_json)
      VALUES ($1,$2,$3,$4,$5,$6)
@@ -52,7 +74,7 @@ export async function upsertProductMatch(input: {
     ],
   );
   // Reset stale counters when Exa re-discovers a product — fresh match means the URL works.
-  await query(
+  await execute(
     `UPDATE retailer_products
      SET consecutive_out_of_stock = 0, pin_error_count = 0
      WHERE id = $1`,

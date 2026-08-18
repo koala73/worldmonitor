@@ -15,6 +15,7 @@ export type DataSourceId =
   | 'weather'
   | 'ontario_511'
   | 'alberta_511'
+  | 'manitoba_511'
   | 'toronto_roads'
   | 'bc_open511'
   | 'economic'
@@ -665,7 +666,7 @@ export interface MapLayers {
   weather: boolean;
   /** Official Canada road events and conditions from Ontario, Alberta, Toronto, and British Columbia. */
   canadaRoads: boolean;
-  /** Alberta Emergency Alert (and later provincial siblings) (#6610). */
+  /** Alberta, B.C., and Saskatchewan province-owned emergency alerts (#6610, #6659). */
   canadaAlerts: boolean;
   economic: boolean;
   waterways: boolean;

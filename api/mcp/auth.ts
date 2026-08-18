@@ -39,6 +39,8 @@ import type {
   McpPreCheckResult,
 } from './types';
 import { emitMcpRateLimitHit } from './telemetry';
+import { FREE_ACCOUNT_CALLS_PER_DAY } from './upgrade-constants';
+import { buildMcpStructuredDenial, type McpDenialReason } from './upgrade';
 
 // ---------------------------------------------------------------------------
 // Rate limiters
@@ -179,6 +181,49 @@ export function wwwAuthHeader(resourceMetadataUrl: string, errorParam = ''): str
   return `Bearer realm="worldmonitor"${errSegment}, resource_metadata="${resourceMetadataUrl}"`;
 }
 
+/**
+ * JSON-RPC denial with machine-readable reason + upgrade URL (#6716).
+ * Defaults to HTTP 401 + WWW-Authenticate for auth-shaped denials. Callers may
+ * select a terminal 403/-32002 denial; those responses deliberately omit the
+ * Bearer challenge so clients do not enter an OAuth retry loop.
+ */
+export function mcpStructuredDenialResponse(
+  reason: McpDenialReason,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+  id: unknown = null,
+  opts?: { wwwAuthError?: string; message?: string; code?: number; status?: number },
+): Response {
+  const built = buildMcpStructuredDenial(reason);
+  const { data } = built;
+  // A caller may keep its own, more specific `message` (e.g. the credential
+  // mechanics on the auth-resolution 401s) while still gaining the machine-
+  // readable `data`. Overriding the message never changes `data.reason`, so an
+  // agent branching on the reason sees one vocabulary regardless of copy.
+  const message = opts?.message ?? built.message;
+  const status = opts?.status ?? 401;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...corsHeaders,
+  };
+  if (status === 401) {
+    headers['WWW-Authenticate'] = opts?.wwwAuthError !== undefined
+      ? wwwAuthHeader(resourceMetadataUrl, opts.wwwAuthError)
+      : wwwAuthHeader(resourceMetadataUrl, reason === 'no-account' ? '' : 'invalid_token');
+  }
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: id ?? null,
+      error: { code: opts?.code ?? -32001, message, data },
+    }),
+    {
+      status,
+      headers: withMcpNoStore(headers),
+    },
+  );
+}
+
 function userKeyValidationBackpressureResponse(
   response: Response,
   corsHeaders: Record<string, string>,
@@ -271,6 +316,13 @@ export function getMcpBillingVerificationDenial(
   headers.set('Cache-Control', 'no-store');
   headers.set('Content-Type', 'application/json');
 
+  // #6716 — confirmed lapse stays on the billing envelope (-32002 / 403) but
+  // also carries the agent-facing upgrade attribution fields so clients can
+  // distinguish lapsed-subscription from never-subscribed free accounts.
+  const structured = billingStatus === 'subscription_lapsed'
+    ? buildMcpStructuredDenial('lapsed-subscription')
+    : null;
+
   return new Response(
     JSON.stringify({
       jsonrpc: '2.0',
@@ -281,8 +333,16 @@ export function getMcpBillingVerificationDenial(
         // docs/mcp-error-catalog.mdx — reusing it here sent doc-following
         // agents into a pointless OAuth re-auth loop.
         code: retryable ? -32603 : -32002,
+        // #6716 F22: the MESSAGE stays the existing lapse copy. Its
+        // "Re-authenticating will not help" clause is load-bearing — it is what
+        // stops a doc-following agent from re-entering OAuth on a terminal
+        // billing state, and docs/mcp-error-catalog.mdx quotes it verbatim.
+        // The upgrade attribution belongs in `data`, which is additive, so
+        // agents gain reason/nextStep/upgradeUrl without losing the warning.
         message,
-        data: { code: billingStatus },
+        data: structured
+          ? { code: billingStatus, ...structured.data }
+          : { code: billingStatus },
       },
     }),
     { status: denial.status, headers },
@@ -312,12 +372,17 @@ export async function resolveAuthContext(
       };
     }
     if (!context) {
+      // #6716 F19: SERVER_INSTRUCTIONS promises agents a structured denial with
+      // reason + upgrade URL on unauthenticated gated calls. These auth-
+      // resolution 401s are the ones an agent hits FIRST, so they must carry it
+      // too — otherwise the promise holds only for the rarest branch. The
+      // specific credential guidance stays as the message.
       return {
         ok: false,
-        response: new Response(
-          JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32001, message: 'Invalid or expired OAuth token. Re-authenticate via /oauth/token.' } }),
-          { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
-        ),
+        response: mcpStructuredDenialResponse('no-account', resourceMetadataUrl, corsHeaders, id, {
+          wwwAuthError: 'invalid_token',
+          message: 'Invalid or expired OAuth token. Re-authenticate via /oauth/token.',
+        }),
       };
     }
     return { ok: true, context };
@@ -325,12 +390,14 @@ export async function resolveAuthContext(
 
   const candidateKey = req.headers.get('X-WorldMonitor-Key') ?? '';
   if (!candidateKey) {
+    // #6716 F19: the single most common denial on this surface — no credential
+    // at all against a gated tool. It now carries the same structured `data`
+    // every other denial does, which is what SERVER_INSTRUCTIONS advertises.
     return {
       ok: false,
-      response: new Response(
-        JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32001, message: 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.' } }),
-        { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl), ...corsHeaders }) },
-      ),
+      response: mcpStructuredDenialResponse('no-account', resourceMetadataUrl, corsHeaders, id, {
+        message: 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.',
+      }),
     };
   }
   const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
@@ -376,12 +443,14 @@ export async function resolveAuthContext(
     }
   }
 
+  // #6716 F19: same structured payload as the other credential-less/bad-credential
+  // denials, so an agent can branch on `data.reason` uniformly.
   return {
     ok: false,
-    response: new Response(
-      JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32001, message: 'Invalid API key' } }),
-      { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
-    ),
+    response: mcpStructuredDenialResponse('no-account', resourceMetadataUrl, corsHeaders, id, {
+      wwwAuthError: 'invalid_token',
+      message: 'Invalid API key',
+    }),
   };
 }
 
@@ -467,10 +536,13 @@ export async function validateProMcpAuthorization(
     ? (validation.ok === 'valid' ? validation.userId : null)
     : validation?.userId ?? null;
   if (!validationUserId || validationUserId !== context.userId) {
-    return { ok: false, response: new Response(
-      JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32001, message: 'MCP authorization revoked. Re-authorize at https://worldmonitor.app/mcp-grant.' } }),
-      { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
-    ) };
+    return {
+      ok: false,
+      response: mcpStructuredDenialResponse('no-account', resourceMetadataUrl, corsHeaders, id, {
+        wwwAuthError: 'invalid_token',
+        message: 'MCP authorization revoked. Re-authorize at https://worldmonitor.app/mcp-grant.',
+      }),
+    };
   }
   return { ok: true };
 }
@@ -478,8 +550,10 @@ export async function validateProMcpAuthorization(
 /**
  * Shared mcpAccess entitlement gate for identity-resolved contexts (pro AND
  * user_key). Fail-closed per memory `entitlement-signal-server-outlier-sweep`.
- * Passes when the owner has an active tier>=1 + mcpAccess entitlement; rejects
- * with a 401 Response otherwise.
+ * Passes when the owner has an active tier>=1 + mcpAccess entitlement, or when
+ * the shared gate confirms eligibility for the metered free-account path.
+ * Authentication failures remain 401; terminal entitlement failures are 403;
+ * unverifiable entitlement reads are retryable 503 responses.
  *
  * A passing result also reports `mcpDailyLimit`, read straight off the
  * entitlement this call already fetched — but only for plan-driven plan
@@ -489,6 +563,10 @@ export async function validateProMcpAuthorization(
  * `planLimits` (legacy shape) or a non-plan-driven plan reports `undefined`,
  * which the quota layer resolves to the plan default — the entitlement is
  * NOT re-fetched to fill the gap.
+ *
+ * Only `free_account` is admitted to the metered allowance. Other insufficient
+ * entitlement states remain auth denials; thrown or unverifiable reads remain
+ * retryable availability failures.
  */
 async function checkMcpEntitlementGate(
   userId: string,
@@ -499,17 +577,30 @@ async function checkMcpEntitlementGate(
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
 ): Promise<McpPreCheckResult> {
-  const rejected = (): McpPreCheckResult => ({ ok: false, response: new Response(
-    JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32001, message: 'Subscription not active.' } }),
-    { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
-  ) });
+  /**
+   * Availability failure, not a billing verdict. Mirrors the retryable shape
+   * `validateProMcpAuthorization` already uses for its own catch — 503 denies
+   * the call (still fail-closed) without asserting anything false about the
+   * caller's subscription.
+   */
+  const unavailable = (): McpPreCheckResult => ({
+    ok: false,
+    response: new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
+      { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
+    ),
+  });
 
   let ent: Awaited<ReturnType<typeof deps.getEntitlements>> = null;
   try {
     ent = await deps.getEntitlements(userId);
   } catch (err) {
     captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, ctx });
-    return rejected();
+    // #6716 F21: a THROWN entitlement lookup is the backend being unreachable.
+    // Reporting it as 'no-account' told an already-authenticated caller — a
+    // paying subscriber, possibly — to "sign in and subscribe", and buried a
+    // real outage as a routine upsell. Fail closed on a retryable envelope.
+    return unavailable();
   }
   const passed = (): McpPreCheckResult => ({
     ok: true,
@@ -523,9 +614,46 @@ async function checkMcpEntitlementGate(
   if (!gate) {
     return passed();
   }
-  const billingDenial = getMcpBillingVerificationDenial(ent, corsHeaders, id);
-  if (billingDenial) return { ok: false, response: billingDenial };
-  return rejected();
+  // Billing-verification states keep their existing envelopes (403/-32002 for
+  // a confirmed lapse; 503 for renewal/unverifiable). Do not flatten a lapse
+  // into the free-account structured 401 — agents must not OAuth-loop on
+  // -32001 for a terminal billing state (docs/mcp-error-catalog.mdx).
+  // getMcpBillingVerificationDenial already attaches upgrade attribution on
+  // lapsed responses (#6716).
+  if (gate.kind === 'billing_verification') {
+    const billingDenial = getMcpBillingVerificationDenial(ent, corsHeaders, id);
+    if (billingDenial) return { ok: false, response: billingDenial };
+    // #6716 F10: reaching here means the gate classified a billing state that
+    // `ent` alone cannot render — in practice `unverifiableEntitlementDenial`,
+    // returned when the entitlement backend is unconfigured and getEntitlements
+    // yields a bare null (entitlement-check.ts's own "MISCONFIGURATION HAZARD").
+    // That state is RETRYABLE. Answering it with a terminal
+    // 'lapsed-subscription' told a paying subscriber their subscription ended
+    // because of OUR deploy misconfiguration — the exact retryable/terminal
+    // flattening pro-mcp-gate.ts forbids, and the shape of #5600.
+    return unavailable();
+  }
+  if (gate.kind === 'free_account') {
+    // MCP call-site ONLY reinterpretation (#6716). OAuth issuance and the
+    // gateway still refuse this verdict. Admission here is eligibility; the
+    // idle-gap + call counters live in dispatch.
+    return {
+      ok: true,
+      mcpDailyLimit: FREE_ACCOUNT_CALLS_PER_DAY,
+      freeAccountAllowance: true,
+    };
+  }
+
+  // A non-free insufficient entitlement (expired/disabled paid row or a
+  // malformed shape) must not inherit the free allowance.
+  return {
+    ok: false,
+    response: mcpStructuredDenialResponse('upgrade-required', resourceMetadataUrl, corsHeaders, id, {
+      code: -32002,
+      status: 403,
+      message: 'Subscription not active.',
+    }),
+  };
 }
 
 /**
@@ -544,12 +672,19 @@ export async function runUserKeyPreChecks(
   id: unknown = null,
 ): Promise<McpPreCheckResult> {
   const gate = await checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx, id);
-  // KTD6: the entitlement verdict applies, the plan's MCP allowance does NOT.
-  // user_key callers stay on the hardcoded daily cap whatever their API plan
-  // advertises — raising API-tier MCP allowances is a deliberate follow-up, and
-  // dropping the limit HERE (rather than guarding at the metering site) keeps
-  // one place to change when that follow-up lands.
-  return gate.ok ? { ok: true } : gate;
+  // KTD6: the entitlement verdict applies, the plan's MCP allowance does NOT —
+  // except the free-account paid-funnel ceiling (#6716), which is not a plan
+  // catalog allowance. user_key callers otherwise stay on the hardcoded daily
+  // cap whatever their API plan advertises.
+  if (!gate.ok) return gate;
+  if (gate.freeAccountAllowance) {
+    return {
+      ok: true,
+      mcpDailyLimit: gate.mcpDailyLimit,
+      freeAccountAllowance: true,
+    };
+  }
+  return { ok: true };
 }
 
 /**

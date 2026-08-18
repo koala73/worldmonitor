@@ -249,7 +249,13 @@ function TierCta({ cta, highlighted, loadingProductId, rateLimited, onCheckout }
   );
 }
 
-export function PricingSection({ refCode }: { refCode?: string }) {
+export function PricingSection({
+  refCode,
+  attributionSource,
+}: {
+  refCode?: string;
+  attributionSource?: string;
+}) {
   const [billing, setBilling] = useState<'monthly' | 'annual'>(() => {
     const planKey = new URLSearchParams(window.location.search).get('wm_reactivate_plan');
     return planKey?.endsWith('_annual') ? 'annual' : 'monthly';
@@ -278,8 +284,8 @@ export function PricingSection({ refCode }: { refCode?: string }) {
   // checkoutInFlight in the service guards concurrent doCheckout runs.
   // The handler is fire-and-forget — no local loading state to manage.
   const handleCheckout = useCallback((productId: string) => {
-    void startCheckout(productId, { referralCode: refCode });
-  }, [refCode]);
+    void startCheckout(productId, { referralCode: refCode, attributionSource });
+  }, [refCode, attributionSource]);
 
   return (
     <section id="pricing" className="py-24 px-6 border-t border-wm-border bg-[#060606]">

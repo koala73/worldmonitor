@@ -511,7 +511,16 @@ describe('WebMCP live dashboard bindings', () => {
 
     for (const variant of VARIANTS) {
       const { allowed, disallowed } = cases[variant];
-      const ctx = makeContext();
+      // Happy's map layers are DeckGL-only; this test isolates variant policy
+      // from renderer policy by giving that variant its supported renderer.
+      const ctx = makeContext(variant === 'happy'
+        ? {
+            map: {
+              ...makeContext().map,
+              isDeckGLActive: () => true,
+            },
+          }
+        : {});
       ctx.mapLayers[allowed] = false;
       ctx.mapLayers[disallowed] = false;
       const result = await applyWebMcpDashboardAction(

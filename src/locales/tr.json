@@ -478,7 +478,7 @@
         "outages": "İnternet kesintilerini aç/kapat",
         "tradeRoutes": "Ticaret yollarını aç/kapat",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Karanlık moda geç",
@@ -1192,7 +1192,7 @@
         "radiationSpike": "Radyasyon artışı",
         "radiationElevated": "Yükseltilmiş radyasyon",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -1300,7 +1300,7 @@
           "geoBoundaries": "Silahsızlandırılmış bölgeler, ateşkes hatları ve tartışmalı sınırlar",
           "ciiChoropleth": "Ülke istikrarsızlık endeksi ısı haritası — CII puanına göre renklendirme (yeşil=istikrarlı, kırmızı=kritik)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Etkiler: Depremler, Hava Durumu, Protestolar, Kesintiler"
@@ -1672,7 +1672,9 @@
     "breakingNews": {
       "critical": "KRİTİK",
       "high": "YÜKSEK",
-      "dismiss": "Kapat"
+      "dismiss": "Kapat",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Son Dakika Uyarıları",
@@ -3262,7 +3264,8 @@
     "retry": "Retry",
     "refresh": "Refresh",
     "all": "Tümü",
-    "cancel": "İptal"
+    "cancel": "İptal",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "Görünüm",

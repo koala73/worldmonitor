@@ -75,6 +75,8 @@ USGS (earthquakes), NASA FIRMS (thermal anomalies), Cloudflare Radar (internet o
 
 Physical signals appear within minutes (AIS behavior, airspace changes, connectivity drops) to a few hours (satellite thermal passes). The ten-minute workflow establishes a confidence level immediately and identifies which confirming signal to wait for.
 
+For the evergreen task page that keeps this procedure durable and product-handoff oriented, see [Verify breaking news](/use-cases/verify-breaking-news/). This article remains dated OSINT editorial with minute-by-minute narrative.
+
 ---
 
 **Bookmark [worldmonitor.app](https://www.worldmonitor.app) next to your CMS. The next time a claim breaks, run the ten minutes before the call. Your editor gets "three independent signals corroborate" instead of "Twitter says."**

@@ -10,9 +10,8 @@
 //   2. `atomicSwitch` PERSISTs the version's keys inside the same EVAL that
 //      publishes, so a live version can never expire and an unpublished one
 //      always can;
-//   3. the superseded version's keys get a short TTL right after the switch
-//      (never before — until the switch lands they ARE the live data), and a
-//      start-of-run sweep re-arms TTLs on keys leaked by pre-TTL runs.
+//   3. the publish EVAL arms the superseded version's keys and a per-key sweep
+//      EVAL re-arms TTLs on keys leaked by pre-TTL runs.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -22,7 +21,6 @@ import {
   VERSION_KEY_TTL_SECONDS,
   SUPERSEDED_KEY_TTL_SECONDS,
   atomicSwitch,
-  armSupersededCleanup,
   seedGeo,
   seedMeta,
   sweepLeakedVersionKeys,
@@ -121,55 +119,90 @@ test('seedMeta arms and refreshes the self-healing TTL on every batch', async ()
   }
 });
 
-test('atomicSwitch PERSISTs the version keys inside the publish EVAL', async () => {
-  const stub = stubRedis(() => ({ result: VERSION }));
+test('atomicSwitch persists the new pair and arms the exact displaced pair in one EVAL', async () => {
+  const oldVersion = '1786000000000';
+  const stub = stubRedis(() => ({ result: [1, VERSION, oldVersion] }));
+  let superseded;
   try {
-    await atomicSwitch(URL_BASE, TOKEN, '', VERSION, RECORDS, Number(VERSION), 214_000);
+    superseded = await atomicSwitch(
+      URL_BASE,
+      TOKEN,
+      '',
+      VERSION,
+      RECORDS,
+      Number(VERSION),
+      214_000,
+      oldVersion,
+    );
   } finally {
     stub.restore();
   }
 
   const evalCall = stub.calls.find(c => Array.isArray(c.body) && c.body[0] === 'EVAL');
   assert.ok(evalCall, 'atomicSwitch must publish through the EVAL script');
-  const [op, script, numkeys, activeKey, seedMetaKey, geoKey, metaKey, published, payload] = evalCall.body;
+  const [
+    op,
+    script,
+    numkeys,
+    activeKey,
+    seedMetaKey,
+    geoKey,
+    metaKey,
+    oldGeoKey,
+    oldMetaKey,
+    published,
+    payload,
+    expectedActive,
+    cleanupTtl,
+  ] = evalCall.body;
   assert.equal(op, 'EVAL');
+  assert.match(script, /local current = redis\.call\('GET', KEYS\[1\]\)/);
+  assert.match(script, /\(current or ''\) ~= ARGV\[3\]/, 'publish must reject a stale active snapshot');
   assert.match(script, /redis\.call\('PERSIST', KEYS\[3\]/, 'the GEO key must be persisted');
   assert.match(script, /redis\.call\('PERSIST', KEYS\[4\]/, 'the META key must be persisted');
-  assert.equal(numkeys, '4');
+  assert.match(script, /redis\.call\('EXPIRE', KEYS\[5\], ARGV\[4\]\)/);
+  assert.match(script, /redis\.call\('EXPIRE', KEYS\[6\], ARGV\[4\]\)/);
+  assert.equal(numkeys, '6');
   assert.equal(activeKey, 'military:bases:active');
   assert.equal(seedMetaKey, 'seed-meta:military:bases');
   assert.equal(geoKey, `military:bases:geo:${VERSION}`);
   assert.equal(metaKey, `military:bases:meta:${VERSION}`);
+  assert.equal(oldGeoKey, `military:bases:geo:${oldVersion}`);
+  assert.equal(oldMetaKey, `military:bases:meta:${oldVersion}`);
   assert.equal(published, VERSION);
   assert.equal(JSON.parse(payload).recordCount, RECORDS);
+  assert.equal(expectedActive, oldVersion);
+  assert.equal(cleanupTtl, String(SUPERSEDED_KEY_TTL_SECONDS));
+  assert.deepEqual(superseded, { oldVersion, oldGeoKey, oldMetaKey });
+  assert.equal(stub.calls.length, 1, 'there must be no post-publish cleanup-arm request to lose on kill');
 });
 
-test('armSupersededCleanup EXPIREs both old keys for the superseded window', async () => {
-  const stub = stubRedis(pipelineOk);
-  const oldInfo = {
-    oldVersion: '1786000000000',
-    oldGeoKey: 'military:bases:geo:1786000000000',
-    oldMetaKey: 'military:bases:meta:1786000000000',
-  };
+test('atomicSwitch fails closed on a malformed Redis script response', async () => {
+  const stub = stubRedis(() => ({ result: VERSION }));
   try {
-    await armSupersededCleanup(URL_BASE, TOKEN, oldInfo);
+    await assert.rejects(
+      atomicSwitch(URL_BASE, TOKEN, '', VERSION, RECORDS),
+      /Atomic switch returned an unexpected response/,
+    );
   } finally {
     stub.restore();
   }
-
-  const expires = stub.calls
-    .flatMap(c => (c.path === '/pipeline' ? c.body : []))
-    .filter(row => row[0] === 'EXPIRE');
-  assert.deepEqual(
-    expires,
-    [
-      ['EXPIRE', oldInfo.oldGeoKey, String(SUPERSEDED_KEY_TTL_SECONDS)],
-      ['EXPIRE', oldInfo.oldMetaKey, String(SUPERSEDED_KEY_TTL_SECONDS)],
-    ],
-  );
 });
 
-test('the sweep re-arms TTLs only on no-TTL, non-active version keys', async () => {
+test('atomicSwitch fails closed when Redis reports a different displaced version', async () => {
+  const oldVersion = '1786000000000';
+  const stub = stubRedis(() => ({ result: [1, VERSION, '1785999999999'] }));
+  try {
+    await assert.rejects(
+      atomicSwitch(URL_BASE, TOKEN, '', VERSION, RECORDS, Date.now(), undefined, oldVersion),
+      /Atomic switch returned unexpected displaced version/,
+    );
+  } finally {
+    stub.restore();
+  }
+});
+
+test('the sweep makes the active check, TTL check, and EXPIRE atomic per candidate', async () => {
   const active = '1786244633231';
   const leaked = { geo: 'military:bases:geo:1786000000000', meta: 'military:bases:meta:1786000000000' };
   const ttlArmed = { geo: 'military:bases:geo:1786100000000', meta: 'military:bases:meta:1786100000000' };
@@ -179,19 +212,28 @@ test('the sweep re-arms TTLs only on no-TTL, non-active version keys', async () 
     geo: ['0', [leaked.geo, ttlArmed.geo, activeKeys.geo]],
     meta: ['0', [leaked.meta, ttlArmed.meta, activeKeys.meta]],
   };
-  const ttlProbed = [];
+  const evaluated = [];
   const stub = stubRedis((path, body) => {
-    const [cmd, key] = body;
-    if (path === '/' && cmd === 'GET' && String(key).endsWith('military:bases:active')) {
-      return { result: active };
-    }
+    const [cmd] = body;
     if (path === '/' && cmd === 'SCAN') {
       const pattern = body[3];
       return { result: scanPages[pattern.includes(':geo:') ? 'geo' : 'meta'] };
     }
-    if (path === '/' && cmd === 'TTL') {
-      ttlProbed.push(String(key));
-      return { result: String(key) === leaked.geo || String(key) === leaked.meta ? -1 : 480 };
+    if (path === '/' && cmd === 'EVAL') {
+      const [, script, keyCount, activeKey, candidateKey, candidateVersion, ttl] = body;
+      evaluated.push(candidateKey);
+      assert.equal(keyCount, '2');
+      assert.equal(activeKey, 'military:bases:active');
+      assert.equal(candidateVersion, candidateKey.split(':').at(-1));
+      assert.equal(ttl, String(SUPERSEDED_KEY_TTL_SECONDS));
+      assert.match(script, /local active = redis\.call\('GET', KEYS\[1\]\)/);
+      assert.match(script, /local ttl = redis\.call\('TTL', KEYS\[2\]\)/);
+      assert.match(script, /redis\.call\('EXPIRE', KEYS\[2\], ARGV\[2\]\)/);
+      if (candidateVersion === active) return { result: [0, 'active', active] };
+      if (candidateKey === ttlArmed.geo || candidateKey === ttlArmed.meta) {
+        return { result: [0, 'ttl', '480'] };
+      }
+      return { result: [1, 'armed', active] };
     }
     return pipelineOk(path, body);
   });
@@ -201,20 +243,107 @@ test('the sweep re-arms TTLs only on no-TTL, non-active version keys', async () 
     stub.restore();
   }
 
-  // The active version's keys are excluded by name, before any TTL probe.
-  assert.ok(!ttlProbed.includes(activeKeys.geo));
-  assert.ok(!ttlProbed.includes(activeKeys.meta));
-
-  const expires = stub.calls
-    .flatMap(c => (c.path === '/pipeline' ? c.body : []))
-    .filter(row => row[0] === 'EXPIRE');
   assert.deepEqual(
-    expires.sort((a, b) => String(a[1]).localeCompare(String(b[1]))),
+    evaluated.sort(),
     [
-      ['EXPIRE', leaked.geo, String(SUPERSEDED_KEY_TTL_SECONDS)],
-      ['EXPIRE', leaked.meta, String(SUPERSEDED_KEY_TTL_SECONDS)],
-    ],
-    'only the no-TTL non-active keys are re-armed — TTL-armed keys belong to a live run, '
-      + 'and the sweep must never DEL directly, only let Redis reap',
+      activeKeys.geo,
+      activeKeys.meta,
+      leaked.geo,
+      leaked.meta,
+      ttlArmed.geo,
+      ttlArmed.meta,
+    ].sort(),
   );
+  assert.equal(
+    stub.calls.some(({ body }) => ['GET', 'TTL', 'EXPIRE'].includes(body[0])),
+    false,
+    'the sweeper must not split the active/TTL decision across client requests',
+  );
+});
+
+test('a concurrent publish makes the sweep skip the candidate that just became active', async () => {
+  const candidateVersion = '1786000000000';
+  const candidateKey = `military:bases:geo:${candidateVersion}`;
+  let active = VERSION;
+  const stub = stubRedis((path, body) => {
+    if (path === '/' && body[0] === 'SCAN') return { result: ['0', [candidateKey]] };
+    if (path === '/' && body[0] === 'EVAL') {
+      active = candidateVersion;
+      const candidate = body.at(-2);
+      return { result: active === candidate ? [0, 'active', active] : [1, 'armed', active] };
+    }
+    return { result: null };
+  });
+  try {
+    await sweepLeakedVersionKeys(URL_BASE, TOKEN, '');
+  } finally {
+    stub.restore();
+  }
+
+  const evalCall = stub.calls.find(({ body }) => body[0] === 'EVAL');
+  assert.ok(evalCall);
+  assert.equal(evalCall.body.at(-2), candidateVersion);
+  assert.equal(
+    stub.calls.some(({ body }) => body[0] === 'EXPIRE'),
+    false,
+    'the active candidate must not be expired by a stale client-side snapshot',
+  );
+});
+
+test('overlapping publishers arm each exact displaced pair and reject stale completion', async () => {
+  const first = '1786100000000';
+  const second = '1786200000000';
+  const stale = '1786050000000';
+  let active = '1786000000000';
+  const ttlByKey = new Map();
+  for (const version of [first, second, stale]) {
+    ttlByKey.set(`military:bases:geo:${version}`, VERSION_KEY_TTL_SECONDS);
+    ttlByKey.set(`military:bases:meta:${version}`, VERSION_KEY_TTL_SECONDS);
+  }
+
+  const stub = stubRedis((path, body) => {
+    if (path !== '/' || body[0] !== 'EVAL') return pipelineOk(path, body);
+    const keyCount = Number(body[2]);
+    const keys = body.slice(3, 3 + keyCount);
+    const [published, , expected, cleanupTtl] = body.slice(3 + keyCount);
+    if (active !== expected) return { result: [0, active] };
+
+    ttlByKey.delete(keys[2]);
+    ttlByKey.delete(keys[3]);
+    if (active) {
+      ttlByKey.set(keys[4], Number(cleanupTtl));
+      ttlByKey.set(keys[5], Number(cleanupTtl));
+    }
+    const displaced = active;
+    active = published;
+    return { result: [1, published, displaced] };
+  });
+
+  try {
+    const firstResult = await atomicSwitch(
+      URL_BASE, TOKEN, '', first, RECORDS, Number(first), undefined, active,
+    );
+    const secondResult = await atomicSwitch(
+      URL_BASE, TOKEN, '', second, RECORDS, Number(second), undefined, first,
+    );
+    assert.equal(firstResult.oldVersion, '1786000000000');
+    assert.equal(secondResult.oldVersion, first);
+    assert.equal(active, second);
+    for (const version of ['1786000000000', first]) {
+      assert.equal(ttlByKey.get(`military:bases:geo:${version}`), SUPERSEDED_KEY_TTL_SECONDS);
+      assert.equal(ttlByKey.get(`military:bases:meta:${version}`), SUPERSEDED_KEY_TTL_SECONDS);
+    }
+    assert.equal(ttlByKey.has(`military:bases:geo:${second}`), false);
+    assert.equal(ttlByKey.has(`military:bases:meta:${second}`), false);
+
+    await assert.rejects(
+      atomicSwitch(URL_BASE, TOKEN, '', stale, RECORDS, Number(stale), undefined, '1786000000000'),
+      new RegExp(`Active version changed before publish \\(1786000000000 -> ${second}\\)`),
+    );
+    assert.equal(active, second, 'a stale publisher must not replace the newer active version');
+    assert.equal(ttlByKey.get(`military:bases:geo:${stale}`), VERSION_KEY_TTL_SECONDS);
+    assert.equal(ttlByKey.get(`military:bases:meta:${stale}`), VERSION_KEY_TTL_SECONDS);
+  } finally {
+    stub.restore();
+  }
 });

@@ -482,7 +482,7 @@
         "outages": "Přepnout výpadky internetu",
         "tradeRoutes": "Přepnout obchodní trasy",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Přepnout na tmavý režim",
@@ -1184,7 +1184,7 @@
         "radiationSpike": "Skokový nárůst radiace",
         "radiationElevated": "Zvýšená radiace",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "Zemětřesení",
@@ -1292,7 +1292,7 @@
           "geoBoundaries": "Demilitarizované zóny, linie příměří a sporné hranice",
           "ciiChoropleth": "Tepelná mapa Country Instability Index — zbarvuje země podle skóre CII (zelená=stabilní, červená=kritická)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Ovlivňuje: Zemětřesení, Počasí, Protesty, Výpadky"
@@ -1657,7 +1657,9 @@
     "breakingNews": {
       "critical": "KRITICKÉ",
       "high": "VYSOKÉ",
-      "dismiss": "Zavřít"
+      "dismiss": "Zavřít",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Blesková upozornění",
@@ -3298,7 +3300,8 @@
     "retry": "Zkusit znovu",
     "refresh": "Obnovit",
     "all": "Vše",
-    "cancel": "Zrušit"
+    "cancel": "Zrušit",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "Zobrazení",

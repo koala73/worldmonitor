@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 import { TRUSTED_RETURN_URL_ORIGINS } from '../convex/payments/returnUrlOrigin.ts';
 import { DEBUGBEAR_RUM_HOSTS } from '../src/bootstrap/debugbear-rum.ts';
@@ -19,7 +20,7 @@ function read(relPath: string): string {
 }
 
 /**
- * Every committed `public/pro` chunk reachable from a marketing HTML entry, following
+ * Every built `public/pro` chunk reachable from a marketing HTML entry, following
  * module imports transitively. Same walk tests/debugbear-rum.test.mts uses to prove a
  * script reaches the shipped bundle rather than only the source.
  */
@@ -86,6 +87,7 @@ const SERVED_HOSTS = TRUSTED_RETURN_URL_ORIGINS.map((origin) => new URL(origin).
 const VARIANT_HOSTS = WEB_DASHBOARD_VARIANTS.map((variant) => `${variant}.worldmonitor.app`);
 
 describe('Sentry allowUrls ingest allowlist (#6545)', () => {
+  guardProBuiltOutput();
   it('derives a non-empty served-host population', () => {
     // Guards the enumerators themselves: an import that silently resolved to an
     // empty list would make every loop below iterate zero times and pass. Only
@@ -192,13 +194,13 @@ describe('Sentry allowUrls ingest allowlist (#6545)', () => {
     );
   });
 
-  it('ships the current allowlist in the committed marketing bundle', () => {
-    // Vercel serves public/pro/ verbatim, so source parity does not prove
-    // production behaviour: a stale `npm run build:pro` would ship the old list
-    // while every assertion above stays green. Walk the real entry graph of both
-    // marketing HTML entries and require the current patterns to be present.
-    // (The dashboard bundle needs no equivalent check — dist/ is not committed,
-    // CI builds it from the source this file already asserts.)
+  it('ships the current allowlist in the built marketing bundle', { skip: shouldSkipProBuiltOutput() }, () => {
+    // public/pro/ is built during the deploy since #6898, so this no longer
+    // guards the stale-committed-bytes class it was written for. It still earns
+    // its place as a build-integrity check: source parity above proves the
+    // patterns are WRITTEN, this proves they SURVIVE bundling into the chunks
+    // the entry graph actually reaches (minification, tree-shaking, chunk
+    // splitting all sit between the two).
     for (const htmlPath of ['public/pro/index.html', 'public/pro/welcome.html']) {
       const reachable = collectReachableProAssets(htmlPath);
       assert.ok(reachable.size > 0, `${htmlPath} referenced no module chunks`);
@@ -206,7 +208,7 @@ describe('Sentry allowUrls ingest allowlist (#6545)', () => {
       for (const pattern of MARKETING_SENTRY_ALLOW_URLS) {
         assert.ok(
           bundled.includes(pattern.source),
-          `${htmlPath} ships a stale bundle without ${pattern.source} — re-run \`npm run build:pro\` and commit public/pro/`,
+          `${htmlPath} lost ${pattern.source} during bundling — re-run \`npm run build:pro\` and check the Sentry init survives tree-shaking`,
         );
       }
     }

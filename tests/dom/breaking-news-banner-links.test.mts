@@ -60,6 +60,28 @@ describe('breaking-news banner source links', () => {
     vi.unstubAllGlobals();
   });
 
+  it('exposes an assertive live region before any alert is injected', () => {
+    const container = document.querySelector('.breaking-news-container');
+    expect(container).not.toBeNull();
+    expect(container?.getAttribute('role')).toBe('log');
+    expect(container?.getAttribute('aria-live')).toBe('assertive');
+    expect(container?.getAttribute('aria-label')).toBe('components.breakingNews.alertsRegion');
+    expect(container?.querySelector('.breaking-alert')).toBeNull();
+  });
+
+  it('reveals the target panel from the dedicated view-panel button', () => {
+    emitAlert({ link: 'https://example.com/breaking-story' });
+    const revealPanel = vi.fn();
+    window.addEventListener('wm:reveal-panel', revealPanel);
+
+    document.querySelector<HTMLButtonElement>('.breaking-alert-view-panel')!.click();
+
+    expect(revealPanel).toHaveBeenCalledWith(
+      expect.objectContaining({ detail: { panelId: 'news' } }),
+    );
+    window.removeEventListener('wm:reveal-panel', revealPanel);
+  });
+
   it('renders a safe article URL as the headline link', () => {
     emitAlert({ link: 'https://example.com/breaking-story?edition=world&source=wire' });
 

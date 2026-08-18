@@ -149,10 +149,16 @@ describe('nlweb: /ask endpoint', () => {
     const rewrite = vercelConfig.rewrites.find((r) => r.source === '/ask');
     assert.ok(rewrite, 'missing /ask rewrite');
     assert.equal(rewrite.destination, '/api/ask');
+    // #6575: the dashboard catch-all rewrite is gone — unknown paths 404.
+    // /ask keeps its explicit endpoint rewrite, which cannot be shadowed.
     const catchAll = vercelConfig.rewrites.find(
       (r) => r.destination === '/dashboard.html' && r.source.startsWith('/((?!'),
     );
-    assert.ok(catchAll.source.includes('ask'), 'ask must be excluded from the dashboard catch-all');
+    assert.equal(catchAll, undefined, 'dashboard catch-all rewrite must stay removed (#6575)');
+    const dashboardShadow = vercelConfig.rewrites.find(
+      (r) => r.destination === '/dashboard.html' && r.source === '/ask',
+    );
+    assert.equal(dashboardShadow, undefined, '/ask must not be rewritten to the dashboard');
     const corsBlock = vercelConfig.headers.find((h) => h.source === '/ask');
     assert.ok(corsBlock, 'missing /ask headers block');
   });

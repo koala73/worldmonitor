@@ -599,6 +599,25 @@ Indistinguishable from a healthy no-op by exit status alone, which is why it is
 named and reported explicitly. A tick where every member was merely fresh is a
 healthy no-op and must not be confused with it.
 
+### Chunked Sweep
+
+A member whose full refresh cannot fit one tick, spread across consecutive
+ticks: each tick refreshes the slice of records whose rows are oldest and lets
+the rest stand.
+
+The published snapshot is the cursor. No separate cursor key is kept, because a
+cursor can disagree with the data after a crash or a restore and then skip a
+slice indefinitely, whereas a missing or stale row selects itself.
+
+Completion is sweep-scoped, never tick-scoped: the finished-marker advances only
+when no record is still owed a refresh. A tick that marked its own slice
+complete would stop the member being due and strand every record it did not
+touch. The staleness horizon deciding which rows are owed is bounded on both
+sides — above the sweep's own duration, or the head expires before the tail
+lands and the marker is never written; below the refresh interval, or every row
+still reads current when the member next comes due and the sweep completes
+having fetched nothing. See also: Section Deferral, Bundle Wall Budget.
+
 ## Market Data Claims
 
 ### Tape Claim

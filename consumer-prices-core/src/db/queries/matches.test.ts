@@ -1,14 +1,11 @@
-// Unit tests for the matches.ts query contract — focuses on the new
-// getDisabledPinsForRecovery query added in PR #3627 (the recovery-probe
-// path that prevents sticky-disable monotonic decay; see migration 009 +
-// memory `sticky-disable-without-auto-recovery-decays`).
+// Query-contract tests for product-match admission and pin recovery.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockQuery = vi.fn();
 vi.mock('../client.js', () => ({ query: mockQuery }));
 
-const { getDisabledPinsForRecovery } = await import('./matches.js');
+const { demoteAutoProductMatchToCandidate, getDisabledPinsForRecovery } = await import('./matches.js');
 
 beforeEach(() => mockQuery.mockReset());
 
@@ -120,5 +117,38 @@ describe('getDisabledPinsForRecovery', () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
     const result = await getDisabledPinsForRecovery('retailer-id', 10);
     expect(result.size).toBe(0);
+  });
+});
+
+describe('demoteAutoProductMatchToCandidate', () => {
+  it('updates only machine-owned auto matches and preserves approved overrides', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+    const changed = await demoteAutoProductMatchToCandidate({
+      matchId: 'match-1',
+      matchScore: 0.7,
+      evidence: { validator: { reasons: [], signals: { sizeWindow: 'unverified' } } },
+    });
+
+    expect(changed).toBe(true);
+    const [sql, params] = mockQuery.mock.calls[0];
+    expect(sql).toContain("match_status = 'candidate'");
+    expect(sql).toContain("WHERE id = $1 AND match_status = 'auto'");
+    expect(sql).not.toContain("match_status IN ('auto', 'approved')");
+    expect(params).toEqual([
+      'match-1',
+      0.7,
+      JSON.stringify({ validator: { reasons: [], signals: { sizeWindow: 'unverified' } } }),
+    ]);
+  });
+
+  it('reports no change when a concurrent or curated state is not auto', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+    await expect(demoteAutoProductMatchToCandidate({
+      matchId: 'approved-match',
+      matchScore: 0.7,
+      evidence: {},
+    })).resolves.toBe(false);
   });
 });

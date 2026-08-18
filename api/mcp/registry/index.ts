@@ -1,6 +1,6 @@
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
 import { JMESPATH_SCHEMA } from '../jmespath';
-import type { PublicToolShape, ToolDef } from '../types';
+import type { McpAccessClass, PublicToolShape, ToolDef } from '../types';
 import { compressDescription, utf8ByteLength } from '../utils';
 import { CACHE_TOOLS } from './cache-tools';
 import { NLP_TOOLS } from './nlp-tools';
@@ -14,6 +14,23 @@ import { SOURCE_TOOLS } from './source-tools';
 // last so extracting it from rpc-tools.ts left every other tool's position
 // unchanged. SOURCE_TOOLS is appended after it for the same reason.
 export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS];
+export const FREE_TIER_TOOL_NAMES: ReadonlySet<string> = new Set(
+  TOOL_REGISTRY.filter((tool) => tool._freeTier === true).map((tool) => tool.name),
+);
+
+/** Metadata reads stay authenticated but never spend an allowance or quota slot. */
+export function isQuotaExemptMetadataTool(tool: ToolDef): boolean {
+  return tool.name === 'describe_tool';
+}
+
+/** Single access classifier used by tools/list, describe_tool, and resources. */
+export function toolAccess(tool: ToolDef): McpAccessClass {
+  if (tool._freeTier === true) return 'free';
+  // Local metadata escape hatch: authenticated free accounts may call it and
+  // dispatch exempts it from both the allowance and Pro daily quota.
+  if (isQuotaExemptMetadataTool(tool)) return 'free-account';
+  return tool._execute === undefined ? 'free-account' : 'subscription';
+}
 
 // Public shape for tools/list — strips internal _-prefixed fields, adds MCP
 // annotations, and injects the universal `summary` flag (issue #3678) into
@@ -100,35 +117,20 @@ export function buildPublicTool(
     // Deep-cloned so a mutating client can't poison the registry literal —
     // matches the inputSchema.properties + outputSchema treatment above.
     annotations: structuredClone(tool.annotations),
+    _meta: {
+      'worldmonitor/access': toolAccess(tool),
+    },
   };
 
   // MCP Apps (`io.modelcontextprotocol/ui`) — translate the tool's internal
   // `_uiResourceUri` into the spec-reserved public `_meta`. Emit BOTH the
   // nested `ui.resourceUri` (current form) and the flat `ui/resourceUri`
   // (deprecated legacy alias) so hosts on either revision resolve the shell.
-  // Only tools with an interactive UI surface carry `_meta`; every other tool
-  // omits it entirely (no empty object on the wire).
+  // Only tools with an interactive UI surface carry the UI-specific fields;
+  // every tool carries the agent-facing access marker initialized above.
   if (tool._uiResourceUri) {
-    publicTool._meta = {
-      ui: { resourceUri: tool._uiResourceUri },
-      'ui/resourceUri': tool._uiResourceUri,
-    };
-  }
-
-  // U7 / R6: per-tool access level. Stating the tiers only in the server
-  // instructions helps a client that reads prose; a client that reads schemas
-  // otherwise sees 64 tools with no way to tell which it can call without
-  // credentials. Emitted under the same spec-reserved `_meta` as the UI hint,
-  // and derived from the SAME `_freeTier` flag the handler authorises on, so
-  // the advertisement cannot drift from the behaviour.
-  //
-  // Emitted ONLY on free-tier tools. Marking all 64 would add a key to every
-  // tool's public shape — breaking the deliberate "no `_meta` unless the tool
-  // has something to say" contract, and paying wire bytes on a session-init
-  // payload to restate the default. Absence means subscription-gated, which
-  // the server instructions state once.
-  if (tool._freeTier === true) {
-    publicTool._meta = { ...(publicTool._meta ?? {}), 'worldmonitor/access': 'free' };
+    publicTool._meta.ui = { resourceUri: tool._uiResourceUri };
+    publicTool._meta['ui/resourceUri'] = tool._uiResourceUri;
   }
 
   return publicTool;

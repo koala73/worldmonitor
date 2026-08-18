@@ -462,7 +462,7 @@ export function dailyCounterKey(userId: string, date?: Date): string {
  * VERCEL_ENV between calls; the cost is one trivial string read).
  * Production / unset → empty string. Mirrors `redis.ts::getKeyPrefix`.
  */
-function envPrefix(): string {
+export function envPrefix(): string {
   const env = process.env.VERCEL_ENV;
   if (!env || env === 'production') return '';
   const sha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) || 'dev';

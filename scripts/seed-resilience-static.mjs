@@ -1098,7 +1098,7 @@ async function preservePreviousSnapshotOnFailure(failedDatasets, seedYear, messa
   return { previousManifest, failureMeta };
 }
 
-async function fetchAllDatasetMaps() {
+export async function fetchAllDatasetMaps() {
   const adapters = [
     { key: 'wgi', fetcher: fetchWgiDataset },
     { key: 'infrastructure', fetcher: fetchInfrastructureDataset },
@@ -1130,6 +1130,28 @@ async function fetchAllDatasetMaps() {
   }
 
   return { datasetMaps, failedDatasets };
+}
+
+// Diagnostic adapter timing only. This deliberately omits Redis reads, lock
+// lifecycle, recovery, payload construction, publish, and result logging, so it
+// must not be used as full-run timeout or bundle-placement evidence.
+export async function measureResilienceStaticFetch({
+  fetchAll = fetchAllDatasetMaps,
+  now = Date.now,
+} = {}) {
+  const startedAt = now();
+  const { datasetMaps, failedDatasets } = await fetchAll();
+  const durationMs = now() - startedAt;
+  const sizes = Object.fromEntries(
+    Object.entries(datasetMaps).map(([key, map]) => [key, map instanceof Map ? map.size : 0]),
+  );
+  return {
+    measuredAt: new Date(startedAt).toISOString(),
+    durationMs,
+    failedDatasets,
+    sizes,
+    adapterCount: Object.keys(datasetMaps).length,
+  };
 }
 
 // Exported for testing. When a dataset fetch fails, reads the prior Redis snapshot and
@@ -1282,8 +1304,53 @@ export async function main() {
   }
 }
 
+export async function runMeasureFetchOnly({
+  measure = measureResilienceStaticFetch,
+  write = console.log,
+} = {}) {
+  const result = await measure();
+  // Any failed adapter disqualifies even this diagnostic. A partial fan-out
+  // measures SHORTER than a healthy one
+  // — six of the eleven adapters share fetchWorldBankIndicatorRows/fetchJson,
+  // which has no proxy fallback, so one api.worldbank.org block fails all six in
+  // milliseconds. Exiting 0 there would hand the operator a fast, wrong number
+  // in the one direction that argues the timeout down.
+  if (result.adapterCount === 0) {
+    throw new Error('Resilience-Static fetch measurement ran no adapters — nothing was measured');
+  }
+  if (result.failedDatasets.length > 0) {
+    throw new Error(
+      `Resilience-Static fetch measurement is not representative: `
+      + `${result.failedDatasets.length}/${result.adapterCount} adapter(s) failed `
+      + `(${result.failedDatasets.join(', ')}). Re-run when all adapters are reachable.`,
+    );
+  }
+  write(JSON.stringify(result, null, 2));
+  return result;
+}
+
+export const MEASURE_FETCH_ONLY_FLAG = '--measure-fetch-only';
+const KNOWN_CLI_FLAGS = new Set([MEASURE_FETCH_ONLY_FLAG]);
+
+// Exported so the dispatch is asserted behaviourally rather than by grepping the
+// file for the flag string. An unrecognised argument must NOT fall through to
+// main(): main() acquires the lock, fetches, and PUBLISHES, so a typo'd
+// `--measure-fetch` would run a real seed when the operator asked to measure.
+export function resolveEntry(argv) {
+  const unknown = argv.slice(2).filter((arg) => !KNOWN_CLI_FLAGS.has(arg));
+  if (unknown.length > 0) {
+    throw new Error(
+      `Unknown argument: ${unknown[0]}. Usage: node scripts/seed-resilience-static.mjs [${MEASURE_FETCH_ONLY_FLAG}]`,
+    );
+  }
+  return argv.includes(MEASURE_FETCH_ONLY_FLAG) ? runMeasureFetchOnly : main;
+}
+
 if (process.argv[1]?.endsWith('seed-resilience-static.mjs')) {
-  main().catch((error) => {
+  // resolveEntry throws synchronously on an unknown argument; wrapping the call
+  // keeps that on the same FATAL path as any runtime failure instead of dumping
+  // a raw stack trace.
+  Promise.resolve().then(() => resolveEntry(process.argv)()).catch((error) => {
     const cause = error?.cause ? ` (cause: ${error.cause.message || error.cause})` : '';
     console.error(`FATAL: ${error.message || error}${cause}`);
     process.exit(1);

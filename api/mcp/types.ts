@@ -248,6 +248,15 @@ export interface RpcToolDef extends BaseToolDef {
 
 export type ToolDef = CacheToolDef | RpcToolDef;
 
+/**
+ * Agent-visible access class shared by tools and their resource templates.
+ * `free` is the existing backward-compatible value for anonymous, quota-free
+ * tools. The two additive values make the authenticated free-account allowance
+ * discoverable without making clients infer eligibility from implementation
+ * details such as `summary` support or the absence of a marker.
+ */
+export type McpAccessClass = 'free' | 'free-account' | 'subscription';
+
 // ---------------------------------------------------------------------------
 // JMESPath result envelope
 // ---------------------------------------------------------------------------
@@ -282,14 +291,14 @@ export interface PublicToolShape {
   //     `ui.resourceUri` (current form) and the flat `ui/resourceUri`
   //     (deprecated legacy alias ext-apps normalizes) are emitted so hosts on
   //     either revision resolve the app shell.
-  //   - `worldmonitor/access` (U7 / R6), present ONLY when the tool is servable
-  //     without credentials, with value `free`. Omission means the tool is
-  //     subscription-gated; we do not repeat that default on every entry. A
-  //     namespaced vendor key, so it cannot collide with a future spec field.
-  _meta?: {
+  //   - `worldmonitor/access`, present on every tool so agents can distinguish
+  //     anonymous-free, authenticated free-account allowance, and
+  //     subscription-only tools without probing denials. `free` retains its
+  //     original anonymous/quota-free meaning for backward compatibility.
+  _meta: {
     ui?: { resourceUri: string };
     'ui/resourceUri'?: string;
-    'worldmonitor/access'?: 'free';
+    'worldmonitor/access': McpAccessClass;
   };
 }
 
@@ -394,8 +403,17 @@ export interface McpPreCheckPassed {
    *   number  → enforced verbatim
    * Set for the `pro` context only. `user_key` and `env_key` omit it — raising
    * API-plan MCP allowances is a deliberate follow-up, not a default (KTD6).
+   *
+   * Free-account paid-funnel (#6716): when `freeAccountAllowance` is set, this
+   * is the free call ceiling and dispatch meters via
+   * `reserveFreeAccountAllowance` instead of `reserveQuota`.
    */
   mcpDailyLimit?: number | null;
+  /**
+   * Authenticated free / insufficient-tier caller admitted at the MCP call
+   * site only (#6716). Must never be set by relaxing `checkProMcpAccess`.
+   */
+  freeAccountAllowance?: true;
 }
 export interface McpPreCheckRejected {
   ok: false;

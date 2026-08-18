@@ -6,13 +6,16 @@ import {
   PROVIDER_IDENTITY_GROUPS,
   PROVIDER_IDENTITY_REVIEW,
   buildManifest,
+  buildSourceAttributionStats,
   checkSourceAttribution,
   loadManifest,
   matchGeneratedAttributionSection,
   renderAttributionSection,
   runSourceAttribution,
   scanUpstreamHosts,
+  sourceAttributionLedgerStats,
   sourceAttributionStats,
+  validateSourceAttributionLedger,
   validateManifest,
   validateProviderIdentityGroups,
   providerIdentityDigest,
@@ -87,6 +90,15 @@ test('source inventory has complete metadata and matches the generated catalog',
   const generated = renderAttributionSection(inventory, manifest);
   const actual = matchGeneratedAttributionSection(docs);
   assert.equal(actual, generated, 'docs/source-attribution.mdx must contain exactly the generated attribution section');
+  assert.match(generated, /\| Provider \| Observed surface \|/);
+  for (const forbidden of [
+    /\blicen[cs]\w*/i,
+    /\bterms-review\b/i,
+    /\bredistribut\w*/i,
+    /\bcommercial(?:-|\s+)use\b/i,
+  ]) {
+    assert.doesNotMatch(docs, forbidden, `public source attribution docs must omit ${forbidden}`);
+  }
 
   // Mintlify parses these pages as MDX v3, which rejects `<!--` with
   // "Unexpected character `!` (U+0021) before name" and fails the whole
@@ -118,7 +130,7 @@ test('source inventory has complete metadata and matches the generated catalog',
     'production stats must match the independent provider oracle',
   );
   assert.equal(stats.observedHosts, inventory.length, 'observed stats must derive from the source scan');
-  assert.ok(stats.reviewNeeded > 0, 'terms-review rows must remain visible until a license audit is complete');
+  assert.ok(stats.reviewNeeded > 0, 'the internal source-policy review backlog must remain tracked');
 
   const byHost = new Map(manifest.entries.map((entry) => [entry.host, entry]));
   assert.equal(byHost.get('auth.opensky-network.org')?.provider, 'opensky-network.org');
@@ -446,6 +458,82 @@ test('manifest and scanner references record a path only', () => {
       assert.deepEqual(Object.keys(reference), ['path'], `scanner emitted ${JSON.stringify(reference)}`);
     }
   }
+});
+
+test('ledger stats match validated stats when the committed manifest is current', () => {
+  const inventory = scanUpstreamHosts(rootDir);
+  const manifest = loadManifest(rootDir);
+  const validated = sourceAttributionStats(inventory, manifest);
+  const ledger = sourceAttributionLedgerStats(manifest, { observedHosts: inventory.length });
+  assert.deepEqual(ledger, validated);
+  assert.deepEqual(buildSourceAttributionStats({ rootDir, validate: false }), sourceAttributionLedgerStats(manifest));
+});
+
+test('ledger stats remain countable when scan-parity validation would fail', () => {
+  const stale = {
+    entries: [{
+      host: 'stale.example',
+      provider: 'stale.example',
+      license: 'Provider terms',
+      attribution: 'Credit stale.example.',
+      observed: true,
+      kind: 'structured',
+      status: 'terms-review',
+      references: [{ path: 'scripts/removed-seed.mjs' }],
+    }],
+    logicalEntries: [],
+  };
+  assert.throws(
+    () => sourceAttributionStats([], stale),
+    /invalid manifest/,
+  );
+  const ledger = sourceAttributionLedgerStats(stale);
+  assert.equal(ledger.activeHosts, 1);
+  assert.equal(ledger.providerCount, 1);
+  assert.equal(ledger.structuredHosts, 1);
+  assert.equal(ledger.observedHosts, 1);
+});
+
+test('ledger stats reject intrinsic manifest failures before counting', () => {
+  const malformed = {
+    entries: [
+      {
+        host: 'invalid.example',
+        provider: '',
+        license: '',
+        attribution: '',
+        observed: true,
+        kind: 'not-a-source-kind',
+        status: 'reviewed',
+        references: [{ path: 'scripts/invalid.mjs' }],
+      },
+      {
+        host: 'invalid.example',
+        provider: 'invalid.example',
+        license: 'Provider terms',
+        attribution: 'Credit invalid.example.',
+        observed: true,
+        kind: 'structured',
+        status: 'reviewed',
+        references: [{ path: 'scripts/duplicate.mjs' }],
+      },
+    ],
+    logicalEntries: [{
+      host: 'candidate.example',
+      provider: 'Candidate',
+      license: '',
+      attribution: '',
+      observed: false,
+      kind: 'candidate',
+      status: 'excluded',
+    }],
+  };
+  const errors = validateSourceAttributionLedger(malformed);
+  assert.ok(errors.some((error) => error.includes('invalid manifest kind')));
+  assert.ok(errors.some((error) => error.includes('incomplete attribution metadata')));
+  assert.ok(errors.some((error) => error.includes('duplicate manifest entry')));
+  assert.ok(errors.some((error) => error.includes('incomplete logical attribution metadata')));
+  assert.throws(() => sourceAttributionLedgerStats(malformed), /invalid manifest/);
 });
 
 test('the committed manifest is a fixpoint of its own generator', () => {

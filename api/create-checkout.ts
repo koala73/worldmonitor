@@ -21,6 +21,9 @@ import {
   getIdempotencyKey,
 } from './_idempotency.js';
 import { validateBearerToken } from '../server/auth-session';
+// From the canonical shared module, not via api/mcp/upgrade — the checkout edge
+// function has no reason to depend on the MCP transport tree (#6716).
+import { normalizeCheckoutAttributionSource } from '../shared/mcp-attribution';
 
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
@@ -126,6 +129,7 @@ export default async function handler(
     returnUrl?: string;
     discountCode?: string;
     referralCode?: string;
+    attributionSource?: string;
     bypassPendingGuard?: boolean;
   };
   try {
@@ -161,6 +165,8 @@ export default async function handler(
     return completeStandaloneIdempotency(idempotency, json({ error: 'Service unavailable' }, 503, cors));
   }
 
+  const attributionSource = normalizeCheckoutAttributionSource(body.attributionSource);
+
   // Relay to Convex
   try {
     const resp = await createCheckoutDeps.fetch(`${CONVEX_SITE_URL}/relay/create-checkout`, {
@@ -178,6 +184,7 @@ export default async function handler(
         returnUrl: body.returnUrl,
         discountCode: body.discountCode,
         referralCode: body.referralCode,
+        attributionSource,
         bypassPendingGuard: body.bypassPendingGuard,
       }),
       signal: AbortSignal.timeout(15_000),

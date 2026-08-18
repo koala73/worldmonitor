@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 import { describe, it } from 'node:test';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -24,6 +25,7 @@ function assertTitle(label, title) {
 }
 
 describe('reported landing-page SEO metadata', () => {
+  guardProBuiltOutput();
   it('keeps blog landing metadata within search-friendly bounds', () => {
     const blogIndex = source('blog-site/src/pages/index.astro');
     const authorPage = source('blog-site/src/pages/authors/elie-habib.astro');
@@ -46,7 +48,10 @@ describe('reported landing-page SEO metadata', () => {
     );
   });
 
-  it('keeps the Pro shell and documentation sandbox descriptions bounded', () => {
+  // Reads the BUILT public/pro/index.html, produced by `npm run build:pro`
+  // rather than committed (#6898); the rest of this suite reads committed
+  // sources and stays unconditional.
+  it('keeps the Pro shell and documentation sandbox descriptions bounded', { skip: shouldSkipProBuiltOutput() }, () => {
     const proHtml = source('pro-test/index.html');
     const builtProHtml = source('public/pro/index.html');
     const proLocale = JSON.parse(source('pro-test/src/locales/en.json'));

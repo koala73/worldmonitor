@@ -12,7 +12,7 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 <Info>
 **Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** Pro 订阅者只需在授权页点击 _"Sign in with WorldMonitor Pro"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。Free 套餐用户在 OAuth 步骤会看到 `403 INSUFFICIENT_TIER`。
 
-`get_sources` 不需要 OAuth：它是唯一无需凭据且不消耗每日配额的数据工具。匿名调用使用独立的失败关闭限额：每个 IP 每分钟 10 次。其他所有数据工具仍需订阅。
+`get_sources` 不需要 OAuth：它是唯一无需凭据且不消耗每日配额的数据工具。匿名调用使用独立的失败关闭限额：每个 IP 每分钟 10 次。其他数据工具需要绑定用户的凭据；标记为 `free-account` 的缓存工具可使用已确认免费账户的小额额度，标记为 `subscription` 的实时获取工具需要 Pro。
 </Info>
 
 所有付费套餐共享同一个 MCP 服务器和同样的实时工具目录。当前的硬性 MCP 每日预留仅针对 OAuth 上下文在 Pro 计数器上强制执行：**每个 UTC 日 50 次消耗配额的 `tools/call` / `resources/read` 调用**。使用 API key（`wm_…`）的 MCP 客户端受本 handler 中 **60 次请求/分钟/key** 限流器的保护；更宽松的 API Starter / Business REST 额度在 MCP 每日预留路径之外强制执行。（`describe_tool`，即 v1.5.0 的元数据查询辅助工具，不计入 Pro 每日配额。）
@@ -30,7 +30,7 @@ Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / c
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS 元数据（RFC 8414） |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | 资源服务器元数据（RFC 9728） |
 
-服务器标识：`worldmonitor` v1.16.0。
+服务器标识：`worldmonitor` v1.17.0。
 
 注册表登记：该服务器以 `app.worldmonitor/mcp` 之名发布于[官方 MCP 注册表](https://registry.modelcontextprotocol.io/v0/servers?search=worldmonitor) —— 这是一个经过域名验证的命名空间，因此通过注册表解析服务器的客户端获得的端点和元数据与上方的服务器卡片一致 —— 并在 [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp) 和 [mcp.so](https://mcp.so/server/world-monitor) 上列出。
 
@@ -59,7 +59,7 @@ WorldMonitor 支持 Streamable HTTP POST 流程，可返回 JSON 或 SSE 响应�
 
 ## 认证
 
-**发现是公开的。** `initialize`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`ping`、`logging/setLevel` 以及 `notifications/initialized` 握手都可**无需凭据**提供服务，因此任何 agent（或 agent 就绪性扫描器）都可以连接到 `https://worldmonitor.app/mcp`、读取服务器身份，并在认证之前枚举完整的工具、prompt 和资源目录 —— 这与静态[服务器卡片](https://worldmonitor.app/.well-known/mcp/server-card.json)中已发布的元数据相同。这些方法只返回公开的目录元数据（名称、描述、URI / URI 模板、静态工作流模板文案 —— 不含数据，不计配额）；匿名 `initialize` 所声明的每一项能力都可匿名调用，因此严格的 MCP 客户端（Claude Desktop、`mcp-remote`、参考 SDK）能够完成其连接后的完整枚举，而不会卡在认证墙上。对**公开**资源的 `resources/read`（由 `resources/list` 暴露的具体的、仅含元数据的新鲜度/健康探针，例如 `worldmonitor://seed-meta/freshness`）**同样是公开且不计配额的** —— 匿名 agent 可以顺畅读取它。匿名发现按每个客户端 IP 限流为 60 次请求/分钟。`get_sources` 是唯一无需凭据且不消耗每日配额的数据工具；其匿名路径使用独立的失败关闭上限：每个 IP 每分钟 10 次。其他所有承载数据的 `tools/call`，以及对承载数据的 **URI 模板实例化**的 `resources/read`（国家风险、咽喉要道状态、市场报价），仍需使用下方两种订阅认证模式之一。在 `tools/list` 中，`get_sources` 带有 `_meta["worldmonitor/access"]: "free"`；没有该访问标记表示工具需要订阅。在发现方法上出示的凭据仍会被校验（错误的 key 会返回 `401`，绝不会静默降级为匿名）。
+**发现是公开的。** `initialize`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`ping`、`logging/setLevel` 以及 `notifications/initialized` 握手都可**无需凭据**提供服务，因此任何 agent（或 agent 就绪性扫描器）都可以连接到 `https://worldmonitor.app/mcp`、读取服务器身份，并在认证之前枚举完整的工具、prompt 和资源目录 —— 这与静态[服务器卡片](https://worldmonitor.app/.well-known/mcp/server-card.json)中已发布的元数据相同。这些方法只返回公开的目录元数据（名称、描述、URI / URI 模板、静态工作流模板文案 —— 不含数据，不计配额）；匿名 `initialize` 所声明的每一项能力都可匿名调用，因此严格的 MCP 客户端（Claude Desktop、`mcp-remote`、参考 SDK）能够完成其连接后的完整枚举，而不会卡在认证墙上。对**公开**资源的 `resources/read`（由 `resources/list` 暴露的具体的、仅含元数据的新鲜度/健康探针，例如 `worldmonitor://seed-meta/freshness`）**同样是公开且不计配额的** —— 匿名 agent 可以顺畅读取它。匿名发现按每个客户端 IP 限流为 60 次请求/分钟。`get_sources` 是唯一无需凭据且不消耗每日配额的数据工具；其匿名路径使用独立的失败关闭上限：每个 IP 每分钟 10 次。其他承载数据的调用需要凭据。每个 `tools/list` 和 `describe_tool` 条目都携带 `_meta["worldmonitor/access"]`：`free` 表示匿名且不计额度，`free-account` 表示已认证免费账户可用（缓存数据调用消耗免费额度，`describe_tool` 不消耗），`subscription` 表示仅 Pro 可用。资源模板携带与其支撑工具相同的标记。在发现方法上出示的凭据仍会被校验（错误的 key 会返回 `401`，绝不会静默降级为匿名）。
 
 MCP handler 按优先级顺序接受两种认证模式：
 
@@ -132,7 +132,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 
 | 套餐 | MCP 访问 | 认证模式 | MCP 每日预留 | 备注 |
 |------|------------|------------|-----------------------|-------|
-| **Free** | 仅 `get_sources` | 无 | 无每日配额 | 匿名 `get_sources` 调用超过每个 IP 每分钟 10 次时失败关闭。其他数据工具的 OAuth 流程返回 `403 INSUFFICIENT_TIER`。 |
+| **Free** | 匿名 `get_sources`；持有现有绑定用户凭据时可用缓存工具 | `free-account` 工具需要现有绑定用户凭据 | **每 UTC 日 5 次调用和 3 个空闲间隔请求窗口** | 新 OAuth 签发仍返回 `403 INSUFFICIENT_TIER`。匿名 `get_sources` 超过每个 IP 每分钟 10 次时失败关闭。 |
 | **Pro** | ✅ 是 | 仅 OAuth | **50 次消耗配额的调用 / UTC 日** | 经由 apex Clerk 登录跳转。无需或存储 `wm_…` key。 |
 | **API Starter** | ✅ 是 | OAuth **或** `wm_…` key | **每个 UTC 日 50 次消耗配额的调用** | 标准开发者层 REST/API 访问。 |
 | **API Business** | ✅ 是 | OAuth **或** `wm_…` key | **每个 UTC 日 50 次消耗配额的调用** | 更高的 REST/API 吞吐量。 |
@@ -419,15 +419,16 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ### 资源
 
-资源分为两个层级。**具体资源**由 `resources/list` 暴露，可匿名且不计配额地读取；**URI 模板**（参数化、承载数据）由 `resources/templates/list` 暴露，每次具体实例化都需在认证下读取并消耗 Pro 每日配额。
+资源分为三个访问类别。**公开具体资源**可匿名且不计配额地读取；**账户资源**只向已认证、绑定用户的凭据公开，但读取时不消耗配额；**URI 模板**是参数化且承载数据的资源，其访问要求由 `_meta["worldmonitor/access"]` 声明为 `free-account` 或 `subscription`，并按调用者适用的免费额度或订阅配额计量。
 
 `resources/list` —— 具体、可匿名读取、不计配额：
 
 | 资源 URI | 支撑数据 |
 |--------------|--------------|
 | `worldmonitor://seed-meta/freshness` | 仅股票市场数据 bootstrap 的写入年龄：`seed-meta:market:stocks` 的 `cached_at` 与 `stale`。**不**证明板块估值完整度 —— 请用 `get_market_data` 的 `valuationCoverage`（`sourceStatus`、unavailable/last-good/diagnostics）。廉价 seeder 健康探针 —— 无需认证，不计配额。 |
+| `worldmonitor://account/mcp-allowance` | 当前已认证账户的每日调用使用量、剩余额度、UTC 重置时间，以及适用时的免费账户请求窗口状态。仅向绑定用户的 OAuth token 或 `wm_…` key 公开；读取不预留或消耗额度。 |
 
-`resources/templates/list` —— 参数化的 URI 模板。替换占位符，然后 `resources/read` 具体的 URI（需要认证；消耗 Pro 每日配额的方式与等价的 `tools/call` 对称）：
+`resources/templates/list` —— 参数化的 URI 模板。替换占位符，然后 `resources/read` 具体的 URI。客户端必须读取模板的 `_meta["worldmonitor/access"]`：`free-account` 模板允许已认证免费账户使用免费额度，`subscription` 模板需要有效订阅。计量方式与等价的 `tools/call` 对称：
 
 | 资源 URI 模板 | 支撑数据 |
 |-----------------------|--------------|
@@ -435,7 +436,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `worldmonitor://chokepoints/{slug}/status` | 咽喉要道过境摘要和风险叙述。`{slug}` 是已发布的 kebab-case 咽喉要道 slug 之一，例如 `suez`、`strait-of-hormuz` 或 `bab-el-mandeb`。 |
 | `worldmonitor://markets/{symbol}/quote` | 单一符号的市场报价切片。`{symbol}` 是大写，例如 `AAPL`、`GC=F` 或 `BTC-USD`。 |
 
-`resources/list` 和 `resources/templates/list` 是元数据，不消耗 Pro 每日配额。对模板实例化的 `resources/read` 有意消耗与等价 `tools/call` 相同的每日配额额度；它通过同一个分发器路由，因此承载数据的资源无法绕过 Pro 上限。对公开（具体）资源的 `resources/read` 不计配额 —— 它只返回元数据。与每个 MCP 方法一样，所有这些仍计入 60/分钟限流器。有关每分钟限流与每日配额耗尽之间确切的 `-32029` 状态/头差异，请参阅 [MCP 错误目录](/zh/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily)。
+`resources/list` 和 `resources/templates/list` 是元数据，不消耗每日额度。对模板实例化的 `resources/read` 有意消耗与等价 `tools/call` 相同的调用者适用额度；它通过同一个分发器路由，因此承载数据的资源无法绕过免费账户上限或订阅配额。对公开具体资源和 `worldmonitor://account/mcp-allowance` 的 `resources/read` 不计额度。与每个 MCP 方法一样，所有这些仍计入 60/分钟限流器。有关每分钟限流与每日额度耗尽之间确切的 `-32029` 状态/头差异，请参阅 [MCP 错误目录](/zh/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily)。
 
 ### MCP Apps（交互式 UI）
 
@@ -530,13 +531,14 @@ MCP handler 在三个独立层次上发出失败信号 —— **HTTP 状态**、
 
 | 层次        | 常见形态                                                    | 查看位置       |
 |--------------|------------------------------------------------------------------|---------------------|
-| HTTP 状态  | `200`（JSON-RPC 默认）、`401`、`429`、`503`                | `WWW-Authenticate` / `Retry-After` 头 |
-| JSON-RPC     | `-32001` 认证 · `-32029` 速率受限 · `-32602` 参数错误 · `-32603` 内部错误 | `error.code` + `error.message`           |
+| HTTP 状态  | `200`（JSON-RPC 默认）、`401`、`403`、`429`、`503`                | `WWW-Authenticate` / `Retry-After` 头 |
+| JSON-RPC     | `-32001` 认证 · `-32002` 需要升级 · `-32029` 速率受限 · `-32602` 参数错误 · `-32603` 内部错误 | `error.code` + `error.message`           |
 | Soft envelope | `_budget_exceeded`（响应过大）、`_jmespath_error`（投影失败） | 将 `result.content[0].text` 解析为 JSON |
 
 由外向内分诊：HTTP 状态 → JSON-RPC 错误码 → soft envelope。完整的每种形态参考（触发条件、配对状态、恢复方式、示例 payload）位于 [MCP 错误目录](/zh/mcp-error-catalog)。几个高频要点：
 
 - **401 + `-32001`** 携带一个 `WWW-Authenticate` 头，其 `resource_metadata` 指向 `/.well-known/oauth-protected-resource`。支持 RFC 9728 的客户端会在此头上自动重新运行 OAuth 流程。
+- **403 + `-32002`** 是终止性授权结果，例如订阅已失效或当前工具需要升级。它不携带 `WWW-Authenticate`；重新运行 OAuth 无法修复此状态。
 - **429 + `-32029`** 是 Pro 每日上限（`Retry-After: <距离 UTC 午夜的秒数>`）。每分钟速率限制在 HTTP 200 内返回 `-32029`，而不是 429 —— 区别请见错误目录。
 - **Soft envelope 返回 HTTP 200** 且没有 JSON-RPC `error` 字段 —— 仅检查 JSON-RPC 层的客户端会静默地将它们视为成功。务必解析 `result.content[0].text` 并在将 payload 当作数据消费前检查带前导下划线的判别 key（`_budget_exceeded`、`_jmespath_error`）。
 

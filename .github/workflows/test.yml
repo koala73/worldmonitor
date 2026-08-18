@@ -187,6 +187,9 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            pro-test/package-lock.json
       - run: npm ci
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -242,6 +245,12 @@ jobs:
           path: ${{ runner.temp }}/openapi-capacity.json
           if-no-files-found: warn
           retention-days: 14
+      - name: Build /pro artifacts for built-output tests
+        # public/pro/ stopped being committed in #6898, so the suites that read
+        # it need the same treatment dist/ already gets. Ordered before the
+        # dashboard build to mirror production: root `vite build` copies
+        # public/ into dist/, so /pro must exist by then.
+        run: npm run build:pro
       - name: Build dashboard artifacts for built-output tests
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
       - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data
@@ -569,6 +578,22 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-ci-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Build /pro artifacts for prehydration browser checks
+        # public/pro/ is built output since #6898. Keep this explicit and
+        # immediately before the focused spec so the browser checks cannot run
+        # against missing or stale bytes from another build.
+        run: npm run build:pro
+      - name: Run fail-closed prehydration browser checks
+        id: prehydration
+        run: npm run test:e2e:prehydration
+      - name: Upload prehydration Playwright artifacts
+        if: ${{ !cancelled() && steps.prehydration.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-prehydration-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14

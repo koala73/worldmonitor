@@ -772,7 +772,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
       });
-      assertToolFetchOk(response, 'list-global-tenders');
+      await assertToolFetchOk(response, 'list-global-tenders');
       const result = await response.json() as ProcurementRouteResponse;
       return {
         opportunities: (result.tenders || []).map(compactProcurementOpportunity),
@@ -961,8 +961,16 @@ export const RPC_TOOLS: ToolDef[] = [
       // gateway-backed path to retain entitlement and replay protection.
       const insightsUrl = `${base}/api/infrastructure/v1/get-bootstrap-data?keys=insights`;
       const insightsAuth = await buildAuthHeaders(context, 'GET', insightsUrl, null);
+      // On a self-hosted install `base` is the sidecar's own loopback origin,
+      // whose global auth gate requires the per-session LOCAL_API_TOKEN (the
+      // MCP key authenticates the client, not this internal hop). Route the
+      // headers through the loopback helper so the process attaches the token
+      // it already holds — mirroring get_defense_industrial_base (#6538).
       const insightsRes = await fetch(insightsUrl, {
-        headers: { ...insightsAuth, 'User-Agent': UA },
+        headers: buildMcpDownstreamHeaders(base, execution, {
+          ...insightsAuth,
+          'User-Agent': UA,
+        }),
         signal: AbortSignal.timeout(6_000),
       });
       await assertMcpToolFetchOk(insightsRes, {
@@ -1189,7 +1197,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
       });
-      assertToolFetchOk(res, 'get-country-risk');
+      await assertToolFetchOk(res, 'get-country-risk');
       return res.json();
     },
     _apiPaths: [
@@ -1272,7 +1280,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
       });
-      assertToolFetchOk(res, 'get-food-stocks');
+      await assertToolFetchOk(res, 'get-food-stocks');
       return res.json();
     },
     _apiPaths: [
@@ -1738,7 +1746,7 @@ export const RPC_TOOLS: ToolDef[] = [
         body,
         signal: AbortSignal.timeout(25_000),
       });
-      assertToolFetchOk(res, 'deduct-situation');
+      await assertToolFetchOk(res, 'deduct-situation');
       return res.json();
     },
     _apiPaths: [
@@ -1781,7 +1789,7 @@ export const RPC_TOOLS: ToolDef[] = [
         body,
         signal: AbortSignal.timeout(25_000),
       });
-      assertToolFetchOk(res, 'get-forecasts');
+      await assertToolFetchOk(res, 'get-forecasts');
       return res.json();
     },
     _apiPaths: [],
@@ -1844,7 +1852,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(25_000),
       });
-      assertToolFetchOk(res, 'search-google-flights');
+      await assertToolFetchOk(res, 'search-google-flights');
       return res.json();
     },
     _apiPaths: [
@@ -1902,7 +1910,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(25_000),
       });
-      assertToolFetchOk(res, 'search-google-dates');
+      await assertToolFetchOk(res, 'search-google-dates');
       return res.json();
     },
     _apiPaths: [
@@ -1981,7 +1989,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(15_000),
       });
-      assertToolFetchOk(res, 'get-mineral-production');
+      await assertToolFetchOk(res, 'get-mineral-production');
       return res.json();
     },
     _coverageKeys: [
