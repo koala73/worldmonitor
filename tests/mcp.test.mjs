@@ -3295,21 +3295,35 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(body.error?.code, -32001);
   });
 
-  it('error: getEntitlements null → -32001 + 401', async () => {
+  it('getEntitlements null with the backend UNCONFIGURED → 503, never a free admission (#6716)', async () => {
+    // The load-bearing guard on the free funnel. `getEntitlements` returns null
+    // *before attempting a lookup* when the entitlement backend is unconfigured,
+    // so a null read is only a "this is a free account" verdict when a lookup
+    // could actually run. Treating the misconfigured case as free would hand
+    // every caller a free allowance during a deploy misconfiguration — a
+    // fail-OPEN. It must stay retryable and unmetered.
+    delete process.env.CONVEX_SITE_URL;
     const { deps, pipe } = makeProDeps({ getEntitlements: async () => null });
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
-    assert.equal(res.status, 401);
+    assert.equal(res.status, 503);
     const body = await res.json();
-    assert.equal(body.error?.code, -32001);
-    assert.equal(pipe.count, 0);
+    assert.equal(body.error?.code, -32603);
+    assert.notEqual(body.error?.data?.reason, 'lapsed-subscription',
+      'a misconfigured backend must not be reported as a confirmed lapse');
+    assert.equal(pipe.count, 0, 'no slot may be charged');
   });
 
-  it('error: getEntitlements throws → -32001 + 401 (fail-closed)', async () => {
-    const { deps } = makeProDeps({ getEntitlements: async () => { throw new Error('convex down'); } });
+  it('error: getEntitlements throws → -32603 + 503 (availability, not a billing verdict)', async () => {
+    // A THROWN lookup is the backend being unreachable. Reporting it as
+    // 'no-account' told an already-authenticated caller to go sign up, and hid
+    // a real outage as a routine upsell. Still fail-closed: the call is denied.
+    const { deps, pipe } = makeProDeps({ getEntitlements: async () => { throw new Error('convex down'); } });
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
-    assert.equal(res.status, 401);
+    assert.equal(res.status, 503);
     const body = await res.json();
-    assert.equal(body.error?.code, -32001);
+    assert.equal(body.error?.code, -32603);
+    assert.equal(res.headers.get('Retry-After'), '5');
+    assert.equal(pipe.count, 0, 'a denied call must never charge a slot');
   });
 
   it('error: free-account allowance admits gated tools (metered); checkProMcpAccess still refuses elsewhere (#6716)', async () => {
@@ -3333,10 +3347,16 @@ describe('api/mcp.ts — U7 Pro-path', () => {
       pipelineOpts: { initialCount: 5 },
     });
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
-    assert.equal(res.status, 401);
+    // A spent allowance is a QUOTA state, so it rides the quota envelope — the
+    // same -32029/429 the Pro daily cap uses. It must NOT be -32001/401: the
+    // error catalog documents that pair as "re-authenticate via OAuth", which
+    // sends an RFC-9728 client into a loop it can never exit.
+    assert.equal(res.status, 429);
     const body = await res.json();
-    assert.equal(body.error?.code, -32001);
+    assert.equal(body.error?.code, -32029);
     assert.equal(body.error?.data?.reason, 'allowance-exhausted');
+    assert.ok(Number(res.headers.get('Retry-After')) > 0, 'must tell the agent when to come back');
+    assert.equal(res.headers.get('WWW-Authenticate'), null, 'a quota denial must not invite re-auth');
   });
 
   it('current Pro fallback remains usable while stronger renewal verification is pending', async () => {

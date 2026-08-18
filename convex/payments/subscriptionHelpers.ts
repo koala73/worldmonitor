@@ -23,6 +23,7 @@ import {
 } from "../lib/identitySigning";
 import { DEV_USER_ID, isDev } from "../lib/auth";
 import { isChargedEventType, recordUnattributedEvent } from "./unattributedPayments";
+import { normalizeCheckoutAttributionSource } from "../../shared/mcp-attribution";
 
 // ---------------------------------------------------------------------------
 // Types for webhook payload data (narrowed from `any`)
@@ -1071,12 +1072,10 @@ export async function handleSubscriptionActive(
       currentPeriodEnd,
       dodoCustomerId: incomingDodoCustomerId,
       // MCP paid-funnel (#6716): stamp only on FIRST activation (this insert
-      // branch). Replays / renewals skip via the `else` above.
-      attributionSource:
-        typeof data.metadata?.wm_attribution === "string"
-        && data.metadata.wm_attribution === "mcp-paid-funnel"
-          ? data.metadata.wm_attribution
-          : undefined,
+      // branch). Replays / renewals skip via the `else` above. The marker is
+      // validated by the shared allowlist, never an inline string compare, so
+      // checkout's writer and this reader cannot drift apart.
+      attributionSource: normalizeCheckoutAttributionSource(data.metadata?.wm_attribution),
       rawPayload: data,
       updatedAt: eventTimestamp,
     });

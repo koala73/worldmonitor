@@ -145,8 +145,10 @@ describe('api/mcp — user API keys on /mcp (#4859) + pre-check hardening (#4860
       pipelineOpts: { initialCount: 5 },
     });
     const gated = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
-    assert.equal(gated.status, 401);
+    // Quota envelope (-32029/429), not the auth envelope — see #6716 F2.
+    assert.equal(gated.status, 429);
     const gatedBody = await gated.json();
+    assert.equal(gatedBody.error?.code, -32029);
     assert.equal(gatedBody.error?.data?.reason, 'allowance-exhausted');
     assert.ok(gatedBody.error?.data?.upgradeUrl);
   });
@@ -160,14 +162,17 @@ describe('api/mcp — user API keys on /mcp (#4859) + pre-check hardening (#4860
     assert.equal(gated.status, 503);
   });
 
-  it('entitlement gate: getEntitlements throws for a user key → 401 fail-closed', async () => {
+  it('entitlement gate: getEntitlements throws for a user key → 503 fail-closed (#6716)', async () => {
+    // Still fail-closed — the call is denied. But a backend outage is reported
+    // as retryable, not as a billing verdict about the key owner.
     const { deps } = makeUserKeyDeps({
       getEntitlements: async () => { throw new Error('convex down'); },
     });
     const res = await mcpHandler(userKeyReq(callBody('describe_tool', { tool_name: 'get_market_data' })), deps);
-    assert.equal(res.status, 401);
+    assert.equal(res.status, 503);
     const body = await res.json();
-    assert.equal(body.error?.code, -32001);
+    assert.equal(body.error?.code, -32603);
+    assert.equal(res.headers.get('Retry-After'), '5');
   });
 
   it('unknown wm_ key (not env, not a user key) → 401 -32001 Invalid API key', async () => {

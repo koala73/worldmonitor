@@ -37,6 +37,7 @@ import {
 } from './routes';
 import { appendStoredContentAttributionToUrl } from '../../shared/content-attribution';
 import { isInternalSourceTag } from '../../shared/referral-namespaces';
+import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -88,8 +89,10 @@ function getRefCode(): string | undefined {
 }
 
 function getMcpAttributionSource(): string | undefined {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('utm_campaign') === 'mcp-paid-funnel' ? 'mcp-paid-funnel' : undefined;
+  // Uses the shared allowlist rather than an inline literal so the /pro page,
+  // the checkout edge function, and the Convex webhook reader can never disagree
+  // about what the campaign marker is (#6716).
+  return readMcpAttributionFromSearch(window.location.search);
 }
 
 /**

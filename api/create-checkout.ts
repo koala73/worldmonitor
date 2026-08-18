@@ -21,7 +21,9 @@ import {
   getIdempotencyKey,
 } from './_idempotency.js';
 import { validateBearerToken } from '../server/auth-session';
-import { normalizeCheckoutAttributionSource } from './mcp/upgrade';
+// From the canonical shared module, not via api/mcp/upgrade — the checkout edge
+// function has no reason to depend on the MCP transport tree (#6716).
+import { normalizeCheckoutAttributionSource } from '../shared/mcp-attribution';
 
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??

@@ -27,11 +27,17 @@ export function normalizeCheckoutAttributionSource(value: unknown): string | und
   return isMcpAttributionSource(trimmed) ? trimmed : undefined;
 }
 
-/** Read the MCP campaign from a URL search string (inbound /pro visit). */
+/**
+ * Read the MCP campaign from a URL search string (inbound /pro visit).
+ *
+ * `URLSearchParams` strips a leading `?` but NOT a leading `#`, so a hash string
+ * has to have its marker removed explicitly — passing `#utm_campaign=x` through
+ * untouched parses the first key as `"#utm_campaign"` and silently finds nothing.
+ */
 export function readMcpAttributionFromSearch(search: string): string | undefined {
-  const params = new URLSearchParams(
-    search.startsWith('?') || search.startsWith('#') ? search : `?${search}`,
-  );
-  const campaign = params.get('utm_campaign');
+  const normalized = search.startsWith('?') || search.startsWith('#')
+    ? search.slice(1)
+    : search;
+  const campaign = new URLSearchParams(normalized).get('utm_campaign');
   return isMcpAttributionSource(campaign) ? campaign : undefined;
 }

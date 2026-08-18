@@ -236,9 +236,22 @@ describe('api/mcp/auth.ts — checkMcpEntitlementGate predicates (#5379 Gap 4)',
         });
       }
 
-      it('rejects 401 (fail-closed) when getEntitlements THROWS', async () => {
+      it('denies with a retryable 503 (fail-closed) when getEntitlements THROWS (#6716)', async () => {
+        // Fail-closed is preserved — no admission, no metering. What changed is
+        // the CLAIM: a thrown lookup is our backend being unreachable, so it
+        // must not be rendered as a verdict about the caller's subscription.
         const res = await runGate(entry.context, async () => { throw new Error('convex down'); });
-        await assertRejected(res, `${entry.kind} / getEntitlements throws`);
+        assert.ok(res instanceof Response, `${entry.kind}: must reject with a Response`);
+        assert.equal(res.status, 503, `${entry.kind}: availability failure is retryable`);
+        const body = await res.json();
+        assert.equal(body.error?.code, -32603, `${entry.kind}: JSON-RPC error code`);
+        assert.equal(res.headers.get('Retry-After'), '5', `${entry.kind}: must say when to retry`);
+        assert.equal(
+          body.error?.data?.reason,
+          undefined,
+          `${entry.kind}: must not assert a billing/account reason for an outage`,
+        );
+        assert.equal(res.headers.get('Cache-Control'), 'no-store', `${entry.kind}: never cached`);
       });
 
       it('boundary: validUntil future passes; past-by-1ms admits free allowance (#6716)', async () => {

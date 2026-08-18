@@ -814,6 +814,7 @@ async function mcpHandlerInner(
         ctx,
         mcpDailyLimit,
         freeAccountAllowance,
+        resourceMetadataUrl,
       );
       // Mid-call billing denials (dispatch's BillingDenialError re-emit) must
       // classify like the pre-check sites: 'billing' -> billing_verification_503
@@ -822,6 +823,15 @@ async function mcpHandlerInner(
         usage.phase = 'billing';
       } else if (dispatched.status === 429 || dispatched.status === 503) {
         usage.phase = 'dispatch';
+      } else if (dispatched.status === 401 || dispatched.status === 403) {
+        // #6716 F4: dispatch can now emit a tier denial of its own (the
+        // free-tier fail-closed guard at 401, and the gateway-backed
+        // upgrade-required at 403). Without this arm both fall past every
+        // branch, keep usage.phase's 'ok' default, and get recorded as
+        // SERVED — deleting from the dataset exactly the denial events this
+        // funnel exists to measure. 'precheck' maps a non-503 status to
+        // tier_403, matching how the pre-check sites classify the same verdict.
+        usage.phase = 'precheck';
       }
       return maybeStreamJsonRpcResponse(req, dispatched);
     }
@@ -895,8 +905,16 @@ async function mcpHandlerInner(
           ctx,
           mcpDailyLimit,
           freeAccountAllowance,
+          resourceMetadataUrl,
         );
-        if (resourceRes.status === 429 || resourceRes.status === 503) usage.phase = 'dispatch';
+        if (resourceRes.status === 429 || resourceRes.status === 503) {
+          usage.phase = 'dispatch';
+        } else if (resourceRes.status === 401 || resourceRes.status === 403) {
+          // Mirror of the tools/call classification above (#6716 F4) — a
+          // resources/read routes through the same dispatcher and can emit the
+          // same tier denials.
+          usage.phase = 'precheck';
+        }
         return maybeStreamJsonRpcResponse(req, resourceRes);
       }
     case 'logging/setLevel': {
