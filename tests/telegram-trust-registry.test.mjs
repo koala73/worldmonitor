@@ -121,10 +121,12 @@ describe('Telegram alert-drop confirmation (#6600)', () => {
   it('documents the current relay gate: only explicit tier-4 keys, not the default-4 fallback', () => {
     assert.match(aisRelaySrc, /RELAY_TIER4_SOURCES\.has\(meta\.source/);
     assert.match(aisRelaySrc, /return RELAY_SOURCE_TIERS\[sourceName\] \?\? 4/);
-    assert.doesNotMatch(
-      aisRelaySrc.slice(aisRelaySrc.indexOf('async function seedClassifyForVariant')),
-      /telegramState\.items/,
-    );
+    const classifyStart = aisRelaySrc.indexOf('async function seedClassifyForVariant');
+    const classifyEnd = aisRelaySrc.indexOf('\nasync function seedClassify()', classifyStart);
+    assert.ok(classifyStart >= 0 && classifyEnd > classifyStart);
+    const classifyFn = aisRelaySrc.slice(classifyStart, classifyEnd);
+    assert.match(classifyFn, /list-feed-digest/);
+    assert.doesNotMatch(classifyFn, /telegramState\.items/);
 
     // BEFORE: generic platform source and unlisted labels default to 4 for
     // scoring/client keyword gating, but they are NOT in the explicit T4 set,
