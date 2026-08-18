@@ -31,6 +31,7 @@ const classifyResponse = {
 
 const digestResponse = {
   generatedAt: '2026-07-28T12:00:00.000Z',
+  feedStatuses: { Reuters: 'ok', 'AP News': 'ok', BleepingComputer: 'ok' },
   categories: {
     politics: {
       items: [
@@ -76,9 +77,9 @@ function upstashPipelineResponder(commands, state) {
   }
   if (first === 'HMGET') {
     return commands.map((cmd) => {
-      assert.deepEqual(cmd.slice(2), ['title'], 'HMGET must request exactly the title field');
+      assert.deepEqual(cmd.slice(2), ['title', 'link'], 'HMGET must request title and link');
       const hash = String(cmd[1]).replace('story:track:v1:', '');
-      return { result: [state.titlesByHash.get(hash) ?? null] };
+      return { result: [state.titlesByHash.get(hash) ?? null, state.linksByHash.get(hash) ?? null] };
     });
   }
   if (first === 'SMEMBERS') {
@@ -110,6 +111,7 @@ describe('#5697 NLP MCP tools', () => {
     upstashState = {
       zrangeFlat: [],
       titlesByHash: new Map(),
+      linksByHash: new Map(),
       sourcesByHash: new Map(),
       storedPayloads: new Map(),
       // Command verbs whose pipelines should fail (partial-outage simulation).
@@ -170,7 +172,7 @@ describe('#5697 NLP MCP tools', () => {
     return { response, body, result, pipe };
   }
 
-  async function withDigestCategories(categories, run) {
+  async function withDigestCategories(categories, run, feedStatuses = { fixture: 'empty' }) {
     const previousFetch = globalThis.fetch;
     globalThis.fetch = async (input, init = {}) => {
       const url = String(input);
@@ -178,6 +180,7 @@ describe('#5697 NLP MCP tools', () => {
         requests.push({ url, init });
         return Response.json({
           generatedAt: '2026-07-28T12:00:00.000Z',
+          feedStatuses,
           categories,
         });
       }
@@ -209,6 +212,14 @@ describe('#5697 NLP MCP tools', () => {
       byName.get('extract_entities')?.inputSchema.properties.category.enum?.includes('intel'),
       'extract_entities category enum must include intel',
     );
+    assert.deepEqual(
+      byName.get('extract_entities')?.inputSchema.properties.variant.enum,
+      ['full', 'tech'],
+    );
+    assert.ok(
+      byName.get('extract_entities')?.inputSchema.properties.category.enum?.includes('vcblogs'),
+      'extract_entities category enum must include Tech-only buckets',
+    );
     assert.equal(byName.get('get_news_clusters')?.inputSchema.properties.limit.maximum, 25);
     assert.equal(byName.get('get_news_clusters')?.inputSchema.properties.category.type, 'string');
     assert.ok(
@@ -218,6 +229,14 @@ describe('#5697 NLP MCP tools', () => {
     assert.ok(
       byName.get('get_news_clusters')?.inputSchema.properties.category.enum?.includes('intel'),
       'get_news_clusters category enum must include intel',
+    );
+    assert.deepEqual(
+      byName.get('get_news_clusters')?.inputSchema.properties.variant.enum,
+      ['full', 'tech'],
+    );
+    assert.ok(
+      byName.get('get_news_clusters')?.inputSchema.properties.category.enum?.includes('accelerators'),
+      'get_news_clusters category enum must include Tech-only buckets',
     );
     const clusterSchema = byName.get('get_news_clusters')?.outputSchema.properties.clusters.items;
     assert.ok(clusterSchema.required.includes('primarySourceProvenance'));
@@ -244,7 +263,34 @@ describe('#5697 NLP MCP tools', () => {
       'sample_truncated must be required on every get_keyword_spikes response',
     );
     assert.deepEqual(spikeOutput.properties.spikes.items.required,
-      ['term', 'count', 'baseline', 'multiplier', 'uniqueSources', 'sampleHeadlines']);
+      ['term', 'count', 'baseline', 'multiplier', 'uniqueSources', 'sourceNames', 'sampleHeadlines']);
+    const sampleSchema = spikeOutput.properties.spikes.items.properties.sampleHeadlines;
+    assert.equal(sampleSchema.items.type, 'object');
+    assert.deepEqual(sampleSchema.items.required, ['title', 'source', 'link']);
+    assert.equal(spikeOutput.properties.spikes.items.properties.sourceNames.type, 'array');
+    assert.equal(spikeOutput.properties.spikes.items.properties.sourceNames.items.type, 'string');
+    const { result: described } = await callTool('describe_tool', { tool_name: 'get_keyword_spikes' });
+    assert.match(
+      described?.description ?? '',
+      /sourceNames/,
+      'uncompressed description must mention the attributed sourceNames field',
+    );
+    assert.match(
+      described?.description ?? '',
+      /title, source, link/,
+      'uncompressed description must describe the attributed sample headline shape',
+    );
+    const listedSpike = byName.get('get_keyword_spikes');
+    assert.match(
+      listedSpike?.description ?? '',
+      /sourceNames/,
+      'tools/list compressed description must still name sourceNames',
+    );
+    assert.match(
+      listedSpike?.description ?? '',
+      /title, source, link/,
+      'tools/list compressed description must still name the sample shape',
+    );
   });
 
   describe('classify_event', () => {
@@ -412,6 +458,36 @@ describe('#5697 NLP MCP tools', () => {
       });
     });
 
+    it('can aggregate a Tech-only digest category through the bounded variant input', async () => {
+      await withDigestCategories({
+        accelerators: {
+          items: [
+            { source: 'YC News', title: 'Y Combinator startups build on Microsoft cloud', link: 'https://n/yc', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('extract_entities', {
+          variant: 'tech',
+          category: 'accelerators',
+        });
+        const requestUrl = new URL(requests.at(-1).url);
+        assert.equal(requestUrl.searchParams.get('variant'), 'tech');
+        assert.equal(result.variant, 'tech');
+        assert.equal(result.category, 'accelerators');
+        assert.equal(result.headlineCount, 1);
+        assert.ok(result.entities.some((entity) => entity.entityId === 'MSFT'));
+      });
+    });
+
+    it('rejects an unknown digest variant without fetching', async () => {
+      const requestCount = requests.length;
+      const { result } = await callTool('extract_entities', { variant: 'finance' });
+      assert.equal(result.mode, 'headlines');
+      assert.equal(result.headlineCount, 0);
+      assert.match(result.error, /variant must be one of: full, tech/);
+      assert.equal(requests.length, requestCount);
+    });
+
     it('can restrict digest aggregation to the intel category', async () => {
       await withDigestCategories({
         politics: {
@@ -458,6 +534,34 @@ describe('#5697 NLP MCP tools', () => {
         assert.deepEqual(result.entities, []);
         assert.deepEqual(result.patternEntities, []);
       });
+    });
+
+    it('lists the selected Tech inventory when its digest has no buckets', async () => {
+      await withDigestCategories({}, async () => {
+        const { result } = await callTool('extract_entities', {
+          variant: 'tech',
+          category: 'commodities',
+        });
+        const requestUrl = new URL(requests.at(-1).url);
+        assert.equal(requestUrl.searchParams.get('variant'), 'tech');
+        assert.equal(result.variant, 'tech');
+        assert.equal(result.headlineCount, 0);
+        assert.match(result.note, /accelerators/);
+        assert.doesNotMatch(result.note, /intel/);
+      });
+    });
+
+    it('returns a retryable source outage when the Tech digest has no fallback', async () => {
+      await withDigestCategories({}, async () => {
+        const { body, result } = await callTool('extract_entities', {
+          variant: 'tech',
+          category: 'accelerators',
+        });
+        assert.equal(result, null);
+        assert.equal(body.error?.code, -32003);
+        assert.equal(body.error?.data?.retryable, true);
+        assert.deepEqual(body.error?.data?.unavailable_inputs, ['news:digest:v1:tech:en']);
+      }, {});
     });
 
     it('returns a corrective note when category is unknown', async () => {
@@ -633,6 +737,36 @@ describe('#5697 NLP MCP tools', () => {
       });
     });
 
+    it('can cluster a Tech-only digest category through the bounded variant input', async () => {
+      await withDigestCategories({
+        vcblogs: {
+          items: [
+            { source: 'First Round Review', title: 'Startup founders improve product retention', link: 'https://n/vc', publishedAt: 1785405700000 },
+          ],
+        },
+      }, async () => {
+        const { result } = await callTool('get_news_clusters', {
+          variant: 'tech',
+          category: 'vcblogs',
+        });
+        const requestUrl = new URL(requests.at(-1).url);
+        assert.equal(requestUrl.searchParams.get('variant'), 'tech');
+        assert.equal(result.variant, 'tech');
+        assert.equal(result.category, 'vcblogs');
+        assert.equal(result.headlineCount, 1);
+        assert.equal(result.totalClusters, 1);
+      });
+    });
+
+    it('rejects an unknown clustering variant without fetching', async () => {
+      const requestCount = requests.length;
+      const { result } = await callTool('get_news_clusters', { variant: 'finance' });
+      assert.deepEqual(result.clusters, []);
+      assert.equal(result.headlineCount, 0);
+      assert.match(result.error, /variant must be one of: full, tech/);
+      assert.equal(requests.length, requestCount);
+    });
+
     it('can restrict clustering to the intel category', async () => {
       await withDigestCategories({
         politics: {
@@ -726,6 +860,77 @@ describe('#5697 NLP MCP tools', () => {
         globalThis.fetch = originalFetchImpl;
       }
     });
+
+    // #6428: the case above only exercises the SAME label twice, which a plain
+    // Set already collapses. The bug this guards is one publisher arriving
+    // under several of its OWN feed labels — the tool's documented promise is
+    // "distinct outlets ... real corroboration, not one outlet filing twice",
+    // and a label count cannot keep it.
+    it('counts one publisher once across its own feed labels', async () => {
+      const originalFetchImpl = globalThis.fetch;
+      const digest = (sources) => ({
+        generatedAt: '2026-07-28T12:00:00.000Z',
+        categories: {
+          politics: {
+            items: sources.map((source, i) => ({
+              source,
+              title: `Sanctions package advances through committee ${'vote '.repeat(i)}`.trim(),
+              link: `https://s/${i}`,
+              publishedAt: 1785405600000 + i * 1000,
+              isAlert: false,
+            })),
+          },
+        },
+      });
+      const serve = (sources) => {
+        globalThis.fetch = async (input, init = {}) => {
+          const url = String(input);
+          if (url.includes('/api/news/v1/list-feed-digest')) {
+            requests.push({ url, init });
+            return Response.json(digest(sources));
+          }
+          return originalFetchImpl(input, init);
+        };
+      };
+
+      try {
+        serve(['Reuters World', 'Reuters US', 'Reuters Business']);
+        const oneWire = await callTool('get_news_clusters', { min_sources: 1 });
+        assert.equal(oneWire.result.totalClusters, 1, 'fixture must cluster into one story');
+        assert.equal(
+          oneWire.result.clusters[0].distinctSourceCount,
+          1,
+          'three Reuters feed labels are one publisher',
+        );
+        assert.equal(
+          oneWire.result.clusters[0].memberCount,
+          3,
+          'memberCount stays the article count — it is a volume signal, not corroboration',
+        );
+        assert.deepEqual(
+          oneWire.result.clusters[0].sources,
+          ['Reuters World', 'Reuters US', 'Reuters Business'],
+          'the label list stays intact for attribution',
+        );
+
+        serve(['Reuters World', 'Reuters US', 'Reuters Business']);
+        const filtered = await callTool('get_news_clusters', { min_sources: 2 });
+        assert.equal(
+          filtered.result.clusters.length,
+          0,
+          'min_sources filters on publishers, so one wire cannot satisfy min_sources: 2',
+        );
+
+        // Premise check: three real publishers must still pass, or the two
+        // assertions above would hold on a clustering failure instead.
+        serve(['Reuters World', 'BBC World', 'Al Jazeera']);
+        const genuine = await callTool('get_news_clusters', { min_sources: 2 });
+        assert.equal(genuine.result.clusters.length, 1);
+        assert.equal(genuine.result.clusters[0].distinctSourceCount, 3);
+      } finally {
+        globalThis.fetch = originalFetchImpl;
+      }
+    });
   });
 
   describe('get_keyword_spikes', () => {
@@ -737,6 +942,7 @@ describe('#5697 NLP MCP tools', () => {
         const lastSeen = now - i * 10 * 60 * 1000;
         flat.push(hash, String(lastSeen));
         upstashState.titlesByHash.set(hash, `Zaporizhzhia plant shelling escalates (${i})`);
+        upstashState.linksByHash.set(hash, `https://example.test/spike-${i}`);
         upstashState.sourcesByHash.set(hash, [`source-${i % 3}`]);
       }
       for (let i = 0; i < 30; i++) {
@@ -747,6 +953,45 @@ describe('#5697 NLP MCP tools', () => {
       }
       upstashState.zrangeFlat = flat;
     }
+
+    it('returns attributed sample headlines and source names, not title-only counts', async () => {
+      seedAccumulator();
+      const { response, result } = await callTool('get_keyword_spikes', {});
+      assert.equal(response.status, 200);
+      const spike = result.spikes.find((s) => s.term === 'zaporizhzhia');
+      assert.ok(spike, 'expected zaporizhzhia spike');
+      assert.equal(spike.uniqueSources, 3);
+      assert.deepEqual([...spike.sourceNames].sort(), ['source-0', 'source-1', 'source-2']);
+      assert.ok(Array.isArray(spike.sampleHeadlines) && spike.sampleHeadlines.length > 0);
+      assert.ok(
+        spike.sampleHeadlines.every((sample) => typeof sample !== 'string'),
+        'sampleHeadlines must not remain title-only strings',
+      );
+      assert.deepEqual(
+        spike.sampleHeadlines.map((sample) => ({
+          title: sample.title,
+          source: sample.source,
+          link: sample.link,
+        })),
+        [
+          {
+            title: 'Zaporizhzhia plant shelling escalates (0)',
+            source: 'source-0',
+            link: 'https://example.test/spike-0',
+          },
+          {
+            title: 'Zaporizhzhia plant shelling escalates (1)',
+            source: 'source-1',
+            link: 'https://example.test/spike-1',
+          },
+          {
+            title: 'Zaporizhzhia plant shelling escalates (2)',
+            source: 'source-2',
+            link: 'https://example.test/spike-2',
+          },
+        ],
+      );
+    });
 
     it('computes spikes from the story accumulator and caches the result', async () => {
       seedAccumulator();
@@ -763,6 +1008,7 @@ describe('#5697 NLP MCP tools', () => {
       const spike = first.result.spikes.find((s) => s.term === 'zaporizhzhia');
       assert.equal(spike.count, 5);
       assert.equal(spike.uniqueSources, 3);
+      assert.equal(spike.sourceNames.length, spike.uniqueSources);
       assert.ok(upstashState.storedPayloads.size === 1, 'result must be cached');
       assert.ok(pipelineCalls > 0);
 
@@ -800,7 +1046,7 @@ describe('#5697 NLP MCP tools', () => {
       assert.equal(result.window_hours, 2, 'non-integer window falls back to the default');
       // The cache key embeds the clamped minCount, so it proves the clamp
       // applied rather than the raw -3 reaching the spike math.
-      assert.deepEqual([...upstashState.storedPayloads.keys()], ['intelligence:keyword-spikes:mcp:v2:2h:2'],
+      assert.deepEqual([...upstashState.storedPayloads.keys()], ['intelligence:keyword-spikes:mcp:v3:2h:2'],
         'out-of-range integer min_count clamps to the schema minimum (2); the raw -3 must never reach the spike math');
       assert.ok(result.spikes.length <= 10, 'non-integer limit falls back to the default 10');
     });
@@ -933,12 +1179,25 @@ describe('#5697 NLP MCP tools', () => {
     it('treats a missing HMGET title as degraded and never caches it', async () => {
       seedAccumulator();
       upstashState.pipelineReplyTransforms.set('HMGET', (reply) => reply.map((item, index) => (
-        index === 0 ? { result: [null] } : item
+        index === 0 ? { result: [null, 'https://example.test/missing-title'] } : item
       )));
 
       const { result } = await callTool('get_keyword_spikes', {});
       assert.match(result.note, /partial story-store read/);
       assert.equal(upstashState.storedPayloads.size, 0);
+    });
+
+    it('treats a missing HMGET link as an empty string and still caches', async () => {
+      seedAccumulator();
+      upstashState.pipelineReplyTransforms.set('HMGET', (reply) => reply.map((item, index) => (
+        index === 0 ? { result: ['Zaporizhzhia plant shelling escalates (0)', null] } : item
+      )));
+
+      const { result } = await callTool('get_keyword_spikes', {});
+      assert.equal(result.note, undefined);
+      assert.equal(upstashState.storedPayloads.size, 1);
+      const spike = result.spikes.find((s) => s.term === 'zaporizhzhia');
+      assert.equal(spike.sampleHeadlines[0].link, '');
     });
 
     it('falls back to live computation when the cache read fails', async () => {

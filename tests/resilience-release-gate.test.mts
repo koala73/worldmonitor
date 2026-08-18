@@ -51,7 +51,7 @@ function installRedisFixtures() {
 }
 
 describe('resilience release gate', () => {
-  it('keeps all 22 dimension scorers non-placeholder for the required countries', async () => {
+  it('keeps all 23 dimension scorers non-placeholder for the required countries', async () => {
     // PR 3 §3.5 retired fuelStockDays; PR 2 §3.4 retired reserveAdequacy
     // (superseded by the liquidReserveAdequacy + sovereignFiscalBuffer
     // split). Both scorers emit coverage=0 + imputationClass=null — the
@@ -60,13 +60,19 @@ describe('resilience release gate', () => {
     // construct retirement. Allow-list keeps the zero-coverage placeholder
     // check enforcing on every non-allowlisted dimension.
     const RETIRED_DIMENSIONS = new Set(['fuelStockDays', 'reserveAdequacy']);
-    // plan 2026-04-25-004 Phase 2: financialSystemExposure ships flag-gated
-    // off by default (rollout pattern matches energy v2). With the flag
-    // off, the dim emits coverage=0 + imputationClass=null. Treated as
-    // "dark in this baseline" — same shape as a retired dim, but for a
-    // distinct reason: pending seeder rollout, not deliberate retirement.
-    // When the flag flips on with seeders populating, this allow-list
-    // entry should be removed in the same PR that flips the flag.
+    // plan 2026-04-25-004 Phase 2: financialSystemExposure remains
+    // flag-gated off by the code default (rollout pattern matches energy v2).
+    // Production is owner-controlled flag-on as of 2026-08-12 (#6511), but CI
+    // intentionally exercises the explicit flag-off rollback shape here. With
+    // the flag off, the dim emits coverage=0 + imputationClass=null. Treat it
+    // as "dark in this baseline" — same shape as a retired dim, but for a
+    // deliberate rollback posture rather than a missing seeder.
+    // Remove this allow-list entry only if the code default is also promoted
+    // to on; an environment-only production flip must keep the CI contract.
+    // 2026-08-11 (#6460): `education` REMOVED from this set — it is live, so it
+    // must carry positive coverage like any other active dimension, and this
+    // assertion is what proves it. Leaving it here after the flip would have
+    // excused a genuinely dead education seeder as "dark by design".
     const FLAG_GATED_DARK_DIMENSIONS = new Set(['financialSystemExposure']);
     // plan 2026-04-26-001 §U3: sovereignFiscalBuffer reframed from
     // "score 0, coverage 1.0 substantive absence" to "score 0,
@@ -80,7 +86,7 @@ describe('resilience release gate', () => {
     for (const countryCode of REQUIRED_DIMENSION_COUNTRIES) {
       const scores = await scoreAllDimensions(countryCode, fixtureReader);
       const entries = Object.entries(scores);
-      assert.equal(entries.length, 22, `${countryCode} should have all 22 resilience dimensions (20 active + 2 retired kept for structural continuity)`);
+      assert.equal(entries.length, 23, `${countryCode} should have all 23 resilience dimensions (21 active + 2 retired kept for structural continuity)`);
       for (const [dimensionId, score] of entries) {
         assert.ok(Number.isFinite(score.score), `${countryCode} ${dimensionId} should produce a numeric score`);
         if (RETIRED_DIMENSIONS.has(dimensionId)) {
@@ -289,7 +295,7 @@ describe('resilience release gate', () => {
     );
 
     const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
-    assert.equal(allDimensions.length, 22, 'US response should carry all 22 dimensions (20 active + 2 retired)');
+    assert.equal(allDimensions.length, 23, 'US response should carry all 23 dimensions (21 active + 2 retired)');
     for (const dimension of allDimensions) {
       assert.equal(
         typeof dimension.imputationClass,
@@ -317,7 +323,7 @@ describe('resilience release gate', () => {
     );
 
     const allDimensions = response.domains.flatMap((domain) => domain.dimensions);
-    assert.equal(allDimensions.length, 22, 'US response should carry all 22 dimensions (20 active + 2 retired)');
+    assert.equal(allDimensions.length, 23, 'US response should carry all 23 dimensions (21 active + 2 retired)');
     const validLevels = ['', 'fresh', 'aging', 'stale'];
     for (const dimension of allDimensions) {
       assert.ok(dimension.freshness != null, `dimension ${dimension.id} must carry a freshness payload`);

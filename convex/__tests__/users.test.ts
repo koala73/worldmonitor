@@ -1,7 +1,8 @@
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { api } from "../_generated/api";
+import { LAST_SEEN_REFRESH_WINDOW_MS } from "../users";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -280,6 +281,114 @@ describe("users:ensureRecord — email policy", () => {
         .unique(),
     );
     expect(rowAfter?.email).toBe("alice@example.com");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// No-change debounce (OCC write-avoidance)
+//
+// Convex Insights 2026-07-28: users:ensureRecord produced 1,618 OCC write
+// conflicts on `users` in ONE day, because every call — including calls that
+// changed nothing — patched `lastSeenAt`, so concurrent tabs / auth-refresh
+// storms all rewrote the same document. A call that changes no material field
+// inside the refresh window must be read-only.
+//
+// The #6335 invariant is the safety bound: whenever `email` is rewritten,
+// `lastSeenAt` is stamped in the SAME patch (that timestamp dates the
+// address for the login-email freshness comparison in subscriptionHelpers).
+// The skip below fires only when the email — and everything else — is
+// identical, so the invariant is untouched; lastSeenAt merely becomes a
+// lower bound that lags true activity by at most the window.
+// ---------------------------------------------------------------------------
+
+describe("users:ensureRecord — no-change debounce", () => {
+  const T0 = new Date("2026-08-13T00:00:00Z").getTime();
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function readRow(t: ReturnType<typeof convexTest>) {
+    return t.run(async (ctx) =>
+      await ctx.db
+        .query("users")
+        .withIndex("by_userId", (q) => q.eq("userId", USER_A.subject))
+        .unique(),
+    );
+  }
+
+  test("identical repeat inside the window is read-only (action 'unchanged', lastSeenAt keeps)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    const t = convexTest(schema, modules);
+    const asA = t.withIdentity(USER_A);
+    const args = {
+      localeTag: "en-US",
+      localePrimary: "en",
+      timezone: "America/New_York",
+      country: "US",
+    };
+    await asA.mutation(api.users.ensureRecord, args);
+    expect((await readRow(t))?.lastSeenAt).toBe(T0);
+
+    vi.setSystemTime(T0 + 60_000);
+    const repeat = await asA.mutation(api.users.ensureRecord, args);
+    expect(repeat.ok).toBe(true);
+    expect(repeat.ok && repeat.action).toBe("unchanged");
+    expect((await readRow(t))?.lastSeenAt).toBe(T0);
+  });
+
+  test("identical repeat after the window refreshes lastSeenAt", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    const t = convexTest(schema, modules);
+    const asA = t.withIdentity(USER_A);
+    const args = { localeTag: "en-US", localePrimary: "en" };
+    await asA.mutation(api.users.ensureRecord, args);
+
+    const later = T0 + LAST_SEEN_REFRESH_WINDOW_MS + 1_000;
+    vi.setSystemTime(later);
+    const repeat = await asA.mutation(api.users.ensureRecord, args);
+    expect(repeat.ok && repeat.action).toBe("patched");
+    expect((await readRow(t))?.lastSeenAt).toBe(later);
+  });
+
+  test("material change inside the window writes immediately and stamps lastSeenAt (#6335)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    const t = convexTest(schema, modules);
+    await t
+      .withIdentity({ ...USER_A, email: "old@a.com" })
+      .mutation(api.users.ensureRecord, { localeTag: "en-US", localePrimary: "en" });
+
+    vi.setSystemTime(T0 + 60_000);
+    const changed = await t
+      .withIdentity({ ...USER_A, email: "new@b.com" })
+      .mutation(api.users.ensureRecord, { localeTag: "en-US", localePrimary: "en" });
+    expect(changed.ok && changed.action).toBe("patched");
+
+    const row = await readRow(t);
+    expect(row?.email).toBe("new@b.com");
+    expect(row?.lastSeenAt).toBe(T0 + 60_000);
+  });
+
+  test("providing timezone for the first time inside the window is a material change", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(T0);
+    const t = convexTest(schema, modules);
+    const asA = t.withIdentity(USER_A);
+    await asA.mutation(api.users.ensureRecord, { localeTag: "en-US", localePrimary: "en" });
+
+    vi.setSystemTime(T0 + 60_000);
+    const withTz = await asA.mutation(api.users.ensureRecord, {
+      localeTag: "en-US",
+      localePrimary: "en",
+      timezone: "Europe/Paris",
+    });
+    expect(withTz.ok && withTz.action).toBe("patched");
+    const row = await readRow(t);
+    expect(row?.timezone).toBe("Europe/Paris");
+    expect(row?.lastSeenAt).toBe(T0 + 60_000);
   });
 });
 

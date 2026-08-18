@@ -6,11 +6,13 @@ import { SITE_VARIANT } from '@/config';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { track, trackMapViewChange, trackThemeChanged } from '@/services/analytics';
 import { getCurrentTheme, setTheme, showToast } from '@/utils';
+import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   overlayHistory,
   type OverlayCloseOrigin,
   type OverlayId,
 } from '@/utils/overlay-history';
+import { reconcileOverlayForTab } from '@/app/mobile-overlay-reconcile';
 
 type MobilePrimaryNavCallbacks = {
   openSearch(options: { replaceOverlayId?: OverlayId; historyPending: true }): void;
@@ -21,6 +23,8 @@ type MobilePrimaryNavCallbacks = {
 export class MobilePrimaryNav {
   private readonly listeners = new AbortController();
   private menuOpenFrame: number | null = null;
+  private menuTrap: FocusTrap | null = null;
+  private regionTrap: FocusTrap | null = null;
   private regionOpenFrame: number | null = null;
   private alertScrollFrame: number | null = null;
   private authWidget: AuthHeaderWidget | null = null;
@@ -81,6 +85,7 @@ export class MobilePrimaryNav {
     this.menuOpenFrame = null;
     menu.classList.remove('open');
     overlay.classList.remove('open');
+    this.menuTrap?.deactivate();
     const sheetOpen = document.getElementById('regionBottomSheet')?.classList.contains('open');
     if (!sheetOpen) document.body.style.overflow = '';
     if (origin === 'control') overlayHistory.close('menu');
@@ -100,6 +105,12 @@ export class MobilePrimaryNav {
     this.menuOpenFrame = null;
     this.regionOpenFrame = null;
     this.alertScrollFrame = null;
+    // Teardown, not a user-initiated close: release each trap's document
+    // listener without handing focus back to a control that is also going away.
+    this.menuTrap?.deactivate({ restoreFocus: false });
+    this.menuTrap = null;
+    this.regionTrap?.deactivate({ restoreFocus: false });
+    this.regionTrap = null;
   }
 
   private setupTabBar(): void {
@@ -238,6 +249,8 @@ export class MobilePrimaryNav {
     this.menuOpenFrame = requestAnimationFrame(() => {
       this.menuOpenFrame = null;
       menu.classList.add('open');
+      this.menuTrap ??= createFocusTrap(menu);
+      this.menuTrap.activate();
     });
     document.body.style.overflow = 'hidden';
     const close = (origin: OverlayCloseOrigin) => this.closeMenu(origin);
@@ -254,6 +267,8 @@ export class MobilePrimaryNav {
     this.regionOpenFrame = requestAnimationFrame(() => {
       this.regionOpenFrame = null;
       sheet.classList.add('open');
+      this.regionTrap ??= createFocusTrap(sheet);
+      this.regionTrap.activate();
     });
     const close = (origin: OverlayCloseOrigin) => this.closeRegion(origin);
     if (replaceOverlayId) overlayHistory.replaceInPlace(replaceOverlayId, 'region', close);
@@ -272,35 +287,19 @@ export class MobilePrimaryNav {
     this.regionOpenFrame = null;
     sheet.classList.remove('open');
     backdrop.classList.remove('open');
+    this.regionTrap?.deactivate();
     document.body.style.overflow = '';
     if (origin === 'control') overlayHistory.close('region');
   }
 
   private reconcileOverlayForTab(tab: string): OverlayId | undefined | null {
-    const top = overlayHistory.top();
-    if (!top) return undefined;
-
-    const isSearchOverlay = top === 'search' || top === 'search-pending';
-    const isMoreOverlay = top === 'menu'
-      || top === 'region'
-      || top === 'settings'
-      || top === 'settings-pending';
-    if (top === 'settings' && this.ctx.unifiedSettings?.hasPendingChanges()) {
-      // Do not replace or dismiss a dirty Settings overlay: those paths call
-      // close('replacement') and would discard the draft without confirmation.
-      this.ctx.unifiedSettings.close();
-      this.setActive('more');
-      return null;
-    }
-    if ((tab === 'search' && isSearchOverlay) || (tab === 'more' && isMoreOverlay)) {
-      overlayHistory.dismiss(top);
-      this.setActive('today');
-      return null;
-    }
-
-    if (tab === 'search' || tab === 'more') return top;
-    overlayHistory.dismiss(top);
-    return undefined;
+    return reconcileOverlayForTab(tab, {
+      top: () => overlayHistory.top(),
+      dismiss: (id) => overlayHistory.dismiss(id),
+      settingsHasPendingChanges: () => this.ctx.unifiedSettings?.hasPendingChanges() ?? false,
+      closeSettings: () => this.ctx.unifiedSettings?.close(),
+      setActive: (nextTab) => this.setActive(nextTab),
+    });
   }
 
   private exitMap(): void {

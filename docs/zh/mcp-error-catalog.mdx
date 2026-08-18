@@ -107,7 +107,7 @@ Content-Type: application/json
 }
 ```
 
-**Pro/OAuth 每日上限 —— HTTP 429 + `Retry-After`。** 硬性每日上限（默认 **50 次配额消耗调用 / UTC 日**）由工具运行**之前**的原子 Redis 预留执行，因此恰好跨越边界的那次调用会被拒绝。只有 `tools/call` 和对数据承载 **URI 模板实例化**的 `resources/read`（鉴权对称的 resources 路径）计数。`wm_…` API-key MCP 调用者不进入此 MCP 每日预留路径；它们在此由 60 次请求 / 分钟 / 密钥限流器保护，而更宽泛的 REST/API 套餐额度在 MCP handler 之外强制执行。**豁免 Pro/OAuth 每日上限：** `describe_tool`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`logging/setLevel`、`initialize`、`notifications/initialized`、`ping`，以及对**公开**（具体、仅元数据）资源的 `resources/read`，例如 `worldmonitor://seed-meta/freshness`。（这些方法仍计入上面的每分钟限制 —— 每日与每分钟的豁免集合不同。）
+**每日上限 —— HTTP 429 + `Retry-After`。** 硬性每日上限（默认 **50 次配额消耗调用 / UTC 日**）由工具运行**之前**的原子 Redis 预留执行，因此恰好跨越边界的那次调用会被拒绝。只有 `tools/call` 和对数据承载 **URI 模板实例化**的 `resources/read`（鉴权对称的 resources 路径）计数。控制面板签发的 `wm_…` API-key 调用者使用每日 50 次默认值。OAuth 额度按套餐解析；API Starter 和 API Business 当前使用相同默认值，企业 OAuth 可以不设上限。只有部署许可名单中的旧版运营方密钥不进入每日预留路径。**豁免每日上限：** `describe_tool`、`get_sources`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`logging/setLevel`、`initialize`、`notifications/initialized`、`ping`，以及对**公开**（具体、仅元数据）资源的 `resources/read`，例如 `worldmonitor://seed-meta/freshness`。（这些方法仍计入已认证调用的每分钟限制；匿名 `get_sources` 改用独立的每 IP 每分钟 10 次失败关闭限额。）
 
 ```json
 {
@@ -126,7 +126,7 @@ Retry-After: 41200
 Content-Type: application/json
 ```
 
-**如何处理。** 对于 HTTP 200 / 每分钟：退避约 1 秒后重试。限流器是滑动窗口而非令牌桶 —— 持续 60 rpm 没问题；任意 60 秒窗口内超过 60 的突发会被拒绝。对于 HTTP 429 / 每日：遵循 `Retry-After`（该值为 `距 UTC 午夜的秒数`）。若 Pro/OAuth 每日上限是批量工作的瓶颈约束，请在合适时使用 API-key 或 REST/API 路径，或联系 Enterprise 获取自定义 MCP 限制。
+**如何处理。** 对于 HTTP 200 / 每分钟：退避约 1 秒后重试。限流器是滑动窗口而非令牌桶 —— 持续 60 rpm 没问题；任意 60 秒窗口内超过 60 的突发会被拒绝。对于 HTTP 429 / 每日：遵循 `Retry-After`（该值为 `距 UTC 午夜的秒数`）。若 MCP 每日上限是批量工作的瓶颈约束，请使用 REST/API 路径，或联系 Enterprise 获取自定义 MCP 限制。
 
 付费套餐客户还会在持续用量越过套餐阈值时收到账户通知与有界节奏的邮件。这些通知绝不意味着自动升级、自动超额收费或自动迁入 API Business；支持或结账动作是显式的。
 

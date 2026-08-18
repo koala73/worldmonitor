@@ -31,14 +31,14 @@ const LEGACY_ONLY_ENERGY_INDICATORS = [
 const SCORER_REGISTRY_PARITY_SPECS = SCORER_DOC_PARITY_SPECS;
 
 describe('indicator registry', () => {
-  it('covers all 22 dimensions (20 active + 2 retired)', () => {
+  it('covers all 23 dimensions (21 active + 2 retired)', () => {
     const coveredDimensions = new Set(INDICATOR_REGISTRY.map((i) => i.dimension));
     for (const dimId of RESILIENCE_DIMENSION_ORDER) {
       assert.ok(coveredDimensions.has(dimId), `${dimId} has no indicators in registry`);
     }
-    // Plan 2026-04-25-004 Phase 2: 22 dims = 20 active + 2 retired
-    // (19 active in Phase 1 + financialSystemExposure added in Phase 2).
-    assert.equal(coveredDimensions.size, 22);
+    // Plan 2026-04-25-004 Phase 2 had 22 dimensions: 20 active + 2 retired.
+    // Education adds the 21st active dimension.
+    assert.equal(coveredDimensions.size, 23);
   });
 
   it('has no duplicate indicator ids', () => {

@@ -29,7 +29,7 @@ const read = (p: string) => readFileSync(resolve(repoRoot, p), 'utf8');
 describe('iran-events sunset — frontend map layer (default OFF)', () => {
   it('is registered but excluded from the variant layer picker', () => {
     assert.ok(LAYER_REGISTRY.iranAttacks, 'registry entry is kept for re-enable');
-    const defs = getLayersForVariant('full', 'flat');
+    const defs = getLayersForVariant('full', 'deck');
     assert.ok(!defs.includes(LAYER_REGISTRY.iranAttacks), 'iranAttacks must not appear in the picker while sunset');
   });
 
@@ -42,7 +42,7 @@ describe('iran-events sunset — frontend map layer (default OFF)', () => {
   });
 
   it('is not executable (CMD+K / picker toggles silently skip it)', () => {
-    assert.equal(isLayerExecutable('iranAttacks', 'flat', true), false);
+    assert.equal(isLayerExecutable('iranAttacks', 'deck'), false);
   });
 
   // #6046 — SVG/mobile Map.ts hardcodes its own layer lists and used to surface

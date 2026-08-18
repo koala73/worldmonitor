@@ -19,17 +19,39 @@ import { ConvexHttpClient } from 'convex/browser';
 import { anyApi } from 'convex/server';
 
 import { loadEnvFile } from './_seed-utils.mjs';
+import {
+  COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS,
+  createXRecentSearchExecutor,
+} from './lib/company-monitoring-x-provider.mjs';
+import {
+  COMPANY_MONITORING_EXA_CONTRACT,
+  createExaCohortExecutor,
+} from './lib/company-monitoring-exa.mjs';
+import {
+  requestCompanyMonitoringClassification,
+} from './lib/company-monitoring-classifier-client.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 
 export const COMPANY_MONITORING_WORKER_HEALTH_KEY = 'company-monitoring:worker-health:v1';
 export const COMPANY_MONITORING_WORKER_META_KEY = 'seed-meta:company-monitoring:worker';
 export const COMPANY_MONITORING_WORKER_ACTIVATION_KEY = 'seed-activated:company-monitoring:worker';
+// The checked-in Stage 0 protocol remains STOP. Credentials can be provisioned
+// before rollout, but they must not make live model calls on their own.
+export const COMPANY_MONITORING_CLASSIFIER_RUNTIME_APPROVED = false;
 
 const HEALTH_TTL_SECONDS = 900;
 const META_TTL_SECONDS = 86_400;
 const DEFAULT_POLL_INTERVAL_MS = 5_000;
-const CONVEX_TIMEOUT_MS = 15_000;
+export const COMPANY_MONITORING_CONVEX_TIMEOUT_MS = 15_000;
+export const COMPANY_MONITORING_FINALIZE_TRANSPORT_BUFFER_MS = 5_000;
 const REDIS_TIMEOUT_MS = 5_000;
+
+if (
+  COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS <
+    COMPANY_MONITORING_CONVEX_TIMEOUT_MS + COMPANY_MONITORING_FINALIZE_TRANSPORT_BUFFER_MS
+) {
+  throw new Error('Company Monitoring provider lease reserve cannot safely finalize through Convex');
+}
 const COUNTER_NAMES = Object.freeze([
   'loops',
   'claims',
@@ -40,8 +62,14 @@ const COUNTER_NAMES = Object.freeze([
   'executorErrors',
   'claimErrors',
   'finalizeErrors',
+  'admissionClaims',
+  'admissionRecorded',
+  'admissionReplayed',
+  'admissionTransportFailures',
+  'admissionClaimErrors',
+  'admissionFinalizeErrors',
 ]);
-const HEALTH_OUTCOMES = new Set([
+const SCAN_HEALTH_OUTCOMES = new Set([
   'starting',
   'disabled',
   'idle',
@@ -52,15 +80,30 @@ const HEALTH_OUTCOMES = new Set([
   'claim_error',
   'finalize_error',
 ]);
-const HEALTHY_OUTCOMES = new Set([
+const ADMISSION_HEALTH_OUTCOMES = new Set([
+  'disabled',
+  'idle',
+  'admission_recorded',
+  'admission_replayed',
+  'admission_transport_failure',
+  'admission_claim_error',
+  'admission_finalize_error',
+]);
+const HEALTHY_SCAN_OUTCOMES = new Set([
   'disabled',
   'idle',
   'completed',
   'replayed',
 ]);
+const HEALTHY_ADMISSION_OUTCOMES = new Set([
+  'disabled',
+  'idle',
+  'admission_recorded',
+  'admission_replayed',
+]);
 
 /** @typedef {'ok' | 'error'} WorkerHealthStatus */
-/** @typedef {'starting' | 'disabled' | 'idle' | 'completed' | 'non_reassuring' | 'fenced' | 'replayed' | 'claim_error' | 'finalize_error'} WorkerOutcome */
+/** @typedef {'starting' | 'disabled' | 'idle' | 'completed' | 'non_reassuring' | 'fenced' | 'replayed' | 'claim_error' | 'finalize_error' | 'admission_recorded' | 'admission_replayed' | 'admission_transport_failure' | 'admission_claim_error' | 'admission_finalize_error'} WorkerOutcome */
 
 function boundedCounter(value) {
   return Number.isSafeInteger(value) && value >= 0 ? Math.min(value, 9_999_999_999) : 0;
@@ -76,16 +119,54 @@ function providerCoverage(outcome) {
   return 'not_evaluated';
 }
 
-function workerHealthPayload(input, now) {
-  const outcome = HEALTH_OUTCOMES.has(input?.outcome) ? input.outcome : 'starting';
-  const status = input?.status === 'ok' && HEALTHY_OUTCOMES.has(outcome) ? 'ok' : 'error';
+function projectSubsystemHealth(value, outcomes, healthyOutcomes, fallback) {
+  const outcome = outcomes.has(value?.outcome) ? value.outcome : fallback.outcome;
+  const status = value?.status === 'ok' && healthyOutcomes.has(outcome) ? 'ok' : 'error';
+  return { status, outcome };
+}
+
+function projectWorkerHealth(input) {
+  const scan = projectSubsystemHealth(
+    input?.subsystems?.scan,
+    SCAN_HEALTH_OUTCOMES,
+    HEALTHY_SCAN_OUTCOMES,
+    { status: 'error', outcome: 'starting' },
+  );
+  const admission = projectSubsystemHealth(
+    input?.subsystems?.admission,
+    ADMISSION_HEALTH_OUTCOMES,
+    HEALTHY_ADMISSION_OUTCOMES,
+    { status: 'ok', outcome: 'disabled' },
+  );
+  const activeSubsystem = input?.activeSubsystem === 'admission' ||
+    input?.outcome === input?.subsystems?.admission?.outcome
+    ? 'admission'
+    : 'scan';
+  const activeHealth = activeSubsystem === 'admission' ? admission : scan;
+  const failingSubsystem = activeHealth.status === 'error'
+    ? activeSubsystem
+    : scan.status === 'error'
+      ? 'scan'
+      : admission.status === 'error'
+        ? 'admission'
+        : null;
+  const selectedSubsystem = failingSubsystem ?? activeSubsystem;
+  const selected = selectedSubsystem === 'admission' ? admission : scan;
+
   return {
     version: 1,
-    status,
-    outcome,
-    observedAt: now,
-    providerCoverage: providerCoverage(outcome),
+    status: failingSubsystem === null ? 'ok' : 'error',
+    outcome: selected.outcome,
+    providerCoverage: providerCoverage(scan.outcome),
+    subsystems: { scan, admission },
     counters: projectCounters(input?.counters),
+  };
+}
+
+function workerHealthPayload(input, now) {
+  return {
+    ...projectWorkerHealth(input),
+    observedAt: now,
   };
 }
 
@@ -163,6 +244,75 @@ async function unavailableExecutor() {
   };
 }
 
+export function createCompanyMonitoringExecutor(options = {}) {
+  const { exaExecutor, xExecutor } = options;
+  return async (work) => {
+    if (work?.source === 'exa' && typeof exaExecutor === 'function') return exaExecutor(work);
+    if (work?.source === 'x' && typeof xExecutor === 'function') return xExecutor(work);
+    return unavailableExecutor();
+  };
+}
+
+/**
+ * Bind explicit classifier configuration to the provider transport. The raw
+ * content remains untrusted; Convex applies the deterministic policy when it
+ * finalizes the leased candidate.
+ *
+ * @param {object} options
+ * @param {string | undefined} options.apiKey
+ * @param {string | undefined} options.model
+ * @param {string | undefined} options.providerRoute
+ * @param {string | undefined} options.expectedResolvedProvider
+ * @param {string[]} [options.approvedResolvedModels]
+ * @param {typeof fetch} [options.fetchImpl]
+ */
+export function createCompanyMonitoringAdmissionClassifier(options) {
+  const {
+    apiKey,
+    model,
+    providerRoute,
+    expectedResolvedProvider,
+    approvedResolvedModels,
+    fetchImpl,
+  } = options;
+  return async ({ candidate, evidence }) => {
+    const classification = await requestCompanyMonitoringClassification({
+      candidate,
+      evidence,
+      apiKey,
+      model,
+      providerRoute,
+      expectedResolvedProvider,
+      approvedResolvedModels,
+      fetchImpl,
+    });
+    return {
+      requestedModelVersion: `${model}@${providerRoute}#${expectedResolvedProvider}`,
+      modelVersion:
+        `${classification.route.resolvedModel}@${classification.route.configuredProviderRoute}` +
+        `#${classification.route.resolvedProvider}`,
+      modelOutput: classification.content,
+    };
+  };
+}
+
+/**
+ * Keep provisioned credentials inert until the checked-in runtime gate is
+ * deliberately changed together with the frozen protocol decision.
+ */
+export function createApprovedCompanyMonitoringAdmissionClassifier(options) {
+  return COMPANY_MONITORING_CLASSIFIER_RUNTIME_APPROVED
+    ? createCompanyMonitoringAdmissionClassifier(options)
+    : undefined;
+}
+
+function finalizeResult(execution) {
+  if (execution?.finalizeResult && typeof execution.finalizeResult === 'object') {
+    return execution.finalizeResult;
+  }
+  return execution;
+}
+
 /**
  * ConvexHttpClient has no default request timeout. Keep every control-plane
  * request inside the lease budget and identify this server-side caller.
@@ -177,7 +327,7 @@ export function createConvexFetch(fetchImpl = globalThis.fetch) {
     return fetchImpl(input, {
       ...init,
       headers,
-      signal: init.signal ?? AbortSignal.timeout(CONVEX_TIMEOUT_MS),
+      signal: init.signal ?? AbortSignal.timeout(COMPANY_MONITORING_CONVEX_TIMEOUT_MS),
     });
   };
 }
@@ -192,6 +342,9 @@ export function createConvexFetch(fetchImpl = globalThis.fetch) {
  * @param {string} options.secret
  * @param {string} options.workerId
  * @param {(work: Record<string, unknown>) => Promise<Record<string, unknown>>} [options.executeClaim]
+ * @param {(input: { candidate: Record<string, unknown>, evidence: Record<string, unknown>[] }) => Promise<{ requestedModelVersion: string, modelVersion: string, modelOutput: unknown }>} [options.executeAdmission]
+ * @param {string} [options.admissionModelVersion]
+ * @param {() => string} [options.classificationRunId]
  * @param {(result: Record<string, unknown>, work: Record<string, unknown>) => Promise<void>} [options.afterExecute]
  * @param {(payload: Record<string, unknown>) => Promise<unknown>} [options.publishHealth]
  * @param {number} [options.pollIntervalMs]
@@ -203,6 +356,9 @@ export function createCompanyMonitoringWorker(options) {
     secret,
     workerId,
     executeClaim = unavailableExecutor,
+    executeAdmission,
+    admissionModelVersion,
+    classificationRunId = () => `classification-${randomUUID()}`,
     afterExecute,
     publishHealth = async () => false,
     pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
@@ -218,10 +374,21 @@ export function createCompanyMonitoringWorker(options) {
   let finishPoll = null;
   let inFlight = false;
   const counters = projectCounters({});
+  const health = {
+    scan: { status: 'error', outcome: 'starting' },
+    admission: typeof executeAdmission === 'function'
+      ? { status: 'ok', outcome: 'idle' }
+      : { status: 'ok', outcome: 'disabled' },
+  };
 
-  const safePublish = async (status, outcome) => {
+  const safePublish = async (subsystem, status, outcome) => {
+    health[subsystem] = { status, outcome };
     try {
-      await publishHealth({ status, outcome, counters: projectCounters(counters) });
+      await publishHealth(projectWorkerHealth({
+        activeSubsystem: subsystem,
+        subsystems: health,
+        counters,
+      }));
     } catch (error) {
       logger.warn?.('[company-monitoring-worker] health publisher failed:', error?.message ?? String(error));
     }
@@ -238,17 +405,17 @@ export function createCompanyMonitoringWorker(options) {
       );
     } catch {
       counters.claimErrors += 1;
-      await safePublish('error', 'claim_error');
+      await safePublish('scan', 'error', 'claim_error');
       return 'claim_error';
     }
 
     if (claim?.status === 'disabled' || claim?.status === 'idle') {
-      await safePublish('ok', claim.status);
+      await safePublish('scan', 'ok', claim.status);
       return claim.status;
     }
     if (claim?.status !== 'claimed' || !claim.work) {
       counters.claimErrors += 1;
-      await safePublish('error', 'claim_error');
+      await safePublish('scan', 'error', 'claim_error');
       return 'claim_error';
     }
 
@@ -256,7 +423,7 @@ export function createCompanyMonitoringWorker(options) {
     inFlight = true;
     let result;
     try {
-      result = await executeClaim(claim.work);
+      result = finalizeResult(await executeClaim(claim.work));
     } catch {
       counters.executorErrors += 1;
       result = await unavailableExecutor();
@@ -282,7 +449,7 @@ export function createCompanyMonitoringWorker(options) {
     } catch {
       inFlight = false;
       counters.finalizeErrors += 1;
-      await safePublish('error', 'finalize_error');
+      await safePublish('scan', 'error', 'finalize_error');
       return 'finalize_error';
     }
     inFlight = false;
@@ -294,11 +461,155 @@ export function createCompanyMonitoringWorker(options) {
     else if (outcome === 'replayed') counters.replayed += 1;
     else {
       counters.finalizeErrors += 1;
-      await safePublish('error', 'finalize_error');
+      await safePublish('scan', 'error', 'finalize_error');
       return 'finalize_error';
     }
-    await safePublish(HEALTHY_OUTCOMES.has(outcome) ? 'ok' : 'error', outcome);
+    await safePublish('scan', HEALTHY_SCAN_OUTCOMES.has(outcome) ? 'ok' : 'error', outcome);
     return outcome;
+  };
+
+  const admissionTick = async () => {
+    if (stopping) return 'stopping';
+    if (typeof executeAdmission !== 'function') return 'disabled';
+
+    const runId = classificationRunId();
+    if (
+      typeof runId !== 'string' ||
+      runId.length === 0 ||
+      typeof admissionModelVersion !== 'string' ||
+      admissionModelVersion.length === 0
+    ) {
+      counters.admissionFinalizeErrors += 1;
+      await safePublish('admission', 'error', 'admission_finalize_error');
+      return 'finalize_error';
+    }
+
+    let claim;
+    try {
+      claim = await client.mutation(
+        anyApi.companyMonitoring.orchestration.claimNextAdmissionCandidate,
+        {
+          secret,
+          workerId,
+          classificationRunId: runId,
+          requestedModelVersion: admissionModelVersion,
+        },
+      );
+    } catch {
+      counters.admissionClaimErrors += 1;
+      await safePublish('admission', 'error', 'admission_claim_error');
+      return 'claim_error';
+    }
+    if (claim?.status === 'idle') return 'idle';
+    if (
+      claim?.status !== 'claimed' ||
+      !claim.candidate ||
+      !Array.isArray(claim.evidence) ||
+      typeof claim.leaseToken !== 'string' ||
+      !Number.isSafeInteger(claim.expectedEvidenceRevision)
+    ) {
+      counters.admissionClaimErrors += 1;
+      await safePublish('admission', 'error', 'admission_claim_error');
+      return 'claim_error';
+    }
+
+    counters.admissionClaims += 1;
+    inFlight = true;
+    try {
+      let classification;
+      try {
+        classification = await executeAdmission({
+          candidate: claim.candidate,
+          evidence: claim.evidence,
+        });
+        if (
+          !classification ||
+          typeof classification.requestedModelVersion !== 'string' ||
+          classification.requestedModelVersion.length === 0 ||
+          typeof classification.modelVersion !== 'string' ||
+          classification.modelVersion.length === 0 ||
+          (admissionModelVersion !== undefined &&
+            classification.requestedModelVersion !== admissionModelVersion)
+        ) {
+          throw new Error('Classifier returned invalid finalization metadata');
+        }
+      } catch {
+        let failureFinalized;
+        try {
+          failureFinalized = await client.mutation(
+            anyApi.companyMonitoring.orchestration.finalizeAdmissionTransportFailure,
+            {
+              secret,
+              workerId,
+              leaseToken: claim.leaseToken,
+              ownerAccountId: claim.candidate.ownerAccountId,
+              companyId: claim.candidate.companyId,
+              occurrenceDedupeKey: claim.candidate.occurrenceDedupeKey,
+              expectedEvidenceRevision: claim.expectedEvidenceRevision,
+              classificationRunId: runId,
+              requestedModelVersion: admissionModelVersion,
+            },
+          );
+        } catch {
+          counters.admissionFinalizeErrors += 1;
+          await safePublish('admission', 'error', 'admission_finalize_error');
+          return 'finalize_error';
+        }
+        if (
+          failureFinalized?.status !== 'recorded' &&
+          failureFinalized?.status !== 'replayed'
+        ) {
+          counters.admissionFinalizeErrors += 1;
+          await safePublish('admission', 'error', 'admission_finalize_error');
+          return 'finalize_error';
+        }
+        counters.admissionTransportFailures += 1;
+        if (failureFinalized.status === 'recorded') counters.admissionRecorded += 1;
+        else counters.admissionReplayed += 1;
+        await safePublish('admission', 'error', 'admission_transport_failure');
+        return 'provider_error';
+      }
+
+      let finalized;
+      try {
+        finalized = await client.mutation(
+          anyApi.companyMonitoring.orchestration.finalizeAdmissionCandidate,
+          {
+            secret,
+            workerId,
+            leaseToken: claim.leaseToken,
+            ownerAccountId: claim.candidate.ownerAccountId,
+            companyId: claim.candidate.companyId,
+            occurrenceDedupeKey: claim.candidate.occurrenceDedupeKey,
+            expectedEvidenceRevision: claim.expectedEvidenceRevision,
+            classificationRunId: runId,
+            modelVersion: classification.modelVersion,
+            requestedModelVersion: classification.requestedModelVersion,
+            modelOutput: classification.modelOutput,
+          },
+        );
+      } catch {
+        counters.admissionFinalizeErrors += 1;
+        await safePublish('admission', 'error', 'admission_finalize_error');
+        return 'finalize_error';
+      }
+
+      if (finalized?.status === 'recorded') {
+        counters.admissionRecorded += 1;
+        await safePublish('admission', 'ok', 'admission_recorded');
+        return 'recorded';
+      }
+      if (finalized?.status === 'replayed') {
+        counters.admissionReplayed += 1;
+        await safePublish('admission', 'ok', 'admission_replayed');
+        return 'replayed';
+      }
+      counters.admissionFinalizeErrors += 1;
+      await safePublish('admission', 'error', 'admission_finalize_error');
+      return 'finalize_error';
+    } finally {
+      inFlight = false;
+    }
   };
 
   const waitForNextPoll = () => new Promise((resolve) => {
@@ -317,9 +628,11 @@ export function createCompanyMonitoringWorker(options) {
 
   return {
     tick,
+    admissionTick,
     async run() {
       while (!stopping) {
         await tick();
+        if (!stopping) await admissionTick();
         if (!stopping) await waitForNextPoll();
       }
     },
@@ -346,6 +659,14 @@ async function main() {
       'COMPANY_MONITORING_WORKER_SECRET',
       'UPSTASH_REDIS_REST_URL',
       'UPSTASH_REDIS_REST_TOKEN',
+      'X_BEARER_TOKEN',
+      'X_POST_STORAGE_MODE',
+      'X_RECENT_SEARCH_REQUEST_COST_USD_MICROS',
+      'EXA_API_KEYS',
+      'OPENROUTER_API_KEY',
+      'COMPANY_MONITORING_CLASSIFIER_MODEL',
+      'COMPANY_MONITORING_CLASSIFIER_PROVIDER_ROUTE',
+      'COMPANY_MONITORING_CLASSIFIER_RESOLVED_PROVIDER',
     ],
   });
   const convexUrl = process.env.CONVEX_URL;
@@ -355,10 +676,39 @@ async function main() {
   }
 
   const client = new ConvexHttpClient(convexUrl, { fetch: createConvexFetch() });
+  const executeClaim = createCompanyMonitoringExecutor({
+    exaExecutor: createExaCohortExecutor({
+      apiKeys: (process.env.EXA_API_KEYS ?? '').split(/[\n,]+/),
+      runtimeApproved: COMPANY_MONITORING_EXA_CONTRACT.paidRuntimeApproved,
+    }),
+    xExecutor: createXRecentSearchExecutor({
+      bearerToken: process.env.X_BEARER_TOKEN,
+      storageMode: process.env.X_POST_STORAGE_MODE,
+      requestCostUsdMicros: Number(process.env.X_RECENT_SEARCH_REQUEST_COST_USD_MICROS ?? 0),
+    }),
+  });
+  const classifierApiKey = process.env.OPENROUTER_API_KEY;
+  const classifierModel = process.env.COMPANY_MONITORING_CLASSIFIER_MODEL;
+  const classifierProviderRoute = process.env.COMPANY_MONITORING_CLASSIFIER_PROVIDER_ROUTE;
+  const classifierResolvedProvider = process.env.COMPANY_MONITORING_CLASSIFIER_RESOLVED_PROVIDER;
+  const classifierVersion = classifierModel && classifierProviderRoute && classifierResolvedProvider
+    ? `${classifierModel}@${classifierProviderRoute}#${classifierResolvedProvider}`
+    : undefined;
+  const executeAdmission = classifierApiKey && classifierModel && classifierProviderRoute && classifierResolvedProvider
+    ? createApprovedCompanyMonitoringAdmissionClassifier({
+      apiKey: classifierApiKey,
+      model: classifierModel,
+      providerRoute: classifierProviderRoute,
+      expectedResolvedProvider: classifierResolvedProvider,
+    })
+    : undefined;
   const worker = createCompanyMonitoringWorker({
     client,
     secret,
     workerId: `railway-${process.pid}-${randomUUID()}`,
+    executeClaim,
+    executeAdmission,
+    admissionModelVersion: classifierVersion,
     publishHealth: createRedisHealthPublisher(),
   });
   let shutdownSignal = 'SIGTERM';

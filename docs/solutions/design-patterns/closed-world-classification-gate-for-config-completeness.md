@@ -1,6 +1,7 @@
 ---
 title: "Closed-world classification gate: every mechanically-enumerable config member must be classified, or CI fails"
 date: 2026-07-31
+last_updated: 2026-08-12
 category: design-patterns
 module: desktop build env / CI gates
 problem_type: design_pattern
@@ -8,7 +9,8 @@ applies_when:
   - "A consumer (build, deploy, runtime) receives a hand-maintained subset of a mechanically enumerable universe (env vars, routes, feature flags, watch paths, locales)"
   - "A member silently missing from the subset degrades a capability without any error — the #5905 incident class"
   - "New members are added by many contributors over time, so any opt-in list rots by default"
-tags: [closed-world, classification-gate, allowlist-rot, env-vars, ci-gates, vacuous-guard, completeness]
+  - "A new structured source-attribution provider must land in a marketing catalog domain or `npm run build:full` dies"
+tags: [closed-world, classification-gate, allowlist-rot, env-vars, ci-gates, vacuous-guard, completeness, crawlable-sources]
 ---
 
 # Closed-world classification gate: every mechanically-enumerable config member must be classified, or CI fails
@@ -106,4 +108,14 @@ mutants);
 `docs/solutions/design-patterns/contract-gate-field-names-miss-value-axis.md`
 (a second instance of this pattern: proto fields as the enumerable universe,
 with the block-commented-field evasion as exactly the parser-evasion mutant
-class named above).
+class named above);
+`scripts/crawlable-sources-page.mjs` `sourceDomainIdForEntries` (a third
+instance: structured source-attribution providers as the enumerable
+universe. `SOURCE_DOMAIN_MATCHERS` plus `SOURCE_DOMAIN_OVERRIDES` must
+classify every provider, or `build:full` throws
+`Source provider needs a catalog domain: <name>`. Matcher hits are
+substring-fragile — USGS ScienceBase matched `energy` via `commodity`,
+while British Geological Survey World Mineral Statistics did not match
+`mineral` until that token was added. Prefer an explicit override keyed
+to the exact provider display name when adding a new structured source.
+Opened on PR #6527).

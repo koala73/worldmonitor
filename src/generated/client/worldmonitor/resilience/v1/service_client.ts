@@ -59,6 +59,35 @@ export interface ResiliencePillar {
   domains: ResilienceDomain[];
 }
 
+export interface GetFoodStocksRequest {
+  countryCode: string;
+  commodity: string;
+}
+
+export interface GetFoodStocksResponse {
+  records: FoodStockRecord[];
+  fetchedAt: string;
+  unavailable: boolean;
+  calorieWeightedStocksToUse: number;
+}
+
+export interface FoodStockRecord {
+  countryCode: string;
+  commodity: string;
+  marketingYear: string;
+  stocksToUse: number;
+  hasStocksToUse: boolean;
+  endingStocksTmt: number;
+  hasEndingStocks: boolean;
+  totalUseTmt: number;
+  productionTmt: number;
+  consumptionTmt: number;
+  importsTmt: number;
+  exportsTmt: number;
+  unit: string;
+  source: string;
+}
+
 export interface GetResilienceRankingRequest {
 }
 
@@ -121,6 +150,7 @@ export interface ResilienceRankingCacheState {
 
 export interface ResilienceRuntimeConstructVersions {
   energy: string;
+  education: string;
 }
 
 export interface ResilienceRuntimeIntervalState {
@@ -201,6 +231,32 @@ export class ResilienceServiceClient {
     }
 
     return await resp.json() as GetResilienceScoreResponse;
+  }
+
+  async getFoodStocks(req: GetFoodStocksRequest, options?: ResilienceServiceCallOptions): Promise<GetFoodStocksResponse> {
+    let path = "/api/resilience/v1/get-food-stocks";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("countryCode", String(req.countryCode));
+    if (req.commodity != null && req.commodity !== "") params.set("commodity", String(req.commodity));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetFoodStocksResponse;
   }
 
   async getResilienceRanking(_req: GetResilienceRankingRequest, options?: ResilienceServiceCallOptions): Promise<GetResilienceRankingResponse> {

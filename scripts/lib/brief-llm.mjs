@@ -3,9 +3,9 @@
 // Substitutes the stubbed `whyMatters` per story and the stubbed
 // executive summary (`digest.lead` / `digest.threads` / `digest.signals`)
 // with Gemini 2.5 Flash output via the existing OpenRouter-backed
-// callLLM chain. The LLM provider is pinned to openrouter by
-// skipProviders:['ollama','groq'] so the brief's editorial voice
-// stays on one model across environments.
+// callLLM chain. The LLM provider is pinned to paid openrouter by an exact
+// allowedProviders:['openrouter'] list so additions to the shared chain do not
+// change the model and editorial voice across environments.
 //
 // Deliberately:
 //   - Pure parse/build helpers are exported for testing without IO.
@@ -126,7 +126,7 @@ const WHY_MATTERS_CONCURRENCY = 5;
 // cutover, which is gated on the U3 shadow evaluation). Ollama isn't deployed
 // in Railway, and pinning keeps the brief's editorial voice on one model
 // across environments instead of drifting to the groq fallback.
-const BRIEF_LLM_SKIP_PROVIDERS = ['ollama', 'groq'];
+const BRIEF_LLM_ALLOWED_PROVIDERS = ['openrouter'];
 
 // ── whyMatters (per story) ─────────────────────────────────────────────────
 // The pure helpers (`WHY_MATTERS_SYSTEM`, `buildWhyMattersUserPrompt` (aliased
@@ -252,7 +252,7 @@ export async function generateWhyMatters(story, deps) {
       maxTokens: 120,
       temperature: 0.4,
       timeoutMs: 10_000,
-      skipProviders: BRIEF_LLM_SKIP_PROVIDERS,
+      allowedProviders: BRIEF_LLM_ALLOWED_PROVIDERS,
       stage: 'brief-whymatters-cron',
     });
   } catch {
@@ -399,7 +399,7 @@ export async function generateStoryDescription(story, deps) {
       maxTokens: 140,
       temperature: 0.4,
       timeoutMs: 10_000,
-      skipProviders: BRIEF_LLM_SKIP_PROVIDERS,
+      allowedProviders: BRIEF_LLM_ALLOWED_PROVIDERS,
       stage: 'brief-description-cron',
     });
   } catch {
@@ -817,7 +817,7 @@ export async function generateDigestProse(userId, stories, sensitivity, deps, ct
       maxTokens: 900,
       temperature: 0.4,
       timeoutMs: 15_000,
-      skipProviders: BRIEF_LLM_SKIP_PROVIDERS,
+      allowedProviders: BRIEF_LLM_ALLOWED_PROVIDERS,
       stage: 'brief-digest-cron',
     });
   } catch (err) {

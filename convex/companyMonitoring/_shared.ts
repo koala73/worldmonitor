@@ -7,10 +7,17 @@ import {
 } from "../../shared/company-monitoring-contract";
 
 export const COMPANY_LIMIT = COMPANY_MONITORING_LIMITS.maxCompaniesPerAccount;
+export const COMPANY_MONITORING_CLAIM_POLICY_VERSION = 1;
 const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const REQUEST_CONTROL = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/u;
 
 type CompanyMonitoringCtx = MutationCtx | QueryCtx;
+
+export function hasCurrentCompanyMonitoringClaimPolicy(
+  account: Pick<Doc<"companyMonitoringAccounts">, "claimPolicyVersion">,
+): boolean {
+  return (account.claimPolicyVersion ?? 0) >= COMPANY_MONITORING_CLAIM_POLICY_VERSION;
+}
 
 export function normalizeRequestId(value: string, field = "clientRequestId"): string {
   if (typeof value !== "string" || REQUEST_CONTROL.test(value)) {
@@ -27,6 +34,12 @@ export async function fingerprint(value: unknown): Promise<string> {
   const bytes = new TextEncoder().encode(JSON.stringify(value));
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export function randomFence(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 function encodeTime(time: number): string {
@@ -88,9 +101,32 @@ export async function requireActiveAccount(ctx: CompanyMonitoringCtx, ownerUserI
   return account;
 }
 
+type CustomerClaimType =
+  | "alias"
+  | "domain"
+  | "legal_identifier"
+  | "x_account_id"
+  | "x_handle"
+  | "location"
+  | "customer_reference";
+
+export function customerClaimAllowedUses(type: CustomerClaimType) {
+  if (
+    type === "alias" ||
+    type === "domain" ||
+    type === "legal_identifier" ||
+    type === "x_account_id" ||
+    type === "x_handle"
+  ) {
+    return ["attribution", "discovery"] as const;
+  }
+  return ["discovery"] as const;
+}
+
 function claimsFromCompany(company: NormalizedMonitoredCompanyInput) {
+  const aliases = [...new Set([company.name, ...company.aliases])];
   return [
-    ...company.aliases.map((value) => ({ type: "alias" as const, value })),
+    ...aliases.map((value) => ({ type: "alias" as const, value })),
     ...company.domains.map((value) => ({ type: "domain" as const, value })),
     ...company.identifiers.map((value) => ({ type: "legal_identifier" as const, value })),
     ...company.xHandles.map((value) => ({ type: "x_handle" as const, value })),
@@ -116,6 +152,7 @@ export async function insertClaims(
       ...claim,
       provenance: "customer",
       trustState: "unverified",
+      allowedUses: [...customerClaimAllowedUses(claim.type)],
       createdAt: now,
       updatedAt: now,
     });

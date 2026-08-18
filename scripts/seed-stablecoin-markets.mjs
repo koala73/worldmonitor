@@ -1,6 +1,10 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, fetchCoinPaprikaTickersById, coingeckoEndpoint } from './_seed-utils.mjs';
+// scripts/shared/ mirror (NOT ../shared/): this seeder deploys via Railway
+// rootDirectory=scripts, where the repo-root shared/ folder does not exist.
+// The mirror is byte-locked to shared/ by tests/scripts-shared-mirror.test.mjs.
+import { classifyStablecoin } from './shared/stablecoin-classifier.cjs';
 
 const stablecoinConfig = loadSharedConfig('stablecoins.json');
 
@@ -10,12 +14,6 @@ const CANONICAL_KEY = 'market:stablecoins:v1';
 const CACHE_TTL = 5400; // 90min — 1h buffer over 10min cron cadence (was 60min = 50min buffer)
 
 const STABLECOIN_IDS = stablecoinConfig.ids.join(',');
-
-// Shared with the relay's backup seeder and with the RPC handler, which
-// classifies coins this seed does not carry. Three producers writing peg
-// status against three private copies of these numbers would let the same
-// coin read "ON PEG" from one path and "SLIGHT DEPEG" from another. (#6308)
-const { onPegMaxDeviation: ON_PEG_MAX, slightDepegMaxDeviation: SLIGHT_DEPEG_MAX } = stablecoinConfig.pegThresholds;
 
 async function fetchWithRateLimitRetry(url, maxAttempts = 5, headers = { Accept: 'application/json', 'User-Agent': CHROME_UA }) {
   for (let i = 0; i < maxAttempts; i++) {
@@ -80,28 +78,11 @@ async function fetchStablecoinMarkets() {
     data = await fetchFromCoinPaprika();
   }
 
-  const stablecoins = data.map((coin) => {
-    const price = coin.current_price || 0;
-    const deviation = Math.abs(price - 1.0);
-    let pegStatus;
-    if (deviation <= ON_PEG_MAX) pegStatus = 'ON PEG';
-    else if (deviation <= SLIGHT_DEPEG_MAX) pegStatus = 'SLIGHT DEPEG';
-    else pegStatus = 'DEPEGGED';
-
-    return {
-      id: coin.id,
-      symbol: (coin.symbol || '').toUpperCase(),
-      name: coin.name,
-      price,
-      deviation: +(deviation * 100).toFixed(3),
-      pegStatus,
-      marketCap: coin.market_cap || 0,
-      volume24h: coin.total_volume || 0,
-      change24h: coin.price_change_percentage_24h || 0,
-      change7d: coin.price_change_percentage_7d_in_currency || 0,
-      image: coin.image || '',
-    };
-  });
+  // Shared with the relay's backup seeder and with the RPC handler, which
+  // classifies coins this seed does not carry. Three producers shaping rows
+  // with three private copies of this logic would let the same coin read a
+  // different peg status from each path. (#6308, #6319)
+  const stablecoins = data.map((coin) => classifyStablecoin(coin));
 
   const totalMarketCap = stablecoins.reduce((sum, c) => sum + c.marketCap, 0);
   const totalVolume24h = stablecoins.reduce((sum, c) => sum + c.volume24h, 0);

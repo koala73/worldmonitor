@@ -18,6 +18,8 @@
  * so unit tests can exercise every branch without a browser env.
  */
 
+import { isInternalSourceTag } from '../../shared/referral-namespaces';
+
 export const REFERRAL_CAPTURE_KEY = 'wm-referral-capture';
 export const REFERRAL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -70,12 +72,16 @@ export function captureReferralFromUrl(): string | null {
   let captured: string | null = null;
   let mutated = false;
   for (const param of REFERRAL_PARAM_NAMES) {
-    const value = url.searchParams.get(param);
-    if (value !== null) {
+    // getAll, not get: deleting the param drops EVERY occurrence, so reading
+    // only the first would discard a real code that arrives behind a rejected
+    // one — `?ref=welcome-hero&ref=<sharer>` is exactly the collision the
+    // internal-tag migration window produces.
+    const values = url.searchParams.getAll(param);
+    if (values.length > 0) {
       url.searchParams.delete(param);
       mutated = true;
-      if (captured === null && isValidCode(value)) {
-        captured = value;
+      if (captured === null) {
+        captured = values.find(isAffiliateCode) ?? null;
       }
     }
   }
@@ -124,7 +130,7 @@ export function loadActiveReferral(): string | null {
       localStorage.removeItem(REFERRAL_CAPTURE_KEY);
       return null;
     }
-    if (!isValidCode(parsed.code)) {
+    if (!isAffiliateCode(parsed.code)) {
       localStorage.removeItem(REFERRAL_CAPTURE_KEY);
       return null;
     }
@@ -165,7 +171,7 @@ export function clearReferralOnAttribution(): void {
  */
 export function appendRefToUrl(url: string, refCode: string | undefined | null): string {
   if (!refCode) return url;
-  if (!isValidCode(refCode)) return url;
+  if (!isAffiliateCode(refCode)) return url;
   try {
     const parsed = new URL(url);
     parsed.searchParams.set('wm_referral', refCode);
@@ -191,4 +197,18 @@ function isValidCode(code: string): boolean {
   // URL-reserved chars. Keeps any future rendering path (e.g., Sentry
   // extra) safe without needing per-caller escaping.
   return /^[a-zA-Z0-9_-]+$/.test(code);
+}
+
+/**
+ * True only for codes we are willing to attribute a purchase to: correctly
+ * formed AND not one of our own internal source tags (#6493).
+ *
+ * Exported because it is the policy every path into checkout must apply, not
+ * just this module's own capture/load: `startCheckout` merges a caller-passed
+ * code ahead of the stored one, so a poisoned value replayed from a saved
+ * checkout attempt or a `?checkoutReferral=` URL would otherwise skip the
+ * storage-side check entirely.
+ */
+export function isAffiliateCode(code: string): boolean {
+  return isValidCode(code) && !isInternalSourceTag(code);
 }

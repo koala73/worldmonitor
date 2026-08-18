@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   BlindEvaluationError,
   canonicalReportJson,
@@ -196,24 +198,40 @@ function score(values: string[]): { json: string; outcome: ScoreReport['outcome'
 const EXIT_ENGINE_ERROR = 1;
 const EXIT_GATE_NOT_PASSED = 2;
 
-function main(): void {
-  const [commandValue, ...values] = process.argv.slice(2);
-  const command = commandValue as Command | undefined;
-  if (!command) usage();
-  if (command === 'forecast') process.stdout.write(`${forecast(values)}\n`);
-  else if (command === 'score') {
-    const { json, outcome } = score(values);
-    process.stdout.write(`${json}\n`);
-    if (outcome !== 'pass') process.exitCode = EXIT_GATE_NOT_PASSED;
-  } else process.stdout.write(`${digestCommand(command, values)}\n`);
+export type BlindEvaluationCliResult = {
+  stdout: string;
+  stderr: string;
+  exitCode: 0 | typeof EXIT_ENGINE_ERROR | typeof EXIT_GATE_NOT_PASSED;
+};
+
+export function runBlindEvaluationCli(args: string[]): BlindEvaluationCliResult {
+  try {
+    const [commandValue, ...values] = args;
+    const command = commandValue as Command | undefined;
+    if (!command) usage();
+    if (command === 'forecast') {
+      return { stdout: `${forecast(values)}\n`, stderr: '', exitCode: 0 };
+    }
+    if (command === 'score') {
+      const { json, outcome } = score(values);
+      return {
+        stdout: `${json}\n`,
+        stderr: '',
+        exitCode: outcome === 'pass' ? 0 : EXIT_GATE_NOT_PASSED,
+      };
+    }
+    return { stdout: `${digestCommand(command, values)}\n`, stderr: '', exitCode: 0 };
+  } catch (error) {
+    const message = error instanceof BlindEvaluationError
+      ? error.code
+      : error instanceof Error ? error.message : String(error);
+    return { stdout: '', stderr: `${message}\n`, exitCode: EXIT_ENGINE_ERROR };
+  }
 }
 
-try {
-  main();
-} catch (error) {
-  const message = error instanceof BlindEvaluationError
-    ? error.code
-    : error instanceof Error ? error.message : String(error);
-  process.stderr.write(`${message}\n`);
-  process.exitCode = EXIT_ENGINE_ERROR;
+if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
+  const result = runBlindEvaluationCli(process.argv.slice(2));
+  process.stdout.write(result.stdout);
+  process.stderr.write(result.stderr);
+  process.exitCode = result.exitCode;
 }

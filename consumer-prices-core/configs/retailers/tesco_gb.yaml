@@ -5,7 +5,15 @@ retailer:
   currencyCode: GBP
   adapter: search
   baseUrl: https://www.tesco.com
-  enabled: true
+  # disabled 2026-08-10 (#6358): tesco.com blocks every acquisition route we have.
+  # Firecrawl /v1/scrape returns HTTP 500 SCRAPE_ALL_ENGINES_FAILED on every engine
+  # (index, chrome-cdp, retry — and the stealth proxy tier, probed live 2026-08-10),
+  # and Exa's crawler stores no page content for tesco.com product URLs (163-char
+  # shells, price=null), so the exa extraction fallback cannot help either.
+  # Production runs: 1/12 pages on 2026-08-09, 0/12 on 2026-08-10 — the retailer
+  # dragged GB below the 0.5 market completion floor (COVERAGE_DEGRADED).
+  # Replaced by morrisons_gb + waitrose_gb. Re-probe both providers before re-enabling.
+  enabled: false
 
   searchConfig:
     numResults: 5

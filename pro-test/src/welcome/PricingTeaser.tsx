@@ -32,7 +32,7 @@ export const PricingTeaser = () => (
             ))}
           </ul>
           <a
-            href={`${DASHBOARD_PATH}?ref=welcome-pricing-free`}
+            href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=pricing-free`}
             data-umami-event="welcome-cta"
             data-umami-event-target="welcome-pricing-free"
             className="inline-flex items-center justify-center gap-2 bg-wm-green text-wm-bg px-5 py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors"

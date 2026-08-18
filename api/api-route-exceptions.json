@@ -66,6 +66,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/bounded-body.ts",
+      "category": "internal-helper",
+      "reason": "Bounded sibling-response body reader shared by MCP billing-denial and downstream error classification (#6559). Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/downstream.ts",
       "category": "internal-helper",
       "reason": "Canonical sibling-request routing and credential-safe downstream error classification for MCP RPC tools (#5514). Pure helper module for the external-protocol MCP handler family above — exports no route.",
@@ -118,6 +125,13 @@
       "path": "api/mcp/registry/nlp-tools.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY on-demand NLP tool entries (classify_event, extract_entities, get_news_clusters, get_keyword_spikes). Extracted from rpc-tools.ts so the registry file is not also the home of digest adaptation, entity aggregation, and story-accumulator key knowledge; same external-protocol constraint as its sibling registry modules.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/source-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY source-discovery tool entry (get_sources). Reads the committed shared/ source-attribution manifest and source-tiers registry to report coverage, licensing status, editorial tier, and provenance; exports no JSON data route and performs no network I/O. Same external-protocol constraint as its sibling registry modules.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -441,7 +455,7 @@
     {
       "path": "api/opensky.js",
       "category": "upstream-proxy",
-      "reason": "Transparent proxy to OpenSky Network API. Shape is OpenSky's; we don't remodel it.",
+      "reason": "Desktop-product-only OpenSky relay. It requires the Tauri origin plus an enterprise product key and is not part of the public API offering.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -619,13 +633,6 @@
       "path": "api/internal/mcp-grant-context.ts",
       "category": "internal-helper",
       "reason": "Read-only companion to api/internal/mcp-grant-mint.ts (plan 2026-05-10-001 U3). Returns the registered OAuth client_name + redirect host so the apex /mcp-grant SPA can show real client metadata (anti-phishing). Pro-gated; identical validation paths as the mint endpoint.",
-      "owner": "@SebastienMelki",
-      "removal_issue": null
-    },
-    {
-      "path": "api/data/city-coords.ts",
-      "category": "internal-helper",
-      "reason": "Static city-coordinates payload served from the deploy artifact. Returns a fixed reference table, not a queryable service.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

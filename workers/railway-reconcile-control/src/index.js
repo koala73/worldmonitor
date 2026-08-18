@@ -491,6 +491,7 @@ function publicDispatchHold(hold) {
     boundAt = null,
     admittedAt = null,
     linkedAttemptId = null,
+    failedHeadRetryAuthorized = false,
     reason = null,
     evidenceDigest = null,
     closedAt = null,
@@ -510,6 +511,7 @@ function publicDispatchHold(hold) {
     boundAt,
     admittedAt,
     linkedAttemptId,
+    failedHeadRetryAuthorized,
     reason,
     evidenceDigest,
     closedAt,
@@ -1165,6 +1167,7 @@ async function createDispatchHold(storage, body, now) {
     sourceHeadSha,
     sourceRunId,
     sourceRunAttempt: body.sourceRunAttempt,
+    failedHeadRetryAuthorized: false,
     supersededRuns: [],
   };
   meta.activeDispatchHoldIds.push(recoveryAttemptId);
@@ -1359,7 +1362,6 @@ async function resolveOperator(storage, body, now, randomUuid) {
   if (!OPERATOR_DECISIONS.has(body.decision)) reject(400, 'INVALID_OPERATOR_DECISION');
   const actor = requireIdentifier(body.actor, 'INVALID_ACTOR_ID');
   const approver = requireIdentifier(body.approver, 'INVALID_APPROVER_ID');
-  if (actor === approver) reject(400, 'OPERATOR_APPROVER_MUST_DIFFER');
   const reason = requireOperatorReason(body.reason);
   const evidenceDigest = requireDigest(body.evidenceDigest, 'INVALID_EVIDENCE_DIGEST');
   const intentDigest = body.intentDigest === null
@@ -1592,6 +1594,7 @@ async function resolveOperator(storage, body, now, randomUuid) {
       sourceHeadSha: expectedHead,
       sourceRunId: operatorRunId,
       sourceRunAttempt: body.operatorRunAttempt,
+      failedHeadRetryAuthorized: true,
       supersededRuns,
     };
     meta.activeDispatchHoldIds.push(attemptId);

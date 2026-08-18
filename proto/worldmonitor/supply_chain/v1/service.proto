@@ -7,6 +7,7 @@ import "worldmonitor/supply_chain/v1/get_shipping_rates.proto";
 import "worldmonitor/supply_chain/v1/get_chokepoint_status.proto";
 import "worldmonitor/supply_chain/v1/get_chokepoint_history.proto";
 import "worldmonitor/supply_chain/v1/get_critical_minerals.proto";
+import "worldmonitor/supply_chain/v1/get_mineral_production.proto";
 import "worldmonitor/supply_chain/v1/get_shipping_stress.proto";
 import "worldmonitor/supply_chain/v1/get_country_chokepoint_index.proto";
 import "worldmonitor/supply_chain/v1/get_bypass_options.proto";
@@ -47,6 +48,12 @@ service SupplyChainService {
   // GetCriticalMinerals returns critical-minerals supply indicators; upstream_unavailable is set when the source could not be reached.
   rpc GetCriticalMinerals(GetCriticalMineralsRequest) returns (GetCriticalMineralsResponse) {
     option (sebuf.http.config) = {path: "/get-critical-minerals", method: HTTP_METHOD_GET};
+  }
+
+  // GetMineralProduction returns per-commodity mine and refinery country shares
+  // and HHI from the annual USGS MCS / BGS seed.
+  rpc GetMineralProduction(GetMineralProductionRequest) returns (GetMineralProductionResponse) {
+    option (sebuf.http.config) = {path: "/get-mineral-production", method: HTTP_METHOD_GET};
   }
 
   // GetShippingStress returns carrier market data and a composite stress index.

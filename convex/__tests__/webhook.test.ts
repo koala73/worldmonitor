@@ -147,6 +147,71 @@ async function processEvent(
 // Tests
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Customers no-op rewrite skip (OCC write-avoidance)
+//
+// Convex Insights (2026-08): processWebhookEvent produced OCC write conflicts
+// on `customers` because Dodo delivers related events for one purchase in a
+// burst (subscription.active + subscription.updated within milliseconds) and
+// every subscription event unconditionally re-patched the same customers row
+// with identical userId/email — pure conflict fuel, since no consumer reads
+// customers.updatedAt (verified repo-wide). An identical upsert must be
+// read-only; a real identity change must still write.
+// ---------------------------------------------------------------------------
+
+describe("processWebhookEvent — customers no-op rewrite skip", () => {
+  async function readCustomer(t: ReturnType<typeof convexTest>) {
+    return t.run(async (ctx) =>
+      await ctx.db
+        .query("customers")
+        .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", "cust_test_001"))
+        .unique(),
+    );
+  }
+
+  test("second subscription event with identical customer identity does not rewrite the row", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    await processEvent(t, "wh_occ_1", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
+    const first = await readCustomer(t);
+    expect(first).not.toBeNull();
+
+    // Different delivery (new webhookId, later timestamp), same identity —
+    // the Dodo burst shape that produced the conflicts.
+    await processEvent(
+      t,
+      "wh_occ_2",
+      "subscription.active",
+      makeSubscriptionPayload(),
+      BASE_TIMESTAMP + 60_000,
+    );
+    const second = await readCustomer(t);
+    expect(second?.updatedAt).toBe(first?.updatedAt);
+  });
+
+  test("changed customer email still rewrites the row", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    await processEvent(t, "wh_occ_3", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
+
+    const changed = makeSubscriptionPayload({
+      customer: {
+        customer_id: "cust_test_001",
+        email: "renamed@example.com",
+        name: "Test User",
+      },
+    });
+    await processEvent(t, "wh_occ_4", "subscription.active", changed, BASE_TIMESTAMP + 60_000);
+
+    const row = await readCustomer(t);
+    expect(row?.email).toBe("renamed@example.com");
+    expect(row?.normalizedEmail).toBe("renamed@example.com");
+    expect(row?.updatedAt).toBe(BASE_TIMESTAMP + 60_000);
+  });
+});
+
 describe("webhook processWebhookEvent", () => {
   test("subscription.active creates new subscription", async () => {
     const t = convexTest(schema, modules);
@@ -222,6 +287,177 @@ describe("webhook processWebhookEvent", () => {
     });
     expect(subs).toHaveLength(1);
     expect(subs[0].status).toBe("active");
+  });
+
+  test("subscription.active reactivation clears leftover cancelledAt/onHoldAt (#6769)", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    // A sub that was cancelled (and had earlier been on hold) still carries the
+    // episode stamps. Reactivation must wipe them so downstream classifiers —
+    // esp. the refund-alert `already-cancelled` short-circuit — don't read a
+    // stale cancellation as current.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_test_001",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "cancelled",
+        currentPeriodStart: BASE_TIMESTAMP - 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP,
+        cancelledAt: BASE_TIMESTAMP - 3600000,
+        onHoldAt: BASE_TIMESTAMP - 7200000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_reactivate_clear_stamps",
+      "subscription.active",
+      makeSubscriptionPayload(),
+      BASE_TIMESTAMP,
+    );
+
+    const subs = await t.run(async (ctx) => ctx.db.query("subscriptions").collect());
+    expect(subs).toHaveLength(1);
+    expect(subs[0].status).toBe("active");
+    expect(subs[0].cancelledAt).toBeUndefined();
+    expect(subs[0].onHoldAt).toBeUndefined();
+  });
+
+  test("full refund after reactivation still fires the refund-alert (#6769 — stale cancelledAt no longer silences it)", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    // Cancelled sub carrying a stale cancelledAt stamp.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_test_001",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "cancelled",
+        currentPeriodStart: BASE_TIMESTAMP - 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP,
+        cancelledAt: BASE_TIMESTAMP - 3600000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    // Reactivate. The activation payload carries the recurring price so the
+    // refund-alert can classify a full refund — reactivation overwrites
+    // rawPayload, so the price must ride on THIS event.
+    await processEvent(
+      t,
+      "wh_reactivate_before_refund",
+      "subscription.active",
+      makeSubscriptionPayload({ recurring_pre_tax_amount: 1999 }),
+      BASE_TIMESTAMP,
+    );
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // Full refund on the now-active sub. Before the fix the leftover
+    // cancelledAt short-circuited classifyRefundAlert to `already-cancelled`
+    // and no alert fired.
+    await processEvent(
+      t,
+      "wh_full_refund_after_reactivate",
+      "refund.succeeded",
+      // processEvent's eventType arg drives dispatch; the payload's own `type`
+      // is inert, so reuse makePaymentPayload the way the dispute.lost tests do.
+      makePaymentPayload("payment.succeeded", {
+        payload_type: "Refund",
+        payment_id: "pay_refund_001",
+        subscription_id: "sub_test_001",
+        total_amount: 1999,
+      }),
+      BASE_TIMESTAMP + 300000,
+    );
+
+    const refundAlerts = errorSpy.mock.calls
+      .map((call) => String(call[0]))
+      .filter((msg) => msg.includes("[refund-alert]"));
+    expect(refundAlerts).toHaveLength(1);
+    expect(refundAlerts[0]).toContain("full refund without prior cancellation");
+  });
+
+  test("partial refund after reactivation does NOT fire the refund-alert (#6769 over-fire guard)", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_test_001",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "cancelled",
+        currentPeriodStart: BASE_TIMESTAMP - 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP,
+        cancelledAt: BASE_TIMESTAMP - 3600000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_reactivate_before_partial_refund",
+      "subscription.active",
+      makeSubscriptionPayload({ recurring_pre_tax_amount: 1999 }),
+      BASE_TIMESTAMP,
+    );
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // A partial refund (well under 99% of 1999) must still no-op. Clearing the
+    // stamp removed the `already-cancelled` short-circuit, so the amount check
+    // in classifyRefundAlert is now the ONLY guard against over-firing.
+    await processEvent(
+      t,
+      "wh_partial_refund_after_reactivate",
+      "refund.succeeded",
+      makePaymentPayload("payment.succeeded", {
+        payload_type: "Refund",
+        payment_id: "pay_partial_refund_001",
+        subscription_id: "sub_test_001",
+        total_amount: 500,
+      }),
+      BASE_TIMESTAMP + 300000,
+    );
+
+    const refundAlerts = errorSpy.mock.calls
+      .map((call) => String(call[0]))
+      .filter((msg) => msg.includes("[refund-alert]"));
+    expect(refundAlerts).toHaveLength(0);
+  });
+
+  test("subscription.active reactivation clears onHoldAt with no prior cancellation (#6769)", async () => {
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+
+    // Drive the full lifecycle through real webhook events (no hand-seeded row):
+    // active -> on_hold -> active. onHoldAt is set on hold, then must be cleared
+    // on reactivation, with cancellation never involved.
+    await processEvent(t, "wh_oh_active", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP);
+    await processEvent(t, "wh_oh_hold", "subscription.on_hold", makeSubscriptionPayload(), BASE_TIMESTAMP + 1000);
+
+    const held = await t.run(async (ctx) => ctx.db.query("subscriptions").collect());
+    expect(held[0].status).toBe("on_hold");
+    expect(held[0].onHoldAt).toBeDefined();
+    expect(held[0].cancelledAt).toBeUndefined();
+
+    await processEvent(t, "wh_oh_reactivate", "subscription.active", makeSubscriptionPayload(), BASE_TIMESTAMP + 2000);
+
+    const reactivated = await t.run(async (ctx) => ctx.db.query("subscriptions").collect());
+    expect(reactivated[0].status).toBe("active");
+    expect(reactivated[0].onHoldAt).toBeUndefined();
+    expect(reactivated[0].cancelledAt).toBeUndefined();
   });
 
   test("subscription.active reactivation sends a welcome-back email", async () => {

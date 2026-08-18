@@ -1,0 +1,876 @@
+---
+title: "Source Attribution"
+description: "Machine-generated inventory of every source host World Monitor uses — provider identity, observed surface, and source references."
+---
+
+This page is the provenance companion to [Data Sources](/data-sources). That page explains **what** World Monitor covers and **which** providers power each domain. This page lists every source host observed in the source tree, its surface type, and where it is referenced.
+
+The inventory is **generated, not hand-written**: `scripts/source-attribution.mjs` scans source declarations in `scripts/`, `server/`, `api/`, and `src/`, and joins them against the committed manifest (`shared/source-attribution-manifest.json`). A host that appears in code but not in the manifest fails CI, so this disclosure cannot silently drift from the configured source inventory.
+
+## Observed Source Inventory
+
+{/* BEGIN GENERATED SOURCE ATTRIBUTION */}
+This generated inventory covers **737 active source hosts** representing **731 active providers** (**312 structured/API**, **458 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced.
+
+| Provider | Observed surface |
+| --- | --- |
+| +972 Magazine (www.972mag.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| 14ymedio (www.14ymedio.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| 24.hu (24.hu) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| 247preview.foxnews.com (247preview.foxnews.com) | feed — src/components/LiveNewsPanel.ts |
+| 36kr.com (36kr.com) | feed — src/config/feeds.ts |
+| 444.hu (444.hu) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| a16z.com (a16z.com) | feed — src/config/feeds.ts |
+| abacus.worldmonitor.app (abacus.worldmonitor.app) | structured — scripts/check-analytics-collector.mjs, src/services/analytics.ts |
+| abc-iview-mediapackagestreams-2.akamaized.net (abc-iview-mediapackagestreams-2.akamaized.net) | feed — src/components/LiveNewsPanel.ts |
+| abplivetv.pc.cdn.bitgravity.com (abplivetv.pc.cdn.bitgravity.com) | feed — src/components/LiveNewsPanel.ts |
+| acleddata.com (acleddata.com) | structured — scripts/seed-conflict-intel.mjs, scripts/seed-unrest-events.mjs, scripts/shared/acled-oauth.mjs, server/_shared/acled-auth.ts, +1 more |
+| actualite.cd (actualite.cd) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| ActuNiger (actuniger.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| adsb.fi Open Data (opendata.adsb.fi) | structured — scripts/seed-military-flights.mjs, src/components/MapPopup.ts |
+| adsb.lol (api.adsb.lol) | structured — scripts/ais-relay.cjs, scripts/seed-military-flights.mjs, src/components/MapPopup.ts |
+| ae.usembassy.gov (ae.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
+| aerotime.aero (aerotime.aero) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
+| agentskills.io (agentskills.io) | structured — api/skills/fetch-agentskills.ts |
+| agsi.gie.eu (agsi.gie.eu) | structured — scripts/seed-gas-storage-countries.mjs, scripts/seed-gie-gas-storage.mjs |
+| Aïr Info (airinfoagadez.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| airlinegeeks.com (airlinegeeks.com) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
+| airplanes.live (api.airplanes.live) | structured — scripts/seed-military-flights.mjs, src/components/MapPopup.ts |
+| Alberta 511 (511.alberta.ca) | structured — scripts/lib/provincial-511.mjs |
+| Alberta Emergency Alert (www.alberta.ca) | structured — scripts/lib/alberta-emergency-alert.mjs, scripts/source-attribution.mjs |
+| Alternative.me Fear & Greed Index (api.alternative.me) | structured — scripts/seed-economy.mjs |
+| Alwihda Info (www.alwihdainfo.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| amdlive-ch01-ctnd-com.akamaized.net (amdlive-ch01-ctnd-com.akamaized.net) | feed — src/components/LiveNewsPanel.ts |
+| amg00106-france24-france24-samsunguk-qvpp8.amagi.tv (amg00106-france24-france24-samsunguk-qvpp8.amagi.tv) | feed — src/components/LiveNewsPanel.ts |
+| Amu TV (amu.tv) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| angellist.com (angellist.com) | feed — src/config/feeds.ts |
+| Annahar (annahar.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| api.abuseipdb.com (api.abuseipdb.com) | structured — scripts/ais-relay.cjs, scripts/seed-cyber-threats.mjs, server/worldmonitor/cyber/v1/_shared.ts |
+| api.aviationstack.com (api.aviationstack.com) | structured — scripts/ais-relay.cjs, scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/_shared.ts |
+| api.axios.com (api.axios.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| api.cloudflare.com (api.cloudflare.com) | structured — scripts/_kv-storage.mjs, scripts/_r2-storage.mjs, scripts/seed-internet-outages.mjs, scripts/seed-military-bases.mjs |
+| api.coingecko.com (api.coingecko.com) | structured — scripts/ais-relay.cjs |
+| api.data.gov.my (api.data.gov.my) | structured — scripts/backfill-fuel-prices-prev.mjs, scripts/seed-fuel-prices.mjs |
+| api.datos.gob.mx (api.datos.gob.mx) | structured — scripts/backfill-fuel-prices-prev.mjs |
+| api.eia.gov (api.eia.gov) | structured — scripts/backfill-fuel-prices-prev.mjs, scripts/seed-economy.mjs, scripts/seed-eia-petroleum.mjs, scripts/seed-electricity-prices.mjs, +1 more |
+| api.exa.ai (api.exa.ai) | structured — scripts/ais-relay.cjs, scripts/lib/company-monitoring-exa.mjs, scripts/seed-bigmac.mjs, scripts/seed-grocery-basket.mjs, +1 more |
+| api.fiscaldata.treasury.gov (api.fiscaldata.treasury.gov) | structured — scripts/seed-national-debt.mjs, scripts/seed-supply-chain-trade.mjs |
+| api.gdeltproject.org (api.gdeltproject.org) | structured — scripts/seed-gdelt-intel.mjs, scripts/seed-unrest-events.mjs |
+| api.github.com (api.github.com) | structured — api/_github-release.js, scripts/dispatch-stale-railway-reconcile.mjs, scripts/resolve-railway-reconcile-control.mjs, scripts/seed-research.mjs |
+| api.groq.com (api.groq.com) | structured — server/_shared/llm-health.ts |
+| api.iea.org (api.iea.org) | structured — scripts/seed-iea-oil-stocks.mjs |
+| api.imf.org (api.imf.org) | structured — scripts/_seed-utils.mjs, scripts/seed-gold-cb-reserves.mjs |
+| api.indexnow.org (api.indexnow.org) | structured — scripts/seo-indexnow-submit.mjs |
+| api.ossinsight.io (api.ossinsight.io) | structured — scripts/seed-research.mjs |
+| api.planespotters.net (api.planespotters.net) | structured — server/worldmonitor/military/v1/get-wingbits-live-flight.ts |
+| api.rainviewer.com (api.rainviewer.com) | structured — src/components/DeckGLMap.ts |
+| api.sam.gov (api.sam.gov) | structured — scripts/seed-global-tenders.mjs |
+| api.scrapecreators.com (api.scrapecreators.com) | structured — scripts/ais-relay.cjs |
+| api.spdrgoldshares.com (api.spdrgoldshares.com) | structured — scripts/seed-gold-etf-flows.mjs |
+| api.stlouisfed.org (api.stlouisfed.org) | structured — scripts/seed-economic-calendar.mjs |
+| api.ted.europa.eu (api.ted.europa.eu) | structured — scripts/seed-global-tenders.mjs |
+| api.telegram.org (api.telegram.org) | structured — scripts/notification-relay.cjs, scripts/seed-digest-notifications.mjs |
+| api.tzevaadom.co.il (api.tzevaadom.co.il) | structured — scripts/ais-relay.cjs |
+| api.unhcr.org (api.unhcr.org) | structured — scripts/seed-displacement-summary.mjs, server/worldmonitor/displacement/v1/get-displacement-summary.ts |
+| api.usaspending.gov (api.usaspending.gov) | structured — scripts/ais-relay.cjs, scripts/seed-usa-spending.mjs |
+| api.weather.gov (api.weather.gov) | structured — scripts/_weather-alert-select.mjs |
+| api.windy.com (api.windy.com) | structured — scripts/seed-webcams.mjs, server/worldmonitor/webcam/v1/get-webcam-image.ts |
+| api.worldbank.org (api.worldbank.org) | structured — scripts/_defense-industrial-source.mjs, scripts/ais-relay.cjs, scripts/seed-bis-lbs.mjs, scripts/seed-education-attainment.mjs, +9 more |
+| api.wto.org (api.wto.org) | structured — scripts/seed-supply-chain-trade.mjs, server/worldmonitor/trade/v1/_shared.ts |
+| apnews.com (apnews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| arabianbusiness.com (arabianbusiness.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| arabnews.com (arabnews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| archive-api.open-meteo.com (archive-api.open-meteo.com) | structured — scripts/_open-meteo-archive.mjs |
+| arctictoday.com (arctictoday.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| armenpress.am (armenpress.am) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| armscontrol.org (armscontrol.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| arxiv.org (arxiv.org) | structured — scripts/seed-research.mjs |
+| asharq.com (asharq.com) | feed — src/config/feeds.ts |
+| asharqbusiness.com (asharqbusiness.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| asia.nikkei.com (asia.nikkei.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| asianews.it (asianews.it) | feed — server/worldmonitor/news/v1/_feeds.ts |
+| astanatimes.com (astanatimes.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| AusTender (www.tenders.gov.au) | structured — scripts/seed-global-tenders.mjs |
+| av.alarabiya.net (av.alarabiya.net) | feed — src/components/LiveNewsPanel.ts |
+| Axiom telemetry (api.axiom.co) | structured — api/_usage-telemetry.js, scripts/lib/llm-telemetry.cjs, scripts/seed-forecasts.mjs, server/_shared/usage.ts |
+| AyiboPost (ayibopost.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| azertag.az (azertag.az) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| azure.status.microsoft (azure.status.microsoft) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| B.C. Evacuation Orders and Alerts (catalogue.data.gov.bc.ca) | structured — scripts/lib/bc-emergency-info.mjs |
+| B.C. Evacuation Orders and Alerts (services6.arcgis.com) | structured — scripts/lib/bc-emergency-info.mjs |
+| balkaninsight.com (balkaninsight.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| bangkokpost.com (bangkokpost.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Bank of Canada (www.bankofcanada.ca) | structured — scripts/lib/boc-valet.mjs |
+| Barchart (www.barchart.com) | structured — scripts/seed-fear-greed.mjs, scripts/seed-market-breadth.mjs |
+| basemaps.cartocdn.com (basemaps.cartocdn.com) | structured — src/config/basemap-styles.ts |
+| BC Open511 (api.open511.gov.bc.ca) | structured — scripts/lib/open511.mjs |
+| BC Wildfire Service (OpenMaps) (openmaps.gov.bc.ca) | structured — scripts/wildfire/bc-fire-points.mjs |
+| bcovlive-a.akamaihd.net (bcovlive-a.akamaihd.net) | feed — src/components/LiveNewsPanel.ts |
+| bd.usembassy.gov (bd.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
+| bellingcat.com (bellingcat.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| bihus.info (bihus.info) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Binance (binance.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| bitbucket.status.atlassian.com (bitbucket.status.atlassian.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| bitcoinmagazine.com (bitcoinmagazine.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| bloomberg.com (bloomberg.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/components/LiveNewsPanel.ts, src/config/feeds.ts |
+| bothsidesofthetable.com (bothsidesofthetable.com) | structured — src/config/variants/tech.ts |
+| Brave Search API (api.search.brave.com) | structured — scripts/ais-relay.cjs, server/worldmonitor/market/v1/stock-news-search.ts |
+| breakingdefense.com (breakingdefense.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| British Geological Survey World Mineral Statistics (ogcapi.bgs.ac.uk) | structured — scripts/seed-mineral-production.mjs |
+| brookings.edu (brookings.edu) | feed — src/config/feeds.ts |
+| budgetlab.yale.edu (budgetlab.yale.edu) | structured — scripts/_trade-parse-utils.mjs |
+| Business Insider (www.businessinsider.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Business Wire (feed.businesswire.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| calgaryherald.com (calgaryherald.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| canadabuys.canada.ca (canadabuys.canada.ca) | structured — scripts/seed-global-tenders.mjs |
+| Caracas Chronicles (www.caracaschronicles.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| carnegieendowment.org (carnegieendowment.org) | feed — src/config/feeds.ts |
+| cbcnewshd-f.akamaihd.net (cbcnewshd-f.akamaihd.net) | feed — src/components/LiveNewsPanel.ts |
+| cbinsights.com (cbinsights.com) | feed — src/config/feeds.ts |
+| cbsn-us.cbsnstream.cbsnews.com (cbsn-us.cbsnstream.cbsnews.com) | feed — src/components/LiveNewsPanel.ts |
+| cdc.gov (cdc.gov) | feed — src/config/feeds.ts |
+| cdn-ca2-na.lncnetworks.host (cdn-ca2-na.lncnetworks.host) | feed — src/components/LiveNewsPanel.ts |
+| cdn.debugbear.com (cdn.debugbear.com) | structured — src/bootstrap/debugbear-rum.ts |
+| cdnlive.presstv.ir (cdnlive.presstv.ir) | feed — src/components/LiveNewsPanel.ts |
+| celestrak.org (celestrak.org) | structured — scripts/ais-relay.cjs |
+| CFTC Commitments of Traders (publicreporting.cftc.gov) | structured — scripts/seed-cot.mjs |
+| CFTC public notices (www.cftc.gov) | structured — scripts/seed-regulatory-actions.mjs |
+| Chainwire (chainwire.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| challenges.cloudflare.com (challenges.cloudflare.com) | structured — server/_shared/turnstile.ts |
+| changelog.com (changelog.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| chathamhouse.org (chathamhouse.org) | feed — src/config/feeds.ts |
+| citinewsroom.com (citinewsroom.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| City of Toronto Open Data (secure.toronto.ca) | structured — scripts/lib/toronto-road-restrictions.mjs |
+| civil.ge (civil.ge) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Clerk identity service (api.clerk.com) | structured — server/auth-session.ts |
+| climate.copernicus.eu (climate.copernicus.eu) | structured — scripts/seed-climate-news.mjs |
+| Cloudflare Browser MCP (browser.mcp.cloudflare.com) | structured — src/services/mcp-store.ts |
+| Cloudflare Radar MCP (radar.mcp.cloudflare.com) | structured — src/services/mcp-store.ts |
+| cloudflare-dns.com (cloudflare-dns.com) | structured — api/_notification-webhook-ssrf.ts, api/mcp-proxy.ts, server/_shared/email-validation.ts, server/worldmonitor/shipping/v2/webhook-shared.ts |
+| cnas.org (cnas.org) | feed — src/config/feeds.ts |
+| cnbc.com (cnbc.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| cnn.com (cnn.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| co.usembassy.gov (co.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
+| Coinbase (coinbase.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| CoinPaprika (api.coinpaprika.com) | structured — scripts/_seed-utils.mjs, scripts/ais-relay.cjs, server/worldmonitor/market/v1/_shared.ts |
+| cointelegraph.com (cointelegraph.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/finance.ts |
+| collisionconf.com (collisionconf.com) | structured — scripts/ais-relay.cjs, scripts/seed-research.mjs, server/worldmonitor/research/v1/list-tech-events.ts |
+| commodity.worldmonitor.app (commodity.worldmonitor.app) | structured — src/app/panel-layout.ts, src/config/variant-meta.ts |
+| comtradeapi.un.org (comtradeapi.un.org) | structured — scripts/seed-comtrade-bilateral-hs4.mjs, scripts/seed-recovery-import-hhi.mjs, scripts/seed-recovery-reexport-share.mjs, scripts/seed-trade-flows.mjs, +1 more |
+| confluence.status.atlassian.com (confluence.status.atlassian.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| conservationoptimism.org (conservationoptimism.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| contxto.com (contxto.com) | structured — src/config/variants/tech.ts |
+| correctiv.org (correctiv.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| corridorrisk.io (corridorrisk.io) | structured — scripts/ais-relay.cjs |
+| cp24.com (cp24.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| cryptoslate.com (cryptoslate.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| csis.org (csis.org) | feed — src/config/feeds.ts |
+| ctvnews.ca (ctvnews.ca) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| customer.dodopayments.com (customer.dodopayments.com) | structured — src/services/billing.ts |
+| CWFIS / CWFIF (NRCan) (geoserver.cwfif.nrcan.gc.ca) | structured — scripts/wildfire/cwfis-wfs.mjs |
+| dai2.xumo.com (dai2.xumo.com) | feed — src/components/LiveNewsPanel.ts |
+| Daily Nation (nation.africa) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| dailytrust.com (dailytrust.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| dash4.antik.sk (dash4.antik.sk) | feed — src/components/LiveNewsPanel.ts |
+| data-api.ecb.europa.eu (data-api.ecb.europa.eu) | structured — scripts/seed-ecb-fx-rates.mjs, scripts/seed-ecb-short-rates.mjs, scripts/seed-yield-curve-eu.mjs |
+| data.ecb.europa.eu (data.ecb.europa.eu) | structured — scripts/seed-fsi-eu.mjs |
+| data.humdata.org (data.humdata.org) | structured — scripts/_conflict-hapi.mjs, scripts/benchmark-resilience-external.mjs, scripts/seed-resilience-static.mjs |
+| data.weather.gov.hk (data.weather.gov.hk) | structured — scripts/natural/western-pacific-cyclones.mjs |
+| data.worldbank.org (data.worldbank.org) | structured — scripts/seed-education-attainment.mjs, scripts/seed-wb-external-debt.mjs |
+| datalab.wto.org (datalab.wto.org) | structured — scripts/seed-hormuz.mjs |
+| dataservices.icao.int (dataservices.icao.int) | structured — scripts/ais-relay.cjs, scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/_shared.ts |
+| de.euronews.com (de.euronews.com) | feed — src/config/feeds.ts |
+| de.usembassy.gov (de.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
+| decrypt.co (decrypt.co) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| defense.gov (defense.gov) | feed — src/config/feeds.ts |
+| dev.events (dev.events) | structured — scripts/ais-relay.cjs, scripts/seed-research.mjs, server/worldmonitor/research/v1/list-tech-events.ts, src/config/variants/tech.ts |
+| dev.to (dev.to) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| devops.com (devops.com) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
+| dfrlab.org (dfrlab.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Dhaka Tribune (dhakatribune.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| dhs.gov (dhs.gov) | feed — src/config/feeds.ts |
+| discord.com (discord.com) | structured — api/discord/oauth/callback.ts, api/discord/oauth/start.ts |
+| discord.gg (discord.gg) | structured — src/components/CommunityWidget.ts |
+| discordstatus.com (discordstatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| disrupt-africa.com (disrupt-africa.com) | structured — src/config/variants/tech.ts |
+| dlnews.com (dlnews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| do.usembassy.gov (do.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
+| drmkc.jrc.ec.europa.eu (drmkc.jrc.ec.europa.eu) | structured — scripts/benchmark-resilience-external.mjs |
+| dw.com (dw.com) | feed — src/config/feeds.ts |
+| dwamdstream103.akamaized.net (dwamdstream103.akamaized.net) | feed — src/components/LiveNewsPanel.ts |
+| dwamdstream104.akamaized.net (dwamdstream104.akamaized.net) | feed — src/components/LiveNewsPanel.ts |
+| e00-elmundo.uecdn.es (e00-elmundo.uecdn.es) | feed — src/config/feeds.ts |
+| earthobservatory.nasa.gov (earthobservatory.nasa.gov) | structured — scripts/seed-climate-news.mjs |
+| earthquake.usgs.gov (earthquake.usgs.gov) | structured — scripts/seed-earthquakes.mjs |
+| Earthquakes Canada (NRCan) (www.earthquakescanada.nrcan.gc.ca) | structured — scripts/seismology/nrcan-atom.mjs |
+| ec.europa.eu (ec.europa.eu) | feed+structured — scripts/_eurostat-utils.mjs, scripts/seed-economic-calendar.mjs, scripts/seed-eurostat-country-data.mjs, scripts/seed-resilience-static.mjs, +1 more |
+| ecfr.eu (ecfr.eu) | feed — src/config/feeds.ts |
+| edmontonjournal.com (edmontonjournal.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Efecto Cocuyo (efectococuyo.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| eff.org (eff.org) | feed — src/config/feeds.ts |
+| Egypt Independent (www.egyptindependent.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| eia.gov (eia.gov) | feed — server/worldmonitor/news/v1/_feeds.ts |
+| Element84 Earth Search STAC (earth-search.aws.element84.com) | structured — server/worldmonitor/imagery/v1/search-imagery.ts |
+| Ember electricity data (storage.googleapis.com) | structured — scripts/_conflict-gdelt-bulk.mjs, scripts/_gdelt-bulk-materializer.mjs, scripts/seed-ember-electricity.mjs |
+| en.irna.ir (en.irna.ir) | feed — src/config/feeds.ts |
+| en.mehrnews.com (en.mehrnews.com) | feed — src/config/feeds.ts |
+| en.sse.net.cn (en.sse.net.cn) | structured — scripts/seed-supply-chain-trade.mjs |
+| en.wikipedia.org (en.wikipedia.org) | structured — scripts/seed-sovereign-wealth.mjs, server/worldmonitor/intelligence/v1/get-country-facts.ts |
+| Enab Baladi English (english.enabbaladi.net) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| energy.ec.europa.eu (energy.ec.europa.eu) | structured — scripts/backfill-fuel-prices-prev.mjs, scripts/seed-fuel-prices.mjs |
+| energy.worldmonitor.app (energy.worldmonitor.app) | structured — src/app/panel-layout.ts, src/config/variant-meta.ts |
+| eng.lsm.lv (eng.lsm.lv) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| english.alarabiya.net (english.alarabiya.net) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| english.customs.gov.cn (english.customs.gov.cn) | structured — scripts/china-macro/source-contracts.mjs |
+| english.nv.ua (english.nv.ua) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| ENTSO-E Transparency Platform (web-api.tp.entsoe.eu) | structured — scripts/seed-electricity-prices.mjs |
+| Environment and Climate Change Canada (ECCC) (api.weather.gc.ca) | structured — scripts/_weather-alert-select.mjs |
+| eonet.gsfc.nasa.gov (eonet.gsfc.nasa.gov) | structured — scripts/seed-natural-events.mjs |
+| EPA RadNet (radnet.epa.gov) | structured — scripts/seed-radiation-watch.mjs |
+| ertflix.ascdn.broadpeak.io (ertflix.ascdn.broadpeak.io) | feed — src/components/LiveNewsPanel.ts |
+| es.euronews.com (es.euronews.com) | feed — src/config/feeds.ts |
+| eu-startups.com (eu-startups.com) | feed — src/config/feeds.ts |
+| euractiv.com (euractiv.com) | feed — src/config/feeds.ts |
+| eurasianet.org (eurasianet.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| euromaidanpress.com (euromaidanpress.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Example domain placeholder (example.com) | structured — scripts/openapi-inject-examples.mjs, src/services/mcp-store.ts, src/utils/sanitize.ts |
+| export.arxiv.org (export.arxiv.org) | feed+structured — scripts/seed-research.mjs, server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| fao.org (fao.org) | feed — src/config/feeds.ts |
+| FAOSTAT (fenixservices.fao.org) | structured — scripts/seed-food-stocks.mjs |
+| farsnews.ir (farsnews.ir) | feed — src/config/feeds.ts |
+| fas.org (fas.org) | feed — src/config/feeds.ts |
+| fc.yahoo.com (fc.yahoo.com) | structured — scripts/_yahoo-sector-valuations.cjs |
+| feed.infoq.com (feed.infoq.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| feeds.abcnews.com (feeds.abcnews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| feeds.arstechnica.com (feeds.arstechnica.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| feeds.bbci.co.uk (feeds.bbci.co.uk) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| feeds.content.dowjones.io (feeds.content.dowjones.io) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| feeds.elpais.com (feeds.elpais.com) | feed — src/config/feeds.ts |
+| feeds.feedburner.com (feeds.feedburner.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| feeds.folha.uol.com.br (feeds.folha.uol.com.br) | feed — src/config/feeds.ts |
+| feeds.megaphone.fm (feeds.megaphone.fm) | feed — src/config/feeds.ts |
+| feeds.nbcnews.com (feeds.nbcnews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| feeds.news24.com (feeds.news24.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| feeds.nos.nl (feeds.nos.nl) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| feeds.npr.org (feeds.npr.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| fema.gov (fema.gov) | feed — src/config/feeds.ts |
+| feodotracker.abuse.ch (feodotracker.abuse.ch) | structured — scripts/seed-cyber-threats.mjs, server/worldmonitor/cyber/v1/_shared.ts |
+| finance.worldmonitor.app (finance.worldmonitor.app) | structured — src/app/panel-layout.ts, src/config/variant-meta.ts |
+| finance.yahoo.com (finance.yahoo.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/finance.ts, src/config/variants/tech.ts |
+| Financial Action Task Force (FATF) (www.fatf-gafi.org) | structured — scripts/seed-fatf-listing.mjs |
+| financialpost.com (financialpost.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| finnhub.io (finnhub.io) | structured — api/symbol-search.ts, scripts/ais-relay.cjs, scripts/seed-earnings-calendar.mjs, scripts/seed-economy.mjs, +5 more |
+| FINRA (feeds.finra.org) | structured — scripts/seed-regulatory-actions.mjs |
+| Fintraffic Digitraffic (not-currently-wired) | Excluded / candidate — No current fetch observed |
+| Firecrawl (api.firecrawl.dev) | structured — scripts/seed-grocery-basket.mjs |
+| firms.modaps.eosdis.nasa.gov (firms.modaps.eosdis.nasa.gov) | structured — scripts/seed-fire-detections.mjs |
+| focustaiwan.tw (focustaiwan.tw) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| fonts.googleapis.com (fonts.googleapis.com) | structured — server/_shared/brief-render.js |
+| foreignpolicy.com (foreignpolicy.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Fox Business (moxie.foxbusiness.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| fr.africanews.com (fr.africanews.com) | feed — src/config/feeds.ts |
+| fr.euronews.com (fr.euronews.com) | feed — src/config/feeds.ts |
+| freeipapi.com (freeipapi.com) | structured — scripts/seed-cyber-threats.mjs, server/worldmonitor/cyber/v1/_shared.ts |
+| ft.com (ft.com) | feed — src/config/feeds.ts |
+| fxempire.com (fxempire.com) | feed — src/config/feeds.ts |
+| gain.nd.edu (gain.nd.edu) | structured — scripts/benchmark-resilience-external.mjs |
+| gamma-api.polymarket.com (gamma-api.polymarket.com) | structured — scripts/_forecast-market-settlements.mjs, scripts/ais-relay.cjs, scripts/seed-prediction-markets.mjs |
+| Gazeta Wyborcza (wyborcza.pl) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| gcaptain.com (gcaptain.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| geo.tv (geo.tv) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| geospatial-usace.opendata.arcgis.com (geospatial-usace.opendata.arcgis.com) | structured — scripts/fetch-mirta-bases.mjs |
+| ghoapi.azureedge.net (ghoapi.azureedge.net) | structured — scripts/seed-resilience-static.mjs |
+| github.blog (github.blog) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| github.com (github.com) | structured — api/download.js, scripts/generate-airline-codes.mjs, scripts/seed-research.mjs, src/app/desktop-updater.ts, +2 more |
+| Global Affairs Canada (SEMA consolidated sanctions) (www.international.gc.ca) | structured — scripts/_sema-sanctions.mjs |
+| Global Energy Monitor (globalenergymonitor.org) | structured — scripts/import-gem-pipelines.mjs, src/components/PipelineStatusPanel.ts, src/components/StorageFacilityMapPanel.ts |
+| globalinitiative.net (globalinitiative.net) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| globalnews.ca (globalnews.ca) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| GlobeNewswire (www.globenewswire.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| gmfus.org (gmfus.org) | feed — src/config/feeds.ts |
+| gml.noaa.gov (gml.noaa.gov) | structured — scripts/seed-co2-monitoring.mjs |
+| goldsilverworlds.com (goldsilverworlds.com) | feed — src/config/feeds.ts |
+| Google account sign-in (accounts.google.com) | feed — src/components/LiveNewsPanel.ts |
+| gpsjam.org (gpsjam.org) | structured — scripts/fetch-gpsjam.mjs |
+| gr.euronews.com (gr.euronews.com) | feed — src/config/feeds.ts |
+| greatergood.berkeley.edu (greatergood.berkeley.edu) | feed — src/config/feeds.ts |
+| haaretz.com (haaretz.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| hacker-news.firebaseio.com (hacker-news.firebaseio.com) | structured — scripts/seed-research.mjs |
+| hai.stanford.edu (hai.stanford.edu) | feed — src/config/feeds.ts |
+| HaitiLibre English (www.haitilibre.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Handelsblatt (www.handelsblatt.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| hapi.humdata.org (hapi.humdata.org) | structured — scripts/_conflict-hapi.mjs |
+| happy.worldmonitor.app (happy.worldmonitor.app) | structured — src/config/variant-meta.ts |
+| Havana Times (havanatimes.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| health.aws.amazon.com (health.aws.amazon.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| hiiraan.com (hiiraan.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| hirado.hu (hirado.hu) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| hnrss.org (hnrss.org) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| hromadske.ua (hromadske.ua) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| humanprogress.org (humanprogress.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| hvg.hu (hvg.hu) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Hyperliquid (api.hyperliquid.xyz) | structured — scripts/seed-hyperliquid-flow.mjs |
+| ici.radio-canada.ca (ici.radio-canada.ca) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| iea.org (iea.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| in.usembassy.gov (in.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
+| inc42.com (inc42.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| index.hu (index.hu) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| indianexpress.com (indianexpress.com) | feed — src/config/feeds.ts |
+| indiatodaylive.akamaized.net (indiatodaylive.akamaized.net) | feed — src/components/LiveNewsPanel.ts |
+| insideclimatenews.org (insideclimatenews.org) | structured — scripts/seed-climate-news.mjs |
+| insightcrime.org (insightcrime.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Interfax (interfax.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Interfax (www.interfax.ru) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Internal example placeholder (internal.example.com) | structured — api/notification-channels.ts |
+| International Forum of Sovereign Wealth Funds (www.ifswf.org) | structured — scripts/seed-sovereign-wealth.mjs |
+| investing.com (investing.com) | feed — src/config/feeds.ts |
+| ipinfo.io (ipinfo.io) | structured — scripts/seed-cyber-threats.mjs, server/worldmonitor/cyber/v1/_shared.ts |
+| iranintl.com (iranintl.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| iseas.edu.sg (iseas.edu.sg) | feed — src/config/feeds.ts |
+| islandtimes.org (islandtimes.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| iss.europa.eu (iss.europa.eu) | feed — src/config/feeds.ts |
+| it.euronews.com (it.euronews.com) | feed — src/config/feeds.ts |
+| it.usembassy.gov (it.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
+| jam-news.net (jam-news.net) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| jamestown.org (jamestown.org) | feed — src/config/feeds.ts |
+| janes.com (janes.com) | feed — src/config/feeds.ts |
+| japantoday.com (japantoday.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Jin10 (jin10.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| jira-software.status.atlassian.com (jira-software.status.atlassian.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| jmespath.org (jmespath.org) | structured — api/mcp/constants.ts |
+| jsDelivr asset CDN (cdn.jsdelivr.net) | structured — scripts/ais-relay.cjs, server/_shared/brief-carousel-render.ts |
+| justice.gov (justice.gov) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Kalshi (api.elections.kalshi.com) | structured — scripts/_forecast-market-settlements.mjs, scripts/seed-prediction-markets.mjs |
+| kalshi.com (kalshi.com) | structured — scripts/_bet-templates-markets.mjs, scripts/seed-prediction-markets.mjs |
+| kan11.media.kan.org.il (kan11.media.kan.org.il) | feed — src/components/LiveNewsPanel.ts |
+| kathimerini.gr (kathimerini.gr) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| kitco.com (kitco.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| kr-asia.com (kr-asia.com) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
+| krebsonsecurity.com (krebsonsecurity.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| kyivindependent.com (kyivindependent.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| L'Orient Today (lorientlejour.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| lavca.org (lavca.org) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
+| leFaso.net (lefaso.net) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| lequotidien.sn (lequotidien.sn) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Libya Herald (libyaherald.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Linear MCP (mcp.linear.app) | structured — src/services/mcp-store.ts |
+| linear901-oo-hls0-prd-gtm.delivery.skycdp.com (linear901-oo-hls0-prd-gtm.delivery.skycdp.com) | feed — src/components/LiveNewsPanel.ts |
+| linearstatus.com (linearstatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| live-gbnews.simplestreamcdn.com (live-gbnews.simplestreamcdn.com) | feed — src/components/LiveNewsPanel.ts |
+| live-hls-apps-aje-fa.getaj.net (live-hls-apps-aje-fa.getaj.net) | feed — src/components/LiveNewsPanel.ts |
+| live-hls-web-aja.getaj.net (live-hls-web-aja.getaj.net) | feed — src/components/LiveNewsPanel.ts |
+| live-hls-web-ajb.getaj.net (live-hls-web-ajb.getaj.net) | feed — src/components/LiveNewsPanel.ts |
+| live-hls-web-ajm.getaj.net (live-hls-web-ajm.getaj.net) | feed — src/components/LiveNewsPanel.ts |
+| live-stream.skynewsarabia.com (live-stream.skynewsarabia.com) | feed — src/components/LiveNewsPanel.ts |
+| live.alarabiya.net (live.alarabiya.net) | feed — src/components/LiveNewsPanel.ts |
+| live.dodopayments.com (live.dodopayments.com) | structured — api/product-catalog.js, scripts/ais-relay.cjs |
+| liveedge-arisenews.visioncdn.com (liveedge-arisenews.visioncdn.com) | feed — src/components/LiveNewsPanel.ts |
+| livenewschat.eu (livenewschat.eu) | feed — src/components/LiveNewsPanel.ts |
+| lnc-abc-news.tubi.video (lnc-abc-news.tubi.video) | feed — src/components/LiveNewsPanel.ts |
+| lobste.rs (lobste.rs) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| Local development transport (localhost) | feed+structured — scripts/ais-relay.cjs, server/worldmonitor/research/v1/list-tech-events.ts, src/components/LiveNewsPanel.ts, src/services/wm-session.ts |
+| Local loopback transport (127.0.0.1) | feed+structured — src/components/LiveNewsPanel.ts, src/services/runtime.ts |
+| lowyinstitute.org (lowyinstitute.org) | feed — src/config/feeds.ts |
+| macleans.ca (macleans.ca) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Mada Masr (madamasr.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| maps.worldmonitor.app (maps.worldmonitor.app) | structured — src/services/country-geometry.ts |
+| mapservices.weather.noaa.gov (mapservices.weather.noaa.gov) | structured — scripts/seed-natural-events.mjs |
+| marketwatch.com (marketwatch.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| meduza.io (meduza.io) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| mei.edu (mei.edu) | feed — src/config/feeds.ts |
+| mempool.space (mempool.space) | structured — scripts/seed-economy.mjs |
+| messari.io (messari.io) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| mexiconewsdaily.com (mexiconewsdaily.com) | feed — src/config/feeds.ts |
+| miit.gov.cn (miit.gov.cn) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| mining-journal.com (mining-journal.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| miningweekly.com (miningweekly.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| mm.usembassy.gov (mm.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
+| mofcom.gov.cn (mofcom.gov.cn) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| montrealgazette.com (montrealgazette.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| moxie.foxnews.com (moxie.foxnews.com) | feed — src/config/feeds.ts |
+| mshibanami.github.io (mshibanami.github.io) | feed — src/config/feeds.ts |
+| msi.nga.mil (msi.nga.mil) | structured — server/worldmonitor/infrastructure/v1/get-cable-health.ts, server/worldmonitor/maritime/v1/list-navigational-warnings.ts |
+| mx.usembassy.gov (mx.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
+| n1info.hr (n1info.hr) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Naharnet Lebanon (www.naharnet.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| nasstatus.faa.gov (nasstatus.faa.gov) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/_shared.ts |
+| nationalpost.com (nationalpost.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| ndtvindiaelemarchana.akamaized.net (ndtvindiaelemarchana.akamaized.net) | feed — src/components/LiveNewsPanel.ts |
+| news.cgtn.com (news.cgtn.com) | feed — src/components/LiveNewsPanel.ts |
+| news.crunchbase.com (news.crunchbase.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| news.err.ee (news.err.ee) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| news.google.com (news.google.com) | feed+structured — scripts/validate-rss-feeds.mjs, server/worldmonitor/market/v1/stock-news-search.ts, server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, +2 more |
+| news.mit.edu (news.mit.edu) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
+| news.mongabay.com (news.mongabay.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| news.tuoitre.vn (news.tuoitre.vn) | feed — src/config/feeds.ts |
+| news.un.org (news.un.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| news.usni.org (news.usni.org) | feed+structured — scripts/ais-relay.cjs, server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| news.ycombinator.com (news.ycombinator.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| newsfeed.zeit.de (newsfeed.zeit.de) | feed — src/config/feeds.ts |
+| newsmaker.md (newsmaker.md) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| nhkwlive-ojp.akamaized.net (nhkwlive-ojp.akamaized.net) | feed — src/components/LiveNewsPanel.ts |
+| nominatim.openstreetmap.org (nominatim.openstreetmap.org) | structured — api/reverse-geocode.js, server/worldmonitor/infrastructure/v1/reverse-geocode.ts |
+| northernminer.com (northernminer.com) | feed — server/worldmonitor/news/v1/_feeds.ts |
+| novayagazeta.eu (novayagazeta.eu) | feed — src/config/feeds.ts |
+| nrk-nrk1.akamaized.net (nrk-nrk1.akamaized.net) | feed — src/components/LiveNewsPanel.ts |
+| NSIDC (noaadata.apps.nsidc.org) | structured — scripts/seed-climate-ocean-ice.mjs |
+| nti.org (nti.org) | feed — src/config/feeds.ts |
+| oauth.reddit.com (oauth.reddit.com) | structured — scripts/ais-relay.cjs |
+| oc-media.org (oc-media.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| oecd.org (oecd.org) | feed — src/config/feeds.ts |
+| Office of the U.S. Trade Representative (ustr.gov) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| oglobo.globo.com (oglobo.globo.com) | feed — src/config/feeds.ts |
+| oilprice.com (oilprice.com) | feed+structured — scripts/seed-energy-intelligence.mjs, server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| OKO.press (oko.press) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| onemileatatime.com (onemileatatime.com) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
+| Onet (wiadomosci.onet.pl) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Ontario 511 (511on.ca) | structured — scripts/lib/provincial-511.mjs |
+| open.alberta.ca (open.alberta.ca) | Excluded / candidate — No current fetch observed |
+| OpenAQ (api.openaq.org) | structured — scripts/seed-health-air-quality.mjs |
+| openrouter.ai (openrouter.ai) | structured — scripts/lib/brief-dedup-consts.mjs, scripts/lib/company-monitoring-classifier-client.mjs, scripts/regional-snapshot/weekly-brief.mjs |
+| OpenSanctions (api.opensanctions.org) | structured — server/worldmonitor/sanctions/v1/lookup-entity.ts |
+| opensky-network.org (auth.opensky-network.org) | structured — scripts/seed-military-flights.mjs |
+| opensky-network.org (opensky-network.org) | structured — scripts/ais-relay.cjs, scripts/seed-military-flights.mjs, server/worldmonitor/military/v1/list-military-flights.ts, src/components/MapPopup.ts |
+| openstreetmap.org (openstreetmap.org) | structured — src/config/basemap-styles.ts |
+| ott.tv5monde.com (ott.tv5monde.com) | feed — src/components/LiveNewsPanel.ts |
+| ottawacitizen.com (ottawacitizen.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| otx.alienvault.com (otx.alienvault.com) | structured — scripts/seed-cyber-threats.mjs, server/worldmonitor/cyber/v1/_shared.ts |
+| Our World in Data (ourworldindata.org) | structured — scripts/seed-low-carbon-generation.mjs |
+| Our World in Data (owid-public.owid.io) | structured — scripts/seed-owid-energy-mix.mjs |
+| outbreaknewstoday.com (outbreaknewstoday.com) | structured — scripts/seed-disease-outbreaks.mjs |
+| overpass-api.de (overpass-api.de) | structured — scripts/fetch-osm-bases.mjs |
+| Pajhwok Afghan News (pajhwok.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| PAP (pap.pl) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| patents.google.com (patents.google.com) | structured — scripts/_defense-patents-source.mjs |
+| pe-fa-lp02a.9c9media.com (pe-fa-lp02a.9c9media.com) | feed — src/components/LiveNewsPanel.ts |
+| phys.org (phys.org) | structured — scripts/seed-climate-news.mjs |
+| pitchbook.com (pitchbook.com) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
+| pk.usembassy.gov (pk.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
+| pl.usembassy.gov (pl.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
+| Polityka (polityka.pl) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| polymarket.com (polymarket.com) | structured — scripts/_bet-templates-markets.mjs, scripts/seed-prediction-markets.mjs |
+| portfolio.hu (portfolio.hu) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| portwatch.imf.org (portwatch.imf.org) | structured — scripts/build-chokepoint-transit-snapshot.mjs, scripts/build-research-reports.mjs |
+| PR Newswire (prnewswire.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| pravda.com.ua (pravda.com.ua) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| pro-api.coingecko.com (pro-api.coingecko.com) | structured — scripts/ais-relay.cjs |
+| production.dataviz.cnn.io (production.dataviz.cnn.io) | structured — scripts/seed-fear-greed.mjs |
+| protomaps.com (protomaps.com) | structured — src/config/basemap-styles.ts |
+| protothema.gr (protothema.gr) | feed — src/config/feeds.ts |
+| Proxy URL placeholder (user) | structured — scripts/_proxy-utils.cjs, scripts/ais-relay.cjs |
+| pt.euronews.com (pt.euronews.com) | feed — src/config/feeds.ts |
+| public.govdelivery.com (public.govdelivery.com) | structured — scripts/seed-regulatory-actions.mjs |
+| publicacionexterna.azurewebsites.net (publicacionexterna.azurewebsites.net) | structured — scripts/seed-fuel-prices.mjs |
+| PURL namespace (purl.org) | structured — src/services/rss.ts |
+| qevdnlpgjxpwusesmtpx.supabase.co (qevdnlpgjxpwusesmtpx.supabase.co) | structured — scripts/fetch-pizzint-bases.mjs |
+| query.sse.com.cn (query.sse.com.cn) | structured — scripts/china-corporate-disclosures/adapters.mjs |
+| query.wikidata.org (query.wikidata.org) | structured — server/worldmonitor/intelligence/v1/get-country-facts.ts |
+| query1.finance.yahoo.com (query1.finance.yahoo.com) | structured — scripts/_seed-utils.mjs, scripts/_yahoo-fetch.mjs, scripts/_yahoo-sector-valuations.cjs, scripts/ais-relay.cjs, +11 more |
+| Radio Ndeke Luka (www.radiondekeluka.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| railway.instatus.com (railway.instatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| rakuten-guardian-1-ie.samsung.wurl.tv (rakuten-guardian-1-ie.samsung.wurl.tv) | feed — src/components/LiveNewsPanel.ts |
+| raw.githubusercontent.com (raw.githubusercontent.com) | structured — scripts/ais-relay.cjs, scripts/fetch-country-boundary-overrides.mjs, scripts/generate-airline-codes.mjs, scripts/generate-oref-locations.mjs, +3 more |
+| reasonstobecheerful.world (reasonstobecheerful.world) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| reddit.com (reddit.com) | structured — scripts/ais-relay.cjs, src/services/story-share.ts |
+| ReliefWeb (UN OCHA) (api.reliefweb.int) | structured — scripts/seed-climate-disasters.mjs |
+| reliefweb.int (reliefweb.int) | structured — scripts/seed-climate-news.mjs |
+| renaissancecapital.com (renaissancecapital.com) | feed — src/config/feeds.ts |
+| Reporters Without Borders (RSF) (rsf.org) | structured — scripts/seed-resilience-static.mjs |
+| Resend email service (api.resend.com) | structured — server/worldmonitor/leads/v1/register-interest.ts, server/worldmonitor/leads/v1/submit-contact.ts |
+| responsiblestatecraft.org (responsiblestatecraft.org) | feed — src/config/feeds.ts |
+| restcountries.com (restcountries.com) | structured — server/worldmonitor/intelligence/v1/get-country-facts.ts |
+| reuters-reutersnow-1-eu.rakuten.wurl.tv (reuters-reutersnow-1-eu.rakuten.wurl.tv) | feed — src/components/LiveNewsPanel.ts |
+| reuters.com (reuters.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| review.firstround.com (review.firstround.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| rferl.org (rferl.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| rieti.go.jp (rieti.go.jp) | feed — src/config/feeds.ts |
+| Robtex MCP (mcp.robtex.com) | structured — src/services/mcp-store.ts |
+| rss.art19.com (rss.art19.com) | feed — src/config/feeds.ts |
+| rss.dw.com (rss.dw.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| rss.libsyn.com (rss.libsyn.com) | feed — src/config/feeds.ts |
+| rss.politico.com (rss.politico.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| rt-arb.rttv.com (rt-arb.rttv.com) | feed — src/components/LiveNewsPanel.ts |
+| rt-esp.rttv.com (rt-esp.rttv.com) | feed — src/components/LiveNewsPanel.ts |
+| rt-glb.rttv.com (rt-glb.rttv.com) | feed — src/components/LiveNewsPanel.ts |
+| ru.euronews.com (ru.euronews.com) | feed — src/config/feeds.ts |
+| rudaw.net (rudaw.net) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| rusi.org (rusi.org) | feed — src/config/feeds.ts |
+| sabconetanw.cdn.mangomolo.com (sabconetanw.cdn.mangomolo.com) | feed — src/components/LiveNewsPanel.ts |
+| Safecast (api.safecast.org) | structured — scripts/seed-radiation-watch.mjs |
+| Sana'a Center (sanaacenter.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| sanctionslistservice.ofac.treas.gov (sanctionslistservice.ofac.treas.gov) | structured — scripts/seed-sanctions-pressure.mjs |
+| schema.org (schema.org) | structured — api/ask.ts, scripts/build-crawlable-corpus.mjs |
+| schemas.agentskills.io (schemas.agentskills.io) | structured — scripts/build-agent-skills-index.mjs |
+| scmp.com (scmp.com) | feed — server/worldmonitor/news/v1/_feeds.ts |
+| sealevel.nasa.gov (sealevel.nasa.gov) | structured — scripts/seed-climate-ocean-ice.mjs |
+| search.seznam.cz (search.seznam.cz) | structured — scripts/seo-indexnow-submit.mjs |
+| search.worldbank.org (search.worldbank.org) | structured — scripts/seed-global-tenders.mjs |
+| search.yahoo.com (search.yahoo.com) | structured — src/services/rss.ts |
+| searchadvisor.naver.com (searchadvisor.naver.com) | structured — scripts/seo-indexnow-submit.mjs |
+| SEC (www.sec.gov) | feed+structured — scripts/openapi-inject-examples.mjs, scripts/seed-regulatory-actions.mjs, scripts/seed-sec-8k-stream.mjs, scripts/seed-sec-cik-map.mjs, +3 more |
+| SEC EDGAR (data.sec.gov) | structured — server/_shared/sec-edgar.ts |
+| SEC EDGAR Full-Text Search (efts.sec.gov) | structured — server/_shared/sec-edgar.ts |
+| sedeaplicaciones.minetur.gob.es (sedeaplicaciones.minetur.gob.es) | structured — scripts/backfill-fuel-prices-prev.mjs, scripts/seed-fuel-prices.mjs |
+| seekingalpha.com (seekingalpha.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/finance.ts, src/config/variants/tech.ts |
+| semianalysis.com (semianalysis.com) | feed — src/config/feeds.ts |
+| sequoiacap.com (sequoiacap.com) | feed — src/config/feeds.ts |
+| SerpAPI (serpapi.com) | structured — server/worldmonitor/market/v1/stock-news-search.ts |
+| services7.arcgis.com (services7.arcgis.com) | structured — scripts/fetch-mirta-bases.mjs |
+| services9.arcgis.com (services9.arcgis.com) | structured — scripts/build-chokepoint-transit-snapshot.mjs, scripts/seed-portwatch-chokepoints-ref.mjs, scripts/seed-portwatch-disruptions.mjs, scripts/seed-portwatch-port-activity.mjs, +1 more |
+| sifted.eu (sifted.eu) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| simpleflying.com (simpleflying.com) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
+| singularityhub.com (singularityhub.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| SIPRI Arms Transfers Database (atbackend.sipri.org) | structured — scripts/_defense-industrial-source.mjs |
+| slack-status.com (slack-status.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| slack.com (slack.com) | structured — api/slack/oauth/callback.ts, api/slack/oauth/start.ts |
+| slidstvo.info (slidstvo.info) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| spglobal.com (spglobal.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| state.gov (state.gov) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| Statistics Canada (www150.statcan.gc.ca) | structured — scripts/lib/statcan-wds.mjs |
+| stats.bis.org (stats.bis.org) | structured — scripts/seed-bis-data.mjs, scripts/seed-bis-extended.mjs, scripts/seed-bis-lbs.mjs, server/worldmonitor/economic/v1/_bis-shared.ts |
+| status.circleci.com (status.circleci.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| status.claude.com (status.claude.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| status.cloud.google.com (status.cloud.google.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| status.datadoghq.com (status.datadoghq.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| status.digitalocean.com (status.digitalocean.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| status.gitlab.com (status.gitlab.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| status.npmjs.org (status.npmjs.org) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| status.openai.com (status.openai.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| status.render.com (status.render.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| status.sentry.io (status.sentry.io) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| status.stripe.com (status.stripe.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| status.supabase.com (status.supabase.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| status.twilio.com (status.twilio.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| stratechery.com (stratechery.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| stream.ads.ottera.tv (stream.ads.ottera.tv) | feed — src/components/LiveNewsPanel.ts |
+| streaming-live.rtp.pt (streaming-live.rtp.pt) | feed — src/components/LiveNewsPanel.ts |
+| Studio Tamani (www.studiotamani.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| suspilne.media (suspilne.media) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| svs.itworkscdn.net (svs.itworkscdn.net) | feed — src/components/LiveNewsPanel.ts |
+| SWF Institute (www.swfinstitute.org) | structured — scripts/seed-sovereign-wealth.mjs |
+| Syria Direct (syriadirect.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| t.me (t.me) | structured — scripts/ais-relay.cjs, server/worldmonitor/leads/v1/register-interest.ts, src/services/story-share.ts |
+| tagesschau.akamaized.net (tagesschau.akamaized.net) | feed — src/components/LiveNewsPanel.ts |
+| taipeitimes.com (taipeitimes.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| taiwannews.com.tw (taiwannews.com.tw) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| taskandpurpose.com (taskandpurpose.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| tass.com (tass.com) | feed — src/config/feeds.ts |
+| Tchadinfos (tchadinfos.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| tech.eu (tech.eu) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| tech.worldmonitor.app (tech.worldmonitor.app) | structured — src/app/panel-layout.ts, src/config/variant-meta.ts |
+| techcabal.com (techcabal.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| techcrunch.com (techcrunch.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| techinasia.com (techinasia.com) | feed — src/config/feeds.ts |
+| TeleGeography Submarine Cable Map (www.submarinecablemap.com) | structured — scripts/seed-submarine-cables.mjs |
+| telegraaf.nl (telegraaf.nl) | feed — src/config/feeds.ts |
+| telex.hu (telex.hu) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| test (test) | structured — scripts/seed-forecasts.mjs |
+| test.dodopayments.com (test.dodopayments.com) | structured — api/product-catalog.js, scripts/ais-relay.cjs |
+| th.usembassy.gov (th.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
+| The Daily Star (thedailystar.net) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| The Guardian Post (theguardianpostcameroon.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| The Telegraph (www.telegraph.co.uk) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| thebetterindia.com (thebetterindia.com) | feed — src/config/feeds.ts |
+| theblock.co (theblock.co) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| thebulletin.org (thebulletin.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| thedefiant.io (thedefiant.io) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| thediplomat.com (thediplomat.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| thehill.com (thehill.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| theinformation.com (theinformation.com) | feed — src/config/feeds.ts |
+| thejakartapost.com (thejakartapost.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| thenarwhal.ca (thenarwhal.ca) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| thenationalnews.com (thenationalnews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| thenewstack.io (thenewstack.io) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| thenextweb.com (thenextweb.com) | feed — src/config/feeds.ts |
+| thepointsguy.com (thepointsguy.com) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
+| theprovince.com (theprovince.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| thesentry.org (thesentry.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| thestar.com.my (thestar.com.my) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| thetyee.ca (thetyee.ca) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| thinkglobalhealth.github.io (thinkglobalhealth.github.io) | structured — scripts/seed-disease-outbreaks.mjs, scripts/seed-vpd-tracker.mjs |
+| tiles.openfreemap.org (tiles.openfreemap.org) | structured — src/config/basemap.ts |
+| timesca.com (timesca.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| tools.cdc.gov (tools.cdc.gov) | structured — scripts/seed-disease-outbreaks.mjs |
+| Toronto Transit Commission (TTC) GTFS-RT (gtfsrt.ttc.ca) | structured — scripts/seed-ttc-alerts.mjs |
+| travel.state.gov (travel.state.gov) | structured — scripts/seed-security-advisories.mjs |
+| Travelpayouts flight-price data (api.travelpayouts.com) | structured — server/worldmonitor/aviation/v1/_providers/travelpayouts_data.ts |
+| treasury.gov (treasury.gov) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| trumpstruth.org (trumpstruth.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| tts.baidu.com (tts.baidu.com) | structured — src/main.ts |
+| tuoitrenews.vn (tuoitrenews.vn) | Excluded / candidate — No current fetch observed |
+| turnerlive.warnermediacdn.com (turnerlive.warnermediacdn.com) | feed — src/components/LiveNewsPanel.ts |
+| tv-trtworld.medya.trt.com.tr (tv-trtworld.medya.trt.com.tr) | feed — src/components/LiveNewsPanel.ts |
+| tvn24.pl (tvn24.pl) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| TVP Info (tvp.info) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| twitter.com (twitter.com) | structured — src/services/story-share.ts |
+| ua.usembassy.gov (ua.usembassy.gov) | structured — scripts/seed-security-advisories.mjs |
+| ucdpapi.pcr.uu.se (ucdpapi.pcr.uu.se) | structured — scripts/ais-relay.cjs, scripts/seed-ucdp-events.mjs |
+| ukrinform.net (ukrinform.net) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| ukrinform.ua (ukrinform.ua) | feed — src/config/feeds.ts |
+| unchainedcrypto.com (unchainedcrypto.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| understandingwar.org (understandingwar.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| UNDP Human Development Report (hdr.undp.org) | structured — scripts/benchmark-resilience-external.mjs |
+| unhcr.org (unhcr.org) | feed — src/config/feeds.ts |
+| urlhaus-api.abuse.ch (urlhaus-api.abuse.ch) | structured — scripts/ais-relay.cjs, scripts/seed-cyber-threats.mjs, server/worldmonitor/cyber/v1/_shared.ts |
+| USDA FAS PSD (api.fas.usda.gov) | structured — scripts/seed-food-stocks.mjs |
+| USDA FAS PSD (apps.fas.usda.gov) | Excluded / candidate — No current fetch observed |
+| USGS ScienceBase (Mineral Commodity Summaries) (www.sciencebase.gov) | structured — scripts/seed-mineral-production.mjs |
+| USPTO Open Data Portal (api.uspto.gov) | structured — scripts/_defense-patents-source.mjs |
+| USPTO Open Data Portal (data.uspto.gov) | structured — scripts/_defense-patents-source.mjs |
+| vancouversun.com (vancouversun.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| venturebeat.com (venturebeat.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| VIA Rail Tracker (unofficial) (tsimobile.viarail.ca) | structured — scripts/viarail-live.mjs |
+| viewfromthewing.com (viewfromthewing.com) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
+| Vision of Humanity / Global Peace Index (www.visionofhumanity.org) | structured — scripts/seed-resilience-static.mjs |
+| vnexpress.net (vnexpress.net) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| vs-hls-push-uk.live.fastly.md.bbci.co.uk (vs-hls-push-uk.live.fastly.md.bbci.co.uk) | feed — src/components/LiveNewsPanel.ts |
+| vsquare.org (vsquare.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| W3C schema reference (www.w3.org) | structured — api/fwdstart.js |
+| wa.me (wa.me) | structured — server/worldmonitor/leads/v1/register-interest.ts, src/services/story-share.ts |
+| wabi-europe-north-b-api.analysis.windows.net (wabi-europe-north-b-api.analysis.windows.net) | structured — scripts/seed-hormuz.mjs |
+| WAFA English (english.wafa.ps) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| warontherocks.com (warontherocks.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| web.archive.org (web.archive.org) | structured — scripts/seed-fatf-listing.mjs |
+| web.cbr.ru (web.cbr.ru) | structured — scripts/seed-cbr-rates.mjs |
+| webcams.windy.com (webcams.windy.com) | structured — src/components/PinnedWebcamsPanel.ts |
+| websummit.com (websummit.com) | structured — scripts/ais-relay.cjs, scripts/seed-research.mjs, server/worldmonitor/research/v1/list-tech-events.ts |
+| Welt (www.welt.de) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| whitehouse.gov (whitehouse.gov) | feed — src/config/feeds.ts |
+| wilsoncenter.org (wilsoncenter.org) | feed — src/config/feeds.ts |
+| wingbits.com (customer-api.wingbits.com) | structured — scripts/ais-relay.cjs, scripts/seed-military-flights.mjs, server/worldmonitor/military/v1/_wingbits-aircraft-details.ts |
+| wingbits.com (ecs-api.wingbits.com) | structured — server/worldmonitor/military/v1/get-wingbits-live-flight.ts |
+| wingbits.com (wingbits.com) | structured — src/components/MapPopup.ts |
+| Wired (www.wired.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| workos.com (workos.com) | structured — api/oauth-authorization-server.ts |
+| World Air Quality Index (WAQI) (api.waqi.info) | structured — scripts/seed-health-air-quality.mjs |
+| World Monitor hosted API (api.worldmonitor.app) | structured — api/a2a.ts, api/internal/mcp-grant-mint.ts, api/mcp/downstream.ts, scripts/ais-relay.cjs, +18 more |
+| World Monitor proxy (proxy.worldmonitor.app) | structured — api/widget-agent.ts, scripts/seed-security-advisories.mjs, src/utils/proxy.ts |
+| World Monitor web app (worldmonitor.app) | feed+structured — api/_agent-metadata.ts, api/a2a.ts, api/ask.ts, api/fwdstart.js, +40 more |
+| World Monitor web app (www.worldmonitor.app) | structured — api/a2a.ts, api/ask.ts, api/not-found.ts, scripts/build-crawlable-corpus.mjs, +14 more |
+| WorldMonitor test origin (worldmonitor.invalid) | structured — src/shared/public-rpc-cache.ts |
+| worldmonitor.mintlify.dev (worldmonitor.mintlify.dev) | structured — api/docs-mcp.ts |
+| wublockchain.com (wublockchain.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.a16z.news (www.a16z.news) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/variants/tech.ts |
+| www.aaii.com (www.aaii.com) | structured — scripts/seed-aaii-sentiment.mjs, scripts/seed-fear-greed.mjs |
+| www.aajtak.in (www.aajtak.in) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.aaronsw.com (www.aaronsw.com) | structured — src/config/variants/tech.ts |
+| www.abc.net.au (www.abc.net.au) | feed — src/config/feeds.ts |
+| www.africanews.com (www.africanews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.afro.who.int (www.afro.who.int) | structured — scripts/seed-security-advisories.mjs |
+| www.aftenposten.no (www.aftenposten.no) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.alarabiya.net (www.alarabiya.net) | feed — src/config/feeds.ts |
+| www.aljazeera.com (www.aljazeera.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.aljazeera.net (www.aljazeera.net) | feed — src/config/feeds.ts |
+| www.alphavantage.co (www.alphavantage.co) | structured — scripts/_shared-av.mjs, server/worldmonitor/market/v1/_quote-provider.ts, server/worldmonitor/market/v1/_shared.ts |
+| www.amarujala.com (www.amarujala.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.ansa.it (www.ansa.it) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.asahi.com (www.asahi.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.atlanticcouncil.org (www.atlanticcouncil.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.atv.hu (www.atv.hu) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.australianmining.com.au (www.australianmining.com.au) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.aviationpros.com (www.aviationpros.com) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
+| www.aviationweek.com (www.aviationweek.com) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
+| www.bbc.com (www.bbc.com) | feed — src/config/feeds.ts |
+| www.bild.de (www.bild.de) | feed — src/config/feeds.ts |
+| www.bing.com (www.bing.com) | structured — scripts/seo-indexnow-submit.mjs |
+| www.brasilparalelo.com.br (www.brasilparalelo.com.br) | feed — src/config/feeds.ts |
+| www.cac.gov.cn (www.cac.gov.cn) | structured — scripts/china-policy/adapters.mjs |
+| www.carbonbrief.org (www.carbonbrief.org) | structured — scripts/seed-climate-news.mjs |
+| www.cbc.ca (www.cbc.ca) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.cbinsights.com (www.cbinsights.com) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
+| www.cbr.ru (www.cbr.ru) | structured — scripts/seed-cbr-rates.mjs |
+| www.cbsnews.com (www.cbsnews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.channelnewsasia.com (www.channelnewsasia.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.channelstv.com (www.channelstv.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.chinamoney.com.cn (www.chinamoney.com.cn) | structured — scripts/china-macro/calendar.mjs |
+| www.chosun.com (www.chosun.com) | feed — src/config/feeds.ts |
+| www.cisa.gov (www.cisa.gov) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| www.clarin.com (www.clarin.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.climatecentral.org (www.climatecentral.org) | structured — scripts/seed-climate-news.mjs |
+| www.cloudflarestatus.com (www.cloudflarestatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| www.cnbc.com (www.cnbc.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/finance.ts, src/config/variants/tech.ts |
+| www.coindesk.com (www.coindesk.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/finance.ts |
+| www.contractsfinder.service.gov.uk (www.contractsfinder.service.gov.uk) | structured — scripts/seed-global-tenders.mjs |
+| www.corriere.it (www.corriere.it) | feed — src/config/feeds.ts |
+| www.crisisgroup.org (www.crisisgroup.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.csis.org (www.csis.org) | feed — server/worldmonitor/news/v1/_feeds.ts |
+| www.dabangasudan.org (www.dabangasudan.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.dailygood.org (www.dailygood.org) | feed — src/config/feeds.ts |
+| www.dailysabah.com (www.dailysabah.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.darkreading.com (www.darkreading.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| www.dawn.com (www.dawn.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.defensenews.com (www.defensenews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.defenseone.com (www.defenseone.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.digi24.ro (www.digi24.ro) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.dn.se (www.dn.se) | feed — src/config/feeds.ts |
+| www.dnevnik.bg (www.dnevnik.bg) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.dockerstatus.com (www.dockerstatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| www.dr.dk (www.dr.dk) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.ecb.europa.eu (www.ecb.europa.eu) | structured — scripts/seed-economic-calendar.mjs |
+| www.ecdc.europa.eu (www.ecdc.europa.eu) | structured — scripts/seed-security-advisories.mjs |
+| www.eia.gov (www.eia.gov) | feed — src/config/feeds.ts |
+| www.eltiempo.com (www.eltiempo.com) | feed — src/config/feeds.ts |
+| www.eluniverso.com (www.eluniverso.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.engadget.com (www.engadget.com) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
+| www.ethiopia-insight.com (www.ethiopia-insight.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.eu-startups.com (www.eu-startups.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/variants/tech.ts |
+| www.euronews.com (www.euronews.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/main.ts |
+| www.facebook.com (www.facebook.com) | structured — src/services/story-share.ts |
+| www.fao.org (www.fao.org) | feed+structured — scripts/seed-fao-food-price-index.mjs, server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.federalreserve.gov (www.federalreserve.gov) | feed+structured — scripts/seed-economic-calendar.mjs, scripts/seed-regulatory-actions.mjs, server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, +1 more |
+| www.flightglobal.com (www.flightglobal.com) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
+| www.foreignaffairs.com (www.foreignaffairs.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.fpri.org (www.fpri.org) | feed — src/config/feeds.ts |
+| www.france24.com (www.france24.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.ft.com (www.ft.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.fwdstart.me (www.fwdstart.me) | structured — api/fwdstart.js |
+| www.g4media.ro (www.g4media.ro) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.gdacs.org (www.gdacs.org) | structured — scripts/seed-natural-events.mjs |
+| www.gets.govt.nz (www.gets.govt.nz) | structured — scripts/seed-global-tenders.mjs |
+| www.gitex.com (www.gitex.com) | structured — scripts/ais-relay.cjs, scripts/seed-research.mjs, server/worldmonitor/research/v1/list-tech-events.ts |
+| www.githubstatus.com (www.githubstatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| www.goldseek.com (www.goldseek.com) | feed — src/config/feeds.ts |
+| www.good.is (www.good.is) | feed — src/config/feeds.ts |
+| www.goodgoodgood.co (www.goodgoodgood.co) | feed — src/config/feeds.ts |
+| www.goodnewsnetwork.org (www.goodnewsnetwork.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.google.com (www.google.com) | structured — scripts/ais-relay.cjs, src/components/AviationCommandBar.ts, src/components/MapPopup.ts |
+| www.gov.br (www.gov.br) | structured — scripts/seed-fuel-prices.mjs |
+| www.gov.uk (www.gov.uk) | feed+structured — scripts/seed-fuel-prices.mjs, scripts/seed-security-advisories.mjs, src/config/feeds.ts |
+| www.handybulk.com (www.handybulk.com) | structured — scripts/seed-supply-chain-trade.mjs |
+| www.hotnews.ro (www.hotnews.ro) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.hurriyet.com.tr (www.hurriyet.com.tr) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.iaea.org (www.iaea.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.iea.org (www.iea.org) | structured — scripts/seed-energy-intelligence.mjs, src/components/EnergyCrisisPanel.ts |
+| www.iefimerida.gr (www.iefimerida.gr) | feed — src/config/feeds.ts |
+| www.in.gr (www.in.gr) | feed — src/config/feeds.ts |
+| www.index.hr (www.index.hr) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.infobae.com (www.infobae.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.ipolitics.ca (www.ipolitics.ca) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.irrawaddy.com (www.irrawaddy.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.jeuneafrique.com (www.jeuneafrique.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.jodidata.org (www.jodidata.org) | structured — scripts/seed-jodi-gas.mjs, scripts/seed-jodi-oil.mjs |
+| www.jpost.com (www.jpost.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.jutarnji.hr (www.jutarnji.hr) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.lapresse.ca (www.lapresse.ca) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.lasillavacia.com (www.lasillavacia.com) | feed — src/config/feeds.ts |
+| www.ledevoir.com (www.ledevoir.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.lemonde.fr (www.lemonde.fr) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.lennysnewsletter.com (www.lennysnewsletter.com) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
+| www.lighthousereports.com (www.lighthousereports.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.linkedin.com (www.linkedin.com) | structured — server/worldmonitor/leads/v1/register-interest.ts, src/services/story-share.ts |
+| www.livescience.com (www.livescience.com) | feed — src/config/feeds.ts |
+| www.lrt.lt (www.lrt.lt) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.mbie.govt.nz (www.mbie.govt.nz) | structured — scripts/seed-fuel-prices.mjs |
+| www.miit.gov.cn (www.miit.gov.cn) | structured — scripts/china-policy/adapters.mjs |
+| www.militarytimes.com (www.militarytimes.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.mining-technology.com (www.mining-technology.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.mining.com (www.mining.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.mnd.gov.tw (www.mnd.gov.tw) | structured — scripts/cross-strait-activity/adapters.mjs, src/components/cross-strait-activity-summary.ts |
+| www.mod.go.jp (www.mod.go.jp) | structured — scripts/cross-strait-activity/adapters.mjs, src/components/cross-strait-activity-summary.ts |
+| www.myjoyonline.com (www.myjoyonline.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.naftemporiki.gr (www.naftemporiki.gr) | feed — src/config/feeds.ts |
+| www.nature.com (www.nature.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.ncei.noaa.gov (www.ncei.noaa.gov) | structured — scripts/seed-climate-ocean-ice.mjs |
+| www.netlifystatus.com (www.netlifystatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| www.newscientist.com (www.newscientist.com) | feed — src/config/feeds.ts |
+| www.newyorkfed.org (www.newyorkfed.org) | structured — scripts/ais-relay.cjs |
+| www.nfx.com (www.nfx.com) | structured — src/config/variants/tech.ts |
+| www.northernminer.com (www.northernminer.com) | feed — src/config/feeds.ts |
+| www.notion-status.com (www.notion-status.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| www.nrc.nl (www.nrc.nl) | feed — src/config/feeds.ts |
+| www.nrk.no (www.nrk.no) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.occrp.org (www.occrp.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.omanobserver.om (www.omanobserver.om) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.opec.org (www.opec.org) | structured — scripts/seed-energy-intelligence.mjs |
+| www.optimistdaily.com (www.optimistdaily.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.oref.org.il (www.oref.org.il) | structured — scripts/ais-relay.cjs |
+| www.oryxspioenkop.com (www.oryxspioenkop.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.pbc.gov.cn (www.pbc.gov.cn) | structured — scripts/china-macro/source-contracts.mjs |
+| www.pbs.org (www.pbs.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.pizzint.watch (www.pizzint.watch) | structured — scripts/ais-relay.cjs, scripts/seed-conflict-intel.mjs |
+| www.polsatnews.pl (www.polsatnews.pl) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.positive.news (www.positive.news) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.premiumtimesng.com (www.premiumtimesng.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.primicias.ec (www.primicias.ec) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.producthunt.com (www.producthunt.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| www.radiookapi.net (www.radiookapi.net) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.radiotamazuj.org (www.radiotamazuj.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.rand.org (www.rand.org) | feed — src/config/feeds.ts |
+| www.ransomware.live (www.ransomware.live) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
+| www.rappler.com (www.rappler.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.reddit.com (www.reddit.com) | structured — scripts/ais-relay.cjs |
+| www.replicatestatus.com (www.replicatestatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| www.repubblica.it (www.repubblica.it) | feed — src/config/feeds.ts |
+| www.rfi.fr (www.rfi.fr) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.rigzone.com (www.rigzone.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.rp.pl (www.rp.pl) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.rt.com (www.rt.com) | feed — src/config/feeds.ts |
+| www.saastr.com (www.saastr.com) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
+| www.safe.gov.cn (www.safe.gov.cn) | structured — scripts/china-macro/source-contracts.mjs |
+| www.samr.gov.cn (www.samr.gov.cn) | structured — scripts/china-policy/adapters.mjs |
+| www.schneier.com (www.schneier.com) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
+| www.sciencedaily.com (www.sciencedaily.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.scmp.com (www.scmp.com) | feed — src/config/feeds.ts |
+| www.semianalysis.com (www.semianalysis.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/variants/tech.ts |
+| www.sequoiacap.com (www.sequoiacap.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/variants/tech.ts |
+| www.seznamzpravy.cz (www.seznamzpravy.cz) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.shareable.net (www.shareable.net) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.silverseek.com (www.silverseek.com) | feed — src/config/feeds.ts |
+| www.smartraveller.gov.au (www.smartraveller.gov.au) | structured — scripts/seed-security-advisories.mjs |
+| www.spdrgoldshares.com (www.spdrgoldshares.com) | structured — scripts/seed-gold-etf-flows.mjs |
+| www.spiegel.de (www.spiegel.de) | feed — src/config/feeds.ts |
+| www.stats.gov.cn (www.stats.gov.cn) | structured — scripts/china-macro/calendar.mjs, scripts/china-macro/source-contracts.mjs |
+| www.stimson.org (www.stimson.org) | feed — src/config/feeds.ts |
+| www.sunnyskyz.com (www.sunnyskyz.com) | feed — src/config/feeds.ts |
+| www.svd.se (www.svd.se) | feed — src/config/feeds.ts |
+| www.svt.se (www.svt.se) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.szse.cn (www.szse.cn) | structured — scripts/china-stock-connect/adapters.mjs |
+| www.tagesschau.de (www.tagesschau.de) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.techinasia.com (www.techinasia.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/variants/tech.ts |
+| www.techmeme.com (www.techmeme.com) | feed+structured — scripts/ais-relay.cjs, scripts/seed-research.mjs, server/worldmonitor/research/v1/list-tech-events.ts, src/config/feeds.ts, +1 more |
+| www.technologyreview.com (www.technologyreview.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| www.techstars.com (www.techstars.com) | structured — src/config/variants/tech.ts |
+| www.theglobeandmail.com (www.theglobeandmail.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.theguardian.com (www.theguardian.com) | feed+structured — scripts/seed-climate-news.mjs, server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.thehindu.com (www.thehindu.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.themoscowtimes.com (www.themoscowtimes.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.thenationalnews.com (www.thenationalnews.com) | feed — server/worldmonitor/news/v1/_feeds.ts |
+| www.thereporterethiopia.com (www.thereporterethiopia.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.thestar.com (www.thestar.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.theverge.com (www.theverge.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| www.thisdaylive.com (www.thisdaylive.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.token2049.com (www.token2049.com) | structured — scripts/ais-relay.cjs, scripts/seed-research.mjs, server/worldmonitor/research/v1/list-tech-events.ts |
+| www.tomshardware.com (www.tomshardware.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| www.tvanouvelles.ca (www.tvanouvelles.ca) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.twz.com (www.twz.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.unep.org (www.unep.org) | structured — scripts/seed-climate-news.mjs |
+| www.upworthy.com (www.upworthy.com) | feed — src/config/feeds.ts |
+| www.vanguardngr.com (www.vanguardngr.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.vercel-status.com (www.vercel-status.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| www.war.gov (www.war.gov) | feed — server/worldmonitor/news/v1/_feeds.ts |
+| www.weather.gov.hk (www.weather.gov.hk) | structured — scripts/natural/western-pacific-cyclones.mjs |
+| www.whitehouse.gov (www.whitehouse.gov) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.who.int (www.who.int) | feed+structured — scripts/seed-disease-outbreaks.mjs, scripts/seed-security-advisories.mjs, server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.windy.com (www.windy.com) | structured — server/worldmonitor/webcam/v1/get-webcam-image.ts, src/services/webcams/index.ts |
+| www.winnipegfreepress.com (www.winnipegfreepress.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.ycombinator.com (www.ycombinator.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| www.yesmagazine.org (www.yesmagazine.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.ynetnews.com (www.ynetnews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.yonhapnewstv.co.kr (www.yonhapnewstv.co.kr) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.youtube.com (www.youtube.com) | feed+structured — api/youtube/embed.js, api/youtube/live.js, scripts/ais-relay.cjs, server/worldmonitor/aviation/v1/get-youtube-live-stream-info.ts, +2 more |
+| www.zdg.md (www.zdg.md) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| www.zdnet.com (www.zdnet.com) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
+| www.zoomstatus.com (www.zoomstatus.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
+| wwwnc.cdc.gov (wwwnc.cdc.gov) | structured — scripts/seed-security-advisories.mjs |
+| X API (api.x.com) | structured — scripts/lib/company-monitoring-x-provider.mjs |
+| x.com (x.com) | structured — server/worldmonitor/leads/v1/register-interest.ts |
+| xinhuanet.com (xinhuanet.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| yandex.com (yandex.com) | structured — scripts/seo-indexnow-submit.mjs |
+| Yemen Online (yemenonline.info) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| yle.fi (yle.fi) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| your-app.convex.site (your-app.convex.site) | structured — scripts/import-bounced-emails.mjs |
+| yourstory.com (yourstory.com) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
+| zdf-hls-19.akamaized.net (zdf-hls-19.akamaized.net) | feed — src/components/LiveNewsPanel.ts |
+| zerkalo.io (zerkalo.io) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| zn.ua (zn.ua) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+{/* END GENERATED SOURCE ATTRIBUTION */}

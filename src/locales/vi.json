@@ -67,6 +67,19 @@
       "stable": "Ổn định"
     },
     "militaryActivity": "Hoạt động quân sự",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Chỉ số kinh tế",
     "ownFlights": "Chuyến bay nội địa",
     "foreignFlights": "Chuyến bay nước ngoài",
@@ -177,6 +190,23 @@
       "corridorConditions": "Điều kiện hành lang",
       "activityNowcast": "Dự báo hoạt động hiện tại",
       "decisionSignalsUnavailable": "Ảnh chụp nhanh tín hiệu quyết định của Trung Quốc hiện không có sẵn."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "header": {
@@ -446,7 +476,9 @@
         "displacement": "Bật/tắt dòng di tản",
         "climate": "Bật/tắt bất thường khí hậu",
         "outages": "Bật/tắt gián đoạn internet",
-        "tradeRoutes": "Bật/tắt tuyến thương mại"
+        "tradeRoutes": "Bật/tắt tuyến thương mại",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Chuyển sang chế độ tối",
@@ -608,7 +640,7 @@
         "URLHAUS_AUTH_KEY": "Dùng cho cả API URLhaus và ThreatFox.",
         "OTX_API_KEY": "Nguồn bổ sung tùy chọn cho lớp mối đe dọa mạng.",
         "ABUSEIPDB_API_KEY": "Nguồn bổ sung tùy chọn cho danh tiếng IP độc hại.",
-        "FINNHUB_API_KEY": "Báo giá cổ phiếu và dữ liệu thị trường thời gian thực.",
+        "FINNHUB_API_KEY": "Báo giá cổ phiếu bị trễ hoặc nạp sẵn và dữ liệu thị trường. Khóa không phải là luồng trực tiếp.",
         "NASA_FIRMS_API_KEY": "Hệ thống Thông tin Cháy rừng để Quản lý Tài nguyên.",
         "OLLAMA_API_URL": "Ví dụ: http://127.0.0.1:11434 (Ollama) hoặc http://127.0.0.1:1234/v1 (LM Studio) — endpoint tương thích OpenAI.",
         "OLLAMA_MODEL": "Ví dụ: llama3.1:8b — thẻ mô hình dùng để tóm tắt."
@@ -852,7 +884,12 @@
       "loadingHistory": "Đang tải lịch sử vận tải…",
       "historyUnavailable": "Lịch sử vận tải không có sẵn",
       "transitDataUnavailable": "Dữ liệu vận tải không có sẵn (phần trên không đầy đủ)",
-      "infoTooltip": "<strong>Supply Chain Monitor</strong> Theo dõi logistics và tài nguyên toàn cầu:<ul><li><strong>Điểm tắc nghẽn</strong>: Trạng thái vận tải biển, điểm số gián đoạn và số lượng tàu</li><li><strong>Vận chuyển</strong>: Chỉ số Baltic Dry Index và xu hướng giá vận chuyển</li><li><strong>Khoáng sản</strong>: Rủi ro tập trung khoáng sản quan trọng (HHI) và nhà sản xuất hàng đầu</li></ul>Nhấp vào thẻ điểm tắc nghẽn để mở rộng biểu đồ lịch sử vận tải."
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Theo dõi logistics và tài nguyên toàn cầu:<ul><li><strong>Điểm tắc nghẽn</strong>: Trạng thái vận tải biển, điểm số gián đoạn và số lượng tàu</li><li><strong>Vận chuyển</strong>: Chỉ số Baltic Dry Index và xu hướng giá vận chuyển</li><li><strong>Khoáng sản</strong>: Rủi ro tập trung khoáng sản quan trọng (HHI) và nhà sản xuất hàng đầu</li></ul>Nhấp vào thẻ điểm tắc nghẽn để mở rộng biểu đồ lịch sử vận tải.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "Thuế quan",
@@ -896,6 +933,7 @@
       "noComtradeData": "Không có dữ liệu dòng chảy chiến lược",
       "comtradeUnavailable": "Dữ liệu UN Comtrade tạm thời không có sẵn",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Bất thường",
       "colReporter": "Quốc gia",
       "colCommodity": "Hàng hóa",
@@ -1132,7 +1170,7 @@
         "ucdpEvents": "Sự kiện UCDP",
         "displacementFlows": "Dòng Di dời",
         "climateAnomalies": "Bất thường Khí hậu",
-        "weatherAlerts": "Cảnh báo thời tiết tại Hoa Kỳ (NWS)",
+        "weatherAlerts": "Cảnh báo thời tiết tại Hoa Kỳ và Canada (NWS, ECCC)",
         "strategicWaterways": "Đường thủy Chiến lược",
         "economicCenters": "Trung tâm Kinh tế",
         "criticalMinerals": "Khoáng sản Chiến lược",
@@ -1152,7 +1190,9 @@
         "speciesRecovery": "Phục hồi loài",
         "renewableInstallations": "Năng lượng sạch",
         "radiationSpike": "Đột tăng bức xạ",
-        "radiationElevated": "Bức xạ tăng cao"
+        "radiationElevated": "Bức xạ tăng cao",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC)"
       },
       "tooltip": {
         "earthquake": "Động đất",
@@ -1213,7 +1253,7 @@
           "infraDatacenters": "Cụm tính toán AI >=10.000 GPU",
           "infraOutages": "Mất kết nối internet và gián đoạn dịch vụ",
           "naturalEventsTech": "Động đất, bão, cháy (có thể ảnh hưởng trung tâm dữ liệu)",
-          "weatherAlerts": "Cảnh báo thời tiết nghiêm trọng tại Hoa Kỳ (NWS)",
+          "weatherAlerts": "Cảnh báo thời tiết nghiêm trọng tại Hoa Kỳ và Canada (NWS, ECCC)",
           "economicCenters": "Sàn chứng khoán & ngân hàng trung ương",
           "countriesOverlay": "Lớp phủ tên quốc gia",
           "financeExchanges": "Sàn giao dịch toàn cầu lớn theo cấp thị trường",
@@ -1225,7 +1265,7 @@
           "financeOutages": "Gián đoạn internet có thể ảnh hưởng hoạt động thị trường",
           "financeCyberThreats": "Sự kiện an ninh quanh hạ tầng tài chính",
           "macroWaterways": "Điểm nghẽn chiến lược cho vận chuyển hàng hóa",
-          "weatherAlertsMarket": "Sự kiện thời tiết nghiêm trọng tại Hoa Kỳ liên quan đến thị trường (NWS)",
+          "weatherAlertsMarket": "Sự kiện thời tiết nghiêm trọng tại Hoa Kỳ và Canada liên quan đến thị trường (NWS, ECCC)",
           "naturalEventsMacro": "Động đất, cháy, lũ lụt và thiên tai khác",
           "timeRecent": "Lọc dữ liệu theo thời gian gần đây",
           "timeExtended": "Hiển thị dữ liệu tuần qua, tháng qua hoặc tất cả",
@@ -1258,7 +1298,9 @@
           "tradeRoutes": "Các tuyến vận tải biển chính toàn cầu kết nối các cảng qua các điểm chiến lược",
           "dayNight": "Đường phân chia mặt trời thời gian thực hiển thị vùng ngày và đêm",
           "geoBoundaries": "Khu phi quân sự, đường ngừng bắn và ranh giới tranh chấp",
-          "ciiChoropleth": "Bản đồ nhiệt Chỉ số Bất ổn Quốc gia — tô màu quốc gia theo điểm CII (xanh=ổn định, đỏ=nghiêm trọng)"
+          "ciiChoropleth": "Bản đồ nhiệt Chỉ số Bất ổn Quốc gia — tô màu quốc gia theo điểm CII (xanh=ổn định, đỏ=nghiêm trọng)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert and B.C. Evacuation Orders and Alerts"
         },
         "notes": {
           "timeAffects": "Ảnh hưởng: Động đất, Thời tiết, Biểu tình, Gián đoạn"
@@ -1873,7 +1915,7 @@
       "infoTooltip": "<strong>Tiền số</strong> Giá trực tiếp, biến động 24h và khối lượng các tiền số chính. Dữ liệu từ CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Kinh tế vùng Vịnh</strong> Chỉ số chứng khoán vùng Vịnh, tỷ giá hối đoái và giá dầu theo thời gian thực cho các nền kinh tế GCC (Ả Rập Xê Út, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Kinh tế vùng Vịnh</strong> Chỉ số chứng khoán vùng Vịnh, tỷ giá hối đoái và giá dầu theo bị trễ hoặc nạp sẵn cho các nền kinh tế GCC (Ả Rập Xê Út, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Chỉ số Hàng tạp hóa</strong> So sánh giá giỏ hàng tạp hóa toàn cầu trên 24 quốc gia — theo dõi lạm phát hàng tiêu dùng thực tế ngoài CPI."
@@ -2135,7 +2177,7 @@
       "infoTooltip": "<strong>Hiệu ứng xếp tầng thảm họa</strong> Phát hiện các tín hiệu thảm họa tự nhiên và cơ sở hạ tầng hội tụ:<ul><li>Tương quan giữa động đất, cháy rừng, lũ lụt và thời tiết khắc nghiệt</li><li>Theo dõi các ảnh hưởng xếp tầng đến cơ sở hạ tầng và chuỗi cung ứng</li><li>Làm nổi bật các khu vực có rủi ro thảm họa kết hợp</li></ul>Nhấp vào một thẻ để phóng to khu vực bị ảnh hưởng."
     },
     "markets": {
-      "infoTooltip": "<strong>Thị trường</strong> Chỉ số chứng khoán, cổ phiếu và giá tiền điện tử thời gian thực. Tùy chỉnh danh sách theo dõi của bạn bằng nút Danh sách theo dõi. Đường sparkline hiển thị xu hướng giá gần đây.",
+      "infoTooltip": "<strong>Thị trường</strong> Chỉ số chứng khoán, cổ phiếu và giá tiền điện tử bị trễ hoặc nạp sẵn. Tùy chỉnh danh sách theo dõi của bạn bằng nút Danh sách theo dõi. Đường sparkline hiển thị xu hướng giá gần đây.",
       "chart": {
         "title": "Biểu đồ giá {{symbol}}",
         "close": "Đóng biểu đồ"
@@ -2316,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "Trừng phạt & Chỉ định",
-      "infoTooltip": "Các chỉ định trừng phạt OFAC từ Danh sách SDN và Danh sách Hợp nhất. Hiển thị các quốc gia nào đối mặt với áp lực chỉ định cao nhất, chương trình nào đang thúc đẩy và những gì được thêm mới kể từ lần cập nhật cuối cùng.",
+      "infoTooltip": "Danh sách SDN và Hợp nhất của OFAC cùng các chỉ định SEMA/JVCFOA của Global Affairs Canada. Hiển thị các quốc gia nào đối mặt với áp lực chỉ định cao nhất, chương trình nào đang thúc đẩy và những gì được thêm mới kể từ lần cập nhật cuối cùng.",
       "loading": "Đang tải dữ liệu trừng phạt...",
       "unavailable": "Dữ liệu trừng phạt không khả dụng.",
       "summary": {
         "new": "Mới",
         "vessels": "Tàu",
-        "aircraft": "Tàu bay"
+        "aircraft": "Tàu bay",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Quốc gia bị trừng phạt",
@@ -2337,11 +2380,12 @@
       "footer": {
         "updated": "Cập nhật {{time}}",
         "dataset": "tập dữ liệu {{date}}",
-        "source": "Nguồn: OFAC"
+        "source": "Nguồn: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} mới",
-        "new": "mới"
+        "new": "mới",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} chỉ định",
       "designations_other": "{{count}} chỉ định",
@@ -2787,6 +2831,7 @@
     "moreEvents": "sự kiện khác",
     "monitoring": "Giám sát",
     "viewUSGS": "Xem trên USGS",
+    "viewNRCan": "Xem trên Earthquakes Canada",
     "expired": "Đã hết hạn",
     "timeAgo": {
       "s": "{{count}}s trước",

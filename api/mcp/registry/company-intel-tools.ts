@@ -233,7 +233,7 @@ export const COMPANY_INTEL_TOOL: ToolDef = {
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(timeoutMs),
       });
-      assertToolFetchOk(response, path.split('/').pop() ?? path);
+      await assertToolFetchOk(response, path.split('/').pop() ?? path);
       return response.json();
     };
 

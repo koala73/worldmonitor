@@ -339,7 +339,10 @@ const TITLE_PREFIX_STOP = new Set([
 
 // Joiner words — lowercase tokens that bridge proper-noun sequences.
 // "Democratic Republic of Congo" is ONE sequence, not three.
-const PROPER_NOUN_JOINER = new Set(['of', 'the', 'and', 'for', 'de', 'du', 'der', 'van', 'el', 'al']);
+// Coordinating "and"/"And"/"AND" usually ends the current sequence so
+// "Ukraine and Russia" is two names. Registered expansions and repeated-name
+// entities retain it contextually in extractProperNounSequencesWithMeta.
+const PROPER_NOUN_JOINER = new Set(['of', 'the', 'for', 'de', 'du', 'der', 'van', 'el', 'al']);
 
 // Acronym ↔ expansion table (bidirectional). When summary contains
 // either form and headline contains the other, treated as equivalent.
@@ -440,6 +443,11 @@ const ACRONYM_NORMALIZE = (() => {
   return map;
 })();
 
+const AND_JOINED_ACRONYM_VARIANTS = ACRONYM_EXPANSIONS
+  .flatMap((group) => group)
+  .map((variant) => variant.toLowerCase().split(/\s+/))
+  .filter((tokens) => tokens.includes('and'));
+
 const DEMONYM_NORMALIZE = (() => {
   const map = new Map();
   for (const [demonym, nation] of DEMONYM_TO_NATION) {
@@ -515,6 +523,34 @@ function normalizeDottedAcronyms(text) {
   return text.replace(/(\b[A-Z]\.(?:[A-Z]\.?)+)/g, (match) => match.replace(/\./g, ''));
 }
 
+function properNounTokenValue(token) {
+  if (typeof token !== 'string' || token.length < 2 || !/^[A-Z]/.test(token)) return null;
+  const stripped = token.replace(/[.,;:'’]+$/g, '').replace(/['’]s$/i, '');
+  return (stripped || token).toLowerCase();
+}
+
+function followingTokensMatch(expectedTokens, tokens, startIndex) {
+  return expectedTokens.every((expected, index) => {
+    const actual = tokens[startIndex + index];
+    if (expected === 'and' || PROPER_NOUN_JOINER.has(expected)) {
+      return actual?.toLowerCase() === expected;
+    }
+    return properNounTokenValue(actual) === expected;
+  });
+}
+
+function shouldRetainAndJoiner(current, tokens, tokenIndex) {
+  if (current.length === 0) return false;
+  if (followingTokensMatch(current, tokens, tokenIndex + 1)) return true;
+
+  return AND_JOINED_ACRONYM_VARIANTS.some((variant) => {
+    const andIndex = variant.indexOf('and');
+    if (andIndex !== current.length) return false;
+    if (!variant.slice(0, andIndex).every((token, index) => token === current[index])) return false;
+    return followingTokensMatch(variant.slice(andIndex + 1), tokens, tokenIndex + 1);
+  });
+}
+
 export function extractProperNounSequences(text) {
   return extractProperNounSequencesWithMeta(text).map((entry) => entry.tokens);
 }
@@ -564,7 +600,8 @@ function extractProperNounSequencesWithMeta(text) {
     let bridgeBuffer = []; // joiners pending — kept only if another proper noun follows
     let firstToken = true;
 
-    for (const token of tokens) {
+    for (let tokenIndex = 0; tokenIndex < tokens.length; tokenIndex += 1) {
+      const token = tokens[tokenIndex];
       // Strip trailing punctuation and possessive 's / ’s so
       // "Beirut's" → "beirut" and "U.S." → "U.S" (handled below).
       let stripped = token.replace(/[.,;:'’]+$/g, '');
@@ -598,6 +635,25 @@ function extractProperNounSequencesWithMeta(text) {
       }
       const atSentenceStart = firstToken;
       firstToken = false;
+
+      // Coordinating and is normally a sequence break, not a name. Preserve it
+      // only when splitting would break a registered expansion (SEC) or let a
+      // repeated-name entity reuse one cited occurrence (Johnson and Johnson).
+      if (token.toLowerCase() === 'and') {
+        if (shouldRetainAndJoiner(current, tokens, tokenIndex)) {
+          bridgeBuffer.push('and');
+          continue;
+        }
+        if (current.length > 0) {
+          sequences.push({ tokens: current, sentenceInitial: currentStartedSentence, allCaps: currentAllCaps, firstSentence: currentFirstSentence });
+          current = [];
+          currentStartedSentence = false;
+          currentAllCaps = false;
+          currentFirstSentence = false;
+        }
+        bridgeBuffer = [];
+        continue;
+      }
 
       if (isJoiner) {
         if (current.length > 0) bridgeBuffer.push(token.toLowerCase());

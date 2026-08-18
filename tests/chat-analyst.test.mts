@@ -21,7 +21,7 @@ import {
   extractKeywords,
 } from '../server/worldmonitor/intelligence/v1/chat-analyst-context.ts';
 import { assembleBriefStoryContext } from '../server/worldmonitor/intelligence/v1/brief-story-context.ts';
-import { readCachedJson, __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
+import { getCachedEnvelopeJson, readCachedJson, __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
 import {
   CII_RISK_SCORE_CACHE_KEYS,
   ELECTRICITY_INDEX_KEY,
@@ -1110,6 +1110,31 @@ describe('buildHeadlinesFromGdeltIntel — #5856 review round', () => {
 });
 
 describe('readCachedJson — key prefixing and envelope fidelity (#5856 review round)', () => {
+  it('can preserve contract metadata for schema-aware consumers', async () => {
+    const originalFetch = globalThis.fetch;
+    const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    const enveloped = {
+      _seed: { fetchedAt: NOW_MS, recordCount: 1, sourceVersion: 'wb-ids-test', schemaVersion: 2, state: 'OK' },
+      data: { countries: { BR: { value: 10, year: 2024 } } },
+    };
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      result: JSON.stringify(enveloped),
+    }), { status: 200 })) as typeof fetch;
+    try {
+      const result = await getCachedEnvelopeJson('economic:wb-external-debt:v1', true);
+      assert.deepEqual(result, enveloped);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+      if (originalToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+    }
+  });
+
   it('raw=true reads the unprefixed seed key while raw=false applies the deployment prefix', async () => {
     const originalFetch = globalThis.fetch;
     const originalEnv = {

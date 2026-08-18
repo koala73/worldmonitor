@@ -116,6 +116,8 @@ afterEach(() => {
     if (value === undefined) delete process.env[name];
     else process.env[name] = value;
   }
+  _setAllReportersForTesting([]);
+  _setReporterListIsFallbackForTesting(false);
 });
 
 const CTX = {} as ServerContext;
@@ -181,6 +183,7 @@ function assertTwoReads(reporter: string, partner: string): void {
 
 // ── Contract pins: the two sides must agree without importing each other ───
 
+describe('trade-flows coverage', { concurrency: 1 }, () => {
 describe('seeder and handler agree on the cache contract', () => {
   test('the seeded window equals the contract maximum lookback', () => {
     assert.equal(TRADE_FLOW_SEED_YEARS, MAX_YEARS);
@@ -707,6 +710,7 @@ describe('fetchTradeFlows composes the loop, the counters, and the manifest', ()
     _setAllReportersForTesting(['840', '156']);
     globalThis.fetch = (async (input: string | URL | Request) => {
       const href = String(input);
+      if (href.startsWith(REDIS_HOST)) return new Response(JSON.stringify({ result: null }), { status: 200 });
       if (!href.includes('api.wto.org')) throw new Error(`unexpected fetch to ${href}`);
       const params = new URL(href).searchParams;
       if (params.get('r') === '156') return new Response('upstream down', { status: 503 });
@@ -1109,4 +1113,5 @@ describe('tradeFlowPairUniverse', () => {
     const ids = tradeFlowPairUniverse(['840', '156']).map(([r, p]) => tradeFlowCoverageId(r, p));
     assert.ok(ids.every((id) => id.endsWith(`:${WORLD_PARTNER_CODE}`)), ids.join(','));
   });
+});
 });

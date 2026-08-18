@@ -19,7 +19,7 @@ The principle underneath it: **independent sensors do not coordinate to lie.** O
 
 Before touching physical data, establish what the information environment is doing. Pull up the location's news and check:
 
-- **Source diversity.** Is the claim carried only by anonymous accounts, or has it reached wire services and regional outlets? World Monitor aggregates 77 sources across world, regional, defense, and government categories, including outlets in the region's own press sphere, in [26 languages](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
+- **Source diversity.** Is the claim carried only by anonymous accounts, or has it reached wire services and regional outlets? World Monitor aggregates sources across world, regional, defense, and government categories, including outlets in the region's own press sphere, with [localized interfaces](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
 - **Velocity.** GDELT-powered topic feeds show whether coverage volume is spiking or flat. A genuine mass-casualty event produces a near-vertical velocity curve. A recycled video produces social chatter with no news-side echo.
 - **Hotspot status.** If the location is one of the 29 tracked hotspots, has its escalation score moved? The score fuses news activity (35%), country instability (25%), geographic convergence (25%), and military activity (15%); movement here means multiple systems agree something changed.
 
@@ -35,7 +35,7 @@ Now the part most newsrooms skip: instruments that would have to be lying for th
 
 **Seismic data.** Major industrial explosions register on USGS seismographs. The Beirut port explosion measured as a magnitude-3.3 event. For a "massive explosion" claim, a silent seismic record near a station network is a real red flag.
 
-**Aviation.** Authorities close airspace around genuine incidents. Check airport delay status and closures (115 monitored airports, plus NOTAM-based closures across the MENA region) and whether flight paths are suddenly routing around the area. GPS jamming overlays add another tell in conflict-adjacent regions.
+**Aviation.** Authorities close airspace around genuine incidents. Check the registered airport delay and closure watchlist, including NOTAM-based closures across the MENA region, and whether flight paths are suddenly routing around the area. GPS jamming overlays add another tell in conflict-adjacent regions.
 
 **Internet connectivity.** Infrastructure damage and government responses both show up in Cloudflare Radar outage data. A localized connectivity drop at the claimed location and time is strong corroboration; nationwide throttling suggests a state response, itself a story.
 
@@ -49,7 +49,7 @@ Then place the event in its context with the country's brief and [instability sc
 
 ## Minute 8–10: Look at It
 
-Sometimes you can simply look. World Monitor streams 22 live webcams from geopolitical hotspots (Tehran, Tel Aviv, Kyiv, Taipei, and others) plus seven live news channels. If the claimed event is in view of a camera, you have a primary source with a timestamp. Even nearby cameras help: a city skyline behaving completely normally fifteen minutes after a claimed "massive explosion" is evidence too.
+Sometimes you can simply look. World Monitor streams live webcams from geopolitical hotspots (Tehran, Tel Aviv, Kyiv, Taipei, and others) alongside live news channels. If the claimed event is in view of a camera, you have a primary source with a timestamp. Even nearby cameras help: a city skyline behaving completely normally fifteen minutes after a claimed "massive explosion" is evidence too.
 
 ## What This Workflow Catches, and What It Does Not
 

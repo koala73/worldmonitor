@@ -113,7 +113,13 @@ export function collectStoryData(
     news: sortedNews.slice(0, 5).map(n => ({
       title: n.primaryTitle,
       threatLevel: (n.threat?.level || 'info') as ThreatLevel,
-      sourceCount: n.sourceCount,
+      // #6428: the shared story card renders "N sources" — publishers, not
+      // articles (see story-renderer.ts). Guarded like its sibling call sites
+      // because TS's "required" is not a runtime guarantee here: playback
+      // restores ClusteredEvent objects straight out of the IndexedDB snapshot
+      // (event-handlers.ts restoreSnapshot, 7-day retention), so a cluster
+      // persisted before this field existed arrives without it.
+      sourceCount: n.uniquePublisherCount ?? 0,
     })),
     theater: theater ? {
       theaterName: theater.theaterName,

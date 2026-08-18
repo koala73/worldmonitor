@@ -37,13 +37,14 @@ export class GoodThingsDigestPanel extends Panel {
     const top5 = items.slice(0, 5);
 
     if (top5.length === 0) {
-      setTrustedHtml(this.content, trustedHtml(`<p class="digest-placeholder">${escapeHtml(t('components.goodThingsDigest.noStories'))}</p>`, "legacy direct innerHTML migration"));
+      // #6557: a settled empty state is authoritative content.
+      this.setTrustedContent(trustedHtml(`<p class="digest-placeholder">${escapeHtml(t('components.goodThingsDigest.noStories'))}</p>`, "legacy direct innerHTML migration"));
       this.cardElements = [];
       return;
     }
 
-    // Render stub cards immediately (titles only, no summaries yet)
-    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
+    // Render stub cards immediately (titles only, no summaries yet).
+    // Build the full list first, then one atomic write (#6557).
     const list = document.createElement('div');
     list.className = 'digest-list';
     this.cardElements = [];
@@ -65,7 +66,16 @@ export class GoodThingsDigestPanel extends Panel {
       list.appendChild(card);
       this.cardElements.push(card);
     }
-    this.content.appendChild(list);
+    this.setContentNodes(list);
+    if (this.isLocked) {
+      // setContentNodes bails on a locked panel, so `list` was never attached.
+      // The liveness guard below reads this.element, which stays connected
+      // while locked, so it would not stop the batch from writing summaries
+      // into an orphaned subtree. Drop the handles instead, as the empty
+      // branch above does.
+      this.cardElements = [];
+      return;
+    }
 
     // Summarize in parallel with progressive updates
     const signal = this.summaryAbort.signal;

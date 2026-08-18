@@ -67,6 +67,19 @@
       "stable": "Стабилно"
     },
     "militaryActivity": "Военна активност",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Икономически показатели",
     "ownFlights": "Собствени полети",
     "foreignFlights": "Чужди полети",
@@ -177,6 +190,23 @@
       "corridorConditions": "Условия в коридора",
       "activityNowcast": "Нокаст на активността",
       "decisionSignalsUnavailable": "Снимката на сигналите за решения на Китай в момента не е налична."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "header": {
@@ -446,7 +476,9 @@
         "displacement": "Превключи потоци на разселване",
         "climate": "Превключи климатични аномалии",
         "outages": "Превключи интернет прекъсвания",
-        "tradeRoutes": "Превключи търговски маршрути"
+        "tradeRoutes": "Превключи търговски маршрути",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Превключи на тъмна тема",
@@ -608,7 +640,7 @@
         "URLHAUS_AUTH_KEY": "Използвано както за URLhaus, така и за ThreatFox API.",
         "OTX_API_KEY": "Дополнителен източник на обогатяване за слоя на киберугрози.",
         "ABUSEIPDB_API_KEY": "Дополнителен източник на обогатяване за репутация на зловредния IP.",
-        "FINNHUB_API_KEY": "Реални котировки на акции и данни на пазара.",
+        "FINNHUB_API_KEY": "Забавени или предварително заредени борсови котировки и пазарни данни. Ключът не е жива емисия.",
         "NASA_FIRMS_API_KEY": "Информация за пожарите за система за управление на ресурсите.",
         "OLLAMA_API_URL": "напр. http://127.0.0.1:11434 (Ollama) или http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-съместима крайна точка.",
         "OLLAMA_MODEL": "напр. llama3.1:8b — етикет на модел за използване при обобщение."
@@ -852,7 +884,12 @@
       "loadingHistory": "Зареждане на история на преходите…",
       "historyUnavailable": "История на преходите недостъпна",
       "transitDataUnavailable": "Данни за преходите недостъпни (източник частичен)",
-      "infoTooltip": "<strong>Монитор на веригата на доставки</strong> Глобално проследяване на логистиката и ресурсите:<ul><li><strong>Тесни места</strong>: Статус на морските преходи, оценки на прекъсванията и брой кораби</li><li><strong>Корабоплаване</strong>: Тенденции на Балтийския индекс на сухи товари и тарифи на фрахт</li><li><strong>Минерали</strong>: Риск на концентрация на критични минерали (HHI) и основни производители</li></ul>Щракнете на карта на тесното място, за да разширите диаграма на историята на преходите."
+      "infoTooltip": "<strong>Монитор на веригата на доставки</strong> Глобално проследяване на логистиката и ресурсите:<ul><li><strong>Тесни места</strong>: Статус на морските преходи, оценки на прекъсванията и брой кораби</li><li><strong>Корабоплаване</strong>: Тенденции на Балтийския индекс на сухи товари и тарифи на фрахт</li><li><strong>Минерали</strong>: Риск на концентрация на критични минерали (HHI) и основни производители</li></ul>Щракнете на карта на тесното място, за да разширите диаграма на историята на преходите.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "Митнически такси",
@@ -896,6 +933,7 @@
       "noComtradeData": "Няма налични данни за стратегически потоци",
       "comtradeUnavailable": "Данни на UN Comtrade временно недостъпни",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Аномалия",
       "colReporter": "Страна",
       "colCommodity": "Стока",
@@ -1132,7 +1170,7 @@
         "ucdpEvents": "События от въоръжени конфликти",
         "displacementFlows": "Потоци на преместване",
         "climateAnomalies": "Климатични аномалии",
-        "weatherAlerts": "Метеорологични предупреждения за САЩ (NWS)",
+        "weatherAlerts": "Метеорологични предупреждения за САЩ и Канада (NWS, ECCC)",
         "strategicWaterways": "Стратегически водни пътища",
         "economicCenters": "Икономически центрове",
         "criticalMinerals": "Критични минерали",
@@ -1152,7 +1190,9 @@
         "speciesRecovery": "Възстановяване на видове",
         "renewableInstallations": "Чиста енергия",
         "radiationSpike": "Пик на радиация",
-        "radiationElevated": "Повишена радиация"
+        "radiationElevated": "Повишена радиация",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC)"
       },
       "tooltip": {
         "earthquake": "Земетресение",
@@ -1213,7 +1253,7 @@
           "infraDatacenters": "Клъстери за AI изчисления >=10 000 GPU",
           "infraOutages": "Прекъсвания на интернет и сривове на услуги",
           "naturalEventsTech": "Земетресения, бури, пожари (могат да засегнат центрове за данни)",
-          "weatherAlerts": "Предупреждения за опасно време в САЩ (NWS)",
+          "weatherAlerts": "Предупреждения за опасно време в САЩ и Канада (NWS, ECCC)",
           "economicCenters": "Фондови борси и централни банки",
           "countriesOverlay": "Наслагване на имена на държави",
           "financeExchanges": "Основни световни борси по пазарен ранг",
@@ -1225,7 +1265,7 @@
           "financeOutages": "Интернет смущения, които могат да засегнат пазарните операции",
           "financeCyberThreats": "Инциденти със сигурността около финансова инфраструктура",
           "macroWaterways": "Стратегически тесни места за транспорт на суровини",
-          "weatherAlertsMarket": "Опасни метеорологични явления в САЩ с пазарно значение (NWS)",
+          "weatherAlertsMarket": "Опасни метеорологични явления в САЩ и Канада с пазарно значение (NWS, ECCC)",
           "naturalEventsMacro": "Земетресения, пожари, наводнения и други природни бедствия",
           "timeRecent": "Филтриране на времеви данни до последните часове",
           "timeExtended": "Показване на данни за последната седмица, месец или всички",
@@ -1258,7 +1298,9 @@
           "tradeRoutes": "Основни световни корабоплавателни маршрути през стратегически тесни места",
           "dayNight": "Слънчев терминатор в реално време — ден и нощ",
           "geoBoundaries": "Демилитаризирани зони, линии на примирие и спорни граници",
-          "ciiChoropleth": "Топлинна карта на индекса на нестабилност — цветове на държави по CII (зелено=стабилно, червено=критично)"
+          "ciiChoropleth": "Топлинна карта на индекса на нестабилност — цветове на държави по CII (зелено=стабилно, червено=критично)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert and B.C. Evacuation Orders and Alerts"
         },
         "notes": {
           "timeAffects": "Засяга: Земетресения, Метеорология, Протести, Прекъсвания"
@@ -1873,7 +1915,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2135,7 +2177,7 @@
       "infoTooltip": "<strong>Каскада от災害</strong> Открива конвергиращи сигнали от природни бедствия и инфраструктура:<ul><li>Корелира земетресения, горски пожари, наводнения и екстремни времеви явления</li><li>Проследява каскадни ефекти на инфраструктура и верига на доставки</li><li>Подчертава региони с натрупан риск от бедствия</li></ul>Кликнете върху карта, за да увеличите мащаба на засегнатия регион."
     },
     "markets": {
-      "infoTooltip": "<strong>Пазари</strong> Цени в реално време на фондови индекси, акции и крипто. Персонализирайте списъка си с наблюдавани стойности с помощта на бутона Списък на наблюдаване. Спарклайните показват скорошния тренд на цената.",
+      "infoTooltip": "<strong>Пазари</strong> Забавени или предварително заредени цени на фондови индекси, акции и крипто. Персонализирайте списъка си с наблюдавани стойности с помощта на бутона Списък на наблюдаване. Спарклайните показват скорошния тренд на цената.",
       "chart": {
         "title": "Ценова диаграма {{symbol}}",
         "close": "Затвори диаграмата"
@@ -2316,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "Санкции и определения",
-      "infoTooltip": "OFAC санкции определения от SDN и Consolidated Lists. Показва кои страни са изложени на най-силното определяне на санкции, какви програми го движат и какво е ново добавено от последния преглед.",
+      "infoTooltip": "OFAC SDN и Consolidated Lists плюс SEMA/JVCFOA обозначения на Global Affairs Canada. Показва кои страни са изложени на най-силното определяне на санкции, какви програми го движат и какво е ново добавено от последния преглед.",
       "loading": "Зареждане на данни за санкции...",
       "unavailable": "Данни за санкции недостъпни.",
       "summary": {
         "new": "Ново",
         "vessels": "Кораби",
-        "aircraft": "Летателни средства"
+        "aircraft": "Летателни средства",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Санкционирани страни",
@@ -2337,11 +2380,12 @@
       "footer": {
         "updated": "Актуализирано {{time}}",
         "dataset": "набор от данни {{date}}",
-        "source": "Източник: OFAC"
+        "source": "Източник: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} ново",
-        "new": "ново"
+        "new": "ново",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} определение",
       "designations_other": "{{count}} определения",
@@ -2787,6 +2831,7 @@
     "moreEvents": "още събитие",
     "monitoring": "Мониторинг",
     "viewUSGS": "Преглед на USGS",
+    "viewNRCan": "Преглед на Earthquakes Canada",
     "expired": "Изтекло",
     "timeAgo": {
       "s": "{{count}}s преди",

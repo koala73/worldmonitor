@@ -257,6 +257,172 @@ describe('validateSearchHit — quantity window', () => {
   });
 });
 
+// Both cases below were observed live on Noon UAE while diagnosing #6182.
+// They are not coverage gaps: every gate passed and the row reached the price
+// index carrying a confidently WRONG product, which no coverage metric sees.
+describe('validateSearchHit — wrong-product admissions (#6267)', () => {
+  // Defect A: "3 Liters" did not parse, so the quantity window reported
+  // `unknown` (neutral) instead of running. A 3L bottle was accepted as the
+  // 1L basket item at score 0.85 — above AUTO_MATCH_THRESHOLD, so it became
+  // an `auto` match and entered the aggregates at ~3x the true price.
+  it('rejects a 3-litre bottle for the 1L oil item', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Sunflower Oil 1L',
+      productName: 'Noor Sunflower Oil',
+      sizeText: '3 Liters',
+      item: item({ baseUnit: 'ml', minBaseQty: 900, maxBaseQty: 1100 }),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.signals.sizeWindow).toBe('fail');
+    expect(r.signals.extractedBaseQty).toBe(3000);
+    expect(r.reasons).toContain('size-window-fail:3000ml');
+  });
+
+  // Defect B: identity tokens ["drinking","water"] matched `water` alone for
+  // exactly 0.5 overlap — over the 0.4 floor — and a 160g size against an
+  // `ml` item evaluated to `unknown` rather than fail, so nothing rejected it.
+  it('rejects a 160g tin of tuna for the 1.5L drinking-water item', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Drinking Water 1.5L',
+      productName: 'Rio Mare Light Meat Tuna In Water',
+      sizeText: '160g',
+      item: item({ baseUnit: 'ml', minBaseQty: 1400, maxBaseQty: 1600 }),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.signals.sizeWindow).toBe('unit-mismatch');
+    expect(r.signals.extractedBaseQty).toBe(160);
+    expect(r.signals.extractedBaseUnit).toBe('g');
+    expect(r.reasons).toContain('size-unit-mismatch:160g-vs-ml');
+  });
+
+  // The mismatch rule is confined to CONTENT measures. A count-based item
+  // legitimately carries a packaging weight, so this real Cold Storage SG hit
+  // must keep passing — a blanket "parsed unit != baseUnit is a fail" rule
+  // would have rejected it.
+  it('still accepts a 10+2 egg pack listed by its 660g packaging weight', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Fresh Eggs 10 Pack',
+      productName: 'Farm Table Fresh Eggs (10+2Free) 660g',
+      sizeText: '660g',
+      item: item({ baseUnit: 'ct', minBaseQty: 10, maxBaseQty: 15 }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.signals.sizeWindow).toBe('unknown');
+    expect(r.signals.extractedBaseQty).toBe(660);
+  });
+
+  // `oz` maps to grams, but US retail writes fluid ounces identically. The US
+  // basket declares "Vegetable Oil 48oz" in `ml` (window 1200-1600), so a rule
+  // that rejected every mass-vs-volume mismatch would reject the CORRECT
+  // product. 1361g is 1134-1701ml across the density band, which overlaps.
+  it('does not reject a US oz-labelled bottle against an ml item', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Vegetable Oil 48oz',
+      productName: 'Crisco Pure Vegetable Oil 48 oz',
+      sizeText: '48 oz',
+      item: item({ baseUnit: 'ml', minBaseQty: 1200, maxBaseQty: 1600 }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.signals.sizeWindow).toBe('unknown');
+  });
+
+  // Mirror of the case above. The US basket declares "Plain Yogurt 32oz" in
+  // `g`, so a retailer writing the tub as fluid ounces parses to `ml`. The
+  // ounce family must not decide a category error in either direction.
+  it('does not reject a fl-oz-labelled tub against a mass item', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Plain Yogurt 32oz',
+      productName: 'Great Value Plain Lowfat Yogurt 32 fl oz',
+      sizeText: '32 fl oz',
+      item: item({ baseUnit: 'g', minBaseQty: 800, maxBaseQty: 1000 }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.signals.sizeWindow).toBe('unknown');
+  });
+
+  // A real 1L bottle of cooking oil weighs ~910g, and Indian storefronts print
+  // the net weight rather than the volume. Rejecting every mass-vs-volume
+  // mismatch would delete this correct price on a retailer that runs the
+  // strict validator, turning a good observation into a silent coverage gap.
+  it('keeps a 1L oil bottle listed by its 910g net weight', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Sunflower Oil 1L',
+      productName: 'Pranajay Organic Sunflower Oil Cold Pressed 1 Ltr',
+      sizeText: '910 g',
+      item: item({ baseUnit: 'ml', minBaseQty: 900, maxBaseQty: 1100 }),
+    });
+    expect(r.ok).toBe(true);
+    expect(r.signals.sizeWindow).toBe('unknown');
+  });
+
+  // The other half of the same rule, and the reason it keys on magnitude
+  // rather than on the unit token: exempting the ounce family outright would
+  // wave through a 128oz (1 gallon) jug as the 48oz item — defect A again, at
+  // 2.7x. 3629g is 3024-4536ml across the band, entirely above the window.
+  it('rejects a 128oz gallon jug for the 48oz oil item', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Vegetable Oil 48oz',
+      productName: 'Crisco Pure Vegetable Oil 128 oz',
+      sizeText: '128 oz',
+      item: item({ baseUnit: 'ml', minBaseQty: 1200, maxBaseQty: 1600 }),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.signals.sizeWindow).toBe('unit-mismatch');
+  });
+
+  // Same rule, opposite extreme. A water-testing kit shares both identity
+  // tokens with the drinking-water item and trips none of its negative
+  // tokens, so before the magnitude check its 0.04oz size was waved through
+  // as an ambiguous unit and it scored 0.85 — an `auto` match on a non-food.
+  it('rejects a 0.04oz water test kit for the drinking-water item', () => {
+    const r = validateSearchHit({
+      canonicalName: 'Drinking Water 24 Pack 16oz',
+      productName: 'YAHHU Drinking Water Quality Coliforms Test Kit Powder',
+      sizeText: '0.04 oz',
+      item: item({
+        baseUnit: 'ml', minBaseQty: 10000, maxBaseQty: 12000,
+        negativeTokens: ['sparkling', 'flavored', 'flavoured'],
+      }),
+    });
+    expect(r.ok).toBe(false);
+    expect(r.signals.sizeWindow).toBe('unit-mismatch');
+  });
+
+  // The count exemption runs in both directions: a `ct` size against a mass
+  // item ("6 rolls" for a 400g loaf) is packaging, not a category error.
+  it('does not reject a count size against a mass item', () => {
+    const r = validateSearchHit({
+      canonicalName: 'White Sliced Bread 400g',
+      productName: 'White Sliced Bread 12 Slices',
+      sizeText: '12 pcs',
+      item: item({ baseUnit: 'g', minBaseQty: 350, maxBaseQty: 450 }),
+    });
+    expect(r.signals.sizeWindow).toBe('unknown');
+    expect(r.ok).toBe(true);
+  });
+
+  // A wrong-category hit scores below AUTO_MATCH_THRESHOLD even before this
+  // fix, so it landed as a `candidate` rather than in the aggregates. The
+  // 3L-oil case did NOT — it scored 0.85 and matched `auto`. Pin both so a
+  // future scoring change cannot quietly promote either.
+  it('scores both rejected hits below the auto-match threshold', () => {
+    const oil = validateSearchHit({
+      canonicalName: 'Sunflower Oil 1L',
+      productName: 'Noor Sunflower Oil',
+      sizeText: '3 Liters',
+      item: item({ baseUnit: 'ml', minBaseQty: 900, maxBaseQty: 1100 }),
+    });
+    const tuna = validateSearchHit({
+      canonicalName: 'Drinking Water 1.5L',
+      productName: 'Rio Mare Light Meat Tuna In Water',
+      sizeText: '160g',
+      item: item({ baseUnit: 'ml', minBaseQty: 1400, maxBaseQty: 1600 }),
+    });
+    expect(oil.score).toBeLessThan(AUTO_MATCH_THRESHOLD);
+    expect(tuna.score).toBeLessThan(AUTO_MATCH_THRESHOLD);
+  });
+});
+
 describe('validateSearchHit — non-food and token overlap', () => {
   it('rejects seeds for a vegetable basket item', () => {
     const r = validateSearchHit({

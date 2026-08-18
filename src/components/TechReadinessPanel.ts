@@ -164,7 +164,7 @@ export class TechReadinessPanel extends Panel {
     this.hideCountBadge();
     this.setSafeContent(unsafeRawHtml(`
       <div class="panel-error-state" style="padding:24px 16px;text-align:center">
-        <div class="panel-error-msg" style="color:var(--danger,#e0654b);font-size:13px">
+        <div class="panel-error-msg" style="color:var(--danger,#e0654b);font-size:calc(13px * var(--wm-panel-effective-scale, 1))">
           ${escapeHtml(t('common.failedTechReadiness'))}
         </div>
       </div>
@@ -178,8 +178,8 @@ export class TechReadinessPanel extends Panel {
     // auto-retry; this is just the visual placeholder while we wait.
     this.hideCountBadge();
     this.setSafeContent(unsafeRawHtml(`
-      <div class="panel-soft-empty" style="padding:24px 16px;color:var(--text-dim);font-size:12px;text-align:center;line-height:1.5">
-        <div style="font-size:20px;margin-bottom:8px">⌛</div>
+      <div class="panel-soft-empty" style="padding:24px 16px;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1));text-align:center;line-height:1.5">
+        <div style="font-size:calc(20px * var(--wm-panel-effective-scale, 1));margin-bottom:8px">⌛</div>
         <div>${escapeHtml(t('components.techReadiness.dataPreparing'))}</div>
       </div>
     `, 'legacy Panel.setContent() migration'));

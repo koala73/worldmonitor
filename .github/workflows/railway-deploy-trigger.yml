@@ -1,15 +1,11 @@
-name: Railway Deploy Trigger
+name: Railway Deploy Trigger (Manual Rollback Only)
 run-name: >-
-  Railway reconcile ${{ github.event_name == 'workflow_dispatch' && inputs.recovery_attempt_id || github.event_name }}
-  @ ${{ github.event_name == 'workflow_dispatch' && inputs.expected_head_sha || github.sha }}
+  Manual Railway rollback reconcile ${{ inputs.recovery_attempt_id }}
+  @ ${{ inputs.expected_head_sha }}
 
+# Transitional rollback surface only. Native Railway GitHub autodeploy owns the
+# normal path; do not add a schedule or another automatic event here.
 on:
-  workflow_run:
-    workflows: ["Deploy Gate"]
-    types: [completed]
-    branches: [main]
-  schedule:
-    - cron: '37 * * * *'
   workflow_dispatch:
     inputs:
       dryRun:

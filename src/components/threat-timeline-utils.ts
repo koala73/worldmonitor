@@ -214,7 +214,10 @@ function normalizeServerInsightStory(story: ServerInsightStory, index: number, f
     rawThreatLevel,
     timestampMs,
     isAlert: Boolean(story.isAlert),
-    sourceCount: Number.isFinite(story.sourceCount) ? story.sourceCount : 1,
+    // #6428: the timeline renders "N sources", a corroboration claim, so it
+    // counts PUBLISHERS. story.sourceCount is the article count. Fail closed
+    // to 1 (renders nothing) on a payload predating the publisher count.
+    sourceCount: Number.isFinite(story.uniqueSourceCount) ? story.uniqueSourceCount! : 1,
     provenance: inferProvenance(source),
   };
 }
@@ -235,7 +238,7 @@ function normalizeClusterStory(cluster: ClusteredEvent, index: number): ThreatTi
     rawThreatLevel,
     timestampMs,
     isAlert: Boolean(cluster.isAlert),
-    sourceCount: Number.isFinite(cluster.sourceCount) ? cluster.sourceCount : 1,
+    sourceCount: Number.isFinite(cluster.uniquePublisherCount) ? cluster.uniquePublisherCount : 1,
     provenance: inferProvenance(source, cluster.threat?.source),
   };
 }

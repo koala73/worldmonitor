@@ -2,11 +2,11 @@
 
 > How AI agents should work with worldmonitor.app: machine surfaces, authentication, crawl policy, rate limits, and discovery endpoints. Prefer the structured surfaces below over scraping the HTML dashboard — the dashboard is a WebGL SPA and yields nothing useful to a text parser.
 
-World Monitor is a real-time global intelligence dashboard: 500+ news feeds, 56 map layer types, country risk/resilience scores, AI briefs, forecasts, and market/supply-chain correlation, served as machine-readable JSON with documented methodology and provenance.
+World Monitor is a real-time global intelligence dashboard: curated news feeds, a shared map-layer catalog, concrete panel implementations, country risk/resilience scores, AI briefs, forecasts, and market/supply-chain correlation, served as machine-readable JSON with documented methodology and provenance.
 
 ## Machine surfaces (use these)
 
-- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, 60 tools; issue `tools/list` for the live inventory. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
+- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP; issue `tools/list` for the live inventory. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
 - **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — Streamable HTTP, public (no auth); search-and-retrieval tools over the documentation. Use it for "how do I…" questions; use the product MCP above for live data.
 - **REST API:** base `https://api.worldmonitor.app` — OpenAPI spec: https://worldmonitor.app/openapi.yaml (JSON: /openapi.json) · API catalog: https://worldmonitor.app/.well-known/api-catalog
 - **NLWeb:** `POST https://www.worldmonitor.app/ask` (supports SSE) for natural-language questions; machine-readable dashboard view at `https://www.worldmonitor.app/?mode=agent`
@@ -21,8 +21,8 @@ World Monitor is a real-time global intelligence dashboard: 500+ news feeds, 56 
 
 ## Authentication
 
-- **Anonymous** works for discovery endpoints, `tools/list`, and public data (world brief, product catalog, story pages).
-- **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` for REST and MCP data calls — issue one at https://worldmonitor.app/pro. Full agent walkthrough: https://worldmonitor.app/auth.md
+- **Anonymous** works for discovery endpoints, `tools/list`, and public data (world brief, product catalog, story pages). For MCP data tools, `get_sources` is the sole credential-free, daily-quota-free exception and has a separate fail-closed limit of 10 anonymous calls/minute/IP.
+- **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` for subscription-gated REST and MCP data calls — issue one at https://worldmonitor.app/pro. All MCP data tools other than `get_sources` require subscription access. Full agent walkthrough: https://worldmonitor.app/auth.md
 - **OAuth2** for MCP (`scope=mcp`), with dynamic client registration at `/oauth/register`. Details in auth.md.
 
 ## Crawl & content-usage policy

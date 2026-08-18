@@ -296,6 +296,44 @@ export interface DefensePatentFiling {
   url: string;
 }
 
+export interface GetDefenseIndustrialBaseRequest {
+  countryCode: string;
+}
+
+export interface GetDefenseIndustrialBaseResponse {
+  countryCode: string;
+  available: boolean;
+  expenditurePctGdp?: DefenseIndustrialMetric;
+  expenditureUsd?: DefenseIndustrialMetric;
+  personnel?: DefenseIndustrialMetric;
+  armsExportsTiv?: DefenseIndustrialMetric;
+  armsImportsTiv?: DefenseIndustrialMetric;
+  suppliers: ArmsSupplierDependency[];
+  supplierHhi: number;
+  windowStartYear: number;
+  windowEndYear: number;
+  supplierSource: string;
+  fetchedAt: string;
+  industrialFetchedAt: string;
+  supplierFetchedAt: string;
+  supplierRetained: boolean;
+  supplierMappingCoverage: number;
+}
+
+export interface DefenseIndustrialMetric {
+  available: boolean;
+  value: number;
+  year: number;
+  previousValue: number;
+  previousYear: number;
+  source: string;
+}
+
+export interface ArmsSupplierDependency {
+  supplierIso2: string;
+  tivShare: number;
+}
+
 export type MilitaryActivityType = "MILITARY_ACTIVITY_TYPE_UNSPECIFIED" | "MILITARY_ACTIVITY_TYPE_EXERCISE" | "MILITARY_ACTIVITY_TYPE_PATROL" | "MILITARY_ACTIVITY_TYPE_TRANSPORT" | "MILITARY_ACTIVITY_TYPE_DEPLOYMENT" | "MILITARY_ACTIVITY_TYPE_TRANSIT" | "MILITARY_ACTIVITY_TYPE_UNKNOWN";
 
 export type MilitaryAircraftType = "MILITARY_AIRCRAFT_TYPE_UNSPECIFIED" | "MILITARY_AIRCRAFT_TYPE_FIGHTER" | "MILITARY_AIRCRAFT_TYPE_BOMBER" | "MILITARY_AIRCRAFT_TYPE_TRANSPORT" | "MILITARY_AIRCRAFT_TYPE_TANKER" | "MILITARY_AIRCRAFT_TYPE_AWACS" | "MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE" | "MILITARY_AIRCRAFT_TYPE_HELICOPTER" | "MILITARY_AIRCRAFT_TYPE_DRONE" | "MILITARY_AIRCRAFT_TYPE_PATROL" | "MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS" | "MILITARY_AIRCRAFT_TYPE_VIP" | "MILITARY_AIRCRAFT_TYPE_UNKNOWN";
@@ -358,6 +396,7 @@ export interface MilitaryServiceHandler {
   listMilitaryBases(ctx: ServerContext, req: ListMilitaryBasesRequest): Promise<ListMilitaryBasesResponse>;
   getWingbitsLiveFlight(ctx: ServerContext, req: GetWingbitsLiveFlightRequest): Promise<GetWingbitsLiveFlightResponse>;
   listDefensePatents(ctx: ServerContext, req: ListDefensePatentsRequest): Promise<ListDefensePatentsResponse>;
+  getDefenseIndustrialBase(ctx: ServerContext, req: GetDefenseIndustrialBaseRequest): Promise<GetDefenseIndustrialBaseResponse>;
 }
 
 export function createMilitaryServiceRoutes(
@@ -769,6 +808,53 @@ export function createMilitaryServiceRoutes(
 
           const result = await handler.listDefensePatents(ctx, body);
           return new Response(JSON.stringify(result as ListDefensePatentsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/military/v1/get-defense-industrial-base",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: GetDefenseIndustrialBaseRequest = {
+            countryCode: params.get("country_code") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("getDefenseIndustrialBase", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getDefenseIndustrialBase(ctx, body);
+          return new Response(JSON.stringify(result as GetDefenseIndustrialBaseResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -41,15 +41,22 @@ describe('Railway reconciliation protected manual recovery workflow', () => {
     }
   });
 
-  it('uses the distinct break-glass environment and treats reviewer identity as an external provisioning gate', () => {
+  it('uses the distinct break-glass secret boundary without a self-review gate', () => {
+    const inputs = workflow.on.workflow_dispatch.inputs;
     assert.equal(workflow.jobs.resolve.environment.name, 'ingestion-acceptance-production-breakglass');
     assert.equal(workflow.jobs.resolve.environment.deployment, false);
-    assert.match(source, /EXTERNAL/);
-    assert.match(source, /PROVISIONING GATE/);
-    assert.match(source, /prevent-self-review/);
-    assert.match(source, /reviewer identity\/evidence/);
-    assert.match(source, /approver input is an audit assertion/);
-    assert.match(source, /not a claim that YAML discovered the live reviewer/);
+    assert.equal(
+      inputs.approver.description,
+      'Operator audit identity; may equal the GitHub actor',
+    );
+    assert.match(source, /main-only secret boundary/);
+    assert.match(source, /no required reviewer/);
+    assert.match(source, /self-review adds no independent authorization/);
+    assert.match(source, /exact-main and repeated provider-inactivity proof/);
+    assert.match(source, /controller CAS\/generation checks/);
+    assert.doesNotMatch(source, /EXTERNAL PROVISIONING GATE/);
+    assert.doesNotMatch(source, /prevent-self-review/);
+    assert.doesNotMatch(source, /reviewer identity\/evidence/);
   });
 
   it('rejects non-main dispatches before secrets and checks out exact main for both proof passes', () => {

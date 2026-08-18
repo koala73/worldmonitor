@@ -233,6 +233,14 @@ function overrideStringExample(key, context = {}) {
     if (key === 'partnercountry') return isParam ? '156' : 'World';
     if (key === 'productsector') return isParam ? 'all' : 'All products';
   }
+  // GetFoodStocks' commodity is a closed slug set enforced by
+  // normalizeFoodStocksCommodity; the heuristic's empty-string -> "example"
+  // fallback published a value the handler rejects with 400, so anyone running
+  // the documented example got a validation error. countryCode already resolves
+  // to a real ISO-2 via the country heuristic.
+  if (where.includes('getfoodstocks') || where.includes('get-food-stocks')) {
+    if (key === 'commodity') return 'corn';
+  }
   if (key === 'period' && where.includes('getsectorsummary')) return '1d';
   if (key === 'timespan' && where.includes('searchgdeltdocuments')) return '15min';
   if (key === 'measuretype' && where.includes('gettradebarriers')) return 'SPS';

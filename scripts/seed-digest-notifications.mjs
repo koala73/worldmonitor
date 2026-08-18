@@ -65,6 +65,10 @@ import {
 import { injectEmailSummary } from './lib/email-summary-html.mjs';
 import { issueSlotInTz } from '../shared/brief-filter.js';
 import {
+  MIN_CORROBORATING_PUBLISHERS,
+  countPublisherFamilies,
+} from '../shared/publisher-families.js';
+import {
   enrichBriefEnvelopeWithLLM,
   generateDigestProse,
   generateDigestProsePublic,
@@ -644,8 +648,11 @@ function logDigestImportanceObservability(stories, { variant, lang, sensitivity 
     .map((s) => Array.isArray(s.mergedHashes) && s.mergedHashes.length > 0 ? s.mergedHashes.length : 1)
     .sort((a, b) => a - b);
   const diplomacyHits = stories.filter((s) => digestHasDiplomacyFlashpointSignal(s.title)).length;
+  // #6428: a metric named corroboration must count publishers, or the number
+  // an operator reads while diagnosing a quiet notification run overstates
+  // independence exactly like the gates used to.
   const corroborationHits = stories.filter((s) =>
-    (Array.isArray(s.sources) && s.sources.length >= 2) ||
+    countPublisherFamilies(s.sources) >= MIN_CORROBORATING_PUBLISHERS ||
     (Array.isArray(s.mergedHashes) && s.mergedHashes.length >= 2)
   ).length;
   if (diplomacyHits === 0 && corroborationHits === 0) return;

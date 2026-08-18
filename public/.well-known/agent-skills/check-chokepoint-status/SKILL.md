@@ -6,7 +6,7 @@ description: Retrieve live disruption status for the 13 monitored maritime choke
 
 # check-chokepoint-status
 
-Use this skill when the user asks about the current state of a maritime chokepoint — disruption, congestion, active warnings, or affected trade routes. World Monitor tracks 13 chokepoints with live AIS vessel-transit intelligence and per-chokepoint disruption scoring.
+Use this skill when the user asks about the current state of a maritime chokepoint — disruption, congestion, active warnings, or affected trade routes. World Monitor tracks the canonical chokepoint registry with live AIS vessel-transit intelligence and per-chokepoint disruption scoring.
 
 ## Authentication
 

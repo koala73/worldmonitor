@@ -699,9 +699,13 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
     '/api/research/v1/',
   ]
   : [];
-const cloudPreferredExact = !process.env.WS_RELAY_URL
-  ? new Set(['/api/bootstrap'])
-  : new Set();
+// These routes read seed-owned Redis snapshots that the local sidecar does not
+// hold. They must stay cloud-preferred even when a desktop configures WS relay;
+// relay availability does not provide Upstash credentials to local handlers.
+const cloudPreferredExact = new Set([
+  '/api/bootstrap',
+  '/api/military/v1/get-defense-industrial-base',
+]);
 
 function isCloudPreferred(pathname) {
   if (cloudPreferred.has(pathname)) return true;
@@ -906,12 +910,24 @@ function makeCorsHeaders(req) {
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
-  // Use node:https with IPv4 forced — Node.js built-in fetch (undici) tries IPv6
-  // first and some servers (EIA, NASA FIRMS) have broken IPv6 causing ETIMEDOUT.
+  // Use node:https with IPv4 by default — Node.js built-in fetch (undici) tries
+  // IPv6 first and some servers (EIA, NASA FIRMS) have broken IPv6. Callers
+  // with a validated address can instead pin its detected family below.
   const u = new URL(url);
   const allowPrivateNetwork = options.allowPrivateNetwork === true;
   const fetchOptions = { ...options };
   delete fetchOptions.allowPrivateNetwork;
+  const resolvedAddress = fetchOptions.resolvedAddress;
+  const requestedFamily = fetchOptions.resolvedFamily;
+  delete fetchOptions.resolvedAddress;
+  delete fetchOptions.resolvedFamily;
+  const resolvedFamily = resolvedAddress ? isIP(resolvedAddress) : 0;
+  if (resolvedAddress && resolvedFamily === 0) {
+    throw new TypeError('resolvedAddress must be an IPv4 or IPv6 address');
+  }
+  if (requestedFamily != null && requestedFamily !== resolvedFamily) {
+    throw new TypeError('resolvedFamily must match resolvedAddress');
+  }
   if (u.protocol === 'https:') {
     return new Promise((resolve, reject) => {
       const reqOpts = {
@@ -920,12 +936,12 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
         path: u.pathname + u.search,
         method: fetchOptions.method || 'GET',
         headers: fetchOptions.headers || {},
-        family: 4,
+        family: resolvedFamily || 4,
       };
       // Pin to a pre-resolved IP to prevent TOCTOU DNS rebinding.
       // The hostname is kept for SNI / TLS certificate validation.
-      if (fetchOptions.resolvedAddress) {
-        reqOpts.lookup = makePinnedLookup(fetchOptions.resolvedAddress, 4);
+      if (resolvedAddress) {
+        reqOpts.lookup = makePinnedLookup(resolvedAddress, resolvedFamily);
       }
       const req = https.request(reqOpts, (res) => {
         const chunks = [];
@@ -957,10 +973,10 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   // validated IP and set the Host header so virtual-host routing still works.
   let fetchUrl = url;
   const fetchHeaders = { ...(fetchOptions.headers || {}) };
-  if (fetchOptions.resolvedAddress && u.protocol === 'http:') {
+  if (resolvedAddress && u.protocol === 'http:') {
     const pinned = new URL(url);
     fetchHeaders['Host'] = pinned.host;
-    pinned.hostname = fetchOptions.resolvedAddress;
+    pinned.hostname = resolvedFamily === 6 ? `[${resolvedAddress}]` : resolvedAddress;
     fetchUrl = pinned.toString();
   }
   const controller = new AbortController();
@@ -1611,17 +1627,22 @@ async function dispatch(requestUrl, req, routes, context) {
 
     try {
       const parsed = new URL(feedUrl);
-      // Pin to the first IPv4 address validated by isSafeUrl() so the
-      // actual TCP connection goes to the same IP we checked, closing
-      // the TOCTOU DNS-rebinding window.
-      const pinnedV4 = safety.resolvedAddresses?.find(a => a.includes('.'));
+      // Pin to an address validated by isSafeUrl() so the actual TCP
+      // connection goes to the same IP and family we checked, closing
+      // the TOCTOU DNS-rebinding window for IPv4 and IPv6-only feeds.
+      const pinned = pickPinnedAddress(safety.resolvedAddresses);
+      if (!pinned) {
+        context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${feedUrl})`);
+        return json({ error: 'Could not resolve hostname' }, 403);
+      }
       const response = await fetchWithTimeout(feedUrl, {
         headers: {
           'User-Agent': CHROME_UA,
           'Accept': 'application/rss+xml, application/xml, text/xml, */*',
           'Accept-Language': 'en-US,en;q=0.9',
         },
-        ...(pinnedV4 ? { resolvedAddress: pinnedV4 } : {}),
+        resolvedAddress: pinned.address,
+        resolvedFamily: pinned.family,
       }, parsed.hostname.includes('news.google.com') ? 20000 : 12000);
       const contentType = response.headers?.get?.('content-type') || 'application/xml';
       const rssBody = await response.text();
@@ -1743,6 +1764,14 @@ async function dispatch(requestUrl, req, routes, context) {
     const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
     const hdrs = toHeaders(req.headers, { stripOrigin: true });
     hdrs.set('Origin', `http://127.0.0.1:${context.port}`);
+    // The OpenSky route is product-only. Its local handler requires the
+    // desktop product key in addition to the native transport token that was
+    // verified above. Inject it inside the sidecar so the renderer never sees
+    // or handles the key.
+    if (requestUrl.pathname === '/api/opensky') {
+      const productKey = process.env.WORLDMONITOR_API_KEY;
+      if (productKey) hdrs.set('X-WorldMonitor-Key', productKey);
+    }
     // The transport credential authenticates the nginx/sidecar hop only. Do
     // not expose it to route handlers, where Authorization is caller identity
     // (OAuth bearer) and X-WorldMonitor-Key is the caller's API key.
@@ -1787,6 +1816,7 @@ async function dispatch(requestUrl, req, routes, context) {
 // silent-stall test doesn't have to wait out the real 12s production value.
 // Production code never calls this.
 export const __testing__ = {
+  isCloudPreferred,
   setUpstreamIdleTimeoutMs(ms) {
     _upstreamIdleTimeoutMs = ms;
   },

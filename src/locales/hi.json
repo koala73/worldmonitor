@@ -136,6 +136,19 @@
       "stable": "स्थिर"
     },
     "militaryActivity": "सैन्य गतिविधि",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "आर्थिक संकेतक",
     "ownFlights": "अपनी उड़ानें",
     "foreignFlights": "विदेशी उड़ानें",
@@ -246,6 +259,23 @@
       "corridorConditions": "गलियारा स्थितियाँ",
       "activityNowcast": "गतिविधि नाउकास्ट",
       "decisionSignalsUnavailable": "चीन का निर्णय-संकेत स्नैपशॉट वर्तमान में अनुपलब्ध है।"
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "header": {
@@ -515,7 +545,9 @@
         "displacement": "स्थानीय निकासी दिखाएं/छुपाएं",
         "climate": "जलवायु असामान्यताएं चालू/बंद करें",
         "outages": "इंटरनेट बंद दिखाएं/छुपाएं",
-        "tradeRoutes": "व्यापार मार्ग चालू/बंद करें"
+        "tradeRoutes": "व्यापार मार्ग चालू/बंद करें",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "डार्क मोड पर जाएं",
@@ -678,7 +710,7 @@
         "URLHAUS_AUTH_KEY": "URLhaus और ThreatFox दोनों APIs के लिए उपयोग होता है।",
         "OTX_API_KEY": "साइबर खतरे के लेयर के लिए वैकल्पिक स्रोत।",
         "ABUSEIPDB_API_KEY": "खराब IP की प्रतिष्ठा के लिए वैकल्पिक स्रोत।",
-        "FINNHUB_API_KEY": "रियल-टाइम स्टॉक डेटा और मार्केट डाटा।",
+        "FINNHUB_API_KEY": "विलंबित या पहले से लोड किए गए स्टॉक भाव और मार्केट डेटा। कुंजी होना लाइव टेप नहीं है।",
         "NASA_FIRMS_API_KEY": "फायर सूचना सिस्टम के लिए।",
         "OLLAMA_API_URL": "जैसे http://127.0.0.1:11434 (Ollama) या http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-संगत एन्डपॉइंट।",
         "OLLAMA_MODEL": "जैसे llama3.1:8b — सारांश के लिए मॉडल टैग।"
@@ -953,7 +985,12 @@
       "mineral": "खनिज",
       "topProducers": "शीर्ष उत्पादक",
       "risk": "जोखिम",
-      "infoTooltip": "<strong>सप्लाई चेन मॉनिटर</strong> वैश्विक लॉजिस्टिक्स और संसाधन ट्रैकिंग:<ul><li><strong>चोकपॉइंट</strong>: समुद्री पारगमन स्थिति, व्यवधान स्कोर, और जहाज गणना</li><li><strong>शिपिंग</strong>: बाल्टिक ड्राई इंडेक्स और फ्रेट दर प्रवृत्तियां</li><li><strong>खनिज</strong>: महत्वपूर्ण खनिज सांद्रता जोखिम (HHI) और शीर्ष उत्पादक</li></ul>ट्रांजिट इतिहास चार्ट खोलने के लिए चोकपॉइंट कार्ड पर क्लिक करें।"
+      "infoTooltip": "<strong>सप्लाई चेन मॉनिटर</strong> वैश्विक लॉजिस्टिक्स और संसाधन ट्रैकिंग:<ul><li><strong>चोकपॉइंट</strong>: समुद्री पारगमन स्थिति, व्यवधान स्कोर, और जहाज गणना</li><li><strong>शिपिंग</strong>: बाल्टिक ड्राई इंडेक्स और फ्रेट दर प्रवृत्तियां</li><li><strong>खनिज</strong>: महत्वपूर्ण खनिज सांद्रता जोखिम (HHI) और शीर्ष उत्पादक</li></ul>ट्रांजिट इतिहास चार्ट खोलने के लिए चोकपॉइंट कार्ड पर क्लिक करें।",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "overview": "ओवरव्यू",
@@ -997,6 +1034,7 @@
       "noComtradeData": "कोई रणनीतिक प्रवाह डेटा उपलब्ध नहीं",
       "comtradeUnavailable": "UN Comtrade डेटा अस्थायी रूप से अनुपलब्ध",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "असामान्यता",
       "colReporter": "देश",
       "colCommodity": "वस्तु",
@@ -1275,7 +1313,7 @@
         "ucdpEvents": "सशस्त्र संघर्ष घटनाएं",
         "displacementFlows": "स्थानांतरण प्रवाह",
         "climateAnomalies": "जलवायु असामान्यता",
-        "weatherAlerts": "अमेरिका के मौसम अलर्ट (NWS)",
+        "weatherAlerts": "अमेरिका और कनाडा के मौसम अलर्ट (NWS, ECCC)",
         "strategicWaterways": "चोकपॉइंट",
         "economicCenters": "आर्थिक केंद्र",
         "criticalMinerals": "महत्वपूर्ण खनिज",
@@ -1293,7 +1331,9 @@
         "kindness": "दयालुता के कार्य",
         "happiness": "विश्व खुशी",
         "speciesRecovery": "प्रजाति पुनर्प्राप्ति",
-        "renewableInstallations": "स्वच्छ ऊर्जा"
+        "renewableInstallations": "स्वच्छ ऊर्जा",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC)"
       },
       "tooltip": {
         "earthquake": "भूकंप",
@@ -1354,7 +1394,7 @@
           "infraDatacenters": "एआई कंप्यूट क्लस्टर (>=10,000 GPU)",
           "infraOutages": "इंटरनेट ब्लैकआउट और सेवा व्यवधान",
           "naturalEventsTech": "भूकंप, तूफान, आग (डेटा केंद्र प्रभावित कर सकते हैं)",
-          "weatherAlerts": "अमेरिका में गंभीर मौसम अलर्ट (NWS)",
+          "weatherAlerts": "अमेरिका और कनाडा में गंभीर मौसम अलर्ट (NWS, ECCC)",
           "economicCenters": "शेयर बाजार और केंद्रीय बैंक",
           "countriesOverlay": "देश नाम ओवरले",
           "financeExchanges": "मुख्य वैश्विक एक्सचेंज",
@@ -1366,7 +1406,7 @@
           "financeOutages": "इंटरनेट व्यवधान जो बाजार संचालन को प्रभावित कर सकते हैं",
           "financeCyberThreats": "वित्तीय इन्फ्रास्ट्रक्चर से जुड़े सुरक्षा घटनाएं",
           "macroWaterways": "कमोडिटी शिपिंग के रणनीतिक चोकपॉइंट",
-          "weatherAlertsMarket": "अमेरिका में बाजार से संबंधित गंभीर मौसम घटनाएं (NWS)",
+          "weatherAlertsMarket": "अमेरिका और कनाडा में बाजार से संबंधित गंभीर मौसम घटनाएं (NWS, ECCC)",
           "naturalEventsMacro": "भूकंप, आग, बाढ़ और अन्य प्राकृतिक व्यवधान",
           "timeRecent": "समय-आधारित डेटा को हाल के घंटों तक फ़िल्टर करें",
           "timeExtended": "पिछले सप्ताह, महीने या सभी समय का डेटा दिखाएं",
@@ -1399,7 +1439,9 @@
           "tradeRoutes": "रणनीतिक संकरे बिंदुओं से होते हुए बंदरगाहों को जोड़ने वाले प्रमुख वैश्विक शिपिंग मार्ग",
           "dayNight": "वास्तविक समय सूरज की रोशनी और अंधेरा क्षेत्र",
           "geoBoundaries": "विसैन्यीकृत क्षेत्र, युद्धविराम रेखाएं और विवादित सीमाएं",
-          "ciiChoropleth": "देश अस्थिरता सूचकांक हीटमैप — CII स्कोर के अनुसार देशों को रंगों में दर्शाता है (हरा=स्थिर, लाल=गंभीर)"
+          "ciiChoropleth": "देश अस्थिरता सूचकांक हीटमैप — CII स्कोर के अनुसार देशों को रंगों में दर्शाता है (हरा=स्थिर, लाल=गंभीर)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert and B.C. Evacuation Orders and Alerts"
         },
         "notes": {
           "timeAffects": "प्रभाव: भूकंप, मौसम, प्रदर्शन, व्यवधान"
@@ -1923,7 +1965,7 @@
       "infoTooltip": "<strong>आपदा कैस्केड</strong> प्राकृतिक आपदा और इन्फ्रास्ट्रक्चर संकेतों का संगम पता लगाता है:<ul><li>भूकंप, जंगल की आग, बाढ़, और मौसम की चरम घटनाओं का समन्वय</li><li>इन्फ्रास्ट्रक्चर और सप्लाई चेन पर कैस्केड प्रभाव ट्रैक करता है</li><li>मिल-जुल कर उच्च जोखिम वाले क्षेत्रों को दिखाता है</li></ul>प्रभावित क्षेत्र पर ज़ूम करने के लिए कार्ड क्लिक करें।"
     },
     "markets": {
-      "infoTooltip": "<strong>बाजार</strong> रियल-टाइम स्टॉक इंडेक्स, स्टॉक्स, और क्रिप्टो कीमतें। अपनी वॉचलिस्ट बटन से कस्टमाइज़ करें। स्पार्कलाइन हाल की कीमत प्रवृत्ति दिखाती है।",
+      "infoTooltip": "<strong>बाजार</strong> विलंबित स्टॉक इंडेक्स, स्टॉक्स, और क्रिप्टो कीमतें। अपनी वॉचलिस्ट बटन से कस्टमाइज़ करें। स्पार्कलाइन हाल की कीमत प्रवृत्ति दिखाती है।",
       "chart": {
         "title": "{{symbol}} मूल्य चार्ट",
         "close": "चार्ट बंद करें"
@@ -1971,7 +2013,7 @@
       "infoTooltip": "<strong>केंद्रीय बैंक वॉच</strong> फेडरल रिजर्व, ECB, बैंक ऑफ इंग्लैंड, और अन्य प्रमुख केंद्रीय बैंकों के नवीनतम बयान, दर निर्णय, और संचार।"
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>गल्फ अर्थव्यवस्थाएं</strong> खाड़ी सहयोग परिषद (सऊदी अरब, यूएई, कुवैत, कतर, बहरीन, ओमान) के लिए रियल-टाइम स्टॉक इंडेक्स, मुद्रा दरें, और तेल कीमतें।"
+      "infoTooltip": "<strong>गल्फ अर्थव्यवस्थाएं</strong> खाड़ी सहयोग परिषद (सऊदी अरब, यूएई, कुवैत, कतर, बहरीन, ओमान) के लिए विलंबित स्टॉक इंडेक्स, मुद्रा दरें, और तेल कीमतें।"
     },
     "groceryBasket": {
       "infoTooltip": "<strong>किराने का सूचकांक</strong> 24 देशों में वैश्विक किराना बास्केट मूल्य तुलना — हेडलाइन CPI से परे वास्तविक उपभोक्ता वस्तु महंगाई ट्रैक करता है।"
@@ -2385,13 +2427,14 @@
     },
     "sanctionsPressure": {
       "title": "प्रतिबंध और नामांकन",
-      "infoTooltip": "OFAC प्रतिबंध नामांकन SDN और संयोजित सूचियों से। दिखाता है कौन से देशों पर सबसे अधिक दबाव है, कौन से कार्यक्रम यह चला रहे हैं, और पिछली अपडेट से नया क्या जोड़ा गया।",
+      "infoTooltip": "OFAC SDN और संयोजित सूचियाँ तथा Global Affairs Canada SEMA/JVCFOA नामांकन। दिखाता है कौन से देशों पर सबसे अधिक दबाव है, कौन से कार्यक्रम यह चला रहे हैं, और पिछली अपडेट से नया क्या जोड़ा गया।",
       "loading": "प्रतिबंध डेटा लोड हो रहा है...",
       "unavailable": "प्रतिबंध डेटा उपलब्ध नहीं।",
       "summary": {
         "new": "नया",
         "vessels": "जहाज",
-        "aircraft": "विमान"
+        "aircraft": "विमान",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "प्रतिबंधित देश",
@@ -2406,11 +2449,12 @@
       "footer": {
         "updated": "अपडेट किया गया {{time}}",
         "dataset": "डेटासेट {{date}}",
-        "source": "स्रोत: OFAC"
+        "source": "स्रोत: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} नया",
-        "new": "नया"
+        "new": "नया",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} नामांकन",
       "designations_other": "{{count}} नामांकन",
@@ -2856,6 +2900,7 @@
     "moreEvents": "और घटनाएं",
     "monitoring": "निगरानी",
     "viewUSGS": "USGS पर देखें",
+    "viewNRCan": "Earthquakes Canada पर देखें",
     "expired": "समाप्त",
     "timeAgo": {
       "s": "{{count}} सेकंड पहले",

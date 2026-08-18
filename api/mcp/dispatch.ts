@@ -3,7 +3,7 @@ import { readExistsFlags, readJsonFromUpstash, redisPipeline } from '../_upstash
 import { captureSilentError } from '../_sentry-edge.js';
 import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
 import { getMcpBillingVerificationDenial } from './auth';
-import { BillingDenialError } from './billing-denial';
+import { BillingDenialError, RpcValidationError } from './billing-denial';
 import {
   BothSourcesFailedError,
   createMcpToolExecutionContext,
@@ -49,9 +49,7 @@ export async function executeTool(
   data: Record<string, unknown>;
 }> {
   const reads = tool._cacheKeys.map(k => readJsonFromUpstash(k));
-  const freshnessChecks = tool._freshnessChecks?.length
-    ? tool._freshnessChecks
-    : [{ key: tool._seedMetaKey, maxStaleMin: tool._maxStaleMin }];
+  const freshnessChecks = tool._freshnessChecks;
   const metaReads = freshnessChecks.map((check) => readJsonFromUpstash(check.key));
   // #6080 deployment-order grace. Only checks declaring a content contract pay
   // for this read, so it is one extra command on get_chokepoint_status and
@@ -206,9 +204,21 @@ export async function dispatchToolsCall(
     return rpcError(id, -32602, `Unknown tool: ${p.name}`, corsHeaders);
   }
 
-  // Pro-only INCR-first reservation. Both cache-only AND RPC tools count
-  // toward the caller's daily cap — EXCEPT `describe_tool` (v1.5.0), which
-  // is metadata-only and is actively encouraged by SERVER_INSTRUCTIONS
+  // U7 fail-closed guard (defence in depth). A `free` principal is minted in
+  // exactly one place — the handler's free-tier branch, after matching this
+  // same `_freeTier` flag — but a free context reaching any other tool would be
+  // an unauthenticated, unquota'd read of gated data. Re-checking here means
+  // the promotion and the authorisation are not the same line of code, so a
+  // future edit to the handler's matching cannot silently widen what a free
+  // caller can reach.
+  if (context.kind === 'free' && tool._freeTier !== true) {
+    return rpcError(id, -32001, 'Subscription not active.', corsHeaders);
+  }
+
+  // Credentialed INCR-first reservation. Both cache-only AND RPC tools count
+  // toward the caller's daily cap — EXCEPT free-tier tools and `describe_tool`
+  // (v1.5.0). The latter is metadata-only and is actively encouraged by
+  // SERVER_INSTRUCTIONS
   // when the compressed tools/list entry is ambiguous. Charging quota for
   // schema lookups would (a) discourage the LLM from using it, defeating
   // the v1.5.0 compression's UX hedge, and (b) lock out Pro users at the
@@ -221,7 +231,11 @@ export async function dispatchToolsCall(
   // the 60/min limiter. Raising API-plan MCP allowances above the Pro cap is
   // a deliberate follow-up, not a default — which is why `mcpDailyLimit`
   // arrives unset for that kind (api/mcp/auth.ts::runUserKeyPreChecks).
-  if ((context.kind === 'pro' || context.kind === 'user_key') && !isMetadataTool) {
+  if (
+    (context.kind === 'pro' || context.kind === 'user_key')
+    && tool._freeTier !== true
+    && !isMetadataTool
+  ) {
     const reservation = await reserveQuota(context.userId, deps.redisPipeline, mcpDailyLimit);
     if (!reservation.ok) {
       if (reservation.reason === 'cap-exceeded') {
@@ -427,6 +441,15 @@ export async function dispatchToolsCall(
           failed_inputs: err.failedInputs,
         },
       );
+    }
+    // #6559: proto/sebuf ValidationError 400s keep their field/detail pairs as
+    // structured JSON-RPC error data (`error.data.violations`). This is NOT a
+    // tools/call result envelope (`result.content` / `isError`) — agents read
+    // `error.code === -32602` and `error.data.violations[]`.
+    if (err instanceof RpcValidationError) {
+      return rpcError(id, -32602, 'Invalid params', corsHeaders, {
+        violations: err.violations,
+      });
     }
     return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders);
   }

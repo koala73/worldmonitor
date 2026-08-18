@@ -78,7 +78,7 @@ Floors are the model's defense against its own optimism. A country in an active 
 
 ## What the CII Deliberately Does Not Do
 
-**It does not measure structural fragility.** That is the job of the Country Resilience Index, a separate 196-country model of structural capacity across 20 dimensions, refreshed every six hours. CII is the fast clock (what is burning now); resilience is the slow clock (what breaks under fire). Reading them together is the [core of a sound country-risk workflow](/blog/posts/country-risk-monitoring-workflow-for-analysts/).
+**It does not measure structural fragility.** That is the job of the Country Resilience Index, a separate 196-country model of structural capacity across 72 indicators, 21 active dimensions, and 6 domains, refreshed every six hours. CII is the fast clock (what is burning now); resilience is the slow clock (what breaks under fire). Reading them together is the [core of a sound country-risk workflow](/blog/posts/country-risk-monitoring-workflow-for-analysts/).
 
 **It does not predict.** The CII describes current pressure. For forward-looking signals, World Monitor pairs it with [prediction markets and AI forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/), different tools for a different question.
 

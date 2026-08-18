@@ -19,6 +19,7 @@ import {
   normalizeRequestId,
   requireActiveAccount,
   COMPANY_LIMIT,
+  customerClaimAllowedUses,
 } from "./_shared";
 import { requireProvisionedAccount } from "./accounts";
 import {
@@ -27,6 +28,11 @@ import {
   queueCompanySources,
   scheduleCompanySourcesHandler,
 } from "./orchestration";
+import {
+  purgeCompanyCandidatesBatch,
+  purgeCompanyEvidenceBatch,
+  revalidateCompanyEvidenceClaims,
+} from "./evidence";
 import { companyPatchValidator, monitoredCompanyInputValidator } from "./validators";
 
 type ReplayMetadata =
@@ -251,6 +257,9 @@ export const updateCompanyForOwner = internalMutation({
         .map((claim) => `${claim.type}\u0000${claim.value}`),
     );
     const normalizedAdditions = addClaimInputs.map(normalizeCompanyClaimInput);
+    if (normalizedFields.name !== company.name) {
+      normalizedAdditions.unshift({ type: "alias", value: normalizedFields.name });
+    }
     if (hasCustomerReference && normalizedFields.customerReference) {
       normalizedAdditions.push({
         type: "customer_reference",
@@ -278,6 +287,8 @@ export const updateCompanyForOwner = internalMutation({
     }
 
     const now = Date.now();
+    const claimsChanged = removeIds.size > 0 || additions.length > 0;
+    const nextSnapshotGeneration = company.snapshotGeneration + 1;
     for (const claimId of removeIds) await ctx.db.delete(currentById.get(claimId)!._id);
     for (const claim of additions) {
       await ctx.db.insert("companyMonitoringClaims", {
@@ -287,6 +298,7 @@ export const updateCompanyForOwner = internalMutation({
         ...claim,
         provenance: "customer",
         trustState: "unverified",
+        allowedUses: [...customerClaimAllowedUses(claim.type)],
         createdAt: now,
         updatedAt: now,
       });
@@ -296,13 +308,26 @@ export const updateCompanyForOwner = internalMutation({
       sortName: normalizedFields.name.toLocaleLowerCase("en-US"),
       domicileCountry: normalizedFields.domicileCountry,
       customerReference: normalizedFields.customerReference,
-      snapshotGeneration: company.snapshotGeneration + 1,
+      snapshotGeneration: nextSnapshotGeneration,
+      ...(claimsChanged
+        ? {
+            evidenceRevision: (company.evidenceRevision ?? 0) + 1,
+            recomputeRequiredAt: now,
+          }
+        : {}),
       updatedAt: now,
     });
     await ctx.db.patch(account._id, {
       snapshotGeneration: (account.snapshotGeneration ?? 0) + 1,
       updatedAt: now,
     });
+    if (claimsChanged) {
+      await revalidateCompanyEvidenceClaims(ctx, {
+        ownerAccountId: account.logicalAccountId,
+        companyId: company.companyId,
+        expectedSnapshotGeneration: nextSnapshotGeneration,
+      });
+    }
     if (company.lifecycle === "active") {
       await cancelCompanyScanWork(ctx, {
         ownerAccountId: account.logicalAccountId,
@@ -419,7 +444,8 @@ export const advanceCompanyPurge = internalMutation({
       return { status: "stale" };
     }
     if (company.purgePhase === "complete") return { status: "complete" };
-    if (company.purgePhase === "scan") {
+    let phase = company.purgePhase;
+    if (phase === "scan") {
       const scanPurge = await purgeCompanyScanStateBatch(
         ctx,
         args.ownerAccountId,
@@ -433,7 +459,57 @@ export const advanceCompanyPurge = internalMutation({
         );
         return { status: "scan" };
       }
+      await ctx.db.patch(company._id, { purgePhase: "evidence", updatedAt: Date.now() });
+      phase = "evidence";
+    }
+    if (phase === "evidence") {
+      const evidencePurge = await purgeCompanyEvidenceBatch(
+        ctx,
+        args.ownerAccountId,
+        args.companyId,
+      );
+      if (!evidencePurge.complete) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.companyMonitoring.companies.advanceCompanyPurge,
+          args,
+        );
+        return { status: "evidence" };
+      }
+      await ctx.db.patch(company._id, { purgePhase: "candidates", updatedAt: Date.now() });
+      phase = "candidates";
+      if (evidencePurge.deleted > 0) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.companyMonitoring.companies.advanceCompanyPurge,
+          args,
+        );
+        return { status: "candidates" };
+      }
+    }
+    if (phase === "candidates") {
+      const candidatePurge = await purgeCompanyCandidatesBatch(
+        ctx,
+        args.ownerAccountId,
+        args.companyId,
+      );
+      if (!candidatePurge.complete) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.companyMonitoring.companies.advanceCompanyPurge,
+          args,
+        );
+        return { status: "candidates" };
+      }
       await ctx.db.patch(company._id, { purgePhase: "payload", updatedAt: Date.now() });
+      if (candidatePurge.deleted > 0) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.companyMonitoring.companies.advanceCompanyPurge,
+          args,
+        );
+        return { status: "candidates" };
+      }
     }
     await ctx.db.patch(company._id, {
       name: undefined,
@@ -447,6 +523,8 @@ export const advanceCompanyPurge = internalMutation({
       importFingerprint: undefined,
       coverageState: undefined,
       observationState: undefined,
+      evidenceRevision: undefined,
+      recomputeRequiredAt: undefined,
       purgePhase: "complete",
       updatedAt: Date.now(),
     });

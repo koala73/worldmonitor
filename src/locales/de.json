@@ -77,6 +77,19 @@
       "activeStrikes": "{{count}} aktive Angriffe erkannt"
     },
     "militaryActivity": "Militärische Aktivität",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Wirtschaftsindikatoren",
     "ownFlights": "Eigene Flüge",
     "foreignFlights": "Ausländische Flüge",
@@ -177,6 +190,23 @@
       "corridorConditions": "Korridor-Bedingungen",
       "activityNowcast": "Aktivitäts-Nowcast",
       "decisionSignalsUnavailable": "Der China-Entscheidungssignal-Snapshot ist derzeit nicht verfügbar."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "header": {
@@ -446,7 +476,9 @@
         "displacement": "Vertreibungsströme umschalten",
         "climate": "Klimaanomalien umschalten",
         "outages": "Internetausfälle umschalten",
-        "tradeRoutes": "Handelsrouten umschalten"
+        "tradeRoutes": "Handelsrouten umschalten",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Zum Dunkelmodus wechseln",
@@ -608,7 +640,7 @@
         "URLHAUS_AUTH_KEY": "Wird für URLhaus- und ThreatFox-APIs verwendet.",
         "OTX_API_KEY": "Optionale Anreicherungsquelle für die Cyberbedrohungsebene.",
         "ABUSEIPDB_API_KEY": "Optionale Anreicherungsquelle für die Reputation bösartiger IPs.",
-        "FINNHUB_API_KEY": "Echtzeit-Aktienkurse und Marktdaten.",
+        "FINNHUB_API_KEY": "Verzögerte oder vorgeladene Aktienkurse und Marktdaten. Ein Schlüssel ist kein Live-Ticker.",
         "NASA_FIRMS_API_KEY": "Branderkennungssystem für Ressourcenmanagement.",
         "OLLAMA_API_URL": "z. B. http://127.0.0.1:11434 (Ollama) oder http://127.0.0.1:1234/v1 (LM Studio) – OpenAI-kompatibler Endpunkt.",
         "OLLAMA_MODEL": "z. B. llama3.1:8b – Modell-Tag, das für die Zusammenfassung verwendet wird."
@@ -840,7 +872,12 @@
       "loadingHistory": "Transitverlauf wird geladen…",
       "historyUnavailable": "Transitverlauf nicht verfügbar",
       "transitDataUnavailable": "Transitdaten nicht verfügbar (Upstream teilweise)",
-      "infoTooltip": "<strong>Supply Chain Monitor</strong> Globale Logistik- und Ressourcenverfolgung:<ul><li><strong>Engpässe</strong>: Status des Schiffsverkehrs, Disruptionswerte und Schiffszahlen</li><li><strong>Schifffahrt</strong>: Baltic Dry Index und Frachtrattentrends</li><li><strong>Mineralien</strong>: Kritisches Mineralkonzentrationsrisiko (HHI) und Top-Produzenten</li></ul>Klicken Sie auf eine Engpass-Karte, um das Transitverlaufsdiagramm zu erweitern."
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Globale Logistik- und Ressourcenverfolgung:<ul><li><strong>Engpässe</strong>: Status des Schiffsverkehrs, Disruptionswerte und Schiffszahlen</li><li><strong>Schifffahrt</strong>: Baltic Dry Index und Frachtrattentrends</li><li><strong>Mineralien</strong>: Kritisches Mineralkonzentrationsrisiko (HHI) und Top-Produzenten</li></ul>Klicken Sie auf eine Engpass-Karte, um das Transitverlaufsdiagramm zu erweitern.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "Zölle",
@@ -884,6 +921,7 @@
       "noComtradeData": "Keine Daten zu strategischen Flüssen verfügbar",
       "comtradeUnavailable": "UN Comtrade-Daten vorübergehend nicht verfügbar",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN-Comtrade-Zeilen sind offizielle Statistiken auf nationaler Ebene des meldenden Landes, keine Exporte einer Stadt, eines Korridors, einer Fabrik, eines Hafens oder einer Sendung.",
       "anomalyBadge": "Anomalie",
       "colReporter": "Land",
       "colCommodity": "Rohstoff",
@@ -979,7 +1017,7 @@
         "ucdpEvents": "Bewaffnete Konfliktereignisse",
         "displacementFlows": "Fluchtbewegungen",
         "climateAnomalies": "Klimaanomalien",
-        "weatherAlerts": "US-Wetterwarnungen (NWS)",
+        "weatherAlerts": "US- und Kanada-Wetterwarnungen (NWS, ECCC)",
         "strategicWaterways": "Engpässe",
         "economicCenters": "Wirtschaftszentren",
         "criticalMinerals": "Kritische Mineralien",
@@ -999,7 +1037,9 @@
         "speciesRecovery": "Artenerholung",
         "renewableInstallations": "Saubere Energie",
         "radiationSpike": "Strahlungsspitze",
-        "radiationElevated": "Erhöhte Strahlung"
+        "radiationElevated": "Erhöhte Strahlung",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC)"
       },
       "layersTitle": "Ebenen",
       "layerSearch": "Ebenen suchen...",
@@ -1067,7 +1107,7 @@
           "infraDatacenters": "KI-Rechencluster >=10.000 GPUs",
           "infraOutages": "Internetausfälle und Dienstunterbrechungen",
           "naturalEventsTech": "Erdbeben, Stürme, Brände (kann Rechenzentren beeinträchtigen)",
-          "weatherAlerts": "Unwetterwarnungen in den USA (NWS)",
+          "weatherAlerts": "Unwetterwarnungen in den USA und Kanada (NWS, ECCC)",
           "economicCenters": "Börsen & Zentralbanken",
           "countriesOverlay": "Ländernamen-Overlays",
           "financeExchanges": "Wichtige globale Börsen nach Marktebene",
@@ -1079,7 +1119,7 @@
           "financeOutages": "Internetstörungen, die sich auf den Marktbetrieb auswirken können",
           "financeCyberThreats": "Sicherheitsereignisse rund um die Finanzinfrastruktur",
           "macroWaterways": "Strategische Engpässe für die Rohstoffschifffahrt",
-          "weatherAlertsMarket": "Marktrelevante Unwetterereignisse in den USA (NWS)",
+          "weatherAlertsMarket": "Marktrelevante Unwetterereignisse in den USA und Kanada (NWS, ECCC)",
           "naturalEventsMacro": "Erdbeben, Brände, Überschwemmungen und andere natürliche Störungen",
           "timeRecent": "Zeitbasierte Daten auf die letzten Stunden filtern",
           "timeExtended": "Daten der letzten Woche, des letzten Monats oder aller Zeiten anzeigen",
@@ -1112,7 +1152,9 @@
           "techFires": "Aktive Waldbrände in der Nähe von Technologieinfrastruktur",
           "financeGulfInvestments": "GCC-Staatsfonds-Investitionen und ausländische Direktinvestitionen",
           "geoBoundaries": "Entmilitarisierte Zonen, Waffenstillstandslinien und umstrittene Grenzen",
-          "ciiChoropleth": "Country Instability Index Heatmap — färbt Länder nach CII-Wert ein (grün=stabil, rot=kritisch)"
+          "ciiChoropleth": "Country Instability Index Heatmap — färbt Länder nach CII-Wert ein (grün=stabil, rot=kritisch)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert and B.C. Evacuation Orders and Alerts"
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"
@@ -1873,7 +1915,7 @@
       "infoTooltip": "<strong>Krypto</strong> Live-Kurse, 24h-Veränderungen und Volumen der wichtigsten Kryptowährungen. Daten von CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Golf-Volkswirtschaften</strong> Echtzeit-Aktienindizes, Wechselkurse und Ölpreise der GCC-Staaten (Saudi-Arabien, VAE, Kuwait, Katar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Golf-Volkswirtschaften</strong> Vorgeladene Aktienindizes, Wechselkurse und Ölpreise der GCC-Staaten (Saudi-Arabien, VAE, Kuwait, Katar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Lebensmittelindex</strong> Globaler Preisvergleich eines Lebensmittelkorbs über 24 Länder – misst die tatsächliche Verbrauchsgüterinflation jenseits der Gesamt-Inflationsrate."
@@ -2135,7 +2177,7 @@
       "infoTooltip": "<strong>Katastrophen-Kaskadeneffekte</strong> Erkennt konvergierende Signale natürlicher Katastrophen und Infrastruktur:<ul><li>Korreliert Erdbeben, Waldbrände, Überschwemmungen und Wetterextreme</li><li>Verfolgt kaskadierende Effekte auf Infrastruktur und Lieferketten</li><li>Hebt Regionen mit zusammengesetztem Katastrophenrisiko hervor</li></ul>Klicken Sie auf eine Karte, um die betroffene Region zu vergrößern."
     },
     "markets": {
-      "infoTooltip": "<strong>Märkte</strong> Echtzeit-Börsenindizes, Aktien und Kryptowährungspreise. Passen Sie Ihre Beobachtungsliste mit der Schaltfläche Beobachtungsliste an. Sparklines zeigen aktuelle Preistrendentwicklung.",
+      "infoTooltip": "<strong>Märkte</strong> Verzögerte oder vorgeladene Börsenindizes, Aktien und Kryptowährungspreise. Passen Sie Ihre Beobachtungsliste mit der Schaltfläche Beobachtungsliste an. Sparklines zeigen aktuelle Preistrendentwicklung.",
       "chart": {
         "title": "{{symbol}} Preisdiagramm",
         "close": "Diagramm schließen"
@@ -2316,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "Sanktionen & Listungen",
-      "infoTooltip": "OFAC-Sanktionsdesignierungen aus der SDN und Consolidated Lists. Zeigt, welche Länder unter dem höchsten Designierungsdruck stehen, welche Programme dies vorantreiben, und was seit der letzten Aktualisierung neu hinzugekommen ist.",
+      "infoTooltip": "OFAC-SDN- und Consolidated Lists plus SEMA/JVCFOA-Listungen von Global Affairs Canada. Zeigt, welche Länder unter dem höchsten Designierungsdruck stehen, welche Programme dies vorantreiben, und was seit der letzten Aktualisierung neu hinzugekommen ist.",
       "loading": "Sanktionsdaten werden geladen...",
       "unavailable": "Sanktionsdaten nicht verfügbar.",
       "summary": {
         "new": "Neu",
         "vessels": "Schiffe",
-        "aircraft": "Flugzeuge"
+        "aircraft": "Flugzeuge",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Sanktionierte Länder",
@@ -2337,11 +2380,12 @@
       "footer": {
         "updated": "Aktualisiert {{time}}",
         "dataset": "Datensatz {{date}}",
-        "source": "Quelle: OFAC"
+        "source": "Quelle: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} neu",
-        "new": "neu"
+        "new": "neu",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} Listung",
       "designations_other": "{{count}} Listungen",
@@ -2778,6 +2822,7 @@
     "moreEvents": "weitere Ereignisse",
     "monitoring": "Überwachung",
     "viewUSGS": "Auf USGS ansehen",
+    "viewNRCan": "Auf Earthquakes Canada ansehen",
     "expired": "Abgelaufen",
     "timeAgo": {
       "s": "vor {{count}} s",

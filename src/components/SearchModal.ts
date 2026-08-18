@@ -5,6 +5,7 @@ import { trackSearchUsed } from '@/services/analytics';
 import { getAllCommands, type Command } from '@/config/commands';
 import { isMobileDevice } from '@/utils';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   ALL_CHANNEL_TIP_KEYS,
   SEARCH_SCOPES,
@@ -121,6 +122,7 @@ const SCOPE_LABELS: Record<SearchScope, string> = {
 export class SearchModal {
   private container: HTMLElement;
   private overlay: HTMLElement | null = null;
+  private focusTrap: FocusTrap | null = null;
   private input: HTMLInputElement | null = null;
   private resultsList: HTMLElement | null = null;
   private chipsContainer: HTMLElement | null = null;
@@ -266,7 +268,10 @@ export class SearchModal {
     this.activeScope = 'all';
     this.quickLaunchExamples = [];
     this.createModal();
-    this.input?.focus();
+    if (this.overlay) {
+      this.focusTrap = createFocusTrap(this.overlay, { initialFocus: () => this.input });
+      this.focusTrap.activate();
+    }
     this.showingAllCommands = false;
     if (this.isMobile) {
       const close = (origin: OverlayCloseOrigin) => this.close(origin);
@@ -281,6 +286,8 @@ export class SearchModal {
   public close(origin: OverlayCloseOrigin = 'control'): void {
     // Drop any pending debounced search so it can't fire against a torn-down modal.
     this.debouncedSearch.cancel();
+    this.focusTrap?.deactivate();
+    this.focusTrap = null;
     this.mobileInitialPopulationGeneration += 1;
     if (this.isMobile && origin === 'control') overlayHistory.close('search');
     if (this.viewportHandler && window.visualViewport) {
@@ -365,7 +372,7 @@ export class SearchModal {
           </div>
           <div class="search-sheet-header">
             <span class="search-sheet-icon" aria-hidden="true"></span>
-            <input type="text" class="search-input" placeholder="${this.placeholder}" autofocus />
+            <input type="text" class="search-input" placeholder="${this.placeholder}" aria-label="${this.placeholder}" autofocus />
             <button class="search-sheet-cancel" aria-label="Close">\u00D7</button>
           </div>
           ${this.renderScopeMarkup()}
@@ -411,7 +418,7 @@ export class SearchModal {
           </div>
           <div class="search-header">
             <span class="search-icon" aria-hidden="true"></span>
-            <input type="text" class="search-input" placeholder="${this.placeholder}" autofocus />
+            <input type="text" class="search-input" placeholder="${this.placeholder}" aria-label="${this.placeholder}" autofocus />
             <kbd class="search-kbd">ESC</kbd>
           </div>
           ${this.renderScopeMarkup()}

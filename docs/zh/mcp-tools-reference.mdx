@@ -515,6 +515,22 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_mineral_production`
+
+各国矿产开采与冶炼份额及 HHI，来自 USGS Mineral Commodity Summaries 年度种子（BGS 补 USGS 缺表的品种，尤其是铀）。用于“谁精炼 X / 某国生产什么”。矿床位置仍用 `get_commodity_geo`。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|-----:|------|
+| `commodity` | string | 否 | 品种 id 或名称（`cobalt`、`lithium`、`ree` 等） |
+| `iso2` | string | 否 | ISO 3166-1 alpha-2 生产国过滤 |
+| `stage` | string: mine / refinery | 否 | 限制为开采或冶炼阶段 |
+
+- **API 端点：** `GET /api/supply-chain/v1/get-mineral-production`
+- **类型：** 缓存读取 — Redis 种子 `supply-chain:mineral-production:v1`。
+- **新鲜度：** 年度 MCS 版本。USGS 的 W（withheld）保持标记，不会被当成 0。
+
 ### `get_commodity_geo`
 
 全球矿业地点，含坐标、运营商、矿产类型和生产状态。覆盖全球 71 座主要矿山，涵盖黄金、白银、铜、锂、铀、煤和其他矿物。
@@ -684,6 +700,7 @@ AI 生成的逐国情报简报。为给定国家生成 LLM 分析的地缘政治
 - **API 端点：** `GET /api/intelligence/v1/get-country-intel-brief`
 - **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。最坏情况总预算 **~24s**（2s 上下文摘要抓取 + 22s 简报生成，顺序执行）。
 - **来源：** 返回有界的 `sources` 数组，含来自用于为国家上下文提供依据的摘要条目的原始文章链接。URL 从订阅源数据复制，而非由 LLM 生成。
+- **交叉印证：** 为用作依据的摘要文章额外返回一个 `groundingStories` 数组，每项包含 `corroborationCount`（摘要生成时报道该故事的不同媒体数）、`mentionCount` 和生命周期 `storyPhase`。它独立于 `sources`（后者可能改为承载服务端依据集），并在摘要读取失败时为空。引用请使用 `sources`；使用 `groundingStories` 判断底层报道的充分程度。
 
 <CodeGroup>
 
@@ -716,6 +733,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **交叉印证：** 每个顶级故事都包含 `uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`、`sources` 中参与报道的媒体名称，以及 `memberTitles` 中该聚类的全部标题，另有 `lastUpdated`、`upstreamImportanceScore` 和 `effectiveImportanceScore`。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
 
 <CodeGroup>
@@ -745,7 +763,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/intelligence/v1/classify-event`
 - **类型：** 对 LLM 分类器的受约束规范路由代理。该操作此前以 `llm-passthrough` 理由被排除在 MCP 对等之外；按标题的 24 小时缓存吸收重复请求，且分类器输出上限为 50 个 token。
-- **配额：** 标准 —— OAuth（Pro）与仪表盘密钥上下文每次调用均消耗 MCP 每日预留（每 UTC 日 50 次）。环境 API 密钥（`wm_…`）调用方不受该每日预留约束，与其他所有 MCP 工具一样，仍受 60 次请求/分钟/密钥 的限流保护。
+- **配额：** 标准 —— OAuth 与控制面板签发的 `wm_…` 密钥上下文每次调用均消耗 MCP 每日预留（默认每 UTC 日 50 次）。只有部署中明确列入许可名单的旧版运营方密钥跳过每日预留；每个已认证上下文仍受每分钟 60 次的限流保护。
 
 <CodeGroup>
 
@@ -826,7 +844,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_keyword_spikes`
 
-相对基线的关键词、CVE 与 APT/FIN 威胁组织飙升趋势，使用与仪表盘趋势关键词引擎相同的词项候选与飙升判定数学（最低近期计数、严格基线倍数、来源多样性门槛）。工具会分别查询近期窗口与窗口前的基线数据，每组最多 800 条故事，因此高流量的近期窗口不会挤占基线样本。`baseline_hours` 报告实际采样的窗口前基线时长；`sample_truncated: true` 表示任一数据组触及上限。若没有窗口前故事，工具会返回空的飙升列表与明确的 `baseline unavailable` 说明，并且不会缓存该结果。结果按 `(window_hours, min_count)` 组合缓存 10 分钟。
+相对基线的关键词、CVE 与 APT/FIN 威胁组织飙升趋势，使用与仪表盘趋势关键词引擎相同的词项候选与飙升判定数学（最低近期计数、严格基线倍数、来源多样性门槛）。每条飙升包含 `sourceNames`（有对照表时为出版机构名称，否则为原始 feed 标签）以及最多三条 `{title, source, link}` 形式的 `sampleHeadlines`，以便代理归因并打开计数背后的报道。样本上的 `source` 是承载该折叠标题的全部出版机构；`link` 是规范的 `story:track:v1` URL，不一定属于某一个具名来源。工具会分别查询近期窗口与窗口前的基线数据，每组最多 800 条故事，因此高流量的近期窗口不会挤占基线样本。`baseline_hours` 报告实际采样的窗口前基线时长；`sample_truncated: true` 表示任一数据组触及上限。若没有窗口前故事，工具会返回空的飙升列表与明确的 `baseline unavailable` 说明，并且不会缓存该结果。结果按 `(window_hours, min_count)` 组合缓存 10 分钟。
 
 **参数（工具专用）：**
 
@@ -1398,7 +1416,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_airspace`
 
-某国上空的实时 ADS-B 航空器。返回民用航班（OpenSky）和识别出的军用飞机，含呼号、位置、高度和航向。回答诸如"现在阿联酋上空有多少架飞机？"或"台湾上空有军用飞机吗？"之类的问题。
+某国上空的实时 ADS-B 航空器。返回由 Wingbits 支持的民用航班，以及来自可再分发提供方的已识别军用飞机，含呼号、位置、高度和航向。回答诸如"现在阿联酋上空有多少架飞机？"或"台湾上空有军用飞机吗？"之类的问题。
 
 **参数：**
 
@@ -1622,7 +1640,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_natural_disasters`
 
-近期地震（USGS）、活跃野火（NASA FIRMS）和自然灾害事件。包含震级、位置和威胁严重程度。
+近期 M4.5+ 地震（USGS 与加拿大地震局 / NRCan）、活跃野火（NASA FIRMS）和自然灾害事件。包含震级、位置、来源和威胁严重程度。
 
 **参数（工具特定）：**
 
@@ -1796,6 +1814,7 @@ curl -s https://worldmonitor.app/mcp \
 - **API 端点：** `GET /api/infrastructure/v1/get-bootstrap-data?keys=insights` —— 通过已认证网关读取仪表板使用的同一 `news:insights:v1` payload。
 - **类型：** 缓存支撑的 RPC —— 返回最新的种子程序已接受快照，在缺失、过期或降级时 fail closed。不在请求时调用 LLM。
 - **来源：** 按生产者顺序返回种子 payload 发布的有界 `worldBriefSources` 数组。URL 从显式来源记录复制，而不是在 MCP 执行时生成；保留空 URL 回退项，避免引用编号错位。
+- **交叉印证：** `headlines` 中的每一项在 `topStories` 中都有一个按下标对齐的条目（`topStories[i]` 描述 `headlines[i]`），包含 `sourceCount`、`uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`，以及 `sources` 中参与报道的媒体名称（上限 12 个）。这些全部由洞察种子程序发布，因此不在请求时计算。注意这里每个故事的 `sources` 是媒体名称列表，与该工具顶层的 `sources`（承载引用记录）不同。`memberTitles` 在此处刻意不返回 —— 它可在输出预算更大的 `get_news_intelligence` 上获取。
 
 <CodeGroup>
 

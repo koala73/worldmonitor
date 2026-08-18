@@ -34,6 +34,7 @@ function emptyResponse(): ListSanctionsPressureResponse {
     newEntryCount: 0,
     vesselCount: 0,
     aircraftCount: 0,
+    semaCount: 0,
   };
 }
 
@@ -48,10 +49,12 @@ export const listSanctionsPressure: SanctionsServiceHandler['listSanctionsPressu
   try {
     const data = await getCachedJson(REDIS_CACHE_KEY, true) as ListSanctionsPressureResponse & { _state?: unknown } | null;
     if (!data?.totalCount) return emptyResponse();
-    const { _state: _discarded, ...rest } = data;
+    const { _state: _discarded, semaError, ...rest } = data;
     return {
       ...rest,
       entries: (data.entries ?? []).slice(0, maxItems),
+      semaCount: data.semaCount ?? 0,
+      ...(typeof semaError === 'string' && semaError ? { semaError } : {}),
     };
   } catch {
     return emptyResponse();

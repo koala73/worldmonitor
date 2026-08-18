@@ -105,7 +105,7 @@ If an event falls outside the priority centroid table, the fallback density uses
 
 ### Strategic Theater Posture Assessment
 
-Nine operational theaters are continuously assessed for military posture escalation:
+The operational-theater registry is continuously assessed for military posture escalation:
 
 | Theater               | Key Trigger                                 |
 | --------------------- | ------------------------------------------- |
@@ -165,7 +165,7 @@ Enrichment queries are batched (up to 50 aircraft per request) and cached with a
 
 ### Undersea Cable Health Monitoring
 
-Beyond displaying static cable routes on the map, the system actively monitors cable health by cross-referencing two live data sources:
+Beyond displaying static cable routes on the map, the system actively monitors cable health by cross-referencing its live sources:
 
 1. **NGA Navigational Warnings** — the U.S. National Geospatial-Intelligence Agency publishes maritime safety broadcasts that frequently mention cable repair operations. The system filters these warnings for cable-related keywords (`CABLE`, `CABLESHIP`, `SUBMARINE CABLE`, `FIBER OPTIC`, etc.) and extracts structured data: vessel names, DMS/decimal coordinates, advisory severity, and repair ETAs. Each warning is matched to the nearest cataloged undersea cable within a 5° geographic radius.
 
@@ -268,7 +268,7 @@ Every RSS headline is tokenized into individual terms and tracked in per-term fr
 
 The tokenizer extracts CVE identifiers (`CVE-2024-xxxxx`), APT/FIN threat actor designators, and 16 tracked world-leader names, including multi-word names such as "Xi Jinping" and "Kim Jong Un" that would be lost by naive whitespace splitting. A configurable blocklist suppresses common noise terms.
 
-Detected spikes are auto-summarized via Groq (rate-limited to 5 summaries/hour) and emitted as `keyword_spike` signals into the correlation engine, where they compound with other signal types for convergence detection. The term registry is capped at 10,000 entries with LRU eviction to bound memory usage. All thresholds (spike multiplier, min count, cooldown, blocked terms) are configurable via the Settings panel.
+Detected spikes are auto-summarized via Groq (rate-limited to 5 summaries/hour) and emitted as `keyword_spike` signals into the correlation engine, where they compound with other signal types for convergence detection. Each emitted signal carries the evidence it was built from — the distinct source names behind its source count, and up to 6 contributing articles with their title, source, link and publication time when supplied by the feed — so the alert can be drilled into rather than only silenced. The term registry is capped at 10,000 entries with LRU eviction to bound memory usage. All thresholds (spike multiplier, min count, cooldown, blocked terms) are configurable via the Settings panel.
 
 ### Temporal Baseline Anomaly Detection
 

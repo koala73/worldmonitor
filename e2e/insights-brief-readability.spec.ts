@@ -26,6 +26,10 @@ const insightsFixture = {
     primaryLink: 'https://example.com/story-1',
     pubDate: '2026-08-02T10:00:00.000Z',
     sourceCount: 8,
+    // #6428: the corroboration badge reads publishers, not articles. Without
+    // this the fixture renders no badge at all, and the spec would still pass
+    // while covering a state the seeder never produces.
+    uniqueSourceCount: 4,
     importanceScore: 1,
     velocity: { level: 'normal', sourcesPerHour: 0 },
     isAlert: false,

@@ -56,12 +56,22 @@ describe('scripts/shared/ stays in sync with shared/', () => {
     'brief-llm-core.js',
     'brief-llm-core.d.ts',
     'correlation-runtime-mode.js',
+    // #6428: publisher-family resolution for corroboration counting, consumed
+    // by scripts/_clustering.mjs (Railway rootDirectory=scripts) and by the
+    // edge digest. Must stay byte-identical.
+    'publisher-families.js',
+    'publisher-families.d.ts',
     // U6/U7: pure URL classifier consumed by the brief filter (edge) AND
     // by the audit script under scripts/. Must stay byte-identical.
     'url-classifier.js',
   ]);
+  // The attribution manifest is canonical at shared/ and is consumed by
+  // repository-rooted build tooling. It is not a scripts-runtime input, so a
+  // second committed copy would recreate the shared-file merge hotspot.
+  const canonicalOnlyFiles = new Set(['source-attribution-manifest.json']);
   const sharedFiles = readdirSync(sharedDir).filter(
-    (f) => f.endsWith('.json') || f.endsWith('.cjs') || explicitMirroredFiles.has(f),
+    (f) => !canonicalOnlyFiles.has(f)
+      && (f.endsWith('.json') || f.endsWith('.cjs') || explicitMirroredFiles.has(f)),
   );
   for (const file of sharedFiles) {
     it(`scripts/shared/${file} matches shared/${file}`, () => {

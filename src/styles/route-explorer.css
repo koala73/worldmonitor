@@ -41,7 +41,7 @@
 
 .re-querybar__back {
   padding: 4px 10px;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   background: none;
   border: 1px solid var(--border-dim, #30363d);
   border-radius: 6px;
@@ -51,7 +51,7 @@
 .re-querybar__back:hover { color: var(--text-primary, #c9d1d9); }
 
 .re-querybar__arrow {
-  font-size: 18px;
+  font-size: calc(18px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim, #8b949e);
 }
 
@@ -64,7 +64,7 @@
 .re-picker__input {
   width: 140px;
   padding: 6px 10px;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   background: var(--bg-secondary, #161b22);
   border: 1px solid var(--border-dim, #30363d);
   border-radius: 6px;
@@ -100,7 +100,7 @@
   padding: 6px 10px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
 }
 .re-picker__item:hover { background: var(--bg-hover, #1f2937); }
 .re-picker__item--active {
@@ -108,14 +108,14 @@
   outline: 2px solid var(--accent, #58a6ff);
 }
 
-.re-picker__flag { font-size: 16px; }
+.re-picker__flag { font-size: calc(16px * var(--wm-panel-effective-scale, 1)); }
 .re-picker__name { flex: 1; }
-.re-picker__code { color: var(--text-dim, #8b949e); font-size: 11px; }
+.re-picker__code { color: var(--text-dim, #8b949e); font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
 
 .re-picker__empty {
   padding: 12px;
   color: var(--text-dim, #8b949e);
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   text-align: center;
 }
 
@@ -129,7 +129,7 @@
 
 .re-cargo__select {
   padding: 6px 8px;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   background: var(--bg-secondary, #161b22);
   border: 1px solid var(--border-dim, #30363d);
   border-radius: 6px;
@@ -137,7 +137,7 @@
 }
 
 .re-cargo__auto {
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   padding: 1px 5px;
   border-radius: 3px;
   background: var(--accent-bg, #1f3a5f);
@@ -163,7 +163,7 @@
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-dim, #8b949e);
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
@@ -174,7 +174,7 @@
 }
 
 .re-tabstrip__digit {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   width: 18px;
   height: 18px;
   display: inline-flex;
@@ -218,7 +218,7 @@
 }
 
 .re-leftrail__title {
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -231,7 +231,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 4px 0;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
 }
 
 .re-leftrail__label { color: var(--text-dim, #8b949e); }
@@ -241,7 +241,7 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim, #8b949e);
 }
 
@@ -249,7 +249,7 @@
 .re-leftrail__empty,
 .re-leftrail__placeholder-text {
   color: var(--text-dim, #8b949e);
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   text-align: center;
   padding: 20px 0;
 }
@@ -281,7 +281,7 @@
 .re-tab__placeholder,
 .re-tab__empty {
   color: var(--text-dim, #8b949e);
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   padding: 20px;
   text-align: center;
 }
@@ -304,25 +304,25 @@
 
 .re-current__label {
   display: block;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim, #8b949e);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 4px;
 }
 
-.re-current__value { font-size: 16px; font-weight: 600; }
+.re-current__value { font-size: calc(16px * var(--wm-panel-effective-scale, 1)); font-weight: 600; }
 
 .re-current__chokepoints {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
 }
 
 .re-current__chokepoints th {
   text-align: left;
   padding: 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-dim, #8b949e);
@@ -391,13 +391,13 @@
   border-radius: 50%;
   background: var(--accent-bg, #1f3a5f);
   color: var(--accent, #58a6ff);
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
 }
 
-.re-route-card__name { font-weight: 500; font-size: 14px; }
+.re-route-card__name { font-weight: 500; font-size: calc(14px * var(--wm-panel-effective-scale, 1)); }
 .re-route-card__status {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim, #8b949e);
   font-style: italic;
 }
@@ -405,7 +405,7 @@
 .re-route-card__meta {
   display: flex;
   gap: 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim, #8b949e);
 }
 
@@ -425,13 +425,13 @@
 /* ─── Land tab ──────────────────────────────────────────────────────── */
 
 .re-land__header {
-  font-size: 14px;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   margin: 0 0 10px;
 }
 
 .re-land__other-header {
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim, #8b949e);
   margin: 16px 0 8px;
 }
@@ -467,17 +467,17 @@
   margin-bottom: 16px;
 }
 
-.re-help__title { font-weight: 600; font-size: 15px; }
+.re-help__title { font-weight: 600; font-size: calc(15px * var(--wm-panel-effective-scale, 1)); }
 
 .re-help__close {
   background: none;
   border: none;
   color: var(--text-dim, #8b949e);
-  font-size: 20px;
+  font-size: calc(20px * var(--wm-panel-effective-scale, 1));
   cursor: pointer;
 }
 
-.re-help__table { width: 100%; font-size: 13px; }
+.re-help__table { width: 100%; font-size: calc(13px * var(--wm-panel-effective-scale, 1)); }
 .re-help__table tr + tr td { padding-top: 6px; }
 .re-help__key { padding-right: 16px; white-space: nowrap; }
 .re-help__key kbd {
@@ -486,7 +486,7 @@
   border: 1px solid var(--border-dim, #30363d);
   border-radius: 4px;
   font-family: var(--font-mono, monospace);
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
 }
 .re-help__label { color: var(--text-dim, #8b949e); }
 
@@ -495,7 +495,7 @@
 .re-impact__banner {
   padding: 10px 14px;
   margin-bottom: 16px;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim, #8b949e);
   background: var(--bg-secondary, #161b22);
   border: 1px solid var(--border-dim, #21262d);
@@ -512,13 +512,13 @@
 }
 
 .re-impact__lane-value {
-  font-size: 28px;
+  font-size: calc(28px * var(--wm-panel-effective-scale, 1));
   font-weight: 700;
   color: var(--accent, #58a6ff);
 }
 
 .re-impact__lane-label {
-  font-size: 12px;
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim, #8b949e);
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -526,7 +526,7 @@
 }
 
 .re-impact__lane-exporter {
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim, #8b949e);
   margin-top: 6px;
 }
@@ -540,7 +540,7 @@
 
 .re-impact__flag {
   padding: 3px 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   border-radius: 4px;
   font-weight: 500;
 }
@@ -554,14 +554,14 @@
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  font-size: 14px;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   margin-bottom: 16px;
   color: var(--text-dim, #8b949e);
 }
 
 .re-resilience-confidence,
 .re-resilience-interval {
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim, #8b949e);
 }
 
@@ -570,7 +570,7 @@
 }
 
 .re-impact__products-title {
-  font-size: 14px;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   margin: 0 0 10px;
 }
@@ -578,13 +578,13 @@
 .re-impact__products {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
 }
 
 .re-impact__products th {
   text-align: left;
   padding: 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-dim, #8b949e);
@@ -612,7 +612,7 @@
 
 .re-leftrail__flag {
   padding: 2px 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   border-radius: 3px;
   font-weight: 500;
 }
@@ -638,14 +638,14 @@
 .re-content__gate h3 {
   margin: 0 0 12px;
   color: var(--text-primary, #c9d1d9);
-  font-size: 18px;
+  font-size: calc(18px * var(--wm-panel-effective-scale, 1));
 }
 
 .re-content__gate ul {
   text-align: left;
   margin: 0 0 16px;
   padding-left: 20px;
-  font-size: 14px;
+  font-size: calc(14px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim, #8b949e);
 }
 
@@ -655,7 +655,7 @@
   color: #fff;
   border: none;
   border-radius: 8px;
-  font-size: 15px;
+  font-size: calc(15px * var(--wm-panel-effective-scale, 1));
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;

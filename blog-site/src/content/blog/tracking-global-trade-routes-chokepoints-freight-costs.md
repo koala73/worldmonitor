@@ -9,7 +9,7 @@ pubDate: "2026-03-15"
 modifiedDate: "2026-07-22"
 ---
 
-> **Key Takeaways:** In the March 15, 2026 snapshot, Strait of Hormuz traffic was down 94.4%. World Monitor monitors 13 waterways, nine freight indices, WTO trade policy, and critical-mineral concentration in one dashboard.
+> **Key Takeaways:** In the March 15, 2026 snapshot, Strait of Hormuz traffic was down 94.4%. World Monitor combines its canonical waterway registry, freight indices, WTO trade policy, and critical-mineral concentration in one dashboard.
 
 The Strait of Hormuz carries about 20% of global petroleum liquids consumption. In the March 15, 2026 snapshot, [World Monitor's](https://www.worldmonitor.app) chokepoint tracker showed traffic down 94.4% week-over-week, with tanker transits falling from 60+ daily to single digits and a 99% disruption score.
 
@@ -148,7 +148,7 @@ About 20% of global petroleum liquids consumption and a major share of LNG trade
 
 **What are the world's most critical shipping chokepoints?**
 
-World Monitor monitors 13 waterways: Hormuz, Malacca, Suez/SUMED, Bab el-Mandeb, Panama, Taiwan, Cape of Good Hope, Gibraltar, Bosporus, Korea, Dover, Kerch, and Lombok. Seven currently have EIA-backed oil or gas flow baselines; all 13 can carry traffic, warning, threat, and disruption context. See the [maritime chokepoint methodology](/blog/posts/what-is-a-maritime-chokepoint/) for the canonical registry and coverage limits.
+World Monitor monitors its canonical waterway registry, including Hormuz, Malacca, Suez/SUMED, Bab el-Mandeb, Panama, Taiwan, Cape of Good Hope, Gibraltar, Bosporus, Korea, Dover, Kerch, and Lombok. Entries with EIA-backed oil or gas baselines publish flow estimates; every entry can carry traffic, warning, threat, and disruption context. See the [maritime chokepoint methodology](/blog/posts/what-is-a-maritime-chokepoint/) for the registry and coverage limits.
 
 ---
 

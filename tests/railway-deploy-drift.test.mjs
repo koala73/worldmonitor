@@ -11,19 +11,25 @@
 // commit, and the first is why "the service has deployments" cannot be assumed
 // to mean it received the merge.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
+  DEEP_PASS_MAX_CANDIDATES,
+  DEEP_PASS_RUN_BUDGET_MS,
   UNDETERMINABLE_VERDICTS,
   classifyServiceDeploy,
+  classifyFleetWithinDeadline,
+  deepenNoBuildWindows,
+  formatComparisonHead,
+  resolveDeepPassDeadlineAt,
   isProblemVerdict,
-  missingBaselinedServices,
   readRepeatedArguments,
+  resolveComparisonHead,
+  resolveOriginMainRelation,
   summarizeDeployDrift,
   summarizeStrictDeployDrift,
 } from '../scripts/check-railway-deploy-drift.mjs';
-import { validateAcceptanceBaseline } from '../scripts/check-seed-freshness.mjs';
 import { resolveServiceClosure } from '../scripts/railway-deploy-closure.mjs';
 
 const HEAD = '1d9dcd0ef0d282961e6af75bbe469478ef57c22f';
@@ -189,6 +195,18 @@ describe('Railway deploy drift classification', () => {
     assert.equal(undecidable.verdict, 'BEHIND');
   });
 
+  it('reports AHEAD before a stale comparison-head build failure', () => {
+    const result = classify([
+      deployment('SUCCESS', { at: '2026-08-04T05:09:00Z', sha: NEWER }),
+      deployment('FAILED', { at: '2026-08-04T05:08:00Z', sha: HEAD }),
+      deployment('SUCCESS', { at: '2026-08-04T05:00:00Z', sha: PREVIOUS }),
+    ], {
+      isAncestor: (ancestor, descendant) => ancestor === HEAD && descendant === NEWER,
+    });
+    assert.equal(result.verdict, 'AHEAD');
+    assert.equal(result.runningSha, NEWER);
+  });
+
   // Ancestry must not excuse a rejection: the service can be running a
   // descendant of the head we read and still have had a later push refused.
   it('reports a rejected push even when the running build is ahead of head', () => {
@@ -267,8 +285,8 @@ describe('Railway deploy drift classification', () => {
   // A cron tick is a REDEPLOY of the same image, so it proves nothing about the
   // source. Superseding rejections by deployment TIMESTAMP let the 05:10 tick
   // bury the 05:06 rejection: the verdict decayed from REJECTED_PUSH to BEHIND,
-  // the rejection evidence vanished, and — because the baseline matches on
-  // service:verdict — the service's acknowledgement silently stopped applying.
+  // the rejection evidence vanished and the report lost the more specific
+  // refusal diagnosis.
   it('does not let a cron tick of the same image bury a rejection', () => {
     const result = classify([
       deployment('REMOVED', { at: '2026-08-04T05:10:28Z', sha: PREVIOUS }),
@@ -349,12 +367,18 @@ describe('Railway deploy drift classification', () => {
     assert.equal(isProblemVerdict(result.verdict), true);
   });
 
-  it('reports a window that holds only rejections', () => {
+  it('reports a window that holds only rejections as an unidentified source', () => {
+    // No running record anywhere in the window: the check knows a push was
+    // refused but not what the container is serving. That is an undeterminable
+    // answer wearing a determinate-looking name, so it gets its own verdict —
+    // as plain REJECTED_PUSH it looked more determinate than the evidence
+    // supported (#6483 review).
     const result = classify([
       deployment('SKIPPED', { at: '2026-08-04T05:06:28Z', sha: HEAD }),
     ]);
-    assert.equal(result.verdict, 'REJECTED_PUSH');
+    assert.equal(result.verdict, 'REJECTED_PUSH_UNKNOWN_SOURCE');
     assert.equal(result.runningSha, null);
+    assert.equal(isProblemVerdict(result.verdict), true);
   });
 
   // Railway can add a status at any time. An unmatched status must not fall
@@ -393,9 +417,9 @@ describe('Railway deploy drift classification', () => {
 //
 // Before this, "not running head" was the whole definition of drift, so the 62
 // services that carry a filter reported REJECTED_PUSH on every merge that was
-// none of their business. That is how the baseline came to acknowledge most of
-// the fleet. Re-measured, 7,331 of 7,391 path-reason skips across 600 commits
-// were the filter working correctly.
+// none of their business. That is how the removed suppression baseline came to
+// acknowledge most of the fleet. Re-measured, 7,331 of 7,391 path-reason skips
+// across 600 commits were the filter working correctly.
 describe('Railway deploy drift against the service closure', () => {
   const SCRIPTS_SEEDER = resolveServiceClosure({
     liveService: {
@@ -448,8 +472,8 @@ describe('Railway deploy drift against the service closure', () => {
   });
 
   it('stops reporting a refusal of a push that could not have reached the service', () => {
-    // The 62-entry baseline in one assertion: a SKIPPED record for a commit
-    // this container cannot be affected by is the filter working.
+    // The old 62-entry false-positive cohort in one assertion: a SKIPPED record
+    // for a commit this container cannot be affected by is the filter working.
     const result = classifyWithClosure([
       deployment('SKIPPED', { at: '2026-08-04T05:06:00Z', sha: HEAD }),
       deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS }),
@@ -482,8 +506,7 @@ describe('Railway deploy drift against the service closure', () => {
     // The service IS behind, but not because Railway refused anything that
     // mattered: the refusals it recorded were for commits it cannot see, and
     // the commit that does reach it was never recorded at all. That is #6064's
-    // failure, and calling it REJECTED_PUSH routes it to the wrong owner — and,
-    // because the baseline matches on service:verdict, to the wrong entry.
+    // failure, and calling it REJECTED_PUSH routes it to the wrong owner.
     const unrelated = 'dddddddd000000000000000000000000000000aa';
     const result = classifyWithClosure([
       deployment('SKIPPED', { at: '2026-08-04T05:06:00Z', sha: unrelated, skippedReason: 'No changes to watched files' }),
@@ -567,10 +590,8 @@ describe('Railway deploy drift summary', () => {
     { service: 'c', verdict: 'REJECTED_PUSH' },
     { service: 'd', verdict: 'BEHIND' },
   ];
-  const NOW = Date.parse('2026-08-04T06:00:00.000Z');
-  const baseline = (acknowledged, expiresAt = '2026-09-04') => ({ expiresAt, acknowledged });
 
-  it('counts every verdict and names only the problems', () => {
+  it('counts every verdict and makes every problem directly blocking', () => {
     const summary = summarizeDeployDrift(results);
     assert.deepEqual(summary.counts, {
       CURRENT: 1,
@@ -578,7 +599,9 @@ describe('Railway deploy drift summary', () => {
       REJECTED_PUSH: 1,
       BEHIND: 1,
     });
-    assert.deepEqual(summary.problems.map((entry) => entry.service), ['c', 'd']);
+    assert.deepEqual(summary.blocking.map((entry) => entry.service), ['c', 'd']);
+    assert.equal(Object.hasOwn(summary, 'problems'), false);
+    assert.equal(Object.hasOwn(summary, 'acknowledged'), false);
     assert.equal(summary.ok, false);
   });
 
@@ -593,168 +616,21 @@ describe('Railway deploy drift summary', () => {
   it('is ok only when every service is current or building', () => {
     const summary = summarizeDeployDrift(results.slice(0, 2));
     assert.equal(summary.ok, true);
-    assert.deepEqual(summary.problems, []);
-  });
-
-  it('stops an acknowledged service from blocking while still reporting it', () => {
-    const summary = summarizeDeployDrift(
-      results.slice(0, 3),
-      baseline([{ name: 'c', status: 'REJECTED_PUSH', issue: 6141 }]),
-      NOW,
-    );
-    assert.equal(summary.ok, true);
     assert.deepEqual(summary.blocking, []);
-    assert.deepEqual(summary.acknowledged.map((entry) => entry.service), ['c']);
   });
 
-  // A service failing a DIFFERENT way than the one that was acknowledged is a
-  // new failure wearing an old name.
-  it('blocks a service whose verdict is not the one baselined', () => {
-    const summary = summarizeDeployDrift(
-      results,
-      baseline([{ name: 'd', status: 'REJECTED_PUSH', issue: 6064 }]),
-      NOW,
+  it('ships no acceptance file or summary field that can suppress deploy drift', () => {
+    assert.equal(
+      existsSync(new URL('../scripts/railway-deploy-drift-baseline.json', import.meta.url)),
+      false,
     );
-    assert.deepEqual(summary.blocking.map((entry) => entry.service), ['c', 'd']);
+    const summary = summarizeDeployDrift([
+      { service: 'known-old-failure', verdict: 'BUILD_FAILED', detail: 'still failed' },
+    ]);
     assert.equal(summary.ok, false);
-  });
-
-  it('reports a recovered baseline entry without failing the run', () => {
-    // `d` is still in the fleet and now reports CURRENT — that is recovery.
-    // A baselined service MISSING from the fleet is a different thing entirely
-    // and is covered by the fleet-floor test above.
-    const summary = summarizeDeployDrift(
-      [...results.slice(0, 2), { service: 'd', verdict: 'CURRENT' }],
-      baseline([{ name: 'd', status: 'BEHIND', issue: 6064 }]),
-      NOW,
-    );
-    assert.equal(summary.ok, true);
-    assert.deepEqual(summary.cleared.map((entry) => entry.name), ['d']);
-    assert.deepEqual(summary.missing, []);
-  });
-
-  // A baselined service that vanished from the queried fleet is UNCHECKED, not
-  // recovered. Reporting it as "recovered, prune it" would retire the only
-  // watch on a service that may still be serving stale code.
-  it('never reports a service that left the fleet as recovered', () => {
-    const summary = summarizeDeployDrift(
-      results.slice(0, 2),
-      baseline([{ name: 'gone', status: 'BEHIND', issue: 6142 }]),
-      NOW,
-    );
-    assert.deepEqual(summary.missing, ['gone']);
-    assert.deepEqual(summary.cleared, []);
-    assert.equal(summary.ok, false);
-  });
-
-  it('names every baselined service absent from the checked fleet', () => {
-    assert.deepEqual(
-      missingBaselinedServices(
-        [{ service: 'a', verdict: 'CURRENT' }],
-        { expiresAt: '2026-09-04', acknowledged: [{ name: 'a', status: 'BEHIND', issue: 1 }, { name: 'b', status: 'BEHIND', issue: 1 }] },
-      ),
-      ['b'],
-    );
-  });
-
-  // Anti-rot: a suppression that outlives its cause is how a fleet ends up
-  // silently a week behind with a green monitor.
-  //
-  // `c` is acknowledged AND present in the fleet on purpose: that leaves
-  // `blocking` and `missing` both empty, so the expiry is the ONLY thing that
-  // can make this run fail. A fixture that also blocked or went missing would
-  // pass with the expiry check deleted.
-  it('fails once the baseline expires, even with nothing else wrong', () => {
-    const summary = summarizeDeployDrift(
-      results.slice(0, 3),
-      baseline([{ name: 'c', status: 'REJECTED_PUSH', issue: 6141 }], '2026-08-01'),
-      NOW,
-    );
-    assert.deepEqual(summary.blocking, []);
-    assert.deepEqual(summary.missing, []);
-    assert.equal(summary.expired, true);
-    assert.equal(summary.ok, false);
-  });
-
-  // The companion to the rule above, and the reason pruning the last entry is
-  // safe: the expiry governs SUPPRESSIONS. With none left there is nothing to
-  // re-review, so a passed date must not redden a monitor whose whole fleet is
-  // on head — this file is emptied the moment the fleet recovers (#6064), and a
-  // date-triggered failure over an empty list is noise that trains people to
-  // ignore this check.
-  it('does not expire a baseline that suppresses nothing', () => {
-    const summary = summarizeDeployDrift(
-      results.slice(0, 2),
-      baseline([], '2026-08-01'),
-      NOW,
-    );
-    assert.equal(summary.expired, false);
-    assert.equal(summary.ok, true);
-  });
-});
-
-describe('the shipped deploy-drift baseline', () => {
-  const baseline = JSON.parse(
-    readFileSync(new URL('../scripts/railway-deploy-drift-baseline.json', import.meta.url), 'utf8'),
-  );
-
-  it('is a valid baseline every entry of which names an owner issue', () => {
-    assert.equal(validateAcceptanceBaseline(baseline), baseline);
-    for (const entry of baseline.acknowledged) {
-      assert.ok(entry.reason, `${entry.name} must say why it is acknowledged`);
-    }
-  });
-
-  // This file used to hold 62 REJECTED_PUSH entries — every service carrying a
-  // watch-path filter — because the check demanded that a filtered service run
-  // HEAD. It does not any more; those services report CURRENT_FOR_CLOSURE.
-  // Re-adding them would suppress a verdict that now means something real:
-  // Railway refused a push that DID reach the service.
-  it('no longer suppresses the fleet-wide rejections #6142 removed', () => {
-    const owned = baseline.acknowledged.filter((entry) => entry.issue === 6142);
-    assert.deepEqual(
-      owned.map((entry) => `${entry.name}:${entry.status}`),
-      [],
-      'the closure-aware check reports these healthy — acknowledging them again would hide a real refusal',
-    );
-  });
-
-  // A partial hand-edit during pruning leaves the file looking maintained while
-  // quietly disagreeing with itself, so entries that share an owner must share
-  // the sentence that explains them.
-  it('keeps one canonical reason per owner issue', () => {
-    const byIssue = new Map();
-    for (const entry of baseline.acknowledged) {
-      if (!byIssue.has(entry.issue)) byIssue.set(entry.issue, new Set());
-      byIssue.get(entry.issue).add(entry.reason);
-    }
-    for (const [issue, reasons] of byIssue) {
-      assert.equal(reasons.size, 1, `entries acknowledged against #${issue} must share one reason string`);
-    }
-  });
-
-  // A verdict that means "this check could not determine anything" is not a
-  // degradation anyone can accept — acknowledging one converts an unreadable
-  // answer into a green one, which is the failure mode this whole issue is
-  // about.
-  it('never acknowledges a verdict that means the check failed', () => {
-    // Derived from the check, never re-typed here: a hand-copied list stops
-    // covering the next can't-tell verdict the moment one is added, which is
-    // how CLOSURE_UNKNOWN would have become baselineable.
-    const undeterminable = baseline.acknowledged.filter((entry) =>
-      UNDETERMINABLE_VERDICTS.includes(entry.status));
-    assert.deepEqual(
-      undeterminable.map((entry) => entry.name),
-      [],
-      'these verdicts mean the check does not know, not that the degradation is accepted',
-    );
-  });
-
-  // Entries are matched by exact name, so a wildcard would silently match
-  // nothing while reading like it covers a family of services.
-  it('names services exactly rather than by pattern', () => {
-    for (const entry of baseline.acknowledged) {
-      assert.doesNotMatch(entry.name, /[*?[\]]/, `${entry.name} must be an exact service name`);
+    assert.deepEqual(summary.blocking.map((entry) => entry.service), ['known-old-failure']);
+    for (const field of ['acknowledged', 'cleared', 'escalated', 'missing', 'expired', 'expiresAt']) {
+      assert.equal(Object.hasOwn(summary, field), false, `${field} must not survive baseline removal`);
     }
   });
 });
@@ -775,7 +651,7 @@ describe('strict terminal reconciliation drift', () => {
     assert.deepEqual(summary.blocking, []);
   });
 
-  it('rejects an AHEAD descendant unless strict mode proves it is on authorized main', () => {
+  it('rejects an AHEAD descendant unless the summary proves it is on authorized main', () => {
     const arbitraryDescendant = { ...result('a', 'AHEAD'), runningSha: NEWER };
     const unproven = summarizeStrictDeployDrift([arbitraryDescendant], ['a']);
     assert.equal(unproven.ok, false);
@@ -787,12 +663,18 @@ describe('strict terminal reconciliation drift', () => {
     assert.equal(offMain.ok, false);
     assert.equal(offMain.blocking[0].verdict, 'AHEAD_LINEAGE_UNPROVEN');
 
-    const ordinary = summarizeDeployDrift([arbitraryDescendant]);
-    assert.equal(ordinary.ok, true);
-    assert.deepEqual(ordinary.blocking, []);
+    const ordinaryUnproven = summarizeDeployDrift([arbitraryDescendant]);
+    assert.equal(ordinaryUnproven.ok, false);
+    assert.equal(ordinaryUnproven.blocking[0].verdict, 'AHEAD_LINEAGE_UNPROVEN');
+
+    const ordinaryProven = summarizeDeployDrift([arbitraryDescendant], {
+      isOnAuthorizedMainLineage: (sha) => sha === NEWER,
+    });
+    assert.equal(ordinaryProven.ok, true);
+    assert.deepEqual(ordinaryProven.blocking, []);
   });
 
-  it('rejects pending builds, baselineable problems, duplicates, and omitted services', () => {
+  it('rejects pending builds, directly blocking problems, duplicates, and omitted services', () => {
     const pending = summarizeStrictDeployDrift([result('a', 'PENDING_BUILD')], ['a']);
     assert.equal(pending.ok, false);
     assert.equal(pending.blocking[0].verdict, 'PENDING_BUILD');
@@ -808,11 +690,11 @@ describe('strict terminal reconciliation drift', () => {
     assert.equal(duplicate.ok, false);
     assert.deepEqual(duplicate.duplicates, ['a']);
 
-    const baselinedInOrdinaryMonitor = summarizeStrictDeployDrift([
+    const failedBuild = summarizeStrictDeployDrift([
       result('a', 'BUILD_FAILED'),
     ], ['a']);
-    assert.equal(baselinedInOrdinaryMonitor.ok, false);
-    assert.equal(baselinedInOrdinaryMonitor.blocking[0].verdict, 'BUILD_FAILED');
+    assert.equal(failedBuild.ok, false);
+    assert.equal(failedBuild.blocking[0].verdict, 'BUILD_FAILED');
   });
 
   it('compares live results with the immutable expected fleet', () => {
@@ -835,6 +717,119 @@ describe('strict terminal reconciliation drift', () => {
     );
   });
 
+  it('refreshes origin/main before a manual comparison and reports an exact relation', () => {
+    const calls = [];
+    let refreshed = false;
+    const git = (args) => {
+      calls.push(args);
+      if (args[0] === 'fetch') {
+        refreshed = true;
+        return '';
+      }
+      assert.equal(args.at(-1), 'origin/main^{commit}');
+      return refreshed ? HEAD : PREVIOUS;
+    };
+    const result = resolveComparisonHead(['node', 'script'], { git });
+    assert.deepEqual(result, {
+      headSha: HEAD,
+      headSource: 'origin/main',
+      originMainSha: HEAD,
+      originMainRelation: 'exact',
+    });
+    assert.equal(formatComparisonHead(result), 'source=origin/main vs-origin-main=exact');
+    assert.deepEqual(calls, [
+      [
+        'fetch',
+        '--quiet',
+        'origin',
+        '+refs/heads/main:refs/remotes/origin/main',
+      ],
+      ['rev-parse', '--verify', '--end-of-options', 'origin/main^{commit}'],
+    ]);
+  });
+
+  it('reports an explicit stale head as behind origin/main', () => {
+    const result = resolveComparisonHead(['node', 'script', '--head', PREVIOUS], {
+      git: (args) => {
+        if (args.at(-1) === 'origin/main^{commit}') return HEAD;
+        if (args.at(-1) === `${PREVIOUS}^{commit}`) return PREVIOUS;
+        throw new Error(`unexpected git call: ${args.join(' ')}`);
+      },
+      ancestry: (ancestor, descendant) => (
+        ancestor === PREVIOUS && descendant === HEAD ? 'yes' : 'no'
+      ),
+    });
+    assert.equal(result.headSha, PREVIOUS);
+    assert.equal(result.headSource, '--head');
+    assert.equal(result.originMainRelation, 'behind');
+    assert.equal(formatComparisonHead(result), 'source=--head vs-origin-main=behind');
+  });
+
+  it('fails a manual comparison when main cannot be refreshed', () => {
+    const calls = [];
+    assert.throws(
+      () => resolveComparisonHead(['node', 'script'], {
+        git: (args) => {
+          calls.push(args);
+          throw new Error('fetch failed');
+        },
+      }),
+      /fetch failed/,
+    );
+    assert.deepEqual(calls, [[
+      'fetch',
+      '--quiet',
+      'origin',
+      '+refs/heads/main:refs/remotes/origin/main',
+    ]]);
+  });
+
+  it('treats an explicit comparison ref as data, never as a git option', () => {
+    const calls = [];
+    resolveComparisonHead(['node', 'script', '--head=--upload-pack=evil'], {
+      git: (args) => {
+        calls.push(args);
+        return HEAD;
+      },
+    });
+    assert.deepEqual(calls.at(-1), [
+      'rev-parse',
+      '--verify',
+      '--end-of-options',
+      '--upload-pack=evil^{commit}',
+    ]);
+  });
+
+  it('keeps an explicit head usable when origin/main is unavailable', () => {
+    const result = resolveComparisonHead(['node', 'script', '--head', HEAD], {
+      git: (args) => {
+        if (args.at(-1) === 'origin/main^{commit}') throw new Error('missing ref');
+        if (args.at(-1) === `${HEAD}^{commit}`) return HEAD;
+        throw new Error(`unexpected git call: ${args.join(' ')}`);
+      },
+    });
+    assert.deepEqual(result, {
+      headSha: HEAD,
+      headSource: '--head',
+      originMainSha: null,
+      originMainRelation: 'unavailable',
+    });
+  });
+
+  it('distinguishes ahead, diverged, and unresolved head relationships', () => {
+    const lookup = (answers) => (
+      ancestor,
+      descendant,
+    ) => answers[`${ancestor}..${descendant}`] ?? 'unknown';
+    assert.equal(resolveOriginMainRelation(
+      NEWER,
+      HEAD,
+      lookup({ [`${HEAD}..${NEWER}`]: 'yes' }),
+    ), 'ahead');
+    assert.equal(resolveOriginMainRelation(PREVIOUS, HEAD, () => 'no'), 'diverged');
+    assert.equal(resolveOriginMainRelation(PREVIOUS, HEAD, () => 'unknown'), 'unknown');
+  });
+
   it('fails closed on an empty or malformed expected fleet', () => {
     for (const expected of [[], null, ['a', 'a'], ['']]) {
       assert.throws(
@@ -842,5 +837,387 @@ describe('strict terminal reconciliation drift', () => {
         /expected service|unique|non-empty/i,
       );
     }
+  });
+});
+
+// #6141/#6483 — NO_BUILD_IN_WINDOW is usually a WINDOW artifact, not a fleet
+// state: under a long refusal storm every push adds a SKIPPED record to every
+// service and a chatty cron adds one per tick, so days of storm displace the
+// newest RUNNING deployment past the 50-record horizon. 29 of 80 services read
+// NO_BUILD_IN_WINDOW this way on 2026-08-12 while every one of them was
+// serving. The deep pass re-reads exactly those services once with a deeper
+// window and reclassifies from the superset — and must stay fail-closed when
+// the deeper read cannot answer either.
+describe('deep-window fallback for unidentified-source windows', () => {
+  // A fixed clock: the healthy-age guard is a boundary condition, and seeding
+  // it from the live clock would make the boundary untestable.
+  const NOW = Date.parse('2026-08-12T12:00:00.000Z');
+  const svc = (name) => ({ id: `id-${name}`, name });
+  // A shallow window holding nothing classifiable as running: SKIPPED records
+  // without a commitHash are not rejections, so classify() reaches !running.
+  const shallowNoBuild = (name) => classifyServiceDeploy({
+    service: name,
+    deployments: [
+      deployment('SKIPPED', { at: '2026-08-12T10:00:00.000Z' }),
+      deployment('SKIPPED', { at: '2026-08-12T09:00:00.000Z' }),
+    ],
+    headSha: HEAD,
+  });
+  const reclassify = (service, { deployments, error }) => classifyServiceDeploy({
+    service: service.name,
+    deployments,
+    error,
+    headSha: HEAD,
+  });
+
+  it('reclassifies a service whose running build sits past the shallow window', async () => {
+    const reads = [];
+    const shallow = shallowNoBuild('seed-a');
+    assert.equal(shallow.verdict, 'NO_BUILD_IN_WINDOW');
+    const { results, deepened, reclassified, failed } = await deepenNoBuildWindows(
+      [shallow, { service: 'seed-b', verdict: 'CURRENT', detail: null }],
+      {
+        services: [svc('seed-a'), svc('seed-b')],
+        readDeep: async (service) => {
+          reads.push(service.name);
+          return [
+            deployment('SKIPPED', { at: '2026-08-12T10:00:00.000Z' }),
+            deployment('SUCCESS', { at: '2026-08-11T00:00:00.000Z', sha: HEAD }),
+          ];
+        },
+        reclassify,
+        now: NOW,
+      },
+    );
+    assert.deepEqual(reads, ['seed-a'], 'only the undeterminable service is re-read');
+    assert.equal(deepened, 1);
+    assert.equal(reclassified, 1);
+    assert.equal(failed, 0);
+    assert.equal(results[0].service, 'seed-a');
+    assert.equal(results[0].verdict, 'CURRENT');
+    assert.equal(results[1].verdict, 'CURRENT', 'other services pass through untouched');
+  });
+
+  // #6483 review (adversarial, verified by execution): a cron seeder records a
+  // running-status record per tick, so "no running record anywhere deep" is
+  // itself evidence the container stopped ticking. A deep read surfacing a
+  // months-old build must NOT upgrade the service to a healthy verdict — the
+  // fleet's oldest healthy runningAt measured 51.7h on 2026-08-12, so the
+  // 7-day bound is far above any live cadence and far below the dead case.
+  it('refuses a healthy upgrade when the deep-found build is stale', async () => {
+    const shallow = shallowNoBuild('seed-a');
+    const { results, reclassified } = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-a')],
+      readDeep: async () => [
+        deployment('SKIPPED', { at: '2026-08-12T10:00:00.000Z' }),
+        deployment('SUCCESS', { at: '2026-02-01T00:00:00.000Z', sha: HEAD }),
+      ],
+      reclassify,
+      now: NOW,
+    });
+    assert.equal(results[0].verdict, 'NO_BUILD_IN_WINDOW', 'a months-dead service must stay reported');
+    assert.ok(isProblemVerdict(results[0].verdict));
+    assert.equal(reclassified, 0, 'a refused upgrade is not a reclassification');
+  });
+
+  it('accepts a PROBLEM reclassification even from a stale deep history', async () => {
+    // The age guard bounds healthy upgrades only: a deep read that resolves to
+    // a different PROBLEM verdict is strictly more information, whatever its age.
+    const shallow = shallowNoBuild('seed-a');
+    const { results } = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-a')],
+      readDeep: async () => [
+        deployment('SKIPPED', { at: '2026-08-12T10:00:00.000Z', sha: NEWER, skippedReason: 'CI check suite failed' }),
+        deployment('SUCCESS', { at: '2026-02-01T00:00:00.000Z', sha: PREVIOUS }),
+      ],
+      reclassify,
+      now: NOW,
+    });
+    assert.equal(results[0].verdict, 'REJECTED_PUSH');
+    assert.ok(isProblemVerdict(results[0].verdict));
+  });
+
+  it('keeps the shallow verdict when the deep read fails — an unread answer must stay reported', async () => {
+    const shallow = shallowNoBuild('seed-a');
+    const { results, deepened, reclassified, failed } = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-a')],
+      readDeep: async () => { throw new Error('railway timed out'); },
+      reclassify,
+      now: NOW,
+    });
+    assert.equal(deepened, 1);
+    assert.equal(reclassified, 0, 'a failed read is not a reclassification');
+    assert.equal(failed, 1, 'the failure must be countable, not silent');
+    assert.equal(results[0], shallow, 'a failed deep read must not replace the verdict in either direction');
+    assert.ok(isProblemVerdict(results[0].verdict));
+  });
+
+  it('stays NO_BUILD_IN_WINDOW when even the deep window holds no running build', async () => {
+    const { results, reclassified, unchanged } = await deepenNoBuildWindows([shallowNoBuild('seed-a')], {
+      services: [svc('seed-a')],
+      readDeep: async () => [
+        deployment('SKIPPED', { at: '2026-08-12T10:00:00.000Z' }),
+        deployment('SKIPPED', { at: '2026-08-05T10:00:00.000Z' }),
+      ],
+      reclassify,
+      now: NOW,
+    });
+    assert.equal(results[0].verdict, 'NO_BUILD_IN_WINDOW');
+    assert.equal(reclassified, 0, 'an inconclusive deep read is not a reclassification');
+    assert.equal(unchanged, 1, 'an inconclusive deep read is observable as unchanged');
+    assert.ok(isProblemVerdict(results[0].verdict), 'a truly buildless history must stay reported');
+  });
+
+  it('keeps the stronger shallow verdict when the deep read is empty', async () => {
+    const shallow = shallowNoBuild('seed-a');
+    const { results, reclassified, unchanged } = await deepenNoBuildWindows([shallowNoBuild('seed-a')], {
+      services: [svc('seed-a')],
+      readDeep: async () => [],
+      reclassify,
+      now: NOW,
+    });
+    assert.equal(results[0].verdict, shallow.verdict);
+    assert.equal(reclassified, 0, 'a different inconclusive verdict is not a resolved source');
+    assert.equal(unchanged, 1);
+    assert.ok(isProblemVerdict(results[0].verdict), 'an inconclusive deep read must stay reported');
+  });
+
+  it('keeps the shallow verdict when deep records are malformed', async () => {
+    const shallow = shallowNoBuild('seed-a');
+    const result = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-a')],
+      readDeep: async () => [{}],
+      reclassify,
+      now: NOW,
+    });
+
+    assert.equal(result.results[0], shallow);
+    assert.equal(result.reclassified, 0);
+    assert.equal(result.unchanged, 1);
+  });
+
+  it('deepens an unidentified-source rejection and resolves it from the superset', async () => {
+    const shallow = classifyServiceDeploy({
+      service: 'seed-a',
+      deployments: [
+        deployment('SKIPPED', { at: '2026-08-12T10:00:00.000Z', sha: PREVIOUS, skippedReason: 'CI check suite failed' }),
+        deployment('SKIPPED', { at: '2026-08-12T09:00:00.000Z' }),
+      ],
+      headSha: HEAD,
+    });
+    assert.equal(shallow.verdict, 'REJECTED_PUSH_UNKNOWN_SOURCE');
+    const { results, deepened } = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-a')],
+      // The deeper history shows a build that fired AFTER the refusal — the
+      // rejection is superseded by the source change, and the service is
+      // simply current.
+      readDeep: async () => [
+        deployment('SUCCESS', { at: '2026-08-12T11:00:00.000Z', sha: HEAD }),
+        deployment('SKIPPED', { at: '2026-08-12T10:00:00.000Z', sha: PREVIOUS, skippedReason: 'CI check suite failed' }),
+        deployment('SUCCESS', { at: '2026-08-11T00:00:00.000Z', sha: NEWER }),
+      ],
+      reclassify,
+      now: NOW,
+    });
+    assert.equal(deepened, 1, 'an unidentified-source rejection is a deep-read candidate');
+    assert.equal(results[0].verdict, 'CURRENT');
+  });
+
+  it('caps the deep pass and leaves the overflow at its shallow verdict', async () => {
+    const count = DEEP_PASS_MAX_CANDIDATES + 2;
+    const input = Array.from({ length: count }, (_, index) => shallowNoBuild(`seed-${String(index).padStart(2, '0')}`));
+    const reads = [];
+    const { results, deepened, capped } = await deepenNoBuildWindows(input, {
+      services: input.map((result) => svc(result.service)),
+      readDeep: async (service) => {
+        reads.push(service.name);
+        return [deployment('SUCCESS', { at: '2026-08-11T00:00:00.000Z', sha: HEAD })];
+      },
+      reclassify,
+      now: NOW,
+    });
+    assert.equal(reads.length, DEEP_PASS_MAX_CANDIDATES, 'the deep pass must stay budget-bounded');
+    assert.equal(deepened, DEEP_PASS_MAX_CANDIDATES);
+    assert.equal(capped, 2);
+    const kept = results.filter((result) => result.verdict === 'NO_BUILD_IN_WINDOW');
+    assert.equal(kept.length, 2, 'overflow candidates keep their reported shallow verdict');
+  });
+
+  it('rotates the capped cohort so persistent overflow is attempted next tick', async () => {
+    const count = DEEP_PASS_MAX_CANDIDATES + 2;
+    const input = Array.from({ length: count }, (_, index) => shallowNoBuild(`seed-${String(index).padStart(2, '0')}`));
+    const services = input.map((result) => svc(result.service));
+    const attempted = [];
+    const runAt = async (now) => {
+      const reads = [];
+      await deepenNoBuildWindows(input, {
+        services,
+        readDeep: async (service) => {
+          reads.push(service.name);
+          return [];
+        },
+        reclassify,
+        now,
+      });
+      attempted.push(reads);
+    };
+
+    await runAt(0);
+    await runAt(60 * 60 * 1000);
+
+    assert.equal(attempted[0].length, DEEP_PASS_MAX_CANDIDATES);
+    assert.equal(attempted[1].length, DEEP_PASS_MAX_CANDIDATES);
+    assert.deepEqual(
+      [...new Set(attempted.flat())].sort(),
+      input.map((result) => result.service).sort(),
+      'the next hourly schedule slot must reach every service omitted by the prior cap',
+    );
+  });
+
+  it('stops starting deep reads at the run deadline and keeps shallow verdicts', async () => {
+    const input = [shallowNoBuild('seed-a'), shallowNoBuild('seed-b')];
+    const reads = [];
+    let elapsed = 0;
+    const result = await deepenNoBuildWindows(input, {
+      services: input.map((entry) => svc(entry.service)),
+      readDeep: async (service) => {
+        reads.push(service.name);
+        elapsed = 101;
+        return [deployment('SUCCESS', { at: '2026-08-11T00:00:00.000Z', sha: HEAD })];
+      },
+      reclassify,
+      concurrency: 1,
+      deadlineAt: 100,
+      monotonicNow: () => elapsed,
+      now: 0,
+    });
+
+    assert.deepEqual(reads, ['seed-a']);
+    assert.equal(result.deepened, 1);
+    assert.equal(result.deadlineDeferred, 1);
+    assert.equal(result.results[0].verdict, 'CURRENT');
+    assert.equal(result.results[1].verdict, 'NO_BUILD_IN_WINDOW');
+  });
+
+  it('keeps malformed deep responses failed and preserves the shallow verdict', async () => {
+    const shallow = shallowNoBuild('seed-a');
+    const result = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-a')],
+      readDeep: async () => ({ deployments: [] }),
+      reclassify,
+      now: NOW,
+    });
+
+    assert.equal(result.failed, 1);
+    assert.equal(result.reclassified, 0);
+    assert.equal(result.results[0], shallow);
+  });
+
+  it('reserves time to report before the next scheduled run can supersede it', () => {
+    assert.ok(DEEP_PASS_RUN_BUDGET_MS < 14 * 60 * 1000);
+  });
+
+  it('charges prerequisite time to the same scheduled-run budget', () => {
+    const deadlineAt = resolveDeepPassDeadlineAt({
+      jobStartedAtMs: 1_000,
+      epochNow: 11 * 60 * 1000 + 1_000,
+      monotonicNow: 50,
+    });
+    assert.equal(deadlineAt, 2 * 60 * 1000 + 50);
+  });
+
+  it('leaves a service it cannot resolve in the fleet untouched', async () => {
+    const shallow = shallowNoBuild('seed-gone');
+    const reads = [];
+    const { results, deepened } = await deepenNoBuildWindows([shallow], {
+      services: [svc('seed-other')],
+      readDeep: async (service) => { reads.push(service.name); return []; },
+      reclassify,
+      now: NOW,
+    });
+    assert.deepEqual(reads, [], 'no deep read for a service the fleet map cannot resolve');
+    assert.equal(deepened, 0);
+    assert.equal(results[0], shallow);
+  });
+
+  it('preserves fleet order across mixed verdicts', async () => {
+    const input = [
+      { service: 'a', verdict: 'CURRENT', detail: null },
+      shallowNoBuild('b'),
+      { service: 'c', verdict: 'REJECTED_PUSH', detail: 'x', runningSha: PREVIOUS },
+      shallowNoBuild('d'),
+    ];
+    const { results } = await deepenNoBuildWindows(input, {
+      services: [svc('b'), svc('d')],
+      readDeep: async () => [deployment('SUCCESS', { at: '2026-08-11T00:00:00.000Z', sha: HEAD })],
+      reclassify,
+      now: NOW,
+    });
+    assert.deepEqual(results.map((result) => result.service), ['a', 'b', 'c', 'd']);
+    assert.deepEqual(results.map((result) => result.verdict), ['CURRENT', 'CURRENT', 'REJECTED_PUSH', 'CURRENT']);
+  });
+});
+
+describe('scheduled-run classification deadline', () => {
+  it('fails remaining histories closed after classification consumes the deadline', () => {
+    const services = [
+      { id: 'seed-a-id', name: 'seed-a' },
+      { id: 'seed-b-id', name: 'seed-b' },
+    ];
+    const histories = new Map(services.map((service) => [service.id, { deployments: [], error: null }]));
+    let elapsed = 0;
+    const classified = classifyFleetWithinDeadline(services, histories, {
+      classify: (service, history) => {
+        if (service.name === 'seed-a') elapsed = 101;
+        return classifyServiceDeploy({
+          service: service.name,
+          deployments: history.deployments,
+          error: history.error,
+          headSha: HEAD,
+        });
+      },
+      deadlineAt: 100,
+      monotonicNow: () => elapsed,
+    });
+
+    assert.equal(classified[0].verdict, 'NO_DEPLOYMENTS');
+    assert.equal(classified[1].verdict, 'QUERY_FAILED');
+    assert.match(classified[1].detail, /deadline/);
+  });
+});
+
+// A saturated window plus one outstanding rejection can leave the running
+// source unidentified. Keep that distinct from an ordinary rejected push so
+// the monitor cannot report a determinate-looking answer from missing evidence.
+describe('unknown-source rejections', () => {
+  it('splits an unidentified-source rejection from ordinary REJECTED_PUSH', () => {
+    const result = classifyServiceDeploy({
+      service: 'svc',
+      deployments: [
+        deployment('SKIPPED', { at: '2026-08-12T10:00:00.000Z', sha: PREVIOUS, skippedReason: 'CI check suite failed' }),
+        deployment('SKIPPED', { at: '2026-08-12T09:00:00.000Z' }),
+      ],
+      headSha: HEAD,
+    });
+    assert.equal(result.verdict, 'REJECTED_PUSH_UNKNOWN_SOURCE');
+    assert.equal(result.runningSha, null);
+    assert.deepEqual(result.rejectedShas, [PREVIOUS]);
+    assert.ok(
+      UNDETERMINABLE_VERDICTS.includes('REJECTED_PUSH_UNKNOWN_SOURCE'),
+      'an unidentified source is an undeterminable answer and must stay directly blocking',
+    );
+  });
+
+  it('keeps ordinary REJECTED_PUSH when the running source is identified', () => {
+    const result = classifyServiceDeploy({
+      service: 'svc',
+      deployments: [
+        deployment('SKIPPED', { at: '2026-08-12T10:00:00.000Z', sha: NEWER, skippedReason: 'CI check suite failed' }),
+        deployment('SUCCESS', { at: '2026-08-11T00:00:00.000Z', sha: PREVIOUS }),
+      ],
+      headSha: HEAD,
+    });
+    assert.equal(result.verdict, 'REJECTED_PUSH');
+    assert.equal(result.runningSha, PREVIOUS);
   });
 });

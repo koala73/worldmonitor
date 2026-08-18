@@ -129,6 +129,34 @@ export function reportServerError(
   } catch { /* ignore URL parse errors */ }
 }
 
+/**
+ * The single dispatch point for every authenticated variant below: fetch, then
+ * report whatever the caller will actually receive.
+ *
+ * The retryable billing-verification 503 (#6483) is honored one layer down, by
+ * `withBillingVerificationRetry` around the `window.fetch` patch in
+ * services/runtime.ts. It moved there because the server's contract is
+ * route-agnostic while this function is not: the legacy-Pro-bearer gate
+ * (server/gateway.ts:1467) 503s routes that are in neither ENDPOINT_ENTITLEMENTS
+ * nor PREMIUM_RPC_PATHS, and those callers never reach `premiumFetch`. Retrying
+ * here as well would double the bound to two attempts and ~10s of inline wait.
+ *
+ * Reporting the FINAL response is still the point, and still works: the patch
+ * resolves to the post-retry response, so a transient it absorbs produces no
+ * Sentry event at all — matching how the two other expected-transient 503s on
+ * this path are handled (see reportServerError) — while a sustained outage
+ * still yields exactly one event per call, so the origin-5xx canary keeps its
+ * signal.
+ */
+async function fetchReportingServerErrors(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const res = await globalThis.fetch(input, init);
+  reportServerError(res, input);
+  return res;
+}
+
 function withCredentials(init?: RequestInit): RequestInit {
   return { ...(init ?? {}), credentials: init?.credentials ?? 'include' };
 }
@@ -256,9 +284,7 @@ export async function premiumFetch(
   // Skip injection if the caller already set an auth header.
   const existing = new Headers(requestInit?.headers);
   if (existing.has('Authorization') || existing.has('X-WorldMonitor-Key')) {
-    const res = await globalThis.fetch(input, withCredentials(requestInit));
-    reportServerError(res, input);
-    return res;
+    return fetchReportingServerErrors(input, withCredentials(requestInit));
   }
 
   // 1. Browser/test runtime key. Desktop keys remain inside the native
@@ -270,9 +296,14 @@ export async function premiumFetch(
       const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
       if (wmKey) {
         existing.set('X-WorldMonitor-Key', wmKey);
-        const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: existing });
-        reportServerError(res, input);
-        return res;
+        // `return await`, not a bare `return`: this sits inside the try below,
+        // and only an awaited rejection is caught by it. Returning the promise
+        // unawaited would escape the catch and propagate instead of falling
+        // through to the next credential — a silent behavior change.
+        return await fetchReportingServerErrors(
+          input,
+          { ...withCredentials(requestInit), headers: existing },
+        );
       }
     } catch { /* not available — fall through */ }
   }
@@ -283,11 +314,12 @@ export async function premiumFetch(
   for (const testerKey of testerKeys) {
     const testerHeaders = new Headers(existing);
     testerHeaders.set('X-WorldMonitor-Key', testerKey);
-    const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: testerHeaders });
-    if (res.status !== 401) {
-      reportServerError(res, input);
-      return res;
-    }
+    // A 401 is never reported (reportServerError ignores anything under 500),
+    // so dispatching through the shared path here does not change what the
+    // fallback chain surfaces — it only lets a tester-key call absorb the same
+    // retryable 503 as every other variant.
+    const res = await fetchReportingServerErrors(input, { ...withCredentials(requestInit), headers: testerHeaders });
+    if (res.status !== 401) return res;
     // 401 → try the next tester key, then fall through to Clerk if none work.
   }
 
@@ -314,9 +346,12 @@ export async function premiumFetch(
       }
       if (token) {
         existing.set('Authorization', `Bearer ${token}`);
-        const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: existing });
-        reportServerError(res, input);
-        return res;
+        // `return await` — see the wm-key branch above: this is inside the
+        // enclosing try, whose catch must keep seeing a rejection here.
+        return await fetchReportingServerErrors(
+          input,
+          { ...withCredentials(requestInit), headers: existing },
+        );
       }
     } catch { /* not signed in — fall through */ }
   }
@@ -358,7 +393,5 @@ export async function premiumFetch(
   const unauthenticatedInit = marksPremiumIntent
     ? withPremiumIntent(withCredentials(requestInit))
     : withCredentials(requestInit);
-  const res = await globalThis.fetch(input, unauthenticatedInit);
-  reportServerError(res, input);
-  return res;
+  return fetchReportingServerErrors(input, unauthenticatedInit);
 }

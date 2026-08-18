@@ -120,6 +120,23 @@ describe('ignoreErrors filters', () => {
       'Generic first-party load-failure messages must NOT be ignored',
     );
   });
+
+  // WORLDMONITOR-ZC: Kaspersky-style content script double-injected, redeclaring
+  // its own top-level `SENDER` const. Cannot come from our bundle — esbuild fails
+  // the build on a duplicate top-level declaration.
+  it('suppresses the extension double-injection SENDER redeclaration', () => {
+    assert.ok(
+      isIgnored("Identifier 'SENDER' has already been declared"),
+      'SENDER duplicate-declaration must be ignored',
+    );
+  });
+
+  it('does NOT suppress a duplicate-declaration for an unlisted identifier', () => {
+    assert.ok(
+      !isIgnored("Identifier 'mapLayers' has already been declared"),
+      'Only the enumerated extension identifiers may be ignored',
+    );
+  });
 });
 
 // ─── P2: firstPartyFile regex covers all Vite chunk patterns ─────────────
@@ -1239,153 +1256,6 @@ describe('injected browser-automation harness errors (Floot)', () => {
   });
 });
 
-// ─── WORLDMONITOR-VC: bare "Failed to fetch" through DebugBear's fetch wrapper ─
-//
-// DebugBear's RUM collector (cdn.debugbear.com/<id>.js → frame `/lpMwA9KpC6pf.js`)
-// monkeypatches window.fetch to time it. A transient network blip on any app
-// fetch rejects and its wrapper re-surfaces the rejection as an unhandled
-// rejection, injecting its own frames. The only "first-party" frames it carries
-// are `window.fetch` trampolines on Vite chunk names (panel-storage/widget-store
-// — neither module actually fetches). Without DebugBear the identical failure is
-// zero-frame and already suppressed. Suppress only when a DebugBear frame is
-// present AND every non-infra frame is that collector or a bare window.fetch
-// trampoline, so a genuine uncaught first-party fetch rejection still surfaces.
-describe('bare "Failed to fetch" via DebugBear RUM fetch wrapper (WORLDMONITOR-VC)', () => {
-  // Verbatim production stack from WORLDMONITOR-VC.
-  const vcStack = [
-    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
-    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
-    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
-    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
-    { filename: '/assets/widget-store-BQi6MP9w.js', lineno: 38, function: 'window.fetch' },
-    { filename: '/assets/panel-storage-DSqo8-tt.js', lineno: 2, function: 'window.fetch' },
-  ];
-
-  it('suppresses the exact VC stack (DebugBear wrapper + window.fetch trampolines)', () => {
-    assert.equal(beforeSend(makeEvent('Failed to fetch', 'TypeError', vcStack)), null,
-      'DebugBear-wrapped transient fetch failure should be suppressed');
-  });
-
-  it('suppresses the type-prefixed value variant', () => {
-    assert.equal(beforeSend(makeEvent('TypeError: Failed to fetch', 'TypeError', vcStack)), null);
-  });
-
-  it('derives collector-frame identity from the DebugBear loader module', () => {
-    assert.match(mainSrc, /import \{ isDebugBearRumScriptFrame \} from '\.\/debugbear-rum';/,
-      'beforeSend must use the collector identity exported by the loader module');
-    const debugBearGate = mainSrc.slice(mainSrc.indexOf('// Bare `Failed to fetch` surfacing through the DebugBear'));
-    assert.match(debugBearGate, /isDebugBearRumScriptFrame\(f\.filename \?\? ''\)/,
-      'the DebugBear gate must call the shared collector-frame predicate');
-  });
-
-  it('suppresses a generic DebugBear collector with a bare fetch trampoline', () => {
-    const event = makeEvent('Failed to fetch', 'TypeError', [
-      { filename: 'https://cdn.debugbear.com/rotated-collector.js', lineno: 1, function: 'e' },
-      { filename: '/assets/widget-store-BQi6MP9w.js', lineno: 38, function: 'fetch' },
-    ]);
-    assert.equal(beforeSend(event), null, 'generic DebugBear collector and bare fetch trampoline should be suppressed');
-  });
-
-  it('does NOT suppress a DebugBear stack with a non-trampoline fetchContent frame', () => {
-    const event = makeEvent('Failed to fetch', 'TypeError', [
-      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
-      { filename: '/assets/widget-store-BQi6MP9w.js', lineno: 38, function: 'fetchContent' },
-    ]);
-    assert.ok(beforeSend(event) !== null, 'a named first-party caller must still reach Sentry');
-  });
-
-  it('does NOT suppress a DebugBear stack with the runtime fetch wrapper', () => {
-    const event = makeEvent('Failed to fetch', 'TypeError', [
-      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
-      { filename: '/assets/runtime-BQi6MP9w.js', lineno: 38, function: 'window.fetch' },
-    ]);
-    assert.ok(beforeSend(event) !== null, 'runtime fetch wrapper failures must still reach Sentry');
-  });
-
-  it('does NOT suppress when a genuine first-party fetch caller frame is present', () => {
-    // A real uncaught first-party fetch rejection carries a real function name
-    // (not a bare window.fetch trampoline) — must surface even with DebugBear on
-    // the stack.
-    const event = makeEvent('Failed to fetch', 'TypeError', [
-      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
-      { filename: '/assets/panels-DzUv7BBV.js', lineno: 100, function: 'loadCountryGeometry' },
-    ]);
-    assert.ok(beforeSend(event) !== null, 'genuine first-party fetch rejection must reach Sentry');
-  });
-
-  it('does NOT suppress a plain first-party "Failed to fetch" with no DebugBear frame', () => {
-    // Regression guard for the existing contract: without DebugBear, a first-party
-    // window.fetch failure still surfaces (it is not this gate's business).
-    const event = makeEvent('Failed to fetch', 'TypeError', [
-      { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
-    ]);
-    assert.ok(beforeSend(event) !== null, 'non-DebugBear first-party fetch failure must surface');
-  });
-
-  it('does NOT suppress an observed trampoline without a DebugBear collector', () => {
-    const event = makeEvent('Failed to fetch', 'TypeError', [
-      { filename: '/assets/widget-store-BQi6MP9w.js', lineno: 38, function: 'fetch' },
-    ]);
-    assert.ok(beforeSend(event) !== null,
-      'the allowed trampoline alone must not suppress a first-party fetch failure');
-  });
-
-  it('does NOT suppress a non-"Failed to fetch" error that merely has a DebugBear frame', () => {
-    const event = makeEvent('Something else entirely', 'TypeError', vcStack);
-    assert.ok(beforeSend(event) !== null, 'gate is scoped to the bare Failed-to-fetch message');
-  });
-
-  // WORLDMONITOR-VQ (20ev/12u, 2026-07-09+): the SAME DebugBear-wrapper class as
-  // VC, slipping the gate because a later Vite build emits the trampoline frame
-  // with a minified receiver prefix — `Rt.window.fetch` instead of the bare
-  // `window.fetch` VC carried. The anchored `^(?:window\.)?fetch$` function match
-  // rejects the prefix, `nonInfraFrames.every` fails, and the event surfaces.
-  // The prefix is bounded to a minified identifier (≤3 chars) so a real named
-  // receiver (`apiClient.fetch`) still surfaces as a genuine caller.
-  const vqStack = [
-    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
-    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
-    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
-    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
-    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
-    { filename: '/assets/widget-store-DxbOqNLQ.js', lineno: 38, function: 'Rt.window.fetch' },
-    { filename: '/assets/panel-storage-GsJWN0Dg.js', lineno: 2, function: 'window.fetch' },
-  ];
-
-  it('suppresses the exact VQ stack (minified-prefixed `Rt.window.fetch` trampoline)', () => {
-    assert.equal(beforeSend(makeEvent('Failed to fetch', 'TypeError', vqStack)), null,
-      'minified-prefixed trampoline is the same DebugBear wrapper class as VC');
-  });
-
-  it('suppresses a minified-prefixed bare `fetch` trampoline', () => {
-    const event = makeEvent('Failed to fetch', 'TypeError', [
-      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
-      { filename: '/assets/panel-storage-GsJWN0Dg.js', lineno: 2, function: 'Xt.fetch' },
-    ]);
-    assert.equal(beforeSend(event), null, 'minified receiver on a bare fetch trampoline is still a trampoline');
-  });
-
-  it('does NOT suppress a NAMED receiver on a fetch trampoline frame', () => {
-    // Safety bound: the minified-prefix tolerance must not swallow a real
-    // first-party caller that happens to invoke `.fetch` off a named object.
-    const event = makeEvent('Failed to fetch', 'TypeError', [
-      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
-      { filename: '/assets/widget-store-DxbOqNLQ.js', lineno: 38, function: 'apiClient.fetch' },
-    ]);
-    assert.ok(beforeSend(event) !== null, 'a named receiver is a real caller, not a minified trampoline');
-  });
-
-  it('does NOT suppress a minified-prefixed trampoline in a NON-allowlisted chunk', () => {
-    // The chunk allowlist stays load-bearing: runtime.ts is our real fetch
-    // wrapper, so its failures must surface regardless of frame naming.
-    const event = makeEvent('Failed to fetch', 'TypeError', [
-      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
-      { filename: '/assets/runtime-BQi6MP9w.js', lineno: 38, function: 'Rt.window.fetch' },
-    ]);
-    assert.ok(beforeSend(event) !== null, 'runtime fetch wrapper failures must still reach Sentry');
-  });
-});
-
 // ─── WORLDMONITOR-WH/WJ: `Failed to fetch (abacus.worldmonitor.app)` ──────────
 //
 // abacus.worldmonitor.app is our SELF-HOSTED Umami analytics collector
@@ -1421,49 +1291,6 @@ describe('`Failed to fetch (abacus.worldmonitor.app)` — Umami beacon (WORLDMON
     // gate for our data-serving API — a real outage still has to reach Sentry.
     const event = makeEvent('Failed to fetch (api.worldmonitor.app)', 'TypeError', whStack);
     assert.ok(beforeSend(event) !== null, 'API-outage canary must never be masked by the beacon allowlist');
-  });
-});
-
-// ─── WORLDMONITOR-Y4: bare minified trampoline hop in a DebugBear stack ───────
-//
-// Third build-rename of the VC/VQ wrapper. Vite emitted one hop of the
-// `window.fetch` trampoline as a bare minified `t`, which no fetch-anchored
-// pattern matches, so the identical class re-surfaced as a new issue. The
-// tolerance is bounded to ≤2 chars inside the two fetch-free chunks; the VQ
-// safety tests above (named receiver, `fetchContent`, non-allowlisted chunk)
-// still hold and are what stop this from becoming a blanket chunk allowlist.
-describe('sentry beforeSend — Y4 bare minified trampoline hop', () => {
-  const y4Stack = [
-    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
-    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
-    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
-    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
-    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
-    { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 't' },
-    { filename: '/assets/widget-store-MD1xhCc9.js', lineno: 2, function: 'window.fetch' },
-    { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 'Pi.window.fetch' },
-  ];
-
-  it('suppresses the exact Y4 production stack', () => {
-    assert.equal(beforeSend(makeEvent('Failed to fetch', 'TypeError', y4Stack)), null,
-      'a bare minified hop is the same DebugBear wrapper class as VC/VQ');
-  });
-
-  it('does NOT suppress a longer minified name in the same chunk', () => {
-    // The bound is what separates a trampoline hop from a real minified caller.
-    const event = makeEvent('Failed to fetch', 'TypeError', [
-      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
-      { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 'loadPanels' },
-    ]);
-    assert.ok(beforeSend(event) !== null, 'a named function in the chunk is a real caller');
-  });
-
-  it('does NOT suppress a bare minified frame without a DebugBear frame present', () => {
-    // The collector frame is the reason these trampolines appear at all.
-    const event = makeEvent('Failed to fetch', 'TypeError', [
-      { filename: '/assets/panel-storage-91sIzezL.js', lineno: 2, function: 't' },
-    ]);
-    assert.ok(beforeSend(event) !== null, 'no collector frame means no trampoline explanation');
   });
 });
 
@@ -1517,5 +1344,232 @@ describe('sentry beforeSend — WK iOS zero-frame call-stack overflow', () => {
     const event = makeEvent('Maximum call stack size exceeded.', 'RangeError', []);
     assert.equal(event.contexts, undefined, 'production events reach beforeSend without an os context');
     assert.equal(beforeSend(event, IOS_NAVIGATOR), null, 'the UA is the only platform signal available');
+  });
+});
+
+// ─── WORLDMONITOR-ZG: host attribution replaces the chunk-name gate (#6746) ───
+//
+// The DebugBear trampoline gate is GONE. It tried to identify this class from
+// the stack, which is impossible in principle: every frame in ZG's stack is a
+// `window.fetch` wrapper (DebugBear -> wmSessionFetch -> runtime dispatch ->
+// native fetch), because the rejection originates in native fetch and the async
+// boundary drops the calling frame. The app caller is never present, so six
+// rounds of chunk-name heuristics each broke on the next Vite repartition.
+//
+// `src/services/fetch-failure-attribution.ts` now appends the host at the
+// bottom of the wrapper chain, so the SAME stack reaches a different verdict
+// depending on WHO was being contacted — which is the only thing that ever
+// distinguished a dropped analytics beacon from an origin outage.
+//
+// These tests are what license deleting the gate: they prove the allowlist, not
+// the stack shape, is what decides.
+describe('bare "Failed to fetch" is decided by host, not stack shape (WORLDMONITOR-ZG)', () => {
+  // Verbatim production stack, identical across all 17 ZG events (2026-08-16),
+  // including the four on builds that already contained #6747.
+  const zgStack = [
+    { filename: '/lpMwA9KpC6pf.js', lineno: 0, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 0, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 0, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 0, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 0, function: 't' },
+    { filename: '/assets/widget-store-DbqgxtxV.js', lineno: 0, function: 'Pn.window.fetch' },
+    { filename: '/assets/analytics-DdK2NArM.js', lineno: 0, function: null },
+    { filename: '/assets/analytics-DdK2NArM.js', lineno: 0, function: 'c' },
+  ];
+
+  it('suppresses the annotated Umami beacon on the exact ZG stack', () => {
+    const event = makeEvent('Failed to fetch (abacus.worldmonitor.app)', 'TypeError', zgStack);
+    assert.equal(beforeSend(event), null, 'a dropped analytics beacon is unactionable');
+  });
+
+  it('SURFACES an annotated api.worldmonitor.app failure on the IDENTICAL stack', () => {
+    // The whole point. Same frames, opposite verdict — decided by the host.
+    const event = makeEvent('Failed to fetch (api.worldmonitor.app)', 'TypeError', zgStack);
+    assert.ok(beforeSend(event) !== null, 'an origin outage must never be suppressed');
+  });
+
+  it('suppresses the annotated DebugBear RUM beacon', () => {
+    const event = makeEvent('Failed to fetch (data.debugbear.com)', 'TypeError', zgStack);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('suppresses the annotated Clerk SDK fetch', () => {
+    const event = makeEvent('Failed to fetch (clerk.worldmonitor.app)', 'TypeError', zgStack);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it('SURFACES an annotated self-hosted PMTiles failure', () => {
+    // The R2 basemap bucket is deliberately absent from the allowlist so a real
+    // basemap regression is never silently dropped (WORLDMONITOR-NE/NF).
+    const event = makeEvent('Failed to fetch (pub-8ace9f6a86d74cb2bd.r2.dev)', 'TypeError', zgStack);
+    assert.ok(beforeSend(event) !== null, 'first-party basemap failures must surface');
+  });
+
+  it('SURFACES a still-bare "Failed to fetch" — the accepted cached-bundle cost (KTD4)', () => {
+    // Browsers running a bundle cached from before the attribution deploy still
+    // emit an un-annotated message. With the chunk gate deleted these surface
+    // instead of being suppressed. That is a DELIBERATE, temporary trade-off:
+    // an unattributable failure from a chunk carrying runtime.ts could be a real
+    // origin outage, and suppressing it is exactly the blind spot #6746 refuses.
+    const event = makeEvent('Failed to fetch', 'TypeError', zgStack);
+    assert.ok(beforeSend(event) !== null, 'unattributable fetch failures must not be silently dropped');
+  });
+
+  it('pins the Safari blind spot: Load failed is dropped by ignoreErrors, annotated or not (KTD5)', () => {
+    // /^TypeError: Load failed( \(.*\))?$/ allows the host parenthetical, so
+    // BOTH forms are dropped before beforeSend runs — including for our own
+    // origin. Annotating Safari therefore changes no verdict today. Pinned here
+    // so that whoever narrows that entry sees exactly what changes.
+    assert.ok(isIgnored('TypeError: Load failed'), 'bare Safari form is ignored');
+    assert.ok(
+      isIgnored('TypeError: Load failed (api.worldmonitor.app)'),
+      'annotated Safari form is ALSO ignored — this is the blind spot',
+    );
+  });
+
+  // ── The shape that hid a P0 ────────────────────────────────────────────────
+  //
+  // `linkedErrorsIntegration()` is a DEFAULT @sentry/browser integration
+  // (build/npm/cjs/prod/sdk.js:32) that runs in preprocessEvent, BEFORE
+  // beforeSend. When the thrown error carries `.cause`, it expands the chain
+  // into `event.exception.values` with the ORIGINAL error LAST (@sentry/core
+  // aggregate-errors.js:20) — so a bare cause occupies values[0], which is
+  // exactly what beforeSend reads (sentry-init.ts:353).
+  //
+  // Every other fixture in this file builds a ONE-entry values array, so the
+  // whole suite is structurally blind to that reordering. These two cases are
+  // the only thing standing between us and silently shipping an inert filter.
+  const twoValueEvent = (causeValue, outerValue, frames) => ({
+    exception: {
+      values: [
+        { type: 'TypeError', value: causeValue, stacktrace: { frames } },
+        { type: 'TypeError', value: outerValue, stacktrace: { frames } },
+      ],
+    },
+  });
+
+  it('a bare cause at values[0] defeats host suppression — why we never set `cause`', () => {
+    // If the attribution module ever re-adds `annotated.cause = error`, THIS is
+    // the event Sentry actually delivers, and the beacon stops being suppressed.
+    const event = twoValueEvent(
+      'Failed to fetch',
+      'Failed to fetch (abacus.worldmonitor.app)',
+      zgStack,
+    );
+    assert.ok(
+      beforeSend(event) !== null,
+      'values[0] is the bare cause, so the allowlist cannot fire — this is the '
+      + 'regression that re-adding `cause` would reintroduce',
+    );
+  });
+
+  it('the single-value shape we actually emit IS suppressed', () => {
+    // Contrast case. Same message, same stack, one value — the shape produced
+    // when no `cause` is set. This is what production must look like.
+    const event = makeEvent('Failed to fetch (abacus.worldmonitor.app)', 'TypeError', zgStack);
+    assert.equal(beforeSend(event), null, 'no cause -> annotated message at values[0] -> suppressed');
+  });
+
+  // ── Period-less Gecko, end to end ─────────────────────────────────────────
+  //
+  // `FETCH_FAILURE_MESSAGE` admits `resource\.?`, so the module annotates the
+  // period-less Gecko phrasing too. Until #6762 review, `isHostScopedFetchFailure`
+  // required the period literally — that message was annotated and then never
+  // routed to the allowlist. Both sides now accept it; these two fixtures are
+  // what make the widening observable, since every other Gecko fixture in this
+  // file uses the period form.
+
+  it('suppresses the annotated period-less Gecko phrasing for an allowlisted host', () => {
+    const event = makeEvent(
+      'NetworkError when attempting to fetch resource (abacus.worldmonitor.app)',
+      'TypeError',
+      zgStack,
+    );
+    assert.equal(beforeSend(event), null, 'period-less Gecko must route through the host allowlist');
+  });
+
+  it('SURFACES the annotated period-less Gecko phrasing for api.worldmonitor.app', () => {
+    const event = makeEvent(
+      'NetworkError when attempting to fetch resource (api.worldmonitor.app)',
+      'TypeError',
+      zgStack,
+    );
+    assert.ok(beforeSend(event) !== null, 'an origin outage must surface in the period-less shape too');
+  });
+
+  it('accepts the `TypeError: ` prefix on an annotated message', () => {
+    // The file's sibling gates already tolerate this prefix, which means the
+    // project has observed it in `exception.values[].value`. The host detector
+    // must not be the one place that misses it.
+    const event = makeEvent(
+      'TypeError: Failed to fetch (abacus.worldmonitor.app)',
+      'TypeError',
+      zgStack,
+    );
+    assert.equal(beforeSend(event), null, 'prefixed annotated message must still reach the allowlist');
+  });
+
+  it('the producer and consumer regexes accept the same phrasing set', () => {
+    // Belt-and-braces against the drift that caused the period-less gap. The
+    // module PRODUCES annotated messages; sentry-init CONSUMES them. They are
+    // separate literals in separate files (sentry-init's beforeSend body is
+    // eval'd standalone by this harness, so it cannot import a shared one), so
+    // assert equivalence behaviourally instead.
+    const attributionSrc = readFileSync(
+      resolve(__dirname, '../src/services/fetch-failure-attribution.ts'),
+      'utf-8',
+    );
+    const producerMatch = attributionSrc.match(
+      /const FETCH_FAILURE_MESSAGE =\s*(\/\^[\s\S]*?\/);/,
+    );
+    assert.ok(producerMatch, 'FETCH_FAILURE_MESSAGE must be a single regex literal');
+    // eslint-disable-next-line no-new-func
+    const producer = new Function(`return ${producerMatch[1]}`)();
+
+    for (const phrase of [
+      'Failed to fetch',
+      'NetworkError when attempting to fetch resource.',
+      'NetworkError when attempting to fetch resource',
+      'Load failed',
+    ]) {
+      assert.ok(producer.test(phrase), `producer must annotate: ${phrase}`);
+      // Anything the producer annotates must be routable by the consumer once
+      // the host suffix is appended — otherwise it is annotated-but-unsuppressable.
+      const annotated = `${phrase} (abacus.worldmonitor.app)`;
+      const verdict = beforeSend(makeEvent(annotated, 'TypeError', zgStack));
+      const ignored = isIgnored(`TypeError: ${annotated}`);
+      assert.ok(
+        verdict === null || ignored,
+        `consumer must be able to act on an annotated message the producer emits: ${annotated}`,
+      );
+    }
+  });
+
+  it('the attribution module does not set `cause`', () => {
+    // Belt-and-braces: assert the source-level invariant too, so the reason is
+    // discoverable from this file without reading the module.
+    const attributionSrc = readFileSync(
+      resolve(__dirname, '../src/services/fetch-failure-attribution.ts'),
+      'utf-8',
+    );
+    // Strip comments first — the module explains the hazard in prose, and that
+    // prose necessarily contains the very assignment we are banning.
+    const code = attributionSrc
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    assert.ok(
+      !/\.cause\s*=/.test(code),
+      'fetch-failure-attribution.ts must not assign .cause — it activates LinkedErrors '
+      + 'and moves the bare message to values[0], defeating host attribution',
+    );
+  });
+
+  it('no longer references Vite chunk names in the beforeSend policy', () => {
+    // The deletion this whole block licenses. Chunk names are arbitrary build
+    // output; a policy keyed on them cannot stay correct across repartitions.
+    assert.ok(
+      !/panel-storage|widget-store/.test(mainSrc),
+      'sentry-init.ts must not key suppression on Vite chunk names',
+    );
   });
 });

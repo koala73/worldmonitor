@@ -9,5 +9,5 @@
 // tests/ciss-stale-threshold-consistency.test.mjs asserts the two never drift.
 //
 // See issue #3845.
-export const CISS_STALE_THRESHOLD_DAYS = 10;
+export const CISS_STALE_THRESHOLD_DAYS = 14;
 export const CISS_STALE_THRESHOLD_MS = CISS_STALE_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;

@@ -1,9 +1,9 @@
 ---
 title: "智能体技能目录"
-description: "通过 /.well-known/agent-skills/index.json 发现端点公布的 25 个 World Monitor 智能体技能人类可读目录，涵盖冲突监测、航运追踪、能源情报、市场信号、国家简报与风险评分等场景，方便 AI 智能体、LLM 与自动化工作流按需调用相应工具能力。"
+description: "通过 /.well-known/agent-skills/index.json 发现端点公布 World Monitor 智能体技能的人类可读目录，涵盖冲突监测、航运追踪、能源情报、市场信号、国家简报与风险评分等场景，方便 AI 智能体、LLM 与自动化工作流按需调用相应工具能力。"
 ---
 
-该目录包含 25 个 World Monitor 智能体技能，面向那些需要聚焦、开箱即用的配方而非完整 OpenAPI 抓取的智能体。每个技能都是一个公开的 `SKILL.md` 文件，包含使用时机指引、认证结构、REST 示例、响应说明以及内容安全处理。
+该目录包含聚焦且开箱即用的 World Monitor 智能体技能，面向不需要完整 OpenAPI 抓取的智能体。每个技能都是一个公开的 `SKILL.md` 文件，包含使用时机指引、认证结构、REST 示例、响应说明以及内容安全处理。
 
 机器可读的权威来源是 [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json)。下方每一行都链接到所提供的配方，其 SHA-256 摘要固定在该清单中。
 
@@ -65,7 +65,7 @@ X-WorldMonitor-Key: wm_<40-hex>
 
 | 技能 | 用途 | 配方 |
 |---|---|---|
-| `fetch-news-digest` | 获取 World Monitor 500 多个精选新闻源的预聚合摘要，按类别分桶，包含每篇文章的威胁分类和警报标记。当用户询问当前新闻内容、想要按主题分类的头条，或需要一次时事扫描时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-news-digest/SKILL.md) |
+| `fetch-news-digest` | 获取 World Monitor 精选新闻源目录的预聚合摘要，按类别分桶，包含每篇文章的威胁分类和警报标记。当用户询问当前新闻内容、想要按主题分类的头条，或需要一次时事扫描时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/fetch-news-digest/SKILL.md) |
 | `check-airport-delays` | 获取全球当前的机场延误和取消警报——每个机场的延误类型、严重性、平均延误分钟数和受影响航班百分比。当用户询问某个机场是否延误、中断或出现取消时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/check-airport-delays/SKILL.md) |
 | `track-military-flights` | 获取追踪到的军用飞机位置（OpenSky + Wingbits），包含呼号、机型、运营方、高度和活动聚类，可按边界框、运营方和机型筛选。当用户询问某个地区的军事空中活动时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/track-military-flights/SKILL.md) |
 | `monitor-internet-outages` | 获取检测到的互联网中断（Cloudflare Radar），包含国家、原因、严重性和时间范围。当用户询问某个国家的互联网是否中断、被限速或遭遇关停时使用。 | [SKILL.md](https://worldmonitor.app/.well-known/agent-skills/monitor-internet-outages/SKILL.md) |

@@ -282,6 +282,7 @@ export class EventHandlerManager implements AppModule {
   private boundMissionKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundEmbedModalKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private missionPresetPopover: HTMLElement | null = null;
+  private missionPresetReturnFocus: HTMLElement | null = null;
   private missionDataRefreshTimer: number | null = null;
   private authStateUnsubscribers: Array<() => void> = [];
   private proGateUnsubscribers: Array<() => void> = [];
@@ -292,13 +293,14 @@ export class EventHandlerManager implements AppModule {
   private clockIntervalId: ReturnType<typeof setInterval> | null = null;
 
   private readonly idlePauseMs = IDLE_PAUSE_MS;
-  private readonly debouncedUrlSync = debounce(() => {
+  private readonly writeUrlState = (): void => {
     const shareUrl = this.getShareUrl();
     if (!shareUrl) return;
     // Preserve the shared mobile-overlay marker while syncing map URL state;
     // replacing it with null makes Android Back skip the open sheet.
     try { history.replaceState(history.state, '', shareUrl); } catch { }
-  }, 250);
+  };
+  private readonly debouncedUrlSync = debounce(this.writeUrlState, 250);
 
   private readonly debouncedWebcamReload = debounce(() => {
     if (this.ctx.mapLayers?.webcams) {
@@ -864,6 +866,9 @@ export class EventHandlerManager implements AppModule {
 
   private openMissionPresetPopover(anchor: HTMLElement | null, mobile: boolean): void {
     this.closeMissionPresetPopover();
+    // The desktop trigger (#missionPresetBtn) is display:none on mobile, where the
+    // popover opens from the menu item instead, so remember the real opener.
+    this.missionPresetReturnFocus = anchor ?? document.getElementById('missionPresetBtn');
 
     const active = loadStoredMissionPreset();
     const popover = document.createElement('div');
@@ -972,9 +977,17 @@ export class EventHandlerManager implements AppModule {
       this.missionPresetPopover.removeEventListener('keydown', this.boundMissionKeydownHandler);
       this.boundMissionKeydownHandler = null;
     }
+    const hadFocus = this.missionPresetPopover?.contains(document.activeElement) ?? false;
     this.missionPresetPopover?.remove();
     this.missionPresetPopover = null;
-    document.getElementById('missionPresetBtn')?.setAttribute('aria-expanded', 'false');
+    const trigger = document.getElementById('missionPresetBtn');
+    trigger?.setAttribute('aria-expanded', 'false');
+    // Removing the popover while focus was inside it drops focus to <body>;
+    // hand it back to whichever control opened it. Falling back to the desktop
+    // trigger keeps the pre-existing behavior when no opener was recorded.
+    const opener = this.missionPresetReturnFocus;
+    this.missionPresetReturnFocus = null;
+    if (hadFocus) (opener?.isConnected ? opener : trigger)?.focus();
   }
 
   private getMissionDefaultLayers(): MapLayers {
@@ -982,10 +995,12 @@ export class EventHandlerManager implements AppModule {
   }
 
   private filterMissionLayersForCurrentRenderer(layers: MapLayers): MapLayers {
-    const renderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
     const isDeckGLActive = this.ctx.map?.isDeckGLActive?.() ?? !this.ctx.isMobile;
+    const kind = this.ctx.map?.isGlobeMode?.()
+      ? 'globe'
+      : (isDeckGLActive ? 'deck' : 'svg');
     let filtered = this.filterMissionLayersForAvailableServices(
-      filterMissionLayersForRenderer(layers, renderer, isDeckGLActive, this.getMissionDefaultLayers()),
+      filterMissionLayersForRenderer(layers, kind, this.getMissionDefaultLayers()),
     );
     // #6045 — mission presets (e.g. Supply-Chain Risk) include resilienceScore.
     // Free users must not persist or apply locked layers through this path.
@@ -1189,10 +1204,9 @@ export class EventHandlerManager implements AppModule {
     //
     // view is intentionally excluded: all renderers set this.state.view
     // synchronously at the top of setView(), so the debounced read is always
-    // correct regardless of renderer. GlobeMap.onStateChanged is a no-op and
-    // SVG Map fires emitStateChange before the listener is installed — neither
-    // can rely on a later onStateChanged to drive the URL write, so they must
-    // use the immediate debounce path.
+    // correct regardless of renderer. The initial Globe/SVG view is applied
+    // before this listener is installed, so neither can rely on that earlier
+    // state change to drive the URL write; they need the immediate debounce.
     const { view, lat, lon, zoom, chokepoint } = this.ctx.initialUrlState ?? {};
     const urlHasAsyncFlyTo =
       (lat !== undefined && lon !== undefined) ||   // setCenter → flyTo (requires both)
@@ -1205,6 +1219,11 @@ export class EventHandlerManager implements AppModule {
 
   syncUrlState(): void {
     this.debouncedUrlSync();
+  }
+
+  syncUrlStateNow(): void {
+    this.debouncedUrlSync.cancel();
+    this.writeUrlState();
   }
 
   applyMapLayerChange(layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic'): void {
@@ -1794,6 +1813,7 @@ export class EventHandlerManager implements AppModule {
             trackPanelToggled(key, nextConfig.enabled);
           }
           Object.assign(current, nextConfig);
+          if (nextConfig.fontScale === undefined) delete current.fontScale;
           // Object.assign cannot DELETE a key, so a stale gate marker would
           // survive a settings-driven toggle. Re-apply through the owner helper.
           if (enabledChanged) userSetPanelEnabled(current, nextConfig.enabled);
@@ -1859,6 +1879,8 @@ export class EventHandlerManager implements AppModule {
       resetLayout: () => {
         clearPanelSpans();
         clearPanelColSpans();
+        for (const panel of Object.values(this.ctx.panelSettings)) delete panel.fontScale;
+        saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
         removeStorageValue(this.ctx.PANEL_ORDER_KEY);
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom');
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom-set');

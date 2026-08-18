@@ -228,10 +228,19 @@ async function fetchIeaOilStocks() {
 
 // Declared up front so runSeed can extend their TTL on fetch failure or
 // validation skip — keeps country keys alive as long as the index lives.
-const COUNTRY_EXTRA_KEYS = Object.values(COUNTRY_MAP).map(iso2 => ({
+export const COUNTRY_EXTRA_KEYS = Object.values(COUNTRY_MAP).map(iso2 => ({
   key: `energy:iea-oil-stocks:v1:${iso2}`,
   ttl: TTL_SECONDS,
   transform: (data) => data.members?.find(m => m.iso2 === iso2) ?? null,
+  // `seededAt` collides by NAME with the fetcher envelope's own `seededAt`, which
+  // buildIndex renames to `updatedAt` and therefore strips from the canonical key.
+  // The leak guard compares top-level field names across the envelope and a single
+  // member, so it flagged this as a pre-publish leak and exited 1 (#6489) — but the
+  // two fields are different values that merely share a name: parseRecord stamps a
+  // per-record `seededAt` on EVERY member, and these country keys are the detailed
+  // record (industryDays/publicDays/abroadDays/obligationThreshold) that the index
+  // projection deliberately drops. Re-exporting it is intended, not a raw-state leak.
+  allowPrePublishFields: ['seededAt'],
 }));
 
 // Analysis key included in extraKeys so runSeed extends its TTL on fetch

@@ -44,7 +44,7 @@ function sentimentLabel(spread: number): string {
 
 function renderBar(pct: number, color: string, label: string, value: string): string {
   return `<div style="margin:4px 0">
-    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim);margin-bottom:2px">
+    <div style="display:flex;justify-content:space-between;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:2px">
       <span>${escapeHtml(label)}</span>
       <span style="color:${color};font-weight:600">${escapeHtml(value)}</span>
     </div>
@@ -62,7 +62,7 @@ function renderSpreadBar(spread: number): string {
   const leftPct = clamped >= 0 ? center : center - barWidth;
 
   return `<div style="margin:8px 0">
-    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim);margin-bottom:3px">
+    <div style="display:flex;justify-content:space-between;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-bottom:3px">
       <span>Bull-Bear Spread</span>
       <span style="color:${color};font-weight:700">${clamped >= 0 ? '+' : ''}${spread.toFixed(1)}%</span>
     </div>
@@ -70,7 +70,7 @@ function renderSpreadBar(spread: number): string {
       <div style="position:absolute;top:0;bottom:0;left:50%;width:1px;background:rgba(255,255,255,0.2)"></div>
       <div style="position:absolute;top:0;bottom:0;left:${leftPct.toFixed(1)}%;width:${barWidth.toFixed(1)}%;background:${color};border-radius:3px;transition:all 0.3s"></div>
     </div>
-    <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim);margin-top:2px">
+    <div style="display:flex;justify-content:space-between;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:2px">
       <span>Bearish</span>
       <span>Bullish</span>
     </div>
@@ -105,10 +105,10 @@ function renderSparkChart(weeks: WeekData[]): string {
   const zeroLine = `<line x1="${PAD}" y1="${midY}" x2="${W - PAD}" y2="${midY}" stroke="rgba(255,255,255,0.15)" stroke-width="0.5" stroke-dasharray="3,3"/>`;
   const contrarian = midY + 20 * scaleY;
   const contrarianLine = `<line x1="${PAD}" y1="${contrarian.toFixed(1)}" x2="${W - PAD}" y2="${contrarian.toFixed(1)}" stroke="rgba(231,76,60,0.3)" stroke-width="0.5" stroke-dasharray="2,4"/>`;
-  const contrarianLabel = `<text x="${W - PAD}" y="${(contrarian - 2).toFixed(1)}" text-anchor="end" font-size="7" fill="rgba(231,76,60,0.5)" font-family="system-ui,sans-serif">-20 buy signal</text>`;
+  const contrarianLabel = `<text x="${W - PAD}" y="${(contrarian - 2).toFixed(1)}" text-anchor="end" style="font-size:calc(7px * var(--wm-panel-effective-scale, 1))" fill="rgba(231,76,60,0.5)" font-family="system-ui,sans-serif">-20 buy signal</text>`;
 
   return `<div style="margin:8px 0">
-    <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">52-Week Spread History</div>
+    <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">52-Week Spread History</div>
     <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" style="display:block">
       ${bars}
       ${zeroLine}
@@ -176,43 +176,43 @@ export class AAIISentimentPanel extends Panel {
     const prevSpread = previous?.spread;
     const spreadDelta = prevSpread != null ? latest.spread - prevSpread : null;
     const deltaStr = spreadDelta != null
-      ? `<span style="color:${spreadDelta >= 0 ? '#2ecc71' : '#e74c3c'};font-size:10px;margin-left:4px">${spreadDelta >= 0 ? '+' : ''}${spreadDelta.toFixed(1)} vs prev</span>`
+      ? `<span style="color:${spreadDelta >= 0 ? '#2ecc71' : '#e74c3c'};font-size:calc(10px * var(--wm-panel-effective-scale, 1));margin-left:4px">${spreadDelta >= 0 ? '+' : ''}${spreadDelta.toFixed(1)} vs prev</span>`
       : '';
 
     const contrarianSignal = latest.spread <= -20
-      ? `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;margin:8px 0;border-radius:4px;border:1px solid #2ecc71;background:rgba(46,204,113,0.08);font-size:10px;color:#2ecc71">
+      ? `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;margin:8px 0;border-radius:4px;border:1px solid #2ecc71;background:rgba(46,204,113,0.08);font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#2ecc71">
           &#9432; Contrarian buy signal active: spread at ${latest.spread.toFixed(1)}% (threshold: -20%)
         </div>`
       : latest.bearish >= 50
-        ? `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;margin:8px 0;border-radius:4px;border:1px solid #e67e22;background:rgba(230,126,34,0.08);font-size:10px;color:#e67e22">
+        ? `<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;margin:8px 0;border-radius:4px;border:1px solid #e67e22;background:rgba(230,126,34,0.08);font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:#e67e22">
             &#9888; Extreme bearish reading: ${latest.bearish.toFixed(1)}% bearish (avg: ${historicalAvg.bearish}%)
           </div>`
         : '';
 
     const avgSection = avg8w ? `
       <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.06)">
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">8-Week Moving Average</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">8-Week Moving Average</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;text-align:center">
-          <div><div style="font-size:14px;font-weight:600;color:#2ecc71">${avg8w.bullish}%</div><div style="font-size:9px;color:var(--text-dim)">Bull</div></div>
-          <div><div style="font-size:14px;font-weight:600;color:#95a5a6">${avg8w.neutral}%</div><div style="font-size:9px;color:var(--text-dim)">Neutral</div></div>
-          <div><div style="font-size:14px;font-weight:600;color:#e74c3c">${avg8w.bearish}%</div><div style="font-size:9px;color:var(--text-dim)">Bear</div></div>
+          <div><div style="font-size:calc(14px * var(--wm-panel-effective-scale, 1));font-weight:600;color:#2ecc71">${avg8w.bullish}%</div><div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Bull</div></div>
+          <div><div style="font-size:calc(14px * var(--wm-panel-effective-scale, 1));font-weight:600;color:#95a5a6">${avg8w.neutral}%</div><div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Neutral</div></div>
+          <div><div style="font-size:calc(14px * var(--wm-panel-effective-scale, 1));font-weight:600;color:#e74c3c">${avg8w.bearish}%</div><div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Bear</div></div>
         </div>
       </div>` : '';
 
     const extremeSection = (extremes.spreadBelow20 > 0 || extremes.bearishAbove50 > 0)
-      ? `<div style="margin-top:6px;font-size:10px;color:var(--text-dim)">
+      ? `<div style="margin-top:6px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">
           52w extremes: ${extremes.spreadBelow20} contrarian signals, ${extremes.bearishAbove50} extreme bear, ${extremes.bullishAbove50} extreme bull
         </div>` : '';
 
     const fallbackBadge = d.fallback
-      ? '<span style="display:inline-block;padding:1px 5px;border-radius:3px;background:rgba(230,126,34,0.15);color:#e67e22;font-size:9px;margin-left:4px">(fallback data)</span>'
+      ? '<span style="display:inline-block;padding:1px 5px;border-radius:3px;background:rgba(230,126,34,0.15);color:#e67e22;font-size:calc(9px * var(--wm-panel-effective-scale, 1));margin-left:4px">(fallback data)</span>'
       : '';
-    const dateStr = latest.date ? `<div style="font-size:9px;color:var(--text-dim);text-align:right;margin-top:4px">Survey: ${escapeHtml(latest.date)}${d.source !== 'xls' ? ` (${escapeHtml(d.source)})` : ''}${fallbackBadge}</div>` : '';
+    const dateStr = latest.date ? `<div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-align:right;margin-top:4px">Survey: ${escapeHtml(latest.date)}${d.source !== 'xls' ? ` (${escapeHtml(d.source)})` : ''}${fallbackBadge}</div>` : '';
 
     const html = `
       <div style="padding:12px 14px">
         <div style="text-align:center;margin-bottom:8px">
-          <div style="font-size:11px;font-weight:600;color:${color};letter-spacing:0.06em;text-transform:uppercase">${escapeHtml(label)}</div>
+          <div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${color};letter-spacing:0.06em;text-transform:uppercase">${escapeHtml(label)}</div>
           ${deltaStr ? `<div style="margin-top:2px">${deltaStr}</div>` : ''}
         </div>
 
@@ -220,19 +220,19 @@ export class AAIISentimentPanel extends Panel {
 
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center;padding:8px;background:rgba(255,255,255,0.03);border-radius:6px;margin-bottom:8px">
           <div>
-            <div style="font-size:22px;font-weight:700;color:#2ecc71">${latest.bullish.toFixed(1)}%</div>
-            <div style="font-size:10px;color:var(--text-dim)">Bullish</div>
-            <div style="font-size:9px;color:var(--text-dim)">avg ${historicalAvg.bullish}%</div>
+            <div style="font-size:calc(22px * var(--wm-panel-effective-scale, 1));font-weight:700;color:#2ecc71">${latest.bullish.toFixed(1)}%</div>
+            <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Bullish</div>
+            <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">avg ${historicalAvg.bullish}%</div>
           </div>
           <div>
-            <div style="font-size:22px;font-weight:700;color:#95a5a6">${latest.neutral.toFixed(1)}%</div>
-            <div style="font-size:10px;color:var(--text-dim)">Neutral</div>
-            <div style="font-size:9px;color:var(--text-dim)">avg ${historicalAvg.neutral}%</div>
+            <div style="font-size:calc(22px * var(--wm-panel-effective-scale, 1));font-weight:700;color:#95a5a6">${latest.neutral.toFixed(1)}%</div>
+            <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Neutral</div>
+            <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">avg ${historicalAvg.neutral}%</div>
           </div>
           <div>
-            <div style="font-size:22px;font-weight:700;color:#e74c3c">${latest.bearish.toFixed(1)}%</div>
-            <div style="font-size:10px;color:var(--text-dim)">Bearish</div>
-            <div style="font-size:9px;color:var(--text-dim)">avg ${historicalAvg.bearish}%</div>
+            <div style="font-size:calc(22px * var(--wm-panel-effective-scale, 1));font-weight:700;color:#e74c3c">${latest.bearish.toFixed(1)}%</div>
+            <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Bearish</div>
+            <div style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">avg ${historicalAvg.bearish}%</div>
           </div>
         </div>
 

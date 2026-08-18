@@ -89,7 +89,7 @@ const HOW_TO_CALL = {
   mcp: {
     endpoint: 'https://worldmonitor.app/mcp',
     transport: 'streamable-http',
-    note: "Issue tools/list for the live inventory (anonymous). Data calls need OAuth2 (scope=mcp) or an API key header 'X-WorldMonitor-Key: wm_<40-hex>' — issue one at https://worldmonitor.app/pro.",
+    note: "Issue tools/list for the live inventory (anonymous). get_sources is the sole credential-free, daily-quota-free data tool and has a separate fail-closed 10/min/IP ceiling; all other MCP data tools need subscription access through OAuth2 (scope=mcp) or 'X-WorldMonitor-Key: wm_<40-hex>' — issue one at https://worldmonitor.app/pro.",
   },
   rest: {
     base: 'https://api.worldmonitor.app',

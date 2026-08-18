@@ -19,46 +19,103 @@
  * the human-readable YAML. Wired into `build:openapi` (and therefore every
  * web-variant build + the default prebuild hook). Idempotent.
  *
- * It also $ref-dedupes repeated non-2xx error responses and the structurally
- * identical China provenance value schemas (see openapi-dedup-*.mjs). The
- * 2026-07-05 rate-limit/idempotency/example doc injections grew the minified
- * JSON from ~752 KB to ~1.04 MB, crossing the ~1 MB cap and flipping orank's
- * function-calling check to "couldn't validate". Dedup keeps the served JSON
- * below its guarded scanner budget with identical semantics;
- * tests/openapi-json-dedup.test.mjs proves the transform is lossless.
+ * Four emit-time transforms keep the served JSON below its guarded scanner
+ * budget with identical semantics. The 2026-07-05 rate-limit/idempotency/example
+ * doc injections grew the minified JSON from ~752 KB to ~1.04 MB, crossing the
+ * ~1 MB cap and flipping orank's function-calling check to "couldn't validate":
+ *
+ *   - repeated non-2xx error responses      -> components.responses $refs
+ *   - fleet-wide injected parameters        -> components.parameters $refs
+ *   - shared China provenance value schemas -> reused $refs
+ *     (all three in openapi-dedup-*.mjs; tests prove they are lossless)
+ *   - component schemas nothing can reach   -> removed
+ *     (openapi-drop-unreachable-schemas.mjs)
+ *
+ * `scripts/openapi-capacity-report.mjs` measures what is left and ranks what to
+ * collapse next; docs/perf/openapi-bundle-capacity-2026-08-13.md is the plan.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { dedupeErrorResponses, dedupeSharedParameters } from './openapi-dedup-responses.mjs';
 import { dedupeSharedChinaProvenanceSchemas } from './openapi-dedup-schemas.mjs';
+import { dropUnreachableSchemas } from './openapi-drop-unreachable-schemas.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const yamlPath = resolve(scriptDir, '../docs/api/worldmonitor.openapi.yaml');
-const jsonPath = resolve(scriptDir, '../public/openapi.json');
+// OPENAPI_YAML_PATH exists so the capacity report's "could not measure" exit can
+// be exercised as a real process against a real missing/invalid source, instead
+// of being asserted from a hand-built report object that never runs the CLI.
+export const yamlPath = process.env.OPENAPI_YAML_PATH
+  ?? resolve(scriptDir, '../docs/api/worldmonitor.openapi.yaml');
+export const jsonPath = resolve(scriptDir, '../public/openapi.json');
 
-const spec = parseYaml(readFileSync(yamlPath, 'utf8'));
+/**
+ * Produce the exact artifact `public/openapi.json` receives, without writing it.
+ *
+ * Exported so the capacity report (#6558) measures the SAME bytes this script
+ * emits rather than a re-implementation that can drift from it. `bytes` is the
+ * UTF-8 length actually written to disk and served — `json.length` counts UTF-16
+ * code units and undercounts every non-ASCII character in the descriptions
+ * (264 bytes on the 2026-08-13 bundle), which is the wrong unit for a body cap
+ * expressed in bytes.
+ *
+ * @param {{ spec?: object }} [options] Pre-parsed bundle. The YAML parse of the
+ *   2.6 MB source costs seconds; callers that already hold the document (the
+ *   contract tests, via the cached loader) pass it in. Mutated in place, exactly
+ *   as the CLI path mutates its own freshly parsed copy.
+ */
+export function buildBundle({ spec: provided } = {}) {
+  const spec = provided ?? parseYaml(readFileSync(yamlPath, 'utf8'));
 
-if (!spec || typeof spec !== 'object' || typeof spec.openapi !== 'string') {
-  throw new Error(
-    `build-openapi-json: parsed ${yamlPath} but it is not a valid OpenAPI document (missing top-level "openapi" version string)`,
+  if (!spec || typeof spec !== 'object' || typeof spec.openapi !== 'string') {
+    throw new Error(
+      `build-openapi-json: parsed ${yamlPath} but it is not a valid OpenAPI document (missing top-level "openapi" version string)`,
+    );
+  }
+
+  const stats = dedupeErrorResponses(spec);
+  const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);
+  const paramStats = dedupeSharedParameters(spec);
+  // Last by convention, not by necessity. The drop seeds reachability from
+  // EVERY non-schema bucket (see openapi-drop-unreachable-schemas.mjs), so the
+  // responses and parameters the passes above hoist into components keep their
+  // schema targets alive wherever it runs — that unconditional seeding, not
+  // this ordering, is the invariant a future edit must preserve.
+  const unreachableStats = dropUnreachableSchemas(spec);
+
+  // Minified: this artifact is machine-consumed (scanners/agents), and the
+  // smaller payload dodges fetch-size caps. The YAML remains the human copy.
+  const json = JSON.stringify(spec);
+
+  return {
+    spec,
+    json,
+    bytes: Buffer.byteLength(json, 'utf8'),
+    stats,
+    schemaStats,
+    paramStats,
+    unreachableStats,
+  };
+}
+
+function main() {
+  const { spec, json, bytes, stats, schemaStats, paramStats, unreachableStats } = buildBundle();
+  writeFileSync(jsonPath, json);
+
+  const pathCount = spec.paths ? Object.keys(spec.paths).length : 0;
+  console.log(
+    `build-openapi-json: wrote ${jsonPath} (OpenAPI ${spec.openapi}, ${pathCount} paths, ` +
+      `${bytes} bytes; hoisted ${stats.hoisted} shared error responses into ${stats.replacedRefs} $refs; ` +
+      `hoisted ${paramStats.hoisted} fleet-wide parameters into ${paramStats.replacedRefs} $refs; ` +
+      `reused ${schemaStats.replacedRefs}/${schemaStats.compared} shared China provenance schemas; ` +
+      `dropped ${unreachableStats.dropped} unreachable schemas worth ${unreachableStats.bytesFreed} bytes)`,
   );
 }
 
-const stats = dedupeErrorResponses(spec);
-const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);
-const paramStats = dedupeSharedParameters(spec);
-
-// Minified: this artifact is machine-consumed (scanners/agents), and the
-// smaller payload dodges fetch-size caps. The YAML remains the human copy.
-const json = JSON.stringify(spec);
-writeFileSync(jsonPath, json);
-
-const pathCount = spec.paths ? Object.keys(spec.paths).length : 0;
-console.log(
-  `build-openapi-json: wrote ${jsonPath} (OpenAPI ${spec.openapi}, ${pathCount} paths, ` +
-    `${json.length} bytes; hoisted ${stats.hoisted} shared error responses into ${stats.replacedRefs} $refs; ` +
-    `hoisted ${paramStats.hoisted} fleet-wide parameters into ${paramStats.replacedRefs} $refs; ` +
-    `reused ${schemaStats.replacedRefs}/${schemaStats.compared} shared China provenance schemas)`,
-);
+// Importing this module must not write the artifact: the capacity report and
+// the contract tests import `buildBundle` for measurement only.
+const invokedDirectly = process.argv[1]
+  && pathToFileURL(realpathSync(process.argv[1])).href
+    === pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
+if (invokedDirectly) main();

@@ -59,6 +59,7 @@ export type BlindCorpus = {
   protocolVersion: string;
   policyVersion: string;
   modelVersion: string;
+  classifierRuntimeSha256: string;
   queryVersion: string;
   curatorAccessVersion: string;
   lockedAt: string | null;
@@ -105,6 +106,7 @@ export type PredictionSet = {
   protocolVersion: string;
   policyVersion: string;
   modelVersion: string;
+  classifierRuntimeSha256: string;
   queryVersion: string;
   parentPredictionSetSha256: string | null;
   parentGoldLabelSetSha256: string | null;
@@ -131,6 +133,7 @@ export type BlindForecast = {
   versions: {
     policyVersion: string;
     modelVersion: string;
+    classifierRuntimeSha256: string;
     queryVersion: string;
     pilotGoldLabelVersion: string;
     targetGoldLabelVersion: string;
@@ -198,6 +201,7 @@ export type ScoreReport = {
   versions: {
     policyVersion: string;
     modelVersion: string;
+    classifierRuntimeSha256: string;
     queryVersion: string;
     goldLabelVersion: string;
     curatorAccessVersion: string;
@@ -281,6 +285,7 @@ const EVALUATION_VERSION_FIELDS = [
   ['protocolVersion', 'protocol_version'],
   ['policyVersion', 'policy_version'],
   ['modelVersion', 'model_version'],
+  ['classifierRuntimeSha256', 'classifier_runtime_digest'],
   ['queryVersion', 'query_version'],
 ] as const;
 const OPAQUE_EXAMPLE_ID_PREFIX = 'cm_example_';
@@ -306,6 +311,7 @@ const FORECAST_KEYS = new Set([
 const FORECAST_VERSIONS_KEYS = new Set([
   'policyVersion',
   'modelVersion',
+  'classifierRuntimeSha256',
   'queryVersion',
   'pilotGoldLabelVersion',
   'targetGoldLabelVersion',
@@ -326,6 +332,7 @@ const CORPUS_KEYS = new Set([
   'protocolVersion',
   'policyVersion',
   'modelVersion',
+  'classifierRuntimeSha256',
   'queryVersion',
   'curatorAccessVersion',
   'lockedAt',
@@ -364,6 +371,7 @@ const PREDICTION_SET_KEYS = new Set([
   'protocolVersion',
   'policyVersion',
   'modelVersion',
+  'classifierRuntimeSha256',
   'queryVersion',
   'parentPredictionSetSha256',
   'parentGoldLabelSetSha256',
@@ -462,6 +470,9 @@ export function validateBlindCorpusArtifact(value: unknown): asserts value is Bl
   requireVersion(corpus.protocolVersion, 'corpus_protocol_version_invalid');
   requireVersion(corpus.policyVersion, 'corpus_policy_version_invalid');
   requireVersion(corpus.modelVersion, 'corpus_model_version_invalid');
+  if (!isEvidenceDigest(corpus.classifierRuntimeSha256)) {
+    fail('corpus_classifier_runtime_digest_invalid');
+  }
   requireVersion(corpus.queryVersion, 'corpus_query_version_invalid');
   requireVersion(corpus.curatorAccessVersion, 'curator_access_version_invalid');
   if (!['pilot', 'tracer_gate', 'stage3_gate'].includes(String(corpus.purpose))) {
@@ -535,6 +546,9 @@ export function validatePredictionSetArtifact(value: unknown): asserts value is 
   requireVersion(set.protocolVersion, 'prediction_protocol_version_invalid');
   requireVersion(set.policyVersion, 'prediction_policy_version_invalid');
   requireVersion(set.modelVersion, 'prediction_model_version_invalid');
+  if (!isEvidenceDigest(set.classifierRuntimeSha256)) {
+    fail('prediction_classifier_runtime_digest_invalid');
+  }
   requireVersion(set.queryVersion, 'prediction_query_version_invalid');
   if (!isEvidenceDigest(set.corpusSha256)) fail('prediction_corpus_digest_invalid');
   nullableEvidenceDigest(set.parentPredictionSetSha256, 'parent_prediction_set_digest_invalid');
@@ -1098,6 +1112,7 @@ export function forecastBlindEvaluation(input: {
     versions: {
       policyVersion: input.targetCorpus.policyVersion,
       modelVersion: input.targetCorpus.modelVersion,
+      classifierRuntimeSha256: input.targetCorpus.classifierRuntimeSha256,
       queryVersion: input.targetCorpus.queryVersion,
       pilotGoldLabelVersion: input.pilotGoldLabels.goldLabelVersion,
       targetGoldLabelVersion: input.targetGoldLabels.goldLabelVersion,
@@ -1145,6 +1160,7 @@ function validateForecast(input: {
   for (const [field, code] of [
     ['policyVersion', 'policy_version'],
     ['modelVersion', 'model_version'],
+    ['classifierRuntimeSha256', 'classifier_runtime_digest'],
     ['queryVersion', 'query_version'],
     ['curatorAccessVersion', 'curator_access_version'],
   ] as const) {
@@ -1539,6 +1555,15 @@ export function scoreBlindEvaluation(input: {
       || input.previous.report.corpus.sha256 !== input.previous.expectedCorpusSha256) {
       fail('previous_report_corpus_mismatch');
     }
+    if (input.previous.report.versions.policyVersion !== input.previous.corpus.policyVersion
+      || input.previous.report.versions.modelVersion !== input.previous.corpus.modelVersion
+      || input.previous.report.versions.classifierRuntimeSha256
+        !== input.previous.corpus.classifierRuntimeSha256
+      || input.previous.report.versions.queryVersion !== input.previous.corpus.queryVersion
+      || input.previous.report.versions.curatorAccessVersion
+        !== input.previous.corpus.curatorAccessVersion) {
+      fail('previous_report_versions_mismatch');
+    }
     const previousSets = validateContinuation({
       corpus: input.corpus,
       goldLabels: input.goldLabels,
@@ -1608,6 +1633,7 @@ export function scoreBlindEvaluation(input: {
     versions: {
       policyVersion: input.corpus.policyVersion,
       modelVersion: input.corpus.modelVersion,
+      classifierRuntimeSha256: input.corpus.classifierRuntimeSha256,
       queryVersion: input.corpus.queryVersion,
       goldLabelVersion: input.goldLabels.goldLabelVersion,
       curatorAccessVersion: input.corpus.curatorAccessVersion,

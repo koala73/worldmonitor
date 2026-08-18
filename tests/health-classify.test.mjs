@@ -13,8 +13,10 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { __testing__ } from '../api/health.js';
+import { BUNDLE_HEARTBEAT_TTL_SECONDS, bundleHeartbeatKey } from '../scripts/_bundle-runner.mjs';
 
 const {
   classifyKey,
@@ -91,6 +93,234 @@ test('classifyKey: fresh seed + data → OK', () => {
       metaValues: { 'seed-meta:seismology:earthquakes': seedMeta() },
     }));
   assert.equal(entry.status, 'OK');
+});
+
+test('classifyKey: non-empty failedDatasets surfaces a partial static seed as SEED_ERROR', () => {
+  const entry = classifyKey(
+    'resilienceStaticIndex',
+    STANDALONE_KEYS.resilienceStaticIndex,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.resilienceStaticIndex]: 4096 },
+      metaValues: {
+        [SEED_META.resilienceStaticIndex.key]: seedMeta({
+          status: 'ok',
+          recordCount: 196,
+          failedDatasets: ['wgi'],
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.deepEqual(entry.failedDatasets, ['wgi']);
+  const snapshot = {
+    status: 'WARNING',
+    summary: { total: 1, ok: 0, warn: 1, crit: 0 },
+    checkedAt: new Date(NOW).toISOString(),
+    checks: { resilienceStaticIndex: entry },
+  };
+  assert.deepEqual(
+    healthResponseBody(snapshot, true).problems.resilienceStaticIndex.failedDatasets,
+    ['wgi'],
+  );
+  assert.deepEqual(
+    healthResponseBody(healthResponseBody(snapshot, true), true).problems.resilienceStaticIndex.failedDatasets,
+    ['wgi'],
+    'the cached compact snapshot preserves the failed adapter projection',
+  );
+
+  const siblingEntry = classifyKey(
+    'resilienceStaticFao',
+    STANDALONE_KEYS.resilienceStaticFao,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.resilienceStaticFao]: 4096 },
+      metaValues: {
+        [SEED_META.resilienceStaticFao.key]: seedMeta({
+          status: 'ok',
+          recordCount: 196,
+          failedDatasets: ['wgi'],
+        }),
+      },
+    }),
+  );
+  assert.equal(siblingEntry.status, 'OK');
+  assert.equal(siblingEntry.failedDatasets, undefined);
+});
+
+test('classifyKey: failedDatasets projection validates, deduplicates, and stops at 50 entries', () => {
+  const valid = Array.from({ length: 60 }, (_, index) => `dataset-${index}`);
+  const entry = classifyKey(
+    'resilienceStaticIndex',
+    STANDALONE_KEYS.resilienceStaticIndex,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [STANDALONE_KEYS.resilienceStaticIndex]: 4096 },
+      metaValues: {
+        [SEED_META.resilienceStaticIndex.key]: seedMeta({
+          status: 'ok',
+          recordCount: 196,
+          failedDatasets: [null, '', 'x'.repeat(101), valid[0], valid[0], ...valid.slice(1)],
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'SEED_ERROR');
+  assert.deepEqual(entry.failedDatasets, valid.slice(0, 50));
+});
+
+test('classifyKey: resilience ranking and interval metadata must match the active cache state', () => {
+  const original = {
+    RESILIENCE_PILLAR_COMBINE_ENABLED: process.env.RESILIENCE_PILLAR_COMBINE_ENABLED,
+    RESILIENCE_SCHEMA_V2_ENABLED: process.env.RESILIENCE_SCHEMA_V2_ENABLED,
+    RESILIENCE_EDUCATION_ENABLED: process.env.RESILIENCE_EDUCATION_ENABLED,
+  };
+  process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+  process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
+  process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
+
+  const expected = {
+    recordCount: 196,
+    _formula: 'd6',
+    _educationState: 'education-on',
+    _intervalMethodology: 'weight-perturbation-sensitivity-v3',
+  };
+
+  try {
+    for (const name of ['resilienceRanking', 'resilienceIntervals']) {
+      const dataKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+      assert.ok(dataKey, `${name} must have a registered data key`);
+      const classify = (tags) => classifyKey(
+        name,
+        dataKey,
+        { allowOnDemand: false },
+        makeCtx({
+          strens: { [dataKey]: 2048 },
+          metaValues: { [SEED_META[name].key]: seedMeta(tags) },
+        }),
+      );
+
+      const healthy = classify(expected);
+      assert.equal(healthy.status, 'OK', `${name} current cache state must be healthy`);
+      assert.equal(healthy.cacheState.ok, true);
+
+      for (const staleTags of [
+        {},
+        { ...expected, _formula: 'pc' },
+        { ...expected, _educationState: 'education-off' },
+        { ...expected, _intervalMethodology: 'weight-perturbation-sensitivity-v2' },
+      ]) {
+        const stale = classify(staleTags);
+        assert.equal(stale.status, 'STALE_SEED', `${name} must reject stale or missing cache-state tags`);
+        assert.equal(stale.cacheState.ok, false);
+        assert.equal(stale.cacheState.requiredFormula, 'd6');
+        assert.equal(stale.cacheState.requiredEducationState, 'education-on');
+        assert.equal(stale.cacheState.requiredIntervalMethodology, 'weight-perturbation-sensitivity-v3');
+      }
+    }
+  } finally {
+    for (const [key, value] of Object.entries(original)) {
+      if (value == null) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
+test('classifyKey: resilience formula defaults active and only explicit false selects rollback', () => {
+  const originalPillar = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+  const originalSchema = process.env.RESILIENCE_SCHEMA_V2_ENABLED;
+  const originalEducation = process.env.RESILIENCE_EDUCATION_ENABLED;
+  process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
+  process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
+
+  try {
+    for (const { raw, formula } of [
+      { raw: undefined, formula: 'pc' },
+      { raw: 'true', formula: 'pc' },
+      { raw: 'false', formula: 'd6' },
+    ]) {
+      if (raw === undefined) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+      else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = raw;
+      const dataKey = BOOTSTRAP_KEYS.resilienceRanking ?? STANDALONE_KEYS.resilienceRanking;
+      assert.ok(dataKey);
+      const tags = {
+        _formula: formula,
+        _educationState: 'education-on',
+        _intervalMethodology: 'weight-perturbation-sensitivity-v3',
+      };
+      const entry = classifyKey(
+        'resilienceRanking',
+        dataKey,
+        { allowOnDemand: false },
+        makeCtx({
+          strens: { [dataKey]: 2048 },
+          metaValues: { [SEED_META.resilienceRanking.key]: seedMeta(tags) },
+        }),
+      );
+      assert.equal(entry.status, 'OK', `pillar=${String(raw)} must require ${formula}`);
+      assert.equal(entry.cacheState.requiredFormula, formula);
+    }
+  } finally {
+    if (originalPillar == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+    else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalPillar;
+    if (originalSchema == null) delete process.env.RESILIENCE_SCHEMA_V2_ENABLED;
+    else process.env.RESILIENCE_SCHEMA_V2_ENABLED = originalSchema;
+    if (originalEducation == null) delete process.env.RESILIENCE_EDUCATION_ENABLED;
+    else process.env.RESILIENCE_EDUCATION_ENABLED = originalEducation;
+  }
+});
+
+test('classifyKey: resilience interval metadata below the publication floor is partial', () => {
+  const dataKey = STANDALONE_KEYS.resilienceIntervals;
+  const entry = classifyKey(
+    'resilienceIntervals',
+    dataKey,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [dataKey]: 2048 },
+      metaValues: {
+        [SEED_META.resilienceIntervals.key]: seedMeta({
+          recordCount: 179,
+          _formula: 'pc',
+          _educationState: 'education-on',
+          _intervalMethodology: 'weight-perturbation-sensitivity-v3',
+        }),
+      },
+    }),
+  );
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.records, 179);
+  assert.equal(entry.minRecordCount, 180);
+});
+
+test('classifyKey: resilience interval coverage fails closed on missing or malformed counts', () => {
+  const dataKey = STANDALONE_KEYS.resilienceIntervals;
+  const malformedCounts = [undefined, null, 'invalid', Infinity, {}, []];
+
+  for (const recordCount of malformedCounts) {
+    const entry = classifyKey(
+      'resilienceIntervals',
+      dataKey,
+      { allowOnDemand: false },
+      makeCtx({
+        strens: { [dataKey]: 2048 },
+        metaValues: {
+          [SEED_META.resilienceIntervals.key]: seedMeta({
+            recordCount,
+            _formula: 'pc',
+            _educationState: 'education-on',
+            _intervalMethodology: 'weight-perturbation-sensitivity-v3',
+          }),
+        },
+      }),
+    );
+
+    assert.equal(entry.status, 'COVERAGE_PARTIAL', `recordCount=${String(recordCount)}`);
+    assert.equal(entry.minRecordCount, 180);
+  }
 });
 
 test('classifyKey: consumer-price coverage below the declared completion floor degrades', () => {
@@ -1511,6 +1741,56 @@ test('classifyKey: webcams active pointer is registered with seed-meta freshness
   assert.equal(entry.status, 'OK');
   assert.equal(entry.records, 65000);
   assert.equal(entry.maxStaleMin, 1440);
+});
+
+const BUNDLE_TICKS = [
+  ['staticRefBundleTick', 'static-ref', 'scripts/seed-bundle-static-ref.mjs', 6691],
+  ['staticRefHeavyBundleTick', 'static-ref-heavy', 'scripts/seed-bundle-static-ref-heavy.mjs', 6806],
+];
+
+test('classifyKey: each bundle tick heartbeat goes EMPTY when the cron never fired and STALE when it freezes', () => {
+  for (const [name, label] of BUNDLE_TICKS) {
+    const dataKey = STANDALONE_KEYS[name];
+    const seedCfg = SEED_META[name];
+    assert.equal(dataKey, bundleHeartbeatKey(label), name);
+
+    const missing = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({}));
+    assert.equal(missing.status, 'EMPTY', name);
+    assert.equal(STATUS_COUNTS[missing.status], 'crit', name);
+
+    const stale = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({
+      strens: { [dataKey]: 128 },
+      metaValues: { [seedCfg.key]: seedMeta({ fetchedAt: NOW - 2881 * ONE_MIN_MS, recordCount: 1 }) },
+    }));
+    assert.equal(stale.status, 'STALE_SEED', name);
+    assert.equal(stale.maxStaleMin, 2880, name);
+    assert.equal(STATUS_COUNTS[stale.status], 'warn', name);
+
+    const fresh = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({
+      strens: { [dataKey]: 128 },
+      metaValues: { [seedCfg.key]: seedMeta({ recordCount: 1 }) },
+    }));
+    assert.equal(fresh.status, 'OK', name);
+  }
+});
+
+test('the three bundle tick heartbeats stay registered together (#6691 / #6806)', () => {
+  for (const [name, label, bundlePath, issue] of BUNDLE_TICKS) {
+    assert.equal(STANDALONE_KEYS[name], bundleHeartbeatKey(label));
+    assert.equal(SEED_META[name].key, bundleHeartbeatKey(label));
+    assert.equal(SEED_META[name].maxStaleMin, 2880, `${name} must use the 48h = 2× daily budget`);
+    assert.equal(ON_DEMAND_KEYS.has(name), false, `${name} is a seeded watchdog, not on-demand`);
+    assert.equal(SEED_META[name].cutover?.mode, 'expiring-ack');
+    assert.equal(SEED_META[name].cutover?.fromKey, null);
+    assert.equal(SEED_META[name].cutover?.status, 'EMPTY');
+    assert.equal(SEED_META[name].cutover?.issue, issue);
+    assert.ok(
+      BUNDLE_HEARTBEAT_TTL_SECONDS > SEED_META[name].maxStaleMin * 60,
+      `${name}: TTL must outlive maxStaleMin so a late tick is STALE_SEED, not EMPTY`,
+    );
+    const bundle = readFileSync(new URL(`../${bundlePath}`, import.meta.url), 'utf8');
+    assert.match(bundle, new RegExp(`runBundle\\(\\s*'${label}'\\s*,`));
+  }
 });
 
 test('classifyKey: digestNotifications heartbeat goes stale when the cron stops', () => {

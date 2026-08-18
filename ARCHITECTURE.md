@@ -1,6 +1,6 @@
 # Architecture
 
-> **Capability counts** (map layers, services, protos, locales, CI workflows, freshness sources) are derived from code and CI-verified by `npm run docs:check` (`scripts/docs-stats.mjs`, source of truth `docs/generated/stats.json`). Do not hand-edit those numbers — change the code, run `npm run docs:stats`.
+> **Inventory ownership**: map layers, services, protos, locales, CI workflows, and freshness sources are defined by their registries. `npm run docs:check` verifies registry and fixed-contract documentation; generated snapshots are refreshed with `npm run docs:stats`.
 >
 > **Ownership rule**: When deployment topology, API surface, desktop runtime, or bootstrap keys change, this document must be updated in the same PR.
 
@@ -13,15 +13,15 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 ## 1. System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
+┌────────────────────────────────────────────────────────────────┐
 │                        Browser / Desktop                        │
-│  ┌──────────┐  ┌──────────┐  ┌────────────┐  ┌──────────────┐  │
+│  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌─────────────┐  │
 │  │ DeckGLMap│  │ GlobeMap │  │  Panels    │  │  Workers     │  │
 │  │(deck.gl) │  │(globe.gl)│  │(Panel base)│  │(ML, analysis)│  │
-│  └────┬─────┘  └────┬─────┘  └─────┬──────┘  └──────────────┘  │
-│       └──────────────┴──────────────┘                           │
+│  └────┐─────┘  └────┐─────┘  └─────┐─────┘  └─────────────┘  │
+│       └──────────────┴─────────────┘                           │
 │                         │ fetch /api/*                          │
-└─────────────────────────┼───────────────────────────────────────┘
+└─────────────────────────┴───────────────────────────────────┘
                           │
            ┌──────────────┼──────────────┐
            │              │              │
@@ -46,7 +46,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
         │ CoinGeck│ │  FRED   │ │ FIRMS   │
         │   ...   │ │   ...   │ │   ...   │
         └─────────┘ └─────────┘ └─────────┘
-           530+ observed upstream hosts
+           578+ observed upstream hosts
 ```
 
 **Source files**: `package.json`, `vercel.json`
@@ -92,7 +92,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 
 ### Component Model
 
-All panels extend the `Panel` base class (108 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
+All panels extend the `Panel` base class (109 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
 
 ### Dual Map System
 
@@ -197,7 +197,7 @@ CI enforces generated code freshness via `.github/workflows/proto-check.yml`: ru
 
 ### Bootstrap Hydration
 
-`/api/bootstrap` reads cached keys from Redis in a single batch call. The SPA fetches two tiers concurrently (fast + slow) with separate abort controllers and timeouts. Hydrated data is consumed on-demand by panels via `getHydratedData(key)`.
+`/api/bootstrap` reads cached keys from Redis in a single batch call. The SPA fetches two tiers concurrently (fast + slow) with separate abort controllers and timeouts. Large or opt-in datasets use a public, CDN-shielded single-key request and are consumed through `ensureHydrated(key)` only when their panel renders. Tier-hydrated data is consumed by panels via `getHydratedData(key)`.
 
 ### Seed Scripts
 
@@ -215,6 +215,8 @@ The Railway relay service (`scripts/ais-relay.cjs`) runs continuous seed loops:
 - UCDP events
 
 These are the primary seeders. Standalone `seed-*.mjs` scripts on Railway cron are secondary/backup.
+
+The market backup bundle also persists 14 days of timestamped hourly Yahoo closes for the news-to-market correlation panel. This series is an on-demand bootstrap key, so it does not increase the default hydration payload.
 
 ### Refresh Scheduling
 
@@ -363,6 +365,8 @@ Runs before every `git push`:
 | `lint-code.yml` | PR, push to main | Biome lint + sebuf API-contract enforcement |
 | `lint.yml` | PR (markdown changes) | markdownlint-cli2 |
 | `test.yml` | PR, push to main | Unit/integration suite, docs-stats guardrail, plus conditional digest-image and resilience-validation smoke gates |
+| `e2e-visual.yml` | Path-filtered PR, push to main (chrome only), nightly cron, manual | Deterministic map goldens (`test:e2e:visual`) plus named harness chrome captures; evidence only — not a deploy-gate required check |
+| `publish-e2e-screenshots.yml` | After `E2E Visual` completes on main (not PRs) | Optional S3 sync of the chrome gallery when `E2E_SCREENSHOT_*` is configured; otherwise the Actions artifact is the durable copy |
 | `proto-check.yml` | PR (proto changes) | Generated code matches committed output |
 | `pro-bundle-freshness.yml` | PR (pro bundle changes) | Committed pro data bundle artifacts are fresh |
 | `feed-validation.yml` | PR (feed changes), daily cron | RSS feed reachability and validation |
@@ -370,8 +374,9 @@ Runs before every `git push`:
 | `live-api-cache-auth.yml` | 6-hourly cron, push to main (sweep paths), manual | Production cache/auth posture sweep: fake auth stays no-store and is never a cached 200, anonymous public surfaces stay cacheable, MCP/OAuth surfaces stay protocol-valid (#4497 regression net; suite was inert until #5379 wired the gate on, and the step fails if it executes 0 assertions) |
 | `china-decision-parity-live.yml` | 6-hourly cron, push to main (audit paths), manual (optional staging URL) | Live half of the China decision-signal parity audit: probes the deployed composition RPC and the public `chinaDecisionSignals` bootstrap projection for the six-domain contract and a canonical snapshot under one hour old (#5643 — the probe existed but nothing invoked it, and `--require-live` keeps a lost `--url` from passing vacuously) |
 | `security-audit.yml` | PR, push to main, daily cron, manual | Production dependency audits for every tracked `package-lock.json` workspace, failing on unbaselined high/critical advisories |
-| `seed-freshness-monitor.yml` | 15-minute cron, manual | Enforces production ingestion acceptance after a green scheduled main gate; fails on every actionable compact-health problem except explicitly on-demand sources without grading production before Railway deploys or runs |
-| `railway-deploy-trigger.yml` | Deploy Gate completion, hourly backstop, manual | Reconciles the Railway fleet forward under a bounded Durable Object lease: deploys each service whose dependency closure changed since the commit it is running, revalidates exact green `main` before every serial provider call, and counts success only after read-only terminal convergence plus strict zero drift; runner-less runs own no production lock |
+| `seed-freshness-monitor.yml` | 15-minute cron, manual | Enforces production ingestion acceptance after a green main gate (HEAD, or the newest gated ancestor when HEAD is undecided or already red); fails on every actionable compact-health problem except explicitly on-demand sources without grading production before Railway deploys or runs |
+| `railway-deploy-drift.yml` | Hourly cron, manual | Runs two independent read-only checks against the exact production fleet: Viewer-safe source/build/deploy configuration drift and deployment/Git-closure drift. It has no mutation, dispatch, retry, approval, or acceptance-baseline path |
+| `railway-deploy-trigger.yml` | Manual rollback only | Keeps the legacy reconciler quiesced unless an operator explicitly activates the bounded rollback path; it does not own normal Railway deployment creation |
 | `analytics-collector-monitor.yml` | 15-minute cron, manual | Probes the self-hosted Umami collector directly (heartbeat, tracker script, ingest route) and fails when events are being dropped — Railway reported a green deployment through the 4-day #5565 blackout, so deployment status is not trusted here |
 | `umami-storage-monitor.yml` | 15-minute cron, manual | Reads the Umami Postgres Railway volume and the `umami-retention` deployment history without mutation, caches a bounded history, and fails on capacity or projected days-to-full thresholds, or when the retention runner's newest deployment that ran is `CRASHED` |
 | `postmerge-deploy-monitor.yml` | 10-minute cron, manual | Alarms on a failed post-merge production deploy (#6376): reads the newest completed run on `main` of `convex-deploy.yml`, `deploy-railway-reconcile-control.yml` and `deploy-worker.yml` and fails when the deploy job did not run/succeed — covers the un-gated deployers outside `deploy-gate.yml`'s PR smoke list |
@@ -382,8 +387,9 @@ Runs before every `git push`:
 | `convex-deploy.yml` | Push to main, manual | Deploys Convex backend functions |
 | `deploy-worker.yml` | Push to main (worker paths), manual | Deploys the `api-cors-preflight` Cloudflare Worker |
 | `deploy-railway-reconcile-control.yml` | Push to main (control-plane paths), manual | Tests and deploys the isolated SQLite-backed Durable Object used for Railway reconciliation leases, attempts, dispatch holds, and the global mutation-uncertain barrier; deployment does not itself activate the trigger cutover |
-| `railway-deploy-trigger-watchdog.yml` | 15-minute offset cron, manual | Independently classifies reconcile liveness with bounded GitHub history; observe-only until both cutover and recovery flags are enabled, and then may dispatch one fenced replacement without cancelling, rerunning, or approving any existing production run |
+| `railway-deploy-trigger-watchdog.yml` | Manual rollback only | Checks the legacy rollback surface only when an operator dispatches it; it can authorize a fenced replacement only when both legacy activation flags are explicitly enabled |
 | `railway-reconcile-manual-recovery.yml` | Protected manual dispatch only | Evidence-bound break-glass resolution for ambiguous dispatch holds or post-mutation barriers; records immutable supersession and delegates any retry to the ordinary lease-aware workflow rather than carrying a Railway deploy token |
+| `desktop-release-train.yml` | Push to main (release inputs), daily cron, manual | Compares the checked-in desktop version with the latest published release, creates a compatible release tag, and dispatches the atomic multi-platform desktop build |
 | `build-desktop.yml` | Release tag, push, manual | Multi-platform Tauri build, code signing (macOS), AppImage library stripping (Linux), smoke test |
 | `docker-publish.yml` | Release, manual | Multi-arch image (amd64, arm64) pushed to GHCR |
 | `publish-cli.yml` | `cli-v*` tag, manual | Tests and publishes the `worldmonitor` npm CLI (`cli/`) via OIDC trusted publishing (no token) with provenance |

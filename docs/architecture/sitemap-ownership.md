@@ -9,7 +9,7 @@ its complete inventory so a second hand-maintained list cannot drift from it.
 | `/blog/sitemap-index.xml` | Astro blog build | Blog index, posts, glossary, and author/editorial pages |
 | `/docs/sitemap.xml` | Mintlify | Documentation and localized documentation |
 
-`public/robots.txt` advertises each endpoint exactly once. Root generation never
+`public/robots.www.txt` (served at `/robots.txt` on www/apex) advertises each endpoint exactly once. Root generation never
 copies `/blog` or `/docs` URLs.
 
 ## Material modification sources

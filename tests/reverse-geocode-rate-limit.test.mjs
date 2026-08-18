@@ -1,10 +1,9 @@
 // Rate-limit coverage for api/reverse-geocode.js (#6234).
 //
 // The route reaches Nominatim, whose usage policy is the strictest in our
-// stack and whose enforcement is an egress-IP ban. It is Upstash-cached on a
-// 0.1-degree grid, but the cache write is conditional on a resolved country
-// (api/reverse-geocode.js), so ocean and Antarctic coordinates never populate
-// it — a scripted sweep of those cells was 100% passthrough with no meter.
+// stack and whose enforcement is an egress-IP ban. It shares an Upstash-backed
+// 0.1-degree grid with the gateway RPC and caches normalized empty results, so
+// repeated ocean and Antarctic lookups do not remain provider passthrough.
 
 import { afterEach, beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -146,6 +145,86 @@ test('allows the request through when the limiter reports headroom', async () =>
     !errorLogs.some((l) => l.includes('[rate-limit] redis-error')),
     `limiter degraded (fail-open) instead of granting headroom: ${errorLogs.join(' | ')}`,
   );
+});
+
+test('normalizes an RPC-shaped shared cache hit in the same preview namespace', async () => {
+  process.env.VERCEL_ENV = 'preview';
+  process.env.VERCEL_GIT_COMMIT_SHA = 'deadbeefcafebabe';
+  const calls = spyFetch((url) => {
+    if (url.includes('/get/')) {
+      return new Response(JSON.stringify({
+        result: JSON.stringify({
+          country: 'United States',
+          code: 'US',
+          displayName: 'New York, United States',
+        }),
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.includes('fake-upstash')) return upstashReply(59, 60);
+    throw new Error(`unexpected fetch: ${url}`);
+  });
+  const { ctx } = makeCtx();
+
+  const res = await handler(makeRequest('lat=40.7&lon=-74.0', uniqueCallerIp()), ctx);
+
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), {
+    country: 'United States',
+    code: 'US',
+    displayName: 'New York, United States',
+    error: '',
+  });
+  assert.equal(nominatimCalls(calls).length, 0, 'a shared cache hit must not reach Nominatim');
+  assert.ok(
+    calls.some((call) => call.url === 'https://fake-upstash.example/get/preview%3Adeadbeef%3Ageocode%3A40.7%2C-74.0'),
+    'the edge route must read the same deployment-prefixed key as the gateway RPC',
+  );
+});
+
+test('caches ocean and Antarctic results too — a sweep of empty cells must not be 100% passthrough (#6432)', async () => {
+  // #6412 deliberately left the cache write conditional on a resolved country,
+  // so ocean/Antarctic cells returned Nominatim's "no place" answer on every
+  // request. The parallel gateway RPC writes those cells unconditionally and
+  // both share the geocode: namespace, so this route must too. The mutation
+  // is one line: no `if (country && code)` around the write.
+  const calls = spyFetch((url) => {
+    if (url.includes('/get/')) {
+      // First request is a cache miss; the write is fire-and-forget so no
+      // read-back occurs.
+      return new Response(JSON.stringify({ result: null }), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    // Ocean in the middle of the Pacific — Nominatim returns no address.
+    return new Response(JSON.stringify({
+      display_name: '',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  });
+  const { ctx, waited } = makeCtx();
+  const res = await handler(makeRequest('lat=0&lon=-150', uniqueCallerIp()), ctx);
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).country, '');
+  assert.equal(nominatimCalls(calls).length, 1);
+  // The cache write is fire-and-forget; flush it.
+  await Promise.all(waited);
+  const writes = calls.filter((c) => c.url.includes('fake-upstash'));
+  assert.ok(writes.length > 0, 'an ocean-resolved response must be written to the shared geocode: cache');
+  const cacheWrite = writes.map((c) => {
+    try { return JSON.parse(String(c.init.body)); } catch { return null; }
+  }).find((entries) => Array.isArray(entries)
+    && entries.some((entry) => Array.isArray(entry)
+      && String(entry[0]).toLowerCase() === 'set'
+      && entry[1] === 'geocode:0.0,-150.0'));
+  assert.ok(cacheWrite, 'the cache write must target the shared geocode:0.0,-150.0 key');
+  const setCommand = cacheWrite.find((entry) => Array.isArray(entry)
+    && String(entry[0]).toLowerCase() === 'set');
+  assert.deepEqual(setCommand, [
+    'SET',
+    'geocode:0.0,-150.0',
+    JSON.stringify({ country: '', code: '', displayName: '', error: '' }),
+    'EX',
+    '604800',
+  ]);
 });
 
 test('stays available when Upstash is unconfigured', async () => {

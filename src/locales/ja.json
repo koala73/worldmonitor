@@ -67,6 +67,19 @@
       "stable": "安定"
     },
     "militaryActivity": "軍事活動",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "経済指標",
     "ownFlights": "自国フライト",
     "foreignFlights": "外国フライト",
@@ -177,6 +190,23 @@
       "corridorConditions": "回廊状況",
       "activityNowcast": "活動ナウキャスト",
       "decisionSignalsUnavailable": "中国の意思決定シグナルのスナップショットは現在利用できません。"
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
     }
   },
   "header": {
@@ -446,7 +476,9 @@
         "displacement": "避難フローの切り替え",
         "climate": "気候異常の切り替え",
         "outages": "インターネット障害の切り替え",
-        "tradeRoutes": "貿易ルートの切り替え"
+        "tradeRoutes": "貿易ルートの切り替え",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "ダークモードに切り替え",
@@ -608,7 +640,7 @@
         "URLHAUS_AUTH_KEY": "URLhausとThreatFox APIの両方で使用。",
         "OTX_API_KEY": "サイバー脅威レイヤーのオプション追加ソース。",
         "ABUSEIPDB_API_KEY": "悪意あるIPレピュテーションのオプション追加ソース。",
-        "FINNHUB_API_KEY": "リアルタイム株価・市場データ。",
+        "FINNHUB_API_KEY": "遅延またはシード済みの株価・市場データ。キーがあってもライブ配信ではありません。",
         "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System。",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -852,7 +884,12 @@
       "loadingHistory": "通過履歴を読み込み中…",
       "historyUnavailable": "通過履歴が利用できません",
       "transitDataUnavailable": "通過データが利用できません（上流データが部分的）",
-      "infoTooltip": "<strong>サプライチェーン監視</strong> グローバルロジスティクスとリソース追跡:<ul><li><strong>チョークポイント</strong>: 海上輸送ステータス、支障スコア、船舶数</li><li><strong>海運</strong>: バルティック海運指数と運賃トレンド</li><li><strong>鉱物</strong>: 重要鉱物集中リスク（HHI）と主要生産国</li></ul>チョークポイントカードをクリックして通過履歴チャートを展開します。"
+      "infoTooltip": "<strong>サプライチェーン監視</strong> グローバルロジスティクスとリソース追跡:<ul><li><strong>チョークポイント</strong>: 海上輸送ステータス、支障スコア、船舶数</li><li><strong>海運</strong>: バルティック海運指数と運賃トレンド</li><li><strong>鉱物</strong>: 重要鉱物集中リスク（HHI）と主要生産国</li></ul>チョークポイントカードをクリックして通過履歴チャートを展開します。",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
     },
     "tradePolicy": {
       "tariffs": "関税",
@@ -896,6 +933,7 @@
       "noComtradeData": "戦略的フロー数据が利用できません",
       "comtradeUnavailable": "UN Comtradeデータは一時的に利用できません",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade の行は報告国の国家レベルの公式統計であり、町・回廊・工場・港・船荷の輸出ではありません。",
       "anomalyBadge": "異常",
       "colReporter": "国",
       "colCommodity": "商品",
@@ -1132,7 +1170,7 @@
         "ucdpEvents": "UCDPイベント",
         "displacementFlows": "避難民フロー",
         "climateAnomalies": "気候異常",
-        "weatherAlerts": "米国の気象警報（NWS）",
+        "weatherAlerts": "米国とカナダの気象警報（NWS, ECCC）",
         "strategicWaterways": "戦略的水路",
         "economicCenters": "経済中心地",
         "criticalMinerals": "重要鉱物",
@@ -1152,7 +1190,9 @@
         "speciesRecovery": "種の回復",
         "renewableInstallations": "クリーンエネルギー",
         "radiationSpike": "放射線スパイク",
-        "radiationElevated": "放射線上昇"
+        "radiationElevated": "放射線上昇",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC)"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1213,7 +1253,7 @@
           "infraDatacenters": "10,000 GPU以上のAIコンピュートクラスター",
           "infraOutages": "インターネット遮断・サービス障害",
           "naturalEventsTech": "地震、暴風雨、火災（データセンターに影響の可能性）",
-          "weatherAlerts": "米国の重大気象警報（NWS）",
+          "weatherAlerts": "米国とカナダの重大気象警報（NWS, ECCC）",
           "economicCenters": "証券取引所・中央銀行",
           "countriesOverlay": "国名オーバーレイ",
           "financeExchanges": "市場ティア別の主要グローバル取引所",
@@ -1225,7 +1265,7 @@
           "financeOutages": "市場運営に影響しうるインターネット障害",
           "financeCyberThreats": "金融インフラ周辺のセキュリティイベント",
           "macroWaterways": "コモディティ海運の戦略的チョークポイント",
-          "weatherAlertsMarket": "市場に関連する米国の重大気象事象（NWS）",
+          "weatherAlertsMarket": "市場に関連する米国とカナダの重大気象事象（NWS, ECCC）",
           "naturalEventsMacro": "地震、火災、洪水、その他の自然災害",
           "timeRecent": "時間ベースデータを直近の時間に絞り込み",
           "timeExtended": "過去1週間、1ヶ月、または全期間のデータを表示",
@@ -1258,7 +1298,9 @@
           "tradeRoutes": "戦略的なチョークポイントを通じて港を結ぶ主要な世界の航路",
           "dayNight": "リアルタイムの太陽ターミネーターで昼夜のゾーンを表示",
           "geoBoundaries": "非武装地帯、停戦ライン、係争境界線",
-          "ciiChoropleth": "国家不安定度指数ヒートマップ — CIIスコアで国を色分け（緑=安定、赤=危機的）"
+          "ciiChoropleth": "国家不安定度指数ヒートマップ — CIIスコアで国を色分け（緑=安定、赤=危機的）",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert and B.C. Evacuation Orders and Alerts"
         },
         "notes": {
           "timeAffects": "影響: 地震、気象、抗議活動、障害"
@@ -1873,7 +1915,7 @@
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2135,7 +2177,7 @@
       "infoTooltip": "<strong>災害カスケード</strong> 自然災害とインフラシグナルの収束を検出:<ul><li>地震、山火事、洪水、極端な天候を相関させる</li><li>インフラとサプライチェーンへの波及効果を追跡</li><li>複合災害リスクを抱える地域をハイライト</li></ul>カードをクリックして影響を受けた領域にズームします。"
     },
     "markets": {
-      "infoTooltip": "<strong>マーケット</strong> リアルタイムの株価指数、株式、暗号資産価格。ウォッチリストボタンでウォッチリストをカスタマイズしてください。スパークラインは最近の価格トレンドを表示します。",
+      "infoTooltip": "<strong>マーケット</strong> 遅延またはシード済みの株価指数、株式、暗号資産価格。ウォッチリストボタンでウォッチリストをカスタマイズしてください。スパークラインは最近の価格トレンドを表示します。",
       "chart": {
         "title": "{{symbol}} 価格チャート",
         "close": "チャートを閉じる"
@@ -2316,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "制裁・指定",
-      "infoTooltip": "OFAC制裁指定（SDNおよび統合リスト）。最も高い指定圧力に直面している国、それを推進しているプログラム、前回の更新以降に新たに追加されたものを表示します。",
+      "infoTooltip": "OFACのSDNおよび統合リストに加え、カナダグローバル問題省のSEMA/JVCFOA指定。 最も高い指定圧力に直面している国、それを推進しているプログラム、前回の更新以降に新たに追加されたものを表示します。",
       "loading": "制裁データを読み込み中...",
       "unavailable": "制裁データは利用できません。",
       "summary": {
         "new": "新規",
         "vessels": "船舶",
-        "aircraft": "航空機"
+        "aircraft": "航空機",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "制裁国",
@@ -2337,11 +2380,12 @@
       "footer": {
         "updated": "{{time}}に更新",
         "dataset": "データセット{{date}}",
-        "source": "出典: OFAC"
+        "source": "出典: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}}件新規",
-        "new": "新規"
+        "new": "新規",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}}件の指定",
       "designations_other": "{{count}}件の指定",
@@ -2787,6 +2831,7 @@
     "moreEvents": "件の追加イベント",
     "monitoring": "監視中",
     "viewUSGS": "USGSで表示",
+    "viewNRCan": "Earthquakes Canadaで表示",
     "expired": "期限切れ",
     "timeAgo": {
       "s": "{{count}}秒前",

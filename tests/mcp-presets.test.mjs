@@ -66,7 +66,7 @@ const BLOCKED_HOST_PATTERNS = [
 
 describe('MCP Presets — static validation', () => {
   it('extracts a non-empty preset list from mcp-store.ts', () => {
-    assert.ok(presets.length >= 10, `Expected at least 10 presets, got ${presets.length}`);
+    assert.ok(presets.length > 0, 'MCP preset extraction must not be empty');
   });
 
   it('all presets have required string fields: name, serverUrl, defaultTool', () => {

@@ -26,7 +26,8 @@ import type { NewsItemCore } from '../../../shared/news-clustering-core.js';
 import { getSourceProvenanceState } from '../../../shared/source-provenance.js';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk } from '../billing-denial';
-import { argStr } from '../filters';
+import { argStr, ciIncludes } from '../filters';
+import { McpSourceUnavailableError } from '../source-unavailable';
 import type { ToolDef } from '../types';
 
 // ── #5697 on-demand NLP intelligence utilities ──────────────────────────────
@@ -56,20 +57,35 @@ const KEYWORD_SPIKE_BASELINE_MS = 48 * 60 * 60 * 1000; // digest:accumulator ret
 const KEYWORD_SPIKE_CACHE_TTL_S = 600;
 const KEYWORD_SPIKE_MAX_STORIES = 800;
 const KEYWORD_SPIKE_MAX_STORED = 25;
+const KEYWORD_SPIKE_LINK_MAX_BYTES = 384;
 const DIGEST_ACCUMULATOR_KEY_MCP = 'digest:accumulator:v1:full:en';
 
-// Full-variant digest category keys (VARIANT_FEEDS.full). Kept as a local
-// enum so Edge MCP tools never import server/ — parity with _feeds.ts is
-// asserted by tests/agent-commodities-news-parity.test.mts adjacent coverage
-// and the tools/list enum check in mcp-nlp-tools.test.mjs.
+// Agent-addressable digest variants and their category keys. Kept as local
+// enums so Edge MCP tools never import server/ — parity with _feeds.ts is
+// asserted by tests/agent-commodities-news-parity.test.mts and the tools/list
+// enum check in mcp-nlp-tools.test.mjs.
+const NLP_DIGEST_VARIANTS = ['full', 'tech'] as const;
+type NlpDigestVariant = typeof NLP_DIGEST_VARIANTS[number];
 const FULL_DIGEST_CATEGORIES = [
   'politics', 'us', 'europe', 'middleeast', 'tech', 'ai', 'finance',
   'commodities', 'gov', 'africa', 'latam', 'asia', 'energy', 'thinktanks',
   'crisis', 'layoffs', 'intel',
 ] as const;
-const FULL_DIGEST_CATEGORY_DESC =
-  'Restrict to one full-digest category: ' +
+const TECH_DIGEST_CATEGORIES = [
+  'tech', 'ai', 'startups', 'vcblogs', 'regionalStartups', 'unicorns',
+  'accelerators', 'security', 'policy', 'github', 'funding', 'cloud',
+  'layoffs', 'finance', 'dev', 'ipo', 'producthunt', 'hardware', 'outages',
+] as const;
+const DIGEST_CATEGORIES_BY_VARIANT: Record<NlpDigestVariant, readonly string[]> = {
+  full: FULL_DIGEST_CATEGORIES,
+  tech: TECH_DIGEST_CATEGORIES,
+};
+const ALL_DIGEST_CATEGORIES = [...new Set([...FULL_DIGEST_CATEGORIES, ...TECH_DIGEST_CATEGORIES])];
+const DIGEST_CATEGORY_DESC =
+  'Restrict to one category from the selected digest variant. full: ' +
   FULL_DIGEST_CATEGORIES.join(', ') +
+  '; tech: ' +
+  TECH_DIGEST_CATEGORIES.join(', ') +
   '. Echoed as `category` in the result; an unknown value yields headlineCount 0 and a `note` listing categories present in the current digest.';
 
 const SOURCE_PROVENANCE_REQUIRED = [
@@ -125,7 +141,8 @@ type NlpDigestCategoryGroup = {
 type NlpDigestFetch = {
   items: NewsItemCore[];
   generatedAt: string;
-  /** Applied category filter, or null when aggregating every full-digest bucket. */
+  variant: NlpDigestVariant;
+  /** Applied category filter, or null when aggregating every selected-variant bucket. */
   category: string | null;
   /** Present when a non-empty category filter did not match any digest key. */
   note?: string;
@@ -141,7 +158,7 @@ type NlpDigestFetch = {
 
 /**
  * Recent-headline corpus for the no-text extract_entities mode and
- * get_news_clusters: the canonical full/en feed digest (~150-200 titles).
+ * get_news_clusters: the selected full/en or tech/en feed digest.
  * Digest items carry no per-source tier, so every item gets a neutral tier
  * and the shared algorithm's primary selection falls back to recency.
  *
@@ -153,23 +170,32 @@ type NlpDigestFetch = {
 async function fetchNlpDigestItems(
   base: string,
   context: Parameters<typeof buildAuthHeaders>[0],
+  variant: NlpDigestVariant,
   category = '',
 ): Promise<NlpDigestFetch> {
-  const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=full&lang=en`;
+  const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=${variant}&lang=en`;
   const auth = await buildAuthHeaders(context, 'GET', digestUrl, null);
   const res = await fetch(digestUrl, {
     headers: { ...auth, 'User-Agent': NLP_UA },
     signal: AbortSignal.timeout(NLP_DIGEST_TIMEOUT_MS),
   });
-  assertToolFetchOk(res, 'list-feed-digest');
+  await assertToolFetchOk(res, 'list-feed-digest');
   const body = await res.json() as {
     categories?: Record<string, NlpDigestCategoryGroup>;
+    feedStatuses?: Record<string, string>;
     generatedAt?: string;
   };
 
   const seen = new Set<string>();
   const items: NewsItemCore[] = [];
   const categories = body.categories ?? {};
+  if (Object.keys(categories).length === 0 && Object.keys(body.feedStatuses ?? {}).length === 0) {
+    throw new McpSourceUnavailableError(
+      `Feed digest unavailable for ${variant}/en`,
+      [`news:digest:v1:${variant}:en`],
+      [],
+    );
+  }
   const availableCategories = Object.keys(categories).sort();
   let groups: NlpDigestCategoryGroup[];
   let note: string | undefined;
@@ -184,7 +210,7 @@ async function fetchNlpDigestItems(
     // carries; fall back to the static enum when the digest is empty.
     const listed = availableCategories.length > 0
       ? availableCategories.join(', ')
-      : FULL_DIGEST_CATEGORIES.join(', ');
+      : DIGEST_CATEGORIES_BY_VARIANT[variant].join(', ');
     note = nlpTruncateUtf8(
       `Unknown digest category "${category}". Available: ${listed}.`,
       NLP_DIGEST_NOTE_MAX_BYTES,
@@ -222,9 +248,17 @@ async function fetchNlpDigestItems(
   return {
     items,
     generatedAt: nlpTruncateUtf8(body.generatedAt ?? '', NLP_DIGEST_METADATA_MAX_BYTES),
+    variant,
     category: category || null,
     ...(note ? { note } : {}),
   };
+}
+
+function resolveNlpDigestVariant(value: unknown): NlpDigestVariant | null {
+  const requested = argStr(value) || 'full';
+  return (NLP_DIGEST_VARIANTS as readonly string[]).includes(requested)
+    ? requested as NlpDigestVariant
+    : null;
 }
 
 function nlpRegistryEntities(titles: string[], limit: number) {
@@ -312,7 +346,7 @@ export const NLP_TOOLS: ToolDef[] = [
         // slow-but-successful cache-miss classifications the handler completes.
         signal: AbortSignal.timeout(25_000),
       });
-      assertToolFetchOk(res, 'classify-event');
+      await assertToolFetchOk(res, 'classify-event');
       const result = await res.json() as {
         classification?: { category?: string; subcategory?: string; severity?: string; confidence?: number };
       };
@@ -344,15 +378,20 @@ export const NLP_TOOLS: ToolDef[] = [
   {
     name: 'extract_entities',
     _outputBudgetBytes: 16384,
-    description: 'Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB) to extract from it, or omit text to aggregate entities across the current headline digest (optionally restricted with category, e.g. "commodities"). No LLM involved.',
+    description: 'Extract named entities deterministically — registry entities (companies, indices, commodities, crypto, sectors, countries) plus pattern entities (CVE IDs, APT/FIN threat-group designators, tracked world leaders). Supply text (max 2 KB), or omit text to aggregate headlines from the full digest (default) or tech digest with variant/category filters. No LLM involved.',
     inputSchema: {
       type: 'object',
       properties: {
         text: { type: 'string', maxLength: EXTRACT_TEXT_MAX_CHARS, description: 'Optional text to extract from (max 2048 characters; longer input is rejected). When omitted, the tool aggregates entities across recent headlines.' },
+        variant: {
+          type: 'string',
+          enum: [...NLP_DIGEST_VARIANTS],
+          description: 'Headline digest variant used when text is omitted. Defaults to full; use tech for Tech dashboard categories.',
+        },
         category: {
           type: 'string',
-          enum: [...FULL_DIGEST_CATEGORIES],
-          description: 'When text is omitted, ' + FULL_DIGEST_CATEGORY_DESC,
+          enum: [...ALL_DIGEST_CATEGORIES],
+          description: 'When text is omitted, ' + DIGEST_CATEGORY_DESC,
         },
         limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Maximum entities per list. Defaults to 20.' },
       },
@@ -380,7 +419,8 @@ export const NLP_TOOLS: ToolDef[] = [
         },
         headlineCount: { type: 'number', description: 'Headlines scanned (headlines mode only).' },
         generatedAt: { type: 'string', description: 'Digest snapshot time (headlines mode only).' },
-        category: { type: ['string', 'null'], description: 'Applied full-digest category filter in headlines mode; null when scanning every category. Omitted in text mode.' },
+        variant: { type: 'string', enum: [...NLP_DIGEST_VARIANTS], description: 'Applied digest variant in headlines mode. Omitted in text mode.' },
+        category: { type: ['string', 'null'], description: 'Applied digest category filter in headlines mode; null when scanning every category. Omitted in text mode.' },
         note: { type: 'string', description: 'Present in headlines mode when category did not match any digest key (typo or missing bucket).' },
         error: { type: 'string', description: 'Present instead of a result when input validation fails.' },
       },
@@ -419,13 +459,26 @@ export const NLP_TOOLS: ToolDef[] = [
 
       // Accept enum values plus non-enum strings so non-validating clients still
       // get a corrective note instead of a hard schema failure at the edge.
+      const variant = resolveNlpDigestVariant(params.variant);
+      if (!variant) {
+        return {
+          mode: 'headlines',
+          entities: [],
+          patternEntities: [],
+          headlineCount: 0,
+          generatedAt: '',
+          category: argStr(params.category) || null,
+          error: `variant must be one of: ${NLP_DIGEST_VARIANTS.join(', ')}`,
+        };
+      }
       const category = argStr(params.category);
-      const digest = await fetchNlpDigestItems(base, context, category);
+      const digest = await fetchNlpDigestItems(base, context, variant, category);
       const aggregated = nlpRegistryEntities(digest.items.map(item => item.title), limit);
       return {
         mode: 'headlines',
         headlineCount: digest.items.length,
         generatedAt: digest.generatedAt,
+        variant: digest.variant,
         category: digest.category,
         ...(digest.note ? { note: digest.note } : {}),
         ...aggregated,
@@ -441,17 +494,23 @@ export const NLP_TOOLS: ToolDef[] = [
     // records plus a separate primary record. Keep the dispatcher budget
     // aligned with that supported maximum instead of rejecting valid output.
     _outputBudgetBytes: 262144,
-    description: 'Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Optional category restricts clustering to one full-digest bucket (e.g. "commodities"). Each cluster reports its primary headline, member count, distinct sources with fail-closed provenance, top keywords, threat level, and time span. Deterministic — no LLM.',
+    description: 'Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Select the full digest (default) or tech digest with variant, then optionally restrict by category such as commodities, vcblogs, or accelerators. Each cluster reports its primary headline, member count, distinct sources with fail-closed provenance, top keywords, threat level, and time span. Deterministic — no LLM.',
     inputSchema: {
       type: 'object',
       properties: {
         limit: { type: 'integer', minimum: 1, maximum: 25, description: 'Maximum clusters returned. Defaults to 10.' },
         min_sources: { type: 'integer', minimum: 1, maximum: 10, description: 'Only return clusters carrying at least this many DISTINCT sources (outlets), not merely this many member headlines. Defaults to 1.' },
+        variant: {
+          type: 'string',
+          enum: [...NLP_DIGEST_VARIANTS],
+          description: 'Headline digest variant. Defaults to full; use tech for Tech dashboard categories.',
+        },
         category: {
           type: 'string',
-          enum: [...FULL_DIGEST_CATEGORIES],
-          description: FULL_DIGEST_CATEGORY_DESC,
+          enum: [...ALL_DIGEST_CATEGORIES],
+          description: DIGEST_CATEGORY_DESC,
         },
+        query: { type: 'string', description: 'Keep only clusters whose primary headline or any member headline contains this text (case-insensitive substring). Filters the LIVE digest window only — not a historical index. Applied before limit, so a capped list is drawn from the matches.' },
       },
       required: [],
     },
@@ -498,25 +557,54 @@ export const NLP_TOOLS: ToolDef[] = [
         totalClusters: { type: 'number', description: 'Cluster count before limit/min_sources filtering.' },
         headlineCount: { type: 'number' },
         generatedAt: { type: 'string' },
-        category: { type: ['string', 'null'], description: 'Applied full-digest category filter; null when clustering every category.' },
+        variant: { type: 'string', enum: [...NLP_DIGEST_VARIANTS], description: 'Applied digest variant.' },
+        category: { type: ['string', 'null'], description: 'Applied digest category filter; null when clustering every category.' },
         note: { type: 'string', description: 'Present when category did not match any digest key (typo or missing bucket).' },
+        error: { type: 'string', description: 'Present when variant validation fails.' },
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _execute: async (params, base, context) => {
       const limit = nlpClampInt(params.limit, 1, 25, 10);
       const minSources = nlpClampInt(params.min_sources, 1, 10, 1);
+      const variant = resolveNlpDigestVariant(params.variant);
+      if (!variant) {
+        return {
+          clusters: [],
+          totalClusters: 0,
+          headlineCount: 0,
+          generatedAt: '',
+          category: argStr(params.category) || null,
+          error: `variant must be one of: ${NLP_DIGEST_VARIANTS.join(', ')}`,
+        };
+      }
       const category = argStr(params.category);
-      const digest = await fetchNlpDigestItems(base, context, category);
+      const query = argStr(params.query);
+      const digest = await fetchNlpDigestItems(base, context, variant, category);
       const clusters = clusterNewsCore(digest.items, () => 3);
       const selectedClusters = clusters
         .map(cluster => ({
           cluster,
           sources: [...new Set(cluster.allItems.map(item => item.source))],
+          // #6428: `sources` is the feed-LABEL list — kept for attribution, but
+          // it is not the corroboration number. One newsroom ships many labels
+          // ("Reuters World" + "Reuters US"), so counting them let one wire
+          // satisfy the `min_sources` filter this tool documents as "distinct
+          // outlets ... real corroboration, not one outlet filing twice".
+          // clusterNewsCore already resolved the publisher families.
+          distinctPublishers: cluster.uniquePublisherCount,
         }))
-        .filter(({ sources }) => sources.length >= minSources)
+        .filter(({ distinctPublishers }) => distinctPublishers >= minSources)
+        // Query narrows BEFORE the slice: filtering after would take the first
+        // `limit` clusters and match within them, dropping a match that sits
+        // past the cap. Member headlines are matched too — a cluster's primary
+        // is recency-picked, so the term an agent searched for is often on a
+        // sibling headline rather than the one promoted to primary.
+        .filter(({ cluster }) => !query
+          || ciIncludes(cluster.primaryTitle, query)
+          || cluster.allItems.some((item) => ciIncludes(item.title, query)))
         .slice(0, limit);
-      const projected = selectedClusters.map(({ cluster, sources }) => {
+      const projected = selectedClusters.map(({ cluster, sources, distinctPublishers }) => {
         const projectedSources = sources.slice(0, 8);
         const provenanceBySource = new Map(
           [...new Set([cluster.primarySource, ...projectedSources])]
@@ -529,9 +617,11 @@ export const NLP_TOOLS: ToolDef[] = [
           primarySourceProvenance: provenanceBySource.get(cluster.primarySource)!,
           link: cluster.primaryLink,
           memberCount: cluster.sourceCount,
-          // Corroboration is distinct outlets, not headline count — one outlet
-          // can file several near-identical headlines into the same cluster.
-          distinctSourceCount: sources.length,
+          // Corroboration is distinct PUBLISHERS, not headline count and not
+          // feed-label count — one outlet can file several near-identical
+          // headlines into the same cluster, and can file them under several
+          // of its own feeds (#6428).
+          distinctSourceCount: distinctPublishers,
           sources: projectedSources,
           sourceProvenance: projectedSources.map((source) => ({
             source,
@@ -550,6 +640,7 @@ export const NLP_TOOLS: ToolDef[] = [
         totalClusters: clusters.length,
         headlineCount: digest.items.length,
         generatedAt: digest.generatedAt,
+        variant: digest.variant,
         category: digest.category,
         ...(digest.note ? { note: digest.note } : {}),
       };
@@ -560,8 +651,8 @@ export const NLP_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_keyword_spikes',
-    _outputBudgetBytes: 16384,
-    description: 'Trending keyword, CVE, and APT/FIN threat-group spikes versus baseline, using the same term-candidacy and spike-decision math as the dashboard. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard\'s incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM.',
+    _outputBudgetBytes: 32768,
+    description: 'Keyword/CVE/APT spikes vs baseline, each with sourceNames and {title, source, link}. Uses the dashboard term-candidacy and spike-decision math. sourceNames are curated publisher names, or the original feed label when unmapped. sampleHeadlines are up to 3 newest recent-window stories; sourceNames is the complete publisher set. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard\'s incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -578,14 +669,31 @@ export const NLP_TOOLS: ToolDef[] = [
         spikes: {
           type: 'array',
           items: { type: 'object', required: [
-            'term', 'count', 'baseline', 'multiplier', 'uniqueSources', 'sampleHeadlines',
+            'term', 'count', 'baseline', 'multiplier', 'uniqueSources', 'sourceNames', 'sampleHeadlines',
           ], properties: {
             term: { type: 'string' },
             count: { type: 'number', description: 'Distinct stories mentioning the term inside the recent window.' },
             baseline: { type: 'number', description: 'Per-window story rate over the exact sampled pre-window duration (see baseline_hours). 0 means this term was absent from the available baseline cohort.' },
             multiplier: { type: 'number', description: 'count / baseline; 0 when the term has no baseline mentions.' },
-            uniqueSources: { type: 'number' },
-            sampleHeadlines: { type: 'array', items: { type: 'string' } },
+            uniqueSources: { type: 'number', description: 'Distinct publisher families in the recent window. Explained by sourceNames.' },
+            sourceNames: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Publisher names matching uniqueSources: curated masthead, otherwise the original feed label.',
+            },
+            sampleHeadlines: {
+              type: 'array',
+              description: 'Up to 3 newest recent-window stories by lastSeen. Not the full count; sourceNames is the complete publisher set.',
+              items: {
+                type: 'object',
+                required: ['title', 'source', 'link'],
+                properties: {
+                  title: { type: 'string' },
+                  source: { type: 'string', description: 'Publisher(s) that carried this collapsed title. Empty when the story has no usable feed labels. Not necessarily the outlet of link.' },
+                  link: { type: 'string', description: 'Canonical story URL from story:track:v1.link. Empty when the row has no link.' },
+                },
+              },
+            },
           } },
         },
         window_hours: { type: 'number' },
@@ -602,9 +710,8 @@ export const NLP_TOOLS: ToolDef[] = [
       const minCount = nlpClampInt(params.min_count, 2, 20, DEFAULT_MIN_SPIKE_COUNT);
       const limit = nlpClampInt(params.limit, 1, 25, 10);
 
-      // v2 invalidates v1 payloads computed without an independently sampled
-      // pre-window cohort (and before sample_truncated became required).
-      const cacheKey = `intelligence:keyword-spikes:mcp:v2:${windowHours}h:${minCount}`;
+      // v3 invalidates v2 title-only sampleHeadlines (no source/link/sourceNames).
+      const cacheKey = `intelligence:keyword-spikes:mcp:v3:${windowHours}h:${minCount}`;
       // A cache-read failure must degrade to live computation, not surface as a
       // tool error: readJsonFromUpstash throws on network failure (unlike
       // redisPipeline, which returns null).
@@ -707,10 +814,11 @@ export const NLP_TOOLS: ToolDef[] = [
       };
 
       const titles = new Map<string, string>();
+      const links = new Map<string, string>();
       const HMGET_CHUNK = 200;
       const hmgetChunks = chunkInto(entries, HMGET_CHUNK);
       const hmgetResults = await Promise.all(hmgetChunks.map(chunk => redisPipeline(
-        chunk.map(entry => ['HMGET', `story:track:v1:${entry.hash}`, 'title']),
+        chunk.map(entry => ['HMGET', `story:track:v1:${entry.hash}`, 'title', 'link']),
       ) as Promise<Array<{ result?: unknown }> | null>));
       hmgetChunks.forEach((chunk, chunkIdx) => {
         const res = hmgetResults[chunkIdx];
@@ -719,7 +827,7 @@ export const NLP_TOOLS: ToolDef[] = [
           const reply = res?.[idx];
           const fields = reply?.result;
           if (!reply || Object.prototype.hasOwnProperty.call(reply, 'error')
-            || !Array.isArray(fields) || fields.length !== 1) {
+            || !Array.isArray(fields) || fields.length !== 2) {
             degraded = true;
             return;
           }
@@ -729,6 +837,8 @@ export const NLP_TOOLS: ToolDef[] = [
             return;
           }
           titles.set(entry.hash, title);
+          const link = fields[1];
+          if (typeof link === 'string' && link) links.set(entry.hash, link);
         });
       });
 
@@ -762,6 +872,7 @@ export const NLP_TOOLS: ToolDef[] = [
           title: titles.get(entry.hash) as string,
           lastSeenMs: entry.lastSeenMs,
           sources: sourcesByHash.get(entry.hash) ?? [],
+          link: links.get(entry.hash) ?? '',
         }));
 
       const spikes = computeKeywordSpikesFromStories(stories, {
@@ -776,7 +887,12 @@ export const NLP_TOOLS: ToolDef[] = [
         baseline: Math.round(spike.baseline * 100) / 100,
         multiplier: Math.round(spike.multiplier * 100) / 100,
         uniqueSources: spike.uniqueSources,
-        sampleHeadlines: spike.sampleHeadlines,
+        sourceNames: spike.sourceNames,
+        sampleHeadlines: spike.sampleHeadlines.map((sample) => ({
+          title: sample.title,
+          source: sample.source,
+          link: nlpTruncateUtf8(sample.link, KEYWORD_SPIKE_LINK_MAX_BYTES),
+        })),
       }));
 
       const payload = {
