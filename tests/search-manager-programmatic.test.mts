@@ -189,6 +189,28 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
     'withTimeout',
     'fetchAircraftPositions',
   ];
+  // Regular `function`s, not arrow functions: the receiver check below only
+  // reflects how the caller invoked us (arrow functions ignore call-site
+  // `this` entirely, which would make this double unable to reproduce the
+  // bug). Mirrors the browser's native `window.setTimeout`/`clearTimeout`,
+  // which throw `TypeError: Illegal invocation` when invoked as a method on
+  // some object other than the global (WORLDMONITOR-ZT) but tolerate a bare,
+  // unqualified call (`this === undefined`).
+  function nativeLikeSetTimeout(this: unknown, callback: () => void): number {
+    if (this !== undefined) throw new TypeError('Illegal invocation');
+    if (!runtime.deferTimers) {
+      queueMicrotask(callback);
+      return 0;
+    }
+    const timer = runtime.nextTimerId++;
+    runtime.pendingTimers.set(timer, callback);
+    return timer;
+  }
+  function nativeLikeClearTimeout(this: unknown, timer: number): void {
+    if (this !== undefined) throw new TypeError('Illegal invocation');
+    runtime.pendingTimers.delete(timer);
+  }
+
   const dependencyValues = [
     OpaqueResultCache,
     64,
@@ -257,16 +279,8 @@ function createHarness(variant: Variant, runtime: Runtime): new (ctx: any, callb
     {},
     () => null,
     (key: string) => key,
-    (callback: () => void) => {
-      if (!runtime.deferTimers) {
-        queueMicrotask(callback);
-        return 0;
-      }
-      const timer = runtime.nextTimerId++;
-      runtime.pendingTimers.set(timer, callback);
-      return timer;
-    },
-    (timer: number) => { runtime.pendingTimers.delete(timer); },
+    nativeLikeSetTimeout,
+    nativeLikeClearTimeout,
     withTimeout,
     (request: { callsign?: string }) => {
       runtime.liveFlightQueries.push(request.callsign ?? '');

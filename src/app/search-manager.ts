@@ -214,8 +214,14 @@ export class SearchManager implements AppModule {
       resolveExecutableNewsPanel: (link) => this.resolveExecutableNewsPanel(link),
       saveToStorage,
       setTheme,
-      setTimeout,
-      clearTimeout,
+      // Must stay wrapped, not passed bare: the dispatcher invokes these as
+      // `this.bindings.setTimeout(...)` / `this.bindings.clearTimeout(...)`,
+      // a method call. The native functions require the receiver to be the
+      // global object, so handing over the bare reference makes that call
+      // throw `TypeError: Illegal invocation` (WORLDMONITOR-ZT). Wrapping
+      // keeps the invocation unqualified, matching every other binding here.
+      setTimeout: (callback, delay) => setTimeout(callback, delay),
+      clearTimeout: (timer) => clearTimeout(timer),
     });
     this.webMcpSearch = new WebMcpSearchController({
       waitForIndexReady: () => this.waitForSearchIndexReady(),
