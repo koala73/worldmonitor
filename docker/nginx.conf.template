@@ -47,7 +47,7 @@ http {
     }
 
     location = /embed.js {
-      add_header X-Content-Type-Options "nosniff" always;
+      include /etc/nginx/security_headers.conf;
       add_header Access-Control-Allow-Origin "*" always;
       add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
       add_header Cross-Origin-Resource-Policy "cross-origin" always;
