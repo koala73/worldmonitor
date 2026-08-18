@@ -74,6 +74,7 @@ import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/g
 import type { RadiationObservation } from '@/services/radiation';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { renderPopupSourceLinks } from './map-popup-source-links';
 import {
   applyPremiumLayerPresentation,
   getPremiumLayerPresentation,
@@ -208,6 +209,7 @@ interface ProtestMarker extends BaseMarker {
   title: string;
   eventType: string;
   country: string;
+  sourceUrls?: string[];
 }
 interface UcdpMarker extends BaseMarker {
   _kind: 'ucdp';
@@ -1561,7 +1563,8 @@ export class GlobeMap {
       const c = typeColors[d.eventType] ?? '#ffaa00';
       html = `<span style="color:${c};font-weight:bold;">📢 ${esc(d.eventType)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.country)}</span>` +
-             `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.title.slice(0, 70))}</span>`;
+             `<br><span style="opacity:.7;white-space:normal;display:block;">${esc(d.title.slice(0, 70))}</span>` +
+             renderPopupSourceLinks(d.sourceUrls, { limit: 1 });
     } else if (d._kind === 'ucdp') {
       html = `<span style="color:#ff6400;font-weight:bold;">⚔ ${esc(d.country)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.sideA)} vs ${esc(d.sideB)}</span>` +
@@ -3507,6 +3510,7 @@ export class GlobeMap {
       title: e.title ?? '',
       eventType: e.eventType ?? 'protest',
       country: e.country ?? '',
+      sourceUrls: e.sourceUrls,
     }));
     this.flushMarkers();
   }
