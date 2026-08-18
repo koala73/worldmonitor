@@ -120,11 +120,16 @@ function makeGateway(handlerCalls: Record<string, number>) {
   return createDomainGateway(routes);
 }
 
-function request(path: string, token?: string): Request {
+function request(
+  path: string,
+  token?: string,
+  options: { clientIp?: string | null } = {},
+): Request {
   const headers = new Headers({
     Origin: 'https://worldmonitor.app',
-    'X-Real-IP': CLIENT_IP,
   });
+  const clientIp = options.clientIp === undefined ? CLIENT_IP : options.clientIp;
+  if (clientIp) headers.set('X-Real-IP', clientIp);
   if (token) headers.set('X-WorldMonitor-Key', token);
   return new Request(`https://worldmonitor.app${path}?country_code=US`, { headers });
 }
@@ -195,5 +200,56 @@ describe('Docker country-intel gateway auth (#5415)', () => {
       limit: 50,
       resetsAt: 'next UTC midnight',
     });
+  });
+
+  it('rejects a Docker country-brief request with no session token', async () => {
+    configureGatewayEnv('docker');
+    installRedisPipelineMock();
+    const handlerCalls = { country: 0, other: 0 };
+
+    const response = await makeGateway(handlerCalls)(request(COUNTRY_BRIEF_PATH));
+
+    assert.equal(response.status, 401);
+    assert.equal(handlerCalls.country, 0);
+  });
+
+  it('keys missing X-Real-IP to the shared unknown Docker principal', async () => {
+    configureGatewayEnv('docker');
+    const redis = installRedisPipelineMock();
+    const token = (await issueSessionToken()).token;
+    const handlerCalls = { country: 0, other: 0 };
+
+    const response = await makeGateway(handlerCalls)(
+      request(COUNTRY_BRIEF_PATH, token, { clientIp: null }),
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(handlerCalls.country, 1);
+    const directKeys = redis.directLlmKeys();
+    assert.equal(directKeys.length, 1);
+    assert.ok(
+      directKeys[0]?.includes(`docker:${hashKeySync('unknown')}`),
+      `expected the unknown Docker principal, got ${directKeys[0] ?? 'none'}`,
+    );
+  });
+
+  it('shares one per-IP quota across rotated Docker sessions', async () => {
+    configureGatewayEnv('docker');
+    const redis = installRedisPipelineMock({ initialDirectLlmCount: 49 });
+    const firstToken = (await issueSessionToken()).token;
+    const secondToken = (await issueSessionToken()).token;
+    const handlerCalls = { country: 0, other: 0 };
+    const gateway = makeGateway(handlerCalls);
+
+    const first = await gateway(request(COUNTRY_BRIEF_PATH, firstToken));
+    const second = await gateway(request(COUNTRY_BRIEF_PATH, secondToken));
+
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 429);
+    assert.equal(handlerCalls.country, 1);
+    const directKeys = redis.directLlmKeys();
+    assert.equal(directKeys.length, 2);
+    assert.ok(directKeys.every((key) => key.includes(`docker:${hashKeySync(CLIENT_IP)}`)));
+    assert.notEqual(firstToken, secondToken);
   });
 });

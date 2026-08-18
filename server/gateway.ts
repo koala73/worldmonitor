@@ -1893,8 +1893,9 @@ export function createDomainGateway(
 
     if (requiresDirectLlmQuota && !isEnterpriseAuth) {
       // The Docker principal is deliberately derived from nginx's trusted
-      // X-Real-IP value, not from the freely mintable token: rotating sessions
-      // must not reset spend. Hashing keeps the raw address out of Redis keys.
+      // X-Real-IP value (docker/nginx.conf stamps $remote_addr), not from the
+      // freely mintable token: rotating sessions must not reset spend.
+      // Hashing keeps the raw address out of Redis keys.
       const dockerQuotaUserId = dockerSelfHostSessionAuthorized
         ? `docker:${hashKeySync(deriveIp(request) ?? 'unknown')}`
         : null;
