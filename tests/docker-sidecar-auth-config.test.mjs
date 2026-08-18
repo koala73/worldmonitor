@@ -27,6 +27,12 @@ test('Docker nginx injects LOCAL_API_TOKEN through a private transport header', 
   assert.doesNotMatch(nginx, /proxy_set_header Authorization/);
 });
 
+test('Docker compose forwards WM_SESSION_SECRET to the API container', () => {
+  const compose = readProjectFile('docker-compose.yml');
+
+  assert.match(compose, /WM_SESSION_SECRET: "\$\{WM_SESSION_SECRET:\?[^}]+\}"/);
+});
+
 test('Docker healthcheck uses the dedicated sidecar liveness route', () => {
   const dockerfile = readProjectFile('Dockerfile');
 

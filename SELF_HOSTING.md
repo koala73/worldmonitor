@@ -21,6 +21,7 @@ npm install
 echo "RELAY_SHARED_SECRET=$(openssl rand -hex 32)" >> .env
 echo "REDIS_PASSWORD=$(openssl rand -hex 32)"      >> .env
 echo "REDIS_TOKEN=$(openssl rand -hex 32)"         >> .env
+echo "WM_SESSION_SECRET=$(openssl rand -hex 32)"   >> .env
 
 # 3. Start the stack
 docker compose up -d        # or: uvx podman-compose up -d
@@ -43,6 +44,7 @@ These must be set before `docker compose up -d`, or one of the containers will e
 | `RELAY_SHARED_SECRET` | Authenticates every non-public request the dashboard makes to the AIS relay. The relay refuses to start without it. | `openssl rand -hex 32` |
 | `REDIS_PASSWORD` | Redis AUTH password (`--requirepass`). The Redis container refuses to start without it; the REST proxy uses it in its upstream connection string. | `openssl rand -hex 32` |
 | `REDIS_TOKEN` | Bearer token the REST proxy (`redis-rest`) requires on every request, and the value the app sends as `UPSTASH_REDIS_REST_TOKEN`. The proxy and app containers refuse to start without it. | `openssl rand -hex 32` |
+| `WM_SESSION_SECRET` | Signs the anonymous browser session used by self-hosted API routes. The app container refuses to start without it. | `openssl rand -hex 32` |
 
 > Earlier releases shipped `wm-local-token` as a default for the REST token. That default has been removed (#3804) — the proxy was only reachable from `127.0.0.1:8079` so external exposure required a hostile `docker-compose.override.yml`, but any user who flipped that binding to `0.0.0.0` was instantly authenticated by a publicly documented string. Fresh installs and existing clones both need to set `REDIS_TOKEN` and `REDIS_PASSWORD` in `.env` from this release onward.
 
