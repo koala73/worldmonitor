@@ -66,4 +66,4 @@ If preflight fails, use one of these approved remediations:
 - Pre-vendor Rust crates (`src-tauri/vendor/`) and run Cargo in offline mode.
 - Use CI runners that restore package/cache artifacts from a trusted internal store before builds.
 
-For release packaging details, see `docs/RELEASE_PACKAGING.md` (section: **Network preflight and remediation**).
+For release packaging details, see `docs/release-packaging.mdx` (section: **Network preflight and remediation**).
