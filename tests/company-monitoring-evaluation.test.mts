@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import {
+  ALLOWED_FIXTURE_VALUE,
   DIGEST_COVERED_TOP_LEVEL_KEYS,
+  LITERAL_PINNED_KEYS,
+  RAW_EVIDENCE_KEYS,
   ROOT_KEYS,
   adaptiveExpectedCalibrationError,
   asNumber,
@@ -21,12 +25,14 @@ import {
   frozenThresholds,
   isEvidenceDigest,
   modeledMonthlyCost,
+  normalizeKey,
   parseRfc3339Timestamp,
   percentileOrderStatistic,
   stratifiedBootstrapUpperBound,
   syntheticDigest,
   thresholdDigest,
   validateProtocolFixture,
+  walk,
   withoutKey,
   type CalibrationExample,
   type JsonObject,
@@ -44,10 +50,12 @@ function evaluateStage0(candidate: JsonObject) {
   return evaluateStage0Engine(candidate, { approvedThresholdDigest: APPROVED_THRESHOLD_DIGEST });
 }
 const EXPECTED_BASELINE_REASONS = [
-  'base_rate_not_complete',
+  'base_rate_lower_bound_below_floor',
+  'base_rate_point_below_floor',
   'historical_usefulness_not_complete',
   'provider_policy_not_approved',
-  'rediscovery_not_complete',
+  'rediscovery_lower_bound_below_floor',
+  'rediscovery_point_below_floor',
 ];
 const APPROVED_FLOORS = {
   baseRate: {
@@ -82,8 +90,29 @@ const BOOTSTRAP_ITERATIONS = 10_000;
 const BOOTSTRAP_SEED = 6003;
 const BOOTSTRAP_ORDER_STATISTIC = 'ceil_confidence_times_iterations_minus_one';
 
+function validateStage0Aggregates(candidate: JsonObject): void {
+  walk(candidate, (key, value) => {
+    if (key) {
+      assert.equal(RAW_EVIDENCE_KEYS.has(normalizeKey(key)), false, `raw fixture field: ${key}`);
+    }
+    if (typeof value === 'string' && !(key && LITERAL_PINNED_KEYS.has(key))) {
+      assert.match(value, ALLOWED_FIXTURE_VALUE, `unconstrained fixture string: ${value}`);
+    }
+  });
+  const baseRate = asObject(candidate.baseRate, 'stage0-aggregates.baseRate');
+  const rediscovery = asObject(candidate.rediscovery, 'stage0-aggregates.rediscovery');
+  assert.equal(baseRate.sampleId, 'cm_base_rate_001');
+  assert.equal(baseRate.companyYears, 150);
+  assert.equal((baseRate.opaqueIds as unknown[]).length, 150);
+  assert.equal(rediscovery.pairSetId, 'cm_rediscovery_001');
+  assert.equal(rediscovery.pairCount, 100);
+  assert.equal((rediscovery.opaqueIds as unknown[]).length, 100);
+  assert.equal(candidate.machineVerdict, 'stop');
+}
+
 const FIXTURE_VALIDATORS: Record<string, (candidate: JsonObject) => void> = {
   'protocol.json': validateProtocolFixture,
+  'stage0-aggregates.json': validateStage0Aggregates,
 };
 
 function completeSyntheticUsefulness(candidate: JsonObject): void {
@@ -242,6 +271,78 @@ describe('Company Monitoring U0 evaluation contract', () => {
     assert.equal(thresholdDigest(protocol), APPROVED_THRESHOLD_DIGEST);
     assert.equal(approval.approvedThresholdsSha256, APPROVED_THRESHOLD_DIGEST);
     assert.notEqual(APPROVED_THRESHOLD_DIGEST, '0'.repeat(64));
+  });
+
+  it('recomputes the committed empirical base-rate and rediscovery arithmetic without promoting a point-only pass', () => {
+    const baseResult = asObject(asObject(protocol.baseRate, 'baseRate').result, 'baseRate.result');
+    const rediscoveryResult = asObject(
+      asObject(protocol.rediscovery, 'rediscovery').result,
+      'rediscovery.result',
+    );
+    assert.equal(baseResult.status, 'complete');
+    assert.equal(rediscoveryResult.status, 'complete');
+    assert.equal(baseResult.companyYears, 150);
+    assert.equal(baseResult.materialEventCount, 35);
+    assert.equal(rediscoveryResult.pairCount, 100);
+    assert.equal(rediscoveryResult.rediscoveredCount, 15);
+    const basePoint = 35 / 150;
+    const baseLower = exactPoissonRateLowerBound(35, 150, 0.9);
+    const rediscoveryPoint = 15 / 100;
+    const rediscoveryLower = exactBinomialLowerBound(15, 100, 0.9);
+    assert.equal(baseResult.pointEstimate, basePoint);
+    assert.equal(baseResult.lowerBound, baseLower);
+    assert.equal(rediscoveryResult.pointEstimate, rediscoveryPoint);
+    assert.equal(rediscoveryResult.lowerBound, rediscoveryLower);
+    assert.ok(basePoint < APPROVED_FLOORS.baseRate.minimumPointEstimate);
+    assert.ok(baseLower < APPROVED_FLOORS.baseRate.minimumLowerBound);
+    assert.ok(rediscoveryPoint < APPROVED_FLOORS.rediscovery.minimumPointEstimate);
+    assert.ok(rediscoveryLower < APPROVED_FLOORS.rediscovery.minimumLowerBound);
+    assert.equal(evaluateBaseRate(protocol).pass, false);
+    assert.equal(evaluateRediscovery(protocol).pass, false);
+    assert.ok(evaluateBaseRate(protocol).reasons.includes('base_rate_point_below_floor'));
+    assert.ok(evaluateBaseRate(protocol).reasons.includes('base_rate_lower_bound_below_floor'));
+    assert.ok(evaluateRediscovery(protocol).reasons.includes('rediscovery_point_below_floor'));
+    assert.ok(evaluateRediscovery(protocol).reasons.includes('rediscovery_lower_bound_below_floor'));
+    assert.ok(isEvidenceDigest(baseResult.privateSelectionManifestSha256));
+    assert.ok(isEvidenceDigest(baseResult.aggregateEvidenceSha256));
+    assert.ok(isEvidenceDigest(rediscoveryResult.privatePairManifestSha256));
+    assert.ok(isEvidenceDigest(rediscoveryResult.aggregateEvidenceSha256));
+
+    const aggregates = JSON.parse(
+      readFileSync(new URL('stage0-aggregates.json', fixtureDirectory), 'utf8'),
+    ) as JsonObject;
+    const baseAggregate = asObject(aggregates.baseRate, 'stage0-aggregates.baseRate');
+    const rediscoveryAggregate = asObject(aggregates.rediscovery, 'stage0-aggregates.rediscovery');
+    const compactSha = (value: JsonObject) => createHash('sha256')
+      .update(`${JSON.stringify(value)}\n`)
+      .digest('hex');
+    const committedBase = {
+      companyYears: baseAggregate.companyYears,
+      firstSaleDateWindowFailures: baseAggregate.firstSaleDateWindowFailures,
+      gbCount: baseAggregate.gbCount,
+      materialEventCount: baseAggregate.materialEventCount,
+      opaqueIds: baseAggregate.opaqueIds,
+      sampleId: baseAggregate.sampleId,
+      unavailableCount: baseAggregate.unavailableCount,
+      usCount: baseAggregate.usCount,
+    };
+    const committedRediscovery = {
+      firstSaleDateWindowFailures: rediscoveryAggregate.firstSaleDateWindowFailures,
+      gbCount: rediscoveryAggregate.gbCount,
+      opaqueIds: rediscoveryAggregate.opaqueIds,
+      pairCount: rediscoveryAggregate.pairCount,
+      pairSetId: rediscoveryAggregate.pairSetId,
+      rediscoveredCount: rediscoveryAggregate.rediscoveredCount,
+      unavailableCount: rediscoveryAggregate.unavailableCount,
+      usCount: rediscoveryAggregate.usCount,
+    };
+    assert.equal(compactSha(committedBase), baseResult.aggregateEvidenceSha256);
+    assert.equal(compactSha(committedRediscovery), rediscoveryResult.aggregateEvidenceSha256);
+    assert.notEqual(baseResult.privateSelectionManifestSha256, baseResult.aggregateEvidenceSha256);
+    assert.notEqual(
+      rediscoveryResult.privatePairManifestSha256,
+      rediscoveryResult.aggregateEvidenceSha256,
+    );
   });
 
   it('recomputes the committed Stage 0 stop decision and preserves the dark-only boundary', () => {
@@ -569,7 +670,7 @@ describe('Company Monitoring U0 evaluation contract', () => {
     const candidate = makePassingSyntheticCandidate();
     assert.deepEqual(evaluateStage0(candidate), { decision: 'continue', reasons: [] });
     assert.equal(asObject(protocol.stage0, 'stage0').decision, 'stop');
-    assert.equal(asObject(asObject(protocol.baseRate, 'baseRate').result, 'result').status, 'not_run');
+    assert.equal(asObject(asObject(protocol.baseRate, 'baseRate').result, 'result').status, 'complete');
     assert.equal(
       asObject(asObject(protocol.historicalUsefulness, 'historicalUsefulness').result, 'result').status,
       'not_run',

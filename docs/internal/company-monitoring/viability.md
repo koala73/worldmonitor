@@ -1,27 +1,31 @@
 # Company Monitoring viability decision
 
-- Decision date: 2026-08-16
+- Decision date: 2026-08-18
 - Protocol: `cm_eval_v1`
 - Owner: Elie Habib, WorldMonitor product owner
 - Machine-readable contract:
   `tests/fixtures/company-monitoring-evaluation/protocol.json`
-- Decision: **STOP**
+- Machine verdict: **STOP**
+- Named product-owner sign-off: **PLACEHOLDER — not recorded**. This document
+  does not impersonate Elie Habib. A named human product-owner must still
+  countersign this STOP before any later protocol version is approved.
 
 Company Monitoring must not proceed to paid-provider runtime or customer-visible
-behavior. Only fixtures and dark contracts are permitted. The first base-rate and
-provider-independent rediscovery attempts are inadmissible because their private
-selection manifests contain first-sale dates outside the declared selection
-years. The external-customer usefulness study has not run, and the provider-
-policy runtime checks have not completed. Missing, invalid, or incomplete
-evidence is a stop, not a zero and not a provisional pass.
+behavior. Only fixtures and dark contracts are permitted. The preregistered
+`cm_base_rate_001` and `cm_rediscovery_001` measurements are now complete and
+fail their frozen floors. The two-external-customer historical-usefulness
+*protocol* remains frozen (execution is Stage 1A, #6919). Provider-policy
+runtime evidence remains blocked. Missing, invalid, incomplete, or
+below-threshold evidence is a stop, not a zero and not a provisional pass.
+Thresholds were not amended (`currentRunMayNotBeRescuedByAmendment`).
 
 ## Stage 0 gate record
 
 | Gate | Frozen requirement | Current evidence | Outcome |
 |---|---|---|---|
-| Base-rate viability | At least 150 US/UK company-years, at least 0.30 material events per company-year, exact one-sided 90% lower bound at least 0.20 | First attempt invalid: 19 of 150 selected first-sale dates are outside 2024; no admissible score | Stop |
-| Provider-independent rediscovery | At least 100 frozen pairs, point estimate at least 0.60, exact one-sided 90% Clopper-Pearson lower bound at least 0.50 | First attempt invalid: 16 of 100 selected first-sale dates are outside 2025; no admissible score | Stop |
-| Historical usefulness | Same ten admitted impacts for two external target customers, including one independent customer; positive, negative, and mixed coverage; at least seven of ten useful from each | Protocol frozen; no external customer judgments recorded | Stop |
+| Base-rate viability | At least 150 US/UK company-years, at least 0.30 material events per company-year, exact one-sided 90% lower bound at least 0.20 | Complete: 150 company-years, 35 events, point 0.23333333333333334, Garwood lower bound 0.1844297985730325 | Stop |
+| Provider-independent rediscovery | At least 100 frozen pairs, point estimate at least 0.60, exact one-sided 90% Clopper-Pearson lower bound at least 0.50 | Complete: 100 pairs, 15 rediscovered, point 0.15, lower bound 0.10501263068941558 | Stop |
+| Historical usefulness | Same ten admitted impacts for two external target customers, including one independent customer; positive, negative, and mixed coverage; at least seven of ten useful from each | Protocol frozen; no external customer judgments recorded. Execution is #6919 | Stop |
 | Admission quality | Every metric, denominator, bound method, calibration method, seed, and approver frozen before scoring | Frozen and integrity-bound to the named approval | Pass for Stage 0 contract freeze |
 | Provider policy | Official API access, bounded retention, enforced X offline-content lifecycle controls, and enforced model ZDR, no-training, no-reasoning, and pinned routing | Runtime policy controls are incomplete; paid-provider runtime remains dark | Stop |
 | 500-company economics | Exactly one account-level shared-discovery workload of 500 companies; modeled monthly cost no more than $125 before paid beta | $110.8659375 including allocated infrastructure and 25% contingency | Pass as a model only |
@@ -34,12 +38,61 @@ The machine test recomputes this table's decisive arithmetic and requires the
 recorded stop reasons to equal the computed reasons. Editing the prose cannot
 promote the product.
 
-## Invalid-attempt audit
+## Machine verdict vs product-owner sign-off
 
-The private manifests, company identities, SEC accession records, query URLs,
-and provider responses remain outside the repository with file mode `0600`.
-The rows below retain only aggregate audit facts and SHA-256 digests. They are
-not acceptance evidence and they must not be scored.
+- Machine verdict against frozen `cm_eval_v1` thresholds: **STOP**.
+- Reasons: `base_rate_point_below_floor`, `base_rate_lower_bound_below_floor`,
+  `rediscovery_point_below_floor`, `rediscovery_lower_bound_below_floor`,
+  `historical_usefulness_not_complete`, `provider_policy_not_approved`.
+- Named product-owner approval of the 2026-08-05 threshold freeze remains on
+  file (`approverName`: Elie Habib). That approval does not countersign this
+  2026-08-18 measurement outcome.
+- **PLACEHOLDER (human only):** `product_owner_measurement_signoff` — name,
+  date, and whether the STOP is accepted or a new protocol version is
+  authorized. Agents must not fill this field.
+
+## 2026-08-18 measurement (admissible)
+
+Selection was frozen before any scored query. First-sale dates were required to
+fall inside the declared calendar year. The 2026-08-16 attempts are not reused.
+
+Private manifests, company identities, SEC accession records, query URLs, and
+raw responses remain outside the repository with file mode `0600`. Committed
+artifacts contain only opaque IDs, aggregate counts, and SHA-256 digests.
+
+| Artifact | Time (UTC) | SHA-256 |
+|---|---|---|
+| Base-rate private selection manifest | 2026-08-18 12:50 (query-family retarget after freeze; same 150 rows) | `1fa728eb15a03ef74579e964bf08a2929a7fa7790f56ebd7a6ca53b0d95de900` |
+| Base-rate private evidence | 2026-08-18 12:59 | `fc7faafb532ad0e4722de6815be342cac5dbc16cbb7ad3ae07a6db046a7a5132` |
+| Base-rate committed aggregate | 2026-08-18 13:03 | `055353c30f12a1a337a87035329b0d3d3ce75c29b1adb71f70465b2e28f7ccad` |
+| Rediscovery private pair manifest | 2026-08-18 12:50 | `233930de14ee413856833d850881f228eed335325476d6b200af165cb6fa5965` |
+| Rediscovery private evidence | 2026-08-18 13:03 | `468d9eab2c0cc7ee2ef7cefed2738f9c5218e805d908f873f990c75e2e7476a1` |
+| Rediscovery committed aggregate | 2026-08-18 13:03 | `c1d688f6a23d03e025fe41a9c76e47a3a750b460a78b45fa66855993ef260238` |
+
+Population and query family (frozen before the scored run):
+
+- Base-rate: 100 US + 50 GB operating-company Form D issuers with `SALE_DATE` in
+  2024; new Form D only; pooled funds excluded. First-sale window failures: 0.
+- Rediscovery: 75 US + 25 GB issuers with `SALE_DATE` in 2025. Reference query
+  family is SEC Form D structured `SALE_DATE`. Rediscovery query family is
+  Google News RSS funding keywords. First-sale window failures: 0.
+- Exa and X credentials were not present in this worktree. The scored run did
+  not call Exa or X. GDELT Doc API from this IP returned 429 / hung sockets, so
+  the query family was retargeted to Google News RSS *before any scored result
+  existed*. That is not keyword tuning after seeing a rate.
+
+A company-year counted as one material event when the frozen Google News query
+returned at least one item. A pair counted as rediscovered when the frozen
+funding query returned at least one item. Unavailable queries: 0 of 250.
+
+These complete results fail the frozen floors. They cannot be rescued by
+changing thresholds.
+
+## Invalid-attempt audit (2026-08-16, not scored)
+
+The first attempts under `cm_base_rate_001` / `cm_rediscovery_001` were
+inadmissible (first-sale dates outside the declared years) and were never
+written into the machine-readable result record. They remain historical only.
 
 | Artifact | Time (UTC) | SHA-256 |
 |---|---|---|
@@ -47,20 +100,6 @@ not acceptance evidence and they must not be scored.
 | Invalid base-rate private evidence output | 2026-08-16 10:00:30.667 | `bc01813f857f217b7e69fb108157735591c15f0f6f25de372d61c11161408a48` |
 | Invalid rediscovery private pair manifest | 2026-08-16 10:03:14.869 | `45b4789941e46186591b5720d323e4dfaa085a6b4ce67c239f4b27a90aa2055b` |
 | Invalid rediscovery private checkpoint | 2026-08-16 10:09:41.097 | `27dc9bfa23e6080a55314cd07aaea6a1a305f136b82fca99ab979c7d462c9b8f` |
-
-The base-rate attempt selected 100 US and 50 UK records. An aggregate audit found
-19 selection first-sale dates outside 2024. The rediscovery attempt selected 75
-US and 25 UK records. Its audit found 16 selection first-sale dates outside
-2025. Three GDELT requests had also reached the fixed unavailable outcome before
-the run stopped. These facts do not repair either selection manifest and do not
-create a valid numerator, denominator, point estimate, or lower bound.
-
-The attempted `cm_base_rate_001` and `cm_rediscovery_001` evidence cannot be
-recreated or replaced under the same version. A new run requires product-owner
-approval of a new protocol version, new sample and pair-set IDs, an explicit
-first-sale date-window check, and a new precommitment before any scoring or
-provider query. Until then, the machine-readable `cm_eval_v1` result stays
-`not_run` and the decision stays `STOP`.
 
 ## Base-rate sample protocol
 
@@ -99,8 +138,9 @@ denominator is incomplete even when the observed rate is above 0.60.
 ## Historical usefulness protocol
 
 Stage 0 freezes the protocol and remains stopped until the mutable result record
-contains the external judgments. Stage 1A may collect them only after the tracer
-can produce the frozen ten-impact set.
+contains the external judgments. Stage 1A (#6919) may collect them only after
+the tracer can produce the frozen ten-impact set. This Stage 0 run did not
+recruit customers and did not execute Stage 1A.
 
 - Exactly two external target customers judge the same ten admitted impacts.
 - At least one customer is independent of the initiating design-partner context.
