@@ -48,6 +48,7 @@ const INTERNATIONAL_HOST_SUFFIXES = [
   '.iaea.org',
   '.icao.int',
   '.iea.org',
+  '.ilo.org',
   '.imf.org',
   '.opec.org',
   '.reliefweb.int',

@@ -1008,6 +1008,7 @@
       "scripts/_bundle-runner.mjs",
       "scripts/_defense-industrial-source.mjs",
       "scripts/_defense-patents-source.mjs",
+      "scripts/_demographics-capability-source.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
@@ -1020,10 +1021,12 @@
       "scripts/seed-chokepoint-baselines.mjs",
       "scripts/seed-defense-industrial.mjs",
       "scripts/seed-defense-patents.mjs",
+      "scripts/seed-demographics-capability.mjs",
       "scripts/seed-submarine-cables.mjs",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
-      "scripts/shared/iso3-to-iso2.json"
+      "scripts/shared/iso3-to-iso2.json",
+      "scripts/shared/un-to-iso2.json"
     ],
     "cronSchedule": "0 3 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-3-seed-bundle-static-ref"

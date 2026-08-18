@@ -1,4 +1,4 @@
-import type { GetFoodStocksResponse, GetResilienceRankingResponse, GetResilienceScoreResponse, ResilienceDomain, ResilienceDimension, ResilienceRankingItem, ScoreInterval } from '@/generated/client/worldmonitor/resilience/v1/service_client';
+import type { GetDemographicsCapabilityResponse, GetFoodStocksResponse, GetResilienceRankingResponse, GetResilienceScoreResponse, ResilienceDomain, ResilienceDimension, ResilienceRankingItem, ScoreInterval } from '@/generated/client/worldmonitor/resilience/v1/service_client';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { ResilienceServiceClient } from '@/services/generated-rpc-clients';
@@ -6,6 +6,7 @@ import { ResilienceServiceClient } from '@/services/generated-rpc-clients';
 export type ResilienceScoreResponse = GetResilienceScoreResponse;
 export type ResilienceRankingResponse = GetResilienceRankingResponse;
 export type FoodStocksResponse = GetFoodStocksResponse;
+export type DemographicsCapabilityResponse = GetDemographicsCapabilityResponse;
 export type { ResilienceDomain, ResilienceDimension, ResilienceRankingItem, ScoreInterval };
 
 let _client: InstanceType<typeof ResilienceServiceClient> | null = null;
@@ -49,6 +50,16 @@ export async function getFoodStocks(
     },
     // Forwarded so a panel close or country switch actually cancels the request
     // rather than only discarding its result.
+    opts.signal ? { signal: opts.signal } : undefined,
+  );
+}
+
+export async function getDemographicsCapability(
+  opts: { countryCode: string; signal?: AbortSignal },
+): Promise<DemographicsCapabilityResponse> {
+  const normalized = normalizeCountryCode(opts.countryCode);
+  return getClient().getDemographicsCapability(
+    { countryCode: normalized || opts.countryCode.trim().toUpperCase() },
     opts.signal ? { signal: opts.signal } : undefined,
   );
 }

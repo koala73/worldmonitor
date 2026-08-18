@@ -24810,6 +24810,173 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/resilience/v1/get-demographics-capability:
+        get:
+            tags:
+                - ResilienceService
+            summary: GetDemographicsCapability
+            description: GetDemographicsCapability returns age, education and industrial-workforce observations for one country. PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetDemographicsCapability
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: countryCode
+                  in: query
+                  description: Required ISO 3166-1 alpha-2 country code.
+                  required: true
+                  example: "US"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "ageStructure":
+                                    "available": true
+                                    "medianAgeYears":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                    "oldAgeDependencyRatioPercent":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                    "totalDependencyRatioPercent":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                    "workingAgePopulationPeople":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                "available": true
+                                "countryCode": "US"
+                                "education":
+                                    "available": true
+                                    "researchersPerMillion":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                    "stemGraduatesSharePercent":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                    "tertiaryEnrollmentGrossPercent":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_resilience_v1_GetDemographicsCapabilityResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/resilience/v1/get-resilience-ranking:
         get:
             tags:
@@ -48913,6 +49080,119 @@ components:
                     type: string
                     description: 'Provenance: "psd" or "faostat". FAOSTAT rows never carry stocks.'
             description: One country (or WORLD) × commodity production/stocks balance from the seeded snapshot.
+        worldmonitor_resilience_v1_GetDemographicsCapabilityRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: Required ISO 3166-1 alpha-2 country code.
+            required:
+                - countryCode
+        worldmonitor_resilience_v1_GetDemographicsCapabilityResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                available:
+                    type: boolean
+                    description: True when at least one validated observation exists for the country.
+                fetchedAt:
+                    type: string
+                    description: ISO-8601 time the canonical snapshot was generated.
+                stages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_resilience_v1_DemographicsCapabilityStage'
+                ageStructure:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_DemographicsAgeStructure'
+                education:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_DemographicsEducation'
+                industrialWorkforce:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_DemographicsIndustrialWorkforce'
+        worldmonitor_resilience_v1_DemographicsCapabilityStage:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Stable stage name: wpp, education, or ilostat.'
+                status:
+                    type: string
+                    description: Seeder state, normally fresh, retained, or unavailable.
+                fetchedAt:
+                    type: string
+                    description: ISO-8601 time of the data retained for this stage.
+                recordCount:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Number of country records retained for the stage.
+                newestObservationYear:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Most recent source observation year retained for the stage.
+            description: Independent fetch-stage state. One failed stage must not hide healthy groups.
+        worldmonitor_resilience_v1_DemographicsAgeStructure:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                medianAgeYears:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_CapabilityObservation'
+                oldAgeDependencyRatioPercent:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_CapabilityObservation'
+                totalDependencyRatioPercent:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_CapabilityObservation'
+                workingAgePopulationPeople:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_CapabilityObservation'
+                workingAgePopulationProjected10yPeople:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_CapabilityObservation'
+        worldmonitor_resilience_v1_CapabilityObservation:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                    description: True only when value, year, source and unit passed the server contract.
+                value:
+                    type: number
+                    format: double
+                    description: 'Numeric observation. Read available first: zero is also the proto3 placeholder.'
+                year:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Observation year from the source, not the seed run year.
+                source:
+                    type: string
+                    description: Provider or dataset attribution stored with the observation.
+                unit:
+                    type: string
+                    description: Human-readable unit such as "percent", "people", or "years".
+            description: CapabilityObservation keeps a measured zero distinct from a missing value.
+        worldmonitor_resilience_v1_DemographicsEducation:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                tertiaryEnrollmentGrossPercent:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_CapabilityObservation'
+                stemGraduatesSharePercent:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_CapabilityObservation'
+                researchersPerMillion:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_CapabilityObservation'
+        worldmonitor_resilience_v1_DemographicsIndustrialWorkforce:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                craftTradesEmploymentPeople:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_CapabilityObservation'
+                plantMachineOperatorsEmploymentPeople:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_CapabilityObservation'
+                trainedIndustrialWorkforcePeople:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_CapabilityObservation'
+                manufacturingEmploymentSharePercent:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_CapabilityObservation'
         worldmonitor_resilience_v1_GetResilienceRankingRequest:
             type: object
         worldmonitor_resilience_v1_GetResilienceRankingResponse:
