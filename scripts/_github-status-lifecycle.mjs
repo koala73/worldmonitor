@@ -3,7 +3,8 @@
 // Durable GitHub commit-status transitions for scheduled operational checks.
 //
 // A scheduled workflow run is an observation, not the incident itself. If the
-// same incident is still present, the status must remain red on the commit but
+// same incident is still present, the per-source status must remain non-green
+// on the commit but
 // the next scheduled run must not pretend that a second incident occurred.
 // These helpers keep those two concerns separate:
 //
@@ -31,6 +32,14 @@ function normalizeStatus(status) {
   return { context, state, description };
 }
 
+function statusCreatorLogin(status) {
+  const login = status?.creator?.login;
+  if (typeof login !== 'string' || login.length === 0) {
+    throw new Error('GitHub status creator login is required to trust status history');
+  }
+  return login;
+}
+
 function uniqueByContext(statuses, label) {
   const byContext = new Map();
   for (const raw of statuses ?? []) {
@@ -50,13 +59,20 @@ function uniqueByContext(statuses, label) {
  * `statusPages` must be newest commit first. Each commit's GitHub status array
  * must also be newest first, which is the order GitHub documents and returns.
  */
-export function latestStatusesByContext(statusPages, prefix = '') {
+export function latestStatusesByContext(statusPages, prefix = '', { creatorLogin } = {}) {
   const latest = new Map();
   for (const statuses of statusPages ?? []) {
     if (!Array.isArray(statuses)) throw new TypeError('GitHub status page must be an array');
     for (const raw of statuses) {
       const context = typeof raw?.context === 'string' ? raw.context : '';
-      if (!context.startsWith(prefix) || latest.has(context)) continue;
+      if (!context.startsWith(prefix)) continue;
+      // Statuses are newest first. Only the status that controls this context
+      // can influence the projection; an older writer must not poison a newer,
+      // trusted replacement forever.
+      if (latest.has(context)) continue;
+      if (creatorLogin && statusCreatorLogin(raw) !== creatorLogin) {
+        throw new Error(`GitHub status ${context} was not created by trusted writer ${creatorLogin}`);
+      }
       latest.set(context, normalizeStatus(raw));
     }
   }
@@ -117,6 +133,17 @@ export function readCommitStatuses({ repository, sha, env = process.env, gh = ru
   const pages = JSON.parse(output);
   if (!Array.isArray(pages)) throw new Error(`GitHub statuses for ${sha} were not an array`);
   return pages.flat();
+}
+
+/** Read the explicit status-writer trust anchor configured for the workflow. */
+export function requireStatusWriterLogin({
+  env = process.env,
+} = {}) {
+  const login = env.SEED_STATUS_WRITER_LOGIN;
+  if (typeof login !== 'string' || login.length === 0) {
+    throw new Error('SEED_STATUS_WRITER_LOGIN is required to trust status history');
+  }
+  return login;
 }
 
 /** Post one planned status projection to one exact commit. */

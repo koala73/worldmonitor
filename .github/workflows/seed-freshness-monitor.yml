@@ -5,10 +5,11 @@ on:
     - cron: '*/15 * * * *'
   workflow_dispatch:
 
-# A newer ingestion observation supersedes an older one.
+# Transition publication must finish before the next observation can classify
+# the same incident; the publisher's checkedAt fence then rejects delayed writes.
 concurrency:
   group: seed-freshness-monitor
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -98,6 +99,7 @@ jobs:
       # This workflow owns only ingestion/data acceptance. Deployment
       # configuration and image drift have their own six-hourly read-only workflow.
       - name: Check ingestion operational acceptance
+        id: acceptance
         if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
         # The probe remains strict and exits non-zero for every active problem.
         # The next step decides whether that problem is a new transition or the
@@ -110,11 +112,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SEED_ACCEPTANCE_SHA: ${{ steps.gate.outputs.sha || github.sha }}
+          SEED_ACCEPTANCE_OUTCOME: ${{ steps.acceptance.outcome }}
+          SEED_STATUS_WRITER_LOGIN: github-actions[bot]
         run: |
           # During the first post-merge race, the newest gated ancestor can
           # predate this lifecycle. Wait for the new revision to pass `gate`
           # instead of turning that expected bootstrap state into an alarm.
           if [ ! -f scripts/update-seed-health-statuses.mjs ]; then
+            if [ "$SEED_ACCEPTANCE_OUTCOME" != "success" ]; then
+              echo "::error::Ingestion operational acceptance failed on gated revision $SEED_ACCEPTANCE_SHA, and no transition publisher is available to classify the failure."
+              exit 1
+            fi
             echo "Transition publisher is not active on gated revision $SEED_ACCEPTANCE_SHA; waiting for a gated activation revision."
             exit 0
           fi

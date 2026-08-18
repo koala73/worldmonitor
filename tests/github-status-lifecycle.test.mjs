@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   latestStatusesByContext,
   planStatusLifecycle,
+  requireStatusWriterLogin,
 } from '../scripts/_github-status-lifecycle.mjs';
 
 const failure = (description = 'STALE_SEED blocks operational acceptance') => ({
@@ -59,5 +60,38 @@ describe('durable GitHub status lifecycle', () => {
       [{ context: 'gate', state: 'success', description: 'irrelevant' }, older],
     ], 'ingestion/');
     assert.deepEqual([...statuses.values()], [newest]);
+  });
+
+  it('rejects the newest status whose creator does not match the configured writer', () => {
+    const status = failure();
+    assert.throws(
+      () => latestStatusesByContext([[status]], 'ingestion/', { creatorLogin: 'github-actions[bot]' }),
+      /creator login is required/,
+    );
+    assert.throws(
+      () => latestStatusesByContext([[
+        { ...status, creator: { login: 'untrusted-writer' } },
+      ]], 'ingestion/', { creatorLogin: 'github-actions[bot]' }),
+      /not created by trusted writer/,
+    );
+    const newestTrusted = { ...status, creator: { login: 'github-actions[bot]' } };
+    const olderUntrusted = { ...status, creator: { login: 'untrusted-writer' } };
+    assert.deepEqual(
+      [...latestStatusesByContext([[newestTrusted, olderUntrusted]], 'ingestion/', {
+        creatorLogin: 'github-actions[bot]',
+      }).values()],
+      [status],
+    );
+  });
+
+  it('requires the explicit configured status-writer trust anchor', () => {
+    assert.equal(
+      requireStatusWriterLogin({ env: { SEED_STATUS_WRITER_LOGIN: 'github-actions[bot]' } }),
+      'github-actions[bot]',
+    );
+    assert.throws(
+      () => requireStatusWriterLogin({ env: {} }),
+      /SEED_STATUS_WRITER_LOGIN is required/,
+    );
   });
 });

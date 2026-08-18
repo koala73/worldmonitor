@@ -12,29 +12,43 @@ import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
+import { buildSeedHealthStatuses, validateObservationCheckedAt } from '../scripts/update-seed-health-statuses.mjs';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const publisher = resolve(repoRoot, 'scripts/update-seed-health-statuses.mjs');
 const HEAD = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const ANCESTOR = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+const WRITER = 'github-actions[bot]';
 
 const failure = {
   context: 'ingestion/seed/example',
   state: 'failure',
   description: 'STALE_SEED blocks operational acceptance',
 };
-const aggregate = {
-  context: 'ingestion/seed/acceptance',
-  state: 'pending',
-  description: '1 source incident remains active',
-};
+function aggregate(checkedAt) {
+  return {
+    context: 'ingestion/seed/acceptance',
+    state: 'pending',
+    description: `1 source incident remains active; observed ${checkedAt}`,
+    creator: { login: WRITER },
+  };
+}
 
-function observation(blocking) {
+function trusted(status) {
+  return { ...status, creator: { login: WRITER } };
+}
+
+function checkedAt(offsetMs = 0) {
+  return new Date(Date.now() + offsetMs).toISOString();
+}
+
+function observation(blocking = [], { acknowledged = [], observedAt = checkedAt() } = {}) {
   return {
     version: 1,
-    checkedAt: '2026-08-17T18:00:00.000Z',
+    checkedAt: observedAt,
     acceptance: {
       blocking,
-      acknowledged: [],
+      acknowledged,
       cleared: [],
       escalated: [],
       expired: false,
@@ -46,6 +60,8 @@ function observation(blocking) {
 
 function runPublisher({
   blocking,
+  acknowledged,
+  observedAt,
   headStatuses = [],
   ancestorStatuses = [],
   observationOverride,
@@ -58,7 +74,7 @@ function runPublisher({
   try {
     mkdirSync(fakeBin);
     mkdirSync(statusesDir);
-    writeFileSync(reportPath, JSON.stringify(observationOverride ?? observation(blocking)));
+    writeFileSync(reportPath, JSON.stringify(observationOverride ?? observation(blocking, { acknowledged, observedAt })));
     writeFileSync(join(statusesDir, `${HEAD}.json`), JSON.stringify(headStatuses));
     writeFileSync(join(statusesDir, `${ANCESTOR}.json`), JSON.stringify(ancestorStatuses));
     writeFileSync(postLog, '');
@@ -70,8 +86,8 @@ function runPublisher({
     ].join('\n'));
     writeFileSync(join(fakeBin, 'gh'), [
       '#!/bin/sh',
-      'case "$2" in',
-      '  --paginate)',
+      'case "$1:$2" in',
+      '  api:--paginate)',
       '    sha=""',
       '    for arg in "$@"; do',
       '      case "$arg" in',
@@ -86,7 +102,7 @@ function runPublisher({
       '    cat "$FAKE_STATUS_DIR/$sha.json"',
       '    printf "]\\n"',
       '    ;;',
-      '  --method)',
+      '  api:--method)',
       '    printf "%s\\n" "$*" >> "$FAKE_POST_LOG"',
       '    printf "{}\\n"',
       '    ;;',
@@ -106,6 +122,7 @@ function runPublisher({
         FAKE_STATUS_DIR: statusesDir,
         GH_TOKEN: 'test-token',
         GITHUB_REPOSITORY: 'koala73/worldmonitor',
+        SEED_STATUS_WRITER_LOGIN: WRITER,
         PATH: `${fakeBin}:${process.env.PATH}`,
       },
     });
@@ -118,7 +135,8 @@ function runPublisher({
 describe('seed health status publisher', () => {
   it('fails once for a new incident, stays quiet for the same incident, and posts recovery', () => {
     const currentProblem = [{ name: 'example', status: 'STALE_SEED', seedAgeMin: 999 }];
-    const first = runPublisher({ blocking: currentProblem });
+    const firstAt = checkedAt(-120_000);
+    const first = runPublisher({ blocking: currentProblem, observedAt: firstAt });
     assert.equal(first.status, 1, first.stderr);
     assert.match(`${first.stdout}\n${first.stderr}`, /ingestion\/seed\/example/);
     assert.match(first.posts, /state=failure/);
@@ -131,7 +149,8 @@ describe('seed health status publisher', () => {
 
     const repeated = runPublisher({
       blocking: [{ ...currentProblem[0], seedAgeMin: 1_500 }],
-      ancestorStatuses: [aggregate, failure],
+      observedAt: checkedAt(-60_000),
+      ancestorStatuses: [aggregate(firstAt), trusted(failure)],
     });
     assert.equal(repeated.status, 0, repeated.stderr);
     assert.match(repeated.stdout, /"newOrChangedFailures": \[\]/);
@@ -140,14 +159,16 @@ describe('seed health status publisher', () => {
 
     const sameRevision = runPublisher({
       blocking: currentProblem,
-      headStatuses: [aggregate, failure],
+      observedAt: firstAt,
+      headStatuses: [aggregate(firstAt), trusted(failure)],
     });
-    assert.equal(sameRevision.status, 0, sameRevision.stderr);
-    assert.equal(sameRevision.posts, '', 'an unchanged poll on the same SHA must not duplicate statuses');
+    assert.equal(sameRevision.status, 1, sameRevision.stderr);
+    assert.match(sameRevision.stderr, /not newer than completed projection/);
 
     const recovered = runPublisher({
       blocking: [],
-      ancestorStatuses: [aggregate, failure],
+      observedAt: checkedAt(-30_000),
+      ancestorStatuses: [aggregate(firstAt), trusted(failure)],
     });
     assert.equal(recovered.status, 0, recovered.stderr);
     assert.match(recovered.posts, /context=ingestion\/seed\/example/);
@@ -169,10 +190,166 @@ describe('seed health status publisher', () => {
       blocking: [{ name: 'example', status: 'STALE_SEED' }],
       // GitHub returns newest first. The source status is newer than the
       // aggregate marker, so the earlier write did not complete.
-      headStatuses: [failure, aggregate],
+      headStatuses: [trusted(failure), aggregate(checkedAt(-60_000))],
     });
     assert.equal(result.status, 1, result.stderr);
     assert.match(result.posts, /context=ingestion\/seed\/example/);
     assert.match(result.posts, /context=ingestion\/seed\/acceptance/);
+  });
+
+  it('bootstraps from a trusted legacy completion marker instead of suppressing the first timestamped projection', () => {
+    const result = runPublisher({
+      blocking: [{ name: 'example', status: 'STALE_SEED' }],
+      headStatuses: [
+        trusted({
+          context: 'ingestion/seed/acceptance',
+          state: 'pending',
+          description: '1 source incident remains active',
+        }),
+        trusted(failure),
+      ],
+    });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.posts, /context=ingestion\/seed\/example/);
+    assert.match(result.posts, /observed \d{4}-\d{2}-\d{2}T/);
+  });
+
+  it('fails closed for a trusted completion marker with a malformed observed timestamp', () => {
+    const result = runPublisher({
+      blocking: [],
+      headStatuses: [trusted({
+        context: 'ingestion/seed/acceptance',
+        state: 'success',
+        description: 'ingestion operational acceptance passed; observed yesterday',
+      })],
+    });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /malformed observed checkedAt/);
+    assert.equal(result.posts, '');
+  });
+
+  it('keeps a live acknowledged source pending and only recovers it after health clears it', () => {
+    const observedAt = checkedAt(-60_000);
+    const acknowledged = [{ name: 'example', status: 'EMPTY', issue: 1234 }];
+    const statuses = buildSeedHealthStatuses({
+      blocking: [],
+      acknowledged,
+      cleared: [],
+      escalated: [],
+      expired: false,
+      expiresAt: '2026-08-27',
+    }, observedAt);
+    assert.deepEqual(statuses[1], {
+      context: 'ingestion/seed/example',
+      state: 'pending',
+      description: 'EMPTY acknowledged by #1234',
+    });
+
+    const result = runPublisher({ acknowledged, observedAt });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.posts, /context=ingestion\/seed\/example/);
+    assert.match(result.posts, /state=pending/);
+
+    const recovered = runPublisher({
+      observedAt: checkedAt(-30_000),
+      ancestorStatuses: [
+        trusted({
+          context: 'ingestion/seed/acceptance',
+          state: 'success',
+          description: `ingestion operational acceptance passed; observed ${observedAt}`,
+        }),
+        trusted({
+          context: 'ingestion/seed/example',
+          state: 'pending',
+          description: 'EMPTY acknowledged by #1234',
+        }),
+      ],
+    });
+    assert.equal(recovered.status, 0, recovered.stderr);
+    assert.match(recovered.posts, /context=ingestion\/seed\/example/);
+    assert.match(recovered.posts, /state=success/);
+    assert.match(recovered.posts, /description=recovered; no longer reported/);
+  });
+
+  it('fails closed for malformed, stale, or future observation timestamps before posting', () => {
+    assert.throws(
+      () => validateObservationCheckedAt('2026-08-17T18:00:00Z', Date.now()),
+      /normalized UTC ISO instant/,
+    );
+    assert.throws(
+      () => validateObservationCheckedAt(checkedAt(-31 * 60_000), Date.now()),
+      /freshness window/,
+    );
+    assert.throws(
+      () => validateObservationCheckedAt(checkedAt(6 * 60_000), Date.now()),
+      /freshness window/,
+    );
+
+    const malformed = observation([], { observedAt: '2026-08-17T18:00:00Z' });
+    const result = runPublisher({ blocking: [], observationOverride: malformed });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /normalized UTC ISO instant/);
+    assert.equal(result.posts, '');
+  });
+
+  it('rejects a delayed healthy observation after a newer completed failure', () => {
+    const newerAt = checkedAt(-30_000);
+    const delayed = runPublisher({
+      blocking: [],
+      observedAt: checkedAt(-90_000),
+      ancestorStatuses: [aggregate(newerAt), trusted(failure)],
+    });
+    assert.equal(delayed.status, 1, delayed.stderr);
+    assert.match(delayed.stderr, /not newer than completed projection/);
+    assert.equal(delayed.posts, '');
+  });
+
+  it('fails closed when a completed projection was written by another account', () => {
+    const observedAt = checkedAt(-30_000);
+    const untrustedAggregate = {
+      ...aggregate(checkedAt(-60_000)),
+      creator: { login: 'untrusted-writer' },
+    };
+    const result = runPublisher({
+      blocking: [{ name: 'example', status: 'STALE_SEED' }],
+      observedAt,
+      ancestorStatuses: [untrustedAggregate, trusted(failure)],
+    });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /not created by trusted writer/);
+    assert.equal(result.posts, '');
+  });
+
+  it('posts the acceptance completion marker last for a same-SHA changed observation', () => {
+    const firstAt = checkedAt(-120_000);
+    const secondAt = checkedAt(-60_000);
+    const result = runPublisher({
+      blocking: [{ name: 'example', status: 'EMPTY' }],
+      observedAt: secondAt,
+      headStatuses: [aggregate(firstAt), trusted(failure)],
+    });
+    assert.equal(result.status, 1, result.stderr);
+    assert.ok(
+      result.posts.indexOf('context=ingestion/seed/example')
+        < result.posts.lastIndexOf('context=ingestion/seed/acceptance'),
+      'same-SHA repairs must finish with the current acceptance marker',
+    );
+    assert.match(result.posts, /description=EMPTY blocks operational acceptance/);
+
+    const unchanged = runPublisher({
+      blocking: [{ name: 'example', status: 'EMPTY' }],
+      observedAt: checkedAt(-30_000),
+      headStatuses: [
+        aggregate(secondAt),
+        trusted({
+          context: 'ingestion/seed/example',
+          state: 'failure',
+          description: 'EMPTY blocks operational acceptance',
+        }),
+      ],
+    });
+    assert.equal(unchanged.status, 0, unchanged.stderr);
+    assert.doesNotMatch(unchanged.posts, /context=ingestion\/seed\/example/);
+    assert.match(unchanged.posts, /context=ingestion\/seed\/acceptance/);
   });
 });

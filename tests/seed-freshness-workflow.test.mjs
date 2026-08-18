@@ -43,6 +43,24 @@ function scheduledGateStep() {
   return step;
 }
 
+function runPublisherWithoutActivation(acceptanceOutcome) {
+  const tempDir = mkdtempSync(join(repoRoot, '.tmp-seed-freshness-publisher-'));
+  try {
+    const publisher = stepNamed('Publish ingestion operational transitions');
+    return spawnSync('bash', ['-e', '-c', publisher.run], {
+      cwd: tempDir,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        SEED_ACCEPTANCE_OUTCOME: acceptanceOutcome,
+        SEED_ACCEPTANCE_SHA: HEAD_SHA,
+      },
+    });
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 const HEAD_SHA = '0123456789abcdef';
 // Frozen so the age bound is a boundary, not a race against the wall clock:
 // `date` is faked below and every ancestor age is expressed against this.
@@ -273,6 +291,7 @@ describe('seed freshness workflow control plane', () => {
     // audit above it — one red step silently switched off data-freshness
     // monitoring for the whole fleet.
     assert.equal(acceptance.if, GATE_GUARD, 'acceptance must stay behind the fail-closed gate and nothing else');
+    assert.equal(acceptance.id, 'acceptance');
     assert.match(GATE_GUARD, /steps\.gate\.conclusion != 'failure'/);
     assert.equal(acceptance['continue-on-error'], true, 'health incidents are classified by the status publisher');
     assert.match(acceptance.run, /--json-output "\$RUNNER_TEMP\/seed-freshness-observation\.json"/);
@@ -282,6 +301,8 @@ describe('seed freshness workflow control plane', () => {
     assert.equal(publisher['continue-on-error'], undefined);
     assert.equal(publisher.env.GH_TOKEN, '${{ github.token }}');
     assert.equal(publisher.env.SEED_ACCEPTANCE_SHA, '${{ steps.gate.outputs.sha || github.sha }}');
+    assert.equal(publisher.env.SEED_ACCEPTANCE_OUTCOME, '${{ steps.acceptance.outcome }}');
+    assert.equal(publisher.env.SEED_STATUS_WRITER_LOGIN, 'github-actions[bot]');
     assert.match(publisher.run, /update-seed-health-statuses\.mjs/);
     assert.match(publisher.run, /if \[ ! -f scripts\/update-seed-health-statuses\.mjs \]/);
     assert.match(publisher.run, /not active on gated revision/);
@@ -289,6 +310,16 @@ describe('seed freshness workflow control plane', () => {
     assert.match(publisher.run, /--report "\$RUNNER_TEMP\/seed-freshness-observation\.json"/);
     assertBashSyntax(publisher.run);
     assert.equal(workflow.permissions.statuses, 'write');
+  });
+
+  it('fails closed when a strict probe fails before the transition publisher is active', () => {
+    const failure = runPublisherWithoutActivation('failure');
+    assert.notEqual(failure.status, 0, 'a failed strict probe must not finish green without its publisher');
+    assert.match(`${failure.stdout}\n${failure.stderr}`, /acceptance failed.*no transition publisher is available/i);
+
+    const success = runPublisherWithoutActivation('success');
+    assert.equal(success.status, 0, success.stderr);
+    assert.match(success.stdout, /waiting for a gated activation revision/);
   });
 
   it('checks out the resolved revision before the ingestion probe', () => {
@@ -323,7 +354,7 @@ describe('seed freshness workflow control plane', () => {
     assert.equal(checkout.with?.filter, 'blob:none');
     assert.deepEqual(
       workflow.concurrency,
-      { group: 'seed-freshness-monitor', 'cancel-in-progress': true },
+      { group: 'seed-freshness-monitor', 'cancel-in-progress': false },
     );
     assert.equal(workflow.on.schedule[0].cron, '*/15 * * * *');
     assert.doesNotMatch(

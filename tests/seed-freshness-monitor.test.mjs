@@ -61,7 +61,7 @@ describe('scheduled seed freshness monitor', () => {
       },
       {
         context: 'ingestion/seed/mineralProduction',
-        state: 'success',
+        state: 'pending',
         description: 'EMPTY acknowledged by #6439',
       },
     ]);
@@ -110,22 +110,45 @@ describe('scheduled seed freshness monitor', () => {
   it('builds one structured observation from the same strict acceptance split as the text report', () => {
     const payload = {
       status: 'WARNING',
-      checkedAt: '2026-08-17T18:00:00.000Z',
+      checkedAt: '2026-08-17T20:00:00+02:00',
       problems: { submarineCables: { status: 'EMPTY', records: 0 } },
     };
     const observation = buildAcceptanceObservation(payload, {
       expiresAt: '2026-08-27',
       acknowledged: [],
-    }, Date.parse(payload.checkedAt));
+    }, Date.parse('2026-08-17T18:00:00.000Z'));
 
     assert.equal(observation.version, 1);
-    assert.equal(observation.checkedAt, payload.checkedAt);
+    assert.equal(observation.checkedAt, '2026-08-17T18:00:00.000Z');
     assert.deepEqual(observation.acceptance.blocking, [{
       name: 'submarineCables',
       status: 'EMPTY',
       records: 0,
     }]);
     assert.equal(observation.report.failed, true);
+  });
+
+  it('refuses an observation without a current valid health timestamp', () => {
+    const now = Date.parse('2026-08-17T18:00:00.000Z');
+    const baseline = { expiresAt: '2026-08-27', acknowledged: [] };
+    const payload = (checkedAt) => ({
+      status: 'HEALTHY',
+      ...(checkedAt === undefined ? {} : { checkedAt }),
+    });
+
+    for (const [label, checkedAt] of [
+      ['missing', undefined],
+      ['malformed', '2026-08-17 18:00:00Z'],
+      ['impossible calendar date', '2026-02-30T18:00:00.000Z'],
+      ['future', '2026-08-17T18:00:00.001Z'],
+      ['expired cache snapshot', '2026-08-17T17:58:39.999Z'],
+    ]) {
+      assert.throws(
+        () => buildAcceptanceObservation(payload(checkedAt), baseline, now),
+        /checkedAt/,
+        `${label} checkedAt must not produce a publishable observation`,
+      );
+    }
   });
 
   it('grades every actionable status, not only STALE_SEED', () => {
