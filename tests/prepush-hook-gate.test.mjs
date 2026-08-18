@@ -35,13 +35,6 @@ const GIT_LOCAL_ENV_VARS = execFileSync('git', ['rev-parse', '--local-env-vars']
 const WORK = mkdtempSync(join(tmpdir(), 'wm-prepush-hook-'));
 after(() => rmSync(WORK, { recursive: true, force: true }));
 
-// Resolved before any stub directory exists on a PATH, so it always names the
-// real git — /usr/bin/git is not a portable assumption (Git-for-Windows keeps
-// it at /mingw64/bin/git).
-const REAL_GIT = execFileSync('bash', ['-c', 'command -v git'], {
-  encoding: 'utf8',
-}).trim();
-
 // One argument per line, `>` prefixed, so an assertion can tell a single
 // argument containing a space from two separate arguments.
 const STUB_BODY = (name, log) =>
@@ -61,7 +54,6 @@ const STUB_BODY = (name, log) =>
 function makeStubs(auxDir) {
   const bin = join(auxDir, 'bin');
   const log = join(auxDir, 'invocations.log');
-  const gitLog = join(auxDir, 'git-invocations.log');
   mkdirSync(bin, { recursive: true });
   for (const name of ['npm', 'npx', 'node', 'gh', 'make']) {
     const stub = join(bin, name);
@@ -73,18 +65,7 @@ function makeStubs(auxDir) {
     writeFileSync(stub, STUB_BODY(name, log).replace('#!/bin/sh\n', `#!/bin/sh\n${realScriptDispatch}`));
     chmodSync(stub, 0o755);
   }
-  // Transparent pass-through for the hook's own git usage that records fetch
-  // invocations, so a test can assert the contamination guard skipped the
-  // network without having to stub git itself (#6764).
-  const gitWrap = join(bin, 'git');
-  writeFileSync(
-    gitWrap,
-    `#!/bin/sh\n` +
-      `[ "$1" = fetch ] && echo "git-fetch $*" >> ${JSON.stringify(gitLog)}\n` +
-      `exec ${JSON.stringify(REAL_GIT)} "$@"\n`,
-  );
-  chmodSync(gitWrap, 0o755);
-  return { bin, log, gitLog };
+  return { bin, log };
 }
 
 function hookEnv(bin) {
@@ -109,7 +90,7 @@ let fixtureCount = 0;
 function makeFixture({ branchFiles = {}, scriptsCjs = true, failAttestMode = null } = {}) {
   const id = fixtureCount++;
   const root = join(WORK, `repo-${id}`);
-  const { bin, log, gitLog } = makeStubs(join(WORK, `aux-${id}`));
+  const { bin, log } = makeStubs(join(WORK, `aux-${id}`));
   const env = hookEnv(bin);
   const git = (args) => execFileSync('git', args, { cwd: root, env, encoding: 'utf8' });
 
@@ -185,9 +166,7 @@ function makeFixture({ branchFiles = {}, scriptsCjs = true, failAttestMode = nul
     }
     const invocations = existsSync(log) ? readFileSync(log, 'utf8') : '';
     rmSync(log, { force: true });
-    const gitCalls = existsSync(gitLog) ? readFileSync(gitLog, 'utf8') : '';
-    rmSync(gitLog, { force: true });
-    return { status, stdout, invocations, gitCalls };
+    return { status, stdout, invocations };
   };
 
   const cachePath = join(root, '.git', 'wm-prepush-green');
@@ -547,77 +526,6 @@ describe('a broken enumeration blocks the push, it does not empty the list', () 
       assert.equal(fixture.cached(), null);
     });
   }
-});
-
-describe('the contamination guard fetches only to disprove a violation (#6764)', () => {
-  // A fetch can only move origin/$BASE_REF forward, so the count against it
-  // can only shrink. A cached count within budget is therefore a guaranteed
-  // pass, and the common path must pay no network for it — while a suspected
-  // violation still gets the fetch it needs before the guard errors.
-
-  const externalEnv = (() => {
-    const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null' };
-    for (const name of GIT_LOCAL_ENV_VARS) delete env[name];
-    return env;
-  })();
-  const externalGit = (cwd, args) =>
-    execFileSync('git', args, { cwd, env: externalEnv, encoding: 'utf8' });
-  const fetchCount = (gitCalls) => (gitCalls.match(/^git-fetch /gm) || []).length;
-
-  test('a branch within budget pushes with no fetch at all', () => {
-    const fixture = makeFixture({ branchFiles: { 'tests/guard.test.mjs': 'x\n' } });
-    fixture.git(['checkout', '-q', '-b', 'feature/within-budget']);
-
-    const { status, stdout, gitCalls } = fixture.run();
-    assert.equal(status, 0, stdout);
-    assert.equal(fetchCount(gitCalls), 0, 'cached count 1 ≤ 20 is already a guaranteed pass');
-  });
-
-  test('a stale-ref false positive still fetches, disproves itself, and passes', () => {
-    const fixture = makeFixture();
-    const id = fixtureCount++;
-    const bare = join(WORK, `guard-bare-${id}`);
-    const clone2 = join(WORK, `guard-clone2-${id}`);
-    externalGit(WORK, ['init', '--quiet', '--bare', '--initial-branch=main', bare]);
-    fixture.git(['remote', 'add', 'origin', bare]);
-    const base = fixture.git(['rev-parse', 'HEAD']).trim();
-    fixture.git(['push', '--quiet', 'origin', 'main']); // remote main = base
-    // Advance the remote through a second clone so the fixture's cached
-    // origin/main stays stale — the exact false-positive shape the guard
-    // exists to avoid.
-    externalGit(WORK, ['clone', '--quiet', bare, clone2]);
-    externalGit(clone2, ['config', 'user.email', 'guard-fixture@example.invalid']);
-    externalGit(clone2, ['config', 'user.name', 'Guard Fixture']);
-    for (let i = 0; i < 25; i++) {
-      externalGit(clone2, ['commit', '--allow-empty', '--quiet', '-m', `bulk ${i}`]);
-    }
-    externalGit(clone2, ['push', '--quiet', 'origin', 'main']);
-    // Bring the new tip in WITHOUT admitting it to the cached tracking ref.
-    // The explicit re-stale is needed because a modern git opportunistically
-    // refreshes refs/remotes/origin/main on any fetch that contacts the
-    // remote, refspec or not.
-    fixture.git(['fetch', '--quiet', 'origin', 'main:refs/heads/__remote-main']);
-    fixture.git(['update-ref', 'refs/remotes/origin/main', base]);
-    fixture.git(['checkout', '-q', '-b', 'feature/on-new-main', '__remote-main']);
-    fixture.git(['commit', '--allow-empty', '--quiet', '-m', 'real work']);
-
-    const { status, stdout, gitCalls } = fixture.run();
-    assert.equal(status, 0, stdout);
-    assert.equal(fetchCount(gitCalls), 1, 'cached count 26 > 20 must fetch exactly once to recompute');
-  });
-
-  test('a genuinely contaminated branch still errors after trying to disprove', () => {
-    const fixture = makeFixture();
-    fixture.git(['checkout', '-q', '-b', 'feature/contaminated']);
-    for (let i = 0; i < 25; i++) {
-      fixture.git(['commit', '--allow-empty', '--quiet', '-m', `stray ${i}`]);
-    }
-
-    const { status, stdout, gitCalls } = fixture.run();
-    assert.equal(status, 1, 'the guard must not get weaker');
-    assert.match(stdout, /commits ahead/);
-    assert.equal(fetchCount(gitCalls), 1, 'the cached count may be a stale-ref false positive, so it still fetches first');
-  });
 });
 
 describe('the gate does not fail closed on its own edge cases', () => {

@@ -80,38 +80,20 @@ if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; the
     BASE_REF="$PR_BASE_REF"
   fi
   BASE_REF="${BASE_REF:-main}"
-  # Refresh the remote-tracking ref only when the cached one could change the
-  # verdict (#6764). A fetch can only move origin/$BASE_REF forward, and
-  # `rev-list --count origin/$BASE_REF..HEAD` can therefore only stay the same
-  # or shrink — so a cached count within budget is already a guaranteed pass,
-  # and paying a warm 2s / cold 70s fetch on every push buys nothing. Fetch to
-  # disprove a suspected violation, or when the ref is not cached locally at
-  # all (first push of a stacked branch, stale long-lived worktree).
+  # Refresh the remote-tracking ref before trusting it. A stacked branch's
+  # base may not be fetched locally at all yet, and even origin/main can be
+  # stale in a long-lived worktree — either way, counting against a stale
+  # ref reintroduces the exact false-positive this guard is meant to avoid.
   # A failed fetch (offline, network hiccup) is not fatal: fall through to
   # whatever's already cached locally, same as before this change.
-  WM_MAX_COMMITS_AHEAD=20
-  WM_GUARD_NEED_FETCH=false
-  WM_GUARD_CACHED_COUNT=""
-  if git rev-parse --verify -q "origin/$BASE_REF" >/dev/null; then
-    WM_GUARD_CACHED_COUNT=$(git rev-list --count "origin/$BASE_REF..HEAD" 2>/dev/null || echo 0)
-    if [ "$WM_GUARD_CACHED_COUNT" -gt "$WM_MAX_COMMITS_AHEAD" ]; then
-      WM_GUARD_NEED_FETCH=true
-    fi
-  else
-    WM_GUARD_NEED_FETCH=true
-  fi
-  if [ "$WM_GUARD_NEED_FETCH" = true ]; then
+  git fetch origin "$BASE_REF" --quiet 2>/dev/null || true
+  if ! git rev-parse --verify -q "origin/$BASE_REF" >/dev/null; then
+    echo "  Base ref 'origin/$BASE_REF' not resolvable, falling back to origin/main."
+    BASE_REF="main"
     git fetch origin "$BASE_REF" --quiet 2>/dev/null || true
-    if ! git rev-parse --verify -q "origin/$BASE_REF" >/dev/null; then
-      echo "  Base ref 'origin/$BASE_REF' not resolvable, falling back to origin/main."
-      BASE_REF="main"
-      git fetch origin "$BASE_REF" --quiet 2>/dev/null || true
-    fi
-    COMMIT_COUNT=$(git rev-list --count "origin/$BASE_REF..HEAD" 2>/dev/null || echo 0)
-  else
-    COMMIT_COUNT="$WM_GUARD_CACHED_COUNT"
   fi
-  if [ "$COMMIT_COUNT" -gt "$WM_MAX_COMMITS_AHEAD" ]; then
+  COMMIT_COUNT=$(git rev-list --count "origin/$BASE_REF..HEAD" 2>/dev/null || echo 0)
+  if [ "$COMMIT_COUNT" -gt 20 ]; then
     echo ""
     echo "============================================================"
     echo "ERROR: Branch '$BRANCH' is $COMMIT_COUNT commits ahead of origin/$BASE_REF."
