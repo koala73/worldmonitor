@@ -45,6 +45,35 @@ async function callTool(name, args, fetchImpl) {
   }
 }
 
+
+describe('validation body budget (#6559 follow-up)', () => {
+  it('keeps a violation list larger than 4 KB inside the structured -32602 contract', async () => {
+    // A dozen localized field descriptions overflow the previous 4 KB
+    // classification budget; truncation mid-JSON collapsed the whole list
+    // into the generic -32603 fallback even though every violation was valid.
+    const violations = Array.from({ length: 14 }, (_, i) => ({
+      field: `field_${i}`,
+      description: 'x'.repeat(400),
+    }));
+    const body = JSON.stringify({ violations });
+    assert.ok(body.length > 4096 && body.length <= 16384);
+
+    const res = await callTool(
+      'get_food_stocks',
+      {},
+      async () => new Response(body, {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    const parsed = await res.json();
+    assert.equal(parsed.error.code, -32602);
+    assert.ok(Array.isArray(parsed.error.data.violations));
+    assert.equal(parsed.error.data.violations.length, 8,
+      'the existing MAX_VALIDATION_VIOLATIONS cap still applies to the larger body');
+  });
+});
+
 describe('MCP RPC ValidationError preservation', () => {
   it('registry still exposes the GET and POST tools this contract covers', () => {
     assert.ok(TOOL_REGISTRY.some((tool) => tool.name === 'get_food_stocks'));
