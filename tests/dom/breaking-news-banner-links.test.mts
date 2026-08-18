@@ -13,6 +13,10 @@ vi.mock('@/config/feeds', () => ({
   getSourcePanelId: () => 'news',
 }));
 
+vi.mock('@/components/news/source-provenance', () => ({
+  renderPrimarySourceProvenance: () => ({ riskBadge: '', tierBadge: '' }),
+}));
+
 vi.mock('@/services/i18n', () => ({
   t: (key: string) => key,
 }));

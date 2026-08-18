@@ -20801,10 +20801,38 @@ body:has(.tauri-titlebar) .breaking-news-container {
 }
 
 .breaking-alert-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: rgba(255, 255, 255, 0.7);
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.breaking-alert-provenance {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.breaking-alert-source {
+  min-width: 0;
+}
+
+.breaking-alert .tier-badge,
+.breaking-alert .propaganda-badge {
+  flex-shrink: 0;
+}
+
+.breaking-alert .tier-badge {
+  margin-right: 0;
+}
+
+.breaking-alert .propaganda-badge {
+  margin-left: 0;
 }
 
 .breaking-alert-view-panel,
@@ -26988,6 +27016,8 @@ body.map-width-resizing {
 
   .breaking-alert-meta {
     flex-basis: 100%;
+    flex-wrap: wrap;
+    white-space: normal;
   }
 }
 
