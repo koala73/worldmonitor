@@ -214,10 +214,12 @@ export class SearchManager implements AppModule {
       resolveExecutableNewsPanel: (link) => this.resolveExecutableNewsPanel(link),
       saveToStorage,
       setTheme,
-      // Wrap rather than pass the bare reference: `bindings.setTimeout(...)` calls
-      // it as a method, and Firefox's spec-compliant WebIDL brand check rejects a
-      // `this` that isn't Window ("'setTimeout' called on an object that does not
-      // implement interface Window"). Calling it unbound here keeps `this` correct.
+      // Must stay wrapped, not passed bare: the dispatcher invokes these as
+      // `this.bindings.setTimeout(...)` / `this.bindings.clearTimeout(...)`,
+      // a method call. The native functions require the receiver to be the
+      // global object, so handing over the bare reference makes that call
+      // throw `TypeError: Illegal invocation` (WORLDMONITOR-ZT). Wrapping
+      // keeps the invocation unqualified, matching every other binding here.
       setTimeout: (callback, delay) => setTimeout(callback, delay),
       clearTimeout: (timer) => clearTimeout(timer),
     });

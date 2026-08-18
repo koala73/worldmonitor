@@ -2,6 +2,11 @@ node_modules/
 .idea/
 dist/
 public/blog/
+# Built by `npm run build:pro` during the deploy build (#6898). Committing it
+# produced a rename/delete conflict on every pair of PRs touching /pro (the
+# filename carries a content hash) and a staleness class when someone changed
+# pro-test/src without rebuilding.
+public/pro/
 public/countries/
 public/chokepoints/
 public/crises/

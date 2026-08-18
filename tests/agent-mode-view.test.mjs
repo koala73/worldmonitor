@@ -1,4 +1,5 @@
 import { describe, it } from 'node:test';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -22,6 +23,7 @@ const productFacts = JSON.parse(readFileSync(join(ROOT, 'public/product-facts.js
 // discovery artifacts it summarizes, and the query-gated rewrite must fire
 // BEFORE the / → welcome rewrite or the marketing page wins.
 describe('agent-mode view (/?mode=agent)', () => {
+  guardProBuiltOutput();
   it('agent-view.json carries the machine-readable essentials', () => {
     assert.equal(view.kind, 'agent-view');
     for (const key of ['product', 'url', 'description', 'endpoints', 'authentication', 'rateLimits', 'documentation', 'capabilities', 'discovery']) {
@@ -65,9 +67,10 @@ describe('agent-mode view (/?mode=agent)', () => {
     }
   });
 
-  it('the marketing homepage points at the agent view via link rel=alternate', () => {
-    // Hand-synced pair: the pro-test source and the committed build artifact
-    // must both carry the pointer (the pre-push gate rebuilds and compares).
+  it('the marketing homepage points at the agent view via link rel=alternate', { skip: shouldSkipProBuiltOutput() }, () => {
+    // Source/build pair: public/pro/welcome.html is produced by
+    // `npm run build:pro` rather than committed (#6898), so this asserts the
+    // pointer survives the prerender rather than that two committed files agree.
     const linkTag =
       '<link rel="alternate" type="application/json" href="https://www.worldmonitor.app/?mode=agent"';
     for (const path of ['pro-test/welcome.html', 'public/pro/welcome.html']) {
