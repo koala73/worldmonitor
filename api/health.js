@@ -498,8 +498,7 @@ const STANDALONE_KEYS = {
   // start, including skip-all ticks. Detects Railway cron-scheduler freeze
   // (#6691) that member seed-meta budgets (17.5d+) cannot see.
   staticRefBundleTick:           'bundle:heartbeat:static-ref',
-  armsSuppliersBundleTick:       'bundle:heartbeat:arms-suppliers',
-  militaryBasesBundleTick:       'bundle:heartbeat:military-bases',
+  staticRefHeavyBundleTick:      'bundle:heartbeat:static-ref-heavy',
   telegramFeed:                  'intelligence:telegram-feed:v1',
   digestNotifications:           'digest:last-run',
   webcams:                       'webcam:cameras:active',
@@ -1017,19 +1016,14 @@ const SEED_META = {
       status: 'EMPTY',
     },
   },
-  armsSuppliersBundleTick: {
-    key: 'bundle:heartbeat:arms-suppliers',
+  // The heavy half of static-ref: Arms-Suppliers, Military-Bases and
+  // Mineral-Production on one rotating daily tick (#6806). One heartbeat, not
+  // three — Railway's 10-minute container kill means no two of those members
+  // can share a tick, but they share a BUNDLE and the runner defers the loser
+  // to tomorrow, which is free at 10/30/60-day cadences.
+  staticRefHeavyBundleTick: {
+    key: 'bundle:heartbeat:static-ref-heavy',
     maxStaleMin: 2880, // daily cron `0 4 * * *`; 48h = 2× cadence
-    cutover: {
-      mode: 'expiring-ack',
-      fromKey: null,
-      issue: 6806,
-      status: 'EMPTY',
-    },
-  },
-  militaryBasesBundleTick: {
-    key: 'bundle:heartbeat:military-bases',
-    maxStaleMin: 2880, // daily cron `0 5 * * *`; 48h = 2× cadence
     cutover: {
       mode: 'expiring-ack',
       fromKey: null,
