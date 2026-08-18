@@ -9,10 +9,16 @@ import { guardBuiltOutput, shouldSkipBuiltOutput } from './built-output-guard.mj
 // missing, so a broken build step can never masquerade as a silent skip.
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
-// welcome.html, not index.html: prerender.mjs iterates PAGES as [index, welcome]
-// and writes welcome last, so it is the only one of the two whose presence means
-// the whole `vite build && node prerender.mjs` chain finished rather than dying
-// partway. Picking index.html would call a half-prerendered tree "built".
+// An EXISTENCE marker, not a completion marker -- be precise about which. Vite
+// emits both index.html and welcome.html (they are the two rollupOptions.input
+// entries) before prerender.mjs runs at all, and prerender.mjs then rewrites
+// them in place. So neither file's presence proves the prerender step finished;
+// what protects that is prerender.mjs's own process.exit(1) on a bad render,
+// which fails `npm run build:pro` and therefore the deploy.
+// welcome.html is still the better of the two: prerender.mjs writes it last, so
+// on a crash between the two writes index.html is already rewritten while
+// welcome.html is not -- and a partially-prerendered tree is the state the
+// gated suites most need to notice.
 export const PRO_BUILT_MARKER = resolve(repoRoot, 'public/pro/welcome.html');
 
 const REBUILD_HINT = 'Run `npm run build:pro` first';
@@ -31,5 +37,17 @@ export function guardProBuiltOutput() {
 // guardProBuiltOutput() still fails the suite outright when CI says it built.
 export function withoutUnbuiltProPaths(paths) {
   if (!shouldSkipProBuiltOutput()) return paths;
-  return paths.filter((path) => !path.startsWith('public/pro/'));
+  const remaining = paths.filter((path) => !path.startsWith('public/pro/'));
+  // Filtering to nothing would turn the caller's `for` loop into zero
+  // iterations and pass silently -- the exact vacuum this helper exists to
+  // avoid. A caller with only public/pro/ paths wants shouldSkipProBuiltOutput()
+  // instead, so that its cases report as SKIPPED rather than as passing.
+  if (remaining.length === 0) {
+    throw new Error(
+      'withoutUnbuiltProPaths() filtered every path away. A caller whose whole '
+      + 'population is public/pro/ must gate on shouldSkipProBuiltOutput() so the '
+      + 'cases skip visibly instead of asserting over an empty list.',
+    );
+  }
+  return remaining;
 }

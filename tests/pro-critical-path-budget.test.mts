@@ -3,9 +3,11 @@ import { readFile, stat, readdir } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
 /**
- * Critical-path budget guard for the committed /pro build (#5396).
+ * Critical-path budget guard for the /pro build (#5396).
  *
- * public/pro is a committed build artifact: any PR that rebuilds the pro app
+ * public/pro is a BUILT artifact since #6898 (the deploy runs `npm run
+ * build:pro`), so these checks only run locally after that command: any PR that
+ * rebuilds the pro app
  * (a #5374-class change) can silently regress the page's critical path — grow
  * the modulepreloaded chunks, promote the 3MB Clerk bundle to eager, or add
  * render-blocking assets — and the only tripwire would be the weekly DebugBear

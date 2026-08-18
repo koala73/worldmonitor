@@ -601,6 +601,41 @@ if [ "$RUN_ALL" != true ]; then
   fi
 fi
 
+# A /pro built-output suite skips EVERY assertion when public/pro/ is absent,
+# which is now the default state of a fresh checkout (#6898 gitignored it). This
+# dispatch runs ~90 lines BEFORE the pro build gate below, and that gate keys on
+# ^pro-test/ paths, not tests/ -- so a push that changes only such a suite would
+# run it, skip all of it, and report the changed test as passing. Build the
+# artifact first so the assertions actually execute.
+#
+# Deliberately does NOT set WM_EXPECT_BUILT_OUTPUT: that marker is shared with
+# the dist/dashboard.html guards, and exporting it here would red those suites
+# in a checkout that has no dashboard build. Building the artifact is what makes
+# the /pro assertions run; the marker is CI's separate "I built it" assertion.
+# The `|| path_matches` arm is load-bearing: an EXISTING public/pro/ is not a
+# CURRENT one. When the branch changes pro-test/ sources and a gated test in the
+# same push, a leftover artifact from an earlier build would satisfy the -f check
+# and the test would assert against stale bytes. Rebuild in that case too.
+if [ "${#TESTS_CHANGED[@]}" -gt 0 ] \
+  && { [ ! -f public/pro/welcome.html ] || path_matches '^pro-test/'; }; then
+  for candidate in "${TESTS_CHANGED[@]}"; do
+    grep -q "_lib/pro-built-output" "$candidate" 2>/dev/null || continue
+    echo "Building /pro ($candidate reads its built output)..."
+    if [ -L pro-test/node_modules ]; then
+      echo "ERROR: pro-test/node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
+      exit 1
+    fi
+    if [ ! -d pro-test/node_modules ]; then
+      (cd pro-test && npm ci --cache "$npm_config_cache" --prefer-offline) || exit 1
+    fi
+    (cd pro-test && npm run build >/dev/null) || {
+      echo "ERROR: pro-test build failed, so $candidate cannot run its assertions."
+      exit 1
+    }
+    break
+  done
+fi
+
 # Both dispatches are UNCONDITIONAL: the "is this list empty" test and the
 # choice of runner live in the script, where a test can execute them against
 # stubbed runners. Held inline here, they could only be guarded by grepping

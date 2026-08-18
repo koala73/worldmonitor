@@ -13,7 +13,7 @@ function readFileSync(path, options) {
   return content;
 }
 import { fileURLToPath } from 'node:url';
-import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput, withoutUnbuiltProPaths } from './_lib/pro-built-output.mjs';
 import {
   CONTENT_CORPUS_PREFIXES,
   discoverContentCorpusPages,
@@ -333,6 +333,14 @@ describe('crawlable content corpus deployment contracts', () => {
       assert.ok(
         script.includes('npm run build:pro'),
         scriptName + ' must build pro-test -- public/pro/ is gitignored, so nothing else produces /pro'
+      );
+      // The ordering checks above only prove the STRING is chained. Without this,
+      // build:pro could be rewritten to a no-op and every assertion here stays
+      // green while the deploy quietly stops producing /pro.
+      assert.match(
+        packageJson.scripts['build:pro'],
+        /cd pro-test\b[\s\S]*npm run build\b/,
+        'build:pro must actually run pro-test\'s build, not just exist as a chained name'
       );
       assert.ok(
         script.indexOf('npm run build:pro') < script.indexOf('vite build'),
@@ -1717,6 +1725,36 @@ describe('security header guardrails', () => {
     assert.ok(scriptSrc.includes("'self'"), 'CSP script-src must include self');
   });
 
+  // Split deliberately (#6898). The exact-set assertion below needs EVERY file
+  // in the list, including the two built /pro pages, so it has to be gated. But
+  // five of the seven are committed HTML that has nothing to do with /pro, and
+  // gating the whole case dropped their CSP coverage in any checkout without a
+  // /pro build. This subset half keeps that coverage unconditional: every inline
+  // script in a committed file must already be trusted by the header CSP.
+  it('CSP script-src trusts every un-nonced inline script in committed HTML', () => {
+    const csp = getHeaderValue('Content-Security-Policy');
+    const scriptHashTokens = getCspDirectiveTokens(csp, 'script-src')
+      .filter((token) => token.startsWith("'sha256-"));
+    const committedFiles = GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES
+      .filter((file) => !file.startsWith('public/pro/'));
+    assert.ok(
+      committedFiles.length > 0,
+      'committed-HTML population is empty — this guard would pass vacuously',
+    );
+    const committedHashTokens = [...new Set(committedFiles.flatMap((file) => {
+      const html = readFileSync(resolve(__dirname, '..', file), 'utf-8');
+      return getInlineScriptHashTokens(html);
+    }))].sort();
+    assert.ok(committedHashTokens.length > 0, 'expected inline scripts in committed HTML');
+    const untrusted = committedHashTokens.filter((token) => !scriptHashTokens.includes(token));
+    assert.deepEqual(
+      untrusted,
+      [],
+      'committed HTML ships un-nonced inline scripts the header CSP does not trust: ' +
+        committedFiles.join(', ')
+    );
+  });
+
   it('CSP script-src hashes exactly match un-nonced inline scripts served under the global CSP', { skip: shouldSkipProBuiltOutput() }, () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const scriptHashTokens = getCspDirectiveTokens(csp, 'script-src')
@@ -1829,7 +1867,9 @@ describe('security header guardrails', () => {
     }
   });
 
-  it('HTML entry script tags carry the nonce trusted by the header CSP', { skip: shouldSkipProBuiltOutput() }, () => {
+  // Per-file assertions, so the built /pro pages drop out of the population
+  // rather than taking the five committed files down with them (#6898).
+  it('HTML entry script tags carry the nonce trusted by the header CSP', () => {
     const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
     const headerCsp = getHeaderValue('Content-Security-Policy');
     assert.equal(hasCspMeta(indexHtml), false, 'index.html must not ship a CSP meta tag');
@@ -1848,7 +1888,12 @@ describe('security header guardrails', () => {
       'Pro Vite builds must stamp emitted HTML entry scripts with the nonce trusted by the header CSP'
     );
 
-    for (const file of GLOBAL_CSP_EXTERNAL_SCRIPT_HTML_FILES) {
+    const externalScriptFiles = withoutUnbuiltProPaths(GLOBAL_CSP_EXTERNAL_SCRIPT_HTML_FILES);
+    assert.ok(
+      externalScriptFiles.length > 0,
+      'external-script HTML population is empty — this guard would pass vacuously',
+    );
+    for (const file of externalScriptFiles) {
       const html = readFileSync(resolve(__dirname, '..', file), 'utf-8');
       assert.equal(hasCspMeta(html), false, `${file} must not ship a CSP meta tag`);
       const scriptTags = getExternalScriptTags(html);
@@ -2394,6 +2439,28 @@ describe('agent readiness: api-catalog + openapi build', () => {
     assert.ok(
       pkg.scripts.prebuild?.includes('npm run build:openapi'),
       'package.json scripts["prebuild"] must copy the generated OpenAPI spec',
+    );
+  });
+
+  it('does not regenerate committed product config before build:pro', () => {
+    // build:pro runs in the CI unit job immediately before
+    // `WM_EXPECT_BUILT_OUTPUT=1 npm run test:data` (#6898). A prebuild:pro hook
+    // would fire `npm run product:facts` there and REWRITE the committed
+    // generated config on disk -- and
+    // tests/product-catalog-freshness.test.mjs proves freshness by reading
+    // those files, re-running the generator, and diffing the two. Regenerating
+    // first makes both sides identical, so a genuinely stale commit passes.
+    // Verified by mutation: staling products.generated.ts fails that suite, and
+    // fails it no longer once `npm run product:facts` has run first.
+    //
+    // Nothing needs the hook: build/build:full regenerate via
+    // prebuild/prebuild:full, pro-bundle-freshness.yml has its own
+    // `npm run product:facts` step, and .husky/pre-push runs
+    // generate-product-config.mjs directly.
+    assert.equal(
+      pkg.scripts['prebuild:pro'],
+      undefined,
+      'package.json must NOT define scripts["prebuild:pro"] — it disarms the freshness guard in the CI unit job',
     );
   });
 

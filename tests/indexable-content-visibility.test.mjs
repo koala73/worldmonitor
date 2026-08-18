@@ -1,14 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput, withoutUnbuiltProPaths } from './_lib/pro-built-output.mjs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
-// The two suites below read the built public/pro/ pages, which `npm run
-// build:pro` produces rather than git (#6898): skip when unbuilt, fail when
-// WM_EXPECT_BUILT_OUTPUT=1 says CI built them. The dashboard suite reads the
-// committed index.html and stays unconditional.
+// public/pro/ is built by `npm run build:pro`, not committed (#6898). Only the
+// apex-HTML case reads a /pro page exclusively, so only it skips when unbuilt.
+// The production-HTML sweep also covers three COMMITTED files, so it drops just
+// the built paths from its population instead of skipping wholesale -- gating
+// the whole case would have taken index.html and both pro-test sources with it.
+// guardProBuiltOutput() still fails outright when WM_EXPECT_BUILT_OUTPUT=1.
 const skip = shouldSkipProBuiltOutput();
 guardProBuiltOutput();
 
@@ -28,8 +30,10 @@ function visibleWelcomeRoot(html) {
   return html.slice(rootStart, noScriptStart);
 }
 
-test('production HTML contains no crawler-only prerender block or off-screen hide contract', { skip }, () => {
-  for (const path of PRODUCTION_HTML) {
+test('production HTML contains no crawler-only prerender block or off-screen hide contract', () => {
+  const scanned = withoutUnbuiltProPaths(PRODUCTION_HTML);
+  assert.ok(scanned.length > 0, 'production-HTML population is empty — this guard would pass vacuously');
+  for (const path of scanned) {
     const html = read(path);
     assert.doesNotMatch(html, /id=["']seo-prerender["']/i, `${path} must not ship #seo-prerender`);
     assert.doesNotMatch(html, /html\.js\s+#seo-prerender/i, `${path} must not CSS-hide crawler copy`);

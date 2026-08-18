@@ -67,6 +67,10 @@ jobs:
               exit 1
             fi
           done
+          # public/product-facts.json is deliberately absent below: it is
+          # gitignored, and `git diff --exit-code` on an untracked path exits 0,
+          # so listing it reads as coverage while never being able to fail.
+          # tests/public-product-facts.test.mjs is what actually guards it.
           if ! git diff --exit-code \
             api/_product-catalog.generated.js \
             pro-test/index.html \
@@ -74,7 +78,6 @@ jobs:
             pro-test/src/generated/tiers.json \
             pro-test/src/locales/ \
             pro-test/welcome.html \
-            public/product-facts.json \
             scripts/shared/product-catalog.generated.json \
             scripts/shared/product-facts.generated.json \
             shared/product-catalog.generated.json \

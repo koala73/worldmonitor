@@ -20,7 +20,7 @@ function read(relPath: string): string {
 }
 
 /**
- * Every committed `public/pro` chunk reachable from a marketing HTML entry, following
+ * Every built `public/pro` chunk reachable from a marketing HTML entry, following
  * module imports transitively. Same walk tests/debugbear-rum.test.mts uses to prove a
  * script reaches the shipped bundle rather than only the source.
  */

@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { devices, expect, test, type Page } from '@playwright/test';
 
 type PaintEntrySnapshot = {
@@ -372,7 +374,18 @@ test.describe('pre-hydration dashboard shell on mobile', () => {
   });
 });
 
+// /pro/welcome.html is BUILT output since #6898 (public/pro/ is gitignored and
+// produced by `npm run build:pro`); the Playwright webServer only runs `npm run
+// dev`, which does not build it. On a fresh clone these specs would otherwise
+// fail on a 404 that looks like a product regression. Skip with a message
+// naming the command instead.
+const proWelcomeBuilt = existsSync(
+  fileURLToPath(new URL('../public/pro/welcome.html', import.meta.url)),
+);
+
 test.describe('server-rendered welcome page', () => {
+  test.skip(!proWelcomeBuilt, 'run `npm run build:pro` first — /pro is built, not committed (#6898)');
+
   test('keeps one visible heading and discoverable navigation after hydration', async ({ page }) => {
     await page.goto('/pro/welcome.html', { waitUntil: 'domcontentloaded' });
 
@@ -463,6 +476,7 @@ test.describe('server-rendered welcome page', () => {
 });
 
 test.describe('dashboard shell without JavaScript', () => {
+  test.skip(!proWelcomeBuilt, 'run `npm run build:pro` first — /pro is built, not committed (#6898)');
   test.use({ javaScriptEnabled: false });
 
   test('keeps the server-rendered welcome page visibly useful', async ({ page }) => {

@@ -42,6 +42,11 @@ RUN npm run build:pro
 # openapi/agent-skills generators.
 RUN npm run build:crawlable-corpus && npm run build:sitemap && npx tsc && npx vite build
 RUN test -s dist/product-facts.json
+# Assert the /pro pages survived the public/ -> dist/ copy. build:pro succeeding
+# proves public/pro/ exists; it does NOT prove Vite copied it, and nginx routes
+# `location ^~ /pro` regardless (#6898). Without this an outDir/publicDir change
+# ships a green image that 404s behind a live route.
+RUN test -s dist/pro/index.html && test -s dist/pro/welcome.html
 
 
 # Stage 2: Serve the built assets from nginx.

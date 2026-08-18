@@ -99,7 +99,7 @@ jobs:
               || grep -Fxq "public/${APEX_KEY_PATH}" <<< "$CHANGED_FILES"; then
               SUBMIT_APEX=true
             fi
-            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|blog-site/src/.*|pro-test/index\.html|pro-test/src/.*|pro-test/welcome\.html|public/blog/.*|public/sitemap\.xml|scripts/build-crawlable-corpus\.mjs|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
+            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|blog-site/src/.*|pro-test/.*|public/blog/.*|public/sitemap\.xml|scripts/build-crawlable-corpus\.mjs|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
               || grep -Fxq "public/${WWW_KEY_PATH}" <<< "$CHANGED_FILES"; then
               SUBMIT_WWW=true
             fi
@@ -107,8 +107,12 @@ jobs:
             # vercel.json rewrites every variant root to /pro/welcome.html — so
             # the welcome page's SOURCES change what five submitted URLs serve.
             # public/pro/ itself is gitignored since #6898 and can never appear
-            # in a commit diff; pro-test/welcome.html is what moves instead.
-            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|middleware\.ts|pro-test/index\.html|pro-test/src/.*|pro-test/welcome\.html|public/sitemap\.xml|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|src/config/variant-dashboard-html\.ts|src/config/variant-meta\.ts|vercel\.json)$' <<< "$CHANGED_FILES"; then
+            # in a commit diff, so the whole pro-test/ subtree stands in for it.
+            # Deliberately the SUBTREE, not a list of named files: prerender.mjs
+            # injects the critical CSS and SSR welcome markup, and vite.config.ts
+            # decides the emitted chunks, so both change what these URLs serve
+            # without touching index.html, welcome.html, or src/.
+            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|middleware\.ts|pro-test/.*|public/sitemap\.xml|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|src/config/variant-dashboard-html\.ts|src/config/variant-meta\.ts|vercel\.json)$' <<< "$CHANGED_FILES"; then
               SUBMIT_VARIANTS=true
             fi
             for key_path in $VARIANT_KEY_PATHS; do

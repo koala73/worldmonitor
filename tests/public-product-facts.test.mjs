@@ -134,7 +134,13 @@ const ACQUISITION_EXCLUDES = [
   'docs/plans/',
   'pro-test/node_modules/',
   'public/blog/',
-  'public/pro/assets/',
+  // public/pro/ joins public/blog/ here for the same reason (#6898): both are
+  // BUILT output, so a filesystem walk would silently scan a larger or smaller
+  // population depending on whether someone ran the build -- shrinking the
+  // surface set without ever reporting a skip. The sources these compile from
+  // (pro-test/index.html, pro-test/welcome.html, pro-test/src/locales/) are
+  // committed and stay in scope, so nothing is actually left unchecked.
+  'public/pro/',
   'public/openapi',
 ];
 
