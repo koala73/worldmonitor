@@ -599,6 +599,12 @@ const PROVIDER_OVERRIDES = {
     attribution: 'Excluded from the provider count: user-configured MCP connector.',
     status: 'excluded',
   },
+  'search.parallel.ai': {
+    provider: 'Parallel Search MCP',
+    license: 'Excluded: optional user-configured MCP connector',
+    attribution: 'Excluded from the provider count: user-configured MCP connector.',
+    status: 'excluded',
+  },
   'api.example.com': {
     provider: 'Example API placeholder',
     license: 'Excluded: documentation/test placeholder',
@@ -726,9 +732,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '69ecb089452208985ec08b482bfa8beb048c547d3e374d72c9c6c07538d71a0d',
-  reason: 'Add the reviewed B.C. Evacuation Orders and Alerts identity for the OGL-BC ArcGIS source while retaining prior publisher identities.',
-  reviewReference: 'Issue #6659 source-rights probe; B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33',
+  sha256: '832bf346b66ce9e423ae015c74f49fd4e0185c13e9947bee0331e2b0ae96a5b8',
+  reason: 'Add the Parallel Search MCP identity for search.parallel.ai as an excluded user-configured MCP connector, matching the Robtex, Linear, Airtable, and Cloudflare MCP rows, while retaining the reviewed B.C. Evacuation Orders and Alerts identity and the prior publisher identities.',
+  // A URL cited here is scanned like any other: this file sits inside
+  // SOURCE_ROOTS, so citing a host that is not already a registered source
+  // invents a provider row for it. The B.C. catalogue URLs above are safe
+  // because that host is itself an observed source; parallel.ai is not.
+  reviewReference: 'PR #6447 (vendor-disclosed contribution; Parallel customer terms served from the endpoint via x-parallel-terms); Issue #6659 source-rights probe; B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
