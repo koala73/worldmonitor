@@ -159,7 +159,7 @@ import { describeWmSessionDegradation, WM_SESSION_DEGRADED_FALLBACK_COPY } from 
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
-import { registerWebMcpTools } from '@/services/webmcp';
+import { DashboardBindingError, registerWebMcpTools } from '@/services/webmcp';
 import {
   getWebMcpDashboardContext,
   waitForWebMcpUiReady,
@@ -283,6 +283,7 @@ export class App {
   private searchToggleDesiredOpen = false;
   private latestSearchAdsb: Parameters<SearchManager['updateFlightSource']>[0] = [];
   private latestSearchMilitary: Parameters<SearchManager['updateFlightSource']>[1] = [];
+  private latestSearchAdsbUpdatedAt = 0;
   private countryIntel: CountryIntelManager;
   private refreshScheduler: RefreshScheduler;
   private desktopUpdater: DesktopUpdater;
@@ -1557,23 +1558,52 @@ export class App {
     if (this.searchManagerLoad) return this.searchManagerLoad;
 
     this.searchManagerLoad = import('@/app/search-manager')
-      .then(({ SearchManager }) => {
+      .then(async ({ SearchManager }) => {
         if (this.state.isDestroyed) {
           throw new Error('App destroyed before search manager loaded');
         }
 
         const manager = new SearchManager(this.state, {
-          openCountryBriefByCode: (code, country) => {
-            void this.countryIntel.openCountryBriefByCode(code, country).catch((err) => {
-              console.error('[CountryBrief] Failed to open country brief:', err);
-              this.state.map?.setRenderPaused(false);
-              showToast('Country brief failed to open. Please try again.');
+          openCountryBriefByCode: (code, country, options) => {
+            return new Promise<boolean>((resolve) => {
+              let acknowledged = false;
+              const finish = (opened: boolean): void => {
+                if (acknowledged) return;
+                acknowledged = true;
+                resolve(opened);
+              };
+              void this.countryIntel.openCountryBriefByCode(code, country, {
+                trackAnalytics: options?.trackDetailedAnalytics !== false,
+                onPresented: () => {
+                  const page = this.state.countryBriefPage;
+                  finish(page?.isVisible() === true && page.getCode() === code);
+                },
+              }).then(() => {
+                // A superseded, destroyed, or failed open can settle without
+                // ever presenting the requested page.
+                finish(false);
+              }).catch((err) => {
+                console.error('[CountryBrief] Failed to open country brief:', err);
+                this.state.map?.setRenderPaused(false);
+                showToast('Country brief failed to open. Please try again.');
+                finish(false);
+              });
             });
           },
-          enablePanel: (panelId) => this.eventHandlers.enablePanelById(panelId),
+          enablePanel: (panelId, options) => this.eventHandlers.enablePanelById(panelId, {
+            trackAnalytics: options?.trackDetailedAnalytics !== false,
+          }),
         });
         manager.init();
-        manager.updateFlightSource(this.latestSearchAdsb, this.latestSearchMilitary);
+        if (this.state.isDestroyed) {
+          manager.destroy();
+          throw new Error('App destroyed while search manager loaded');
+        }
+        manager.updateFlightSource(
+          this.latestSearchAdsb,
+          this.latestSearchMilitary,
+          this.latestSearchAdsbUpdatedAt,
+        );
         this.searchManager = manager;
         this.modules.push(manager);
         return manager;
@@ -1595,7 +1625,11 @@ export class App {
   ): void {
     this.latestSearchAdsb = adsb;
     this.latestSearchMilitary = military;
-    this.searchManager?.updateFlightSource(adsb, military);
+    // This callback is driven by the DeckGL ADS-B viewport feed. Military
+    // tracks are copied from their independent cache and retain freshness via
+    // each track's lastSeen; never stamp them with this ADS-B observation time.
+    this.latestSearchAdsbUpdatedAt = Date.now();
+    this.searchManager?.updateFlightSource(adsb, military, this.latestSearchAdsbUpdatedAt);
   }
 
   private async openSearch(options: { toggle?: boolean; throwOnFailure?: boolean; replaceOverlayId?: OverlayId; historyPending?: boolean } = {}): Promise<void> {
@@ -1788,6 +1822,36 @@ export class App {
           },
           syncUrlStateNow: () => this.eventHandlers.syncUrlStateNow(),
         });
+      },
+      searchDashboard: async (query, scope, limit) => {
+        await this.waitForDashboardReady(false);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        let manager: SearchManager;
+        try {
+          manager = await this.ensureSearchManager();
+        } catch (error) {
+          if (this.state.isDestroyed) {
+            throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+          }
+          throw error;
+        }
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return manager.searchDashboard(query, scope, limit);
+      },
+      openSearchResult: async (resultKey) => {
+        // A capability can only exist after search_dashboard initialized the
+        // manager. Deny fabricated first-use keys without loading the lazy
+        // search chunk or demanding a map renderer.
+        const manager = this.searchManager;
+        if (!manager) {
+          return { ok: false, status: 'denied', reason: 'invalid_or_expired_key' } as const;
+        }
+        await this.waitForUiReady();
+        return manager.openSearchResult(resultKey, () => this.waitForDashboardReady());
       },
     });
 
@@ -2830,6 +2894,9 @@ export class App {
 
   public destroy(): void {
     this.state.isDestroyed = true;
+    this.latestSearchAdsb = [];
+    this.latestSearchMilitary = [];
+    this.latestSearchAdsbUpdatedAt = 0;
     this.resolveAppDestroyed();
     this.tierPreferenceHandoff.clear();
     this.pendingPreferenceHandoffGeneration = undefined;

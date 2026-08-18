@@ -366,6 +366,23 @@
       ]
     },
     {
+      "host": "amna.gr",
+      "provider": "amna.gr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit amna.gr and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "amu.tv",
       "provider": "Amu TV",
       "kind": "feed",
@@ -2331,6 +2348,23 @@
       ]
     },
     {
+      "host": "cnn.gr",
+      "provider": "cnn.gr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit cnn.gr and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "co.usembassy.gov",
       "provider": "co.usembassy.gov",
       "kind": "structured",
@@ -3530,6 +3564,23 @@
       "references": [
         {
           "path": "scripts/seed-natural-events.mjs"
+        }
+      ]
+    },
+    {
+      "host": "ert.gr",
+      "provider": "ert.gr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit ert.gr and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -5371,6 +5422,23 @@
       ]
     },
     {
+      "host": "liberal.gr",
+      "provider": "liberal.gr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit liberal.gr and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "libyaherald.com",
       "provider": "Libya Herald",
       "kind": "feed",
@@ -7005,6 +7073,9 @@
       "attribution": "Credit protothema.gr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
         {
           "path": "src/config/feeds.ts"
         }
@@ -10651,6 +10722,15 @@
       ]
     },
     {
+      "host": "www.cnn.gr",
+      "provider": "www.cnn.gr",
+      "kind": "feed",
+      "observed": false,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.cnn.gr and link to the original feed publisher.",
+      "status": "excluded"
+    },
+    {
       "host": "www.coindesk.com",
       "provider": "www.coindesk.com",
       "kind": "feed+structured",
@@ -11607,6 +11687,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
           "path": "src/config/feeds.ts"
         }
       ]
@@ -11634,6 +11717,9 @@
       "attribution": "Credit www.in.gr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
         {
           "path": "src/config/feeds.ts"
         }
@@ -11889,6 +11975,15 @@
       ]
     },
     {
+      "host": "www.liberal.gr",
+      "provider": "www.liberal.gr",
+      "kind": "feed",
+      "observed": false,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.liberal.gr and link to the original feed publisher.",
+      "status": "excluded"
+    },
+    {
       "host": "www.lighthousereports.com",
       "provider": "www.lighthousereports.com",
       "kind": "feed",
@@ -12109,6 +12204,9 @@
       "attribution": "Credit www.naftemporiki.gr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
         {
           "path": "src/config/feeds.ts"
         }
@@ -13120,6 +13218,23 @@
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.tagesschau.de and link to the original feed publisher.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.tanea.gr",
+      "provider": "www.tanea.gr",
+      "kind": "feed",
+      "observed": true,
+      "license": "Provider terms for this feed publisher; verify before redistribution",
+      "attribution": "Credit www.tanea.gr and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
         {
