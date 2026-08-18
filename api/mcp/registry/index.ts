@@ -1,18 +1,36 @@
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
 import { JMESPATH_SCHEMA } from '../jmespath';
-import type { PublicToolShape, ToolDef } from '../types';
+import type { McpAccessClass, PublicToolShape, ToolDef } from '../types';
 import { compressDescription, utf8ByteLength } from '../utils';
 import { CACHE_TOOLS } from './cache-tools';
 import { NLP_TOOLS } from './nlp-tools';
 import { RPC_TOOLS } from './rpc-tools';
+import { SOURCE_TOOLS } from './source-tools';
 
 // Merged tool registry — cache tools first (no `_execute`), then RPC tools
 // (with `_execute`), then the NLP utilities. Order is observable: `tools/list`
 // emits tools in this same order, and `describe_tool({tool_name: 'nonexistent'})`
 // returns the available-list sorted before responding. NLP_TOOLS is appended
 // last so extracting it from rpc-tools.ts left every other tool's position
-// unchanged.
-export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS];
+// unchanged. SOURCE_TOOLS is appended after it for the same reason.
+export const TOOL_REGISTRY: ToolDef[] = [...CACHE_TOOLS, ...RPC_TOOLS, ...NLP_TOOLS, ...SOURCE_TOOLS];
+export const FREE_TIER_TOOL_NAMES: ReadonlySet<string> = new Set(
+  TOOL_REGISTRY.filter((tool) => tool._freeTier === true).map((tool) => tool.name),
+);
+
+/** Metadata reads stay authenticated but never spend an allowance or quota slot. */
+export function isQuotaExemptMetadataTool(tool: ToolDef): boolean {
+  return tool.name === 'describe_tool';
+}
+
+/** Single access classifier used by tools/list, describe_tool, and resources. */
+export function toolAccess(tool: ToolDef): McpAccessClass {
+  if (tool._freeTier === true) return 'free';
+  // Local metadata escape hatch: authenticated free accounts may call it and
+  // dispatch exempts it from both the allowance and Pro daily quota.
+  if (isQuotaExemptMetadataTool(tool)) return 'free-account';
+  return tool._execute === undefined ? 'free-account' : 'subscription';
+}
 
 // Public shape for tools/list — strips internal _-prefixed fields, adds MCP
 // annotations, and injects the universal `summary` flag (issue #3678) into
@@ -48,8 +66,8 @@ for (const tool of TOOL_REGISTRY) {
 // the registry or the module-level schema consts. Codex Round 2 explicitly
 // flagged shallow `{ ...prop }` as insufficient for these shapes.
 //
-// `_*`-prefixed internal fields (_apiPaths, _cacheKeys, _seedMetaKey,
-// _maxStaleMin, _freshnessChecks, _coverageKeys, _postFilter, _execute)
+// `_*`-prefixed internal fields (_apiPaths, _cacheKeys,
+// _freshnessChecks, _coverageKeys, _postFilter, _execute)
 // are NEVER enumerated — the function only constructs a fresh object with
 // the public-shape fields (name, description, inputSchema, annotations).
 //
@@ -99,19 +117,20 @@ export function buildPublicTool(
     // Deep-cloned so a mutating client can't poison the registry literal —
     // matches the inputSchema.properties + outputSchema treatment above.
     annotations: structuredClone(tool.annotations),
+    _meta: {
+      'worldmonitor/access': toolAccess(tool),
+    },
   };
 
   // MCP Apps (`io.modelcontextprotocol/ui`) — translate the tool's internal
   // `_uiResourceUri` into the spec-reserved public `_meta`. Emit BOTH the
   // nested `ui.resourceUri` (current form) and the flat `ui/resourceUri`
   // (deprecated legacy alias) so hosts on either revision resolve the shell.
-  // Only tools with an interactive UI surface carry `_meta`; every other tool
-  // omits it entirely (no empty object on the wire).
+  // Only tools with an interactive UI surface carry the UI-specific fields;
+  // every tool carries the agent-facing access marker initialized above.
   if (tool._uiResourceUri) {
-    publicTool._meta = {
-      ui: { resourceUri: tool._uiResourceUri },
-      'ui/resourceUri': tool._uiResourceUri,
-    };
+    publicTool._meta.ui = { resourceUri: tool._uiResourceUri };
+    publicTool._meta['ui/resourceUri'] = tool._uiResourceUri;
   }
 
   return publicTool;

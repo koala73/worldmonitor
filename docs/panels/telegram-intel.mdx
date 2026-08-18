@@ -10,7 +10,7 @@ The **Telegram Intel** panel (internal id `telegram-intel`) mirrors a curated se
 A row of topic tabs at the top with a feed list below:
 
 - **Topic tabs** — tabs derived from `TELEGRAM_TOPICS` in `src/services/telegram-intel`. The default tab is `all`.
-- **Feed items** — `TelegramItem[]` for the active topic, each showing channel, message timestamp, and message body (with `sanitizeUrl` applied to any links).
+- **Feed items** — `TelegramItem[]` for the active topic, each showing channel, public trust badges (same propaganda/tier CSS as news clusters), message timestamp, and message body (with `sanitizeUrl` applied to any links).
 - **Live distinction** — items newer than 10 minutes (`LIVE_THRESHOLD_MS = 600_000`) are flagged as live.
 - **Relay state** — when the Telegram relay isn't reachable (`relayEnabled = false`), the panel indicates degraded mode rather than showing an empty list.
 

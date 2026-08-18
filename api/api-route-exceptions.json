@@ -66,6 +66,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/bounded-body.ts",
+      "category": "internal-helper",
+      "reason": "Bounded sibling-response body reader shared by MCP billing-denial and downstream error classification (#6559). Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/downstream.ts",
       "category": "internal-helper",
       "reason": "Canonical sibling-request routing and credential-safe downstream error classification for MCP RPC tools (#5514). Pure helper module for the external-protocol MCP handler family above — exports no route.",
@@ -122,6 +129,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/registry/source-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY source-discovery tool entry (get_sources). Reads the committed shared/ source-attribution manifest and source-tiers registry to report coverage, licensing status, editorial tier, and provenance; exports no JSON data route and performs no network I/O. Same external-protocol constraint as its sibling registry modules.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/registry/index.ts",
       "category": "external-protocol",
       "reason": "MCP TOOL_REGISTRY merge + buildPublicTool + SUMMARY_SCHEMA + TOOL_LIST_RESPONSE precompute + collision guard. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
@@ -139,6 +153,27 @@
       "path": "api/mcp/constants.ts",
       "category": "external-protocol",
       "reason": "MCP protocol version negotiation (env-at-call-time), SERVER_NAME, SERVER_VERSION, SERVER_INSTRUCTIONS, MCP_LOG_LEVELS, byte caps. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/upgrade.ts",
+      "category": "external-protocol",
+      "reason": "MCP paid-funnel (#6716) structured denial builders and upgrade-URL re-exports. Part of the streamable-HTTP MCP surface — not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/upgrade-constants.ts",
+      "category": "external-protocol",
+      "reason": "MCP free-account allowance numeric constants (#6716). Supporting module for the MCP transport; listed so the sebuf contract script accepts the api/mcp/ tree.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/free-account-allowance.ts",
+      "category": "external-protocol",
+      "reason": "MCP free-account idle-gap + call-ceiling meter (#6716). Redis-backed reservation used only by api/mcp/dispatch.ts — not a public HTTP route.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -441,7 +476,7 @@
     {
       "path": "api/opensky.js",
       "category": "upstream-proxy",
-      "reason": "Transparent proxy to OpenSky Network API. Shape is OpenSky's; we don't remodel it.",
+      "reason": "Desktop-product-only OpenSky relay. It requires the Tauri origin plus an enterprise product key and is not part of the public API offering.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -623,17 +658,17 @@
       "removal_issue": null
     },
     {
-      "path": "api/data/city-coords.ts",
-      "category": "internal-helper",
-      "reason": "Static city-coordinates payload served from the deploy artifact. Returns a fixed reference table, not a queryable service.",
-      "owner": "@SebastienMelki",
-      "removal_issue": null
-    },
-    {
       "path": "api/me/entitlement.ts",
       "category": "internal-helper",
       "reason": "Thin wrapper over the canonical server/_shared/premium-check.ts isCallerPremium helper — returns { isPro: boolean } for the /pro marketing bundle so it can swap upgrade CTAs for a dashboard link when the visitor is already a paying Pro user. Not a product data API: the authoritative gates live in panel-gating.ts (frontend), isCallerPremium (per-handler), and gateway.ts PREMIUM_RPC_PATHS (Bearer gate). This endpoint exists purely to let the separate pro-test bundle (no Convex client, no gateway client) ask the same question without reimplementing the two-signal check. Shape is unversioned by design — flip a boolean and ship.",
       "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/embed/entitlement.ts",
+      "category": "internal-helper",
+      "reason": "Auth bootstrap for the partner /embed iframe (#6599). Returns whether an embedding account's API key (X-WorldMonitor-Key) may render an allowlisted panel. Not a product data API: panel payloads stay on existing sebuf RPCs. Cookie and viewer session tokens are stripped/rejected so entitlement is keyed to the partner account, not the page visitor. Shape is unversioned by design — allowed boolean plus panel id.",
+      "owner": "@koala73",
       "removal_issue": null
     },
     {

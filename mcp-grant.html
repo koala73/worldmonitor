@@ -39,14 +39,14 @@
   </head>
   <body>
     <a href="https://www.worldmonitor.app" class="wm-logo" target="_blank" rel="noopener">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
       <span class="wm-logo-text">WorldMonitor MCP</span>
     </a>
-    <div class="card" id="card">
-      <div id="loading"><span class="spinner"></span><span class="placeholder" id="loadingBody">Loading authorization request…</span></div>
+    <main class="card" id="card">
+      <div id="loading"><span class="spinner" aria-hidden="true"></span><span class="placeholder" id="loadingBody">Loading authorization request…</span></div>
       <div id="consent" hidden>
         <div class="client-hd">
-          <div class="client-name"><span id="clientName"></span> wants access</div>
+          <h1 class="client-name"><span id="clientName"></span> wants access</h1>
           <div class="client-host">via <span id="clientHost"></span></div>
         </div>
         <hr>
@@ -61,14 +61,14 @@
         <hr>
         <p style="font-size:.72rem;color:#444;line-height:1.5">Signed in as <span id="userEmail" style="color:#666"></span>. <a href="/settings" style="color:#2d8a6e;text-decoration:none">Manage connected MCP clients →</a></p>
         <button type="button" id="authorizeBtn">Authorize</button>
-        <p class="error" id="mintError" hidden></p>
+        <p class="error" id="mintError" role="alert" hidden></p>
       </div>
       <div id="errorView" hidden>
-        <div class="client-name" id="errorTitle" style="color:#ef4444;font-size:.95rem;font-weight:600;margin-bottom:.5rem">Authorization request expired</div>
+        <h1 class="client-name" id="errorTitle" style="color:#ef4444;font-size:.95rem;font-weight:600;margin-bottom:.5rem">Authorization request expired</h1>
         <p style="font-size:.8rem;color:#666;line-height:1.5" id="errorBody">This authorization request expired or is invalid. Start over from your MCP client (e.g. Claude Desktop).</p>
         <button type="button" id="retryContextBtn" hidden>Try again</button>
       </div>
-    </div>
+    </main>
     <p class="footer"><a href="https://www.worldmonitor.app" target="_blank" rel="noopener">worldmonitor.app</a> &middot; <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Pro plan →</a></p>
     <script type="module" src="/src/mcp-grant-main.ts" nonce="wm-static-bootstrap"></script>
   </body>

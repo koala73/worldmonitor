@@ -408,6 +408,148 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/market/v1/get-physical-premiums:
+        get:
+            tags:
+                - MarketService
+            summary: GetPhysicalPremiums
+            description: |-
+                GetPhysicalPremiums compares SGE gold/silver benchmark prints with the
+                 existing COMEX futures snapshot and returns every conversion input.
+            operationId: GetPhysicalPremiums
+            parameters:
+                - name: metals
+                  in: query
+                  description: Accepted values are "gold" and "silver". Empty returns both metals.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "gold"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "fx":
+                                    "asOf": "example"
+                                    "pair": "example"
+                                    "rate": 75.25
+                                    "source": "example"
+                                "premiums":
+                                    - "computedAt": "2026-01-15T12:00:00Z"
+                                      "metal": "example"
+                                      "paper":
+                                          "asOf": "example"
+                                          "currency": "USD"
+                                          "price": 75.25
+                                          "source": "example"
+                                          "unit": "example"
+                                      "physical":
+                                          "asOf": "example"
+                                          "currency": "USD"
+                                          "price": 75.25
+                                          "source": "example"
+                                          "unit": "example"
+                                      "premiumPct": 1.5
+                            schema:
+                                $ref: '#/components/schemas/GetPhysicalPremiumsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/market/v1/get-sector-summary:
         get:
             tags:
@@ -3139,7 +3281,9 @@ components:
                         $ref: '#/components/schemas/MarketQuote'
                 finnhubSkipped:
                     type: boolean
-                    description: True when the Finnhub API key is not configured and stock quotes were skipped.
+                    description: |-
+                        True when the Finnhub API key is not configured and stock quotes were skipped.
+                         A configured key is not a live tape; this flag is configuration, not Tape Claim.
                 skipReason:
                     type: string
                     description: Human-readable reason when Finnhub was skipped (e.g., "FINNHUB_API_KEY not configured").
@@ -3327,6 +3471,71 @@ components:
             required:
                 - symbol
             description: CommodityQuote represents a commodity price quote from Yahoo Finance.
+        GetPhysicalPremiumsRequest:
+            type: object
+            properties:
+                metals:
+                    type: array
+                    items:
+                        type: string
+                        description: Accepted values are "gold" and "silver". Empty returns both metals.
+            description: GetPhysicalPremiumsRequest optionally limits the response to gold or silver.
+        GetPhysicalPremiumsResponse:
+            type: object
+            properties:
+                premiums:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PhysicalPremium'
+                fx:
+                    $ref: '#/components/schemas/FxSnapshot'
+            description: GetPhysicalPremiumsResponse contains the auditable benchmark comparison.
+        PhysicalPremium:
+            type: object
+            properties:
+                metal:
+                    type: string
+                physical:
+                    $ref: '#/components/schemas/BenchmarkLeg'
+                paper:
+                    $ref: '#/components/schemas/BenchmarkLeg'
+                premiumUsdPerOz:
+                    type: number
+                    format: double
+                premiumPct:
+                    type: number
+                    format: double
+                computedAt:
+                    type: string
+            description: PhysicalPremium compares an SGE physical benchmark with a COMEX future.
+        BenchmarkLeg:
+            type: object
+            properties:
+                price:
+                    type: number
+                    format: double
+                currency:
+                    type: string
+                unit:
+                    type: string
+                source:
+                    type: string
+                asOf:
+                    type: string
+            description: BenchmarkLeg identifies one raw price and its observation clock.
+        FxSnapshot:
+            type: object
+            properties:
+                pair:
+                    type: string
+                rate:
+                    type: number
+                    format: double
+                source:
+                    type: string
+                asOf:
+                    type: string
+            description: FxSnapshot records the conversion input shared by both metals.
         GetSectorSummaryRequest:
             type: object
             properties:
@@ -3965,6 +4174,26 @@ components:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                marketSessionAtPublish:
+                    type: string
+                    description: |-
+                        US equity session at publish time: "regular", "pre", "post", or "closed".
+                         Empty when published_at is invalid or US hours do not apply.
+                alignedTradingDate:
+                    type: string
+                    description: NYSE/Nasdaq trading date this headline aligns to (YYYY-MM-DD). Empty when unaligned.
+                alignmentRule:
+                    type: string
+                    enum:
+                        - HEADLINE_ALIGNMENT_RULE_UNSPECIFIED
+                        - HEADLINE_ALIGNMENT_RULE_REGULAR_SESSION_SAME_TRADING_DAY
+                        - HEADLINE_ALIGNMENT_RULE_PREMARKET_SAME_TRADING_DAY
+                        - HEADLINE_ALIGNMENT_RULE_AFTER_HOURS_NEXT_TRADING_DAY
+                        - HEADLINE_ALIGNMENT_RULE_NON_SESSION_NEXT_TRADING_DAY
+                        - HEADLINE_ALIGNMENT_RULE_OVERNIGHT_SAME_TRADING_DAY
+                    description: |-
+                        How a headline's publish time was mapped onto a US equity trading date.
+                         Bookkeeping only — never a claim that the headline moved the tape.
         AnalystConsensus:
             type: object
             properties:

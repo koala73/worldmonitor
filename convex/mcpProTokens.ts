@@ -2,7 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import { requireUserId, resolveUserId } from "./lib/auth";
-import { getFeaturesForPlan } from "./lib/entitlements";
+import { mergeEntitlementFeatures } from "./lib/entitlements";
 
 /**
  * Pro MCP token (non-key) identity rows.
@@ -30,8 +30,8 @@ const MAX_TOKENS_PER_USER = 5;
  *
  * Called from the edge at `/oauth/authorize-pro` after the cross-subdomain
  * Clerk grant has been validated. The caller passes the verified Clerk
- * `userId`. Verifies entitlement (tier ≥ 1, `validUntil >= now`) defensively
- * — the edge re-checks too, but the row insert is the authoritative gate.
+ * `userId`. Verifies active Pro MCP entitlement defensively; the edge checks
+ * too, but this mutation is the authoritative row-insertion gate.
  *
  * Per-user 5-row cap with silent oldest rotation: if the user already has
  * 5 active rows we revoke the oldest (by createdAt) before inserting the
@@ -48,33 +48,58 @@ export const issueProMcpToken = internalMutation({
       throw new ConvexError("INVALID_USER_ID");
     }
 
-    // Entitlement gate: Pro is the minimum (tier ≥ 1). API_STARTER+ (tier 2+)
-    // also passes, since Pro is the floor — the plan explicitly notes
-    // "Pro is the minimum, not exclusive."
-    //
-    // Mirror downstream MCP-edge gate: BOTH tier ≥ 1 AND mcpAccess === true
-    // are required. Reviewer round-2 P2 — gating on tier alone allowed a
-    // tier-1 user without mcpAccess to mint a token that would then fail
-    // every tools/call at the gateway. PRE-FIELD legacy entitlement rows
-    // are handled by the read-time merge in convex/entitlements.ts; this
-    // direct ctx.db read of the row uses the catalog default explicitly.
     const entitlement = await ctx.db
       .query("entitlements")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .first();
-    const catalogDefaults = entitlement
-      ? getFeaturesForPlan(entitlement.planKey)
+    const mergedFeatures = entitlement
+      ? mergeEntitlementFeatures(entitlement.planKey, entitlement.features)
       : null;
-    const mergedFeatures = entitlement && catalogDefaults
-      ? { ...catalogDefaults, ...entitlement.features }
-      : null;
-    if (
-      !entitlement ||
-      !mergedFeatures ||
-      entitlement.validUntil < Date.now() ||
-      mergedFeatures.tier < 1 ||
-      mergedFeatures.mcpAccess !== true
-    ) {
+    const isPro = Boolean(
+      entitlement
+      && mergedFeatures
+      && entitlement.validUntil >= Date.now()
+      && mergedFeatures.tier >= 1
+      && mergedFeatures.mcpAccess === true,
+    );
+    // #6716 — a CONFIRMED free account may also hold a token.
+    //
+    // Comment-enforced mirror of `isConfirmedFreeMcpAccount` in
+    // server/_shared/pro-mcp-gate.ts; the Convex runtime cannot import from
+    // server/_shared, which is why that file's header already lists this
+    // function as a hand-spelled mirror. Keep the two predicates in step.
+    //
+    // No row at all is the never-subscribed case, and here that is
+    // unambiguous: this is a direct ctx.db read, so there is no
+    // "backend unconfigured" state to confuse with an absent row the way the
+    // edge has. A stored row must be a complete tier-0 `free` shape — an
+    // expired or disabled paid row, or a row whose features were overridden to
+    // look tier-0 while planKey names a paid plan, is a data fault and still
+    // fails closed.
+    // Coverage that has ENDED is a free account, matching the normalisation
+    // `getEntitlementsHandler` already applies at read time ("Expired
+    // entitlements fall back to free tier"). That is what makes this a faithful
+    // mirror: the edge never sees an expired paid row — it sees
+    // FREE_TIER_DEFAULTS — so a gate here that read the RAW row and refused
+    // would admit a churned user at the three edge gates and then throw
+    // PRO_REQUIRED on the final step.
+    //
+    // Dunning does not land here either: `isCoveringAt` keeps an `on_hold` row
+    // covering, so its entitlement `validUntil` is still in the future and it
+    // takes the `isPro` branch above with full access.
+    const coverageEnded = !entitlement || entitlement.validUntil < Date.now();
+    const isConfirmedFreeAccount = coverageEnded || Boolean(
+      mergedFeatures
+      && entitlement.planKey === "free"
+      && mergedFeatures.tier === 0
+      && mergedFeatures.mcpAccess === false,
+    );
+    // The token proves IDENTITY, not entitlement: `validateProMcpToken` returns
+    // only `{userId, lastUsedAt}`, and api/mcp/auth.ts re-derives the verdict on
+    // every gated call. Issuing to a free account therefore grants nothing on
+    // its own — the allowance and its cache-backed-tool restriction are applied
+    // at the call site.
+    if (!isPro && !isConfirmedFreeAccount) {
       throw new ConvexError("PRO_REQUIRED");
     }
 
@@ -90,23 +115,27 @@ export const issueProMcpToken = internalMutation({
     // ALL rows beyond `MAX_TOKENS_PER_USER - 1` (sorted by createdAt).
     // This makes the cap "eventually MAX" rather than "atomically MAX":
     // the next issue call's check trims any temporary overshoot.
-    const existing = await ctx.db
-      .query("mcpProTokens")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .collect();
-    const active = existing.filter((r) => !r.revokedAt);
-    if (active.length >= MAX_TOKENS_PER_USER) {
-      // Sort ascending by createdAt — oldest first.
-      active.sort((a, b) => a.createdAt - b.createdAt);
-      // Revoke all rows beyond `MAX - 1` so the table converges to MAX
-      // active rows after the upcoming insert. In the no-race case this
-      // is exactly one row (matching the prior behaviour); in a race
-      // where 6 actives slipped through, it's two rows.
+    // Read at most MAX+1 active rows per query. If an old race left more than
+    // that, continue in bounded batches instead of scanning revoked history or
+    // assuming six is the largest possible anomaly.
+    while (true) {
+      const active = await ctx.db
+        .query("mcpProTokens")
+        .withIndex("by_userId_revokedAt_createdAt", (q) => q
+          .eq("userId", args.userId)
+          .eq("revokedAt", undefined))
+        .order("asc")
+        .take(MAX_TOKENS_PER_USER + 1);
+      if (active.length < MAX_TOKENS_PER_USER) break;
+
+      // Leave MAX-1 active rows before insertion. A full batch may mean more
+      // active rows remain, so query again; a short batch was the whole set.
       const toRevoke = active.slice(0, active.length - (MAX_TOKENS_PER_USER - 1));
       const now = Date.now();
       for (const row of toRevoke) {
         await ctx.db.patch(row._id, { revokedAt: now });
       }
+      if (active.length < MAX_TOKENS_PER_USER + 1) break;
     }
 
     const tokenId = await ctx.db.insert("mcpProTokens", {

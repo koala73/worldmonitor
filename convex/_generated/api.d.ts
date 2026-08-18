@@ -58,6 +58,7 @@ import type * as payments_businessSeats from "../payments/businessSeats.js";
 import type * as payments_cacheActions from "../payments/cacheActions.js";
 import type * as payments_checkout from "../payments/checkout.js";
 import type * as payments_checkoutRateLimit from "../payments/checkoutRateLimit.js";
+import type * as payments_checkoutRateLimitAlarm from "../payments/checkoutRateLimitAlarm.js";
 import type * as payments_returnUrlOrigin from "../payments/returnUrlOrigin.js";
 import type * as payments_seedProductPlans from "../payments/seedProductPlans.js";
 import type * as payments_subscriptionEmails from "../payments/subscriptionEmails.js";
@@ -128,6 +129,7 @@ declare const fullApi: ApiFromModules<{
   "payments/cacheActions": typeof payments_cacheActions;
   "payments/checkout": typeof payments_checkout;
   "payments/checkoutRateLimit": typeof payments_checkoutRateLimit;
+  "payments/checkoutRateLimitAlarm": typeof payments_checkoutRateLimitAlarm;
   "payments/returnUrlOrigin": typeof payments_returnUrlOrigin;
   "payments/seedProductPlans": typeof payments_seedProductPlans;
   "payments/subscriptionEmails": typeof payments_subscriptionEmails;

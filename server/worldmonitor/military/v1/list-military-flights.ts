@@ -8,9 +8,14 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/military/v1/service_server';
 
 import { isMilitaryCallsign, isMilitaryHex, detectAircraftType, UPSTREAM_TIMEOUT_MS } from './_shared';
+import { hasFiniteRequestBounds, normalizeBounds, type RequestBounds } from './_bounds';
 import { cachedFetchJson, getRawJson, readCachedJson, setCachedJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
+import {
+  hasRedistributableProviderAttribution,
+  requiresRedistributableProviders,
+} from '../../../_shared/provider-redistribution';
 
 const REDIS_CACHE_KEY = 'military:flights:v1';
 const REDIS_CACHE_TTL = 600; // 10 min — reduce upstream API pressure
@@ -23,13 +28,6 @@ const STALE_SNAPSHOT_NEG_TTL = 30;
 const quantize = (v: number, step: number) => Math.round(v / step) * step;
 const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 const BBOX_GRID_STEP = 1; // 1-degree grid (~111 km at equator)
-
-interface RequestBounds {
-  south: number;
-  north: number;
-  west: number;
-  east: number;
-}
 
 // Coverage is a property of the SNAPSHOT, not of the producer's query shape.
 //
@@ -62,15 +60,6 @@ function seedCovers(coverage: SeedCoverage, bounds: RequestBounds): boolean {
   );
 }
 
-
-function normalizeBounds(req: ListMilitaryFlightsRequest): RequestBounds {
-  return {
-    south: Math.min(req.swLat, req.neLat),
-    north: Math.max(req.swLat, req.neLat),
-    west: Math.min(req.swLon, req.neLon),
-    east: Math.max(req.swLon, req.neLon),
-  };
-}
 
 function filterFlightsToBounds(
   flights: ListMilitaryFlightsResponse['flights'],
@@ -140,6 +129,29 @@ function paginateResponse(
     clusters: clusters ?? [],
     pagination: { nextCursor, totalCount: filtered.length },
   };
+}
+
+function paginateResponseForCaller(
+  ctx: ServerContext,
+  flights: ListMilitaryFlightsResponse['flights'],
+  clusters: ListMilitaryFlightsResponse['clusters'],
+  bounds: RequestBounds,
+  req: ListMilitaryFlightsRequest,
+): ListMilitaryFlightsResponse {
+  if (!requiresRedistributableProviders(ctx.request)) {
+    return paginateResponse(flights, clusters, bounds, req);
+  }
+
+  const redistributableFlights = flights.filter((flight) =>
+    hasRedistributableProviderAttribution(flight.source));
+  const redistributableClusters = (clusters ?? [])
+    .map((cluster) => {
+      const clusterFlights = (cluster.flights ?? []).filter((flight) =>
+        hasRedistributableProviderAttribution(flight.source));
+      return { ...cluster, flights: clusterFlights, flightCount: clusterFlights.length };
+    })
+    .filter((cluster) => cluster.flightCount > 0);
+  return paginateResponse(redistributableFlights, redistributableClusters, bounds, req);
 }
 
 const AIRCRAFT_TYPE_MAP: Record<string, string> = {
@@ -438,8 +450,12 @@ export async function listMilitaryFlights(
   ctx: ServerContext,
   req: ListMilitaryFlightsRequest,
 ): Promise<ListMilitaryFlightsResponse> {
+  const redistributableOnly = requiresRedistributableProviders(ctx.request);
   try {
     if (!req.neLat && !req.neLon && !req.swLat && !req.swLon) return emptyResponse();
+    // #6249: a NaN/Infinity corner cannot be normalized into a meaningful
+    // bbox; answer empty instead of letting it reach the relay as garbage.
+    if (!hasFiniteRequestBounds(req)) return emptyResponse();
     const requestBounds = normalizeBounds(req);
 
     // Quantize bbox to a 1° grid so nearby map views share cache entries.
@@ -448,7 +464,7 @@ export async function listMilitaryFlights(
     // expanded-cell snapshot, so page size and cursor must NOT fragment it —
     // every page/cursor for the same cell shares one upstream fetch and one
     // entry, and pagination is applied per-request after retrieval.
-    const cacheKey = buildCacheKey(req);
+    const cacheKey = `${buildCacheKey(req)}${redistributableOnly ? ':redistributable' : ''}`;
 
     const fullResult = await cachedFetchJson<ListMilitaryFlightsResponse>(
       cacheKey,
@@ -480,6 +496,8 @@ export async function listMilitaryFlights(
         // regional snapshot asked about the Americas), falls through to
         // request-specific recovery rather than returning a falsely
         // authoritative empty.
+
+        if (redistributableOnly) return null;
 
         const isSidecar = (process.env.LOCAL_API_MODE || '').includes('sidecar');
         const relayBase = isSidecar ? null : getRelayBaseUrl();
@@ -567,12 +585,12 @@ export async function listMilitaryFlights(
       // fallback when OpenSky / the relay hiccups.
       const staleResult = await fetchStableStaleSnapshot(requestBounds);
       if (staleResult) {
-        return paginateResponse(staleResult.flights, staleResult.clusters, requestBounds, req);
+        return paginateResponseForCaller(ctx, staleResult.flights, staleResult.clusters, requestBounds, req);
       }
       markNoCacheResponse(ctx.request);
       return emptyResponse();
     }
-    return paginateResponse(fullResult.flights, fullResult.clusters, requestBounds, req);
+    return paginateResponseForCaller(ctx, fullResult.flights, fullResult.clusters, requestBounds, req);
   } catch {
     // Reaching here means the live path was abandoned before any provider call —
     // most often the deliberate 'live seed read failed' throw above, which exists
@@ -589,7 +607,7 @@ export async function listMilitaryFlights(
     const requestBounds = normalizeBounds(req);
     const staleResult = await fetchStableStaleSnapshot(requestBounds);
     if (staleResult) {
-      return paginateResponse(staleResult.flights, staleResult.clusters, requestBounds, req);
+      return paginateResponseForCaller(ctx, staleResult.flights, staleResult.clusters, requestBounds, req);
     }
     markNoCacheResponse(ctx.request);
     return emptyResponse();

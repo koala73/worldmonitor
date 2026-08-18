@@ -32,6 +32,15 @@ import {
   isCheckoutRateLimitedOutcome,
   runCheckoutWithRateLimitRetry,
 } from "./checkoutRateLimit";
+import { recordTerminalCheckoutRateLimit } from "./checkoutRateLimitAlarm";
+
+// MCP paid-funnel campaign marker (#6716). Imported, never re-declared: a
+// second copy of this normalisation is exactly the drift that produced the
+// display-vs-enforcement divergence documented in
+// docs/solutions/security-issues/mcp-quota-credential-class-vs-plan-family-scoping-bypass.md.
+// The Convex runtime imports from `shared/` elsewhere (convex/apiKeys.ts,
+// convex/companyMonitoring/*), so there is no module-boundary reason to fork it.
+import { normalizeCheckoutAttributionSource as normalizeAttributionSource } from "../../shared/mcp-attribution";
 
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 const PAYMENT_IN_PROGRESS = "PAYMENT_IN_PROGRESS";
@@ -84,6 +93,8 @@ interface CheckoutArgs {
   returnUrl?: string;
   discountCode?: string;
   referralCode?: string;
+  /** MCP paid-funnel attribution (#6716). Parallel to referralCode. */
+  attributionSource?: string;
 }
 
 interface UserInfo {
@@ -209,6 +220,7 @@ async function getCheckoutBlockingPendingPayment(
 }
 
 async function _createCheckoutSession(
+  ctx: ActionCtx,
   args: CheckoutArgs,
   user: UserInfo,
 ) {
@@ -281,6 +293,13 @@ async function _createCheckoutSession(
     // `convex/payments/subscriptionHelpers.ts`.
     metadata.affonso_referral = args.referralCode;
   }
+  const attributionSource = normalizeAttributionSource(args.attributionSource);
+  if (attributionSource) {
+    // Internal source tag for MCP paid-funnel conversions (#6716). Distinct
+    // from affonso_referral — never an affiliate code. Mirror read in
+    // subscriptionHelpers on first subscription.active.
+    metadata.wm_attribution = attributionSource;
+  }
 
   try {
     // A 429 here is Dodo rate-limiting our shared API key (account-level, not
@@ -317,6 +336,16 @@ async function _createCheckoutSession(
       console.warn(
         `[checkout] Dodo rate limited checkout creation for user=${user.userId} product=${args.productId} after bounded retry (<=${CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS} attempts); retry after ${result.retryAfterSeconds}s`,
       );
+      // The ladder's tail (#6698). This warn is per-occurrence and pages
+      // nobody by design; the recorder below owns the RATE and escalates to
+      // Convex auto-Sentry once a documented per-day/per-week threshold is
+      // crossed. Awaited (not scheduled) so the count is durable before the
+      // buyer's 429 is returned, and fail-open so a degraded alarm cannot
+      // convert a retryable rate limit into a hard checkout failure.
+      await recordTerminalCheckoutRateLimit(ctx, {
+        userId: user.userId,
+        productId: args.productId,
+      });
       return result;
     }
     return anonymousClaimToken
@@ -341,6 +370,7 @@ export const createCheckout = action({
     returnUrl: v.optional(v.string()),
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
+    attributionSource: v.optional(v.string()),
     // "Start a new checkout anyway" — skips ONLY the pending-payment guard
     // (#4438). The subscription guard still applies.
     bypassPendingGuard: v.optional(v.boolean()),
@@ -376,7 +406,7 @@ export const createCheckout = action({
         identity.name
       : undefined;
 
-    const result = await _createCheckoutSession(args, {
+    const result = await _createCheckoutSession(ctx, args, {
       userId,
       email: identity?.email,
       name: customerName,
@@ -408,6 +438,7 @@ export const internalCreateCheckout = internalAction({
     returnUrl: v.optional(v.string()),
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
+    attributionSource: v.optional(v.string()),
     // See createCheckout — skips only the pending-payment guard (#4438).
     bypassPendingGuard: v.optional(v.boolean()),
   },
@@ -434,11 +465,13 @@ export const internalCreateCheckout = internalAction({
       return buildPendingBlockedResponse(pending);
     }
     return _createCheckoutSession(
+      ctx,
       {
         productId: args.productId,
         returnUrl: args.returnUrl,
         discountCode: args.discountCode,
         referralCode: args.referralCode,
+        attributionSource: args.attributionSource,
       },
       {
         userId: args.userId,

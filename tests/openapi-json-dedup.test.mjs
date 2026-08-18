@@ -7,6 +7,8 @@ import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 import { dedupeErrorResponses, dedupeSharedParameters } from '../scripts/openapi-dedup-responses.mjs';
 import { dedupeSharedChinaProvenanceSchemas } from '../scripts/openapi-dedup-schemas.mjs';
+import { buildBundle } from '../scripts/build-openapi-json.mjs';
+import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
 
 // Guards the served public/openapi.json against the ~1 MB scanner body cap.
 // On 2026-07-05 the per-op rate-limit/idempotency/example doc injections grew
@@ -25,10 +27,15 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const buildScriptPath = resolve(root, 'scripts/build-openapi-json.mjs');
 
 // Leave headroom under the ~1 MB cap: the spec sat at ~752 KB when the check
-// last passed and ~814 KB deduped today. If this fails, either extend the
+// last passed and ~853 KB deduped today. If this fails, either extend the
 // dedup (more shared structure) or trim the newest per-op injection — do NOT
 // raise the budget past 1 MB.
-const SIZE_BUDGET_BYTES = 950_000;
+//
+// The value lives in scripts/openapi-capacity-report.mjs so the gate and the
+// CI capacity report cannot disagree about where the wall is, and is pinned
+// literally below so raising it stays a deliberate two-file edit rather than a
+// one-line workaround (#6558).
+const SIZE_BUDGET_BYTES = SCANNER_BUDGET_BYTES;
 
 const HTTP_METHODS = new Set(['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace']);
 
@@ -301,14 +308,29 @@ describe('public OpenAPI dedupe (real bundle)', () => {
     assert.ok(paramStats.replacedRefs >= 200, `expected fleet-wide dedup, got ${paramStats.replacedRefs} refs`);
   });
 
-  it(`keeps the minified JSON under the ${SIZE_BUDGET_BYTES}-byte scanner budget`, () => {
-    const bytes = JSON.stringify(deduped).length;
+  it('the budget is 950,000 bytes and raising it is not the remedy', () => {
+    // A literal pin, not a restatement: the guard below reads the shared
+    // constant, so without this a crossing could be "fixed" by editing one
+    // number in one file. The cap belongs to the scanner (#4852) — moving our
+    // number does not move it.
+    assert.equal(SIZE_BUDGET_BYTES, 950_000);
+  });
+
+  it(`keeps the served JSON under the ${SIZE_BUDGET_BYTES}-byte scanner budget`, () => {
+    // Measured through buildBundle — the same call that writes the artifact —
+    // so the gate can never guard a document the build does not emit. It
+    // applies one transform this file's `deduped` fixture does not (the
+    // unreachable-schema drop), and it counts UTF-8 BYTES: `String#length` is
+    // UTF-16 code units and undercut the served size by 264 bytes on the
+    // 2026-08-13 bundle, against a cap expressed in bytes.
+    const { bytes } = buildBundle({ spec: loadUnifiedOpenApiSpec() });
     assert.ok(
       bytes <= SIZE_BUDGET_BYTES,
-      `public/openapi.json would be ${bytes} bytes (budget ${SIZE_BUDGET_BYTES}). ` +
+      `public/openapi.json is ${bytes} bytes (budget ${SIZE_BUDGET_BYTES}). ` +
         'Scanners cap spec bodies around 1 MB (orank function-calling-compat degrades to ' +
         '"couldn\'t validate" above it). Extend scripts/openapi-dedup-responses.mjs or slim ' +
-        'the newest per-op injection instead of raising this budget.',
+        'the newest per-op injection instead of raising this budget. ' +
+        '`node scripts/openapi-capacity-report.mjs` ranks what is worth collapsing next.',
     );
   });
 });
@@ -321,5 +343,21 @@ describe('build-openapi-json wiring', () => {
     assert.match(src, /dedupeErrorResponses\(spec\)/);
     assert.match(src, /dedupeSharedChinaProvenanceSchemas\(spec\)/);
     assert.match(src, /dedupeSharedParameters\(spec\)/);
+  });
+
+  it('every transform actually engaged on the bundle it emits', () => {
+    // The source match above proves the calls are written down; this proves
+    // they did something. A transform that silently stops finding work is the
+    // regression the byte budget notices last and from the wrong direction.
+    const { stats, schemaStats, paramStats, unreachableStats } = buildBundle({
+      spec: loadUnifiedOpenApiSpec(),
+    });
+    assert.ok(stats.replacedRefs >= 500, `error-response dedup: ${stats.replacedRefs} refs`);
+    assert.ok(paramStats.replacedRefs >= 200, `parameter dedup: ${paramStats.replacedRefs} refs`);
+    // `replacedRefs === compared` alone passes at 0 === 0, which is exactly the
+    // silent-disengagement case this test exists for.
+    assert.ok(schemaStats.compared > 0, 'China provenance dedup compared nothing');
+    assert.equal(schemaStats.replacedRefs, schemaStats.compared);
+    assert.ok(unreachableStats.dropped >= 150, `unreachable drop: ${unreachableStats.dropped} schemas`);
   });
 });

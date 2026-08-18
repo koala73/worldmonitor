@@ -24,6 +24,8 @@ import {
   computeLegacyDefaultDisabledSources,
   computePreStrategicDefaultDisabledSources,
   CANADA_ARCTIC_OPT_IN_SOURCES,
+  CANADA_DEPTH_OPT_IN_SOURCES,
+  CRISIS_FLOOR_OPT_IN_SOURCES,
   FEEDS,
   FRONTLINE_EUROPE_PROTECTED_SOURCES,
   getStrategicDefaultSources,
@@ -42,6 +44,8 @@ import {
   mergeCloudWithLocalDirty,
   parsePersistedDirtyKeys,
   settledDirtyKeys,
+  unionPersistedDirtyKeys,
+  withoutPersistedDirtyKeys,
 } from './cloud-prefs-migrations';
 import {
   isTemporaryCloudPrefsStatus,
@@ -92,7 +96,7 @@ const KEY_DIRTY_KEYS = 'wm-cloud-prefs-dirty-keys';
 // the new schema version. Defaults to 1 when missing (assumes oldest).
 const KEY_LOCAL_SCHEMA_VERSION = 'wm-cloud-prefs-local-schema-version';
 
-const CURRENT_PREFS_SCHEMA_VERSION = 6;
+const CURRENT_PREFS_SCHEMA_VERSION = 8;
 const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 
 // Migrations live in cloud-prefs-migrations.ts to keep them testable —
@@ -124,6 +128,9 @@ const CLOUD_PREFS_REQUEST_TIMEOUT_MS = 15_000;
 // opt-ins only for exact untouched default/cap states across known locales.
 // Schema 6 (#5960): add the Canada/Arctic companion opt-ins to non-empty
 // denylist profiles without depending on the ambiguous schema-5 decision.
+// Schema 7 (#6604/#6605): add the Canada depth opt-ins the same way.
+// Schema 6 already ran; a new App.ts key alone is not enough.
+// Schema 8 (#6813-#6830): add the validated crisis-desk opt-in companions.
 let _migrations: ReturnType<typeof buildMigrations> | null = null;
 let _regionalRolloutTargets: ReturnType<typeof buildRegionalFeedRolloutMigrationTargets> | null = null;
 
@@ -159,6 +166,12 @@ function getMigrations(): ReturnType<typeof buildMigrations> {
     canadaArctic: {
       optInSources: CANADA_ARCTIC_OPT_IN_SOURCES,
     },
+    canadaDepth: {
+      optInSources: CANADA_DEPTH_OPT_IN_SOURCES,
+    },
+    crisisDesk: {
+      optInSources: CRISIS_FLOOR_OPT_IN_SOURCES,
+    },
   });
   return _migrations;
 }
@@ -178,6 +191,58 @@ let _cachedToken: string | null = null; // synchronous token cache for flush()
 // SETTLED ones. See resolveConflictWithMerge + mergeCloudWithLocalDirty.
 const _dirtyKeys = new Set<CloudSyncKey>();
 let _dirtyKeysUserId: string | null = null;
+
+/**
+ * #4746: persistDirtyKeys used to serialize only THIS tab's in-memory set,
+ * so two same-user tabs writing different keys clobbered each other's
+ * pending markers (last writer wins on the single shared
+ * KEY_DIRTY_KEYS entry). The write is now split per call-site semantics:
+ *
+ *   add    (markDirtyKey)          -> union with the persisted set
+ *   settle (clearSettledDirtyKeys) -> targeted remove of the settled keys
+ *   reset  (hydrate cleanup,
+ *           sign-out)              -> overwrite / remove (persistDirtyKeys)
+ *
+ * The naive "always union" fix is wrong on purpose: re-reading the disk set
+ * inside clearSettledDirtyKeys would resurrect keys the upload just settled
+ * (the stale-dirty-key regression class from #3695), so settle removes only
+ * what this tab's upload actually durably synced.
+ */
+function writePersistedDirtyKeys(payload: { userId: string; keys: string[] }): void {
+  if (payload.keys.length === 0) {
+    Storage.prototype.removeItem.call(localStorage, KEY_DIRTY_KEYS);
+    return;
+  }
+  Storage.prototype.setItem.call(localStorage, KEY_DIRTY_KEYS, JSON.stringify(payload));
+}
+
+function persistDirtyKeyAddition(key: CloudSyncKey): void {
+  if (!_dirtyKeysUserId) return;
+  try {
+    writePersistedDirtyKeys(unionPersistedDirtyKeys(
+      localStorage.getItem(KEY_DIRTY_KEYS),
+      CLOUD_SYNC_KEYS,
+      _dirtyKeysUserId,
+      [key],
+    ));
+  } catch {
+    // localStorage unavailable: keep the in-memory guard for this page view.
+  }
+}
+
+function persistSettledDirtyKeyRemovals(removals: string[]): void {
+  if (!_dirtyKeysUserId) return;
+  try {
+    writePersistedDirtyKeys(withoutPersistedDirtyKeys(
+      localStorage.getItem(KEY_DIRTY_KEYS),
+      CLOUD_SYNC_KEYS,
+      _dirtyKeysUserId,
+      removals,
+    ));
+  } catch {
+    // localStorage unavailable: keep the in-memory guard for this page view.
+  }
+}
 
 function persistDirtyKeys(): void {
   try {
@@ -211,7 +276,7 @@ function hydrateDirtyKeysFromStorage(userId: string): void {
 
 function markDirtyKey(key: CloudSyncKey): void {
   _dirtyKeys.add(key);
-  persistDirtyKeys();
+  persistDirtyKeyAddition(key);
 }
 
 /**
@@ -228,11 +293,11 @@ function markDirtyKey(key: CloudSyncKey): void {
  * current local value.
  */
 function clearSettledDirtyKeys(postedBlob: Record<string, string>): void {
-  let changed = false;
+  const settled: string[] = [];
   for (const key of settledDirtyKeys(postedBlob, buildCloudBlob(), _dirtyKeys)) {
-    changed = _dirtyKeys.delete(key as CloudSyncKey) || changed;
+    if (_dirtyKeys.delete(key as CloudSyncKey)) settled.push(key);
   }
-  if (changed) persistDirtyKeys();
+  if (settled.length > 0) persistSettledDirtyKeyRemovals(settled);
 }
 
 // ── 503 retry tracking ───────────────────────────────────────────────────────
@@ -411,9 +476,9 @@ function applyMigrationsWithSchemaVersion(
     true,
   );
   // Schema 5 intentionally fails closed when a locale-less fingerprint has
-  // conflicting outcomes. Schema 6 is an independent additive boundary fix:
-  // it still runs so cloud hydration cannot overwrite the local opt-in
-  // migration while schema 5 remains retryable at its prior version.
+  // conflicting outcomes. Schema 6/7/8 are independent additive boundary fixes:
+  // they still run so cloud hydration cannot overwrite the local opt-in
+  // migrations while schema 5 remains retryable at its prior version.
   return { ...migrated, dataChanged: migrated.data !== data };
 }
 

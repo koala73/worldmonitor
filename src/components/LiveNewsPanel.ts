@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { fetchLiveVideoInfo } from '@/services/live-news';
 import { isDesktopRuntime, getRemoteApiBaseUrl, getApiBaseUrl, getLocalApiPort } from '@/services/runtime';
 import { t } from '../services/i18n';
+import { createFocusTrap } from '@/utils/focus-trap';
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { IDLE_PAUSE_MS, STORAGE_KEYS, SITE_VARIANT } from '@/config';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
@@ -1019,7 +1020,9 @@ export class LiveNewsPanel extends Panel {
 
     const overlay = document.createElement('div');
     overlay.className = 'live-channels-modal-overlay';
+    overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', t('components.liveNews.manage') ?? 'Manage channels');
 
     const modal = document.createElement('div');
     modal.className = 'live-channels-modal';
@@ -1044,10 +1047,13 @@ export class LiveNewsPanel extends Panel {
     }).catch(console.error);
 
     const close = () => {
+      focusTrap.deactivate();
       overlay.remove();
       document.removeEventListener('keydown', onKey);
       this.refreshChannelsFromStorage();
     };
+    const focusTrap = createFocusTrap(overlay);
+    focusTrap.activate();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close();
     };
@@ -1169,7 +1175,8 @@ export class LiveNewsPanel extends Panel {
   private showOfflineMessage(channel: LiveChannel): void {
     this.destroyPlayer();
     const safeName = escapeHtml(channel.name);
-    setTrustedHtml(this.content, trustedHtml(`
+    // #6557: a terminal offline state is authoritative content.
+    this.setTrustedContent(trustedHtml(`
       <div class="live-offline live-offline-compact">
         <div class="offline-icon">📺</div>
         <div class="offline-text">${t('components.liveNews.notLive', { name: safeName })}</div>
@@ -1187,7 +1194,8 @@ export class LiveNewsPanel extends Panel {
       : 'https://www.youtube.com';
     const safeName = escapeHtml(channel.name);
 
-    setTrustedHtml(this.content, trustedHtml(`
+    // #6557: a terminal embed-error state is authoritative content.
+    this.setTrustedContent(trustedHtml(`
       <div class="live-offline live-offline-compact">
         <div class="offline-icon">!</div>
         <div class="offline-text">${t('components.liveNews.cannotEmbed', { name: safeName, code: String(errorCode) })}</div>

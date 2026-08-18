@@ -111,7 +111,7 @@ export function initSettingsWindow(): void {
           <span class="settings-window-title">${escapeHtml(t('header.settings'))}</span>
           <p class="settings-window-caption">${escapeHtml(t('header.panelDisplayCaption'))}</p>
         </div>
-        <button type="button" class="modal-close" id="settingsWindowClose">×</button>
+        <button type="button" class="modal-close" id="settingsWindowClose" aria-label="${escapeHtml(t('common.close'))}">×</button>
       </div>
       <div class="panel-toggle-grid" id="panelToggles"></div>
     </div>

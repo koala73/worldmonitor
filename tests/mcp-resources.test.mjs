@@ -32,6 +32,7 @@ import {
   makeProDeps,
   proReq,
 } from './helpers/mcp-pro-deps.mjs';
+import { UI_RESOURCE_REGISTRY } from '../api/mcp/ui/registry.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const originalFetch = globalThis.fetch;
@@ -388,12 +389,12 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       assert.equal(r.paramExtractor, undefined, `resource ${r.uri}: internal "paramExtractor" must not leak via resources/list`);
       assert.equal(r.freshnessWrap, undefined, `resource ${r.uri}: internal "freshnessWrap" must not leak via resources/list`);
       assert.equal(r.html, undefined, `resource ${r.uri}: internal "html" must not leak via resources/list`);
-      // ui:// shells advertise their CSP/render policy via _meta.ui; DATA
-      // resources carry no _meta.
+      // ui:// shells advertise their CSP/render policy via _meta.ui; the
+      // public DATA metadata probe advertises anonymous-free access.
       if (r.uri.startsWith('ui://')) {
         assert.ok(r._meta?.ui?.csp, `ui:// resource ${r.uri} must advertise _meta.ui.csp`);
       } else {
-        assert.equal(r._meta, undefined, `DATA resource ${r.uri} must not carry _meta`);
+        assert.equal(r._meta?.['worldmonitor/access'], 'free', `DATA resource ${r.uri} must advertise free access`);
       }
     }
   });
@@ -522,7 +523,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     const listRes = await handler(envKeyReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
     const listBody = await listRes.json();
     const uiUris = listBody.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://'));
-    assert.ok(uiUris.length >= 5, `expected the interactive-dashboard fleet (>=5 widgets), got ${uiUris.length}`);
+    const registryUiUris = UI_RESOURCE_REGISTRY.map((resource) => resource.uri);
+    assert.deepEqual(uiUris, registryUiUris, 'fleet audit must cover every registered ui:// resource');
 
     for (const uri of uiUris) {
       const res = await handler(envKeyReq(readBody(uri)));

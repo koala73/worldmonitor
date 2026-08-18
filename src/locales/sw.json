@@ -286,6 +286,31 @@
       "soybeans": "Maharagwe ya soya",
       "barley": "Shayiri",
       "palmOil": "Mafuta ya mawese"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "STEM graduates",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh."
     }
   },
   "header": {
@@ -555,7 +580,9 @@
         "displacement": "Geuza mtiririko wa uhamishaji",
         "climate": "Geuza hitilafu za hali ya hewa",
         "outages": "Geuza kukatika kwa mtandao",
-        "tradeRoutes": "Geuza njia za biashara"
+        "tradeRoutes": "Geuza njia za biashara",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Badili hadi hali ya giza",
@@ -718,7 +745,7 @@
         "URLHAUS_AUTH_KEY": "Inatumika kwa URLhaus na API za ThreatFox.",
         "OTX_API_KEY": "Chanzo cha hiari cha uboreshaji kwa safu ya tishio la mtandao.",
         "ABUSEIPDB_API_KEY": "Chanzo cha hiari cha uboreshaji kwa sifa mbaya ya IP.",
-        "FINNHUB_API_KEY": "Nukuu za hisa za wakati halisi na data ya soko.",
+        "FINNHUB_API_KEY": "Nukuu za hisa zilizocheleweshwa au zilizopakiwa awali na data ya soko. Ufunguo si mtiririko wa moja kwa moja.",
         "NASA_FIRMS_API_KEY": "Taarifa za Moto kwa Mfumo wa Usimamizi wa Rasilimali.",
         "OLLAMA_API_URL": "k.m. http://127.0.0.1:11434 (Ollama) au http://127.0.0.1:1234/v1 (LM Studio) - Mwisho unaoendana na OpenAI.",
         "OLLAMA_MODEL": "k.m. llama3.1:8b - lebo ya mfano ya kutumia kwa muhtasari."
@@ -1042,6 +1069,7 @@
       "noComtradeData": "Hakuna data ya mtiririko wa kimkakati inayopatikana",
       "comtradeUnavailable": "Data ya UN Comtrade haipatikani kwa muda",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomaly",
       "colReporter": "Nchi",
       "colCommodity": "Bidhaa",
@@ -1320,7 +1348,7 @@
         "ucdpEvents": "Matukio ya Migogoro ya Silaha",
         "displacementFlows": "Mitiririko ya Uhamisho",
         "climateAnomalies": "Matatizo ya Hali ya Hewa",
-        "weatherAlerts": "Tahadhari za Hali ya Hewa za Marekani (NWS)",
+        "weatherAlerts": "Tahadhari za hali mbaya ya hewa (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Chokepoints",
         "economicCenters": "Vituo vya Uchumi",
         "criticalMinerals": "Madini Muhimu",
@@ -1338,7 +1366,9 @@
         "kindness": "Matendo ya Fadhili",
         "happiness": "Furaha ya Dunia",
         "speciesRecovery": "Urejeshaji wa Aina",
-        "renewableInstallations": "Nishati Safi"
+        "renewableInstallations": "Nishati Safi",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "Tetemeko la ardhi",
@@ -1399,7 +1429,7 @@
           "infraDatacenters": "AI inakokotoa makundi >=10,000 GPU",
           "infraOutages": "Kukatika kwa mtandao na kukatizwa kwa huduma",
           "naturalEventsTech": "Matetemeko ya ardhi, dhoruba, moto (huenda ikaathiri vituo vya data)",
-          "weatherAlerts": "Tahadhari za hali ya hewa kali nchini Marekani (NWS)",
+          "weatherAlerts": "Tahadhari rasmi za hali mbaya ya hewa kutoka huduma za kitaifa za hali ya hewa (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Soko la hisa na benki kuu",
           "countriesOverlay": "Viwekelezo vya majina ya nchi",
           "financeExchanges": "Mabadilishano makuu ya kimataifa kulingana na kiwango cha soko",
@@ -1411,7 +1441,7 @@
           "financeOutages": "Ukatizi wa mtandao ambao unaweza kuathiri shughuli za soko",
           "financeCyberThreats": "Matukio ya usalama karibu na miundombinu ya kifedha",
           "macroWaterways": "Vituo vya kimkakati vya kusafirisha bidhaa",
-          "weatherAlertsMarket": "Matukio ya hali ya hewa kali nchini Marekani yenye umuhimu wa soko (NWS)",
+          "weatherAlertsMarket": "Tahadhari rasmi za hali mbaya ya hewa zenye umuhimu kwa masoko (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Matetemeko ya ardhi, moto, mafuriko, na usumbufu mwingine wa asili",
           "timeRecent": "Chuja data kulingana na saa hadi saa za hivi majuzi",
           "timeExtended": "Onyesha data kutoka wiki iliyopita, mwezi au wakati wote",
@@ -1444,7 +1474,9 @@
           "tradeRoutes": "Njia kuu za kimataifa za meli zinazounganisha bandari kupitia sehemu za kimkakati za chokepoints",
           "dayNight": "Kidhibiti cha wakati halisi cha jua kinachoonyesha maeneo ya mchana na usiku",
           "geoBoundaries": "Maeneo yasiyoruhusiwa kijeshi, njia za kusitisha mapigano, na mipaka yenye mizozo",
-          "ciiChoropleth": "Ramani ya joto ya Fahirisi ya Nchi Kutoimarika - rangi nchi kwa alama za CII (kijani=imara, nyekundu=muhimu)"
+          "ciiChoropleth": "Ramani ya joto ya Fahirisi ya Nchi Kutoimarika - rangi nchi kwa alama za CII (kijani=imara, nyekundu=muhimu)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Athari: Matetemeko ya Ardhi, Hali ya Hewa, Maandamano, Kukatika"
@@ -1819,7 +1851,9 @@
     "breakingNews": {
       "critical": "MUHIMU",
       "high": "JUU",
-      "dismiss": "Ondoa"
+      "dismiss": "Ondoa",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Tahadhari za Kuvunja",
@@ -1971,7 +2005,7 @@
       "infoTooltip": "<strong>Msiba wa Maafa</strong> Hutambua mawimbi ya maafa ya asili na mawimbi ya miundombinu:<ul><li>Inahusiana na matetemeko ya ardhi, moto wa nyika, mafuriko na hali mbaya ya hewa</li><li>Hufuatilia athari za uharibifu kwenye miundombinu na ugavi</li><li>Huangazia maeneo yenye hatari kubwa ya maafa</li></ul>Bofya kadi ili kukuza eneo lililoathiriwa."
     },
     "markets": {
-      "infoTooltip": "<strong>Masoko</strong> Fahirisi za hisa za wakati halisi, hisa na bei za crypto. Geuza kukufaa orodha yako ya kutazama kwa kitufe cha Orodha ya Kufuatilia. Cheche zinaonyesha mwenendo wa bei ya hivi majuzi.",
+      "infoTooltip": "<strong>Masoko</strong> Fahirisi za hisa zilizocheleweshwa au zilizopakiwa awali, hisa na bei za crypto. Geuza kukufaa orodha yako ya kutazama kwa kitufe cha Orodha ya Kufuatilia. Cheche zinaonyesha mwenendo wa bei ya hivi majuzi.",
       "chart": {
         "title": "{{symbol}} price chart",
         "close": "Close chart"
@@ -1992,7 +2026,17 @@
       "infoTooltip": "<strong>Ramani ya joto ya Sekta</strong> Utendaji wa sekta ya S&P 500 kwa muhtasari. Ukali wa rangi huonyesha ukubwa wa mabadiliko ya kila siku. Kijani = faida, Nyekundu = hasara."
     },
     "commodities": {
-      "infoTooltip": "<strong>Bidhaa</strong> Tepu ya bidhaa isiyo ya nishati inayoweza kuuzwa inayolenga metali na nyenzo. Bei za nishati zinaishi katika Nishati Complex; viashiria vya mkazo mkubwa huishi katika Stress ya Macro."
+      "infoTooltip": "<strong>Bidhaa</strong> Tepu ya bidhaa isiyo ya nishati inayoweza kuuzwa inayolenga metali na nyenzo. Bei za nishati zinaishi katika Nishati Complex; viashiria vya mkazo mkubwa huishi katika Stress ya Macro.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Bei za moja kwa moja, mabadiliko ya saa 24, na sauti ya sarafu kuu za cryptocurrency. Data imechukuliwa kutoka CoinGecko."
@@ -2019,7 +2063,7 @@
       "infoTooltip": "<strong>Tazama Benki Kuu</strong> Taarifa za hivi punde, maamuzi ya viwango, na mawasiliano kutoka kwa Hifadhi ya Shirikisho, ECB, Benki ya Uingereza, na benki kuu nyingine kuu duniani kote."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Uchumi wa Ghuba</strong> Fahirisi za hisa za wakati halisi za Ghuba, viwango vya sarafu, na bei za mafuta kwa uchumi wa GCC (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Uchumi wa Ghuba</strong> Fahirisi za hisa zilizocheleweshwa au zilizopakiwa awali za Ghuba, viwango vya sarafu, na bei za mafuta kwa uchumi wa GCC (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Kielezo cha Grocery</strong> Ulinganisho wa bei ya kikapu cha mboga duniani kote katika nchi 24 - hufuatilia mfumuko wa bei wa bidhaa za walaji katika ulimwengu halisi zaidi ya CPI ya kichwa."
@@ -2343,13 +2387,14 @@
     },
     "sanctionsPressure": {
       "title": "Vikwazo na Uteuzi",
-      "infoTooltip": "Uteuzi wa vikwazo vya OFAC kutoka SDN na Orodha Zilizounganishwa. Huonyesha ni nchi zipi zinakabiliwa na shinikizo la juu zaidi la uteuzi, ni programu gani zinazoiendesha, na ni nini ambacho kimeongezwa hivi karibuni tangu sasisho la mwisho.",
+      "infoTooltip": "Orodha za SDN na Zilizounganishwa za OFAC pamoja na uteuzi wa SEMA/JVCFOA wa Global Affairs Canada. Huonyesha ni nchi zipi zinakabiliwa na shinikizo la juu zaidi la uteuzi, ni programu gani zinazoiendesha, na ni nini ambacho kimeongezwa hivi karibuni tangu sasisho la mwisho.",
       "loading": "Inapakia data ya vikwazo...",
       "unavailable": "Data ya vikwazo haipatikani.",
       "summary": {
         "new": "Mpya",
         "vessels": "Vyombo",
-        "aircraft": "Ndege"
+        "aircraft": "Ndege",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Nchi zilizoidhinishwa",
@@ -2364,11 +2409,12 @@
       "footer": {
         "updated": "Ilisasishwa {{time}}",
         "dataset": "mkusanyiko wa data {{date}}",
-        "source": "Chanzo: OFAC"
+        "source": "Chanzo: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} mpya",
-        "new": "mpya"
+        "new": "mpya",
+        "sema": "sema-ca"
       },
       "designations_one": "Jina {{count}}",
       "designations_other": "Majina {{count}}",
@@ -2901,6 +2947,7 @@
     "moreEvents": "matukio zaidi",
     "monitoring": "Ufuatiliaji",
     "viewUSGS": "Tazama kwenye USGS",
+    "viewNRCan": "Tazama kwenye Earthquakes Canada",
     "expired": "Muda wake umeisha",
     "timeAgo": {
       "s": "Sekunde {{count}} zilizopita",
@@ -3331,7 +3378,8 @@
     "currentVariant": "(ya sasa)",
     "retry": "Jaribu tena",
     "refresh": "Onyesha upya",
-    "all": "Wote"
+    "all": "Wote",
+    "dismiss": "Dismiss"
   },
   "connectivity": {
     "offlineCached": "Nje ya mtandao — inaonyesha data iliyohifadhiwa kutoka kwa {{freshness}}.",

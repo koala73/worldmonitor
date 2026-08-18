@@ -1,4 +1,10 @@
 roadmap-pro.md
+# Payments ops runbook (#6698). Tracked in git so the alert threshold and
+# owner ship with the code that reads them, but kept off the public site: it
+# names our provider rate-limit tier, counts failed purchases, and records an
+# unverified gap in the checkout retry ladder. docs/internal/ is gitignored,
+# so it cannot live there.
+payments-checkout-rate-limit-operations.md
 internal/
 plans/
 PRESS_KIT.md

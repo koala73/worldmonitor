@@ -175,6 +175,33 @@ Within each category, items sort by `importanceScore` descending, then
 publication time descending. The feed digest returns at most `20` items per
 category.
 
+## Credibility Score
+
+`credibilityScore` is a separate 0-100 field on the same `NewsItem`. It does
+not replace `importanceScore`. It measures source reliability, not
+newsworthiness, so a highly newsworthy RT story can score high on importance
+and low on credibility.
+
+The canonical public methodology is
+[News Credibility Score](/methodology/news-credibility). The digest computes
+it in `shared/news-credibility.js` after the same classification and
+corroboration pass:
+
+| Component | Weight |
+| --- | --- |
+| Propaganda risk | `0.50` |
+| Source tier | `0.30` |
+| Independent corroboration | `0.20` |
+
+High propaganda-risk sources (state-controlled media) are capped at `40`.
+Unreviewed sources use propaganda risk `unknown` (`35`), never `low`.
+Severity, recency, and the diplomacy/flashpoint boost are **not** inputs.
+Third-party AllSides/MBFC ratings are reserved and not applied.
+
+The news list renders a `CRED NN` badge on both the flat list and clustered
+cards. MCP `get_news_intelligence` and `get_news_clusters` expose the same
+field. Relevance sort remains `importanceScore`.
+
 ## Story Tracking
 
 The digest persists sliced stories to Redis so later digest notifications and
@@ -349,9 +376,10 @@ LLM layer is enabled. Digest prose and
 story-description calls use temperature `0.4`. Regional weekly briefs
 intentionally differ from those digest prose and `whyMatters` surfaces:
 `scripts/regional-snapshot/weekly-brief.mjs`
-tries OpenRouter first with `deepseek/deepseek-v4-flash`, then falls back to
-Groq `llama-3.3-70b-versatile`, and sends both providers temperature
-`0.3` because the output is structured weekly JSON for regional snapshots
+tries OpenRouter first with `deepseek/deepseek-v4-flash`, then the fixed free
+OpenRouter models `google/gemma-4-26b-a4b-it:free` and
+`openai/gpt-oss-20b:free`, then Groq `openai/gpt-oss-20b`. It sends every
+provider temperature `0.3` because the output is structured weekly JSON for regional snapshots
 rather than per-user digest prose. The digest prompt requires a named
 actor/event lead, bans generic editorial phrases such as "the global stage"
 and weak stitching phrases such as "this comes as" or "meanwhile", requires

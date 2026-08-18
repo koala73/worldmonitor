@@ -178,6 +178,14 @@ const FREE_FEATURES: PlanFeatures = {
   planLimits: {
     apiRequestsPerDay: 0,
     apiBurstRequestsPerMinute: 0,
+    // #6716: stays 0. The free-account allowance is NOT a plan allowance — it
+    // is a paid-funnel taste metered at the MCP call site against its own Redis
+    // counters, and `FREE_ACCOUNT_CALLS_PER_DAY` (api/mcp/upgrade-constants.ts)
+    // is its single source of truth. Publishing 5 here bought nothing —
+    // dispatch ignores `mcpDailyLimit` entirely on the free branch — and cost a
+    // real bug: it made the settings endpoint advertise a ceiling it reads the
+    // wrong counter for. Consumers that must show the free allowance read the
+    // constant and the free counter (see api/user/mcp-quota.ts).
     mcpCallsPerDay: 0,
     dashboardAiCallsPerDay: 0,
     mcpBurstRequestsPerMinute: 0,
@@ -541,6 +549,15 @@ export const LEGACY_PRODUCT_ALIASES: Record<string, string> = {
   // 500-retry loop until this mapping was added (sub_0NeQV8vJI0fEwUEDjp3cA).
   // See scripts/audit-dodo-catalog.cjs to detect this class of drift early.
   "pdt_0NeRCJCIwZrExuE1kifHp": "api_starter",
+  // "5 × Standard Pro Annual Licenses" — created via Dodo dashboard 2026-07-30
+  // for the Legendary 5-seat annual deal ($1,596/yr list, sold with a 15%
+  // discount). The payer's subscription (sub_0NlFXgOXerG95LUzA09s4) carries
+  // the payer's own Pro entitlement; the other seats are complimentary
+  // entitlements aligned to the same period end. A matching productPlans row
+  // (isActive: false) was hand-inserted 2026-08-14 so attribution didn't wait
+  // on a deploy; this alias is the durable mapping the 2027 renewal resolves
+  // through even if that row is ever lost to a reseed.
+  "pdt_0NkKmaMPY3grWqiOGtyuG": "pro_annual",
 };
 
 // ---------------------------------------------------------------------------

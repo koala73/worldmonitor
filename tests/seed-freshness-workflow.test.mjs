@@ -14,9 +14,6 @@ import { fileURLToPath } from 'node:url';
 
 import YAML from 'yaml';
 
-import { DEEP_PASS_RUN_BUDGET_MS } from '../scripts/check-railway-deploy-drift.mjs';
-import { RAILWAY_CALL_TIMEOUT_MS } from '../scripts/railway-cli.mjs';
-
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflowSource = readFileSync(
   resolve(repoRoot, '.github/workflows/seed-freshness-monitor.yml'),
@@ -24,8 +21,6 @@ const workflowSource = readFileSync(
 );
 const workflow = YAML.parse(workflowSource);
 const monitorSteps = workflow.jobs.monitor.steps;
-const driftJob = workflow.jobs.drift;
-const driftSteps = driftJob?.steps ?? [];
 
 // The one condition allowed to stop a probe: the fail-closed green-main gate.
 // Anything else (an earlier probe failing) must leave the later probes running.
@@ -46,6 +41,24 @@ function scheduledGateStep() {
   const step = monitorSteps.find((candidate) => candidate.id === 'gate');
   assert.ok(step, 'seed freshness workflow must define its scheduled gate step');
   return step;
+}
+
+function runPublisherWithoutActivation(acceptanceOutcome) {
+  const tempDir = mkdtempSync(join(repoRoot, '.tmp-seed-freshness-publisher-'));
+  try {
+    const publisher = stepNamed('Publish ingestion operational transitions');
+    return spawnSync('bash', ['-e', '-c', publisher.run], {
+      cwd: tempDir,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        SEED_ACCEPTANCE_OUTCOME: acceptanceOutcome,
+        SEED_ACCEPTANCE_SHA: HEAD_SHA,
+      },
+    });
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 }
 
 const HEAD_SHA = '0123456789abcdef';
@@ -194,44 +207,6 @@ function runScheduledGate(head, ancestors = []) {
   }
 }
 
-function runRailwayContext({ token = 'project-token', projectId = 'project-123' } = {}) {
-  const tempDir = mkdtempSync(join(repoRoot, '.tmp-seed-freshness-railway-'));
-  const fakeBin = join(tempDir, 'bin');
-  const fakeRailway = join(fakeBin, 'railway');
-
-  try {
-    mkdirSync(fakeBin);
-    writeFileSync(
-      fakeRailway,
-      [
-        '#!/bin/sh',
-        '[ "$RAILWAY_TOKEN" = "project-token" ] || exit 91',
-        '[ "$*" = "status --project project-123 --environment production --json" ] || exit 92',
-        "printf '{}\\n'",
-        '',
-      ].join('\n'),
-    );
-    chmodSync(fakeRailway, 0o755);
-
-    return spawnSync(
-      'bash',
-      ['-e', '-c', stepNamed('Verify Railway production context').run],
-      {
-        cwd: repoRoot,
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          RAILWAY_TOKEN: token,
-          RAILWAY_PROJECT_ID: projectId,
-          PATH: `${fakeBin}:${process.env.PATH}`,
-        },
-      },
-    );
-  } finally {
-    rmSync(tempDir, { recursive: true, force: true });
-  }
-}
-
 describe('seed freshness workflow control plane', () => {
   it('monitors the checked-out main SHA when its gate passed', () => {
     const success = runScheduledGate('success', [
@@ -244,29 +219,13 @@ describe('seed freshness workflow control plane', () => {
     assert.deepEqual(success.requested, [HEAD_SHA]);
   });
 
-  it('fails closed when the gate DECIDED against the checked-out main SHA', () => {
-    for (const state of ['failure', 'error']) {
-      const result = runScheduledGate(state, [
-        { sha: 'aaaaaaaaaaaaaaaa', state: 'success', ageSeconds: 900 },
-      ]);
-      assert.notEqual(
-        result.status,
-        0,
-        `${state} must fail the workflow instead of falling back to an older revision`,
-      );
-      assert.match(`${result.stdout}\n${result.stderr}`, new RegExp(`main gate is ${state}`));
-      assert.doesNotMatch(result.output, /sha=aaaaaaaaaaaaaaaa/);
-      // A red main is a verdict, not a race. Walking past it would retire the
-      // alarm this step exists to raise.
-      assert.deepEqual(result.requested, [HEAD_SHA]);
-    }
-  });
-
-  it('falls back to the newest gated ancestor while the head gate is undecided', () => {
-    // The deploy gate posts about 6 minutes after a merge and this monitor runs
-    // every 15, so an undecided head is the normal state right after a merge —
-    // it made every merge produce at least one red run.
-    for (const state of ['missing', 'pending']) {
+  it('falls back to the newest gated ancestor when the head gate is not success', () => {
+    // pending/missing: deploy gate posts ~6 minutes after a merge and this
+    // monitor runs every 15, so an undecided head is the normal post-merge
+    // state — failing on it made every merge produce at least one red run.
+    // failure/error: the `gate` status already owns that verdict. Failing
+    // this job too reds the ingestion monitor without looking at seeds.
+    for (const state of ['missing', 'pending', 'failure', 'error']) {
       const result = runScheduledGate(state, [
         { sha: 'bbbbbbbbbbbbbbbb', state: 'pending', ageSeconds: 300 },
         { sha: 'cccccccccccccccc', state: 'success', ageSeconds: 1800 },
@@ -276,17 +235,23 @@ describe('seed freshness workflow control plane', () => {
       assert.match(result.output, /sha=cccccccccccccccc/, 'must take the NEWEST gated ancestor');
       assert.doesNotMatch(result.output, /sha=dddddddddddddddd/);
       assert.match(`${result.stdout}`, new RegExp(`Head gate is ${state}`));
+      assert.ok(
+        result.requested.includes('cccccccccccccccc'),
+        `${state} must walk past the head to the newest gated ancestor`,
+      );
     }
   });
 
   it('fails closed when no revision in the window has a successful gate', () => {
-    const result = runScheduledGate('pending', [
-      { sha: 'bbbbbbbbbbbbbbbb', state: 'pending', ageSeconds: 300 },
-      { sha: 'cccccccccccccccc', state: 'failure', ageSeconds: 900 },
-    ]);
-    assert.notEqual(result.status, 0, 'an ungated window must not produce a green acceptance');
-    assert.match(`${result.stdout}\n${result.stderr}`, /none of the last 25 main revisions/);
-    assert.equal(result.output.includes('sha='), false);
+    for (const state of ['pending', 'failure']) {
+      const result = runScheduledGate(state, [
+        { sha: 'bbbbbbbbbbbbbbbb', state: 'pending', ageSeconds: 300 },
+        { sha: 'cccccccccccccccc', state: 'failure', ageSeconds: 900 },
+      ]);
+      assert.notEqual(result.status, 0, `${state} head with an ungated window must not produce a green acceptance`);
+      assert.match(`${result.stdout}\n${result.stderr}`, /none of the last 25 main revisions/);
+      assert.equal(result.output.includes('sha='), false);
+    }
   });
 
   it('fails closed when the newest gated ancestor is older than the age bound', () => {
@@ -326,25 +291,49 @@ describe('seed freshness workflow control plane', () => {
     // audit above it — one red step silently switched off data-freshness
     // monitoring for the whole fleet.
     assert.equal(acceptance.if, GATE_GUARD, 'acceptance must stay behind the fail-closed gate and nothing else');
+    assert.equal(acceptance.id, 'acceptance');
     assert.match(GATE_GUARD, /steps\.gate\.conclusion != 'failure'/);
-    assert.equal(acceptance['continue-on-error'], undefined);
+    assert.equal(acceptance['continue-on-error'], true, 'health incidents are classified by the status publisher');
+    assert.match(acceptance.run, /--json-output "\$RUNNER_TEMP\/seed-freshness-observation\.json"/);
+
+    const publisher = stepNamed('Publish ingestion operational transitions');
+    assert.equal(publisher.if, GATE_GUARD);
+    assert.equal(publisher['continue-on-error'], undefined);
+    assert.equal(publisher.env.GH_TOKEN, '${{ github.token }}');
+    assert.equal(publisher.env.SEED_ACCEPTANCE_SHA, '${{ steps.gate.outputs.sha || github.sha }}');
+    assert.equal(publisher.env.SEED_ACCEPTANCE_OUTCOME, '${{ steps.acceptance.outcome }}');
+    assert.equal(publisher.env.SEED_STATUS_WRITER_LOGIN, 'github-actions[bot]');
+    assert.match(publisher.run, /update-seed-health-statuses\.mjs/);
+    assert.match(publisher.run, /if \[ ! -f scripts\/update-seed-health-statuses\.mjs \]/);
+    assert.match(publisher.run, /not active on gated revision/);
+    assert.match(publisher.run, /--sha "\$SEED_ACCEPTANCE_SHA"/);
+    assert.match(publisher.run, /--report "\$RUNNER_TEMP\/seed-freshness-observation\.json"/);
+    assertBashSyntax(publisher.run);
+    assert.equal(workflow.permissions.statuses, 'write');
   });
 
-  it('checks out the resolved revision before any probe reads the repository', () => {
+  it('fails closed when a strict probe fails before the transition publisher is active', () => {
+    const failure = runPublisherWithoutActivation('failure');
+    assert.notEqual(failure.status, 0, 'a failed strict probe must not finish green without its publisher');
+    assert.match(`${failure.stdout}\n${failure.stderr}`, /acceptance failed.*no transition publisher is available/i);
+
+    const success = runPublisherWithoutActivation('success');
+    assert.equal(success.status, 0, success.stderr);
+    assert.match(success.stdout, /waiting for a gated activation revision/);
+  });
+
+  it('checks out the resolved revision before the ingestion probe', () => {
     const checkout = stepNamed('Check out the gated main revision');
     const checkoutIndex = monitorSteps.indexOf(checkout);
     const gateIndex = monitorSteps.indexOf(scheduledGateStep());
-    // The audit reads scripts/railway-services.json and the acceptance probe
-    // reads scripts/seed-freshness-baseline.json FROM THE WORKING TREE. Moving
-    // the tree after either has run would grade one revision with another
-    // revision's suppression list.
-    const firstProbeIndex = monitorSteps.findIndex(
-      (step) => step.name === 'Audit Railway ingestion deployment controls',
+    const acceptanceIndex = monitorSteps.findIndex(
+      (step) => step.name === 'Check ingestion operational acceptance',
     );
-    assert.ok(gateIndex < checkoutIndex && checkoutIndex < firstProbeIndex);
+    const publisherIndex = monitorSteps.findIndex(
+      (step) => step.name === 'Publish ingestion operational transitions',
+    );
+    assert.ok(gateIndex < checkoutIndex && checkoutIndex < acceptanceIndex && acceptanceIndex < publisherIndex);
     assert.equal(checkout.if, "${{ steps.gate.outputs.sha != '' && steps.gate.outputs.sha != github.sha }}");
-    // The SHA arrives as an environment value. Interpolating `${{ }}` straight
-    // into the script would splice workflow-expression output into bash.
     assert.equal(checkout.env.GATED_SHA, '${{ steps.gate.outputs.sha }}');
     assert.match(checkout.run, /git checkout --detach "\$GATED_SHA"/);
     assert.doesNotMatch(checkout.run, /\$\{\{/);
@@ -352,228 +341,26 @@ describe('seed freshness workflow control plane', () => {
     assertBashSyntax(scheduledGateStep().run);
   });
 
-  it('audits read-only Railway production config before grading data health', () => {
-    assert.deepEqual(
-      workflow.jobs.monitor.environment,
-      {
-        name: 'ingestion-acceptance-production',
-        deployment: false,
-      },
-      'production credentials must come from the main-only ingestion acceptance environment',
-    );
-
-    const checkout = monitorSteps.find(
-      (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
-    );
-    assert.ok(checkout, 'workflow must check out the audited repository revision');
-    assert.equal(
-      checkout.uses,
-      'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10',
-      'credential-bearing workflows must pin checkout to the repository-standard immutable SHA',
-    );
-    const installIndex = monitorSteps.findIndex(
-      (step) => step.name === 'Install pinned Railway CLI',
-    );
-    const contextIndex = monitorSteps.findIndex(
-      (step) => step.name === 'Verify Railway production context',
-    );
-    const auditIndex = monitorSteps.findIndex(
-      (step) => step.name === 'Audit Railway ingestion deployment controls',
-    );
-    const healthIndex = monitorSteps.findIndex(
-      (step) => step.name === 'Check ingestion operational acceptance',
-    );
-
-    assert.ok(installIndex >= 0, 'workflow must install the Railway CLI');
-    assert.ok(
-      installIndex < contextIndex && contextIndex < auditIndex && auditIndex < healthIndex,
-      'Railway context and watch-path drift must be checked before compact health',
-    );
-    assert.equal(
-      monitorSteps.some((step) => step.name === 'Check Railway deploy drift against main'),
-      false,
-      'deploy drift needs its own job conclusion instead of inheriting the gated monitor result',
-    );
-
-    // The scheduled gate may walk first-parent history to find a recent gated
-    // ancestor. Keep that proof available without downloading blobs.
-    assert.equal(
-      checkout.with?.['fetch-depth'],
-      0,
-      'the green-main gate needs full first-parent history for ancestor fallback',
-    );
-    assert.equal(
-      checkout.with?.filter,
-      'blob:none',
-      'the gate history walk needs commits and trees, not blobs',
-    );
-
-    assert.equal(
-      workflow.jobs.monitor['timeout-minutes'],
-      20,
-      'the job budget must cover one Railway round trip per service',
-    );
-    assert.deepEqual(
-      workflow.concurrency,
-      { group: 'seed-freshness-monitor', 'cancel-in-progress': true },
-      'a run slower than the interval must be superseded, not stacked',
-    );
-    assert.equal(workflow.on.schedule[0].cron, '*/15 * * * *');
-    assert.ok(
-      DEEP_PASS_RUN_BUDGET_MS + RAILWAY_CALL_TIMEOUT_MS < 15 * 60 * 1000,
-      'the run deadline plus one last Railway timeout must finish before the next tick supersedes it',
-    );
-
-    assert.match(
-      monitorSteps[installIndex].run,
-      /npm install --global @railway\/cli@5\.30\.1/,
-      'scheduled audits must use a deterministic Railway CLI version',
-    );
-
-    const context = monitorSteps[contextIndex];
-    assert.equal(context.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_PRODUCTION_TOKEN }}');
-    assert.equal(context.env.RAILWAY_PROJECT_ID, '${{ vars.RAILWAY_PROJECT_ID }}');
-    assert.match(context.run, /RAILWAY_TOKEN/);
-    assert.match(context.run, /RAILWAY_PROJECT_ID/);
-    assert.match(
-      context.run,
-      /railway status --project "\$RAILWAY_PROJECT_ID" --environment production --json > \/dev\/null/,
-    );
-    assert.doesNotMatch(
-      context.run,
-      /railway link/,
-      'project tokens resolve their own context and must not invoke account-scoped linking',
-    );
-
-    const audit = monitorSteps[auditIndex];
-    assert.equal(audit.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_PRODUCTION_TOKEN }}');
-    assert.equal(audit.run.trim(), 'node scripts/audit-railway-watch-paths.mjs');
-    assert.equal(audit['continue-on-error'], undefined);
-    assert.doesNotMatch(
-      audit.run,
-      /--apply/,
-      'scheduled acceptance must detect Railway drift without mutating production',
-    );
-    assert.doesNotMatch(
-      workflowSource,
-      /RAILWAY_API_TOKEN/,
-      'the workflow must not use an account-scoped Railway credential',
-    );
-  });
-
-  it('validates the project token against the expected production context without linking', () => {
-    const success = runRailwayContext();
-    assert.equal(success.status, 0, success.stderr);
-    assert.match(success.stdout, /valid for the expected production context/);
-
-    for (const [label, options] of [
-      ['missing project token', { token: '' }],
-      ['missing project id', { projectId: '' }],
-      ['wrong project token', { token: 'wrong-token' }],
-      ['wrong project id', { projectId: 'wrong-project' }],
-    ]) {
-      const result = runRailwayContext(options);
-      assert.notEqual(result.status, 0, `${label} must fail before the Railway audit`);
-    }
-  });
-
-  it('publishes Railway deploy drift as an independent job conclusion', () => {
-    assert.ok(driftJob, 'workflow must define a dedicated drift job');
-    assert.equal(
-      driftJob.needs,
-      undefined,
-      'a gate failure must not skip the drift job or collapse its verdict into the monitor job',
-    );
-    assert.equal(driftJob.if, undefined, 'the independent drift job must run under default job semantics');
-    assert.equal(driftJob.name, 'Railway deploy drift');
-    assert.equal(driftJob['timeout-minutes'], 20);
-    // The STEP-level guard below is not enough: `continue-on-error` on the JOB
-    // publishes success over a failed drift step, which is the one thing this
-    // job's conclusion must never do. `monitor` already pins the job-level key.
-    assert.equal(
-      driftJob['continue-on-error'],
-      undefined,
-      'a green drift job must mean a clean fleet',
-    );
-    assert.deepEqual(driftJob.environment, {
+  it('reports ingestion acceptance only', () => {
+    assert.deepEqual(Object.keys(workflow.jobs), ['monitor']);
+    assert.deepEqual(workflow.jobs.monitor.environment, {
       name: 'ingestion-acceptance-production',
       deployment: false,
     });
-
-    const budgetStart = stepNamed('Start deploy-drift run budget', driftSteps);
-    assert.equal(driftSteps.indexOf(budgetStart), 0, 'the run budget must start before checkout and every prerequisite');
-    assert.match(budgetStart.run, /RAILWAY_DRIFT_JOB_STARTED_AT_MS=.*date \+%s%3N/);
-
-    const checkout = driftSteps.find(
+    const checkout = monitorSteps.find(
       (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/checkout@'),
     );
-    assert.ok(checkout, 'drift job must check out the trigger-head repository state');
-    assert.equal(checkout.uses, 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10');
     assert.equal(checkout.with?.['fetch-depth'], 0);
     assert.equal(checkout.with?.filter, 'blob:none');
-    // This checkout IS the comparison head: check-railway-deploy-drift.mjs resolves
-    // it with `git rev-parse HEAD`. Pinning `ref:` to anything else grades a stale
-    // tree, which reports a clean fleet while main sits undeployed.
-    assert.equal(
-      checkout.with?.ref,
-      undefined,
-      'the drift verdict must be measured against trigger head, not a pinned ref',
+    assert.deepEqual(
+      workflow.concurrency,
+      { group: 'seed-freshness-monitor', 'cancel-in-progress': false },
     );
-
-    const setupNode = driftSteps.find(
-      (step) => typeof step.uses === 'string' && step.uses.startsWith('actions/setup-node@'),
-    );
-    assert.ok(setupNode, 'drift job must set up Node independently');
-    assert.equal(setupNode.uses, 'actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020');
-    assert.equal(setupNode.with?.['node-version'], '24');
-
-    const install = stepNamed('Install pinned Railway CLI', driftSteps);
-    assert.match(install.run, /npm install --global @railway\/cli@5\.30\.1/);
-
-    const context = stepNamed('Verify Railway production context', driftSteps);
-    assert.equal(context.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_PRODUCTION_TOKEN }}');
-    assert.equal(context.env.RAILWAY_PROJECT_ID, '${{ vars.RAILWAY_PROJECT_ID }}');
-    assert.match(
-      context.run,
-      /railway status --project "\$RAILWAY_PROJECT_ID" --environment production --json > \/dev\/null/,
-    );
-
-    const drift = stepNamed('Check Railway deploy drift against main', driftSteps);
-    assert.equal(drift.env.RAILWAY_TOKEN, '${{ secrets.RAILWAY_PRODUCTION_TOKEN }}');
-    assert.equal(drift.env.RAILWAY_PROJECT_ID, '${{ vars.RAILWAY_PROJECT_ID }}');
-    assert.match(drift.run, /node scripts\/check-railway-deploy-drift\.mjs/);
-    assert.match(
-      drift.run,
-      /git fetch --quiet origin main/,
-      'a merge landing mid-run must be resolvable as ahead, not reported as behind',
-    );
+    assert.equal(workflow.on.schedule[0].cron, '*/15 * * * *');
     assert.doesNotMatch(
-      drift.run,
-      /git fetch[^\n]*--depth/,
-      're-fetching with a depth would re-shallow the full-history checkout',
-    );
-    // The script's exit code IS the fleet verdict. `git fetch ... || true` sits one
-    // line above it in the same run block, so a copied suffix is the likely way this
-    // regresses -- and YAML `continue-on-error` is not the only way to swallow it.
-    assert.doesNotMatch(
-      drift.run,
-      /check-railway-deploy-drift\.mjs[^\n]*\|\|/,
-      'shell suppression would publish a green drift job over a stranded fleet',
-    );
-    assert.equal(
-      drift['continue-on-error'],
-      undefined,
-      'a merge that never reached production must fail the drift job',
-    );
-    assert.equal(drift.if, undefined, 'no monitor gate expression may suppress the drift verdict');
-    assert.doesNotMatch(JSON.stringify(driftJob), /steps\.gate|needs\s*:/);
-    // Deliberate divergence from `monitor`, which detaches onto a gated ancestor when
-    // the gate falls back. The fleet is always judged against trigger head -- the
-    // strict reading. Pinned here so the baseline cannot change without a test edit.
-    assert.equal(
-      driftSteps.some((step) => typeof step.run === 'string' && step.run.includes('git checkout')),
-      false,
-      'drift is judged against trigger head; a gated-ancestor checkout would silently move the baseline',
+      workflowSource,
+      /Railway|RAILWAY_|railway-deploy|audit-railway-watch-paths|check-railway-deploy-drift|@railway\/cli/i,
+      'deployment configuration and image drift belong to their own workflow',
     );
   });
 });

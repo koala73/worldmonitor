@@ -21,6 +21,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vite
 import { initTestI18n } from './helpers/i18n.mts';
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AuthSession } from '@/services/auth-state';
+import type { SubscriptionInfo } from '@/services/billing';
 
 const session: AuthSession = {
   user: { id: 'A', name: 'User A', email: 'a@example.com', role: 'free' },
@@ -29,6 +30,9 @@ const session: AuthSession = {
 
 /** Flipped per case; read lazily by the runtime mock below. */
 let desktopRuntime = false;
+let signedIn = true;
+let billingUxState: 'free' | 'lapsed' = 'free';
+let mockSubscription: SubscriptionInfo | null = null;
 
 const storageValues = new Map<string, string>();
 const storage: Storage = {
@@ -47,7 +51,7 @@ vi.mock('@/services/desktop-runtime', async (importOriginal) => ({
 
 vi.mock('@/services/auth-state', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/auth-state')>()),
-  getAuthState: () => session,
+  getAuthState: () => signedIn ? session : { ...session, user: null },
   subscribeAuthState: () => () => {},
 }));
 
@@ -100,7 +104,7 @@ vi.mock('@/config/variant', () => ({
 }));
 
 vi.mock('@/services/billing', () => ({
-  getSubscription: () => null,
+  getSubscription: () => mockSubscription,
   onSubscriptionChange: () => () => {},
   openBillingPortal: async () => ({ outcome: 'no-customer' as const }),
   prereserveBillingPortalTab: () => null,
@@ -115,8 +119,10 @@ vi.mock('@/services/billing', () => ({
 }));
 
 vi.mock('@/services/billing-state', () => ({
-  deriveBillingUxState: () => 'free',
-  getReactivationHref: () => '/pro#pricing',
+  deriveBillingUxState: () => billingUxState,
+  getReactivationHref: (planKey: string | null | undefined) => planKey
+    ? `/pro?wm_reactivate_plan=${planKey}#pricing`
+    : '/pro#pricing',
 }));
 
 vi.mock('@/services/api-keys', () => ({
@@ -148,9 +154,15 @@ const { UnifiedSettings } = await import('@/components/UnifiedSettings');
 
 type SettingsInternals = {
   handleUpgradeClick(): void;
+  overlay: HTMLElement;
+  render(loadAccountData?: boolean): void;
 };
 
 const PRO_URL = 'https://worldmonitor.app/pro';
+const RUNTIMES = [
+  ['web', false],
+  ['desktop', true],
+] as const;
 
 let invocations: Array<{ command: string; payload?: Record<string, unknown> }>;
 let settings: InstanceType<typeof UnifiedSettings>;
@@ -177,6 +189,9 @@ beforeEach(() => {
   storageValues.clear();
   vi.stubGlobal('localStorage', storage);
   invocations = [];
+  signedIn = true;
+  billingUxState = 'free';
+  mockSubscription = null;
   // The bridge `tauri-bridge.ts` looks for. Present in both cases, so a
   // desktop assertion cannot pass merely because the web case lacked it.
   vi.stubGlobal('__TAURI_INTERNALS__', {
@@ -221,5 +236,49 @@ describe('UnifiedSettings upgrade click (#5911)', () => {
     // web branch ran at all.
     expect(openSpy).toHaveBeenCalledWith(PRO_URL, '_blank');
     expect(invocations).toEqual([]);
+  });
+});
+
+describe('UnifiedSettings desktop Plan & billing parity (#6108)', () => {
+  it.each(RUNTIMES)('renders the signed-in billing tab and canonical fallback plan href on %s', (_runtime, isDesktopApp) => {
+    desktopRuntime = isDesktopApp;
+    settings = new UnifiedSettings(config(isDesktopApp));
+    const internal = settings as unknown as SettingsInternals;
+
+    internal.render(false);
+
+    expect(internal.overlay.querySelector('[data-tab="billing"]')).not.toBeNull();
+    expect(internal.overlay.querySelector<HTMLAnchorElement>('.upgrade-pro-cta-link')?.href)
+      .toBe(PRO_URL);
+  });
+
+  it.each(RUNTIMES)('renders the canonical reactivation href on %s', (_runtime, isDesktopApp) => {
+    desktopRuntime = isDesktopApp;
+    billingUxState = 'lapsed';
+    mockSubscription = {
+      planKey: 'pro_annual',
+      displayName: 'Pro Annual',
+      status: 'cancelled',
+      currentPeriodEnd: Date.now() - 1_000,
+      renewalVerificationState: null,
+    };
+    settings = new UnifiedSettings(config(isDesktopApp));
+    const internal = settings as unknown as SettingsInternals;
+
+    internal.render(false);
+
+    expect(internal.overlay.querySelector<HTMLAnchorElement>('.upgrade-pro-cta-link')?.href)
+      .toBe(`${PRO_URL}?wm_reactivate_plan=pro_annual#pricing`);
+  });
+
+  it('keeps the billing tab hidden for a signed-out desktop session', () => {
+    desktopRuntime = true;
+    signedIn = false;
+    settings = new UnifiedSettings(config(true));
+    const internal = settings as unknown as SettingsInternals;
+
+    internal.render(false);
+
+    expect(internal.overlay.querySelector('[data-tab="billing"]')).toBeNull();
   });
 });

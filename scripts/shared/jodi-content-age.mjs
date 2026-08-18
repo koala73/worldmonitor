@@ -1,5 +1,29 @@
 import { monthIndex, monthPeriodEnd } from './jodi-demand-change.mjs';
 
+/**
+ * Milliseconds for a clock supplied as either a `Date` or epoch ms, or null
+ * when it is neither usable.
+ *
+ * Both shapes reach this module. Callers inside the seeders pass a `Date`;
+ * runSeed's content-age hook passes `startMs`, a number
+ * (`contentMeta(data, startMs)`, scripts/_seed-utils.mjs). Accepting only
+ * `instanceof Date` made `jodiDatasetContentMeta` return null for every
+ * runSeed-driven call, and api/health.js reads a null newestItemAt as
+ * STALE_CONTENT — so jodiGas and lngVulnerability were permanently stale
+ * regardless of how current the file was (#6799).
+ *
+ * Still fail-closed for a genuinely unusable clock (NaN, null, a string): the
+ * caller cannot date a file without knowing "now", and guessing would let a
+ * mis-stamped row vouch for freshness.
+ */
+function clockMs(now) {
+  if (now instanceof Date) {
+    const ms = now.getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  return typeof now === 'number' && Number.isFinite(now) ? now : null;
+}
+
 export const MAX_JODI_CONTENT_AGE_MONTHS = 6;
 
 /**
@@ -10,6 +34,24 @@ export const MAX_JODI_CONTENT_AGE_MONTHS = 6;
  * covered happened to cross short ones.
  */
 export const MAX_JODI_CONTENT_AGE_MIN = MAX_JODI_CONTENT_AGE_MONTHS * 31 * 24 * 60;
+
+/**
+ * Gas content budget, in minutes. Separate from the oil budget above because
+ * the two files do not lag by the same amount.
+ *
+ * Measured 2026-08-16: the oil files had advanced to 2026-05 (77 days) while
+ * the gas world file's newest month was 2026-01 (197 days). Holding gas to the
+ * shared six-month figure reported a file that is behaving normally for its own
+ * publisher as STALE_CONTENT by 11 days, which is a threshold sized to the
+ * wrong dataset rather than a real staleness (#6799).
+ *
+ * 230 days rather than a figure closer to the observed 197: the gas age climbs
+ * daily until JODI publishes the next month, so a threshold set near the
+ * observed peak clears today and re-alarms on the first missed publish. 230
+ * absorbs one skipped month while still surfacing a genuine stall — the file
+ * would have to fall a further month behind its own worst observed lag.
+ */
+export const MAX_JODI_GAS_CONTENT_AGE_MIN = 230 * 24 * 60;
 
 /**
  * How many countries must report a month before it can date the whole file.
@@ -57,9 +99,11 @@ export function assessChinaJodiCoverage(records, now, hasMeasurements) {
   }
 
   const sourceMonth = monthIndex(china.dataMonth);
-  const currentMonth = now instanceof Date && Number.isFinite(now.getTime())
-    ? now.getUTCFullYear() * 12 + now.getUTCMonth()
-    : null;
+  const nowForMonth = clockMs(now);
+  const nowDate = nowForMonth === null ? null : new Date(nowForMonth);
+  const currentMonth = nowDate === null
+    ? null
+    : nowDate.getUTCFullYear() * 12 + nowDate.getUTCMonth();
   if (sourceMonth == null || currentMonth == null || sourceMonth > currentMonth) {
     return { ok: false, reason: 'china-invalid-month', dataMonth: china.dataMonth ?? null, ageMonths: null };
   }
@@ -123,7 +167,7 @@ export function jodiDatasetContentMeta(
   minCountries = MIN_JODI_CONTENT_AGE_COUNTRIES,
 ) {
   if (!Array.isArray(records)) return null;
-  const nowMs = now instanceof Date && Number.isFinite(now.getTime()) ? now.getTime() : null;
+  const nowMs = clockMs(now);
   if (nowMs === null) return null;
 
   /** @type {Map<number, number>} */

@@ -25,17 +25,12 @@ import {
   WATCHDOG_DISPATCH_STEP_NAME,
   WATCHDOG_HISTORY_WINDOW_MS,
   WATCHDOG_JOB_READ_CONCURRENCY,
-  WATCHDOG_CLASSIFY_JOB_NAME,
   WATCHDOG_MAX_PAGES,
   WATCHDOG_READ_FAILURE_STEP_NAME,
-  WATCHDOG_READ_FAILURE_STREAK_LIMIT,
-  WATCHDOG_READ_FAILURE_STREAK_WINDOW_MS,
   WATCHDOG_READ_RETRY_ATTEMPTS,
   WATCHDOG_READ_RETRY_BASE_MS,
   WATCHDOG_READ_RETRY_MAX_MS,
   WATCHDOG_SOURCE_WORKFLOW_FILE,
-  WATCHDOG_STREAK_API_RESERVE,
-  WATCHDOG_STREAK_PAGE_SIZE,
   classifyWatchdogSnapshot,
   dispatchGitHubRecovery,
   prepareRecoveryDispatch,
@@ -945,8 +940,8 @@ describe('allowlisted GitHub watchdog transport', () => {
       [{ 'retry-after': new Date(NOW + 2_000).toUTCString() }, 2_000],
       [{ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.floor(NOW / 1_000) + 5) }, 5_000],
       // A secondary-limit window longer than the ladder is clamped: sleeping it
-      // out would blow the classify job's own timeout, and the third failure
-      // escalates through the read-failure streak instead.
+      // out would blow the classify job's own timeout, and the exhausted read
+      // fails the current manual invocation instead.
       [{ 'retry-after': '600' }, WATCHDOG_READ_RETRY_MAX_MS],
     ];
     for (const [headers, expected] of cases) {
@@ -2315,144 +2310,29 @@ describe('durably held recovery dispatch orchestration', () => {
   });
 });
 
-// The classify job used to be excluded from ever setting a non-zero exit code,
-// even when main() threw, and no workflow step gated on its outcome. Budget
-// exhaustion, the page cap, or one un-retried 403 all produced a warning, exit
-// 0, and a green check — the same green-while-dead shape that hid the
-// pagination bug for months. This suite owns the two ways it can now go red.
-describe('watchdog read-failure escalation', () => {
-  const watchdogRun = (id, { createdAt = new Date(NOW - 60_000).toISOString(), runAttempt = 1 } = {}) => ({
-    id,
-    run_attempt: runAttempt,
-    created_at: createdAt,
-  });
-
-  const classifyJobs = (markerConclusion, { jobName = WATCHDOG_CLASSIFY_JOB_NAME } = {}) => [{
-    id: 1,
-    name: jobName,
-    steps: [
-      { name: 'Read or classify reconciliation control state', conclusion: 'success' },
-      ...(markerConclusion === null
-        ? []
-        : [{ name: WATCHDOG_READ_FAILURE_STEP_NAME, conclusion: markerConclusion }]),
-    ],
-  }];
-
-  const streakClient = ({ runs, jobsByRun, calls = [] }) => new GitHubWatchdogClient({
-    repository: 'o/r',
-    token: 'token',
-    now: () => NOW,
-    maxRequests: WATCHDOG_STREAK_API_RESERVE,
-    fetchImpl: async (url) => {
-      const parsed = new URL(url);
-      calls.push(`${parsed.pathname}${parsed.search}`);
-      if (parsed.pathname.endsWith(`/${WATCHDOG_SOURCE_WORKFLOW_FILE}/runs`)) {
-        return json({ total_count: runs.length, workflow_runs: runs });
-      }
-      const match = /\/actions\/runs\/(\d+)\/attempts\/\d+\/jobs$/.exec(parsed.pathname);
-      if (match) {
-        const jobs = jobsByRun[match[1]] ?? [];
-        return json({ total_count: jobs.length, jobs });
-      }
-      throw new Error(`unexpected ${url}`);
-    },
-  });
-
-  it('counts consecutive marked runs and stops at the first run that read GitHub', async () => {
-    const calls = [];
-    const client = streakClient({
-      calls,
-      runs: [watchdogRun(31), watchdogRun(32), watchdogRun(33)],
-      jobsByRun: {
-        31: classifyJobs('success'),
-        32: classifyJobs('skipped'),
-        33: classifyJobs('success'),
-      },
-    });
-
-    assert.equal(await client.readReadFailureStreak(), 1);
-    // Run 33 sits behind an unmarked run, so its jobs are never read.
-    assert.ok(!calls.some((call) => call.includes('/runs/33/')));
-    assert.equal(
-      calls[0],
-      `/repos/o/r/actions/workflows/${WATCHDOG_SOURCE_WORKFLOW_FILE}`
-      + `/runs?event=schedule&status=completed&per_page=${WATCHDOG_STREAK_PAGE_SIZE}&page=1`,
-    );
-  });
-
-  it('excludes the current run, caps the walk at the limit, and stays inside its reserve', async () => {
-    const calls = [];
-    const client = streakClient({
-      calls,
-      runs: [41, 42, 43, 44, 45].map((id) => watchdogRun(id)),
-      jobsByRun: Object.fromEntries([41, 42, 43, 44, 45].map((id) => [id, classifyJobs('success')])),
-    });
-
-    assert.equal(await client.readReadFailureStreak({ excludeRunId: '41' }), WATCHDOG_READ_FAILURE_STREAK_LIMIT);
-    assert.ok(!calls.some((call) => call.includes('/runs/41/')));
-    assert.ok(client.requestCount <= WATCHDOG_STREAK_API_RESERVE);
-  });
-
-  it('treats an absent marker, an aged run, and a foreign job as no evidence', async () => {
-    const cases = [
-      // Cancelled before the marker step could run.
-      { runs: [watchdogRun(51)], jobsByRun: { 51: classifyJobs(null) } },
-      // Older than the streak window, so the schedule had a gap.
-      {
-        runs: [watchdogRun(52, {
-          createdAt: new Date(NOW - WATCHDOG_READ_FAILURE_STREAK_WINDOW_MS - 1_000).toISOString(),
-        })],
-        jobsByRun: { 52: classifyJobs('success') },
-      },
-      // A marker with the right name under some other job proves nothing.
-      { runs: [watchdogRun(53)], jobsByRun: { 53: classifyJobs('success', { jobName: 'dispatch' }) } },
-    ];
-    for (const [index, fixture] of cases.entries()) {
-      assert.equal(await streakClient(fixture).readReadFailureStreak(), 0, `case ${index}`);
-    }
-  });
-
-  it('fails the classify job only once the blindness is sustained', async () => {
-    const streaks = [];
-    const github = { readReadFailureStreak: async () => streaks.shift() };
-
-    // A classification that is ambiguous for a non-read reason stays green and
-    // never spends a request on the history.
+// A manual-only watchdog has no later scheduled run that can turn a warning
+// into a failure. The current invocation must therefore go red on its first
+// unreadable GitHub result.
+describe('manual watchdog read-failure exit', () => {
+  it('keeps ambiguity from a non-GitHub dependency separate from read blindness', async () => {
     assert.deepEqual(
       await resolveReadFailureExit({
-        github: { readReadFailureStreak: async () => { throw new Error('must not read'); } },
         result: { outcome: 'DEFERRED_AMBIGUOUS', readFailureCode: null },
-        sourceRunId: '1',
       }),
-      { failJob: false, streak: 0, reason: null },
+      { failJob: false, reason: null },
     );
-
-    for (const [priors, failJob] of [[0, false], [1, false], [2, true], [3, true]]) {
-      streaks.push(priors);
-      const escalation = await resolveReadFailureExit({
-        github,
-        result: { outcome: 'DEFERRED_AMBIGUOUS', readFailureCode: 'GITHUB_READ_BUDGET_EXCEEDED' },
-        sourceRunId: '1',
-      });
-      assert.equal(escalation.streak, priors + 1);
-      assert.equal(escalation.failJob, failJob, `priors ${priors}`);
-    }
   });
 
-  it('fails closed when the streak read itself cannot complete', async () => {
-    const escalation = await resolveReadFailureExit({
-      github: {
-        readReadFailureStreak: async () => {
-          throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'GitHub returned HTTP 403', { status: 403 });
-        },
+  it('fails the first manual invocation that cannot read GitHub', async () => {
+    assert.deepEqual(
+      await resolveReadFailureExit({
+        result: { outcome: 'DEFERRED_AMBIGUOUS', readFailureCode: 'GITHUB_READ_BUDGET_EXCEEDED' },
+      }),
+      {
+        failJob: true,
+        reason: 'the manual watchdog could not read GitHub (GITHUB_READ_BUDGET_EXCEEDED)',
       },
-      result: { outcome: 'DEFERRED_AMBIGUOUS', readFailureCode: 'GITHUB_READ_FAILED' },
-      sourceRunId: '1',
-    });
-
-    assert.equal(escalation.failJob, true);
-    assert.equal(escalation.streak, null);
-    assert.match(escalation.reason, /streak could not be read/);
+    );
   });
 
   it('reports a GitHub read failure distinctly from a control-plane failure', async () => {
@@ -2489,7 +2369,6 @@ describe('watchdog read-failure escalation', () => {
         throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'GitHub returned HTTP 500', { status: 500 });
       },
       readTargetRunSummaries: async () => [],
-      readReadFailureStreak: async () => 0,
     };
     const blind = await prepareRecoveryDispatch({
       github,
@@ -2506,17 +2385,15 @@ describe('watchdog read-failure escalation', () => {
     assert.equal(blind.outcome, 'DEFERRED_AMBIGUOUS');
     assert.equal(blind.readFailureCode, 'GITHUB_READ_FAILED');
     assert.deepEqual(
-      await resolveReadFailureExit({ github, result: blind, sourceRunId: '1' }),
+      await resolveReadFailureExit({ result: blind }),
       {
-        failJob: false,
-        streak: 1,
-        reason: '1 consecutive scheduled runs could not read GitHub (GITHUB_READ_FAILED)',
+        failJob: true,
+        reason: 'the manual watchdog could not read GitHub (GITHUB_READ_FAILED)',
       },
     );
   });
 
-  // The marker step name is the contract between the controller and the
-  // workflow: a rename on either side silently retires the detector.
+  // The marker step name is the contract between the controller and workflow.
   it('pins the workflow marker step to the controller constant', () => {
     const workflow = readFileSync(
       resolve(fileURLToPath(new URL('../.github/workflows/', import.meta.url)), WATCHDOG_SOURCE_WORKFLOW_FILE),
@@ -2526,8 +2403,7 @@ describe('watchdog read-failure escalation', () => {
       workflow,
       new RegExp(`^ {6}- name: ${WATCHDOG_READ_FAILURE_STEP_NAME}$`, 'm'),
     );
-    // `always()` keeps the run that trips the streak from skipping its own
-    // marker and resetting the count.
+    // `always()` records the read failure even after the controller step fails.
     assert.match(
       workflow,
       /^ {8}if: always\(\) && steps\.controller\.outputs\.read_failure == 'true'$/m,
@@ -2557,8 +2433,8 @@ describe('watchdog phase process contract', () => {
         assert.equal(JSON.parse(result.stdout.trim().split('\n').at(-1)).outcome, 'DEFERRED_AMBIGUOUS');
         const output = readFileSync(outputPath, 'utf8');
         assert.match(output, /^outcome=DEFERRED_AMBIGUOUS$/m);
-        // A crash is not a read-path failure, so it must not leave a streak
-        // marker that a later run would count.
+        // A crash is not a classified GitHub read-path failure, so the
+        // diagnostic marker remains skipped.
         assert.match(output, /^read_failure=false$/m);
       }
     } finally {

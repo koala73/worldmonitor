@@ -15,6 +15,10 @@ description: "Every error shape the World Monitor MCP server emits — JSON-RPC 
   - Billing -32002 / -32603 denials     api/mcp/auth.ts (getMcpBillingVerificationDenial) + api/mcp/dispatch.ts (BillingDenialError re-emit)
   - Per-minute -32029 + hit telemetry   api/mcp/auth.ts (applyPerMinuteLimit, applyAnonDiscoveryLimit, emitMcpRateLimitHit)
   - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts (reserveDailyQuotaForRequest)
+  - Free-allowance -32029 (HTTP 429)    api/mcp/dispatch.ts (reserveFreeAccountAllowance rejection)
+  - Free tool-scope -32002 (HTTP 403)   api/mcp/dispatch.ts (upgrade-required guard)
+  - Free-account allowance meter        api/mcp/free-account-allowance.ts (reserveFreeAccountAllowance)
+  - Structured denial data payload      api/mcp/upgrade.ts (buildMcpStructuredDenial, DENIAL_COPY)
   - Tool exec -32603                    api/mcp/dispatch.ts (dispatchToolsCall)
   - _budget_exceeded envelope           api/mcp/dispatch.ts (budget cap handling)
   - _jmespath_error envelope            api/mcp/jmespath.ts (applyJmespath)
@@ -33,15 +37,15 @@ For the projection grammar itself, see the [JMESPath guide](/mcp-jmespath). For 
 - **JSON-RPC `error.code`** is the application-layer answer. Seven codes are in use: `-32001`, `-32002`, `-32029`, `-32600`, `-32601`, `-32602`, `-32603`. The handler never emits another code — if you see one, treat it as a wire bug and file an issue.
 - **Soft-behavior envelopes** are the high-volume failure mode. `tools/call` succeeds at the JSON-RPC layer (HTTP 200, no `error` field), but the JSON sitting inside `result.content[0].text` carries a `_budget_exceeded` or `_jmespath_error` discriminator. Clients that only inspect the JSON-RPC envelope will silently treat these as successes — parse `result.content[0].text` and check for a leading `_` key before consuming the payload as data.
 - **Executed calls stay charged.** `_budget_exceeded`, `_jmespath_error`, and tool-execution errors (`-32603`) all happen after the tool has run, so they consume the Pro daily-quota slot. Only pre-dispatch failures such as daily-cap rejection or quota-reservation service failure avoid charging the slot.
-- **Both 401 paths set `WWW-Authenticate`** with `realm="worldmonitor"` and a `resource_metadata` pointer at `/.well-known/oauth-protected-resource`. RFC 9728-aware clients (Claude Desktop, MCP Inspector) bounce through the OAuth flow on this header without further intervention.
+- **Every 401 sets `WWW-Authenticate`** with `realm="worldmonitor"` and a `resource_metadata` pointer at `/.well-known/oauth-protected-resource`. RFC 9728-aware clients (Claude Desktop, MCP Inspector) bounce through the OAuth flow on this header without further intervention.
 
 ## JSON-RPC error codes
 
 | Code      | Meaning (this server)                                                  | Paired HTTP status        | Recovery                                                              |
 |-----------|------------------------------------------------------------------------|---------------------------|-----------------------------------------------------------------------|
-| `-32001`  | Unauthenticated, invalid token, or subscription not active             | **401**                   | Re-authenticate via OAuth or fix the `X-WorldMonitor-Key` header      |
-| `-32002`  | Subscription lapsed — confirmed with the billing provider              | **403**                   | Do NOT re-authenticate (the identity is still valid). Resubscribe to restore access |
-| `-32029`  | Rate-limited — per-minute throttle OR Pro daily quota cap              | **200** (per-min) / **429** (daily) | Honour `Retry-After`; for 200/per-min back off ~1s                    |
+| `-32001`  | Unauthenticated or invalid credentials                                 | **401**                   | Re-authenticate via OAuth or fix the `X-WorldMonitor-Key` header      |
+| `-32002`  | Terminal entitlement denial — a confirmed lapse, or a tool outside your tier | **403**             | Do NOT re-authenticate (the identity is still valid). Subscribe / resubscribe to restore access |
+| `-32029`  | Rate-limited — per-minute throttle, Pro daily cap, OR free-account allowance | **200** (per-min) / **429** (daily) | Honour `Retry-After`; for 200/per-min back off ~1s                    |
 | `-32600`  | Malformed JSON-RPC request envelope                                    | **200**                   | Fix the request encoder; this is a client bug                         |
 | `-32601`  | Method not found                                                       | **200**                   | Use a method advertised in the initialize result's `capabilities`     |
 | `-32602`  | Invalid params — missing/unknown tool, prompt, or resource URI         | **200**                   | Fix the params; consult `tools/list`, `prompts/list`, or `resources/list` |
@@ -51,13 +55,15 @@ Subsections below give the literal payload, the trigger site, and what to do for
 
 ### `-32001` — Unauthenticated / invalid credentials
 
-Fires from six `api/mcp/auth.ts` emission sites, always paired with HTTP **401** and a `WWW-Authenticate` header. Those sites collapse to five user-visible triggers, in order of how clients hit them:
+Fires from the `api/mcp/auth.ts` emission sites, always paired with HTTP **401** and a `WWW-Authenticate` header. Those sites collapse to four user-visible triggers, in order of how clients hit them:
 
 1. **No `Authorization` bearer AND no `X-WorldMonitor-Key`** — the client called `/mcp` with no credentials.
 2. **`Authorization: Bearer <token>` but `<token>` is invalid or expired** — the token didn't resolve to a context (revoked / TTL expired / never minted by `/api/oauth/token`).
 3. **`X-WorldMonitor-Key: <key>` but `<key>` isn't in the valid set** — the API key is wrong.
 4. **OAuth token resolves but the Pro MCP token row is missing or cross-bound** — the `mcpTokenId` no longer maps to the userId. Typically a revoke from Settings → Connected MCP clients.
-5. **OAuth token resolves but the subscription went away** — entitlement re-check found `tier < 1`, `mcpAccess !== true`, or `validUntil < now`. Includes the entitlements-service-unavailable fail-closed path. A lapse the billing provider has *confirmed* does NOT use this code — it returns `-32002` at HTTP 403 (see below), because re-authenticating cannot fix it.
+**Not** in this list, deliberately: a caller whose subscription is inactive. Only a confirmed free account (a configured no-row result or an internally consistent tier-0 row) is admitted onto the free-account allowance (see `-32029` and `-32002` below). An expired or disabled paid entitlement returns terminal `-32002` at HTTP 403 because re-authenticating cannot fix it; provider-confirmed lapses use the more specific `lapsed-subscription` reason. An entitlement lookup that fails or cannot be verified returns a retryable `-32603` at HTTP 503 — it is an availability failure, not a verdict about the caller.
+
+Every `-32001` carries a machine-readable `data` payload: `reason` is always `no-account`, `nextStep` is one sentence of guidance, and `upgradeUrl` is where to send the user. Branch on `error.data.reason`, not on the message text.
 
 Example wire payload (case 1):
 
@@ -67,7 +73,12 @@ Example wire payload (case 1):
   "id": null,
   "error": {
     "code": -32001,
-    "message": "Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header."
+    "message": "Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.",
+    "data": {
+      "reason": "no-account",
+      "nextStep": "Sign in at the upgrade URL, connect WorldMonitor MCP with your account, or subscribe to Pro for the full daily allowance.",
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel"
+    }
   }
 }
 ```
@@ -80,9 +91,11 @@ Content-Type: application/json
 
 **What to do.** Re-run the OAuth flow (`/api/oauth/token` with a fresh authorization code, OR refresh-grant with a valid refresh token). For API-key clients, double-check the `X-WorldMonitor-Key` header — user-issued `wm_` keys and operator-issued enterprise keys must go in that header, NOT as `Authorization: Bearer`. The `WWW-Authenticate` header's `resource_metadata` pointer is the canonical place to start the discovery flow from scratch.
 
-### `-32002` — Subscription lapsed (confirmed)
+### `-32002` — Terminal entitlement denial
 
-Fires from the entitlement pre-check (`api/mcp/auth.ts` `getMcpBillingVerificationDenial`) and, for a lapse that lands mid-call between the pre-check and a tool's downstream fetch, from `api/mcp/dispatch.ts` (typed `BillingDenialError` re-emit). Always paired with HTTP **403**, `Cache-Control: no-store`, and an `X-Billing-Verification: subscription_lapsed` header. No `WWW-Authenticate` header is set — the credential is still valid; the subscription is not.
+Always HTTP **403**, `Cache-Control: no-store`, and **no** `WWW-Authenticate` header — the credential is valid, the entitlement is not, and re-authenticating cannot change that. Two triggers, distinguished by `data.reason`:
+
+**`reason: "lapsed-subscription"`** — a lapse the billing provider has confirmed. Fires from the entitlement pre-check (`api/mcp/auth.ts` `getMcpBillingVerificationDenial`) and, for a lapse landing mid-call between the pre-check and a tool's downstream fetch, from `api/mcp/dispatch.ts` (typed `BillingDenialError` re-emit). Also sets `X-Billing-Verification: subscription_lapsed`.
 
 ```json
 {
@@ -91,7 +104,12 @@ Fires from the entitlement pre-check (`api/mcp/auth.ts` `getMcpBillingVerificati
   "error": {
     "code": -32002,
     "message": "Subscription lapsed. Re-authenticating will not help — resubscribe to restore access.",
-    "data": { "code": "subscription_lapsed" }
+    "data": {
+      "code": "subscription_lapsed",
+      "reason": "lapsed-subscription",
+      "nextStep": "Resubscribe at the upgrade URL. The existing credential stays valid — re-authenticating will not restore access.",
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel"
+    }
   }
 }
 ```
@@ -103,11 +121,29 @@ X-Billing-Verification: subscription_lapsed
 Content-Type: application/json
 ```
 
+**`reason: "upgrade-required"`** — a signed-in account on the free allowance called a tool outside it. The free allowance covers **cached-data tools only**; tools that fetch live data downstream stay Pro-only. Fires from `api/mcp/dispatch.ts` before any allowance slot is charged, so a refused call costs the caller nothing. No `X-Billing-Verification` header (nothing is being verified).
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": null,
+  "error": {
+    "code": -32002,
+    "message": "This tool requires a WorldMonitor Pro subscription.",
+    "data": {
+      "reason": "upgrade-required",
+      "nextStep": "The free allowance covers cached-data tools only. Call one of those, or subscribe to Pro at the upgrade URL for the full tool set.",
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel"
+    }
+  }
+}
+```
+
 **What to do.** Do not retry and do not re-run OAuth — both will reproduce the same denial. Surface the state to the user: the subscription must be renewed (worldmonitor.app → Pricing) before MCP access resumes. Renewal takes effect within seconds of the provider webhook; no re-authentication is needed afterwards. While the same subscription is still being *verified* (provider re-check in flight), the server instead returns a retryable `-32603` at HTTP 503 with `X-Billing-Verification: renewal_verification_pending|renewal_verification_failed` and a dynamic `Retry-After` — see `-32603` below.
 
-### `-32029` — Rate limited (per-minute OR daily)
+### `-32029` — Rate limited (per-minute, daily cap, or free allowance)
 
-Per-minute and daily-cap triggers share this code; the HTTP status disambiguates.
+All three triggers share this code; the HTTP status disambiguates the per-minute case, and `error.data.reason` disambiguates the free allowance from the Pro daily cap.
 
 **Per-minute throttle — HTTP 200.** Sliding-window limiter at **60 requests / minute** keyed per API key (Starter+), per Pro user (combined across all that user's tokens), or per IP for anonymous public discovery. Credentialed requests are limited after auth. Credential-less public discovery methods (`initialize`, `notifications/initialized`, `tools/list`, `resources/list`, `resources/templates/list`) and anonymous public-resource reads are served without auth but still pass through the anonymous discovery limiter. Credential-less data/quota methods, or metadata methods outside that public set, do **not** use anonymous discovery — they fail closed with `-32001` / HTTP 401. Comes back as a JSON-RPC error inside HTTP 200 because the limiter is upstream of any per-id correlation. Fails OPEN on Upstash transient errors — single spikes in limiter-backend latency won't take the API down.
 
@@ -134,7 +170,7 @@ Example payload (Pro variant — env_key clients get the same envelope shape wit
 }
 ```
 
-**Pro/OAuth daily cap — HTTP 429 + `Retry-After`.** Hard daily cap (default **50 quota-consuming calls / UTC day**) enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** (the auth-symmetric resources path) count. `wm_…` API-key MCP callers do not enter this MCP daily reservation path; they are protected here by the 60 requests/minute/key limiter, while broader REST/API plan allowances are enforced outside the MCP handler. **Exempt from the Pro/OAuth daily cap:** `describe_tool`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`, and `resources/read` of a **public** (concrete, metadata-only) resource such as `worldmonitor://seed-meta/freshness`. (These methods still count toward the per-minute limit above — daily and per-minute exemption sets are different.)
+**Daily cap — HTTP 429 + `Retry-After`.** A hard daily cap (default **50 quota-consuming calls / UTC day**) is enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** (the auth-symmetric resources path) count. Dashboard-issued `wm_…` API-key callers use the 50/day default. OAuth allowances are plan-resolved; API Starter and API Business currently use that same default, while enterprise OAuth can be unlimited. Legacy deployment-allowlisted operator keys are the only authenticated class outside the daily reservation path. **Exempt from the daily cap:** `describe_tool`, `get_sources`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`, `resources/read` of a **public** resource such as `worldmonitor://seed-meta/freshness`, and the authenticated status read `worldmonitor://account/mcp-allowance`. (These methods still count toward the authenticated per-minute limit, except anonymous `get_sources`, which uses its separate 10/minute/IP fail-closed limit.)
 
 ```json
 {
@@ -147,13 +183,33 @@ Example payload (Pro variant — env_key clients get the same envelope shape wit
 }
 ```
 
+**Free-account allowance — HTTP 429 + `Retry-After`.** A signed-in account without a subscription gets a small free taste of the **cached-data** tools, metered by two fail-closed counters: **3 idle-gap request windows per UTC day** and an absolute ceiling of **5 calls per UTC day**. A new request window opens after 15 minutes of inactivity — MCP sessions have no task boundary, so wall-clock idleness is the only honest one. Whichever counter is exhausted first produces the same denial. Live-fetch tools are not covered at all and return `-32002` / 403 `reason: "upgrade-required"` (above) without spending a slot.
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "error": {
+    "code": -32029,
+    "message": "Free-account MCP allowance exhausted for today.",
+    "data": {
+      "reason": "allowance-exhausted",
+      "nextStep": "Wait until the next UTC day for another free allowance window, or upgrade to Pro for a higher daily limit.",
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel"
+    }
+  }
+}
+```
+
+This is deliberately **not** `-32001` / 401. An exhausted quota is not an authentication failure, and answering it with the re-authenticate envelope sends RFC 9728-aware clients into a loop: OAuth succeeds, the retry 401s again, forever. Honour `Retry-After` or upgrade.
+
 ```http
 HTTP/1.1 429 Too Many Requests
 Retry-After: 41200
 Content-Type: application/json
 ```
 
-**What to do.** For HTTP 200 / per-minute: back off ~1 second and retry. The limiter is a sliding window, not a token bucket — sustained 60 rpm is fine; bursts above 60 in any 60-second window reject. For HTTP 429 / daily: honour `Retry-After` (the value is `seconds-until-UTC-midnight`). If the Pro/OAuth daily cap is the binding constraint for batch work, use the API-key or REST/API path where appropriate, or contact Enterprise for a custom MCP limit.
+**What to do.** For HTTP 200 / per-minute: back off ~1 second and retry. The limiter is a sliding window, not a token bucket — sustained 60 rpm is fine; bursts above 60 in any 60-second window reject. For HTTP 429 / daily: honour `Retry-After` (the value is `seconds-until-UTC-midnight`). If the MCP daily cap is the binding constraint for batch work, use the REST/API path where appropriate, or contact Enterprise for a custom MCP limit.
 
 Paid-plan customers also receive account notices and bounded-cadence email when sustained usage crosses a plan threshold. These notices never imply an automatic upgrade, automatic overage charge, or automatic move into API Business; support or checkout action is explicit.
 
@@ -264,8 +320,8 @@ Every status the MCP handler can return. Most JSON-RPC replies — including mos
 | **200** | JSON-RPC envelope         | success OR `-32029` / `-32600` / `-32601` / `-32602` / `-32603` | Any successful call, OR an application-layer error that doesn't merit a transport escalation |
 | **202** | empty                     | n/a              | `notifications/initialized` — JSON-RPC notifications take no response body, per spec |
 | **204** | empty                     | n/a              | `OPTIONS` preflight                                                  |
-| **401** | JSON-RPC envelope         | `-32001`         | Missing/invalid/expired credentials, revoked Pro MCP token, inactive subscription. `WWW-Authenticate` header set. |
-| **403** | JSON-RPC envelope         | `-32002`         | Subscription lapse confirmed with the billing provider. `X-Billing-Verification: subscription_lapsed` set; no `WWW-Authenticate` (re-auth cannot fix it). |
+| **401** | JSON-RPC envelope         | `-32001`         | Missing/invalid/expired credentials, or a revoked Pro MCP token. `data.reason: "no-account"`; `WWW-Authenticate` header set. |
+| **403** | JSON-RPC envelope         | `-32002`         | Terminal entitlement denial: `data.reason: "lapsed-subscription"` (confirmed lapse; also sets `X-Billing-Verification: subscription_lapsed`) or `"upgrade-required"` (free allowance called a Pro-only tool). No `WWW-Authenticate` (re-auth cannot fix it). |
 | **405** | empty                     | n/a              | Request method is not `POST`, `GET`, `HEAD`, or `OPTIONS` (or a bare `GET` with no `Last-Event-ID`). `Allow: POST, GET, HEAD, OPTIONS` header set. |
 | **429** | JSON-RPC envelope         | `-32029`         | **Pro daily cap exceeded only.** `Retry-After: <seconds-until-UTC-midnight>` set. (Per-minute throttle returns `-32029` inside HTTP 200 — see `-32029` above.) |
 | **503** | JSON-RPC envelope         | `-32603`         | Auth service unavailable, `MCP_INTERNAL_HMAC_SECRET` misconfigured, or quota-reservation Redis failure (`Retry-After: 5`); OR renewal verification pending/failed (`X-Billing-Verification` set, dynamic `Retry-After` 1-60s). |

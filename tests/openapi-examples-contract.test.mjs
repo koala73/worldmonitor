@@ -52,10 +52,11 @@ const CURATED = (() => {
   );
   const scenarioIds = new Set([...scenarioSrc.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]));
   const llmSrc = readFileSync(resolve(root, 'server/_shared/llm.ts'), 'utf8');
-  const llmProviderType = llmSrc.match(/export type LlmProviderName = ([^;]+);/);
-  assert.ok(llmProviderType, 'expected LlmProviderName union in server/_shared/llm.ts');
-  const llmProviders = new Set([...llmProviderType[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
-  assert.ok(llmProviders.size > 0, 'expected at least one LLM provider in LlmProviderName');
+  const llmProviderChain = llmSrc.match(/const PROVIDER_CHAIN = \[([\s\S]*?)\] as const;/);
+  assert.ok(llmProviderChain, 'expected PROVIDER_CHAIN in server/_shared/llm.ts');
+  assert.match(llmSrc, /export type LlmProviderName = typeof PROVIDER_CHAIN\[number\];/);
+  const llmProviders = new Set([...llmProviderChain[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
+  assert.ok(llmProviders.size > 0, 'expected at least one provider in PROVIDER_CHAIN');
   const gdeltSrc = readFileSync(resolve(root, 'scripts/seed-gdelt-intel.mjs'), 'utf8');
   const gdeltTopics = new Set([...gdeltSrc.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]));
   const geographySrc = readFileSync(resolve(root, 'scripts/shared/geography.js'), 'utf8');
@@ -651,7 +652,7 @@ describe('OpenAPI examples contract', () => {
       const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
       return sum + operationEntries(spec).length;
     }, 0);
-    assert.equal(total, 217, `expected 217 OpenAPI operations, found ${total}`);
+    assert.equal(total, 219, `expected 219 OpenAPI operations, found ${total}`);
   });
 
   it('adds schema-valid request and response examples to every service JSON spec', () => {
@@ -663,9 +664,9 @@ describe('OpenAPI examples contract', () => {
       totals.requestExpected += result.requestExpected;
       totals.responseExpected += result.responseExpected;
     }
-    assert.equal(totals.operations, 217);
+    assert.equal(totals.operations, 219);
     assert.ok(totals.requestExpected >= 137, `expected at least 137 request example targets, found ${totals.requestExpected}`);
-    assert.equal(totals.responseExpected, 217);
+    assert.equal(totals.responseExpected, 219);
   });
 
   // record-baseline-snapshot's nested updates[].type is a bare string (no schema
@@ -704,14 +705,14 @@ describe('OpenAPI examples contract', () => {
       const spec = loadYaml(readFileSync(resolve(apiDir, yamlFile), 'utf8'));
       operations += assertOperationExamples(spec, yamlFile).operations;
     }
-    assert.equal(operations, 217);
+    assert.equal(operations, 219);
   });
 
   it('adds request and response examples to the unified OpenAPI bundle', () => {
     const bundle = loadUnifiedOpenApiSpec();
     const result = assertOperationExamples(bundle, 'worldmonitor.openapi.yaml');
-    assert.equal(result.operations, 217);
-    assert.equal(result.responseExpected, 217);
+    assert.equal(result.operations, 219);
+    assert.equal(result.responseExpected, 219);
   });
 
   // A honeypot field (hidden anti-bot input) is silently discarded by the

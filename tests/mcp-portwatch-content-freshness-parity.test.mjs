@@ -52,10 +52,13 @@ const PORTWATCH_DATA_KEY = 'supply_chain:portwatch-ports:v1:_countries';
 const PORTWATCH_SEED_DOMAIN = 'supply_chain:portwatch-ports';
 const ACTIVATION_KEY = PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY;
 
-// Synthetic regression shape from the #6060 audit: CN last observed more than
-// 170h before the health snapshot, therefore past the 144h content budget.
+// Synthetic regression shape from the #6060 audit: CN last observed well before
+// the health snapshot. Note this fixture now alarms via the COUNT path
+// (criticalFreshCount 1 of 2), not the age path — the content budget moved to
+// 240h on 2026-08-18 and this observation sits inside it. Both paths are real
+// triggers in api/_content-freshness.js; the count is the one under test here.
 const CN_OBSERVED_AT = Date.parse('2026-07-26T12:02:43.475Z');
-const PORTWATCH_CONTENT_BUDGET_MINUTES = 2 * 72 * 60;
+const PORTWATCH_CONTENT_BUDGET_MINUTES = 10 * 24 * 60;
 
 // Parameterised on the clock because the three surfaces do not share one:
 // classifyKey and evaluateFreshness take `now` as an argument, while the
@@ -222,9 +225,9 @@ describe('#6080 — MCP freshness envelope vs /api/health on PortWatch content',
     const meta = completeRun(contentFreshnessOf({
       criticalFreshCount: 2,
       criticalStaleCountries: [],
-      criticalOldestObservedAt: NOW - 145 * 60 * MINUTE_MS,
+      criticalOldestObservedAt: NOW - (PORTWATCH_CONTENT_BUDGET_MINUTES + 60) * MINUTE_MS,
       criticalOldestObservedCountry: 'CN',
-      criticalOldestAgeMinutes: 143 * 60, // the producer's own frozen number
+      criticalOldestAgeMinutes: PORTWATCH_CONTENT_BUDGET_MINUTES - 60, // the producer's own frozen number
     }));
 
     assert.equal(healthVerdict(meta).status, 'STALE_CONTENT');
@@ -546,7 +549,7 @@ describe('#6080 — executeTool reads the activation marker', () => {
 
   it('flags stale content end-to-end through the tool', async () => {
     const result = await runWithRedis(
-      baseKeys(liveMeta({ criticalAgeHours: 170 })),
+      baseKeys(liveMeta({ criticalAgeHours: PORTWATCH_CONTENT_BUDGET_MINUTES / 60 + 26 })),
       { markers: [ACTIVATION_KEY] },
     );
     assert.equal(result.stale, true);
@@ -596,7 +599,7 @@ describe('#6080 — executeTool reads the activation marker', () => {
 
   it('still flags stale content when the marker read fails', async () => {
     const result = await runWithRedis(
-      baseKeys(liveMeta({ criticalAgeHours: 170 })),
+      baseKeys(liveMeta({ criticalAgeHours: PORTWATCH_CONTENT_BUDGET_MINUTES / 60 + 26 })),
       { markers: [ACTIVATION_KEY], failActivationRead: true },
     );
 

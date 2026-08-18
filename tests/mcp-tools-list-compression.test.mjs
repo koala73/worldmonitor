@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
-import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
 
 const originalEnv = { ...process.env };
 
@@ -138,14 +138,12 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       return body.result.tools;
     }
 
-    it('compressDescriptions=true returns { name, description, inputSchema, outputSchema, annotations } with no other top-level keys', async () => {
+    it('compressDescriptions=true returns the public shape plus access metadata and no internal keys', async () => {
       const tools = await getRegistry();
-      // get_cyber_threats is a cache tool WITHOUT a ui:// surface, so it carries
-      // no `_meta` — the clean 5-key public shape. (get_market_data now links a
-      // Market Radar ui:// app shell and legitimately carries `_meta`.)
       const t = tools.find(t => t.name === 'get_cyber_threats');
       assert.ok(t, 'get_cyber_threats must be registered');
-      assert.deepEqual(Object.keys(t).sort(), ['annotations', 'description', 'inputSchema', 'name', 'outputSchema']);
+      assert.deepEqual(Object.keys(t).sort(), ['_meta', 'annotations', 'description', 'inputSchema', 'name', 'outputSchema']);
+      assert.deepEqual(t._meta, { 'worldmonitor/access': 'free-account' });
     });
 
     it('every cache-tool result has inputSchema.properties.summary STRUCTURALLY equal to SUMMARY_SCHEMA (deepEqual not ===)', async () => {
@@ -289,11 +287,11 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'the deprecated flat ui/resourceUri alias must mirror the nested form');
     });
 
-    it('a tool WITHOUT a UI surface (get_cyber_threats) omits _meta entirely (no empty object on the wire)', async () => {
+    it('a tool WITHOUT a UI surface carries only its access marker in _meta', async () => {
       const tools = await getRegistry();
       const t = tools.find(t => t.name === 'get_cyber_threats');
       assert.ok(t, 'get_cyber_threats must be registered');
-      assert.ok(!('_meta' in t), 'non-UI tools must not carry a _meta key at all');
+      assert.deepEqual(t._meta, { 'worldmonitor/access': 'free-account' });
     });
 
     it('describe_tool(get_country_risk) carries the same _meta.ui linkage (uncompressed path)', async () => {
@@ -409,14 +407,14 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
     // ============================================================
     // U4: Version bump + SERVER_INSTRUCTIONS + server-card sync
     // ============================================================
-    it('serverInfo.version === "1.16.0"', async () => {
+    it('serverInfo.version === "1.17.0"', async () => {
       const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
       }));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.16.0');
+      assert.equal(body.result?.serverInfo?.version, '1.17.0');
     });
 
     it('initialize.result.instructions mentions describe_tool AND the TOOL_DESCRIPTION_MAX_BYTES cap value', async () => {
@@ -433,9 +431,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'instructions should mention the TOOL_DESCRIPTION_MAX_BYTES cap');
     });
 
-    it('server-card.json version matches SERVER_VERSION (1.16.0) and tools[] matches the registry count', () => {
+    it('server-card.json version matches SERVER_VERSION (1.17.0) and tools[] matches the registry count', () => {
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.16.0');
+      assert.equal(card.serverInfo.version, '1.17.0');
       // orank (ora.ai) agent-readiness scanner reads the card's `tools` as an
       // ARRAY (tools[]) for pre-connection preview — not the old {count,categories}
       // object. Keep it an array; the count now derives from the length.
@@ -450,7 +448,7 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
     // static file; this guard fails loudly if the registry adds/removes/renames
     // a tool or edits a description without regenerating the card, so scanners
     // never preview a stale tool inventory. Regenerate with:
-    //   npx tsx -e "import('./api/mcp/registry/index.ts').then(m=>console.log(JSON.stringify(m.TOOL_REGISTRY.map(t=>({name:t.name,description:t.description})),null,2)))"
+    //   npm run product:facts
     it('server-card.json exposes the orank-required top-level fields AND tools[] mirrors the registry', () => {
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
 
@@ -470,8 +468,12 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.equal(card.name, card.serverInfo.name, 'top-level name must mirror serverInfo.name');
 
       // tools[] must be a name+description projection of the live registry,
-      // in the same order.
-      const expected = TOOL_REGISTRY.map((t) => ({ name: t.name, description: t.description }));
+      // plus the same access marker tools/list emits, in the same order.
+      const expected = TOOL_REGISTRY.map((t) => ({
+        name: t.name,
+        description: t.description,
+        _meta: { 'worldmonitor/access': toolAccess(t) },
+      }));
       assert.deepEqual(
         card.tools,
         expected,

@@ -20,6 +20,7 @@ import {
   CHECKOUT_PRODUCT_PARAM,
   CHECKOUT_REF_PARAM,
   CHECKOUT_DISCOUNT_PARAM,
+  CHECKOUT_ATTRIBUTION_PARAM,
 } from '../pro-test/src/services/checkout-intent-url.ts';
 
 describe('parseCheckoutIntentFromSearch', () => {
@@ -31,21 +32,48 @@ describe('parseCheckoutIntentFromSearch', () => {
 
   it('returns intent with just productId when only the required param is present', () => {
     const intent = parseCheckoutIntentFromSearch(`?${CHECKOUT_PRODUCT_PARAM}=pro_monthly`);
-    assert.deepEqual(intent, { productId: 'pro_monthly', referralCode: undefined, discountCode: undefined });
+    assert.deepEqual(intent, {
+      productId: 'pro_monthly',
+      referralCode: undefined,
+      discountCode: undefined,
+      attributionSource: undefined,
+    });
   });
 
   it('returns full intent with optional referralCode + discountCode', () => {
     const intent = parseCheckoutIntentFromSearch(
       `?${CHECKOUT_PRODUCT_PARAM}=pro_annual&${CHECKOUT_REF_PARAM}=abc123&${CHECKOUT_DISCOUNT_PARAM}=SAVE20`,
     );
-    assert.deepEqual(intent, { productId: 'pro_annual', referralCode: 'abc123', discountCode: 'SAVE20' });
+    assert.deepEqual(intent, {
+      productId: 'pro_annual',
+      referralCode: 'abc123',
+      discountCode: 'SAVE20',
+      attributionSource: undefined,
+    });
+  });
+
+  it('returns attributionSource when the MCP paid-funnel param is present (#6716)', () => {
+    const intent = parseCheckoutIntentFromSearch(
+      `?${CHECKOUT_PRODUCT_PARAM}=pro_monthly&${CHECKOUT_ATTRIBUTION_PARAM}=mcp-paid-funnel`,
+    );
+    assert.deepEqual(intent, {
+      productId: 'pro_monthly',
+      referralCode: undefined,
+      discountCode: undefined,
+      attributionSource: 'mcp-paid-funnel',
+    });
   });
 
   it('ignores unrelated query params', () => {
     const intent = parseCheckoutIntentFromSearch(
       `?utm_source=email&${CHECKOUT_PRODUCT_PARAM}=pro_monthly&utm_campaign=launch`,
     );
-    assert.deepEqual(intent, { productId: 'pro_monthly', referralCode: undefined, discountCode: undefined });
+    assert.deepEqual(intent, {
+      productId: 'pro_monthly',
+      referralCode: undefined,
+      discountCode: undefined,
+      attributionSource: undefined,
+    });
   });
 
   it('rejects empty productId (defensive)', () => {
@@ -163,7 +191,12 @@ describe('reviewer scenario coverage (regression guards)', () => {
     const search = new URL(returnUrl).search;
     const intent = parseCheckoutIntentFromSearch(search);
     // 4. Intent parsed; doCheckout fires with correct params
-    assert.deepEqual(intent, { productId: 'pro_monthly', referralCode: 'abc', discountCode: undefined });
+    assert.deepEqual(intent, {
+      productId: 'pro_monthly',
+      referralCode: 'abc',
+      discountCode: undefined,
+      attributionSource: undefined,
+    });
   });
 
   it('scenario 2: click paid → dismiss sign-in → later generic sign-in does NOT resume', () => {

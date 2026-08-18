@@ -1,0 +1,114 @@
+---
+title: "News Credibility Score"
+description: "How WorldMonitor scores per-headline source reliability separately from newsworthiness — source tier, propaganda risk, independent corroboration, and the state-media cap."
+---
+
+This page is the canonical public methodology for the per-headline
+`credibilityScore` field on `NewsItem`
+(`GET /api/news/v1/list-feed-digest`, proto
+`worldmonitor.news.v1.NewsItem.credibility_score`).
+
+`credibilityScore` and `importanceScore` answer different questions. Mixing
+them is the flaw a sophisticated buyer finds first.
+
+| Score | Question | Typical high scorer |
+| --- | --- | --- |
+| `importanceScore` | How newsworthy is this right now? | A critical RT flash on a diplomacy/flashpoint event |
+| `credibilityScore` | How much should I trust this source on this story? | The same story reported by Reuters |
+
+A state-controlled outlet can score **high** on importance and **low** on
+credibility at the same time. That split is the product.
+
+The pipeline is automated. There is no human review queue. Quality comes from
+the curated source-tier table, the fail-closed propaganda-risk registry, and
+digest corroboration counts that already exist. Third-party bias/factuality
+ratings (AllSides, MBFC) are reserved and **not currently applied**.
+
+## Inputs
+
+Only inputs that bear on truthfulness enter the score. Severity, recency, and
+the diplomacy/flashpoint boost stay on `importanceScore`.
+
+| Component | Weight | Source |
+| --- | --- | --- |
+| Propaganda risk | `0.50` | `shared/source-provenance.ts` `SOURCE_PROPAGANDA_RISK` |
+| Source tier | `0.30` | `shared/source-tiers.json` |
+| Independent corroboration | `0.20` | Digest story-identity / entity corroboration count |
+
+Weights sum to `1.0`. The implementation is `shared/news-credibility.js`
+(`computeCredibilityScore`). The digest writes the field after classification
+and corroboration, alongside — not instead of — `importanceScore`.
+
+## Component Maps
+
+Source tier maps to:
+
+| Tier | Score | Meaning |
+| --- | --- | --- |
+| `1` | `100` | Wire / official |
+| `2` | `75` | Major established outlet |
+| `3` | `50` | Specialty / regional |
+| `4` (default) | `25` | Aggregator, blog, or unlisted feed |
+
+Propaganda risk maps to:
+
+| Risk | Score | Meaning |
+| --- | --- | --- |
+| `low` | `100` | Reviewed independent journalism |
+| `medium` | `50` | State-affiliated or known editorial tilt |
+| `unknown` | `35` | Not yet reviewed — fail-closed, never treated as independent |
+| `high` | `12` | State-controlled media |
+
+Unlisted sources default to `unknown`, not `low`. That fail-closed default is
+the same contract as the provenance badges.
+
+Independent corroboration uses the digest's existing corroboration count (the
+larger of story-identity cluster size and entity-level corroboration), capped
+at five sources, with `20` points per source before the `0.20` weight. This
+is the same corroboration signal `importanceScore` already consumes; it is
+not a second clustering pass.
+
+## High-Risk Cap
+
+After the weighted sum is rounded and clamped to `0–100`, a source whose
+propaganda risk is `high` is capped at `40`.
+
+The cap is the acceptance gate for state media. An RT or TASS item can still
+pick up corroboration points when independent outlets also report the event,
+but it cannot look like a high-credibility wire. Reuters with no extra
+corroboration scores around `80`; RT with none scores in the low `20`s.
+
+## What This Score Is Not
+
+- It is **not** a statement that the underlying event is false. A true event
+  reported first by state media still has low *source* credibility until
+  independent outlets corroborate it.
+- It is **not** AllSides or MBFC. Those ratings are out of scope until a
+  dedicated ingest exists.
+- It is **not** used to sort the news list. Relevance sort remains
+  `importanceScore`, then publication time. Credibility is displayed, not
+  substituted for newsworthiness.
+- Same-ecosystem inflation remains a known limitation: five Russian state
+  desks clustering on one headline still share one high-risk cap, but the
+  corroboration count is the digest's existing publisher-family signal, not a
+  new independence classifier.
+
+## Surfaces
+
+| Surface | Field |
+| --- | --- |
+| Feed digest API | `NewsItem.credibilityScore` |
+| News list UI | `CRED NN` badge on flat items and clustered cards |
+| Insights / MCP `get_news_intelligence` | `topStories[].credibilityScore` |
+| MCP `get_news_clusters` | `clusters[].credibilityScore` for the primary outlet |
+
+## Source Files
+
+- Scorer: `shared/news-credibility.js`
+- Digest writer: `server/worldmonitor/news/v1/list-feed-digest.ts`
+- API contract: `proto/worldmonitor/news/v1/news_item.proto`
+- Provenance registry: `shared/source-provenance.ts`
+- Tier table: `shared/source-tiers.json`
+- News list render: `src/components/news/source-provenance.ts`,
+  `src/components/NewsPanel.ts`
+- Pipeline sibling: [News Digest and Briefing](/methodology/news-digest-and-briefing)

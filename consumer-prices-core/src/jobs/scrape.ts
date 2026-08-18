@@ -2,7 +2,7 @@
  * Scrape job: discovers targets and writes price observations to Postgres.
  * Respects per-retailer rate limits and acquisition provider config.
  */
-import { query, closePool } from '../db/client.js';
+import { query, closePool, withTransaction } from '../db/client.js';
 import { insertObservation } from '../db/queries/observations.js';
 import { upsertRetailerProduct } from '../db/queries/products.js';
 import { parseSize, unitPrice as calcUnitPrice } from '../normalizers/size.js';
@@ -15,9 +15,16 @@ import { ExaProvider } from '../acquisition/exa.js';
 import { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { AdapterContext } from '../adapters/types.js';
 import { upsertCanonicalProduct } from '../db/queries/products.js';
-import { getBasketItemId, getPinnedUrlsForRetailer, getDisabledPinsForRecovery, upsertProductMatch } from '../db/queries/matches.js';
-import { AUTO_MATCH_THRESHOLD, type ValidatorResult } from '../adapters/validator.js';
 import {
+  demoteAutoProductMatchToCandidate,
+  getBasketItemId,
+  getPinnedUrlsForRetailer,
+  getDisabledPinsForRecovery,
+  upsertProductMatch,
+} from '../db/queries/matches.js';
+import type { ValidatorResult } from '../adapters/validator.js';
+import {
+  classifyMatchAdmission,
   classifyValidatorOutcome,
   createScrapeRunStatement,
   FailureReasonTally,
@@ -34,6 +41,13 @@ const logger = {
   warn: (msg: string, ...args: unknown[]) => console.warn(`[scrape] ${msg}`, ...args),
   error: (msg: string, ...args: unknown[]) => console.error(`[scrape] ${msg}`, ...args),
 };
+
+class MatchAdmissionPersistenceError extends Error {
+  constructor(message: string, cause: unknown) {
+    super(message, { cause });
+    this.name = 'MatchAdmissionPersistenceError';
+  }
+}
 
 async function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -161,6 +175,7 @@ export async function scrapeRetailer(slug: string) {
   let pagesAttempted = 0;
   let pagesSucceeded = 0;
   let rejectedCount = 0;
+  let matchAdmissionPersistenceFailed = false;
   // #6182: the error count IS the tally's total. Keeping a separate
   // `errorsCount` counter alongside it would make "every error has a recorded
   // reason" a convention that any future `errorsCount++` could silently break;
@@ -225,6 +240,7 @@ export async function scrapeRetailer(slug: string) {
         // the existing pin-error counter so the pin soft-disables after
         // repeated failures. Aggregates never see the bad price.
         const validator = product.rawPayload.validator as ValidatorResult | undefined;
+        const matchAdmission = classifyMatchAdmission(validator);
         const validatorOutcome = classifyValidatorOutcome(validator, wasDirectHit);
         rejectedCount += validatorOutcome.rejectedCount;
         if (validatorOutcome.skipObservation) {
@@ -249,42 +265,7 @@ export async function scrapeRetailer(slug: string) {
           categoryText: product.categoryText ?? target.category,
         });
 
-        const parsed = parseSize(product.rawSizeText);
-        const up = parsed ? calcUnitPrice(product.price, parsed) : null;
-
-        await insertObservation({
-          retailerProductId: productId,
-          scrapeRunId: runId,
-          price: product.price,
-          listPrice: product.listPrice,
-          promoPrice: product.promoPrice,
-          currencyCode: config.currencyCode,
-          unitPrice: up,
-          unitBasisQty: parsed?.baseQuantity ?? null,
-          unitBasisUnit: parsed?.baseUnit ?? null,
-          inStock: product.inStock,
-          promoText: product.promoText,
-          rawPayloadJson: product.rawPayload,
-        });
-
-        // Stale-pin maintenance — only when the pin URL was actually used (not Exa fallback).
-        // Symmetric disable + auto-recovery (3 consecutive observations either way).
-        // See migration 009 + memory `sticky-disable-without-auto-recovery-decays`
-        // for why both halves matter: code alone leaves historical sticky-decay,
-        // migration alone restarts decay immediately on next nightly scrape.
-        if (wasDirectHit && pinnedProductId && pinnedMatchId) {
-          if (product.inStock) {
-            await handleStaleOnInStock(pinnedProductId, pinnedMatchId, target.id);
-          } else {
-            await handleStaleOnOutOfStock(pinnedProductId, pinnedMatchId, target.id);
-          }
-        }
-
-        // When a pinned target fell back to Exa (isDirect but !wasDirectHit),
-        // increment pin_error_count so the old broken pin eventually gets disabled.
-        if (isDirect && !wasDirectHit && pinnedProductId && pinnedMatchId) {
-          await handlePinError(pinnedProductId, pinnedMatchId, target.id);
-        }
+        let discoveredMatch: Parameters<typeof upsertProductMatch>[0] | undefined;
 
         // For search-based adapters: auto-create product → basket match.
         // Skip only when the pin URL was used directly — the match already exists.
@@ -310,31 +291,104 @@ export async function scrapeRetailer(slug: string) {
               // score 1.0 / auto (keeps the pre-validator adapters working
               // unchanged). The strict path scores real hits and downgrades
               // weak ones to 'candidate' so they never enter aggregates.
-              const validator = product.rawPayload.validator as ValidatorResult | undefined;
-              const hasValidator = validator != null;
-              const score = hasValidator ? validator.score : 1.0;
-              const status: 'auto' | 'candidate' =
-                !hasValidator || (validator.ok && score >= AUTO_MATCH_THRESHOLD) ? 'auto' : 'candidate';
-              const evidence = hasValidator
-                ? { validator: { reasons: validator.reasons, signals: validator.signals } }
-                : {};
-              if (status === 'candidate') {
+              if (matchAdmission.status === 'candidate') {
                 logger.warn(
-                  `  [${target.id}] downgraded to candidate score=${score.toFixed(2)} reasons=${validator?.reasons.join(',')}`,
+                  `  [${target.id}] downgraded to candidate score=${matchAdmission.score.toFixed(2)} reasons=${validator?.reasons.join(',')}`,
                 );
               }
-              await upsertProductMatch({
+              discoveredMatch = {
                 retailerProductId: productId,
                 canonicalProductId: canonicalId,
                 basketItemId,
-                matchScore: score,
-                matchStatus: status,
-                evidence,
-              });
+                matchScore: matchAdmission.score,
+                matchStatus: matchAdmission.status,
+                evidence: matchAdmission.evidence,
+              };
             }
           } catch (matchErr) {
             logger.warn(`  [${target.id}] product match failed: ${matchErr}`);
+            throw new MatchAdmissionPersistenceError(
+              `could not persist match admission for ${target.id}`,
+              matchErr,
+            );
           }
+        }
+
+        const parsed = parseSize(product.rawSizeText);
+        const up = parsed ? calcUnitPrice(product.price, parsed) : null;
+        const observation = {
+          retailerProductId: productId,
+          scrapeRunId: runId,
+          price: product.price,
+          listPrice: product.listPrice,
+          promoPrice: product.promoPrice,
+          currencyCode: config.currencyCode,
+          unitPrice: up,
+          unitBasisQty: parsed?.baseQuantity ?? null,
+          unitBasisUnit: parsed?.baseUnit ?? null,
+          inStock: product.inStock,
+          promoText: product.promoText,
+          rawPayloadJson: product.rawPayload,
+        };
+
+        const shouldDemoteDirectMatch =
+          wasDirectHit &&
+          Boolean(pinnedMatchId) &&
+          matchAdmission.status === 'candidate';
+
+        if (shouldDemoteDirectMatch || discoveredMatch) {
+          let demotedDirectMatch = false;
+          try {
+            // The match write acquires the conflicting row before the
+            // observation is inserted. Keeping both statements in one
+            // transaction prevents aggregate from observing either an old
+            // auto state with new candidate evidence or a new auto state with
+            // older candidate evidence. Concurrent scrape runs serialize on
+            // the match upsert/update row lock.
+            await withTransaction(async (execute) => {
+              if (shouldDemoteDirectMatch && pinnedMatchId) {
+                demotedDirectMatch = await demoteAutoProductMatchToCandidate({
+                  matchId: pinnedMatchId,
+                  matchScore: matchAdmission.score,
+                  evidence: matchAdmission.evidence,
+                }, execute);
+              }
+              if (discoveredMatch) await upsertProductMatch(discoveredMatch, execute);
+              await insertObservation(observation, execute);
+            });
+          } catch (cause) {
+            logger.warn(`  [${target.id}] match/observation transaction failed: ${cause}`);
+            throw new MatchAdmissionPersistenceError(
+              `could not persist matched observation for ${target.id}`,
+              cause,
+            );
+          }
+          if (demotedDirectMatch) {
+            logger.warn(
+              `  [${target.id}] direct auto pin downgraded to candidate score=${matchAdmission.score.toFixed(2)} reasons=${validator?.reasons.join(',')}`,
+            );
+          }
+        } else {
+          await insertObservation(observation);
+        }
+
+        // Stale-pin maintenance — only when the pin URL was actually used (not Exa fallback).
+        // Symmetric disable + auto-recovery (3 consecutive observations either way).
+        // See migration 009 + memory `sticky-disable-without-auto-recovery-decays`
+        // for why both halves matter: code alone leaves historical sticky-decay,
+        // migration alone restarts decay immediately on next nightly scrape.
+        if (wasDirectHit && pinnedProductId && pinnedMatchId) {
+          if (product.inStock) {
+            await handleStaleOnInStock(pinnedProductId, pinnedMatchId, target.id);
+          } else {
+            await handleStaleOnOutOfStock(pinnedProductId, pinnedMatchId, target.id);
+          }
+        }
+
+        // When a pinned target fell back to Exa (isDirect but !wasDirectHit),
+        // increment pin_error_count so the old broken pin eventually gets disabled.
+        if (isDirect && !wasDirectHit && pinnedProductId && pinnedMatchId) {
+          await handlePinError(pinnedProductId, pinnedMatchId, target.id);
         }
       }
 
@@ -344,10 +398,20 @@ export async function scrapeRetailer(slug: string) {
       // that is not a SearchTargetError has none, and recordPageFailure files
       // it as unknown-error rather than dropping it — an unattributed page is
       // itself a finding, and a silent drop would undercount the run's errors.
-      failureReasons.recordPageFailure(err instanceof SearchTargetError ? err.failures : []);
+      if (err instanceof MatchAdmissionPersistenceError) {
+        failureReasons.recordMatchAdmissionPersistenceFailure();
+        matchAdmissionPersistenceFailed = true;
+      } else {
+        failureReasons.recordPageFailure(err instanceof SearchTargetError ? err.failures : []);
+      }
       if (err instanceof SearchTargetError) rejectedCount += err.rejectedCount;
       logger.error(`  [${target.id}] failed: ${err}`);
-      if (isDirect && pinnedProductId && pinnedMatchId) {
+      if (
+        !(err instanceof MatchAdmissionPersistenceError) &&
+        isDirect &&
+        pinnedProductId &&
+        pinnedMatchId
+      ) {
         await handlePinError(pinnedProductId, pinnedMatchId, target.id);
       }
     }
@@ -356,7 +420,12 @@ export async function scrapeRetailer(slug: string) {
   }
 
   const errorsCount = failureReasons.total;
-  const status = resolveRunStatus(errorsCount, pagesSucceeded, budgetExhausted);
+  // Admission persistence is the publication boundary. Even if other pages
+  // succeeded, do not refresh retailer health when that boundary could not be
+  // written; the last-good timestamp must remain authoritative.
+  const status = matchAdmissionPersistenceFailed
+    ? 'failed'
+    : resolveRunStatus(errorsCount, pagesSucceeded, budgetExhausted);
   const failureReasonsJson = failureReasons.toJSON();
   await updateScrapeRun(
     runId,

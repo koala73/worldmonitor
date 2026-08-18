@@ -31,13 +31,30 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Anthropic } from '@anthropic-ai/sdk';
 
 export const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'sw', 'th', 'tr', 'uk', 'vi', 'zh', 'zh-TW'];
+
+// Locales produced by another generator, which this script must not write.
+//
+// zh-TW is converted from zh.json by scripts/convert-zh-tw.py. Translating it
+// from English as well would give one artifact two writers: the next run would
+// overwrite the converted catalogue with an independent translation, silently
+// undoing the phrasing decisions recorded in that script.
+//
+// It stays in LOCALES because the rest of this module is what gates it —
+// `tracks every shipped locale` requires every locale file to be listed, and
+// the end-of-run scan at `unresolved` deliberately covers every locale rather
+// than the run's targets. Removing it from LOCALES would exempt zh-TW from
+// both instead of just from the write path.
+export const GENERATED_LOCALES = new Set(['zh-TW']);
+
+/** LOCALES minus the ones another generator owns. The write path uses this. */
+export const TRANSLATABLE_LOCALES = LOCALES.filter((loc) => !GENERATED_LOCALES.has(loc));
 const LANG_NAMES = {
   ar: 'Arabic', bg: 'Bulgarian', cs: 'Czech', de: 'German', el: 'Greek',
   es: 'Spanish', fa: 'Persian (Farsi)', fr: 'French', hi: 'Hindi', hr: 'Croatian', hu: 'Hungarian', it: 'Italian', ja: 'Japanese',
   ko: 'Korean', nl: 'Dutch', pl: 'Polish', pt: 'Portuguese (Brazil)',
   ro: 'Romanian', ru: 'Russian', sv: 'Swedish', th: 'Thai', tr: 'Turkish',
   sw: 'Swahili (Kiswahili)', uk: 'Ukrainian', vi: 'Vietnamese', zh: 'Simplified Chinese',
-  'zh-TW': 'Traditional Chinese (Taiwan)',
+  // No zh-TW: it is in GENERATED_LOCALES, so it never reaches a translate call.
 };
 const BATCH_SIZE = 50;
 const MODEL = 'claude-haiku-4-5-20251001';
@@ -603,6 +620,13 @@ async function main() {
       console.error(`--only names ${unknown.length} unknown locale(s): ${unknown.join(', ')}. Known: ${LOCALES.join(', ')}`);
       process.exit(1);
     }
+    // --only bypasses TRANSLATABLE_LOCALES, so without this it is the one way
+    // left to machine-translate over a generated catalogue.
+    const generated = onlyLocales.filter(loc => GENERATED_LOCALES.has(loc));
+    if (generated.length > 0) {
+      console.error(`--only names ${generated.length} generated locale(s): ${generated.join(', ')}. These are not translated from English — regenerate with scripts/convert-zh-tw.py instead.`);
+      process.exit(1);
+    }
   }
 
   if (!dryRun && !process.env.ANTHROPIC_API_KEY) {
@@ -627,7 +651,7 @@ async function main() {
   const baselineFor = (categories) =>
     baselineFlat ? expectedKeysForLocale(baselineFlat, baselinePlurals, categories) : {};
 
-  const targets = onlyLocales || LOCALES;
+  const targets = onlyLocales || TRANSLATABLE_LOCALES;
   // locale → keys this run successfully wrote. Consumed by unresolvedAfterRun.
   const refreshedByLocale = new Map();
   let totalMissing = 0;
@@ -719,6 +743,7 @@ async function main() {
   // would mark the locales that were skipped as fresh and hide their rot
   // permanently.
   let unresolved = 0;
+  let generatedOutstanding = 0;
   if (!dryRun) {
     for (const loc of LOCALES) {
       const locPath = path.join(ROOT, `${loc}.json`);
@@ -731,11 +756,28 @@ async function main() {
         refreshedByLocale.get(loc) ?? new Set(),
       );
       const outstanding = left.missing.length + left.stale.length + left.orphan.length;
-      if (outstanding > 0) {
-        const sample = [...left.missing, ...left.stale, ...left.orphan].slice(0, 3).join(', ');
-        console.error(`[${loc}] ✗ still ${left.missing.length} missing / ${left.stale.length} stale / ${left.orphan.length} orphaned after run (e.g. ${sample})`);
-        unresolved += outstanding;
+      if (outstanding === 0) continue;
+      const sample = [...left.missing, ...left.stale, ...left.orphan].slice(0, 3).join(', ');
+
+      // A generated locale is being measured against the wrong source here.
+      // zh-TW is converted from zh.json, not translated from en.json, so an
+      // English edit marks it stale on the strength of a comparison it was
+      // never in scope for — and no rerun of this script can clear it, because
+      // the write path no longer targets it. Counting it into `unresolved`
+      // would block the baseline on work this script cannot do, stranding every
+      // other locale the same run just translated.
+      //
+      // Its freshness is not unguarded as a result: `convert-zh-tw.py --check`
+      // compares it byte-for-byte against zh.json in the `unit` job, which is a
+      // stricter claim than the baseline's, and is the fix named below.
+      if (GENERATED_LOCALES.has(loc)) {
+        console.error(`[${loc}] ✗ ${left.missing.length} missing / ${left.stale.length} stale / ${left.orphan.length} orphaned (e.g. ${sample}) — generated locale, not fixable here: rerun scripts/convert-zh-tw.py`);
+        generatedOutstanding += outstanding;
+        continue;
       }
+
+      console.error(`[${loc}] ✗ still ${left.missing.length} missing / ${left.stale.length} stale / ${left.orphan.length} orphaned after run (e.g. ${sample})`);
+      unresolved += outstanding;
     }
   }
 
@@ -743,7 +785,10 @@ async function main() {
   // run in dry-run — printing 0 there reads as an all-clear next to a non-zero
   // orphan or stale count.
   const unresolvedReport = dryRun ? 'n/a (dry run)' : unresolved;
-  console.log(`\n[done] missing ${totalMissing}, stale ${totalStale}, untracked ${totalUntracked}, orphaned ${totalOrphan}, translated ${totalTranslated}, rejected ${totalRejected}, unresolved-after-run ${unresolvedReport}`);
+  // Reported separately rather than folded into unresolved: it does not gate the
+  // baseline, but a silent zero would read as "every locale is fresh".
+  const generatedReport = generatedOutstanding > 0 ? `, generated-locale-outstanding ${generatedOutstanding} (rerun scripts/convert-zh-tw.py)` : '';
+  console.log(`\n[done] missing ${totalMissing}, stale ${totalStale}, untracked ${totalUntracked}, orphaned ${totalOrphan}, translated ${totalTranslated}, rejected ${totalRejected}, unresolved-after-run ${unresolvedReport}${generatedReport}`);
 
   const verdict = mayAdvanceBaseline({
     unresolved,

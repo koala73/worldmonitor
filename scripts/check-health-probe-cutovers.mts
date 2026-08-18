@@ -64,7 +64,7 @@ export function validateHealthProbeCutovers({
     name: string;
     fromKey: string | null;
     toKey: string;
-    mode: 'preseed' | 'expiring-ack';
+    mode: 'preseed' | 'expiring-ack' | 'activation-marker';
   }> = [];
   for (const [name, config] of Object.entries(headSeedMeta)) {
     const toKey = seedMetaKey(config);
@@ -77,7 +77,7 @@ export function validateHealthProbeCutovers({
     const cutover = isRecord(config) ? config.cutover : null;
     if (!isRecord(cutover)) {
       throw new Error(
-        `Health probe ${name} (${fromKey ?? '<new>'} -> ${toKey}) needs machine-readable pre-seed evidence or an expiring acknowledgement`,
+        `Health probe ${name} (${fromKey ?? '<new>'} -> ${toKey}) needs machine-readable pre-seed evidence, a durable activation marker, or an expiring acknowledgement`,
       );
     }
     if (cutover.fromKey !== fromKey) {
@@ -107,6 +107,16 @@ export function validateHealthProbeCutovers({
           `Health probe ${name} pre-seed evidence must identify Railway, its service, probe ${toKey}, compact health OK, and an HTTPS reference`,
         );
       }
+    } else if (cutover.mode === 'activation-marker') {
+      if (
+        typeof cutover.activationKey !== 'string'
+        || !/^seed-activated:[a-z0-9][a-z0-9:-]*$/.test(cutover.activationKey)
+        || config.activationKey !== cutover.activationKey
+      ) {
+        throw new Error(
+          `Health probe ${name} activation-marker cutover must bind config.activationKey to an exact seed-activated:* key`,
+        );
+      }
     } else if (cutover.mode === 'expiring-ack') {
       if (typeof cutover.status !== 'string' || cutover.status.trim().length === 0) {
         throw new Error(`Health probe ${name} expiring acknowledgement needs an exact health status`);
@@ -125,7 +135,7 @@ export function validateHealthProbeCutovers({
         );
       }
     } else {
-      throw new Error(`Health probe ${name} cutover mode must be preseed or expiring-ack`);
+      throw new Error(`Health probe ${name} cutover mode must be preseed, activation-marker, or expiring-ack`);
     }
 
     changed.push({ name, fromKey, toKey, mode: cutover.mode });

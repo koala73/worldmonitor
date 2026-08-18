@@ -211,6 +211,31 @@
       "soybeans": "Soybeans",
       "barley": "Barley",
       "palmOil": "Palm oil"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "STEM graduates",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh."
     }
   },
   "header": {
@@ -480,7 +505,9 @@
         "displacement": "Přepnout toky vysídlení",
         "climate": "Přepnout klimatické anomálie",
         "outages": "Přepnout výpadky internetu",
-        "tradeRoutes": "Přepnout obchodní trasy"
+        "tradeRoutes": "Přepnout obchodní trasy",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Přepnout na tmavý režim",
@@ -642,7 +669,7 @@
         "URLHAUS_AUTH_KEY": "Používá se pro API URLhaus a ThreatFox.",
         "OTX_API_KEY": "Volitelný zdroj pro obohacení vrstvy kybernetických hrozeb.",
         "ABUSEIPDB_API_KEY": "Volitelný zdroj pro obohacení reputace škodlivých IP adres.",
-        "FINNHUB_API_KEY": "Akciové kurzy a tržní data v reálném čase.",
+        "FINNHUB_API_KEY": "Zpožděné nebo přednahrané akciové kurzy a tržní data. Klíč není živý přenos.",
         "NASA_FIRMS_API_KEY": "Systém informací o požárech pro řízení zdrojů (FIRMS).",
         "OLLAMA_API_URL": "např. http://127.0.0.1:11434 (Ollama) nebo http://127.0.0.1:1234/v1 (LM Studio) — koncový bod kompatibilní s OpenAI.",
         "OLLAMA_MODEL": "např. llama3.1:8b — značka modelu k použití pro sumarizaci."
@@ -923,6 +950,7 @@
       "noComtradeData": "Žádná data o strategických tocích nejsou dostupná",
       "comtradeUnavailable": "Data OSN Comtrade nejsou dočasně dostupná",
       "sourceComtrade": "OSN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomálie",
       "colReporter": "Země",
       "colCommodity": "Komodita",
@@ -1159,7 +1187,7 @@
         "ucdpEvents": "UCDP události",
         "displacementFlows": "Toky vysídlení",
         "climateAnomalies": "Klimatické anomálie",
-        "weatherAlerts": "Meteorologická varování pro USA (NWS)",
+        "weatherAlerts": "Varování před nebezpečným počasím (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Strategické vodní cesty",
         "economicCenters": "Ekonomická centra",
         "criticalMinerals": "Kritické minerály",
@@ -1179,7 +1207,9 @@
         "speciesRecovery": "Obnova druhů",
         "renewableInstallations": "Čistá energie",
         "radiationSpike": "Skokový nárůst radiace",
-        "radiationElevated": "Zvýšená radiace"
+        "radiationElevated": "Zvýšená radiace",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "Zemětřesení",
@@ -1240,7 +1270,7 @@
           "infraDatacenters": "Výpočetní clustery AI >=10 000 GPU",
           "infraOutages": "Výpadky internetu a narušení služeb",
           "naturalEventsTech": "Zemětřesení, bouře, požáry (mohou ovlivnit datová centra)",
-          "weatherAlerts": "Varování před extrémním počasím v USA (NWS)",
+          "weatherAlerts": "Oficiální varování před nebezpečným počasím od národních meteorologických služeb (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Burzy a centrální banky",
           "countriesOverlay": "Překryv názvů zemí",
           "financeExchanges": "Hlavní světové burzy podle úrovně trhu",
@@ -1252,7 +1282,7 @@
           "financeOutages": "Výpadky internetu, které mohou ovlivnit operace na trzích",
           "financeCyberThreats": "Bezpečnostní události kolem finanční infrastruktury",
           "macroWaterways": "Strategická úzká hrdla pro přepravu komodit",
-          "weatherAlertsMarket": "Události extrémního počasí v USA s tržním významem (NWS)",
+          "weatherAlertsMarket": "Oficiální varování před nebezpečným počasím s významem pro trhy (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Zemětřesení, požáry, záplavy a další přírodní narušení",
           "timeRecent": "Filtrovat data na základě času za poslední hodiny",
           "timeExtended": "Zobrazit data z minulého týdne, měsíce nebo za celou dobu",
@@ -1285,7 +1315,9 @@
           "tradeRoutes": "Hlavní světové námořní trasy spojující přístavy přes strategická úzká hrdla",
           "dayNight": "Sluneční terminátor v reálném čase ukazující denní a noční zóny",
           "geoBoundaries": "Demilitarizované zóny, linie příměří a sporné hranice",
-          "ciiChoropleth": "Tepelná mapa Country Instability Index — zbarvuje země podle skóre CII (zelená=stabilní, červená=kritická)"
+          "ciiChoropleth": "Tepelná mapa Country Instability Index — zbarvuje země podle skóre CII (zelená=stabilní, červená=kritická)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Ovlivňuje: Zemětřesení, Počasí, Protesty, Výpadky"
@@ -1650,7 +1682,9 @@
     "breakingNews": {
       "critical": "KRITICKÉ",
       "high": "VYSOKÉ",
-      "dismiss": "Zavřít"
+      "dismiss": "Zavřít",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Blesková upozornění",
@@ -1908,13 +1942,23 @@
       "topTargets": "Nejčastější cílové země"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2188,7 +2232,7 @@
       "infoTooltip": "<strong>Kaskáda katastrof</strong> Detekuje konvergující signály přírodních katastrof a infrastruktury:<ul><li>Koreluje zemětřesení, lesní požáry, povodně a extrémní počasí</li><li>Sleduje kaskádovité účinky na infrastrukturu a dodavatelský řetězec</li><li>Zvýrazňuje regiony se skládajícím se rizikem katastrofy</li></ul>Kliknutím na kartu přiblížíte postižený region."
     },
     "markets": {
-      "infoTooltip": "<strong>Trhy</strong> Ceny akcií v reálném čase, kmenové akcie a kryptoměny. Přizpůsobte si seznam sledovaných položek tlačítkem Sledovat. Minigrafy ukazují poslední cenový trend.",
+      "infoTooltip": "<strong>Trhy</strong> Zpožděné nebo přednahrané ceny akcií, kmenové akcie a kryptoměny. Přizpůsobte si seznam sledovaných položek tlačítkem Sledovat. Minigrafy ukazují poslední cenový trend.",
       "chart": {
         "title": "Graf ceny {{symbol}}",
         "close": "Zavřít graf"
@@ -2369,13 +2413,14 @@
     },
     "sanctionsPressure": {
       "title": "Sankce a designace",
-      "infoTooltip": "OFAC sankce designace ze seznamů SDN a Consolidated Lists. Ukazuje, které země čelí největšímu tlaku na desig­nace, jaké programy to řídí a co bylo nově přidáno od poslední aktualizace.",
+      "infoTooltip": "OFAC seznamy SDN a Consolidated plus označení SEMA/JVCFOA od Global Affairs Canada. Ukazuje, které země čelí největšímu tlaku na desig­nace, jaké programy to řídí a co bylo nově přidáno od poslední aktualizace.",
       "loading": "Načítání dat sankcí...",
       "unavailable": "Data sankcí není dostupná.",
       "summary": {
         "new": "Nový",
         "vessels": "Plavidla",
-        "aircraft": "Letadla"
+        "aircraft": "Letadla",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Země s sankcemi",
@@ -2390,11 +2435,12 @@
       "footer": {
         "updated": "Aktualizováno {{time}}",
         "dataset": "dataset {{date}}",
-        "source": "Zdroj: OFAC"
+        "source": "Zdroj: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nových",
-        "new": "nový"
+        "new": "nový",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} designace",
       "designations_other": "{{count}} designací",
@@ -2850,6 +2896,7 @@
     "moreEvents": "dalších událostí",
     "monitoring": "Monitorování",
     "viewUSGS": "Zobrazit na USGS",
+    "viewNRCan": "Zobrazit na Earthquakes Canada",
     "expired": "Vypršelo",
     "timeAgo": {
       "s": "před {{count}} s",
@@ -3288,7 +3335,8 @@
     "retry": "Zkusit znovu",
     "refresh": "Obnovit",
     "all": "Vše",
-    "cancel": "Zrušit"
+    "cancel": "Zrušit",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "Zobrazení",

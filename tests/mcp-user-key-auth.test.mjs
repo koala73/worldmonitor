@@ -111,28 +111,67 @@ describe('api/mcp — user API keys on /mcp (#4859) + pre-check hardening (#4860
     assert.equal(pipe.count, 50);
   });
 
-  it('entitlement gate: valid user key whose owner is free/no-mcpAccess → tools/call 401, tools/list still 200', async () => {
-    const { deps } = makeUserKeyDeps({
+  it('entitlement gate: free owner admits describe_tool (always-free) and tools/list; gated call meters free allowance', async () => {
+    // #6716 — free/no-mcpAccess is no longer a hard 401 at the MCP call site.
+    // Always-free tools run; gated tools use the free-account allowance meter
+    // (deps.redisPipeline — the same DI seam as Pro daily quota).
+    const { deps, pipe } = makeUserKeyDeps({
       getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0 }),
     });
-    const call = await mcpHandler(userKeyReq(callBody('describe_tool', { tool_name: 'get_market_data' })), deps);
-    assert.equal(call.status, 401, 'lapsed owner must not reach any tools/call');
-    const callBodyJson = await call.json();
-    assert.equal(callBodyJson.error?.code, -32001);
-    assert.match(callBodyJson.error?.message ?? '', /Subscription not active/);
+    const describe = await mcpHandler(userKeyReq(callBody('describe_tool', { tool_name: 'get_market_data' })), deps);
+    assert.equal(describe.status, 200, 'always-free tools remain available under free-account admission');
+    assert.equal(pipe.count, 0, 'describe_tool stays quota-exempt on the free-account path');
 
     const list = await mcpHandler(userKeyReq({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }), deps);
     assert.equal(list.status, 200, 'metadata discovery stays available (symmetric with the pro path)');
+
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ ok: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    const gated = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
+    assert.equal(gated.status, 200, 'gated tools run while free-account allowance remains');
+    assert.ok(pipe.count >= 1, 'free-account meter reserved at least the call ceiling slot');
+    assert.ok(
+      pipe.ops.some((cmds) => cmds.some((c) => c[0] === 'EVAL' && String(c[3]).includes('mcp:free-acct:calls:'))),
+      'call-ceiling key must be reserved by the atomic allowance script',
+    );
   });
 
-  it('entitlement gate: getEntitlements throws for a user key → 401 fail-closed', async () => {
+  it('entitlement gate: free owner exhausted allowance → structured denial (not Pro quota copy)', async () => {
+    const { deps } = makeUserKeyDeps({
+      getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0 }),
+      pipelineOpts: { initialCount: 5 },
+    });
+    const gated = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
+    // Quota envelope (-32029/429), not the auth envelope — see #6716 F2.
+    assert.equal(gated.status, 429);
+    const gatedBody = await gated.json();
+    assert.equal(gatedBody.error?.code, -32029);
+    assert.equal(gatedBody.error?.data?.reason, 'allowance-exhausted');
+    assert.ok(gatedBody.error?.data?.upgradeUrl);
+  });
+
+  it('entitlement gate: free owner Redis failure → 503 fail-closed (no ungated dispatch)', async () => {
+    const { deps } = makeUserKeyDeps({
+      getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0 }),
+      pipelineOpts: { throwOnEval: true },
+    });
+    const gated = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
+    assert.equal(gated.status, 503);
+  });
+
+  it('entitlement gate: getEntitlements throws for a user key → 503 fail-closed (#6716)', async () => {
+    // Still fail-closed — the call is denied. But a backend outage is reported
+    // as retryable, not as a billing verdict about the key owner.
     const { deps } = makeUserKeyDeps({
       getEntitlements: async () => { throw new Error('convex down'); },
     });
     const res = await mcpHandler(userKeyReq(callBody('describe_tool', { tool_name: 'get_market_data' })), deps);
-    assert.equal(res.status, 401);
+    assert.equal(res.status, 503);
     const body = await res.json();
-    assert.equal(body.error?.code, -32001);
+    assert.equal(body.error?.code, -32603);
+    assert.equal(res.headers.get('Retry-After'), '5');
   });
 
   it('unknown wm_ key (not env, not a user key) → 401 -32001 Invalid API key', async () => {

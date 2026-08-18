@@ -119,7 +119,20 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
   const gate = checkProMcpAccess(ent, deps.now(), {
     backendConfigured: isEntitlementBackendConfigured(),
   });
-  if (gate) return proMcpGateDenialResponse(gate);
+  // #6716: a CONFIRMED free account gets the consent card, mirroring
+  // mcp-grant-mint — the mint immediately after now accepts it, and refusing
+  // here would strand a free account mid-flow on an error page.
+  //
+  // The client-metadata disclosure this gate was written to prevent is still
+  // bounded: `resolveUserId` above rejects anonymous callers, so registered
+  // client names remain visible only to a Clerk-authenticated session. What
+  // changed is that the session no longer has to be a paying one — which the
+  // consent card itself requires, since a user cannot meaningfully approve a
+  // connection without seeing what they are approving.
+  //
+  // Every other denial kind still refuses, so an expired paid row, a malformed
+  // entitlement, or an unverifiable read discloses nothing.
+  if (gate && gate.kind !== 'free_account') return proMcpGateDenialResponse(gate);
 
   // F2 (U7+U8 review pass): if `mcp-grant:<n>` exists with a userId that
   // doesn't match the Clerk session's userId, the nonce has been claimed

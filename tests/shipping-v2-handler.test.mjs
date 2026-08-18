@@ -315,6 +315,28 @@ describe('ShippingV2Service handlers', () => {
       assert.equal(pipeline[2][2], String(86400 * 30));
     });
 
+    it('uses the authenticated enterprise cookie for ownership when wms_ is also present', async () => {
+      const calls = stubRedisOk();
+      await registerWebhook(makeCtx({
+        'X-WorldMonitor-Key': 'wms_automatic-anonymous-session',
+        Cookie: 'wm-pro-key=pro-test-key',
+      }), {
+        callbackUrl: 'https://93.184.216.34/wm',
+        chokepointIds: [],
+        alertThreshold: 60,
+      });
+
+      const record = JSON.parse(calls[0][0][2]);
+      const expected = await crypto.subtle.digest(
+        'SHA-256',
+        new TextEncoder().encode('pro-test-key'),
+      );
+      const expectedOwner = Array.from(new Uint8Array(expected))
+        .map((byte) => byte.toString(16).padStart(2, '0'))
+        .join('');
+      assert.equal(record.ownerTag, expectedOwner);
+    });
+
     it('alertThreshold omitted (undefined) applies the legacy default of 50', async () => {
       const calls = stubRedisOk();
       await registerWebhook(proCtx(), {

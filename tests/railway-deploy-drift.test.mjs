@@ -11,7 +11,7 @@
 // commit, and the first is why "the service has deployments" cannot be assumed
 // to mean it received the merge.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
@@ -21,14 +21,15 @@ import {
   classifyServiceDeploy,
   classifyFleetWithinDeadline,
   deepenNoBuildWindows,
+  formatComparisonHead,
   resolveDeepPassDeadlineAt,
   isProblemVerdict,
-  missingBaselinedServices,
   readRepeatedArguments,
+  resolveComparisonHead,
+  resolveOriginMainRelation,
   summarizeDeployDrift,
   summarizeStrictDeployDrift,
 } from '../scripts/check-railway-deploy-drift.mjs';
-import { validateAcceptanceBaseline } from '../scripts/check-seed-freshness.mjs';
 import { resolveServiceClosure } from '../scripts/railway-deploy-closure.mjs';
 
 const HEAD = '1d9dcd0ef0d282961e6af75bbe469478ef57c22f';
@@ -194,6 +195,18 @@ describe('Railway deploy drift classification', () => {
     assert.equal(undecidable.verdict, 'BEHIND');
   });
 
+  it('reports AHEAD before a stale comparison-head build failure', () => {
+    const result = classify([
+      deployment('SUCCESS', { at: '2026-08-04T05:09:00Z', sha: NEWER }),
+      deployment('FAILED', { at: '2026-08-04T05:08:00Z', sha: HEAD }),
+      deployment('SUCCESS', { at: '2026-08-04T05:00:00Z', sha: PREVIOUS }),
+    ], {
+      isAncestor: (ancestor, descendant) => ancestor === HEAD && descendant === NEWER,
+    });
+    assert.equal(result.verdict, 'AHEAD');
+    assert.equal(result.runningSha, NEWER);
+  });
+
   // Ancestry must not excuse a rejection: the service can be running a
   // descendant of the head we read and still have had a later push refused.
   it('reports a rejected push even when the running build is ahead of head', () => {
@@ -272,8 +285,8 @@ describe('Railway deploy drift classification', () => {
   // A cron tick is a REDEPLOY of the same image, so it proves nothing about the
   // source. Superseding rejections by deployment TIMESTAMP let the 05:10 tick
   // bury the 05:06 rejection: the verdict decayed from REJECTED_PUSH to BEHIND,
-  // the rejection evidence vanished, and — because the baseline matches on
-  // service:verdict — the service's acknowledgement silently stopped applying.
+  // the rejection evidence vanished and the report lost the more specific
+  // refusal diagnosis.
   it('does not let a cron tick of the same image bury a rejection', () => {
     const result = classify([
       deployment('REMOVED', { at: '2026-08-04T05:10:28Z', sha: PREVIOUS }),
@@ -358,7 +371,8 @@ describe('Railway deploy drift classification', () => {
     // No running record anywhere in the window: the check knows a push was
     // refused but not what the container is serving. That is an undeterminable
     // answer wearing a determinate-looking name, so it gets its own verdict —
-    // as plain REJECTED_PUSH it was baselineable (#6483 review).
+    // as plain REJECTED_PUSH it looked more determinate than the evidence
+    // supported (#6483 review).
     const result = classify([
       deployment('SKIPPED', { at: '2026-08-04T05:06:28Z', sha: HEAD }),
     ]);
@@ -403,9 +417,9 @@ describe('Railway deploy drift classification', () => {
 //
 // Before this, "not running head" was the whole definition of drift, so the 62
 // services that carry a filter reported REJECTED_PUSH on every merge that was
-// none of their business. That is how the baseline came to acknowledge most of
-// the fleet. Re-measured, 7,331 of 7,391 path-reason skips across 600 commits
-// were the filter working correctly.
+// none of their business. That is how the removed suppression baseline came to
+// acknowledge most of the fleet. Re-measured, 7,331 of 7,391 path-reason skips
+// across 600 commits were the filter working correctly.
 describe('Railway deploy drift against the service closure', () => {
   const SCRIPTS_SEEDER = resolveServiceClosure({
     liveService: {
@@ -458,8 +472,8 @@ describe('Railway deploy drift against the service closure', () => {
   });
 
   it('stops reporting a refusal of a push that could not have reached the service', () => {
-    // The 62-entry baseline in one assertion: a SKIPPED record for a commit
-    // this container cannot be affected by is the filter working.
+    // The old 62-entry false-positive cohort in one assertion: a SKIPPED record
+    // for a commit this container cannot be affected by is the filter working.
     const result = classifyWithClosure([
       deployment('SKIPPED', { at: '2026-08-04T05:06:00Z', sha: HEAD }),
       deployment('REMOVED', { at: '2026-08-03T07:27:24Z', sha: PREVIOUS }),
@@ -492,8 +506,7 @@ describe('Railway deploy drift against the service closure', () => {
     // The service IS behind, but not because Railway refused anything that
     // mattered: the refusals it recorded were for commits it cannot see, and
     // the commit that does reach it was never recorded at all. That is #6064's
-    // failure, and calling it REJECTED_PUSH routes it to the wrong owner — and,
-    // because the baseline matches on service:verdict, to the wrong entry.
+    // failure, and calling it REJECTED_PUSH routes it to the wrong owner.
     const unrelated = 'dddddddd000000000000000000000000000000aa';
     const result = classifyWithClosure([
       deployment('SKIPPED', { at: '2026-08-04T05:06:00Z', sha: unrelated, skippedReason: 'No changes to watched files' }),
@@ -577,10 +590,8 @@ describe('Railway deploy drift summary', () => {
     { service: 'c', verdict: 'REJECTED_PUSH' },
     { service: 'd', verdict: 'BEHIND' },
   ];
-  const NOW = Date.parse('2026-08-04T06:00:00.000Z');
-  const baseline = (acknowledged, expiresAt = '2026-09-04') => ({ expiresAt, acknowledged });
 
-  it('counts every verdict and names only the problems', () => {
+  it('counts every verdict and makes every problem directly blocking', () => {
     const summary = summarizeDeployDrift(results);
     assert.deepEqual(summary.counts, {
       CURRENT: 1,
@@ -588,7 +599,9 @@ describe('Railway deploy drift summary', () => {
       REJECTED_PUSH: 1,
       BEHIND: 1,
     });
-    assert.deepEqual(summary.problems.map((entry) => entry.service), ['c', 'd']);
+    assert.deepEqual(summary.blocking.map((entry) => entry.service), ['c', 'd']);
+    assert.equal(Object.hasOwn(summary, 'problems'), false);
+    assert.equal(Object.hasOwn(summary, 'acknowledged'), false);
     assert.equal(summary.ok, false);
   });
 
@@ -603,228 +616,21 @@ describe('Railway deploy drift summary', () => {
   it('is ok only when every service is current or building', () => {
     const summary = summarizeDeployDrift(results.slice(0, 2));
     assert.equal(summary.ok, true);
-    assert.deepEqual(summary.problems, []);
-  });
-
-  it('stops an acknowledged service from blocking while still reporting it', () => {
-    const summary = summarizeDeployDrift(
-      results.slice(0, 3),
-      baseline([{ name: 'c', status: 'REJECTED_PUSH', issue: 6141 }]),
-      NOW,
-    );
-    assert.equal(summary.ok, true);
     assert.deepEqual(summary.blocking, []);
-    assert.deepEqual(summary.acknowledged.map((entry) => entry.service), ['c']);
   });
 
-  // A service failing a DIFFERENT way than the one that was acknowledged is a
-  // new failure wearing an old name.
-  it('blocks a service whose verdict is not the one baselined', () => {
-    const summary = summarizeDeployDrift(
-      results,
-      baseline([{ name: 'd', status: 'REJECTED_PUSH', issue: 6064 }]),
-      NOW,
+  it('ships no acceptance file or summary field that can suppress deploy drift', () => {
+    assert.equal(
+      existsSync(new URL('../scripts/railway-deploy-drift-baseline.json', import.meta.url)),
+      false,
     );
-    assert.deepEqual(summary.blocking.map((entry) => entry.service), ['c', 'd']);
+    const summary = summarizeDeployDrift([
+      { service: 'known-old-failure', verdict: 'BUILD_FAILED', detail: 'still failed' },
+    ]);
     assert.equal(summary.ok, false);
-  });
-
-  it('reports a recovered baseline entry without failing the run', () => {
-    // `d` is still in the fleet and now reports CURRENT — that is recovery.
-    // A baselined service MISSING from the fleet is a different thing entirely
-    // and is covered by the fleet-floor test above.
-    const summary = summarizeDeployDrift(
-      [...results.slice(0, 2), { service: 'd', verdict: 'CURRENT' }],
-      baseline([{ name: 'd', status: 'BEHIND', issue: 6064 }]),
-      NOW,
-    );
-    assert.equal(summary.ok, true);
-    assert.deepEqual(summary.cleared.map((entry) => entry.name), ['d']);
-    assert.deepEqual(summary.missing, []);
-  });
-
-  // A baselined service that vanished from the queried fleet is UNCHECKED, not
-  // recovered. Reporting it as "recovered, prune it" would retire the only
-  // watch on a service that may still be serving stale code.
-  it('never reports a service that left the fleet as recovered', () => {
-    const summary = summarizeDeployDrift(
-      results.slice(0, 2),
-      baseline([{ name: 'gone', status: 'BEHIND', issue: 6142 }]),
-      NOW,
-    );
-    assert.deepEqual(summary.missing, ['gone']);
-    assert.deepEqual(summary.cleared, []);
-    assert.equal(summary.ok, false);
-  });
-
-  it('names every baselined service absent from the checked fleet', () => {
-    assert.deepEqual(
-      missingBaselinedServices(
-        [{ service: 'a', verdict: 'CURRENT' }],
-        { expiresAt: '2026-09-04', acknowledged: [{ name: 'a', status: 'BEHIND', issue: 1 }, { name: 'b', status: 'BEHIND', issue: 1 }] },
-      ),
-      ['b'],
-    );
-  });
-
-  // Anti-rot: a suppression that outlives its cause is how a fleet ends up
-  // silently a week behind with a green monitor.
-  //
-  // `c` is acknowledged AND present in the fleet on purpose: that leaves
-  // `blocking` and `missing` both empty, so the expiry is the ONLY thing that
-  // can make this run fail. A fixture that also blocked or went missing would
-  // pass with the expiry check deleted.
-  it('fails once the baseline expires, even with nothing else wrong', () => {
-    const summary = summarizeDeployDrift(
-      results.slice(0, 3),
-      baseline([{ name: 'c', status: 'REJECTED_PUSH', issue: 6141 }], '2026-08-01'),
-      NOW,
-    );
-    assert.deepEqual(summary.blocking, []);
-    assert.deepEqual(summary.missing, []);
-    assert.equal(summary.expired, true);
-    assert.equal(summary.ok, false);
-  });
-
-  // The companion to the rule above, and the reason pruning the last entry is
-  // safe: the expiry governs SUPPRESSIONS. With none left there is nothing to
-  // re-review, so a passed date must not redden a monitor whose whole fleet is
-  // on head — this file is emptied the moment the fleet recovers (#6064), and a
-  // date-triggered failure over an empty list is noise that trains people to
-  // ignore this check.
-  it('does not expire a baseline that suppresses nothing', () => {
-    const summary = summarizeDeployDrift(
-      results.slice(0, 2),
-      baseline([], '2026-08-01'),
-      NOW,
-    );
-    assert.equal(summary.expired, false);
-    assert.equal(summary.ok, true);
-  });
-});
-
-describe('the shipped deploy-drift baseline', () => {
-  const baseline = JSON.parse(
-    readFileSync(new URL('../scripts/railway-deploy-drift-baseline.json', import.meta.url), 'utf8'),
-  );
-
-  it('is a valid baseline every entry of which names an owner issue', () => {
-    assert.equal(validateAcceptanceBaseline(baseline), baseline);
-    for (const entry of baseline.acknowledged) {
-      assert.ok(entry.reason, `${entry.name} must say why it is acknowledged`);
-    }
-  });
-
-  // This file used to hold 62 REJECTED_PUSH entries — every service carrying a
-  // watch-path filter — because the check demanded that a filtered service run
-  // HEAD. It does not any more; those services report CURRENT_FOR_CLOSURE.
-  // Re-adding them would suppress a verdict that now means something real:
-  // Railway refused a push that DID reach the service.
-  it('no longer suppresses the fleet-wide rejections #6142 removed', () => {
-    const owned = baseline.acknowledged.filter((entry) => entry.issue === 6142);
-    assert.deepEqual(
-      owned.map((entry) => `${entry.name}:${entry.status}`),
-      [],
-      'the closure-aware check reports these healthy — acknowledging them again would hide a real refusal',
-    );
-  });
-
-  // A partial hand-edit during pruning leaves the file looking maintained while
-  // quietly disagreeing with itself, so entries that share an owner must share
-  // the sentence that explains them.
-  it('keeps one canonical reason per owner issue', () => {
-    const byIssue = new Map();
-    for (const entry of baseline.acknowledged) {
-      if (!byIssue.has(entry.issue)) byIssue.set(entry.issue, new Set());
-      byIssue.get(entry.issue).add(entry.reason);
-    }
-    for (const [issue, reasons] of byIssue) {
-      assert.equal(reasons.size, 1, `entries acknowledged against #${issue} must share one reason string`);
-    }
-  });
-
-  // A verdict that means "this check could not determine anything" is not a
-  // degradation anyone can accept — acknowledging one converts an unreadable
-  // answer into a green one, which is the failure mode this whole issue is
-  // about.
-  it('never acknowledges a verdict that means the check failed', () => {
-    // Derived from the check, never re-typed here: a hand-copied list stops
-    // covering the next can't-tell verdict the moment one is added, which is
-    // how CLOSURE_UNKNOWN would have become baselineable.
-    const undeterminable = baseline.acknowledged.filter((entry) =>
-      UNDETERMINABLE_VERDICTS.includes(entry.status));
-    assert.deepEqual(
-      undeterminable.map((entry) => entry.name),
-      [],
-      'these verdicts mean the check does not know, not that the degradation is accepted',
-    );
-  });
-
-  // Entries are matched by exact name, so a wildcard would silently match
-  // nothing while reading like it covers a family of services.
-  it('names services exactly rather than by pattern', () => {
-    for (const entry of baseline.acknowledged) {
-      assert.doesNotMatch(entry.name, /[*?[\]]/, `${entry.name} must be an exact service name`);
-    }
-  });
-
-  // The 2026-08 cohort's whole promise is a bounded suppression: green on the
-  // known state today, a re-page once the entry expiry passes. Both halves are
-  // pinned against the REAL shipped file so a hand-edit cannot quietly turn
-  // "bounded" into "forever" (or the re-page into an unattributed wall of red).
-  it('acknowledges the full shipped cohort just before the earliest entry expiry', () => {
-    if (baseline.acknowledged.length === 0) return;
-    const results = baseline.acknowledged.map((entry) => ({
-      service: entry.name,
-      verdict: entry.status,
-      rejectedShas: entry.rejectedShas ?? [],
-      detail: 'x',
-    }));
-    const earliest = Math.min(...baseline.acknowledged.map((entry) => Date.parse(entry.expiresAt ?? baseline.expiresAt)));
-    const summary = summarizeDeployDrift(results, baseline, earliest - 1);
-    assert.equal(summary.ok, true, 'the known cohort must be green before expiry or red carries no signal');
-    assert.equal(summary.acknowledged.length, baseline.acknowledged.length);
-  });
-
-  it('re-pages every acknowledged service once its entry expiry passes, with attribution', () => {
-    if (baseline.acknowledged.length === 0) return;
-    const results = baseline.acknowledged.map((entry) => ({
-      service: entry.name,
-      verdict: entry.status,
-      rejectedShas: entry.rejectedShas ?? [],
-      detail: 'x',
-    }));
-    const latest = Math.max(...baseline.acknowledged.map((entry) => Date.parse(entry.expiresAt ?? baseline.expiresAt)));
-    const summary = summarizeDeployDrift(results, baseline, latest + 1);
-    assert.equal(summary.ok, false, 'an expired suppression must re-page');
-    assert.equal(summary.blocking.length, baseline.acknowledged.length);
-    for (const problem of summary.blocking) {
-      assert.ok(problem.expiredEntry, `${problem.service} must attribute its red line to the expired entry`);
-      assert.ok(Number.isInteger(problem.issue), `${problem.service} must carry the owner issue through expiry`);
-    }
-  });
-
-  // 31 entries expiring in the same instant would re-page as one 31-line wall
-  // that is easiest to clear by bumping a date. Staggered expiries make the
-  // re-page arrive as a reviewable trickle.
-  it('staggers entry expiries across more than one day', () => {
-    if (baseline.acknowledged.length < 10) return;
-    const distinct = new Set(baseline.acknowledged.map((entry) => entry.expiresAt));
-    assert.ok(distinct.size >= 3, `expected staggered entry expiries, got ${[...distinct].join(', ')}`);
-  });
-
-  // Cross-model review finding (#6483 class): without a cohort, a service that
-  // recovers and later suffers a NOVEL rejection re-matches its stale entry
-  // and inherits the suppression. Every shipped entry must therefore pin the
-  // exact SHAs it acknowledges.
-  it('scopes every acknowledged rejection to an explicit SHA cohort', () => {
-    for (const entry of baseline.acknowledged) {
-      if (!entry.status.startsWith('REJECTED_PUSH')) continue;
-      assert.ok(Array.isArray(entry.rejectedShas) && entry.rejectedShas.length > 0,
-        `${entry.name} must name the rejected SHAs it acknowledges`);
-      for (const sha of entry.rejectedShas) {
-        assert.match(sha, /^[0-9a-f]{40}$/, `${entry.name} cohort entries must be full commit SHAs`);
-      }
+    assert.deepEqual(summary.blocking.map((entry) => entry.service), ['known-old-failure']);
+    for (const field of ['acknowledged', 'cleared', 'escalated', 'missing', 'expired', 'expiresAt']) {
+      assert.equal(Object.hasOwn(summary, field), false, `${field} must not survive baseline removal`);
     }
   });
 });
@@ -845,7 +651,7 @@ describe('strict terminal reconciliation drift', () => {
     assert.deepEqual(summary.blocking, []);
   });
 
-  it('rejects an AHEAD descendant unless strict mode proves it is on authorized main', () => {
+  it('rejects an AHEAD descendant unless the summary proves it is on authorized main', () => {
     const arbitraryDescendant = { ...result('a', 'AHEAD'), runningSha: NEWER };
     const unproven = summarizeStrictDeployDrift([arbitraryDescendant], ['a']);
     assert.equal(unproven.ok, false);
@@ -857,12 +663,18 @@ describe('strict terminal reconciliation drift', () => {
     assert.equal(offMain.ok, false);
     assert.equal(offMain.blocking[0].verdict, 'AHEAD_LINEAGE_UNPROVEN');
 
-    const ordinary = summarizeDeployDrift([arbitraryDescendant]);
-    assert.equal(ordinary.ok, true);
-    assert.deepEqual(ordinary.blocking, []);
+    const ordinaryUnproven = summarizeDeployDrift([arbitraryDescendant]);
+    assert.equal(ordinaryUnproven.ok, false);
+    assert.equal(ordinaryUnproven.blocking[0].verdict, 'AHEAD_LINEAGE_UNPROVEN');
+
+    const ordinaryProven = summarizeDeployDrift([arbitraryDescendant], {
+      isOnAuthorizedMainLineage: (sha) => sha === NEWER,
+    });
+    assert.equal(ordinaryProven.ok, true);
+    assert.deepEqual(ordinaryProven.blocking, []);
   });
 
-  it('rejects pending builds, baselineable problems, duplicates, and omitted services', () => {
+  it('rejects pending builds, directly blocking problems, duplicates, and omitted services', () => {
     const pending = summarizeStrictDeployDrift([result('a', 'PENDING_BUILD')], ['a']);
     assert.equal(pending.ok, false);
     assert.equal(pending.blocking[0].verdict, 'PENDING_BUILD');
@@ -878,11 +690,11 @@ describe('strict terminal reconciliation drift', () => {
     assert.equal(duplicate.ok, false);
     assert.deepEqual(duplicate.duplicates, ['a']);
 
-    const baselinedInOrdinaryMonitor = summarizeStrictDeployDrift([
+    const failedBuild = summarizeStrictDeployDrift([
       result('a', 'BUILD_FAILED'),
     ], ['a']);
-    assert.equal(baselinedInOrdinaryMonitor.ok, false);
-    assert.equal(baselinedInOrdinaryMonitor.blocking[0].verdict, 'BUILD_FAILED');
+    assert.equal(failedBuild.ok, false);
+    assert.equal(failedBuild.blocking[0].verdict, 'BUILD_FAILED');
   });
 
   it('compares live results with the immutable expected fleet', () => {
@@ -903,6 +715,119 @@ describe('strict terminal reconciliation drift', () => {
       () => readRepeatedArguments(['node', 'script', '--expected-service', '--json'], '--expected-service'),
       /requires a value/,
     );
+  });
+
+  it('refreshes origin/main before a manual comparison and reports an exact relation', () => {
+    const calls = [];
+    let refreshed = false;
+    const git = (args) => {
+      calls.push(args);
+      if (args[0] === 'fetch') {
+        refreshed = true;
+        return '';
+      }
+      assert.equal(args.at(-1), 'origin/main^{commit}');
+      return refreshed ? HEAD : PREVIOUS;
+    };
+    const result = resolveComparisonHead(['node', 'script'], { git });
+    assert.deepEqual(result, {
+      headSha: HEAD,
+      headSource: 'origin/main',
+      originMainSha: HEAD,
+      originMainRelation: 'exact',
+    });
+    assert.equal(formatComparisonHead(result), 'source=origin/main vs-origin-main=exact');
+    assert.deepEqual(calls, [
+      [
+        'fetch',
+        '--quiet',
+        'origin',
+        '+refs/heads/main:refs/remotes/origin/main',
+      ],
+      ['rev-parse', '--verify', '--end-of-options', 'origin/main^{commit}'],
+    ]);
+  });
+
+  it('reports an explicit stale head as behind origin/main', () => {
+    const result = resolveComparisonHead(['node', 'script', '--head', PREVIOUS], {
+      git: (args) => {
+        if (args.at(-1) === 'origin/main^{commit}') return HEAD;
+        if (args.at(-1) === `${PREVIOUS}^{commit}`) return PREVIOUS;
+        throw new Error(`unexpected git call: ${args.join(' ')}`);
+      },
+      ancestry: (ancestor, descendant) => (
+        ancestor === PREVIOUS && descendant === HEAD ? 'yes' : 'no'
+      ),
+    });
+    assert.equal(result.headSha, PREVIOUS);
+    assert.equal(result.headSource, '--head');
+    assert.equal(result.originMainRelation, 'behind');
+    assert.equal(formatComparisonHead(result), 'source=--head vs-origin-main=behind');
+  });
+
+  it('fails a manual comparison when main cannot be refreshed', () => {
+    const calls = [];
+    assert.throws(
+      () => resolveComparisonHead(['node', 'script'], {
+        git: (args) => {
+          calls.push(args);
+          throw new Error('fetch failed');
+        },
+      }),
+      /fetch failed/,
+    );
+    assert.deepEqual(calls, [[
+      'fetch',
+      '--quiet',
+      'origin',
+      '+refs/heads/main:refs/remotes/origin/main',
+    ]]);
+  });
+
+  it('treats an explicit comparison ref as data, never as a git option', () => {
+    const calls = [];
+    resolveComparisonHead(['node', 'script', '--head=--upload-pack=evil'], {
+      git: (args) => {
+        calls.push(args);
+        return HEAD;
+      },
+    });
+    assert.deepEqual(calls.at(-1), [
+      'rev-parse',
+      '--verify',
+      '--end-of-options',
+      '--upload-pack=evil^{commit}',
+    ]);
+  });
+
+  it('keeps an explicit head usable when origin/main is unavailable', () => {
+    const result = resolveComparisonHead(['node', 'script', '--head', HEAD], {
+      git: (args) => {
+        if (args.at(-1) === 'origin/main^{commit}') throw new Error('missing ref');
+        if (args.at(-1) === `${HEAD}^{commit}`) return HEAD;
+        throw new Error(`unexpected git call: ${args.join(' ')}`);
+      },
+    });
+    assert.deepEqual(result, {
+      headSha: HEAD,
+      headSource: '--head',
+      originMainSha: null,
+      originMainRelation: 'unavailable',
+    });
+  });
+
+  it('distinguishes ahead, diverged, and unresolved head relationships', () => {
+    const lookup = (answers) => (
+      ancestor,
+      descendant,
+    ) => answers[`${ancestor}..${descendant}`] ?? 'unknown';
+    assert.equal(resolveOriginMainRelation(
+      NEWER,
+      HEAD,
+      lookup({ [`${HEAD}..${NEWER}`]: 'yes' }),
+    ), 'ahead');
+    assert.equal(resolveOriginMainRelation(PREVIOUS, HEAD, () => 'no'), 'diverged');
+    assert.equal(resolveOriginMainRelation(PREVIOUS, HEAD, () => 'unknown'), 'unknown');
   });
 
   it('fails closed on an empty or malformed expected fleet', () => {
@@ -1138,14 +1063,14 @@ describe('deep-window fallback for unidentified-source windows', () => {
     };
 
     await runAt(0);
-    await runAt(15 * 60 * 1000);
+    await runAt(60 * 60 * 1000);
 
     assert.equal(attempted[0].length, DEEP_PASS_MAX_CANDIDATES);
     assert.equal(attempted[1].length, DEEP_PASS_MAX_CANDIDATES);
     assert.deepEqual(
       [...new Set(attempted.flat())].sort(),
       input.map((result) => result.service).sort(),
-      'the next schedule slot must reach every service omitted by the prior cap',
+      'the next hourly schedule slot must reach every service omitted by the prior cap',
     );
   });
 
@@ -1261,15 +1186,10 @@ describe('scheduled-run classification deadline', () => {
   });
 });
 
-// #6483 review (adversarial + cross-model, both verified by execution): the
-// baseline matches on name:verdict alone, which left two green-while-dead
-// doors open. (1) A saturated window plus one outstanding rejection classifies
-// REJECTED_PUSH with runningSha null — a determinate-LOOKING verdict for a
-// service whose live source the check never identified, which the baseline
-// then acknowledged. (2) After a baselined service recovers, a later NOVEL
-// rejection re-matches the stale entry and inherits its suppression until
-// expiry. The verdict split and the rejectedShas cohorts close them.
-describe('unknown-source rejections and baseline cohorts', () => {
+// A saturated window plus one outstanding rejection can leave the running
+// source unidentified. Keep that distinct from an ordinary rejected push so
+// the monitor cannot report a determinate-looking answer from missing evidence.
+describe('unknown-source rejections', () => {
   it('splits an unidentified-source rejection from ordinary REJECTED_PUSH', () => {
     const result = classifyServiceDeploy({
       service: 'svc',
@@ -1284,7 +1204,7 @@ describe('unknown-source rejections and baseline cohorts', () => {
     assert.deepEqual(result.rejectedShas, [PREVIOUS]);
     assert.ok(
       UNDETERMINABLE_VERDICTS.includes('REJECTED_PUSH_UNKNOWN_SOURCE'),
-      'an unidentified source is an undeterminable answer and must never be baselineable',
+      'an unidentified source is an undeterminable answer and must stay directly blocking',
     );
   });
 
@@ -1299,61 +1219,5 @@ describe('unknown-source rejections and baseline cohorts', () => {
     });
     assert.equal(result.verdict, 'REJECTED_PUSH');
     assert.equal(result.runningSha, PREVIOUS);
-  });
-
-  const cohortBaseline = (entry = {}) => ({
-    expiresAt: '2027-01-01',
-    acknowledged: [{
-      name: 'svc',
-      status: 'REJECTED_PUSH',
-      reason: 'known dormant-reconciler cohort',
-      issue: 6378,
-      rejectedShas: [PREVIOUS],
-      ...entry,
-    }],
-  });
-  const rejectedResult = (shas) => ({
-    service: 'svc',
-    verdict: 'REJECTED_PUSH',
-    runningSha: 'f'.repeat(40),
-    rejectedShas: shas,
-    detail: 'x',
-  });
-  const NOW = Date.parse('2026-08-12T12:00:00.000Z');
-
-  it('still acknowledges rejections inside the baselined cohort', () => {
-    const summary = summarizeDeployDrift([rejectedResult([PREVIOUS])], cohortBaseline(), NOW);
-    assert.equal(summary.ok, true);
-    assert.equal(summary.acknowledged.length, 1);
-  });
-
-  it('blocks a novel rejection SHA on a service baselined for an older cohort', () => {
-    const summary = summarizeDeployDrift([rejectedResult([PREVIOUS, NEWER])], cohortBaseline(), NOW);
-    assert.equal(summary.ok, false, 'a rejection outside the acknowledged cohort is NEW information');
-    assert.equal(summary.blocking.length, 1);
-    assert.deepEqual(summary.blocking[0].novelRejections, [NEWER]);
-  });
-
-  it('attributes an entry-level expiry on the blocking item', () => {
-    const summary = summarizeDeployDrift(
-      [rejectedResult([PREVIOUS])],
-      cohortBaseline({ expiresAt: '2026-08-10T00:00:00Z' }),
-      NOW,
-    );
-    assert.equal(summary.ok, false);
-    assert.equal(summary.blocking[0].expiredEntry, '2026-08-10T00:00:00Z');
-    assert.equal(summary.blocking[0].issue, 6378);
-  });
-
-  it('propagates escalation when a baselined service reports a different verdict', () => {
-    const summary = summarizeDeployDrift(
-      [{ service: 'svc', verdict: 'BUILD_FAILED', runningSha: PREVIOUS, detail: 'x' }],
-      cohortBaseline(),
-      NOW,
-    );
-    assert.equal(summary.ok, false);
-    assert.deepEqual(summary.escalated, [{
-      name: 'svc', status: 'REJECTED_PUSH', observedStatus: 'BUILD_FAILED', issue: 6378,
-    }]);
   });
 });

@@ -90,31 +90,28 @@ beforeEach(() => {
 const { handleCheckoutReturn, resolveCheckoutReturnRouting } = await import('../src/services/checkout-return.ts');
 
 describe('resolveCheckoutReturnRouting', () => {
-  it('keeps desktop acknowledgements account-agnostic', () => {
+  it('keeps desktop acknowledgements account-agnostic (kind: desktop)', () => {
+    // desktop → not account (waitForEntitlement:false, accountAgnostic:true).
     assert.deepEqual(
       resolveCheckoutReturnRouting({ kind: 'success', source: 'desktop' }, true),
-      {
-        returnedFromDesktopBrowser: true,
-        returnedFromOverlay: false,
-        returnedFromCheckout: true,
-        returnedFromAccountCheckout: false,
-      },
+      { kind: 'desktop' },
     );
   });
 
+  it('routes a non-desktop URL success to account checkout', () => {
+    assert.deepEqual(resolveCheckoutReturnRouting({ kind: 'success' }, false), { kind: 'account' });
+  });
+
   it('accepts an overlay flag only when the URL had no checkout outcome', () => {
-    assert.deepEqual(resolveCheckoutReturnRouting({ kind: 'none' }, true), {
-      returnedFromDesktopBrowser: false,
-      returnedFromOverlay: true,
-      returnedFromCheckout: true,
-      returnedFromAccountCheckout: true,
-    });
-    assert.deepEqual(resolveCheckoutReturnRouting({ kind: 'failed', rawStatus: 'cancelled' }, true), {
-      returnedFromDesktopBrowser: false,
-      returnedFromOverlay: false,
-      returnedFromCheckout: false,
-      returnedFromAccountCheckout: false,
-    });
+    assert.deepEqual(resolveCheckoutReturnRouting({ kind: 'none' }, true), { kind: 'overlay' });
+    assert.deepEqual(resolveCheckoutReturnRouting({ kind: 'none' }, false), { kind: 'none' });
+  });
+
+  it('lets a failed URL result beat a stale overlay flag (kind: none, never overlay)', () => {
+    assert.deepEqual(
+      resolveCheckoutReturnRouting({ kind: 'failed', rawStatus: 'cancelled' }, true),
+      { kind: 'none' },
+    );
   });
 });
 

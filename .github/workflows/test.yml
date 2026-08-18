@@ -26,7 +26,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
+          # Specialized jobs (desktop-rust, umami, digest, …) are path-filtered
+          # on PRs. Do the same on push to main. Forcing them true here used to
+          # compile the Tauri crate and rebuild Umami images on every merge —
+          # weather, news, embed — which is not a desktop or analytics gate.
+          # Fail open (run everything) only when we cannot see the file list:
+          # a zero parent SHA, a compare error, or GitHub's 300-file cap.
+          emit_all_true() {
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "digest=true" >> "$GITHUB_OUTPUT"
             echo "validation=true" >> "$GITHUB_OUTPUT"
@@ -34,10 +40,31 @@ jobs:
             echo "consumer_prices=true" >> "$GITHUB_OUTPUT"
             echo "desktop_config=true" >> "$GITHUB_OUTPUT"
             echo "desktop_rust=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          }
+          ZERO=0000000000000000000000000000000000000000
+          if [ "${{ github.event_name }}" = "push" ]; then
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "$ZERO" ]; then
+              echo "No usable parent SHA; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            if ! FILES=$(gh api "repos/${{ github.repository }}/compare/${BEFORE}...${{ github.sha }}" \
+              --jq '.files[]?.filename'); then
+              echo "Compare API failed; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+            FILE_COUNT=$(printf '%s\n' "$FILES" | grep -c . || true)
+            if [ "$FILE_COUNT" -ge 300 ]; then
+              echo "Compare listing is truncated at 300 files; running every Test job."
+              emit_all_true
+              exit 0
+            fi
+          else
+            FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
+              --paginate --jq '.[].filename')
           fi
-          FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
-            --paginate --jq '.[].filename')
           CODE=$(echo "$FILES" | awk '
             /^docs\/research\/seo-ai-visibility\// { count++; next }
             # Committed resilience acceptance artifacts are docs-path data that
@@ -47,6 +74,19 @@ jobs:
             # without this rule the guard skips on exactly the PR that commits
             # an artifact and can only ever fire on unrelated changes.
             /^docs\/snapshots\/resilience-.*-acceptance-.*\.json$/ { count++; next }
+            # Per-service OpenAPI specs are generated machine artifacts consumed
+            # by tests/openapi-filter-param-schemas.test.mjs, which enumerates
+            # every JSON spec. Keep the JSON/YAML siblings on the same `unit`
+            # job when a PR changes only docs/api output (#6650).
+            /^docs\/api\/[^\/]+Service\.openapi\.(json|yaml)$/ { count++; next }
+            # The generated OpenAPI bundle sits under docs/ but is the INPUT to
+            # the served public/openapi.json. Its <= 950,000-byte scanner guard
+            # (tests/openapi-json-dedup.test.mjs) and the capacity report that
+            # tracks the approach to it both run in `unit`, so without this
+            # carve-out a PR that only regenerates the bundle sets code=false
+            # and skips the one gate that measures the artifact it changed
+            # (#6558).
+            /^docs\/api\/worldmonitor\.openapi\.yaml$/ { count++; next }
             /\.md$/ { next }
             /^docs\// { next }
             /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// && $0 !~ /^src-tauri\/.*\.json$/ { next }
@@ -85,7 +125,9 @@ jobs:
           echo "validation=$( [ "$VALIDATION" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
           # Umami's database race cannot be covered by the normal no-Docker
           # unit suite. Run a real PostgreSQL gate only when its managed image,
-          # migration, patch, focused tests, or this workflow changes.
+          # migration, patch, or focused tests change. Do not trigger on every
+          # Test workflow edit: unit already pins the job shape, and rebuilding
+          # two Umami images is the cost that made this look like a per-PR tax.
           UMAMI=$(echo "$FILES" | awk '
             /^\.dockerignore$/ { count++ }
             /^Dockerfile\.umami$/ { count++ }
@@ -93,7 +135,6 @@ jobs:
             /^docker\/umami\// { count++ }
             /^scripts\/umami-retention\.sql$/ { count++ }
             /^tests\/umami-(runtime-remediation\.test|postgres-integration|runtime-write-probe)\.mjs$/ { count++ }
-            /^\.github\/workflows\/test\.yml$/ { count++ }
             END { print count + 0 }
           ')
           echo "umami=$( [ "$UMAMI" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
@@ -132,18 +173,21 @@ jobs:
             END { print count + 0 }
           ')
           echo "desktop_config=$( [ "$DESKTOP_CONFIG" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # Compile the Tauri crate only when the crate itself changes.
+          # Workflow edits are covered by desktop-config (cheap) and by the
+          # unit contract that pins this job's shape — they must not pay
+          # cargo test --locked (45 min budget) the way test.yml used to.
           DESKTOP_RUST=$(echo "$FILES" | awk '
             /^src-tauri\/sidecar\// { next }
-            /^src-tauri\// { count++; next }
-            /^\.github\/workflows\/test\.yml$/ { count++ }
+            /^src-tauri\// { count++ }
             END { print count + 0 }
           ')
           echo "desktop_rust=$( [ "$DESKTOP_RUST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
   docs-stats:
-    # Always-on: guards the capability counts quoted in README / ARCHITECTURE /
-    # docs against the code sources of truth. Runs on every PR/push (docs-only
-    # PRs set changes.code=false and skip `unit`, so this must not gate on it).
+    # Always-on: derives build-owned inventory facts and validates fixed or
+    # semantic documentation contracts. Runs on every PR/push (docs-only PRs
+    # set changes.code=false and skip `unit`, so this must not gate on it).
     # Pure Node builtins — no npm install required.
     runs-on: ubuntu-latest
     steps:
@@ -151,18 +195,10 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
-      - name: stats.json is tracked and current
-        # `git diff --exit-code` ignores untracked paths, so a PR that deletes
-        # the committed snapshot would regenerate it untracked and still pass.
-        # `git status --porcelain` reports stale (` M`), deleted (` D`), and
-        # untracked (`??`) alike, so it catches all three.
+      - name: Generate and validate build-owned inventory facts
         run: |
-          node scripts/docs-stats.mjs
-          if [ -n "$(git status --porcelain -- docs/generated/stats.json)" ]; then
-            echo '::error::docs/generated/stats.json is missing, untracked, or stale — run `npm run docs:stats` and commit it.'
-            git status --porcelain -- docs/generated/stats.json
-            exit 1
-          fi
+          node scripts/generate-inventory-facts.mjs
+          node scripts/generate-inventory-facts.mjs --check
       - name: Doc claims match code
         run: node scripts/docs-stats.mjs --check
       - name: Source attribution inventory is current
@@ -182,11 +218,70 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            pro-test/package-lock.json
       - run: npm ci
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: zh-TW catalogues reproduce from their Simplified source (#6555)
+        # The zh-TW catalogues are generated from zh.json, not translated from
+        # en.json, so the EN baseline in translate-locales.mjs is the wrong
+        # instrument for them and reports them separately. That leaves this as
+        # the only check that fails when zh.json moves and nobody reran the
+        # generator — without it, key-existence stays green while the values
+        # rot, which is the #5645 blindspot on this catalogue.
+        #
+        # Version-pinned deliberately: a different OpenCC build shifts terms no
+        # override pins, and reporting both catalogues stale at once is the
+        # intended loud failure rather than a silent reformat.
+        run: |
+          pip install opencc-python-reimplemented==0.1.7
+          python3 scripts/convert-zh-tw.py --check
       - name: Enforce health-probe cutovers
         env:
           HEALTH_PROBE_CUTOVER_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: node --import tsx scripts/check-health-probe-cutovers.mts "$HEALTH_PROBE_CUTOVER_BASE"
+      - name: OpenAPI bundle capacity (#6558)
+        # The <= 950,000-byte scanner guard lives in
+        # tests/openapi-json-dedup.test.mjs and stays the gate. This step
+        # publishes what that guard is silent about on the way to the wall:
+        # served bytes, remaining headroom, and how many more operations fit.
+        # The last three crossings were each discovered by a red build on
+        # whichever PR happened to be last in line; the number belongs in front
+        # of a reviewer before that.
+        #
+        # Exits nonzero only when the artifact is over budget or could not be
+        # measured at all — a breached reserve warns, because a second hard
+        # failure at the same wall would just be the same red build one commit
+        # earlier. Placed before the suite on purpose: an over-budget artifact
+        # fails test:data anyway, and failing here costs 30s instead of 10min
+        # while the upload step below still publishes the breakdown.
+        #
+        # Written to RUNNER_TEMP, not the workspace: a CI-only artifact dropped
+        # in the repo root is untracked state that a later `git status` gate
+        # would trip over.
+        run: node scripts/openapi-capacity-report.mjs --out "$RUNNER_TEMP/openapi-capacity.json"
+      - name: Upload OpenAPI capacity report
+        # `!cancelled()` rather than `always()`: an over-budget run is exactly
+        # when the breakdown is worth reading, and a cancelled job has nothing
+        # to say. run_attempt in the name because upload-artifact v6 rejects a
+        # duplicate name within a run, which collides on the re-run someone
+        # starts to chase the failure.
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: openapi-capacity-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/openapi-capacity.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Build /pro artifacts for built-output tests
+        # public/pro/ stopped being committed in #6898, so the suites that read
+        # it need the same treatment dist/ already gets. Ordered before the
+        # dashboard build to mirror production: root `vite build` copies
+        # public/ into dist/, so /pro must exist by then.
+        run: npm run build:pro
       - name: Build dashboard artifacts for built-output tests
         run: VITE_VARIANT=full ./node_modules/.bin/vite build
       - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data
@@ -449,7 +544,7 @@ jobs:
     # No secrets are injected here. The smoke allows provider-level
     # unavailable/stale states and gates app-level boot, variant, 401,
     # page-error, and expected-panel invariants.
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -473,8 +568,38 @@ jobs:
       # cache hit on an image that no longer ships a needed lib would fail at
       # chromium launch. Exactly one apt pass runs either way: --with-deps on a
       # miss (above), install-deps alone on a hit.
-      - run: npx playwright install-deps chromium
+      #
+      # install-deps has hung on apt for the full 15-minute job budget (PR
+      # #6923 run 32156387036), cancelling the smoke tests before they started.
+      # Cap the apt step and fall back to a full --with-deps install instead of
+      # letting a stuck mirror redden the required gate.
+      - name: Install Playwright OS libraries
+        id: playwright-install-deps
         if: steps.playwright-cache.outputs.cache-hit == 'true'
+        timeout-minutes: 8
+        continue-on-error: true
+        run: npx playwright install-deps chromium
+      - name: Repair Playwright install after OS-deps timeout
+        if: steps.playwright-cache.outputs.cache-hit == 'true' && steps.playwright-install-deps.outcome == 'failure'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          # Run 32161039934: GHA timed out install-deps after 8m, but apt-get
+          # (pid 2500) still held /var/lib/apt/lists/lock. The immediate
+          # --with-deps fallback then exited 100 on that lock.
+          sudo pkill -9 -f 'playwright install-deps' || true
+          sudo pkill -9 apt-get || true
+          for _ in $(seq 1 20); do
+            if command -v fuser >/dev/null 2>&1 \
+              && sudo fuser /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend >/dev/null 2>&1; then
+              sleep 1
+              continue
+            fi
+            sudo rm -f /var/lib/apt/lists/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend
+            break
+          done
+          sudo dpkg --configure -a || true
+          npx playwright install --with-deps chromium
       # One invocation for all three smoke specs: each `playwright test` run
       # boots its own vite dev server (reuseExistingServer is false), so three
       # separate steps paid three boots; the specs are independent and share
@@ -517,6 +642,22 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14
+      - name: Build /pro artifacts for prehydration browser checks
+        # public/pro/ is built output since #6898. Keep this explicit and
+        # immediately before the focused spec so the browser checks cannot run
+        # against missing or stale bytes from another build.
+        run: npm run build:pro
+      - name: Run fail-closed prehydration browser checks
+        id: prehydration
+        run: npm run test:e2e:prehydration
+      - name: Upload prehydration Playwright artifacts
+        if: ${{ !cancelled() && steps.prehydration.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-prehydration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
       # WebMCP is exposed only by an enabled Chrome milestone. Keep this probe
       # separate from the bundled-Chromium smoke so an unavailable or stale
       # system Chrome fails the required PR job instead of silently skipping.
@@ -538,9 +679,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # The focused suite is already inside `unit` / test:data. This job exists
+  # only for validation-docs PRs that skip `unit` (docs/ is carved out of
+  # `code`). Running it on every code PR paid a second npm ci for the same
+  # files.
   resilience-validation-smoke:
     needs: changes
-    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.validation == 'true'
+    if: needs.changes.outputs.validation == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

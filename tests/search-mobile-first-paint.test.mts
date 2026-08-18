@@ -90,9 +90,25 @@ interface SearchModalHarness {
   recentOrEmptyCalls: number;
   chipRenderCalls: number;
 }
-const Harness = new Function('isMobileDevice', 'overlayHistory', harnessJs)(
+// This suite covers #5158 scheduling, and its harness overlay is a plain object
+// with no querySelectorAll, so the real trap cannot run against it. The stub
+// below reproduces only the one behavior open() depends on: activate() resolves
+// initialFocus and focuses it. tests/focus-trap.test.mts pins that behavior on
+// the real utility, so the stub cannot drift from it unnoticed.
+const Harness = new Function('isMobileDevice', 'overlayHistory', 'createFocusTrap', harnessJs)(
   () => true,
   { open() {}, replace() {}, close() {} },
+  (
+    _container: HTMLElement,
+    options: { initialFocus?: HTMLElement | null | (() => HTMLElement | null) } = {},
+  ) => ({
+    activate() {
+      const initialFocus =
+        typeof options.initialFocus === 'function' ? options.initialFocus() : options.initialFocus;
+      initialFocus?.focus();
+    },
+    deactivate() {},
+  }),
 ) as new () => SearchModalHarness;
 
 function withAnimationFrames(run: (frames: FrameRequestCallback[]) => void): void {
@@ -204,4 +220,11 @@ test('mobile search CSS never hides the sheet or input with content-visibility (
     stylesSrc,
     /\.search-overlay\.search-mobile[^{}]*(?:\.search-sheet|\.search-input)[^{}]*\{[^}]*content-visibility\s*:\s*hidden/i,
   );
+});
+
+test('responsive search caps do not mutate the open session history mode', () => {
+  const searchMethod = extractMethod('public search(rawInput: string, scope: SearchScope = this.activeScope): SearchIndexQueryResult {');
+  assert.match(searchMethod, /const currentViewportIsMobile = isMobileDevice\(\);/);
+  assert.match(searchMethod, /isMobile: currentViewportIsMobile/);
+  assert.doesNotMatch(searchMethod, /this\.isMobile\s*=/);
 });

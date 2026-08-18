@@ -54,7 +54,12 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // actually described.
   it('every tool in TOOL_REGISTRY declares a non-empty outputSchema with at least one properties key (and, for cache tools, at least one data.properties key)', () => {
     const registry = mod.__testing__.TOOL_REGISTRY ?? [];
-    assert.ok(registry.length >= 40, `expected ≥40 tools, got ${registry.length}`);
+    assert.ok(registry.length > 0, 'TOOL_REGISTRY extraction must not be empty');
+    assert.equal(
+      new Set(registry.map((tool) => tool.name)).size,
+      registry.length,
+      'TOOL_REGISTRY tool identities must be unique',
+    );
     const failures = [];
     for (const tool of registry) {
       const schema = tool.outputSchema;
@@ -135,7 +140,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     for (const field of [
       'uniqueSourceCount', 'sources', 'memberTitles', 'lastUpdated', 'sourceTier',
       'entityCorroboration', 'corroborationSourceCount',
-      'upstreamImportanceScore', 'effectiveImportanceScore',
+      'upstreamImportanceScore', 'effectiveImportanceScore', 'credibilityScore',
     ]) {
       assert.ok(newsStory[field], `news schema must declare ${field} (served by scripts/seed-insights.mjs)`);
     }
@@ -222,7 +227,11 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     const tools = body.result?.tools ?? [];
-    assert.ok(tools.length >= 40, `expected ≥40 tools, got ${tools.length}`);
+    assert.deepEqual(
+      tools.map((tool) => tool.name).sort(),
+      mod.__testing__.TOOL_REGISTRY.map((tool) => tool.name).sort(),
+      'tools/list names must match TOOL_REGISTRY exactly',
+    );
     const missing = tools.filter(t => !t.outputSchema || typeof t.outputSchema !== 'object'
       || !t.outputSchema.properties || Object.keys(t.outputSchema.properties).length === 0)
       .map(t => t.name);

@@ -207,6 +207,31 @@
       "soybeans": "Soybeans",
       "barley": "Barley",
       "palmOil": "Palm oil"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "STEM graduates",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh."
     }
   },
   "header": {
@@ -476,7 +501,9 @@
         "displacement": "切换流离失所流向",
         "climate": "切换气候异常",
         "outages": "切换互联网中断",
-        "tradeRoutes": "切换贸易路线"
+        "tradeRoutes": "切换贸易路线",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "切换到暗色模式",
@@ -638,7 +665,7 @@
         "URLHAUS_AUTH_KEY": "用于URLhaus和ThreatFox API。",
         "OTX_API_KEY": "网络威胁图层的可选增强数据源。",
         "ABUSEIPDB_API_KEY": "恶意IP信誉的可选增强数据源。",
-        "FINNHUB_API_KEY": "实时股票报价和市场数据。",
+        "FINNHUB_API_KEY": "延迟或预置的股票报价和市场数据。有密钥也不代表直连行情。",
         "NASA_FIRMS_API_KEY": "消防信息资源管理系统。",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -931,6 +958,7 @@
       "noComtradeData": "无战略流动数据",
       "comtradeUnavailable": "联合国贸易数据库数据暂时不可用",
       "sourceComtrade": "联合国贸易数据库",
+      "comtradeNationalScope": "联合国 Comtrade 的记录是报告国的国家级官方统计，不是某镇、走廊、工厂、港口或船货的出口。",
       "anomalyBadge": "异常",
       "colReporter": "国家",
       "colCommodity": "商品",
@@ -1167,7 +1195,7 @@
         "ucdpEvents": "UCDP事件",
         "displacementFlows": "流离失所流向",
         "climateAnomalies": "气候异常",
-        "weatherAlerts": "美国天气预警（NWS）",
+        "weatherAlerts": "恶劣天气预警（NWS、ECCC、WMO SWIC）",
         "strategicWaterways": "战略水道",
         "economicCenters": "经济中心",
         "criticalMinerals": "关键矿产",
@@ -1187,7 +1215,9 @@
         "speciesRecovery": "物种恢复",
         "renewableInstallations": "清洁能源",
         "radiationSpike": "辐射峰值",
-        "radiationElevated": "辐射升高"
+        "radiationElevated": "辐射升高",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1248,7 +1278,7 @@
           "infraDatacenters": "AI算力集群 >=10,000 GPU",
           "infraOutages": "互联网中断和服务故障",
           "naturalEventsTech": "地震、风暴、火灾（可能影响数据中心）",
-          "weatherAlerts": "美国恶劣天气预警（NWS）",
+          "weatherAlerts": "各国气象部门发布的官方恶劣天气预警（NWS、ECCC、WMO SWIC）",
           "economicCenters": "证券交易所和央行",
           "countriesOverlay": "国家名称叠加层",
           "financeExchanges": "按市场层级划分的全球主要交易所",
@@ -1260,7 +1290,7 @@
           "financeOutages": "可能影响市场运营的互联网中断",
           "financeCyberThreats": "金融基础设施周边的安全事件",
           "macroWaterways": "大宗商品航运的战略咽喉要道",
-          "weatherAlertsMarket": "与市场相关的美国恶劣天气事件（NWS）",
+          "weatherAlertsMarket": "与市场相关的官方恶劣天气预警（NWS、ECCC、WMO SWIC）",
           "naturalEventsMacro": "地震、火灾、洪水等自然灾害",
           "timeRecent": "按近几小时筛选时间数据",
           "timeExtended": "显示过去一周、一个月或所有时间的数据",
@@ -1293,7 +1323,9 @@
           "tradeRoutes": "连接港口并经过战略咽喉要道的全球主要航运通道",
           "dayNight": "实时太阳终结线显示昼夜区域",
           "geoBoundaries": "非军事区、停火线和争议边界",
-          "ciiChoropleth": "国家不稳定指数热力图 — 按CII评分为国家着色（绿色=稳定，红色=危急）"
+          "ciiChoropleth": "国家不稳定指数热力图 — 按CII评分为国家着色（绿色=稳定，红色=危急）",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "影响范围：地震、天气、抗议、中断"
@@ -1665,7 +1697,9 @@
     "breakingNews": {
       "critical": "紧急",
       "high": "重要",
-      "dismiss": "忽略"
+      "dismiss": "忽略",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "突发警报",
@@ -1902,13 +1936,23 @@
       "topTargets": "主要目标国家"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2170,7 +2214,7 @@
       "infoTooltip": "<strong>灾难级联</strong> 检测汇聚的自然灾害和基础设施信号：<ul><li>关联地震、野火、洪灾和极端天气</li><li>追踪对基础设施和供应链的级联影响</li><li>突出具有复合灾难风险的地区</li></ul>点击卡片可在地图上放大到受影响区域。"
     },
     "markets": {
-      "infoTooltip": "<strong>市场</strong> 实时股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。",
+      "infoTooltip": "<strong>市场</strong> 延迟或预置的股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。",
       "chart": {
         "title": "{{symbol}} 价格图表",
         "close": "关闭图表"
@@ -2351,13 +2395,14 @@
     },
     "sanctionsPressure": {
       "title": "制裁与指定",
-      "infoTooltip": "来自 SDN 和综合名单的 OFAC 制裁指定。显示哪些国家面临最高指定压力、驱动因素以及自上次更新以来新增的内容。",
+      "infoTooltip": "OFAC 的 SDN 与综合名单，以及加拿大全球事务部 SEMA/JVCFOA 指定。 显示哪些国家面临最高指定压力、驱动因素以及自上次更新以来新增的内容。",
       "loading": "正在加载制裁数据...",
       "unavailable": "制裁数据不可用。",
       "summary": {
         "new": "新增",
         "vessels": "船舶",
-        "aircraft": "飞机"
+        "aircraft": "飞机",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "受制裁国家",
@@ -2372,11 +2417,12 @@
       "footer": {
         "updated": "更新于 {{time}}",
         "dataset": "数据集 {{date}}",
-        "source": "来源：OFAC"
+        "source": "来源：OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} 新增",
-        "new": "新增"
+        "new": "新增",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} 项指定",
       "designations_other": "{{count}} 项指定",
@@ -2822,6 +2868,7 @@
     "moreEvents": "更多事件",
     "monitoring": "监控中",
     "viewUSGS": "在USGS上查看",
+    "viewNRCan": "在Earthquakes Canada上查看",
     "expired": "已过期",
     "timeAgo": {
       "s": "{{count}}秒前",
@@ -3252,7 +3299,8 @@
     "retry": "Retry",
     "refresh": "Refresh",
     "all": "全部",
-    "cancel": "取消"
+    "cancel": "取消",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "显示",

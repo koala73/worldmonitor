@@ -15,13 +15,21 @@
  *   - singleton family ids are namespaced (`label:<name>`) so they can never
  *     collide with a curated family id.
  *
- * KNOWN LIMIT — cross-publisher syndication. This map collapses one
- * publisher's own labels. It cannot see that an unrelated outlet reprinted a
- * Reuters wire, because the feed label the item arrives under says nothing
- * about the wire it came from: the ingest parser stamps `item.source =
- * feed.name` (server/worldmonitor/news/v1/list-feed-digest.ts) and drops the
- * RSS `<source>` element that names the originating publisher. Recovering
- * that is tracked in #6430; it is a parser change, not a map change.
+ * Cross-publisher syndication (#6430): the server ingest parser now carries
+ * the RSS `<source>` element — the originating publisher Google News stamps
+ * per item — as `originPublisher`, and the digest's corroboration counts
+ * resolve THAT through this map when present, falling back to the feed
+ * label. To let an origin NAME ("Reuters", "Associated Press") land in the
+ * same family as the feed labels it syndicates through, each curated
+ * family's `publisher` name is indexed alongside its labels. An unknown
+ * origin name stays its own singleton family — same fail-closed direction
+ * as an unmapped label.
+ *
+ * REMAINING LIMIT — origin names outside the curated set. "BBC News" from a
+ * Google News <source> does not fold into the 'bbc' family unless curated
+ * (no fuzzy matching, by design), and direct non-Google-News feeds mostly
+ * carry no <source> element at all — for those the feed label remains the
+ * best available publisher signal.
  */
 /**
  * Curated label -> publisher family. Only families with 2+ labels appear; an
@@ -103,6 +111,7 @@ const PUBLISHER_FAMILY_DATA = {
   },
   'hacker-news': { publisher: "Hacker News", labels: ["Hacker News", "Show HN", "YC News"] },
   'hromadske': { publisher: "Hromadske", labels: ["Hromadske", "Hromadske EN"] },
+  'interfax': { publisher: "Interfax", labels: ["Interfax EN", "Interfax RU"] },
   'iea': { publisher: "International Energy Agency", labels: ["IEA Critical Minerals", "IEA News"] },
   'kitco': { publisher: "Kitco", labels: ["Kitco Gold", "Kitco News"] },
   'marketwatch': { publisher: "MarketWatch", labels: ["MarketWatch", "MarketWatch Tech"] },
@@ -197,6 +206,15 @@ for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILY_DATA)) {
     familyByLabel.set(label, familyId);
     familyByLowerLabel.set(label.toLowerCase(), familyId);
   }
+}
+// The publisher NAME resolves to its family too, so an origin publisher
+// recovered from the RSS <source> element ("Reuters", "Associated Press")
+// joins the family of the labels it syndicates through (#6430). Set-if-absent:
+// a curated LABEL always wins over a same-spelling publisher name, so label
+// resolution is unchanged by construction.
+for (const [familyId, entry] of Object.entries(PUBLISHER_FAMILY_DATA)) {
+  const lowerName = entry.publisher.toLowerCase();
+  if (!familyByLowerLabel.has(lowerName)) familyByLowerLabel.set(lowerName, familyId);
 }
 
 /**

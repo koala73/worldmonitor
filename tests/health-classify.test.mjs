@@ -13,8 +13,10 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { __testing__ } from '../api/health.js';
+import { BUNDLE_HEARTBEAT_TTL_SECONDS, bundleHeartbeatKey } from '../scripts/_bundle-runner.mjs';
 
 const {
   classifyKey,
@@ -1739,6 +1741,56 @@ test('classifyKey: webcams active pointer is registered with seed-meta freshness
   assert.equal(entry.status, 'OK');
   assert.equal(entry.records, 65000);
   assert.equal(entry.maxStaleMin, 1440);
+});
+
+const BUNDLE_TICKS = [
+  ['staticRefBundleTick', 'static-ref', 'scripts/seed-bundle-static-ref.mjs', 6691],
+  ['staticRefHeavyBundleTick', 'static-ref-heavy', 'scripts/seed-bundle-static-ref-heavy.mjs', 6806],
+];
+
+test('classifyKey: each bundle tick heartbeat goes EMPTY when the cron never fired and STALE when it freezes', () => {
+  for (const [name, label] of BUNDLE_TICKS) {
+    const dataKey = STANDALONE_KEYS[name];
+    const seedCfg = SEED_META[name];
+    assert.equal(dataKey, bundleHeartbeatKey(label), name);
+
+    const missing = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({}));
+    assert.equal(missing.status, 'EMPTY', name);
+    assert.equal(STATUS_COUNTS[missing.status], 'crit', name);
+
+    const stale = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({
+      strens: { [dataKey]: 128 },
+      metaValues: { [seedCfg.key]: seedMeta({ fetchedAt: NOW - 2881 * ONE_MIN_MS, recordCount: 1 }) },
+    }));
+    assert.equal(stale.status, 'STALE_SEED', name);
+    assert.equal(stale.maxStaleMin, 2880, name);
+    assert.equal(STATUS_COUNTS[stale.status], 'warn', name);
+
+    const fresh = classifyKey(name, dataKey, { allowOnDemand: true }, makeCtx({
+      strens: { [dataKey]: 128 },
+      metaValues: { [seedCfg.key]: seedMeta({ recordCount: 1 }) },
+    }));
+    assert.equal(fresh.status, 'OK', name);
+  }
+});
+
+test('the three bundle tick heartbeats stay registered together (#6691 / #6806)', () => {
+  for (const [name, label, bundlePath, issue] of BUNDLE_TICKS) {
+    assert.equal(STANDALONE_KEYS[name], bundleHeartbeatKey(label));
+    assert.equal(SEED_META[name].key, bundleHeartbeatKey(label));
+    assert.equal(SEED_META[name].maxStaleMin, 2880, `${name} must use the 48h = 2× daily budget`);
+    assert.equal(ON_DEMAND_KEYS.has(name), false, `${name} is a seeded watchdog, not on-demand`);
+    assert.equal(SEED_META[name].cutover?.mode, 'expiring-ack');
+    assert.equal(SEED_META[name].cutover?.fromKey, null);
+    assert.equal(SEED_META[name].cutover?.status, 'EMPTY');
+    assert.equal(SEED_META[name].cutover?.issue, issue);
+    assert.ok(
+      BUNDLE_HEARTBEAT_TTL_SECONDS > SEED_META[name].maxStaleMin * 60,
+      `${name}: TTL must outlive maxStaleMin so a late tick is STALE_SEED, not EMPTY`,
+    );
+    const bundle = readFileSync(new URL(`../${bundlePath}`, import.meta.url), 'utf8');
+    assert.match(bundle, new RegExp(`runBundle\\(\\s*'${label}'\\s*,`));
+  }
 });
 
 test('classifyKey: digestNotifications heartbeat goes stale when the cron stops', () => {

@@ -733,7 +733,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **交叉印证：** 每个顶级故事都包含 `uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`、`sources` 中参与报道的媒体名称，以及 `memberTitles` 中该聚类的全部标题，另有 `lastUpdated`、`upstreamImportanceScore` 和 `effectiveImportanceScore`。
+- **交叉印证：** 每个顶级故事都包含 `uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`、`sources` 中参与报道的媒体名称，以及 `memberTitles` 中该聚类的全部标题，另有 `lastUpdated`、`upstreamImportanceScore`、`effectiveImportanceScore` 和 `credibilityScore`（0-100 来源可靠性，与重要性不同；国家控制媒体上限为 40）。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
 
 <CodeGroup>
@@ -763,7 +763,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/intelligence/v1/classify-event`
 - **类型：** 对 LLM 分类器的受约束规范路由代理。该操作此前以 `llm-passthrough` 理由被排除在 MCP 对等之外；按标题的 24 小时缓存吸收重复请求，且分类器输出上限为 50 个 token。
-- **配额：** 标准 —— OAuth（Pro）与仪表盘密钥上下文每次调用均消耗 MCP 每日预留（每 UTC 日 50 次）。环境 API 密钥（`wm_…`）调用方不受该每日预留约束，与其他所有 MCP 工具一样，仍受 60 次请求/分钟/密钥 的限流保护。
+- **配额：** 标准 —— OAuth 与控制面板签发的 `wm_…` 密钥上下文每次调用均消耗 MCP 每日预留（默认每 UTC 日 50 次）。只有部署中明确列入许可名单的旧版运营方密钥跳过每日预留；每个已认证上下文仍受每分钟 60 次的限流保护。
 
 <CodeGroup>
 
@@ -813,7 +813,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_news_clusters`
 
-使用与仪表盘完全相同的 Jaccard 聚类（0.5 标题分词相似度）对实时头条摘要计算当前话题簇，因此 agent 看到的故事分组与 UI 一致。每个簇报告主标题、成员数、`distinctSourceCount`（`min_sources` 所过滤的交叉印证信号）、来源名称、热门关键词（过滤停用词与泛化词）、聚合威胁级别/类别以及时间跨度。服务器端主标题按新近度选取，因为摘要条目不携带每来源层级。
+使用与仪表盘完全相同的 Jaccard 聚类（0.5 标题分词相似度）对实时头条摘要计算当前话题簇，因此 agent 看到的故事分组与 UI 一致。每个簇报告主标题、成员数、`distinctSourceCount`（`min_sources` 所过滤的交叉印证信号）、来源名称、热门关键词（过滤停用词与泛化词）、聚合威胁级别/类别、时间跨度，以及主来源的 `credibilityScore`（0-100 来源可靠性，与重要性不同）。服务器端主标题按新近度选取，因为摘要条目不携带每来源层级。
 
 **参数（工具专用）：**
 
@@ -844,7 +844,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_keyword_spikes`
 
-相对基线的关键词、CVE 与 APT/FIN 威胁组织飙升趋势，使用与仪表盘趋势关键词引擎相同的词项候选与飙升判定数学（最低近期计数、严格基线倍数、来源多样性门槛）。工具会分别查询近期窗口与窗口前的基线数据，每组最多 800 条故事，因此高流量的近期窗口不会挤占基线样本。`baseline_hours` 报告实际采样的窗口前基线时长；`sample_truncated: true` 表示任一数据组触及上限。若没有窗口前故事，工具会返回空的飙升列表与明确的 `baseline unavailable` 说明，并且不会缓存该结果。结果按 `(window_hours, min_count)` 组合缓存 10 分钟。
+相对基线的关键词、CVE 与 APT/FIN 威胁组织飙升趋势，使用与仪表盘趋势关键词引擎相同的词项候选与飙升判定数学（最低近期计数、严格基线倍数、来源多样性门槛）。每条飙升包含 `sourceNames`（有对照表时为出版机构名称，否则为原始 feed 标签）以及最多三条 `{title, source, link}` 形式的 `sampleHeadlines`，以便代理归因并打开计数背后的报道。样本上的 `source` 是承载该折叠标题的全部出版机构；`link` 是规范的 `story:track:v1` URL，不一定属于某一个具名来源。工具会分别查询近期窗口与窗口前的基线数据，每组最多 800 条故事，因此高流量的近期窗口不会挤占基线样本。`baseline_hours` 报告实际采样的窗口前基线时长；`sample_truncated: true` 表示任一数据组触及上限。若没有窗口前故事，工具会返回空的飙升列表与明确的 `baseline unavailable` 说明，并且不会缓存该结果。结果按 `(window_hours, min_count)` 组合缓存 10 分钟。
 
 **参数（工具专用）：**
 
@@ -1416,7 +1416,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_airspace`
 
-某国上空的实时 ADS-B 航空器。返回民用航班（OpenSky）和识别出的军用飞机，含呼号、位置、高度和航向。回答诸如"现在阿联酋上空有多少架飞机？"或"台湾上空有军用飞机吗？"之类的问题。
+某国上空的实时 ADS-B 航空器。返回由 Wingbits 支持的民用航班，以及来自可再分发提供方的已识别军用飞机，含呼号、位置、高度和航向。回答诸如"现在阿联酋上空有多少架飞机？"或"台湾上空有军用飞机吗？"之类的问题。
 
 **参数：**
 
@@ -1640,7 +1640,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_natural_disasters`
 
-近期地震（USGS）、活跃野火（NASA FIRMS）和自然灾害事件。包含震级、位置和威胁严重程度。
+近期 M4.5+ 地震（USGS 与加拿大地震局 / NRCan）、活跃野火（NASA FIRMS）和自然灾害事件。包含震级、位置、来源和威胁严重程度。
 
 **参数（工具特定）：**
 

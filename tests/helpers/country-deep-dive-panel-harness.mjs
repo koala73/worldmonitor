@@ -40,6 +40,12 @@ async function loadCountryDeepDivePanel(options = {}) {
   const resilienceWidgetMode = options.resilienceWidgetMode ?? 'success';
   const premiumAccess = options.premiumAccess === true;
   const sourceProvenance = JSON.stringify(options.sourceProvenance ?? {});
+  const demographicsResponse = JSON.stringify(options.demographicsResponse ?? {
+    countryCode: '',
+    available: false,
+    fetchedAt: '',
+    stages: [],
+  });
   const tempDir = mkdtempSync(join(tmpdir(), 'wm-country-deep-dive-'));
   const outfile = join(tempDir, 'CountryDeepDivePanel.bundle.mjs');
   const resilienceWidgetStub = resilienceWidgetMode === 'import-reject'
@@ -233,6 +239,20 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['auth-state-stub', `
       export function getAuthState() { return { user: null }; }
     `],
+    ['resilience-service-stub', `
+      const state = globalThis.__wmCountryDeepDiveTestState;
+      const demographicsResponse = ${demographicsResponse};
+      export async function getFoodStocks() {
+        return { commodities: [], unavailable: true };
+      }
+      export async function getDemographicsCapability(options) {
+        state.demographicsCalls.push({
+          countryCode: options.countryCode,
+          hasSignal: options.signal instanceof AbortSignal,
+        });
+        return { ...demographicsResponse, countryCode: options.countryCode };
+      }
+    `],
     ['resilience-widget-stub', resilienceWidgetStub],
     ['sentry-defer-stub', `
       const state = globalThis.__wmCountryDeepDiveTestState;
@@ -289,6 +309,7 @@ async function loadCountryDeepDivePanel(options = {}) {
     ['@/generated/client/worldmonitor/intelligence/v1/service_client', 'intelligence-client-stub'],
     ['@/services/panel-gating', 'panel-gating-stub'],
     ['@/services/auth-state', 'auth-state-stub'],
+    ['@/services/resilience', 'resilience-service-stub'],
     ['@/bootstrap/sentry-defer', 'sentry-defer-stub'],
     ['@/utils/overlay-history', 'overlay-history-stub'],
   ]);
@@ -337,6 +358,7 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     requestAnimationFrame: snapshotGlobal('requestAnimationFrame'),
     cancelAnimationFrame: snapshotGlobal('cancelAnimationFrame'),
     navigator: snapshotGlobal('navigator'),
+    location: snapshotGlobal('location'),
     HTMLElement: snapshotGlobal('HTMLElement'),
     HTMLButtonElement: snapshotGlobal('HTMLButtonElement'),
   };
@@ -346,6 +368,7 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     sentryBreadcrumbs: [],
     sentryExceptions: [],
     sentryMessages: [],
+    demographicsCalls: [],
     sentryUser: undefined,
     evidenceExports: [],
     gateHits: [],
@@ -360,6 +383,7 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
   defineGlobal('requestAnimationFrame', browserEnvironment.requestAnimationFrame);
   defineGlobal('cancelAnimationFrame', browserEnvironment.cancelAnimationFrame);
   defineGlobal('navigator', browserEnvironment.window.navigator);
+  defineGlobal('location', browserEnvironment.window.location);
   defineGlobal('HTMLElement', browserEnvironment.HTMLElement);
   defineGlobal('HTMLButtonElement', browserEnvironment.HTMLButtonElement);
   globalThis.__wmCountryDeepDiveTestState = state;
@@ -376,6 +400,7 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     restoreGlobal('requestAnimationFrame', originalGlobals.requestAnimationFrame);
     restoreGlobal('cancelAnimationFrame', originalGlobals.cancelAnimationFrame);
     restoreGlobal('navigator', originalGlobals.navigator);
+    restoreGlobal('location', originalGlobals.location);
     restoreGlobal('HTMLElement', originalGlobals.HTMLElement);
     restoreGlobal('HTMLButtonElement', originalGlobals.HTMLButtonElement);
     throw error;
@@ -398,6 +423,7 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     restoreGlobal('requestAnimationFrame', originalGlobals.requestAnimationFrame);
     restoreGlobal('cancelAnimationFrame', originalGlobals.cancelAnimationFrame);
     restoreGlobal('navigator', originalGlobals.navigator);
+    restoreGlobal('location', originalGlobals.location);
     restoreGlobal('HTMLElement', originalGlobals.HTMLElement);
     restoreGlobal('HTMLButtonElement', originalGlobals.HTMLButtonElement);
   }
@@ -414,6 +440,9 @@ export async function createCountryDeepDivePanelHarness(options = {}) {
     },
     getSentryExceptions() {
       return state.sentryExceptions;
+    },
+    getDemographicsCalls() {
+      return state.demographicsCalls;
     },
     getEvidenceExports() {
       return state.evidenceExports;

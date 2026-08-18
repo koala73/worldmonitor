@@ -21,6 +21,7 @@ These tables are the human-facing route map for finance, market, macro, energy, 
 | Market quotes | `GET /api/market/v1/list-market-quotes` | Markets panel, customizable watchlist, equity / index quotes. |
 | Crypto quotes | `GET /api/market/v1/list-crypto-quotes` | Crypto panel defaults; bootstrap-first via `cryptoQuotes`. |
 | Commodity quotes | `GET /api/market/v1/list-commodity-quotes` | Commodities, Energy Risk Brent tile, gold / crude watchlists; bootstrap-first via `commodityQuotes`. Empty `symbols` returns the configured seed set; only seed-set symbols are supported. |
+| Physical premiums | `GET /api/market/v1/get-physical-premiums` | SGE SHAU/SHAG benchmark prices compared with seeded COMEX `GC=F`/`SI=F` snapshots; optional `metals=gold` or `metals=silver` filter. |
 | Sector summary | `GET /api/market/v1/get-sector-summary` | Sector heatmap and valuation context; bootstrap-first via `sectors`. |
 | Stablecoin markets | `GET /api/market/v1/list-stablecoin-markets` | Stablecoin peg-health panel; bootstrap-first via `stablecoinMarkets`. |
 | ETF flows | `GET /api/market/v1/list-etf-flows` | BTC spot ETF tracker; bootstrap-first via `etfFlows`. |
@@ -87,6 +88,7 @@ and seeder path must use a provider whose terms permit that commercial use
 | **Financial Modeling Prep (FMP)** | **Not selected.** FMP Terms of Service §2.2.1–2.2.2 prohibit commercial use and any multi-user display/redistribution without a separate Data Display and Licensing Agreement. Wiring `FMP_API_KEY` without that agreement would recreate the compliance problem #3731 describes. Revisit only after an enterprise rebroadcast agreement is in place. |
 | **Finnhub** | **Primary** for request-time equity gap fetches and watchlist symbol search (`FINNHUB_API_KEY`). Free tier is quota-limited; production should use a paid plan sized to watchlist traffic. |
 | **Alpha Vantage** | **Authorized fallback** for equity gap fetches and **primary bulk path** for the market-quotes seeder (`ALPHA_VANTAGE_API_KEY`). Also powers physical commodity and FX daily series in seeders. Free tier is tightly rate-limited; production seeders need a higher tier. |
+| **Shanghai Gold Exchange (SGE)** | **Physical benchmark source.** Daily SHAU gold and SHAG silver AM/PM benchmarks used to compute USD/oz premiums against existing COMEX snapshots. |
 | **CoinGecko / CoinPaprika** | Crypto quote and stablecoin surfaces (existing chain; not part of the equity adapter). |
 
 ### Supported product surfaces
@@ -96,6 +98,7 @@ and seeder path must use a provider whose terms permit that commercial use
 | Default equity / index universe | Railway seed `market:stocks-bootstrap:v1` via `scripts/seed-market-quotes.mjs` (AV → Finnhub → optional Yahoo residual for yahooOnly listings) | ~5–30 min seed cadence | Seed hit = zero upstream call on the edge |
 | Custom watchlist equities | Seed-first, then bounded Redis-cached gap via `server/.../_quote-provider.ts` (Finnhub → Alpha Vantage) | 5 min positive cache; 15 min negative for definitive not-found | Provider errors are never cached |
 | Commodity futures (configured set) | Seed `shared/commodities.json` / AV physical + residual | Seed cadence | RPC is seed-set only (#6307); no FMP |
+| Physical precious-metals premiums | Daily SGE SHAU/SHAG PM benchmark + existing COMEX and shared CNY/USD snapshots | Daily; 72h run freshness, 10d content-age ceiling | Enabled by default; the seeder does not refetch COMEX or FX |
 | FX (Gulf / macro) | Seeders using AV `FX_DAILY` where wired | Seed cadence | Not part of equity watchlist gap fetch |
 | Crypto | CoinGecko → CoinPaprika (+ relay) | Seed + bounded gap (#6306) | Separate from equity adapter |
 | Historical series | Seeder-side AV daily commodity / FX series; premium analysis paths | Daily | Request-time gap fetch does **not** pull history (would double the budget) |
@@ -131,6 +134,12 @@ Transient provider failures are never cached — only a definitive "no such symb
 | MCP `get_market_data` | **Intentionally different**: a fixed-universe read of the `market:stocks-bootstrap:v1` cache. It filters that snapshot by ticker and never gap-fetches, so it answers only symbols the Railway seeder carries. Use the RPC for arbitrary tickers. |
 
 Commodity futures on the watchlist (e.g. `GC=F`, `CL=F`) are served via market quotes when the Markets panel requests them. The dedicated commodity quotes RPC (`list-commodity-quotes`) is limited to the configured seed set in `shared/commodities.json` — empty `symbols` returns that full set; an unsupported symbol is rejected with HTTP 400 rather than silently dropped. Custom non-seed watchlist tickers are tracked separately (#6305).
+
+The physical-premium RPC is seed-only. It returns each raw SGE leg with its
+source and content date, the COMEX snapshot with its independent snapshot time,
+the shared CNY/USD rate and snapshot time, and the derived USD-per-troy-ounce
+premium. SHAU is quoted in CNY per gram. SHAG is quoted in CNY per kilogram.
+The conversion uses exactly `31.1034768` grams per troy ounce.
 
 ### Macro Signal Analysis (Market Radar)
 
@@ -273,7 +282,7 @@ The Revenue tab is particularly relevant during periods of active trade policy c
 
 The Supply Chain panel provides real-time visibility into global logistics risk across three complementary dimensions — strategic chokepoint health, shipping cost trends, and critical mineral concentration — enabling early detection of disruptions that cascade into economic and geopolitical consequences.
 
-**Chokepoints tab** — monitors 9 strategic waterways (Suez Canal, Strait of Malacca, Strait of Hormuz, Bab el-Mandeb, Panama Canal, Taiwan Strait, Strait of Gibraltar, Bosphorus, Dardanelles) by cross-referencing live navigational warnings with AIS vessel disruption data. Each chokepoint receives a disruption score (0–100) computed from a three-component formula: baseline threat level (war zone / critical / high / elevated / normal), active warning count (capped contribution), and AIS congestion severity — mapped to color-coded status indicators (green/yellow/red). Chokepoint identification uses text-evidence matching (keyword scoring with primary and area terms) before falling back to geographic proximity, preventing misclassification of events that mention one chokepoint but are geographically closer to another. Data is cached with a 5-minute TTL for near-real-time awareness.
+**Chokepoints tab** — monitors the registered strategic waterways, including Suez Canal, Strait of Malacca, Strait of Hormuz, Bab el-Mandeb, Panama Canal, Taiwan Strait, Strait of Gibraltar, Bosphorus, and Dardanelles, by cross-referencing live navigational warnings with AIS vessel disruption data. Each chokepoint receives a disruption score (0–100) computed from a three-component formula: baseline threat level (war zone / critical / high / elevated / normal), active warning count (capped contribution), and AIS congestion severity — mapped to color-coded status indicators (green/yellow/red). Chokepoint identification uses text-evidence matching (keyword scoring with primary and area terms) before falling back to geographic proximity, preventing misclassification of events that mention one chokepoint but are geographically closer than another. Data is cached with a 5-minute TTL for near-real-time awareness.
 
 **Shipping Rates tab** — tracks two Federal Reserve Economic Data (FRED) series: the Deep Sea Freight Producer Price Index (`PCU483111483111`) and the Freight Transportation Services Index (`TSIFRGHT`). Statistical spike detection flags abnormal price movements against recent history. Inline SVG sparklines render 24 months of rate history at a glance. Cached for 1 hour to reflect the weekly release cadence of underlying data.
 

@@ -1,7 +1,7 @@
 ---
-title: "Six Intelligence Dashboards on One Platform"
-description: "Explore six free World Monitor dashboards for geopolitics, technology, finance, commodities, positive news, and energy, all built on one platform."
-metaTitle: "6 Intelligence Dashboards, One Platform | World Monitor"
+title: "Specialized Intelligence Dashboards on One Platform"
+description: "Explore World Monitor dashboards for geopolitics, technology, finance, commodities, positive news, and energy, all built on one platform."
+metaTitle: "Specialized Intelligence Dashboards | World Monitor"
 keywords: "intelligence dashboard variants, tech monitoring dashboard, positive news dashboard, energy security dashboard, multi-purpose intelligence platform, specialized monitoring tools"
 audience: "General tech audience, product managers, developers, knowledge workers, content creators"
 heroImage: "/blog/images/blog/five-dashboards-one-platform-worldmonitor-variants.jpg"
@@ -11,24 +11,24 @@ modifiedDate: "2026-07-22"
 
 Most intelligence platforms force you into a single vertical. A financial terminal. A cybersecurity feed. A conflict tracker. If your work spans multiple domains, you're left juggling subscriptions.
 
-World Monitor runs **six specialized dashboards** from a single codebase. Switch between them with one click. Each variant curates panels, layers, and data feeds for its specific audience while sharing the same underlying intelligence engine, map infrastructure, and AI capabilities.
+World Monitor runs specialized dashboards from a single codebase. Switch between them with one click. Each variant curates panels, layers, and data feeds for its specific audience while sharing the same underlying intelligence engine, map infrastructure, and AI capabilities.
 
 ## 1. World Monitor: The Geopolitical Command Center
 
 **URL:** worldmonitor.app
-**Panels:** 102
+**Panel set:** Full geopolitical catalog
 **Focus:** Conflicts, military, infrastructure, geopolitical risk
 
 This is the flagship. World Monitor is built for OSINT analysts, defense researchers, journalists, and anyone who needs to [understand global security dynamics](/blog/posts/track-global-conflicts-in-real-time/).
 
 **Key features:**
 
-- Country Instability Index (CII) for real-time risk scoring across 23+ nations
-- Strategic Theater Posture for 9 operational theaters (Taiwan Strait, Persian Gulf, Baltic, Korean Peninsula, and more)
-- 210+ military bases from 9 operators mapped globally
+- Country Instability Index (CII) for real-time risk scoring across its published country set
+- Strategic Theater Posture for operational theaters including the Taiwan Strait, Persian Gulf, Baltic, and Korean Peninsula
+- Military bases from reviewed operators mapped globally
 - Live ADS-B aircraft tracking with military enrichment
 - AIS maritime monitoring merged with USNI fleet reports
-- 26 Telegram OSINT channels via MTProto
+- Reviewed Telegram OSINT channels via MTProto
 - OREF rocket alert integration with Hebrew-to-English translation
 - GPS/GNSS jamming zone detection
 - Hotspot escalation scoring with geographic convergence detection
@@ -39,14 +39,14 @@ This is the flagship. World Monitor is built for OSINT analysts, defense researc
 ## 2. Tech Monitor: The Silicon Valley Radar
 
 **URL:** tech.worldmonitor.app
-**Panels:** 41
+**Panel set:** Technology catalog
 **Focus:** AI/ML, startups, cybersecurity, cloud infrastructure
 
 Tech Monitor maps the global technology landscape: where AI is being built, where startups are funded, where data centers are concentrated, and where the next unicorn might emerge.
 
 **Key features:**
 
-- 300+ AI datacenters mapped globally with operator details
+- AI datacenters mapped globally with operator details
 - Startup hub and accelerator locations
 - AI lab and research center tracking
 - GitHub Trending integration
@@ -55,29 +55,29 @@ Tech Monitor maps the global technology landscape: where AI is being built, wher
 - Cloud region mapping (AWS, Azure, GCP)
 - Cybersecurity threat feeds (abuse.ch, AlienVault OTX)
 - Service outage monitoring via Cloudflare Radar
-- Tech-focused news from 100+ specialized RSS feeds
+- Tech-focused news from the specialized RSS catalog
 
 **Who it's for:** VC investors evaluating markets, tech executives tracking competitors, developers following industry trends, cybersecurity professionals monitoring threats.
 
 ## 3. Finance Monitor: Markets with Context
 
 **URL:** finance.worldmonitor.app
-**Panels:** 60
+**Panel set:** Finance catalog
 **Focus:** Markets, central banks, forex, Gulf FDI, macro signals
 
 Finance Monitor is for [traders and analysts](/blog/posts/real-time-market-intelligence-for-traders-and-analysts/) who know that markets move on geopolitics. It combines traditional financial data with the intelligence layers that drive price action.
 
 **Key features:**
 
-- 29 global stock exchanges with trading hours and market caps
+- Global stock exchanges with trading hours and market caps
 - 7-signal macro radar with composite BUY/CASH verdict
-- 14 central bank policy trackers with [BIS](https://www.bis.org/) data
+- Central bank policy trackers with [BIS](https://www.bis.org/) data
 - Stablecoin peg monitoring (USDT, USDC, DAI, FDUSD, USDe)
 - BTC spot ETF flow tracker (IBIT, FBTC, GBTC, and 7 more)
 - Fear & Greed Index with 30-day history
 - Bitcoin technical signals (SMA50, SMA200, VWAP, Mayer Multiple)
-- 64 Gulf FDI investments (Saudi/UAE Vision 2030)
-- 19 financial centers ranked by GFCI
+- Gulf FDI investments tied to Saudi and UAE Vision 2030 programs
+- Financial centers ranked by GFCI
 - [Polymarket](https://polymarket.com/) prediction market integration
 - Forex, bonds, and derivatives panels
 
@@ -86,7 +86,7 @@ Finance Monitor is for [traders and analysts](/blog/posts/real-time-market-intel
 ## 4. Commodity Monitor: Raw Materials Intelligence
 
 **URL:** commodity.worldmonitor.app
-**Panels:** 32
+**Panel set:** Commodity catalog
 **Focus:** Mining, metals, energy, supply chain disruption
 
 Commodity Monitor tracks the physical resources that power the global economy: where they're extracted, how they're priced, and [what threatens their supply](/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/).
@@ -94,7 +94,7 @@ Commodity Monitor tracks the physical resources that power the global economy: w
 **Key features:**
 
 - Live commodity prices (energy, precious metals, critical minerals, agriculture)
-- 10 major commodity exchange hubs mapped
+- Major commodity exchange hubs mapped
 - Mining company and extraction site locations
 - Critical minerals tracking (lithium, cobalt, rare earths)
 - Pipeline infrastructure mapping
@@ -107,7 +107,7 @@ Commodity Monitor tracks the physical resources that power the global economy: w
 ## 5. Happy Monitor: The Antidote to Doom Scrolling
 
 **URL:** happy.worldmonitor.app
-**Panels:** 10
+**Panel set:** Positive-news catalog
 **Focus:** Good news, human progress, conservation, renewable energy
 
 In a world of conflict feeds and crisis dashboards, Happy Monitor exists to track what's going right. It curates positive developments: scientific breakthroughs, conservation wins, renewable energy milestones, and human progress stories.
@@ -128,7 +128,7 @@ In a world of conflict feeds and crisis dashboards, Happy Monitor exists to trac
 ## 6. Energy Atlas: The Global Power Infrastructure
 
 **URL:** energy.worldmonitor.app
-**Panels:** 26
+**Panel set:** Energy-security catalog
 **Focus:** Chokepoints, pipelines, storage, and energy risks
 
 Energy Atlas tracks the critical infrastructure that keeps the world powered, providing real-time data on supply chain vulnerabilities and fuel logistics. For the full tour — including the escalation-chain layout and the data sources behind each panel — see the [energy security dashboard deep-dive](/blog/posts/energy-security-dashboard-worldmonitor/).
@@ -136,7 +136,7 @@ Energy Atlas tracks the critical infrastructure that keeps the world powered, pr
 **Key features:**
 
 - Global chokepoint strip monitoring
-- Live status for 88 mapped oil & gas pipelines
+- Live status for mapped oil and gas pipelines
 - Global energy storage atlas
 - Real-time fuel shortage alerts
 - Comprehensive energy risk overview
@@ -149,13 +149,13 @@ Regardless of which variant you use, you get the full platform engine:
 
 ### Interactive 3D Globe + Flat Map
 
-Dual map engines ([globe.gl](https://globe.gl/)/[Three.js](https://threejs.org/) for 3D, [deck.gl](https://deck.gl/) for flat WebGL) that switch at runtime. Both support all 56 map layers.
+Dual map engines ([globe.gl](https://globe.gl/)/[Three.js](https://threejs.org/) for 3D, [deck.gl](https://deck.gl/) for flat WebGL) that switch at runtime. Both support the shared map-layer catalog.
 
 ### AI Analysis
 
 The 4-tier LLM fallback chain (Ollama, Groq, OpenRouter, browser T5) works across all variants. Generate briefs, classify threats, and run analysis privately.
 
-### 28 Languages
+### Localized Interfaces
 
 Full internationalization with lazy-loaded language packs, locale-specific RSS feeds, and RTL support for Arabic.
 
@@ -187,9 +187,9 @@ Install on any device from the browser. Includes offline map caching (500 tiles)
 
 In the web app, switch variants via the header navigation. Your preferences, language settings, and AI configuration carry across variants.
 
-The variants share a single codebase. Every improvement to the core engine benefits all six dashboards simultaneously. A map performance optimization for World Monitor automatically makes Commodity Monitor faster too.
+The variants share a single codebase. Every improvement to the core engine benefits every published dashboard simultaneously. A map performance optimization for World Monitor automatically makes Commodity Monitor faster too.
 
-## Why Six Variants Instead of One?
+## Why Specialized Variants Instead of One?
 
 **Signal-to-noise ratio.**
 
@@ -201,7 +201,7 @@ But when you need to cross domains (the commodity trader wants to check if a con
 
 ## One Platform, Zero Cost
 
-All six variants are completely free. No freemium gates. No "contact sales" buttons. No feature tiers. The same platform, the same data, the same AI. Available to a solo researcher in Nairobi and a hedge fund analyst in New York.
+All published variants are completely free. No freemium gates. No "contact sales" buttons. No feature tiers. The same platform, the same data, the same AI. Available to a solo researcher in Nairobi and a hedge fund analyst in New York.
 
 Open source under AGPL-3.0. Deploy it yourself, contribute to it, or just use it.
 
@@ -211,10 +211,10 @@ Open source under AGPL-3.0. Deploy it yourself, contribute to it, or just use it
 Yes. Each variant runs at its own URL, so you can open several in separate browser tabs. Your preferences and language settings carry across all of them.
 
 **Do the variants share the same data, or are they separate platforms?**
-All six variants share a single codebase and the same underlying data engine. The difference is which panels, layers, and feeds are pre-selected for each audience.
+All published variants share a single codebase and the same underlying data engine. The difference is which panels, layers, and feeds are pre-selected for each audience.
 
 **Is there a limit on how long I can use the dashboards for free?**
-No. All six variants are completely free with no time limits, feature gates, or usage caps.
+No. All published variants are completely free with no time limits, feature gates, or usage caps.
 
 ---
 

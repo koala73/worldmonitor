@@ -788,8 +788,18 @@ function makePublicOnDemandRequest(keys = 'cyberThreats', headers = {}) {
   });
 }
 
+// Redis GET pipeline result for a present on-demand key. The default mock
+// returns `result: null` (a miss). After #6784 a miss is no-store; tests that
+// pin the publisher-sized CDN shield must seed a body.
+function presentOnDemandPipelineBody(value = { records: [] }) {
+  return [{ result: JSON.stringify(value) }];
+}
+
 test('public on-demand key URL is CDN-shielded and anonymous', async () => {
-  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+  await withMockedBootstrapAuth({
+    entitlement: activeApiEntitlement(),
+    bootstrapPipelineBody: presentOnDemandPipelineBody(),
+  }, async () => {
     const resp = await handler(makePublicOnDemandRequest('cyberThreats'));
 
     assert.equal(resp.status, 200);
@@ -801,11 +811,66 @@ test('public on-demand key URL is CDN-shielded and anonymous', async () => {
 test('public on-demand URL keeps ONE contract even when credentials are attached', async () => {
   // A CDN hit precedes handler auth, so the response must not vary by caller —
   // same invariant the tier URLs carry (#5250).
-  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+  await withMockedBootstrapAuth({
+    entitlement: activeApiEntitlement(),
+    bootstrapPipelineBody: presentOnDemandPipelineBody(),
+  }, async () => {
     const resp = await handler(makePublicOnDemandRequest('cyberThreats', { Cookie: 'wm-session=whatever' }));
 
     assert.equal(resp.status, 200);
     assertSharedCacheHeaders(resp);
+  });
+});
+
+test('every Canada road key serves anonymously with a shield sized to its publisher', async () => {
+  // #6763 moved canadaRoads and albertaRoads off the fast tier so they stop
+  // riding a payload every visitor downloads. A TIERED key is rejected on this
+  // URL — the next test proves marketQuotes and wildfires draw a 401 — so the
+  // move only works if these same requests now qualify. Asserted through the
+  // handler rather than by reading the registry: the registry is what the tier
+  // move edits, so checking it against itself would pass either way.
+  //
+  // The s-maxage values are the second half of the move. Without a profile
+  // these inherit the slow 7200 s shield, which outlives the 45- and 90-minute
+  // freshness budgets api/health.js declares for them.
+  const expected = {
+    canadaRoads: 900,   // seed-provincial-511, 15min member interval
+    albertaRoads: 900,  // same seeder, same interval
+    manitobaRoads: 900, // same seeder, same interval
+    bcOpen511: 1800,    // seed-open511, 30min member interval
+    torontoRoads: 7200, // 2h publisher; the inherited slow shield already fits
+  };
+  await withMockedBootstrapAuth({
+    entitlement: null,
+    bootstrapPipelineBody: presentOnDemandPipelineBody(),
+  }, async () => {
+    for (const [key, sMaxAge] of Object.entries(expected)) {
+      const resp = await handler(makePublicOnDemandRequest(key));
+      assert.equal(resp.status, 200, `keys=${key} must serve without credentials`);
+      assertSharedCacheHeaders(resp);
+      assertPublicCorsHeaders(resp);
+      assert.match(
+        resp.headers.get('cdn-cache-control') || '',
+        new RegExp(`s-maxage=${sMaxAge}\\b`),
+        `keys=${key} must be CDN-shielded for ${sMaxAge}s`,
+      );
+    }
+  });
+});
+
+test('a public on-demand miss is no-store so a recovered seeder is not hidden', async () => {
+  // Default mock is Redis GET -> null, so the key is in `missing`. Caching that
+  // 200 at the publisher interval would pin an empty body until the shield
+  // expired, and health (which reads Redis) would never page.
+  await withMockedBootstrapAuth({ entitlement: null }, async () => {
+    const resp = await handler(makePublicOnDemandRequest('canadaRoads'));
+    const body = await resp.json();
+
+    assert.equal(resp.status, 200);
+    assert.deepEqual(body, { data: {}, missing: ['canadaRoads'] });
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+    assertNonSharedCacheHeaders(resp);
+    assertPublicCorsHeaders(resp);
   });
 });
 

@@ -102,18 +102,49 @@ describe('api/mcp — usage telemetry (#4866)', () => {
     assert.equal(events[0].auth_kind, 'anon');
   });
 
-  it('pro bearer with lapsed entitlement emits tier_403 attributed to the userId', async () => {
+  it('pro bearer with a RETRYABLE billing state emits tier_403 attributed to the userId', async () => {
+    // Fixture is deliberately a retryable marker rather than a confirmed lapse:
+    // since #6716 a CONFIRMED lapse means billing attempts are over and the
+    // account falls to the free tier (covered below), while an unverifiable
+    // read still denies. Keeping this case on the retryable marker preserves
+    // what the test is actually for — attribution on a tier denial.
     const { deps } = makeProDeps({
-      getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0 }),
+      getEntitlements: async () => ({
+        planKey: 'free',
+        features: { tier: 0, mcpAccess: false },
+        validUntil: 0,
+        billingStatus: 'renewal_verification_failed',
+      }),
     });
     const events = captureAxiom();
     const { ctx, settle } = makeCtx();
     const res = await mcpHandler(proReq('POST', callBody('describe_tool', { tool_name: 'get_market_data' })), deps, ctx);
-    assert.equal(res.status, 401);
+    assert.notEqual(res.status, 200);
     await settle();
     assert.equal(events.length, 1);
     const ev = events[0];
-    assert.equal(ev.reason, 'tier_403');
+    assert.equal(ev.auth_kind, 'mcp_oauth');
+    assert.equal(ev.customer_id, 'user_pro_xyz');
+  });
+
+  it('pro bearer with a CONFIRMED lapse is served on the free tier, still attributed (#6716)', async () => {
+    // A churned account is a free account: the request succeeds, and the
+    // telemetry must still name the user so the funnel can count them.
+    const { deps } = makeProDeps({
+      getEntitlements: async () => ({
+        planKey: 'free',
+        features: { tier: 0, mcpAccess: false },
+        validUntil: 0,
+        billingStatus: 'subscription_lapsed',
+      }),
+    });
+    const events = captureAxiom();
+    const { ctx, settle } = makeCtx();
+    const res = await mcpHandler(proReq('POST', callBody('describe_tool', { tool_name: 'get_market_data' })), deps, ctx);
+    assert.equal(res.status, 200);
+    await settle();
+    assert.equal(events.length, 1);
+    const ev = events[0];
     assert.equal(ev.auth_kind, 'mcp_oauth');
     assert.equal(ev.customer_id, 'user_pro_xyz');
   });

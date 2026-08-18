@@ -29,6 +29,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   ADMISSION_HEADROOM_MS,
+  BUNDLE_PREFLIGHT_HEADROOM_MS,
   DEFAULT_SECTION_TIMEOUT_MS,
   KILL_GRACE_MS,
   sectionWorstCaseMs,
@@ -224,5 +225,82 @@ test('seed-bundle-resilience admits Resilience-Scores on a cron tick (#6556 regr
     bundle.sections[0].label,
     'Resilience-Scores',
     'Resilience-Scores must be offered the wall budget before its heavier, rarer siblings',
+  );
+});
+
+test('#6806: static-ref splits light from heavy, and neither half has an ordering question', () => {
+  // The bug this shape exists to kill: leftover ran Arms-Suppliers (371s
+  // measured) first on every tick because a member that never publishes never
+  // stops being due, and the 199s remaining could not admit Mineral-Production's
+  // 190s reservation once Submarine-Cables took 22s. Mineral-Production was
+  // deferred by 13 SECONDS on 2026-08-18, the tick its acknowledgement expired.
+  const budgeted = readBudgetedBundles();
+  const light = budgeted.find((b) => b.name === 'seed-bundle-static-ref.mjs');
+  const heavy = budgeted.find((b) => b.name === 'seed-bundle-static-ref-heavy.mjs');
+
+  assert.ok(light, 'seed-bundle-static-ref.mjs must stay budgeted');
+  assert.ok(heavy, 'seed-bundle-static-ref-heavy.mjs must declare a wall budget');
+
+  // One service, not three. Railway caps a project at 100 services.
+  for (const retired of ['seed-bundle-arms-suppliers.mjs', 'seed-bundle-military-bases.mjs']) {
+    assert.equal(
+      budgeted.find((b) => b.name === retired),
+      undefined,
+      `${retired} was consolidated into seed-bundle-static-ref-heavy.mjs — do not reintroduce a 1-section sibling`,
+    );
+  }
+
+  assert.deepEqual(
+    heavy.sections.map((s) => s.label).sort(),
+    ['Arms-Suppliers', 'Military-Bases', 'Mineral-Production'],
+  );
+
+  // THE property that makes the light half unstarvable: every member fits
+  // simultaneously, so no ordering, rotation, or priority question exists here.
+  // This is what the split bought, and it is the assertion that fails first if
+  // someone moves an expensive member back.
+  const KILL_GRACE_MS = 10_000;
+  const lightTotal = light.sections.reduce((sum, s) => sum + s.timeoutMs + KILL_GRACE_MS, 0)
+    + BUNDLE_PREFLIGHT_HEADROOM_MS;
+  assert.ok(
+    lightTotal <= light.maxBundleMs,
+    `seed-bundle-static-ref.mjs reserves ${lightTotal}ms including bounded preflight of its ${light.maxBundleMs}ms budget. `
+    + 'Every member and the runner preflight must fit on the same tick, or the ordering question this split removed is back.',
+  );
+  const lightSrc = readFileSync(join(SCRIPTS_DIR, 'seed-bundle-static-ref.mjs'), 'utf-8');
+  assert.match(
+    lightSrc,
+    /prefetchFreshness:\s*true/,
+    'the bounded preflight in the simultaneous-fit arithmetic must be enabled at runtime',
+  );
+
+  // The heavy half CANNOT have that property — Railway's 10-minute kill means no
+  // two of these members share a tick. Each must at least be individually
+  // admissible, and the rotation below is what stops one of them monopolising
+  // the lead slot.
+  const ADMISSION_HEADROOM_MS = 15_000;
+  for (const section of heavy.sections) {
+    assert.ok(
+      section.timeoutMs + KILL_GRACE_MS + ADMISSION_HEADROOM_MS <= heavy.maxBundleMs,
+      `${section.label} reserves more than seed-bundle-static-ref-heavy.mjs's whole budget`,
+    );
+  }
+  const twoHeaviest = heavy.sections
+    .map((s) => s.timeoutMs + KILL_GRACE_MS)
+    .sort((a, b) => b - a)
+    .slice(0, 2)
+    .reduce((a, b) => a + b, 0);
+  assert.ok(
+    twoHeaviest > heavy.maxBundleMs,
+    'If the two heaviest members now fit one tick, the rotation is dead weight — simplify the bundle instead.',
+  );
+
+  // A fixed order would hand the permanently-due member the lead slot forever,
+  // which is exactly the starvation this split undoes.
+  const heavySrc = readFileSync(join(SCRIPTS_DIR, 'seed-bundle-static-ref-heavy.mjs'), 'utf-8');
+  assert.match(
+    heavySrc,
+    /SECTIONS\.slice\(offset\)/,
+    'seed-bundle-static-ref-heavy.mjs must rotate its lead slot; a fixed order restarves the others',
   );
 });

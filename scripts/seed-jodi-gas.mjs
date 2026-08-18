@@ -12,7 +12,7 @@ import {
   readExistingSeedMeta,
 } from './_seed-utils.mjs';
 import {
-  MAX_JODI_CONTENT_AGE_MIN,
+  MAX_JODI_GAS_CONTENT_AGE_MIN,
   assessChinaJodiCoverage,
   buildChinaRowDiagnostic,
   hasFiniteMeasurementAtPaths,
@@ -367,7 +367,7 @@ if (isMain) {
       return { freshnessMetaPatch: { chinaRow: await buildGasChinaRowDiagnostic(records) } };
     },
     contentMeta: gasContentMeta,
-    maxContentAgeMin: MAX_JODI_CONTENT_AGE_MIN,
+    maxContentAgeMin: MAX_JODI_GAS_CONTENT_AGE_MIN,
 
     declareRecords,
     schemaVersion: 1,

@@ -411,9 +411,6 @@ describe('newsPanelKeyLookupsFor (#5871)', () => {
 
 describe('news panel key reachability (#5871)', () => {
   it('parsers resolve non-empty sets (guards against silent regex drift)', () => {
-    assert.ok(feedCategories.size > 40, `expected >40 feed categories, got ${feedCategories.size}`);
-    assert.ok(catalogPanelKeys.size > 100, `expected >100 catalog panels, got ${catalogPanelKeys.size}`);
-    assert.ok(registrations.length > 100, `expected >100 panel registrations, got ${registrations.length}`);
     assert.notEqual(loopIndex, -1, 'CANONICAL_FEEDS loop not found in panel-layout.ts');
     // Spot-check both sides of the collision this file exists for, so a parser
     // that silently stopped seeing FINANCE_* fails here rather than vacuously
@@ -423,6 +420,9 @@ describe('news panel key reachability (#5871)', () => {
     }
     for (const key of ['commodities', 'commodities-news', 'markets', 'markets-news', 'climate-news']) {
       assert.ok(catalogPanelKeys.has(key), `expected '${key}' in the panel catalog`);
+    }
+    for (const key of ['heatmap', 'markets', 'commodities', 'live-news']) {
+      assert.ok(registrations.some((registration) => registration.key === key), `expected '${key}' among panel registrations`);
     }
   });
 

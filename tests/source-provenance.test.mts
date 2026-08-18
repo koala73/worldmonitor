@@ -69,6 +69,10 @@ let renderer: {
     tierBadge: string;
   };
   renderCorroboratingSourceRisk: (sourceName: string) => string;
+  renderCredibilityBadge: (
+    sourceName: string,
+    item?: { credibilityScore?: number; corroborationCount?: number },
+  ) => string;
 };
 
 before(async () => {
@@ -150,7 +154,7 @@ describe('source provenance defaults (#5390)', () => {
 
   it('requires an explicit reviewed-or-unknown declaration for every configured feed', () => {
     const names = feeds.listConfiguredFeedNames();
-    assert.ok(names.length > 100, `expected many feeds, got ${names.length}`);
+    assert.ok(names.length > 0, 'configured feed extraction must not be empty');
     assert.ok(names.includes('MIIT (China)'));
     assert.ok(names.includes('MOFCOM (China)'));
     const declaredNames = Object.keys(CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS);
@@ -227,6 +231,46 @@ describe('source provenance defaults (#5390)', () => {
     assert.match(reviewedWire.tierBadge, />★ Wire</);
 
     assert.match(renderer.renderCorroboratingSourceRisk('Fars News'), />\?</);
+  });
+
+  it('renders existing badge CSS on Telegram channel labels (#6600)', () => {
+    const idf = renderer.renderPrimarySourceProvenance('IDF Official');
+    assert.match(idf.riskBadge, /propaganda-badge high/);
+    assert.match(idf.riskBadge, /Official Government Source/);
+    assert.match(idf.tierBadge, /tier-badge tier-1/);
+    assert.doesNotMatch(idf.tierBadge, /Wire/);
+
+    const clash = renderer.renderPrimarySourceProvenance('Clash Report');
+    assert.match(clash.riskBadge, /propaganda-badge medium/);
+    assert.equal(clash.tierBadge, '', 'tier-3 OSINT aggregators do not get the T1/T2 star');
+
+    const dd = renderer.renderPrimarySourceProvenance('DD Geopolitics');
+    assert.match(dd.riskBadge, /propaganda-badge medium/);
+    assert.match(dd.riskBadge, />! Caution</);
+    assert.doesNotMatch(dd.riskBadge, /State Media/);
+    assert.equal(dd.tierBadge, '');
+  });
+});
+
+describe('renderCredibilityBadge (#6597)', () => {
+  it('renders a distinct CRED badge with a low band for high-propaganda sources', () => {
+    const html = renderer.renderCredibilityBadge('RT', { credibilityScore: 21 });
+    assert.ok(html.includes('CRED 21'));
+    assert.ok(html.includes('credibility-score-badge'));
+    assert.ok(html.includes('band-low'));
+    assert.ok(!html.includes('importance'));
+  });
+
+  it('renders a high band for wire-service scores', () => {
+    const html = renderer.renderCredibilityBadge('Reuters', { credibilityScore: 80 });
+    assert.ok(html.includes('CRED 80'));
+    assert.ok(html.includes('band-high'));
+  });
+
+  it('computes a low score for RT when the digest field is absent', () => {
+    const html = renderer.renderCredibilityBadge('RT');
+    assert.match(html, /CRED \d+/);
+    assert.ok(html.includes('band-low'));
   });
 });
 

@@ -594,6 +594,12 @@ const WINGBITS_BASE = 'https://customer-api.wingbits.com/v1/flights';
 const OPENSKY_TOKEN_URL = 'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token';
 const OPENSKY_AUTH_COOLDOWN_MS = 60_000;
 const OPENSKY_AUTH_RETRY_DELAYS = [0, 2_000, 5_000];
+
+// #6249: the single global /states/all query has no per-region isolation any
+// more, so one transient network blip or 5xx zeroes OpenSky's entire
+// contribution for the cycle. Bounded ladder for non-401/non-429 failures,
+// mirroring the auth ladder's shape. 429 stays unretried (#6241).
+const OPENSKY_FETCH_RETRY_DELAYS = [0, 1_500];
 // This seeder is a one-shot process on a */5 Railway cron, so the 429 cooldown
 // CANNOT live in a module variable the way the relay's does — the deadline has
 // to outlive the process. Redis is the only state that does (#6241).
@@ -889,55 +895,83 @@ async function getOpenSkyToken() {
 // what a global query costs — so the previous PACIFIC+WESTERN pair (1,296 and
 // 4,824 sq°) spent 8 credits/run for strictly less coverage than 4 buys. See
 // docs/solutions/integration-issues/opensky-bbox-area-billing-flat-top-tier.md (#6222).
-async function fetchOpenSkyAuthenticated() {
+// Exported as a test seam: the full fetchAllStates path staggers 13 blind-spot
+// regions at 1s each before reaching this tier, which is far too slow for the
+// retry-contract tests that need to drive it directly.
+export async function fetchOpenSkyAuthenticated() {
   const url = `${OPENSKY_BASE}/states/all?extended=1`;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  // One direct+proxy attempt. 401 returns for a token-refresh retry; any
+  // other failure propagates so the ladder below can classify it.
+  const attemptOnce = async (token) => {
+    const headers = { Authorization: `Bearer ${token}` };
+    try {
+      const data = await fetchJsonDirect(url, { headers });
+      return { ok: true, transport: 'direct', data };
+    } catch (directError) {
+      if (isOpenSkyUnauthorizedError(directError)) return { unauthorized: true };
+      // Never retry a 429 through the proxy. The quota is per ACCOUNT, and both
+      // paths carry the same bearer token — a different egress IP cannot change
+      // the verdict, so the retry is guaranteed to fail while still costing a
+      // request, proxy bandwidth, and latency on every cycle of a multi-hour
+      // exhaustion window. It also bounds the double-spend window: a direct
+      // request that OpenSky served but that failed client-side has already
+      // debited its credits, and retrying debits them again (#6222).
+      if (isOpenSkyRateLimitedError(directError)) throw directError;
+      if (!PROXY_ENABLED) throw directError;
+      try {
+        const data = await proxyFetchJson(url, { headers });
+        return { ok: true, transport: 'proxy', data };
+      } catch (proxyError) {
+        if (isOpenSkyUnauthorizedError(proxyError)) return { unauthorized: true };
+        throw combineOpenSkyFetchErrors(directError, proxyError);
+      }
+    }
+  };
+
+  let lastError = null;
+  for (const delayMs of OPENSKY_FETCH_RETRY_DELAYS) {
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
     const token = await getOpenSkyToken();
     if (!token) return { states: null, status: getOpenSkyAuthStatus() };
-    const headers = { Authorization: `Bearer ${token}` };
 
     try {
-      let data;
-      try {
-        data = await fetchJsonDirect(url, { headers });
-        return { states: data.states || [], status: `success:direct` };
-      } catch (directError) {
-        if (isOpenSkyUnauthorizedError(directError)) {
-          clearOpenSkyToken();
-          if (attempt === 0) continue;
-        }
-        if (!PROXY_ENABLED) throw directError;
-        // Never retry a 429 through the proxy. The quota is per ACCOUNT, and both
-        // paths carry the same bearer token — a different egress IP cannot change
-        // the verdict, so the retry is guaranteed to fail while still costing a
-        // request, proxy bandwidth, and latency on every cycle of a multi-hour
-        // exhaustion window. It also bounds the double-spend window: a direct
-        // request that OpenSky served but that failed client-side has already
-        // debited its credits, and retrying debits them again (#6222).
-        if (isOpenSkyRateLimitedError(directError)) throw directError;
-        try {
-          data = await proxyFetchJson(url, { headers });
-          return { states: data.states || [], status: `success:proxy` };
-        } catch (proxyError) {
-          if (isOpenSkyUnauthorizedError(proxyError)) {
-            clearOpenSkyToken();
-            if (attempt === 0) continue;
-          }
-          throw combineOpenSkyFetchErrors(directError, proxyError);
-        }
+      let outcome = await attemptOnce(token);
+      if (outcome.unauthorized) {
+        // 401 keeps the immediate refresh semantics: clear, re-auth, retry
+        // once — never the backoff ladder, which is for transient failures.
+        clearOpenSkyToken();
+        const refreshed = await getOpenSkyToken();
+        if (!refreshed) return { states: null, status: getOpenSkyAuthStatus() };
+        outcome = await attemptOnce(refreshed);
       }
-    } catch (error) {
+      if (outcome.ok) {
+        return { states: outcome.data.states || [], status: `success:${outcome.transport}` };
+      }
+      // Second consecutive unauthorized: report it, do not loop.
+      clearOpenSkyToken();
       return {
         states: null,
-        status: `error:${redactProxy(error.message)}`,
-        rateLimited: isOpenSkyRateLimitedError(error),
-        retryAfterSeconds: error?.retryAfterSeconds ?? null,
+        status: 'error:OpenSky unauthorized after token refresh',
       };
+    } catch (error) {
+      if (isOpenSkyRateLimitedError(error)) {
+        return {
+          states: null,
+          status: `error:${redactProxy(error.message)}`,
+          rateLimited: true,
+          retryAfterSeconds: error?.retryAfterSeconds ?? null,
+        };
+      }
+      lastError = error;
     }
   }
-
-  return { states: null, status: getOpenSkyAuthStatus() };
+  return {
+    states: null,
+    status: `error:${redactProxy(lastError?.message || 'OpenSky fetch failed')}`,
+  };
 }
 
 // No anonymous fallback. OpenSky's unauthenticated tier is 400 credits/day PER
@@ -1924,7 +1958,7 @@ async function main() {
       ...theater,
       assessedAt,
     }));
-    const posturePayload = { theaters };
+    const posturePayload = { theaters, provider: source || '' };
     // Derived from `theaters`, which is already in scope here, so it must NOT live inside the
     // theater-posture lock block below: `forecastInputsPayload.stats` reads it unconditionally,
     // including on the lock-skipped branch. #6092 wrapped the publish in `else { try { … } }` and

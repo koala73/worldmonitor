@@ -211,6 +211,31 @@
       "soybeans": "Soybeans",
       "barley": "Barley",
       "palmOil": "Palm oil"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "STEM graduates",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh."
     }
   },
   "header": {
@@ -480,7 +505,9 @@
         "displacement": "Переключить потоки перемещённых лиц",
         "climate": "Переключить климатические аномалии",
         "outages": "Переключить интернет-отключения",
-        "tradeRoutes": "Переключить торговые маршруты"
+        "tradeRoutes": "Переключить торговые маршруты",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Переключить на тёмную тему",
@@ -642,7 +669,7 @@
         "URLHAUS_AUTH_KEY": "Используется для API URLhaus и ThreatFox.",
         "OTX_API_KEY": "Дополнительный источник обогащения для уровня киберугроз.",
         "ABUSEIPDB_API_KEY": "Дополнительный источник репутации вредоносных IP-адресов.",
-        "FINNHUB_API_KEY": "Котировки акций и рыночные данные в реальном времени.",
+        "FINNHUB_API_KEY": "Задержанные или предзагруженные котировки акций и рыночные данные. Ключ — это не прямая трансляция.",
         "NASA_FIRMS_API_KEY": "Система управления информацией о пожарах.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -935,6 +962,7 @@
       "noComtradeData": "Данные стратегических потоков недоступны",
       "comtradeUnavailable": "Данные UN Comtrade временно недоступны",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "Строки UN Comtrade — официальная статистика на национальном уровне отчитывающейся страны, а не экспорт города, коридора, завода, порта или партии.",
       "anomalyBadge": "Аномалия",
       "colReporter": "Страна",
       "colCommodity": "Товар",
@@ -1171,7 +1199,7 @@
         "ucdpEvents": "События UCDP",
         "displacementFlows": "Потоки перемещённых лиц",
         "climateAnomalies": "Климатические аномалии",
-        "weatherAlerts": "Метеопредупреждения в США (NWS)",
+        "weatherAlerts": "Предупреждения об опасной погоде (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Стратегические водные пути",
         "economicCenters": "Экономические центры",
         "criticalMinerals": "Критически важные минералы",
@@ -1191,7 +1219,9 @@
         "speciesRecovery": "Восстановление видов",
         "renewableInstallations": "Чистая энергия",
         "radiationSpike": "Всплеск радиации",
-        "radiationElevated": "Повышенный уровень радиации"
+        "radiationElevated": "Повышенный уровень радиации",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "Землетрясение",
@@ -1252,7 +1282,7 @@
           "infraDatacenters": "Кластеры ИИ-вычислений >=10 000 GPU",
           "infraOutages": "Блэкауты интернета и сбои сервисов",
           "naturalEventsTech": "Землетрясения, штормы, пожары (могут затронуть дата-центры)",
-          "weatherAlerts": "Предупреждения об опасной погоде в США (NWS)",
+          "weatherAlerts": "Официальные предупреждения об опасной погоде национальных метеорологических служб (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Фондовые биржи и центральные банки",
           "countriesOverlay": "Наложение названий стран",
           "financeExchanges": "Крупные мировые биржи по рыночному уровню",
@@ -1264,7 +1294,7 @@
           "financeOutages": "Сбои интернета, способные повлиять на торговые операции",
           "financeCyberThreats": "Инциденты безопасности вокруг финансовой инфраструктуры",
           "macroWaterways": "Стратегические узкие места для транспортировки сырья",
-          "weatherAlertsMarket": "Опасные погодные явления в США, влияющие на рынки (NWS)",
+          "weatherAlertsMarket": "Официальные предупреждения об опасной погоде, важные для рынков (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Землетрясения, пожары, наводнения и другие стихийные бедствия",
           "timeRecent": "Фильтрация данных по времени за последние часы",
           "timeExtended": "Данные за прошлую неделю, месяц или за всё время",
@@ -1297,7 +1327,9 @@
           "tradeRoutes": "Основные мировые судоходные маршруты, соединяющие порты через стратегические узкие места",
           "dayNight": "Солнечный терминатор в реальном времени, показывающий зоны дня и ночи",
           "geoBoundaries": "Демилитаризованные зоны, линии прекращения огня и спорные границы",
-          "ciiChoropleth": "Тепловая карта индекса нестабильности стран — цвета по CII (зелёный=стабильно, красный=критично)"
+          "ciiChoropleth": "Тепловая карта индекса нестабильности стран — цвета по CII (зелёный=стабильно, красный=критично)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Влияет на: Землетрясения, Погода, Протесты, Сбои"
@@ -1671,7 +1703,9 @@
     "breakingNews": {
       "critical": "СРОЧНО",
       "high": "ВАЖНО",
-      "dismiss": "Скрыть"
+      "dismiss": "Скрыть",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Срочные оповещения",
@@ -1908,13 +1942,23 @@
       "topTargets": "Страны-мишени"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2188,7 +2232,7 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Обнаруживает сходящиеся сигналы природных бедствий и инфраструктуры:<ul><li>Коррелирует землетрясения, лесные пожары, наводнения и экстремальную погоду</li><li>Отслеживает каскадные эффекты на инфраструктуру и цепи поставок</li><li>Выделяет регионы с сопутствующим риском бедствий</li></ul>Нажмите на карточку, чтобы увеличить затронутый регион."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Котировки индексов в реальном времени, акции и цены крипто. Настройте свой список отслеживания с помощью кнопки Список отслеживания. Спарклайны показывают недавний ценовой тренд.",
+      "infoTooltip": "<strong>Markets</strong> Задержанные или предзагруженные котировки индексов, акции и цены крипто. Настройте свой список отслеживания с помощью кнопки Список отслеживания. Спарклайны показывают недавний ценовой тренд.",
       "chart": {
         "title": "График цены {{symbol}}",
         "close": "Закрыть график"
@@ -2369,13 +2413,14 @@
     },
     "sanctionsPressure": {
       "title": "Санкции и обозначения",
-      "infoTooltip": "Обозначения санкций OFAC из списков SDN и Consolidated Lists. Показывает, какие страны сталкиваются с наибольшим давлением обозначений, какие программы его вызывают и что было добавлено с последнего обновления.",
+      "infoTooltip": "Списки SDN и Consolidated OFAC плюс обозначения SEMA/JVCFOA Global Affairs Canada. Показывает, какие страны сталкиваются с наибольшим давлением обозначений, какие программы его вызывают и что было добавлено с последнего обновления.",
       "loading": "Загрузка данных санкций...",
       "unavailable": "Данные санкций недоступны.",
       "summary": {
         "new": "Новое",
         "vessels": "Суда",
-        "aircraft": "Воздушные суда"
+        "aircraft": "Воздушные суда",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Страны под санкциями",
@@ -2390,11 +2435,12 @@
       "footer": {
         "updated": "Обновлено {{time}}",
         "dataset": "набор данных {{date}}",
-        "source": "Источник: OFAC"
+        "source": "Источник: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} новое",
-        "new": "новое"
+        "new": "новое",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} обозначение",
       "designations_other": "{{count}} обозначений",
@@ -2858,6 +2904,7 @@
     "moreEvents": "ещё событий",
     "monitoring": "Мониторинг",
     "viewUSGS": "Смотреть на USGS",
+    "viewNRCan": "Смотреть на Earthquakes Canada",
     "expired": "Истёк",
     "timeAgo": {
       "s": "{{count}}с назад",
@@ -3288,7 +3335,8 @@
     "retry": "Retry",
     "refresh": "Refresh",
     "all": "Все",
-    "cancel": "Отмена"
+    "cancel": "Отмена",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "Отображение",

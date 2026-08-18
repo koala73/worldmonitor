@@ -46,6 +46,12 @@ export {
   resolveInsightsSynthesis,
 };
 import { buildLlmCallEvent, emitLlmEvents, flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
+import {
+  GROQ_DEFAULT_MODEL,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
+  OPENROUTER_PROVIDER_ROUTING,
+} from './_llm-model-timeouts.mjs';
 // Import from the scripts mirror (`scripts/shared/`) — NOT the repo-root
 // `shared/`. Railway services with nixpacks `rootDirectory=scripts` only
 // package files under scripts/; a `../shared/` import resolves to
@@ -105,7 +111,6 @@ const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval. Shorter = key ex
                          // is gated at brief-selection time (see pickBriefCluster + briefSystemPrompt
                          // in _insights-brief.mjs), not by aging out fast.
 const MAX_HEADLINE_LEN = 500;
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const INSIGHTS_SOURCE_VERSION = 'digest-clustering-v2-importance-diversity';
 const INSIGHTS_MAX_CONSECUTIVE_FAILURES = 100;
 const INSIGHTS_RUN_OUTCOMES = Object.freeze({
@@ -355,8 +360,8 @@ async function readExistingInsights() {
 }
 
 // Provider config — mirrors server/_shared/llm.ts getProviderCredentials()
-// Order: ollama → openrouter → groq (canonical chain since #4944: DeepSeek
-// V4 Flash primary with reasoning disabled, groq 70B free-tier fallback)
+// Order: Ollama → paid OpenRouter → two fixed free OpenRouter models → Groq.
+// Each free model stays a separate application-validated attempt.
 const LLM_PROVIDERS = [
   {
     name: 'ollama',
@@ -378,14 +383,34 @@ const LLM_PROVIDERS = [
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
     model: 'deepseek/deepseek-v4-flash',
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
-    extraBody: { reasoning: { enabled: false } },
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
     timeout: 20_000,
+  },
+  {
+    name: 'openrouter-free',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_PRIMARY_MODEL,
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    timeout: 20_000,
+    maxRetries: 0,
+  },
+  {
+    name: 'openrouter-free-backup',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_BACKUP_MODEL,
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    timeout: 20_000,
+    maxRetries: 0,
   },
   {
     name: 'groq',
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: GROQ_MODEL,
+    model: GROQ_DEFAULT_MODEL,
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
     timeout: 15_000,
   },
@@ -500,7 +525,7 @@ async function callLLM(headline, options = {}) {
           });
         }
         return response;
-      }, INSIGHTS_LLM_MAX_RETRIES, retryDelayMs);
+      }, provider.maxRetries ?? INSIGHTS_LLM_MAX_RETRIES, retryDelayMs);
 
       const json = await resp.json();
       const usage = {
@@ -683,6 +708,22 @@ export function preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage) {
   return chinaNewsCoverage ? { ...existing, chinaNewsCoverage } : existing;
 }
 
+export function normalizeDigestItemsForInsights(items) {
+  return items.map(item => ({
+    title: sanitizeTitle(item.title || item.headline || ''),
+    source: item.source || item.feed || '',
+    link: item.link || item.url || '',
+    pubDate: item.pubDate || item.publishedAt || item.date || new Date().toISOString(),
+    isAlert: item.isAlert || false,
+    tier: item.tier,
+    threat: normalizeThreat(item.threat),
+    importanceScore: item.importanceScore,
+    ...(Number.isFinite(item.credibilityScore) ? { credibilityScore: item.credibilityScore } : {}),
+    corroborationCount: item.corroborationCount ?? item.storyMeta?.sourceCount,
+    storyMeta: item.storyMeta,
+  })).filter(item => item.title.length > 10);
+}
+
 async function fetchInsights() {
   const digest = await readOrWarmDigest('en');
   if (!digest) {
@@ -726,18 +767,7 @@ async function fetchInsights() {
 
   console.log(`  Digest items: ${items.length}`);
 
-  const normalizedItems = items.map(item => ({
-    title: sanitizeTitle(item.title || item.headline || ''),
-    source: item.source || item.feed || '',
-    link: item.link || item.url || '',
-    pubDate: item.pubDate || item.publishedAt || item.date || new Date().toISOString(),
-    isAlert: item.isAlert || false,
-    tier: item.tier,
-    threat: normalizeThreat(item.threat),
-    importanceScore: item.importanceScore,
-    corroborationCount: item.corroborationCount ?? item.storyMeta?.sourceCount,
-    storyMeta: item.storyMeta,
-  })).filter(item => item.title.length > 10);
+  const normalizedItems = normalizeDigestItemsForInsights(items);
 
   const clusters = clusterItems(normalizedItems);
   console.log(`  Clusters: ${clusters.length}`);
@@ -841,6 +871,16 @@ async function fetchInsights() {
     if (composed.hallucinatedLines > 0) {
       console.warn(`  [brief_hallucination ${BRIEF_VALIDATOR_MODE.toUpperCase()}] ${composed.hallucinatedLines}/${topStories.length} synthesis lines flagged`);
     }
+    if (composed.sourceAttributions > 0) {
+      // Accept-side counterpart to the `validate_reject` reason below: how many
+      // lead sentences named their own outlet. Only the reject path was ever
+      // reported, so a quiet alarm could not be told apart from a gate that had
+      // started accepting too much. A count is enough to see that — the reason
+      // vocabulary stays a bounded literal on purpose (these reach seed-meta and
+      // Railway logs, where the payload may be sensitive), so no offending text
+      // is logged here either.
+      console.log(`  [brief_attribution] ${composed.sourceAttributions} lead sentence(s) named their source outlet`);
+    }
     console.log(`  Brief synthesized (top-${topStories.length}) via ${briefProvider} (${briefModel})`);
   } else {
     console.warn(
@@ -902,6 +942,7 @@ async function fetchInsights() {
       corroborationSourceCount: story.corroborationSourceCount ?? 0,
       importanceScore: story.importanceScore,
       effectiveImportanceScore: story.effectiveImportanceScore,
+      ...(Number.isFinite(story.credibilityScore) ? { credibilityScore: story.credibilityScore } : {}),
       velocity: { level: 'normal', sourcesPerHour: 0 },
       isAlert: story.isAlert,
       category,

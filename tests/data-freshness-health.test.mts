@@ -22,7 +22,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('health freshness ingestion', () => {
-  it('identifies the weather source and outage gap as US NWS coverage', async () => {
+  it('identifies the weather source and outage gap as NWS/ECCC/WMO SWIC coverage', async () => {
     __resetHealthFreshnessForTests();
     await refreshDataFreshnessFromHealth({
       endpoint: '/api/health',
@@ -41,8 +41,8 @@ describe('health freshness ingestion', () => {
 
     const weatherGap = getIntelligenceGaps().find(gap => gap.source === 'weather');
 
-    assert.equal(dataFreshness.getSource('weather')?.name, 'US Weather Alerts (NWS)');
-    assert.match(weatherGap?.message ?? '', /US National Weather Service \(NWS\)/);
+    assert.equal(dataFreshness.getSource('weather')?.name, 'Severe Weather Alerts (NWS, ECCC, WMO SWIC)');
+    assert.match(weatherGap?.message ?? '', /NWS, ECCC, or WMO SWIC/);
 
     // The two assertions above are satisfied by DataFreshnessTracker's constructor alone:
     // it pre-seeds every SOURCE_METADATA entry with `name` and status 'no_data', and
@@ -433,5 +433,35 @@ describe('health freshness ingestion', () => {
       /scheduleAfterFirstPaint\(\(\)\s*=>\s*\{[\s\S]*?scheduleRefresh\(\s*['"]health-freshness['"][\s\S]*?refreshDataFreshnessFromHealth\(\)[\s\S]*?REFRESH_INTERVALS\.healthFreshness[\s\S]*?runImmediately:\s*true/,
       'App scheduler should hydrate health freshness at post-paint idle (never in the LCP window — #4907) and then on an interval, independent of panel visibility',
     );
+  });
+
+  it('renders server-crit and server-warn statuses as degraded, not fresh (#6780)', async () => {
+    __resetHealthFreshnessForTests();
+    const checkedAtMs = Date.now();
+    await refreshDataFreshnessFromHealth({
+      endpoint: '/api/health',
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        checkedAt: new Date(checkedAtMs).toISOString(),
+        checks: {
+          // Server-crit: must surface as an error even at a fresh seed age,
+          // instead of passing calculateStatus's age check as 'fresh'.
+          weatherAlerts: { status: 'CHINA_UNAVAILABLE', records: 5, seedAgeMin: 1, maxStaleMin: 45 },
+          // Server-warn degradation: fresh age but must render 'stale'.
+          gdeltIntel: { status: 'COVERAGE_DEGRADED', records: 10, seedAgeMin: 1, maxStaleMin: 420 },
+          // Server-ok: an intentionally-blocked source is NOT a degradation and
+          // must still render 'fresh' at a fresh age (guards a future edit from
+          // folding it in with the warn statuses next to it).
+          cyberThreats: { status: 'SOURCE_BLOCKED', records: 8, seedAgeMin: 1, maxStaleMin: 240 },
+        },
+      }),
+    });
+
+    // Before #6780 the first two rendered 'fresh' (green): CHINA_UNAVAILABLE was
+    // not an error predicate and COVERAGE_DEGRADED was not in the fresh-age stale
+    // set. SOURCE_BLOCKED must stay fresh in both the old and new behavior.
+    assert.equal(dataFreshness.getSource('weather')?.status, 'error');
+    assert.equal(dataFreshness.getSource('gdelt')?.status, 'stale');
+    assert.equal(dataFreshness.getSource('cyber_threats')?.status, 'fresh');
   });
 });

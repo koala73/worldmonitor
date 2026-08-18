@@ -105,7 +105,7 @@ If an event falls outside the priority centroid table, the fallback density uses
 
 ### Strategic Theater Posture Assessment
 
-Nine operational theaters are continuously assessed for military posture escalation:
+The operational-theater registry is continuously assessed for military posture escalation:
 
 | Theater               | Key Trigger                                 |
 | --------------------- | ------------------------------------------- |
@@ -165,7 +165,7 @@ Enrichment queries are batched (up to 50 aircraft per request) and cached with a
 
 ### Undersea Cable Health Monitoring
 
-Beyond displaying static cable routes on the map, the system actively monitors cable health by cross-referencing two live data sources:
+Beyond displaying static cable routes on the map, the system actively monitors cable health by cross-referencing its live sources:
 
 1. **NGA Navigational Warnings** — the U.S. National Geospatial-Intelligence Agency publishes maritime safety broadcasts that frequently mention cable repair operations. The system filters these warnings for cable-related keywords (`CABLE`, `CABLESHIP`, `SUBMARINE CABLE`, `FIBER OPTIC`, etc.) and extracts structured data: vessel names, DMS/decimal coordinates, advisory severity, and repair ETAs. Each warning is matched to the nearest cataloged undersea cable within a 5° geographic radius.
 
@@ -303,6 +303,7 @@ Keyword spikes, hotspot escalations, and military surges remain inputs to correl
 - **RSS source tier gating** — Tier 3+ sources (niche outlets, aggregators) require a non-keyword classification (`threat.source` is `ml` or `llm`) to fire an alert; Tier 1–2 sources bypass this gate
 - **RSS story-phase gate** — sustained and fading stories are suppressed; the banner is reserved for breaking/developing stories or items without story metadata
 - **RSS importance floor** — items with `importanceScore < 30` are too low-signal for the banner
+- **RSS credibility score** — each headline also carries a 0-100 `credibilityScore` for source reliability (tier, propaganda risk, corroboration), distinct from importance; see [News Credibility Score](/methodology/news-credibility)
 - **RSS startup grace** — RSS alerts are suppressed for the first 10 seconds after app load so the initial feed fetch does not replay old articles as breaking news
 - **RSS user sensitivity control** — configurable between `critical-only` (only critical severity fires) and `critical-and-high` (critical and high severities both fire)
 - **OREF direct escalation** — OREF siren alerts are exempt from the RSS gates and global cooldown; any non-empty siren batch raises a critical alert when alerts are enabled and the event is not a duplicate

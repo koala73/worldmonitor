@@ -211,6 +211,31 @@
       "soybeans": "Soybeans",
       "barley": "Barley",
       "palmOil": "Palm oil"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "STEM graduates",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh."
     }
   },
   "header": {
@@ -480,7 +505,9 @@
         "displacement": "Przełącz przepływy przesiedleń",
         "climate": "Przełącz anomalie klimatyczne",
         "outages": "Przełącz awarie internetu",
-        "tradeRoutes": "Przełącz szlaki handlowe"
+        "tradeRoutes": "Przełącz szlaki handlowe",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Przełącz na tryb ciemny",
@@ -641,7 +668,7 @@
         "URLHAUS_AUTH_KEY": "Używany zarówno dla API URLhaus, jak i ThreatFox.",
         "OTX_API_KEY": "Opcjonalne źródło wzbogacania warstwy zagrożeń cybernetycznych.",
         "ABUSEIPDB_API_KEY": "Opcjonalne źródło wzbogacania reputacji złośliwych adresów IP.",
-        "FINNHUB_API_KEY": "Notowania giełdowe w czasie rzeczywistym i dane rynkowe.",
+        "FINNHUB_API_KEY": "Opóźnione lub wstępnie załadowane notowania giełdowe i dane rynkowe. Klucz to nie transmisja na żywo.",
         "NASA_FIRMS_API_KEY": "System informacji o pożarach do zarządzania zasobami.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -887,6 +914,7 @@
       "noComtradeData": "Brak dostępnych danych przepływów strategicznych",
       "comtradeUnavailable": "Dane UN Comtrade tymczasowo niedostępne",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomalia",
       "colReporter": "Kraj",
       "colCommodity": "Towar",
@@ -982,7 +1010,7 @@
         "ucdpEvents": "Wydarzenia UCDP",
         "displacementFlows": "Przepływy wypornościowe",
         "climateAnomalies": "Anomalie klimatyczne",
-        "weatherAlerts": "Alerty pogodowe w USA (NWS)",
+        "weatherAlerts": "Ostrzeżenia przed gwałtowną pogodą (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Strategiczne drogi wodne",
         "economicCenters": "Centra Gospodarcze",
         "criticalMinerals": "Minerały krytyczne",
@@ -1002,7 +1030,9 @@
         "speciesRecovery": "Ochrona gatunków",
         "renewableInstallations": "Czysta energia",
         "radiationSpike": "Skok radioaktywności",
-        "radiationElevated": "Podwyższona radioaktywność"
+        "radiationElevated": "Podwyższona radioaktywność",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "layersTitle": "Warstwy",
       "layerSearch": "Szukaj warstw...",
@@ -1070,7 +1100,7 @@
           "infraDatacenters": "Klastry obliczeniowe AI >=10 000 procesorów graficznych",
           "infraOutages": "Przerwy w dostępie do Internetu i zakłócenia w świadczeniu usług",
           "naturalEventsTech": "Trzęsienia ziemi, burze, pożary (mogą mieć wpływ na centra danych)",
-          "weatherAlerts": "Alerty o gwałtownej pogodzie w USA (NWS)",
+          "weatherAlerts": "Oficjalne ostrzeżenia przed gwałtowną pogodą od krajowych służb meteorologicznych (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Giełdy i banki centralne",
           "countriesOverlay": "Nakładki z nazwami krajów",
           "financeExchanges": "Główne giełdy światowe według poziomu rynku",
@@ -1082,7 +1112,7 @@
           "financeOutages": "Zakłócenia w Internecie, które mogą mieć wpływ na funkcjonowanie rynku",
           "financeCyberThreats": "Zdarzenia związane z bezpieczeństwem wokół infrastruktury finansowej",
           "macroWaterways": "Strategiczne wąskie gardła w transporcie towarów",
-          "weatherAlertsMarket": "Gwałtowne zdarzenia pogodowe w USA o znaczeniu rynkowym (NWS)",
+          "weatherAlertsMarket": "Oficjalne ostrzeżenia przed gwałtowną pogodą o znaczeniu rynkowym (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Trzęsienia ziemi, pożary, powodzie i inne zakłócenia naturalne",
           "timeRecent": "Filtruj dane oparte na czasie według ostatnich godzin",
           "timeExtended": "Pokaż dane z ostatniego tygodnia, miesiąca lub całego okresu",
@@ -1115,7 +1145,9 @@
           "techEvents": "Główne konferencje i wydarzenia technologiczne",
           "techFires": "Aktywne pożary w pobliżu infrastruktury technologicznej",
           "geoBoundaries": "Strefy zdemilitaryzowane, linie zawieszenia broni i sporne granice",
-          "ciiChoropleth": "Mapa cieplna Country Instability Index — koloruje kraje według wyniku CII (zielony=stabilny, czerwony=krytyczny)"
+          "ciiChoropleth": "Mapa cieplna Country Instability Index — koloruje kraje według wyniku CII (zielony=stabilny, czerwony=krytyczny)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Wpływ na: Trzęsienia ziemi, Pogoda, Protesty, Przestoje"
@@ -1787,7 +1819,9 @@
     "breakingNews": {
       "critical": "KRYTYCZNY",
       "dismiss": "Odrzuć",
-      "high": "WYSOKI"
+      "high": "WYSOKI",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "giving": {
       "activityIndex": "Indeks aktywności",
@@ -1908,13 +1942,23 @@
       "topTargets": "Kraje docelowe ataku"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2369,13 +2413,14 @@
     },
     "sanctionsPressure": {
       "title": "Sankcje i desygnacje",
-      "infoTooltip": "Desygnacje sankcji OFAC z list SDN i konsolidowanej. Pokazuje, które kraje napotykają największą presję desygnacji, jakie programy ją napędzają i co zostało niedawno dodane od ostatniej aktualizacji.",
+      "infoTooltip": "Listy SDN i skonsolidowana OFAC oraz desygnacje SEMA/JVCFOA Global Affairs Canada. Pokazuje, które kraje napotykają największą presję desygnacji, jakie programy ją napędzają i co zostało niedawno dodane od ostatniej aktualizacji.",
       "loading": "Ładowanie danych sankcji...",
       "unavailable": "Dane sankcji niedostępne.",
       "summary": {
         "new": "Nowe",
         "vessels": "Statki",
-        "aircraft": "Statki powietrzne"
+        "aircraft": "Statki powietrzne",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Kraje objęte sankcjami",
@@ -2390,11 +2435,12 @@
       "footer": {
         "updated": "Zaktualizowane {{time}}",
         "dataset": "zestaw danych {{date}}",
-        "source": "Źródło: OFAC"
+        "source": "Źródło: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} nowych",
-        "new": "nowe"
+        "new": "nowe",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} desygnacja",
       "designations_other": "{{count}} desygnacji",
@@ -2849,6 +2895,7 @@
     "moreEvents": "więcej zdarzeń",
     "monitoring": "Monitorowanie",
     "viewUSGS": "Zobacz na USGS",
+    "viewNRCan": "Zobacz na Earthquakes Canada",
     "expired": "Wygasły",
     "timeAgo": {
       "s": "{{count}}s temu",
@@ -3288,7 +3335,8 @@
     "all": "Wszystkie",
     "loadingGiving": "Ładowanie danych o globalnej dobroczynności",
     "rateLimitedMarket": "Dane rynkowe tymczasowo niedostępne (limit zapytań) — ponowna próba wkrótce",
-    "cancel": "Anuluj"
+    "cancel": "Anuluj",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "Wyświetlanie",

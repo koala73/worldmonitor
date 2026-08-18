@@ -388,7 +388,7 @@ export class AirlineIntelPanel extends Panel {
     // ---- Ops tab ----
     private renderOps(): void {
         if (!this.opsData.length) {
-            setTrustedHtml(this.content, trustedHtml(`<div class="no-data">${t('components.airlineIntel.noOpsData')}</div>`, "legacy direct innerHTML migration"));
+            this.setTrustedContent(trustedHtml(`<div class="no-data">${t('components.airlineIntel.noOpsData')}</div>`, "legacy direct innerHTML migration"));
             return;
         }
         const rows = this.opsData.map(s => `
@@ -401,13 +401,13 @@ export class AirlineIntelPanel extends Panel {
         ${s.closureStatus ? '<div class="ops-closed">CLOSED</div>' : ''}
         ${s.notamFlags.length ? `<div class="ops-notam">⚠️ NOTAM</div>` : ''}
       </div>`).join('');
-        setTrustedHtml(this.content, trustedHtml(`<div class="ops-grid">${rows}</div>`, "legacy direct innerHTML migration"));
+        this.setTrustedContent(trustedHtml(`<div class="ops-grid">${rows}</div>`, "legacy direct innerHTML migration"));
     }
 
     // ---- Flights tab ----
     private renderFlights(): void {
         if (!this.flightsData.length) {
-            setTrustedHtml(this.content, trustedHtml(`<div class="no-data">${t('components.airlineIntel.noFlights')}</div>`, "legacy direct innerHTML migration"));
+            this.setTrustedContent(trustedHtml(`<div class="no-data">${t('components.airlineIntel.noFlights')}</div>`, "legacy direct innerHTML migration"));
             return;
         }
         const rows = this.flightsData.map(f => {
@@ -421,13 +421,13 @@ export class AirlineIntelPanel extends Panel {
           <div class="flight-status" style="color:${color}">${f.status}</div>
         </div>`;
         }).join('');
-        setTrustedHtml(this.content, trustedHtml(`<div class="flights-list">${rows}</div>`, "legacy direct innerHTML migration"));
+        this.setTrustedContent(trustedHtml(`<div class="flights-list">${rows}</div>`, "legacy direct innerHTML migration"));
     }
 
     // ---- Airlines tab ----
     private renderAirlines(): void {
         if (!this.carriersData.length) {
-            setTrustedHtml(this.content, trustedHtml(`<div class="no-data">${t('components.airlineIntel.noCarrierData')}</div>`, "legacy direct innerHTML migration"));
+            this.setTrustedContent(trustedHtml(`<div class="no-data">${t('components.airlineIntel.noCarrierData')}</div>`, "legacy direct innerHTML migration"));
             return;
         }
         const rows = this.carriersData.slice(0, 15).map(c => `
@@ -437,13 +437,13 @@ export class AirlineIntelPanel extends Panel {
         <div class="carrier-delay" style="color:${c.delayPct > 30 ? '#ef4444' : '#aaa'}">${c.delayPct.toFixed(1)}% delayed</div>
         <div class="carrier-cancel">${c.cancellationRate.toFixed(1)}% cxl</div>
       </div>`).join('');
-        setTrustedHtml(this.content, trustedHtml(`<div class="carriers-list">${rows}</div>`, "legacy direct innerHTML migration"));
+        this.setTrustedContent(trustedHtml(`<div class="carriers-list">${rows}</div>`, "legacy direct innerHTML migration"));
     }
 
     // ---- Tracking tab ----
     private renderTracking(): void {
         const clearBtn = this.trackingQuery
-            ? `<button id="trackClearBtn" class="icon-btn" style="padding:4px 8px;color:#9ca3af" title="Back to live feed">×</button>`
+            ? `<button id="trackClearBtn" class="icon-btn" style="padding:4px 8px;color:#9ca3af" title="Back to live feed" aria-label="Back to live feed">×</button>`
             : '';
         const searchBar = `
       <div class="track-search" style="display:flex;gap:6px;padding:8px 0 6px">
@@ -505,7 +505,7 @@ export class AirlineIntelPanel extends Panel {
     // ---- News tab ----
     private renderNews(): void {
         if (!this.newsData.length) {
-            setTrustedHtml(this.content, trustedHtml(`<div class="no-data">${t('components.airlineIntel.noNews')}</div>`, "legacy direct innerHTML migration"));
+            this.setTrustedContent(trustedHtml(`<div class="no-data">${t('components.airlineIntel.noNews')}</div>`, "legacy direct innerHTML migration"));
             return;
         }
         const items = this.newsData.map(n => `
@@ -533,11 +533,11 @@ export class AirlineIntelPanel extends Panel {
             const dep = this.pricesDep || new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
             const form = `
         <div class="price-controls">
-          <input id="priceFromInput" class="price-input" placeholder="From" maxlength="3" value="${escapeHtml(this.pricesOrigin)}" style="width:54px">
-          <span style="color:#6b7280">\u2192</span>
-          <input id="priceToInput" class="price-input" placeholder="To" maxlength="3" value="${escapeHtml(this.pricesDest)}" style="width:54px">
-          <input id="priceDepInput" class="price-input" type="date" value="${escapeHtml(dep)}" style="width:128px">
-          <select id="priceCabinSelect" class="price-input" style="width:110px">
+          <input id="priceFromInput" class="price-input" placeholder="From" aria-label="Origin airport code" maxlength="3" value="${escapeHtml(this.pricesOrigin)}" style="width:54px">
+          <span style="color:#6b7280" aria-hidden="true">\u2192</span>
+          <input id="priceToInput" class="price-input" placeholder="To" aria-label="Destination airport code" maxlength="3" value="${escapeHtml(this.pricesDest)}" style="width:54px">
+          <input id="priceDepInput" class="price-input" type="date" aria-label="Departure date" value="${escapeHtml(dep)}" style="width:128px">
+          <select id="priceCabinSelect" class="price-input" aria-label="Cabin class" style="width:110px">
             <option value="ECONOMY"${this.pricesCabin === 'ECONOMY' ? ' selected' : ''}>Economy</option>
             <option value="PREMIUM_ECONOMY"${this.pricesCabin === 'PREMIUM_ECONOMY' ? ' selected' : ''}>Premium Economy</option>
             <option value="BUSINESS"${this.pricesCabin === 'BUSINESS' ? ' selected' : ''}>Business</option>
@@ -593,7 +593,7 @@ export class AirlineIntelPanel extends Panel {
             ${escapeHtml(t('components.airlineIntel.tripDays'))}:
             <input id="datesTripDurInput" class="price-input" type="number" min="1" value="${this.datesTripDuration}" style="width:44px">
           </label>
-          <select id="datesCabinSelect" class="price-input" style="width:110px">
+          <select id="datesCabinSelect" class="price-input" aria-label="Cabin class" style="width:110px">
             <option value="ECONOMY"${this.pricesCabin === 'ECONOMY' ? ' selected' : ''}>Economy</option>
             <option value="PREMIUM_ECONOMY"${this.pricesCabin === 'PREMIUM_ECONOMY' ? ' selected' : ''}>Premium Economy</option>
             <option value="BUSINESS"${this.pricesCabin === 'BUSINESS' ? ' selected' : ''}>Business</option>

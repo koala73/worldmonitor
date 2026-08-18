@@ -300,7 +300,10 @@ describe('#5359 — aviation registry country names all normalize', () => {
     const src = readFileSync(resolve(__dirname, '..', 'scripts', 'seed-aviation.mjs'), 'utf-8');
     const code = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
     const names = [...new Set([...code.matchAll(/country:\s*'([^']+)'/g)].map((m) => m[1]))];
-    assert.ok(names.length >= 50, `expected ≥50 registry country entries, parsed ${names.length}`);
+    assert.ok(names.length > 0, 'aviation country extraction must not be empty');
+    for (const critical of ['Australia', 'Brazil', 'Canada', 'China', 'USA']) {
+      assert.ok(names.includes(critical), `aviation country extraction must retain ${critical}`);
+    }
     const misses = names.filter((n) => countryNameToIso2(n) === null);
     assert.deepEqual(misses, [], `aviation registry country names that fail to normalize: ${misses.join(', ')} — add them to shared/country-names.json`);
   });

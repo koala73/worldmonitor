@@ -1,6 +1,6 @@
 ---
 title: "OSINT for Everyone: Open Source Intelligence with World Monitor"
-description: "World Monitor brings professional-grade OSINT to everyone. 500+ feeds, live tracking, AI threat analysis, and 56 map layers in one free open source dashboard."
+description: "World Monitor brings professional-grade OSINT to everyone. Curated feeds, live tracking, AI threat analysis, and map layers in one free open source dashboard."
 metaTitle: "OSINT for Everyone: Free Intelligence Dashboard"
 keywords: "OSINT tools free, open source intelligence software, OSINT dashboard, intelligence gathering tools, OSINT for beginners"
 audience: "OSINT researchers, security analysts, journalists, hobbyist investigators"
@@ -32,9 +32,9 @@ Each tool has its own interface, its own refresh cycle, its own learning curve. 
 
 World Monitor integrates all of these data sources (and many more) into a single, layered map with real-time updates. Learn more about [what World Monitor is and how it works](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/).
 
-## 500+ Intelligence Feeds, Zero Configuration
+## Curated Intelligence Feeds, Zero Configuration
 
-World Monitor aggregates **500+ curated RSS feeds** organized across 15 categories:
+World Monitor aggregates a **curated RSS catalog** organized by signal category:
 
 - Geopolitics and defense
 - Middle East and North Africa
@@ -63,9 +63,9 @@ Ship positions from AISStream.io are merged with **USNI Fleet Reports**, giving 
 
 ADS-B anomaly data is processed through an H3 hexagonal grid to identify zones where GPS signals are being jammed or spoofed. This is a critical indicator of electronic warfare activity, and World Monitor maps it automatically.
 
-## 26 Telegram OSINT Channels
+## Telegram OSINT Channels
 
-World Monitor integrates **26 curated Telegram channels** via MTProto, organized by reliability tier:
+World Monitor integrates curated Telegram channels via MTProto, organized by reliability tier:
 
 - **Tier 1:** Verified primary sources
 - **Tier 2:** Established OSINT accounts (Aurora Intel, BNO News, DeepState, OSINT Defender, LiveUAMap)
@@ -137,7 +137,7 @@ Yes. Every feature, data source, and AI capability is available at no cost with 
 No. The interface is designed for analysts of all skill levels. Toggle layers on the sidebar, click data points for details, and use the Command Palette (Cmd+K) to search across all intelligence sources instantly.
 
 **How does World Monitor compare to traditional OSINT tools?**
-World Monitor consolidates 500+ feeds, live tracking, AI analysis, and 56 map layers into one dashboard. Traditional tools require juggling dozens of separate platforms. See our [detailed comparison with traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
+World Monitor consolidates curated feeds, live tracking, AI analysis, and map layers into one dashboard. Traditional tools require juggling separate platforms. See our [detailed comparison with traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
 
 ---
 

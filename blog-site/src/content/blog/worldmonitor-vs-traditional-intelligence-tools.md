@@ -33,7 +33,7 @@ Let's be direct about what World Monitor is and isn't relative to established pl
 
 - Geopolitical intelligence integration with market data
 - Conflict and military monitoring (Bloomberg has zero)
-- Visual map-based interface with 56 map layers
+- Visual map-based interface with a shared map-layer catalog
 - AI analysis that runs locally (Bloomberg's AI is cloud-only)
 - Price: free vs. $24,000/year
 - Open source transparency
@@ -73,7 +73,7 @@ Let's be direct about what World Monitor is and isn't relative to established pl
 **World Monitor wins at:**
 
 - Broader intelligence scope (Dataminr focuses on social; World Monitor covers military, maritime, aviation, markets, infrastructure)
-- 26 Telegram OSINT channels (Dataminr has limited Telegram coverage)
+- Curated Telegram OSINT channels (Dataminr has limited Telegram coverage)
 - AI analysis with local LLM option
 - Interactive map visualization
 - No vendor dependency
@@ -159,21 +159,21 @@ Every scoring algorithm is auditable. Every data source is documented. Every API
 
 - **Security teams** can verify there are no backdoors or data exfiltration
 - **Researchers** can reproduce and cite the scoring methodologies
-- **Developers** can build custom integrations using the 36 typed API services
+- **Developers** can build custom integrations using typed API services
 - **Organizations** can self-host for complete control. See the [Developer API and Open Source guide](/blog/posts/build-on-worldmonitor-developer-api-open-source/) for integration details.
 
 The AGPL-3.0 license ensures that improvements to the core platform benefit everyone. Forks must also be open source. The commons stays common.
 
-## 28 Languages, Global Access
+## Multilingual, Global Access
 
-Intelligence shouldn't be English-only. World Monitor supports **28 languages** with:
+Intelligence shouldn't be English-only. World Monitor supports localized interfaces with:
 
 - Fully localized interface including RTL for Arabic
 - Language-specific RSS feeds
 - AI analysis in your preferred language
 - Native character support for CJK languages
 
-This means analysts worldwide can use the tool in their working language, not just as a translation layer over English sources. Read the full breakdown in [World Monitor in 28 Languages](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
+This means analysts worldwide can use the tool in their working language, not just as a translation layer over English sources. Read the full breakdown in [World Monitor Localization](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
 
 ## Frequently Asked Questions
 

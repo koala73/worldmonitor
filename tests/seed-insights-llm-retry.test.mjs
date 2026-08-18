@@ -147,7 +147,7 @@ describe('seed-insights callLLM retry/budget', () => {
 
     const result = await callLLM('Some breaking headline', { retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['openrouter', 'groq']);
+    assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'groq']);
     assert.equal(result?.provider, 'groq');
   });
 });
@@ -280,7 +280,7 @@ describe('seed-insights callLLM does not sleep on an unreachable Retry-After (#6
       });
 
       assert.deepEqual(waits, [], 'equality must fail-fast, not sleep the full remainder');
-      assert.deepEqual(providers, ['openrouter', 'groq'], 'saved budget must reach the next provider');
+      assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'groq'], 'saved budget must reach the next provider');
       assert.equal(result?.provider, 'groq');
       assert.equal(result?.text, LONG_BRIEF);
     } finally {
@@ -319,7 +319,7 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
     assert.ok(result, 'an accepted provider result must be returned');
     assert.equal(result.provider, 'groq');
     assert.equal(result.text, LONG_BRIEF);
-    assert.equal(seen.length, 2, 'both providers must be attempted');
+    assert.equal(seen.length, 4, 'paid, fixed free, backup, and Groq providers must be attempted');
   });
 
   it('returns the last attempt when every provider is rejected, so the failure stays classifiable', async () => {

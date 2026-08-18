@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+
+// GetPhysicalPremiumsRequest optionally limits the response to gold or silver.
+message GetPhysicalPremiumsRequest {
+  // Accepted values are "gold" and "silver". Empty returns both metals.
+  repeated string metals = 1 [(sebuf.http.query) = { name: "metals" }];
+}
+
+// BenchmarkLeg identifies one raw price and its observation clock.
+message BenchmarkLeg {
+  double price = 1;
+  string currency = 2;
+  string unit = 3;
+  string source = 4;
+  string as_of = 5;
+}
+
+// PhysicalPremium compares an SGE physical benchmark with a COMEX future.
+message PhysicalPremium {
+  string metal = 1;
+  BenchmarkLeg physical = 2;
+  BenchmarkLeg paper = 3;
+  double premium_usd_per_oz = 4;
+  double premium_pct = 5;
+  string computed_at = 6;
+}
+
+// FxSnapshot records the conversion input shared by both metals.
+message FxSnapshot {
+  string pair = 1;
+  double rate = 2;
+  string source = 3;
+  string as_of = 4;
+}
+
+// GetPhysicalPremiumsResponse contains the auditable benchmark comparison.
+message GetPhysicalPremiumsResponse {
+  repeated PhysicalPremium premiums = 1;
+  FxSnapshot fx = 2;
+}

@@ -5,7 +5,16 @@ import {
   normalizeChinaMacroPreflight,
   validateChinaMacroAvailabilityBindings,
 } from '../../../shared/china-macro-normalization';
-import { getSourceProvenanceState } from '../../../shared/source-provenance';
+import {
+  getSourceProvenanceState,
+  type PropagandaRisk,
+} from '../../../shared/source-provenance';
+import {
+  CREDIBILITY_HIGH_RISK_CAP,
+  computeCredibilityScore,
+} from '../../../shared/news-credibility.js';
+import { getSourceTier } from '../../../server/_shared/source-tiers';
+import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
 import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
@@ -58,6 +67,10 @@ const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLower
 const CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES = 128 * 1024;
 const CONFLICT_EVENTS_DATA_BUDGET_BYTES = CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES - 1024;
 const CONFLICT_EVENT_LISTS = ['ucdp-events', 'iran-events', 'events'] as const;
+const PHYSICAL_PREMIUM_SYMBOL_ALIASES: Record<string, string[]> = {
+  gold: ['gold', 'xau', 'gc=f'],
+  silver: ['silver', 'xag', 'si=f'],
+};
 
 function fitConflictEventsToBudget(data: Record<string, unknown>): void {
   const lists = CONFLICT_EVENT_LISTS.flatMap((label) => {
@@ -148,17 +161,57 @@ function summarizeConflictEvents(data: Record<string, unknown>): Record<string, 
   return summary;
 }
 
+function normalizeStoredCredibilityScore(
+  value: unknown,
+  propagandaRisk: PropagandaRisk,
+): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) {
+    return null;
+  }
+  const score = Math.round(value);
+  return propagandaRisk === 'high'
+    ? Math.min(score, CREDIBILITY_HIGH_RISK_CAP)
+    : score;
+}
+
 function addNewsSourceProvenance(value: unknown): unknown {
   if (!Array.isArray(value)) return value;
   return value.map((story) => {
     if (!story || typeof story !== 'object' || Array.isArray(story)) return story;
     const record = story as Record<string, unknown>;
     const sourceName = typeof record.primarySource === 'string' ? record.primarySource.trim() : '';
+    const provenance = getSourceProvenanceState(sourceName);
+    const servedScore = normalizeStoredCredibilityScore(record.credibilityScore, provenance.risk);
+    const corroboration = Number(
+      record.uniqueSourceCount ?? record.corroborationSourceCount ?? 1,
+    );
     return {
       ...record,
-      sourceProvenance: getSourceProvenanceState(sourceName),
+      sourceProvenance: provenance,
+      credibilityScore: servedScore !== null
+        ? servedScore
+        : computeCredibilityScore({
+          sourceTier: getSourceTier(sourceName),
+          propagandaRisk: provenance.risk,
+          independentCorroborationCount: Number.isFinite(corroboration) ? corroboration : 1,
+        }),
     };
   });
+}
+
+function projectRedistributableTheaterPosture(data: Record<string, unknown>): Record<string, unknown> {
+  const raw = data.theater_posture;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    data.theater_posture = { theaters: [] };
+    return data;
+  }
+  const posture = raw as Record<string, unknown>;
+  if (!hasRedistributableProviderAttribution(posture.provider)) {
+    data.theater_posture = { theaters: [] };
+    return data;
+  }
+  delete posture.provider;
+  return data;
 }
 
 function projectChinaMacroForMcp(value: unknown): unknown {
@@ -260,14 +313,14 @@ export const CACHE_TOOLS: ToolDef[] = [
     // docs/finance-data.mdx § Client parity.
     name: 'get_market_data',
     _outputBudgetBytes: 131072,
-    description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers.',
+    description: 'Real-time equity quotes, commodity prices (including SGE physical-vs-COMEX gold and silver premiums), crypto prices, forex FX rates, sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers.',
     inputSchema: {
       type: 'object',
       properties: {
         symbols: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, sector ETFs, and ETF-flow tickers. Omit for the full snapshot.',
+          description: 'Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, physical-premium aliases (gold/XAU/GC=F, silver/XAG/SI=F), sector ETFs, and ETF-flow tickers. Omit for the full snapshot.',
         },
         asset_class: {
           type: 'array',
@@ -292,6 +345,26 @@ export const CACHE_TOOLS: ToolDef[] = [
         type: ['object', 'null'],
         properties: {
           quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, changePercent: { type: 'number' } } } },
+        },
+      },
+      'physical-premium': {
+        type: ['object', 'null'],
+        properties: {
+          premiums: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                metal: { type: 'string', enum: ['gold', 'silver'] },
+                physical: { type: 'object', properties: { price: { type: 'number' }, currency: { type: 'string' }, unit: { type: 'string' }, source: { type: 'string' }, asOf: { type: 'string' } } },
+                paper: { type: 'object', properties: { price: { type: 'number' }, source: { type: 'string' }, asOf: { type: 'string' } } },
+                premiumUsdPerOz: { type: 'number' },
+                premiumPct: { type: 'number' },
+                computedAt: { type: 'string' },
+              },
+            },
+          },
+          fx: { type: 'object', properties: { pair: { type: 'string' }, rate: { type: 'number' }, source: { type: 'string' }, asOf: { type: 'string' } } },
         },
       },
       crypto: {
@@ -402,6 +475,13 @@ export const CACHE_TOOLS: ToolDef[] = [
         for (const label of ['stocks-bootstrap', 'commodities-bootstrap', 'crypto', 'gulf-quotes']) {
           narrowNested(data, label, 'quotes', (q) => matchesCode(q.symbol, symbols));
         }
+        narrowNested(data, 'physical-premium', 'premiums', (premium) => {
+          const aliases = typeof premium.metal === 'string'
+            ? PHYSICAL_PREMIUM_SYMBOL_ALIASES[premium.metal]
+            : undefined;
+          if (!aliases) return false;
+          return aliases.some((alias) => matchesCode(alias, symbols));
+        });
         narrowNested(data, 'sectors', 'sectors', (s) => matchesCode(s.symbol, symbols));
         const sectorData = data.sectors;
         if (sectorData && typeof sectorData === 'object' && !Array.isArray(sectorData)) {
@@ -524,14 +604,15 @@ export const CACHE_TOOLS: ToolDef[] = [
       }
       capNested(data, 'sectors', 'sectors', limit);
       capNested(data, 'etf-flows', 'etfs', limit);
+      capNested(data, 'physical-premium', 'premiums', limit);
       applySectorValuationFreshness(data);
       const cls = argStrList(params.asset_class);
       if (cls.length > 0) {
-        const map: Record<string, string> = {
-          equity: 'stocks-bootstrap', commodity: 'commodities-bootstrap', crypto: 'crypto',
-          sectors: 'sectors', etf: 'etf-flows', gulf: 'gulf-quotes', sentiment: 'fear-greed',
+        const map: Record<string, string[]> = {
+          equity: ['stocks-bootstrap'], commodity: ['commodities-bootstrap', 'physical-premium'], crypto: ['crypto'],
+          sectors: ['sectors'], etf: ['etf-flows'], gulf: ['gulf-quotes'], sentiment: ['fear-greed'],
         };
-        return selectDatasets(data, compact(cls.map((c) => map[c])));
+        return selectDatasets(data, cls.flatMap((assetClass) => map[assetClass] ?? []));
       }
       return data;
     },
@@ -541,14 +622,17 @@ export const CACHE_TOOLS: ToolDef[] = [
     _cacheKeys: [
       'market:stocks-bootstrap:v1',
       'market:commodities-bootstrap:v1',
+      'market:physical-premium:v1',
       'market:crypto:v1',
       'market:sectors:v2',
       'market:etf-flows:v1',
       'market:gulf-quotes:v1',
       'market:fear-greed:v1',
     ],
-    _seedMetaKey: 'seed-meta:market:stocks',
-    _maxStaleMin: 30,
+    // Do not add the new physical-premium seed-meta yet. evaluateFreshness ORs
+    // every check into one tool-wide flag, so its deployment-order miss would
+    // mark unrelated equity, crypto, FX, and commodity responses stale until
+    // the first Railway publish. /api/health owns this key meanwhile.
     _freshnessChecks: [...MARKET_FRESHNESS_CHECKS],
     // NOTE: `GET /api/market/v1/get-gold-intelligence` is NOT covered here.
     // The audit-time cross-reference matched on the single `market:commodities-bootstrap:v1`
@@ -558,6 +642,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     // tests/mcp-api-parity.test.mjs until a future commodities-expansion tool bundles those.
     _apiPaths: [
       "GET /api/market/v1/get-fear-greed-index",
+      "GET /api/market/v1/get-physical-premiums",
       "GET /api/market/v1/get-sector-summary",
       "GET /api/market/v1/list-commodity-quotes",
       "GET /api/market/v1/list-crypto-quotes",
@@ -670,8 +755,6 @@ export const CACHE_TOOLS: ToolDef[] = [
       'unrest:events:v1',
       CII_RISK_SCORE_CACHE_KEYS.stale,
     ],
-    _seedMetaKey: 'seed-meta:conflict:ucdp-events',
-    _maxStaleMin: 30,
     // Per-key budgets (#5864): unrest:events:v1 is materializer-backed since
     // #5863 and was invisible to this envelope — a dead 15-min pipeline still
     // reported stale:false to agents.
@@ -735,15 +818,14 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['aviation:delays-bootstrap:v2'],
-    _seedMetaKey: 'seed-meta:aviation:faa',
-    _maxStaleMin: 90,
+    _freshnessChecks: [{ key: 'seed-meta:aviation:faa', maxStaleMin: 90 }],
     _apiPaths: [],
   },
   {
     name: 'get_news_intelligence',
     _uiResourceUri: NEWS_INTELLIGENCE_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor\'s intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, and every clustered headline.',
+    description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor\'s intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, every clustered headline, and credibilityScore (0-100 source reliability, distinct from importance).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -755,7 +837,9 @@ export const CACHE_TOOLS: ToolDef[] = [
         category: { type: 'string', description: 'Filter top news stories to one category (e.g. "conflict", "economy"; fallback is "general").' },
         country: { type: 'string', description: 'Filter top stories and travel advisories to one ISO 3166-1 alpha-2 country code (case-insensitive).' },
         alerts_only: { type: 'boolean', description: 'Keep only top stories flagged as alerts.' },
-        limit: { type: 'number', description: 'Cap each list (top stories, signals, advisories) to at most this many items (default 30, pass 0 for no cap).' },
+        query: { type: 'string', description: 'Keep only top stories whose headline, primary source, or any clustered member headline contains this text (case-insensitive substring). This filters the LIVE news window only — it is not a historical index, so an event older than the current digest will not be found here. Use search_intel_history for that.' },
+        min_importance: { type: 'number', description: 'Keep only top stories whose effectiveImportanceScore is at least this value. 0 is honoured as a real floor rather than treated as absent; a story carrying no score is excluded when this is set, never treated as scoring zero.' },
+        limit: { type: 'number', description: 'Cap each list (top stories, signals, advisories) to at most this many items (default 30, pass 0 for no cap). Applied AFTER query and min_importance, so a capped list is drawn from the matches.' },
       },
       required: [],
     },
@@ -766,6 +850,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           topStories: { type: 'array', items: { type: 'object', properties: {
             primaryTitle: { type: 'string' }, primarySource: { type: 'string' }, primaryLink: { type: 'string' },
             pubDate: { type: 'string' }, sourceCount: { type: 'number' }, importanceScore: { type: 'number' },
+            credibilityScore: { type: 'number', description: '0-100 source-reliability score, distinct from importanceScore. Built from source tier, propaganda risk, and independent corroboration. State-controlled media is capped at 40.' },
             // Corroboration and clustering fields the seeder already writes
             // into every news:insights:v1 topStories entry (see the object
             // built in scripts/seed-insights.mjs). This is a cache tool: the
@@ -835,6 +920,26 @@ export const CACHE_TOOLS: ToolDef[] = [
         narrowNested(data, 'advisories-bootstrap', 'advisories', (a) => matchesCode(a.country, countries));
       }
       if (argBool(params.alerts_only)) narrowNested(data, 'insights', 'topStories', (s) => s.isAlert === true);
+      // query + min_importance run BEFORE the caps: filtering after capping
+      // would draw the cap from the first N items and then match within them,
+      // so a story matching the query but sitting past the cap would vanish.
+      const query = argStr(params.query);
+      if (query) {
+        narrowNested(data, 'insights', 'topStories', (s) => (
+          ciIncludes(s.primaryTitle, query)
+          || ciIncludes(s.primarySource, query)
+          || (Array.isArray(s.memberTitles) && s.memberTitles.some((t: unknown) => ciIncludes(t, query)))
+        ));
+      }
+      // `?? null` distinguishes an absent threshold from an explicit 0, which
+      // is a real floor: a story with no score must not pass it.
+      const minImportance = argNum(params.min_importance);
+      if (minImportance !== null) {
+        narrowNested(data, 'insights', 'topStories', (s) => {
+          const score = argNum(s.effectiveImportanceScore);
+          return score !== null && score >= minImportance;
+        });
+      }
       capNested(data, 'insights', 'topStories', limit);
       capNested(data, 'cross-source-signals', 'signals', limit);
       capNested(data, 'advisories-bootstrap', 'advisories', limit);
@@ -846,8 +951,6 @@ export const CACHE_TOOLS: ToolDef[] = [
       'intelligence:cross-source-signals:v1',
       'intelligence:advisories-bootstrap:v1',
     ],
-    _seedMetaKey: 'seed-meta:news:insights',
-    _maxStaleMin: 30,
     // Per-key budgets (#5864): the envelope used to gate on the insights meta
     // alone, so a stalled GDELT materializer left agents reading stale:false
     // for hours. Every bundled key now carries its own freshness budget,
@@ -866,7 +969,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_natural_disasters',
     _uiResourceUri: NATURAL_DISASTERS_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'Recent earthquakes (USGS), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, and threat severity.',
+    description: 'Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, source, and threat severity.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -887,7 +990,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: {
           earthquakes: { type: 'array', items: { type: 'object', properties: {
             id: { type: 'string' }, place: { type: 'string' }, magnitude: { type: 'number' },
-            depthKm: { type: 'number' }, occurredAt: { type: 'number' }, sourceUrl: { type: 'string' },
+            depthKm: { type: 'number' }, occurredAt: { type: 'number' }, sourceUrl: { type: 'string' }, source: { type: 'string' }, category: { type: 'string' },
             location: { type: 'object', properties: {
               latitude: { type: 'number' }, longitude: { type: 'number' },
             } },
@@ -948,8 +1051,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       'wildfire:fires:v1',
       'natural:events:v1',
     ],
-    _seedMetaKey: 'seed-meta:seismology:earthquakes',
-    _maxStaleMin: 30,
+    _freshnessChecks: [{ key: 'seed-meta:seismology:earthquakes', maxStaleMin: 30 }],
     _apiPaths: [
       "GET /api/natural/v1/list-natural-events",
       "GET /api/seismology/v1/list-earthquakes",
@@ -982,6 +1084,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      projectRedistributableTheaterPosture(data);
       const theater = argStr(params.theater);
       const level = argStr(params.posture_level);
       if (theater) narrowNested(data, 'theater_posture', 'theaters', (t) => ciIncludes(t.theater, theater));
@@ -990,8 +1093,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['theater_posture:sebuf:stale:v1'],
-    _seedMetaKey: 'seed-meta:intelligence:risk-scores',
-    _maxStaleMin: 120,
+    _freshnessChecks: [{ key: 'seed-meta:intelligence:risk-scores', maxStaleMin: 120 }],
     // CASCADE-MIRROR EQUIVALENCE: the API handler at
     // server/worldmonitor/military/v1/get-theater-posture.ts:23 reads 3 cascade
     // variants (live + stale + backup) and returns the freshest available.
@@ -1057,8 +1159,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['cyber:threats-bootstrap:v2'],
-    _seedMetaKey: 'seed-meta:cyber:threats',
-    _maxStaleMin: 240,
+    _freshnessChecks: [{ key: 'seed-meta:cyber:threats', maxStaleMin: 240 }],
     _apiPaths: [],
   },
   {
@@ -1228,8 +1329,6 @@ export const CACHE_TOOLS: ToolDef[] = [
       [BOOTSTRAP_CACHE_KEYS.chinaMacro]: 'china-macro',
       [BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar]: 'china-release-calendar',
     },
-    _seedMetaKey: 'seed-meta:economic:econ-calendar',
-    _maxStaleMin: 1440,
     _freshnessChecks: [
       { key: 'seed-meta:economic:econ-calendar', maxStaleMin: 1440 },
       { key: 'seed-meta:economic:china-macro-transport', maxStaleMin: 4320 },
@@ -1301,8 +1400,6 @@ export const CACHE_TOOLS: ToolDef[] = [
       'economic:imf:labor:v1',
       'economic:imf:external:v1',
     ],
-    _seedMetaKey: 'seed-meta:economic:imf-macro',
-    _maxStaleMin: 100800, // monthly WEO release; 70d = 2× interval (absorbs one missed run)
     _freshnessChecks: [
       { key: 'seed-meta:economic:imf-macro', maxStaleMin: 100800 },
       { key: 'seed-meta:economic:imf-growth', maxStaleMin: 100800 },
@@ -1347,8 +1444,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['economic:eurostat:house-prices:v1'],
-    _seedMetaKey: 'seed-meta:economic:eurostat-house-prices',
-    _maxStaleMin: 60 * 24 * 50, // weekly cron, annual data
+    _freshnessChecks: [{ key: 'seed-meta:economic:eurostat-house-prices', maxStaleMin: 60 * 24 * 50 }], // weekly cron, annual data
     _apiPaths: [],
   },
   {
@@ -1387,8 +1483,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['economic:eurostat:gov-debt-q:v1'],
-    _seedMetaKey: 'seed-meta:economic:eurostat-gov-debt-q',
-    _maxStaleMin: 60 * 24 * 14, // quarterly data, 2-day cron
+    _freshnessChecks: [{ key: 'seed-meta:economic:eurostat-gov-debt-q', maxStaleMin: 60 * 24 * 14 }], // quarterly data, 2-day cron
     _apiPaths: [],
   },
   {
@@ -1427,8 +1522,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['economic:eurostat:industrial-production:v1'],
-    _seedMetaKey: 'seed-meta:economic:eurostat-industrial-production',
-    _maxStaleMin: 60 * 24 * 5, // monthly data, daily cron
+    _freshnessChecks: [{ key: 'seed-meta:economic:eurostat-industrial-production', maxStaleMin: 60 * 24 * 5 }], // monthly data, daily cron
     _apiPaths: [],
   },
   {
@@ -1494,8 +1588,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['prediction:markets-bootstrap:v1'],
-    _seedMetaKey: 'seed-meta:prediction:markets',
-    _maxStaleMin: 90,
+    _freshnessChecks: [{ key: 'seed-meta:prediction:markets', maxStaleMin: 90 }],
     _apiPaths: [
       "GET /api/prediction/v1/list-prediction-markets",
     ],
@@ -1558,8 +1651,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['sanctions:entities:v1', 'sanctions:pressure:v1'],
-    _seedMetaKey: 'seed-meta:sanctions:entities',
-    _maxStaleMin: 1440,
+    _freshnessChecks: [{ key: 'seed-meta:sanctions:entities', maxStaleMin: 1440 }],
     _apiPaths: [
       "GET /api/sanctions/v1/list-sanctions-pressure",
       "GET /api/sanctions/v1/lookup-sanction-entity",
@@ -1613,8 +1705,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     // year segment from both keys and collide on the same `summary` label,
     // causing the second result to overwrite the first.
     _cacheKeys: [`displacement:summary:v1:${new Date().getUTCFullYear()}`],
-    _seedMetaKey: 'seed-meta:displacement:summary',
-    _maxStaleMin: 3600,
+    _freshnessChecks: [{ key: 'seed-meta:displacement:summary', maxStaleMin: 3600 }],
     // Audit miss: handler uses cachedFetchJson with a year-suffixed key the
     // audit's regex couldn't statically resolve. The op IS covered by this
     // tool — same underlying displacement:summary:v1:<year> cache.
@@ -1688,8 +1779,6 @@ export const CACHE_TOOLS: ToolDef[] = [
     // (scripts/seed-health-air-quality.mjs exports HEALTH_AIR_QUALITY_KEY +
     // CLIMATE_AIR_QUALITY_KEY) so no duplicate seed work.
     _cacheKeys: ['health:disease-outbreaks:v1', 'health:air-quality:v1'],
-    _seedMetaKey: 'seed-meta:health:disease-outbreaks',
-    _maxStaleMin: 2880,
     _freshnessChecks: [
       { key: 'seed-meta:health:disease-outbreaks', maxStaleMin: 2880 }, // daily cron; 48h budget
       { key: 'seed-meta:health:air-quality', maxStaleMin: 180 },        // hourly cron; 3h budget
@@ -1793,8 +1882,6 @@ export const CACHE_TOOLS: ToolDef[] = [
       'resilience:fossil-electricity-share:v1',   // STANDALONE_KEYS::fossilElectricityShare
       'economic:worldbank-renewable:v1',          // BOOTSTRAP_KEYS::renewableEnergy
     ],
-    _seedMetaKey: 'seed-meta:energy:eia-petroleum',
-    _maxStaleMin: 4320, // EIA petroleum daily-bundle baseline; per-key budgets via _freshnessChecks below
     _freshnessChecks: [
       { key: 'seed-meta:energy:eia-petroleum',                  maxStaleMin: 4320 },   // daily bundle; 72h = 3× interval
       { key: 'seed-meta:energy:electricity-prices',             maxStaleMin: 2880 },   // daily cron (14:00 UTC); 48h = 2× interval
@@ -1865,8 +1952,6 @@ export const CACHE_TOOLS: ToolDef[] = [
       return selectDatasets(data, argStrList(params.dataset));
     },
     _cacheKeys: ['climate:anomalies:v2', 'climate:disasters:v1', 'climate:co2-monitoring:v1', 'climate:air-quality:v1', 'climate:ocean-ice:v1', 'climate:news-intelligence:v1', 'weather:alerts:v1'],
-    _seedMetaKey: 'seed-meta:climate:co2-monitoring',
-    _maxStaleMin: 2880,
     _freshnessChecks: [
       { key: 'seed-meta:climate:anomalies', maxStaleMin: 120 },
       { key: 'seed-meta:climate:disasters', maxStaleMin: 720 },
@@ -1917,8 +2002,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['infra:outages:v1'],
-    _seedMetaKey: 'seed-meta:infra:outages',
-    _maxStaleMin: 30,
+    _freshnessChecks: [{ key: 'seed-meta:infra:outages', maxStaleMin: 30 }],
     _apiPaths: [
       "GET /api/infrastructure/v1/list-internet-outages",
     ],
@@ -1989,8 +2073,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       'trade:customs-revenue:v1',
       'comtrade:flows:v1',
     ],
-    _seedMetaKey: 'seed-meta:trade:customs-revenue',
-    _maxStaleMin: 2880,
+    _freshnessChecks: [{ key: 'seed-meta:trade:customs-revenue', maxStaleMin: 2880 }],
     _apiPaths: [
       "GET /api/supply-chain/v1/get-shipping-stress",
       "GET /api/trade/v1/get-customs-revenue",
@@ -2081,8 +2164,6 @@ export const CACHE_TOOLS: ToolDef[] = [
     _cacheLabels: {
       'trade:tariffs:v2:840': 'all',
     },
-    _seedMetaKey: 'seed-meta:trade:tariffs',
-    _maxStaleMin: 420, // tariff fleet meta; per-key budgets via _freshnessChecks below
     _freshnessChecks: [
       { key: 'seed-meta:trade:tariffs',               maxStaleMin: 420 },   // inside TARIFF_TTL 480
       { key: 'seed-meta:economic:bigmac',             maxStaleMin: 10080 }, // weekly seed; 7d
@@ -2220,8 +2301,6 @@ export const CACHE_TOOLS: ToolDef[] = [
       'portwatch:chokepoints:ref:v1',               // STANDALONE_KEYS::portwatchChokepointsRef
       'energy:chokepoint-flows:v1',                 // STANDALONE_KEYS::chokepointFlows
     ],
-    _seedMetaKey: 'seed-meta:supply_chain:transit-summaries',
-    _maxStaleMin: 30, // transit-summaries 10-min relay baseline; per-key budgets via _freshnessChecks below
     _freshnessChecks: [
       { key: 'seed-meta:supply_chain:transit-summaries',   maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
       { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
@@ -2232,7 +2311,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         key: 'seed-meta:supply_chain:portwatch-ports',
         maxStaleMin: 2160, // 12h cron; 36h = 3× interval
         minRecordCount: 174,
-        requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 2 * 72 * 60 },
+        requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 10 * 24 * 60 },
         contentFreshnessActivationKey: PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
       },
       { key: 'seed-meta:energy:chokepoint-baselines',      maxStaleMin: 60 * 24 * 400 },  // ~400d static registry
@@ -2277,8 +2356,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['positive_events:geo-bootstrap:v1'],
-    _seedMetaKey: 'seed-meta:positive-events:geo',
-    _maxStaleMin: 60,
+    _freshnessChecks: [{ key: 'seed-meta:positive-events:geo', maxStaleMin: 60 }],
     _apiPaths: [
       'GET /api/positive-events/v1/list-positive-geo-events',
     ],
@@ -2319,8 +2397,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['radiation:observations:v1'],
-    _seedMetaKey: 'seed-meta:radiation:observations',
-    _maxStaleMin: 30,
+    _freshnessChecks: [{ key: 'seed-meta:radiation:observations', maxStaleMin: 30 }],
     _apiPaths: [
       "GET /api/radiation/v1/list-radiation-observations",
     ],
@@ -2361,8 +2438,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['research:tech-events-bootstrap:v1'],
-    _seedMetaKey: 'seed-meta:research:tech-events',
-    _maxStaleMin: 480,
+    _freshnessChecks: [{ key: 'seed-meta:research:tech-events', maxStaleMin: 480 }],
     _apiPaths: [
       'GET /api/research/v1/list-tech-events',
     ],
@@ -2400,8 +2476,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['forecast:predictions:v2'],
-    _seedMetaKey: 'seed-meta:forecast:predictions',
-    _maxStaleMin: 90,
+    _freshnessChecks: [{ key: 'seed-meta:forecast:predictions', maxStaleMin: 90 }],
     _apiPaths: [
       "GET /api/forecast/v1/get-forecasts",
     ],
@@ -2433,8 +2508,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _cacheKeys: ['forecast:scorecard:v1'],
-    _seedMetaKey: 'seed-meta:forecast:scorecard',
-    _maxStaleMin: 2160,
+    _freshnessChecks: [{ key: 'seed-meta:forecast:scorecard', maxStaleMin: 2160 }],
     _apiPaths: [
       "GET /api/forecast/v1/get-forecast-scorecard",
     ],
@@ -2472,8 +2546,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       return data;
     },
     _cacheKeys: ['intelligence:social:reddit:v1'],
-    _seedMetaKey: 'seed-meta:intelligence:social-reddit',
-    _maxStaleMin: 30,
+    _freshnessChecks: [{ key: 'seed-meta:intelligence:social-reddit', maxStaleMin: 30 }],
     _apiPaths: [
       "GET /api/intelligence/v1/get-social-velocity",
     ],
@@ -2545,8 +2618,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     },
     _cacheKeys: ['temporal:anomalies:v1'],
     _cacheLabels: { 'temporal:anomalies:v1': 'snapshot' },
-    _seedMetaKey: 'seed-meta:temporal:anomalies',
-    _maxStaleMin: 45,
+    _freshnessChecks: [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 }],
     _apiPaths: [],
   },
 
@@ -2647,8 +2719,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     },
     _cacheKeys: ['seismology:earthquakes:v1'],
     _cacheLabels: { 'seismology:earthquakes:v1': 'earthquakes' },
-    _seedMetaKey: 'seed-meta:seismology:earthquakes',
-    _maxStaleMin: 30,
+    _freshnessChecks: [{ key: 'seed-meta:seismology:earthquakes', maxStaleMin: 30 }],
     _apiPaths: [],
   },
 

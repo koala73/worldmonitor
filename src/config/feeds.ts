@@ -28,6 +28,8 @@ export {
   hasReviewedSourceType,
   isStateAffiliatedSource,
 } from '../../shared/source-provenance';
+export { resolveTelegramSourceName } from '../../shared/telegram-channel-trust';
+export { computeCredibilityScore } from '../../shared/news-credibility.js';
 export type {
   PropagandaRisk,
   SourceProvenanceState,
@@ -83,7 +85,32 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'CBC News', url: rss('https://www.cbc.ca/webfeed/rss/rss-world') },
     { name: 'Globe and Mail', url: rss('https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/canada/?outputType=xml') },
     { name: 'Global News', url: rss('https://globalnews.ca/feed/') },
+    // Canada depth pack (#6604/#6605). CBC stays default-on; CTV News and
+    // Toronto Star join the EN default-on national floor (floors.CA = 3).
+    // Remaining names are catalog opt-in. FR sources are locale-boosted only.
+    { name: 'Toronto Star', url: rss('https://www.thestar.com/search/?f=rss&t=article&c=news/canada') },
+    { name: 'National Post', url: rss('https://nationalpost.com/feed/') },
+    { name: 'Financial Post', url: rss('https://financialpost.com/feed/') },
+    { name: 'iPolitics', url: rss('https://www.ipolitics.ca/feed') },
+    { name: 'The Narwhal', url: rss('https://thenarwhal.ca/feed/') },
+    { name: 'The Tyee', url: rss('https://thetyee.ca/rss2.xml') },
+    { name: 'Radio-Canada', url: rss('https://ici.radio-canada.ca/info/rss/info/en-continu'), lang: 'fr' },
+    { name: 'La Presse', url: rss('https://www.lapresse.ca/actualites/rss'), lang: 'fr' },
+    { name: 'Le Devoir', url: rss('https://www.ledevoir.com/rss/manchettes.xml'), lang: 'fr' },
+    { name: 'TVA Nouvelles', url: rss('https://www.tvanouvelles.ca/rss.xml'), lang: 'fr' },
+    { name: 'Vancouver Sun', url: rss('https://vancouversun.com/feed/') },
+    { name: 'Calgary Herald', url: rss('https://calgaryherald.com/feed/') },
+    { name: 'Winnipeg Free Press', url: rss('https://www.winnipegfreepress.com/feed') },
+    { name: 'Ottawa Citizen', url: rss('https://ottawacitizen.com/feed/') },
+    { name: 'Edmonton Journal', url: rss('https://edmontonjournal.com/feed/') },
+    { name: "Maclean's", url: rss('https://macleans.ca/feed/') },
+    { name: 'The Province', url: rss('https://theprovince.com/feed/') },
+    // GNews-only (#6604): no parseable native RSS. CA locale. Do not allowlist publisher hosts.
+    { name: 'CTV News', url: rss('https://news.google.com/rss/search?q=site:ctvnews.ca+when:1d&hl=en-CA&gl=CA&ceid=CA:en') },
+    { name: 'CP24', url: rss('https://news.google.com/rss/search?q=site:cp24.com+when:1d&hl=en-CA&gl=CA&ceid=CA:en') },
+    { name: 'Montreal Gazette', url: rss('https://news.google.com/rss/search?q=site:montrealgazette.com+when:1d&hl=en-CA&gl=CA&ceid=CA:en') },
   ],
+
   europe: [
     {
       name: 'France 24',
@@ -115,6 +142,8 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
       }
     },
     { name: 'DW News', url: { en: rss('https://rss.dw.com/xml/rss-en-all'), de: rss('https://rss.dw.com/xml/rss-de-all'), es: rss('https://news.google.com/rss/search?q=site:dw.com/es&hl=es-419&gl=MX&ceid=MX:es-419') } },
+    { name: 'Telegraph', url: rss('https://www.telegraph.co.uk/rss.xml') },
+    { name: 'Interfax EN', url: rss('https://news.google.com/rss/search?q=site%3Ainterfax.com%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
     // Spanish (ES)
     { name: 'El País', url: rss('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada'), lang: 'es' },
     { name: 'El Mundo', url: rss('https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml'), lang: 'es' },
@@ -124,6 +153,8 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Bild', url: rss('https://www.bild.de/feed/alles.xml'), lang: 'de' },
     { name: 'Der Spiegel', url: rss('https://www.spiegel.de/schlagzeilen/tops/index.rss'), lang: 'de' },
     { name: 'Die Zeit', url: rss('https://newsfeed.zeit.de/index'), lang: 'de' },
+    { name: 'Handelsblatt', url: rss('https://www.handelsblatt.com/contentexport/feed/schlagzeilen'), lang: 'de' },
+    { name: 'Welt', url: rss('https://www.welt.de/feeds/latest.rss'), lang: 'de' },
     // Italian (IT)
     { name: 'ANSA', url: rss('https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml'), lang: 'it' },
     { name: 'Corriere della Sera', url: rss('https://www.corriere.it/rss/homepage.xml'), lang: 'it' },
@@ -166,6 +197,15 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
       en: rss('https://www.rp.pl/rss_main'),
       pl: rss('https://www.rp.pl/rss_main'),
     } },
+    // Polish depth — catalog opt-in, locale-boosted for `pl`. Native RSS for
+    // PAP (`/rss.xml`) and Onet (`wiadomosci.onet.pl/rss/index.xml`) is dead;
+    // keep those on Google News. OKO.press still publishes a live native feed.
+    { name: 'PAP', url: rss('https://news.google.com/rss/search?q=site%3Apap.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'Gazeta Wyborcza', url: rss('https://news.google.com/rss/search?q=site%3Awyborcza.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'Polityka', url: rss('https://news.google.com/rss/search?q=site%3Apolityka.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'Onet', url: rss('https://news.google.com/rss/search?q=site%3Awiadomosci.onet.pl%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'OKO.press', url: rss('https://oko.press/feed'), lang: 'pl' },
+    { name: 'TVP Info', url: rss('https://news.google.com/rss/search?q=site%3Atvp.info%20when%3A2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
     // Hungarian (HU) — V4 / CEE coverage. Locale-gated for hu users only,
     // matching the Tagesschau (de) / ANSA (it) / NOS Nieuws (nl) / SVT (sv)
     // convention. `hu` is registered as a supported locale in src/services/i18n.ts.
@@ -196,6 +236,11 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    { name: 'ERT', url: rss('https://news.google.com/rss/search?q=site:ert.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    { name: 'AMNA', url: rss('https://news.google.com/rss/search?q=site:amna.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    { name: 'Ta Nea', url: rss('https://www.tanea.gr/feed/'), lang: 'el' },
+    { name: 'Liberal GR', url: rss('https://news.google.com/rss/search?q=site:liberal.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    { name: 'CNN Greece', url: rss('https://news.google.com/rss/search?q=site:cnn.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
     // Baltic states — Eastern flank (#5952). English-language Baltic news
     // services (no lang tag) so EN digests can include them as flank sources.
     { name: 'ERR News', url: rss('https://news.err.ee/rss') },
@@ -209,6 +254,7 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     // Default EN path must not be “Western wires + RU state media only.”
     // Independent / exile / UA outlets below are eligible for defaults; state media is not.
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
+    { name: 'Interfax RU', url: rss('https://www.interfax.ru/rss.asp'), lang: 'ru' },
     // Meduza: multi-URL so EN digests use the English RSS (no lang gate); RU UI keeps Russian.
     { name: 'Meduza', url: {
       en: rss('https://meduza.io/rss/en/all'),
@@ -277,12 +323,26 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Asharq Business', url: rss('https://asharqbusiness.com/rss.xml') },
     { name: 'Asharq News', url: rss('https://asharq.com/snapchat/rss.xml'), lang: 'ar' },
     { name: 'Rudaw', url: rss('https://news.google.com/rss/search?q=site:rudaw.net+when:7d&hl=en&gl=US&ceid=US:en') },
+    // Validated crisis-floor desks (#6813-#6818, #6824-#6825).
+    { name: 'Yemen Online', url: rss('https://news.google.com/rss/search?q=site%3Ayemenonline.info%20when%3A14d&hl=en-US&gl=US&ceid=US:en') },
+    { name: "Sana'a Center", url: rss('https://sanaacenter.org/feed/') },
+    { name: 'Syria Direct', url: rss('https://syriadirect.org/feed/') },
+    { name: 'Enab Baladi English', url: rss('https://news.google.com/rss/search?q=site%3Aenglish.enabbaladi.net%20when%3A14d&hl=en-US&gl=US&ceid=US:en') },
+    { name: '+972 Magazine', url: rss('https://www.972mag.com/feed/') },
+    { name: 'WAFA English', url: rss('https://news.google.com/rss/search?q=site%3Aenglish.wafa.ps%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Naharnet Lebanon', url: rss('https://www.naharnet.com/tags/lebanon/en/feed.atom') },
+    { name: "L'Orient Today", url: rss('https://news.google.com/rss/search?q=site%3Alorientlejour.com%20Lebanon%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Annahar', url: rss('https://news.google.com/rss/search?q=site%3Aannahar.com%2Flebanon%20when%3A7d&hl=ar&gl=LB&ceid=LB:ar'), lang: 'ar', strategicDefault: true },
+    { name: 'Libya Herald', url: rss('https://libyaherald.com/rss.xml') },
+    { name: 'Egypt Independent', url: rss('https://www.egyptindependent.com/feed/') },
+    { name: 'Mada Masr', url: rss('https://news.google.com/rss/search?q=site%3Amadamasr.com%20when%3A30d&hl=en-US&gl=US&ceid=US:en') },
   ],
   tech: [
     { name: 'Hacker News', url: rss('https://hnrss.org/frontpage') },
     { name: 'Ars Technica', url: rss('https://feeds.arstechnica.com/arstechnica/technology-lab') },
     { name: 'The Verge', url: rss('https://www.theverge.com/rss/index.xml') },
     { name: 'MIT Tech Review', url: rss('https://www.technologyreview.com/feed/') },
+    { name: 'Wired', url: rss('https://www.wired.com/feed/rss') },
   ],
   ai: [
     { name: 'AI News', url: rss('https://news.google.com/rss/search?q=(OpenAI+OR+Anthropic+OR+Google+AI+OR+"large+language+model"+OR+ChatGPT)+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -297,6 +357,15 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Yahoo Finance', url: rss('https://finance.yahoo.com/news/rssindex') },
     { name: 'Financial Times', url: rss('https://www.ft.com/rss/home') },
     { name: 'Reuters Business', url: rss('https://news.google.com/rss/search?q=site:reuters.com+business+markets&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Fox Business', url: rss('https://moxie.foxbusiness.com/google-publisher/latest.xml') },
+    { name: 'Business Insider', url: rss('https://www.businessinsider.com/rss') },
+    { name: 'GlobeNewswire', url: rss('https://www.globenewswire.com/RssFeed/subjectcode/22/feedTitle/GlobeNewswire') },
+    { name: 'Business Wire', url: rss('https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeGVtRWA==') },
+    { name: 'PR Newswire', url: rss('https://news.google.com/rss/search?q=site%3Aprnewswire.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Chainwire', url: rss('https://chainwire.org/feed/') },
+    { name: 'Coinbase Blog', url: rss('https://news.google.com/rss/search?q=site%3Acoinbase.com%2Fblog%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Binance Announcements', url: rss('https://news.google.com/rss/search?q=site%3Abinance.com%2Fen%2Fsupport%2Fannouncement%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Jin10', url: rss('https://news.google.com/rss/search?q=site%3Ajin10.com%20when%3A1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'), lang: 'zh' },
   ],
   gov: [
     { name: 'White House', url: rss('https://news.google.com/rss/search?q=site:whitehouse.gov&hl=en-US&gl=US&ceid=US:en') },
@@ -310,6 +379,7 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'CDC', url: rss('https://news.google.com/rss/search?q=site:cdc.gov+OR+CDC+health&hl=en-US&gl=US&ceid=US:en') },
     { name: 'FEMA', url: rss('https://news.google.com/rss/search?q=site:fema.gov+OR+FEMA+emergency&hl=en-US&gl=US&ceid=US:en') },
     { name: 'DHS', url: rss('https://news.google.com/rss/search?q=site:dhs.gov+OR+"Homeland+Security"&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'U.S. Trade Representative', url: rss('https://ustr.gov/rss.xml') },
     { name: 'UN News', url: railwayRss('https://news.un.org/feed/subscribe/en/news/all/rss.xml') },
     { name: 'CISA', url: railwayRss('https://www.cisa.gov/cybersecurity-advisories/all.xml') },
   ],
@@ -375,9 +445,19 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Le Quotidien', url: rss('https://lequotidien.sn/feed/'), lang: 'fr' },
     // Pan-African
     { name: 'RFI Afrique', url: rss('https://www.rfi.fr/en/africa/rss') },
+    // Validated crisis-floor and locale desks (#6819-#6821, #6827-#6830).
+    { name: 'Studio Tamani', url: rss('https://www.studiotamani.org/feed/'), lang: 'fr', strategicDefault: true },
+    { name: 'leFaso.net', url: rss('https://lefaso.net/spip.php?page=backend'), lang: 'fr', strategicDefault: true },
+    { name: 'ActuNiger', url: rss('https://news.google.com/rss/search?q=site%3Aactuniger.com%20Niger%20when%3A7d&hl=fr&gl=FR&ceid=FR:fr'), lang: 'fr', strategicDefault: true },
+    { name: 'Aïr Info', url: rss('https://airinfoagadez.com/feed/'), lang: 'fr' },
+    { name: 'Daily Nation', url: rss('https://nation.africa/kenya/rss.xml') },
+    { name: 'The Guardian Post', url: rss('https://news.google.com/rss/search?q=site%3Atheguardianpostcameroon.com%20when%3A30d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Tchadinfos', url: rss('https://tchadinfos.com/feed/'), lang: 'fr' },
+    { name: 'Alwihda Info', url: rss('https://www.alwihdainfo.com/rss/'), lang: 'fr' },
+    { name: 'Radio Ndeke Luka', url: rss('https://www.radiondekeluka.org/feed/'), lang: 'fr' },
   ],
   latam: [
-    { name: 'Latin America', url: rss('https://news.google.com/rss/search?q=(Brazil+OR+Mexico+OR+Argentina+OR+Venezuela+OR+Colombia)+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Latin America', url: rss('https://news.google.com/rss/search?q=(Brazil+OR+Mexico+OR+Argentina+OR+Venezuela+OR+Colombia+OR+Haiti)+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'BBC Latin America', url: rss('https://feeds.bbci.co.uk/news/world/latin_america/rss.xml') },
     { name: 'Reuters LatAm', url: rss('https://news.google.com/rss/search?q=site:reuters.com+(Brazil+OR+Mexico+OR+Argentina)+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Guardian Americas', url: rss('https://www.theguardian.com/world/americas/rss') },
@@ -398,6 +478,13 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     // LatAm Security
     { name: 'InSight Crime', url: rss('https://insightcrime.org/feed/') },
     { name: 'France 24 LatAm', url: rss('https://www.france24.com/en/americas/rss') },
+    // Validated crisis-floor desks (#6816, #6822-#6823).
+    { name: 'HaitiLibre English', url: rss('https://www.haitilibre.com/rss-flash-en.php') },
+    { name: 'AyiboPost', url: rss('https://news.google.com/rss/search?q=site%3Aayibopost.com%20Haiti%20when%3A14d&hl=fr&gl=FR&ceid=FR:fr'), lang: 'fr' },
+    { name: 'Caracas Chronicles', url: rss('https://www.caracaschronicles.com/feed/') },
+    { name: 'Efecto Cocuyo', url: rss('https://efectococuyo.com/feed/'), lang: 'es' },
+    { name: 'Havana Times', url: rss('https://havanatimes.org/feed/') },
+    { name: '14ymedio', url: rss('https://www.14ymedio.com/rss/'), lang: 'es' },
   ],
   asia: [
     { name: 'Asia News', url: rss('https://news.google.com/rss/search?q=(China+OR+Japan+OR+Korea+OR+India+OR+ASEAN)+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -452,6 +539,11 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Rappler', url: rss('https://www.rappler.com/feed/') },
     { name: 'The Star (Malaysia)', url: rss('https://news.google.com/rss/search?q=site%3Athestar.com.my%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Irrawaddy', url: rss('https://www.irrawaddy.com/feed/') },
+    // Validated crisis-floor desks (#6817, #6826).
+    { name: 'Amu TV', url: rss('https://amu.tv/feed/') },
+    { name: 'Pajhwok Afghan News', url: rss('https://news.google.com/rss/search?q=site%3Apajhwok.com%20Afghanistan%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'The Daily Star', url: rss('https://news.google.com/rss/search?q=site%3Athedailystar.net%20when%3A14d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Dhaka Tribune', url: rss('https://news.google.com/rss/search?q=site%3Adhakatribune.com%20when%3A14d&hl=en-US&gl=US&ceid=US:en') },
   ],
   energy: [
     { name: 'Oil & Gas', url: rss('https://news.google.com/rss/search?q=(oil+price+OR+OPEC+OR+"natural+gas"+OR+pipeline+OR+LNG)+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -473,6 +565,7 @@ const TECH_FEEDS: Record<string, Feed[]> = {
     { name: 'TechMeme', url: rss('https://www.techmeme.com/feed.xml') },
     { name: 'Engadget', url: rss('https://www.engadget.com/rss.xml') },
     { name: 'Fast Company', url: rss('https://feeds.feedburner.com/fastcompany/headlines') },
+    { name: 'Wired', url: rss('https://www.wired.com/feed/rss') },
   ],
   ai: [
     { name: 'AI News', url: rss('https://news.google.com/rss/search?q=(OpenAI+OR+Anthropic+OR+Google+AI+OR+"large+language+model"+OR+ChatGPT+OR+Claude+OR+"AI+model")+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -697,6 +790,11 @@ const FINANCE_FEEDS: Record<string, Feed[]> = {
     { name: 'Reuters Markets', url: rss('https://news.google.com/rss/search?q=site:reuters.com+markets+stocks+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Bloomberg Markets', url: rss('https://news.google.com/rss/search?q=site:bloomberg.com+markets+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Investing.com News', url: rss('https://news.google.com/rss/search?q=site:investing.com+markets+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Fox Business', url: rss('https://moxie.foxbusiness.com/google-publisher/latest.xml') },
+    { name: 'Business Insider', url: rss('https://www.businessinsider.com/rss') },
+    { name: 'GlobeNewswire', url: rss('https://www.globenewswire.com/RssFeed/subjectcode/22/feedTitle/GlobeNewswire') },
+    { name: 'Business Wire', url: rss('https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeGVtRWA==') },
+    { name: 'PR Newswire', url: rss('https://news.google.com/rss/search?q=site%3Aprnewswire.com%20when%3A1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   forex: [
     { name: 'Forex News', url: rss('https://news.google.com/rss/search?q=("forex"+OR+"currency"+OR+"FX+market")+trading+when:1d&hl=en-US&gl=US&ceid=US:en') },
@@ -736,6 +834,10 @@ const FINANCE_FEEDS: Record<string, Feed[]> = {
     { name: 'Wu Blockchain', url: rss('https://news.google.com/rss/search?q=site:wublockchain.com+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Messari', url: rss('https://news.google.com/rss/search?q=site:messari.io+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Bloomberg Crypto', url: rss('https://news.google.com/rss/search?q=bloomberg+crypto+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Chainwire', url: rss('https://chainwire.org/feed/') },
+    { name: 'Coinbase Blog', url: rss('https://news.google.com/rss/search?q=site%3Acoinbase.com%2Fblog%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Binance Announcements', url: rss('https://news.google.com/rss/search?q=site%3Abinance.com%2Fen%2Fsupport%2Fannouncement%20when%3A3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Jin10', url: rss('https://news.google.com/rss/search?q=site%3Ajin10.com%20when%3A1d&hl=zh-CN&gl=CN&ceid=CN:zh-Hans'), lang: 'zh' },
     { name: 'Reuters Crypto', url: rss('https://news.google.com/rss/search?q=reuters+crypto+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'NFT News', url: rss('https://news.google.com/rss/search?q=(NFT+OR+"non-fungible")+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Stablecoin Policy', url: rss('https://news.google.com/rss/search?q=(stablecoin+regulation+OR+"stablecoin+bill")+when:7d&hl=en-US&gl=US&ceid=US:en') },
@@ -1184,6 +1286,56 @@ const INDO_PACIFIC_EN_DEFAULT_SOURCES = [
   'Rappler',
 ] as const;
 
+/** Validated English crisis-floor defaults (#6813-#6828). */
+export const CRISIS_FLOOR_EN_DEFAULT_SOURCES = [
+  'Yemen Online',
+  'Syria Direct',
+  '+972 Magazine',
+  'HaitiLibre English',
+  'Amu TV',
+  'Naharnet Lebanon',
+  'Caracas Chronicles',
+  'Havana Times',
+  'Libya Herald',
+  'Egypt Independent',
+  'The Daily Star',
+  'Daily Nation',
+  'The Guardian Post',
+] as const;
+
+/** Non-English sources approved as global strategic floor defaults. */
+export const CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES = [
+  'Annahar',
+  'Studio Tamani',
+  'leFaso.net',
+  'ActuNiger',
+] as const;
+
+/** Validated depth, backup, and locale-primary sources that remain opt-in globally. */
+export const CRISIS_FLOOR_OPT_IN_SOURCES = [
+  "Sana'a Center",
+  'Enab Baladi English',
+  'WAFA English',
+  'AyiboPost',
+  'Pajhwok Afghan News',
+  "L'Orient Today",
+  'Aïr Info',
+  'Efecto Cocuyo',
+  '14ymedio',
+  'Mada Masr',
+  'Dhaka Tribune',
+  'Tchadinfos',
+  'Alwihda Info',
+  'Radio Ndeke Luka',
+] as const;
+
+/** Complete selected crisis-desk pack used by migration and mapping checks. */
+export const CRISIS_DESK_ROLLOUT_SOURCES = [
+  ...CRISIS_FLOOR_EN_DEFAULT_SOURCES,
+  ...CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
+  ...CRISIS_FLOOR_OPT_IN_SOURCES,
+] as const;
+
 /** Current editorial defaults introduced by the four regional feed PRs. */
 export const REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES = [
   ...EASTERN_FLANK_EN_DEFAULT_SOURCES,
@@ -1209,9 +1361,12 @@ export const REGIONAL_FEED_ROLLOUT_OPT_IN_SOURCES = [
   'Ethiopia Insight', 'Dabanga Sudan', 'Citi Newsroom',
 ] as const;
 
-/** Canada pack (#5960) — EN default-on for North America keyCountry CA. */
+/** Canada pack (#5960/#6604/#6605) — EN default-on for North America keyCountry CA.
+ * CTV News GNews probe returned items, so floors.CA = 3: CBC + CTV + Toronto Star. */
 export const CANADA_EN_DEFAULT_SOURCES = [
   'CBC News',
+  'CTV News',
+  'Toronto Star',
 ] as const;
 
 /**
@@ -1228,6 +1383,34 @@ export const CANADA_ARCTIC_OPT_IN_SOURCES = [
   'Aftenposten',
   'DR Nyheder',
   'Arctic Today',
+] as const;
+
+/**
+ * Catalog opt-in sources from the Canada depth pack (#6604/#6605).
+ * Globe/Global stay only in CANADA_ARCTIC_OPT_IN_SOURCES — do not duplicate.
+ * Persisted denylist profiles must insert these on first boot after the pack
+ * lands — otherwise newly cataloged names are implicitly enabled for every
+ * returner. Toronto Star and CTV News stay out so default-on can enable them. National Post is opt-in.
+ */
+export const CANADA_DEPTH_OPT_IN_SOURCES = [
+  'National Post',
+  'Financial Post',
+  'iPolitics',
+  'The Narwhal',
+  'The Tyee',
+  'Radio-Canada',
+  'La Presse',
+  'Le Devoir',
+  'TVA Nouvelles',
+  'Vancouver Sun',
+  'Calgary Herald',
+  'Winnipeg Free Press',
+  'Ottawa Citizen',
+  'Edmonton Journal',
+  "Maclean's",
+  'The Province',
+  'CP24',
+  'Montreal Gazette',
 ] as const;
 
 /** Chronological feed introductions used to reconstruct untouched cap states. */
@@ -1270,16 +1453,45 @@ export const REGIONAL_FEED_ROLLOUT_STAGES = [
   },
   {
     // #5960 is newer than the schema-5 regional wave. Keeping its names in a
-    // final chronological stage removes them from every pre-pack fingerprint
+    // chronological stage removes them from every pre-pack fingerprint
     // while still allowing current-cap states to be reconstructed after it.
+    // Freeze CBC as the historical default-on name so expanding
+    // CANADA_EN_DEFAULT_SOURCES does not rewrite this stage.
     introducedNames: [
-      ...CANADA_EN_DEFAULT_SOURCES,
+      'CBC News',
       ...CANADA_ARCTIC_OPT_IN_SOURCES,
     ],
     protectedNames: [
       ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
       ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
+      'CBC News',
+    ],
+  },
+  {
+    // Canada depth pack (#6604/#6605). Introduces the remaining national,
+    // francophone, and regional names after the #5960 trio.
+    introducedNames: [
+      'Toronto Star',
+      'CTV News',
+      ...CANADA_DEPTH_OPT_IN_SOURCES,
+    ],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
       ...CANADA_EN_DEFAULT_SOURCES,
+    ],
+  },
+  {
+    // Validated crisis desks (#6813-#6830): defaults, strategic defaults, and opt-ins.
+    introducedNames: [
+      ...CRISIS_DESK_ROLLOUT_SOURCES,
+    ],
+    protectedNames: [
+      ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
+      ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
+      ...CANADA_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_EN_DEFAULT_SOURCES,
+      ...CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
     ],
   },
 ] as const;
@@ -1293,6 +1505,8 @@ export const FREE_CAP_PROTECTED_SOURCES = [
   ...FRONTLINE_EUROPE_PROTECTED_SOURCES,
   ...REGIONAL_FEED_ROLLOUT_DEFAULT_SOURCES,
   ...CANADA_EN_DEFAULT_SOURCES,
+  ...CRISIS_FLOOR_EN_DEFAULT_SOURCES,
+  ...CRISIS_FLOOR_STRATEGIC_DEFAULT_SOURCES,
 ] as const;
 
 /**
@@ -1340,10 +1554,11 @@ export function getStrategicDefaultSources(): Set<string> {
  */
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   politics: ['BBC World', 'Guardian World', 'AP News', 'Reuters World', 'CNN World'],
-  // Canada pack (#5960): CBC News default-on for North America keyCountry CA
-  // (public broadcaster, world desk — noise-acceptable on the US-heavy panel).
-  // Globe and Mail + Global News remain catalog opt-in.
-  us: ['Reuters US', 'NPR News', 'PBS NewsHour', 'ABC News', 'CBS News', 'NBC News', 'Wall Street Journal', 'Politico', 'The Hill', 'CBC News'],
+  // Canada pack (#5960/#6604/#6605): CBC News + CTV News + Toronto Star
+  // default-on for North America keyCountry CA (floors.CA = 3). Globe and Mail
+  // + Global News remain catalog opt-in (arctic pack). Remaining depth names
+  // are catalog opt-in. FR sources are locale-boosted only. CTV is GNews-only.
+  us: ['Reuters US', 'NPR News', 'PBS NewsHour', 'ABC News', 'CBS News', 'NBC News', 'Wall Street Journal', 'Politico', 'The Hill', 'CBC News', 'CTV News', 'Toronto Star'],
   // Europe defaults — Ukraine war frontline (#5949) + UA/RU balance rule (#5950):
   // ≥1 dedicated UA primary (Kyiv Independent) + ≥1 independent RU (Meduza, Moscow Times).
   // PL frontline: TVN24 + Rzeczpospolita (not all three PL; noise control).
@@ -1359,16 +1574,18 @@ export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
     ...CAUCASUS_EN_DEFAULT_SOURCES,
   ],
 
-  middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National'],
+  middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National', 'Yemen Online', 'Syria Direct', '+972 Magazine', 'Naharnet Lebanon', 'Libya Herald', 'Egypt Independent'],
   africa: [
     'BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News',
     'Premium Times', 'Channels TV', 'Sahel Crisis',
     ...AFRICA_DEPTH_EN_DEFAULT_SOURCES,
+    'Daily Nation', 'The Guardian Post',
   ],
-  latam: ['BBC Latin America', 'Reuters LatAm', 'InSight Crime', 'Mexico News Daily', 'Clarín', 'Primicias', 'Infobae Americas', 'El Universo'],
+  latam: ['BBC Latin America', 'Reuters LatAm', 'InSight Crime', 'Mexico News Daily', 'Clarín', 'Primicias', 'Infobae Americas', 'El Universo', 'HaitiLibre English', 'Caracas Chronicles', 'Havana Times'],
 asia: ['BBC Asia', 'The Diplomat', 'South China Morning Post', 'Reuters Asia', 'Nikkei Asia', 'CNA', 'Asia News', 'The Hindu',
     ...CENTRAL_ASIA_EN_DEFAULT_SOURCES,
     ...INDO_PACIFIC_EN_DEFAULT_SOURCES,
+    'Amu TV', 'The Daily Star',
   ],
   tech: ['Hacker News', 'Ars Technica', 'The Verge', 'MIT Tech Review'],
   ai: ['AI News', 'VentureBeat AI', 'The Verge AI', 'MIT Tech Review', 'ArXiv AI'],

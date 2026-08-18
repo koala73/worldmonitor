@@ -125,7 +125,13 @@ export default defineSchema({
     windowStart: v.number(),
     count: v.number(),
     updatedAt: v.number(),
-  }).index("by_user_window", ["userId", "windowStart"]),
+  })
+    .index("by_user_window", ["userId", "windowStart"])
+    // Retention scan for `pruneStaleWriteRateLimits` (#6706). Expired-window
+    // rows are garbage-collected off the write path, so the sweep needs a
+    // cross-user range on age alone; without it the prune would be a full
+    // table scan whose read set collides with every live counter.
+    .index("by_windowStart", ["windowStart"]),
 
   notificationChannels: defineTable(
     v.union(
@@ -623,6 +629,9 @@ export default defineSchema({
     // may still rely on tiers 2-3 until
     // `backfillSubscriptionDodoCustomerId` lands their values here.
     dodoCustomerId: v.optional(v.string()),
+    // MCP paid-funnel upgrade attribution (#6716). Stamped from checkout
+    // metadata.wm_attribution on first subscription.active only.
+    attributionSource: v.optional(v.string()),
     // Epoch ms of the event that opened the CURRENT on_hold episode.
     // Set by handleSubscriptionOnHold only on the active→on_hold
     // transition (webhook replays while already on_hold keep the
@@ -1059,6 +1068,29 @@ export default defineSchema({
   })
     .index("by_dodoPaymentId", ["dodoPaymentId"])
     .index("by_reconciledAt", ["reconciledAt"]),
+
+  // One row per checkout that exhausted the #6027 provider-429 retry ladder
+  // and returned a terminal CHECKOUT_RATE_LIMITED to the buyer (#6698). This
+  // is the rate signal the alarm in `payments/checkoutRateLimitAlarm.ts`
+  // measures; the browser-side Sentry event is corroboration, not the source,
+  // because it is ad-blockable and fires at level `info`.
+  //
+  // Deliberately payload-free and self-pruning: each insert deletes a bounded
+  // batch of rows older than CHECKOUT_RATE_LIMIT_EVENT_RETENTION_MS, so a
+  // storm drains over the inserts that follow it rather than accumulating for
+  // the lifetime of the deployment. Rows left behind when 429s stop entirely
+  // are inert — every count is window-relative, so a stale row can never
+  // inflate a verdict.
+  checkoutRateLimitEvents: defineTable({
+    userId: v.string(),
+    productId: v.string(),
+    occurredAt: v.number(),
+    // Stamped on the row whose insert crossed a threshold and emitted the ops
+    // signal. This doubles as the alert cooldown clock, which is why the alarm
+    // needs no pre-seeded singleton document — there is no state row whose
+    // absence could silently disarm it.
+    alertedAt: v.optional(v.number()),
+  }).index("by_occurredAt", ["occurredAt"]),
 
   productPlans: defineTable({
     dodoProductId: v.string(),
@@ -1559,7 +1591,9 @@ export default defineSchema({
     createdAt: v.number(),
     lastUsedAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
-  }).index("by_userId", ["userId"]),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_revokedAt_createdAt", ["userId", "revokedAt", "createdAt"]),
 
   // API Business domain-gated Pro-seat invites (#4634/#4635). One row per seat
   // invite issued by an active `api_business` owner to a same-corporate-domain

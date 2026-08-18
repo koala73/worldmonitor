@@ -168,12 +168,17 @@ export class CircuitBreaker<T> {
           const data = this.revivePersistedData ? this.revivePersistedData(entry.data) : entry.data;
           this.cache.set(cacheKey, { data, timestamp: entry.updatedAt });
           this.evictIfNeeded();
-          const withinTtl = (Date.now() - entry.updatedAt) < this.cacheTtlMs;
-          this.lastDataState = {
-            mode: withinTtl ? 'cached' : 'unavailable',
-            timestamp: entry.updatedAt,
-            offline: false,
-          };
+          // lastDataState is intentionally left untouched here. hydrate only
+          // ever runs from inside execute(), which recomputes lastDataState
+          // right after — synchronously on the cooldown/fresh/SWR-stale paths,
+          // and after the live fetch on the path where the hydrated entry is
+          // immediately evicted by shouldCache. It previously wrote
+          // { mode: withinTtl ? 'cached' : 'unavailable', timestamp:
+          // entry.updatedAt, offline: false }, which for a stale entry produced
+          // 'unavailable' paired with a non-null timestamp — a combo no other
+          // producer in this file emits — and on that eviction path could leak
+          // to an external getDataState() for the whole fetch. Removing it is
+          // what makes that window safe too (#6781 / audit R22).
         }
       } catch (err) {
         console.warn(`[${this.name}] Persistent cache hydration failed:`, err);
@@ -356,6 +361,12 @@ export class CircuitBreaker<T> {
        * retaining that entry as a fallback. Circuit cooldown still applies.
        */
       forceRefresh?: boolean;
+      /**
+       * Treat caller-owned cancellation as neither an upstream failure nor a
+       * fallback result. Matching errors are rethrown on the foreground path
+       * so the caller can stop its own lifecycle without opening cooldown.
+       */
+      ignoreError?: (error: unknown) => boolean;
     } = {},
   ): Promise<R> {
     const offline = isDesktopOfflineMode();
@@ -445,6 +456,7 @@ export class CircuitBreaker<T> {
             // the default and matches the market-quote use case.
             return { kind: 'not-cacheable' };
           } catch (e) {
+            if (options.ignoreError?.(e)) return { kind: 'failed' };
             console.warn(`[${this.name}] Background refresh failed:`, e);
             this.recordFailure(String(e));
             return { kind: 'failed' };
@@ -483,6 +495,7 @@ export class CircuitBreaker<T> {
       }
       return result;
     } catch (e) {
+      if (options.ignoreError?.(e)) throw e;
       const msg = String(e);
       console.error(`[${this.name}] Failed:`, msg);
       this.recordFailure(msg);

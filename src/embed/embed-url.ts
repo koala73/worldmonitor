@@ -1,4 +1,9 @@
 import type { MapLayers } from '@/types';
+import {
+  DEFAULT_EMBED_PANEL_ID,
+  parseEmbedPanelId,
+  type EmbedPanelId,
+} from '../../shared/embed-panels';
 
 export const EMBEDDABLE_LAYERS = [
   { id: 'conflicts', mapLayer: 'conflicts', label: 'Conflicts' },
@@ -33,6 +38,8 @@ export interface EmbedMapState {
   zoom: number;
   theme: EmbedTheme;
   variant: EmbedVariant;
+  panel: EmbedPanelId | null;
+  requestedPanel: string;
 }
 
 export const DEFAULT_EMBED_LAYER_IDS: EmbedLayerId[] = ['conflicts', 'earthquakes', 'weather'];
@@ -94,6 +101,8 @@ export function createBlankMapLayers(): MapLayers {
     radiationWatch: false,
     sanctions: false,
     weather: false,
+    canadaRoads: false,
+    canadaAlerts: false,
     economic: false,
     waterways: false,
     outages: false,
@@ -207,6 +216,8 @@ function normalizeCenter(center: EmbedCenter | null | undefined): EmbedCenter {
 export function parseEmbedParams(search: string | URLSearchParams): EmbedMapState {
   const params = typeof search === 'string' ? new URLSearchParams(search) : search;
   const layerIds = parseEmbedLayerIds(params.get('layers'));
+  const rawPanel = params.get('panel');
+  const requestedPanel = rawPanel?.trim() ?? '';
   return {
     layers: mapLayersFromEmbedIds(layerIds),
     layerIds,
@@ -214,6 +225,8 @@ export function parseEmbedParams(search: string | URLSearchParams): EmbedMapStat
     zoom: parseZoom(params.get('zoom')),
     theme: parseTheme(params.get('theme')),
     variant: parseVariant(params.get('variant')),
+    panel: parseEmbedPanelId(rawPanel),
+    requestedPanel,
   };
 }
 
@@ -242,6 +255,45 @@ export function buildEmbedMapUrl(
   url.searchParams.set('theme', theme);
   url.searchParams.set('variant', variant);
   return url.toString();
+}
+
+export function buildEmbedPanelUrl(
+  baseUrl: string,
+  state: {
+    panel?: EmbedPanelId | null;
+    layerIds?: readonly EmbedLayerId[];
+    layers?: MapLayers;
+    center?: EmbedCenter | null;
+    zoom?: number;
+    theme?: EmbedTheme;
+    variant?: EmbedVariant;
+  } = {},
+): string {
+  const panel = state.panel ?? DEFAULT_EMBED_PANEL_ID;
+  if (panel === 'map') {
+    return buildEmbedMapUrl(baseUrl, state);
+  }
+  const url = new URL(baseUrl, 'https://www.worldmonitor.app');
+  const theme = VALID_THEMES.has(state.theme as EmbedTheme) ? state.theme as EmbedTheme : DEFAULT_EMBED_THEME;
+  const variant = VALID_VARIANTS.has(state.variant as EmbedVariant) ? state.variant as EmbedVariant : DEFAULT_EMBED_VARIANT;
+  url.search = '';
+  url.searchParams.set('panel', panel);
+  url.searchParams.set('theme', theme);
+  url.searchParams.set('variant', variant);
+  return url.toString();
+}
+
+export function buildEmbedLoaderSnippet(options: {
+  src: string;
+  panel: EmbedPanelId;
+  theme?: EmbedTheme;
+  height?: string;
+}): string {
+  const src = escapeAttribute(options.src);
+  const panel = escapeAttribute(options.panel);
+  const theme = escapeAttribute(options.theme ?? DEFAULT_EMBED_THEME);
+  const height = sanitizePixelDimension(options.height ?? '420', 120, 1200);
+  return `<script src="${src}" data-panel="${panel}" data-key="YOUR_WM_API_KEY" data-theme="${theme}" data-height="${height}" async></script>`;
 }
 
 export function embedLayerIdsFromMapLayers(layers: MapLayers): EmbedLayerId[] {

@@ -37,9 +37,19 @@ describe('REST API versioning and deprecation policy', () => {
   });
 
   it('keeps the policy in both English and Chinese API navigation', () => {
-    const navigation = read('docs/docs.json');
+    // Walk the parsed nav tree rather than grepping the raw file: a page name
+    // appearing anywhere in docs.json — including inside an unrelated group or
+    // a comment-like string — satisfied the previous regex without the page
+    // actually being reachable from navigation.
+    const navigation = JSON.parse(read('docs/docs.json'));
+    const pages = [];
+    (function collect(node) {
+      if (typeof node === 'string') pages.push(node);
+      else if (Array.isArray(node)) node.forEach(collect);
+      else if (node && typeof node === 'object') Object.values(node).forEach(collect);
+    })(navigation.navigation);
 
-    assert.match(navigation, /"api-versioning"/);
-    assert.match(navigation, /"zh\/api-versioning"/);
+    assert.ok(pages.includes('api-versioning'), 'English nav must link the policy page');
+    assert.ok(pages.includes('zh/api-versioning'), 'Chinese nav must link the policy page');
   });
 });

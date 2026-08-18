@@ -10,7 +10,7 @@
     "A temporary rollout entry may add an entry-level `expiresAt` bounded to the first",
     "scheduled cron window. At or after that instant, its live problem blocks even when",
     "the root expiresAt is later. A health-probe cutover requires either a completed",
-    "Railway-side pre-seed or this owner-bound, expiring acknowledgement.",
+    "Railway-side pre-seed, a one-way durable activation marker, or this owner-bound, expiring acknowledgement.",
     "",
     "Entries are matched on name:status exactly. A source that recovers is reported as",
     "'recovered' on the next run (prune it); a source that fails with a DIFFERENT status",
@@ -25,87 +25,100 @@
   "expiresAt": "2026-08-27",
   "acknowledged": [
     {
-      "name": "consumerPricesCoverage",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6355,
-      "reason": "AE aggregate: records match the enabled retailer roster (4) and coverage age stays inside maxStaleMin. summarizeMarketCoverage grades any retailer dirty scrape run as market-wide partial, which fires nearly every day, so the monitor has been red on every scheduled run since #5970 exposed these keys on 2026-07-30. Producer-side tolerance or a warn-level mapping is tracked in the issue."
-    },
-    {
-      "name": "consumerPricesCoverageAU",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6356,
-      "reason": "AU: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "consumerPricesCoverageBR",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6357,
-      "reason": "BR: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "consumerPricesCoverageGB",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6358,
-      "reason": "GB: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "consumerPricesCoverageIN",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6359,
-      "reason": "IN: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "consumerPricesCoverageSA",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6360,
-      "reason": "SA: records match the enabled retailer roster (3), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "consumerPricesCoverageSG",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6361,
-      "reason": "SG: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "consumerPricesCoverageUS",
-      "status": "COVERAGE_PARTIAL",
-      "issue": 6362,
-      "reason": "US: records match the enabled retailer roster (2), age fresh. Same daily dirty-scrape-run partial grading as consumerPricesCoverage; parent evidence in #6355."
-    },
-    {
-      "name": "foodStocks",
+      "name": "canadaAlerts",
       "status": "EMPTY",
-      "issue": 6440,
-      "expiresAt": "2026-08-13T12:00:00.000Z",
-      "reason": "New USDA PSD food-stocks probe. seed-bundle-resilience cron is 0 */6 * * *; first scheduled run after this acknowledgement is 12:00 UTC on 2026-08-13. EMPTY is expected until that publish. The expiry deliberately equals firstScheduledRunAt: check-seed-freshness.mjs enforces that an acknowledgement expires by its first scheduled run, so EMPTY after that run is a real problem needing attention rather than a pre-authorised silence. Setting USDA_FAS_PSD_API_KEY on Railway is a manual post-deploy step and must happen before that run.",
+      "issue": 6659,
+      "reason": "canadaAlerts now probes seed-meta:alerts:canada-union. The union key cannot exist until the first Canada bundle tick materializes it, so EMPTY is acknowledged only through that first Railway */5 tick.",
+      "expiresAt": "2026-08-19T12:05:00.000Z",
       "cutover": {
-        "probeKey": "seed-meta:resilience:food-stocks",
-        "activatedAt": "2026-08-12T18:17:04.000Z",
-        "firstScheduledRunAt": "2026-08-13T12:00:00.000Z"
+        "probeKey": "seed-meta:alerts:canada-union",
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:05:00.000Z"
       }
     },
     {
-      "name": "marketCorrelationSeries",
+      "name": "canadaAlertsAbSource",
       "status": "EMPTY",
-      "issue": 6418,
-      "expiresAt": "2026-08-12T17:55:00.000Z",
-      "reason": "The new health probe can be empty only until the first five-minute market-backup bundle run has had a chance to publish its 15-minute member. Expiry makes any missed first publication block acceptance.",
+      "issue": 6659,
+      "reason": "The Alberta sibling health row is new and cannot publish until its first Canada bundle tick runs. EMPTY is acknowledged only through that first Railway */5 tick; it must block immediately afterward.",
+      "expiresAt": "2026-08-19T12:05:00.000Z",
       "cutover": {
-        "probeKey": "seed-meta:market:correlation-series",
-        "activatedAt": "2026-08-12T17:52:05.000Z",
-        "firstScheduledRunAt": "2026-08-12T17:55:00.000Z"
+        "probeKey": "seed-meta:alerts:alberta-aea",
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:05:00.000Z"
+      }
+    },
+    {
+      "name": "canadaAlertsBcSource",
+      "status": "EMPTY",
+      "issue": 6659,
+      "reason": "The B.C. source health row is new and cannot publish until its first Canada bundle tick runs. EMPTY is acknowledged only through that first Railway */5 tick; it must block immediately afterward.",
+      "expiresAt": "2026-08-19T12:05:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:alerts:bc-emergency-info",
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:05:00.000Z"
+      }
+    },
+    {
+      "name": "canadaAlertsSkSource",
+      "status": "STALE_SEED",
+      "issue": 6659,
+      "reason": "The SaskAlert source health row is new and cannot publish until its first Canada bundle tick runs. Never-published classifyKey is STALE_SEED, not EMPTY; acknowledge only through that first Railway */5 tick. EMPTY after a successful publish is a vanished payload and must block.",
+      "expiresAt": "2026-08-19T12:05:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:alerts:saskalert",
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:05:00.000Z"
       }
     },
     {
       "name": "mineralProduction",
       "status": "EMPTY",
       "issue": 6439,
-      "reason": "New USGS/BGS mineral-production probe. seed-bundle-static-ref runs daily at 03:00 UTC (`0 3 * * *` in scripts/railway-services.json), so the key cannot exist until the first tick after this PR deploys; EMPTY is expected until then. Anchored to that real cron window: MAX_ROLLOUT_WINDOW_MS caps firstScheduledRunAt-activatedAt at 24h, and a daily tick fits inside it. If this PR has not merged by 2026-08-14T03:00Z, re-anchor both to the next 03:00 UTC tick.",
-      "expiresAt": "2026-08-14T03:00:00.000Z",
+      "reason": "Re-anchored to seed-bundle-static-ref-heavy's first tick (#6806). The previous acknowledgement expired at 2026-08-18T03:00Z on the very tick that deferred this section by 13 seconds: Arms-Suppliers measured 371s of leftover's 570s budget and Submarine-Cables took 22s more, leaving 177s against a 190s reservation. The concurrency fix (#6807) was not enough because the ordering question survived it. Mineral-Production now sits in a 3-member bundle whose lead slot rotates daily, so it leads every third tick and fits behind either heavy member on the other two (371+190=561s, 335+190=525s). EMPTY after its first scheduled run is a real problem.",
+      "expiresAt": "2026-08-19T04:00:00.000Z",
       "cutover": {
         "probeKey": "seed-meta:supply-chain:mineral-production",
-        "activatedAt": "2026-08-13T06:00:00.000Z",
-        "firstScheduledRunAt": "2026-08-14T03:00:00.000Z"      }
+        "activatedAt": "2026-08-18T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T04:00:00.000Z"
+      }
+    },
+    {
+      "name": "demographicsCapability",
+      "status": "EMPTY",
+      "issue": 6437,
+      "reason": "The new demographics capability probe cannot exist until the updated seed-bundle-static-ref image runs its first daily 03:00 UTC tick. EMPTY is acknowledged only through that first scheduled run; after it, fewer than 150 countries or no publication must block acceptance.",
+      "expiresAt": "2026-08-19T03:00:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:demographics:capability",
+        "activatedAt": "2026-08-18T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T03:00:00.000Z"
+      }
+    },
+    {
+      "name": "manitobaRoads",
+      "status": "EMPTY",
+      "issue": 6622,
+      "reason": "manitobaRoads now probes seed-meta:infra:manitoba-511. MANITOBA_511_KEY is configured on Railway seed-bundle-canada; the seed-meta key still cannot exist until the first eligible Provincial-511 admission after this seeder deploys. The shared runner can skip the 12:05 and 12:10 ticks while Ontario metadata is inside its 0.8-interval freshness window, so EMPTY is acknowledged only through 12:15 and must block immediately afterward.",
+      "expiresAt": "2026-08-19T12:15:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:infra:manitoba-511",
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:15:00.000Z"
+      }
+    },
+    {
+      "name": "staticRefHeavyBundleTick",
+      "status": "EMPTY",
+      "issue": 6806,
+      "reason": "New seed-bundle-static-ref-heavy cron (#6806), one service carrying Arms-Suppliers, Military-Bases and Mineral-Production. The heartbeat key does not exist until the Railway service is provisioned and fires `0 4 * * *`. EMPTY before that first scheduled tick is the deploy window, not a frozen scheduler. This entry replaces the two planned 1-section siblings: Railway's service budget is capped at 100 and the fleet is at 81, so three isolated services for three low-cadence members was not a trade worth making when the runner's per-tick deferral already separates them.",
+      "expiresAt": "2026-08-19T04:00:00.000Z",
+      "cutover": {
+        "probeKey": "bundle:heartbeat:static-ref-heavy",
+        "activatedAt": "2026-08-18T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T04:00:00.000Z"
+      }
     }
   ]
 }

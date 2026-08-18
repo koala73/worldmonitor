@@ -35,15 +35,15 @@ const REQUIRED_PR_SCRIPTS = [
   'test:resilience-validation-smoke',
 ] as const;
 
-// Every spec the combined ci-smoke invocation must keep exercising. The three
-// specs used to be three separate workflow steps; now that one script carries
-// them, dropping a spec from its command line is the new way a guard can stop
-// being invoked while CI stays green — so the spec list is pinned here.
+// Every regression guard the combined ci-smoke invocation must keep exercising.
+// Dropping a spec from its command line is how a guard can stop being invoked
+// while CI stays green, so the required spec list is pinned here.
 const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/variant-live-smoke.spec.ts',
   'e2e/mcp-grant-consent.spec.ts',
   'e2e/dashboard-news-request-budget.spec.ts',
   'e2e/keyword-spike-flow.spec.ts',
+  'e2e/breaking-news-banner-provenance.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
@@ -116,7 +116,6 @@ const REQUIRED_DESKTOP_CONFIG_INPUTS = [
 const REQUIRED_DESKTOP_RUST_INPUTS = [
   'src-tauri/sidecar/',
   'src-tauri/',
-  '.github/workflows/test.yml',
 ] as const;
 
 function escapeRegExp(value: string): string {
@@ -440,6 +439,19 @@ describe('CI workflow coverage', () => {
     }
   });
 
+  it('does not let a hung playwright install-deps eat the variant-smoke-full budget', () => {
+    const job = testJobBlock('variant-smoke-full');
+    assert.match(job, /\n {4}timeout-minutes: 30\n/);
+    assert.match(
+      job,
+      /id: playwright-install-deps[\s\S]*timeout-minutes: 8[\s\S]*continue-on-error: true[\s\S]*npx playwright install-deps chromium/,
+    );
+    assert.match(
+      job,
+      /steps\.playwright-install-deps\.outcome == 'failure'[\s\S]*pkill -9 apt-get[\s\S]*npx playwright install --with-deps chromium/,
+    );
+  });
+
   // #6496: playwright.config.ts retained a trace, a video and a screenshot for
   // every failed test and CI collected none of them, so run 31584738075 died
   // with the only evidence that could have named its browser close. The job is
@@ -687,14 +699,16 @@ describe('CI workflow coverage', () => {
 
     assert.match(
       deployGateWorkflow,
-      /^ {2}group: deploy-gate-\$\{\{ github\.event\.workflow_run\.head_sha \|\| 'sweep' \}\}$/m,
-      'schedule and workflow_dispatch must share one sweep concurrency group while workflow_run stays keyed by SHA',
+      /^ {2}group: deploy-gate-\$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.event\.inputs\.sha \|\| 'sweep' \}\}$/m,
+      'schedule and empty dispatches share one sweep group; workflow_run and sha-input dispatches stay keyed by SHA',
     );
     assert.match(
       deployGateWorkflow,
-      /^run-name: Deploy Gate \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.event_name \}\}$/m,
+      /^run-name: Deploy Gate \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.event\.inputs\.sha \|\| github\.event_name \}\}$/m,
     );
     assert.match(deployGateJob, /graphql --paginate --slurp/);
+    assert.match(deployGateJob, /falling back to REST/);
+    assert.match(deployGateJob, /commits\/\$eval_sha\/check-runs\?per_page=100/);
     assert.match(deployGateJob, /pullRequests\(first: 100, states: \[OPEN\], after: \$endCursor\)/);
     assert.match(deployGateJob, /pageInfo \{ hasNextPage endCursor \}/);
     assert.match(deployGateJob, /contexts\(first: 100, after: \$endCursor\)/);
@@ -763,6 +777,75 @@ describe('CI workflow coverage', () => {
     }
   });
 
+  it('routes generated OpenAPI artifacts into the owning unit job (#6558, #6650)', () => {
+    // Executes the real awk rather than matching its source. These artifacts
+    // live under `docs/`, which the blanket `/^docs\// { next }` rule excludes,
+    // so the carve-outs are the only thing keeping an OpenAPI-only PR from
+    // setting code=false and skipping the contract tests in `unit`.
+    const awkBlock = shellAwkAssignmentBlock('CODE');
+    const codeFilterSays = (path: string) => evaluateAwkAssignmentBlock(awkBlock, [path]) > 0;
+
+    assert.ok(
+      codeFilterSays('docs/api/worldmonitor.openapi.yaml'),
+      'a PR that only regenerates the unified OpenAPI bundle must still run the unit job',
+    );
+    for (const path of [
+      'docs/api/MarketService.openapi.json',
+      'docs/api/MarketService.openapi.yaml',
+    ]) {
+      assert.ok(
+        codeFilterSays(path),
+        `${path} must set code=true so the OpenAPI filter-parameter contract test runs`,
+      );
+    }
+    // Prose under docs/ stays excluded — the carve-out is for the machine
+    // artifact, not for the directory.
+    for (const path of ['docs/api-reference.mdx', 'docs/perf/openapi-bundle-capacity-2026-08-13.md']) {
+      assert.ok(!codeFilterSays(path), `${path} must not set code=true`);
+    }
+
+    const unit = testJobBlock('unit');
+    assert.match(
+      unit,
+      /^\s+run: node scripts\/openapi-capacity-report\.mjs --out "\$RUNNER_TEMP\/openapi-capacity\.json"\s*$/m,
+      'unit job must publish the OpenAPI capacity report',
+    );
+    // No `--budget`: the step must measure against the real 950,000 guard. The
+    // flag exists for local what-if analysis and to exercise the over-budget
+    // exit in tests, and passing it here would be the one-line way to make the
+    // reported headroom mean nothing.
+    assert.ok(
+      !/openapi-capacity-report\.mjs[^\n]*--budget/.test(unit),
+      'the CI step must not override the scanner budget',
+    );
+    assert.match(
+      unit,
+      /name: openapi-capacity-\$\{\{ github\.run_attempt \}\}/,
+      'the capacity artifact name must carry run_attempt — upload-artifact v6 rejects a duplicate name within a run, which collides on the re-run started to chase the failure',
+    );
+    assert.match(
+      unit,
+      /path: \$\{\{ runner\.temp \}\}\/openapi-capacity\.json/,
+      'the capacity artifact must be read from the same path the step wrote',
+    );
+    // `if: failure()` would publish nothing on a green run and `if: success()`
+    // nothing on a red one; the breakdown is worth reading in both cases, and
+    // an over-budget run is when it matters most. Narrowing this to either
+    // would stop publishing on exactly the runs someone goes looking for it.
+    const upload = unit.slice(unit.indexOf('- name: Upload OpenAPI capacity report'));
+    assert.match(
+      upload.slice(0, upload.indexOf('- name: ', 1)),
+      /if: \$\{\{ !cancelled\(\) \}\}/,
+      'the capacity artifact must be uploaded whether the step passed or failed',
+    );
+    // The report must run BEFORE the suite: an over-budget artifact fails
+    // test:data anyway, and failing at the front costs 30s instead of 10min.
+    assert.ok(
+      unit.indexOf('openapi-capacity-report.mjs') < unit.indexOf('npm run test:data'),
+      'the capacity report must run before the test suite',
+    );
+  });
+
   it('keeps resilience validation bundle inputs in the CI change filter', () => {
     assert.ok(
       testWorkflow.includes('validation: ${{ steps.diff.outputs.validation }}'),
@@ -771,6 +854,62 @@ describe('CI workflow coverage', () => {
     for (const input of REQUIRED_RESILIENCE_VALIDATION_INPUTS) {
       assert.ok(testWorkflow.includes(workflowRegexNeedle(input)), `test.yml must cover ${input}`);
     }
+  });
+
+  it('runs resilience-validation-smoke only when validation inputs change', () => {
+    const job = testJobBlock('resilience-validation-smoke');
+    assert.match(
+      job,
+      /\n {4}if: needs\.changes\.outputs\.validation == 'true'\n/,
+      'the smoke job is the validation-docs path; unit already runs the same files on code PRs',
+    );
+    assert.doesNotMatch(
+      job,
+      /outputs\.code == 'true'/,
+      'a second npm ci on every code PR re-runs tests already inside test:data',
+    );
+  });
+
+  it('path-filters Test jobs on push to main instead of compiling everything', () => {
+    const changes = testWorkflow.slice(testWorkflow.indexOf('id: diff'));
+    const pushGate = changes.slice(0, changes.indexOf('CODE=$('));
+    assert.match(
+      pushGate,
+      /compare\/\$\{BEFORE\}\.\.\.\$\{\{ github\.sha \}\}/,
+      'push to main must classify files from the compare API',
+    );
+    assert.match(
+      pushGate,
+      /No usable parent SHA; running every Test job/,
+      'a zero parent SHA must fail open',
+    );
+    assert.match(
+      pushGate,
+      /Compare listing is truncated at 300 files; running every Test job/,
+      'a truncated compare must fail open',
+    );
+    assert.match(pushGate, /emit_all_true/);
+    assert.ok(
+      pushGate.indexOf('compare/${BEFORE}') < pushGate.lastIndexOf('emit_all_true'),
+      'the compare must run; fail-open is only the truncated/error path',
+    );
+  });
+
+  it('does not rebuild Umami images for an unrelated Test workflow edit', () => {
+    const umamiFilter = shellAwkAssignmentBlock('UMAMI');
+    assert.equal(
+      evaluateAwkAssignmentBlock(umamiFilter, ['.github/workflows/test.yml']),
+      0,
+      'editing test.yml must not set umami=true — unit pins the job shape',
+    );
+    assert.ok(
+      evaluateAwkAssignmentBlock(umamiFilter, ['Dockerfile.umami']) > 0,
+      'Dockerfile.umami must still set umami=true',
+    );
+    assert.ok(
+      evaluateAwkAssignmentBlock(umamiFilter, ['scripts/umami-retention.sql']) > 0,
+      'the retention SQL must still set umami=true',
+    );
   });
 
   it('routes the root Docker context policy into image build jobs', () => {
@@ -820,6 +959,21 @@ describe('CI workflow coverage', () => {
         `test.yml desktop_rust filter must cover ${input}`,
       );
     }
+    assert.equal(
+      evaluateAwkAssignmentBlock(desktopRustFilter, ['src-tauri/src/lib.rs']),
+      1,
+      'desktop-rust must compile when the Tauri crate changes',
+    );
+    assert.equal(
+      evaluateAwkAssignmentBlock(desktopRustFilter, ['src-tauri/sidecar/local-api-server.js']),
+      0,
+      'desktop-rust must skip sidecar-only changes (those ride the code filter)',
+    );
+    assert.equal(
+      evaluateAwkAssignmentBlock(desktopRustFilter, ['.github/workflows/test.yml']),
+      0,
+      'desktop-rust must not compile the Tauri crate for a Test workflow edit',
+    );
     assert.match(
       testJobBlock('desktop-config'),
       /if: needs\.changes\.outputs\.desktop_config == 'true'/,

@@ -201,6 +201,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/market/v1/list-ai-tokens': 'slow',
   '/api/market/v1/list-other-tokens': 'slow',
   '/api/market/v1/list-commodity-quotes': 'medium',
+  '/api/market/v1/get-physical-premiums': 'daily',
   '/api/market/v1/list-stablecoin-markets': 'medium',
   '/api/market/v1/get-sector-summary': 'medium',
   '/api/market/v1/get-fear-greed-index': 'slow',
@@ -411,6 +412,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/resilience/v1/get-resilience-score': 'slow',
   '/api/resilience/v1/get-resilience-ranking': 'slow',
   '/api/resilience/v1/get-food-stocks': 'slow',
+  '/api/resilience/v1/get-demographics-capability': 'slow',
   '/api/resilience/v1/get-runtime-manifest': 'no-store',
 
   // Partner-facing shipping/v2. route-intelligence is premium-gated; gateway
@@ -1200,11 +1202,11 @@ export function createDomainGateway(
     // request). Telemetry stays attributed via the verified userId set
     // above; entitlement re-check (`features.tier ≥ 1 && mcpAccess`) was
     // already performed before flipping `internalMcpVerified = true`.
-    let keyCheck: { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user' } = internalMcpVerified || isPublicNoAuthRpc || seedRefreshVerified || relayWarmPingVerified
+    let keyCheck: { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user'; credential?: string } = internalMcpVerified || isPublicNoAuthRpc || seedRefreshVerified || relayWarmPingVerified
       ? { valid: true, required: false }
       : ((await validateApiKey(request, {
           forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
-        })) as { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user' });
+        })) as { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user'; credential?: string });
 
     // User-owned API keys (wm_ prefix): when the static WORLDMONITOR_VALID_KEYS
     // check fails, try async Convex-backed validation for user-issued keys.
@@ -1312,8 +1314,14 @@ export function createDomainGateway(
     // them valid, wmKey is set, !isUserApiKey, and 'wms_' doesn't startsWith
     // 'wm_'), so telemetry mislabelled them as enterprise_api_key with
     // customer_id='enterprise-unmapped'. PR #3557 round-3 review.
-    if (keyCheck.valid && wmKey && !isUserApiKey && keyCheck.kind === 'enterprise') {
-      usage.enterpriseApiKey = wmKey;
+    // A browser request can carry both an automatic wms_ header and an HttpOnly
+    // enterprise cookie. Use the credential validateApiKey actually selected;
+    // the raw header belongs to a different anonymous principal.
+    const enterpriseCredential = keyCheck.valid && keyCheck.kind === 'enterprise'
+      ? (keyCheck.credential ?? wmKey)
+      : '';
+    if (enterpriseCredential && !isUserApiKey) {
+      usage.enterpriseApiKey = enterpriseCredential;
     }
 
     // ── Active-subscription gate for user API keys (#4611) ──────────────────
@@ -1501,7 +1509,10 @@ export function createDomainGateway(
     // tier ≥ 1 + mcpAccess === true above. Some ENDPOINT_ENTITLEMENTS
     // routes require tier 2, but Pro MCP callers only reach the gateway
     // through the MCP edge's whitelisted tool set.
-    const isEnterpriseAuth = keyCheck.valid && wmKey && !isUserApiKey && keyCheck.kind === 'enterprise';
+    const isEnterpriseAuth = keyCheck.valid
+      && Boolean(enterpriseCredential)
+      && !isUserApiKey
+      && keyCheck.kind === 'enterprise';
     if (!isEnterpriseAuth && !internalMcpVerified && !seedRefreshVerified && !relayWarmPingVerified) {
       const entitlementCheck = await checkEntitlementDetailed(sessionUserId, pathname, corsHeaders, {
         clerkRole: sessionRole,
@@ -1738,7 +1749,7 @@ export function createDomainGateway(
           // minting keys, and each operator key gets its own 1,000/min budget
           // rather than contending for one shared bucket. (User keys below key
           // on userId so a customer can't multiply their allowance.)
-          identity = wmKey ? hashKeySync(wmKey) : '';
+          identity = hashKeySync(enterpriseCredential);
         } else if (sessionUserId) {
           // Reuse the entitlement the #4611 gate above already resolved for this
           // same user key (undefined ⇒ the gate didn't run, e.g. a Clerk-session
@@ -1993,22 +2004,43 @@ export function createDomainGateway(
       const bodyStr = new TextDecoder().decode(bodyBytes);
       const noStoreReason = getRpcNoStoreReasonFromJson(bodyStr, { pathname });
 
-      if (mergedHeaders.get('X-No-Cache') || noStoreReason) {
+      const rpcName = pathname.split('/').pop() ?? '';
+      const envOverride = process.env[`CACHE_TIER_OVERRIDE_${rpcName.replace(/-/g, '_').toUpperCase()}`] as CacheTier | undefined;
+      const mapTier = RPC_CACHE_TIER[pathname];
+      // The route's own declared tier (an env override wins over the map for
+      // normal tiers). A route declared no-store is a hard freshness/privacy
+      // floor: the audience overwrite below must never upgrade it to a
+      // browser-cacheable tier for a credentialed caller — and a map-declared
+      // no-store (account-private company-monitoring reads, live feeds) is not
+      // even an env override may downgrade (#6771).
+      const declaredTier = (envOverride && envOverride in TIER_HEADERS ? envOverride : null) ?? mapTier;
+
+      if (mergedHeaders.get('X-No-Cache') || noStoreReason || declaredTier === 'no-store' || mapTier === 'no-store') {
         mergedHeaders.set('Cache-Control', 'no-store');
         mergedHeaders.delete('CDN-Cache-Control');
         mergedHeaders.delete('Vercel-CDN-Cache-Control');
         mergedHeaders.set('X-Cache-Tier', 'no-store');
         resolvedCacheTier = 'no-store';
       } else {
-        const rpcName = pathname.split('/').pop() ?? '';
-        const envOverride = process.env[`CACHE_TIER_OVERRIDE_${rpcName.replace(/-/g, '_').toUpperCase()}`] as CacheTier | undefined;
         const isPremium = PREMIUM_RPC_PATHS.has(pathname) || getRequiredTier(pathname) !== null;
         const hasCredentialedNonPublicGet = !isPublicNoAuthRpc && hasCredentialBearingHeader(request);
         const tier = hasProFreshCacheAccess ? 'live-browser' as CacheTier
           : isPremium || hasCredentialedNonPublicGet ? 'slow-browser' as CacheTier
-          : (envOverride && envOverride in TIER_HEADERS ? envOverride : null) ?? RPC_CACHE_TIER[pathname] ?? 'medium';
+          : declaredTier ?? 'medium';
         resolvedCacheTier = tier;
-        mergedHeaders.set('Cache-Control', TIER_HEADERS[tier]);
+        // A credentialed non-public response must never be stored by a shared
+        // cache, even at a browser tier — mark it private so only the caller's
+        // own browser retains it. Vary is Origin-only, so without this a shared
+        // proxy could serve one principal's body to another (#6771). Covers the
+        // standard credential headers and premium/internal-MCP callers (whose
+        // HMAC auth headers are not in hasCredentialBearingHeader but still
+        // carry per-principal bodies). (live-browser is already private;
+        // no-store handled above; anonymous public routes keep their CDN tier.)
+        const isPrivateResponse = hasCredentialedNonPublicGet || (isPremium && !isPublicNoAuthRpc);
+        const cacheControl = isPrivateResponse && !TIER_HEADERS[tier].includes('private')
+          ? `private, ${TIER_HEADERS[tier]}`
+          : TIER_HEADERS[tier];
+        mergedHeaders.set('Cache-Control', cacheControl);
         // Only allow Vercel CDN caching for trusted origins (worldmonitor.app, Vercel previews,
         // Tauri). No-origin server-side requests (external scrapers) must always reach the edge
         // function so the auth check in validateApiKey() can run. Without this guard, a cached

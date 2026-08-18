@@ -75,4 +75,20 @@ describe('thermal escalation model', () => {
     });
     assert.equal(empty.clusters.length, 0);
   });
+
+  it('does not page CWFIS prescribed burns as thermal emergencies', () => {
+    const nowMs = Date.UTC(2026, 7, 13, 12, 0, 0);
+    const prescribed = {
+      ...makeDetection('cwfis:prescribed:2026_PC_2026JA2', 52.8813, -118.1002, nowMs, {
+        region: 'Parks Canada',
+        frp: 999,
+        brightness: 400,
+      }),
+      kind: 'prescribed',
+      emergency: false,
+      source: 'cwfis',
+    };
+    const result = computeThermalEscalationWatch([prescribed], { cells: {} }, { nowMs });
+    assert.equal(result.watch.clusters.length, 0);
+  });
 });

@@ -3,20 +3,37 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import {
+  PROVIDER_IDENTITY_GROUPS,
+  PROVIDER_IDENTITY_REVIEW,
   buildManifest,
+  buildSourceAttributionStats,
   checkSourceAttribution,
   loadManifest,
   matchGeneratedAttributionSection,
   renderAttributionSection,
   runSourceAttribution,
   scanUpstreamHosts,
+  sourceAttributionLedgerStats,
   sourceAttributionStats,
+  validateSourceAttributionLedger,
   validateManifest,
+  validateProviderIdentityGroups,
+  providerIdentityDigest,
 } from '../scripts/source-attribution.mjs';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+// Deliberately independent of the production active-entry predicate. Keep this
+// oracle expressed only in raw manifest fields so a predicate mutation cannot
+// change both the implementation and the expected membership.
+function rawManifestActiveEntries(manifest) {
+  assert.ok(Array.isArray(manifest?.entries), 'the attribution manifest must contain an entries array');
+  return manifest.entries.filter(
+    (entry) => entry?.observed === true && (entry.status === 'reviewed' || entry.status === 'terms-review'),
+  );
+}
 
 /**
  * Build a throwaway checkout whose committed artifacts the generator itself
@@ -25,7 +42,7 @@ const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
  */
 function makeFixtureCheckout() {
   const dir = mkdtempSync(join(tmpdir(), 'source-attribution-'));
-  for (const root of ['scripts/shared', 'server', 'api', 'src', 'shared', 'docs']) {
+  for (const root of ['scripts', 'server', 'api', 'src', 'shared', 'docs']) {
     mkdirSync(join(dir, root), { recursive: true });
   }
   writeFileSync(
@@ -35,12 +52,10 @@ function makeFixtureCheckout() {
   const inventory = scanUpstreamHosts(dir);
   const manifest = buildManifest(inventory, { entries: [], logicalEntries: [] });
   const manifestPath = join(dir, 'shared/source-attribution-manifest.json');
-  const mirrorPath = join(dir, 'scripts/shared/source-attribution-manifest.json');
   const docsPath = join(dir, 'docs/source-attribution.mdx');
   const writeManifest = (value) => {
     const serialized = `${JSON.stringify(value, null, 2)}\n`;
     writeFileSync(manifestPath, serialized);
-    writeFileSync(mirrorPath, serialized);
   };
   const writeDocs = (value) => writeFileSync(
     docsPath,
@@ -52,7 +67,6 @@ function makeFixtureCheckout() {
     dir,
     manifest,
     manifestPath,
-    mirrorPath,
     docsPath,
     writeManifest,
     writeDocs,
@@ -63,7 +77,6 @@ function makeFixtureCheckout() {
 function readFixtureArtifacts(fixture) {
   return {
     manifest: readFileSync(fixture.manifestPath, 'utf8'),
-    mirror: readFileSync(fixture.mirrorPath, 'utf8'),
     docs: readFileSync(fixture.docsPath, 'utf8'),
   };
 }
@@ -77,6 +90,15 @@ test('source inventory has complete metadata and matches the generated catalog',
   const generated = renderAttributionSection(inventory, manifest);
   const actual = matchGeneratedAttributionSection(docs);
   assert.equal(actual, generated, 'docs/source-attribution.mdx must contain exactly the generated attribution section');
+  assert.match(generated, /\| Provider \| Observed surface \|/);
+  for (const forbidden of [
+    /\blicen[cs]\w*/i,
+    /\bterms-review\b/i,
+    /\bredistribut\w*/i,
+    /\bcommercial(?:-|\s+)use\b/i,
+  ]) {
+    assert.doesNotMatch(docs, forbidden, `public source attribution docs must omit ${forbidden}`);
+  }
 
   // Mintlify parses these pages as MDX v3, which rejects `<!--` with
   // "Unexpected character `!` (U+0021) before name" and fails the whole
@@ -94,13 +116,208 @@ test('source inventory has complete metadata and matches the generated catalog',
   }
 
   const stats = sourceAttributionStats(inventory, manifest);
-  // Merge resolution: main's totals plus this branch's two new hosts (USDA FAS
-  // PSD via api.fas.usda.gov, FAOSTAT via fenixservices.fao.org), so the merged
-  // totals are neither side's numbers. Recomputed from the merged manifest.
-  assert.equal(stats.activeHosts, 536);
-  assert.equal(stats.providerCount, 534);
-  assert.equal(stats.observedHosts, 655);
-  assert.ok(stats.reviewNeeded > 0, 'terms-review rows must remain visible until a license audit is complete');
+  const activeEntries = rawManifestActiveEntries(manifest);
+  const inventoryHosts = new Set(inventory.map((entry) => entry.host));
+  const observedManifestHosts = new Set(
+    manifest.entries.filter((entry) => entry.observed === true).map((entry) => entry.host),
+  );
+  assert.ok(activeEntries.length > 0, 'the active source oracle must not be empty');
+  assert.deepEqual(observedManifestHosts, inventoryHosts, 'raw manifest membership must match the source scan exactly');
+  assert.equal(stats.activeHosts, activeEntries.length, 'production stats must match the independent active-host oracle');
+  assert.equal(
+    stats.providerCount,
+    new Set(activeEntries.map((entry) => entry.provider)).size,
+    'production stats must match the independent provider oracle',
+  );
+  assert.equal(stats.observedHosts, inventory.length, 'observed stats must derive from the source scan');
+  assert.ok(stats.reviewNeeded > 0, 'the internal source-policy review backlog must remain tracked');
+
+  const byHost = new Map(manifest.entries.map((entry) => [entry.host, entry]));
+  assert.equal(byHost.get('auth.opensky-network.org')?.provider, 'opensky-network.org');
+  assert.equal(byHost.get('opensky-network.org')?.provider, 'opensky-network.org');
+  assert.equal(byHost.get('customer-api.wingbits.com')?.provider, 'wingbits.com');
+  assert.equal(byHost.get('ecs-api.wingbits.com')?.provider, 'wingbits.com');
+});
+
+test('Google News site feeds account for both the editorial host and Google News', () => {
+  const inventory = scanUpstreamHosts(rootDir);
+  const byHost = new Map(inventory.map((entry) => [entry.host, entry]));
+
+  const googleNews = byHost.get('news.google.com');
+  assert.ok(googleNews, 'Google News must remain an accounted transport host');
+
+  const lorientToday = byHost.get('lorientlejour.com');
+  assert.ok(lorientToday, "L'Orient Today must be accounted under lorientlejour.com");
+  assert.ok(
+    lorientToday.references.some((reference) => reference.path === 'src/config/feeds.ts'),
+    "L'Orient Today must retain its client feed reference",
+  );
+  assert.ok(
+    lorientToday.references.some((reference) => reference.path === 'server/worldmonitor/news/v1/_feeds.ts'),
+    "L'Orient Today must retain its server feed reference",
+  );
+
+  const annahar = byHost.get('annahar.com');
+  assert.ok(annahar, 'Annahar must be accounted under annahar.com');
+  assert.ok(
+    annahar.references.some((reference) => reference.path === 'src/config/feeds.ts'),
+    'Annahar must retain its client feed reference',
+  );
+  assert.ok(
+    annahar.references.some((reference) => reference.path === 'server/worldmonitor/news/v1/_feeds.ts'),
+    'Annahar must retain its server feed reference',
+  );
+
+  for (const [host, provider] of [
+    ['pap.pl', 'PAP'],
+    ['wyborcza.pl', 'Gazeta Wyborcza'],
+    ['polityka.pl', 'Polityka'],
+    ['wiadomosci.onet.pl', 'Onet'],
+    ['oko.press', 'OKO.press'],
+    ['tvp.info', 'TVP Info'],
+  ]) {
+    const entry = byHost.get(host);
+    assert.ok(entry, `${provider} must be accounted under ${host}`);
+    assert.ok(
+      entry.references.some((reference) => reference.path === 'src/config/feeds.ts'),
+      `${provider} must retain its client feed reference`,
+    );
+    assert.ok(
+      entry.references.some((reference) => reference.path === 'server/worldmonitor/news/v1/_feeds.ts'),
+      `${provider} must retain its server feed reference`,
+    );
+  }
+
+  const serverFeeds = readFileSync(
+    join(rootDir, 'server/worldmonitor/news/v1/_feeds.ts'),
+    'utf8',
+  );
+  const configuredPublisherHosts = new Set();
+  for (const rawLine of serverFeeds.split('\n')) {
+    const line = rawLine.trim();
+    if (line.startsWith('//') || !line.includes('site:')) continue;
+    for (const match of line.matchAll(/\bsite:([a-z0-9.-]+)/gi)) {
+      configuredPublisherHosts.add(match[1].toLowerCase());
+    }
+  }
+  const missingHosts = [...configuredPublisherHosts]
+    .filter((host) => !byHost.has(host))
+    .sort();
+  assert.deepEqual(
+    missingHosts,
+    [],
+    'every site-scoped publisher must be accounted under its own configured host',
+  );
+});
+
+test('provider identity groups declare complete reviewed multi-host membership', () => {
+  const manifest = loadManifest(rootDir);
+  assert.deepEqual(validateProviderIdentityGroups(manifest), []);
+  for (const [groupId, group] of Object.entries(PROVIDER_IDENTITY_GROUPS)) {
+    assert.ok(group.reason.trim(), `${groupId} must explain why its hosts are one provider`);
+    assert.match(group.reviewReference, /(?:PR|issue|review)\s+#?\d+/i, `${groupId} needs a review reference`);
+    const manifestHosts = manifest.entries
+      .filter((entry) => entry.provider === group.provider)
+      .map((entry) => entry.host)
+      .sort();
+    assert.deepEqual(manifestHosts, [...group.memberHosts].sort(), `${groupId} must declare every ledger host`);
+  }
+});
+
+test('provider collisions and incomplete identity groups fail closed', () => {
+  const collision = {
+    entries: ['a.example', 'b.example'].map((host) => ({
+      host,
+      provider: 'Accidentally Shared',
+      observed: true,
+      status: 'terms-review',
+    })),
+  };
+  assert.ok(
+    validateProviderIdentityGroups(collision).some((error) => error.includes('undeclared identity collision')),
+    'a shared provider label must not silently collapse two hosts',
+  );
+
+  const groups = {
+    shared: {
+      provider: 'Declared Shared',
+      memberHosts: ['a.example', 'b.example'],
+      reason: 'Reviewed shared service identity.',
+      reviewReference: 'PR #1',
+    },
+  };
+  const overrides = {
+    'a.example': { provider: 'Declared Shared', identityGroup: 'shared' },
+    'b.example': { provider: 'Declared Shared', identityGroup: 'shared' },
+  };
+  const incomplete = {
+    entries: [{ host: 'a.example', provider: 'Declared Shared', observed: true, status: 'reviewed' }],
+  };
+  assert.ok(
+    validateProviderIdentityGroups(incomplete, groups, overrides)
+      .some((error) => error.includes('manifest membership') && error.includes('b.example')),
+    'a declared group must preserve its complete host set',
+  );
+
+  assert.ok(
+    validateProviderIdentityGroups({ entries: [] }, groups, overrides)
+      .some((error) => error.includes('manifest membership') && error.includes('(empty)')),
+    'deleting an entire declared group must require an explicit group retirement review',
+  );
+});
+
+test('single-host provider identity changes require a reviewed lifecycle epoch', () => {
+  const overrides = {
+    'single.example': { provider: 'Original Provider' },
+  };
+  const review = {
+    sha256: providerIdentityDigest(overrides),
+    reason: 'Fixture baseline.',
+    reviewReference: 'PR #1',
+  };
+  assert.deepEqual(validateProviderIdentityGroups({ entries: [] }, {}, overrides, review), []);
+  overrides['single.example'].provider = 'Renamed Provider';
+  assert.ok(
+    validateProviderIdentityGroups({ entries: [] }, {}, overrides, review)
+      .some((error) => error.includes('without a reviewed lifecycle epoch')),
+    'a single-host provider rename must update the explicit identity review epoch',
+  );
+
+  const manifest = loadManifest(rootDir);
+  const directRename = structuredClone(manifest);
+  const defaultNamedEntry = directRename.entries.find(
+    (entry) => entry.observed && entry.status !== 'excluded' && entry.provider === entry.host,
+  );
+  assert.ok(defaultNamedEntry, 'the direct-rename mutation needs a default-named provider');
+  defaultNamedEntry.provider = 'Silently Renamed Provider';
+  assert.ok(
+    validateManifest(scanUpstreamHosts(rootDir), directRename)
+      .some((error) => error.includes('must be declared in PROVIDER_OVERRIDES')),
+    'a direct single-host manifest rename must declare an explicit reviewed identity override',
+  );
+  assert.match(PROVIDER_IDENTITY_REVIEW.reviewReference, /(?:PR|issue|review)\s+#?\d+/i);
+});
+
+test('the independent raw-manifest oracle catches an active-predicate mutation', async () => {
+  const sourcePath = join(rootDir, 'scripts/source-attribution.mjs');
+  const source = readFileSync(sourcePath, 'utf8');
+  const originalPredicate = "return entry?.observed === true && CREDIT_BEARING_STATUSES.has(entry.status);";
+  assert.equal(source.split(originalPredicate).length - 1, 1, 'mutation target must identify the canonical predicate once');
+  const mutantDir = mkdtempSync(join(tmpdir(), 'source-attribution-mutant-'));
+  const mutantPath = join(mutantDir, 'source-attribution-mutant.mjs');
+  try {
+    writeFileSync(
+      mutantPath,
+      source.replace(originalPredicate, "return entry?.observed === true && entry.status === 'excluded';"),
+    );
+    const mutant = await import(`${pathToFileURL(mutantPath).href}?test=${Date.now()}`);
+    const manifest = loadManifest(rootDir);
+    const expectedHosts = rawManifestActiveEntries(manifest).map((entry) => entry.host).sort();
+    const mutantHosts = mutant.activeSourceAttributionEntries(manifest).map((entry) => entry.host).sort();
+    assert.notDeepEqual(mutantHosts, expectedHosts, 'the independent oracle must reject a mutated active predicate');
+  } finally {
+    rmSync(mutantDir, { recursive: true, force: true });
+  }
 });
 
 test('the issue audit providers are represented by named attribution rows', () => {
@@ -142,6 +359,17 @@ test('the issue audit providers are represented by named attribution rows', () =
   ]) {
     assert.ok(names.has(provider), `missing named provider row: ${provider}`);
   }
+});
+
+test('City of Toronto CART host stays terms-review while CKAN licence_id is notspecified', () => {
+  const inventory = scanUpstreamHosts(rootDir);
+  const manifest = loadManifest(rootDir);
+  const observed = inventory.find((entry) => entry.host === 'secure.toronto.ca');
+  assert.ok(observed, 'secure.toronto.ca must be observed from the Toronto seeder/adapter');
+  const entry = [...manifest.entries, ...manifest.logicalEntries].find((row) => row.host === 'secure.toronto.ca');
+  assert.ok(entry, 'secure.toronto.ca must have a generated attribution row');
+  assert.equal(entry.status, 'terms-review');
+  assert.equal(entry.provider, 'City of Toronto Open Data');
 });
 
 test('uppercase URL constants are included in the upstream inventory', () => {
@@ -230,6 +458,92 @@ test('manifest and scanner references record a path only', () => {
       assert.deepEqual(Object.keys(reference), ['path'], `scanner emitted ${JSON.stringify(reference)}`);
     }
   }
+});
+
+test('scanUpstreamHosts does not crash on empty leftover api/[domain]/v1 trees', () => {
+  const fixture = makeFixtureCheckout();
+  try {
+    mkdirSync(join(fixture.dir, 'api', '[__docs_stats_probe__]', 'v1'), { recursive: true });
+    assert.doesNotThrow(() => scanUpstreamHosts(fixture.dir));
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('ledger stats match validated stats when the committed manifest is current', () => {
+  const inventory = scanUpstreamHosts(rootDir);
+  const manifest = loadManifest(rootDir);
+  const validated = sourceAttributionStats(inventory, manifest);
+  const ledger = sourceAttributionLedgerStats(manifest, { observedHosts: inventory.length });
+  assert.deepEqual(ledger, validated);
+  assert.deepEqual(buildSourceAttributionStats({ rootDir, validate: false }), sourceAttributionLedgerStats(manifest));
+});
+
+test('ledger stats remain countable when scan-parity validation would fail', () => {
+  const stale = {
+    entries: [{
+      host: 'stale.example',
+      provider: 'stale.example',
+      license: 'Provider terms',
+      attribution: 'Credit stale.example.',
+      observed: true,
+      kind: 'structured',
+      status: 'terms-review',
+      references: [{ path: 'scripts/removed-seed.mjs' }],
+    }],
+    logicalEntries: [],
+  };
+  assert.throws(
+    () => sourceAttributionStats([], stale),
+    /invalid manifest/,
+  );
+  const ledger = sourceAttributionLedgerStats(stale);
+  assert.equal(ledger.activeHosts, 1);
+  assert.equal(ledger.providerCount, 1);
+  assert.equal(ledger.structuredHosts, 1);
+  assert.equal(ledger.observedHosts, 1);
+});
+
+test('ledger stats reject intrinsic manifest failures before counting', () => {
+  const malformed = {
+    entries: [
+      {
+        host: 'invalid.example',
+        provider: '',
+        license: '',
+        attribution: '',
+        observed: true,
+        kind: 'not-a-source-kind',
+        status: 'reviewed',
+        references: [{ path: 'scripts/invalid.mjs' }],
+      },
+      {
+        host: 'invalid.example',
+        provider: 'invalid.example',
+        license: 'Provider terms',
+        attribution: 'Credit invalid.example.',
+        observed: true,
+        kind: 'structured',
+        status: 'reviewed',
+        references: [{ path: 'scripts/duplicate.mjs' }],
+      },
+    ],
+    logicalEntries: [{
+      host: 'candidate.example',
+      provider: 'Candidate',
+      license: '',
+      attribution: '',
+      observed: false,
+      kind: 'candidate',
+      status: 'excluded',
+    }],
+  };
+  const errors = validateSourceAttributionLedger(malformed);
+  assert.ok(errors.some((error) => error.includes('invalid manifest kind')));
+  assert.ok(errors.some((error) => error.includes('incomplete attribution metadata')));
+  assert.ok(errors.some((error) => error.includes('duplicate manifest entry')));
+  assert.ok(errors.some((error) => error.includes('incomplete logical attribution metadata')));
+  assert.throws(() => sourceAttributionLedgerStats(malformed), /invalid manifest/);
 });
 
 test('the committed manifest is a fixpoint of its own generator', () => {
@@ -430,7 +744,7 @@ test('the CLI refuses malformed, unpaired, or still-observed retirement requests
   }
 });
 
-test('the CLI explicitly retires a missing fixture host and updates every artifact', () => {
+test('the CLI explicitly retires a missing fixture host and updates canonical artifacts', () => {
   const fixture = makeFixtureCheckout();
   try {
     writeFileSync(join(fixture.dir, 'scripts/seed-fixture.mjs'), 'export const removed = true;\n');
@@ -451,7 +765,6 @@ test('the CLI explicitly retires a missing fixture host and updates every artifa
 
     const after = readFixtureArtifacts(fixture);
     assert.notEqual(after.manifest, before.manifest);
-    assert.equal(after.mirror, after.manifest, 'the scripts/shared mirror must match the retired manifest');
     assert.notEqual(after.docs, before.docs);
     const retired = JSON.parse(after.manifest).entries.find((entry) => entry.host === 'fixture.example');
     assert.equal(retired.observed, false);
@@ -545,7 +858,7 @@ test('a retired row stops claiming a source path it is no longer found in', () =
   const rebuilt = buildManifest([], {
     entries: [{
       host: 'gone.example',
-      provider: 'Gone',
+      provider: 'gone.example',
       license: 'Terms review',
       attribution: 'Credit Gone.',
       observed: true,
@@ -647,7 +960,7 @@ test('a truncated reference list says how much it is hiding', () => {
     {
       entries: [{
         host: 'many.example',
-        provider: 'Many',
+        provider: 'many.example',
         license: 'Terms review',
         attribution: 'Credit Many.',
         observed: true,
@@ -690,7 +1003,7 @@ test('the check gate passes on a checkout the generator just wrote', () => {
   try {
     const { errors, stats } = checkSourceAttribution(fixture.dir);
     assert.deepEqual(errors, []);
-    assert.equal(stats.activeHosts, 1, 'the fixture must contain a host, or every red case below is vacuous');
+    assert.ok(stats.activeHosts > 0, 'the fixture must contain a host, or every red case below is vacuous');
   } finally {
     fixture.cleanup();
   }
@@ -718,11 +1031,6 @@ test('the check gate goes red on manifest, docs, and logical-entry drift', () =>
       const docsPath = join(f.dir, 'docs/source-attribution.mdx');
       writeFileSync(docsPath, readFileSync(docsPath, 'utf8').replace('fixture.example', 'fixture.tampered'));
     }, /source-attribution\.mdx is out of date/],
-    ['a desynced scripts/shared mirror', (f) => {
-      const drifted = structuredClone(f.manifest);
-      drifted.entries[0].provider = 'Renamed In The Mirror Only';
-      writeFileSync(f.mirrorPath, `${JSON.stringify(drifted, null, 2)}\n`);
-    }, /scripts\/shared\/source-attribution-manifest\.json is out of sync/],
     ['a missing manifest', (f) => rmSync(f.manifestPath), /source-attribution-manifest\.json is missing/],
   ]) {
     const fixture = makeFixtureCheckout();

@@ -19,7 +19,7 @@ Country risk has two time horizons, and conflating them is the most common analy
 
 **The fast clock: Country Instability Index (CII).** A 0–100 score, recomputed continuously, that blends a country's structural baseline (40%) with live event pressure (60%): unrest, conflict, security activity, and information signals. A score of 35 is normal background noise; 70 means active crisis. The five bands (Low, Normal, Elevated, High, Critical) and a signed 24-hour delta tell you both where a country sits and which direction it is moving. The [full methodology is public](/blog/posts/country-instability-index-methodology-explained/), which matters: a score you cannot decompose is a score you cannot defend in front of a board.
 
-**The slow clock: Country Resilience Index.** Computed for 196 countries across 72 indicators, 21 active dimensions, and 6 domains, and refreshed every six hours, this measures structural capacity: energy, infrastructure, health systems, governance, economic buffers. It answers a different question: when a shock hits, does this country absorb it or shatter?
+**The slow clock: Country Resilience Index.** Computed for the public rankable country universe across 72 indicators, 21 active dimensions, and 6 domains, and refreshed every six hours, this measures structural capacity: energy, infrastructure, health systems, governance, economic buffers. It answers a different question: when a shock hits, does this country absorb it or shatter?
 
 Read the two together and you get four meaningful quadrants:
 
@@ -79,6 +79,8 @@ Total setup time: about half an hour. Annual cost: less than one hour of the con
 
 Use the workflow to prioritize deeper checks in authoritative datasets, including [World Bank Data](https://data.worldbank.org/) and the [US Treasury sanctions programs and country information](https://ofac.treasury.gov/sanctions-programs-and-country-information). Preserve the source timestamp and distinguish observed facts from analyst inference.
 
+For the evergreen task page that keeps this procedure durable and product-handoff oriented, see [Monitor country risk](/use-cases/monitor-country-risk/). Live country evidence remains on [/countries/](/countries/).
+
 ## Frequently Asked Questions
 
 **What is the difference between country risk and country instability?**
@@ -87,7 +89,7 @@ Instability (CII) measures short-horizon stress: what is happening now and this 
 
 **How many countries does World Monitor score?**
 
-The Country Instability Index covers 31 Tier-1 countries with full real-time signal fusion; resilience scores cover 196 countries. Country briefs, conflict events, advisories, and news signals are global.
+The Country Instability Index covers its Tier-1 country registry with full real-time signal fusion; resilience scores cover the public rankable country universe. Country briefs, conflict events, advisories, and news signals are global.
 
 **Can I export the scores into my own risk model?**
 

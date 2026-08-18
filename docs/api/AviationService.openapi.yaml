@@ -2484,7 +2484,6 @@ components:
                     type: string
                     enum:
                         - POSITION_SOURCE_UNSPECIFIED
-                        - POSITION_SOURCE_OPENSKY
                         - POSITION_SOURCE_WINGBITS
                         - POSITION_SOURCE_SIMULATED
                     description: PositionSource identifies the provider of aircraft position data.

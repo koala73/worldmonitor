@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "capturedDate": "2026-08-17",
+  "source": "railway-production-log",
+  "service": "seed-bundle-resilience",
+  "deploymentId": "0b181beb-20aa-498c-94be-088a344fe493",
+  "deploymentCommit": "8b2bc625a43343d7f09cb12650212fef6dc378ed",
+  "observedAt": "2026-08-17T12:01:20.763434708Z",
+  "seedComplete": {
+    "event": "seed_complete",
+    "domain": "resilience:static",
+    "recordCount": 196,
+    "durationMs": 2607,
+    "timestamp": "2026-08-17T12:01:20.760Z",
+    "skipped": false,
+    "seedYear": 2026,
+    "failedDatasets": []
+  },
+  "bundleRunner": {
+    "doneSeconds": 2.7,
+    "status": "OK",
+    "durationMs": 2607,
+    "records": 196
+  }
+}

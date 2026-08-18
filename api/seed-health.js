@@ -101,6 +101,13 @@ const SEED_DOMAINS = {
   // Aligned with health.js SEED_META (intervalMin = maxStaleMin / 2)
   'market:stocks':            { key: 'seed-meta:market:stocks',            intervalMin: 15 },
   'market:commodities':       { key: 'seed-meta:market:commodities',       intervalMin: 15 },
+  // Daily SGE prints; intervalMin*2 matches api/health.js's 72h run budget.
+  'market:physical-premium':  {
+    key: 'seed-meta:market:physical-premium',
+    intervalMin: 2160,
+    minRecordCount: 2,
+    activationKey: 'seed-activated:market:physical-premium',
+  },
   'market:gold-extended':     { key: 'seed-meta:market:gold-extended',     intervalMin: 15 },
   'market:gold-etf-flows':    { key: 'seed-meta:market:gold-etf-flows',    intervalMin: 1440 },
   // maxStaleMin in health.js is 44640 (~31 days; IMF IFS is monthly w/ 2-3mo lag).
@@ -126,6 +133,8 @@ const SEED_DOMAINS = {
   'conflict:ucdp-events':     { key: 'seed-meta:conflict:ucdp-events',     intervalMin: 210 },
   'conflict:acled-intel':     { key: 'seed-meta:conflict:acled-intel',     intervalMin: 19 },
   'weather:alerts':           { key: 'seed-meta:weather:alerts',           intervalMin: 15 },
+  // Hyphen: runSeed('transit', 'ttc-alerts') writes seed-meta:transit:ttc-alerts.
+  'transit:ttc:alerts':       { key: 'seed-meta:transit:ttc-alerts',       intervalMin: 15 },
   'economic:spending':        { key: 'seed-meta:economic:spending',        intervalMin: 60 },
   'intelligence:gpsjam':      { key: 'seed-meta:intelligence:gpsjam',      intervalMin: 720 }, // 720 × 2 = 1440min (24h) staleness; matches api/health.js gpsjam.maxStaleMin. Widened from 360 (12h) on 2026-04-29 alongside Wingbits API quota incident — see PR #3494 + the seeder graceful-failure path at scripts/fetch-gpsjam.mjs:258-262.
   'intelligence:satellites':  { key: 'seed-meta:intelligence:satellites',  intervalMin: 90 },
@@ -170,6 +179,8 @@ const SEED_DOMAINS = {
   'economic:bis-property-residential': { key: 'seed-meta:economic:bis-property-residential', intervalMin: 720 }, // 12h cron; only written when SPP slice fetched fresh entries
   'economic:bis-property-commercial':  { key: 'seed-meta:economic:bis-property-commercial',  intervalMin: 720 }, // 12h cron; only written when CPP slice fetched fresh entries
   'economic:cbr-rates':                { key: 'seed-meta:economic:cbr-rates',                intervalMin: 1440, minRecordCount: 31 }, // daily cron (seed-bundle-macro); api/health.js maxStaleMin 4320 = 3x. minRecordCount mirrors MIN_RATE_COUNT (30) + the key rate.
+  'economic:boc-valet':                { key: 'seed-meta:economic:boc-valet',                intervalMin: 1440, minRecordCount: 19 }, // daily cron (seed-bundle-macro); api/health.js maxStaleMin 4320 = 3x. minRecordCount = 15 FX + policy + 3 yields.
+  'economic:statcan-wds':              { key: 'seed-meta:economic:statcan-wds',              intervalMin: 1440, minRecordCount: 2 }, // daily cron; floor is CPI YoY + LFS unemployment. Empty change-list is valid quiet.
   'research:tech-events':    { key: 'seed-meta:research:tech-events',     intervalMin: 240 },
   'research:arxiv-hn-trending': { key: 'seed-meta:research:arxiv-hn-trending', intervalMin: 75 },
   'intelligence:gdelt-intel': { key: 'seed-meta:intelligence:gdelt-intel', intervalMin: 23 }, // 15min materializer cron (#5863); intervalMin = maxStaleMin / 2 (45 / 2), matching api/health.js — was 210 against the retired 4h DOC cron.
@@ -191,6 +202,7 @@ const SEED_DOMAINS = {
   'economic:bigmac':          { key: 'seed-meta:economic:bigmac',          intervalMin: 5040 }, // weekly seed; intervalMin = maxStaleMin / 2
   'resilience:static':        { key: 'seed-meta:resilience:static',        intervalMin: 288000 }, // annual October snapshot; intervalMin = health.js maxStaleMin / 2 (400d alert threshold)
   'resilience:food-stocks':   { key: 'seed-meta:resilience:food-stocks',   intervalMin: 43200 }, // monthly WASDE; intervalMin = health.js maxStaleMin / 2 (86400 / 2)
+  'demographics:capability':  { key: 'seed-meta:demographics:capability', intervalMin: 18000, minRecordCount: 150 }, // static-ref every 20d; 25d /api/health budget expressed as intervalMin * 2.
   'resilience:education-attainment': {
     key: 'seed-meta:resilience:education-attainment',
     intervalMin: 5760, // 11520min /api/health budget expressed as intervalMin * 2.
@@ -235,7 +247,7 @@ const SEED_DOMAINS = {
     key: 'seed-meta:supply_chain:portwatch-ports',
     intervalMin: 720,
     minRecordCount: 174,
-    requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 2 * 72 * 60 },
+    requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 10 * 24 * 60 },
     contentFreshnessActivationKey: PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
   }, // 12h cron (0 */12 * * *); intervalMin = maxStaleMin / 3 (2160 / 3); #3613 requires 174-country coverage before OK.
   'energy:chokepoint-flows': { key: 'seed-meta:energy:chokepoint-flows', intervalMin: 360 }, // 6h relay loop; intervalMin = maxStaleMin / 2 (720 / 2)
@@ -280,6 +292,7 @@ const SEED_DOMAINS = {
     intervalMin: 360,
     activationKey: 'seed-activated:intel-history:energy:intelligence',
   },
+  'transit:viarail-live': { key: 'seed-meta:transit:viarail-live', intervalMin: 15 }, // 15min cron; intervalMin*3 = health.js maxStaleMin 45
 };
 
 // Iran-events sunset (war ended 2026-07); mirrors api/health.js. Default OFF:

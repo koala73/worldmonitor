@@ -63,6 +63,39 @@ export interface CommodityQuote {
   sparkline: number[];
 }
 
+export interface GetPhysicalPremiumsRequest {
+  metals: string[];
+}
+
+export interface GetPhysicalPremiumsResponse {
+  premiums: PhysicalPremium[];
+  fx?: FxSnapshot;
+}
+
+export interface PhysicalPremium {
+  metal: string;
+  physical?: BenchmarkLeg;
+  paper?: BenchmarkLeg;
+  premiumUsdPerOz: number;
+  premiumPct: number;
+  computedAt: string;
+}
+
+export interface BenchmarkLeg {
+  price: number;
+  currency: string;
+  unit: string;
+  source: string;
+  asOf: string;
+}
+
+export interface FxSnapshot {
+  pair: string;
+  rate: number;
+  source: string;
+  asOf: string;
+}
+
 export interface GetSectorSummaryRequest {
   period: string;
 }
@@ -270,6 +303,9 @@ export interface StockAnalysisHeadline {
   source: string;
   link: string;
   publishedAt: number;
+  marketSessionAtPublish: string;
+  alignedTradingDate: string;
+  alignmentRule: HeadlineAlignmentRule;
 }
 
 export interface AnalystConsensus {
@@ -702,6 +738,8 @@ export interface HyperliquidAssetFlow {
   alerts: string[];
 }
 
+export type HeadlineAlignmentRule = "HEADLINE_ALIGNMENT_RULE_UNSPECIFIED" | "HEADLINE_ALIGNMENT_RULE_REGULAR_SESSION_SAME_TRADING_DAY" | "HEADLINE_ALIGNMENT_RULE_PREMARKET_SAME_TRADING_DAY" | "HEADLINE_ALIGNMENT_RULE_AFTER_HOURS_NEXT_TRADING_DAY" | "HEADLINE_ALIGNMENT_RULE_NON_SESSION_NEXT_TRADING_DAY" | "HEADLINE_ALIGNMENT_RULE_OVERNIGHT_SAME_TRADING_DAY";
+
 export type MarketQuoteUnavailableReason = "MARKET_QUOTE_UNAVAILABLE_REASON_UNSPECIFIED" | "MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_ERROR" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_RATE_LIMITED" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_NOT_CONFIGURED" | "MARKET_QUOTE_UNAVAILABLE_REASON_REQUEST_LIMIT_EXCEEDED" | "MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED" | "MARKET_QUOTE_UNAVAILABLE_REASON_SEED_UNAVAILABLE";
 
 export interface FieldViolation {
@@ -825,6 +863,31 @@ export class MarketServiceClient {
     }
 
     return await resp.json() as ListCommodityQuotesResponse;
+  }
+
+  async getPhysicalPremiums(req: GetPhysicalPremiumsRequest, options?: MarketServiceCallOptions): Promise<GetPhysicalPremiumsResponse> {
+    let path = "/api/market/v1/get-physical-premiums";
+    const params = new URLSearchParams();
+    if (req.metals && req.metals.length > 0) req.metals.forEach(v => params.append("metals", v));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetPhysicalPremiumsResponse;
   }
 
   async getSectorSummary(req: GetSectorSummaryRequest, options?: MarketServiceCallOptions): Promise<GetSectorSummaryResponse> {

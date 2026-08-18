@@ -1,4 +1,4 @@
-import { LANGUAGES, getCurrentLanguage, changeLanguage, t } from '@/services/i18n';
+import { LANGUAGES, getCurrentLanguageTag, changeLanguage, t } from '@/services/i18n';
 import { getAiFlowSettings, setAiFlowSetting, getStreamQuality, setStreamQuality, STREAM_QUALITY_OPTIONS } from '@/services/ai-flow-settings';
 import { getMapProvider, setMapProvider, MAP_PROVIDER_OPTIONS, MAP_THEME_OPTIONS, getMapTheme, setMapTheme, type MapProvider } from '@/config/basemap';
 import { getLiveStreamsAlwaysOn, setLiveStreamsAlwaysOn } from '@/services/live-stream-settings';
@@ -59,14 +59,16 @@ function toggleRowHtml(
   checked: boolean,
   disabled = false,
 ): string {
+  // The visible text lives outside the wrapping <label>, so the checkbox
+  // needs an explicit aria-labelledby/-describedby to have an accessible name.
   return `
     <div class="ai-flow-toggle-row${disabled ? ' is-disabled' : ''}">
       <div class="ai-flow-toggle-label-wrap">
-        <div class="ai-flow-toggle-label">${label}</div>
-        <div class="ai-flow-toggle-desc">${desc}</div>
+        <div class="ai-flow-toggle-label" id="${id}-label">${label}</div>
+        <div class="ai-flow-toggle-desc" id="${id}-desc">${desc}</div>
       </div>
       <label class="ai-flow-switch${disabled ? ' is-disabled' : ''}">
-        <input type="checkbox" id="${id}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>
+        <input type="checkbox" id="${id}" aria-labelledby="${id}-label" aria-describedby="${id}-desc"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>
         <span class="ai-flow-slider"></span>
       </label>
     </div>
@@ -120,7 +122,9 @@ function updateAiStatus(container: HTMLElement): void {
 
 export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const settings = getAiFlowSettings();
-  const currentLang = getCurrentLanguage();
+  // Compared against LANGUAGES[].code below, which carries full tags (`zh-TW`).
+  // The region-stripped accessor would mark 简体中文 selected for a Traditional reader.
+  const currentLang = getCurrentLanguageTag();
   let html = '';
 
   // ── Display group ──
@@ -132,11 +136,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const currentThemePref = getThemePreference();
   html += `<div class="ai-flow-toggle-row">
     <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('preferences.theme')}</div>
+      <div class="ai-flow-toggle-label" id="us-theme-label">${t('preferences.theme')}</div>
       <div class="ai-flow-toggle-desc">${t('preferences.themeDesc')}</div>
     </div>
   </div>`;
-  html += `<select class="unified-settings-select" id="us-theme">`;
+  html += `<select class="unified-settings-select" id="us-theme" aria-labelledby="us-theme-label">`;
   for (const opt of [
     { value: 'auto', label: t('preferences.themeAuto') },
     { value: 'dark', label: t('preferences.themeDark') },
@@ -151,11 +155,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const currentFont = getFontFamily();
   html += `<div class="ai-flow-toggle-row">
     <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('preferences.fontFamily')}</div>
+      <div class="ai-flow-toggle-label" id="us-font-family-label">${t('preferences.fontFamily')}</div>
       <div class="ai-flow-toggle-desc">${t('preferences.fontFamilyDesc')}</div>
     </div>
   </div>`;
-  html += `<select class="unified-settings-select" id="us-font-family">`;
+  html += `<select class="unified-settings-select" id="us-font-family" aria-labelledby="us-font-family-label">`;
   for (const opt of [
     { value: 'mono', label: t('preferences.fontMono') },
     { value: 'system', label: t('preferences.fontSystem') },
@@ -170,11 +174,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const currentFontScale = getFontScale();
   html += `<div class="ai-flow-toggle-row">
     <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('preferences.fontScale', { defaultValue: 'Panel text size' })}</div>
+      <div class="ai-flow-toggle-label" id="us-font-scale-label">${t('preferences.fontScale', { defaultValue: 'Panel text size' })}</div>
       <div class="ai-flow-toggle-desc">${t('preferences.fontScaleDesc', { defaultValue: 'Sets panel text globally. A panel-specific value replaces this setting.' })}</div>
     </div>
   </div>`;
-  html += `<select class="unified-settings-select" id="us-font-scale">`;
+  html += `<select class="unified-settings-select" id="us-font-scale" aria-labelledby="us-font-scale-label">`;
   for (const scale of FONT_SCALE_STEPS) {
     const selected = scale === currentFontScale ? ' selected' : '';
     html += `<option value="${scale}"${selected}>${fontScaleLabel(scale)}</option>`;
@@ -185,11 +189,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const currentProvider = getMapProvider();
   html += `<div class="ai-flow-toggle-row">
     <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('preferences.mapProvider')}</div>
+      <div class="ai-flow-toggle-label" id="us-map-provider-label">${t('preferences.mapProvider')}</div>
       <div class="ai-flow-toggle-desc">${t('preferences.mapProviderDesc')}</div>
     </div>
   </div>`;
-  html += `<select class="unified-settings-select" id="us-map-provider">`;
+  html += `<select class="unified-settings-select" id="us-map-provider" aria-labelledby="us-map-provider-label">`;
   for (const opt of MAP_PROVIDER_OPTIONS) {
     const selected = opt.value === currentProvider ? ' selected' : '';
     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
@@ -200,11 +204,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const currentMapTheme = getMapTheme(currentProvider);
   html += `<div class="ai-flow-toggle-row">
     <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('preferences.mapTheme')}</div>
+      <div class="ai-flow-toggle-label" id="us-map-theme-label">${t('preferences.mapTheme')}</div>
       <div class="ai-flow-toggle-desc">${t('preferences.mapThemeDesc')}</div>
     </div>
   </div>`;
-  html += `<select class="unified-settings-select" id="us-map-theme">`;
+  html += `<select class="unified-settings-select" id="us-map-theme" aria-labelledby="us-map-theme-label">`;
   for (const opt of MAP_THEME_OPTIONS[currentProvider]) {
     const selected = opt.value === currentMapTheme ? ' selected' : '';
     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
@@ -217,11 +221,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const currentPreset = getGlobeVisualPreset();
   html += `<div class="ai-flow-toggle-row">
     <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('preferences.globePreset')}</div>
+      <div class="ai-flow-toggle-label" id="us-globe-visual-preset-label">${t('preferences.globePreset')}</div>
       <div class="ai-flow-toggle-desc">${t('preferences.globePresetDesc')}</div>
     </div>
   </div>`;
-  html += `<select class="unified-settings-select" id="us-globe-visual-preset">`;
+  html += `<select class="unified-settings-select" id="us-globe-visual-preset" aria-labelledby="us-globe-visual-preset-label">`;
   for (const opt of GLOBE_VISUAL_PRESET_OPTIONS) {
     const selected = opt.value === currentPreset ? ' selected' : '';
     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;
@@ -229,8 +233,8 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   html += `</select>`;
 
   // Language
-  html += `<div class="ai-flow-section-label">${t('header.languageLabel')}</div>`;
-  html += `<select class="unified-settings-lang-select" id="us-language">`;
+  html += `<div class="ai-flow-section-label" id="us-language-label">${t('header.languageLabel')}</div>`;
+  html += `<select class="unified-settings-lang-select" id="us-language" aria-labelledby="us-language-label">`;
   for (const lang of LANGUAGES) {
     const selected = lang.code === currentLang ? ' selected' : '';
     html += `<option value="${lang.code}"${selected}>${lang.flag} ${escapeHtml(lang.label)}</option>`;
@@ -354,11 +358,11 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   const currentQuality = getStreamQuality();
   html += `<div class="ai-flow-toggle-row">
     <div class="ai-flow-toggle-label-wrap">
-      <div class="ai-flow-toggle-label">${t('components.insights.streamQualityLabel')}</div>
+      <div class="ai-flow-toggle-label" id="us-stream-quality-label">${t('components.insights.streamQualityLabel')}</div>
       <div class="ai-flow-toggle-desc">${t('components.insights.streamQualityDesc')}</div>
     </div>
   </div>`;
-  html += `<select class="unified-settings-select" id="us-stream-quality">`;
+  html += `<select class="unified-settings-select" id="us-stream-quality" aria-labelledby="us-stream-quality-label">`;
   for (const opt of STREAM_QUALITY_OPTIONS) {
     const selected = opt.value === currentQuality ? ' selected' : '';
     html += `<option value="${opt.value}"${selected}>${escapeHtml(opt.label)}</option>`;

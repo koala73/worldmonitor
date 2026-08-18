@@ -42,7 +42,7 @@ import {
   onEntitlementVerificationChange,
 } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { getSubscription, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import { getSubscription, isSubscriptionLoaded, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { BusinessSeatsSection } from '@/components/BusinessSeatsSection';
 import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
@@ -53,6 +53,7 @@ import {
   type ApiPlanLimitNotice,
 } from '@/services/api-plan-limit-notices';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   overlayHistory,
   type OverlayCloseOrigin,
@@ -110,6 +111,7 @@ type AccountRequest = { userId: string; generation: number };
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
+  private focusTrap: FocusTrap;
   private config: UnifiedSettingsConfig;
   private activeTab: TabId = 'settings';
   private activeSourceRegion = 'all';
@@ -165,7 +167,9 @@ export class UnifiedSettings {
     this.overlay.className = 'modal-overlay';
     this.overlay.id = 'unifiedSettingsModal';
     this.overlay.setAttribute('role', 'dialog');
+    this.overlay.setAttribute('aria-modal', 'true');
     this.overlay.setAttribute('aria-label', t('header.settings'));
+    this.focusTrap = createFocusTrap(this.overlay);
     this.businessSeatsSection = new BusinessSeatsSection(this.overlay);
 
     this.resetPanelDraft();
@@ -521,6 +525,7 @@ export class UnifiedSettings {
     }
     this.render();
     this.overlay.classList.add('active');
+    this.focusTrap.activate();
     if (isMobileDevice()) {
       this.historyRegistered = true;
       const close = (origin: OverlayCloseOrigin) => this.close(origin);
@@ -628,6 +633,7 @@ export class UnifiedSettings {
     }
     this.historyRegistered = false;
     this.overlay.classList.remove('active');
+    this.focusTrap.deactivate();
     this.prefsCleanup?.();
     this.prefsCleanup = null;
     this.notifCleanup?.();
@@ -705,6 +711,9 @@ export class UnifiedSettings {
     this.unsubscribeAuth = null;
     this.stopMcpQuotaPolling();
     document.removeEventListener('keydown', this.escapeHandler);
+    // Teardown, not a user-initiated close: release the trap's document
+    // listener without handing focus back to a trigger that is also going away.
+    this.focusTrap.deactivate({ restoreFocus: false });
     this.overlay.remove();
   }
 
@@ -733,7 +742,7 @@ export class UnifiedSettings {
     this.notifCleanup = null;
     this.pendingNotifs = null;
 
-    const isSignedIn = !this.config.isDesktopApp && (getAuthState().user !== null);
+    const isSignedIn = getAuthState().user !== null;
     const prefs = renderPreferences({
       isDesktopApp: this.config.isDesktopApp,
       onMapProviderChange: this.config.onMapProviderChange,
@@ -789,7 +798,7 @@ export class UnifiedSettings {
             <div class="unified-settings-region-bar" id="usPanelCatBar"></div>
           </div>
           <div class="panels-search">
-            <input type="text" placeholder="${t('header.filterPanels')}" value="${escapeHtml(this.panelFilter)}" />
+            <input type="text" placeholder="${t('header.filterPanels')}" aria-label="${t('header.filterPanels')}" value="${escapeHtml(this.panelFilter)}" />
           </div>
           <div class="panel-toggle-grid" id="usPanelToggles"></div>
           <div class="panels-footer">
@@ -811,7 +820,7 @@ export class UnifiedSettings {
           </div>
           ` : ''}
           <div class="sources-search">
-            <input type="text" placeholder="${t('header.filterSources')}" value="${escapeHtml(this.sourceFilter)}" />
+            <input type="text" placeholder="${t('header.filterSources')}" aria-label="${t('header.filterSources')}" value="${escapeHtml(this.sourceFilter)}" />
           </div>
           <div class="sources-toggle-grid" id="usSourceToggles"></div>
           <div class="sources-footer">
@@ -913,6 +922,18 @@ export class UnifiedSettings {
     }
   }
 
+  // Pending state shown while the plan is still resolving — used both before
+  // the entitlement snapshot arrives and, for an entitled owner, while the
+  // subscription watch is still settling (#6772).
+  private renderPlanCheckingState(): string {
+    return `
+        <div class="upgrade-pro-section upgrade-pro-loading" role="status" aria-live="polite">
+          <div class="upgrade-pro-title">Checking your plan…</div>
+          <div class="upgrade-pro-desc">This usually takes only a moment.</div>
+        </div>
+      `;
+  }
+
   private renderUpgradeSection(): string {
     // Non-Dodo premium (API key / tester key / Clerk pro role without a
     // Convex subscription): neither "Upgrade" nor "Manage Billing" is
@@ -934,7 +955,7 @@ export class UnifiedSettings {
         <div class="upgrade-pro-section upgrade-pro-lapsed" data-billing-state="lapsed">
           <div class="upgrade-pro-title">${escapeHtml(t('components.billingState.resubscribe'))}: ${escapeHtml(planName)}</div>
           <div class="upgrade-pro-desc">${escapeHtml(t('components.billingState.lapsedDesc'))}</div>
-          <a class="upgrade-pro-cta-link" href="${getReactivationHref(sub?.planKey)}" target="_blank" rel="noopener">${escapeHtml(t('components.billingState.resubscribe'))} →</a>
+          <a class="upgrade-pro-cta-link" href="${WEB_APP_ORIGIN}${getReactivationHref(sub?.planKey)}" target="_blank" rel="noopener">${escapeHtml(t('components.billingState.resubscribe'))} →</a>
         </div>
       `;
     }
@@ -951,15 +972,19 @@ export class UnifiedSettings {
       && getEntitlementState() === null
       && (verificationStatus === 'idle' || verificationStatus === 'pending')
     ) {
-      return `
-        <div class="upgrade-pro-section upgrade-pro-loading" role="status" aria-live="polite">
-          <div class="upgrade-pro-title">Checking your plan…</div>
-          <div class="upgrade-pro-desc">This usually takes only a moment.</div>
-        </div>
-      `;
+      return this.renderPlanCheckingState();
     }
     if (isEntitled()) {
       const sub = getSubscription();
+      // A Pro owner's entitlement snapshot can arrive before their own
+      // subscription watch settles. In that window getSubscription() is null
+      // but the user is NOT a Business invitee — falling through would render
+      // "Billing is managed by your plan owner" and hide Manage Billing from a
+      // paying owner. Treat an unresolved watch like the pending state above;
+      // the invitee copy below is reserved for a *settled* null (#6772).
+      if (sub === null && !isSubscriptionLoaded()) {
+        return this.renderPlanCheckingState();
+      }
       const planName = sub?.displayName ?? 'Pro';
       // A Business Pro grant invitee has no own subscription row (sub === null)
       // but IS entitled (we're inside the isEntitled() branch) — treat that as
@@ -1017,7 +1042,7 @@ export class UnifiedSettings {
           <div class="upgrade-pro-title">Plan status unavailable</div>
           <div class="upgrade-pro-desc">We could not verify your current plan. Try again or view plans in a new tab.</div>
           <button class="manage-billing-btn retry-plan-status-btn" style="margin-bottom:8px;">Try again</button>
-          <a class="upgrade-pro-cta-link" href="/pro" target="_blank" rel="noopener">View plans →</a>
+          <a class="upgrade-pro-cta-link" href="${WEB_APP_ORIGIN}/pro" target="_blank" rel="noopener">View plans →</a>
         </div>
       `;
     }
@@ -1636,7 +1661,7 @@ export class UnifiedSettings {
           <p class="api-keys-desc">Create API keys to access WorldMonitor data programmatically. Keys are shown once on creation — store them securely.</p>
         </div>
         <div class="api-keys-create-form">
-          <input type="text" class="api-keys-name-input" placeholder="Key name (e.g. my-app)" maxlength="64" />
+          <input type="text" class="api-keys-name-input" placeholder="Key name (e.g. my-app)" aria-label="API key name" maxlength="64" />
           <button class="btn btn-primary api-keys-create-btn">Create Key</button>
         </div>
         <div class="api-keys-created-banner" id="usApiKeysBanner" style="display:none;"></div>

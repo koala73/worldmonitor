@@ -10,6 +10,11 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
+import {
+  GROQ_DEFAULT_MODEL,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
+} from '../scripts/_llm-model-timeouts.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -682,6 +687,34 @@ describe('news digest methodology parity', () => {
     }
   });
 
+  it('documents credibilityScore as distinct from importanceScore', () => {
+    const credibilityDoc = readFileSync(
+      resolve(repoRoot, 'docs/methodology/news-credibility.mdx'),
+      'utf8',
+    );
+    assert.ok(credibilityDoc.includes('`0.50`'), 'credibility methodology must document propaganda-risk weight');
+    assert.ok(credibilityDoc.includes('`0.30`'), 'credibility methodology must document source-tier weight');
+    assert.ok(credibilityDoc.includes('`0.20`'), 'credibility methodology must document corroboration weight');
+    assert.ok(credibilityDoc.includes('`40`'), 'credibility methodology must document the high-risk cap');
+    assertDocMatches(/## Credibility Score/, 'digest methodology credibility section');
+    assertDocIncludes('`0.50`', 'credibility propaganda-risk weight on digest methodology');
+    assertDocIncludes('capped at `40`', 'credibility high-risk cap on digest methodology');
+
+    const credibilityDescription = openApiDescription('NewsItem', 'credibilityScore');
+    assert.ok(
+      credibilityDescription.includes('distinct from importance_score'),
+      'NewsItem.credibilityScore OpenAPI must stay distinct from importanceScore',
+    );
+    assert.ok(
+      credibilityDescription.includes('capped at 40'),
+      'NewsItem.credibilityScore OpenAPI must document the state-media cap',
+    );
+    assert.ok(
+      newsItemProtoText.includes('int32 credibility_score = 14;'),
+      'NewsItem proto must keep credibility_score distinct from importance_score = 9',
+    );
+  });
+
   it('documents diplomacy severity promotion scope', () => {
     const promotionBody = extractFunctionBody(digestSrc, 'promoteDiplomacySeverity');
     assert.ok(
@@ -826,16 +859,26 @@ describe('news digest methodology parity', () => {
   it('documents regional weekly brief provider chain separately from digest prose', () => {
     const providerNames = [...weeklyBriefSrc.matchAll(/name:\s*'([^']+)'/g)]
       .map((m) => m[1]);
-    const providerModels = [...weeklyBriefSrc.matchAll(/model:\s*'([^']+)'/g)]
-      .map((m) => m[1]);
+    const sharedModels = {
+      GROQ_DEFAULT_MODEL,
+      OPENROUTER_FREE_BACKUP_MODEL,
+      OPENROUTER_FREE_PRIMARY_MODEL,
+    };
+    const providerModels = [...weeklyBriefSrc.matchAll(/model:\s*(?:'([^']+)'|([A-Z_]+))/g)]
+      .map((m) => m[1] || sharedModels[m[2]]);
     const weeklyTemperature = extractNumericConst(weeklyBriefSrc, 'BRIEF_TEMPERATURE');
 
-    assert.deepEqual(providerNames, ['openrouter', 'groq']);
-    assert.deepEqual(providerModels, ['deepseek/deepseek-v4-flash', 'llama-3.3-70b-versatile']);
+    assert.deepEqual(providerNames, ['openrouter', 'openrouter-free', 'openrouter-free-backup', 'groq']);
+    assert.deepEqual(providerModels, [
+      'deepseek/deepseek-v4-flash',
+      'google/gemma-4-26b-a4b-it:free',
+      'openai/gpt-oss-20b:free',
+      'openai/gpt-oss-20b',
+    ]);
     assert.equal(weeklyTemperature, 0.3);
 
     assertDocMatches(
-      /Regional weekly briefs[\s\S]*tr(?:y|ies) OpenRouter first[\s\S]*`deepseek\/deepseek-v4-flash`[\s\S]*Groq `llama-3\.3-70b-versatile`[\s\S]*temperature\s+`0\.3`/,
+      /Regional weekly briefs[\s\S]*tr(?:y|ies) OpenRouter first[\s\S]*`deepseek\/deepseek-v4-flash`[\s\S]*`google\/gemma-4-26b-a4b-it:free`[\s\S]*`openai\/gpt-oss-20b:free`[\s\S]*Groq `openai\/gpt-oss-20b`[\s\S]*temperature\s+`0\.3`/,
       'regional weekly brief provider order, models, and temperature',
     );
     assertDocMatches(

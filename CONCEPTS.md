@@ -186,6 +186,12 @@ A deterministic check that a value reported by a model-based extractor actually 
 
 A completeness check structured so the universe it covers is mechanically enumerated from the source of truth and every member must be classified — required (mechanically asserted at every consumer) or excluded with a recorded reason — so an unclassified member fails the gate at the moment it is introduced. The inverse of an opt-in allowlist, which can only catch what someone remembered to add and therefore rots silently as the universe grows; a closed world converts each new member into a forced, recorded decision, and the classification record doubles as a decision log distinguishing deliberately-absent from forgotten. Both halves need their own vacuous-pass protection: an enumerator that finds zero members, or an extractor that finds zero consumers, must fail rather than skip. See also: Vacuous Guard, Mutation Proof.
 
+### Ratchet Inventory
+
+A counted census of a known-bad idiom's remaining occurrences, recorded per (file, idiom) pair with an occurrence count, which the guard enforces in *both* directions: a higher count or an unrecorded pair fails as new drift, a lower count fails as a stale record that must be updated. The bidirectionality is what separates it from an allowlist — a plain permission list cannot see a second occurrence added to a file it already forgives, which is the highest-traffic regression shape there is, because new code lands in the files that already carry the pattern. Counts must be measured on normalised source (comment-stripped, at minimum), or a mention of the idiom in prose keeps an entry alive after its last real call is gone and the stale check never asks anyone to delete it.
+
+Two properties are routinely misread. An entry is a *record*, not a permission slip: it says this many occurrences are known and tracked, never that they are sanctioned. And a shrinking entry does not imply zero is the destination — some populations have a floor, where the surviving occurrence is the one that must *not* be migrated, so its count is terminal rather than unfinished. A ratchet cannot distinguish "this count moved" from "this count moved for the wrong reason", so wherever a floor exists it has to be stated in the inventory *and* in the guard's own failure text, which is the only prose the person driving the count to zero will actually read. The behavioural rule underneath the floor needs a separate test; the ratchet enforces the census, not the reason. See also: Closed-World Gate, Vacuous Guard, Mutation Proof.
+
 ## News Story Tracking & Trend Detection
 
 ### Feed Digest
@@ -260,9 +266,17 @@ Because the cookie is opaque to JavaScript, the client can only infer its health
 
 The client-side cooldown during which every anonymous API call is answered locally with a synthetic unavailable response instead of reaching the network, entered when the anonymous session is judged unrecoverable and lifted automatically when the cooldown lapses. Its purpose is to stop a dead session from amplifying into a request-mint-retry storm across every panel.
 
-The blackout is deliberately blunt — it suppresses the whole surface — so what justifies entering it matters more than what it does. Only session-wide evidence qualifies: a failure to mint at all, or the same failure corroborated across distinct routes *within seconds of each other*. A single route's denial, even one that survives a fresh mint, is route-scoped evidence and earns at most route-scoped suppression; generalizing it blanks a dashboard whose session was never broken.
+The blackout is deliberately blunt — it suppresses the whole surface — so what justifies entering it matters more than what it does. Only session-wide evidence qualifies, and that is narrower than "the mint failed": a *server verdict* on the mint alone (see Mint Attempt), or any other failure corroborated across distinct routes *within seconds of each other*. A single route's denial, even one that survives a fresh mint, is route-scoped evidence and earns at most route-scoped suppression; generalizing it blanks a dashboard whose session was never broken.
 
-Two properties make that corroboration mean what it says. It is time-bounded, because the evidence being generalized from is temporal coincidence — denials minutes apart are two endpoint problems, not one session problem. And it is retracted by success: a single credentialed 200 proves the browser is delivering the cookie, which settles the question the blackout was about. Suppression and evidence therefore expire on different clocks, and a sibling's success must retract the evidence without releasing the failing route's own suppression — that suppression is what stops a known-bad endpoint from re-minting on every poll. See also: Anonymous Session.
+Two properties make that corroboration mean what it says. It is time-bounded, because the evidence being generalized from is temporal coincidence — denials minutes apart are two endpoint problems, not one session problem. And it is retracted by success: a single credentialed 200 proves the browser is delivering the cookie, which settles the question the blackout was about. Suppression and evidence therefore expire on different clocks, and a sibling's success must retract the evidence without releasing the failing route's own suppression — that suppression is what stops a known-bad endpoint from re-minting on every poll.
+
+One consequence is easy to miss: a request already in flight when a blackout is declared is the only kind that can still reach the recovery path, and re-declaring the blackout from it extends the cooldown rather than being absorbed as a duplicate. A blackout therefore lasts its nominal window only if the paths that were merely *suppressed* by it stay silent. See also: Anonymous Session, Mint Attempt.
+
+### Mint Attempt
+
+One try at obtaining an anonymous session, and — this is the part that carries the meaning — the verdict of that try, which is not the same as whether a session came back. Four outcomes are distinct and need different responses: the mint succeeded; the mint failed and the *server* rendered that verdict (it refused, or answered something unusable); the mint failed in our own transport or threw client-side, so the server rendered no verdict at all; or **no mint was attempted**, because the session was already blacked out or because the mint succeeded and the browser then refused to keep the cookie.
+
+Only the server-verdict case is session-wide on its own; everything else needs corroboration. The distinction that is easiest to lose is the last one — an attempt that never happened is not a failed attempt, and reporting it as one both misdirects diagnosis and re-arms the blackout it was suppressed by. The verdict therefore travels with the attempt's result rather than being recovered afterwards from module state, which would describe whichever attempt finished last. See also: Session Blackout, Anonymous Session.
 
 ## Billing & Entitlements
 
@@ -584,6 +598,31 @@ and shed work at the same time.
 Indistinguishable from a healthy no-op by exit status alone, which is why it is
 named and reported explicitly. A tick where every member was merely fresh is a
 healthy no-op and must not be confused with it.
+
+### Chunked Sweep
+
+A member whose full refresh cannot fit one tick, spread across consecutive
+ticks: each tick refreshes the slice of records whose rows are oldest and lets
+the rest stand.
+
+The published snapshot is the cursor. No separate cursor key is kept, because a
+cursor can disagree with the data after a crash or a restore and then skip a
+slice indefinitely, whereas a missing or stale row selects itself.
+
+Completion is sweep-scoped, never tick-scoped: the finished-marker advances only
+when no record is still owed a refresh. A tick that marked its own slice
+complete would stop the member being due and strand every record it did not
+touch. The staleness horizon deciding which rows are owed is bounded on both
+sides — above the sweep's own duration, or the head expires before the tail
+lands and the marker is never written; below the refresh interval, or every row
+still reads current when the member next comes due and the sweep completes
+having fetched nothing. See also: Section Deferral, Bundle Wall Budget.
+
+## Market Data Claims
+
+### Tape Claim
+
+The label a market surface is allowed to show for a quote, bar, or stream: unconfigured, delayed, end-of-day, historical, stale, or — only after a separate commercial display/rebroadcast confirmation — licensed live. A configured provider key is not a Tape Claim. `Panel.setDataBadge('live')` means a fresh fetch versus a cache hit, not a licensed tape. Yahoo and seeded Finnhub quotes in this product stay delayed or end-of-day even when their keys exist. See also: Entitlement.
 
 ## Flagged ambiguities
 

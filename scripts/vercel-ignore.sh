@@ -7,10 +7,13 @@ if [ "$VERCEL_GIT_COMMIT_REF" = "main" ] && [ -n "$VERCEL_GIT_PREVIOUS_SHA" ]; t
   git cat-file -e "$VERCEL_GIT_PREVIOUS_SHA" 2>/dev/null && {
     WEB_CHANGES=$(git diff --name-only "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- \
       'src/' 'api/' 'server/' 'shared/' 'public/' 'blog-site/' 'pro-test/' 'proto/' 'convex/' \
-      'CHANGELOG.md' 'docs/snapshots/' \
-      'scripts/build-crawlable-corpus.mjs' 'scripts/build-research-reports.mjs' \
+      'CHANGELOG.md' 'docs/docs.json' 'docs/snapshots/' \
+      'scripts/build-crawlable-corpus.mjs' 'scripts/build-use-cases.mjs' 'scripts/build-research-reports.mjs' \
       'scripts/build-sitemap.mjs' 'scripts/discover-content-corpus-pages.mjs' \
-      'scripts/crawlable-live-tools.mjs' 'scripts/vercel-ignore.sh' \
+      'scripts/crawlable-live-tools.mjs' 'scripts/crawlable-sources-page.mjs' \
+      'scripts/source-origin.mjs' 'scripts/source-origin.d.mts' \
+      'scripts/generate-inventory-facts.mjs' \
+      'scripts/docs-stats.mjs' 'scripts/source-attribution.mjs' 'scripts/vercel-ignore.sh' \
       'package.json' 'package-lock.json' 'vite.config.ts' 'tsconfig.json' \
       'tsconfig.api.json' 'vercel.json' 'middleware.ts' 'index.html' | head -1)
     [ -z "$WEB_CHANGES" ] && echo "Skipping: no web-relevant changes on main" && exit 0
@@ -66,12 +69,20 @@ git diff --name-only "$COMPARE_SHA" HEAD -- \
   'proto/' \
   'convex/' \
   'CHANGELOG.md' \
+  'docs/docs.json' \
   'docs/snapshots/' \
   'scripts/build-crawlable-corpus.mjs' \
+  'scripts/build-use-cases.mjs' \
   'scripts/build-research-reports.mjs' \
   'scripts/build-sitemap.mjs' \
   'scripts/discover-content-corpus-pages.mjs' \
   'scripts/crawlable-live-tools.mjs' \
+  'scripts/crawlable-sources-page.mjs' \
+  'scripts/source-origin.mjs' \
+  'scripts/source-origin.d.mts' \
+  'scripts/generate-inventory-facts.mjs' \
+  'scripts/docs-stats.mjs' \
+  'scripts/source-attribution.mjs' \
   'scripts/vercel-ignore.sh' \
   'package.json' \
   'package-lock.json' \

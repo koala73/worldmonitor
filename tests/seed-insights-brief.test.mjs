@@ -4,6 +4,8 @@ import {
   pickBriefCluster,
   briefSystemPrompt,
   briefUserPrompt,
+  synthesisSystemPrompt,
+  maskAttributedSources,
   composeSynthesizedBrief,
   composeSynthesizedBriefResult,
   BRIEF_REJECTIONS,
@@ -112,6 +114,58 @@ describe('briefUserPrompt', () => {
 
   it('instructs using only facts from the provided headline', () => {
     assert.match(briefUserPrompt('X'), /only facts from this headline/i);
+  });
+});
+
+describe('synthesis attribution contract', () => {
+  it('tells the model to copy exact outlet labels and use canonical attribution forms', () => {
+    const prompt = synthesisSystemPrompt('2026-08-18');
+    assert.match(prompt, /copy its label exactly \(including capitalization\)/);
+    assert.match(prompt, /reported\/reports\/said\/says\/wrote\/writes/);
+    assert.match(prompt, /According to <outlet>/);
+  });
+
+  it('masks the longer prefix-related label regardless of source order', () => {
+    const text = 'ABC News Australia reported port workers extended the walkout.';
+    const expected = ' reported port workers extended the walkout.';
+
+    assert.equal(maskAttributedSources(text, ['ABC News', 'ABC News Australia']), expected);
+    assert.equal(maskAttributedSources(text, ['ABC News Australia', 'ABC News']), expected);
+  });
+
+  it('matches labels exactly by case, so WHO does not consume lowercase who', () => {
+    const pronoun = 'Officials who monitored the outbreak issued guidance.';
+    assert.equal(maskAttributedSources(pronoun, ['WHO']), pronoun);
+    assert.equal(maskAttributedSources('WHO reported new guidance.', ['WHO']), ' reported new guidance.');
+  });
+
+  it('accepts the canonical According-to form', () => {
+    assert.equal(
+      maskAttributedSources('According to Reuters, prices rose.', ['Reuters']),
+      ', prices rose.',
+    );
+  });
+
+  it('escapes special source labels and permits flexible whitespace', () => {
+    const fixtures = [
+      ['+972   Magazine reported unrest spread.', '+972 Magazine', ' reported unrest spread.'],
+      ['24.hu said talks resumed.', '24.hu', ' said talks resumed.'],
+      ['CAC (China) wrote that rules changed.', 'CAC (China)', ' wrote that rules changed.'],
+    ];
+
+    for (const [text, source, expected] of fixtures) {
+      assert.equal(maskAttributedSources(text, [source]), expected, source);
+    }
+  });
+
+  it('does not mask special source labels used outside an attribution', () => {
+    for (const [text, source] of [
+      ['The +972 Magazine office expanded.', '+972 Magazine'],
+      ['24.hu launched a service.', '24.hu'],
+      ['CAC (China) deployed inspectors.', 'CAC (China)'],
+    ]) {
+      assert.equal(maskAttributedSources(text, [source]), text, source);
+    }
   });
 });
 
@@ -485,6 +539,262 @@ describe('composeSynthesizedBriefResult names which gate rejected (#5947)', () =
     assert.match(out.brief.lead, /Chile/);
   });
 
+  it('accepts a lead naming the outlet the prompt showed it', () => {
+    // synthesisUserPrompt renders each story as
+    //   `N. <primaryTitle> (<primarySource>, K sources)`
+    // and the system prompt says "Use ONLY facts present in the numbered story
+    // text". primarySource is IN that text, so naming the outlet obeys the
+    // prompt — yet the ground text omitted it, and the sentence was rejected as
+    // a hallucinated proper noun.
+    //
+    // Cost of the omission: on 2026-08-18 newsInsights alarmed 13 times in
+    // 10.5h, every one INSIGHTS_SYNTHESIS_LEAD_PROPER_NOUN, with the provider
+    // chain falling past the PAID model to a free one because that loop
+    // advances on gate rejection. A frontier model failing routinely is the
+    // gate over-rejecting, not the model hallucinating.
+    const out = compose('Reuters reported apple prices rose sharply in Chile last quarter [1].');
+    assert.equal(
+      out.rejection,
+      null,
+      'a proper noun the prompt itself supplied must ground, or the gate rejects obedience',
+    );
+    assert.ok(out.brief, 'the brief must compose rather than fall back');
+    assert.match(out.brief.lead, /Reuters/);
+    assert.equal(out.brief.sourceAttributions, 1, 'the accept side must report that the lead named its outlet');
+  });
+
+  it('accepts an According-to attribution naming the outlet', () => {
+    const out = compose('According to Reuters, apple prices rose sharply in Chile last quarter [1].');
+    assert.equal(out.rejection, null);
+    assert.ok(out.brief);
+    assert.equal(out.brief.sourceAttributions, 1);
+  });
+
+  it('still rejects a proper noun in NEITHER the headline nor the source', () => {
+    // Bounded: an outlet the model was never given is still a hallucination.
+    // NOTE this case alone cannot detect a WIDENING — it rejects identically
+    // before and after any change to what grounds. The three tests below are
+    // the ones that actually bound it.
+    const out = compose('Bloomberg reported apple prices rose sharply in Chile last quarter [1].');
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+
+  it('still rejects a corroborating source the prompt never showed', () => {
+    // The fixture's `sources` carries 'AP News', but synthesisUserPrompt renders
+    // only primarySource plus a publisher COUNT. Grounding the rest of the
+    // cluster would widen past what the model was shown — and unlike the
+    // Bloomberg case above, a label that IS on the story object is what
+    // distinguishes a primarySource-scoped implementation from a sources[]-wide
+    // one. Without this, that mutant passes the whole file.
+    const out = compose('AP News reported apple prices rose sharply in Chile last quarter [1].');
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+
+  it('lets a multi-word outlet attribute without donating its tokens', () => {
+    // The ground text is TOKENISED, so folding a label into it would let
+    // 'Iran International' ground a lead asserting that *Iran* acted — the swap
+    // the system prompt forbids ("write 'US', not 'Washington'"). 40+ of the 416
+    // labels in source-tiers.json carry a country/capital/institution token.
+    // Naming the outlet must pass; mining a token out of it must not.
+    const iranStory = [{
+      primaryTitle: 'Fuel protests spread in Mashhad as queues lengthen at stations',
+      primarySource: 'Iran International',
+      primaryLink: 'http://fuel',
+      sources: ['Iran International', 'AFP'],
+      memberTitles: ['Fuel protests spread in Mashhad as queues lengthen at stations'],
+    }];
+    const composeIran = (lead) => composeSynthesizedBriefResult(
+      JSON.stringify({ lead, lines: [{ n: 1, text: 'Fuel protests spread in Mashhad [1]' }] }),
+      iranStory,
+      { validatorMode: 'enforce' },
+    );
+
+    const attributed = composeIran('Iran International reported fuel protests spread in Mashhad [1].');
+    assert.equal(attributed.rejection, null, 'a multi-word outlet must still be nameable');
+    assert.match(attributed.brief.lead, /Iran International/);
+
+    const outletAsActor = composeIran(
+      'Fuel protests spread in Mashhad, and Iran International deployed security forces [1].',
+    );
+    assert.equal(outletAsActor.brief, null, 'an outlet label outside an attribution must stay gated');
+    assert.equal(outletAsActor.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+
+    const mined = composeIran('Fuel protests spread in Mashhad, and Iran deployed security forces [1].');
+    assert.equal(mined.brief, null, 'the outlet label must not ground an actor the story never names');
+    assert.equal(mined.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+
+  it('does not count a lowercase relative pronoun as a WHO attribution', () => {
+    const whoStory = [{
+      primaryTitle: 'Vaccination rates increased in Kenya as health officials monitored the campaign',
+      primarySource: 'WHO',
+      primaryLink: 'http://vaccination',
+      sources: ['WHO', 'Reuters'],
+      memberTitles: ['Vaccination rates increased in Kenya as health officials monitored the campaign'],
+    }];
+    const composeWho = (lead) => composeSynthesizedBriefResult(
+      JSON.stringify({ lead, lines: [{ n: 1, text: 'Vaccination rates increased in Kenya [1]' }] }),
+      whoStory,
+      { validatorMode: 'enforce' },
+    );
+
+    const pronoun = composeWho('Vaccination rates increased in Kenya as officials who monitored the campaign reported [1].');
+    assert.equal(pronoun.rejection, null);
+    assert.equal(pronoun.brief.sourceAttributions, 0, 'lowercase who is not the uppercase outlet label');
+
+    const attributed = composeWho('WHO reported vaccination rates increased in Kenya [1].');
+    assert.equal(attributed.rejection, null);
+    assert.equal(attributed.brief.sourceAttributions, 1);
+  });
+
+  it('does not let digits in an outlet label ground a fabricated number', () => {
+    // storyGroundText also feeds validateNoHallucinatedFacts. extractNumericFacts
+    // reads any digit run not adjacent to a word character, so a label like
+    // 'France 24' (a live source here, five feeds) would ground a fabricated
+    // casualty count — digits that are a brand-name artefact, not a story fact.
+    const franceStory = [{
+      primaryTitle: 'Deadly strike hits a market in the northern district of the city',
+      primarySource: 'France 24',
+      primaryLink: 'http://strike',
+      sources: ['France 24', 'AFP'],
+      memberTitles: ['Deadly strike hits a market in the northern district of the city'],
+    }];
+    const composeFrance = (lead) => composeSynthesizedBriefResult(
+      JSON.stringify({ lead, lines: [{ n: 1, text: 'A deadly strike hit a market [1]' }] }),
+      franceStory,
+      { validatorMode: 'enforce' },
+    );
+
+    const fabricated = composeFrance('A deadly strike hit a market in the northern district, and 24 people were killed [1].');
+    assert.equal(fabricated.brief, null, "'France 24' must not ground the number 24");
+    assert.equal(fabricated.rejection, BRIEF_REJECTIONS.LEAD_NUMERIC_FACT);
+
+    const attributed = composeFrance('France 24 reported a deadly strike hit a market in the northern district [1].');
+    assert.equal(attributed.rejection, null, 'naming the outlet must still be allowed');
+  });
+
+  it('accepts a per-story LINE naming the outlet, and still gates one that mines it', () => {
+    // storyGroundText's THIRD call site. A line that falsely passes is published
+    // verbatim instead of degrading to its headline, and stops incrementing
+    // hallucinatedLines — so this path needs its own coverage, not the lead's.
+    const withSourceLine = composeSynthesizedBriefResult(
+      JSON.stringify({
+        lead: 'Prices rose sharply in Chile last quarter [1].',
+        lines: [{ n: 1, text: 'Reuters reported apple prices rose sharply in Chile [1]' }],
+      }),
+      topStories,
+      { validatorMode: 'enforce' },
+    );
+    assert.equal(withSourceLine.rejection, null);
+    assert.equal(withSourceLine.brief.hallucinatedLines, 0, 'naming the outlet is not a line hallucination');
+    assert.match(withSourceLine.brief.lines[0].text, /Reuters/);
+
+    const minedLine = composeSynthesizedBriefResult(
+      JSON.stringify({
+        lead: 'Prices rose sharply in Chile last quarter [1].',
+        lines: [{ n: 1, text: 'Venezuela apple prices rose sharply [1]' }],
+      }),
+      topStories,
+      { validatorMode: 'enforce' },
+    );
+    assert.equal(minedLine.brief.hallucinatedLines, 1, 'an ungrounded proper noun on a line still counts');
+    assert.match(minedLine.brief.lines[0].text, /Regional apple prices/, 'and the line degrades to its headline');
+  });
+
+  it('degrades a story line that uses its outlet label as an actor', () => {
+    const iranStory = [{
+      primaryTitle: 'Fuel protests spread in Mashhad as queues lengthen at stations',
+      primarySource: 'Iran International',
+      primaryLink: 'http://fuel',
+      sources: ['Iran International', 'AFP'],
+      memberTitles: ['Fuel protests spread in Mashhad as queues lengthen at stations'],
+    }];
+    const out = composeSynthesizedBriefResult(
+      JSON.stringify({
+        lead: 'Fuel protests spread in Mashhad as queues lengthened [1].',
+        lines: [{ n: 1, text: 'Iran International deployed security forces in Mashhad [1]' }],
+      }),
+      iranStory,
+      { validatorMode: 'enforce' },
+    );
+
+    assert.equal(out.rejection, null);
+    assert.equal(out.brief.hallucinatedLines, 1);
+    assert.equal(
+      out.brief.lines[0].text,
+      'Fuel protests spread in Mashhad as queues lengthen at stations [1]',
+    );
+  });
+
+  it('scopes the outlet allowance to the stories the sentence cites', () => {
+    // The attribution allowance must be citation-SCOPED like the ground text
+    // itself (#4928), or story 2's outlet licenses a name in a claim about
+    // story 1 — shape-valid misattribution wearing an outlet's clothes.
+    const twoStories = [
+      {
+        primaryTitle: 'Regional apple prices rose sharply in Chile last quarter, growers say',
+        primarySource: 'Reuters',
+        primaryLink: 'http://apple',
+        sources: ['Reuters', 'AFP'],
+        memberTitles: ['Regional apple prices rose sharply in Chile last quarter, growers say'],
+      },
+      {
+        primaryTitle: 'Port workers extend the walkout at the container terminal',
+        primarySource: 'Kyodo News',
+        primaryLink: 'http://port',
+        sources: ['Kyodo News', 'AFP'],
+        memberTitles: ['Port workers extend the walkout at the container terminal'],
+      },
+    ];
+    const out = composeSynthesizedBriefResult(
+      JSON.stringify({
+        lead: 'Kyodo News reported apple prices rose sharply in Chile last quarter [1].',
+        lines: [
+          { n: 1, text: 'Regional apple prices rose sharply in Chile [1]' },
+          { n: 2, text: 'Port workers extend the walkout [2]' },
+        ],
+      }),
+      twoStories,
+      { validatorMode: 'enforce' },
+    );
+    assert.equal(out.brief, null, "story 2's outlet must not ground a sentence citing only [1]");
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+
+  it('masks the outlet as a whole word, not as a prefix', () => {
+    // A substring mask would eat 'Reuters' out of 'Reutersville' and leave a
+    // lowercase remainder that no longer reads as a proper noun — laundering an
+    // invented place through the outlet's own name.
+    const out = compose('Reutersville officials confirmed apple prices rose sharply in Chile [1].');
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+
+  it('fails CLOSED when a cited story has no ground text at all', () => {
+    // Both validators return ok:true for an empty ground string, so an untitled
+    // cluster would accept every proper noun and every number in the lead — a
+    // dead gate indistinguishable from a healthy one.
+    // briefCluster/parsedSynthesis are the composer's own seams — used here so
+    // the empty-ground gate is what the assertion isolates, not the cluster gate
+    // or the parser (which would reject this fixture first).
+    const untitled = composeSynthesizedBriefResult(
+      '',
+      [{ primaryTitle: '', primarySource: '', primaryLink: 'http://x', sources: ['A', 'B'], memberTitles: [] }],
+      {
+        validatorMode: 'enforce',
+        briefCluster: {},
+        parsedSynthesis: {
+          lead: 'Bloomberg reported Venezuela seized 12 refineries [1].',
+          lines: [{ n: 1, text: 'Something happened [1]' }],
+        },
+      },
+    );
+    assert.equal(untitled.brief, null);
+    assert.equal(untitled.rejection, BRIEF_REJECTIONS.LEAD_GROUNDING);
+  });
+
   it('names an uncited lead sentence', () => {
     const out = compose('Prices rose sharply in Chile last quarter [1]. Analysts expect more increases ahead.');
     assert.equal(out.brief, null);
@@ -561,5 +871,127 @@ describe('composeSynthesizedBriefResult names which gate rejected (#5947)', () =
     assert.ok(brief);
     assert.equal(brief.lead, compose('Prices rose sharply in Chile last quarter [1].').brief.lead);
     assert.equal(composeSynthesizedBrief('nope', topStories, { validatorMode: 'enforce' }), null);
+  });
+});
+
+describe('coordinating and is grammar in the composer (AE2, AE4, AE7)', () => {
+  const story = (primaryTitle, extras = {}) => ({
+    primaryTitle,
+    primarySource: extras.primarySource || 'Reuters',
+    primaryLink: extras.primaryLink || 'http://example',
+    sources: extras.sources || ['Reuters', 'AP News'],
+    memberTitles: extras.memberTitles || [primaryTitle],
+  });
+
+  const compose = (lead, topStories, lineEntries) =>
+    composeSynthesizedBriefResult(
+      JSON.stringify({ lead, lines: lineEntries }),
+      topStories,
+      { validatorMode: 'enforce', briefCluster: topStories[0] },
+    );
+
+  it('AE2 lead: Israel and Hezbollah against a headline that names both accepts', () => {
+    const topStories = [
+      story('Israel vows to go after Hezbollah'),
+    ];
+    const lead = 'Israel and Hezbollah clashed overnight along the northern border [1]';
+    const out = compose(lead, topStories, [
+      { n: 1, text: 'Israel vows to go after Hezbollah in the north' },
+    ]);
+    assert.equal(out.rejection, null);
+    assert.ok(out.brief);
+    assert.match(out.brief.lead, /Israel and Hezbollah/);
+  });
+
+  it('AE2 story line: coordinated names stay on the line and are not replaced by the headline', () => {
+    const headline = 'Israel vows to go after Hezbollah';
+    const lineText = 'Israel and Hezbollah clashed overnight along the northern border';
+    const topStories = [story(headline)];
+    const lead = 'Israel and Hezbollah clashed overnight along the northern border [1]';
+    const out = compose(lead, topStories, [{ n: 1, text: lineText }]);
+    assert.equal(out.rejection, null);
+    assert.equal(out.brief.lines[0].text, `${lineText} [1]`);
+  });
+
+  it('AE4: Hezbollah against a story that does not name it still rejects', () => {
+    const topStories = [
+      story('Iran and Israel exchanged fire near the Strait of Hormuz and Lebanon'),
+    ];
+    const lead = 'Israel targeted Hezbollah positions across southern Lebanon [1]';
+    const out = compose(lead, topStories, [
+      { n: 1, text: 'Iran and Israel exchanged fire near Hormuz' },
+    ]);
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+
+  it('AE7: Ukraine and Russia [1] rejects when only Russia is in story 1', () => {
+    const topStories = [
+      story('Russia reports overnight aerial attacks on border regions'),
+      story('Chile apple prices rose last quarter, growers say', { sources: ['Reuters'] }),
+      story('Ukraine launches one of its largest aerial attacks of the war', { sources: ['AP News'] }),
+    ];
+    const lines = [
+      { n: 1, text: 'Russia reports overnight aerial attacks on border regions' },
+      { n: 3, text: 'Ukraine launches one of its largest aerial attacks of the war' },
+    ];
+    const out = compose(
+      'Ukraine and Russia traded overnight aerial attacks across the border [1]',
+      topStories,
+      lines,
+    );
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+
+  it('AE7: Ukraine and Russia [1][3] accepts from the citation union', () => {
+    const topStories = [
+      story('Russia reports overnight aerial attacks on border regions'),
+      story('Chile apple prices rose last quarter, growers say', { sources: ['Reuters'] }),
+      story('Ukraine launches one of its largest aerial attacks of the war', { sources: ['AP News'] }),
+    ];
+    const lines = [
+      { n: 1, text: 'Russia reports overnight aerial attacks on border regions' },
+      { n: 3, text: 'Ukraine launches one of its largest aerial attacks of the war' },
+    ];
+    const out = compose(
+      'Ukraine and Russia traded overnight aerial attacks across the border [1][3]',
+      topStories,
+      lines,
+    );
+    assert.equal(out.rejection, null);
+    assert.ok(out.brief);
+  });
+
+  it('AE7: citation between the names still accepts', () => {
+    const topStories = [
+      story('Russia reports overnight aerial attacks on border regions'),
+      story('Chile apple prices rose last quarter, growers say', { sources: ['Reuters'] }),
+      story('Ukraine launches one of its largest aerial attacks of the war', { sources: ['AP News'] }),
+    ];
+    const lines = [
+      { n: 1, text: 'Russia reports overnight aerial attacks on border regions' },
+      { n: 3, text: 'Ukraine launches one of its largest aerial attacks of the war' },
+    ];
+    const out = compose(
+      'fatalities in both Russia [1] and Ukraine [3]',
+      topStories,
+      lines,
+    );
+    assert.equal(out.rejection, null);
+    assert.ok(out.brief);
+  });
+
+  it('rejects a repeated-name entity grounded by only one cited surname', () => {
+    const topStories = [
+      story('Prime Minister Boris Johnson halted talks'),
+    ];
+    const out = compose(
+      'Johnson and Johnson halted vaccine production [1]',
+      topStories,
+      [{ n: 1, text: 'Prime Minister Boris Johnson halted talks' }],
+    );
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
   });
 });

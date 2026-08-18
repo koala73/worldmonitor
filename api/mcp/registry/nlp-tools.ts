@@ -24,9 +24,11 @@ import {
 import { clusterNewsCore, protoThreatLevelToLabel, topClusterKeywords } from '../../../shared/news-clustering-core.js';
 import type { NewsItemCore } from '../../../shared/news-clustering-core.js';
 import { getSourceProvenanceState } from '../../../shared/source-provenance.js';
+import { computeCredibilityScore } from '../../../shared/news-credibility.js';
+import { getSourceTier } from '../../../server/_shared/source-tiers';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk } from '../billing-denial';
-import { argStr } from '../filters';
+import { argStr, ciIncludes } from '../filters';
 import { McpSourceUnavailableError } from '../source-unavailable';
 import type { ToolDef } from '../types';
 
@@ -57,6 +59,7 @@ const KEYWORD_SPIKE_BASELINE_MS = 48 * 60 * 60 * 1000; // digest:accumulator ret
 const KEYWORD_SPIKE_CACHE_TTL_S = 600;
 const KEYWORD_SPIKE_MAX_STORIES = 800;
 const KEYWORD_SPIKE_MAX_STORED = 25;
+const KEYWORD_SPIKE_LINK_MAX_BYTES = 384;
 const DIGEST_ACCUMULATOR_KEY_MCP = 'digest:accumulator:v1:full:en';
 
 // Agent-addressable digest variants and their category keys. Kept as local
@@ -132,7 +135,7 @@ function patternEntityKind(value: string): 'cve' | 'apt' | 'fin' | 'leader' {
 type NlpDigestCategoryGroup = {
   items?: Array<{
     source?: string; title?: string; link?: string; publishedAt?: number;
-    isAlert?: boolean;
+    isAlert?: boolean; credibilityScore?: number;
     threat?: { level?: string; category?: string; confidence?: number; source?: string };
   }>;
 };
@@ -178,7 +181,7 @@ async function fetchNlpDigestItems(
     headers: { ...auth, 'User-Agent': NLP_UA },
     signal: AbortSignal.timeout(NLP_DIGEST_TIMEOUT_MS),
   });
-  assertToolFetchOk(res, 'list-feed-digest');
+  await assertToolFetchOk(res, 'list-feed-digest');
   const body = await res.json() as {
     categories?: Record<string, NlpDigestCategoryGroup>;
     feedStatuses?: Record<string, string>;
@@ -231,6 +234,9 @@ async function fetchNlpDigestItems(
         link,
         pubDate: new Date(Number(raw.publishedAt) || 0),
         isAlert: raw.isAlert === true,
+        credibilityScore: Number.isFinite(raw.credibilityScore)
+          ? nlpClampInt(raw.credibilityScore, 0, 100, 0)
+          : undefined,
         tier: 3,
         threat: raw.threat ? {
           level: protoThreatLevelToLabel(raw.threat.level),
@@ -345,7 +351,7 @@ export const NLP_TOOLS: ToolDef[] = [
         // slow-but-successful cache-miss classifications the handler completes.
         signal: AbortSignal.timeout(25_000),
       });
-      assertToolFetchOk(res, 'classify-event');
+      await assertToolFetchOk(res, 'classify-event');
       const result = await res.json() as {
         classification?: { category?: string; subcategory?: string; severity?: string; confidence?: number };
       };
@@ -493,7 +499,7 @@ export const NLP_TOOLS: ToolDef[] = [
     // records plus a separate primary record. Keep the dispatcher budget
     // aligned with that supported maximum instead of rejecting valid output.
     _outputBudgetBytes: 262144,
-    description: 'Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Select the full digest (default) or tech digest with variant, then optionally restrict by category such as commodities, vcblogs, or accelerators. Each cluster reports its primary headline, member count, distinct sources with fail-closed provenance, top keywords, threat level, and time span. Deterministic — no LLM.',
+    description: 'Current topic clusters over the live headline digest, computed with the same Jaccard clustering the dashboard uses. Select the full digest (default) or tech digest with variant, then optionally restrict by category such as commodities, vcblogs, or accelerators. Each cluster reports its primary headline, member count, distinct sources with fail-closed provenance, top keywords, threat level, time span, and credibilityScore (0-100 source reliability, distinct from importance). Deterministic — no LLM.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -509,6 +515,7 @@ export const NLP_TOOLS: ToolDef[] = [
           enum: [...ALL_DIGEST_CATEGORIES],
           description: DIGEST_CATEGORY_DESC,
         },
+        query: { type: 'string', description: 'Keep only clusters whose primary headline or any member headline contains this text (case-insensitive substring). Filters the LIVE digest window only — not a historical index. Applied before limit, so a capped list is drawn from the matches.' },
       },
       required: [],
     },
@@ -520,7 +527,7 @@ export const NLP_TOOLS: ToolDef[] = [
           type: 'array',
           items: {
             type: 'object',
-            required: ['primarySourceProvenance', 'sourceProvenance'],
+            required: ['primarySourceProvenance', 'sourceProvenance', 'credibilityScore'],
             properties: {
               id: { type: 'string' },
               title: { type: 'string', description: 'Primary headline. Server-side primary selection is recency-based: digest items carry no per-source tier.' },
@@ -549,6 +556,10 @@ export const NLP_TOOLS: ToolDef[] = [
               isAlert: { type: 'boolean' },
               threatLevel: { type: 'string' }, threatCategory: { type: 'string' },
               firstSeen: { type: 'string' }, lastUpdated: { type: 'string' },
+              credibilityScore: {
+                type: 'number',
+                description: '0-100 source-reliability score for the primary outlet, distinct from importance. Built from source tier, propaganda risk, and independent corroboration.',
+              },
             },
           },
         },
@@ -577,6 +588,7 @@ export const NLP_TOOLS: ToolDef[] = [
         };
       }
       const category = argStr(params.category);
+      const query = argStr(params.query);
       const digest = await fetchNlpDigestItems(base, context, variant, category);
       const clusters = clusterNewsCore(digest.items, () => 3);
       const selectedClusters = clusters
@@ -592,9 +604,18 @@ export const NLP_TOOLS: ToolDef[] = [
           distinctPublishers: cluster.uniquePublisherCount,
         }))
         .filter(({ distinctPublishers }) => distinctPublishers >= minSources)
+        // Query narrows BEFORE the slice: filtering after would take the first
+        // `limit` clusters and match within them, dropping a match that sits
+        // past the cap. Member headlines are matched too — a cluster's primary
+        // is recency-picked, so the term an agent searched for is often on a
+        // sibling headline rather than the one promoted to primary.
+        .filter(({ cluster }) => !query
+          || ciIncludes(cluster.primaryTitle, query)
+          || cluster.allItems.some((item) => ciIncludes(item.title, query)))
         .slice(0, limit);
       const projected = selectedClusters.map(({ cluster, sources, distinctPublishers }) => {
         const projectedSources = sources.slice(0, 8);
+        const digestCredibilityScore = cluster.credibilityScore;
         const provenanceBySource = new Map(
           [...new Set([cluster.primarySource, ...projectedSources])]
             .map(source => [source, getSourceProvenanceState(source)] as const),
@@ -622,6 +643,13 @@ export const NLP_TOOLS: ToolDef[] = [
           threatCategory: cluster.threat?.category ?? 'general',
           firstSeen: cluster.firstSeen.toISOString(),
           lastUpdated: cluster.lastUpdated.toISOString(),
+          credibilityScore: Number.isFinite(digestCredibilityScore)
+            ? digestCredibilityScore
+            : computeCredibilityScore({
+              sourceTier: getSourceTier(cluster.primarySource),
+              propagandaRisk: provenanceBySource.get(cluster.primarySource)!.risk,
+              independentCorroborationCount: distinctPublishers,
+            }),
         };
       });
       return {
@@ -640,8 +668,8 @@ export const NLP_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_keyword_spikes',
-    _outputBudgetBytes: 16384,
-    description: 'Trending keyword, CVE, and APT/FIN threat-group spikes versus baseline, using the same term-candidacy and spike-decision math as the dashboard. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard\'s incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM.',
+    _outputBudgetBytes: 32768,
+    description: 'Keyword/CVE/APT spikes vs baseline, each with sourceNames and {title, source, link}. Uses the dashboard term-candidacy and spike-decision math. sourceNames are curated publisher names, or the original feed label when unmapped. sampleHeadlines are up to 3 newest recent-window stories; sourceNames is the complete publisher set. Baseline derives from the 48-hour story accumulator (per-window story rate), not the dashboard\'s incremental 7-day client history. Results are cached for 10 minutes. Deterministic — no LLM.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -658,14 +686,31 @@ export const NLP_TOOLS: ToolDef[] = [
         spikes: {
           type: 'array',
           items: { type: 'object', required: [
-            'term', 'count', 'baseline', 'multiplier', 'uniqueSources', 'sampleHeadlines',
+            'term', 'count', 'baseline', 'multiplier', 'uniqueSources', 'sourceNames', 'sampleHeadlines',
           ], properties: {
             term: { type: 'string' },
             count: { type: 'number', description: 'Distinct stories mentioning the term inside the recent window.' },
             baseline: { type: 'number', description: 'Per-window story rate over the exact sampled pre-window duration (see baseline_hours). 0 means this term was absent from the available baseline cohort.' },
             multiplier: { type: 'number', description: 'count / baseline; 0 when the term has no baseline mentions.' },
-            uniqueSources: { type: 'number' },
-            sampleHeadlines: { type: 'array', items: { type: 'string' } },
+            uniqueSources: { type: 'number', description: 'Distinct publisher families in the recent window. Explained by sourceNames.' },
+            sourceNames: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Publisher names matching uniqueSources: curated masthead, otherwise the original feed label.',
+            },
+            sampleHeadlines: {
+              type: 'array',
+              description: 'Up to 3 newest recent-window stories by lastSeen. Not the full count; sourceNames is the complete publisher set.',
+              items: {
+                type: 'object',
+                required: ['title', 'source', 'link'],
+                properties: {
+                  title: { type: 'string' },
+                  source: { type: 'string', description: 'Publisher(s) that carried this collapsed title. Empty when the story has no usable feed labels. Not necessarily the outlet of link.' },
+                  link: { type: 'string', description: 'Canonical story URL from story:track:v1.link. Empty when the row has no link.' },
+                },
+              },
+            },
           } },
         },
         window_hours: { type: 'number' },
@@ -682,9 +727,8 @@ export const NLP_TOOLS: ToolDef[] = [
       const minCount = nlpClampInt(params.min_count, 2, 20, DEFAULT_MIN_SPIKE_COUNT);
       const limit = nlpClampInt(params.limit, 1, 25, 10);
 
-      // v2 invalidates v1 payloads computed without an independently sampled
-      // pre-window cohort (and before sample_truncated became required).
-      const cacheKey = `intelligence:keyword-spikes:mcp:v2:${windowHours}h:${minCount}`;
+      // v3 invalidates v2 title-only sampleHeadlines (no source/link/sourceNames).
+      const cacheKey = `intelligence:keyword-spikes:mcp:v3:${windowHours}h:${minCount}`;
       // A cache-read failure must degrade to live computation, not surface as a
       // tool error: readJsonFromUpstash throws on network failure (unlike
       // redisPipeline, which returns null).
@@ -787,10 +831,11 @@ export const NLP_TOOLS: ToolDef[] = [
       };
 
       const titles = new Map<string, string>();
+      const links = new Map<string, string>();
       const HMGET_CHUNK = 200;
       const hmgetChunks = chunkInto(entries, HMGET_CHUNK);
       const hmgetResults = await Promise.all(hmgetChunks.map(chunk => redisPipeline(
-        chunk.map(entry => ['HMGET', `story:track:v1:${entry.hash}`, 'title']),
+        chunk.map(entry => ['HMGET', `story:track:v1:${entry.hash}`, 'title', 'link']),
       ) as Promise<Array<{ result?: unknown }> | null>));
       hmgetChunks.forEach((chunk, chunkIdx) => {
         const res = hmgetResults[chunkIdx];
@@ -799,7 +844,7 @@ export const NLP_TOOLS: ToolDef[] = [
           const reply = res?.[idx];
           const fields = reply?.result;
           if (!reply || Object.prototype.hasOwnProperty.call(reply, 'error')
-            || !Array.isArray(fields) || fields.length !== 1) {
+            || !Array.isArray(fields) || fields.length !== 2) {
             degraded = true;
             return;
           }
@@ -809,6 +854,8 @@ export const NLP_TOOLS: ToolDef[] = [
             return;
           }
           titles.set(entry.hash, title);
+          const link = fields[1];
+          if (typeof link === 'string' && link) links.set(entry.hash, link);
         });
       });
 
@@ -842,6 +889,7 @@ export const NLP_TOOLS: ToolDef[] = [
           title: titles.get(entry.hash) as string,
           lastSeenMs: entry.lastSeenMs,
           sources: sourcesByHash.get(entry.hash) ?? [],
+          link: links.get(entry.hash) ?? '',
         }));
 
       const spikes = computeKeywordSpikesFromStories(stories, {
@@ -856,7 +904,12 @@ export const NLP_TOOLS: ToolDef[] = [
         baseline: Math.round(spike.baseline * 100) / 100,
         multiplier: Math.round(spike.multiplier * 100) / 100,
         uniqueSources: spike.uniqueSources,
-        sampleHeadlines: spike.sampleHeadlines,
+        sourceNames: spike.sourceNames,
+        sampleHeadlines: spike.sampleHeadlines.map((sample) => ({
+          title: sample.title,
+          source: sample.source,
+          link: nlpTruncateUtf8(sample.link, KEYWORD_SPIKE_LINK_MAX_BYTES),
+        })),
       }));
 
       const payload = {

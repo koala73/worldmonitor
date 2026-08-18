@@ -357,12 +357,10 @@ paths:
                                     "exampleKey":
                                         "items":
                                             - "corroborationCount": 42
+                                              "credibilityScore": 42
                                               "importanceScore": 42
                                               "isAlert": true
                                               "link": "https://example.com/worldmonitor"
-                                              "location":
-                                                  "latitude": 40.7128
-                                                  "longitude": -74.006
                                               "source": "example"
                                               "title": "example"
                                 "feedStatuses":
@@ -805,6 +803,17 @@ components:
                              (shared/stocks.json). Uppercase symbols, deduplicated, capped at 8.
                              Empty when no tracked ticker is mentioned. See shared/ticker-extract.js.
                     maxItems: 8
+                credibilityScore:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Credibility score (0-100), distinct from importance_score. Measures
+                         source reliability / truthfulness, not newsworthiness. The base score
+                         uses source tier × 30% + propaganda risk × 50% + independent
+                         corroboration × 20%. High propaganda-risk sources (state-controlled
+                         media) are capped at 40 so a highly newsworthy RT/TASS story still
+                         scores low. Third-party bias/factuality ratings are reserved and not
+                         currently applied. See docs/methodology/news-credibility.mdx.
             required:
                 - source
                 - title

@@ -198,12 +198,21 @@ export type UmamiEvent = keyof typeof EVENTS;
  *   origin engaged the request and may have written the event row before
  *   failing. The in-page retry already refuses to re-send it for exactly that
  *   reason; leaving the marker armed would let the next boot re-send it anyway.
+ * - a RACED failure -> the transport ignored our abort, so the collector
+ *   transport released its serialized slot while the request was still on the
+ *   wire (#6288). It may commit at any moment. `isRetryableCollectorFailure`
+ *   already refuses to re-send it in-page for that reason, and the boot replay
+ *   is the second door onto the same duplicate — so it settles too.
  * - queue-overflow / missing-receipt / network / timeout -> no row can exist
- *   (never dispatched, or accepted-and-discarded, or never answered), so the
- *   marker must survive and replay. These are recoveries, not duplicates.
+ *   (never dispatched, or accepted-and-discarded, or answered by nothing after
+ *   a cancellation the transport honored), so the marker must survive and
+ *   replay. These are recoveries, not duplicates.
  */
 function isDurableMarkerResolved(failure: CollectorOutcome['failure']): boolean {
   if (failure === null) return true;
+  // Checked BEFORE the `kind` gate: a raced failure is a `timeout`, which the
+  // rule below would otherwise treat as "never answered, safe to replay".
+  if (failure.raced) return true;
   if (failure.kind !== 'http') return false;
   return !isRetryableCollectorFailure(failure);
 }
@@ -512,6 +521,20 @@ export function track(event: UmamiEvent, data?: Record<string, unknown>): void {
   const enrichedData = withContentAttribution(data, getContentAttributionForAnalytics());
   if (!sendUmamiCall({ kind: 'track', event, data: enrichedData })) {
     queueUmamiCall({ kind: 'track', event, data: enrichedData });
+  }
+}
+
+/**
+ * Sends a deliberately closed telemetry payload without automatic content
+ * attribution. Agent search uses this path because #6212 permits only its
+ * explicit tool/outcome and aggregate search fields.
+ */
+export function trackPrivacyRestricted(
+  event: UmamiEvent,
+  data?: Record<string, unknown>,
+): void {
+  if (!sendUmamiCall({ kind: 'track', event, data })) {
+    queueUmamiCall({ kind: 'track', event, data });
   }
 }
 
@@ -1134,8 +1157,12 @@ export function trackSearchUsed(queryLength: number, resultCount: number): void 
   track('search-used', { queryLength, resultCount });
 }
 
-export function trackSearchResultSelected(resultType: string): void {
-  track('search-result-selected', { type: resultType });
+export function trackSearchResultSelected(
+  resultType: string,
+  options?: { includeAttribution?: boolean },
+): void {
+  const tracker = options?.includeAttribution === false ? trackPrivacyRestricted : track;
+  tracker('search-result-selected', { type: resultType });
 }
 
 // ---------------------------------------------------------------------------

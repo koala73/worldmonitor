@@ -6,7 +6,6 @@
  * entry chunk. Keep pre-init queuing in `sentry-defer.ts`; keep SDK setup here.
  */
 
-import { isDebugBearRumScriptFrame } from './debugbear-rum';
 import { isIosLikeUserAgent } from './platform-ua';
 import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
 import { getSentryBuildMetadata } from './sentry-build-metadata';
@@ -257,7 +256,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Can't find variable: caches/,
       /crypto\.randomUUID is not a function/,
       /ucapi is not defined/,
-      /Identifier '(?:script|reportPage|element|Shop|change_ua|originalPrompt)' has already been declared/, // change_ua: User-Agent-changer browser extension injecting same script twice — WORLDMONITOR-2D (88 events / 26 users). originalPrompt: extension hooking window.prompt double-injected — WORLDMONITOR-TE (not in our bundle; build would fail on a duplicate top-level const)
+      /Identifier '(?:script|reportPage|element|Shop|change_ua|originalPrompt|SENDER)' has already been declared/, // change_ua: User-Agent-changer browser extension injecting same script twice — WORLDMONITOR-2D (88 events / 26 users). originalPrompt: extension hooking window.prompt double-injected — WORLDMONITOR-TE. SENDER: Kaspersky-style content-script double-injection — WORLDMONITOR-ZC (not in our bundle; build would fail on a duplicate top-level const)
       /getAttribute is not a function.*getAttribute\("role"\)/,
       /SCDynimacBridge/,
       /errTimes is not defined/,
@@ -333,6 +332,22 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Unexpected identifier 'm'/, // Foreign script injection on Opera; pre-compiled bundle can't parse-fail at runtime (WORLDMONITOR-NT)
       /PlayerControlsInterface\.\w+ is not a function/, // Android Chrome WebView native bridge injection (Bilibili/UC/QQ-style host) — never emitted by our code (WORLDMONITOR-P2)
       /github\.com\/styled-components\/styled-components\/blob/, // styled-components runtime error (errors.md#N URL); we don't depend on styled-components, so it can only be a browser extension (Grammarly et al.) injecting its own bundle — WORLDMONITOR-SE
+      // The Umami tracker's beacon POST failed at the network layer and the
+      // tracker (third-party, served from abacus.worldmonitor.app) leaked its
+      // own rejection. A dropped analytics beacon is invisible to the user and
+      // unactionable — same disposition as the host-suffixed
+      // `Failed to fetch (abacus.worldmonitor.app)` already covered by
+      // THIRD_PARTY_FETCH_HOST_ALLOWLIST above; this is the bare-message variant
+      // that carries no host to match on (WORLDMONITOR-Z6/ZG, #6746).
+      //
+      // This belongs in ignoreErrors, not the stack-gated beforeSend block,
+      // precisely BECAUSE the string is ours: `CollectorTransportError` is
+      // constructed at exactly one line (analytics-collector-transport.ts) for
+      // exactly one condition, so the match has no blind spot to trade away.
+      // The rule that keeps generic runtime/network phrasings out of this array
+      // exists because they can also come from our own minified bundle and would
+      // hide real bugs — an exact marker we mint ourselves is the opposite case.
+      /^(?:CollectorTransportError: )?Umami collector beacon transport rejected\b/,
     ],
     beforeSend(event) {
       const msg = event.exception?.values?.[0]?.value ?? '';
@@ -372,8 +387,17 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // engine-equivalent phrasing, e.g. an embedded SDK's beacon fetch —
       // WORLDMONITOR-RP). Both route through the host allowlist below, which is
       // the load-bearing safety; this match is just the shape detector.
+      // The optional `TypeError: ` prefix and optional trailing period keep this
+      // detector in step with `FETCH_FAILURE_MESSAGE` in
+      // `src/services/fetch-failure-attribution.ts`, which produces these
+      // annotated messages. The two regexes had already drifted: the module
+      // admits a period-less Gecko phrasing (`resource\.?`) that this detector
+      // required literally, so such a message was annotated and then never
+      // routed to the host allowlist — annotated but unsuppressable. Widening
+      // here is safe because it only decides whether to CONSULT the allowlist;
+      // the allowlist itself is the load-bearing safety (#6746).
       const isHostScopedFetchFailure = excType === 'TypeError'
-        && /^(?:Failed to fetch|NetworkError when attempting to fetch resource\.) \([^)]+\)$/.test(msg);
+        && /^(?:TypeError: )?(?:Failed to fetch|NetworkError when attempting to fetch resource\.?) \([^)]+\)$/.test(msg);
       if (!isHostScopedFetchFailure
           && (excType === 'TypeError' || excType === 'RangeError' || /^(?:TypeError|RangeError):/.test(msg))
           && frames.length > 0) {
@@ -392,7 +416,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // real basemap / API regression is never silently dropped
       // (WORLDMONITOR-NE/NF, WORLDMONITOR-QG).
       if (isHostScopedFetchFailure) {
-        const hostMatch = msg.match(/^(?:Failed to fetch|NetworkError when attempting to fetch resource\.) \(([^)]+)\)$/);
+        const hostMatch = msg.match(/^(?:TypeError: )?(?:Failed to fetch|NetworkError when attempting to fetch resource\.?) \(([^)]+)\)$/);
         const host = hostMatch?.[1];
         if (host && THIRD_PARTY_FETCH_HOST_ALLOWLIST.has(host)) return null;
       }
@@ -562,71 +586,19 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // drop TypeScript assertions and would mangle a regex that contained it
       // (same harness trap as the Floot gate above).
       const bareFrameFunction = (fn: string) => fn.replace(/\s*\[[^\]]*\]$/, '');
+      // DELIBERATELY bare-only — do NOT widen this to accept ` (<host>)`.
+      // #6746 review considered exactly that (annotated SG/TZ/Y8 messages no
+      // longer match this gate and now surface instead of being suppressed) and
+      // rejected it: the host-suffixed form must stay OUT of this gate, because
+      // an annotated first-party failure carrying an extension frame would then
+      // be suppressed — silencing a real api.worldmonitor.app outage for every
+      // user who runs a fetch-wrapping extension. That is the precise blind spot
+      // #6746 exists to prevent, and the existing test at
+      // tests/sentry-beforesend.test.mjs:757 fails when this is widened.
+      // Annotated extension noise is instead handled correctly by the host
+      // allowlist above: allowlisted host -> suppressed, ours -> surfaces.
       if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
           && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /^(?:(?:.*\.)?window\.|(?:window|Object)\.)?(?:fetch|apply)$/i.test(bareFrameFunction(f.function ?? '')))) {
-        return null;
-      }
-      // Bare `Failed to fetch` surfacing through the DebugBear RUM collector's
-      // window.fetch monkeypatch. DebugBear (src/bootstrap/debugbear-rum.ts →
-      // cdn.debugbear.com/<id>.js; Sentry attributes its frames to the script
-      // configured script path) wraps window.fetch to time it, so a
-      // transient network blip on ANY app fetch rejects and its wrapper
-      // re-surfaces the rejection as an unhandled rejection, injecting its own
-      // frames. Without DebugBear the identical failure is zero-frame and already
-      // suppressed above — the collector's frames are the ONLY reason it reaches
-      // here. The `/assets/*.js` frames it carries are `window.fetch` TRAMPOLINES
-      // (Vite code-split chunk names, e.g. panel-storage/widget-store, which do
-      // not themselves fetch — grep-verified), NOT real callers. Suppress only
-      // when a DebugBear collector frame is present AND every non-infra frame is
-      // either that collector or the observed caller-free `window.fetch`/`fetch`
-      // trampolines from panel-storage/widget-store. Other first-party fetch
-      // wrappers (notably runtime.ts) must surface. Mirrors the SG
-      // extension-wrapper gate above; collector identity comes from
-      // DEBUGBEAR_RUM_SCRIPT_SRC via the shared predicate.
-      // WORLDMONITOR-VC (93ev/69u, 2026-07-04+).
-      // The optional `\w{1,3}.` receiver prefix is WORLDMONITOR-VQ: a later Vite
-      // build emits the same trampoline as `Rt.window.fetch` rather than a bare
-      // `window.fetch`, and the anchored match rejected it, so the identical
-      // wrapper class re-surfaced as a new issue. The prefix is bounded to a
-      // minified identifier (≤3 chars) so a real named receiver — e.g.
-      // `apiClient.fetch` — is still read as a genuine caller and surfaces.
-      // WORLDMONITOR-Y4 is the third build-rename of the same wrapper: Vite
-      // emitted one hop of the trampoline as a BARE minified name (`t`) with no
-      // `fetch` in it at all, which no fetch-anchored pattern can match. Bare
-      // names are admitted only at ≤2 chars and only inside these two chunks —
-      // `fetchContent` (WORLDMONITOR-SG) and `apiClient.fetch` both stay above
-      // that bound and still surface, which their regression tests assert. What
-      // keeps the tolerance honest is that neither module backing these chunks
-      // issues a fetch of its own, so a bare minified frame in them cannot be
-      // the real caller; tests/debugbear-trampoline-chunks.test.mjs fails if
-      // either module ever gains one, rather than letting the gate rot silently.
-      // WORLDMONITOR-Y4 recurrence is the FOURTH build-rename: a later Vite build
-      // emitted one panel-storage hop with no function name at all, and `''`
-      // matched neither pattern above, so a single nameless frame defeated the
-      // `.every()` and the whole class re-surfaced. Measured 2026-08-13: all 14
-      // events before the bare-name deploy are suppressed by it, all 14 after it
-      // surfaced, every one blocked by exactly that `fn: null` panel-storage frame.
-      // An empty name is admitted on the same bound as the bare name — only inside
-      // the two chunks whose modules issue no fetch of their own — so it cannot
-      // hide a real caller; `fetchContent` and `apiClient.fetch` still surface.
-      // The RUNTIME value of that anonymous hop is '?', not '' (WORLDMONITOR-Z6):
-      // @sentry/core stamps every parsed frame with `function || UNKNOWN_FUNCTION`
-      // — literally '?' — before beforeSend runs (node_modules/@sentry/core/
-      // build/cjs/utils/stacktrace.js:115). Sentry INGEST then displays '?' as
-      // a null function, so a replay or fixture built from API events tests ''
-      // and passes while production tests '?' and fails — which is exactly how
-      // the ''-only tolerance shipped and Z6 kept firing from builds that
-      // contained it. '' stays admitted (other SDK paths/versions may omit the
-      // stamp); both are bounded by the same fetch-free-chunk invariant.
-      const isTrampolineFrameFunction = (fn: string) =>
-        /^(?:\w{1,3}\.)?(?:window\.)?fetch$/.test(fn) || /^\w{1,2}$/.test(fn)
-        || fn === '' || fn === '?';
-      if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
-          && frames.some(f => isDebugBearRumScriptFrame(f.filename ?? ''))
-          && nonInfraFrames.every(f =>
-            isDebugBearRumScriptFrame(f.filename ?? '')
-            || (/\/assets\/(?:panel-storage|widget-store)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '')
-              && isTrampolineFrameFunction(f.function ?? '')))) {
         return null;
       }
       // Suppress Sentry SDK DOM breadcrumb null-access on document.activeElement/contains.
@@ -896,6 +868,14 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
         || (excType === 'SyntaxError' && /^Unexpected (?:token|keyword)/.test(msg))
         || /^SyntaxError: Unexpected (?:token|keyword)/.test(msg)
         || /Invalid or unexpected token/.test(msg)
+        // V8 wording when HTML (or other non-JS) is parsed as a script:
+        // Electron / in-app wrappers fetch the SPA document (`/dashboard`)
+        // as if it were JS, then report the parse failure against the
+        // document URL. Our compiled bundle cannot emit this at runtime —
+        // a genuine first-party SyntaxError keeps a source-mapped .ts /
+        // hashed-chunk frame (hasFirstParty → preserved). Same family as
+        // Unexpected token/keyword above (WORLDMONITOR-ZS).
+        || /^(?:SyntaxError: )?Malformed arrow function parameter list/.test(msg)
         || /^Operation timed out/.test(msg)
         || /Cannot inject key into script value/.test(msg)
         || /Connection lost while action was in flight/.test(msg)

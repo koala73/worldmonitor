@@ -24,17 +24,9 @@ export const WATCHDOG_JOB_READ_CONCURRENCY = 6;
 export const DISPATCH_CORRELATION_ATTEMPTS = 3;
 export const DISPATCH_CORRELATION_POLL_MS = 1_000;
 export const WATCHDOG_SOURCE_WORKFLOW_FILE = 'railway-deploy-trigger-watchdog.yml';
-// The classify job cannot report a read-path failure by failing, because one
-// transient failure is not worth paging on. It reports by *running* a named
-// step instead: present-and-successful means this run was blind, skipped means
-// it read GitHub fine. A later run counts those step conclusions across its own
-// recent history and fails the job once the blindness is sustained.
-export const WATCHDOG_CLASSIFY_JOB_NAME = 'classify';
+// The workflow records a named diagnostic step whenever the manual classifier
+// fails closed on unreadable GitHub state.
 export const WATCHDOG_READ_FAILURE_STEP_NAME = 'Record watchdog read-path failure';
-export const WATCHDOG_READ_FAILURE_STREAK_LIMIT = 3;
-export const WATCHDOG_READ_FAILURE_STREAK_WINDOW_MS = 2 * 60 * 60_000;
-export const WATCHDOG_STREAK_PAGE_SIZE = 5;
-export const WATCHDOG_STREAK_API_RESERVE = 5;
 export const MANUAL_RECOVERY_SOURCE_WORKFLOW_FILE = 'railway-reconcile-manual-recovery.yml';
 export const WATCHDOG_DISPATCH_JOB_NAME = 'Dispatch authorized recovery';
 export const WATCHDOG_DISPATCH_STEP_NAME = 'Dispatch exact Railway deploy-trigger run';
@@ -111,8 +103,7 @@ function isRetryableGitHubStatus(status) {
 }
 
 // Only a GitHub read failure marks the run blind. A control-plane outage or an
-// ambiguous classification is a different tier that stays warning-green, which
-// is why the streak keys on the code rather than on DEFERRED_AMBIGUOUS itself.
+// ambiguous classification is a different tier that stays warning-green.
 function readFailureCodeOf(error) {
   return error instanceof GitHubWatchdogError && error.code.startsWith('GITHUB_READ_')
     ? error.code
@@ -271,14 +262,6 @@ export class GitHubWatchdogClient {
           }))
       );
     }
-    if (method === 'GET' && url.pathname === `${this.repoPath}/actions/workflows/${WATCHDOG_SOURCE_WORKFLOW_FILE}/runs`) {
-      return exactQuery(url, {
-        event: 'schedule',
-        status: 'completed',
-        per_page: String(WATCHDOG_STREAK_PAGE_SIZE),
-        page: '1',
-      });
-    }
     if (method === 'GET' && new RegExp(`^${this.repoPathPattern}/actions/runs/\\d+/attempts/\\d+/jobs$`).test(url.pathname)) {
       return paginated && exactQuery(url, { per_page: String(GITHUB_PAGE_SIZE), page });
     }
@@ -323,8 +306,8 @@ export class GitHubWatchdogClient {
   #retryDelayMs(attempt, error) {
     if (Number.isFinite(error.retryAfterMs) && error.retryAfterMs >= 0) {
       // A secondary-limit window can be minutes long. Sleeping it out would
-      // blow the classify job's own timeout, so clamp and let the third
-      // failure escalate through the read-failure streak instead.
+      // blow the classify job's own timeout, so clamp and let the exhausted
+      // read fail the current manual invocation.
       return Math.min(error.retryAfterMs, WATCHDOG_READ_RETRY_MAX_MS);
     }
     // Full jitter: pick uniformly below the exponential ceiling so the six
@@ -743,54 +726,6 @@ export class GitHubWatchdogClient {
     return history.find((run) => (
       displayTitleHasIdentifier(run.displayTitle, recoveryAttemptId)
     )) ?? null;
-  }
-
-  // Counts how many of the watchdog's own most recent scheduled runs recorded a
-  // read-path failure, newest first, stopping at the first run that did not.
-  // Only the newest page is read and the walk is capped at the streak limit, so
-  // this costs at most one runs read plus one job read per counted run.
-  //
-  // A run whose marker step is absent — cancelled before it ran, or a schedule
-  // gap wider than the window — carries no evidence either way and ends the
-  // count. That delays detection by one cycle at worst: a read path that is
-  // still broken re-accumulates on the very next run.
-  async readReadFailureStreak({ excludeRunId = null } = {}) {
-    const now = this.now();
-    if (!Number.isFinite(now)) throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'watchdog clock was invalid');
-    const query = new URLSearchParams({
-      event: 'schedule',
-      status: 'completed',
-      per_page: String(WATCHDOG_STREAK_PAGE_SIZE),
-      page: '1',
-    });
-    const { data } = await this.request(
-      'GET',
-      `${this.repoPath}/actions/workflows/${WATCHDOG_SOURCE_WORKFLOW_FILE}/runs?${query}`,
-    );
-    const runs = data?.workflow_runs;
-    if (!Array.isArray(runs)) {
-      throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'watchdog run history shape was invalid');
-    }
-    let streak = 0;
-    for (const run of runs) {
-      if (streak >= WATCHDOG_READ_FAILURE_STREAK_LIMIT) break;
-      if (!validGitHubId(run?.id)
-        || !Number.isSafeInteger(run?.run_attempt)
-        || run.run_attempt < 1
-        || !Number.isFinite(Date.parse(run?.created_at ?? ''))) {
-        throw new GitHubWatchdogError('GITHUB_READ_FAILED', 'watchdog run history entry was invalid');
-      }
-      if (excludeRunId !== null && String(run.id) === String(excludeRunId)) continue;
-      if (now - Date.parse(run.created_at) > WATCHDOG_READ_FAILURE_STREAK_WINDOW_MS) break;
-      const jobs = await this.#readAttemptJobs(run.id, run.run_attempt);
-      const marker = jobs
-        .find((job) => job?.name === WATCHDOG_CLASSIFY_JOB_NAME)
-        ?.steps
-        ?.find((step) => step?.name === WATCHDOG_READ_FAILURE_STEP_NAME);
-      if (marker?.conclusion !== 'success') break;
-      streak += 1;
-    }
-    return streak;
   }
 
   async readSourceRunIdentity({ sourceRunId, sourceRunAttempt, expectedSourceHeadSha = null }) {
@@ -1854,33 +1789,14 @@ export async function bindAuthorizedRecovery({
   };
 }
 
-// One blind run is not worth paging on; a sustained blind watchdog is the exact
-// green-while-dead shape that hid the pagination bug for months. The current
-// run counts itself, so the limit is reached after LIMIT consecutive runs.
-export async function resolveReadFailureExit({
-  github,
-  result,
-  sourceRunId = process.env.GITHUB_RUN_ID,
-}) {
-  if (!result?.readFailureCode) return { failJob: false, streak: 0, reason: null };
-  let priors;
-  try {
-    priors = await github.readReadFailureStreak({ excludeRunId: sourceRunId ?? null });
-  } catch (error) {
-    // The streak read travels the same path that just failed, so an unreadable
-    // history is itself evidence the watchdog is blind. Fail closed rather than
-    // let the detector die exactly when it is needed.
-    return {
-      failJob: true,
-      streak: null,
-      reason: `the read-failure streak could not be read: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
-  const streak = priors + 1;
+// The watchdog is manual rollback only. There is no later scheduled run that
+// can accumulate a failure streak, so any unreadable GitHub state must make the
+// current invocation red immediately.
+export async function resolveReadFailureExit({ result }) {
+  if (!result?.readFailureCode) return { failJob: false, reason: null };
   return {
-    failJob: streak >= WATCHDOG_READ_FAILURE_STREAK_LIMIT,
-    streak,
-    reason: `${streak} consecutive scheduled runs could not read GitHub (${result.readFailureCode})`,
+    failJob: true,
+    reason: `the manual watchdog could not read GitHub (${result.readFailureCode})`,
   };
 }
 
@@ -1898,12 +1814,10 @@ function writeWorkflowResult(result) {
     `prior_id=${result.priorId ?? result.recoveryAttemptId ?? ''}`,
     `workflow_run_id=${result.runId ?? ''}`,
     `run_attempt=${result.runAttempt ?? ''}`,
-    // Gates the classify job's read-failure marker step, which is the durable
-    // record a later run counts. Keep the name in step with
-    // WATCHDOG_READ_FAILURE_STEP_NAME in the watchdog workflow.
+    // Gates the classify job's read-failure marker step, which records why the
+    // current manual invocation failed.
     `read_failure=${typeof result.readFailureCode === 'string' && result.readFailureCode !== ''}`,
     `read_failure_code=${result.readFailureCode ?? ''}`,
-    `read_failure_streak=${result.readFailureStreak ?? ''}`,
     `rejection=${result.rejection ? Buffer.from(JSON.stringify(result.rejection)).toString('base64url') : ''}`,
   ];
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
@@ -1931,27 +1845,17 @@ async function main() {
     const github = new GitHubWatchdogClient({
       repository: process.env.GITHUB_REPOSITORY,
       token: process.env.GH_TOKEN,
-      // The streak read is the escalation path for budget exhaustion, so it
-      // cannot share a budget the snapshot can exhaust. Carving the reserve out
-      // of the same ceiling keeps the per-run total at
-      // WATCHDOG_MAX_API_REQUESTS.
-      maxRequests: WATCHDOG_MAX_API_REQUESTS - WATCHDOG_STREAK_API_RESERVE,
-    });
-    const streakGithub = new GitHubWatchdogClient({
-      repository: process.env.GITHUB_REPOSITORY,
-      token: process.env.GH_TOKEN,
-      maxRequests: WATCHDOG_STREAK_API_RESERVE,
     });
     const result = await prepareRecoveryDispatch({
       github,
       control,
       autoRecoveryEnabled: readArgument(process.argv, '--auto-recovery-enabled', 'false') === 'true',
     });
-    const escalation = await resolveReadFailureExit({ github: streakGithub, result });
+    const escalation = await resolveReadFailureExit({ result });
     // The annotation goes out before the result so the machine-readable JSON
     // blob stays the last line of stdout.
     if (escalation.failJob) console.log(`::error::WATCHDOG_READ_PATH_BLIND: ${escalation.reason}`);
-    writeWorkflowResult({ ...result, readFailureStreak: escalation.streak });
+    writeWorkflowResult(result);
     if (escalation.failJob) process.exitCode = 1;
     return;
   }
@@ -2023,9 +1927,8 @@ if (isMainModule(import.meta.url, process.argv[1])) {
     const reason = error instanceof Error ? error.message : String(error);
     // Every phase fails here, classify included. Reaching this handler means a
     // credential, a variable, or the controller itself is broken — an
-    // unambiguous hard failure, not the transient upstream condition the
-    // read-failure streak exists to rate-limit. classify used to be excluded,
-    // which is what made the job structurally unable to go red.
+    // unambiguous hard failure. Classify used to be excluded, which is what
+    // made the job structurally unable to go red.
     console.log(`::error::WATCHDOG_PHASE_FAILED: ${reason}`);
     writeWorkflowResult({
       outcome: 'DEFERRED_AMBIGUOUS',

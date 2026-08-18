@@ -3,9 +3,11 @@ import { readFile, stat, readdir } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
 /**
- * Critical-path budget guard for the committed /pro build (#5396).
+ * Critical-path budget guard for the /pro build (#5396).
  *
- * public/pro is a committed build artifact: any PR that rebuilds the pro app
+ * public/pro is a BUILT artifact since #6898 (the deploy runs `npm run
+ * build:pro`), so these checks only run locally after that command: any PR that
+ * rebuilds the pro app
  * (a #5374-class change) can silently regress the page's critical path — grow
  * the modulepreloaded chunks, promote the 3MB Clerk bundle to eager, or add
  * render-blocking assets — and the only tripwire would be the weekly DebugBear
@@ -16,6 +18,8 @@ import { describe, it } from 'node:test';
  * guards the real artifacts is proven to have teeth against bad fixtures
  * below — a guard that cannot fail is not a guard.
  */
+
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 const PRO_DIR = new URL('../public/pro/', import.meta.url);
 
@@ -99,39 +103,48 @@ function assertCriticalPathBudget(refs: string[], sizeOf: (ref: string) => numbe
 }
 
 describe('pro critical path budget (#5396)', () => {
-  it('keeps the real /pro page inside the critical-path budget', async () => {
-    const html = await readFile(new URL('index.html', PRO_DIR), 'utf8');
-    const { entry, refs } = parseCriticalRefs(html);
-    assert.ok(entry, 'no entry <script> found in public/pro/index.html — parser or page structure changed');
-    assert.ok(refs.length >= 2, `expected entry + preloads/styles on the critical path, found ${refs.length} refs`);
+  // Real-artifact leg. public/pro/ is built, not committed (#6898), so it skips
+  // in a checkout that has not run `npm run build:pro` and FAILS when
+  // WM_EXPECT_BUILT_OUTPUT=1 says CI built it. The teeth tests below are pure
+  // fixtures and must keep running either way — that is what proves the
+  // checkers above can fail at all.
+  describe('real /pro artifacts', { skip: shouldSkipProBuiltOutput() }, () => {
+    guardProBuiltOutput();
 
-    const sizes = new Map<string, number>();
-    for (const ref of refs) {
-      const s = await stat(new URL(ref.replace('/pro/', './'), PRO_DIR));
-      sizes.set(ref, s.size);
-    }
-    assertCriticalPathBudget(refs, (r) => sizes.get(r) ?? 0);
-    assertClerkNotOnCriticalPath(refs);
-  });
+    it('keeps the real /pro page inside the critical-path budget', async () => {
+      const html = await readFile(new URL('index.html', PRO_DIR), 'utf8');
+      const { entry, refs } = parseCriticalRefs(html);
+      assert.ok(entry, 'no entry <script> found in public/pro/index.html — parser or page structure changed');
+      assert.ok(refs.length >= 2, `expected entry + preloads/styles on the critical path, found ${refs.length} refs`);
 
-  it('keeps Clerk a lazy dynamic import in the real entry chunk', async () => {
-    const html = await readFile(new URL('index.html', PRO_DIR), 'utf8');
-    const { entry } = parseCriticalRefs(html);
-    const entrySource = await readFile(new URL(entry.replace('/pro/', './'), PRO_DIR), 'utf8');
-    assertClerkStaysLazy(entrySource);
-  });
+      const sizes = new Map<string, number>();
+      for (const ref of refs) {
+        const s = await stat(new URL(ref.replace('/pro/', './'), PRO_DIR));
+        sizes.set(ref, s.size);
+      }
+      assertCriticalPathBudget(refs, (r) => sizes.get(r) ?? 0);
+      assertClerkNotOnCriticalPath(refs);
+    });
 
-  it('keeps total /pro assets weight under the cap', async () => {
-    const assetsDir = new URL('assets/', PRO_DIR);
-    let total = 0;
-    for (const name of await readdir(assetsDir)) {
-      total += (await stat(new URL(name, assetsDir))).size;
-    }
-    assert.ok(
-      total <= TOTAL_ASSETS_BUDGET_BYTES,
-      `public/pro/assets is ${Math.round(total / 1024 / 1024 * 10) / 10} MB (cap ${TOTAL_ASSETS_BUDGET_BYTES / 1024 / 1024} MB) — `
-        + 'a new heavyweight dependency landed in the pro bundle (#5396)',
-    );
+    it('keeps Clerk a lazy dynamic import in the real entry chunk', async () => {
+      const html = await readFile(new URL('index.html', PRO_DIR), 'utf8');
+      const { entry } = parseCriticalRefs(html);
+      const entrySource = await readFile(new URL(entry.replace('/pro/', './'), PRO_DIR), 'utf8');
+      assertClerkStaysLazy(entrySource);
+    });
+
+    it('keeps total /pro assets weight under the cap', async () => {
+      const assetsDir = new URL('assets/', PRO_DIR);
+      let total = 0;
+      for (const name of await readdir(assetsDir)) {
+        total += (await stat(new URL(name, assetsDir))).size;
+      }
+      assert.ok(
+        total <= TOTAL_ASSETS_BUDGET_BYTES,
+        `public/pro/assets is ${Math.round(total / 1024 / 1024 * 10) / 10} MB (cap ${TOTAL_ASSETS_BUDGET_BYTES / 1024 / 1024} MB) — `
+          + 'a new heavyweight dependency landed in the pro bundle (#5396)',
+      );
+    });
   });
 
   // Teeth: the same checkers must FAIL on the regressions they claim to catch.

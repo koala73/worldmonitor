@@ -104,6 +104,10 @@ import { resolveGateAction, type PanelGateReason } from '@/services/panel-gating
 import { ExportGateControl } from '@/components/ExportGateControl';
 import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
+import {
+  isAgentAnalyticsSuppressed,
+  isAgentPanelViewSuppressed,
+} from '@/services/agent-analytics-privacy';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
 import { createSettingsButton } from '@/components/settings-button';
@@ -282,6 +286,7 @@ export class EventHandlerManager implements AppModule {
   private boundMissionKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundEmbedModalKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private missionPresetPopover: HTMLElement | null = null;
+  private missionPresetReturnFocus: HTMLElement | null = null;
   private missionDataRefreshTimer: number | null = null;
   private authStateUnsubscribers: Array<() => void> = [];
   private proGateUnsubscribers: Array<() => void> = [];
@@ -337,11 +342,11 @@ export class EventHandlerManager implements AppModule {
    * enabled → true (no-op). Single source of truth for runtime panel-enable
    * so search-add and undo-restore stay in lockstep.
    */
-  enablePanelById(panelId: string): boolean {
+  enablePanelById(panelId: string, options?: { trackAnalytics?: boolean }): boolean {
     const config = this.ctx.panelSettings[panelId];
     if (!config) return false;
     if (config.enabled) return true;
-    if (!isProUser() && isFreePanelCapCounted(panelId)) {
+    if (!hasPremiumAccess(getAuthState()) && isFreePanelCapCounted(panelId)) {
       const enabledCount = countFreePanelCapUsage(this.ctx.panelSettings);
       if (enabledCount >= FREE_MAX_PANELS) {
         // Tell the user why nothing happened instead of failing silently.
@@ -352,7 +357,7 @@ export class EventHandlerManager implements AppModule {
       }
     }
     userSetPanelEnabled(config, true);
-    trackPanelToggled(panelId, true);
+    if (options?.trackAnalytics !== false) trackPanelToggled(panelId, true);
     saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
     this.applyPanelSettings();
     this.ctx.unifiedSettings?.refreshPanelToggles();
@@ -865,6 +870,9 @@ export class EventHandlerManager implements AppModule {
 
   private openMissionPresetPopover(anchor: HTMLElement | null, mobile: boolean): void {
     this.closeMissionPresetPopover();
+    // The desktop trigger (#missionPresetBtn) is display:none on mobile, where the
+    // popover opens from the menu item instead, so remember the real opener.
+    this.missionPresetReturnFocus = anchor ?? document.getElementById('missionPresetBtn');
 
     const active = loadStoredMissionPreset();
     const popover = document.createElement('div');
@@ -973,9 +981,17 @@ export class EventHandlerManager implements AppModule {
       this.missionPresetPopover.removeEventListener('keydown', this.boundMissionKeydownHandler);
       this.boundMissionKeydownHandler = null;
     }
+    const hadFocus = this.missionPresetPopover?.contains(document.activeElement) ?? false;
     this.missionPresetPopover?.remove();
     this.missionPresetPopover = null;
-    document.getElementById('missionPresetBtn')?.setAttribute('aria-expanded', 'false');
+    const trigger = document.getElementById('missionPresetBtn');
+    trigger?.setAttribute('aria-expanded', 'false');
+    // Removing the popover while focus was inside it drops focus to <body>;
+    // hand it back to whichever control opened it. Falling back to the desktop
+    // trigger keeps the pre-existing behavior when no opener was recorded.
+    const opener = this.missionPresetReturnFocus;
+    this.missionPresetReturnFocus = null;
+    if (hadFocus) (opener?.isConnected ? opener : trigger)?.focus();
   }
 
   private getMissionDefaultLayers(): MapLayers {
@@ -983,10 +999,12 @@ export class EventHandlerManager implements AppModule {
   }
 
   private filterMissionLayersForCurrentRenderer(layers: MapLayers): MapLayers {
-    const renderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
     const isDeckGLActive = this.ctx.map?.isDeckGLActive?.() ?? !this.ctx.isMobile;
+    const kind = this.ctx.map?.isGlobeMode?.()
+      ? 'globe'
+      : (isDeckGLActive ? 'deck' : 'svg');
     let filtered = this.filterMissionLayersForAvailableServices(
-      filterMissionLayersForRenderer(layers, renderer, isDeckGLActive, this.getMissionDefaultLayers()),
+      filterMissionLayersForRenderer(layers, kind, this.getMissionDefaultLayers()),
     );
     // #6045 — mission presets (e.g. Supply-Chain Risk) include resilienceScore.
     // Free users must not persist or apply locked layers through this path.
@@ -1214,7 +1232,7 @@ export class EventHandlerManager implements AppModule {
 
   applyMapLayerChange(layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic'): void {
     console.log(`[App.onLayerChange] ${layer}: ${enabled} (${source})`);
-    trackMapLayerToggle(layer, enabled, source);
+    if (!isAgentAnalyticsSuppressed()) trackMapLayerToggle(layer, enabled, source);
     this.ctx.mapLayers[layer] = enabled;
     saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
     this.syncUrlState();
@@ -2053,6 +2071,7 @@ export class EventHandlerManager implements AppModule {
         if (entry.isIntersecting && entry.intersectionRatio >= 0.3) {
           const id = (entry.target as HTMLElement).dataset.panel;
           if (id && !viewedPanels.has(id)) {
+            if (isAgentPanelViewSuppressed(id)) continue;
             viewedPanels.add(id);
             trackPanelView(id);
           }

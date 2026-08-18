@@ -351,31 +351,24 @@ Three details in that file are load-bearing and easy to get wrong:
   blobs. Re-fetching with `--depth` afterwards would re-shallow the clone and
   strand exactly those commits, so neither workflow does.
 
-Accepted degradations go in `scripts/railway-deploy-drift-baseline.json`, which
-has the same shape as `scripts/seed-freshness-baseline.json` and is split by the
-same `applyAcceptanceBaseline` implementation, imported from
-`scripts/check-seed-freshness.mjs`. Sharing the function keeps expiry,
-prune-on-recovery, and "a service failing with a different verdict than the one
-baselined still blocks" from acquiring two meanings — so a baselined
-`REJECTED_PUSH` that turns into `BEHIND` still fails the run, which is the case
-where someone cleared the filter and the service went stale anyway. Every entry
-carries an owner issue and the file carries an expiry, so a suppression cannot
-outlive its cause unnoticed. The expiry is scoped to suppressions and does not
-fire on an empty list — the drift baseline emptied on 2026-08-06 when `umami`
-recovered, and an expiry that reddened the monitor over zero entries would be a
-finding-free failure on a check whose whole value is that its reds mean
-something.
+The original implementation used
+`scripts/railway-deploy-drift-baseline.json` and ran deployment drift inside
+`Seed Freshness Monitor`. That design is retired. The permanent monitor accepts
+no deployment suppression: every unknown, failed, overdue, contradictory, or
+otherwise unaccepted result is directly red.
 
-`.github/workflows/seed-freshness-monitor.yml` runs the drift check in its own
-`drift` job, named **Railway deploy drift**. That job has no `needs:` and no gate
-condition, so it runs in parallel with the `monitor` job and reports its own
-conclusion. It has no ordering relationship to the config audit or the
-compact-health check, which stay in `monitor` (#6523).
+`.github/workflows/railway-deploy-drift.yml` now owns one combined read-only job:
+the Viewer-safe source/build/trigger audit and deployment-history drift share a
+single per-service projection. It runs every six hours and on manual dispatch,
+only on `main`, with deployment tracking disabled for its GitHub environment.
+`Seed Freshness Monitor` owns ingestion acceptance only and no longer installs
+Railway or reports a fleet conclusion.
 
-The drift job checks out with `fetch-depth: 0`, and the step re-fetches main
-first, for the ancestry reason above. The job does not detach onto a gated
-ancestor the way `monitor` does, so the fleet is always judged against trigger
-head.
+The deployment job checks out full history with `fetch-depth: 0` and a blobless
+filter, freezes the event SHA, and refreshes the explicit `origin/main` tracking
+ref before evaluating ancestry. An `AHEAD` deployment is healthy only when its
+running commit is proven reachable from the authorized current `main` ref;
+otherwise it reports `AHEAD_LINEAGE_UNPROVEN`.
 
 ### Still true, and unchanged
 
@@ -417,24 +410,38 @@ left every genuinely-behind service reported — and all 53 remaining
 `REJECTED_PUSH` verdicts carried `skippedReason: CI check suite failed`, not one
 a path refusal.
 
-The scheduled workflow checks live Railway config and operational health only
-after the current main commit has a successful `gate` status. A missing,
-pending, or failed gate fails the workflow; it is never converted into a green
-skip. It deliberately does not run on an ingestion push because Railway may not
-have deployed or executed that revision yet. That separates a code failure from
-the operational case this guard targets: repository checks are green while a
-Railway producer, deployment trigger, or composed coverage is still unhealthy.
+`Seed Freshness Monitor` keeps the gate-dependent ingestion acceptance. A
+missing, pending, failed, or errored head gate is not a green skip and is not
+an ingestion failure: the job monitors the newest gated ancestor in the
+window, and fails closed only when none exists. It deliberately does not run
+on an ingestion push because Railway may not have deployed or executed that
+revision yet.
 
-**Exception, added after #6483: the deploy-drift step is NOT gated on green
-main.** The gate and the drift it measures share an upstream — an ungated or
-red main is exactly when Railway's wait-for-CI refuses pushes and drift grows —
-and during #6483 the gate failed for days while the drift step sat skipped, so
-a seeder served a dead cache namespace for 25h inside a permanently-red
-monitor. The drift step and its two prerequisites (CLI install, token verify)
-now run under `if: !cancelled()`; a gate failure still fails the run, it just
-no longer blinds the one probe that measures its blast radius. Freshness
-acceptance stays gated: it grades data against code expectations and needs a
-gated revision to grade against.
+Its live health probe remains fail-closed on every actionable source problem.
+The scheduled workflow now projects that strict result into durable
+`ingestion/seed/<source>` statuses. A new or changed problem fails one run;
+unchanged later observations keep the source status red without manufacturing
+another incident, and live recovery posts success. Transport failures,
+malformed health evidence, and expired acknowledgements still fail directly.
+This distinction is operationally important: a red status means "still
+broken", while a newly failed workflow run means "new information needs
+attention".
+
+`Railway Native Deploy Health` is a separate six-hourly workflow and has no
+dependency on the Seed Freshness gate. The gate and deployment drift share an
+upstream: an ungated or red main is exactly when Railway can refuse a push, so
+using the gate to skip the drift probe would hide the blast radius. Its one job
+publishes both Railway configuration and deployment conclusions directly,
+without changing the ingestion workflow's verdict.
+
+The earlier two-job hourly layout duplicated the expensive Viewer projection:
+both jobs queried all 80 services, so each scheduled run produced about 160
+per-service GraphQL calls before deployment-history reads. On 2026-08-15 this
+exhausted Railway's rolling API allowance and both jobs failed with HTTP 429.
+The combined job queries each service once with concurrency two, reuses that
+projection for both conclusions, and runs every six hours. A quota failure
+still fails closed; lowering request volume prevents the monitor from creating
+the condition it is meant to observe.
 
 ## Prevention
 

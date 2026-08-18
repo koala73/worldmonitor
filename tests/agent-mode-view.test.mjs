@@ -1,4 +1,5 @@
 import { describe, it } from 'node:test';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -15,12 +16,14 @@ const agentCard = JSON.parse(
   readFileSync(join(ROOT, 'public/.well-known/agent-card.json'), 'utf-8'),
 );
 const vercelConfig = JSON.parse(readFileSync(join(ROOT, 'vercel.json'), 'utf-8'));
+const productFacts = JSON.parse(readFileSync(join(ROOT, 'public/product-facts.json'), 'utf-8'));
 
 // Guards for the ?mode=agent machine-readable homepage view (orank Identity
 // `agent-mode-view` bonus): the static JSON must stay in parity with the real
 // discovery artifacts it summarizes, and the query-gated rewrite must fire
 // BEFORE the / → welcome rewrite or the marketing page wins.
 describe('agent-mode view (/?mode=agent)', () => {
+  guardProBuiltOutput();
   it('agent-view.json carries the machine-readable essentials', () => {
     assert.equal(view.kind, 'agent-view');
     for (const key of ['product', 'url', 'description', 'endpoints', 'authentication', 'rateLimits', 'documentation', 'capabilities', 'discovery']) {
@@ -64,9 +67,10 @@ describe('agent-mode view (/?mode=agent)', () => {
     }
   });
 
-  it('the marketing homepage points at the agent view via link rel=alternate', () => {
-    // Hand-synced pair: the pro-test source and the committed build artifact
-    // must both carry the pointer (the pre-push gate rebuilds and compares).
+  it('the marketing homepage points at the agent view via link rel=alternate', { skip: shouldSkipProBuiltOutput() }, () => {
+    // Source/build pair: public/pro/welcome.html is produced by
+    // `npm run build:pro` rather than committed (#6898), so this asserts the
+    // pointer survives the prerender rather than that two committed files agree.
     const linkTag =
       '<link rel="alternate" type="application/json" href="https://www.worldmonitor.app/?mode=agent"';
     for (const path of ['pro-test/welcome.html', 'public/pro/welcome.html']) {
@@ -99,9 +103,25 @@ describe('agent-mode view (/?mode=agent)', () => {
 
   it('stays in parity with the MCP server card and A2A agent card', () => {
     assert.equal(view.endpoints.mcp.url, serverCard.url);
-    assert.equal(view.endpoints.mcp.tools, serverCard.tools.length);
+    assert.equal(view.endpoints.mcp.serverCard, 'https://worldmonitor.app/.well-known/mcp/server-card.json');
+    assert.equal(view.endpoints.mcp.tools, undefined, 'agent-view must not carry a hand-maintained tool total');
+    assert.match(view.endpoints.mcp.note, /tools\/list.*live tool inventory/i);
+    assert.ok(serverCard.tools.length > 0, 'the linked live server card must expose tools');
     assert.equal(view.endpoints.a2a.url, agentCard.url);
     assert.equal(view.endpoints.nlweb.url, 'https://www.worldmonitor.app/ask');
+  });
+
+  it('points agents at derived tool and locale inventories instead of orphaned totals', () => {
+    assert.equal(view.endpoints.mcp.tools, undefined);
+    assert.match(view.endpoints.mcp.note, /tools\/list.*live tool inventory/i);
+    const llmsFull = readFileSync(join(ROOT, 'public/llms-full.txt'), 'utf-8');
+    assert.match(llmsFull, /product-facts\.json.*capabilities\.localeCodes/);
+    assert.ok(productFacts.capabilities.localeCodes.length > 0);
+    assert.equal(
+      productFacts.capabilities.localeCodes.length,
+      productFacts.capabilities.locales,
+      'the agent-readable locale list must match the derived locale count',
+    );
   });
 
   it('vercel.json serves it for /?mode=agent ahead of the welcome rewrite', () => {
@@ -128,6 +148,7 @@ describe('agent-mode view (/?mode=agent)', () => {
         'public/.well-known/agent-skills/index.json',
       'https://worldmonitor.app/.well-known/api-catalog': 'public/.well-known/api-catalog',
       'https://worldmonitor.app/.well-known/ai-catalog.json': 'public/.well-known/ai-catalog.json',
+      'https://worldmonitor.app/product-facts.json': 'public/product-facts.json',
       'https://worldmonitor.app/llms.txt': 'public/llms.txt',
     };
     for (const [url, path] of Object.entries(trackedPaths)) {

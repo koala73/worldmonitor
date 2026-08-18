@@ -74,9 +74,9 @@ World Monitor maps the world's **10 major commodity exchanges**:
 
 Click any exchange for trading hours, primary instruments, and current market status.
 
-## 83 Strategic Ports Under Watch
+## Strategic Ports Under Watch
 
-Maritime chokepoints and major ports are the pressure points of global trade. World Monitor maps **83 strategic ports** with:
+Maritime chokepoints and major ports are the pressure points of global trade. World Monitor maps its **strategic-port registry** with:
 
 - Current operational status
 - Geographic chokepoint proximity (Suez, Strait of Hormuz, Malacca, Panama Canal)
@@ -192,13 +192,15 @@ Enterprise supply chain risk platforms (Resilinc, Everstream Analytics, Interos)
 
 It's not a replacement for a full supply chain management platform. It's the situational awareness layer that tells you where to look, before your logistics system shows delays. See how World Monitor compares to [traditional intelligence tools](/blog/posts/worldmonitor-vs-traditional-intelligence-tools/).
 
+For the evergreen monitoring procedure that keeps this workflow durable and product-handoff oriented, see [Monitor supply-chain disruptions](/use-cases/monitor-supply-chain-disruptions/). This article remains supporting editorial around Commodity Monitor surfaces.
+
 ## Frequently Asked Questions
 
 **How often are commodity prices updated?**
 Prices are sourced from CME, ICE, LME, and other major exchanges with near real-time updates throughout trading hours. The dashboard shows current price, daily change, and trend indicators.
 
 **Can I set alerts for specific supply chain disruptions?**
-Yes. World Monitor's Custom Keyword Monitors let you set persistent alerts for terms like "port closure," "pipeline disruption," or specific commodity names. Matching headlines from 500+ curated RSS feeds are highlighted in your chosen color.
+Yes. World Monitor's Custom Keyword Monitors let you set persistent alerts for terms like "port closure," "pipeline disruption," or specific commodity names. Matching headlines from the curated RSS catalog are highlighted in your chosen color.
 
 **Does the Commodity Monitor include geopolitical risk context?**
 Yes. The Country Instability Index (CII), conflict layers, and Infrastructure Cascade panel overlay directly onto commodity and shipping data, so you see disruption risks alongside pricing.

@@ -34,6 +34,7 @@ export type ContentLandingPageFamily =
   | 'pricing'
   | 'documentation'
   | 'developer_mcp'
+  | 'use-cases'
   | 'unknown';
 
 export interface ContentAttribution {
@@ -57,7 +58,7 @@ export interface ContentAttributionInput {
 
 const UNKNOWN = 'unknown';
 const CONTENT_DESTINATIONS = ['dashboard', 'pro', 'api', 'mcp'] as const;
-const CONTENT_SOURCES = ['worldmonitor-blog'] as const;
+const CONTENT_SOURCES = ['worldmonitor-blog', 'worldmonitor-use-cases'] as const;
 const CONTENT_MEDIA = ['owned-content'] as const;
 const CONTENT_PLACEMENTS = [
   'article-cta-dashboard',
@@ -74,6 +75,10 @@ const CONTENT_PLACEMENTS = [
   'header-pro',
   'product-link',
   'pro-dashboard-cta',
+  'use-case-cta-dashboard',
+  'use-case-cta-pro',
+  'use-case-cta-api',
+  'use-case-cta-mcp',
 ] as const;
 const CONTENT_LANDING_PAGE_FAMILIES = [
   'homepage',
@@ -81,6 +86,7 @@ const CONTENT_LANDING_PAGE_FAMILIES = [
   'pricing',
   'documentation',
   'developer_mcp',
+  'use-cases',
   'unknown',
 ] as const;
 const TOKEN_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -252,6 +258,7 @@ export function inferLandingPageFamily(pathname: string): ContentLandingPageFami
     return 'developer_mcp';
   }
   if (path === '/docs' || path.startsWith('/docs/')) return 'documentation';
+  if (path === '/use-cases' || path.startsWith('/use-cases/')) return 'use-cases';
   return 'unknown';
 }
 

@@ -170,17 +170,24 @@ test.describe('settings source live apply (#6380)', () => {
   test('toggling sources and closing Settings reloads news once, without a reload', async ({ page }) => {
     await seedProFullVariant(page);
     const log = await bootUntilNewsSettles(page);
+    // #6724: snapshot the count AFTER the boot check passes, so a late boot
+    // digest is never charged to the toggle assertion below.
+    const baseline = log.urls.length;
 
     await openSourcesTab(page);
     const disabled = await disableFirstSources(page, TOGGLE_COUNT);
 
     // Clicking inside the modal must not refetch — the overlay covers the
     // dashboard, so a per-click load is pure request spend the user cannot see.
+    // #6724: a late boot digest that lands after the SETTLE_MS window but
+    // before this assertion was charged to the toggle. Snapshot the count
+    // after the boot check passes, then assert the delta across the modal
+    // interaction — a straggler that predates the modal cannot inflate it.
     expect(
-      log.urls.length,
+      log.urls.length - baseline,
       `toggling ${TOGGLE_COUNT} sources inside the open modal must not issue a news load ` +
-        `(requests: ${log.urls.length})`,
-    ).toBe(1);
+        `(requests since boot settle: ${log.urls.length - baseline}, baseline: ${baseline})`,
+    ).toBe(0);
 
     const secondDigest = page.waitForRequest(DIGEST_GLOB, { timeout: 30_000 });
     await page.locator('.unified-settings-close').click();
@@ -190,26 +197,29 @@ test.describe('settings source live apply (#6380)', () => {
 
     // ...and exactly one, not one per toggle. Wait out the same window the boot
     // check used, so a delayed storm cannot slip past after the first arrival.
+    // #6724: same baseline-delta pattern as the toggle assertion above.
     await page.waitForTimeout(SETTLE_MS);
     expect(
-      log.urls.length,
+      log.urls.length - baseline,
       `disabling ${disabled.length} sources (${disabled.join(', ')}) must cost exactly one ` +
-        `extra news load, not one per click (requests: ${log.urls.length})`,
-    ).toBe(2);
+        `extra news load, not one per click (requests since baseline: ${log.urls.length - baseline})`,
+    ).toBe(1);
   });
 
   test('closing Settings without touching sources issues no news load', async ({ page }) => {
     await seedProFullVariant(page);
     const log = await bootUntilNewsSettles(page);
+    // #6724: same baseline-delta pattern.
+    const baseline = log.urls.length;
 
     await openSourcesTab(page);
     await page.locator('.unified-settings-close').click();
     await page.waitForTimeout(SETTLE_MS);
 
     expect(
-      log.urls.length,
+      log.urls.length - baseline,
       `an unchanged source selection has the same news work-list, so closing Settings must ` +
-        `not spend a digest request (requests: ${log.urls.length})`,
-    ).toBe(1);
+        `not spend a digest request (requests since baseline: ${log.urls.length - baseline})`,
+    ).toBe(0);
   });
 });

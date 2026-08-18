@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: '#moments', labelKey: 'welcome.nav.useCases', accent: false },
   { href: '#first-five', labelKey: 'welcome.nav.firstFive', accent: false },
   { href: '#depth', labelKey: 'welcome.nav.depth', accent: false },
+  { href: '#agents', labelKey: 'welcome.nav.agents', accent: false },
   { href: '/sources/?utm_source=welcome-nav', labelKey: 'welcome.depth.s3l', accent: false },
   { href: '/pro#pricing', labelKey: 'welcome.nav.pricing', accent: true },
   { href: '#faq', labelKey: 'welcome.nav.faq', accent: false },
@@ -38,7 +39,7 @@ export const Nav = () => (
   <nav className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
     <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
       <Logo />
-      <div className="hidden lg:flex items-center gap-8 text-sm font-mono text-wm-muted">
+      <div className="hidden lg:flex items-center gap-4 whitespace-nowrap text-xs font-mono text-wm-muted xl:gap-7 xl:text-sm">
         <NavItems />
       </div>
       <details id={TABLET_MENU_ID} className="group relative hidden md:block lg:hidden text-sm font-mono text-wm-muted">

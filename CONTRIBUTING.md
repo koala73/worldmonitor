@@ -29,7 +29,7 @@ World Monitor is a real-time OSINT dashboard built with **Vanilla TypeScript** (
 | **TypeScript** | All code — frontend, edge functions, and handlers |
 | **Vite** | Build tool and dev server |
 | **Sebuf** | Proto-first HTTP RPC framework for typed API contracts |
-| **Protobuf / Buf** | Service and message definitions across 37 domains |
+| **Protobuf / Buf** | Service and message definitions across domains |
 | **MapLibre GL** | Base map rendering (tiles, globe mode, camera) |
 | **deck.gl** | WebGL overlay layers (scatterplot, geojson, arcs, heatmaps) |
 | **d3** | Charts, sparklines, and data visualization |
@@ -40,7 +40,7 @@ World Monitor is a real-time OSINT dashboard built with **Vanilla TypeScript** (
 
 ### Variant System
 
-The codebase produces 6 app variants from the same source, each targeting a different audience or use case:
+The codebase produces app variants from the same source, each targeting a different audience or use case:
 
 | Variant | Command | Focus |
 |---|---|---|
@@ -57,14 +57,14 @@ Variants share all code but differ in default panels, map layers, and RSS feeds.
 
 | Directory | Purpose |
 |---|---|
-| `src/components/` | UI components — 186 top-level TypeScript component files |
+| `src/components/` | UI components |
 | `src/services/` | Data fetching modules — sebuf client wrappers, AI, signal analysis |
 | `src/config/` | Static data and variant configs (feeds, geo, military, pipelines, ports) |
 | `src/generated/` | Auto-generated sebuf client + server stubs (**do not edit by hand**) |
 | `src/types/` | TypeScript type definitions |
-| `src/locales/` | i18n JSON files (28 languages) |
+| `src/locales/` | i18n JSON files |
 | `src/workers/` | Web Workers for analysis |
-| `server/` | Sebuf handler implementations for all 35 server handler domains |
+| `server/` | Sebuf handler implementations |
 | `api/` | Vercel Edge Functions (sebuf gateway + legacy endpoints) |
 | `proto/` | Protobuf service and message definitions |
 | `data/` | Static JSON datasets |
@@ -178,7 +178,7 @@ See the [API dependencies docs](https://www.worldmonitor.app/docs/getting-starte
 
 - **Bug fixes** — found something broken? Fix it!
 - **New data layers** — add new geospatial data sources to the map
-- **RSS feeds** — expand our 500+ feed collection with quality sources
+- **RSS feeds** — expand our curated feed collection with quality sources
 - **UI/UX improvements** — make the dashboard more intuitive
 - **Performance optimizations** — faster loading, better caching
 - **Documentation** — improve docs, add examples, fix typos
@@ -324,6 +324,19 @@ For endpoints that deal with non-JSON payloads (XML feeds, binary data, HTML emb
 - Must have a permissive license or be public government data
 - Should update at least daily for real-time relevance
 - Must include geographic coordinates or be geo-locatable
+
+### Source attribution ledger
+
+Any new outbound host that appears in a URL literal under `scripts/`, `server/`, `api/`, or `src/` is discovered by `scripts/source-attribution.mjs` and needs a curated row in `shared/source-attribution-manifest.json`. This catches contributions that only add data — a feed URL, an MCP preset in `src/services/mcp-store.ts` — with no obvious link to the ledger:
+
+```bash
+npm run sources:check     # fails with "missing manifest entry for <host>"
+npm run sources:generate  # writes the row and regenerates docs/source-attribution.mdx
+```
+
+Give the host a display name only by adding it to `PROVIDER_OVERRIDES` in that script and bumping `PROVIDER_IDENTITY_REVIEW` to the recomputed digest; provider identities are hash-pinned so renaming one stays an explicit review event. Because the script lives inside the roots it scans, a URL you cite in one of its own strings counts as a discovered source — fine when that host is already registered (the licence links on existing rows), but citing an unregistered host invents a provider row for it.
+
+Two ordering rules follow from the manifest being a fixpoint of the source tree: a row cannot be added ahead of the code that introduces its host, and a rebase that lands alongside another attribution change should re-run `sources:generate` rather than hand-merge the generated files.
 
 ### Country boundary overrides
 

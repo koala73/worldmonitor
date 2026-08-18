@@ -216,7 +216,6 @@ test('public algorithms docs describe tracked leader names without overclaiming 
   // LEADER_NAMES moved to shared/keyword-spike-core.js (issue #5697) so the
   // server-side get_keyword_spikes MCP tool shares the list.
   const trendingCode = readRepo('shared/keyword-spike-core.js');
-  const docsStats = readRepo('scripts/docs-stats.mjs');
   const algorithmsDoc = readRepo('docs/algorithms.mdx');
   const leaderBlock = trendingCode.match(/const\s+LEADER_NAMES\s*=\s*\[([\s\S]*?)\];/);
   assert.ok(leaderBlock, 'keyword-spike-core must define LEADER_NAMES');
@@ -237,11 +236,9 @@ test('public algorithms docs describe tracked leader names without overclaiming 
   assert.match(algorithmsDoc, /16 tracked world-leader names/);
   assert.match(algorithmsDoc, /multi-word names such as "Xi Jinping" and "Kim Jong Un"/);
   assert.doesNotMatch(algorithmsDoc, /16 compound terms for world leaders/);
-  assert.match(docsStats, /tracked world-leader names/);
-  assert.doesNotMatch(docsStats, /compound terms for world leaders/);
 });
 
-test('public data-source docs disclose Telegram source-bias metadata limits', () => {
+test('public data-source docs disclose Telegram source-bias metadata', () => {
   const telegramConfig = JSON.parse(readRepo('data/telegram-channels.json')) as {
     channels?: Record<string, Array<Record<string, unknown>>>;
   };
@@ -263,6 +260,8 @@ test('public data-source docs disclose Telegram source-bias metadata limits', ()
 
   assert.match(dataSourcesDoc, /official, state-affiliated, partisan, and belligerent-party channels/);
   assert.match(dataSourcesDoc, /raw OSINT leads, not endorsed truth/);
-  assert.match(dataSourcesDoc, /operational `tier`, `topic`, and `region` metadata/);
-  assert.match(dataSourcesDoc, /do not currently carry the RSS `stateAffiliation` or propaganda-risk fields/);
+  assert.match(dataSourcesDoc, /additive `TELEGRAM_SOURCE_TIERS` overlay/);
+  assert.match(dataSourcesDoc, /honest mapping from the private operational `tier`/);
+  assert.match(dataSourcesDoc, /cannot leave stale tier keys in the RSS registry/);
+  assert.match(dataSourcesDoc, /anonymous OSINT aggregators stay specialty or aggregator tier/);
 });

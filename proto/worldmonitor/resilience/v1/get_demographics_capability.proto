@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package worldmonitor.resilience.v1;
+
+import "sebuf/http/annotations.proto";
+
+// CapabilityObservation keeps a measured zero distinct from a missing value.
+message CapabilityObservation {
+  // True only when value, year, source and unit passed the server contract.
+  bool available = 1;
+  // Numeric observation. Read available first: zero is also the proto3 placeholder.
+  double value = 2;
+  // Observation year from the source, not the seed run year.
+  uint32 year = 3;
+  // Provider or dataset attribution stored with the observation.
+  string source = 4;
+  // Human-readable unit such as "percent", "people", or "years".
+  string unit = 5;
+}
+
+// Independent fetch-stage state. One failed stage must not hide healthy groups.
+message DemographicsCapabilityStage {
+  // Stable stage name: wpp, education, or ilostat.
+  string name = 1;
+  // Seeder state, normally fresh, retained, or unavailable.
+  string status = 2;
+  // ISO-8601 time of the data retained for this stage.
+  string fetched_at = 3;
+  // Number of country records retained for the stage.
+  uint32 record_count = 4;
+  // Most recent source observation year retained for the stage.
+  uint32 newest_observation_year = 5;
+}
+
+message DemographicsAgeStructure {
+  bool available = 1;
+  CapabilityObservation median_age_years = 2;
+  CapabilityObservation old_age_dependency_ratio_percent = 3;
+  CapabilityObservation total_dependency_ratio_percent = 4;
+  CapabilityObservation working_age_population_people = 5;
+  CapabilityObservation working_age_population_projected_10y_people = 6;
+}
+
+message DemographicsEducation {
+  bool available = 1;
+  CapabilityObservation tertiary_enrollment_gross_percent = 2;
+  CapabilityObservation stem_graduates_share_percent = 3;
+  CapabilityObservation researchers_per_million = 4;
+}
+
+message DemographicsIndustrialWorkforce {
+  bool available = 1;
+  CapabilityObservation craft_trades_employment_people = 2;
+  CapabilityObservation plant_machine_operators_employment_people = 3;
+  CapabilityObservation trained_industrial_workforce_people = 4;
+  CapabilityObservation manufacturing_employment_share_percent = 5;
+}
+
+message GetDemographicsCapabilityRequest {
+  // Required ISO 3166-1 alpha-2 country code.
+  string country_code = 1 [(sebuf.http.query) = { name: "countryCode", required: true }];
+}
+
+message GetDemographicsCapabilityResponse {
+  string country_code = 1;
+  // True when at least one validated observation exists for the country.
+  bool available = 2;
+  // ISO-8601 time the canonical snapshot was generated.
+  string fetched_at = 3;
+  repeated DemographicsCapabilityStage stages = 4;
+  DemographicsAgeStructure age_structure = 5;
+  DemographicsEducation education = 6;
+  DemographicsIndustrialWorkforce industrial_workforce = 7;
+}

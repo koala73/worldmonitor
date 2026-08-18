@@ -13,6 +13,11 @@ export type DataSourceId =
   | 'outages'
   | 'cyber_threats'
   | 'weather'
+  | 'ontario_511'
+  | 'alberta_511'
+  | 'manitoba_511'
+  | 'toronto_roads'
+  | 'bc_open511'
   | 'economic'
   | 'oil'
   | 'spending'
@@ -126,6 +131,12 @@ export interface NewsItem {
   happyCategory?: HappyContentCategory;
   imageUrl?: string;
   importanceScore?: number;
+  /**
+   * 0-100 source-reliability score, distinct from importanceScore.
+   * Measures truthfulness inputs (tier, propaganda risk, corroboration),
+   * not newsworthiness. 0 is a real low score and must not be treated as absent.
+   */
+  credibilityScore?: number;
   corroborationCount?: number;
   storyMeta?: StoryMeta;
   /**
@@ -659,6 +670,10 @@ export interface MapLayers {
   radiationWatch?: boolean;
   sanctions: boolean;
   weather: boolean;
+  /** Official Canada road events and conditions from Ontario, Alberta, Toronto, and British Columbia. */
+  canadaRoads: boolean;
+  /** Alberta, B.C., and Saskatchewan province-owned emergency alerts (#6610, #6659). */
+  canadaAlerts: boolean;
   economic: boolean;
   waterways: boolean;
   outages: boolean;
@@ -1485,6 +1500,8 @@ export interface GulfInvestment {
 
 export interface MapProtestCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;
@@ -1503,6 +1520,8 @@ export interface MapProtestCluster {
 
 export interface MapTechHQCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;
@@ -1519,6 +1538,8 @@ export interface MapTechHQCluster {
 
 export interface MapTechEventCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;
@@ -1533,6 +1554,8 @@ export interface MapTechEventCluster {
 
 export interface MapDatacenterCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;
