@@ -35,6 +35,30 @@
         "activatedAt": "2026-08-17T04:00:00.000Z",
         "firstScheduledRunAt": "2026-08-18T03:00:00.000Z"
       }
+    },
+    {
+      "name": "armsSuppliersBundleTick",
+      "status": "EMPTY",
+      "issue": 6806,
+      "reason": "New 1-section arms-suppliers cron (#6806 PR1). The heartbeat key does not exist until the planned Railway service is provisioned and fires `0 4 * * *`. EMPTY before that first scheduled tick is the deploy window, not a frozen scheduler.",
+      "expiresAt": "2026-08-18T04:00:00.000Z",
+      "cutover": {
+        "probeKey": "bundle:heartbeat:arms-suppliers",
+        "activatedAt": "2026-08-17T17:40:00.000Z",
+        "firstScheduledRunAt": "2026-08-18T04:00:00.000Z"
+      }
+    },
+    {
+      "name": "militaryBasesBundleTick",
+      "status": "EMPTY",
+      "issue": 6806,
+      "reason": "New 1-section military-bases cron (#6806 PR1). Same add-then-remove cutover as arms-suppliers: EMPTY until the planned service's first `0 5 * * *` fire is expected. After expiry, silence is a real frozen scheduler.",
+      "expiresAt": "2026-08-18T05:00:00.000Z",
+      "cutover": {
+        "probeKey": "bundle:heartbeat:military-bases",
+        "activatedAt": "2026-08-17T17:40:00.000Z",
+        "firstScheduledRunAt": "2026-08-18T05:00:00.000Z"
+      }
     }
   ]
 }

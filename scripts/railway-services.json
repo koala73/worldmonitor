@@ -320,6 +320,31 @@
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
   {
+    "entry": "scripts/seed-bundle-arms-suppliers.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "lifecycle": "planned",
+    "service": "seed-bundle-arms-suppliers",
+    "watchPatterns": [
+      "scripts/_bundle-runner.mjs",
+      "scripts/_defense-industrial-source.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/seed-bundle-arms-suppliers.mjs",
+      "scripts/seed-defense-industrial-suppliers.mjs",
+      "scripts/shared/country-name-to-iso2.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/iso3-to-iso2.json"
+    ],
+    "cronSchedule": "0 4 * * *",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-3-siblings-planned-6806"
+  },
+  {
     "entry": "scripts/seed-bundle-canada.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-canada",
@@ -682,6 +707,27 @@
     ],
     "cronSchedule": "*/5 * * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-10-seed-bundle-market-backup"
+  },
+  {
+    "entry": "scripts/seed-bundle-military-bases.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "lifecycle": "planned",
+    "service": "seed-bundle-military-bases",
+    "watchPatterns": [
+      "scripts/_bundle-runner.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/seed-bundle-military-bases.mjs",
+      "scripts/seed-military-bases.mjs"
+    ],
+    "cronSchedule": "0 5 * * *",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-3-siblings-planned-6806"
   },
   {
     "entry": "scripts/seed-bundle-portwatch.mjs",

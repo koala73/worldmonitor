@@ -87,6 +87,15 @@ test('source inventory has complete metadata and matches the generated catalog',
   const generated = renderAttributionSection(inventory, manifest);
   const actual = matchGeneratedAttributionSection(docs);
   assert.equal(actual, generated, 'docs/source-attribution.mdx must contain exactly the generated attribution section');
+  assert.match(generated, /\| Provider \| Observed surface \|/);
+  for (const forbidden of [
+    /\blicen[cs]\w*/i,
+    /\bterms-review\b/i,
+    /\bredistribut\w*/i,
+    /\bcommercial(?:-|\s+)use\b/i,
+  ]) {
+    assert.doesNotMatch(docs, forbidden, `public source attribution docs must omit ${forbidden}`);
+  }
 
   // Mintlify parses these pages as MDX v3, which rejects `<!--` with
   // "Unexpected character `!` (U+0021) before name" and fails the whole
@@ -118,7 +127,7 @@ test('source inventory has complete metadata and matches the generated catalog',
     'production stats must match the independent provider oracle',
   );
   assert.equal(stats.observedHosts, inventory.length, 'observed stats must derive from the source scan');
-  assert.ok(stats.reviewNeeded > 0, 'terms-review rows must remain visible until a license audit is complete');
+  assert.ok(stats.reviewNeeded > 0, 'the internal source-policy review backlog must remain tracked');
 
   const byHost = new Map(manifest.entries.map((entry) => [entry.host, entry]));
   assert.equal(byHost.get('auth.opensky-network.org')?.provider, 'opensky-network.org');

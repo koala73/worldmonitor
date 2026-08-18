@@ -733,7 +733,7 @@ export class UnifiedSettings {
     this.notifCleanup = null;
     this.pendingNotifs = null;
 
-    const isSignedIn = !this.config.isDesktopApp && (getAuthState().user !== null);
+    const isSignedIn = getAuthState().user !== null;
     const prefs = renderPreferences({
       isDesktopApp: this.config.isDesktopApp,
       onMapProviderChange: this.config.onMapProviderChange,
@@ -946,7 +946,7 @@ export class UnifiedSettings {
         <div class="upgrade-pro-section upgrade-pro-lapsed" data-billing-state="lapsed">
           <div class="upgrade-pro-title">${escapeHtml(t('components.billingState.resubscribe'))}: ${escapeHtml(planName)}</div>
           <div class="upgrade-pro-desc">${escapeHtml(t('components.billingState.lapsedDesc'))}</div>
-          <a class="upgrade-pro-cta-link" href="${getReactivationHref(sub?.planKey)}" target="_blank" rel="noopener">${escapeHtml(t('components.billingState.resubscribe'))} →</a>
+          <a class="upgrade-pro-cta-link" href="${WEB_APP_ORIGIN}${getReactivationHref(sub?.planKey)}" target="_blank" rel="noopener">${escapeHtml(t('components.billingState.resubscribe'))} →</a>
         </div>
       `;
     }
@@ -1033,7 +1033,7 @@ export class UnifiedSettings {
           <div class="upgrade-pro-title">Plan status unavailable</div>
           <div class="upgrade-pro-desc">We could not verify your current plan. Try again or view plans in a new tab.</div>
           <button class="manage-billing-btn retry-plan-status-btn" style="margin-bottom:8px;">Try again</button>
-          <a class="upgrade-pro-cta-link" href="/pro" target="_blank" rel="noopener">View plans →</a>
+          <a class="upgrade-pro-cta-link" href="${WEB_APP_ORIGIN}/pro" target="_blank" rel="noopener">View plans →</a>
         </div>
       `;
     }

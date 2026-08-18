@@ -1349,16 +1349,16 @@ export function renderAttributionSection(inventory, manifest) {
       : references.map((reference) => reference.path).join(', ');
     const surface = entry.observed === false ? 'Excluded / candidate' : entry.kind;
     const sourceRef = refs || (entry.observed === false ? 'No current fetch observed' : 'Manifest-only review row');
-    return `| ${markdownCell(entry.provider)} (${markdownCell(entry.host)}) | ${markdownCell(surface)} — ${markdownCell(sourceRef)} | ${markdownCell(entry.license)} | ${markdownCell(entry.attribution)} | ${markdownCell(entry.status)} |`;
+    return `| ${markdownCell(entry.provider)} (${markdownCell(entry.host)}) | ${markdownCell(surface)} — ${markdownCell(sourceRef)} |`;
   });
   return [
     '## Observed Source Inventory',
     '',
     BEGIN_MARKER,
-    `This generated inventory covers **${stats.activeHosts} active source hosts** representing **${stats.providerCount} active providers** (**${stats.structuredHosts} structured/API**, **${stats.feedHosts} feed**, and **${stats.operationalStatusHosts} operational-status** hosts). It is derived from source declarations in \`scripts/\`, \`server/\`, \`api/\`, and \`src/\`; the manifest records a license posture and the credit required for every observed host. ${stats.reviewNeeded} entries remain marked \`terms-review\` and should be confirmed before a redistribution or commercial-use claim.`,
+    `This generated inventory covers **${stats.activeHosts} active source hosts** representing **${stats.providerCount} active providers** (**${stats.structuredHosts} structured/API**, **${stats.feedHosts} feed**, and **${stats.operationalStatusHosts} operational-status** hosts). It is derived from source declarations in \`scripts/\`, \`server/\`, \`api/\`, and \`src/\`. Each row shows the configured provider identity and where the source is referenced.`,
     '',
-    '| Provider | Observed surface | License posture | Required attribution or exclusion reason | Status |',
-    '| --- | --- | --- | --- | --- |',
+    '| Provider | Observed surface |',
+    '| --- | --- |',
     ...rows,
     END_MARKER,
   ].join('\n');

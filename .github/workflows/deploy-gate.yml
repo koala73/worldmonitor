@@ -1,5 +1,5 @@
 name: Deploy Gate
-run-name: Deploy Gate ${{ github.event.workflow_run.head_sha || github.event_name }}
+run-name: Deploy Gate ${{ github.event.workflow_run.head_sha || github.event.inputs.sha || github.event_name }}
 
 # Runs whenever Test, Typecheck, Lint Code, or Security Audit completes on a PR/push.
 # Checks whether all required PR smoke gates have passed for the same commit SHA.
@@ -17,7 +17,7 @@ run-name: Deploy Gate ${{ github.event.workflow_run.head_sha || github.event_nam
 # Four workflow_run events can target the same SHA. Keep only the newest
 # evaluator so their retry windows do not multiply the installation API load.
 concurrency:
-  group: deploy-gate-${{ github.event.workflow_run.head_sha || 'sweep' }}
+  group: deploy-gate-${{ github.event.workflow_run.head_sha || github.event.inputs.sha || 'sweep' }}
   cancel-in-progress: true
 
 on:
@@ -27,6 +27,11 @@ on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
+    inputs:
+      sha:
+        description: Evaluate this commit SHA instead of sweeping open PRs
+        required: false
+        type: string
 
 permissions:
   actions: read
@@ -42,7 +47,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.event.workflow_run.head_sha }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.event.inputs.sha }}
         run: |
           set -o pipefail
           # A commit-status description is capped at 140 characters and GitHub
@@ -150,9 +155,49 @@ jobs:
           gate_stamp="[gate-contract:$gate_contract]"
           repo_owner=${REPO%%/*}
           repo_name=${REPO#*/}
+          # GraphQL is the cheap rollup, but GitHub outages often 503 the
+          # query endpoint while REST check-runs still answers. Falling back
+          # lets a SHA-specific dispatch post `gate` instead of stranding the
+          # PR on the EXIT-trap pending status.
+          fetch_required_check_runs() {
+            local eval_sha="$1"
+            local gql_error gql_pages rest_pages
+            gql_error=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-graphql.XXXXXX")
+            if gql_pages=$(gh_api_with_rate_limit_retry graphql graphql --paginate --slurp \
+              -f owner="$repo_owner" \
+              -f name="$repo_name" \
+              -F sha="$eval_sha" \
+              -f query='query($owner: String!, $name: String!, $sha: GitObjectID!, $endCursor: String) {
+                repository(owner: $owner, name: $name) {
+                  object(oid: $sha) {
+                    ... on Commit {
+                      statusCheckRollup {
+                        contexts(first: 100, after: $endCursor) {
+                          nodes {
+                            ... on CheckRun { name conclusion databaseId startedAt completedAt }
+                          }
+                          pageInfo { hasNextPage endCursor }
+                        }
+                      }
+                    }
+                  }
+                }
+              }' 2>"$gql_error"); then
+              rm -f "$gql_error"
+              printf '%s\n' "$gql_pages" | jq -c --argjson required "$required" '[.[].data.repository.object.statusCheckRollup.contexts.nodes[]? | select(has("name") and (.name as $name | $required | index($name)))]'
+              return 0
+            fi
+            cat "$gql_error" >&2
+            rm -f "$gql_error"
+            echo "GraphQL check-runs unavailable; falling back to REST" >&2
+            rest_pages=$(gh_api_with_rate_limit_retry core \
+              "repos/$REPO/commits/$eval_sha/check-runs?per_page=100" \
+              --paginate --slurp) || return $?
+            printf '%s\n' "$rest_pages" | jq -c --argjson required "$required" '[.[].check_runs[]? | select(.name as $name | $required | index($name)) | {name, conclusion, databaseId: .id, startedAt: .started_at, completedAt: .completed_at}]'
+          }
 
           if [ -n "$SHA" ]; then
-            # workflow_run event — evaluate exactly the triggering SHA.
+            # workflow_run or a sha-input dispatch — evaluate exactly that SHA.
             shas="$SHA"
           else
             # schedule / workflow_dispatch — read every open PR head and its
@@ -299,27 +344,7 @@ jobs:
             max_attempts=1
           fi
           for attempt in 1 2; do
-            runs=$(gh_api_with_rate_limit_retry graphql graphql --paginate --slurp \
-              -f owner="$repo_owner" \
-              -f name="$repo_name" \
-              -F sha="$SHA" \
-              -f query='query($owner: String!, $name: String!, $sha: GitObjectID!, $endCursor: String) {
-                repository(owner: $owner, name: $name) {
-                  object(oid: $sha) {
-                    ... on Commit {
-                      statusCheckRollup {
-                        contexts(first: 100, after: $endCursor) {
-                          nodes {
-                            ... on CheckRun { name conclusion databaseId startedAt completedAt }
-                          }
-                          pageInfo { hasNextPage endCursor }
-                        }
-                      }
-                    }
-                  }
-                }
-              }' |
-              jq -c --argjson required "$required" '[.[].data.repository.object.statusCheckRollup.contexts.nodes[]? | select(has("name") and (.name as $name | $required | index($name)))]')
+            runs=$(fetch_required_check_runs "$SHA")
 
             status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" python3 -c "
           import json

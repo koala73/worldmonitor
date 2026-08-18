@@ -498,6 +498,8 @@ const STANDALONE_KEYS = {
   // start, including skip-all ticks. Detects Railway cron-scheduler freeze
   // (#6691) that member seed-meta budgets (17.5d+) cannot see.
   staticRefBundleTick:           'bundle:heartbeat:static-ref',
+  armsSuppliersBundleTick:       'bundle:heartbeat:arms-suppliers',
+  militaryBasesBundleTick:       'bundle:heartbeat:military-bases',
   telegramFeed:                  'intelligence:telegram-feed:v1',
   digestNotifications:           'digest:last-run',
   webcams:                       'webcam:cameras:active',
@@ -1012,6 +1014,26 @@ const SEED_META = {
       mode: 'expiring-ack',
       fromKey: null,
       issue: 6691,
+      status: 'EMPTY',
+    },
+  },
+  armsSuppliersBundleTick: {
+    key: 'bundle:heartbeat:arms-suppliers',
+    maxStaleMin: 2880, // daily cron `0 4 * * *`; 48h = 2× cadence
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6806,
+      status: 'EMPTY',
+    },
+  },
+  militaryBasesBundleTick: {
+    key: 'bundle:heartbeat:military-bases',
+    maxStaleMin: 2880, // daily cron `0 5 * * *`; 48h = 2× cadence
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 6806,
       status: 'EMPTY',
     },
   },
