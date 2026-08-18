@@ -29,6 +29,12 @@ async function bootEmbed(): Promise<void> {
     document.body.dataset.embedPanel = params.panel ?? 'unknown';
     document.body.dataset.embedReady = 'false';
 
+    // Listen before any await so the parent's iframe `load` postMessage is not
+    // dropped while initI18n() fetches locale bundles.
+    const apiKeyPromise = params.panel && panelRequiresEmbeddingApiKey(params.panel)
+      ? waitForEmbeddingApiKey()
+      : Promise.resolve(null);
+
     await initI18n();
 
     if (!params.panel) {
@@ -39,7 +45,7 @@ async function bootEmbed(): Promise<void> {
 
     let apiKey: string | null = null;
     if (panelRequiresEmbeddingApiKey(params.panel)) {
-      apiKey = await waitForEmbeddingApiKey();
+      apiKey = await apiKeyPromise;
       if (!apiKey) {
         mountError(root, 'This World Monitor panel requires an embedding API key from the partner account.');
         document.body.dataset.embedReady = 'error';

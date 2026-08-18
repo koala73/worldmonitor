@@ -42,6 +42,15 @@ describe('embed entry boundary', () => {
     }
   });
 
+  it('starts the credential waiter before awaiting initI18n so load-time postMessage is not dropped', () => {
+    const source = readFileSync(resolve(root, 'src/embed-main.ts'), 'utf-8');
+    const waitIdx = source.indexOf('waitForEmbeddingApiKey()');
+    const i18nIdx = source.indexOf('await initI18n()');
+    assert.ok(waitIdx !== -1, 'keyed boot must call waitForEmbeddingApiKey()');
+    assert.ok(i18nIdx !== -1, 'boot must await initI18n()');
+    assert.ok(waitIdx < i18nIdx, 'waitForEmbeddingApiKey() must start before await initI18n()');
+  });
+
   it('loads public conflict events without importing the full conflict service into the embed entry', () => {
     const loaderSource = readFileSync(resolve(root, 'src/embed/embed-data-loader.ts'), 'utf-8');
     const mapSource = readFileSync(resolve(root, 'src/components/Map.ts'), 'utf-8');

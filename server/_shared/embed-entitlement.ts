@@ -29,6 +29,7 @@ export interface EmbedEntitlementDeps {
   timingSafeIncludes: (candidate: string, keys: readonly string[]) => Promise<boolean>;
   validateUserApiKey: (key: string) => Promise<{ userId: string } | null>;
   getEntitlements: (userId: string) => Promise<CachedEntitlements | null>;
+  isEntitlementBackendConfigured: () => boolean;
 }
 
 export function parseEnterpriseApiKeys(raw: string | undefined): string[] {
@@ -70,7 +71,18 @@ export async function evaluateEmbedEntitlement(
     if (entitlements?.verificationUnavailable) {
       return { status: 503, body: { allowed: false, error: 'entitlement_verification_unavailable' } };
     }
-    if (entitlements && entitlements.features.apiAccess === true) {
+    if (!entitlements) {
+      if (!deps.isEntitlementBackendConfigured()) {
+        return { status: 503, body: { allowed: false, error: 'entitlement_verification_unavailable' } };
+      }
+      return { status: 403, body: { allowed: false, error: 'embed_not_entitled' } };
+    }
+    // Match gateway `apiAccessCovered`: apiAccess alone is not coverage.
+    // A lapsed row with apiAccess still true must 403, not 200.
+    if (
+      entitlements.features.apiAccess === true &&
+      (entitlements.validUntil ?? 0) >= Date.now()
+    ) {
       return { status: 200, body: { allowed: true, panel, public: false, accountId: userKey.userId } };
     }
     return { status: 403, body: { allowed: false, error: 'embed_not_entitled' } };

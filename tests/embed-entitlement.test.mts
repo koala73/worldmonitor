@@ -14,6 +14,7 @@ function deps(overrides: Partial<EmbedEntitlementDeps> = {}): EmbedEntitlementDe
     timingSafeIncludes: async () => false,
     validateUserApiKey: async () => null,
     getEntitlements: async () => null,
+    isEntitlementBackendConfigured: () => true,
     ...overrides,
   };
 }
@@ -82,6 +83,50 @@ describe('embed entitlement', () => {
       },
     }));
     assert.equal(unavailable.status, 503);
+    assert.equal(unavailable.body.error, 'key_validation_unavailable');
+  });
+
+  it('rejects an expired apiAccess entitlement the same way the gateway does', async () => {
+    const expired = await evaluateEmbedEntitlement('fear-greed', 'wm_0123456789abcdef0123456789abcdef01234567', deps({
+      validateUserApiKey: async () => ({ userId: 'user_lapsed' }),
+      getEntitlements: async () => ({
+        planKey: 'api_starter',
+        features: { tier: 2, apiAccess: true, apiRateLimit: 60, maxDashboards: 1, prioritySupport: false, exportFormats: [] },
+        validUntil: Date.now() - 1,
+      }),
+    }));
+    assert.equal(expired.status, 403);
+    assert.equal(expired.body.error, 'embed_not_entitled');
+  });
+
+  it('fails closed with 503 when the entitlement backend is unconfigured', async () => {
+    const result = await evaluateEmbedEntitlement('fear-greed', 'wm_0123456789abcdef0123456789abcdef01234567', deps({
+      validateUserApiKey: async () => ({ userId: 'user_abc' }),
+      getEntitlements: async () => null,
+      isEntitlementBackendConfigured: () => false,
+    }));
+    assert.equal(result.status, 503);
+    assert.equal(result.body.error, 'entitlement_verification_unavailable');
+  });
+
+  it('returns 403 when Convex is configured but the account has no entitlements', async () => {
+    const result = await evaluateEmbedEntitlement('fear-greed', 'wm_0123456789abcdef0123456789abcdef01234567', deps({
+      validateUserApiKey: async () => ({ userId: 'user_free' }),
+      getEntitlements: async () => null,
+      isEntitlementBackendConfigured: () => true,
+    }));
+    assert.equal(result.status, 403);
+    assert.equal(result.body.error, 'embed_not_entitled');
+  });
+
+  it('returns 401 for an invalid embedding API key', async () => {
+    const result = await evaluateEmbedEntitlement(
+      'fear-greed',
+      'wm_0123456789abcdef0123456789abcdef01234567',
+      deps(),
+    );
+    assert.equal(result.status, 401);
+    assert.equal(result.body.error, 'invalid_embedding_api_key');
   });
 
   it('strips cookies and ignores viewer bearers in the entitlement edge handler', () => {
@@ -89,6 +134,7 @@ describe('embed entitlement', () => {
     assert.match(source, /headers\.delete\('cookie'\)/);
     assert.match(source, /checkEndpointRateLimit/);
     assert.match(source, /X-WorldMonitor-Key/);
+    assert.match(source, /isEntitlementBackendConfigured/);
     assert.equal(source.includes('validateBearerToken'), false);
     assert.equal(source.includes('getCookie'), false);
   });
