@@ -34,6 +34,13 @@ await runBundle('resilience', [
   // 11 dataset adapters run concurrently (Promise.allSettled), each fetch
   // withRetry(2, 750) over a 30s timeout, so the design worst case is ~92s for
   // the slowest chain plus a Redis pipeline publish. 420s is ~4.5x that.
+  //
+  // measured 2026-08-18: 3.0s fetch-only (11/11 adapters; repeats 1.3s / 1.6s)
+  // via `node scripts/seed-resilience-static.mjs --measure-fetch-only`. That is
+  // the non-skipped fan-out a full run pays; Redis publish is a single pipeline
+  // after this and is not the long pole. 3.0s fits the 420s slot — and the
+  // 320s left after Scores' 250s reservation — so this member stays in the
+  // 570s bundle. Re-measure with the same flag before changing 420s.
   { label: 'Resilience-Static', script: 'seed-resilience-static.mjs', seedMetaKey: 'resilience:static', intervalMs: 90 * DAY, timeoutMs: 420_000 },
   // The seeder caps its own fetch phase at 420s (fetchPhaseTimeoutMs), so a
   // slow USDA PSD or FAOSTAT aborts through runSeed's graceful last-good path

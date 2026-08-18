@@ -1098,7 +1098,7 @@ async function preservePreviousSnapshotOnFailure(failedDatasets, seedYear, messa
   return { previousManifest, failureMeta };
 }
 
-async function fetchAllDatasetMaps() {
+export async function fetchAllDatasetMaps() {
   const adapters = [
     { key: 'wgi', fetcher: fetchWgiDataset },
     { key: 'infrastructure', fetcher: fetchInfrastructureDataset },
@@ -1130,6 +1130,28 @@ async function fetchAllDatasetMaps() {
   }
 
   return { datasetMaps, failedDatasets };
+}
+
+// #6562 item 1: the bundle timeout was derived from a design worst case, not a
+// run. This times the same concurrent adapter fan-out a non-skipped seed uses
+// (Redis publish is a single pipeline after this and is not the long pole).
+export async function measureResilienceStaticFetch({
+  fetchAll = fetchAllDatasetMaps,
+  now = Date.now,
+} = {}) {
+  const startedAt = now();
+  const { datasetMaps, failedDatasets } = await fetchAll();
+  const durationMs = now() - startedAt;
+  const sizes = Object.fromEntries(
+    Object.entries(datasetMaps).map(([key, map]) => [key, map instanceof Map ? map.size : 0]),
+  );
+  return {
+    measuredAt: new Date(startedAt).toISOString(),
+    durationMs,
+    failedDatasets,
+    sizes,
+    adapterCount: Object.keys(datasetMaps).length,
+  };
 }
 
 // Exported for testing. When a dataset fetch fails, reads the prior Redis snapshot and
@@ -1282,8 +1304,17 @@ export async function main() {
   }
 }
 
+async function runMeasureFetchOnly() {
+  const result = await measureResilienceStaticFetch();
+  console.log(JSON.stringify(result, null, 2));
+  if (result.adapterCount === 0 || result.failedDatasets.length === result.adapterCount) {
+    throw new Error('Resilience-Static fetch measurement produced no successful adapters');
+  }
+}
+
 if (process.argv[1]?.endsWith('seed-resilience-static.mjs')) {
-  main().catch((error) => {
+  const entry = process.argv.includes('--measure-fetch-only') ? runMeasureFetchOnly : main;
+  entry().catch((error) => {
     const cause = error?.cause ? ` (cause: ${error.cause.message || error.cause})` : '';
     console.error(`FATAL: ${error.message || error}${cause}`);
     process.exit(1);
