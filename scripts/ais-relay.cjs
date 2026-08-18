@@ -3461,7 +3461,7 @@ const RELAY_RECENCY_MS = 15 * 60 * 1000; // 15 min — matches client-side recen
 const RELAY_SOURCE_TIERS = requireShared('source-tiers.json');
 const {
   createExplicitTierFourSourceSet,
-  isExplicitTierFourSource,
+  shouldDropRelaySourceForTier,
 } = requireShared('source-tier-policy.cjs');
 
 function relayGetSourceTier(sourceName) {
@@ -3954,8 +3954,8 @@ async function seedClassifyForVariant(variant, seenTitles) {
         // them to 4. Any future Telegram alert path must use the public display
         // label from shared/telegram-channel-trust.ts (#6600). #6654 should do
         // the same for X account labels rather than a generic "x" platform key.
+        if (shouldDropRelaySourceForTier(RELAY_GATES_READY, meta.source, RELAY_TIER4_SOURCES)) continue;
         if (RELAY_GATES_READY) {
-          if (isExplicitTierFourSource(meta.source, RELAY_TIER4_SOURCES)) continue;
           const ageMs = Date.now() - (meta.publishedAt ?? 0);
           if (meta.publishedAt && ageMs > RELAY_RECENCY_MS) continue;
         }

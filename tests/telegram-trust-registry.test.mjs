@@ -41,6 +41,7 @@ const sourceTierPolicyPath = join(repoRoot, 'shared/source-tier-policy.cjs');
 const {
   createExplicitTierFourSourceSet,
   isExplicitTierFourSource,
+  shouldDropRelaySourceForTier,
 } = require(sourceTierPolicyPath);
 
 const telegramChannels = JSON.parse(
@@ -138,14 +139,18 @@ describe('Telegram trust registry (#6600)', () => {
 });
 
 describe('Telegram alert-tier policy (#6600)', () => {
-  it('executes the same explicit-tier policy module as the relay', () => {
-    const tierFourSources = createExplicitTierFourSourceSet(SOURCE_TIERS);
+  it('executes the relay tier gate against its JSON tier map', () => {
+    const relayTierFourSources = createExplicitTierFourSourceSet(sourceTiers);
 
-    assert.equal(isExplicitTierFourSource('telegram', tierFourSources), false);
-    assert.equal(isExplicitTierFourSource('IDF Official', tierFourSources), false);
-    assert.equal(isExplicitTierFourSource('DD Geopolitics', tierFourSources), true);
+    assert.equal(shouldDropRelaySourceForTier(true, 'AI News', relayTierFourSources), true);
+    assert.equal(shouldDropRelaySourceForTier(true, 'telegram', relayTierFourSources), false);
+    assert.equal(shouldDropRelaySourceForTier(true, 'Unknown source', relayTierFourSources), false);
+    assert.equal(shouldDropRelaySourceForTier(false, 'AI News', relayTierFourSources), false);
     assert.match(aisRelaySrc, /createExplicitTierFourSourceSet\(RELAY_SOURCE_TIERS\)/);
-    assert.match(aisRelaySrc, /isExplicitTierFourSource\(meta\.source, RELAY_TIER4_SOURCES\)/);
+    assert.match(
+      aisRelaySrc,
+      /shouldDropRelaySourceForTier\(RELAY_GATES_READY, meta\.source, RELAY_TIER4_SOURCES\)/,
+    );
     assert.equal(
       readFileSync(join(repoRoot, 'scripts/shared/source-tier-policy.cjs'), 'utf8'),
       readFileSync(sourceTierPolicyPath, 'utf8'),

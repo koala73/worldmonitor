@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 
 import { SOURCE_TOOLS, outletRecord } from '../api/mcp/registry/source-tools.ts';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { dispatchToolsCall } from '../api/mcp/dispatch.ts';
 import { validate } from './helpers/json-schema-mini.mjs';
 
 const tool = SOURCE_TOOLS.find((t) => t.name === 'get_sources');
@@ -146,6 +147,34 @@ describe('get_sources — providers view', () => {
 });
 
 describe('get_sources — outlets view', () => {
+  it('advertises and serves the Telegram platform contract through tools/call', async () => {
+    assert.deepEqual(tool.inputSchema.properties.platform.enum, ['telegram']);
+
+    const response = await dispatchToolsCall(
+      new Request('https://worldmonitor.app/mcp', { method: 'POST' }),
+      { kind: 'free' },
+      { redisPipeline: async () => { throw new Error('get_sources must not read Redis'); } },
+      {
+        id: 6600,
+        params: {
+          name: 'get_sources',
+          arguments: { view: 'outlets', platform: 'telegram', query: 'IDF Official', limit: 10 },
+        },
+      },
+      {},
+    );
+    const body = await response.json();
+    assert.equal(body.error, undefined, JSON.stringify(body.error));
+    assert.equal(body.id, 6600);
+
+    const result = JSON.parse(body.result.content[0].text);
+    assertOutputSchema(result);
+    assert.equal(result.matched, 1);
+    assert.deepEqual(result.outlets[0].platformIdentities, [
+      { platform: 'telegram', handle: 'IDFofficial' },
+    ]);
+  });
+
   it('returns tier and provenance for every outlet', async () => {
     const result = await run({ view: 'outlets', limit: 50 });
     assert.ok(result.outlets.length > 0);
