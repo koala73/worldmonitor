@@ -29,9 +29,13 @@ test('Docker nginx injects LOCAL_API_TOKEN through a private transport header', 
 
 test('Docker nginx overwrites X-Real-IP from the TCP peer on /api/', () => {
   const nginx = readProjectFile('docker/nginx.conf');
+  const dockerfile = readProjectFile('Dockerfile');
   const apiBlock = nginx.match(/location \/api\/ \{[\s\S]*?\n {4}\}/)?.[0] ?? '';
 
   assert.match(apiBlock, /proxy_set_header X-Real-IP \$remote_addr;/);
+  // The sidecar image copies this file, not docker/nginx.conf.template.
+  // A stamp that never reaches the container does not bind Docker LLM quota.
+  assert.match(dockerfile, /COPY docker\/nginx\.conf \/etc\/nginx\/nginx\.conf\.template/);
 });
 
 test('Docker compose forwards WM_SESSION_SECRET to the API container', () => {

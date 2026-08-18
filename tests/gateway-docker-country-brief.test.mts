@@ -233,6 +233,26 @@ describe('Docker country-intel gateway auth (#5415)', () => {
     );
   });
 
+  it('keys rotated client X-Real-IP values to distinct Docker principals', async () => {
+    configureGatewayEnv('docker');
+    const redis = installRedisPipelineMock();
+    const token = (await issueSessionToken()).token;
+    const handlerCalls = { country: 0, other: 0 };
+    const gateway = makeGateway(handlerCalls);
+
+    const first = await gateway(request(COUNTRY_BRIEF_PATH, token, { clientIp: '203.0.113.77' }));
+    const second = await gateway(request(COUNTRY_BRIEF_PATH, token, { clientIp: '198.51.100.10' }));
+
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    assert.equal(handlerCalls.country, 2);
+    const directKeys = redis.directLlmKeys();
+    assert.equal(directKeys.length, 2);
+    assert.ok(directKeys[0]?.includes(`docker:${hashKeySync('203.0.113.77')}`));
+    assert.ok(directKeys[1]?.includes(`docker:${hashKeySync('198.51.100.10')}`));
+    assert.notEqual(directKeys[0], directKeys[1]);
+  });
+
   it('shares one per-IP quota across rotated Docker sessions', async () => {
     configureGatewayEnv('docker');
     const redis = installRedisPipelineMock({ initialDirectLlmCount: 49 });
