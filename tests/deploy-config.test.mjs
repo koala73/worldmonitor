@@ -299,6 +299,44 @@ describe('crawlable content corpus deployment contracts', () => {
     writeFileSync(target, '<!doctype html><html><head>' + head + '</head><body>fixture</body></html>');
   };
 
+  it('pins the deploy build command in vercel.json to a script that builds /pro', () => {
+    // vercel.json overrides the dashboard's Build Command, which is where this
+    // used to live -- invisible to the repo and changeable without a diff. Since
+    // #6898 stopped committing public/pro/, a dashboard edit away from a
+    // build:pro-chaining script no longer ships a STALE /pro, it ships no /pro:
+    // a 404 on www, and the dashboard SPA shell at 200 in the root Docker image.
+    //
+    // Deliberately resolved through package.json rather than string-matched
+    // against 'npm run build:full'. The property that matters is "the deploy
+    // builds /pro before Vite copies public/ into dist/", so pointing
+    // buildCommand at any other script (build:tech, a bare `vite build`) has to
+    // fail here -- a literal comparison would pass anything spelled right and
+    // prove nothing about what that script does.
+    const buildCommand = vercelConfig.buildCommand;
+    assert.equal(
+      typeof buildCommand,
+      'string',
+      'vercel.json must pin buildCommand so the deploy contract lives in the repo, not the dashboard',
+    );
+
+    const scriptName = buildCommand.match(/^npm run ([\w:-]+)$/)?.[1];
+    assert.ok(
+      scriptName,
+      `vercel.json buildCommand must be a plain "npm run <script>" this test can resolve, got: ${buildCommand}`,
+    );
+
+    const script = packageJson.scripts[scriptName];
+    assert.ok(script, `vercel.json buildCommand names scripts["${scriptName}"], which does not exist`);
+    assert.ok(
+      script.includes('npm run build:pro'),
+      `the deploy build command (${buildCommand}) must chain build:pro — public/pro/ is gitignored, so nothing else produces /pro`,
+    );
+    assert.ok(
+      script.indexOf('npm run build:pro') < script.indexOf('vite build'),
+      `the deploy build command (${buildCommand}) must build /pro before Vite copies public/ into dist/`,
+    );
+  });
+
   it('runs content corpus sitemap integration after generated blog pages but before Vite builds', () => {
     assert.equal(
       packageJson.scripts['build:crawlable-corpus'],
