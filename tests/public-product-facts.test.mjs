@@ -1,4 +1,5 @@
 import { describe, it } from 'node:test';
+import { guardProBuiltOutput, withoutUnbuiltProPaths } from './_lib/pro-built-output.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import {
@@ -26,11 +27,53 @@ import {
   validateVolatileInventoryClaims,
   VOLATILE_INVENTORY_CLAIM_RE,
 } from '../scripts/docs-stats.mjs';
-import { buildInventoryFacts, generateInventoryFacts } from '../scripts/generate-inventory-facts.mjs';
+import { buildInventoryFacts, generateInventoryFacts, loadStatsForInventoryFacts } from '../scripts/generate-inventory-facts.mjs';
+import { buildSourceAttributionStats, checkSourceAttribution } from '../scripts/source-attribution.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path) => readFileSync(resolve(ROOT, path), 'utf8');
 const readJson = (path) => JSON.parse(read(path));
+
+function makeAttributionFixture({ kind = 'structured', references = [{ path: 'scripts/stale-source.mjs' }] } = {}) {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'wm-attribution-fixture-'));
+  for (const path of ['api', 'docs', 'scripts', 'server', 'shared', 'src']) {
+    mkdirSync(join(fixtureRoot, path), { recursive: true });
+  }
+  writeFileSync(join(fixtureRoot, 'scripts/live-source.mjs'), "export const DATA_URL = 'https://upstream.example/data';\n");
+  writeFileSync(join(fixtureRoot, 'docs/source-attribution.mdx'), '# Attribution\n');
+  writeFileSync(join(fixtureRoot, 'shared/source-attribution-manifest.json'), `${JSON.stringify({
+    version: 1,
+    entries: [{
+      host: 'upstream.example',
+      provider: 'upstream.example',
+      license: 'Provider terms',
+      attribution: 'Credit upstream.example.',
+      observed: true,
+      kind,
+      status: 'reviewed',
+      references,
+    }],
+    logicalEntries: [],
+  }, null, 2)}\n`);
+  return fixtureRoot;
+}
+
+function inventoryStatsFromAttributionFixture(fixtureRoot, warnings) {
+  const baseStats = computeStats();
+  return () => loadStatsForInventoryFacts({
+    compute: ({ sourceAttribution } = {}) => {
+      const attribution = sourceAttribution
+        ?? buildSourceAttributionStats({ rootDir: fixtureRoot });
+      return {
+        ...baseStats,
+        sourceAttribution: attribution,
+        sourceAttributionHosts: attribution.activeHosts,
+      };
+    },
+    fallbackAttribution: () => buildSourceAttributionStats({ rootDir: fixtureRoot, validate: false }),
+    warn: (message) => warnings.push(message),
+  });
+}
 
 const registryToolNames = () => TOOL_REGISTRY.map((tool) => tool.name);
 const registryToolCount = () => TOOL_REGISTRY.length;
@@ -133,7 +176,13 @@ const ACQUISITION_EXCLUDES = [
   'docs/plans/',
   'pro-test/node_modules/',
   'public/blog/',
-  'public/pro/assets/',
+  // public/pro/ joins public/blog/ here for the same reason (#6898): both are
+  // BUILT output, so a filesystem walk would silently scan a larger or smaller
+  // population depending on whether someone ran the build -- shrinking the
+  // surface set without ever reporting a skip. The sources these compile from
+  // (pro-test/index.html, pro-test/welcome.html, pro-test/src/locales/) are
+  // committed and stay in scope, so nothing is actually left unchecked.
+  'public/pro/',
   'public/openapi',
 ];
 
@@ -155,6 +204,11 @@ function collectAcquisitionSurfaces() {
 
 const CURRENT_FACT_SURFACES = collectAcquisitionSurfaces();
 describe('public product facts generation contract', () => {
+  // Two cases below read the built public/pro/ pages, which `npm run build:pro`
+  // produces rather than git (#6898). They drop those paths in an unbuilt
+  // checkout; this makes CI fail instead when it says it built them.
+  guardProBuiltOutput();
+
   it('keeps the acquisition claim scan on the complete registered root set', () => {
     assertAcquisitionClaimRootClosure(ACQUISITION_CLAIM_ROOTS);
     assert.throws(
@@ -284,6 +338,75 @@ describe('public product facts generation contract', () => {
       assert.doesNotThrow(() => generateInventoryFacts({ check: true, outputs: expected, rootDir: tempRoot }));
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('publishes all default inventory outputs from a stale but structurally valid attribution ledger', () => {
+    const warnings = [];
+    const fixtureRoot = makeAttributionFixture();
+    const publishRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-default-publication-'));
+    try {
+      const strict = checkSourceAttribution(fixtureRoot);
+      assert.ok(strict.errors.length > 0, 'strict source attribution checking must remain red for parity drift');
+      assert.match(strict.errors.join('\n'), /stale manifest entry/);
+
+      const loadStats = inventoryStatsFromAttributionFixture(fixtureRoot, warnings);
+      generateInventoryFacts({ rootDir: publishRoot, loadStats });
+      for (const path of [
+        'public/product-facts.json',
+        'scripts/shared/inventory-facts.generated.json',
+        'api/_inventory-facts.generated.js',
+        'docs/generated/stats.json',
+      ]) {
+        assert.ok(existsSync(join(publishRoot, path)), `default generator did not publish ${path}`);
+      }
+      assert.doesNotThrow(() => generateInventoryFacts({ check: true, rootDir: publishRoot, loadStats }));
+      assert.match(warnings.join('\n'), /proceeding with committed attribution counts/);
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+      rmSync(publishRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('does not swallow non-attribution inventory failures', () => {
+    assert.throws(
+      () => loadStatsForInventoryFacts({
+        compute: () => {
+          throw new Error('docs-stats: could not isolate STOCK_EXCHANGES block');
+        },
+      }),
+      /STOCK_EXCHANGES/,
+    );
+  });
+
+  it('does not publish inventory outputs from a malformed attribution ledger', () => {
+    const warnings = [];
+    const fixtureRoot = makeAttributionFixture({ kind: 'not-a-source-kind' });
+    const publishRoot = mkdtempSync(join(tmpdir(), 'wm-inventory-invalid-ledger-'));
+    try {
+      const strict = checkSourceAttribution(fixtureRoot);
+      assert.ok(strict.errors.length > 0, 'strict source attribution checking must reject malformed ledger entries');
+      assert.match(strict.errors.join('\n'), /invalid manifest kind/);
+
+      assert.throws(
+        () => generateInventoryFacts({
+          rootDir: publishRoot,
+          loadStats: inventoryStatsFromAttributionFixture(fixtureRoot, warnings),
+        }),
+        /invalid manifest kind/,
+      );
+      for (const path of [
+        'public/product-facts.json',
+        'scripts/shared/inventory-facts.generated.json',
+        'api/_inventory-facts.generated.js',
+        'docs/generated/stats.json',
+      ]) {
+        assert.equal(existsSync(join(publishRoot, path)), false, `malformed ledger published ${path}`);
+      }
+      assert.equal(warnings.length, 0, 'a malformed ledger must not emit a proceeding warning');
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+      rmSync(publishRoot, { recursive: true, force: true });
     }
   });
 
@@ -450,9 +573,9 @@ describe('public product facts generation contract', () => {
     const apiAnnual = displayPrice(plans.api_starter_annual.price);
     const businessMonthly = displayPrice(plans.api_business.price);
     // The Pro app reads the generated tier values asserted above; the welcome
-    // source and its committed SSR output also surface the monthly entry price.
+    // source and its built SSR output also surface the monthly entry price.
     // Do not require the prerender script to carry a second crawler-only copy.
-    for (const path of ['pro-test/welcome.html', 'public/pro/welcome.html']) {
+    for (const path of withoutUnbuiltProPaths(['pro-test/welcome.html', 'public/pro/welcome.html'])) {
       assert.match(read(path), new RegExp(`\\$${proMonthly.replace('.', '\\.')}[^\\d]`), `${path}: Pro monthly`);
     }
 
@@ -473,17 +596,17 @@ describe('public product facts generation contract', () => {
     assert.equal(summaryPlans['API Business'].price_usd_monthly, plans.api_business.price);
   });
 
-  it('publishes valid, available, canonical offers in source and committed HTML', () => {
+  it('publishes valid, available, canonical offers in source and built HTML', () => {
     const facts = readJson('shared/product-facts.generated.json');
     const pricingUrl = facts.product.pricingUrl;
     const plansByName = new Map(facts.plans.map((plan) => [plan.name, plan]));
-    for (const path of [
+    for (const path of withoutUnbuiltProPaths([
       'index.html',
       'pro-test/index.html',
       'pro-test/welcome.html',
       'public/pro/index.html',
       'public/pro/welcome.html',
-    ]) {
+    ])) {
       const application = applicationJsonLd(path);
       assert.ok(Array.isArray(application.offers) && application.offers.length >= 3);
       for (const offer of application.offers) {

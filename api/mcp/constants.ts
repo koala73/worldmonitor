@@ -32,6 +32,8 @@
 // (api/mcp.ts) re-declares the snapshot constants locally so its own
 // `mod.MCP_SUPPORTED_PROTOCOL_VERSIONS` / `mod.MCP_PROTOCOL_VERSION`
 // exports also reflect the per-import env state.
+import { MCP_UPGRADE_URL } from './upgrade';
+
 function supportedProtocolVersions(): readonly string[] {
   return process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'off'
     ? ['2025-03-26']
@@ -293,9 +295,17 @@ export const SERVER_NAME = 'worldmonitor';
 //     appears on five newly-linked tools; every ui:// read stays anonymously
 //     servable, quota-exempt, and data-free. No input/output schema, envelope,
 //     or auth change.
+// Bumped 1.16.0 → 1.17.0 (2026-08-18) reflecting:
+//   - Every tools/list + describe_tool entry now carries a machine-readable
+//     `_meta["worldmonitor/access"]` value: free, free-account, or subscription.
+//     Resource templates derive the same value from their backing tool.
+//   - Authenticated user-bound clients discover and can read
+//     worldmonitor://account/mcp-allowance without spending a quota slot. The
+//     resource reports the enforcement counters, remaining calls, UTC reset,
+//     and free-account request-window state.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.16.0';
+export const SERVER_VERSION = '1.17.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -345,11 +355,11 @@ export const SERVER_INSTRUCTIONS = [
   '',
   `tools/list ships compressed tool descriptions (≤${TOOL_DESCRIPTION_MAX_BYTES}B). Call describe_tool({tool_name}) for the full uncompressed definition — quota-exempt (still counts toward the 60/min rate limit), so use freely while exploring. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct. Full reference: https://www.worldmonitor.app/docs/mcp-tools-reference.`,
   '',
-  'get_sources is the sole credential-free data tool and consumes no daily quota. It has a separate fail-closed ceiling of 10 unauthenticated calls/minute/IP; all other data-bearing tools/call operations require subscription credentials. In tools/list, get_sources carries `_meta["worldmonitor/access"] = "free"`; omission of that marker means subscription-gated.',
+  `get_sources is the sole credential-free data tool and consumes no daily quota. It has a separate fail-closed ceiling of 10 unauthenticated calls/minute/IP. Signed-in accounts without a subscription get a free taste of CACHED-data tools (3 request windows/day, 5 calls/day); live-fetch tools stay Pro-only. Structured account-access denials carry \`error.data\` = {reason, nextStep, upgradeUrl}: -32001/401 reason=no-account, -32029/429 reason=allowance-exhausted, and -32002/403 reason=upgrade-required or lapsed-subscription. Other rate-limit and service errors may omit those fields; branch on the JSON-RPC code and HTTP status. Read each tool's \`_meta["worldmonitor/access"]\`: \`free\` is anonymous and quota-free, \`free-account\` is available to signed-in free accounts (cache-backed data calls spend the allowance; describe_tool does not), and \`subscription\` requires Pro. Upgrade: ${MCP_UPGRADE_URL}.`,
   '',
   'Issue prompts/list to discover pre-built workflow templates (country-briefing, energy-shock-watch, market-open-prep, conflict-pulse, route-risk-check, freshness-audit). Each prompt pre-bakes a JMESPath projection per step so the first execution lands on the right shape. prompts/list + prompts/get are quota-exempt (per-minute limit only).',
   '',
-  'Issue resources/list for concrete read-only resources (v1: seed-meta freshness — anonymous + quota-free) and resources/templates/list for parameterised URI templates (country risk, chokepoint status, market quote). Substitute the template placeholder, then resources/read the concrete URI; a template read consumes the Pro daily quota IDENTICALLY to the equivalent tools/call — there is no free path around the cap via those resources.',
+  'Issue resources/list for concrete read-only resources (v1: seed-meta freshness — anonymous + quota-free) and resources/templates/list for parameterised URI templates (country risk, chokepoint status, market quote). Substitute the template placeholder, then resources/read the concrete URI; a template read is metered IDENTICALLY to the equivalent tools/call — same `_meta["worldmonitor/access"]` rules, spending the free-account allowance or the Pro daily quota according to the caller. There is no unmetered path around the cap via those resources.',
   '',
   // Content safety (#5743). This stanza is the ONLY delivery channel that
   // reliably reaches the model: hosts compress the tool description to its

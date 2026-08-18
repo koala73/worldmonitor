@@ -836,6 +836,7 @@ test('every Canada road key serves anonymously with a shield sized to its publis
   const expected = {
     canadaRoads: 900,   // seed-provincial-511, 15min member interval
     albertaRoads: 900,  // same seeder, same interval
+    manitobaRoads: 900, // same seeder, same interval
     bcOpen511: 1800,    // seed-open511, 30min member interval
     torontoRoads: 7200, // 2h publisher; the inherited slow shield already fits
   };

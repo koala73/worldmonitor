@@ -33,8 +33,20 @@ await runBundle('resilience', [
   { label: 'Resilience-Scores', script: 'seed-resilience-scores.mjs', seedMetaKey: 'resilience:scores', intervalMs: 2 * HOUR, timeoutMs: 240_000 },
   // 11 dataset adapters run concurrently (Promise.allSettled), each fetch
   // withRetry(2, 750) over a 30s timeout, so the design worst case is ~92s for
-  // the slowest chain plus a Redis pipeline publish. 420s is ~4.5x that.
-  { label: 'Resilience-Static', script: 'seed-resilience-static.mjs', seedMetaKey: 'resilience:static', intervalMs: 90 * DAY, timeoutMs: 420_000 },
+  // the slowest chain plus a Redis pipeline publish. 280s is ~3x that.
+  //
+  // measured 2026-08-17: 2.7s full-run (196 records; 0 failed datasets), from
+  // Railway deployment 0b181beb-20aa-498c-94be-088a344fe493 at commit 8b2bc625.
+  // The source log fields and runner confirmation are frozen in
+  // scripts/resilience-static-full-run-evidence.json. `--measure-fetch-only`
+  // remains a diagnostic and is not timeout or placement evidence.
+  //
+  // Runtime admission uses timeout + 10s kill grace. Scores' 250s worst case,
+  // Static's 290s worst case, and the runner's 15s admission headroom total
+  // 555s, leaving 15s in the 570s budget. This keeps Static admissible even if
+  // Scores consumes its full reservation; the timeout is not sized from 2.7s
+  // alone.
+  { label: 'Resilience-Static', script: 'seed-resilience-static.mjs', seedMetaKey: 'resilience:static', intervalMs: 90 * DAY, timeoutMs: 280_000 },
   // The seeder caps its own fetch phase at 420s (fetchPhaseTimeoutMs), so a
   // slow USDA PSD or FAOSTAT aborts through runSeed's graceful last-good path
   // rather than being SIGTERM'd here, which the runner counts as a hard

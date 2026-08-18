@@ -29,6 +29,7 @@ export {
 export const CANADA_ROAD_FRESHNESS_IDS = Object.freeze([
   { key: 'canadaRoads', freshnessId: 'ontario_511' },
   { key: 'albertaRoads', freshnessId: 'alberta_511' },
+  { key: 'manitobaRoads', freshnessId: 'manitoba_511' },
   { key: 'torontoRoads', freshnessId: 'toronto_roads' },
   { key: 'bcOpen511', freshnessId: 'bc_open511' },
 ] as const);

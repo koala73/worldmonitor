@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { h, replaceChildren } from '@/utils/dom-utils';
+import { h } from '@/utils/dom-utils';
 import type { InternetOutage } from '@/types';
 import type {
   ListInternetDdosAttacksResponse,
@@ -62,7 +62,15 @@ export class InternetDisruptionsPanel extends Panel {
       : this.tab === 'ddos'
         ? this.buildDdos()
         : this.buildAnomalies();
-    replaceChildren(this.content, tabs, body);
+    // Route through the sanctioned helper (#6557). render() has four callers:
+    // the three data setters (setOutages/setDdos/setAnomalies), each a proven
+    // success, and the [data-tab] click listener bound in the constructor,
+    // which is not. Clearing the error state on a tab click is harmless only
+    // because showError() replaces this.content, so no tab button survives for
+    // the user to click while the chip is set. If a retry callback is ever
+    // wired to this panel, give the tab path a write that does not clear —
+    // otherwise a click resets the backoff rung on a still-failing source.
+    this.setContentNodes(tabs, body);
   }
 
   private buildTabs(): HTMLElement {

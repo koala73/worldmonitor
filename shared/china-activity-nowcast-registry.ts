@@ -107,7 +107,7 @@ export const CHINA_ACTIVITY_PROXY_REGISTRY: readonly Readonly<ChinaActivityProxy
         interpolate: false,
         description: 'Use the latest reviewed aggregate inside the window and expose missing nodes separately.',
       },
-      freshnessBudgetMinutes: 2 * 72 * 60,
+      freshnessBudgetMinutes: 10 * 24 * 60,
       source: {
         publisherId: 'publisher:imf-portwatch',
         publisherName: 'IMF PortWatch',

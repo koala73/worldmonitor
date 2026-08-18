@@ -80,15 +80,17 @@ describe('free-tier roster', () => {
     }
   });
 
-  it('advertises access only on free tools, leaving every other tool untouched', () => {
+  it('advertises the full access class while preserving free for anonymous tools', () => {
     for (const tool of TOOL_LIST_RESPONSE) {
-      const isFree = freeTools.some((t) => t.name === tool.name);
+      const internal = TOOL_REGISTRY.find((candidate) => candidate.name === tool.name);
+      assert.ok(internal, `${tool.name} must exist in the registry`);
       const marker = tool._meta?.['worldmonitor/access'];
-      if (isFree) {
-        assert.equal(marker, 'free', `${tool.name} must advertise free access`);
-      } else {
-        assert.equal(marker, undefined, `${tool.name} must not carry an access marker`);
-      }
+      const expected = internal._freeTier === true
+        ? 'free'
+        : internal._execute === undefined || internal.name === 'describe_tool'
+          ? 'free-account'
+          : 'subscription';
+      assert.equal(marker, expected, `${tool.name} must advertise ${expected} access`);
     }
   });
 

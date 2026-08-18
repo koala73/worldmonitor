@@ -320,12 +320,43 @@
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
   },
   {
+    "entry": "scripts/seed-bundle-static-ref-heavy.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "lifecycle": "planned",
+    "service": "seed-bundle-static-ref-heavy",
+    "watchPatterns": [
+      "scripts/_bundle-runner.mjs",
+      "scripts/_defense-industrial-source.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/seed-bundle-static-ref-heavy.mjs",
+      "scripts/seed-defense-industrial-suppliers.mjs",
+      "scripts/seed-military-bases.mjs",
+      "scripts/seed-mineral-production.mjs",
+      "scripts/shared/country-name-to-iso2.cjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/iso3-to-iso2.json",
+      "scripts/shared/mineral-commodities.json",
+      "scripts/shared/mineral-country-aliases.json",
+      "scripts/shared/mineral-production-parse.mjs"
+    ],
+    "cronSchedule": "0 4 * * *",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-3-heavy-seed-bundle-static-ref-heavy"
+  },
+  {
     "entry": "scripts/seed-bundle-canada.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-canada",
     "requiredEnv": [
       "UPSTASH_REDIS_REST_URL",
-      "UPSTASH_REDIS_REST_TOKEN"
+      "UPSTASH_REDIS_REST_TOKEN",
+      "MANITOBA_511_KEY"
     ],
     "watchPatterns": [
       "scripts/_511-rate-limit.mjs",
@@ -336,6 +367,9 @@
       "scripts/_seed-envelope-source.mjs",
       "scripts/_seed-utils.mjs",
       "scripts/lib/alberta-emergency-alert.mjs",
+      "scripts/lib/bc-emergency-info.mjs",
+      "scripts/lib/canada-alerts-union.mjs",
+      "scripts/lib/saskalert.mjs",
       "scripts/lib/gtfsrt.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/open511.mjs",
@@ -345,6 +379,8 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-alberta-emergency-alert.mjs",
+      "scripts/seed-bc-emergency-info.mjs",
+      "scripts/seed-saskalert.mjs",
       "scripts/seed-bundle-canada.mjs",
       "scripts/seed-open511.mjs",
       "scripts/seed-provincial-511.mjs",
@@ -979,18 +1015,12 @@
       "scripts/package.json",
       "scripts/seed-bundle-static-ref.mjs",
       "scripts/seed-chokepoint-baselines.mjs",
-      "scripts/seed-defense-patents.mjs",
       "scripts/seed-defense-industrial.mjs",
-      "scripts/seed-defense-industrial-suppliers.mjs",
+      "scripts/seed-defense-patents.mjs",
+      "scripts/seed-submarine-cables.mjs",
       "scripts/shared/country-name-to-iso2.cjs",
       "scripts/shared/country-names.json",
-      "scripts/shared/iso3-to-iso2.json",
-      "scripts/seed-military-bases.mjs",
-      "scripts/seed-mineral-production.mjs",
-      "scripts/seed-submarine-cables.mjs",
-      "scripts/shared/mineral-commodities.json",
-      "scripts/shared/mineral-country-aliases.json",
-      "scripts/shared/mineral-production-parse.mjs"
+      "scripts/shared/iso3-to-iso2.json"
     ],
     "cronSchedule": "0 3 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-3-seed-bundle-static-ref"

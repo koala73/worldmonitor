@@ -66,6 +66,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/bounded-body.ts",
+      "category": "internal-helper",
+      "reason": "Bounded sibling-response body reader shared by MCP billing-denial and downstream error classification (#6559). Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/downstream.ts",
       "category": "internal-helper",
       "reason": "Canonical sibling-request routing and credential-safe downstream error classification for MCP RPC tools (#5514). Pure helper module for the external-protocol MCP handler family above — exports no route.",
@@ -146,6 +153,27 @@
       "path": "api/mcp/constants.ts",
       "category": "external-protocol",
       "reason": "MCP protocol version negotiation (env-at-call-time), SERVER_NAME, SERVER_VERSION, SERVER_INSTRUCTIONS, MCP_LOG_LEVELS, byte caps. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/upgrade.ts",
+      "category": "external-protocol",
+      "reason": "MCP paid-funnel (#6716) structured denial builders and upgrade-URL re-exports. Part of the streamable-HTTP MCP surface — not a JSON data API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/upgrade-constants.ts",
+      "category": "external-protocol",
+      "reason": "MCP free-account allowance numeric constants (#6716). Supporting module for the MCP transport; listed so the sebuf contract script accepts the api/mcp/ tree.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/free-account-allowance.ts",
+      "category": "external-protocol",
+      "reason": "MCP free-account idle-gap + call-ceiling meter (#6716). Redis-backed reservation used only by api/mcp/dispatch.ts — not a public HTTP route.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -626,13 +654,6 @@
       "path": "api/internal/mcp-grant-context.ts",
       "category": "internal-helper",
       "reason": "Read-only companion to api/internal/mcp-grant-mint.ts (plan 2026-05-10-001 U3). Returns the registered OAuth client_name + redirect host so the apex /mcp-grant SPA can show real client metadata (anti-phishing). Pro-gated; identical validation paths as the mint endpoint.",
-      "owner": "@SebastienMelki",
-      "removal_issue": null
-    },
-    {
-      "path": "api/data/city-coords.ts",
-      "category": "internal-helper",
-      "reason": "Static city-coordinates payload served from the deploy artifact. Returns a fixed reference table, not a queryable service.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

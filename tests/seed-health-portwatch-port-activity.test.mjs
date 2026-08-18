@@ -20,7 +20,7 @@ process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
 const { handleSeedHealth } = await import('../api/seed-health.js');
 
 const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
-const PORTWATCH_CONTENT_BUDGET_MINUTES = 2 * 72 * 60;
+const PORTWATCH_CONTENT_BUDGET_MINUTES = 10 * 24 * 60;
 const TEST_NOW = Date.parse('2026-08-03T14:42:58.000Z');
 const DECISION_META_KEY = 'seed-meta:intelligence:china-decision-signals';
 const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
@@ -213,7 +213,7 @@ test('seed-health flags stale decision-critical PortWatch content separately fro
       criticalFreshCount: 1,
       criticalStaleCountries: ['CN'],
       criticalMissingCountries: 0,
-      criticalOldestObservedAt: now - (145 * 60 * 60 * 1000),
+      criticalOldestObservedAt: now - ((PORTWATCH_CONTENT_BUDGET_MINUTES + 60) * 60 * 1000),
     },
   });
 

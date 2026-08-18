@@ -65,12 +65,50 @@ export type ProMcpGateDenial =
    * them, that flattening is #5600.
    */
   | { kind: 'billing_verification'; denial: BillingVerificationDenial }
+  /** A verified no-row or well-formed tier-0 account eligible at the MCP call site. */
+  | { kind: 'free_account' }
   /**
-   * A confirmed answer that simply does not grant Pro MCP access: free tier, a
-   * plan without mcpAccess, an expired validUntil, or a fail-closed null. This
-   * is the honest upsell.
+   * A confirmed answer that does not grant Pro MCP access and is not eligible
+   * for the free-account allowance: a tiered plan without mcpAccess, an expired
+   * validUntil, or a malformed entitlement shape. This is the honest upsell.
    */
   | { kind: 'insufficient_tier' };
+
+/**
+ * Free-account eligibility is intentionally narrower than "not Pro".
+ *
+ * A configured entitlement backend returning no row is an authoritative free
+ * verdict. A stored row must be a complete, internally consistent tier-0
+ * shape. Expired/disabled paid rows, malformed values, and unconfigured lookup
+ * nulls are not free accounts and must remain fail-closed.
+ */
+function isConfirmedFreeMcpAccount(
+  entitlements: unknown,
+  opts?: { backendConfigured?: boolean },
+): boolean {
+  if (entitlements === null) return opts?.backendConfigured === true;
+  if (!entitlements || typeof entitlements !== 'object') return false;
+
+  const candidate = entitlements as {
+    planKey?: unknown;
+    features?: { tier?: unknown; mcpAccess?: unknown };
+    validUntil?: unknown;
+  };
+  // `planKey === 'free'` is required so the free verdict is POSITIVELY
+  // confirmed rather than inferred from the absence of Pro. Every shape that
+  // legitimately reaches here as a free account carries it — the no-row
+  // synthesis in convex/entitlements.ts (FREE_TIER_DEFAULTS) and the edge
+  // fallback in server/_shared/entitlement-check.ts both set it — so this
+  // narrows nothing real. What it excludes is a row whose stored `features`
+  // were overridden to a tier-0 shape while `planKey` still names a paid plan:
+  // that is a data fault, and a data fault should fail closed rather than land
+  // on an allowance by looking enough like a free account.
+  return candidate.planKey === 'free'
+    && candidate.features?.tier === 0
+    && candidate.features.mcpAccess === false
+    && typeof candidate.validUntil === 'number'
+    && Number.isFinite(candidate.validUntil);
+}
 
 /**
  * Returns null when the caller may proceed, else the reason.
@@ -132,7 +170,25 @@ export function checkProMcpAccess(
       }
     : entitlements;
   const denial = classifyBillingVerification(billingInput);
-  return denial ? { kind: 'billing_verification', denial } : { kind: 'insufficient_tier' };
+  if (denial) {
+    // #6716 — a provider-CONFIRMED lapse is a free account, not a wall.
+    //
+    // `retryable: false` is documented as true "ONLY for a lapse the provider
+    // confirmed", so it is precisely the signal that we have stopped trying to
+    // collect. Dunning happens earlier, while the row is `on_hold`, and
+    // `isCoveringAt` (convex/payments/subscriptionHelpers.ts) keeps those users
+    // on FULL Pro throughout — so by the time a lapse is confirmed the billing
+    // attempts are over and the account is simply a free one.
+    //
+    // Every RETRYABLE state stays a billing_verification denial: renewal
+    // pending/failed and an unverifiable read are statements about the
+    // VERIFICATION, not the subscription, and treating them as free would grant
+    // an allowance on a read we could not trust — the flattening #5600 is about.
+    if (!denial.retryable) return { kind: 'free_account' };
+    return { kind: 'billing_verification', denial };
+  }
+  if (isConfirmedFreeMcpAccount(entitlements, opts)) return { kind: 'free_account' };
+  return { kind: 'insufficient_tier' };
 }
 
 // ---------------------------------------------------------------------------
@@ -169,7 +225,7 @@ const NO_STORE_JSON: Record<string, string> = {
  * whether they had clicked Authorize yet.
  */
 export function proMcpGateDenialResponse(gate: ProMcpGateDenial): Response {
-  if (gate.kind === 'insufficient_tier') {
+  if (gate.kind === 'insufficient_tier' || gate.kind === 'free_account') {
     return jsonError('INSUFFICIENT_TIER', 'A WorldMonitor Pro subscription is required.', 403, {});
   }
 

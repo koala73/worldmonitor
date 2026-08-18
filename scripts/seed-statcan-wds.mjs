@@ -2,7 +2,7 @@
 
 /**
  * Statistics Canada Web Data Service — same-day cube radar plus the CPI / LFS
- * series the Country Resilience Index consumes for CA. Issue #6616.
+ * series the Country Resilience Index consumes for CA. Issue #6676.
  * Independent clock from Bank of Canada Valet. Empty change-list is valid quiet.
  */
 

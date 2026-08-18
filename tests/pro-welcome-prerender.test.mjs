@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 const welcomeHtml = () => readFileSync(new URL('../public/pro/welcome.html', import.meta.url), 'utf8');
 const enLocale = () =>
   JSON.parse(readFileSync(new URL('../pro-test/src/locales/en.json', import.meta.url), 'utf8'));
 const WELCOME_FAQ_COUNT = 11;
+
+// Every assertion here reads the prerendered public/pro/welcome.html, which is
+// built by `npm run build:pro` rather than committed (#6898). Skip when the
+// checkout has not built it; fail when WM_EXPECT_BUILT_OUTPUT=1 says CI did.
+const skip = shouldSkipProBuiltOutput();
+guardProBuiltOutput();
 
 const welcomeRoot = () => {
   const rootMatch = welcomeHtml().match(/<div id="root"(?<attrs>[^>]*)>(?<content>[\s\S]*?)<\/body>/);
@@ -16,7 +23,7 @@ const welcomeRoot = () => {
   };
 };
 
-test('welcome FAQPage JSON-LD matches every visible FAQ entry', () => {
+test('welcome FAQPage JSON-LD matches every visible FAQ entry', { skip }, () => {
   const html = welcomeHtml();
   const en = enLocale();
   const jsonLdBlocks = [...html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
@@ -32,7 +39,7 @@ test('welcome FAQPage JSON-LD matches every visible FAQ entry', () => {
   }
 });
 
-test('built welcome page ships the real hero in #root before JavaScript', () => {
+test('built welcome page ships the real hero in #root before JavaScript', { skip }, () => {
   const { attrs, content: rootContent } = welcomeRoot();
   assert.match(attrs, /data-wm-prerendered="welcome"/);
   assert.match(attrs, /data-wm-prerender-lang="en"/);
@@ -67,7 +74,7 @@ test('built welcome page ships the real hero in #root before JavaScript', () => 
   assert.match(rootContent, /<img[^>]+src="\/pro\/assets\/worldmonitor-7-mar-2026-[^"]+\.jpg"[^>]+fetchPriority="high"/);
 });
 
-test('built welcome page prerenders task routes and agent discovery links', () => {
+test('built welcome page prerenders task routes and agent discovery links', { skip }, () => {
   const { content: rootContent } = welcomeRoot();
   const heroIndex = rootContent.indexOf('By the time it&#x27;s news,');
   const taskIndex = rootContent.indexOf('What are you trying to find out?');

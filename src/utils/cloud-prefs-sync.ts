@@ -44,6 +44,8 @@ import {
   mergeCloudWithLocalDirty,
   parsePersistedDirtyKeys,
   settledDirtyKeys,
+  unionPersistedDirtyKeys,
+  withoutPersistedDirtyKeys,
 } from './cloud-prefs-migrations';
 import {
   isTemporaryCloudPrefsStatus,
@@ -190,6 +192,58 @@ let _cachedToken: string | null = null; // synchronous token cache for flush()
 const _dirtyKeys = new Set<CloudSyncKey>();
 let _dirtyKeysUserId: string | null = null;
 
+/**
+ * #4746: persistDirtyKeys used to serialize only THIS tab's in-memory set,
+ * so two same-user tabs writing different keys clobbered each other's
+ * pending markers (last writer wins on the single shared
+ * KEY_DIRTY_KEYS entry). The write is now split per call-site semantics:
+ *
+ *   add    (markDirtyKey)          -> union with the persisted set
+ *   settle (clearSettledDirtyKeys) -> targeted remove of the settled keys
+ *   reset  (hydrate cleanup,
+ *           sign-out)              -> overwrite / remove (persistDirtyKeys)
+ *
+ * The naive "always union" fix is wrong on purpose: re-reading the disk set
+ * inside clearSettledDirtyKeys would resurrect keys the upload just settled
+ * (the stale-dirty-key regression class from #3695), so settle removes only
+ * what this tab's upload actually durably synced.
+ */
+function writePersistedDirtyKeys(payload: { userId: string; keys: string[] }): void {
+  if (payload.keys.length === 0) {
+    Storage.prototype.removeItem.call(localStorage, KEY_DIRTY_KEYS);
+    return;
+  }
+  Storage.prototype.setItem.call(localStorage, KEY_DIRTY_KEYS, JSON.stringify(payload));
+}
+
+function persistDirtyKeyAddition(key: CloudSyncKey): void {
+  if (!_dirtyKeysUserId) return;
+  try {
+    writePersistedDirtyKeys(unionPersistedDirtyKeys(
+      localStorage.getItem(KEY_DIRTY_KEYS),
+      CLOUD_SYNC_KEYS,
+      _dirtyKeysUserId,
+      [key],
+    ));
+  } catch {
+    // localStorage unavailable: keep the in-memory guard for this page view.
+  }
+}
+
+function persistSettledDirtyKeyRemovals(removals: string[]): void {
+  if (!_dirtyKeysUserId) return;
+  try {
+    writePersistedDirtyKeys(withoutPersistedDirtyKeys(
+      localStorage.getItem(KEY_DIRTY_KEYS),
+      CLOUD_SYNC_KEYS,
+      _dirtyKeysUserId,
+      removals,
+    ));
+  } catch {
+    // localStorage unavailable: keep the in-memory guard for this page view.
+  }
+}
+
 function persistDirtyKeys(): void {
   try {
     if (_dirtyKeys.size === 0) {
@@ -222,7 +276,7 @@ function hydrateDirtyKeysFromStorage(userId: string): void {
 
 function markDirtyKey(key: CloudSyncKey): void {
   _dirtyKeys.add(key);
-  persistDirtyKeys();
+  persistDirtyKeyAddition(key);
 }
 
 /**
@@ -239,11 +293,11 @@ function markDirtyKey(key: CloudSyncKey): void {
  * current local value.
  */
 function clearSettledDirtyKeys(postedBlob: Record<string, string>): void {
-  let changed = false;
+  const settled: string[] = [];
   for (const key of settledDirtyKeys(postedBlob, buildCloudBlob(), _dirtyKeys)) {
-    changed = _dirtyKeys.delete(key as CloudSyncKey) || changed;
+    if (_dirtyKeys.delete(key as CloudSyncKey)) settled.push(key);
   }
-  if (changed) persistDirtyKeys();
+  if (settled.length > 0) persistSettledDirtyKeyRemovals(settled);
 }
 
 // ── 503 retry tracking ───────────────────────────────────────────────────────

@@ -1,0 +1,151 @@
+name: E2E Visual
+
+# Intentionally NOT named "Test". Deploy-gate aggregates every job of Test /
+# Typecheck / Lint Code / Security Audit into the required `gate` check.
+# Visual goldens and the chrome gallery are evidence, not a merge blocker.
+
+on:
+  pull_request:
+    paths:
+      - 'e2e/map-harness.spec.ts'
+      - 'e2e/map-harness.spec.ts-snapshots/**'
+      - 'e2e/visual-chrome.spec.ts'
+      - 'e2e/capture-screenshot.ts'
+      - 'src/e2e/map-harness.ts'
+      - 'src/components/DeckGLMap.ts'
+      - 'tests/map-harness.html'
+      - 'playwright.config.ts'
+      - '.github/workflows/e2e-visual.yml'
+      - '.github/workflows/publish-e2e-screenshots.yml'
+      - 'scripts/playwright-screenshot-gallery.mjs'
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Which visual suite to run
+        required: true
+        type: choice
+        options:
+          - both
+          - visual-goldens
+          - chrome
+        default: both
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-visual-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  visual-goldens:
+    name: visual-goldens
+    # Skip ordinary main pushes. Goldens stay on map-touching PRs, nightly,
+    # and manual dispatch so SwiftShader flake cannot sit on the hot path.
+    if: >-
+      github.event_name != 'push' &&
+      (github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'visual-goldens')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright chromium
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ steps.playwright-version.outputs.version }}
+      - run: npx playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+      - run: npx playwright install-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+      - name: Run committed full map goldens
+        if: ${{ !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'visual-goldens') }}
+        run: npm run test:e2e:visual:full
+      - name: Upload full visual-goldens Playwright artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-visual-goldens-full-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Run committed tech map goldens
+        if: ${{ !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'visual-goldens') }}
+        run: npm run test:e2e:visual:tech
+      - name: Upload tech visual-goldens Playwright artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-visual-goldens-tech-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  chrome-gallery:
+    name: chrome-gallery
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.suite == 'both' || inputs.suite == 'chrome' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci
+      - name: Resolve Playwright version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright chromium
+        id: playwright-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ steps.playwright-version.outputs.version }}
+      - run: npx playwright install --with-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+      - run: npx playwright install-deps chromium
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+      - name: Capture named chrome story
+        run: npm run test:e2e:chrome
+      - name: Upload chrome Playwright artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-chrome-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Build scan-friendly gallery
+        if: ${{ !cancelled() }}
+        env:
+          PLAYWRIGHT_RESULT: ${{ job.status }}
+          PLAYWRIGHT_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PLAYWRIGHT_RUN_ID: ${{ github.run_id }}
+          PLAYWRIGHT_RUN_NUMBER: ${{ github.run_number }}
+          PLAYWRIGHT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PLAYWRIGHT_SHA: ${{ github.sha }}
+          PLAYWRIGHT_EVENT: ${{ github.event_name }}
+          PLAYWRIGHT_BRANCH: ${{ github.ref_name }}
+        run: node scripts/playwright-screenshot-gallery.mjs test-results gallery
+      - name: Upload screenshot gallery
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-gallery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: gallery/
+          if-no-files-found: ignore
+          retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 14 }}

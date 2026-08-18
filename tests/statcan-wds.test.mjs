@@ -32,6 +32,7 @@ import {
   LFS_PRODUCT_ID,
 } from '../scripts/lib/statcan-wds.mjs';
 import { DAY_MIN } from '../scripts/_content-age-helpers.mjs';
+import { __testing__ as healthTesting } from '../api/health.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const changedDoc = JSON.parse(readFileSync(resolve(here, 'fixtures/statcan-wds/changed-cube-list.json'), 'utf8'));
@@ -40,6 +41,17 @@ const vectorDoc = JSON.parse(readFileSync(resolve(here, 'fixtures/statcan-wds/cp
 const libSrc = readFileSync(resolve(here, '../scripts/lib/statcan-wds.mjs'), 'utf8');
 const seederSrc = readFileSync(resolve(here, '../scripts/seed-statcan-wds.mjs'), 'utf8');
 const testSrc = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function inclusiveUtcDateDays(startDate, endTimestamp) {
+  const endDate = typeof endTimestamp === 'string' ? endTimestamp.slice(0, 10) : '';
+  assert.match(startDate, /^\d{4}-\d{2}-\d{2}$/);
+  assert.match(endDate, /^\d{4}-\d{2}-\d{2}$/);
+  const elapsedMs = Date.parse(`${endDate}T00:00:00Z`) - Date.parse(`${startDate}T00:00:00Z`);
+  assert.equal(elapsedMs % DAY_MS, 0);
+  return elapsedMs / DAY_MS + 1;
+}
 
 test('UTC date path is required in the change-list URL and cache key', () => {
   assert.equal(utcDateIso(Date.parse('2026-08-13T21:49:00Z')), '2026-08-13');
@@ -361,7 +373,7 @@ test('StatCan scored freshness is invariant across UTC, Toronto, and Dubai proce
   ]);
 });
 
-test('the StatCan and BoC EMPTY waivers are retired, and the 08:00 cron stays documented', () => {
+test('the StatCan and BoC EMPTY waivers are retired with independent issue ownership', () => {
   // Was: pinned both waivers' exact anchors, to prove they used the real 08:00
   // UTC tick rather than a mistaken 13:00 one. Both probes now publish, so the
   // monitor reports them as "no longer reported; remove it" and #6799 pruned
@@ -383,6 +395,14 @@ test('the StatCan and BoC EMPTY waivers are retired, and the 08:00 cron stays do
     );
   }
 
+  assert.match(seederSrc, /Issue #6676\./, 'the StatCan seeder must point to its own tracking issue');
+  assert.doesNotMatch(seederSrc, /Issue #6616\./, 'the StatCan seeder must not point to the BoC issue');
+  assert.equal(
+    healthTesting.SEED_META.statcanWds.cutover?.issue,
+    6676,
+    'the StatCan health cutover must point to its own tracking issue',
+  );
+
   // The 13:00 anchor was never a real cron. Keep it out of every surface.
   assert.doesNotMatch(healthSrc, /2026-08-16T13:00/);
   for (const row of baseline.acknowledged) {
@@ -392,11 +412,18 @@ test('the StatCan and BoC EMPTY waivers are retired, and the 08:00 cron stays do
   assert.match(runbook, /0 8 \* \* \*[^\n]*daily 08:00 UTC/);
 });
 
-test('STATCAN_MAX_CONTENT_AGE_MIN clears the ~79-day content-age peak and is wired into the seeder', () => {
-  // WDS refPer is the FIRST of the reference month, so a monthly series'
-  // newest observation start-dates a month before the data exists: June CPI
-  // carries refPer 2026-06-01 while July CPI releases ~2026-08-19, a ~79-day
-  // natural peak. The budget must clear that peak.
+test('STATCAN_MAX_CONTENT_AGE_MIN clears retained healthy cycles, catches a missed release, and is wired into the seeder', () => {
+  // WDS refPer is the FIRST of the reference month, so a monthly series' newest
+  // observation start-dates a month before the data exists. Content age
+  // therefore sawtooths, and the budget must clear the PEAK of that tooth, not
+  // its average.
+  //
+  // Derive both policy bounds from retained release history. A healthy cycle
+  // peaks at `next release - held refPer + 1`; a one-release miss recovers at
+  // `release after next - held refPer + 1`. The +1 accounts for the 08:00 UTC
+  // seed preceding StatCan's 08:30 ET release, which makes the new observation
+  // visible on the following day's tick. See docs/solutions/logic-errors/
+  // a-guard-that-hardcodes-an-external-services-latency-goes-green-when-that-latency-drifts.md
   //
   // Unlike its two siblings in #6831 — China (tests/china-macro-production-
   // registration.test.mts) and CISS (tests/ciss-stale-threshold-consistency
@@ -404,10 +431,29 @@ test('STATCAN_MAX_CONTENT_AGE_MIN clears the ~79-day content-age peak and is wir
   // wiring. The generic seeder-content-age-coverage net skips StatCan because
   // www150.statcan.gc.ca is not one of its FREEZE_PRONE_MARKER hosts, so a
   // wrong value or a dropped maxContentAgeMin wiring would ship unnoticed.
+  const cpiPoints = parseVectorSeries(vectorDoc, CPI_VECTOR_ID).points;
+  const healthyCyclePeaks = cpiPoints.slice(0, -1).map((point, index) => (
+    inclusiveUtcDateDays(point.refPer, cpiPoints[index + 1].releaseTime)
+  ));
+  const missedReleasePeaks = cpiPoints.slice(0, -2).map((point, index) => (
+    inclusiveUtcDateDays(point.refPer, cpiPoints[index + 2].releaseTime)
+  ));
+  const measuredHealthyPeakDays = Math.max(...healthyCyclePeaks);
+  const measuredMissedReleasePeakDays = Math.min(...missedReleasePeaks);
+
+  assert.equal(cpiPoints.length, 15, 'the retained CPI fixture must cover 15 reference periods');
+  assert.equal(healthyCyclePeaks.length, 14, 'the fixture must measure 14 healthy cycles');
+  assert.equal(missedReleasePeaks.length, 13, 'the fixture must measure 13 one-release misses');
+  assert.equal(measuredHealthyPeakDays, 85, 'the retained healthy-cycle maximum must remain explicit');
+  assert.equal(measuredMissedReleasePeakDays, 106, 'the earliest one-release-miss peak must remain explicit');
   assert.equal(STATCAN_MAX_CONTENT_AGE_MIN, 90 * DAY_MIN);
   assert.ok(
-    STATCAN_MAX_CONTENT_AGE_MIN > 79 * DAY_MIN,
-    'budget must exceed the ~79-day content-age peak',
+    STATCAN_MAX_CONTENT_AGE_MIN > measuredHealthyPeakDays * DAY_MIN,
+    `budget must exceed the measured ${measuredHealthyPeakDays}-day healthy-cycle peak, or it alarms on a current series`,
+  );
+  assert.ok(
+    STATCAN_MAX_CONTENT_AGE_MIN < measuredMissedReleasePeakDays * DAY_MIN,
+    'budget must stay under a missed-release peak, or a genuine StatCan stall goes undetected',
   );
   assert.match(
     seederSrc,

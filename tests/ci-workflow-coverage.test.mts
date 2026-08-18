@@ -687,14 +687,16 @@ describe('CI workflow coverage', () => {
 
     assert.match(
       deployGateWorkflow,
-      /^ {2}group: deploy-gate-\$\{\{ github\.event\.workflow_run\.head_sha \|\| 'sweep' \}\}$/m,
-      'schedule and workflow_dispatch must share one sweep concurrency group while workflow_run stays keyed by SHA',
+      /^ {2}group: deploy-gate-\$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.event\.inputs\.sha \|\| 'sweep' \}\}$/m,
+      'schedule and empty dispatches share one sweep group; workflow_run and sha-input dispatches stay keyed by SHA',
     );
     assert.match(
       deployGateWorkflow,
-      /^run-name: Deploy Gate \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.event_name \}\}$/m,
+      /^run-name: Deploy Gate \$\{\{ github\.event\.workflow_run\.head_sha \|\| github\.event\.inputs\.sha \|\| github\.event_name \}\}$/m,
     );
     assert.match(deployGateJob, /graphql --paginate --slurp/);
+    assert.match(deployGateJob, /falling back to REST/);
+    assert.match(deployGateJob, /commits\/\$eval_sha\/check-runs\?per_page=100/);
     assert.match(deployGateJob, /pullRequests\(first: 100, states: \[OPEN\], after: \$endCursor\)/);
     assert.match(deployGateJob, /pageInfo \{ hasNextPage endCursor \}/);
     assert.match(deployGateJob, /contexts\(first: 100, after: \$endCursor\)/);

@@ -1,5 +1,38 @@
+import { createRequire } from 'node:module';
+
+const {
+  parseProxyConfigForAttempt,
+  proxyFetch,
+} = createRequire(import.meta.url)('../_proxy-utils.cjs');
+
 const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_RETRY_DELAY_MS = 1_000;
+export const FETCH_TIMEOUT_MS = 12_000;
+// Exit nodes to try before giving up. Four covers the measured ~6% per-exit
+// failure rate against NBS with room to spare; more would trade wall time for
+// nothing, since a host the proxy genuinely cannot reach fails on every exit.
+export const PROXY_EXIT_ATTEMPTS = 4;
+// Wall-clock cap for the whole fallback on ONE fetchText call. Five NBS hops
+// (robots + listing + 3 articles) at 16s is 80s, which leaves China-Macro's
+// 240s seed-bundle timeout room for SAFE/PBOC/GACC. A live 12s per exit
+// without this cap would be 4*12s*5 = 240s of NBS alone.
+export const PROXY_FALLBACK_BUDGET_MS = 16_000;
+const PROXY_BUDGET_FLOOR_MS = 250;
+
+const PROXY_RETRYABLE_CODES = new Set([
+  'EAI_AGAIN',
+  'ECONNABORTED',
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ENOTFOUND',
+  'EPIPE',
+  'ETIMEDOUT',
+  'UND_ERR_CONNECT',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
 
 function sourceContractError(message) {
   return Object.assign(new Error(`SOURCE_CONTRACT_VIOLATION:${message}`), {
@@ -26,6 +59,124 @@ function validateSourceUrl(value, policy) {
     throw sourceContractError('UNAPPROVED_URL');
   }
   return url;
+}
+
+/**
+ * Should a failed DIRECT fetch be retried through the configured proxy?
+ *
+ * Only connection-level failures qualify. The publisher answering — any HTTP
+ * status, 403 and 429 included — is a real answer and belongs to the caller's
+ * own status handling; re-asking it from a second egress point would be evading
+ * the publisher's decision rather than routing around a network block, and only
+ * the latter is in scope. fetch() does not throw on status, so those never
+ * arrive here anyway; this is a statement of intent for whoever widens it next.
+ *
+ * Also excluded: our own contract guard (the URL/redirect/size rejection is not
+ * a transport problem), a caller-initiated abort, and TLS chain failures, which
+ * fetchText already treats as permanent and which a different route would hit
+ * identically.
+ */
+export function shouldRetryViaProxy(error) {
+  if (error?.code === 'SOURCE_CONTRACT_VIOLATION') return false;
+  if (Number.isInteger(error?.status) || Number.isInteger(error?.cause?.status)) return false;
+  if (
+    /^HTTP_\d{3}$/.test(String(error?.code ?? ''))
+    || /^HTTP_\d{3}$/.test(String(error?.message ?? ''))
+  ) return false;
+  // Caller abort only. AbortSignal.timeout surfaces as TimeoutError in Node 24
+  // and is retryable below — a hang is the blocked-egress shape this hop exists
+  // for. fetchText does not accept an external signal today.
+  if (error?.name === 'AbortError') return false;
+  if (
+    error?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
+    || error?.cause?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
+    || /self signed certificate|certificate chain/i.test(
+      `${String(error?.message)} ${String(error?.cause?.message)}`,
+    )
+  ) return false;
+  if (error?.name === 'TimeoutError') return true;
+  const code = error?.code || error?.cause?.code;
+  if (PROXY_RETRYABLE_CODES.has(code)) return true;
+  if (/fetch failed/i.test(String(error?.message ?? ''))) return true;
+  return false;
+}
+
+/**
+ * The same declared request, from a different egress point.
+ *
+ * Measured 2026-08-18: www.stats.gov.cn answers this exact client normally from
+ * a laptop (HTTP 200, ~12 KiB index, ~164 KiB article) while Railway's egress
+ * cannot open the connection at all. The seeder reported FETCH_FAILED rather
+ * than TIMEOUT or HTTP_nnn, which is what identifies it as connection-level
+ * rather than the publisher refusing us. All three required NBS series sat on
+ * preserved values while the seeder itself kept publishing, so
+ * seed-meta:economic:china-macro-transport froze at 2026-08-14 and health read
+ * STALE_SEED off a key the seeder had never stopped updating.
+ *
+ * Headers are forwarded UNCHANGED on purpose: the same declared User-Agent and
+ * Accept-Language reaching the publisher over a different route, not a
+ * different client. `location` is carried across because fetchText does its own
+ * `redirect: 'manual'` handling and would otherwise lose the hop.
+ */
+async function fetchThroughProxy(target, init, proxyUrl, {
+  proxyFetchFn = proxyFetch,
+  now = Date.now,
+} = {}) {
+  let lastError = null;
+  // Rotate exits. parseProxyConfigForAttempt maps the attempt index onto a
+  // different gateway port and therefore a different exit node, and individual
+  // exits fail this host intermittently: measured 2026-08-18 over 18 single
+  // attempts against www.stats.gov.cn, 17 returned the real page (12017 bytes,
+  // byte-identical to a direct fetch) and one failed CONNECT with 522, while
+  // rotating across four indices succeeded 5 of 5 rounds. A single fixed
+  // attempt would carry that ~6% per-request failure into all five NBS fetches
+  // and lose roughly a quarter of runs.
+  //
+  // A rotation step is FREE against the request budget on purpose: a 522 from
+  // the gateway means the tunnel was never established, so the publisher was
+  // never contacted and no load was placed on it. The budget bounds load on the
+  // source, not attempts made on our side. Wall-clock is a separate cap
+  // (PROXY_FALLBACK_BUDGET_MS) so four live 12s exits cannot blow the seeder.
+  const deadlineAt = now() + PROXY_FALLBACK_BUDGET_MS;
+  for (let attempt = 0; attempt < PROXY_EXIT_ATTEMPTS; attempt += 1) {
+    const remainingMs = deadlineAt - now();
+    if (remainingMs < PROXY_BUDGET_FLOOR_MS) break;
+    const proxyConfig = parseProxyConfigForAttempt(proxyUrl, attempt);
+    if (!proxyConfig) return null;
+    const timeoutMs = Math.min(FETCH_TIMEOUT_MS, remainingMs);
+    // Fresh deadline per exit. Reusing the direct fetch's AbortSignal.timeout
+    // leaves signal.aborted === true after a hang, and proxyFetch then rejects
+    // immediately — the hop this fallback exists for.
+    const signal = AbortSignal.timeout(timeoutMs);
+    let result;
+    try {
+      result = await proxyFetchFn(String(target), proxyConfig, {
+        headers: init?.headers,
+        method: init?.method || 'GET',
+        maxResponseBytes: MAX_RESPONSE_BYTES,
+        timeoutMs,
+        signal,
+      });
+    } catch (error) {
+      lastError = error;
+      continue;
+    }
+    if (result.buffer.byteLength > MAX_RESPONSE_BYTES) {
+      throw sourceContractError('RESPONSE_TOO_LARGE');
+    }
+    const retryAfter = result.headers?.['retry-after'] ?? result.headers?.['Retry-After'];
+    return new Response(result.buffer, {
+      status: result.status,
+      headers: {
+        ...(result.location ? { Location: result.location } : {}),
+        'Content-Type': result.contentType || 'text/html',
+        'Content-Length': String(result.buffer.byteLength),
+        ...(retryAfter ? { 'Retry-After': String(retryAfter) } : {}),
+      },
+    });
+  }
+  if (lastError) throw lastError;
+  return null;
 }
 
 export function requestBudget(maxRequests) {
@@ -62,37 +213,92 @@ export async function fetchText(fetchFn, value, {
   budget,
   onRedirect = () => {},
   assertTargetAllowed = () => {},
+  // Opt-in per publisher. Null, or an unset PROXY_URL, leaves this path
+  // byte-for-byte unchanged — a source reachable directly never grows a hop.
+  proxyUrl = null,
+  onProxyFallback = () => {},
+  proxyFetchFn = proxyFetch,
+  now = Date.now,
 }) {
   let target = validateSourceUrl(value, policy);
   assertTargetAllowed(target);
   let redirected = false;
   let redirects = 0;
   let transientRetries = 0;
+  const usableProxy = Boolean(proxyUrl && parseProxyConfigForAttempt(proxyUrl, 0));
   for (;;) {
     budget.consume();
     let response;
+    let fromProxy = false;
+    // User-Agent URL must stay on a line adjacent to fetchFn so the
+    // source-attribution scanner still records this file.
+    const requestInit = {
+      headers: {
+        Accept: 'text/html,text/plain;q=0.9,*/*;q=0.1',
+        'Accept-Language': 'en,zh-CN;q=0.8',
+        'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)',
+      },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    };
     try {
-      response = await fetchFn(target.toString(), {
-        headers: {
-          Accept: 'text/html,text/plain;q=0.9,*/*;q=0.1',
-          'Accept-Language': 'en,zh-CN;q=0.8',
-          'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)',
-        },
-        redirect: 'manual',
-        signal: AbortSignal.timeout(12_000),
-      });
+      response = await fetchFn(target.toString(), requestInit);
     } catch (error) {
       const permanentTls = error?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
         || error?.cause?.code === 'SELF_SIGNED_CERT_IN_CHAIN'
         || /self signed certificate|certificate chain/i.test(
           `${String(error?.message)} ${String(error?.cause?.message)}`,
         );
-      if (transientRetries === 0 && !permanentTls && error?.code !== 'SOURCE_CONTRACT_VIOLATION') {
-        transientRetries += 1;
-        await waitForRetry();
-        continue;
+      let proxyAttempted = false;
+      if (usableProxy && shouldRetryViaProxy(error)) {
+        try {
+          // Deliberately NO second budget.consume() here.
+          //
+          // The budget bounds load placed on the PUBLISHER, and a connection-
+          // level failure never reached it — no socket, no request, no load. The
+          // proxied attempt is the same logical request finally arriving, so it
+          // is covered by the unit this iteration already consumed at the top of
+          // the loop.
+          //
+          // Counting it twice is not merely pedantic: NBS_MAX_REQUESTS_PER_RUN
+          // is 8 and a run makes 5 NBS fetches (robots + listing + 3 articles).
+          // On Railway the direct attempt fails every time, so double-counting
+          // needs 10 and trips REQUEST_BUDGET_EXCEEDED — the fix would have
+          // failed for a different reason than the one it fixes.
+          const proxied = await fetchThroughProxy(target, requestInit, proxyUrl, {
+            proxyFetchFn,
+            now,
+          });
+          proxyAttempted = true;
+          if (proxied) {
+            onProxyFallback({ url: target.toString(), directReason: reasonFor(error) });
+            response = proxied;
+            fromProxy = true;
+          }
+        } catch (proxyError) {
+          proxyAttempted = true;
+          // A contract violation from the proxied response is ours and must
+          // surface. Anything else falls through carrying the ORIGINAL error —
+          // reporting the proxy's failure instead would bury why the direct
+          // route failed, which is the diagnosis that matters.
+          if (proxyError?.code === 'SOURCE_CONTRACT_VIOLATION') throw proxyError;
+        }
       }
-      throw error;
+      if (!response) {
+        // A configured proxy already had its chance. A second direct cycle on
+        // a host Railway cannot open only doubles wall-clock.
+        if (
+          !proxyAttempted
+          && transientRetries === 0
+          && !permanentTls
+          && error?.code !== 'SOURCE_CONTRACT_VIOLATION'
+        ) {
+          transientRetries += 1;
+          await waitForRetry();
+          continue;
+        }
+        throw error;
+      }
     }
     if (response.status >= 300 && response.status < 400) {
       onRedirect('encountered');
@@ -128,8 +334,11 @@ export async function fetchText(fetchFn, value, {
     }
     if (!response.ok) {
       const error = Object.assign(new Error(`HTTP_${response.status}`), { status: response.status });
+      // A proxied 403/429 is the publisher answering through the tunnel.
+      // Re-entering the direct+proxy ladder would be a second ask.
       if (
-        transientRetries === 0
+        !fromProxy
+        && transientRetries === 0
         && (response.status === 408 || response.status === 429 || response.status >= 500)
         && await waitForRetry(response)
       ) {

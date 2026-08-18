@@ -13,15 +13,15 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 ## 1. System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
+┌────────────────────────────────────────────────────────────────┐
 │                        Browser / Desktop                        │
-│  ┌──────────┐  ┌──────────┐  ┌────────────┐  ┌──────────────┐  │
+│  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌─────────────┐  │
 │  │ DeckGLMap│  │ GlobeMap │  │  Panels    │  │  Workers     │  │
 │  │(deck.gl) │  │(globe.gl)│  │(Panel base)│  │(ML, analysis)│  │
-│  └────┬─────┘  └────┬─────┘  └─────┬──────┘  └──────────────┘  │
-│       └──────────────┴──────────────┘                           │
+│  └────┐─────┘  └────┐─────┘  └─────┐─────┘  └─────────────┘  │
+│       └──────────────┴─────────────┘                           │
 │                         │ fetch /api/*                          │
-└─────────────────────────┼───────────────────────────────────────┘
+└─────────────────────────┴───────────────────────────────────┘
                           │
            ┌──────────────┼──────────────┐
            │              │              │
@@ -365,6 +365,8 @@ Runs before every `git push`:
 | `lint-code.yml` | PR, push to main | Biome lint + sebuf API-contract enforcement |
 | `lint.yml` | PR (markdown changes) | markdownlint-cli2 |
 | `test.yml` | PR, push to main | Unit/integration suite, docs-stats guardrail, plus conditional digest-image and resilience-validation smoke gates |
+| `e2e-visual.yml` | Path-filtered PR, push to main (chrome only), nightly cron, manual | Deterministic map goldens (`test:e2e:visual`) plus named harness chrome captures; evidence only — not a deploy-gate required check |
+| `publish-e2e-screenshots.yml` | After `E2E Visual` completes on main (not PRs) | Optional S3 sync of the chrome gallery when `E2E_SCREENSHOT_*` is configured; otherwise the Actions artifact is the durable copy |
 | `proto-check.yml` | PR (proto changes) | Generated code matches committed output |
 | `pro-bundle-freshness.yml` | PR (pro bundle changes) | Committed pro data bundle artifacts are fresh |
 | `feed-validation.yml` | PR (feed changes), daily cron | RSS feed reachability and validation |

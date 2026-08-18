@@ -82,7 +82,7 @@ test('no Canada road source rides a bootstrap tier', () => {
   const slow = new Set(bootstrapTierKeyNames('slow'));
   const onDemand = new Set(bootstrapTierKeyNames('on-demand'));
 
-  assert.ok(CANADA_ROAD_SOURCES.length >= 4, 'expected the four road feeds');
+  assert.ok(CANADA_ROAD_SOURCES.length >= 5, 'expected the five road feeds');
   for (const { key } of CANADA_ROAD_SOURCES) {
     assert.ok(
       onDemand.has(key),

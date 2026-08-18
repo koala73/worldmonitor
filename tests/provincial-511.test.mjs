@@ -7,6 +7,7 @@ import { __testing__ as healthTesting } from '../api/health.js';
 import {
   ALBERTA_511,
   CHROME_UA,
+  MANITOBA_511,
   MAX_RECORDS,
   ONTARIO_511,
   VENDOR_511_HOSTS,
@@ -19,9 +20,11 @@ import {
   isVendor511Host,
   normalize511List,
   normalize511Record,
+  redactVendor511Secret,
   select511Records,
   validateVendor511Envelope,
   vendor511Path,
+  vendor511RequestIdentity,
 } from '../scripts/lib/provincial-511.mjs';
 
 test.afterEach(() => {
@@ -51,13 +54,23 @@ test('Ontario is the first vendor config; BC Open511 is not on the allowlist', (
   assert.equal(Object.hasOwn(VENDOR_511_HOSTS, 'has'), false);
 });
 
-test('Alberta 511 is on the vendor allowlist; Manitoba is not fetched', () => {
+test('Alberta 511 is on the vendor allowlist', () => {
   assert.equal(ALBERTA_511.jurisdiction, 'AB');
   assert.equal(ALBERTA_511.baseUrl, 'https://511.alberta.ca');
   assert.deepEqual(ALBERTA_511.resources.map((r) => r.resource), ['event', 'alerts']);
   assert.equal(VENDOR_511_HOSTS['511.alberta.ca'].jurisdiction, 'AB');
   assert.equal(isVendor511Host('511.alberta.ca'), true);
   assert.equal(isVendor511Host('511.gov.mb.ca'), false);
+});
+
+test('Manitoba 511 is the third vendor config and requires key= plus lang=en', () => {
+  assert.equal(MANITOBA_511.jurisdiction, 'MB');
+  assert.equal(MANITOBA_511.baseUrl, 'https://www.manitoba511.ca');
+  assert.equal(MANITOBA_511.lang, 'en');
+  assert.deepEqual(MANITOBA_511.resources.map((r) => r.resource), ['event', 'alerts']);
+  assert.equal(VENDOR_511_HOSTS['www.manitoba511.ca'].jurisdiction, 'MB');
+  assert.equal(isVendor511Host('www.manitoba511.ca'), true);
+  assert.equal(isVendor511Host('manitoba511.ca'), false);
 });
 
 test('empty event/alert/condition lists are valid', () => {
@@ -607,9 +620,198 @@ test('fetchVendor511(ALBERTA_511) pulls events and alerts from the vendor adapte
 test('adapter uses CHROME_UA, no fetch.bind, and allowlists 511.alberta.ca', () => {
   assert.match(ADAPTER_SOURCE, /CHROME_UA/);
   assert.match(ADAPTER_SOURCE, /511\.alberta\.ca/);
+  assert.match(ADAPTER_SOURCE, /www\.manitoba511\.ca/);
   assert.match(ADAPTER_SOURCE, /acquire511Slot\(hostname\)/);
   assert.doesNotMatch(ADAPTER_SOURCE, /fetch\.bind/);
   assert.doesNotMatch(ADAPTER_SOURCE, /open511\.gov\.bc/);
+});
+
+const MANITOBA_EVENTS_FIXTURE = JSON.parse(
+  readFileSync(new URL('./fixtures/manitoba-511-events.json', import.meta.url), 'utf8'),
+);
+const MANITOBA_ALERTS_FIXTURE = JSON.parse(
+  readFileSync(new URL('./fixtures/manitoba-511-alerts.json', import.meta.url), 'utf8'),
+);
+
+test('get() fetches Manitoba events with format=json, lang=en, and a redacted key identity', async () => {
+  const secret = 'mb-test-key-not-a-real-secret';
+  const urls = [];
+  const fetchFn = async (url, init) => {
+    urls.push({ url: String(url), init });
+    return jsonResponse(MANITOBA_EVENTS_FIXTURE);
+  };
+  const result = await get('https://www.manitoba511.ca', 'event', {
+    fetchFn,
+    key: secret,
+    lang: 'en',
+  });
+  assert.equal(result.records.length, 1);
+  assert.equal(result.records[0].id, '88001');
+  assert.equal(result.records[0].jurisdiction, 'MB');
+  assert.equal(result.records[0].isFullClosure, true);
+  assert.match(urls[0].url, /^https:\/\/www\.manitoba511\.ca\/api\/v2\/get\/event\?format=json&lang=en&key=/);
+  assert.equal(urls[0].url.includes(secret), true);
+  assert.equal(result.requestIdentity.includes(secret), false);
+  assert.equal(result.requestIdentity, 'www.manitoba511.ca/api/v2/get/event?format=json&lang=en&key=present');
+  assert.equal(limiterTesting.pendingTokens('www.manitoba511.ca'), 1);
+  assert.equal(limiterTesting.pendingTokens('511on.ca'), 0);
+});
+
+test('vendor511RequestIdentity records key presence, never the secret', () => {
+  const secret = 'mb-test-key-not-a-real-secret';
+  const identity = vendor511RequestIdentity({
+    hostname: 'www.manitoba511.ca',
+    resource: 'alerts',
+    format: 'json',
+    lang: 'en',
+    hasKey: true,
+  });
+  assert.equal(identity, 'www.manitoba511.ca/api/v2/get/alerts?format=json&lang=en&key=present');
+  assert.equal(identity.includes(secret), false);
+  assert.equal(
+    redactVendor511Secret(`https://www.manitoba511.ca/api/v2/get/event?format=json&key=${secret}`, secret),
+    'https://www.manitoba511.ca/api/v2/get/event?format=json&key=REDACTED',
+  );
+});
+
+test('fetchVendor511(MANITOBA_511) pulls events and alerts through the shared adapter', async () => {
+  const urls = [];
+  const fetchFn = async (url) => {
+    urls.push(String(url));
+    if (String(url).includes('/event')) return jsonResponse(MANITOBA_EVENTS_FIXTURE);
+    return jsonResponse(MANITOBA_ALERTS_FIXTURE);
+  };
+  const envelope = await fetchVendor511(MANITOBA_511, {
+    fetchFn,
+    staggerMs: 0,
+    key: 'mb-test-key-not-a-real-secret',
+  });
+  assert.equal(envelope.events.length, 1);
+  assert.equal(envelope.alerts.length, 2);
+  assert.equal(envelope.events[0].jurisdiction, 'MB');
+  assert.equal(envelope.alerts[1].severity, 'Severe');
+  assert.deepEqual(envelope.failedResources, []);
+  assert.equal(isCompleteVendor511(envelope, MANITOBA_511), true);
+  assert.ok(urls.every((url) => url.includes('lang=en')));
+  assert.ok(urls.every((url) => url.includes('format=json')));
+  assert.equal(limiterTesting.pendingTokens('www.manitoba511.ca'), 2);
+});
+
+test('Manitoba treats an HTTP 200 error object as a failed resource', async () => {
+  const fetchFn = async (url) => {
+    if (String(url).includes('/event')) {
+      return jsonResponse({ error: 'invalid key', key: 'must-not-be-logged' });
+    }
+    return jsonResponse(MANITOBA_ALERTS_FIXTURE);
+  };
+  const envelope = await fetchVendor511(MANITOBA_511, {
+    fetchFn,
+    staggerMs: 0,
+    key: 'mb-test-key-not-a-real-secret',
+  });
+  assert.equal(envelope.events.length, 0);
+  assert.equal(envelope.alerts.length, 2);
+  assert.deepEqual(envelope.failedResources, ['event']);
+  assert.equal(isCompleteVendor511(envelope, MANITOBA_511), false);
+});
+
+test('Manitoba partial poll must not replace last-good or flip health green', async () => {
+  const eventsDownAlertsEmpty = async (url) => {
+    if (String(url).includes('/event')) return new Response('nope', { status: 503 });
+    return jsonResponse([]);
+  };
+  const partialEmpty = await fetchVendor511(MANITOBA_511, {
+    fetchFn: eventsDownAlertsEmpty,
+    staggerMs: 0,
+    key: 'mb-test-key-not-a-real-secret',
+  });
+  assert.deepEqual(partialEmpty.failedResources, ['event']);
+  assert.equal(isCompleteVendor511(partialEmpty, MANITOBA_511), false);
+
+  const alertsDownEventsOk = async (url) => {
+    if (String(url).includes('/alerts')) return new Response('nope', { status: 502 });
+    return jsonResponse(MANITOBA_EVENTS_FIXTURE);
+  };
+  const partialEvents = await fetchVendor511(MANITOBA_511, {
+    fetchFn: alertsDownEventsOk,
+    staggerMs: 0,
+    key: 'mb-test-key-not-a-real-secret',
+  });
+  assert.equal(partialEvents.events.length, 1);
+  assert.deepEqual(partialEvents.failedResources, ['alerts']);
+  assert.equal(isCompleteVendor511(partialEvents, MANITOBA_511), false);
+
+  const complete = await fetchVendor511(MANITOBA_511, {
+    fetchFn: async () => jsonResponse([]),
+    staggerMs: 0,
+    key: 'mb-test-key-not-a-real-secret',
+  });
+  assert.deepEqual(complete.failedResources, []);
+  assert.equal(isCompleteVendor511(complete, MANITOBA_511), true);
+  assert.equal(complete.events.length, 0);
+  assert.equal(complete.alerts.length, 0);
+
+  const seeder = readFileSync(new URL('../scripts/seed-provincial-511.mjs', import.meta.url), 'utf8');
+  assert.match(seeder, /isCompleteVendor511\(envelope, MANITOBA_511\)/);
+  assert.match(seeder, /MANITOBA_511_KEY/);
+  assert.match(seeder, /infra:manitoba-511:v1/);
+  assert.match(seeder, /seed-meta:infra:manitoba-511/);
+  assert.doesNotMatch(seeder, /sourceState: 'unavailable'/);
+  assert.doesNotMatch(seeder, /skipReason: 'MANITOBA_511_KEY missing'/);
+  assert.doesNotMatch(seeder, /writeManitobaNotConfiguredMeta/);
+  assert.match(seeder, /loadEnvFile\(import\.meta\.url\)/);
+  assert.doesNotMatch(seeder, /mb-test-key|REDACTED|sk-/);
+  const fetchManitoba = seeder.slice(
+    seeder.indexOf('async function fetchManitoba511'),
+    seeder.indexOf('async function fetchProvincial511Tick'),
+  );
+  assert.match(fetchManitoba, /if \(!key\)/);
+  assert.match(fetchManitoba, /notConfigured = true/);
+  assert.match(fetchManitoba, /if \(!isCompleteVendor511\(envelope, MANITOBA_511\)\)/);
+  assert.match(fetchManitoba, /new Error\(`Manitoba 511: partial poll/);
+
+  const preserveManitoba = seeder.slice(
+    seeder.indexOf('async function preserveManitoba'),
+    seeder.indexOf('async function publishManitobaFromTick'),
+  );
+  assert.match(
+    preserveManitoba,
+    /extendExistingTtl\(\[MANITOBA_KEY, MANITOBA_META_KEY\], CACHE_TTL\)/,
+  );
+  assert.doesNotMatch(preserveManitoba, /writeSeedMeta/);
+
+  const publishManitoba = seeder.slice(seeder.indexOf('async function publishManitobaFromTick'));
+  const notConfiguredBranch = publishManitoba.slice(
+    publishManitoba.indexOf('if (data?._manitobaNotConfigured)'),
+    publishManitoba.indexOf('if (!data || data._manitobaFailed)'),
+  );
+  assert.match(notConfiguredBranch, /await preserveManitoba\(\)/);
+  assert.doesNotMatch(notConfiguredBranch, /writeSeedMeta|publishManitobaEnvelope/);
+  assert.ok(
+    publishManitoba.indexOf('await preserveManitoba()')
+    < publishManitoba.indexOf('await publishManitobaEnvelope'),
+    'partial/failed/unconfigured ticks must preserve last-good before any envelope write',
+  );
+});
+
+test('manitobaRoads EMPTY cutover is acknowledged until the first Canada bundle tick', () => {
+  const baseline = JSON.parse(readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8'));
+  const ack = baseline.acknowledged.find((row) => row.name === 'manitobaRoads');
+  assert.ok(ack, 'new manitobaRoads probe needs an expiring acknowledgement until first Railway tick');
+  assert.equal(ack.status, 'EMPTY');
+  assert.equal(ack.issue, 6622);
+  assert.equal(ack.cutover?.probeKey, 'seed-meta:infra:manitoba-511');
+  assert.equal(ack.expiresAt, ack.cutover?.firstScheduledRunAt);
+});
+
+test('seeder fixtures and adapter never embed a Manitoba credential', () => {
+  const seeder = readFileSync(new URL('../scripts/seed-provincial-511.mjs', import.meta.url), 'utf8');
+  assert.match(seeder, /process\.env\.MANITOBA_511_KEY/);
+  assert.doesNotMatch(seeder, /key:\s*'[^']+'/);
+  assert.doesNotMatch(ADAPTER_SOURCE, /MANITOBA_511_KEY\s*=\s*'[^']+'/);
+  for (const fixture of [MANITOBA_EVENTS_FIXTURE, MANITOBA_ALERTS_FIXTURE]) {
+    assert.equal(JSON.stringify(fixture).includes('key='), false);
+  }
 });
 
 test('seeder module is not imported by this test file', () => {

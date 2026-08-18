@@ -547,7 +547,7 @@
         "outages": "इंटरनेट बंद दिखाएं/छुपाएं",
         "tradeRoutes": "व्यापार मार्ग चालू/बंद करें",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "डार्क मोड पर जाएं",
@@ -1333,7 +1333,7 @@
         "speciesRecovery": "प्रजाति पुनर्प्राप्ति",
         "renewableInstallations": "स्वच्छ ऊर्जा",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "भूकंप",
@@ -1441,7 +1441,7 @@
           "geoBoundaries": "विसैन्यीकृत क्षेत्र, युद्धविराम रेखाएं और विवादित सीमाएं",
           "ciiChoropleth": "देश अस्थिरता सूचकांक हीटमैप — CII स्कोर के अनुसार देशों को रंगों में दर्शाता है (हरा=स्थिर, लाल=गंभीर)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "प्रभाव: भूकंप, मौसम, प्रदर्शन, व्यवधान"
@@ -1813,7 +1813,9 @@
     "breakingNews": {
       "critical": "गंभीर",
       "high": "उच्च",
-      "dismiss": "खारिज करें"
+      "dismiss": "खारिज करें",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "ब्रेकिंग अलर्ट",
@@ -3331,7 +3333,8 @@
     "currentVariant": "(वर्तमान)",
     "retry": "पुनः प्रयास करें",
     "refresh": "रिफ्रेश करें",
-    "all": "सभी"
+    "all": "सभी",
+    "dismiss": "Dismiss"
   },
   "connectivity": {
     "offlineCached": "ऑफ़लाइन — {{freshness}} का सेव किया हुआ डेटा दिखा रहा है।",

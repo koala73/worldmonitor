@@ -278,6 +278,27 @@ describe('dom-utils getFocusableElements', () => {
     });
   });
 
+  it('includes enabled form controls so a trapped dialog can reach its own inputs', () => {
+    withBrowserDom(() => {
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+
+      const input = document.createElement('input');
+      const select = document.createElement('select');
+      const textarea = document.createElement('textarea');
+      const disabledInput = document.createElement('input');
+      disabledInput.setAttribute('disabled', 'disabled');
+      const hiddenSelect = document.createElement('select');
+      hiddenSelect.setAttribute('hidden', 'hidden');
+
+      container.append(input, select, textarea, disabledInput, hiddenSelect);
+
+      const result = getFocusableElements(container as unknown as ParentNode);
+
+      assert.deepEqual(result, [input, select, textarea]);
+    });
+  });
+
   it('excludes elements with no offsetParent (disconnected from the document)', () => {
     withBrowserDom(() => {
       // Not appended to document.body, so isConnected (and thus offsetParent) is false —

@@ -15,6 +15,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { writeResearchSection } from './build-research-reports.mjs';
+import {
+  USE_CASE_PAGES,
+  USE_CASES_CONTENT_VERSION,
+  writeUseCasesSection,
+} from './build-use-cases.mjs';
 import { buildSourceCatalog, renderSourcesIndex } from './crawlable-sources-page.mjs';
 import {
   activeSourceAttributionEntries,
@@ -185,6 +190,7 @@ export const GENERATED_DIRS = [
   'reference/changelog',
   'research',
   'sources',
+  'use-cases',
 ];
 
 const MONTHS = [
@@ -834,6 +840,11 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     CORPUS_GENERATOR_CONTENT_VERSION,
     DATASET_SCHEMA_CONTENT_VERSION,
   );
+  const useCasesLastmod = laterDate(
+    USE_CASES_CONTENT_VERSION,
+    CORPUS_GENERATOR_CONTENT_VERSION,
+    gitFileLastmod(rootDir, 'scripts/build-use-cases.mjs'),
+  );
   const attributionManifest = readJson(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH);
   // Production generators share the validated attribution predicate and stats.
   // Tests retain a separate raw-manifest oracle so a mutation here cannot make
@@ -865,6 +876,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       countryBboxes: COUNTRY_BBOXES_PATH,
       crisisRegistry: CRISIS_REGISTRY_PATH,
       researchReports: RESEARCH_REPORTS_INDEX_PATH,
+      useCases: 'scripts/build-use-cases.mjs',
       sourceAttributionManifest: SOURCE_ATTRIBUTION_MANIFEST_PATH,
       sourcePageRenderer: SOURCE_PAGE_RENDERER_PATH,
       sourceOrigin: SOURCE_ORIGIN_PATH,
@@ -877,6 +889,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       tools: toolsLastmod,
       crises: crisesLastmod,
       research: researchLastmod,
+      useCases: useCasesLastmod,
       sources: sourcesLastmod,
     },
     sourceStats,
@@ -935,6 +948,7 @@ function pageDocument({
         <a href="/crises/">Crises</a>
         <a href="/tools/">Live tools</a>
         <a href="/research/">Research</a>
+        <a href="/use-cases/">Use cases</a>
         <a href="/reference/changelog/">Changelog</a>
         <a href="/blog/glossary/">Glossary</a>`;
   const renderedFooter = footerBody || 'World Monitor reference corpus. Crawlable pages use committed snapshots; live API results are labelled separately.';
@@ -1057,6 +1071,7 @@ function renderCountriesIndex({ countries, baseUrl, capturedAt, lastmod }) {
   const body = `      <p class="eyebrow">Country corpus</p>
       <h1>Country risk and resilience</h1>
       <p class="lede">${escapeHtml(description)}</p>
+      <p>For the evergreen monitoring procedure that uses these pages as evidence, see <a href="/use-cases/monitor-country-risk/">Monitor country risk</a>.</p>
       <div class="grid">
 ${countries.map((country) => `        <a class="card" href="/countries/${country.slug}/"><strong>${escapeHtml(country.name)}</strong><br><span>${country.rank == null ? 'Low-confidence listing' : `Rank ${country.rank}`} &middot; ${escapeHtml(country.code)}</span></a>`).join('\n')}
       </div>
@@ -1753,6 +1768,11 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
         index: '/research/',
         routes: researchRoutes,
       },
+      useCases: {
+        count: USE_CASE_PAGES.length,
+        index: '/use-cases/',
+        routes: USE_CASE_PAGES.map((page) => page.path),
+      },
       sources: {
         count: 1,
         index: '/sources/',
@@ -1852,6 +1872,13 @@ export async function buildCorpus({
     data,
     outDir,
     baseUrl,
+    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument },
+  });
+
+  writeUseCasesSection({
+    outDir,
+    baseUrl,
+    lastmod: data.lastmod.useCases,
     tpl: { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument },
   });
 

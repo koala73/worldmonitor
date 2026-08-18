@@ -20,6 +20,9 @@ import { bundleDisableEnvVar, disabledMembersFromEnv } from '../scripts/_bundle-
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const src = readFileSync(join(root, 'scripts/seed-bundle-canada.mjs'), 'utf8');
 const RUNNER_SRC = readFileSync(join(root, 'scripts/_bundle-runner.mjs'), 'utf8');
+const ACCEPTANCE_BASELINE = JSON.parse(
+  readFileSync(join(root, 'scripts/seed-freshness-baseline.json'), 'utf8'),
+);
 const sections = extractBundleSections(src);
 
 const MIN = 60_000;
@@ -31,13 +34,15 @@ function section(label) {
   return found;
 }
 
-test('declares exactly the six Canada members', () => {
+test('declares exactly the eight Canada members', () => {
   assert.deepEqual(
     sections.map((s) => s.label).sort(),
     [
       'Alberta-Emergency-Alert',
+      'BC-Emergency-Info',
       'BC-Open511',
       'Provincial-511',
+      'SaskAlert',
       'TTC-Alerts',
       'Toronto-Roads',
       'VIA-Rail-Live',
@@ -55,6 +60,8 @@ test('per-member cadence is the declared one, not TTC\'s cron inherited', () => 
     ['Toronto-Roads', 2 * HOUR],
     ['BC-Open511', 30 * MIN],
     ['Alberta-Emergency-Alert', 15 * MIN],
+    ['BC-Emergency-Info', 15 * MIN],
+    ['SaskAlert', 15 * MIN],
     ['VIA-Rail-Live', 15 * MIN],
     ['TTC-Alerts', 5 * MIN],
   ];
@@ -67,6 +74,34 @@ test('per-member cadence is the declared one, not TTC\'s cron inherited', () => 
   }
 });
 
+test('Manitoba cutover acknowledgement reaches the first eligible Provincial-511 admission', () => {
+  const provincial = section('Provincial-511');
+  const intervalMs = resolveExpr(src, provincial.intervalMsExpr);
+  const freshnessGuard = /elapsed\s*<\s*section\.intervalMs\s*\*\s*(\d+(?:\.\d+)?)/.exec(RUNNER_SRC);
+  assert.ok(freshnessGuard, 'bundle runner must expose its interval freshness admission ratio');
+  const freshnessRatio = Number(freshnessGuard[1]);
+  assert.ok(freshnessRatio > 0 && freshnessRatio <= 1, 'freshness admission ratio must be in (0, 1]');
+
+  const service = JSON.parse(readFileSync(join(root, 'scripts/railway-services.json'), 'utf8'))
+    .find((row) => row.service === 'seed-bundle-canada');
+  assert.equal(service?.cronSchedule, '*/5 * * * *');
+  const cronIntervalMs = 5 * MIN;
+
+  const manitoba = ACCEPTANCE_BASELINE.acknowledged.find((entry) => entry.name === 'manitobaRoads');
+  assert.ok(manitoba, 'manitobaRoads stays acknowledged until its first eligible bundle admission');
+  const activatedAt = Date.parse(manitoba.cutover?.activatedAt);
+  const firstScheduledRunAt = Date.parse(manitoba.cutover?.firstScheduledRunAt);
+  const firstEligibleDelayMs = Math.ceil((intervalMs * freshnessRatio) / cronIntervalMs) * cronIntervalMs;
+
+  assert.equal(
+    firstScheduledRunAt,
+    activatedAt + firstEligibleDelayMs,
+    'the cutover must include */5 ticks skipped by the runner\'s 0.8-interval freshness gate',
+  );
+  assert.equal(Date.parse(manitoba.expiresAt), firstScheduledRunAt);
+  assert.equal(manitoba.cutover?.firstScheduledRunAt, '2026-08-19T12:15:00.000Z');
+});
+
 test('seed-meta keys follow runSeed(domain, resource), not the canonical key', () => {
   // runSeed derives `seed-meta:${domain}:${resource}`. It is NOT the canonical
   // key with :v1 stripped, and the two diverge wherever a resource contains a
@@ -77,7 +112,9 @@ test('seed-meta keys follow runSeed(domain, resource), not the canonical key', (
     'Provincial-511': ['seed-meta:infra:ontario-511', 'infra:ontario-511:v1'],
     'Toronto-Roads': ['seed-meta:infra:toronto-roads', 'infra:toronto-roads:v1'],
     'BC-Open511': ['seed-meta:infra:bc-open511', 'infra:bc-open511:v1'],
-    'Alberta-Emergency-Alert': ['seed-meta:alerts:alberta-aea', 'alerts:alberta-aea:v1'],
+    'Alberta-Emergency-Alert': ['seed-meta:alerts:alberta-aea', 'alerts:canada:alberta-aea:v1'],
+    'BC-Emergency-Info': ['seed-meta:alerts:bc-emergency-info', 'alerts:canada:bc-evacuation:v1'],
+    'SaskAlert': ['seed-meta:alerts:saskalert', 'alerts:canada:saskalert:v1'],
     'VIA-Rail-Live': ['seed-meta:transit:viarail-live', 'transit:viarail:live'],
     // The canonical key is transit:ttc:alerts:v1 but the resource is
     // 'ttc-alerts', so the meta key takes a HYPHEN. api/health.js watched
@@ -129,8 +166,8 @@ test('is registered as an active service now that it is provisioned', () => {
   assert.ok(Array.isArray(entry.watchPatterns) && entry.watchPatterns.length > 0);
   assert.deepEqual(
     entry.requiredEnv,
-    ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'],
-    'members publish through runSeed, which needs the Upstash REST pair',
+    ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'MANITOBA_511_KEY'],
+    'members publish through runSeed (Upstash REST pair); Manitoba 511 needs its Railway key',
   );
 });
 
@@ -223,7 +260,7 @@ test('every member’s TTL and health staleness budget cover its bundle interval
     checked += 1;
   }
 
-  assert.equal(checked, 6, 'all six members must be checked, or this guard is partly vacuous');
+  assert.equal(checked, 8, 'all eight members must be checked, or this guard is partly vacuous');
 });
 
 describe('per-member kill switch (#6711)', () => {

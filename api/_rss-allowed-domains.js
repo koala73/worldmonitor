@@ -389,6 +389,7 @@ export default [
   "www.svd.se",
   "www.svt.se",
   "www.tagesschau.de",
+  "www.tanea.gr",
   "www.techinasia.com",
   "www.techmeme.com",
   "www.technologyreview.com",

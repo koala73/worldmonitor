@@ -443,7 +443,7 @@ export class AirlineIntelPanel extends Panel {
     // ---- Tracking tab ----
     private renderTracking(): void {
         const clearBtn = this.trackingQuery
-            ? `<button id="trackClearBtn" class="icon-btn" style="padding:4px 8px;color:#9ca3af" title="Back to live feed">×</button>`
+            ? `<button id="trackClearBtn" class="icon-btn" style="padding:4px 8px;color:#9ca3af" title="Back to live feed" aria-label="Back to live feed">×</button>`
             : '';
         const searchBar = `
       <div class="track-search" style="display:flex;gap:6px;padding:8px 0 6px">

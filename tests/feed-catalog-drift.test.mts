@@ -651,7 +651,19 @@ describe('feed catalog drift', () => {
     // These stay locale-boosted (lang: hu / el), not EN default-on.
     // Kathimerini is now a strategic default (#6000), so it is intentionally
     // excluded from this locale-only control set.
-    for (const localeOnly of ['Telex', 'Index.hu', 'Naftemporiki'] as const) {
+    for (const localeOnly of [
+      'Telex',
+      'Index.hu',
+      'Naftemporiki',
+      'in.gr',
+      'iefimerida',
+      'Proto Thema',
+      'ERT',
+      'AMNA',
+      'Ta Nea',
+      'Liberal GR',
+      'CNN Greece',
+    ] as const) {
       assert.ok(
         !enabled.has(localeOnly),
         `${localeOnly} must stay locale-boosted, not EN default-on`,
@@ -660,6 +672,16 @@ describe('feed catalog drift', () => {
     // Sanity: hu/el/uk locale boost still works so the packs are not dead.
     assert.ok(feeds.getLocaleBoostedSources('hu').has('Telex'));
     assert.ok(feeds.getLocaleBoostedSources('el').has('Kathimerini'));
+    for (const name of ['ERT', 'AMNA', 'Ta Nea', 'Liberal GR', 'CNN Greece'] as const) {
+      assert.ok(feeds.getLocaleBoostedSources('el').has(name), `${name} must locale-boost for el`);
+    }
+    const clientKathimerini = Object.values(feeds.FEEDS ?? {})
+      .flat()
+      .find((feed) => feed.name === 'Kathimerini');
+    const serverKathimerini = (serverFeeds.VARIANT_FEEDS.full?.europe ?? [])
+      .find((feed) => feed.name === 'Kathimerini');
+    assert.equal(clientKathimerini?.strategicDefault, true);
+    assert.equal(serverKathimerini?.strategicDefault, true);
   });
 
   it('boosts Ukrainian native feeds for uk locale without EN default-on (#5959)', () => {

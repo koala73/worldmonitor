@@ -196,6 +196,7 @@
     "climateNews": "Climate News"
   },
   "common": {
+    "dismiss": "Dismiss",
     "loading": "Loading...",
     "error": "Error",
     "noData": "No data available",
@@ -413,6 +414,13 @@
     "copyCoordinates": "Copy Coordinates"
   },
   "components": {
+    "breakingNews": {
+      "critical": "CRITICAL",
+      "high": "HIGH",
+      "dismiss": "Dismiss",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
+    },
     "deckgl": {
       "views": {
         "global": "Global",

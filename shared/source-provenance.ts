@@ -66,6 +66,11 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Digi24': 'mainstream', 'HotNews': 'mainstream', 'G4Media': 'mainstream',
   // Bulgarian (BG) — Black Sea flank (#5952)
   'Dnevnik': 'mainstream',
+  // Greek (EL) — locale-boosted; Kathimerini is the EN strategic default
+  'Kathimerini': 'mainstream', 'Naftemporiki': 'mainstream', 'in.gr': 'mainstream',
+  'iefimerida': 'mainstream', 'Proto Thema': 'mainstream',
+  'ERT': 'mainstream', 'AMNA': 'wire',
+  'Ta Nea': 'mainstream', 'Liberal GR': 'mainstream', 'CNN Greece': 'mainstream',
   // Baltic states — Eastern flank (#5952)
   'ERR News': 'mainstream', 'LRT English': 'mainstream', 'LSM English': 'mainstream',
   // Turkey EN path (#5952)
@@ -303,6 +308,8 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'EuroNews': { risk: 'low', note: 'European public broadcaster consortium', knownBiases: ['Pro-EU'] },
   'Le Monde': { risk: 'low', note: 'French newspaper of record' },
   'DW News': { risk: 'medium', stateAffiliated: 'Germany', note: 'German state-funded, editorially independent' },
+  'ERT': { risk: 'medium', stateAffiliated: 'Greece', note: 'Greek public broadcaster' },
+  'AMNA': { risk: 'medium', stateAffiliated: 'Greece', note: 'Greek national news agency' },
   'Voice of America': { risk: 'medium', stateAffiliated: 'USA', note: 'US government-funded' },
   'Kyiv Independent': { risk: 'medium', knownBiases: ['Pro-Ukraine'], note: 'Ukrainian English-language primary on Russia-Ukraine war (#5950 balance: dedicated UA voice)' },
   // Ukraine depth pack (#5951) — local institutions + frontline assessment

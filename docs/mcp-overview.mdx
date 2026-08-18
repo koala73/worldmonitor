@@ -12,7 +12,7 @@ WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https:
 <Info>
 **Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. Free-tier users see a `403 INSUFFICIENT_TIER` at the OAuth step.
 
-OAuth is not needed for `get_sources`: it is the sole credential-free, daily-quota-free data tool. Anonymous calls use a separate fail-closed limit of 10 requests/minute/IP. Every other data tool remains subscription-gated.
+OAuth is not needed for `get_sources`: it is the sole credential-free, daily-quota-free data tool. Anonymous calls use a separate fail-closed limit of 10 requests/minute/IP. Other data tools require a user-bound credential. Cache-backed tools marked `free-account` can use the small confirmed-free allowance; live-fetch tools marked `subscription` require Pro.
 </Info>
 
 All paid tiers share the same MCP server and tool inventory. Dashboard-issued API-key (`wm_…`) clients and most OAuth contexts use a hard default of **50 quota-consuming `tools/call` / `resources/read` calls per UTC day**; OAuth allowances are plan-resolved, with API Starter and API Business currently held to that same 50/day default and enterprise OAuth able to be unlimited. Only legacy operator keys explicitly allowlisted by the deployment skip the daily reservation. Every authenticated context is also protected by the **60 requests/minute** limiter. `get_sources` and the metadata helper `describe_tool` are exempt from the daily quota.
@@ -30,7 +30,7 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS metadata (RFC 8414) |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata (RFC 9728) |
 
-Server identifier: `worldmonitor` v1.16.0.
+Server identifier: `worldmonitor` v1.17.0.
 
 Registry listings: the server is published in the [official MCP registry](https://registry.modelcontextprotocol.io/v0/servers?search=worldmonitor) as `app.worldmonitor/mcp` — a domain-verified namespace, so clients that resolve servers through the registry get the same endpoint and metadata as the server card above — and listed on [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp) and [mcp.so](https://mcp.so/server/world-monitor).
 
@@ -59,7 +59,7 @@ The replay buffer is in-memory and bounded per edge instance. Treat `Last-Event-
 
 ## Authentication
 
-**Discovery is public.** `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `ping`, `logging/setLevel`, and the `notifications/initialized` handshake are servable **without credentials**, so any agent (or agent-readiness scanner) can connect to `https://worldmonitor.app/mcp`, read the server identity, and enumerate the full tool, prompt, and resource catalogs before authenticating — the same metadata already published in the static [server card](https://worldmonitor.app/.well-known/mcp/server-card.json). These methods return only public catalog metadata (names, descriptions, URIs / URI templates, static workflow-template prose — no data, no quota); every capability advertised by the anonymous `initialize` is anonymously exercisable, so a strict MCP client (Claude Desktop, `mcp-remote`, the reference SDKs) completes its full post-connect enumeration without stalling on an auth wall. `resources/read` of a **public** resource (a concrete, metadata-only freshness/health probe surfaced by `resources/list`, such as `worldmonitor://seed-meta/freshness`) is **also public and quota-free** — an anonymous agent can read it cleanly. Anonymous discovery is rate-limited to 60 requests/minute per client IP. `get_sources` is the sole credential-free, daily-quota-free data tool; its anonymous path has a separate fail-closed ceiling of 10 calls/minute/IP. All other data-bearing `tools/call` operations, plus `resources/read` of a data-bearing **URI-template instantiation** (country risk, chokepoint status, market quote), require one of the two subscription auth modes below. In `tools/list`, `get_sources` carries `_meta["worldmonitor/access"]: "free"`; an omitted access marker means subscription-gated. A credential presented on a discovery method is still validated (a bad key returns `401`, never a silent anonymous downgrade).
+**Discovery is public.** `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `ping`, `logging/setLevel`, and the `notifications/initialized` handshake are servable **without credentials**, so any agent (or agent-readiness scanner) can connect to `https://worldmonitor.app/mcp`, read the server identity, and enumerate the full tool, prompt, and resource catalogs before authenticating — the same metadata already published in the static [server card](https://worldmonitor.app/.well-known/mcp/server-card.json). These methods return only public catalog metadata (names, descriptions, URIs / URI templates, static workflow-template prose — no data, no quota); every capability advertised by the anonymous `initialize` is anonymously exercisable, so a strict MCP client (Claude Desktop, `mcp-remote`, the reference SDKs) completes its full post-connect enumeration without stalling on an auth wall. `resources/read` of a **public** resource (a concrete, metadata-only freshness/health probe surfaced by `resources/list`, such as `worldmonitor://seed-meta/freshness`) is **also public and quota-free** — an anonymous agent can read it cleanly. Anonymous discovery is rate-limited to 60 requests/minute per client IP. `get_sources` is the sole credential-free, daily-quota-free data tool; its anonymous path has a separate fail-closed ceiling of 10 calls/minute/IP. Other data-bearing calls require credentials. Every `tools/list` and `describe_tool` entry carries `_meta["worldmonitor/access"]`: `"free"` means anonymous and quota-free, `"free-account"` means available to a signed-in free account (cache-backed data calls spend its allowance; `describe_tool` does not), and `"subscription"` means Pro-only. Resource templates carry the same marker as their backing tool. A credential presented on a discovery method is still validated (a bad key returns `401`, never a silent anonymous downgrade).
 
 The MCP handler accepts two auth modes, in priority order:
 
@@ -113,7 +113,7 @@ If you'd rather paste an API key (Starter+ / scripted clients), expand "Use API 
 
 - **50 quota-consuming calls per UTC day**, reset at 00:00 UTC.
 - Data-bearing `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** consume the Pro daily quota, except `get_sources` and the metadata helper `describe_tool`.
-- `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `notifications/initialized`, `ping`, `describe_tool`, and `get_sources` do **not** count against the daily cap. `resources/read` of a **public** resource (a metadata-only freshness/health probe, e.g. `worldmonitor://seed-meta/freshness`) is likewise exempt — it carries no billable data.
+- `initialize`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `notifications/initialized`, `ping`, `describe_tool`, and `get_sources` do **not** count against the daily cap. `resources/read` of a **public** resource (a metadata-only freshness/health probe, e.g. `worldmonitor://seed-meta/freshness`) and the authenticated account status resource `worldmonitor://account/mcp-allowance` are likewise exempt.
 - Hitting the cap returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight.
 - The cap is hard: concurrent `tools/call` or `resources/read` requests near the boundary use an atomic Redis reservation, so exactly the call that crosses 50 rejects.
 
@@ -132,7 +132,7 @@ Each authorization mints a separate row, so revoking Claude Desktop does not aff
 
 | Plan | MCP access | Auth modes | MCP daily reservation | Notes |
 |------|------------|------------|-----------------------|-------|
-| **Free** | `get_sources` only | None | No daily quota | Anonymous `get_sources` calls fail closed above 10/minute/IP. OAuth for every other data tool returns `403 INSUFFICIENT_TIER`. |
+| **Free** | Anonymous `get_sources`; cache-backed tools with an existing user-bound credential | Existing user-bound credential for `free-account` tools | **5 calls and 3 idle-gap request windows / UTC day** | New OAuth issuance still returns `403 INSUFFICIENT_TIER`. Anonymous `get_sources` fails closed above 10/minute/IP. |
 | **Pro** | ✅ Yes | OAuth only | **50 quota-consuming calls / UTC day** | Bounce-via-apex Clerk sign-in. No `wm_…` key needed or stored. |
 | **API Starter** | ✅ Yes | OAuth **or** `wm_…` key | **50 quota-consuming calls / UTC day** | Standard developer-tier REST/API access. |
 | **API Business** | ✅ Yes | OAuth **or** `wm_…` key | **50 quota-consuming calls / UTC day** | Higher REST/API throughput. |
@@ -419,7 +419,7 @@ In addition to the live tool registry, WorldMonitor exposes MCP prompts and reso
 
 ### Resources
 
-Resources come in two tiers. **Concrete resources** are surfaced by `resources/list` and read anonymously and quota-free; **URI templates** (parameterised, data-bearing) are surfaced by `resources/templates/list` and each concrete instantiation reads under auth + the Pro daily quota.
+Resources have three access classes. **Public concrete resources** are surfaced by anonymous `resources/list` and read anonymously and quota-free. **The account allowance resource** appears in `resources/list` only for a user-bound authenticated client and is also quota-free. **URI templates** (parameterised, data-bearing) are surfaced by `resources/templates/list`; their `_meta["worldmonitor/access"]` marker states whether a signed-in free account or a Pro subscription can read each concrete instantiation.
 
 `resources/list` — concrete, anonymously readable, quota-free:
 
@@ -427,7 +427,9 @@ Resources come in two tiers. **Concrete resources** are surfaced by `resources/l
 |--------------|--------------|
 | `worldmonitor://seed-meta/freshness` | Stock market-data bootstrap write-age only: `cached_at` and `stale` for `seed-meta:market:stocks`. Does **not** certify sector valuation completeness — use `get_market_data` `valuationCoverage` (`sourceStatus`, unavailable/last-good/diagnostics). Cheap seeder health probe — no auth, no quota. |
 
-`resources/templates/list` — parameterised URI templates. Substitute the placeholder, then `resources/read` the concrete URI (auth required; consumes the Pro daily quota symmetrically with the equivalent `tools/call`):
+Authenticated `resources/list` additionally exposes `worldmonitor://account/mcp-allowance`. Its read returns the current account's `used`, `limit`, `remaining`, and `resetsAt` fields. Free accounts also receive request-window usage, remaining windows, the idle-gap duration, and the active-window expiry. The read uses the enforcement counters directly and never reserves an allowance slot.
+
+`resources/templates/list` — parameterised URI templates. Substitute the placeholder, then `resources/read` the concrete URI. Follow the template's `_meta["worldmonitor/access"]` marker: `free-account` templates use the authenticated free-account allowance, while `subscription` templates require Pro. Each read consumes the same caller-applicable allowance or quota slot as the equivalent `tools/call`:
 
 | Resource URI template | Backing data |
 |-----------------------|--------------|
@@ -435,7 +437,7 @@ Resources come in two tiers. **Concrete resources** are surfaced by `resources/l
 | `worldmonitor://chokepoints/{slug}/status` | Chokepoint transit summary and risk narrative. `{slug}` is one of the published kebab-case chokepoint slugs, such as `suez`, `strait-of-hormuz`, or `bab-el-mandeb`. |
 | `worldmonitor://markets/{symbol}/quote` | Single-symbol market quote slice. `{symbol}` is uppercase, for example `AAPL`, `GC=F`, or `BTC-USD`. |
 
-`resources/list` and `resources/templates/list` are metadata and do not consume the Pro daily quota. `resources/read` of a template instantiation intentionally consumes the same daily quota slot as the equivalent `tools/call`; it routes through the same dispatcher so a data-bearing resource cannot bypass the Pro cap. `resources/read` of a public (concrete) resource is quota-free — it returns only metadata. As with every MCP method, all of these still count toward the 60/minute limiter. For the exact `-32029` status/header differences between per-minute throttling and daily quota exhaustion, see the [MCP Error Catalog](/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily).
+`resources/list` and `resources/templates/list` are metadata and do not consume the daily allowance. `resources/read` of a template instantiation consumes the same caller-applicable slot as the equivalent `tools/call`; it routes through the same dispatcher so a data-bearing resource cannot bypass the free-account or subscription limit. Reads of the public freshness resource and authenticated account allowance resource are quota-free. As with every MCP method, all of these still count toward the 60/minute limiter. For the exact `-32029` status/header differences between per-minute throttling and daily quota exhaustion, see the [MCP Error Catalog](/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily).
 
 ### MCP Apps (interactive UI)
 

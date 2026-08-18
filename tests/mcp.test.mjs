@@ -3200,6 +3200,9 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(body.id, 100);
     assert.equal(body.error?.code, -32001);
     assert.match(body.error.message, /revoked/i);
+    assert.equal(body.error?.data?.reason, 'no-account');
+    assert.match(body.error?.data?.nextStep ?? '', /sign in|connect|subscribe/i);
+    assert.match(body.error?.data?.upgradeUrl ?? '', /^https:\/\//);
     assert.equal(pipe.count, 0);
     assert.equal(pipe.ops.length, 0);
   });
@@ -3219,6 +3222,9 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(body.id, 6712);
     assert.equal(body.error?.code, -32001);
     assert.match(body.error?.message ?? '', /revoked/i);
+    assert.equal(body.error?.data?.reason, 'no-account');
+    assert.match(body.error?.data?.nextStep ?? '', /sign in|connect|subscribe/i);
+    assert.match(body.error?.data?.upgradeUrl ?? '', /^https:\/\//);
     assert.equal(validationCalls, 1, 'free-tool credential attribution must validate the Pro grant first');
     assert.equal(pipe.count, 0);
     assert.equal(pipe.ops.length, 0);
@@ -3241,6 +3247,9 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(body.id, 6714);
     assert.equal(body.error?.code, -32001);
     assert.match(body.error?.message ?? '', /revoked/i);
+    assert.equal(body.error?.data?.reason, 'no-account');
+    assert.match(body.error?.data?.nextStep ?? '', /sign in|connect|subscribe/i);
+    assert.match(body.error?.data?.upgradeUrl ?? '', /^https:\/\//);
     assert.equal(validationCalls, 1, 'public-method credential attribution must validate the Pro grant first');
     assert.equal(pipe.count, 0);
     assert.equal(pipe.ops.length, 0);
@@ -3293,41 +3302,73 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(res.status, 401);
     const body = await res.json();
     assert.equal(body.error?.code, -32001);
+    assert.equal(body.error?.data?.reason, 'no-account');
+    assert.match(body.error?.data?.nextStep ?? '', /sign in|connect|subscribe/i);
+    assert.match(body.error?.data?.upgradeUrl ?? '', /^https:\/\//);
   });
 
-  it('error: getEntitlements null → -32001 + 401', async () => {
+  it('getEntitlements null with the backend UNCONFIGURED → 503, never a free admission (#6716)', async () => {
+    // The load-bearing guard on the free funnel. `getEntitlements` returns null
+    // *before attempting a lookup* when the entitlement backend is unconfigured,
+    // so a null read is only a "this is a free account" verdict when a lookup
+    // could actually run. Treating the misconfigured case as free would hand
+    // every caller a free allowance during a deploy misconfiguration — a
+    // fail-OPEN. It must stay retryable and unmetered.
+    delete process.env.CONVEX_SITE_URL;
     const { deps, pipe } = makeProDeps({ getEntitlements: async () => null });
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
-    assert.equal(res.status, 401);
+    assert.equal(res.status, 503);
     const body = await res.json();
-    assert.equal(body.error?.code, -32001);
-    assert.equal(pipe.count, 0);
+    assert.equal(body.error?.code, -32603);
+    assert.notEqual(body.error?.data?.reason, 'lapsed-subscription',
+      'a misconfigured backend must not be reported as a confirmed lapse');
+    assert.equal(pipe.count, 0, 'no slot may be charged');
   });
 
-  it('error: getEntitlements throws → -32001 + 401 (fail-closed)', async () => {
-    const { deps } = makeProDeps({ getEntitlements: async () => { throw new Error('convex down'); } });
+  it('error: getEntitlements throws → -32603 + 503 (availability, not a billing verdict)', async () => {
+    // A THROWN lookup is the backend being unreachable. Reporting it as
+    // 'no-account' told an already-authenticated caller to go sign up, and hid
+    // a real outage as a routine upsell. Still fail-closed: the call is denied.
+    const { deps, pipe } = makeProDeps({ getEntitlements: async () => { throw new Error('convex down'); } });
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
-    assert.equal(res.status, 401);
+    assert.equal(res.status, 503);
     const body = await res.json();
-    assert.equal(body.error?.code, -32001);
+    assert.equal(body.error?.code, -32603);
+    assert.equal(res.headers.get('Retry-After'), '5');
+    assert.equal(pipe.count, 0, 'a denied call must never charge a slot');
   });
 
-  it('error: tier 0 → -32001 + 401', async () => {
-    const { deps } = makeProDeps({
+  it('error: free-account allowance admits gated tools (metered); checkProMcpAccess still refuses elsewhere (#6716)', async () => {
+    const { deps, pipe } = makeProDeps({
       getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
     });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
-    assert.equal(res.status, 401);
-    const body = await res.json();
-    assert.equal(body.error?.code, -32001);
+    assert.equal(res.status, 200, `MCP call-site admits free-account allowance: ${await res.clone().text()}`);
+    assert.ok(pipe.count >= 1, 'free-account meter reserved a slot');
   });
 
-  it('error: tier 1 but mcpAccess false → -32001 + 401', async () => {
+  it('error: free-account allowance exhausted → structured denial (#6716)', async () => {
     const { deps } = makeProDeps({
-      getEntitlements: async () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
+      getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0 }),
+      pipelineOpts: { initialCount: 5 },
     });
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
-    assert.equal(res.status, 401);
+    // A spent allowance is a QUOTA state, so it rides the quota envelope — the
+    // same -32029/429 the Pro daily cap uses. It must NOT be -32001/401: the
+    // error catalog documents that pair as "re-authenticate via OAuth", which
+    // sends an RFC-9728 client into a loop it can never exit.
+    assert.equal(res.status, 429, await res.clone().text());
+    const body = await res.json();
+    assert.equal(body.error?.code, -32029);
+    assert.equal(body.error?.data?.reason, 'allowance-exhausted');
+    assert.ok(Number(res.headers.get('Retry-After')) > 0, 'must tell the agent when to come back');
+    assert.equal(res.headers.get('WWW-Authenticate'), null, 'a quota denial must not invite re-auth');
   });
 
   it('current Pro fallback remains usable while stronger renewal verification is pending', async () => {
@@ -3381,7 +3422,17 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     });
   }
 
-  it('error: subscription_lapsed → distinct JSON-RPC hard denial', async () => {
+  it('error: a provider-CONFIRMED lapse falls to the free allowance (#6716)', async () => {
+    // Dunning happens while the row is `on_hold`, and isCoveringAt keeps those
+    // users on FULL Pro throughout. So a lapse the provider has CONFIRMED means
+    // the billing attempts are over — the account is simply a free one now, and
+    // walling it off would deny the free tier to exactly the population the
+    // funnel wants back. `retryable: false` is documented as true ONLY for a
+    // confirmed lapse, which is what makes this seam safe.
+    //
+    // The sibling test below is the other half of #5600 and must keep passing:
+    // a RETRYABLE state is a statement about the verification, not the
+    // subscription, and must never be flattened into free.
     const { deps, pipe } = makeProDeps({
       getEntitlements: async () => ({
         planKey: 'free',
@@ -3390,20 +3441,16 @@ describe('api/mcp.ts — U7 Pro-path', () => {
         billingStatus: 'subscription_lapsed',
       }),
     });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
 
-    assert.equal(res.status, 403);
-    assert.equal(res.headers.get('Cache-Control'), 'no-store');
-    assert.equal(res.headers.get('Retry-After'), null);
-    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
-    const body = await res.json();
-    assert.equal(body.jsonrpc, '2.0');
-    // -32002, NOT -32001: the catalog reserves -32001 for HTTP 401 auth
-    // failures with OAuth-reauth recovery; a confirmed lapse cannot be fixed
-    // by re-authenticating.
-    assert.equal(body.error?.code, -32002);
-    assert.equal(body.error?.data?.code, 'subscription_lapsed');
-    assert.equal(pipe.count, 0);
+    assert.equal(res.status, 200, 'a churned account gets the free tier, not a wall');
+    assert.ok(pipe.count >= 1, 'and is metered by the free-account allowance');
   });
 
   it('error: transient entitlement-lookup failure → retryable 503, not a -32001 re-auth loop', async () => {

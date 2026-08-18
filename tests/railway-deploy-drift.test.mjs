@@ -21,10 +21,12 @@ import {
   classifyServiceDeploy,
   classifyFleetWithinDeadline,
   deepenNoBuildWindows,
+  formatComparisonHead,
   resolveDeepPassDeadlineAt,
   isProblemVerdict,
   readRepeatedArguments,
   resolveComparisonHead,
+  resolveOriginMainRelation,
   summarizeDeployDrift,
   summarizeStrictDeployDrift,
 } from '../scripts/check-railway-deploy-drift.mjs';
@@ -715,7 +717,7 @@ describe('strict terminal reconciliation drift', () => {
     );
   });
 
-  it('refreshes origin/main before a manual comparison while preserving an explicit CI head', () => {
+  it('refreshes origin/main before a manual comparison and reports an exact relation', () => {
     const calls = [];
     let refreshed = false;
     const git = (args) => {
@@ -724,15 +726,17 @@ describe('strict terminal reconciliation drift', () => {
         refreshed = true;
         return '';
       }
-      return args[3].startsWith('origin/main')
-        ? refreshed ? HEAD : PREVIOUS
-        : NEWER;
+      assert.equal(args.at(-1), 'origin/main^{commit}');
+      return refreshed ? HEAD : PREVIOUS;
     };
-    assert.equal(resolveComparisonHead(['node', 'script'], { git }), HEAD);
-    assert.equal(
-      resolveComparisonHead(['node', 'script', '--head', NEWER], { git }),
-      NEWER,
-    );
+    const result = resolveComparisonHead(['node', 'script'], { git });
+    assert.deepEqual(result, {
+      headSha: HEAD,
+      headSource: 'origin/main',
+      originMainSha: HEAD,
+      originMainRelation: 'exact',
+    });
+    assert.equal(formatComparisonHead(result), 'source=origin/main vs-origin-main=exact');
     assert.deepEqual(calls, [
       [
         'fetch',
@@ -741,8 +745,24 @@ describe('strict terminal reconciliation drift', () => {
         '+refs/heads/main:refs/remotes/origin/main',
       ],
       ['rev-parse', '--verify', '--end-of-options', 'origin/main^{commit}'],
-      ['rev-parse', '--verify', '--end-of-options', `${NEWER}^{commit}`],
     ]);
+  });
+
+  it('reports an explicit stale head as behind origin/main', () => {
+    const result = resolveComparisonHead(['node', 'script', '--head', PREVIOUS], {
+      git: (args) => {
+        if (args.at(-1) === 'origin/main^{commit}') return HEAD;
+        if (args.at(-1) === `${PREVIOUS}^{commit}`) return PREVIOUS;
+        throw new Error(`unexpected git call: ${args.join(' ')}`);
+      },
+      ancestry: (ancestor, descendant) => (
+        ancestor === PREVIOUS && descendant === HEAD ? 'yes' : 'no'
+      ),
+    });
+    assert.equal(result.headSha, PREVIOUS);
+    assert.equal(result.headSource, '--head');
+    assert.equal(result.originMainRelation, 'behind');
+    assert.equal(formatComparisonHead(result), 'source=--head vs-origin-main=behind');
   });
 
   it('fails a manual comparison when main cannot be refreshed', () => {
@@ -765,19 +785,49 @@ describe('strict terminal reconciliation drift', () => {
   });
 
   it('treats an explicit comparison ref as data, never as a git option', () => {
-    let call;
+    const calls = [];
     resolveComparisonHead(['node', 'script', '--head=--upload-pack=evil'], {
       git: (args) => {
-        call = args;
+        calls.push(args);
         return HEAD;
       },
     });
-    assert.deepEqual(call, [
+    assert.deepEqual(calls.at(-1), [
       'rev-parse',
       '--verify',
       '--end-of-options',
       '--upload-pack=evil^{commit}',
     ]);
+  });
+
+  it('keeps an explicit head usable when origin/main is unavailable', () => {
+    const result = resolveComparisonHead(['node', 'script', '--head', HEAD], {
+      git: (args) => {
+        if (args.at(-1) === 'origin/main^{commit}') throw new Error('missing ref');
+        if (args.at(-1) === `${HEAD}^{commit}`) return HEAD;
+        throw new Error(`unexpected git call: ${args.join(' ')}`);
+      },
+    });
+    assert.deepEqual(result, {
+      headSha: HEAD,
+      headSource: '--head',
+      originMainSha: null,
+      originMainRelation: 'unavailable',
+    });
+  });
+
+  it('distinguishes ahead, diverged, and unresolved head relationships', () => {
+    const lookup = (answers) => (
+      ancestor,
+      descendant,
+    ) => answers[`${ancestor}..${descendant}`] ?? 'unknown';
+    assert.equal(resolveOriginMainRelation(
+      NEWER,
+      HEAD,
+      lookup({ [`${HEAD}..${NEWER}`]: 'yes' }),
+    ), 'ahead');
+    assert.equal(resolveOriginMainRelation(PREVIOUS, HEAD, () => 'no'), 'diverged');
+    assert.equal(resolveOriginMainRelation(PREVIOUS, HEAD, () => 'unknown'), 'unknown');
   });
 
   it('fails closed on an empty or malformed expected fleet', () => {

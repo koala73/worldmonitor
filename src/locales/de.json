@@ -478,7 +478,7 @@
         "outages": "Internetausfälle umschalten",
         "tradeRoutes": "Handelsrouten umschalten",
         "canadaRoads": "Toggle Canada roads overlay",
-        "canadaAlerts": "Toggle Alberta Emergency Alert overlay"
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Zum Dunkelmodus wechseln",
@@ -1039,7 +1039,7 @@
         "radiationSpike": "Strahlungsspitze",
         "radiationElevated": "Erhöhte Strahlung",
         "canadaRoads": "Canada Roads",
-        "canadaAlerts": "Canada Alerts (Alberta Emergency Alert)"
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "layersTitle": "Ebenen",
       "layerSearch": "Ebenen suchen...",
@@ -1154,7 +1154,7 @@
           "geoBoundaries": "Entmilitarisierte Zonen, Waffenstillstandslinien und umstrittene Grenzen",
           "ciiChoropleth": "Country Instability Index Heatmap — färbt Länder nach CII-Wert ein (grün=stabil, rot=kritisch)",
           "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
-          "canadaAlerts": "Alberta Emergency Alert public warnings (Atom feed from www.alberta.ca)"
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Betrifft: Erdbeben, Wetter, Proteste, Ausfälle"
@@ -1386,7 +1386,9 @@
     "breakingNews": {
       "critical": "KRITISCH",
       "high": "HOCH",
-      "dismiss": "Ausblenden"
+      "dismiss": "Ausblenden",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Eilmeldungen",
@@ -3262,7 +3264,8 @@
     "retry": "Erneut versuchen",
     "refresh": "Aktualisieren",
     "all": "Alle",
-    "cancel": "Abbrechen"
+    "cancel": "Abbrechen",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "Anzeige",

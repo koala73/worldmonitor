@@ -1,0 +1,67 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [[[[-121.503, 49.995], [-121.504, 49.995], [-121.503, 49.997], [-121.503, 49.995]]]]
+      },
+      "properties": {
+        "EMRG_OAA_SYSID": 7,
+        "EVENT_NAME": "Brunswick Wildfire",
+        "EVENT_NUMBER": "V10742",
+        "EVENT_TYPE": "Fire",
+        "ORDER_ALERT_NAME": "Boothroyd IB",
+        "ORDER_ALERT_STATUS": "Alert",
+        "ISSUING_AGENCY": "Boothroyd Indian Band",
+        "PREOC_CODE": "SWE",
+        "DATE_MODIFIED": 1786956961000,
+        "EVENT_START_DATE": 1782993600000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[-119.696, 49.661], [-119.671, 49.63], [-119.698, 49.653], [-119.696, 49.661]]]
+      },
+      "properties": {
+        "EMRG_OAA_SYSID": 69,
+        "EVENT_NAME": "Bald Range Wildfire",
+        "EVENT_NUMBER": "K51490",
+        "EVENT_TYPE": "Fire",
+        "ORDER_ALERT_NAME": "Greata Ranch to Summerland Boundary on Highway 97",
+        "ORDER_ALERT_STATUS": "Order",
+        "ISSUING_AGENCY": "Regional District of Okanagan-Similkameen",
+        "PREOC_CODE": "CTL",
+        "DATE_MODIFIED": 1786894936000,
+        "EVENT_START_DATE": 1786104000000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "EMRG_OAA_SYSID": 70,
+        "EVENT_NAME": "Resolved incident",
+        "ORDER_ALERT_NAME": "Resolved area",
+        "ORDER_ALERT_STATUS": "All Clear",
+        "DATE_MODIFIED": 1786894936000,
+        "EVENT_START_DATE": 1786104000000
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "EMRG_OAA_SYSID": 71,
+        "EVENT_NAME": "Unclassified incident",
+        "ORDER_ALERT_NAME": "Unknown area",
+        "ORDER_ALERT_STATUS": "",
+        "DATE_MODIFIED": 1786894936000,
+        "EVENT_START_DATE": 1786104000000
+      }
+    }
+  ]
+}

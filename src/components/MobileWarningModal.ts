@@ -2,12 +2,14 @@ import { t } from '@/services/i18n';
 import { isMobileDevice } from '@/utils';
 import { getDismissed, setDismissed } from '@/utils/cross-domain-storage';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 
 
 const STORAGE_KEY = 'mobile-warning-dismissed';
 
 export class MobileWarningModal {
   private element: HTMLElement;
+  private focusTrap: FocusTrap | null = null;
 
   constructor() {
     this.element = document.createElement('div');
@@ -66,10 +68,13 @@ export class MobileWarningModal {
 
   public show(): void {
     this.element.classList.add('active');
+    this.focusTrap ??= createFocusTrap(this.element, { onEscape: () => this.dismiss() });
+    this.focusTrap.activate();
   }
 
   public hide(): void {
     this.element.classList.remove('active');
+    this.focusTrap?.deactivate();
   }
 
   public static shouldShow(): boolean {

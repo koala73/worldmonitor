@@ -113,8 +113,9 @@ export function looksLikeQuantityAsPrice(
 ): boolean {
   if (item.baseUnit === 'ct' || !Number.isFinite(price) || price < 20) return false;
   // Fall back to the canonical size whenever the provider's sizeText does not
-  // PARSE, not merely when it is absent: `??` would accept `''` or `'400 gm'`
-  // (UNIT_MAP has no `gm`/`pack`) as a present size and silently skip the check.
+  // PARSE, not merely when it is absent: `??` would accept `''` or `'400 loaf'`
+  // (UNIT_MAP has no `loaf`/`pack`) as a present size and silently skip the
+  // check. `gm` used to be the example here; #6267 mapped it to grams.
   const parsed = parseSize(sizeText) ?? parseSize(fallbackSizeText);
   if (!parsed || parsed.baseUnit !== item.baseUnit || parsed.baseQuantity < 100) return false;
   return Math.abs(price - parsed.baseQuantity) < 0.005;

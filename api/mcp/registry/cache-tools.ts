@@ -2239,7 +2239,7 @@ export const CACHE_TOOLS: ToolDef[] = [
         key: 'seed-meta:supply_chain:portwatch-ports',
         maxStaleMin: 2160, // 12h cron; 36h = 3× interval
         minRecordCount: 174,
-        requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 2 * 72 * 60 },
+        requireContentFreshness: { countries: ['CN', 'HK'], budgetMinutes: 10 * 24 * 60 },
         contentFreshnessActivationKey: PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY,
       },
       { key: 'seed-meta:energy:chokepoint-baselines',      maxStaleMin: 60 * 24 * 400 },  // ~400d static registry

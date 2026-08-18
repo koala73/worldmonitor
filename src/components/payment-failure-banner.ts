@@ -110,7 +110,7 @@ export function initPaymentFailureBanner(): () => void {
       </svg>
       <span>${t(variant.messageKey)}</span>
       ${actionBtn}
-      <button id="pf-dismiss-btn" style="background:transparent;color:#fff;border:none;cursor:pointer;font-size:calc(18px * var(--wm-panel-effective-scale, 1));padding:0 4px;line-height:1;">&times;</button>
+      <button id="pf-dismiss-btn" aria-label="${t('common.dismiss')}" style="background:transparent;color:#fff;border:none;cursor:pointer;font-size:calc(18px * var(--wm-panel-effective-scale, 1));padding:0 4px;line-height:1;">&times;</button>
     `, "legacy direct innerHTML migration"));
 
     document.body.appendChild(banner);

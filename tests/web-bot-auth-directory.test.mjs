@@ -85,17 +85,15 @@ describe('Web Bot Auth key directory (/.well-known/http-message-signatures-direc
     assert.ok(rewrite, 'expected a rewrite for the directory path');
     assert.equal(rewrite.destination, '/api/http-message-signatures-directory');
 
-    const catchAllIndex = vercelConfig.rewrites.findIndex(
+    // #6575: the dashboard catch-all rewrite is gone — unknown paths 404.
+    // The directory rewrite cannot be shadowed by a SPA fallback.
+    const catchAll = vercelConfig.rewrites.find(
       (r) => r.destination === '/dashboard.html' && r.source.startsWith('/((?!'),
     );
-    assert.ok(
-      vercelConfig.rewrites.indexOf(rewrite) < catchAllIndex,
-      'directory rewrite must precede the SPA catch-all',
+    assert.equal(catchAll, undefined, 'dashboard catch-all rewrite must stay removed (#6575)');
+    const dashboardShadow = vercelConfig.rewrites.find(
+      (r) => r.destination === '/dashboard.html' && r.source === WELL_KNOWN_PATH,
     );
-    // The SPA catch-all already excludes every /.well-known/* path.
-    assert.ok(
-      vercelConfig.rewrites[catchAllIndex].source.includes('\\.well-known'),
-      'SPA catch-all must keep excluding /.well-known/*',
-    );
+    assert.equal(dashboardShadow, undefined, 'directory path must not be rewritten to the dashboard');
   });
 });
