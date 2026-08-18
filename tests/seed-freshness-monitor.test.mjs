@@ -771,7 +771,7 @@ describe('scheduled seed freshness monitor', () => {
       }
     });
 
-    it('documents the pre-seed-or-expiring-acknowledgement cutover contract', () => {
+    it('documents the pre-seed, activation-marker, or expiring-acknowledgement cutover contract', () => {
       const committed = readCommittedBaseline();
       const baselinePolicy = committed.$comment.join('\n');
       const prTemplate = readFileSync(PR_TEMPLATE_URL, 'utf8');
@@ -779,11 +779,14 @@ describe('scheduled seed freshness monitor', () => {
 
       assert.match(baselinePolicy, /entry-level `expiresAt`/i);
       assert.match(baselinePolicy, /first\s+(scheduled\s+)?cron window/i);
+      assert.match(baselinePolicy, /durable activation marker/i);
       assert.match(prTemplate, /Railway-side pre-seed/i);
       assert.match(prTemplate, /entry-level `expiresAt`/i);
+      assert.match(prTemplate, /durable activation marker/i);
       assert.match(runbook, /Railway-side pre-seed/i);
       assert.match(runbook, /entry-level `expiresAt`/i);
       assert.match(runbook, /first\s+(scheduled\s+)?cron window/i);
+      assert.match(runbook, /durable activation marker/i);
     });
 
     describe('health-probe cutover enforcement', () => {
@@ -945,6 +948,52 @@ describe('scheduled seed freshness monitor', () => {
           }),
           /exact health status|expiring acknowledgement/i,
         );
+      });
+
+      it('accepts a durable activation marker bound to the new probe', () => {
+        const activationKey = 'seed-activated:market:physical-premium';
+        const headSeedMeta = {
+          ...baseSeedMeta,
+          physicalPremiums: {
+            key: 'seed-meta:market:physical-premium',
+            activationKey,
+            cutover: {
+              mode: 'activation-marker',
+              fromKey: null,
+              issue: 6436,
+              activationKey,
+            },
+          },
+        };
+
+        assert.doesNotThrow(() => validateHealthProbeCutovers({
+          baseSeedMeta,
+          headSeedMeta,
+          baseline: baselineWithoutCutover,
+        }));
+        for (const badActivationKey of [
+          '',
+          'market:physical-premium',
+          'seed-activated:market:other',
+        ]) {
+          assert.throws(
+            () => validateHealthProbeCutovers({
+              baseSeedMeta,
+              headSeedMeta: {
+                ...headSeedMeta,
+                physicalPremiums: {
+                  ...headSeedMeta.physicalPremiums,
+                  cutover: {
+                    ...headSeedMeta.physicalPremiums.cutover,
+                    activationKey: badActivationKey,
+                  },
+                },
+              },
+              baseline: baselineWithoutCutover,
+            }),
+            /activation-marker.*config\.activationKey.*seed-activated/i,
+          );
+        }
       });
 
       it('runs in the pull-request workflow and the pre-push hook', () => {

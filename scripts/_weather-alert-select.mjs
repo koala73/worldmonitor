@@ -5,12 +5,25 @@
 // cannot boot without this file).
 // Kept in its own module so the selection rules are unit-testable without
 // importing the seeder (which runs runSeed() at import time).
+//
+// One pipeline: NWS + ECCC + WMO SWIC all merge into weather:alerts:v1.
+// Additional national adapters are sources, not a second weather product.
+
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ISO3_TO_ISO2 = JSON.parse(
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'shared/iso3-to-iso2.json'), 'utf8'),
+);
 
 export const MAX_ALERTS = 50;
+const WEATHER_ALERT_SOURCES = Object.freeze(['nws', 'eccc', 'swic']);
 // Per-source floor so Canadian alerts cannot be dropped behind US small-craft
-// advisories (and vice versa) when the merged cap is applied.
+// advisories (and vice versa) when the merged cap is applied. A third source
+// (SWIC) gets the same floor; leftover slots fill by severity.
 export const PER_SOURCE_FLOOR = 15;
-export const WEATHER_ALERTS_SOURCE_VERSION = 'nws+eccc-issued-continued';
+export const WEATHER_ALERTS_SOURCE_VERSION = 'nws+eccc+swic-v1';
 
 export const NWS_HOST = 'api.weather.gov';
 export const NWS_ALERTS_URL = 'https://api.weather.gov/alerts/active';
@@ -30,6 +43,33 @@ export const ECCC_ALERTS_URL = ECCC_ALERTS_URLS[0];
 // National GeoJSON exceeds HKO's 256KiB; 4 MiB is the upper end of the
 // deliberate 2–4 MiB ceiling for this collection.
 export const ECCC_MAX_BYTES = 4 * 1024 * 1024;
+
+export const SWIC_HOST = 'severeweather.wmo.int';
+export const SWIC_ALERTS_URL = 'https://severeweather.wmo.int/json/wmo_all.json';
+export const SWIC_MEMBERS_URL = 'https://severeweather.wmo.int/json/wmo_member.json';
+// wmo_all.json is ~1 MB (probed 924 KiB / 2091 items on 2026-08-18). HKO's
+// 256 KiB cap would reject the feed; 2 MiB is the deliberate ceiling for this
+// host, not an inherited default.
+export const SWIC_MAX_BYTES = 2 * 1024 * 1024;
+// Polygon-tier national adapters already cover these ISO2 codes. SWIC still
+// lists them, but merging those rows would duplicate NWS/ECCC and spend the
+// shared 50-cap on geocoded US small-craft instead of the rest of the world.
+export const SWIC_SKIP_COUNTRY_CODES = Object.freeze(['US', 'CA']);
+export const SWIC_SOURCE_DECISION = Object.freeze({
+  source: 'WMO SWIC CAP',
+  host: SWIC_HOST,
+  status: 'accepted',
+  reason: 'RAILWAY_PREFLIGHT_OK',
+  optional: true,
+  requestCount: 2,
+  maxBytes: SWIC_MAX_BYTES,
+});
+// CAP s/u/c on wmo_all.json are 0–4 integers. Sampled against CAP 1.2 XML:
+// s=2→Moderate, s=3→Severe, s=4→Extreme; u=2→Future, u=3→Expected, u=4→Immediate;
+// c=2→Possible, c=3→Likely, c=4→Observed. 0 is Unknown (ineligible for s).
+const SWIC_SEVERITY = Object.freeze({ 0: 'Unknown', 1: 'Minor', 2: 'Moderate', 3: 'Severe', 4: 'Extreme' });
+const SWIC_URGENCY = Object.freeze({ 0: 'Unknown', 1: 'Past', 2: 'Future', 3: 'Expected', 4: 'Immediate' });
+const SWIC_CERTAINTY = Object.freeze({ 0: 'Unknown', 1: 'Unlikely', 2: 'Possible', 3: 'Likely', 4: 'Observed' });
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 
@@ -143,6 +183,18 @@ export function weatherAlertNotifyLocation(alert) {
   return location;
 }
 
+export function weatherAlertNotifySource(alert) {
+  if (alert?.source === 'eccc') return 'ECCC';
+  if (alert?.source === 'swic') return 'WMO SWIC';
+  if (alert?.source === 'nws') return 'NWS';
+  return alert?.source ? String(alert.source).toUpperCase() : 'NWS';
+}
+
+export function weatherAlertNotifyCountryCode(alert) {
+  const code = String(alert?.countryCode || '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(code) ? code : undefined;
+}
+
 // NWS severity vocabulary, most dangerous first. Anything outside this list —
 // including a literal 'Unknown' and an absent severity property — is ineligible.
 const SEVERITY_RANK = Object.freeze({ Extreme: 0, Severe: 1, Moderate: 2, Minor: 3 });
@@ -251,6 +303,23 @@ export function validateSelectedAlerts(data) {
   return Array.isArray(data?.alerts);
 }
 
+export function weatherAlertsAfterPublish(data) {
+  if (data?.sourceState !== 'degraded') {
+    return { freshnessMetaPatch: { sourceState: 'ok' } };
+  }
+  const failedSources = WEATHER_ALERT_SOURCES.filter(
+    (source) => Array.isArray(data?.failedSources) && data.failedSources.includes(source),
+  );
+  return {
+    freshnessMetaPatch: {
+      sourceState: 'degraded',
+      errorCode: data?.errorCode || 'WEATHER_ALERT_SOURCE_INCOMPLETE',
+      ...(failedSources.length > 0 ? { failedSources } : {}),
+      ...(data?.skipReason ? { skipReason: String(data.skipReason) } : {}),
+    },
+  };
+}
+
 function sortBySeverityThenStable(alerts) {
   return [...alerts].sort((a, b) => severityRank(a.severity) - severityRank(b.severity));
 }
@@ -293,16 +362,172 @@ export function selectEcccAlerts(features) {
  * publishes.
  */
 export function mergeAlertSources(parts = {}, { totalLimit = MAX_ALERTS, perSourceFloor = PER_SOURCE_FLOOR } = {}) {
-  const nws = sortBySeverityThenStable(Array.isArray(parts.nws) ? parts.nws : []);
-  const eccc = sortBySeverityThenStable(Array.isArray(parts.eccc) ? parts.eccc : []);
-  const kept = [...nws.slice(0, perSourceFloor), ...eccc.slice(0, perSourceFloor)];
-  const leftover = sortBySeverityThenStable([
-    ...nws.slice(perSourceFloor),
-    ...eccc.slice(perSourceFloor),
-  ]);
+  const sources = [
+    sortBySeverityThenStable(Array.isArray(parts.nws) ? parts.nws : []),
+    sortBySeverityThenStable(Array.isArray(parts.eccc) ? parts.eccc : []),
+    sortBySeverityThenStable(Array.isArray(parts.swic) ? parts.swic : []),
+  ];
+  const kept = sources.flatMap((alerts) => alerts.slice(0, perSourceFloor));
+  const leftover = sortBySeverityThenStable(sources.flatMap((alerts) => alerts.slice(perSourceFloor)));
   const remaining = Math.max(0, totalLimit - kept.length);
   kept.push(...leftover.slice(0, remaining));
   return sortBySeverityThenStable(kept).slice(0, totalLimit);
+}
+
+export function carryFailedWeatherAlertSources(previousAlerts, failedSources = []) {
+  const alerts = Array.isArray(previousAlerts) ? previousAlerts : [];
+  const failed = new Set(
+    Array.isArray(failedSources)
+      ? failedSources.filter((source) => WEATHER_ALERT_SOURCES.includes(source))
+      : [],
+  );
+  return Object.fromEntries(
+    WEATHER_ALERT_SOURCES.map((source) => [
+      source,
+      failed.has(source) ? alerts.filter((alert) => alert?.source === source) : [],
+    ]),
+  );
+}
+
+export function mapSwicSeverity(code) {
+  return SWIC_SEVERITY[Number(code)] ?? 'Unknown';
+}
+
+export function mapSwicUrgency(code) {
+  return SWIC_URGENCY[Number(code)] ?? 'Unknown';
+}
+
+export function mapSwicCertainty(code) {
+  return SWIC_CERTAINTY[Number(code)] ?? 'Unknown';
+}
+
+export function normalizeSwicTimestamp(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const offsetFree = raw.match(
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(\.\d{1,3})?$/,
+  );
+  const candidate = offsetFree
+    ? `${offsetFree[1]}T${offsetFree[2]}${offsetFree[3] || ''}Z`
+    : raw;
+  const timestamp = Date.parse(candidate);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : '';
+}
+
+export function countryCodeFromSwicUrl(url) {
+  const path = String(url || '').trim();
+  const match = path.match(/^([a-z]{2})-/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+export function iso3ToIso2(iso3) {
+  const code = String(iso3 || '').trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(code)) return code;
+  const mapped = ISO3_TO_ISO2[code];
+  return typeof mapped === 'string' && /^[A-Z]{2}$/.test(mapped) ? mapped : null;
+}
+
+export function indexSwicMembers(data) {
+  const byMid = new Map();
+  const regions = Array.isArray(data) ? data : [];
+  for (const region of regions) {
+    for (const member of Array.isArray(region?.members) ? region.members : []) {
+      if (member?.mid == null) continue;
+      byMid.set(String(member.mid), member);
+    }
+  }
+  return byMid;
+}
+
+export function requireSwicItems(data) {
+  if (!Array.isArray(data?.items)) {
+    throw new TypeError('SWIC response is missing an items array');
+  }
+  return data.items;
+}
+
+function swicCentroid(item, member) {
+  const coords = extractCoordinates(item?.geometry);
+  if (coords.length) {
+    return { coordinates: coords, centroid: calculateCentroid(coords), geometryPrecision: 'polygon' };
+  }
+  const itemLat = Number(item?.lat ?? item?.latitude);
+  const itemLon = Number(item?.lon ?? item?.lng ?? item?.longitude);
+  if (Number.isFinite(itemLat) && Number.isFinite(itemLon)
+    && itemLat >= -90 && itemLat <= 90 && itemLon >= -180 && itemLon <= 180) {
+    return { coordinates: [], centroid: [itemLon, itemLat], geometryPrecision: 'point' };
+  }
+  const memberLat = Number(member?.lat);
+  const memberLon = Number(member?.lng ?? member?.lon);
+  if (Number.isFinite(memberLat) && Number.isFinite(memberLon)
+    && memberLat >= -90 && memberLat <= 90 && memberLon >= -180 && memberLon <= 180) {
+    return { coordinates: [], centroid: [memberLon, memberLat], geometryPrecision: 'country' };
+  }
+  return null;
+}
+
+export function normalizeSwicAlert(item, member) {
+  if (!item || typeof item !== 'object') return null;
+  const countryCode = countryCodeFromSwicUrl(item.url) || iso3ToIso2(member?.code);
+  if (!countryCode || SWIC_SKIP_COUNTRY_CODES.includes(countryCode)) return null;
+  const severity = mapSwicSeverity(item.s);
+  const placed = swicCentroid(item, member);
+  if (!placed) return null;
+  const event = String(item.event || '').trim();
+  const headline = String(item.headline || event).trim();
+  const areaDesc = String(item.areaDesc || '').trim();
+  return {
+    id: String(item.id || ''),
+    event,
+    severity,
+    headline,
+    description: headline.slice(0, 500),
+    areaDesc,
+    onset: normalizeSwicTimestamp(item.effective || item.sent),
+    expires: normalizeSwicTimestamp(item.expires),
+    coordinates: placed.coordinates,
+    centroid: placed.centroid,
+    countryCode,
+    source: 'swic',
+    geometryPrecision: placed.geometryPrecision,
+    urgency: mapSwicUrgency(item.u),
+    certainty: mapSwicCertainty(item.c),
+    ...(member?.dept ? { authority: String(member.dept) } : {}),
+    ...(member?.mid ? { memberId: String(member.mid) } : {}),
+  };
+}
+
+export function selectSwicAlerts(items, membersByMid = new Map()) {
+  return (Array.isArray(items) ? items : [])
+    .map((item) => normalizeSwicAlert(item, membersByMid.get(String(item?.mid))))
+    .filter((alert) => alert && isEligibleAlert(alert));
+}
+
+export async function fetchSwicAlertCatalog({
+  fetchFn = globalThis.fetch,
+  userAgent,
+  maxBytes = SWIC_MAX_BYTES,
+} = {}) {
+  const [alertsJson, membersJson] = await Promise.all([
+    fetchApprovedWeatherJson(SWIC_ALERTS_URL, {
+      allowedHosts: [SWIC_HOST],
+      maxBytes,
+      fetchFn,
+      userAgent,
+      accept: 'application/json',
+    }),
+    fetchApprovedWeatherJson(SWIC_MEMBERS_URL, {
+      allowedHosts: [SWIC_HOST],
+      maxBytes,
+      fetchFn,
+      userAgent,
+      accept: 'application/json',
+    }),
+  ]);
+  return {
+    items: requireSwicItems(alertsJson),
+    membersByMid: indexSwicMembers(membersJson),
+  };
 }
 
 async function readResponseLimited(response, maxBytes) {

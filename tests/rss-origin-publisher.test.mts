@@ -20,7 +20,11 @@ import { publisherFamilyFor } from '../shared/publisher-families.js';
 import { assignStoryIdentity } from '../server/worldmonitor/news/v1/dedup.mjs';
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest.ts';
 
-const { parseRssXml, computeEntityCorroborationSignals } = __testing__;
+const {
+  parseRssXml,
+  computeEntityCorroborationSignals,
+  computeItemCredibilityScore,
+} = __testing__;
 
 const FEED = { url: 'https://news.google.com/rss/search?q=oil', name: 'Oil & Gas', lang: 'en' };
 
@@ -81,6 +85,25 @@ describe('publisherFamilyFor resolves curated publisher names (#6430)', () => {
     assert.equal(publisherFamilyFor('Reuters World'), 'reuters');
     assert.equal(publisherFamilyFor('BBC Persian'), publisherFamilyFor('BBC World'));
     assert.equal(publisherFamilyFor('Brand New Feed'), 'label:brand new feed');
+  });
+});
+
+describe('credibility scoring prefers canonical publisher identity (#6597)', () => {
+  it('scores configured Reuters aliases and syndicated Reuters items as Reuters', () => {
+    assert.equal(
+      computeItemCredibilityScore({ source: 'Reuters Asia', originPublisher: '' }, 1),
+      84,
+    );
+    assert.equal(
+      computeItemCredibilityScore({ source: 'Oil & Gas', originPublisher: 'Reuters' }, 1),
+      84,
+    );
+  });
+
+  it('applies the high-risk cap to state media syndicated through a generic feed', () => {
+    assert.ok(
+      computeItemCredibilityScore({ source: 'Oil & Gas', originPublisher: 'RT' }, 5) <= 40,
+    );
   });
 });
 

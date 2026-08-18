@@ -1313,7 +1313,7 @@
         "ucdpEvents": "सशस्त्र संघर्ष घटनाएं",
         "displacementFlows": "स्थानांतरण प्रवाह",
         "climateAnomalies": "जलवायु असामान्यता",
-        "weatherAlerts": "अमेरिका और कनाडा के मौसम अलर्ट (NWS, ECCC)",
+        "weatherAlerts": "गंभीर मौसम चेतावनियाँ (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "चोकपॉइंट",
         "economicCenters": "आर्थिक केंद्र",
         "criticalMinerals": "महत्वपूर्ण खनिज",
@@ -1394,7 +1394,7 @@
           "infraDatacenters": "एआई कंप्यूट क्लस्टर (>=10,000 GPU)",
           "infraOutages": "इंटरनेट ब्लैकआउट और सेवा व्यवधान",
           "naturalEventsTech": "भूकंप, तूफान, आग (डेटा केंद्र प्रभावित कर सकते हैं)",
-          "weatherAlerts": "अमेरिका और कनाडा में गंभीर मौसम अलर्ट (NWS, ECCC)",
+          "weatherAlerts": "राष्ट्रीय मौसम विज्ञान सेवाओं से आधिकारिक गंभीर मौसम चेतावनियाँ (NWS, ECCC, WMO SWIC)",
           "economicCenters": "शेयर बाजार और केंद्रीय बैंक",
           "countriesOverlay": "देश नाम ओवरले",
           "financeExchanges": "मुख्य वैश्विक एक्सचेंज",
@@ -1406,7 +1406,7 @@
           "financeOutages": "इंटरनेट व्यवधान जो बाजार संचालन को प्रभावित कर सकते हैं",
           "financeCyberThreats": "वित्तीय इन्फ्रास्ट्रक्चर से जुड़े सुरक्षा घटनाएं",
           "macroWaterways": "कमोडिटी शिपिंग के रणनीतिक चोकपॉइंट",
-          "weatherAlertsMarket": "अमेरिका और कनाडा में बाजार से संबंधित गंभीर मौसम घटनाएं (NWS, ECCC)",
+          "weatherAlertsMarket": "बाज़ार से संबंधित आधिकारिक गंभीर मौसम चेतावनियाँ (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "भूकंप, आग, बाढ़ और अन्य प्राकृतिक व्यवधान",
           "timeRecent": "समय-आधारित डेटा को हाल के घंटों तक फ़िल्टर करें",
           "timeExtended": "पिछले सप्ताह, महीने या सभी समय का डेटा दिखाएं",
@@ -1988,7 +1988,17 @@
       "infoTooltip": "<strong>सेक्टर हीटमैप</strong> S&P 500 सेक्टर प्रदर्शन एक नजर में। रंग तीव्रता दैनिक परिवर्तन का परिमाण दिखाती है। हरा = लाभ, लाल = हानि।"
     },
     "commodities": {
-      "infoTooltip": "<strong>कमोडिटी</strong> व्यापार योग्य गैर-ऊर्जा कमोडिटी टेप जो धातु और सामग्री पर केंद्रित है। ऊर्जा कीमतें ऊर्जा कॉम्प्लेक्स में लाइव; मैक्रो तनाव संकेत मैक्रो तनाव में।"
+      "infoTooltip": "<strong>कमोडिटी</strong> व्यापार योग्य गैर-ऊर्जा कमोडिटी टेप जो धातु और सामग्री पर केंद्रित है। ऊर्जा कीमतें ऊर्जा कॉम्प्लेक्स में लाइव; मैक्रो तनाव संकेत मैक्रो तनाव में।",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>क्रिप्टो</strong> प्रमुख क्रिप्टोकरेंसी की लाइव कीमतें, 24 घंटे बदलाव, और वॉल्यूम। डेटा स्रोत: CoinGecko।"

@@ -176,6 +176,7 @@ export function clusterItems(items) {
       sourceTier,
       upstreamImportanceScore,
       corroborationCount,
+      ...(Number.isFinite(primary.credibilityScore) ? { credibilityScore: primary.credibilityScore } : {}),
       isAlert: group.some(i => i.isAlert),
       threat: threatItem?.threat ? { ...threatItem.threat } : (primary.threat ? { ...primary.threat } : undefined),
     };

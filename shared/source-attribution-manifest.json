@@ -3390,6 +3390,20 @@
       ]
     },
     {
+      "host": "en.sge.com.cn",
+      "provider": "en.sge.com.cn",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit en.sge.com.cn and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-physical-premiums.mjs"
+        }
+      ]
+    },
+    {
       "host": "en.sse.net.cn",
       "provider": "en.sse.net.cn",
       "kind": "structured",
@@ -8016,6 +8030,20 @@
         },
         {
           "path": "scripts/seed-portwatch.mjs"
+        }
+      ]
+    },
+    {
+      "host": "severeweather.wmo.int",
+      "provider": "severeweather.wmo.int",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit severeweather.wmo.int and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_weather-alert-select.mjs"
         }
       ]
     },

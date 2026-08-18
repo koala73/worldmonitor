@@ -171,3 +171,30 @@ describe('get_news_intelligence — query and min_importance (U2)', () => {
     assert.equal(data.insights.topStories.length, 2);
   });
 });
+
+describe('get_news_intelligence credibility normalization (#6597)', () => {
+  it('reapplies the high-risk cap to stored scores', () => {
+    const data = envelope([
+      story({ primarySource: 'RT', credibilityScore: 84, uniqueSourceCount: 5 }),
+    ]);
+
+    newsTool._postFilter(data, {});
+
+    assert.equal(data.insights.topStories[0].credibilityScore, 40);
+  });
+
+  it('recomputes missing, non-numeric, and out-of-range stored scores', () => {
+    const data = envelope([
+      story({ primaryTitle: 'missing', primarySource: 'Reuters' }),
+      story({ primaryTitle: 'string', primarySource: 'Reuters', credibilityScore: '99' }),
+      story({ primaryTitle: 'too-high', primarySource: 'Reuters', credibilityScore: 140 }),
+    ]);
+
+    newsTool._postFilter(data, {});
+
+    assert.deepEqual(
+      data.insights.topStories.map(entry => entry.credibilityScore),
+      [84, 84, 84],
+    );
+  });
+});

@@ -55,6 +55,14 @@ message NewsItem {
   // (shared/stocks.json). Uppercase symbols, deduplicated, capped at 8.
   // Empty when no tracked ticker is mentioned. See shared/ticker-extract.js.
   repeated string tickers = 13 [(buf.validate.field).repeated.max_items = 8];
+  // Credibility score (0-100), distinct from importance_score. Measures
+  // source reliability / truthfulness, not newsworthiness. The base score
+  // uses source tier × 30% + propaganda risk × 50% + independent
+  // corroboration × 20%. High propaganda-risk sources (state-controlled
+  // media) are capped at 40 so a highly newsworthy RT/TASS story still
+  // scores low. Third-party bias/factuality ratings are reserved and not
+  // currently applied. See docs/methodology/news-credibility.mdx.
+  int32 credibility_score = 14;
 }
 
 // StoryMeta carries cross-cycle persistence data attached to each news item.

@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 import { DAY, readSectionFreshness, bundleHeartbeatKey, BUNDLE_HEARTBEAT_TTL_SECONDS } from '../scripts/_bundle-runner.mjs';
 import {
+  SUPERSEDED_KEY_TTL_SECONDS,
   atomicSwitch,
   backfillSeedMetaFromActiveVersion,
 } from '../scripts/seed-military-bases.mjs';
@@ -185,6 +186,7 @@ async function startFakeUpstash({
   strings = new Map(),
   geoMembers = new Map(),
   hashes = new Map(),
+  ttls = new Map(),
   beforeCommand,
   failCommand,
   // Delay applied to each GET before responding. Lets a test burn bundle wall
@@ -226,16 +228,24 @@ async function startFakeUpstash({
       const keys = args.slice(1, 1 + keyCount);
       const argv = args.slice(1 + keyCount);
 
+      if (script.includes("return {1, ARGV[1], current or ''}")) {
+        const current = strings.get(keys[0]) ?? '';
+        if (current !== argv[2]) return { result: [0, current] };
+        ttls.delete(keys[2]);
+        ttls.delete(keys[3]);
+        if (current && current !== argv[0]) {
+          ttls.set(keys[4], Number(argv[3]));
+          ttls.set(keys[5], Number(argv[3]));
+        }
+        strings.set(keys[0], argv[0]);
+        strings.set(keys[1], argv[1]);
+        return { result: [1, argv[0], current] };
+      }
       if (script.includes("return {0, current or ''}")) {
         const current = strings.get(keys[0]) ?? '';
         if (current !== argv[0]) return { result: [0, current] };
         strings.set(keys[1], argv[1]);
         return { result: [1, current] };
-      }
-      if (script.includes('return ARGV[1]')) {
-        strings.set(keys[0], argv[0]);
-        strings.set(keys[1], argv[1]);
-        return { result: argv[0] };
       }
     }
     return { error: `Unsupported fake command: ${operation}` };
@@ -307,6 +317,7 @@ async function startFakeUpstash({
     url: `http://127.0.0.1:${address.port}`,
     token: 'isolated-test-token',
     strings,
+    ttls,
     pipelines,
     commands,
     reads,
@@ -341,19 +352,64 @@ async function runMilitaryGate(fakeRedis) {
 }
 
 test('Military-Bases normal publication atomically writes metadata and gates', async () => {
-  const redis = await startFakeUpstash();
   const version = Date.now();
+  const oldVersion = String(version - 60_000);
   const fetchedAt = version - 60_000;
+  const newGeoKey = `military:bases:geo:${version}`;
+  const newMetaKey = `military:bases:meta:${version}`;
+  const oldGeoKey = `military:bases:geo:${oldVersion}`;
+  const oldMetaKey = `military:bases:meta:${oldVersion}`;
+  const redis = await startFakeUpstash({
+    strings: new Map([['military:bases:active', oldVersion]]),
+    ttls: new Map([[newGeoKey, 1800], [newMetaKey, 1800]]),
+  });
   try {
-    await atomicSwitch(redis.url, redis.token, '', version, 42, fetchedAt);
+    const superseded = await atomicSwitch(
+      redis.url,
+      redis.token,
+      '',
+      version,
+      42,
+      fetchedAt,
+      undefined,
+      oldVersion,
+    );
     assert.equal(redis.commands.length, 1);
-    const [operation, script, keyCount, activeKey, seedMetaKey, publishedVersion, payload] = redis.commands[0];
+    const [
+      operation,
+      script,
+      keyCount,
+      activeKey,
+      seedMetaKey,
+      geoKey,
+      metaKey,
+      displacedGeoKey,
+      displacedMetaKey,
+      publishedVersion,
+      payload,
+      expectedActive,
+      cleanupTtl,
+    ] = redis.commands[0];
     assert.equal(operation, 'EVAL');
     assert.match(script, /redis\.call\('SET', KEYS\[1\]/);
-    assert.equal(keyCount, '2');
+    // The version's own keys are PERSISTed inside the publish EVAL so the
+    // self-healing TTL armed during seeding (#6845) is dropped atomically with
+    // the version going live.
+    assert.match(script, /redis\.call\('PERSIST', KEYS\[3\]/);
+    assert.match(script, /redis\.call\('PERSIST', KEYS\[4\]/);
+    assert.match(script, /redis\.call\('EXPIRE', KEYS\[5\], ARGV\[4\]\)/);
+    assert.match(script, /redis\.call\('EXPIRE', KEYS\[6\], ARGV\[4\]\)/);
+    assert.equal(keyCount, '6');
     assert.equal(activeKey, 'military:bases:active');
     assert.equal(seedMetaKey, 'seed-meta:military:bases');
+    assert.equal(geoKey, newGeoKey);
+    assert.equal(metaKey, newMetaKey);
+    assert.equal(displacedGeoKey, oldGeoKey);
+    assert.equal(displacedMetaKey, oldMetaKey);
     assert.equal(publishedVersion, String(version));
+    assert.equal(expectedActive, oldVersion);
+    assert.equal(cleanupTtl, String(SUPERSEDED_KEY_TTL_SECONDS));
+    assert.deepEqual(superseded, { oldVersion, oldGeoKey, oldMetaKey });
     assert.deepEqual(JSON.parse(payload), {
       fetchedAt,
       recordCount: 42,
@@ -361,6 +417,10 @@ test('Military-Bases normal publication atomically writes metadata and gates', a
     });
     assert.equal(redis.strings.get(activeKey), String(version));
     assert.equal(redis.strings.get(seedMetaKey), payload);
+    assert.equal(redis.ttls.has(newGeoKey), false);
+    assert.equal(redis.ttls.has(newMetaKey), false);
+    assert.equal(redis.ttls.get(oldGeoKey), SUPERSEDED_KEY_TTL_SECONDS);
+    assert.equal(redis.ttls.get(oldMetaKey), SUPERSEDED_KEY_TTL_SECONDS);
 
     const { code, stdout, stderr } = await runMilitaryGate(redis);
 

@@ -35,15 +35,15 @@ const REQUIRED_PR_SCRIPTS = [
   'test:resilience-validation-smoke',
 ] as const;
 
-// Every spec the combined ci-smoke invocation must keep exercising. The three
-// specs used to be three separate workflow steps; now that one script carries
-// them, dropping a spec from its command line is the new way a guard can stop
-// being invoked while CI stays green — so the spec list is pinned here.
+// Every regression guard the combined ci-smoke invocation must keep exercising.
+// Dropping a spec from its command line is how a guard can stop being invoked
+// while CI stays green, so the required spec list is pinned here.
 const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/variant-live-smoke.spec.ts',
   'e2e/mcp-grant-consent.spec.ts',
   'e2e/dashboard-news-request-budget.spec.ts',
   'e2e/keyword-spike-flow.spec.ts',
+  'e2e/breaking-news-banner-provenance.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [

@@ -303,6 +303,7 @@ Keyword spikes, hotspot escalations, and military surges remain inputs to correl
 - **RSS source tier gating** — Tier 3+ sources (niche outlets, aggregators) require a non-keyword classification (`threat.source` is `ml` or `llm`) to fire an alert; Tier 1–2 sources bypass this gate
 - **RSS story-phase gate** — sustained and fading stories are suppressed; the banner is reserved for breaking/developing stories or items without story metadata
 - **RSS importance floor** — items with `importanceScore < 30` are too low-signal for the banner
+- **RSS credibility score** — each headline also carries a 0-100 `credibilityScore` for source reliability (tier, propaganda risk, corroboration), distinct from importance; see [News Credibility Score](/methodology/news-credibility)
 - **RSS startup grace** — RSS alerts are suppressed for the first 10 seconds after app load so the initial feed fetch does not replay old articles as breaking news
 - **RSS user sensitivity control** — configurable between `critical-only` (only critical severity fires) and `critical-and-high` (critical and high severities both fire)
 - **OREF direct escalation** — OREF siren alerts are exempt from the RSS gates and global cooldown; any non-empty siren batch raises a critical alert when alerts are enabled and the event is not a duplicate

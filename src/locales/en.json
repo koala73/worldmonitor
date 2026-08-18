@@ -1313,7 +1313,7 @@
         "ucdpEvents": "Armed Conflict Events",
         "displacementFlows": "Displacement Flows",
         "climateAnomalies": "Climate Anomalies",
-        "weatherAlerts": "US + Canada Weather Alerts (NWS, ECCC)",
+        "weatherAlerts": "Severe Weather Alerts (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Chokepoints",
         "economicCenters": "Economic Centers",
         "criticalMinerals": "Critical Minerals",
@@ -1394,7 +1394,7 @@
           "infraDatacenters": "AI compute clusters >=10,000 GPUs",
           "infraOutages": "Internet blackouts and service disruptions",
           "naturalEventsTech": "Earthquakes, storms, fires (may affect data centers)",
-          "weatherAlerts": "Severe weather alerts in the United States and Canada (NWS, ECCC)",
+          "weatherAlerts": "Official severe weather alerts from national meteorological services (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Stock exchanges & central banks",
           "countriesOverlay": "Country name overlays",
           "financeExchanges": "Major global exchanges by market tier",
@@ -1406,7 +1406,7 @@
           "financeOutages": "Internet disruptions that can impact market operations",
           "financeCyberThreats": "Security events around financial infrastructure",
           "macroWaterways": "Strategic chokepoints for commodity shipping",
-          "weatherAlertsMarket": "Severe weather events in the United States and Canada with market relevance (NWS, ECCC)",
+          "weatherAlertsMarket": "Official severe weather alerts with market relevance (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Earthquakes, fires, floods, and other natural disruptions",
           "timeRecent": "Filter time-based data to recent hours",
           "timeExtended": "Show data from past week, month, or all time",
@@ -1991,7 +1991,17 @@
       "infoTooltip": "<strong>Sector Heatmap</strong> S&P 500 sector performance at a glance. Color intensity reflects the magnitude of daily change. Green = gains, Red = losses."
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."

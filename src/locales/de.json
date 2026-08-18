@@ -1017,7 +1017,7 @@
         "ucdpEvents": "Bewaffnete Konfliktereignisse",
         "displacementFlows": "Fluchtbewegungen",
         "climateAnomalies": "Klimaanomalien",
-        "weatherAlerts": "US- und Kanada-Wetterwarnungen (NWS, ECCC)",
+        "weatherAlerts": "Unwetterwarnungen (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Engpässe",
         "economicCenters": "Wirtschaftszentren",
         "criticalMinerals": "Kritische Mineralien",
@@ -1107,7 +1107,7 @@
           "infraDatacenters": "KI-Rechencluster >=10.000 GPUs",
           "infraOutages": "Internetausfälle und Dienstunterbrechungen",
           "naturalEventsTech": "Erdbeben, Stürme, Brände (kann Rechenzentren beeinträchtigen)",
-          "weatherAlerts": "Unwetterwarnungen in den USA und Kanada (NWS, ECCC)",
+          "weatherAlerts": "Offizielle Unwetterwarnungen nationaler Wetterdienste (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Börsen & Zentralbanken",
           "countriesOverlay": "Ländernamen-Overlays",
           "financeExchanges": "Wichtige globale Börsen nach Marktebene",
@@ -1119,7 +1119,7 @@
           "financeOutages": "Internetstörungen, die sich auf den Marktbetrieb auswirken können",
           "financeCyberThreats": "Sicherheitsereignisse rund um die Finanzinfrastruktur",
           "macroWaterways": "Strategische Engpässe für die Rohstoffschifffahrt",
-          "weatherAlertsMarket": "Marktrelevante Unwetterereignisse in den USA und Kanada (NWS, ECCC)",
+          "weatherAlertsMarket": "Offizielle marktrelevante Unwetterwarnungen (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Erdbeben, Brände, Überschwemmungen und andere natürliche Störungen",
           "timeRecent": "Zeitbasierte Daten auf die letzten Stunden filtern",
           "timeExtended": "Daten der letzten Woche, des letzten Monats oder aller Zeiten anzeigen",
@@ -1911,7 +1911,17 @@
       "topTargets": "Top-Zielländer"
     },
     "commodities": {
-      "infoTooltip": "<strong>Rohstoffe</strong> Handelbare Nicht-Energie-Rohstoffe mit Schwerpunkt auf Metallen und Materialien. Energiepreise finden Sie im Energiekomplex, Makro-Stressindikatoren unter Makro-Stress."
+      "infoTooltip": "<strong>Rohstoffe</strong> Handelbare Nicht-Energie-Rohstoffe mit Schwerpunkt auf Metallen und Materialien. Energiepreise finden Sie im Energiekomplex, Makro-Stressindikatoren unter Makro-Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Krypto</strong> Live-Kurse, 24h-Veränderungen und Volumen der wichtigsten Kryptowährungen. Daten von CoinGecko."

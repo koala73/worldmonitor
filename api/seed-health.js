@@ -101,6 +101,13 @@ const SEED_DOMAINS = {
   // Aligned with health.js SEED_META (intervalMin = maxStaleMin / 2)
   'market:stocks':            { key: 'seed-meta:market:stocks',            intervalMin: 15 },
   'market:commodities':       { key: 'seed-meta:market:commodities',       intervalMin: 15 },
+  // Daily SGE prints; intervalMin*2 matches api/health.js's 72h run budget.
+  'market:physical-premium':  {
+    key: 'seed-meta:market:physical-premium',
+    intervalMin: 2160,
+    minRecordCount: 2,
+    activationKey: 'seed-activated:market:physical-premium',
+  },
   'market:gold-extended':     { key: 'seed-meta:market:gold-extended',     intervalMin: 15 },
   'market:gold-etf-flows':    { key: 'seed-meta:market:gold-etf-flows',    intervalMin: 1440 },
   // maxStaleMin in health.js is 44640 (~31 days; IMF IFS is monthly w/ 2-3mo lag).

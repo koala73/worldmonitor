@@ -30,7 +30,7 @@
 - [ ] New RSS feed domains added to `api/rss-proxy.js` allowlist (if adding feeds)
 - [ ] No API keys or secrets committed
 - [ ] TypeScript compiles without errors (`npm run typecheck`)
-- [ ] New or repointed health probes have a completed Railway-side pre-seed, or an owner-bound baseline acknowledgement with an entry-level `expiresAt` bounded to the first scheduled cron window (if applicable)
+- [ ] New or repointed health probes have a completed Railway-side pre-seed, a one-way durable activation marker for an intentionally gated producer, or an owner-bound baseline acknowledgement with an entry-level `expiresAt` bounded to the first scheduled cron window (if applicable)
 
 ## Documentation Alignment Checklist
 

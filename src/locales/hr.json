@@ -1439,7 +1439,7 @@
         "ucdpEvents": "Događaji Oružanih Konfliktaa",
         "displacementFlows": "Tokovi Raseljenih",
         "climateAnomalies": "Klimatske Anomalije",
-        "weatherAlerts": "Vremenska upozorenja za SAD i Kanadu (NWS, ECCC)",
+        "weatherAlerts": "Upozorenja za opasne vremenske prilike (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Uska Grla",
         "economicCenters": "Ekonomski Centri",
         "criticalMinerals": "Kritični Minerali",
@@ -1520,7 +1520,7 @@
           "infraDatacenters": "AI compute klasteri >=10.000 GPU-a",
           "infraOutages": "Internetske crne točke i prekidi usluga",
           "naturalEventsTech": "Zemljotresi, oluje, požari (mogu utjecati na podatkovne centre)",
-          "weatherAlerts": "Upozorenja za ekstremne vremenske prilike u SAD-u i Kanadi (NWS, ECCC)",
+          "weatherAlerts": "Službena upozorenja za opasne vremenske prilike nacionalnih meteoroloških službi (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Berzanske bolnice i središnje banke",
           "countriesOverlay": "Oznake imena država",
           "financeExchanges": "Glavne svjetske berze po razredu tržišta",
@@ -1532,7 +1532,7 @@
           "financeOutages": "Internetski prekidi koji mogu utjecati na rad tržišta",
           "financeCyberThreats": "Sigurnosni incidenti oko financijske infrastrukture",
           "macroWaterways": "Strateška uska grla za robno brodarstvo",
-          "weatherAlertsMarket": "Ekstremne vremenske prilike u SAD-u i Kanadi važne za tržište (NWS, ECCC)",
+          "weatherAlertsMarket": "Službena upozorenja za opasne vremenske prilike važna za tržišta (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Zemljotresi, požari, poplave i ostali prirodni poremećaji",
           "timeRecent": "Filtriraj vremenski ovisne podatke na nedavne sate",
           "timeExtended": "Prikaži podatke iz prošlog tjedna, mjeseca ili cijelog vremena",
@@ -2145,7 +2145,17 @@
       "infoTooltip": "<strong>Toplinska karta sektora</strong> Izvedba S&P 500 sektora na prvi pogled. Intenzitet boje odražava veličinu dnevne promjene. Zelena = dobit, Crvena = gubitak."
     },
     "commodities": {
-      "infoTooltip": "<strong>Robe</strong> Trgovinska robu fokusirana na metale i materijale, bez energenata. Cijene energije nalaze se u Energy Complex; makroekonomski indikatori stresa nalaze se u Macro Stress."
+      "infoTooltip": "<strong>Robe</strong> Trgovinska robu fokusirana na metale i materijale, bez energenata. Cijene energije nalaze se u Energy Complex; makroekonomski indikatori stresa nalaze se u Macro Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Kriptovalute</strong> Životijedne cijene, 24h promjene i volumen za glavne kriptovalute. Podaci su preuzeti s CoinGecka."

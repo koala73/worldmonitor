@@ -28,6 +28,7 @@ export {
   hasReviewedSourceType,
   isStateAffiliatedSource,
 } from '../../shared/source-provenance';
+export { computeCredibilityScore } from '../../shared/news-credibility.js';
 export type {
   PropagandaRisk,
   SourceProvenanceState,

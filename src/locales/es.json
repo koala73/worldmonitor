@@ -1019,7 +1019,7 @@
         "ucdpEvents": "Eventos de la UCDP",
         "displacementFlows": "Flujos de desplazamiento",
         "climateAnomalies": "Anomalías climáticas",
-        "weatherAlerts": "Alertas meteorológicas de EE. UU. y Canadá (NWS, ECCC)",
+        "weatherAlerts": "Alertas de clima severo (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Vías navegables estratégicas",
         "economicCenters": "Centros Económicos",
         "criticalMinerals": "Minerales críticos",
@@ -1109,7 +1109,7 @@
           "infraDatacenters": "Clústeres de computación de IA >=10 000 GPU",
           "infraOutages": "Apagones de Internet e interrupciones del servicio.",
           "naturalEventsTech": "Terremotos, tormentas, incendios (pueden afectar a los centros de datos)",
-          "weatherAlerts": "Alertas de clima severo en EE. UU. y Canadá (NWS, ECCC)",
+          "weatherAlerts": "Alertas oficiales de clima severo de los servicios meteorológicos nacionales (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Bolsas de valores y bancos centrales",
           "countriesOverlay": "Superposiciones de nombres de países",
           "financeExchanges": "Principales intercambios globales por nivel de mercado",
@@ -1121,7 +1121,7 @@
           "financeOutages": "Interrupciones de Internet que pueden afectar las operaciones del mercado",
           "financeCyberThreats": "Eventos de seguridad en torno a la infraestructura financiera",
           "macroWaterways": "Puntos de estrangulamiento estratégicos para el transporte de mercancías",
-          "weatherAlertsMarket": "Eventos climáticos severos en EE. UU. y Canadá con relevancia para el mercado (NWS, ECCC)",
+          "weatherAlertsMarket": "Alertas oficiales de clima severo con relevancia para el mercado (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Terremotos, incendios, inundaciones y otras perturbaciones naturales",
           "timeRecent": "Filtrar datos basados en el tiempo a horas recientes",
           "timeExtended": "Mostrar datos de la semana pasada, el mes o todo el tiempo",
@@ -1914,7 +1914,17 @@
       "topTargets": "Países objetivo principales"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."

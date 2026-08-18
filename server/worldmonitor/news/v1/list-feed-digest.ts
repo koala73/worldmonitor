@@ -27,7 +27,12 @@ import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live
 import { buildTickerDictionary, extractTickers } from '../../../../shared/ticker-extract.js';
 import stocksData from '../../../../shared/stocks.json';
 import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
-import { getSourceTier } from '../../../_shared/source-tiers';
+import { getSourceTier, hasSourceTier } from '../../../_shared/source-tiers';
+import {
+  getSourcePropagandaRisk,
+  hasReviewedPropagandaRisk,
+} from '../../../../shared/source-provenance';
+import { computeCredibilityScore } from '../../../../shared/news-credibility.js';
 import {
   STORY_TRACK_KEY,
   STORY_SOURCES_KEY,
@@ -40,7 +45,11 @@ import {
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import diplomacyKeywordsData from '../../../../shared/diplomacy-keywords.json';
 // #6428: entity corroboration must count publishers, not feed labels.
-import { MIN_CORROBORATING_PUBLISHERS, publisherFamilyFor } from '../../../../shared/publisher-families.js';
+import {
+  MIN_CORROBORATING_PUBLISHERS,
+  PUBLISHER_FAMILIES,
+  publisherFamilyFor,
+} from '../../../../shared/publisher-families.js';
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
@@ -192,6 +201,7 @@ interface ParsedItem {
   confidence: number;
   classSource: 'keyword' | 'keyword-historical-downgrade' | 'llm';
   importanceScore: number;
+  credibilityScore: number;
   corroborationCount: number;
   entityCorroborationCount: number;
   titleHash?: string;
@@ -227,6 +237,40 @@ interface ParsedItem {
   // ≤8 (proto NewsItem.tickers max_items=8). Optional so items rehydrated
   // from pre-rollout cache rows stay valid; toProtoItem defaults to [].
   tickers?: string[];
+}
+
+type CredibilitySourceItem = Pick<ParsedItem, 'source' | 'originPublisher'>;
+
+function resolveCredibilitySourceName(item: CredibilitySourceItem): string {
+  const rawName = item.originPublisher.trim() || item.source.trim();
+  const family = publisherFamilyFor(rawName);
+  const familyEntry = PUBLISHER_FAMILIES[family];
+  const candidates = [
+    rawName,
+    familyEntry?.publisher,
+    ...(familyEntry?.labels ?? []),
+  ].filter((candidate): candidate is string =>
+    typeof candidate === 'string' && candidate.length > 0);
+
+  // Prefer one identity reviewed by both registries so tier and risk describe
+  // the same publisher; then degrade toward whichever curated signal exists.
+  return candidates.find(candidate =>
+    hasReviewedPropagandaRisk(candidate) && hasSourceTier(candidate))
+    ?? candidates.find(hasReviewedPropagandaRisk)
+    ?? candidates.find(hasSourceTier)
+    ?? rawName;
+}
+
+function computeItemCredibilityScore(
+  item: CredibilitySourceItem,
+  independentCorroborationCount: number,
+): number {
+  const sourceName = resolveCredibilitySourceName(item);
+  return computeCredibilityScore({
+    sourceTier: getSourceTier(sourceName),
+    propagandaRisk: getSourcePropagandaRisk(sourceName).risk,
+    independentCorroborationCount,
+  });
 }
 
 const MAX_DESCRIPTION_LEN = 400;
@@ -634,6 +678,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       confidence: threat.confidence,
       classSource: threat.source,
       importanceScore: 0,
+      credibilityScore: 0,
       corroborationCount: 1,
       entityCorroborationCount: 0,
       lang: feed.lang ?? 'en',
@@ -1085,6 +1130,7 @@ function toProtoItem(item: ParsedItem, storyMeta?: ProtoStoryMeta): ProtoNewsIte
     publishedAt: item.publishedAt,
     isAlert: item.isAlert,
     importanceScore: item.importanceScore,
+    credibilityScore: item.credibilityScore,
     corroborationCount: item.corroborationCount ?? 0,
     storyMeta,
     threat: {
@@ -1525,6 +1571,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
           entityCorroborationCount: item.entityCorroborationCount,
         },
       );
+      item.credibilityScore = computeItemCredibilityScore(item, scoringCorroboration);
       if (hasDiplomacyFlashpointSignal(item.title)) diplomacySignalCount++;
       if (item.entityCorroborationCount > 0) entityCorroborationHitCount++;
       if (item.classSource === 'llm') llmScoredCount++;
@@ -1644,6 +1691,8 @@ export const __testing__ = {
   extractFirstDateTag,
   buildStoryTrackHsetFields,
   computeImportanceScore,
+  computeCredibilityScore,
+  computeItemCredibilityScore,
   hasDiplomacyFlashpointSignal,
   promoteDiplomacySeverity,
   computeEntityCorroborationSignals,

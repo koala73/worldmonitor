@@ -11726,6 +11726,31 @@ a.prediction-link:hover {
   border-bottom: 1px solid var(--border);
 }
 
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Chrome declarative WebMCP pseudo-class. */
+.global-procurement-controls:tool-form-active {
+  outline: 2px dashed var(--green);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+}
+
+.global-procurement-controls.webmcp-tool-active {
+  outline: 2px dashed var(--green);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+}
+
+/* Keep the exact declaring controls in Chrome's active schema and visually
+ * distinguish the pending state. Event handlers block competing interaction;
+ * pointer targeting must remain intact so panel dragging still sees controls. */
+.global-procurement-controls.webmcp-request-pending > :not([data-procurement-reset]) {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.global-procurement-controls.webmcp-request-pending > .global-procurement-toggle:focus-within {
+  opacity: 1;
+}
+
 .global-procurement-toggle {
   display: flex;
   align-items: center;
@@ -11756,7 +11781,8 @@ a.prediction-link:hover {
 
 .global-procurement-input:focus,
 .global-procurement-select:focus {
-  outline: 1px solid var(--green);
+  outline: 2px solid var(--green);
+  outline-offset: 1px;
   border-color: var(--green);
 }
 
@@ -11774,6 +11800,30 @@ a.prediction-link:hover {
 .global-procurement-apply {
   color: var(--green);
   border-color: color-mix(in srgb, var(--green) 40%, var(--border));
+}
+
+/* biome-ignore lint/correctness/noUnknownPseudoClass: Chrome declarative WebMCP pseudo-class. */
+.global-procurement-apply:tool-submit-active {
+  outline: 2px dashed var(--green);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 18%, transparent);
+}
+
+.global-procurement-controls.webmcp-tool-active .global-procurement-apply {
+  outline: 2px dashed var(--green);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--green) 18%, transparent);
+}
+
+.global-procurement-controls .global-procurement-input:focus-visible,
+.global-procurement-controls .global-procurement-select:focus-visible,
+.global-procurement-controls .global-procurement-toggle input:focus-visible,
+.global-procurement-controls .global-procurement-apply:focus-visible,
+.global-procurement-controls .global-procurement-reset:focus-visible {
+  outline: 2px solid var(--semantic-info);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--semantic-info) 24%, transparent);
+  opacity: 1;
 }
 
 .global-procurement-apply:disabled,
@@ -20801,10 +20851,38 @@ body:has(.tauri-titlebar) .breaking-news-container {
 }
 
 .breaking-alert-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: rgba(255, 255, 255, 0.7);
   white-space: nowrap;
   flex-shrink: 0;
+}
+
+.breaking-alert-provenance {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.breaking-alert-source {
+  min-width: 0;
+}
+
+.breaking-alert .tier-badge,
+.breaking-alert .propaganda-badge {
+  flex-shrink: 0;
+}
+
+.breaking-alert .tier-badge {
+  margin-right: 0;
+}
+
+.breaking-alert .propaganda-badge {
+  margin-left: 0;
 }
 
 .breaking-alert-view-panel,
@@ -25441,6 +25519,32 @@ body.map-width-resizing {
   letter-spacing: 0.04em;
 }
 
+.credibility-score-badge {
+  font-size: calc(8px * var(--wm-panel-effective-scale, 1));
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 1px 5px;
+  border: 1px solid;
+  border-radius: 2px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.credibility-score-badge.band-high {
+  color: var(--green, #4ade80);
+  border-color: color-mix(in srgb, var(--green, #4ade80) 40%, transparent);
+  background: color-mix(in srgb, var(--green, #4ade80) 12%, transparent);
+}
+.credibility-score-badge.band-medium {
+  color: var(--yellow, #eab308);
+  border-color: color-mix(in srgb, var(--yellow, #eab308) 40%, transparent);
+  background: color-mix(in srgb, var(--yellow, #eab308) 12%, transparent);
+}
+.credibility-score-badge.band-low {
+  color: var(--red, #f87171);
+  border-color: color-mix(in srgb, var(--red, #f87171) 40%, transparent);
+  background: color-mix(in srgb, var(--red, #f87171) 12%, transparent);
+}
+
 /* ── Structured Intel Brief Sections ─────────────────────────── */
 .brief-section {
   margin-bottom: 12px;
@@ -26981,6 +27085,8 @@ body.map-width-resizing {
 
   .breaking-alert-meta {
     flex-basis: 100%;
+    flex-wrap: wrap;
+    white-space: normal;
   }
 }
 

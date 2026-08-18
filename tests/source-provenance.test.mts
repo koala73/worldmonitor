@@ -69,6 +69,10 @@ let renderer: {
     tierBadge: string;
   };
   renderCorroboratingSourceRisk: (sourceName: string) => string;
+  renderCredibilityBadge: (
+    sourceName: string,
+    item?: { credibilityScore?: number; corroborationCount?: number },
+  ) => string;
 };
 
 before(async () => {
@@ -227,6 +231,28 @@ describe('source provenance defaults (#5390)', () => {
     assert.match(reviewedWire.tierBadge, />★ Wire</);
 
     assert.match(renderer.renderCorroboratingSourceRisk('Fars News'), />\?</);
+  });
+});
+
+describe('renderCredibilityBadge (#6597)', () => {
+  it('renders a distinct CRED badge with a low band for high-propaganda sources', () => {
+    const html = renderer.renderCredibilityBadge('RT', { credibilityScore: 21 });
+    assert.ok(html.includes('CRED 21'));
+    assert.ok(html.includes('credibility-score-badge'));
+    assert.ok(html.includes('band-low'));
+    assert.ok(!html.includes('importance'));
+  });
+
+  it('renders a high band for wire-service scores', () => {
+    const html = renderer.renderCredibilityBadge('Reuters', { credibilityScore: 80 });
+    assert.ok(html.includes('CRED 80'));
+    assert.ok(html.includes('band-high'));
+  });
+
+  it('computes a low score for RT when the digest field is absent', () => {
+    const html = renderer.renderCredibilityBadge('RT');
+    assert.match(html, /CRED \d+/);
+    assert.ok(html.includes('band-low'));
   });
 });
 

@@ -131,6 +131,12 @@ export interface NewsItem {
   happyCategory?: HappyContentCategory;
   imageUrl?: string;
   importanceScore?: number;
+  /**
+   * 0-100 source-reliability score, distinct from importanceScore.
+   * Measures truthfulness inputs (tier, propaganda risk, corroboration),
+   * not newsworthiness. 0 is a real low score and must not be treated as absent.
+   */
+  credibilityScore?: number;
   corroborationCount?: number;
   storyMeta?: StoryMeta;
   /**

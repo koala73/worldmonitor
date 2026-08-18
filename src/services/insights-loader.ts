@@ -18,6 +18,8 @@ export interface ServerInsightStory {
    */
   uniqueSourceCount?: number;
   importanceScore: number;
+  /** 0-100 source reliability, distinct from importanceScore. Absent on pre-rollout cache. */
+  credibilityScore?: number;
   velocity: { level: string; sourcesPerHour: number };
   isAlert: boolean;
   category: string;

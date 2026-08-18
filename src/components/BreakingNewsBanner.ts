@@ -3,7 +3,9 @@ import { getAlertSettings } from '@/services/breaking-news-alerts';
 import { getSourcePanelId } from '@/config/feeds';
 import { t } from '@/services/i18n';
 import { isMobileDevice } from '@/utils';
+import { rawHtml, trustedHtml } from '@/utils/dom-utils';
 import { sanitizeUrl } from '@/utils/sanitize';
+import { renderPrimarySourceProvenance } from './news/source-provenance';
 
 const MAX_ALERTS = 3;
 const CRITICAL_DISMISS_MS = 60_000;
@@ -266,7 +268,23 @@ export class BreakingNewsBanner {
 
     const metaSpan = document.createElement('span');
     metaSpan.className = 'breaking-alert-meta';
-    metaSpan.textContent = `${alert.source} · ${timeAgo}`;
+
+    const provenance = document.createElement('span');
+    provenance.className = 'breaking-alert-provenance';
+    const { riskBadge, tierBadge } = renderPrimarySourceProvenance(alert.source);
+    this.appendProvenanceBadge(provenance, tierBadge, 'breaking-news banner source tier badge');
+    const sourceName = document.createElement('span');
+    sourceName.className = 'breaking-alert-source';
+    sourceName.textContent = alert.source;
+    provenance.appendChild(sourceName);
+    this.appendProvenanceBadge(provenance, riskBadge, 'breaking-news banner source propaganda badge');
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'breaking-alert-time';
+    timeSpan.textContent = `· ${timeAgo}`;
+
+    metaSpan.appendChild(provenance);
+    metaSpan.appendChild(timeSpan);
 
     content.appendChild(levelSpan);
     content.appendChild(headlineElement);
@@ -292,6 +310,11 @@ export class BreakingNewsBanner {
     el.appendChild(dismissBtn);
 
     return el;
+  }
+
+  private appendProvenanceBadge(parent: HTMLElement, html: string, reason: string): void {
+    if (!html) return;
+    parent.appendChild(rawHtml(trustedHtml(html, reason)));
   }
 
   private formatTimeAgo(date: Date): string {
