@@ -4,7 +4,8 @@
  * Official public mobile feed at emergencyalert.saskatchewan.ca/sapublic.
  * This is not Pelmorex LMD, NAAD, weather:alerts, or a roads feed.
  * The summary JSON carries lifecycle/level; CAP 1.2 JSON details carry
- * severity. Missing CAP severity fails closed — colour/level is not CAP.
+ * severity. Missing CAP severity fails closed at the record — colour/level
+ * is not CAP. One bad enclosure degrades the tick; it does not abort SK.
  */
 
 import { CHROME_UA, MAX_PAYLOAD_BYTES } from '../_seed-utils.mjs';
@@ -19,6 +20,9 @@ export const SASKATCHEWAN_CENTROID = Object.freeze([-106.45, 54]);
 export const SASKALERT_MAX_CONTENT_AGE_MIN = 3 * 24 * 60;
 export const MAX_ALERTS = 100;
 export const MAX_CAP_FETCHES = 40;
+/** Stop starting new CAP fetches after this many ms so the 60s bundle section can finish. */
+export const CAP_PHASE_BUDGET_MS = 38_000;
+export const CAP_CONCURRENCY = 6;
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const CAP_SEVERITY = Object.freeze({
@@ -270,28 +274,82 @@ export async function fetchSaskAlerts(opts = {}) {
     throw new Error(`saskalert: active entry count exceeds ${MAX_CAP_FETCHES}`);
   }
 
+  const verification = { attempted: 0, failed: 0, skippedDeadline: 0 };
   const alerts = [];
   const seen = new Set();
-  for (const entry of active) {
+  const seenCapLinks = new Set();
+  const wallStart = opts.nowWallMs ?? Date.now();
+  const budgetMs = opts.capBudgetMs ?? CAP_PHASE_BUDGET_MS;
+  const concurrency = Math.max(1, opts.capConcurrency ?? CAP_CONCURRENCY);
+  let nextIndex = 0;
+
+  async function hydrateOne(entry) {
+    if ((opts.nowWallMs ?? Date.now()) - wallStart >= budgetMs) {
+      verification.skippedDeadline += 1;
+      return;
+    }
     const capLink = String(entry?.cap_link || '').trim();
     if (!capLink) {
-      throw new Error('saskalert: active entry is missing cap_link');
+      verification.failed += 1;
+      return;
     }
-    const capDocument = await fetchSaskAlertCap(capLink, { fetchFn, timeoutMs, maxBytes, userAgent });
-    const record = normalizeSaskAlertRecord(entry, capDocument, nowMs);
-    if (!record || seen.has(record.id)) continue;
-    seen.add(record.id);
-    alerts.push(record);
-    if (alerts.length > MAX_ALERTS) {
-      throw new Error(`saskalert: normalized alert count exceeds ${MAX_ALERTS}`);
+    if (seenCapLinks.has(capLink)) return;
+    seenCapLinks.add(capLink);
+    verification.attempted += 1;
+    try {
+      const capDocument = await fetchSaskAlertCap(capLink, { fetchFn, timeoutMs, maxBytes, userAgent });
+      const record = normalizeSaskAlertRecord(entry, capDocument, nowMs);
+      if (!record || seen.has(record.id)) return;
+      seen.add(record.id);
+      alerts.push(record);
+    } catch {
+      verification.failed += 1;
     }
+  }
+
+  async function worker() {
+    while (true) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= active.length) return;
+      await hydrateOne(active[index]);
+    }
+  }
+
+  await Promise.all(Array.from(
+    { length: Math.min(concurrency, Math.max(active.length, 1)) },
+    () => worker(),
+  ));
+
+  if (alerts.length > MAX_ALERTS) {
+    throw new Error(`saskalert: normalized alert count exceeds ${MAX_ALERTS}`);
   }
 
   alerts.sort((a, b) => (
     (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9)
     || (b.updatedAt ?? 0) - (a.updatedAt ?? 0)
   ));
-  return { alerts };
+  return { alerts, _capVerification: verification };
+}
+
+export function saskAlertPublishTransform(data) {
+  return { alerts: Array.isArray(data?.alerts) ? data.alerts : [] };
+}
+
+export function saskAlertAfterPublish(data) {
+  const failed = Math.min(100, Math.max(0, Number(data?._capVerification?.failed) || 0));
+  const skippedDeadline = Math.min(100, Math.max(0, Number(data?._capVerification?.skippedDeadline) || 0));
+  if (failed > 0 || skippedDeadline > 0) {
+    return {
+      freshnessMetaPatch: {
+        sourceState: 'degraded',
+        errorCode: 'CAP_VERIFICATION_FAILED',
+        capVerificationFailed: failed,
+        capSkippedDeadline: skippedDeadline,
+      },
+    };
+  }
+  return { freshnessMetaPatch: { sourceState: 'ok' } };
 }
 
 export function validateSaskAlertEnvelope(data) {

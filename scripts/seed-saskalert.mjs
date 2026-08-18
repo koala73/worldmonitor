@@ -6,7 +6,9 @@ import {
   SASKALERT_MAX_CONTENT_AGE_MIN,
   declareSaskAlertRecords,
   fetchSaskAlerts,
+  saskAlertAfterPublish,
   saskAlertContentMeta,
+  saskAlertPublishTransform,
   validateSaskAlertEnvelope,
 } from './lib/saskalert.mjs';
 import {
@@ -31,11 +33,28 @@ runSeed('alerts', 'saskalert', SOURCE.key, () => (
   maxStaleMin: 45,
   contentMeta: saskAlertContentMeta,
   maxContentAgeMin: SASKALERT_MAX_CONTENT_AGE_MIN,
+  publishTransform: saskAlertPublishTransform,
   afterPublish: async (data) => {
-    await rebuildCanadaAlertsUnion({
-      currentSource: { province: 'SK', snapshot: data },
-    });
-    return { freshnessMetaPatch: { sourceState: 'ok' } };
+    const diagnostics = saskAlertAfterPublish(data);
+    try {
+      await rebuildCanadaAlertsUnion({
+        currentSource: {
+          province: 'SK',
+          snapshot: saskAlertPublishTransform(data),
+          metaPatch: diagnostics.freshnessMetaPatch,
+        },
+      });
+      return diagnostics;
+    } catch (err) {
+      console.error('saskalert: canadaAlerts union rebuild failed:', err.message || err);
+      return {
+        freshnessMetaPatch: {
+          ...diagnostics.freshnessMetaPatch,
+          sourceState: 'degraded',
+          errorCode: diagnostics.freshnessMetaPatch.errorCode || 'CANADA_ALERT_UNION_REBUILD_FAILED',
+        },
+      };
+    }
   },
 }).catch((err) => {
   const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';

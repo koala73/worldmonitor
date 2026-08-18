@@ -14,13 +14,16 @@ import {
   declareSaskAlertRecords,
   fetchSaskAlerts,
   isAllowedSaskAlertHost,
+  isEndedCapAlert,
   isEndedSummaryEntry,
   mapSaskAlertSeverity,
   normalizeSaskAlertRecord,
   parseSaskAlertCap,
   parseSaskAlertCoordinates,
   parseSaskAlertFeed,
+  saskAlertAfterPublish,
   saskAlertContentMeta,
+  saskAlertPublishTransform,
   validateSaskAlertEnvelope,
 } from '../scripts/lib/saskalert.mjs';
 
@@ -104,6 +107,8 @@ test('pins the official SaskAlert host and rejects lookalikes', () => {
   assert.equal(isAllowedSaskAlertHost('http://emergencyalert.saskatchewan.ca/sapublic/feed.json'), false);
   assert.equal(isAllowedSaskAlertHost('https://emergencyalert.saskatchewan.ca.evil.test/feed.json'), false);
   assert.equal(isAllowedSaskAlertHost('https://user@emergencyalert.saskatchewan.ca/feed.json'), false);
+  assert.equal(isAllowedSaskAlertHost('https://emergencyalert.saskatchewan.ca:8443/feed.json'), false);
+  assert.equal(isAllowedSaskAlertHost('https://user:pass@emergencyalert.saskatchewan.ca/feed.json'), false);
 });
 
 test('fetches the summary feed then only active CAP details', async () => {
@@ -133,9 +138,11 @@ test('fetches the summary feed then only active CAP details', async () => {
   assert.equal(requested[0].options.redirect, 'error');
   assert.match(requested[0].options.headers['User-Agent'], /Mozilla/);
   assert.equal(requested[1].url, feed.entries[1].cap_link);
+  assert.equal(data._capVerification.failed, 0);
+  assert.equal(saskAlertAfterPublish(data).freshnessMetaPatch.sourceState, 'ok');
 });
 
-test('fails closed when an active entry has no cap_link', async () => {
+test('skips a missing cap_link instead of aborting the SK tick', async () => {
   const broken = structuredClone(feed);
   delete broken.entries[1].cap_link;
   broken.entries = [broken.entries[1]];
@@ -143,7 +150,145 @@ test('fails closed when an active entry has no cap_link', async () => {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
-  await assert.rejects(fetchSaskAlerts({ fetchFn, nowMs: NOW }), /missing cap_link/);
+  const data = await fetchSaskAlerts({ fetchFn, nowMs: NOW });
+  assert.equal(data.alerts.length, 0);
+  assert.equal(data._capVerification.failed, 1);
+});
+
+test('rejects an off-host feed URL before fetchFn runs', async () => {
+  const requested = [];
+  const fetchFn = async (url) => {
+    requested.push(String(url));
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  await assert.rejects(
+    fetchSaskAlerts({ url: 'https://evil.example/feed.json', fetchFn, nowMs: NOW }),
+    /allowlist/,
+  );
+  assert.deepEqual(requested, []);
+});
+
+test('does not fetch an off-host cap_link and still publishes siblings', async () => {
+  const mixed = structuredClone(feed);
+  mixed.entries = [
+    {
+      ...feed.entries[1],
+      identifier: 'good-cap',
+      cap_link: feed.entries[1].cap_link,
+    },
+    {
+      ...feed.entries[1],
+      identifier: 'evil-cap',
+      cap_link: 'https://evil.example/cap.json',
+    },
+  ];
+  const requested = [];
+  const fetchFn = async (url) => {
+    requested.push(String(url));
+    if (String(url).endsWith('feed.json')) {
+      return new Response(JSON.stringify(mixed), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (String(url).endsWith('48404.json')) {
+      return new Response(JSON.stringify(capActive), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  };
+  const data = await fetchSaskAlerts({ fetchFn, nowMs: NOW });
+  assert.equal(data.alerts.length, 1);
+  assert.equal(data.alerts[0].id, 'sk-saskalert-good-cap');
+  assert.equal(data._capVerification.failed, 1);
+  assert.ok(!requested.some((url) => url.includes('evil.example')));
+});
+
+test('one CAP HTTP failure still publishes the remaining SK records', async () => {
+  const mixed = structuredClone(feed);
+  mixed.entries = [
+    { ...feed.entries[1], identifier: 'ok-1', cap_link: 'https://emergencyalert.saskatchewan.ca/sapublic/ok.json' },
+    { ...feed.entries[1], identifier: 'bad-1', cap_link: 'https://emergencyalert.saskatchewan.ca/sapublic/bad.json' },
+  ];
+  const fetchFn = async (url) => {
+    if (String(url).endsWith('feed.json')) {
+      return new Response(JSON.stringify(mixed), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (String(url).endsWith('ok.json')) {
+      return new Response(JSON.stringify(capActive), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    return new Response('missing', { status: 404 });
+  };
+  const data = await fetchSaskAlerts({ fetchFn, nowMs: NOW, capConcurrency: 1 });
+  assert.equal(data.alerts.length, 1);
+  assert.equal(data._capVerification.failed, 1);
+  assert.equal(saskAlertAfterPublish(data).freshnessMetaPatch.sourceState, 'degraded');
+  assert.deepEqual(saskAlertPublishTransform(data), { alerts: data.alerts });
+});
+
+test('stops starting CAP fetches once the section budget is spent', async () => {
+  const crowded = structuredClone(feed);
+  crowded.entries = [
+    { ...feed.entries[1], identifier: 'late-1', cap_link: 'https://emergencyalert.saskatchewan.ca/sapublic/late-1.json' },
+    { ...feed.entries[1], identifier: 'late-2', cap_link: 'https://emergencyalert.saskatchewan.ca/sapublic/late-2.json' },
+  ];
+  const requested = [];
+  const fetchFn = async (url) => {
+    requested.push(String(url));
+    if (String(url).endsWith('feed.json')) {
+      return new Response(JSON.stringify(crowded), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    throw new Error(`unexpected CAP fetch ${url}`);
+  };
+  const data = await fetchSaskAlerts({
+    fetchFn,
+    nowMs: NOW,
+    nowWallMs: NOW,
+    capBudgetMs: 0,
+    capConcurrency: 1,
+  });
+  assert.equal(data.alerts.length, 0);
+  assert.ok(data._capVerification.skippedDeadline >= 2);
+  assert.equal(requested.length, 1);
+  assert.ok(requested[0].endsWith('feed.json'));
+});
+
+test('drops expired, Exercise, Restricted, and Cancel CAP records without AllClear tokens', () => {
+  const baseEntry = { ...feed.entries[1], summary_en: 'Active advisory', event_en: 'Drinking Water' };
+  const cloneInfo = (patch) => {
+    const copy = structuredClone(capActive);
+    Object.assign(copy.alert, patch.alert || {});
+    Object.assign(copy.alert.info[0], patch.info || {});
+    return copy;
+  };
+  assert.equal(
+    normalizeSaskAlertRecord(baseEntry, cloneInfo({ info: { expires: '2026-08-17T00:00:00.000Z', urgency: 'Immediate', responseType: 'Prepare', headline: 'Boil water', description: 'Stay tuned' } }), NOW),
+    null,
+  );
+  assert.equal(isEndedCapAlert(cloneInfo({ alert: { status: 'Exercise' } }).alert, cloneInfo({ alert: { status: 'Exercise' } }).alert.info[0], NOW), true);
+  assert.equal(
+    normalizeSaskAlertRecord(baseEntry, cloneInfo({ alert: { status: 'Exercise' }, info: { headline: 'Drill', description: 'Practice only' } }), NOW),
+    null,
+  );
+  assert.equal(
+    normalizeSaskAlertRecord(baseEntry, cloneInfo({ alert: { scope: 'Restricted' }, info: { headline: 'Internal', description: 'Staff only' } }), NOW),
+    null,
+  );
+  assert.equal(
+    normalizeSaskAlertRecord(baseEntry, cloneInfo({ alert: { msgType: 'Cancel' }, info: { headline: 'Withdrawn', description: 'No longer in force' } }), NOW),
+    null,
+  );
 });
 
 test('exposes the zero-valid envelope and content-age contract', () => {
@@ -170,6 +315,14 @@ test('registers the province seeder in the Canada bundle without touching roads 
   assert.match(bundle, /dependsOn: \['BC-Emergency-Info'\]/);
   assert.match(union, /province: 'SK'/);
   assert.match(union, /alerts:canada:saskalert:v1/);
+  assert.match(seeder, /publishTransform: saskAlertPublishTransform/);
+  assert.match(seeder, /CANADA_ALERT_UNION_REBUILD_FAILED/);
+  const baseline = JSON.parse(readFileSync(join(root, 'scripts/seed-freshness-baseline.json'), 'utf8'));
+  const sk = baseline.acknowledged.find((entry) => entry.name === 'canadaAlertsSkSource');
+  const ab = baseline.acknowledged.find((entry) => entry.name === 'canadaAlertsAbSource');
+  assert.equal(sk.status, 'STALE_SEED');
+  assert.equal(sk.expiresAt, ab.expiresAt);
+  assert.equal(sk.cutover.firstScheduledRunAt, ab.cutover.firstScheduledRunAt);
 });
 
 test('parses the live feed and CAP shapes used by the fixtures', () => {

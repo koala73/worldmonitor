@@ -62,14 +62,14 @@
     },
     {
       "name": "canadaAlertsSkSource",
-      "status": "EMPTY",
+      "status": "STALE_SEED",
       "issue": 6659,
-      "reason": "The SaskAlert source health row is new and cannot publish until its first Canada bundle tick runs. EMPTY is acknowledged only through that first Railway */5 tick; it must block immediately afterward.",
-      "expiresAt": "2026-08-19T06:30:00.000Z",
+      "reason": "The SaskAlert source health row is new and cannot publish until its first Canada bundle tick runs. Never-published classifyKey is STALE_SEED, not EMPTY; acknowledge only through that first Railway */5 tick. EMPTY after a successful publish is a vanished payload and must block.",
+      "expiresAt": "2026-08-19T12:05:00.000Z",
       "cutover": {
         "probeKey": "seed-meta:alerts:saskalert",
-        "activatedAt": "2026-08-18T06:35:00.000Z",
-        "firstScheduledRunAt": "2026-08-19T06:30:00.000Z"
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:05:00.000Z"
       }
     },
     {
