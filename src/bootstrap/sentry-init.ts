@@ -868,6 +868,14 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
         || (excType === 'SyntaxError' && /^Unexpected (?:token|keyword)/.test(msg))
         || /^SyntaxError: Unexpected (?:token|keyword)/.test(msg)
         || /Invalid or unexpected token/.test(msg)
+        // V8 wording when HTML (or other non-JS) is parsed as a script:
+        // Electron / in-app wrappers fetch the SPA document (`/dashboard`)
+        // as if it were JS, then report the parse failure against the
+        // document URL. Our compiled bundle cannot emit this at runtime —
+        // a genuine first-party SyntaxError keeps a source-mapped .ts /
+        // hashed-chunk frame (hasFirstParty → preserved). Same family as
+        // Unexpected token/keyword above (WORLDMONITOR-ZS).
+        || /^(?:SyntaxError: )?Malformed arrow function parameter list/.test(msg)
         || /^Operation timed out/.test(msg)
         || /Cannot inject key into script value/.test(msg)
         || /Connection lost while action was in flight/.test(msg)
