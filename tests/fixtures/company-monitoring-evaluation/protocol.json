@@ -1,7 +1,7 @@
 {
   "protocolVersion": "cm_eval_v1",
   "frozenAt": "2026-08-05T00:00:00.000Z",
-  "firstScoredRunStartedAt": "2026-08-18T12:36:27.000Z",
+  "firstScoredRunStartedAt": null,
   "approval": {
     "status": "approved",
     "approverName": "Elie Habib",
@@ -38,13 +38,13 @@
       "boundMethod": "exact_one_sided_poisson_garwood"
     },
     "result": {
-      "status": "complete",
-      "companyYears": 150,
-      "materialEventCount": 35,
-      "pointEstimate": 0.23333333333333334,
-      "lowerBound": 0.1844297985730325,
-      "privateSelectionManifestSha256": "1fa728eb15a03ef74579e964bf08a2929a7fa7790f56ebd7a6ca53b0d95de900",
-      "aggregateEvidenceSha256": "055353c30f12a1a337a87035329b0d3d3ce75c29b1adb71f70465b2e28f7ccad"
+      "status": "not_run",
+      "companyYears": 0,
+      "materialEventCount": 0,
+      "pointEstimate": null,
+      "lowerBound": null,
+      "privateSelectionManifestSha256": null,
+      "aggregateEvidenceSha256": null
     }
   },
   "rediscovery": {
@@ -64,13 +64,13 @@
       "boundMethod": "exact_one_sided_clopper_pearson"
     },
     "result": {
-      "status": "complete",
-      "pairCount": 100,
-      "rediscoveredCount": 15,
-      "pointEstimate": 0.15,
-      "lowerBound": 0.10501263068941558,
-      "privatePairManifestSha256": "233930de14ee413856833d850881f228eed335325476d6b200af165cb6fa5965",
-      "aggregateEvidenceSha256": "c1d688f6a23d03e025fe41a9c76e47a3a750b460a78b45fa66855993ef260238"
+      "status": "not_run",
+      "pairCount": 0,
+      "rediscoveredCount": 0,
+      "pointEstimate": null,
+      "lowerBound": null,
+      "privatePairManifestSha256": null,
+      "aggregateEvidenceSha256": null
     }
   },
   "historicalUsefulness": {
@@ -424,12 +424,10 @@
     "evaluatedAt": "2026-08-18T13:03:05.000Z",
     "decision": "stop",
     "reasons": [
-      "base_rate_lower_bound_below_floor",
-      "base_rate_point_below_floor",
+      "base_rate_not_complete",
       "historical_usefulness_not_complete",
       "provider_policy_not_approved",
-      "rediscovery_lower_bound_below_floor",
-      "rediscovery_point_below_floor"
+      "rediscovery_not_complete"
     ],
     "permittedImplementation": [
       "fixtures",

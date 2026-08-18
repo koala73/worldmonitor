@@ -3,14 +3,12 @@ import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import {
-  ALLOWED_FIXTURE_VALUE,
   DIGEST_COVERED_TOP_LEVEL_KEYS,
-  LITERAL_PINNED_KEYS,
-  RAW_EVIDENCE_KEYS,
   ROOT_KEYS,
   adaptiveExpectedCalibrationError,
   asNumber,
   asObject,
+  canonicalJson,
   evaluateAdmissionMetric,
   evaluateAdmissionQuality,
   evaluateBaseRate,
@@ -25,14 +23,12 @@ import {
   frozenThresholds,
   isEvidenceDigest,
   modeledMonthlyCost,
-  normalizeKey,
   parseRfc3339Timestamp,
   percentileOrderStatistic,
   stratifiedBootstrapUpperBound,
   syntheticDigest,
   thresholdDigest,
   validateProtocolFixture,
-  walk,
   withoutKey,
   type CalibrationExample,
   type JsonObject,
@@ -50,12 +46,10 @@ function evaluateStage0(candidate: JsonObject) {
   return evaluateStage0Engine(candidate, { approvedThresholdDigest: APPROVED_THRESHOLD_DIGEST });
 }
 const EXPECTED_BASELINE_REASONS = [
-  'base_rate_lower_bound_below_floor',
-  'base_rate_point_below_floor',
+  'base_rate_not_complete',
   'historical_usefulness_not_complete',
   'provider_policy_not_approved',
-  'rediscovery_lower_bound_below_floor',
-  'rediscovery_point_below_floor',
+  'rediscovery_not_complete',
 ];
 const APPROVED_FLOORS = {
   baseRate: {
@@ -90,30 +84,133 @@ const BOOTSTRAP_ITERATIONS = 10_000;
 const BOOTSTRAP_SEED = 6003;
 const BOOTSTRAP_ORDER_STATISTIC = 'ceil_confidence_times_iterations_minus_one';
 
-function validateStage0Aggregates(candidate: JsonObject): void {
-  walk(candidate, (key, value) => {
-    if (key) {
-      assert.equal(RAW_EVIDENCE_KEYS.has(normalizeKey(key)), false, `raw fixture field: ${key}`);
-    }
-    if (typeof value === 'string' && !(key && LITERAL_PINNED_KEYS.has(key))) {
-      assert.match(value, ALLOWED_FIXTURE_VALUE, `unconstrained fixture string: ${value}`);
-    }
+const STAGE0_AGGREGATE_ROOT_KEYS = new Set([
+  'protocolVersion',
+  'recordedAt',
+  'classification',
+  'eligibleForViabilityDecision',
+  'baseRate',
+  'rediscovery',
+]);
+const BASE_RATE_AGGREGATE_KEYS = new Set([
+  'attemptId',
+  'queryVersion',
+  'declaredYear',
+  'companyYears',
+  'newsHitCompanyYears',
+  'usCount',
+  'gbCount',
+  'firstSaleDateWindowFailures',
+  'unavailableCount',
+  'privateSelectionManifestSha256',
+  'privateEvidenceSha256',
+  'aggregateEvidenceSha256',
+  'opaqueIds',
+]);
+const REDISCOVERY_AGGREGATE_KEYS = new Set([
+  'attemptId',
+  'queryVersion',
+  'declaredYear',
+  'pairCount',
+  'rediscoveredCount',
+  'usCount',
+  'gbCount',
+  'firstSaleDateWindowFailures',
+  'unavailableCount',
+  'privatePairManifestSha256',
+  'privateEvidenceSha256',
+  'aggregateEvidenceSha256',
+  'opaqueIds',
+]);
+const BASE_RATE_OPAQUE_ID = /^cm_companyyear_[a-f0-9]{12}$/;
+const REDISCOVERY_OPAQUE_ID = /^cm_pair_[a-f0-9]{12}$/;
+
+function assertExactKeys(candidate: JsonObject, expected: Set<string>, label: string): void {
+  assert.deepEqual(Object.keys(candidate).sort(), [...expected].sort(), `${label} field set`);
+}
+
+function assertOpaqueIds(
+  value: unknown,
+  expectedCount: number,
+  pattern: RegExp,
+  label: string,
+): void {
+  assert.ok(Array.isArray(value), `${label} must be an array`);
+  assert.equal(value.length, expectedCount, `${label} length`);
+  const ids = value.map((id) => {
+    assert.equal(typeof id, 'string', `${label} value must be a string`);
+    assert.match(id, pattern, `${label} value`);
+    return id;
   });
+  assert.equal(new Set(ids).size, expectedCount, `${label} values must be unique`);
+}
+
+function auditDigest(candidate: JsonObject): string {
+  return createHash('sha256')
+    .update(`${canonicalJson(withoutKey(candidate, 'aggregateEvidenceSha256'))}\n`)
+    .digest('hex');
+}
+
+function validateStage0Aggregates(candidate: JsonObject): void {
+  assertExactKeys(candidate, STAGE0_AGGREGATE_ROOT_KEYS, 'stage0-aggregates');
+  assert.equal(candidate.protocolVersion, 'cm_eval_v1');
+  assert.equal(candidate.recordedAt, '2026-08-18T13:03:05.000Z');
+  assert.equal(candidate.classification, 'inadmissible_audit_only');
+  assert.equal(candidate.eligibleForViabilityDecision, false);
+
   const baseRate = asObject(candidate.baseRate, 'stage0-aggregates.baseRate');
   const rediscovery = asObject(candidate.rediscovery, 'stage0-aggregates.rediscovery');
-  assert.equal(baseRate.sampleId, 'cm_base_rate_001');
+  assertExactKeys(baseRate, BASE_RATE_AGGREGATE_KEYS, 'stage0-aggregates.baseRate');
+  assertExactKeys(rediscovery, REDISCOVERY_AGGREGATE_KEYS, 'stage0-aggregates.rediscovery');
+
+  assert.equal(baseRate.attemptId, 'cm_base_rate_attempt_20260818');
+  assert.equal(baseRate.queryVersion, 'cm_base_rate_query_v1_google_news_rss');
+  assert.equal(baseRate.declaredYear, 2024);
   assert.equal(baseRate.companyYears, 150);
-  assert.equal((baseRate.opaqueIds as unknown[]).length, 150);
-  assert.equal(rediscovery.pairSetId, 'cm_rediscovery_001');
+  assert.equal(baseRate.newsHitCompanyYears, 35);
+  assert.equal(baseRate.usCount, 100);
+  assert.equal(baseRate.gbCount, 50);
+  assert.equal(baseRate.firstSaleDateWindowFailures, 0);
+  assert.equal(baseRate.unavailableCount, 0);
+  assert.equal(
+    asNumber(baseRate.usCount, 'baseRate.usCount') + asNumber(baseRate.gbCount, 'baseRate.gbCount'),
+    baseRate.companyYears,
+  );
+  assertOpaqueIds(baseRate.opaqueIds, 150, BASE_RATE_OPAQUE_ID, 'baseRate.opaqueIds');
+  assert.ok(isEvidenceDigest(baseRate.privateSelectionManifestSha256));
+  assert.ok(isEvidenceDigest(baseRate.privateEvidenceSha256));
+  assert.ok(isEvidenceDigest(baseRate.aggregateEvidenceSha256));
+  assert.equal(auditDigest(baseRate), baseRate.aggregateEvidenceSha256);
+
+  assert.equal(rediscovery.attemptId, 'cm_rediscovery_attempt_20260818');
+  assert.equal(rediscovery.queryVersion, 'cm_rediscovery_query_v1_google_news_rss');
+  assert.equal(rediscovery.declaredYear, 2025);
   assert.equal(rediscovery.pairCount, 100);
-  assert.equal((rediscovery.opaqueIds as unknown[]).length, 100);
-  assert.equal(candidate.machineVerdict, 'stop');
+  assert.equal(rediscovery.rediscoveredCount, 15);
+  assert.equal(rediscovery.usCount, 75);
+  assert.equal(rediscovery.gbCount, 25);
+  assert.equal(rediscovery.firstSaleDateWindowFailures, 0);
+  assert.equal(rediscovery.unavailableCount, 0);
+  assert.equal(
+    asNumber(rediscovery.usCount, 'rediscovery.usCount')
+      + asNumber(rediscovery.gbCount, 'rediscovery.gbCount'),
+    rediscovery.pairCount,
+  );
+  assertOpaqueIds(rediscovery.opaqueIds, 100, REDISCOVERY_OPAQUE_ID, 'rediscovery.opaqueIds');
+  assert.ok(isEvidenceDigest(rediscovery.privatePairManifestSha256));
+  assert.ok(isEvidenceDigest(rediscovery.privateEvidenceSha256));
+  assert.ok(isEvidenceDigest(rediscovery.aggregateEvidenceSha256));
+  assert.equal(auditDigest(rediscovery), rediscovery.aggregateEvidenceSha256);
 }
 
 const FIXTURE_VALIDATORS: Record<string, (candidate: JsonObject) => void> = {
   'protocol.json': validateProtocolFixture,
   'stage0-aggregates.json': validateStage0Aggregates,
 };
+
+function validateFixtureInventory(fileNames: string[]): void {
+  assert.deepEqual([...fileNames].sort(), Object.keys(FIXTURE_VALIDATORS).sort());
+}
 
 function completeSyntheticUsefulness(candidate: JsonObject): void {
   const directions = ['positive', 'negative', 'mixed'];
@@ -254,15 +351,68 @@ function makePassingSyntheticCandidate(): JsonObject {
 
 describe('Company Monitoring U0 evaluation contract', () => {
   it('requires every committed JSON fixture to have a deliberate schema validator', () => {
-    const fixtureFiles = readdirSync(fixtureDirectory)
-      .filter((fileName) => fileName.endsWith('.json'))
-      .sort();
-    assert.deepEqual(fixtureFiles, Object.keys(FIXTURE_VALIDATORS).sort());
+    const fixtureFiles = readdirSync(fixtureDirectory).sort();
+    validateFixtureInventory(fixtureFiles);
     for (const fileName of fixtureFiles) {
       const candidate = JSON.parse(readFileSync(new URL(fileName, fixtureDirectory), 'utf8')) as JsonObject;
       const validator = FIXTURE_VALIDATORS[fileName];
       assert.ok(validator, `no schema validator registered for ${fileName}`);
       validator(candidate);
+    }
+  });
+
+  it('rejects unregistered evidence files regardless of extension or nesting', () => {
+    const registered = Object.keys(FIXTURE_VALIDATORS);
+    assert.doesNotThrow(() => validateFixtureInventory(registered));
+    assert.throws(() => validateFixtureInventory([...registered, 'private-evidence.csv']));
+    assert.throws(() => validateFixtureInventory([...registered, 'raw/provider-response.txt']));
+  });
+
+  it('rejects aggregate mutations that would weaken admissibility or privacy', () => {
+    const aggregates = JSON.parse(
+      readFileSync(new URL('stage0-aggregates.json', fixtureDirectory), 'utf8'),
+    ) as JsonObject;
+    const cases: [string, (candidate: JsonObject) => void][] = [
+      ['unknown identity field', (candidate) => {
+        asObject(candidate.baseRate, 'baseRate').companyIdentity = 'acme_holdings';
+      }],
+      ['literal-pinned key smuggling', (candidate) => {
+        asObject(candidate.baseRate, 'baseRate').approverName = 'https://secret.example';
+      }],
+      ['scalar opaque IDs', (candidate) => {
+        asObject(candidate.baseRate, 'baseRate').opaqueIds = 'x'.repeat(150);
+      }],
+      ['duplicate opaque IDs', (candidate) => {
+        const baseRate = asObject(candidate.baseRate, 'baseRate');
+        baseRate.opaqueIds = Array.from({ length: 150 }, () => 'cm_companyyear_000000000001');
+      }],
+      ['wrong opaque ID prefix', (candidate) => {
+        const baseRate = asObject(candidate.baseRate, 'baseRate');
+        baseRate.opaqueIds = Array.from(
+          { length: 150 },
+          (_, index) => `cm_pair_${index.toString(16).padStart(12, '0')}`,
+        );
+      }],
+      ['date-window failure', (candidate) => {
+        asObject(candidate.baseRate, 'baseRate').firstSaleDateWindowFailures = 1;
+      }],
+      ['unavailable query', (candidate) => {
+        asObject(candidate.rediscovery, 'rediscovery').unavailableCount = 1;
+      }],
+      ['country-total mismatch', (candidate) => {
+        asObject(candidate.rediscovery, 'rediscovery').usCount = 74;
+      }],
+      ['query-version drift', (candidate) => {
+        asObject(candidate.baseRate, 'baseRate').queryVersion = 'cm_base_rate_query_v2';
+      }],
+      ['declared-year drift', (candidate) => {
+        asObject(candidate.rediscovery, 'rediscovery').declaredYear = 2024;
+      }],
+    ];
+    for (const [label, mutate] of cases) {
+      const candidate = structuredClone(aggregates);
+      mutate(candidate);
+      assert.throws(() => validateStage0Aggregates(candidate), label);
     }
   });
 
@@ -273,76 +423,66 @@ describe('Company Monitoring U0 evaluation contract', () => {
     assert.notEqual(APPROVED_THRESHOLD_DIGEST, '0'.repeat(64));
   });
 
-  it('recomputes the committed empirical base-rate and rediscovery arithmetic without promoting a point-only pass', () => {
+  it('keeps the inadmissible measurements outside the frozen decision record', () => {
     const baseResult = asObject(asObject(protocol.baseRate, 'baseRate').result, 'baseRate.result');
     const rediscoveryResult = asObject(
       asObject(protocol.rediscovery, 'rediscovery').result,
       'rediscovery.result',
     );
-    assert.equal(baseResult.status, 'complete');
-    assert.equal(rediscoveryResult.status, 'complete');
-    assert.equal(baseResult.companyYears, 150);
-    assert.equal(baseResult.materialEventCount, 35);
-    assert.equal(rediscoveryResult.pairCount, 100);
-    assert.equal(rediscoveryResult.rediscoveredCount, 15);
-    const basePoint = 35 / 150;
-    const baseLower = exactPoissonRateLowerBound(35, 150, 0.9);
-    const rediscoveryPoint = 15 / 100;
-    const rediscoveryLower = exactBinomialLowerBound(15, 100, 0.9);
-    assert.equal(baseResult.pointEstimate, basePoint);
-    assert.equal(baseResult.lowerBound, baseLower);
-    assert.equal(rediscoveryResult.pointEstimate, rediscoveryPoint);
-    assert.equal(rediscoveryResult.lowerBound, rediscoveryLower);
-    assert.ok(basePoint < APPROVED_FLOORS.baseRate.minimumPointEstimate);
-    assert.ok(baseLower < APPROVED_FLOORS.baseRate.minimumLowerBound);
-    assert.ok(rediscoveryPoint < APPROVED_FLOORS.rediscovery.minimumPointEstimate);
-    assert.ok(rediscoveryLower < APPROVED_FLOORS.rediscovery.minimumLowerBound);
-    assert.equal(evaluateBaseRate(protocol).pass, false);
-    assert.equal(evaluateRediscovery(protocol).pass, false);
-    assert.ok(evaluateBaseRate(protocol).reasons.includes('base_rate_point_below_floor'));
-    assert.ok(evaluateBaseRate(protocol).reasons.includes('base_rate_lower_bound_below_floor'));
-    assert.ok(evaluateRediscovery(protocol).reasons.includes('rediscovery_point_below_floor'));
-    assert.ok(evaluateRediscovery(protocol).reasons.includes('rediscovery_lower_bound_below_floor'));
-    assert.ok(isEvidenceDigest(baseResult.privateSelectionManifestSha256));
-    assert.ok(isEvidenceDigest(baseResult.aggregateEvidenceSha256));
-    assert.ok(isEvidenceDigest(rediscoveryResult.privatePairManifestSha256));
-    assert.ok(isEvidenceDigest(rediscoveryResult.aggregateEvidenceSha256));
+    assert.equal(protocol.firstScoredRunStartedAt, null);
+    assert.deepEqual(baseResult, {
+      status: 'not_run',
+      companyYears: 0,
+      materialEventCount: 0,
+      pointEstimate: null,
+      lowerBound: null,
+      privateSelectionManifestSha256: null,
+      aggregateEvidenceSha256: null,
+    });
+    assert.deepEqual(rediscoveryResult, {
+      status: 'not_run',
+      pairCount: 0,
+      rediscoveredCount: 0,
+      pointEstimate: null,
+      lowerBound: null,
+      privatePairManifestSha256: null,
+      aggregateEvidenceSha256: null,
+    });
+    assert.deepEqual(evaluateBaseRate(protocol), { pass: false, reasons: ['base_rate_not_complete'] });
+    assert.deepEqual(evaluateRediscovery(protocol), {
+      pass: false,
+      reasons: ['rediscovery_not_complete'],
+    });
 
     const aggregates = JSON.parse(
       readFileSync(new URL('stage0-aggregates.json', fixtureDirectory), 'utf8'),
     ) as JsonObject;
+    assert.equal(aggregates.classification, 'inadmissible_audit_only');
+    assert.equal(aggregates.eligibleForViabilityDecision, false);
     const baseAggregate = asObject(aggregates.baseRate, 'stage0-aggregates.baseRate');
     const rediscoveryAggregate = asObject(aggregates.rediscovery, 'stage0-aggregates.rediscovery');
-    const compactSha = (value: JsonObject) => createHash('sha256')
-      .update(`${JSON.stringify(value)}\n`)
+    assert.equal(baseAggregate.attemptId, 'cm_base_rate_attempt_20260818');
+    assert.equal(baseAggregate.companyYears, 150);
+    assert.equal(baseAggregate.newsHitCompanyYears, 35);
+    assert.equal(rediscoveryAggregate.attemptId, 'cm_rediscovery_attempt_20260818');
+    assert.equal(rediscoveryAggregate.pairCount, 100);
+    assert.equal(rediscoveryAggregate.rediscoveredCount, 15);
+    assert.ok(isEvidenceDigest(baseAggregate.privateSelectionManifestSha256));
+    assert.ok(isEvidenceDigest(baseAggregate.privateEvidenceSha256));
+    assert.ok(isEvidenceDigest(rediscoveryAggregate.privatePairManifestSha256));
+    assert.ok(isEvidenceDigest(rediscoveryAggregate.privateEvidenceSha256));
+    const auditSha = (value: JsonObject) => createHash('sha256')
+      .update(`${canonicalJson(withoutKey(value, 'aggregateEvidenceSha256'))}\n`)
       .digest('hex');
-    const committedBase = {
-      companyYears: baseAggregate.companyYears,
-      firstSaleDateWindowFailures: baseAggregate.firstSaleDateWindowFailures,
-      gbCount: baseAggregate.gbCount,
-      materialEventCount: baseAggregate.materialEventCount,
-      opaqueIds: baseAggregate.opaqueIds,
-      sampleId: baseAggregate.sampleId,
-      unavailableCount: baseAggregate.unavailableCount,
-      usCount: baseAggregate.usCount,
-    };
-    const committedRediscovery = {
-      firstSaleDateWindowFailures: rediscoveryAggregate.firstSaleDateWindowFailures,
-      gbCount: rediscoveryAggregate.gbCount,
-      opaqueIds: rediscoveryAggregate.opaqueIds,
-      pairCount: rediscoveryAggregate.pairCount,
-      pairSetId: rediscoveryAggregate.pairSetId,
-      rediscoveredCount: rediscoveryAggregate.rediscoveredCount,
-      unavailableCount: rediscoveryAggregate.unavailableCount,
-      usCount: rediscoveryAggregate.usCount,
-    };
-    assert.equal(compactSha(committedBase), baseResult.aggregateEvidenceSha256);
-    assert.equal(compactSha(committedRediscovery), rediscoveryResult.aggregateEvidenceSha256);
-    assert.notEqual(baseResult.privateSelectionManifestSha256, baseResult.aggregateEvidenceSha256);
-    assert.notEqual(
-      rediscoveryResult.privatePairManifestSha256,
-      rediscoveryResult.aggregateEvidenceSha256,
-    );
+    assert.equal(auditSha(baseAggregate), baseAggregate.aggregateEvidenceSha256);
+    assert.equal(auditSha(rediscoveryAggregate), rediscoveryAggregate.aggregateEvidenceSha256);
+
+    const changedQuery = structuredClone(baseAggregate);
+    changedQuery.queryVersion = 'cm_base_rate_query_v2';
+    assert.notEqual(auditSha(changedQuery), baseAggregate.aggregateEvidenceSha256);
+    const changedYear = structuredClone(rediscoveryAggregate);
+    changedYear.declaredYear = 2024;
+    assert.notEqual(auditSha(changedYear), rediscoveryAggregate.aggregateEvidenceSha256);
   });
 
   it('recomputes the committed Stage 0 stop decision and preserves the dark-only boundary', () => {
@@ -670,7 +810,7 @@ describe('Company Monitoring U0 evaluation contract', () => {
     const candidate = makePassingSyntheticCandidate();
     assert.deepEqual(evaluateStage0(candidate), { decision: 'continue', reasons: [] });
     assert.equal(asObject(protocol.stage0, 'stage0').decision, 'stop');
-    assert.equal(asObject(asObject(protocol.baseRate, 'baseRate').result, 'result').status, 'complete');
+    assert.equal(asObject(asObject(protocol.baseRate, 'baseRate').result, 'result').status, 'not_run');
     assert.equal(
       asObject(asObject(protocol.historicalUsefulness, 'historicalUsefulness').result, 'result').status,
       'not_run',

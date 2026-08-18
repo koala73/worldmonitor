@@ -1,17 +1,21 @@
 {
   "protocolVersion": "cm_eval_v1",
-  "evaluatedAt": "2026-08-18T13:03:05.000Z",
-  "machineVerdict": "stop",
+  "recordedAt": "2026-08-18T13:03:05.000Z",
+  "classification": "inadmissible_audit_only",
+  "eligibleForViabilityDecision": false,
   "baseRate": {
-    "sampleId": "cm_base_rate_001",
+    "attemptId": "cm_base_rate_attempt_20260818",
     "queryVersion": "cm_base_rate_query_v1_google_news_rss",
     "declaredYear": 2024,
     "companyYears": 150,
-    "materialEventCount": 35,
+    "newsHitCompanyYears": 35,
     "usCount": 100,
     "gbCount": 50,
     "firstSaleDateWindowFailures": 0,
     "unavailableCount": 0,
+    "privateSelectionManifestSha256": "1fa728eb15a03ef74579e964bf08a2929a7fa7790f56ebd7a6ca53b0d95de900",
+    "privateEvidenceSha256": "fc7faafb532ad0e4722de6815be342cac5dbc16cbb7ad3ae07a6db046a7a5132",
+    "aggregateEvidenceSha256": "b0c32244293f9231723572ba22bc9f42703ef798e29b94fdb0d930983c17092b",
     "opaqueIds": [
       "cm_companyyear_f1206dd17963",
       "cm_companyyear_3028f38e6740",
@@ -166,7 +170,7 @@
     ]
   },
   "rediscovery": {
-    "pairSetId": "cm_rediscovery_001",
+    "attemptId": "cm_rediscovery_attempt_20260818",
     "queryVersion": "cm_rediscovery_query_v1_google_news_rss",
     "declaredYear": 2025,
     "pairCount": 100,
@@ -175,6 +179,9 @@
     "gbCount": 25,
     "firstSaleDateWindowFailures": 0,
     "unavailableCount": 0,
+    "privatePairManifestSha256": "233930de14ee413856833d850881f228eed335325476d6b200af165cb6fa5965",
+    "privateEvidenceSha256": "468d9eab2c0cc7ee2ef7cefed2738f9c5218e805d908f873f990c75e2e7476a1",
+    "aggregateEvidenceSha256": "b376056a7f3ebecf95d74ff22a67ea709c34f1961872ae7786e8846687c69717",
     "opaqueIds": [
       "cm_pair_a7bef2d26969",
       "cm_pair_1d60fc26a023",

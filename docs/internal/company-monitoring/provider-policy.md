@@ -4,7 +4,7 @@
 - Live source refresh: 2026-08-18
 - Protocol: `cm_eval_v1`
 - Runtime decision: **blocked**
-- Stage 0 machine verdict: **STOP** (measurements complete; floors missed)
+- Stage 0 machine verdict: **STOP** (empirical results remain `not_run`)
 
 This review freezes the policy and price inputs used by the Company Monitoring
 Stage 0 decision. It is not legal advice or a durable provider guarantee. Provider
@@ -137,12 +137,12 @@ new reviewed package; it cannot rewrite `cm_eval_v1` after scoring.
 
 The 2026-08-18 refresh folds #6653 X facts into this package without rewriting
 the frozen 500-company arithmetic. Console spend cap $200/month is confirmed.
-This Stage 0 run did not flip `paidRuntimeApproved`, any
+The inadmissible 2026-08-18 audit did not flip `paidRuntimeApproved`, any
 `COMPANY_MONITORING_ROLLOUT_FLAGS` value, or the frozen economics object. Local
 `EXA_API_KEYS` and `X_BEARER_TOKEN` were missing in the measurement worktree; X
-Bearer remains on Railway `company-monitoring-worker`. The scored measurements
-used SEC Form D (reference / selection) and Google News RSS (news search), not
-Exa or X product runtime.
+Bearer remains on Railway `company-monitoring-worker`. The audit used SEC Form D
+(reference / selection) and Google News RSS (news search), not Exa or X product
+runtime. It is not acceptance evidence for `cm_eval_v1`.
 
 ## Production-shaped monthly model
 
