@@ -79,6 +79,8 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY docker/nginx.conf /etc/nginx/nginx.conf.template
 COPY docker/supervisord.conf /etc/supervisor/conf.d/worldmonitor.conf
 COPY docker/entrypoint.sh /app/entrypoint.sh
+COPY docker/render-nginx-realip.mjs /app/render-nginx-realip.mjs
+COPY docker/validate-session-secret.mjs /app/validate-session-secret.mjs
 RUN chmod +x /app/entrypoint.sh
 
 # Ensure writable dirs for non-root

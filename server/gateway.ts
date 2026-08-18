@@ -1173,7 +1173,9 @@ export function createDomainGateway(
     // Cloud deployments do not set LOCAL_API_MODE=docker, and every other
     // premium route retains forceKey + entitlement enforcement below.
     const isDockerSelfHostCountryBrief =
-      pathname === COUNTRY_INTEL_BRIEF_PATH && process.env.LOCAL_API_MODE === 'docker';
+      request.method === 'GET' &&
+      pathname === COUNTRY_INTEL_BRIEF_PATH &&
+      process.env.LOCAL_API_MODE === 'docker';
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
     const isProFreshCacheRpc = PRO_FRESH_CACHE_RPC_PATHS.has(pathname);
     const needsProFreshnessResolution =

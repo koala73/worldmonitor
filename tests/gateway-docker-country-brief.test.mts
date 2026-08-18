@@ -123,7 +123,7 @@ function makeGateway(handlerCalls: Record<string, number>) {
 function request(
   path: string,
   token?: string,
-  options: { clientIp?: string | null } = {},
+  options: { clientIp?: string | null; method?: 'GET' | 'POST' } = {},
 ): Request {
   const headers = new Headers({
     Origin: 'https://worldmonitor.app',
@@ -131,7 +131,17 @@ function request(
   const clientIp = options.clientIp === undefined ? CLIENT_IP : options.clientIp;
   if (clientIp) headers.set('X-Real-IP', clientIp);
   if (token) headers.set('X-WorldMonitor-Key', token);
-  return new Request(`https://worldmonitor.app${path}?country_code=US`, { headers });
+  const method = options.method ?? 'GET';
+  const body = method === 'POST' ? JSON.stringify({ country_code: 'US' }) : undefined;
+  if (body) {
+    headers.set('Content-Type', 'application/json');
+    headers.set('Content-Length', String(new TextEncoder().encode(body).byteLength));
+  }
+  return new Request(`https://worldmonitor.app${path}?country_code=US`, {
+    method,
+    headers,
+    body,
+  });
 }
 
 describe('Docker country-intel gateway auth (#5415)', () => {
@@ -183,6 +193,21 @@ describe('Docker country-intel gateway auth (#5415)', () => {
 
     assert.equal(response.status, 401);
     assert.equal(handlerCalls.country, 0);
+  });
+
+  it('does not let a POST use the GET-only Docker session exception', async () => {
+    configureGatewayEnv('docker');
+    const redis = installRedisPipelineMock();
+    const token = (await issueSessionToken()).token;
+    const handlerCalls = { country: 0, other: 0 };
+
+    const response = await makeGateway(handlerCalls)(
+      request(COUNTRY_BRIEF_PATH, token, { method: 'POST' }),
+    );
+
+    assert.equal(response.status, 401);
+    assert.equal(handlerCalls.country, 0);
+    assert.deepEqual(redis.directLlmKeys(), []);
   });
 
   it('enforces the unverified direct-LLM floor in Docker mode', async () => {

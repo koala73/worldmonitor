@@ -56,6 +56,15 @@ Docker mode (`LOCAL_API_MODE=docker`) has no Clerk or Convex entitlement backend
 - Direct-LLM spend on that route is capped at 50 calls per UTC day per client IP. nginx stamps `X-Real-IP` from `$remote_addr`, so a caller cannot rotate the header to reset the cap. Rotating the session token also does not reset spend.
 - Every other premium route still requires an API key or a Clerk entitlement. Cloud deployments do not set `LOCAL_API_MODE=docker` and keep key plus entitlement enforcement on this route too.
 
+If another reverse proxy sits in front of the World Monitor container, set
+`WM_TRUSTED_PROXY_CIDRS` to that proxy's IP address or network. Separate multiple
+values with commas, for example `WM_TRUSTED_PROXY_CIDRS=172.20.0.0/16,2001:db8::/32`.
+World Monitor then uses `X-Forwarded-For` only when it comes through those trusted
+peers, and nginx resolves the original client address recursively. Invalid values
+stop the container at startup. Leave this variable unset for direct connections;
+never trust a network that can contain untrusted clients, because those clients
+could then supply a false forwarded address and evade the per-IP quota.
+
 > Need to bring the relay up without auth for local debugging? Set `I_UNDERSTAND_THIS_DISABLES_AUTH=true` (the deprecated `ALLOW_UNAUTHENTICATED_RELAY=true` is still accepted). The relay will log a loud `[SECURITY]` warning at boot and every 5 minutes, and every non-public route will be reachable by anyone who can hit the port — **never use this on an internet-reachable host.**
 
 ## 🔑 API Keys
