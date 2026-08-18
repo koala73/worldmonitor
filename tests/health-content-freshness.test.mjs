@@ -26,7 +26,7 @@ const {
 
 const NOW = Date.parse('2026-08-03T14:42:58.000Z');
 const MINUTE_MS = 60_000;
-const PORTWATCH_CONTENT_BUDGET_MINUTES = 2 * 72 * 60;
+const PORTWATCH_CONTENT_BUDGET_MINUTES = 10 * 24 * 60;
 const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
 const PORTWATCH_DATA_KEY = 'supply_chain:portwatch-ports:v1:_countries';
 const PORTWATCH_ACTIVATION_KEY = ACTIVATION_MARKERS.portwatchContentFreshness;
@@ -180,9 +180,13 @@ describe('portwatchPortActivity classification', () => {
   // count alone lets OK persist while the observation ages past budget — the
   // exact green-while-dead failure this alarm exists to prevent.
   it('re-ages the producer measurement instead of trusting a frozen count', () => {
-    // Seeder measured CN just inside the 144h budget. Health reads that same
-    // meta after the observation crosses the pinned boundary at 145h.
-    const observedAt = NOW - 145 * 60 * MINUTE_MS;
+    // Seeder measured CN just inside the budget. Health reads that same meta
+    // after the observation crosses the pinned boundary.
+    //
+    // Derived from PORTWATCH_CONTENT_BUDGET_MINUTES, never hardcoded hours: the
+    // fixture means "one hour PAST the boundary", and a literal 145h silently
+    // became "well inside it" the moment the budget moved 144h -> 240h.
+    const observedAt = NOW - (PORTWATCH_CONTENT_BUDGET_MINUTES + 60) * MINUTE_MS;
     const entry = classifyPortwatch({
       fetchedAt: NOW - 12 * 60 * MINUTE_MS,
       recordCount: 174,
@@ -191,7 +195,8 @@ describe('portwatchPortActivity classification', () => {
         criticalStaleCountries: [],
         criticalOldestObservedAt: observedAt,
         criticalOldestObservedCountry: 'CN',
-        criticalOldestAgeMinutes: 143 * 60,
+        // The producer's own frozen number, one hour INSIDE the boundary.
+        criticalOldestAgeMinutes: PORTWATCH_CONTENT_BUDGET_MINUTES - 60,
       }),
     });
 
@@ -202,7 +207,7 @@ describe('portwatchPortActivity classification', () => {
     );
     assert.equal(
       entry.contentFreshness.criticalOldestAgeMinutes,
-      145 * 60,
+      PORTWATCH_CONTENT_BUDGET_MINUTES + 60,
       'the published age is recomputed against now, not echoed from the producer',
     );
   });
@@ -212,12 +217,12 @@ describe('portwatchPortActivity classification', () => {
       fetchedAt: NOW - 12 * 60 * MINUTE_MS,
       recordCount: 174,
       contentFreshness: contentFreshnessOf({
-        criticalOldestObservedAt: NOW - 143 * 60 * MINUTE_MS,
+        criticalOldestObservedAt: NOW - (PORTWATCH_CONTENT_BUDGET_MINUTES - 60) * MINUTE_MS,
         criticalOldestAgeMinutes: 142 * 60,
       }),
     });
     assert.equal(entry.status, 'OK');
-    assert.equal(entry.contentFreshness.criticalOldestAgeMinutes, 143 * 60);
+    assert.equal(entry.contentFreshness.criticalOldestAgeMinutes, PORTWATCH_CONTENT_BUDGET_MINUTES - 60);
   });
 
   it('uses the raw millisecond boundary when re-aging content', () => {
@@ -240,7 +245,7 @@ describe('portwatchPortActivity classification', () => {
     // certify a 180h-old observation as fresh.
     const entry = classifyPortwatch(completeRun(contentFreshnessOf({
       budgetMinutes: 30 * 24 * 60,
-      criticalOldestObservedAt: NOW - 180 * 60 * MINUTE_MS,
+      criticalOldestObservedAt: NOW - (PORTWATCH_CONTENT_BUDGET_MINUTES + 36 * 60) * MINUTE_MS,
       criticalOldestAgeMinutes: 180 * 60,
     })));
     assert.equal(entry.status, 'STALE_CONTENT');
