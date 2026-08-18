@@ -79,6 +79,33 @@ describe('CircuitBreaker — evictOnRefreshFailure (#3795 review-2)', () => {
     }
   });
 
+  it('rethrows caller cancellation without recording an upstream failure', async () => {
+    const mod = await import(`${CIRCUIT_BREAKER_URL}?t=${Date.now()}-ignored-cancel`);
+    const { createCircuitBreaker, clearAllCircuitBreakers } = mod;
+    clearAllCircuitBreakers();
+
+    try {
+      const breaker = createCircuitBreaker<Payload>({
+        name: 'Ignored caller cancellation',
+        maxFailures: 1,
+        persistCache: false,
+      });
+      const cancellation = new DOMException('Canceled by caller', 'AbortError');
+      await assert.rejects(
+        breaker.execute(
+          async () => { throw cancellation; },
+          { quotes: [] },
+          { ignoreError: (error) => error === cancellation },
+        ),
+        cancellation,
+      );
+      assert.equal(breaker.isOnCooldown(), false);
+      assert.equal(breaker.getStatus(), 'ok');
+    } finally {
+      clearAllCircuitBreakers();
+    }
+  });
+
   it('default behaviour preserved: without evictOnRefreshFailure, refresh that fails shouldCache keeps the stale entry', async () => {
     // Mirrors the market-quote-cache-keying test's intent: transient
     // upstream blips must NOT wipe previously-good cached data when the

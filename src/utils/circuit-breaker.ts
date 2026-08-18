@@ -361,6 +361,12 @@ export class CircuitBreaker<T> {
        * retaining that entry as a fallback. Circuit cooldown still applies.
        */
       forceRefresh?: boolean;
+      /**
+       * Treat caller-owned cancellation as neither an upstream failure nor a
+       * fallback result. Matching errors are rethrown on the foreground path
+       * so the caller can stop its own lifecycle without opening cooldown.
+       */
+      ignoreError?: (error: unknown) => boolean;
     } = {},
   ): Promise<R> {
     const offline = isDesktopOfflineMode();
@@ -450,6 +456,7 @@ export class CircuitBreaker<T> {
             // the default and matches the market-quote use case.
             return { kind: 'not-cacheable' };
           } catch (e) {
+            if (options.ignoreError?.(e)) return { kind: 'failed' };
             console.warn(`[${this.name}] Background refresh failed:`, e);
             this.recordFailure(String(e));
             return { kind: 'failed' };
@@ -488,6 +495,7 @@ export class CircuitBreaker<T> {
       }
       return result;
     } catch (e) {
+      if (options.ignoreError?.(e)) throw e;
       const msg = String(e);
       console.error(`[${this.name}] Failed:`, msg);
       this.recordFailure(msg);
