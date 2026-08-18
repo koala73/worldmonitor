@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 // SaskAlert public JSON member of seed-bundle-canada (#6659).
-// Do not add this loop to ais-relay.cjs. Do not merge into weather:alerts or roads.
 
 import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
 import {
