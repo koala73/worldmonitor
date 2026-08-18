@@ -109,6 +109,18 @@ describe('sources catalog domain assignment', () => {
     assert.equal(catalog[0].domainId, 'infrastructure');
   });
 
+  it('assigns SaskAlert to environment instead of failing the corpus build', () => {
+    const catalog = buildSourceCatalog([
+      {
+        provider: 'SaskAlert',
+        host: 'emergencyalert.saskatchewan.ca',
+        kind: 'structured',
+        references: [{ path: 'scripts/lib/saskalert.mjs' }],
+      },
+    ]);
+    assert.equal(catalog[0].domainId, 'environment');
+  });
+
   it('still fails closed when a structured provider has no catalog domain', () => {
     assert.throws(
       () => buildSourceCatalog([{
