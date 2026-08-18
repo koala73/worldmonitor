@@ -1075,10 +1075,19 @@ export function loadManifest(rootDir = ROOT) {
     // A bare "Unexpected end of JSON input" names no file; say which one.
     throw new Error(`source-attribution: ${MANIFEST_PATH} is not valid JSON (${error.message})`);
   }
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    throw new Error(`source-attribution: invalid manifest (${MANIFEST_PATH} must be an object)`);
+  }
+  if (!Array.isArray(manifest.entries)) {
+    throw new Error(`source-attribution: invalid manifest (${MANIFEST_PATH} entries must be an array)`);
+  }
+  if (manifest.logicalEntries !== undefined && !Array.isArray(manifest.logicalEntries)) {
+    throw new Error(`source-attribution: invalid manifest (${MANIFEST_PATH} logicalEntries must be an array)`);
+  }
   return {
     version: manifest.version || 1,
-    entries: Array.isArray(manifest.entries) ? manifest.entries : [],
-    logicalEntries: Array.isArray(manifest.logicalEntries) ? manifest.logicalEntries : [],
+    entries: manifest.entries,
+    logicalEntries: manifest.logicalEntries || [],
   };
 }
 
@@ -1144,10 +1153,22 @@ export function buildManifest(
   return { version: 1, entries: entries.sort((a, b) => a.host.localeCompare(b.host)), logicalEntries };
 }
 
-export function validateManifest(inventory, manifest) {
+/**
+ * Validate fields the committed ledger owns independently of the source scan.
+ * Build-owned inventory facts may use this ledger only after this passes.
+ */
+export function validateSourceAttributionLedger(manifest) {
   const errors = [];
-  const observedByHost = new Map(inventory.map((entry) => [entry.host, entry]));
-  const manifestEntries = manifest.entries || [];
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    return ['source-attribution manifest must be an object'];
+  }
+  if (!Array.isArray(manifest.entries)) {
+    errors.push('source-attribution manifest entries must be an array');
+  }
+  if (manifest.logicalEntries !== undefined && !Array.isArray(manifest.logicalEntries)) {
+    errors.push('source-attribution manifest logicalEntries must be an array');
+  }
+  const manifestEntries = Array.isArray(manifest.entries) ? manifest.entries : [];
   const manifestByHost = new Map();
   for (const entry of manifestEntries) {
     const label = entry?.host || '(unknown host)';
@@ -1159,6 +1180,9 @@ export function validateManifest(inventory, manifest) {
     if (typeof entry.observed !== 'boolean') errors.push(`manifest entry ${label} observed must be boolean`);
     if (typeof entry.kind !== 'string' || !MANIFEST_KIND_RE.test(entry.kind)) errors.push(`invalid manifest kind for ${label}`);
     if (typeof entry.status !== 'string' || !MANIFEST_STATUSES.has(entry.status)) errors.push(`invalid manifest status for ${label}`);
+    if (typeof entry.provider !== 'string' || !entry.provider.trim() || typeof entry.license !== 'string' || !entry.license.trim() || typeof entry.attribution !== 'string' || !entry.attribution.trim()) {
+      errors.push(`incomplete attribution metadata for ${label}`);
+    }
     const reviewedProvider = PROVIDER_OVERRIDES[entry.host]?.provider;
     if (typeof entry.provider === 'string' && entry.provider !== entry.host && entry.provider !== reviewedProvider) {
       errors.push(`custom provider identity for ${label} must be declared in PROVIDER_OVERRIDES`);
@@ -1181,7 +1205,49 @@ export function validateManifest(inventory, manifest) {
     }
     if (manifestByHost.has(entry.host)) errors.push(`duplicate manifest entry for ${entry.host}`);
     manifestByHost.set(entry.host, entry);
+    const override = PROVIDER_OVERRIDES[entry.host];
+    if (override) {
+      const { identityGroup, ...owned } = override;
+      if (entry.identityGroup !== undefined) {
+        errors.push(`manifest entry ${label} must not carry script-only identityGroup metadata`);
+      }
+      if (entry.observed === true) {
+        for (const [field, value] of Object.entries(owned)) {
+          if (!isDeepStrictEqual(entry[field], value)) {
+            errors.push(`manifest entry ${label} disagrees with script-owned ${field}`);
+          }
+        }
+      }
+    }
   }
+  const logicalEntries = Array.isArray(manifest.logicalEntries) ? manifest.logicalEntries : [];
+  for (const entry of logicalEntries) {
+    const label = entry?.provider || '(unknown provider)';
+    if (!entry || typeof entry !== 'object') {
+      errors.push(`logical attribution entry ${label} must be an object`);
+      continue;
+    }
+    if (typeof entry.host !== 'string' || !entry.host || /\s/.test(entry.host)) errors.push(`invalid logical attribution host ${label}`);
+    if (typeof entry.observed !== 'boolean') errors.push(`logical attribution entry ${label} observed must be boolean`);
+    if (typeof entry.kind !== 'string' || !LOGICAL_KIND_RE.test(entry.kind)) errors.push(`invalid logical attribution kind for ${label}`);
+    if (typeof entry.status !== 'string' || !MANIFEST_STATUSES.has(entry.status)) errors.push(`invalid logical attribution status for ${label}`);
+    if (typeof entry.provider !== 'string' || !entry.provider.trim() || typeof entry.license !== 'string' || !entry.license.trim() || typeof entry.attribution !== 'string' || !entry.attribution.trim()) {
+      errors.push(`incomplete logical attribution metadata for ${label}`);
+    }
+  }
+  errors.push(...validateProviderIdentityGroups({ ...manifest, entries: manifestEntries }));
+  return errors;
+}
+
+export function validateManifest(inventory, manifest) {
+  const errors = validateSourceAttributionLedger(manifest);
+  const observedByHost = new Map(inventory.map((entry) => [entry.host, entry]));
+  const manifestEntries = Array.isArray(manifest?.entries) ? manifest.entries : [];
+  const manifestByHost = new Map(
+    manifestEntries
+      .filter((entry) => entry && typeof entry === 'object')
+      .map((entry) => [entry.host, entry]),
+  );
   for (const entry of inventory) {
     if (!Array.isArray(entry.references) || !Array.isArray(entry.kinds)) {
       // mergeEntry below reads both. Report the bad row instead of letting a
@@ -1213,9 +1279,7 @@ export function validateManifest(inventory, manifest) {
       : `stale manifest entry for ${entry.host}: ${stale.join(', ')} no longer match the source tree; ${REGENERATE_HINT}`);
   }
   for (const entry of manifestEntries) {
-    if (typeof entry.provider !== 'string' || !entry.provider.trim() || typeof entry.license !== 'string' || !entry.license.trim() || typeof entry.attribution !== 'string' || !entry.attribution.trim()) {
-      errors.push(`incomplete attribution metadata for ${entry.host || '(unknown host)'}`);
-    }
+    if (!entry || typeof entry !== 'object') continue;
     if (entry.observed && !observedByHost.has(entry.host)) {
       // Two very different causes, one of which --write resolves destructively:
       // the provider really was removed, or the scanner simply lost sight of a
@@ -1224,21 +1288,6 @@ export function validateManifest(inventory, manifest) {
       errors.push(`manifest marks ${entry.host} observed but scanner found no current reference — ${retirementRequiredMessage(entry.host)} or add it to DYNAMIC_HOSTS`);
     }
   }
-  for (const entry of manifest.logicalEntries || []) {
-    const label = entry?.provider || '(unknown provider)';
-    if (!entry || typeof entry !== 'object') {
-      errors.push(`logical attribution entry ${label} must be an object`);
-      continue;
-    }
-    if (typeof entry.host !== 'string' || !entry.host || /\s/.test(entry.host)) errors.push(`invalid logical attribution host ${label}`);
-    if (typeof entry.observed !== 'boolean') errors.push(`logical attribution entry ${label} observed must be boolean`);
-    if (typeof entry.kind !== 'string' || !LOGICAL_KIND_RE.test(entry.kind)) errors.push(`invalid logical attribution kind for ${label}`);
-    if (typeof entry.status !== 'string' || !MANIFEST_STATUSES.has(entry.status)) errors.push(`invalid logical attribution status for ${label}`);
-    if (typeof entry.provider !== 'string' || !entry.provider.trim() || typeof entry.license !== 'string' || !entry.license.trim() || typeof entry.attribution !== 'string' || !entry.attribution.trim()) {
-      errors.push(`incomplete logical attribution metadata for ${label}`);
-    }
-  }
-  errors.push(...validateProviderIdentityGroups(manifest));
   return errors;
 }
 
@@ -1356,9 +1405,8 @@ export function isSourceAttributionManifestError(error) {
 
 /** Count the committed ledger without requiring scan-parity. */
 export function sourceAttributionLedgerStats(manifest, { observedHosts } = {}) {
-  if (!manifest || !Array.isArray(manifest.entries)) {
-    throw new Error('source-attribution: manifest entries must be an array');
-  }
+  const validationErrors = validateSourceAttributionLedger(manifest);
+  if (validationErrors.length) throw new Error(`source-attribution: invalid manifest (${validationErrors.join('; ')})`);
   const active = activeSourceAttributionEntries(manifest);
   const structured = active.filter((entry) => String(entry.kind || '').split('+').includes('structured'));
   const feeds = active.filter((entry) => String(entry.kind || '').split('+').includes('feed'));

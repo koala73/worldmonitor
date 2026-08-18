@@ -15,6 +15,7 @@ import {
   scanUpstreamHosts,
   sourceAttributionLedgerStats,
   sourceAttributionStats,
+  validateSourceAttributionLedger,
   validateManifest,
   validateProviderIdentityGroups,
   providerIdentityDigest,
@@ -491,6 +492,48 @@ test('ledger stats remain countable when scan-parity validation would fail', () 
   assert.equal(ledger.providerCount, 1);
   assert.equal(ledger.structuredHosts, 1);
   assert.equal(ledger.observedHosts, 1);
+});
+
+test('ledger stats reject intrinsic manifest failures before counting', () => {
+  const malformed = {
+    entries: [
+      {
+        host: 'invalid.example',
+        provider: '',
+        license: '',
+        attribution: '',
+        observed: true,
+        kind: 'not-a-source-kind',
+        status: 'reviewed',
+        references: [{ path: 'scripts/invalid.mjs' }],
+      },
+      {
+        host: 'invalid.example',
+        provider: 'invalid.example',
+        license: 'Provider terms',
+        attribution: 'Credit invalid.example.',
+        observed: true,
+        kind: 'structured',
+        status: 'reviewed',
+        references: [{ path: 'scripts/duplicate.mjs' }],
+      },
+    ],
+    logicalEntries: [{
+      host: 'candidate.example',
+      provider: 'Candidate',
+      license: '',
+      attribution: '',
+      observed: false,
+      kind: 'candidate',
+      status: 'excluded',
+    }],
+  };
+  const errors = validateSourceAttributionLedger(malformed);
+  assert.ok(errors.some((error) => error.includes('invalid manifest kind')));
+  assert.ok(errors.some((error) => error.includes('incomplete attribution metadata')));
+  assert.ok(errors.some((error) => error.includes('duplicate manifest entry')));
+  assert.ok(errors.some((error) => error.includes('incomplete logical attribution metadata')));
+  assert.throws(() => sourceAttributionLedgerStats(malformed), /invalid manifest/);
 });
 
 test('the committed manifest is a fixpoint of its own generator', () => {

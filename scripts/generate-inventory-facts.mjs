@@ -35,8 +35,9 @@ export function loadStatsForInventoryFacts({
     return compute();
   } catch (error) {
     if (!isSourceAttributionManifestError(error)) throw error;
+    const sourceAttribution = fallbackAttribution();
     warn(`inventory facts: proceeding with committed attribution counts; ${error.message}`);
-    return compute({ sourceAttribution: fallbackAttribution() });
+    return compute({ sourceAttribution });
   }
 }
 
@@ -76,13 +77,13 @@ export function buildInventoryFacts(stats = loadStatsForInventoryFacts()) {
   };
 }
 
-function expectedInventoryOutputs() {
+function expectedInventoryOutputs({ loadStats = loadStatsForInventoryFacts } = {}) {
   const productFacts = readJson('shared/product-facts.generated.json');
   if ('capabilities' in productFacts) {
     throw new Error('shared/product-facts.generated.json must not contain extensible inventory counts');
   }
 
-  const stats = loadStatsForInventoryFacts();
+  const stats = loadStats();
   const inventoryFacts = buildInventoryFacts(stats);
   const publicFacts = { ...productFacts, capabilities: inventoryFacts.capabilities };
   const edgeModule = `// AUTO-GENERATED build artifact from authoritative registries.\n// Do not edit manually. Run: npm run inventory:facts\n// @ts-check\n\nexport const PUBLIC_INVENTORY_FACTS = ${JSON.stringify(inventoryFacts, null, 2)};\n`;
@@ -112,10 +113,12 @@ function atomicWrite(rootDir, path, content, fileOps = DEFAULT_FILE_OPS) {
 
 export function generateInventoryFacts({
   check = false,
-  outputs = expectedInventoryOutputs(),
+  outputs,
   rootDir = ROOT,
   fileOps = DEFAULT_FILE_OPS,
+  loadStats = loadStatsForInventoryFacts,
 } = {}) {
+  const expectedOutputs = outputs ?? expectedInventoryOutputs({ loadStats });
   // Prepare and validate every output before replacing any consumer artifact.
   const readCurrent = (path) => {
     try {
@@ -126,13 +129,13 @@ export function generateInventoryFacts({
     }
   };
   if (check) {
-    const stale = findStaleInventoryOutputs(outputs, readCurrent);
+    const stale = findStaleInventoryOutputs(expectedOutputs, readCurrent);
     if (stale.length > 0) {
       throw new Error(`inventory facts are missing or stale: ${stale.join(', ')}`);
     }
     return;
   }
-  for (const [path, content] of outputs) {
+  for (const [path, content] of expectedOutputs) {
     const current = readCurrent(path);
     if (current === content) continue;
     atomicWrite(rootDir, path, content, fileOps);
