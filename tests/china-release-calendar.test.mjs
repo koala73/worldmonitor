@@ -220,6 +220,189 @@ describe('China official release calendar', () => {
     assert.equal(decisions[0]?.requestCount, 1);
   });
 
+  it('rejects a same-origin calendar redirect that carries userinfo', async () => {
+    const decisions = [];
+    const requests = [];
+    let rejectedError;
+    await assert.rejects(
+      fetchChinaReleaseCalendar({
+        now: TEST_NOW,
+        fetchFn: async (url) => {
+          requests.push(String(url));
+          return new Response(null, {
+            status: 302,
+            headers: {
+              Location: 'https://attacker@www.stats.gov.cn/english/PressRelease/ReleaseCalendar/',
+            },
+          });
+        },
+        onDecision: (decision) => decisions.push(decision),
+      }),
+      (error) => {
+        rejectedError = error;
+        return error.message === 'NBS_REQUIRED_SOURCE_UNAVAILABLE:REDIRECT_REJECTED_UNAPPROVED_URL';
+      },
+    );
+
+    assert.deepEqual(requests, [NBS_CALENDAR_INDEX_URL]);
+    assert.equal(decisions[0]?.reason, 'REDIRECT_REJECTED_UNAPPROVED_URL');
+    assert.equal(decisions[0]?.requestCount, 1);
+    assert.equal(rejectedError.nonRetryable, true);
+  });
+
+  it('rejects an extracted calendar href that carries userinfo without fetching it', async () => {
+    const decisions = [];
+    const requests = [];
+    let rejectedError;
+    await assert.rejects(
+      fetchChinaReleaseCalendar({
+        now: TEST_NOW,
+        fetchFn: async (url) => {
+          requests.push(String(url));
+          return new Response(
+            '<a href="https://user:pass@www.stats.gov.cn/english/PressRelease/ReleaseCalendar/calendar.html">2026 release calendar</a>',
+          );
+        },
+        onDecision: (decision) => decisions.push(decision),
+      }),
+      (error) => {
+        rejectedError = error;
+        return error.message === 'NBS_REQUIRED_SOURCE_UNAVAILABLE:UNTRUSTED_NBS_CALENDAR_URL';
+      },
+    );
+
+    assert.deepEqual(requests, [NBS_CALENDAR_INDEX_URL]);
+    assert.equal(decisions[0]?.reason, 'UNTRUSTED_NBS_CALENDAR_URL');
+    assert.equal(decisions[0]?.requestCount, 1);
+    assert.equal(rejectedError.nonRetryable, true);
+  });
+
+  it('rejects a redirect with no Location header', async () => {
+    const decisions = [];
+    const requests = [];
+    let rejectedError;
+    await assert.rejects(
+      fetchChinaReleaseCalendar({
+        now: TEST_NOW,
+        fetchFn: async (url) => {
+          requests.push(String(url));
+          return new Response(null, { status: 302 });
+        },
+        onDecision: (decision) => decisions.push(decision),
+      }),
+      (error) => {
+        rejectedError = error;
+        return error.message === 'NBS_REQUIRED_SOURCE_UNAVAILABLE:REDIRECT_WITHOUT_LOCATION';
+      },
+    );
+
+    assert.deepEqual(requests, [NBS_CALENDAR_INDEX_URL]);
+    assert.equal(decisions[0]?.reason, 'REDIRECT_WITHOUT_LOCATION');
+    assert.equal(decisions[0]?.requestCount, 1);
+    assert.equal(rejectedError.nonRetryable, true);
+  });
+
+  it('rejects a redirect whose Location is not a URL', async () => {
+    const decisions = [];
+    const requests = [];
+    let rejectedError;
+    await assert.rejects(
+      fetchChinaReleaseCalendar({
+        now: TEST_NOW,
+        fetchFn: async (url) => {
+          requests.push(String(url));
+          return new Response(null, { status: 302, headers: { Location: 'http://[' } });
+        },
+        onDecision: (decision) => decisions.push(decision),
+      }),
+      (error) => {
+        rejectedError = error;
+        return error.message === 'NBS_REQUIRED_SOURCE_UNAVAILABLE:REDIRECT_REJECTED_INVALID_URL';
+      },
+    );
+
+    assert.deepEqual(requests, [NBS_CALENDAR_INDEX_URL]);
+    assert.equal(decisions[0]?.reason, 'REDIRECT_REJECTED_INVALID_URL');
+    assert.equal(decisions[0]?.requestCount, 1);
+    assert.equal(rejectedError.nonRetryable, true);
+  });
+
+  it('rejects encoded path traversal that still matches the calendar prefix', async () => {
+    const decisions = [];
+    const requests = [];
+    let rejectedError;
+    await assert.rejects(
+      fetchChinaReleaseCalendar({
+        now: TEST_NOW,
+        fetchFn: async (url) => {
+          requests.push(String(url));
+          return new Response(null, {
+            status: 302,
+            headers: {
+              Location: `${NBS_CALENDAR_INDEX_URL}..%2f..%2fenglish/attacker-controlled.html`,
+            },
+          });
+        },
+        onDecision: (decision) => decisions.push(decision),
+      }),
+      (error) => {
+        rejectedError = error;
+        return error.message === 'NBS_REQUIRED_SOURCE_UNAVAILABLE:REDIRECT_REJECTED_UNAPPROVED_URL';
+      },
+    );
+
+    assert.deepEqual(requests, [NBS_CALENDAR_INDEX_URL]);
+    assert.equal(decisions[0]?.reason, 'REDIRECT_REJECTED_UNAPPROVED_URL');
+    assert.equal(decisions[0]?.requestCount, 1);
+    assert.equal(rejectedError.nonRetryable, true);
+  });
+
+  it('rejects a protocol-relative redirect off the approved origin', async () => {
+    const decisions = [];
+    const requests = [];
+    await assert.rejects(
+      fetchChinaReleaseCalendar({
+        now: TEST_NOW,
+        fetchFn: async (url) => {
+          requests.push(String(url));
+          return new Response(null, {
+            status: 302,
+            headers: { Location: '//attacker.example/english/PressRelease/ReleaseCalendar/' },
+          });
+        },
+        onDecision: (decision) => decisions.push(decision),
+      }),
+      (error) => error.message === 'NBS_REQUIRED_SOURCE_UNAVAILABLE:REDIRECT_REJECTED_UNAPPROVED_URL',
+    );
+
+    assert.deepEqual(requests, [NBS_CALENDAR_INDEX_URL]);
+    assert.equal(decisions[0]?.reason, 'REDIRECT_REJECTED_UNAPPROVED_URL');
+    assert.equal(decisions[0]?.requestCount, 1);
+  });
+
+  it('rejects an http redirect to the approved host', async () => {
+    const decisions = [];
+    const requests = [];
+    await assert.rejects(
+      fetchChinaReleaseCalendar({
+        now: TEST_NOW,
+        fetchFn: async (url) => {
+          requests.push(String(url));
+          return new Response(null, {
+            status: 302,
+            headers: { Location: 'http://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/' },
+          });
+        },
+        onDecision: (decision) => decisions.push(decision),
+      }),
+      (error) => error.message === 'NBS_REQUIRED_SOURCE_UNAVAILABLE:REDIRECT_REJECTED_UNAPPROVED_URL',
+    );
+
+    assert.deepEqual(requests, [NBS_CALENDAR_INDEX_URL]);
+    assert.equal(decisions[0]?.reason, 'REDIRECT_REJECTED_UNAPPROVED_URL');
+    assert.equal(decisions[0]?.requestCount, 1);
+  });
+
   it('rejects an implicitly redirected response if a fetch implementation ignores manual mode', async () => {
     const decisions = [];
     const implicitlyRedirected = new Response(fixture('nbs-calendar.html'));
@@ -389,6 +572,35 @@ describe('China official release calendar', () => {
           fetchFn: async (url) => {
             requests.push(String(url));
             elapsed += NBS_TOTAL_FETCH_BUDGET_MS;
+            return new Response(null, { status: 302, headers: { Location: ALLOWED_REDIRECT_URL } });
+          },
+          onDecision: (decision) => decisions.push(decision),
+        }),
+        (error) => error.message === `NBS_REQUIRED_SOURCE_UNAVAILABLE:${FETCH_BUDGET_EXHAUSTED_REASON}`,
+      );
+    } finally {
+      Date.now = realNow;
+    }
+
+    assert.deepEqual(requests, [NBS_CALENDAR_INDEX_URL]);
+    assert.equal(decisions[0]?.reason, FETCH_BUDGET_EXHAUSTED_REASON);
+    assert.equal(decisions[0]?.requestCount, 1);
+  });
+
+  it('refuses a follow-up hop when remaining budget is less than one request timeout', async () => {
+    const realNow = Date.now;
+    let elapsed = 0;
+    const decisions = [];
+    const requests = [];
+    Date.now = () => realNow() + elapsed;
+    try {
+      await assert.rejects(
+        fetchChinaReleaseCalendar({
+          now: TEST_NOW,
+          sleepFn: async () => {},
+          fetchFn: async (url) => {
+            requests.push(String(url));
+            elapsed += NBS_TOTAL_FETCH_BUDGET_MS - 5_000;
             return new Response(null, { status: 302, headers: { Location: ALLOWED_REDIRECT_URL } });
           },
           onDecision: (decision) => decisions.push(decision),

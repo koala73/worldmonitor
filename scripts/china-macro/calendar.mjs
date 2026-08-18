@@ -166,10 +166,14 @@ function nbsTransportError(reason) {
 }
 
 function isTrustedNbsCalendarUrl(url) {
-  return url.origin === NBS_ORIGIN
-    && url.username === ''
-    && url.password === ''
-    && url.pathname.startsWith(NBS_CALENDAR_PATH_PREFIX);
+  if (url.origin !== NBS_ORIGIN || url.username !== '' || url.password !== '') return false;
+  const { pathname } = url;
+  // WHATWG leaves %2f / %2e / %5c in pathname, so a prefix check alone would
+  // treat encoded traversal as still under the calendar directory.
+  if (pathname.includes('%') || pathname.includes('\\') || pathname.split('/').includes('..')) {
+    return false;
+  }
+  return pathname.startsWith(NBS_CALENDAR_PATH_PREFIX);
 }
 
 /** `Retry-After` is either delta-seconds or an HTTP date. Null when absent or unparseable. */
