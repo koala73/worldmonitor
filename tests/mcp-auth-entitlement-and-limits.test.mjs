@@ -83,6 +83,12 @@ function enableLimiterEnv() {
 beforeEach(async () => {
   process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
   process.env.MCP_TELEMETRY = 'false';
+  // A null entitlement row is `free_account` only when the backend
+  // could actually run a lookup (#5619). Unconfigured → billing_verification.
+  // Gate cases below need the configured path so free-account admission (#6716)
+  // is observable on the null-row fixture.
+  process.env.CONVEX_SITE_URL = 'https://fake.convex.site';
+  process.env.CONVEX_SERVER_SHARED_SECRET = 'test-convex-shared-secret';
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
   delete process.env.CF_EDGE_PROOF_SECRET;
@@ -111,36 +117,36 @@ const entOk = () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: true }, v
  * `isolates` names the predicate the case is the sole witness for — i.e. the
  * predicate whose deletion this case (and only this case) turns red.
  */
-const REJECT_CASES = [
+const ENTITLEMENT_CASES = [
   {
-    // NOTE: `!ent` is the ONE predicate no test can isolate, and that is a
-    // property of the code, not a gap in this fixture. All three sibling reads
-    // are optional-chained with a falsy default — `ent?.features?.tier ?? 0`,
-    // `ent?.features?.mcpAccess === true`, `ent?.validUntil ?? 0` — so a falsy
-    // `ent` forces tier=0 AND mcpAccess=false AND validUntil=0, firing all
-    // three other guards. `!ent` is therefore fully subsumed defence-in-depth:
-    // deleting it leaves this suite green (verified), and deleting `!ent` AND
-    // `tier < 1` together STILL 401s here via `!mcpAccess`. Keep the case —
-    // it pins the null-row rejection itself, which is the security-relevant
-    // behaviour — but do not claim it isolates a predicate.
-    label: 'ent === null (no entitlement row) — triple-guarded, see note',
-    isolates: 'null-row rejection (no single predicate)',
+    label: 'ent === null after a configured lookup',
+    isolates: 'confirmed no-row free account',
     ent: () => null,
+    freeAccount: true,
   },
   {
-    label: 'tier 0 — mcpAccess true, validUntil future',
-    isolates: 'tier < 1',
+    label: 'well-formed tier 0 row',
+    isolates: 'confirmed tier-0 free account',
+    ent: () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0 }),
+    freeAccount: true,
+  },
+  {
+    label: 'contradictory tier 0 row with mcpAccess true',
+    isolates: 'malformed free shape',
     ent: () => ({ planKey: 'free', features: { tier: 0, mcpAccess: true }, validUntil: Date.now() + DAY }),
+    freeAccount: false,
   },
   {
     label: 'mcpAccess false — tier 1, validUntil future',
     isolates: '!mcpAccess',
     ent: () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: false }, validUntil: Date.now() + DAY }),
+    freeAccount: false,
   },
   {
     label: 'validUntil in the past — tier 1, mcpAccess true',
     isolates: 'validUntil < Date.now()',
     ent: () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: true }, validUntil: Date.now() - 1000 }),
+    freeAccount: false,
   },
 ];
 
@@ -163,6 +169,9 @@ const GATE_ENTRIES = [
  * pre-check can also report the plan's MCP daily limit; every case below is
  * about the verdict alone, so the unwrap keeps those assertions unchanged. The
  * limit itself is covered by its own describe block further down.
+ *
+ * #6716: only a confirmed no-row or well-formed tier-0 row is reinterpreted as
+ * a free account. Expired/disabled tiered rows and malformed shapes stay closed.
  */
 async function runGate(context, getEntitlements) {
   const { deps } = makeProDeps({ getEntitlements });
@@ -172,25 +181,31 @@ async function runGate(context, getEntitlements) {
 
 async function assertRejected(res, label) {
   assert.ok(res instanceof Response, `${label}: gate must reject with a Response, got ${res}`);
-  assert.equal(res.status, 401, `${label}: entitlement rejection is a 401`);
+  assert.equal(res.status, 403, `${label}: inactive entitlement is a terminal 403`);
   const body = await res.json();
-  assert.equal(body.error?.code, -32001, `${label}: JSON-RPC error code`);
-  assert.equal(body.error?.message, 'Subscription not active.', `${label}: rejection message`);
-  assert.match(
-    res.headers.get('WWW-Authenticate') ?? '',
-    /error="invalid_token"/,
-    `${label}: must carry the invalid_token challenge`,
+  assert.equal(body.error?.code, -32002, `${label}: JSON-RPC error code`);
+  assert.ok(
+    typeof body.error?.message === 'string' && body.error.message.length > 0,
+    `${label}: rejection message`,
   );
+  assert.equal(body.error?.data?.reason, 'upgrade-required', `${label}: structured denial reason`);
+  assert.equal(res.headers.get('WWW-Authenticate'), null, `${label}: terminal denial must not invite OAuth retry`);
   assert.equal(res.headers.get('Cache-Control'), 'no-store', `${label}: auth rejections must never be cached`);
 }
 
 describe('api/mcp/auth.ts — checkMcpEntitlementGate predicates (#5379 Gap 4)', () => {
   for (const entry of GATE_ENTRIES) {
     describe(`${entry.kind} context`, () => {
-      for (const c of REJECT_CASES) {
-        it(`rejects 401 when ${c.label} [isolates \`${c.isolates}\`]`, async () => {
-          const res = await runGate(entry.context, async () => c.ent());
-          await assertRejected(res, `${entry.kind} / ${c.isolates}`);
+      for (const c of ENTITLEMENT_CASES) {
+        it(`${c.freeAccount ? 'admits' : 'rejects'} ${c.label} [isolates \`${c.isolates}\`] (#6716)`, async () => {
+          const { deps } = makeProDeps({ getEntitlements: async () => c.ent() });
+          const res = await authMod.runContextPreChecks(entry.context, deps, RESOURCE_META_URL, CORS);
+          if (c.freeAccount) {
+            assert.equal(res.ok, true, `${entry.kind} / ${c.isolates}: MCP call-site must admit free allowance`);
+            assert.equal(res.freeAccountAllowance, true, `${entry.kind} / ${c.isolates}: freeAccountAllowance flag`);
+          } else {
+            await assertRejected(res.ok ? null : res.response, `${entry.kind} / ${c.isolates}`);
+          }
         });
       }
 
@@ -200,60 +215,82 @@ describe('api/mcp/auth.ts — checkMcpEntitlementGate predicates (#5379 Gap 4)',
       });
 
       for (const t of TRUTHY_NOT_TRUE) {
-        it(`rejects 401 on ${t.label} — mcpAccess is \`=== true\`, not truthy`, async () => {
-          const res = await runGate(entry.context, async () => ({
-            planKey: 'pro',
-            features: { tier: 1, mcpAccess: t.value },
-            validUntil: Date.now() + DAY,
-          }));
-          await assertRejected(res, `${entry.kind} / ${t.label}`);
+        it(`rejects malformed ${t.label} (#6716)`, async () => {
+          const { deps } = makeProDeps({
+            getEntitlements: async () => ({
+              planKey: 'pro',
+              features: { tier: 1, mcpAccess: t.value },
+              validUntil: Date.now() + DAY,
+            }),
+          });
+          const res = await authMod.runContextPreChecks(entry.context, deps, RESOURCE_META_URL, CORS);
+          await assertRejected(res.ok ? null : res.response, `${entry.kind} / ${t.label}`);
         });
       }
 
-      it('rejects 401 (fail-closed) when getEntitlements THROWS', async () => {
+      it('denies with a retryable 503 (fail-closed) when getEntitlements THROWS (#6716)', async () => {
+        // Fail-closed is preserved — no admission, no metering. What changed is
+        // the CLAIM: a thrown lookup is our backend being unreachable, so it
+        // must not be rendered as a verdict about the caller's subscription.
         const res = await runGate(entry.context, async () => { throw new Error('convex down'); });
-        await assertRejected(res, `${entry.kind} / getEntitlements throws`);
+        assert.ok(res instanceof Response, `${entry.kind}: must reject with a Response`);
+        assert.equal(res.status, 503, `${entry.kind}: availability failure is retryable`);
+        const body = await res.json();
+        assert.equal(body.error?.code, -32603, `${entry.kind}: JSON-RPC error code`);
+        assert.equal(res.headers.get('Retry-After'), '5', `${entry.kind}: must say when to retry`);
+        assert.equal(
+          body.error?.data?.reason,
+          undefined,
+          `${entry.kind}: must not assert a billing/account reason for an outage`,
+        );
+        assert.equal(res.headers.get('Cache-Control'), 'no-store', `${entry.kind}: never cached`);
       });
 
-      it('boundary: validUntil exactly now-ish (future by 1 ms) passes, past by 1 ms rejects', async () => {
+      it('boundary: validUntil future passes; past-by-1ms is rejected (#6716)', async () => {
         const pass = await runGate(entry.context, async () => ({
           planKey: 'pro', features: { tier: 1, mcpAccess: true }, validUntil: Date.now() + 60_000,
         }));
         assert.equal(pass, null, 'validUntil comfortably in the future must pass');
 
-        const fail = await runGate(entry.context, async () => ({
-          planKey: 'pro', features: { tier: 1, mcpAccess: true }, validUntil: Date.now() - 1,
-        }));
-        await assertRejected(fail, `${entry.kind} / validUntil past by 1ms`);
+        const { deps } = makeProDeps({
+          getEntitlements: async () => ({
+            planKey: 'pro', features: { tier: 1, mcpAccess: true }, validUntil: Date.now() - 1,
+          }),
+        });
+        const expired = await authMod.runContextPreChecks(entry.context, deps, RESOURCE_META_URL, CORS);
+        await assertRejected(expired.ok ? null : expired.response, `${entry.kind} / expired`);
       });
 
-      it('tier boundary: tier 1 passes, tier 0 rejects, tier 2 passes', async () => {
+      it('tier boundary: tier 1/2 pass Pro; tier 0 admits free allowance (#6716)', async () => {
         for (const tier of [1, 2]) {
           const res = await runGate(entry.context, async () => ({
             planKey: 'pro', features: { tier, mcpAccess: true }, validUntil: Date.now() + DAY,
           }));
           assert.equal(res, null, `tier ${tier} must satisfy \`tier >= 1\``);
         }
-        const res0 = await runGate(entry.context, async () => ({
-          planKey: 'free', features: { tier: 0, mcpAccess: true }, validUntil: Date.now() + DAY,
-        }));
-        await assertRejected(res0, `${entry.kind} / tier 0`);
+        const { deps } = makeProDeps({
+          getEntitlements: async () => ({
+            planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0,
+          }),
+        });
+        const res0 = await authMod.runContextPreChecks(entry.context, deps, RESOURCE_META_URL, CORS);
+        assert.equal(res0.ok, true);
+        assert.equal(res0.freeAccountAllowance, true);
       });
 
-      it('missing features object → 401 (tier defaults to 0, never open)', async () => {
-        const res = await runGate(entry.context, async () => ({ planKey: 'pro', validUntil: Date.now() + DAY }));
-        await assertRejected(res, `${entry.kind} / no features`);
+      it('missing features object → fail closed (#6716)', async () => {
+        const { deps } = makeProDeps({
+          getEntitlements: async () => ({ planKey: 'pro', validUntil: Date.now() + DAY }),
+        });
+        const res = await authMod.runContextPreChecks(entry.context, deps, RESOURCE_META_URL, CORS);
+        await assertRejected(res.ok ? null : res.response, `${entry.kind} / missing features`);
       });
 
-      // What `!ent` actually defends. It is unprovable by single-predicate
-      // mutation (it is subsumed — see the note on REJECT_CASES), but the
-      // BEHAVIOUR it guards is testable: every falsy entitlement shape must
-      // reject. This is the regression that bites if someone ever drops the
-      // `?.` / `??` defaults and reads `ent.features.tier` directly.
-      for (const falsy of [null, undefined, 0, '', false, NaN]) {
-        it(`falsy entitlement \`${String(falsy)}\` → 401, never a throw or a pass`, async () => {
-          const res = await runGate(entry.context, async () => falsy);
-          await assertRejected(res, `${entry.kind} / falsy ent ${String(falsy)}`);
+      for (const falsy of [undefined, 0, '', false, NaN]) {
+        it(`malformed falsy entitlement \`${String(falsy)}\` → fail closed, never throw (#6716)`, async () => {
+          const { deps } = makeProDeps({ getEntitlements: async () => falsy });
+          const res = await authMod.runContextPreChecks(entry.context, deps, RESOURCE_META_URL, CORS);
+          await assertRejected(res.ok ? null : res.response, `${entry.kind} / ${String(falsy)}`);
         });
       }
     });
@@ -357,7 +394,8 @@ describe('api/mcp/auth.ts — pre-check resolves the plan MCP daily limit (U3 / 
   });
 
   it('a rejected gate carries the Response and no limit (fail-closed shape is unambiguous)', async () => {
-    const { deps } = makeProDeps({ getEntitlements: async () => null });
+    // Throws remain hard rejects; null rows now admit free-account allowance (#6716).
+    const { deps } = makeProDeps({ getEntitlements: async () => { throw new Error('convex down'); } });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, false);
     assert.ok(res.response instanceof Response);

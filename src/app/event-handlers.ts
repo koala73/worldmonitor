@@ -104,6 +104,10 @@ import { resolveGateAction, type PanelGateReason } from '@/services/panel-gating
 import { ExportGateControl } from '@/components/ExportGateControl';
 import { h, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
+import {
+  isAgentAnalyticsSuppressed,
+  isAgentPanelViewSuppressed,
+} from '@/services/agent-analytics-privacy';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
 import { createSettingsButton } from '@/components/settings-button';
@@ -338,11 +342,11 @@ export class EventHandlerManager implements AppModule {
    * enabled → true (no-op). Single source of truth for runtime panel-enable
    * so search-add and undo-restore stay in lockstep.
    */
-  enablePanelById(panelId: string): boolean {
+  enablePanelById(panelId: string, options?: { trackAnalytics?: boolean }): boolean {
     const config = this.ctx.panelSettings[panelId];
     if (!config) return false;
     if (config.enabled) return true;
-    if (!isProUser() && isFreePanelCapCounted(panelId)) {
+    if (!hasPremiumAccess(getAuthState()) && isFreePanelCapCounted(panelId)) {
       const enabledCount = countFreePanelCapUsage(this.ctx.panelSettings);
       if (enabledCount >= FREE_MAX_PANELS) {
         // Tell the user why nothing happened instead of failing silently.
@@ -353,7 +357,7 @@ export class EventHandlerManager implements AppModule {
       }
     }
     userSetPanelEnabled(config, true);
-    trackPanelToggled(panelId, true);
+    if (options?.trackAnalytics !== false) trackPanelToggled(panelId, true);
     saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
     this.applyPanelSettings();
     this.ctx.unifiedSettings?.refreshPanelToggles();
@@ -1228,7 +1232,7 @@ export class EventHandlerManager implements AppModule {
 
   applyMapLayerChange(layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic'): void {
     console.log(`[App.onLayerChange] ${layer}: ${enabled} (${source})`);
-    trackMapLayerToggle(layer, enabled, source);
+    if (!isAgentAnalyticsSuppressed()) trackMapLayerToggle(layer, enabled, source);
     this.ctx.mapLayers[layer] = enabled;
     saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
     this.syncUrlState();
@@ -2067,6 +2071,7 @@ export class EventHandlerManager implements AppModule {
         if (entry.isIntersecting && entry.intersectionRatio >= 0.3) {
           const id = (entry.target as HTMLElement).dataset.panel;
           if (id && !viewedPanels.has(id)) {
+            if (isAgentPanelViewSuppressed(id)) continue;
             viewedPanels.add(id);
             trackPanelView(id);
           }

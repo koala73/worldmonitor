@@ -221,3 +221,10 @@ test('mobile search CSS never hides the sheet or input with content-visibility (
     /\.search-overlay\.search-mobile[^{}]*(?:\.search-sheet|\.search-input)[^{}]*\{[^}]*content-visibility\s*:\s*hidden/i,
   );
 });
+
+test('responsive search caps do not mutate the open session history mode', () => {
+  const searchMethod = extractMethod('public search(rawInput: string, scope: SearchScope = this.activeScope): SearchIndexQueryResult {');
+  assert.match(searchMethod, /const currentViewportIsMobile = isMobileDevice\(\);/);
+  assert.match(searchMethod, /isMobile: currentViewportIsMobile/);
+  assert.doesNotMatch(searchMethod, /this\.isMobile\s*=/);
+});

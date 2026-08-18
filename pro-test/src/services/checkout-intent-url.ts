@@ -15,11 +15,13 @@
 export const CHECKOUT_PRODUCT_PARAM = 'wm_checkout_product';
 export const CHECKOUT_REF_PARAM = 'wm_checkout_ref';
 export const CHECKOUT_DISCOUNT_PARAM = 'wm_checkout_discount';
+export const CHECKOUT_ATTRIBUTION_PARAM = 'wm_checkout_attribution';
 
 export interface CheckoutIntentFromUrl {
   productId: string;
   referralCode?: string;
   discountCode?: string;
+  attributionSource?: string;
 }
 
 /**
@@ -35,6 +37,7 @@ export function parseCheckoutIntentFromSearch(search: string): CheckoutIntentFro
     productId,
     referralCode: params.get(CHECKOUT_REF_PARAM) ?? undefined,
     discountCode: params.get(CHECKOUT_DISCOUNT_PARAM) ?? undefined,
+    attributionSource: params.get(CHECKOUT_ATTRIBUTION_PARAM) ?? undefined,
   };
 }
 
@@ -51,6 +54,7 @@ export function stripCheckoutIntentFromSearch(search: string): string {
   params.delete(CHECKOUT_PRODUCT_PARAM);
   params.delete(CHECKOUT_REF_PARAM);
   params.delete(CHECKOUT_DISCOUNT_PARAM);
+  params.delete(CHECKOUT_ATTRIBUTION_PARAM);
   const remaining = params.toString();
   return remaining ? `?${remaining}` : '';
 }
@@ -66,14 +70,18 @@ export function stripCheckoutIntentFromSearch(search: string): string {
 export function buildCheckoutReturnUrl(
   currentHref: string,
   productId: string,
-  options?: { referralCode?: string; discountCode?: string },
+  options?: { referralCode?: string; discountCode?: string; attributionSource?: string },
 ): string {
   const url = new URL(currentHref);
   url.searchParams.delete(CHECKOUT_PRODUCT_PARAM);
   url.searchParams.delete(CHECKOUT_REF_PARAM);
   url.searchParams.delete(CHECKOUT_DISCOUNT_PARAM);
+  url.searchParams.delete(CHECKOUT_ATTRIBUTION_PARAM);
   url.searchParams.set(CHECKOUT_PRODUCT_PARAM, productId);
   if (options?.referralCode) url.searchParams.set(CHECKOUT_REF_PARAM, options.referralCode);
   if (options?.discountCode) url.searchParams.set(CHECKOUT_DISCOUNT_PARAM, options.discountCode);
+  if (options?.attributionSource) {
+    url.searchParams.set(CHECKOUT_ATTRIBUTION_PARAM, options.attributionSource);
+  }
   return url.toString();
 }

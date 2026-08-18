@@ -2,7 +2,7 @@ import { readExistsFlags, readJsonFromUpstash, redisPipeline } from '../_upstash
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
-import { getMcpBillingVerificationDenial } from './auth';
+import { getMcpBillingVerificationDenial, wwwAuthHeader } from './auth';
 import { BillingDenialError, RpcValidationError } from './billing-denial';
 import {
   BothSourcesFailedError,
@@ -14,7 +14,9 @@ import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
 import { reserveQuota } from './quota';
-import { TOOL_REGISTRY } from './registry/index';
+import { reserveFreeAccountAllowance } from './free-account-allowance';
+import { buildMcpStructuredDenial, type McpDenialReason } from './upgrade';
+import { isQuotaExemptMetadataTool, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
 import {
@@ -181,6 +183,57 @@ export async function executeTool(
   };
 }
 
+/**
+ * Structured JSON-RPC denial emitted from the dispatch seam (#6716).
+ *
+ * One builder for every denial here so the envelope cannot drift per site —
+ * the drift that shipped an auth-shaped 401 for a quota state and a 401 with
+ * no `WWW-Authenticate`. Callers choose code + status deliberately:
+ *   -32001 / 401 — authentication (re-auth may help); MUST pass
+ *                  `wwwAuthenticate` so RFC-9728 clients can discover metadata.
+ *   -32002 / 403 — terminal entitlement denial (re-auth cannot help).
+ *   -32029 / 429 — quota/allowance spent; pass `retryAfter`.
+ */
+function mcpDenialResponse(
+  reason: McpDenialReason,
+  code: number,
+  status: number,
+  id: unknown,
+  corsHeaders: Record<string, string>,
+  opts?: { retryAfter?: string; wwwAuthenticate?: string },
+): Response {
+  const { message, data } = buildMcpStructuredDenial(reason);
+  return new Response(
+    JSON.stringify({ jsonrpc: '2.0', id, error: { code, message, data } }),
+    {
+      status,
+      headers: withMcpNoStore({
+        'Content-Type': 'application/json',
+        ...(opts?.retryAfter === undefined ? {} : { 'Retry-After': opts.retryAfter }),
+        ...(opts?.wwwAuthenticate === undefined
+          ? {}
+          : { 'WWW-Authenticate': wwwAuthHeader(opts.wwwAuthenticate) }),
+        ...corsHeaders,
+      }),
+    },
+  );
+}
+
+/**
+ * Reservation backend unreachable. Identical on both metering paths — a single
+ * definition so the free branch and the Pro branch cannot answer the same
+ * condition differently.
+ */
+function quotaBackendUnavailableResponse(
+  id: unknown,
+  corsHeaders: Record<string, string>,
+): Response {
+  return new Response(
+    JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
+    { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
+  );
+}
+
 export async function dispatchToolsCall(
   req: Request,
   context: McpAuthContext,
@@ -193,6 +246,13 @@ export async function dispatchToolsCall(
   // null → unlimited. Only the `pro` context ever supplies one (KTD6), so a
   // caller that skips the pre-check simply inherits the plan default.
   mcpDailyLimit?: number | null,
+  // Free-account paid-funnel path (#6716). When set, meters via the idle-gap
+  // + call counters instead of reserveQuota.
+  freeAccountAllowance?: boolean,
+  // Resource-metadata URL for `WWW-Authenticate` on the 401 emitted here.
+  // Optional so existing callers keep compiling; omitted → header omitted
+  // rather than emitted with a guessed URL.
+  resourceMetadataUrl?: string,
 ): Promise<Response> {
   const id = body.id ?? null;
   const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
@@ -212,7 +272,14 @@ export async function dispatchToolsCall(
   // future edit to the handler's matching cannot silently widen what a free
   // caller can reach.
   if (context.kind === 'free' && tool._freeTier !== true) {
-    return rpcError(id, -32001, 'Subscription not active.', corsHeaders);
+    return mcpDenialResponse('no-account', -32001, 401, id, corsHeaders, {
+      // Every 401 on this surface carries WWW-Authenticate — docs/mcp-error-catalog.mdx
+      // states it as an invariant, and RFC-9728 clients discover the OAuth resource
+      // metadata through it. `resourceMetadataUrl` is optional only because the
+      // resources/read seam predates this parameter; when absent the header is
+      // omitted rather than emitted with a wrong URL.
+      wwwAuthenticate: resourceMetadataUrl,
+    });
   }
 
   // Credentialed INCR-first reservation. Both cache-only AND RPC tools count
@@ -224,7 +291,24 @@ export async function dispatchToolsCall(
   // the v1.5.0 compression's UX hedge, and (b) lock out Pro users at the
   // daily cap from even seeing tool definitions. Exempt by name; rate-
   // limiter (60/min) still applies as the abuse guard.
-  const isMetadataTool = p.name === 'describe_tool';
+  const isMetadataTool = isQuotaExemptMetadataTool(tool);
+
+  // #6716 F1: the free-account allowance covers CACHE-BACKED tools only.
+  // A tool with `_execute` fans out to server/gateway.ts, which runs its own
+  // checkProMcpAccess re-check that this feature deliberately does not relax
+  // (see api/mcp/types.ts's `freeAccountAllowance` note). Admitting one would
+  // charge a free slot and then hand the caller a gateway 401 — burning the
+  // day's allowance on errors it can never convert into data. Refuse BEFORE the
+  // reservation so no slot is spent.
+  //
+  // Metadata and free-tier tools are exempt for the same reason they are exempt
+  // from metering below: `describe_tool` has an `_execute`, but it is a purely
+  // local registry read that never reaches the gateway, and it is the tool an
+  // agent needs most while deciding what it may call.
+  if (freeAccountAllowance && tool._execute && !isMetadataTool && tool._freeTier !== true) {
+    return mcpDenialResponse('upgrade-required', -32002, 403, id, corsHeaders);
+  }
+
   // user_key (#4859) consumes the same per-user daily quota as pro: cache
   // tools read Upstash directly (no downstream gateway metering), so an
   // unquota'd user_key would be an unmetered data loophole bounded only by
@@ -236,25 +320,44 @@ export async function dispatchToolsCall(
     && tool._freeTier !== true
     && !isMetadataTool
   ) {
-    const reservation = await reserveQuota(context.userId, deps.redisPipeline, mcpDailyLimit);
-    if (!reservation.ok) {
-      if (reservation.reason === 'cap-exceeded') {
-        // `floor` is the limit the reservation actually enforced, so the copy
-        // can never quote a different number from the one that rejected.
-        return new Response(
-          JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32029, message: `Daily MCP quota exceeded (${reservation.floor}/day). Resets at next UTC midnight.` } }),
-          { status: 429, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': String(secondsUntilUtcMidnight()), ...corsHeaders }) },
-        );
-      }
-      // Hard-cap correctness: NEVER dispatch on reservation failure.
-      return new Response(
-        JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
-        { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
+    if (freeAccountAllowance) {
+      const reservation = await reserveFreeAccountAllowance(
+        context.userId,
+        deps.redisPipeline,
       );
+      if (!reservation.ok) {
+        if (reservation.reason === 'allowance-exhausted') {
+          // #6716 F2: a spent allowance is a QUOTA state, so it rides the same
+          // envelope as the Pro cap below — -32029 at HTTP 429 with Retry-After.
+          // It must never be -32001/401: docs/mcp-error-catalog.mdx documents that
+          // pair as "re-authenticate via OAuth", so an RFC-9728 client would loop
+          // (OAuth succeeds, retry, 401 again) on a condition re-auth cannot fix.
+          return mcpDenialResponse('allowance-exhausted', -32029, 429, id, corsHeaders, {
+            retryAfter: String(secondsUntilUtcMidnight()),
+          });
+        }
+        return quotaBackendUnavailableResponse(id, corsHeaders);
+      }
+      // Slot charged for good once dispatch begins (same GHSA-hcq5 posture as
+      // reserveQuota). No caller-side rollback after this point.
+    } else {
+      const reservation = await reserveQuota(context.userId, deps.redisPipeline, mcpDailyLimit);
+      if (!reservation.ok) {
+        if (reservation.reason === 'cap-exceeded') {
+          // `floor` is the limit the reservation actually enforced, so the copy
+          // can never quote a different number from the one that rejected.
+          return new Response(
+            JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32029, message: `Daily MCP quota exceeded (${reservation.floor}/day). Resets at next UTC midnight.` } }),
+            { status: 429, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': String(secondsUntilUtcMidnight()), ...corsHeaders }) },
+          );
+        }
+        // Hard-cap correctness: NEVER dispatch on reservation failure.
+        return quotaBackendUnavailableResponse(id, corsHeaders);
+      }
+      // No caller-side rollback of the reservation: once we pass this point the
+      // tool runs and the daily slot is charged for good (GHSA-hcq5). The only
+      // rollback is INSIDE reserveQuota, for the pre-dispatch cap-exceeded case.
     }
-    // No caller-side rollback of the reservation: once we pass this point the
-    // tool runs and the daily slot is charged for good (GHSA-hcq5). The only
-    // rollback is INSIDE reserveQuota, for the pre-dispatch cap-exceeded case.
   }
 
   const jmespathArg = p.arguments?.jmespath;

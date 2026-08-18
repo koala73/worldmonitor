@@ -6,8 +6,8 @@
  * global inflation view. That contract spans three files:
  *   - commands.ts        — a `panel:consumer-prices@world` command exists and
  *                          carries enough inflation keywords to match queries.
- *   - search-manager.ts  — the panel handler parses the `@<tab>` suffix and
- *                          dispatches the panel's open-tab event.
+ *   - search-selection-dispatcher.ts — the panel handler parses the `@<tab>`
+ *                          suffix and dispatches the panel's open-tab event.
  *   - ConsumerPricesPanel — listens for that event and has a `world` tab.
  *
  * These are source-text assertions (same style as
@@ -25,7 +25,7 @@ const read = (p) => readFileSync(resolve(__dirname, p), 'utf-8');
 const commandsSrc = read('../src/config/commands.ts');
 const searchModalSrc = read('../src/components/SearchModal.ts');
 const searchScopeSrc = read('../src/components/search-scope.ts');
-const searchManagerSrc = read('../src/app/search-manager.ts');
+const searchSelectionDispatcherSrc = read('../src/app/search-selection-dispatcher.ts');
 const panelSrc = read('../src/components/ConsumerPricesPanel.ts');
 
 describe('Consumer Prices World tab — CMD+K discoverability', () => {
@@ -79,13 +79,13 @@ describe('Consumer Prices World tab — CMD+K discoverability', () => {
     );
   });
 
-  it('search-manager parses the @<tab> suffix and dispatches the open-tab event', () => {
-    assert.match(searchManagerSrc, /action\.split\('@'\)/, 'panel handler no longer splits on @');
-    assert.match(searchManagerSrc, /dispatchPanelTab\(/, 'panel handler no longer deep-links to a tab');
+  it('the selection dispatcher parses the @<tab> suffix and dispatches the open-tab event', () => {
+    assert.match(searchSelectionDispatcherSrc, /action\.split\('@'\)/, 'panel handler no longer splits on @');
+    assert.match(searchSelectionDispatcherSrc, /dispatchPanelTab\(/, 'panel handler no longer deep-links to a tab');
     assert.match(
-      searchManagerSrc,
+      searchSelectionDispatcherSrc,
       /wm-consumer-prices-open-tab/,
-      'search-manager no longer dispatches the consumer-prices open-tab event',
+      'selection dispatcher no longer dispatches the consumer-prices open-tab event',
     );
   });
 

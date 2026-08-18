@@ -2173,7 +2173,7 @@ A provider is a host; an outlet is a masthead. Only 3 of 536 active provider rec
 - **Truncation is visible.** Enumerated views return `matched` alongside `returned`; the full provider inventory does not fit one response.
 - **API endpoints:** none — committed-registry read, no upstream call.
 - **Kind:** deterministic local compute. No LLM, no freshness budget.
-- **Access: free.** This is the one tool callable with **no credentials at all**, so an agent can see what WorldMonitor covers before anyone signs up. It consumes no quota for any principal and carries `_meta["worldmonitor/access"]: "free"` in `tools/list`, which is how a client that reads schemas rather than prose can tell. Uncredentialed calls take their own per-IP ceiling, tighter than the discovery limit, and that ceiling fails closed — if it can't be reached, the call is refused rather than served. Every other tool still requires a subscription.
+- **Access: free.** This is the one tool callable with **no credentials at all**, so an agent can see what WorldMonitor covers before anyone signs up. It consumes no quota for any principal and carries `_meta["worldmonitor/access"]: "free"` in `tools/list`, which is how a client that reads schemas rather than prose can tell. Uncredentialed calls take their own per-IP ceiling, tighter than the discovery limit, and that ceiling fails closed — if it can't be reached, the call is refused rather than served. Every other tool carries either `"free-account"` for cache-backed signed-in allowance eligibility or `"subscription"` for Pro-only access.
 
 ---
 

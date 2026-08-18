@@ -1474,6 +1474,7 @@ http.route({
       returnUrl?: string;
       discountCode?: string;
       referralCode?: string;
+      attributionSource?: string;
       bypassPendingGuard?: boolean;
     }>(request);
     if (!body) {
@@ -1501,6 +1502,7 @@ http.route({
           returnUrl: body.returnUrl,
           discountCode: body.discountCode,
           referralCode: body.referralCode,
+          attributionSource: body.attributionSource,
           bypassPendingGuard: body.bypassPendingGuard,
         },
       );

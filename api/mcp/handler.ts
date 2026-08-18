@@ -19,10 +19,13 @@ import {
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
 import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
-import { TOOL_LIST_BYTES, TOOL_LIST_RESPONSE, TOOL_REGISTRY } from './registry/index';
+import { FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
 import {
+  ACCOUNT_RESOURCE_LIST_RESPONSE,
+  buildAccountAllowanceResourceResponse,
   buildPublicResourceResponse,
   buildResourceResponse,
+  isAccountResourceUri,
   isPublicResourceUri,
   RESOURCE_LIST_RESPONSE,
   RESOURCE_TEMPLATE_LIST_RESPONSE,
@@ -644,6 +647,7 @@ async function mcpHandlerInner(
     ? resourceReadUri
     : null;
   const isPublicResourceRead = typeof resourceReadUri === 'string' && isPublicResourceUri(resourceReadUri);
+  const isAccountResourceRead = typeof resourceReadUri === 'string' && isAccountResourceUri(resourceReadUri);
   const isAnonResourceRead = uiResourceReadUri !== null || isPublicResourceRead;
 
   // U7 (R7, R9): a `tools/call` naming a tool in the always-free subset is
@@ -655,7 +659,7 @@ async function mcpHandlerInner(
     ? ((body.params as { name?: unknown } | null)?.name)
     : undefined;
   const isFreeTierToolCall = typeof toolCallName === 'string'
-    && TOOL_REGISTRY.some((t) => t.name === toolCallName && t._freeTier === true);
+    && FREE_TIER_TOOL_NAMES.has(toolCallName);
 
   // Auth gate. `context` is null only on the anonymous discovery path; every
   // data/quota method below runs the full protected path and always sets it.
@@ -663,6 +667,7 @@ async function mcpHandlerInner(
   // Set alongside `context` by the gated branch's pre-check. Stays undefined on
   // the public/anon branch — which never reaches a metered dispatch anyway.
   let mcpDailyLimit: number | null | undefined;
+  let freeAccountAllowance = false;
   if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
       // Credentials presented on a public method are still validated so a
@@ -735,6 +740,7 @@ async function mcpHandlerInner(
     // already fetched (plan 2026-07-25-001 U3). Carried to the two metered
     // dispatch sites below; unset for every caller class but `pro`.
     mcpDailyLimit = preCheck.mcpDailyLimit;
+    freeAccountAllowance = preCheck.freeAccountAllowance === true;
     const limited = await applyPerMinuteLimit(context, corsHeaders);
     if (limited) {
       usage.phase = 'limit';
@@ -803,7 +809,17 @@ async function mcpHandlerInner(
         usage.phase = 'auth';
         return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
       }
-      const dispatched = await dispatchToolsCall(req, context, deps, body, corsHeaders, ctx, mcpDailyLimit);
+      const dispatched = await dispatchToolsCall(
+        req,
+        context,
+        deps,
+        body,
+        corsHeaders,
+        ctx,
+        mcpDailyLimit,
+        freeAccountAllowance,
+        resourceMetadataUrl,
+      );
       // Mid-call billing denials (dispatch's BillingDenialError re-emit) must
       // classify like the pre-check sites: 'billing' -> billing_verification_503
       // / tier_403, not rate_limit_degraded (503) or 'ok' (403).
@@ -811,6 +827,15 @@ async function mcpHandlerInner(
         usage.phase = 'billing';
       } else if (dispatched.status === 429 || dispatched.status === 503) {
         usage.phase = 'dispatch';
+      } else if (dispatched.status === 401 || dispatched.status === 403) {
+        // #6716 F4: dispatch can now emit a tier denial of its own (the
+        // free-tier fail-closed guard at 401, and the gateway-backed
+        // upgrade-required at 403). Without this arm both fall past every
+        // branch, keep usage.phase's 'ok' default, and get recorded as
+        // SERVED — deleting from the dataset exactly the denial events this
+        // funnel exists to measure. 'precheck' maps a non-503 status to
+        // tier_403, matching how the pre-check sites classify the same verdict.
+        usage.phase = 'precheck';
       }
       return maybeStreamJsonRpcResponse(req, dispatched);
     }
@@ -846,7 +871,15 @@ async function mcpHandlerInner(
       // data-bearing URI templates are surfaced separately via
       // resources/templates/list (a literal `{iso2}` URI can't resolve, so it
       // must not appear in a list an anonymous validator reads back).
-      return maybeStreamJsonRpcResponse(req, rpcOk(id, { resources: [...RESOURCE_LIST_RESPONSE, ...UI_RESOURCE_LIST_RESPONSE] }, corsHeaders));
+      return maybeStreamJsonRpcResponse(req, rpcOk(id, {
+        resources: [
+          ...RESOURCE_LIST_RESPONSE,
+          ...UI_RESOURCE_LIST_RESPONSE,
+          ...(context?.kind === 'pro' || context?.kind === 'user_key'
+            ? ACCOUNT_RESOURCE_LIST_RESPONSE
+            : []),
+        ],
+      }, corsHeaders));
     case 'resources/templates/list':
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { resourceTemplates: RESOURCE_TEMPLATE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':
@@ -862,6 +895,25 @@ async function mcpHandlerInner(
       if (isPublicResourceRead) {
         return maybeStreamJsonRpcResponse(req, await buildPublicResourceResponse(body, corsHeaders));
       }
+      // Account allowance status is authenticated but quota-exempt. The gated
+      // branch above already resolved identity, durable token validity, and the
+      // entitlement/meter selection. Read the same Redis keys as enforcement;
+      // do not route through dispatchToolsCall, which would spend a call merely
+      // to ask how many calls remain.
+      if (isAccountResourceRead) {
+        if (!context) {
+          usage.phase = 'auth';
+          return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
+        }
+        return maybeStreamJsonRpcResponse(req, await buildAccountAllowanceResourceResponse(
+          context,
+          deps,
+          body,
+          corsHeaders,
+          mcpDailyLimit,
+          freeAccountAllowance,
+        ));
+      }
       // A data-bearing TEMPLATE instantiation MUST consume the Pro daily quota
       // IDENTICALLY to a tools/call to the equivalent tool. Asymmetric auth
       // here is a known MCP data-leak vector (a Pro user at the daily cap could
@@ -875,8 +927,25 @@ async function mcpHandlerInner(
         return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
       }
       {
-        const resourceRes = await buildResourceResponse(req, context, deps, body, corsHeaders, ctx, mcpDailyLimit);
-        if (resourceRes.status === 429 || resourceRes.status === 503) usage.phase = 'dispatch';
+        const resourceRes = await buildResourceResponse(
+          req,
+          context,
+          deps,
+          body,
+          corsHeaders,
+          ctx,
+          mcpDailyLimit,
+          freeAccountAllowance,
+          resourceMetadataUrl,
+        );
+        if (resourceRes.status === 429 || resourceRes.status === 503) {
+          usage.phase = 'dispatch';
+        } else if (resourceRes.status === 401 || resourceRes.status === 403) {
+          // Mirror of the tools/call classification above (#6716 F4) — a
+          // resources/read routes through the same dispatcher and can emit the
+          // same tier denials.
+          usage.phase = 'precheck';
+        }
         return maybeStreamJsonRpcResponse(req, resourceRes);
       }
     case 'logging/setLevel': {

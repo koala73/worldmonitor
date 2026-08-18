@@ -389,12 +389,12 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       assert.equal(r.paramExtractor, undefined, `resource ${r.uri}: internal "paramExtractor" must not leak via resources/list`);
       assert.equal(r.freshnessWrap, undefined, `resource ${r.uri}: internal "freshnessWrap" must not leak via resources/list`);
       assert.equal(r.html, undefined, `resource ${r.uri}: internal "html" must not leak via resources/list`);
-      // ui:// shells advertise their CSP/render policy via _meta.ui; DATA
-      // resources carry no _meta.
+      // ui:// shells advertise their CSP/render policy via _meta.ui; the
+      // public DATA metadata probe advertises anonymous-free access.
       if (r.uri.startsWith('ui://')) {
         assert.ok(r._meta?.ui?.csp, `ui:// resource ${r.uri} must advertise _meta.ui.csp`);
       } else {
-        assert.equal(r._meta, undefined, `DATA resource ${r.uri} must not carry _meta`);
+        assert.equal(r._meta?.['worldmonitor/access'], 'free', `DATA resource ${r.uri} must advertise free access`);
       }
     }
   });

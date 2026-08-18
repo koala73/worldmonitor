@@ -20,30 +20,63 @@ export const HMAC_SECRET = 'test-secret-mcp-internal-32-bytes-1234';
 export const BASE_URL = 'https://worldmonitor.app/mcp';
 
 /**
- * In-memory pipeline stub over INCR / DECR / EXPIRE. The counter is the
- * unit-under-test for daily-quota reservation semantics — read it after a
- * dispatch to assert the post-reservation floor.
+ * In-memory pipeline stub over Pro INCR / DECR / EXPIRE and the free-account
+ * allowance's atomic three-key EVAL. The counter is the unit-under-test for
+ * reservation semantics — read it after dispatch to assert the stored floor.
  *
  * Options:
  *   initialCount  pre-seed the counter (simulates prior calls today)
  *   throwOnIncr   make every pipeline containing an INCR reject (probe path)
+ *   throwOnEval   make every pipeline containing an EVAL reject (atomic free
+ *                 allowance path)
  *   decrFails     make every pipeline containing a DECR reject (rollback
  *                 failure path — overshoots the floor, never undershoots)
  */
-export function makePipelineMock({ initialCount = 0, throwOnIncr = false, decrFails = false } = {}) {
+export function makePipelineMock({ initialCount = 0, throwOnIncr = false, throwOnEval = false, decrFails = false } = {}) {
   let counter = initialCount;
+  let freeRequestCount = 0;
+  let freeLastActivity = null;
+  let freeLastActivityExpiresAt = null;
   const ops = [];
   const pipeline = async (commands) => {
     ops.push(commands);
     if (throwOnIncr && commands.some((c) => c[0] === 'INCR')) {
       throw new Error('redis pipeline failed');
     }
+    if (throwOnEval && commands.some((c) => c[0] === 'EVAL')) {
+      throw new Error('redis eval failed');
+    }
     if (decrFails && commands.some((c) => c[0] === 'DECR')) {
       throw new Error('redis decr failed');
     }
     const out = [];
     for (const cmd of commands) {
-      if (cmd[0] === 'INCR') {
+      if (cmd[0] === 'EVAL' && Number(cmd[2]) === 3 && cmd.length >= 10) {
+        const nowMs = Number(cmd[6]);
+        const idleGapMs = Number(cmd[7]);
+        const callsLimit = Number(cmd[8]);
+        const requestsLimit = Number(cmd[9]);
+        const opensWindow = freeLastActivity === null || nowMs - freeLastActivity >= idleGapMs;
+        if (counter >= callsLimit || opensWindow && freeRequestCount >= requestsLimit) {
+          out.push({ result: [0] });
+          continue;
+        }
+        counter += 1;
+        if (opensWindow) freeRequestCount += 1;
+        freeLastActivity = freeLastActivity === null ? nowMs : Math.max(nowMs, freeLastActivity);
+        freeLastActivityExpiresAt = nowMs + idleGapMs;
+        out.push({ result: [1] });
+      } else if (cmd[0] === 'EVAL' && Number(cmd[2]) === 3) {
+        out.push({
+          result: [
+            counter === 0 ? null : String(counter),
+            freeRequestCount === 0 ? null : String(freeRequestCount),
+            freeLastActivityExpiresAt === null
+              ? -2
+              : Math.max(0, freeLastActivityExpiresAt - Date.now()),
+          ],
+        });
+      } else if (cmd[0] === 'INCR') {
         counter += 1;
         out.push({ result: counter });
       } else if (cmd[0] === 'DECR') {

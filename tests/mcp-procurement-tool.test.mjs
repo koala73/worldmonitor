@@ -123,12 +123,18 @@ describe('get_procurement_opportunities MCP tool', () => {
     assert.equal(requestUrl.searchParams.get('min_automation_score'), '1');
   });
 
-  it('uses the same Pro entitlement gate as the canonical route before fetching data', async () => {
+  it('is Pro-only — the free allowance does not cover downstream-fetching tools (#6716)', async () => {
+    // This tool fetches through server/gateway.ts, which re-checks
+    // checkProMcpAccess and refuses a free entitlement. The MCP call site
+    // therefore refuses it up front rather than spending an allowance slot on a
+    // call that can only end in a gateway 401.
     const { response, body } = await callTool({}, {
       getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
     });
-    assert.equal(response.status, 401);
-    assert.equal(body.error.code, -32001);
-    assert.equal(requests.length, 0, 'failed entitlement must not reach the canonical route');
+    assert.equal(response.status, 403);
+    assert.equal(body.error.code, -32002);
+    assert.equal(body.error.data?.reason, 'upgrade-required');
+    assert.ok(body.error.data?.upgradeUrl);
+    assert.equal(requests.length, 0, 'must not reach the canonical route');
   });
 });
