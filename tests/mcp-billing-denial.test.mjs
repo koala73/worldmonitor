@@ -146,13 +146,19 @@ describe('assertToolFetchOk RPC validation 400s', () => {
 
   it('an oversized 400 body does not leak the unread tail', async () => {
     const secret = 'wm_live_oversize_secret';
-    const res = jsonResponse(400, `${'{"violations":['}${' '.repeat(5000)}"${secret}"]}`);
+    const prefix = '{"violations":[';
+    const tail = `{"field":"tail_field","description":"${secret}"}]}`;
+    // Secret must start after the 16 KB read budget so a full-body parse
+    // would surface it as a sanitized violation, while truncation cannot.
+    const pad = 16384 - prefix.length + 1;
+    const res = jsonResponse(400, `${prefix}${' '.repeat(pad)}${tail}`);
     await assert.rejects(
       () => assertToolFetchOk(res, 'tool'),
       (err) =>
         !(err instanceof RpcValidationError)
         && err.message === 'tool HTTP 400'
-        && !String(err).includes(secret),
+        && !String(err).includes(secret)
+        && !String(err).includes('tail_field'),
     );
   });
 
