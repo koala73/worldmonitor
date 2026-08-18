@@ -485,6 +485,37 @@ describe('composeSynthesizedBriefResult names which gate rejected (#5947)', () =
     assert.match(out.brief.lead, /Chile/);
   });
 
+  it('accepts a lead naming the outlet the prompt showed it', () => {
+    // synthesisUserPrompt renders each story as
+    //   `N. <primaryTitle> (<primarySource>, K sources)`
+    // and the system prompt says "Use ONLY facts present in the numbered story
+    // text". primarySource is IN that text, so naming the outlet obeys the
+    // prompt — yet the ground text omitted it, and the sentence was rejected as
+    // a hallucinated proper noun.
+    //
+    // Cost of the omission: on 2026-08-18 newsInsights alarmed 13 times in
+    // 10.5h, every one INSIGHTS_SYNTHESIS_LEAD_PROPER_NOUN, with the provider
+    // chain falling past the PAID model to a free one because that loop
+    // advances on gate rejection. A frontier model failing routinely is the
+    // gate over-rejecting, not the model hallucinating.
+    const out = compose('Reuters reported apple prices rose sharply in Chile last quarter [1].');
+    assert.equal(
+      out.rejection,
+      null,
+      'a proper noun the prompt itself supplied must ground, or the gate rejects obedience',
+    );
+    assert.ok(out.brief, 'the brief must compose rather than fall back');
+    assert.match(out.brief.lead, /Reuters/);
+  });
+
+  it('still rejects a proper noun in NEITHER the headline nor the source', () => {
+    // The widening is bounded: only what the model was actually shown grounds.
+    // An outlet it was never given is still a hallucination.
+    const out = compose('Bloomberg reported apple prices rose sharply in Chile last quarter [1].');
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+
   it('names an uncited lead sentence', () => {
     const out = compose('Prices rose sharply in Chile last quarter [1]. Analysts expect more increases ahead.');
     assert.equal(out.brief, null);

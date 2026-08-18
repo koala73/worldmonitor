@@ -270,8 +270,31 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   if (!parsed) return reject(BRIEF_REJECTIONS.PARSE);
 
   const groundingStories = topStories.map((story) => ({ headline: story.primaryTitle }));
-  const storyGroundText = (story) =>
-    [story.primaryTitle, ...(Array.isArray(story.memberTitles) ? story.memberTitles : [])].join(' — ');
+  // The ground text must cover everything the MODEL was shown about a story,
+  // or the gate rejects the model for obeying its own prompt.
+  //
+  // synthesisUserPrompt renders each story as
+  //   `N. <primaryTitle> (<primarySource>, K sources)`
+  // and the system prompt says "Use ONLY facts present in the numbered story
+  // text". primarySource IS in that text, so a lead naming the outlet — "Reuters
+  // reported ..." — is following instructions. It was omitted here, so that name
+  // grounded against nothing and the sentence was rejected as a hallucinated
+  // proper noun.
+  //
+  // 2026-08-18: newsInsights alarmed 13 times in 10.5h, every one
+  // INSIGHTS_SYNTHESIS_LEAD_PROPER_NOUN, with the chain falling through the PAID
+  // model to a free one because the provider loop advances on gate rejection
+  // (seed-insights.mjs) — a frontier model failing this routinely is the gate
+  // over-rejecting, not the model hallucinating.
+  //
+  // memberTitles is the mirror case and stays: it is in the ground text but NOT
+  // in the prompt, which only makes the gate more permissive and cannot cause a
+  // false rejection.
+  const storyGroundText = (story) => [
+    story.primaryTitle,
+    story.primarySource,
+    ...(Array.isArray(story.memberTitles) ? story.memberTitles : []),
+  ].filter(Boolean).join(' — ');
 
   // Lead gates (#4928 external review — citation-SCOPED, not corpus-wide):
   // every lead sentence must carry at least one citation, and its proper
