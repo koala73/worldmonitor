@@ -440,6 +440,19 @@ describe('CI workflow coverage', () => {
     }
   });
 
+  it('does not let a hung playwright install-deps eat the variant-smoke-full budget', () => {
+    const job = testJobBlock('variant-smoke-full');
+    assert.match(job, /\n {4}timeout-minutes: 30\n/);
+    assert.match(
+      job,
+      /id: playwright-install-deps[\s\S]*timeout-minutes: 8[\s\S]*continue-on-error: true[\s\S]*npx playwright install-deps chromium/,
+    );
+    assert.match(
+      job,
+      /steps\.playwright-install-deps\.outcome == 'failure'[\s\S]*npx playwright install --with-deps chromium/,
+    );
+  });
+
   // #6496: playwright.config.ts retained a trace, a video and a screenshot for
   // every failed test and CI collected none of them, so run 31584738075 died
   // with the only evidence that could have named its browser close. The job is
