@@ -50,6 +50,10 @@ CLAUDE.md
 .windsurf/
 skills/
 !api/skills/
+# Cursor project skills (agentskills.io). The `skills/` rule above would
+# otherwise hide `.agents/skills/` and keep `/sentry-triage` local-only.
+!.agents/skills/
+!.agents/skills/**/
 ideas/
 docs/internal/
 docs/ideation/
