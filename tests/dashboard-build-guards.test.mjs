@@ -68,6 +68,47 @@ function runGuardProbe(expectBuiltOutput) {
 }
 
 describe('built-output guard contract', () => {
+  it('builds /pro before full and focused prehydration browser checks', () => {
+    const packageJson = JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf8'));
+    const fullE2eScript = packageJson.scripts?.['test:e2e:full'] ?? '';
+    const prehydrationScript = packageJson.scripts?.['test:e2e:prehydration'] ?? '';
+    const prehydrationSource = readFileSync(
+      resolve(repoRoot, 'e2e/prehydration-shell.spec.ts'),
+      'utf8',
+    );
+    const workflow = readFileSync(workflowPath, 'utf8').replaceAll('\r\n', '\n');
+    const expectedCiSequence = [
+      '      - name: Build /pro artifacts for prehydration browser checks',
+      '        # public/pro/ is built output since #6898. Keep this explicit and',
+      '        # immediately before the focused spec so the browser checks cannot run',
+      '        # against missing or stale bytes from another build.',
+      '        run: npm run build:pro',
+      '      - name: Run fail-closed prehydration browser checks',
+      '        id: prehydration',
+      '        run: npm run test:e2e:prehydration',
+    ].join('\n');
+
+    assert.match(
+      fullE2eScript,
+      /^npm run build:pro && /,
+      'test:e2e:full must build ignored /pro output before Playwright starts',
+    );
+    assert.match(
+      prehydrationScript,
+      /playwright test e2e\/prehydration-shell\.spec\.ts --project=chromium --grep [^&]*server-rendered welcome page\|dashboard shell without JavaScript/,
+      'the focused CI script must execute all formerly guarded prehydration checks in Chromium',
+    );
+    assert.doesNotMatch(
+      prehydrationSource,
+      /test\.skip\(!proWelcomeBuilt/,
+      'the prehydration spec must fail when /pro output is absent, not silently skip',
+    );
+    assert.ok(
+      workflow.includes(expectedCiSequence),
+      'PR CI must build /pro immediately before the focused prehydration browser checks',
+    );
+  });
+
   it('keeps the dashboard build immediately before the marker-enabled data test in CI', () => {
     const workflow = readFileSync(workflowPath, 'utf8').replaceAll('\r\n', '\n');
     const expectedSequence = [

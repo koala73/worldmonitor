@@ -612,28 +612,30 @@ fi
 # the dist/dashboard.html guards, and exporting it here would red those suites
 # in a checkout that has no dashboard build. Building the artifact is what makes
 # the /pro assertions run; the marker is CI's separate "I built it" assertion.
-# The `|| path_matches` arm is load-bearing: an EXISTING public/pro/ is not a
-# CURRENT one. When the branch changes pro-test/ sources and a gated test in the
-# same push, a leftover artifact from an earlier build would satisfy the -f check
-# and the test would assert against stale bytes. Rebuild in that case too.
-if [ "${#TESTS_CHANGED[@]}" -gt 0 ] \
-  && { [ ! -f public/pro/welcome.html ] || path_matches '^pro-test/'; }; then
-  for candidate in "${TESTS_CHANGED[@]}"; do
-    grep -q "_lib/pro-built-output" "$candidate" 2>/dev/null || continue
-    echo "Building /pro ($candidate reads its built output)..."
-    if [ -L pro-test/node_modules ]; then
-      echo "ERROR: pro-test/node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
-      exit 1
-    fi
-    if [ ! -d pro-test/node_modules ]; then
-      (cd pro-test && npm ci --cache "$npm_config_cache" --prefer-offline) || exit 1
-    fi
-    (cd pro-test && npm run build >/dev/null) || {
-      echo "ERROR: pro-test build failed, so $candidate cannot run its assertions."
-      exit 1
-    }
+# An EXISTING public/pro/ is not necessarily a CURRENT one: the directory is
+# ignored, so output from another branch can survive a checkout. First find an
+# affected changed test, then always rebuild once before dispatching it.
+PRO_BUILT_OUTPUT_TEST=""
+for candidate in "${TESTS_CHANGED[@]}"; do
+  if grep -q "_lib/pro-built-output" "$candidate" 2>/dev/null; then
+    PRO_BUILT_OUTPUT_TEST="$candidate"
     break
-  done
+  fi
+done
+
+if [ -n "$PRO_BUILT_OUTPUT_TEST" ]; then
+  echo "Building /pro ($PRO_BUILT_OUTPUT_TEST reads its built output)..."
+  if [ -L pro-test/node_modules ]; then
+    echo "ERROR: pro-test/node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
+    exit 1
+  fi
+  if [ ! -d pro-test/node_modules ]; then
+    (cd pro-test && npm ci --cache "$npm_config_cache" --prefer-offline) || exit 1
+  fi
+  (cd pro-test && npm run build >/dev/null) || {
+    echo "ERROR: pro-test build failed, so $PRO_BUILT_OUTPUT_TEST cannot run its assertions."
+    exit 1
+  }
 fi
 
 # Both dispatches are UNCONDITIONAL: the "is this list empty" test and the

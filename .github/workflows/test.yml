@@ -581,6 +581,22 @@ jobs:
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14
+      - name: Build /pro artifacts for prehydration browser checks
+        # public/pro/ is built output since #6898. Keep this explicit and
+        # immediately before the focused spec so the browser checks cannot run
+        # against missing or stale bytes from another build.
+        run: npm run build:pro
+      - name: Run fail-closed prehydration browser checks
+        id: prehydration
+        run: npm run test:e2e:prehydration
+      - name: Upload prehydration Playwright artifacts
+        if: ${{ !cancelled() && steps.prehydration.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-prehydration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
       # WebMCP is exposed only by an enabled Chrome milestone. Keep this probe
       # separate from the bundled-Chromium smoke so an unavailable or stale
       # system Chrome fails the required PR job instead of silently skipping.
