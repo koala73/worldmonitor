@@ -4,7 +4,7 @@ import { toApiUrl } from '@/services/runtime';
 
 export interface CanadaAlert {
   id: string;
-  province: 'AB' | string;
+  province: string;
   event: string;
   severity: 'Extreme' | 'Severe' | 'Moderate' | 'Minor';
   headline: string;
@@ -54,7 +54,7 @@ function mapAlert(a: BootstrapAlert): CanadaAlert {
   const centroid = asLonLat(a.centroid) ?? asLonLat([a.lon, a.lat]);
   return {
     id: a.id,
-    province: a.province || 'AB',
+    province: a.province || 'CA',
     event: a.event || '',
     severity: a.severity as CanadaAlert['severity'],
     headline: a.headline || '',
@@ -62,10 +62,10 @@ function mapAlert(a: BootstrapAlert): CanadaAlert {
     areaDesc: a.areaDesc || '',
     onset: a.onset ? new Date(a.onset) : new Date(a.updatedAt || 0),
     expires: a.expires ? new Date(a.expires) : null,
-    lat: a.lat ?? (centroid ? centroid[1] : 55),
-    lon: a.lon ?? (centroid ? centroid[0] : -115),
+    lat: a.lat ?? (centroid ? centroid[1] : 56.13),
+    lon: a.lon ?? (centroid ? centroid[0] : -106.35),
     centroid,
-    source: a.source || 'alberta-aea',
+    source: a.source || 'canada-alerts',
     updatedAt: a.updatedAt ?? null,
   };
 }
@@ -77,7 +77,7 @@ function alertsFromPayload(payload: unknown): CanadaAlert[] | null {
   return alerts.map(mapAlert);
 }
 
-/** Alberta Emergency Alert (and later provincial siblings) on canadaAlerts. */
+/** Province-owned public-safety feeds materialized onto canadaAlerts. */
 export async function fetchCanadaAlerts(): Promise<CanadaAlert[]> {
   return breaker.execute(async () => {
     const hydrated = alertsFromPayload(getHydratedData('canadaAlerts'));
