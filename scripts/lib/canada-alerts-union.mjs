@@ -26,6 +26,12 @@ export const CANADA_ALERT_SOURCES = Object.freeze([
     metaKey: 'seed-meta:alerts:bc-emergency-info',
     maxStaleMin: 45,
   }),
+  Object.freeze({
+    province: 'SK',
+    key: 'alerts:canada:saskalert:v1',
+    metaKey: 'seed-meta:alerts:saskalert',
+    maxStaleMin: 45,
+  }),
 ]);
 
 const SEVERITY_RANK = Object.freeze({ Extreme: 0, Severe: 1, Moderate: 2, Minor: 3 });

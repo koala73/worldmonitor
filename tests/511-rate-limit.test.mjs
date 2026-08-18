@@ -105,17 +105,24 @@ describe('per-host 511 limiter (#6618 v1)', () => {
   it('seeder is a standalone nixpacks job and does not loop ais-relay', () => {
     assert.match(SEEDER_SOURCE, /fetchVendor511\(ONTARIO_511/);
     assert.match(SEEDER_SOURCE, /fetchVendor511\(ALBERTA_511/);
+    assert.match(SEEDER_SOURCE, /fetchVendor511\(MANITOBA_511/);
     assert.match(SEEDER_SOURCE, /zeroIsValid:\s*true/);
     assert.match(SEEDER_SOURCE, /infra:ontario-511:v1/);
     assert.match(SEEDER_SOURCE, /infra:alberta-511:v1/);
+    assert.match(SEEDER_SOURCE, /infra:manitoba-511:v1/);
     assert.match(SEEDER_SOURCE, /seed-meta:infra:alberta-511/);
+    assert.match(SEEDER_SOURCE, /seed-meta:infra:manitoba-511/);
     assert.doesNotMatch(RELAY_SOURCE, /511on\.ca/);
     assert.doesNotMatch(RELAY_SOURCE, /511\.alberta\.ca/);
+    assert.doesNotMatch(RELAY_SOURCE, /manitoba511/);
     assert.doesNotMatch(RELAY_SOURCE, /ontario-511/);
     assert.doesNotMatch(RELAY_SOURCE, /alberta-511/);
+    assert.doesNotMatch(RELAY_SOURCE, /manitoba-511/);
     assert.doesNotMatch(RELAY_SOURCE, /canadaRoads/);
     assert.match(CANADA_ROADS_SOURCE, /albertaRoads/);
     assert.match(CANADA_ROADS_SOURCE, /alberta-511/);
+    assert.match(CANADA_ROADS_SOURCE, /manitobaRoads/);
+    assert.match(CANADA_ROADS_SOURCE, /manitoba-511/);
   });
 
   it('511.alberta.ca is a separate limiter bucket from 511on.ca', async () => {
@@ -131,5 +138,20 @@ describe('per-host 511 limiter (#6618 v1)', () => {
     await limiter.acquire511Slot('511.alberta.ca');
     assert.equal(limiter.pendingCount('511on.ca'), 10);
     assert.equal(limiter.pendingCount('511.alberta.ca'), 1);
+  });
+
+  it('www.manitoba511.ca is a separate limiter bucket from 511on.ca', async () => {
+    const limiter = create511RateLimiter({
+      now: () => 1_000,
+      sleep: async () => {
+        throw new Error('Manitoba must not wait on Ontario tokens');
+      },
+    });
+    for (let i = 0; i < 10; i++) {
+      await limiter.acquire511Slot('511on.ca');
+    }
+    await limiter.acquire511Slot('www.manitoba511.ca');
+    assert.equal(limiter.pendingCount('511on.ca'), 10);
+    assert.equal(limiter.pendingCount('www.manitoba511.ca'), 1);
   });
 });

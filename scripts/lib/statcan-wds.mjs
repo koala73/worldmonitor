@@ -10,11 +10,11 @@ export const WDS_VECTORS_URL =
 export const MAX_STATCAN_WDS_BYTES = 2 * 1024 * 1024;
 // 90 days, not 75. StatCan's WDS `refPer` is a normalized observation date and
 // for a monthly series it is the FIRST of the reference month, so the clock
-// starts a month before the data even exists. June CPI carries refPer
-// 2026-06-01 and July CPI is not released until roughly 2026-08-19, which puts
-// the natural peak at ~79 days — above a 75-day budget, so this reported
-// STALE_CONTENT on a series that was current. 90 clears the peak with ~11 days
-// of margin (#6799).
+// starts a month before the data even exists. The retained release history in
+// tests/fixtures/statcan-wds/cpi-lfs-vectors.json measures an 85-day maximum
+// healthy-cycle peak. 90 clears that peak with 5 days of margin (#6799). The
+// policy test in tests/statcan-wds.test.mjs derives both this healthy bound and
+// the one-release-miss bound from the fixture.
 //
 // Note the start-dating is StatCan's own convention, not periodTokenToMs
 // rounding a YYYY-MM token: normalizedStatcanRefPer only accepts YYYY-MM-DD, so

@@ -57,9 +57,11 @@ describe('a2a: agent card contract', () => {
     assert.ok(rewrite, 'missing /a2a rewrite');
     assert.equal(rewrite.destination, '/api/a2a');
 
+    // #6575: the dashboard catch-all rewrite is gone — unknown paths 404.
+    // /a2a keeps its explicit endpoint rewrite, which is now structurally
+    // incapable of being shadowed by a SPA fallback.
     const catchAll = vercelConfig.rewrites.find((r) => r.destination === '/dashboard.html' && r.source.startsWith('/((?!'));
-    assert.ok(catchAll, 'dashboard catch-all rewrite missing');
-    assert.ok(catchAll.source.includes('a2a'), 'a2a must be excluded from the dashboard catch-all');
+    assert.equal(catchAll, undefined, 'dashboard catch-all rewrite must stay removed (#6575)');
 
     const corsBlock = vercelConfig.headers.find((h) => h.source === '/a2a');
     assert.ok(corsBlock, 'missing /a2a headers block');

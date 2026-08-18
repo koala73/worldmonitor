@@ -355,7 +355,8 @@
     "service": "seed-bundle-canada",
     "requiredEnv": [
       "UPSTASH_REDIS_REST_URL",
-      "UPSTASH_REDIS_REST_TOKEN"
+      "UPSTASH_REDIS_REST_TOKEN",
+      "MANITOBA_511_KEY"
     ],
     "watchPatterns": [
       "scripts/_511-rate-limit.mjs",
@@ -368,6 +369,7 @@
       "scripts/lib/alberta-emergency-alert.mjs",
       "scripts/lib/bc-emergency-info.mjs",
       "scripts/lib/canada-alerts-union.mjs",
+      "scripts/lib/saskalert.mjs",
       "scripts/lib/gtfsrt.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/open511.mjs",
@@ -378,6 +380,7 @@
       "scripts/package.json",
       "scripts/seed-alberta-emergency-alert.mjs",
       "scripts/seed-bc-emergency-info.mjs",
+      "scripts/seed-saskalert.mjs",
       "scripts/seed-bundle-canada.mjs",
       "scripts/seed-open511.mjs",
       "scripts/seed-provincial-511.mjs",

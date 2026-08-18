@@ -25,14 +25,18 @@ const ab = {
 const bc = {
   id: 'same-id', province: 'BC', severity: 'Extreme', updatedAt: NOW - 1_000,
 };
+const sk = {
+  id: 'same-id', province: 'SK', severity: 'Severe', updatedAt: NOW - 500,
+};
 
 test('unions province snapshots without collapsing IDs from different provinces', () => {
   const result = buildCanadaAlertsUnion([
     { source: CANADA_ALERT_SOURCES[0], snapshot: { alerts: [ab] }, meta: { fetchedAt: NOW - 60_000 } },
     { source: CANADA_ALERT_SOURCES[1], snapshot: { alerts: [bc] }, meta: { fetchedAt: NOW - 60_000 } },
+    { source: CANADA_ALERT_SOURCES[2], snapshot: { alerts: [sk] }, meta: { fetchedAt: NOW - 60_000 } },
   ], NOW);
 
-  assert.deepEqual(result.alerts, [bc, ab]);
+  assert.deepEqual(result.alerts, [bc, sk, ab]);
   assert.deepEqual(result.missingSources, []);
   assert.deepEqual(result.degradedSources, []);
   assert.equal(result.sourceState, 'ok');
@@ -68,8 +72,10 @@ test('publishes the aggregate envelope before its health metadata', async () => 
   const snapshots = new Map([
     [CANADA_ALERT_SOURCES[0].key, { alerts: [ab] }],
     [CANADA_ALERT_SOURCES[1].key, { alerts: [bc] }],
+    [CANADA_ALERT_SOURCES[2].key, { alerts: [sk] }],
     [CANADA_ALERT_SOURCES[0].metaKey, { fetchedAt: NOW - 60_000 }],
     [CANADA_ALERT_SOURCES[1].metaKey, { fetchedAt: NOW - 60_000 }],
+    [CANADA_ALERT_SOURCES[2].metaKey, { fetchedAt: NOW - 60_000 }],
   ]);
 
   const result = await rebuildCanadaAlertsUnion({
@@ -82,24 +88,27 @@ test('publishes the aggregate envelope before its health metadata', async () => 
     writeMeta: async (...args) => calls.push(['meta', ...args]),
   });
 
-  assert.equal(result.alerts.length, 2);
+  assert.equal(result.alerts.length, 3);
   assert.equal(calls[0][0], 'data');
   assert.equal(calls[0][1], CANADA_ALERTS_KEY);
-  assert.equal(calls[0][2].alerts.length, 2);
-  assert.equal(calls[0][4].recordCount, 2);
+  assert.equal(calls[0][2].alerts.length, 3);
+  assert.equal(calls[0][4].recordCount, 3);
   assert.equal(calls[1][0], 'meta');
   assert.equal(calls[1][1], 'alerts');
   assert.equal(calls[1][2], 'canada-union');
 });
 
-test('uses the current source directly and reads only its peer', async () => {
+test('uses the current source directly and reads only its peers', async () => {
   const reads = [];
   const calls = [];
   const abSource = CANADA_ALERT_SOURCES[0];
   const bcSource = CANADA_ALERT_SOURCES[1];
+  const skSource = CANADA_ALERT_SOURCES[2];
   const peerSnapshots = new Map([
     [abSource.key, { alerts: [ab] }],
     [abSource.metaKey, { fetchedAt: NOW - 60_000, sourceState: 'ok' }],
+    [skSource.key, { alerts: [sk] }],
+    [skSource.metaKey, { fetchedAt: NOW - 60_000, sourceState: 'ok' }],
   ]);
 
   const result = await rebuildCanadaAlertsUnion({
@@ -118,7 +127,7 @@ test('uses the current source directly and reads only its peer', async () => {
     writeMeta: async (...args) => calls.push(['meta', ...args]),
   });
 
-  assert.deepEqual(reads.sort(), [abSource.key, abSource.metaKey].sort());
+  assert.deepEqual(reads.sort(), [abSource.key, abSource.metaKey, skSource.key, skSource.metaKey].sort());
   assert.equal(reads.includes(bcSource.key), false);
   assert.equal(reads.includes(bcSource.metaKey), false);
   assert.deepEqual(result.degradedSources, ['BC']);
@@ -160,7 +169,7 @@ test('preserves last-good union when a province snapshot is missing', async () =
   });
 
   assert.equal(result.preserved, true);
-  assert.deepEqual(result.missingSources, ['BC']);
+  assert.deepEqual(result.missingSources, ['BC', 'SK']);
   assert.equal(writes[0][0], 'ttl');
   assert.deepEqual(writes[0][1], [CANADA_ALERTS_KEY]);
   assert.equal(writes[1][0], 'meta');
@@ -199,6 +208,8 @@ test('still publishes when a present peer is only CAP-degraded', async () => {
     readSnapshot: async (key) => {
       if (key === abSource.key) return { alerts: [ab] };
       if (key === abSource.metaKey) return { fetchedAt: NOW - 60_000, sourceState: 'degraded' };
+      if (key === CANADA_ALERT_SOURCES[2].key) return { alerts: [sk] };
+      if (key === CANADA_ALERT_SOURCES[2].metaKey) return { fetchedAt: NOW - 60_000, sourceState: 'ok' };
       throw new Error(`unexpected read ${key}`);
     },
     writeKey: async (...args) => writes.push(['data', ...args]),
@@ -209,7 +220,7 @@ test('still publishes when a present peer is only CAP-degraded', async () => {
   assert.equal(result.preserved, false);
   assert.deepEqual(result.degradedSources, ['AB']);
   assert.equal(writes[0][0], 'data');
-  assert.equal(writes[0][2].alerts.length, 2);
+  assert.equal(writes[0][2].alerts.length, 3);
 });
 
 test('propagates strict peer read failures without publishing an aggregate', async () => {

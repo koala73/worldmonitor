@@ -71,6 +71,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   weatherAlerts: 'weather:alerts:v1',
   canadaRoads: 'infra:ontario-511:v1',
   albertaRoads: 'infra:alberta-511:v1',
+  manitobaRoads: 'infra:manitoba-511:v1',
   torontoRoads: 'infra:toronto-roads:v1',
   bcOpen511: 'infra:bc-open511:v1',
   canadaAlerts: 'alerts:canada:v1',
@@ -214,11 +215,12 @@ const ON_DEMAND_KEY_NAMES = new Set([
   // variant downloaded them, mobile included, where this layer ships disabled
   // and nothing ever rendered a byte of it.
   //
-  // All four road sources are on-demand now, which is what lets the layer stay
+  // All five road sources are on-demand now, which is what lets the layer stay
   // off by default: with none of them tiered, a visitor who never enables
   // Canada roads pays nothing at all for them.
   'canadaRoads',
   'albertaRoads',
+  'manitobaRoads',
 ]);
 
 /**

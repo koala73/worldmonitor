@@ -3311,6 +3311,23 @@
       ]
     },
     {
+      "host": "emergencyalert.saskatchewan.ca",
+      "provider": "SaskAlert",
+      "kind": "structured",
+      "observed": true,
+      "license": "Public SaskAlert mobile JSON at /sapublic/feed.json plus same-host CAP 1.2 JSON details. Government of Saskatchewan website terms exclude some connected subsites; this host is the official public alert feed authorized for canadaAlerts ingest under #6659. Not Pelmorex LMD.",
+      "attribution": "SaskAlert, Government of Saskatchewan. https://emergencyalert.saskatchewan.ca/",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/saskalert.mjs"
+        },
+        {
+          "path": "scripts/source-attribution.mjs"
+        }
+      ]
+    },
+    {
       "host": "en.irna.ir",
       "provider": "en.irna.ir",
       "kind": "feed",
@@ -9732,9 +9749,6 @@
           "path": "scripts/china-macro/calendar.mjs"
         },
         {
-          "path": "scripts/china-macro/source-runtime.mjs"
-        },
-        {
           "path": "scripts/cross-strait-activity/adapters.mjs"
         },
         {
@@ -11936,6 +11950,23 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.manitoba511.ca",
+      "provider": "Manitoba 511",
+      "kind": "structured",
+      "observed": true,
+      "license": "Contains information from the Government of Manitoba, licensed under the OpenMB Information and Data Use License (Manitoba.ca/OpenMB). Manitoba 511 developer copy permits creating traffic apps; no separate developer access agreement is published.",
+      "attribution": "Manitoba 511 (Government of Manitoba). Contains information from the Government of Manitoba, licensed under the OpenMB Information and Data Use License. https://www.manitoba511.ca/",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/provincial-511.mjs"
+        },
+        {
+          "path": "scripts/source-attribution.mjs"
         }
       ]
     },

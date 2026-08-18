@@ -40,6 +40,7 @@ const AUDITED_PRESENT_PAYLOAD_KEYS = [
   // the same contract: an explicit envelope on every successful tick.
   'canadaRoads',
   'albertaRoads',
+  'manitobaRoads',
   'torontoRoads',
   'bcOpen511',
   // canadaAlerts is the same contract again: seed-alberta-emergency-alert runs
@@ -50,6 +51,7 @@ const AUDITED_PRESENT_PAYLOAD_KEYS = [
   'canadaAlerts',
   'canadaAlertsAbSource',
   'canadaAlertsBcSource',
+  'canadaAlertsSkSource',
 ];
 
 function classifyMissing(name, meta) {

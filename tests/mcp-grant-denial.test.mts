@@ -325,6 +325,10 @@ describe('mcp-grant page routes denials through the shared classifier', () => {
     assert.match(pageSource, /'retryContextBtn'\)\.addEventListener\('click'/);
 
     const html = readFileSync(resolve(root, 'mcp-grant.html'), 'utf8');
+    assert.match(html, /<main class="card" id="card">/);
+    assert.match(html, /<h1 class="client-name"><span id="clientName"><\/span> wants access<\/h1>/);
+    assert.match(html, /<h1 class="client-name" id="errorTitle"/);
+    assert.match(html, /id="mintError" role="alert"/);
     assert.match(html, /id="errorTitle"/);
     assert.match(html, /id="retryContextBtn" hidden>Try again<\/button>/);
     assert.doesNotMatch(

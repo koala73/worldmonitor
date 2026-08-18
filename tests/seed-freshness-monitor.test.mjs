@@ -729,7 +729,7 @@ describe('scheduled seed freshness monitor', () => {
       // closed PR with nobody owning them. Distinct issue numbers is the
       // cheapest offline proxy for "somebody actually filed these".
       // #6659 is the allowed repeat: one first Railway tick owns the
-      // union probe move plus the Alberta and B.C. sibling rows.
+      // union probe move plus the Alberta, B.C., and Saskatchewan sibling rows.
       const issues = committed.acknowledged.map((entry) => entry.issue);
       assert.ok(
         !issues.includes(5771),
@@ -742,9 +742,9 @@ describe('scheduled seed freshness monitor', () => {
         namesByIssue.set(entry.issue, names);
       }
       // #6659 is the allowed repeat: one first Railway tick owns the
-      // union probe move plus the Alberta and B.C. sibling rows.
+      // union probe move plus the Alberta, B.C., and Saskatchewan sibling rows.
       const allowedSharedIssues = new Map([
-        [6659, ['canadaAlerts', 'canadaAlertsAbSource', 'canadaAlertsBcSource']],
+        [6659, ['canadaAlerts', 'canadaAlertsAbSource', 'canadaAlertsBcSource', 'canadaAlertsSkSource']],
       ]);
       for (const [issue, names] of namesByIssue) {
         const allowed = allowedSharedIssues.get(issue);
