@@ -13667,6 +13667,9 @@
       "references": [
         {
           "path": "api/fwdstart.js"
+        },
+        {
+          "path": "src/embed/panels/fear-greed.ts"
         }
       ]
     },
