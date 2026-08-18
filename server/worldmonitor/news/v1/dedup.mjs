@@ -62,7 +62,7 @@ export function deduplicateHeadlines(headlines) {
  * hashing all such items accumulated one phantom story:track row with
  * pooled corroboration.
  *
- * @template {{ title: string; source: string; publishedAt?: number }} T
+ * @template {{ title: string; source: string; originPublisher?: string; publishedAt?: number }} T
  * @param {T[]} items
  * @param {(title: string) => string} normalizeTitle title normalizer
  *   (strips source suffixes etc. — stays caller-owned so hash identity is
@@ -92,9 +92,13 @@ export async function assignStoryIdentity(items, normalizeTitle, sha256Hex) {
       }
     }
 
+    // #6430: the originating publisher (RSS <source>, carried as
+    // originPublisher) outranks the feed label — one wire under several
+    // feeds' labels is one publisher. Absent (direct feeds, Atom), the
+    // feed label remains the best available signal.
     const corroborationCount = Math.max(
       1,
-      countPublisherFamilies(indices.map((i) => items[i].source)),
+      countPublisherFamilies(indices.map((i) => items[i].originPublisher || items[i].source)),
     );
 
     if (canonical === null) {

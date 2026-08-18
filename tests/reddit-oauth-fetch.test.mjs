@@ -103,14 +103,40 @@ test('path precedence is ScrapeCreators -> OAuth -> public (ordered in source)',
   assert.ok(sc < oauth && oauth < pub, `expected ScrapeCreators < OAuth < public, got ${sc}/${oauth}/${pub}`);
 });
 
-test('cadence is 3h and data-key TTL STRICTLY exceeds health maxStaleMin (real STALE_SEED window)', () => {
-  assert.match(relaySource, /const SOCIAL_VELOCITY_INTERVAL_MS = 3 \* 60 \* 60 \* 1000/);
-  assert.match(relaySource, /const WSB_TICKERS_INTERVAL_MS = 3 \* 60 \* 60 \* 1000/);
-  assert.match(relaySource, /const SOCIAL_VELOCITY_TTL = 43200/);
-  assert.match(relaySource, /const WSB_TICKERS_TTL = 43200/);
-  // TTL minutes (43200/60 = 720) must be > health maxStaleMin (540) so a dead relay
-  // shows STALE_SEED before the key expires to EMPTY. TTL==maxStaleMin defeats this.
-  assert.ok(43200 / 60 > 540, 'data-key TTL minutes must exceed maxStaleMin=540');
+test('data-key TTL strictly exceeds health maxStaleMin, so a dead relay reads STALE not EMPTY', () => {
+  // Evaluate the real constants rather than pinning their digits. The previous
+  // version asserted `43200 / 60 > 540` — arithmetic over two literals typed
+  // into the test, which holds no matter what the relay or the health config
+  // actually declare.
+  const evalRelayConst = (name) => {
+    const m = relaySource.match(new RegExp(`const ${name} = ([^;]+);`));
+    assert.ok(m, `${name} not found in relay source`);
+    return Number(new Function(`return (${m[1]})`)());
+  };
+  const health = readFileSync(resolve(here, '../api/health.js'), 'utf8');
+  const maxStaleMin = (name) => {
+    const m = health.match(new RegExp(`${name}:[^}]*maxStaleMin:\\s*(\\d+)`));
+    assert.ok(m, `${name}.maxStaleMin not found in api/health.js`);
+    return Number(m[1]);
+  };
+
+  for (const [ttlConst, intervalConst, healthKey] of [
+    ['SOCIAL_VELOCITY_TTL', 'SOCIAL_VELOCITY_INTERVAL_MS', 'socialVelocity'],
+    ['WSB_TICKERS_TTL', 'WSB_TICKERS_INTERVAL_MS', 'wsbTickers'],
+  ]) {
+    const ttlMinutes = evalRelayConst(ttlConst) / 60;
+    const staleBudget = maxStaleMin(healthKey);
+    assert.ok(
+      ttlMinutes > staleBudget,
+      `${ttlConst} (${ttlMinutes}min) must outlive ${healthKey}.maxStaleMin (${staleBudget}min), or the key expires to EMPTY before health reports STALE_SEED`,
+    );
+    // And the staleness budget must leave room for at least one missed tick.
+    const intervalMinutes = evalRelayConst(intervalConst) / 60_000;
+    assert.ok(
+      staleBudget > intervalMinutes,
+      `${healthKey}.maxStaleMin (${staleBudget}min) must exceed one ${intervalMinutes}min cycle`,
+    );
+  }
 });
 
 // Staleness budget is mirrored across THREE surfaces — api/health.js SEED_META,

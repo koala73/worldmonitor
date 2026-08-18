@@ -122,6 +122,7 @@ vi.mock('@/config/variant', () => ({
 
 vi.mock('@/services/billing', () => ({
   getSubscription: () => null,
+  isSubscriptionLoaded: () => true,
   onSubscriptionChange: () => () => {},
   openBillingPortal: async () => ({ outcome: 'no-customer' as const }),
   prereserveBillingPortalTab: () => null,

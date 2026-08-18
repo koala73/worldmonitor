@@ -94,7 +94,7 @@ export function rateLimitErrorLevel(stage, msg) {
 // Failure-mode suffixes worth their own Sentry issue. Closed set — unlike a
 // route or scope, these describe HOW the limiter failed, not who called it.
 // Mirrored verbatim in server/_shared/rate-limit.ts.
-const RATE_LIMIT_FINGERPRINT_SUFFIXES = new Set(['missing-config', 'timeout']);
+const RATE_LIMIT_FINGERPRINT_SUFFIXES = new Set(['missing-config', 'timeout', 'edge-proof']);
 
 /**
  * Collapse a limiter stage to the low-cardinality token Sentry should GROUP on.

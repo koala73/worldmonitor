@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 
 import YAML from 'yaml';
 
+import { MONITORED_WORKFLOWS } from '../scripts/check-postmerge-deploys.mjs';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = resolve(repoRoot, '.github/workflows/postmerge-deploy-monitor.yml');
 const workflow = YAML.parse(readFileSync(workflowPath, 'utf8'));
@@ -49,5 +51,19 @@ describe('post-merge deploy monitor workflow', () => {
 
   it('needs no write permissions — it only reads GitHub and the git tree', () => {
     assert.deepEqual(workflow.permissions, { contents: 'read' });
+  });
+
+  it('keeps dormant deploy proof paths identical to the workflow triggers', () => {
+    for (const monitored of MONITORED_WORKFLOWS.filter((entry) => entry.triggerPaths)) {
+      const deployWorkflow = YAML.parse(readFileSync(
+        resolve(repoRoot, `.github/workflows/${monitored.file}`),
+        'utf8',
+      ));
+      assert.deepEqual(
+        monitored.triggerPaths,
+        deployWorkflow.on.push.paths,
+        `${monitored.file} trigger paths and monitor proof paths must move together`,
+      );
+    }
   });
 });

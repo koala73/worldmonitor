@@ -563,3 +563,125 @@ describe('composeSynthesizedBriefResult names which gate rejected (#5947)', () =
     assert.equal(composeSynthesizedBrief('nope', topStories, { validatorMode: 'enforce' }), null);
   });
 });
+
+describe('coordinating and is grammar in the composer (AE2, AE4, AE7)', () => {
+  const story = (primaryTitle, extras = {}) => ({
+    primaryTitle,
+    primarySource: extras.primarySource || 'Reuters',
+    primaryLink: extras.primaryLink || 'http://example',
+    sources: extras.sources || ['Reuters', 'AP News'],
+    memberTitles: extras.memberTitles || [primaryTitle],
+  });
+
+  const compose = (lead, topStories, lineEntries) =>
+    composeSynthesizedBriefResult(
+      JSON.stringify({ lead, lines: lineEntries }),
+      topStories,
+      { validatorMode: 'enforce', briefCluster: topStories[0] },
+    );
+
+  it('AE2 lead: Israel and Hezbollah against a headline that names both accepts', () => {
+    const topStories = [
+      story('Israel vows to go after Hezbollah'),
+    ];
+    const lead = 'Israel and Hezbollah clashed overnight along the northern border [1]';
+    const out = compose(lead, topStories, [
+      { n: 1, text: 'Israel vows to go after Hezbollah in the north' },
+    ]);
+    assert.equal(out.rejection, null);
+    assert.ok(out.brief);
+    assert.match(out.brief.lead, /Israel and Hezbollah/);
+  });
+
+  it('AE2 story line: coordinated names stay on the line and are not replaced by the headline', () => {
+    const headline = 'Israel vows to go after Hezbollah';
+    const lineText = 'Israel and Hezbollah clashed overnight along the northern border';
+    const topStories = [story(headline)];
+    const lead = 'Israel and Hezbollah clashed overnight along the northern border [1]';
+    const out = compose(lead, topStories, [{ n: 1, text: lineText }]);
+    assert.equal(out.rejection, null);
+    assert.equal(out.brief.lines[0].text, `${lineText} [1]`);
+  });
+
+  it('AE4: Hezbollah against a story that does not name it still rejects', () => {
+    const topStories = [
+      story('Iran and Israel exchanged fire near the Strait of Hormuz and Lebanon'),
+    ];
+    const lead = 'Israel targeted Hezbollah positions across southern Lebanon [1]';
+    const out = compose(lead, topStories, [
+      { n: 1, text: 'Iran and Israel exchanged fire near Hormuz' },
+    ]);
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+
+  it('AE7: Ukraine and Russia [1] rejects when only Russia is in story 1', () => {
+    const topStories = [
+      story('Russia reports overnight aerial attacks on border regions'),
+      story('Chile apple prices rose last quarter, growers say', { sources: ['Reuters'] }),
+      story('Ukraine launches one of its largest aerial attacks of the war', { sources: ['AP News'] }),
+    ];
+    const lines = [
+      { n: 1, text: 'Russia reports overnight aerial attacks on border regions' },
+      { n: 3, text: 'Ukraine launches one of its largest aerial attacks of the war' },
+    ];
+    const out = compose(
+      'Ukraine and Russia traded overnight aerial attacks across the border [1]',
+      topStories,
+      lines,
+    );
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+
+  it('AE7: Ukraine and Russia [1][3] accepts from the citation union', () => {
+    const topStories = [
+      story('Russia reports overnight aerial attacks on border regions'),
+      story('Chile apple prices rose last quarter, growers say', { sources: ['Reuters'] }),
+      story('Ukraine launches one of its largest aerial attacks of the war', { sources: ['AP News'] }),
+    ];
+    const lines = [
+      { n: 1, text: 'Russia reports overnight aerial attacks on border regions' },
+      { n: 3, text: 'Ukraine launches one of its largest aerial attacks of the war' },
+    ];
+    const out = compose(
+      'Ukraine and Russia traded overnight aerial attacks across the border [1][3]',
+      topStories,
+      lines,
+    );
+    assert.equal(out.rejection, null);
+    assert.ok(out.brief);
+  });
+
+  it('AE7: citation between the names still accepts', () => {
+    const topStories = [
+      story('Russia reports overnight aerial attacks on border regions'),
+      story('Chile apple prices rose last quarter, growers say', { sources: ['Reuters'] }),
+      story('Ukraine launches one of its largest aerial attacks of the war', { sources: ['AP News'] }),
+    ];
+    const lines = [
+      { n: 1, text: 'Russia reports overnight aerial attacks on border regions' },
+      { n: 3, text: 'Ukraine launches one of its largest aerial attacks of the war' },
+    ];
+    const out = compose(
+      'fatalities in both Russia [1] and Ukraine [3]',
+      topStories,
+      lines,
+    );
+    assert.equal(out.rejection, null);
+    assert.ok(out.brief);
+  });
+
+  it('rejects a repeated-name entity grounded by only one cited surname', () => {
+    const topStories = [
+      story('Prime Minister Boris Johnson halted talks'),
+    ];
+    const out = compose(
+      'Johnson and Johnson halted vaccine production [1]',
+      topStories,
+      [{ n: 1, text: 'Prime Minister Boris Johnson halted talks' }],
+    );
+    assert.equal(out.brief, null);
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+  });
+});

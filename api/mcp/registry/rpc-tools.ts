@@ -772,7 +772,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
       });
-      assertToolFetchOk(response, 'list-global-tenders');
+      await assertToolFetchOk(response, 'list-global-tenders');
       const result = await response.json() as ProcurementRouteResponse;
       return {
         opportunities: (result.tenders || []).map(compactProcurementOpportunity),
@@ -1189,7 +1189,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
       });
-      assertToolFetchOk(res, 'get-country-risk');
+      await assertToolFetchOk(res, 'get-country-risk');
       return res.json();
     },
     _apiPaths: [
@@ -1272,7 +1272,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(8_000),
       });
-      assertToolFetchOk(res, 'get-food-stocks');
+      await assertToolFetchOk(res, 'get-food-stocks');
       return res.json();
     },
     _apiPaths: [
@@ -1738,7 +1738,7 @@ export const RPC_TOOLS: ToolDef[] = [
         body,
         signal: AbortSignal.timeout(25_000),
       });
-      assertToolFetchOk(res, 'deduct-situation');
+      await assertToolFetchOk(res, 'deduct-situation');
       return res.json();
     },
     _apiPaths: [
@@ -1781,7 +1781,7 @@ export const RPC_TOOLS: ToolDef[] = [
         body,
         signal: AbortSignal.timeout(25_000),
       });
-      assertToolFetchOk(res, 'get-forecasts');
+      await assertToolFetchOk(res, 'get-forecasts');
       return res.json();
     },
     _apiPaths: [],
@@ -1844,7 +1844,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(25_000),
       });
-      assertToolFetchOk(res, 'search-google-flights');
+      await assertToolFetchOk(res, 'search-google-flights');
       return res.json();
     },
     _apiPaths: [
@@ -1902,7 +1902,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(25_000),
       });
-      assertToolFetchOk(res, 'search-google-dates');
+      await assertToolFetchOk(res, 'search-google-dates');
       return res.json();
     },
     _apiPaths: [
@@ -1981,7 +1981,7 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(15_000),
       });
-      assertToolFetchOk(res, 'get-mineral-production');
+      await assertToolFetchOk(res, 'get-mineral-production');
       return res.json();
     },
     _coverageKeys: [

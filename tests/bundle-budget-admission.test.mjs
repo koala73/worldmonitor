@@ -226,3 +226,40 @@ test('seed-bundle-resilience admits Resilience-Scores on a cron tick (#6556 regr
     'Resilience-Scores must be offered the wall budget before its heavier, rarer siblings',
   );
 });
+
+test('PR1 #6806: 1-section arms/bases bundles exist; leftover still hosts both until cutover', () => {
+  // Add-then-remove (D6): leftover keeps Arms-Suppliers and Military-Bases until
+  // the new services have written a heartbeat. This pin is the PR1 shape.
+  // The five-member leftover pin lands in PR2, after D6 is satisfied.
+  const budgeted = readBudgetedBundles();
+  const leftover = budgeted.find((b) => b.name === 'seed-bundle-static-ref.mjs');
+  const arms = budgeted.find((b) => b.name === 'seed-bundle-arms-suppliers.mjs');
+  const bases = budgeted.find((b) => b.name === 'seed-bundle-military-bases.mjs');
+
+  assert.ok(leftover, 'leftover static-ref must stay budgeted');
+  assert.ok(arms, 'seed-bundle-arms-suppliers.mjs must declare a wall budget');
+  assert.ok(bases, 'seed-bundle-military-bases.mjs must declare a wall budget');
+
+  assert.deepEqual(arms.sections.map((s) => s.label), ['Arms-Suppliers']);
+  assert.deepEqual(bases.sections.map((s) => s.label), ['Military-Bases']);
+  assert.equal(arms.sections[0].script, 'seed-defense-industrial-suppliers.mjs');
+  assert.equal(bases.sections[0].script, 'seed-military-bases.mjs');
+  assert.equal(arms.sections[0].timeoutMs, 450_000);
+  assert.equal(bases.sections[0].timeoutMs, 400_000);
+  assert.equal(arms.maxBundleMs, 570_000);
+  assert.equal(bases.maxBundleMs, 570_000);
+
+  assert.deepEqual(
+    leftover.sections.map((s) => s.label),
+    [
+      'Arms-Suppliers',
+      'Defense-Industrial',
+      'Submarine-Cables',
+      'Defense-Patents',
+      'Chokepoint-Baselines',
+      'Military-Bases',
+      'Mineral-Production',
+    ],
+    'D6: leftover still hosts the pre-cutover membership until heartbeats exist',
+  );
+});

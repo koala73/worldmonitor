@@ -524,9 +524,13 @@ incident note.
 ### Merged does not mean deployed
 
 `.github/workflows/seed-freshness-monitor.yml` runs every 15 minutes on the
-default branch. Scheduled runs first require the latest `main` commit's `gate`
-status to be green; a missing, pending, or failed gate makes the workflow fail
-closed instead of producing a green skipped run. Manual runs execute directly.
+default branch. Scheduled runs prefer the latest `main` commit whose `gate`
+status is success. If HEAD is missing, pending, failed, or errored, the job
+walks first-parent history and monitors the newest gated ancestor inside a
+6-hour / 25-commit window. That is not a skip: the probe still runs against a
+revision the repository gates accepted. The run fails closed only when no such
+ancestor exists, or the newest one is older than the bound. Manual runs
+execute directly.
 Its one `monitor` job checks ingestion operational acceptance through
 `scripts/check-seed-freshness.mjs`. It does not install Railway, audit Railway
 configuration, classify deployment history, or imply that a merge reached a
@@ -980,6 +984,34 @@ Strict health-probe registration is a staged follow-up after the first Railway
 run publishes both seed-meta keys; the follow-up must cite real Railway
 pre-seed evidence under the health-probe cutover contract.
 
+### Bundle 3 siblings (planned, #6806)
+
+Arms-Suppliers (460s worst case) and Military-Bases (410s worst case) cannot
+share leftover's 570s tick. These two 1-section bundles are the structural
+fix. They land as `lifecycle: planned` until Railway services exist. Leftover
+`seed-bundle-static-ref` still lists both members until each new service has
+written a `bundle:heartbeat:*` (add-then-remove). Do not strip leftover in
+the same merge that only adds these files.
+
+| Setting | seed-bundle-arms-suppliers | seed-bundle-military-bases |
+|---|---|---|
+| **Service name** | `seed-bundle-arms-suppliers` | `seed-bundle-military-bases` |
+| **Start command** | `node scripts/seed-bundle-arms-suppliers.mjs` | `node scripts/seed-bundle-military-bases.mjs` |
+| **Cron schedule** | `0 4 * * *` (daily 04:00 UTC) | `0 5 * * *` (daily 05:00 UTC) |
+| **Lifecycle** | `planned` until provisioned | `planned` until provisioned |
+| **Members** | Arms-Suppliers only (450s / 10d) | Military-Bases only (400s / 30d) |
+| **Wall-time budget** | `maxBundleMs: 570_000` | `maxBundleMs: 570_000` |
+| **Required variable** | none (`USPTO_API_KEY` stays on leftover) | none (R2 vars are project-level; confirm at provision) |
+| **Heartbeat** | `bundle:heartbeat:arms-suppliers` | `bundle:heartbeat:military-bases` |
+
+Start commands in this table keep the `scripts/` prefix so they match the
+other bundle rows and the registry-coverage grep. Railway's actual start
+command is `node seed-bundle-arms-suppliers.mjs` / `node seed-bundle-military-bases.mjs`
+because `deployMode: nixpacks-root-scripts` sets `rootDirectory` to `scripts/`.
+Clone `seed-bundle-static-ref` twice; do not reuse service id
+`4dd3934d-e5f7-4af8-b34b-c1796226800b`. Stagger is intentional — three 400s
+jobs at 03:00 would contend Redis / R2 / upstreams.
+
 ### Bundle 4: seed-bundle-resilience
 
 | Setting | Value |
@@ -1152,7 +1184,7 @@ Recovery is accepted only when:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
-| **Members** | BIS Data (12h), CBR Rates (daily), China Macro (36h), China Release Calendar (36h), China Policy Events (6h), BIS Extended (12h), BLS Series (daily), Eurostat (daily), Eurostat House Prices (7d), Eurostat Government Debt (2d), Eurostat Industrial Production (daily), IMF Macro (30d), National Debt (30d), FAO FFPI (daily), World Bank External Debt (30d), BIS LBS (7d), FATF Listing (30d), Education Attainment (7d) |
+| **Members** | BIS Data (12h), CBR Rates (daily), BoC Valet (daily), StatCan WDS (daily), China Macro (36h), China Release Calendar (36h), China Policy Events (6h), BIS Extended (12h), BLS Series (daily), Eurostat (daily), Eurostat House Prices (7d), Eurostat Government Debt (2d), Eurostat Industrial Production (daily), IMF Macro (30d), National Debt (30d), FAO FFPI (daily), World Bank External Debt (30d), BIS LBS (7d), FATF Listing (30d), Education Attainment (7d) |
 | **Wall budget** | 570 seconds. The runner defers a section when its timeout plus 10-second kill grace cannot fit before Railway's 10-minute limit. Education stays last on six UTC days so a persistent failure in the new flag-dark producer cannot starve established production members; it gets first priority each Sunday UTC so sustained production load cannot defer its first envelope forever. |
 
 ### Bundle 9: seed-bundle-health

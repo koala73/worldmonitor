@@ -27,6 +27,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const relaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'), 'utf-8');
 const aisRelaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'ais-relay.cjs'), 'utf-8');
+const weatherSelectSrc = readFileSync(resolve(__dirname, '..', 'scripts', '_weather-alert-select.mjs'), 'utf-8');
 const seedAviationSrc = readFileSync(resolve(__dirname, '..', 'scripts', 'seed-aviation.mjs'), 'utf-8');
 const regionalAlertEmitterSrc = readFileSync(resolve(__dirname, '..', 'scripts', 'regional-snapshot', 'alert-emitter.mjs'), 'utf-8');
 const notificationDedupSrc = readFileSync(resolve(__dirname, '..', 'scripts', 'shared', 'notification-dedup.cjs'), 'utf-8');
@@ -431,9 +432,24 @@ describe('ais-relay deriveWeatherCoalesceKey — VTEC parser', () => {
 describe('ais-relay weather publisher — coalesceKey threading', () => {
   it('captures VTEC from properties.parameters.VTEC[0] in the alert mapping', () => {
     assert.match(
-      aisRelaySrc,
+      weatherSelectSrc,
+      /function nwsVtec\(/,
+      'NWS VTEC capture lives in nwsVtec() after the ECCC extract',
+    );
+    assert.match(
+      weatherSelectSrc,
       /vtec\s*=\s*Array\.isArray\(p\?\.parameters\?\.VTEC\)\s*\?\s*p\.parameters\.VTEC\[0\]\s*:\s*undefined/,
-      'alert mapping must capture VTEC from p.parameters.VTEC[0] when present',
+      'nwsVtec must capture VTEC from p.parameters.VTEC[0] when present',
+    );
+    assert.match(
+      aisRelaySrc,
+      /function nwsVtec\(/,
+      'ais-relay must keep nwsVtec() so the live writer still captures NWS VTEC',
+    );
+    assert.match(
+      weatherSelectSrc,
+      /const vtec = nwsVtec\(p\)/,
+      'normalizeNwsAlert must stamp vtec via nwsVtec()',
     );
   });
 

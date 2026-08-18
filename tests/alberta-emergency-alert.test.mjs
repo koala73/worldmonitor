@@ -147,10 +147,16 @@ test('content-age uses entry updated/published and never Date.now()', () => {
   assert.equal(alert.updatedAt, Date.parse('2026-08-13T12:46:36-06:00'));
   const meta = albertaAeaContentMeta({ alerts: [alert] }, Date.parse('2026-08-13T20:00:00Z'));
   assert.equal(meta.newestItemAt, alert.updatedAt);
-  assert.match(LIB_SOURCE, /nowMs = Date\.now\(\)/);
-  assert.doesNotMatch(LIB_SOURCE, /updatedAt:\s*Date\.now/);
-  assert.doesNotMatch(LIB_SOURCE, /publishedAt:\s*Date\.now/);
-  assert.match(LIB_SOURCE, /updatedAt \?\? alert\.publishedAt/);
+
+  // Content age must track the FEED's clock, not the seeder's: an alert stamped
+  // with Date.now() looks perpetually fresh and defeats the staleness monitor.
+  // Parsing the same entry at two different wall-clock instants must therefore
+  // produce the same timestamp — which the assertions above cannot show on
+  // their own, and which the source greps here previously stood in for.
+  const [reparsed] = parseAlbertaEmergencyAlertAtom(xml);
+  assert.equal(reparsed.updatedAt, alert.updatedAt);
+  const laterMeta = albertaAeaContentMeta({ alerts: [reparsed] }, Date.parse('2027-01-01T00:00:00Z'));
+  assert.equal(laterMeta.newestItemAt, alert.updatedAt);
 });
 
 test('host allowlist is www.alberta.ca only', () => {
@@ -197,28 +203,23 @@ test('fetchAlbertaEmergencyAlerts uses CHROME_UA, times out, and rejects off-all
   );
 });
 
-test('seeder is a standalone nixpacks job and does not loop ais-relay or weather:alerts:v1', () => {
-  assert.match(SEEDER_SOURCE, /fetchAlbertaEmergencyAlerts/);
-  assert.match(SEEDER_SOURCE, /zeroIsValid:\s*true/);
-  assert.match(SEEDER_SOURCE, /alerts:alberta-aea:v1/);
-  assert.match(SEEDER_SOURCE, /alberta-aea-v1/);
-  assert.match(SEEDER_SOURCE, /maxStaleMin:\s*45/);
-  assert.match(SEEDER_SOURCE, /publishTransform:\s*albertaAeaPublishTransform/);
-  assert.match(SEEDER_SOURCE, /afterPublish:\s*albertaAeaAfterPublish/);
+test('Alberta alerts stay isolated from the relay, the weather key, and the roads feed', () => {
+  // This is an isolation policy, and the only assertion shape that can observe
+  // it is the ABSENCE of a reference — no executable test can prove the relay
+  // never reaches for this feed. The seeder's own config values (zeroIsValid,
+  // maxStaleMin, the transform names) used to be echoed here too; those just
+  // restated the object literal a few lines away in the seeder.
+  //
+  // Alberta ships as a standalone nixpacks job precisely so a relay incident
+  // cannot take emergency alerts down with it, and so its fetch never inherits
+  // the 511 rate limiter.
   assert.doesNotMatch(SEEDER_SOURCE, /CANONICAL_KEY = 'weather:alerts:v1'/);
-  assert.match(SEEDER_SOURCE, /alerts:alberta-aea:v1/);
-  assert.doesNotMatch(SEEDER_SOURCE, /fetch\.bind/);
-  assert.doesNotMatch(SEEDER_SOURCE, /canadaRoads/);
-  assert.doesNotMatch(SEEDER_SOURCE, /_511-rate-limit/);
-  assert.doesNotMatch(LIB_SOURCE, /weather:alerts:v1/);
-  assert.doesNotMatch(LIB_SOURCE, /canadaRoads/);
-  assert.doesNotMatch(LIB_SOURCE, /fetch.bind/);
-  assert.doesNotMatch(LIB_SOURCE, /511on\.ca/);
+  assert.doesNotMatch(SEEDER_SOURCE, /canadaRoads|_511-rate-limit|fetch\.bind/);
+  assert.doesNotMatch(LIB_SOURCE, /weather:alerts:v1|canadaRoads|fetch\.bind|511on\.ca/);
+  assert.doesNotMatch(RELAY_SOURCE, /alberta\.ca|alberta-aea|canadaAlerts|feed-full\.atom/);
+
+  // And it reaches only its own upstream host.
   assert.match(LIB_SOURCE, new RegExp(AEA_HOST.replace(/\./g, '\\.')));
-  assert.doesNotMatch(RELAY_SOURCE, /alberta\.ca/);
-  assert.doesNotMatch(RELAY_SOURCE, /alberta-aea/);
-  assert.doesNotMatch(RELAY_SOURCE, /canadaAlerts/);
-  assert.doesNotMatch(RELAY_SOURCE, /feed-full\.atom/);
 });
 
 test('this test file does not import the seeder module', () => {

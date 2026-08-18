@@ -1170,7 +1170,7 @@
         "ucdpEvents": "UCDP 사건",
         "displacementFlows": "난민 이동",
         "climateAnomalies": "기후 이상",
-        "weatherAlerts": "미국 기상 경보(NWS)",
+        "weatherAlerts": "미국·캐나다 기상 경보(NWS, ECCC)",
         "strategicWaterways": "전략 수로",
         "economicCenters": "경제 중심지",
         "criticalMinerals": "핵심 광물",
@@ -1253,7 +1253,7 @@
           "infraDatacenters": "GPU 10,000대 이상 AI 컴퓨팅 클러스터",
           "infraOutages": "인터넷 차단 및 서비스 중단",
           "naturalEventsTech": "지진, 폭풍, 화재 (데이터 센터 영향 가능)",
-          "weatherAlerts": "미국의 악천후 경보(NWS)",
+          "weatherAlerts": "미국과 캐나다의 악천후 경보(NWS, ECCC)",
           "economicCenters": "증권거래소 및 중앙은행",
           "countriesOverlay": "국가명 오버레이",
           "financeExchanges": "시장 등급별 주요 글로벌 거래소",
@@ -1265,7 +1265,7 @@
           "financeOutages": "시장 운영에 영향을 줄 수 있는 인터넷 중단",
           "financeCyberThreats": "금융 인프라 관련 보안 이벤트",
           "macroWaterways": "원자재 해운의 전략적 병목 지점",
-          "weatherAlertsMarket": "시장 관련성이 있는 미국의 악천후 현상(NWS)",
+          "weatherAlertsMarket": "시장 관련성이 있는 미국과 캐나다의 악천후 현상(NWS, ECCC)",
           "naturalEventsMacro": "지진, 화재, 홍수 및 기타 자연재해",
           "timeRecent": "시간 기반 데이터를 최근 시간대로 필터링",
           "timeExtended": "지난 주, 월, 전체 기간의 데이터 표시",
@@ -2358,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "제재 및 지정",
-      "infoTooltip": "SDN 및 통합 목록의 OFAC 제재 지정. 어느 국가가 가장 높은 지정 압력을 받고 있는지, 어떤 프로그램이 이를 주도하고 있는지, 마지막 업데이트 이후 새로 추가된 것이 무엇인지를 보여줍니다.",
+      "infoTooltip": "OFAC SDN 및 통합 목록과 캐나다 글로벌 어페어스 SEMA/JVCFOA 지정. 어느 국가가 가장 높은 지정 압력을 받고 있는지, 어떤 프로그램이 이를 주도하고 있는지, 마지막 업데이트 이후 새로 추가된 것이 무엇인지를 보여줍니다.",
       "loading": "제재 데이터 로드 중...",
       "unavailable": "제재 데이터를 사용할 수 없습니다.",
       "summary": {
         "new": "신규",
         "vessels": "선박",
-        "aircraft": "항공기"
+        "aircraft": "항공기",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "제재 대상국",
@@ -2379,11 +2380,12 @@
       "footer": {
         "updated": "{{time}}에 업데이트됨",
         "dataset": "데이터셋 {{date}}",
-        "source": "출처: OFAC"
+        "source": "출처: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} 신규",
-        "new": "신규"
+        "new": "신규",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}}개 지정",
       "designations_other": "{{count}}개 지정",
@@ -2829,6 +2831,7 @@
     "moreEvents": "추가 사건",
     "monitoring": "감시 중",
     "viewUSGS": "USGS에서 보기",
+    "viewNRCan": "Earthquakes Canada에서 보기",
     "expired": "만료됨",
     "timeAgo": {
       "s": "{{count}}s 전",

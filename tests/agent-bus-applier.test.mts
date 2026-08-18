@@ -250,7 +250,18 @@ describe('agent bus applier', () => {
   });
 
   it('allows free enhanced layers and clears stale locked layers', () => {
-    const ctx = makeCtx();
+    // DeckGL-active context (kind 'deck'): the enhanced CII choropleth renders
+    // on deck + globe, so it must be executable here. The default makeCtx mock
+    // models the SVG fallback (kind 'svg'), where CII has no paint path.
+    const ctx = makeCtx({
+      map: {
+        setCenter: () => {},
+        setView: () => {},
+        setLayers: () => {},
+        isDeckGLActive: () => true,
+        isGlobeMode: () => false,
+      } as never,
+    });
     ctx.mapLayers.resilienceScore = true;
     const layerChanges: Array<[keyof MapLayers, boolean, 'programmatic']> = [];
     const result = applyAgentBusAction(ctx, {

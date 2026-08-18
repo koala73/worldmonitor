@@ -1170,7 +1170,7 @@
         "ucdpEvents": "Sự kiện UCDP",
         "displacementFlows": "Dòng Di dời",
         "climateAnomalies": "Bất thường Khí hậu",
-        "weatherAlerts": "Cảnh báo thời tiết tại Hoa Kỳ (NWS)",
+        "weatherAlerts": "Cảnh báo thời tiết tại Hoa Kỳ và Canada (NWS, ECCC)",
         "strategicWaterways": "Đường thủy Chiến lược",
         "economicCenters": "Trung tâm Kinh tế",
         "criticalMinerals": "Khoáng sản Chiến lược",
@@ -1253,7 +1253,7 @@
           "infraDatacenters": "Cụm tính toán AI >=10.000 GPU",
           "infraOutages": "Mất kết nối internet và gián đoạn dịch vụ",
           "naturalEventsTech": "Động đất, bão, cháy (có thể ảnh hưởng trung tâm dữ liệu)",
-          "weatherAlerts": "Cảnh báo thời tiết nghiêm trọng tại Hoa Kỳ (NWS)",
+          "weatherAlerts": "Cảnh báo thời tiết nghiêm trọng tại Hoa Kỳ và Canada (NWS, ECCC)",
           "economicCenters": "Sàn chứng khoán & ngân hàng trung ương",
           "countriesOverlay": "Lớp phủ tên quốc gia",
           "financeExchanges": "Sàn giao dịch toàn cầu lớn theo cấp thị trường",
@@ -1265,7 +1265,7 @@
           "financeOutages": "Gián đoạn internet có thể ảnh hưởng hoạt động thị trường",
           "financeCyberThreats": "Sự kiện an ninh quanh hạ tầng tài chính",
           "macroWaterways": "Điểm nghẽn chiến lược cho vận chuyển hàng hóa",
-          "weatherAlertsMarket": "Sự kiện thời tiết nghiêm trọng tại Hoa Kỳ liên quan đến thị trường (NWS)",
+          "weatherAlertsMarket": "Sự kiện thời tiết nghiêm trọng tại Hoa Kỳ và Canada liên quan đến thị trường (NWS, ECCC)",
           "naturalEventsMacro": "Động đất, cháy, lũ lụt và thiên tai khác",
           "timeRecent": "Lọc dữ liệu theo thời gian gần đây",
           "timeExtended": "Hiển thị dữ liệu tuần qua, tháng qua hoặc tất cả",
@@ -2358,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "Trừng phạt & Chỉ định",
-      "infoTooltip": "Các chỉ định trừng phạt OFAC từ Danh sách SDN và Danh sách Hợp nhất. Hiển thị các quốc gia nào đối mặt với áp lực chỉ định cao nhất, chương trình nào đang thúc đẩy và những gì được thêm mới kể từ lần cập nhật cuối cùng.",
+      "infoTooltip": "Danh sách SDN và Hợp nhất của OFAC cùng các chỉ định SEMA/JVCFOA của Global Affairs Canada. Hiển thị các quốc gia nào đối mặt với áp lực chỉ định cao nhất, chương trình nào đang thúc đẩy và những gì được thêm mới kể từ lần cập nhật cuối cùng.",
       "loading": "Đang tải dữ liệu trừng phạt...",
       "unavailable": "Dữ liệu trừng phạt không khả dụng.",
       "summary": {
         "new": "Mới",
         "vessels": "Tàu",
-        "aircraft": "Tàu bay"
+        "aircraft": "Tàu bay",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Quốc gia bị trừng phạt",
@@ -2379,11 +2380,12 @@
       "footer": {
         "updated": "Cập nhật {{time}}",
         "dataset": "tập dữ liệu {{date}}",
-        "source": "Nguồn: OFAC"
+        "source": "Nguồn: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} mới",
-        "new": "mới"
+        "new": "mới",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} chỉ định",
       "designations_other": "{{count}} chỉ định",
@@ -2829,6 +2831,7 @@
     "moreEvents": "sự kiện khác",
     "monitoring": "Giám sát",
     "viewUSGS": "Xem trên USGS",
+    "viewNRCan": "Xem trên Earthquakes Canada",
     "expired": "Đã hết hạn",
     "timeAgo": {
       "s": "{{count}}s trước",

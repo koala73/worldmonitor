@@ -707,7 +707,20 @@ export function readRepeatedArguments(argv, name) {
   return values;
 }
 
-export function resolveComparisonHead(argv, { git = runGit } = {}) {
+export function resolveOriginMainRelation(headSha, originMainSha, ancestry) {
+  if (!originMainSha) return 'unavailable';
+  if (headSha === originMainSha) return 'exact';
+  const forward = ancestry(headSha, originMainSha);
+  if (forward === 'yes') return 'behind';
+  const reverse = ancestry(originMainSha, headSha);
+  if (reverse === 'yes') return 'ahead';
+  return forward === 'no' && reverse === 'no' ? 'diverged' : 'unknown';
+}
+
+export function resolveComparisonHead(argv, {
+  git = runGit,
+  ancestry = () => 'unknown',
+} = {}) {
   const explicit = readArgument(argv, '--head', null);
   if (explicit === null) {
     git([
@@ -717,15 +730,45 @@ export function resolveComparisonHead(argv, { git = runGit } = {}) {
       '+refs/heads/main:refs/remotes/origin/main',
     ]);
   }
-  const target = explicit ?? 'origin/main';
-  return git(['rev-parse', '--verify', '--end-of-options', `${target}^{commit}`]);
+  let originMainSha = null;
+  try {
+    originMainSha = git(['rev-parse', '--verify', '--end-of-options', 'origin/main^{commit}']);
+  } catch (error) {
+    if (explicit === null) {
+      throw new Error(
+        'cannot resolve origin/main for the deploy-drift comparison; fetch main or pass --head explicitly',
+        { cause: error },
+      );
+    }
+  }
+
+  let headSha = originMainSha;
+  let headSource = 'origin/main';
+  if (explicit !== null) {
+    headSource = '--head';
+    try {
+      headSha = git(['rev-parse', '--verify', '--end-of-options', `${explicit}^{commit}`]);
+    } catch (error) {
+      throw new Error(`cannot resolve --head ${explicit} to a commit`, { cause: error });
+    }
+  }
+
+  return {
+    headSha,
+    headSource,
+    originMainSha,
+    originMainRelation: resolveOriginMainRelation(headSha, originMainSha, ancestry),
+  };
+}
+
+export function formatComparisonHead({ headSource, originMainRelation }) {
+  return `source=${headSource} vs-origin-main=${originMainRelation}`;
 }
 
 
 
-
-function printReport(results, summary, headSha, graceSha) {
-  console.log(`Railway deploy-drift check: head=${headSha.slice(0, 9)} grace=${graceSha.slice(0, 9)} services=${results.length} ${JSON.stringify(summary.counts)}`);
+function printReport(results, summary, headSha, graceSha, headContext) {
+  console.log(`Railway deploy-drift check: head=${headSha.slice(0, 9)} ${formatComparisonHead(headContext)} grace=${graceSha.slice(0, 9)} services=${results.length} ${JSON.stringify(summary.counts)}`);
 
   if (summary.blocking.length > 0) {
     console.error(`Railway deploy-drift check found ${summary.blocking.length} service(s) not running the head commit:`);
@@ -768,7 +811,6 @@ async function main() {
   // Manual/operator runs default to the production line, never a feature
   // worktree's HEAD. The workflow passes its immutable event SHA explicitly,
   // then fetches newer main ancestry without moving this target.
-  const headSha = resolveComparisonHead(process.argv);
   // `git merge-base --is-ancestor` exits non-zero both when the answer is no
   // and when the object is missing (a shallow checkout that never fetched the
   // commit). Both collapse to "cannot prove it", which keeps the service
@@ -782,14 +824,8 @@ async function main() {
   // "cannot prove it keeps the service reported" behaviour.
   const ancestry = createAncestryResolver({ git: runGit });
   const isAncestor = (ancestor, descendant) => ancestry(ancestor, descendant) === 'yes';
-  let authorizedMainSha = null;
-  try {
-    authorizedMainSha = runGit(['rev-parse', '--verify', 'origin/main^{commit}']);
-  } catch {
-    // AHEAD acceptance needs a positive repository-lineage proof. A missing
-    // ref is not fatal for exact CURRENT results, but every AHEAD result fails
-    // closed in the summary below.
-  }
+  const headContext = resolveComparisonHead(process.argv, { git: runGit, ancestry });
+  const { headSha, originMainSha: authorizedMainSha } = headContext;
   // The newest commit that has been available longer than the build grace.
   // On a checkout too shallow to reach back that far, rev-list answers with
   // nothing and this falls back to head — the stricter reading.
@@ -960,6 +996,8 @@ async function main() {
     console.log(JSON.stringify({
       environment,
       headSha,
+      headSource: headContext.headSource,
+      originMainRelation: headContext.originMainRelation,
       graceSha,
       deepPass: {
         attempted: deepPass.deepenedServices,
@@ -978,12 +1016,12 @@ async function main() {
     }, null, 2));
   }
   else if (strict) {
-    console.log(`Strict Railway deploy-drift check: head=${headSha.slice(0, 9)} services=${results.length}`);
+    console.log(`Strict Railway deploy-drift check: head=${headSha.slice(0, 9)} ${formatComparisonHead(headContext)} services=${results.length}`);
     for (const problem of summary.blocking) {
       console.error(`- ${problem.service ?? 'unknown'} [${problem.verdict}] ${problem.detail ?? ''}`);
     }
     for (const service of summary.missing) console.error(`- ${service} [MISSING] was not positively classified`);
-  } else printReport(results, summary, headSha, graceSha);
+  } else printReport(results, summary, headSha, graceSha, headContext);
   if (!summary.ok || configurationDrift.length > 0) process.exitCode = 1;
 }
 

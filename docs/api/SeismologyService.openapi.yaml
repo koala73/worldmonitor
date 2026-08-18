@@ -13,7 +13,7 @@ paths:
             tags:
                 - SeismologyService
             summary: ListEarthquakes
-            description: ListEarthquakes retrieves recent earthquakes from the USGS GeoJSON feed.
+            description: ListEarthquakes retrieves recent earthquakes from USGS and Earthquakes Canada (NRCan).
             operationId: ListEarthquakes
             security: []
             parameters:
@@ -81,14 +81,14 @@ paths:
                         application/json:
                             example:
                                 "earthquakes":
-                                    - "concernLevel": "example"
+                                    - "category": "cs.AI"
+                                      "concernLevel": "example"
                                       "concernScore": 42.5
                                       "depthKm": 1.5
                                       "id": "example-id"
                                       "location":
                                           "latitude": 40.7128
                                           "longitude": -74.006
-                                      "magnitude": 1.5
                                 "pagination":
                                     "nextCursor": "next-page-token"
                                     "totalCount": 1
@@ -256,7 +256,7 @@ components:
                     description: |-
                         Minimum magnitude filter (e.g., 4.0 for significant quakes).
                          Accepted but currently ignored; no-op until this handler supports the parameter.
-            description: ListEarthquakesRequest specifies filters for retrieving earthquake data from USGS.
+            description: ListEarthquakesRequest specifies filters for retrieving earthquake data from USGS and Earthquakes Canada (NRCan).
         ListEarthquakesResponse:
             type: object
             properties:
@@ -274,7 +274,7 @@ components:
                     type: string
                     maxLength: 100
                     minLength: 1
-                    description: Unique USGS event identifier (e.g., "us7000abcd").
+                    description: 'Event identifier: USGS id (e.g. "us7000abcd") or namespaced NRCan id (e.g. "nrcan:20260813.0954001").'
                 place:
                     type: string
                     description: Human-readable place description (e.g., "10 km SW of Anchorage, Alaska").
@@ -294,7 +294,7 @@ components:
                     description: 'Time the earthquake occurred, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 sourceUrl:
                     type: string
-                    description: URL to the USGS event detail page.
+                    description: URL to the USGS or Earthquakes Canada event detail page.
                 nearTestSite:
                     type: boolean
                     description: True when epicenter is within 100 km of a known nuclear test site.
@@ -308,9 +308,15 @@ components:
                 concernLevel:
                     type: string
                     description: 'Human-readable concern level: "low" | "moderate" | "elevated" | "critical".'
+                source:
+                    type: string
+                    description: 'Reporting agency: "usgs" (USGS) or "nrcan" (Earthquakes Canada / NRCan).'
+                category:
+                    type: string
+                    description: NRCan event category when present (e.g. "known earthquake", "suspected industry-related"). Empty for USGS.
             required:
                 - id
-            description: Earthquake represents a seismic event from USGS GeoJSON feed.
+            description: Earthquake represents a seismic event from USGS and Earthquakes Canada (NRCan).
         GeoCoordinates:
             type: object
             properties:

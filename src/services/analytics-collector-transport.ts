@@ -129,6 +129,43 @@ export class CollectorDeliveryError extends Error {
 }
 
 /**
+ * Identity for the network-layer rejection handed back to the TRACKER.
+ *
+ * The tracker is third-party code served from abacus.worldmonitor.app and does
+ * not handle its own rejection, so a failed beacon surfaced as an unhandled
+ * `TypeError: Failed to fetch` — no host in the message, no caller in the stack,
+ * and therefore indistinguishable in Sentry from a genuine api.worldmonitor.app
+ * outage. Five rounds of chunk-name heuristics tried to tell them apart from the
+ * stack instead (WORLDMONITOR-VC/VQ/Y4/Z6/ZG); each broke the next time Vite
+ * re-partitioned the `window.fetch` trampolines into a different chunk, and the
+ * chunk that carries them now also carries `runtime.ts`, so no widening of that
+ * allowlist can stay safe. Naming the rejection at its source is the stable
+ * form of the same intent: one exact string, from one line, for one condition.
+ *
+ * What this deliberately does NOT change is WHICH outcomes reject. An HTTP error
+ * still resolves with the real Response (see `runCollectorRequest`) — only a
+ * network-layer failure ever reaches this wrapper — so the native-fetch
+ * semantics the tracker expects are preserved and only the rejection's identity
+ * moves. Scope is bounded to classified collector writes: the pass-through
+ * branches in `installCollectorFetchGate` hand app fetches the untouched
+ * original promise, so no first-party request can acquire this wrapper.
+ *
+ * The original error is retained on `cause` so failure classification stays
+ * exact — `collectorFailureFromError` unwraps it rather than flattening every
+ * wrapped timeout into `network`.
+ */
+export class CollectorTransportError extends Error {
+  readonly cause: unknown;
+
+  constructor(cause: unknown) {
+    const detail = cause instanceof Error ? cause.message : String(cause);
+    super(`Umami collector beacon transport rejected: ${detail}`);
+    this.name = 'CollectorTransportError';
+    this.cause = cause;
+  }
+}
+
+/**
  * Depth of the serialization queue in front of the single in-flight slot.
  *
  * MUST stay >= `UMAMI_QUEUE_LIMIT` in `src/services/analytics.ts`. That buffer
@@ -431,6 +468,11 @@ export async function inspectCollectorResponse(response: Response): Promise<Coll
 }
 
 export function collectorFailureFromError(error: unknown): CollectorFailure {
+  // Unwrap the tracker-facing wrapper first: without this, a wrapped
+  // TimeoutError would miss the `TimeoutError` branch below and be recorded as
+  // `network`, silently corrupting the timeout/raced split the health cohorts
+  // are built on.
+  if (error instanceof CollectorTransportError) return collectorFailureFromError(error.cause);
   if (error instanceof CollectorDeliveryError) return error.failure;
   if (error instanceof Error && error.name === 'TimeoutError') {
     // A platform abort and this module's latch deadline both arrive as
@@ -982,10 +1024,43 @@ async function runCollectorRequest(request: CollectorRequest, generation: number
     if (failure) request.rejectDelivery(new CollectorDeliveryError(failure));
     else request.resolveDelivery(response);
   } catch (error) {
+    const failure = collectorFailureFromError(error);
     if (generation === collectorTransportGeneration) {
-      recordCollectorOutcome(request, collectorFailureFromError(error));
+      recordCollectorOutcome(request, failure);
     }
-    request.reject(error);
+    // Only the TRACKER-facing promise is renamed, and only for the failure shape
+    // that arrives ANONYMOUS. The tracker leaks its rejection, so this is the
+    // promise that reaches Sentry (see CollectorTransportError).
+    //
+    // Scoped to `network` because that is the whole ambiguity: the raw error
+    // there is a bare `TypeError: Failed to fetch`, which carries no host and no
+    // caller and is therefore indistinguishable from a first-party API outage.
+    // A `timeout` already rejects with a distinctly-named `TimeoutError` that
+    // Sentry groups on its own and our filters already recognise, so renaming it
+    // would buy nothing while breaking the identity the timeout suite pins in a
+    // dozen places (#6086 / #6288). Anything unrecognised classifies as
+    // `network` and is therefore wrapped by default — the fail-safe direction,
+    // since an unnamed rejection is exactly what must not reach Sentry
+    // unattributed.
+    //
+    // A CALLER cancellation is never wrapped. When the caller aborts with its
+    // own reason, that exact object propagates through the forwarded
+    // AbortController and must come back identity-equal — a contract the
+    // compatibility suite asserts with `error === reason`
+    // (tests/analytics-beacon-rejection.test.mts). It also needs no attribution:
+    // the caller already knows why it aborted. Detected by identity rather than
+    // by shape, because a caller reason is an arbitrary value that classifies as
+    // `network` like anything else unrecognised.
+    //
+    // `delivery` keeps the raw error either way: it is our own internal signal,
+    // and the retry policy and health cohorts classify off it.
+    const callerSignal = request.init?.signal;
+    const isCallerCancellation = callerSignal?.aborted === true && callerSignal.reason === error;
+    request.reject(
+      failure.kind === 'network' && !isCallerCancellation
+        ? new CollectorTransportError(error)
+        : error,
+    );
     request.rejectDelivery(error);
   } finally {
     timeoutBoundInit?.cleanup();

@@ -153,7 +153,10 @@ const FULL_MAP_LAYERS: MapLayers = {
   radiationWatch: false,
   sanctions: true,
   weather: true,
-  canadaRoads: true,
+  // Opt-in — see DEFAULT_MAP_LAYERS in src/config/variants/full.ts. Its four
+  // sources are on-demand bootstrap keys (~2.7 MB), so shipping the layer on
+  // put that on every visitor (#6763).
+  canadaRoads: false,
   canadaAlerts: true,
   economic: true,
   waterways: true,
@@ -1469,7 +1472,7 @@ export const LAYER_TO_SOURCE: Partial<Record<keyof MapLayers, DataSourceId[]>> =
   ais: ['ais'],
   natural: ['usgs'],
   weather: ['weather'],
-  canadaRoads: ['ontario_511', 'bc_open511'],
+  canadaRoads: ['ontario_511', 'alberta_511', 'toronto_roads', 'bc_open511'],
   outages: ['outages'],
   cyberThreats: ['cyber_threats'],
   protests: ['acled', 'gdelt_doc'],

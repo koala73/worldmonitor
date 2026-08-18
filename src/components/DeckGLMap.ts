@@ -427,6 +427,16 @@ type HighlightedMarker = { id: string; lon: number; lat: number; name: string; s
 /** GpsJamHex with its H3 cell boundary precomputed once at ingestion (see setGpsJamming). */
 type GpsJamHexWithPolygon = GpsJamHex & { polygon: [number, number][] };
 
+/**
+ * Webcam markers carry an explicit leaf/group discriminant tagged at setWebcams
+ * ingestion, mirroring GlobeMap's `_kind: 'webcam' | 'webcam-cluster'` union.
+ * Existing consumers still narrow on `'count' in d`; `_kind` makes the
+ * distinction available at the type level for new code without re-deriving it.
+ */
+type WebcamLeafMarker = WebcamEntry & { _kind: 'webcam' };
+type WebcamClusterMarker = WebcamCluster & { _kind: 'webcam-cluster' };
+type WebcamMarker = WebcamLeafMarker | WebcamClusterMarker;
+
 interface BypassArcDatum {
   source: [number, number];
   target: [number, number];
@@ -646,7 +656,7 @@ export class DeckGLMap {
   private happinessSource = '';
   private speciesRecoveryZones: Array<SpeciesRecovery & { recoveryZone: { name: string; lat: number; lon: number } }> = [];
   private renewableInstallations: RenewableInstallation[] = [];
-  private webcamData: Array<WebcamEntry | WebcamCluster> = [];
+  private webcamData: WebcamMarker[] = [];
   private countriesGeoJsonData: FeatureCollection<Geometry> | null = null;
   private conflictZoneGeoJson: GeoJSON.FeatureCollection | null = null;
   // #4561: all zone features + their precomputed bounds, built once (cheap — no
@@ -1643,6 +1653,7 @@ export class DeckGLMap {
           const riotTimeMs = Number(props.riotTimeMs ?? 0);
           return {
             id: `pc-${f.properties.cluster_id}`,
+            _kind: 'group' as const,
             _clusterId: f.properties.cluster_id!,
             lat: coords[1], lon: coords[0],
             count: clusterCount,
@@ -1660,7 +1671,7 @@ export class DeckGLMap {
         }
         const item = this.protestSuperclusterSource[f.properties.index]!;
         return {
-          id: `pp-${f.properties.index}`, lat: item.lat, lon: item.lon,
+          id: `pp-${f.properties.index}`, _kind: 'leaf' as const, lat: item.lat, lon: item.lon,
           count: 1, items: [item], country: item.country,
           maxSeverity: item.severity, hasRiot: item.eventType === 'riot',
           latestRiotEventTimeMs:
@@ -1694,6 +1705,7 @@ export class DeckGLMap {
               : 'public';
           return {
             id: `hc-${f.properties.cluster_id}`,
+            _kind: 'group' as const,
             _clusterId: f.properties.cluster_id!,
             lat: coords[1], lon: coords[0],
             count: clusterCount,
@@ -1709,7 +1721,7 @@ export class DeckGLMap {
         }
         const item = TECH_HQS[f.properties.index]!;
         return {
-          id: `hp-${f.properties.index}`, lat: item.lat, lon: item.lon,
+          id: `hp-${f.properties.index}`, _kind: 'leaf' as const, lat: item.lat, lon: item.lon,
           count: 1, items: [item], city: item.city, country: item.country,
           primaryType: item.type,
           faangCount: item.type === 'faang' ? 1 : 0,
@@ -1732,6 +1744,7 @@ export class DeckGLMap {
           const soonCount = Number(props.soonCount ?? 0);
           return {
             id: `ec-${f.properties.cluster_id}`,
+            _kind: 'group' as const,
             _clusterId: f.properties.cluster_id!,
             lat: coords[1], lon: coords[0],
             count: clusterCount,
@@ -1745,7 +1758,7 @@ export class DeckGLMap {
         }
         const item = this.techEvents[f.properties.index]!;
         return {
-          id: `ep-${f.properties.index}`, lat: item.lat, lon: item.lng,
+          id: `ep-${f.properties.index}`, _kind: 'leaf' as const, lat: item.lat, lon: item.lng,
           count: 1, items: [item], location: item.location, country: item.country,
           soonestDaysUntil: item.daysUntil,
           soonCount: item.daysUntil <= 14 ? 1 : 0,
@@ -1769,6 +1782,7 @@ export class DeckGLMap {
           const totalPowerMW = Number(props.totalPowerMW ?? 0);
           return {
             id: `dc-${f.properties.cluster_id}`,
+            _kind: 'group' as const,
             _clusterId: f.properties.cluster_id!,
             lat: coords[1], lon: coords[0],
             count: clusterCount,
@@ -1785,7 +1799,7 @@ export class DeckGLMap {
         }
         const item = activeDCs[f.properties.index]!;
         return {
-          id: `dp-${f.properties.index}`, lat: item.lat, lon: item.lon,
+          id: `dp-${f.properties.index}`, _kind: 'leaf' as const, lat: item.lat, lon: item.lon,
           count: 1, items: [item], region: item.country, country: item.country,
           totalChips: item.chipCount, totalPowerMW: item.powerMW ?? 0,
           majorityExisting: item.status === 'existing',
@@ -1906,7 +1920,7 @@ export class DeckGLMap {
 
     // Live tanker positions inside chokepoint bounding boxes. AIS ship type
     // 80-89 (tanker class). Refreshed every 60s; one Map<chokepointId, ...>
-    // fetch per layer-tick. deckGLOnly per src/config/map-layer-definitions.ts.
+    // fetch per layer-tick. renderers: ['deck'] per src/config/map-layer-definitions.ts.
     // Powered by the relay's tankerReports field (added in PR 3 U7 alongside
     // the existing military-only candidateReports). Energy Atlas parity-push.
     if (mapLayers.liveTankers) {
@@ -2271,7 +2285,7 @@ export class DeckGLMap {
 
     // Webcam layer (server-side clustered markers)
     if (mapLayers.webcams && this.webcamData.length > 0) {
-      layers.push(new ScatterplotLayer<WebcamEntry | WebcamCluster>({
+      layers.push(new ScatterplotLayer<WebcamMarker>({
         id: 'webcam-layer',
         data: this.webcamData,
         getPosition: (d) => [d.lng, d.lat],
@@ -5478,7 +5492,7 @@ export class DeckGLMap {
         <button class="map-btn zoom-reset" title="${t('components.deckgl.resetView')}">&#8962;</button>
       </div>
       <div class="view-selector">
-        <select class="view-select">
+        <select class="view-select" aria-label="${t('header.selectRegion')}">
           <option value="global">${t('components.deckgl.views.global')}</option>
           <option value="america">${t('components.deckgl.views.americas')}</option>
           <option value="mena">${t('components.deckgl.views.mena')}</option>
@@ -5553,7 +5567,7 @@ export class DeckGLMap {
     const toggles = document.createElement('div');
     toggles.className = 'layer-toggles deckgl-layer-toggles';
 
-    const layerDefs = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat');
+    const layerDefs = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'deck');
     const premiumUnlocked = hasPremiumAccess(getAuthState());
     const layerConfig = layerDefs.map(def => ({
       key: def.key,
@@ -5737,7 +5751,7 @@ export class DeckGLMap {
     this.container.querySelector('.layer-help-popup')?.remove();
     this.container.querySelectorAll('.layer-explain-btn.active').forEach(btn => btn.classList.remove('active'));
 
-    const def = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat').find(item => item.key === layer);
+    const def = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'deck').find(item => item.key === layer);
     const layerLabel = def ? resolveLayerLabel(def, t) : String(layer);
     const explanation = getLayerExplanation(layer);
     const popup = document.createElement('div');
@@ -7048,7 +7062,11 @@ export class DeckGLMap {
   }
 
   public setWebcams(markers: Array<WebcamEntry | WebcamCluster>): void {
-    this.webcamData = markers;
+    this.webcamData = markers.map((m) =>
+      'count' in m
+        ? { ...m, _kind: 'webcam-cluster' as const }
+        : { ...m, _kind: 'webcam' as const },
+    );
     this.render();
   }
 

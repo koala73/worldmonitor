@@ -1370,6 +1370,11 @@ module.exports = {
   checkDedup,
   upstashDedupSetNx,
   eventMatchesCountryScope,
+  // Exported for the same reason as eventMatchesCountryScope: the ticker-scope
+  // tests previously kept hand-copied mirrors of these, which cannot fail when
+  // the real ones change.
+  eventMatchesTickerScope,
+  ruleMatchesEventType,
   processWelcome,
   popNextEvent,
 };

@@ -48,12 +48,6 @@ node scripts/check-vite-env-secrets.mjs || exit 1
 
 export npm_config_cache="${npm_config_cache:-/tmp/worldmonitor-npm-cache}"
 
-# Ensure dependencies are installed (worktrees start with no node_modules)
-if [ ! -d node_modules ]; then
-  echo "node_modules missing, running npm ci..."
-  npm ci --cache "$npm_config_cache" || exit 1
-fi
-
 echo "Checking PR status for current branch..."
 BRANCH=$(git branch --show-current)
 if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
@@ -150,7 +144,17 @@ CHANGED_LIVE_NUL=$(mktemp "$TEMP_ROOT/wm-prepush-changed-live.XXXXXX") || exit 1
 NODE_TESTS_NUL=$(mktemp "$TEMP_ROOT/wm-prepush-node-tests.XXXXXX") || exit 1
 DOM_TESTS_NUL=$(mktemp "$TEMP_ROOT/wm-prepush-dom-tests.XXXXXX") || exit 1
 WORKTREE_NUL=$(mktemp "$TEMP_ROOT/wm-prepush-worktree.XXXXXX") || exit 1
-trap 'rm -f "$CHANGED_NUL" "$CHANGED_LIVE_NUL" "$NODE_TESTS_NUL" "$DOM_TESTS_NUL" "$WORKTREE_NUL"' EXIT
+PREPUSH_COMMON_DIR=""
+PREPUSH_ADMISSION_LEASE=""
+cleanup_prepush() {
+  rm -f "$CHANGED_NUL" "$CHANGED_LIVE_NUL" "$NODE_TESTS_NUL" "$DOM_TESTS_NUL" "$WORKTREE_NUL"
+  if [ -n "$PREPUSH_ADMISSION_LEASE" ] && [ -n "$PREPUSH_COMMON_DIR" ]; then
+    node scripts/prepush-admission.mjs release "$PREPUSH_COMMON_DIR" "$PREPUSH_ADMISSION_LEASE" >/dev/null || {
+      echo "WARNING: could not release the pre-push admission slot; stale recovery will reclaim it." >&2
+    }
+  fi
+}
+trap cleanup_prepush EXIT
 
 # read_paths: NUL stdin -> the _collected array (bash 3.2 has no namerefs, so
 # callers copy it out immediately).
@@ -309,6 +313,43 @@ else
   echo "Could not compare the worktree against HEAD (status $DIRTY_STATUS) — this run will not be cached."
 fi
 
+# Bound only local hook runners. CI invokes the npm scripts directly without
+# these variables and retains its normal full-width worker count.
+WM_PREPUSH_TEST_CONCURRENCY="${WM_PREPUSH_TEST_CONCURRENCY:-2}"
+case "$WM_PREPUSH_TEST_CONCURRENCY" in
+  '' | 0 | *[!0-9]*)
+    echo "ERROR: WM_PREPUSH_TEST_CONCURRENCY must be a positive integer."
+    exit 1
+    ;;
+esac
+export WM_PREPUSH_TEST_CONCURRENCY
+export VITEST_MAX_THREADS="${VITEST_MAX_THREADS:-$WM_PREPUSH_TEST_CONCURRENCY}"
+
+# The checks below are the expensive phase. Every linked worktree resolves the
+# same Git common directory, so two pushes may run here while later pushes wait
+# instead of letting every hook fan out across every core at once. The helper
+# uses mkdir-owned slots because flock(1) is not installed by default on macOS;
+# token-owned release plus stale-owner recovery keeps crashes from wedging all
+# future pushes. Override only for a measured machine-specific need.
+PREPUSH_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || {
+  echo "ERROR: could not resolve the Git common directory for pre-push admission."
+  exit 1
+}
+PREPUSH_ADMISSION_LEASE=$(node scripts/prepush-admission.mjs acquire "$PREPUSH_COMMON_DIR" "$$") || exit 1
+
+# A fresh worktree's install is part of the expensive phase too. Keep it under
+# the shared lease so several new worktrees cannot all run npm ci at once.
+# Symlinking node_modules is known-broken here: a later cleanup can delete
+# the symlink *target*. Copy, hardlink, or share caches.
+if [ -L node_modules ]; then
+  echo "ERROR: node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
+  exit 1
+fi
+if [ ! -d node_modules ]; then
+  echo "node_modules missing, running npm ci..."
+  npm ci --cache "$npm_config_cache" --prefer-offline || exit 1
+fi
+
 if changed '^(src/|tests/|e2e/|middleware|index\.html|vite\.config|scripts/|types/)'; then
   echo "Running type check..."
   npm run typecheck || exit 1
@@ -464,8 +505,8 @@ DOM_TESTS_CHANGED=("${_collected[@]}")
 # assertions are absent exactly when the contract they pin is being rewritten.
 # Same convention as the invariant lints above, which each fire on their own
 # implementation script.
-if path_matches '^(\.husky/pre-push|scripts/prepush-changed-tests\.sh|scripts/prepush-attest\.sh|vitest\.dom\.config\.mts|package\.json)$'; then
-  for contract_test in tests/prepush-changed-tests.test.mjs tests/prepush-attest.test.mjs; do
+if path_matches '^(\.husky/pre-push|scripts/prepush-admission\.mjs|scripts/prepush-changed-tests\.sh|scripts/prepush-attest\.sh|vitest\.dom\.config\.mts|package\.json)$'; then
+  for contract_test in tests/prepush-admission.test.mjs tests/prepush-changed-tests.test.mjs tests/prepush-attest.test.mjs; do
     [ -f "$contract_test" ] || continue
     already_listed=false
     for listed in "${TESTS_CHANGED[@]}"; do
@@ -538,21 +579,21 @@ fi
 if [ "$RUN_ALL" != true ]; then
   if [ "$RUN_RESILIENCE" = true ]; then
     echo "Running resilience tests (resilience files changed)..."
-    timeout 120 npx tsx --test tests/resilience-*.test.mjs tests/resilience-*.test.mts || exit 1
+    timeout 120 npx tsx --test --test-concurrency="$WM_PREPUSH_TEST_CONCURRENCY" tests/resilience-*.test.mjs tests/resilience-*.test.mts || exit 1
   fi
   if [ "$RUN_SEED" = true ]; then
     echo "Running seed tests (scripts/ changed)..."
     if [ "${#SEED_TESTS[@]}" -gt 0 ]; then
       # Quoted expansion, not word-splitting: `tests/trade flows-seed.test.mjs`
       # is one argument, not two nonexistent ones.
-      timeout 120 npx tsx --test "${SEED_TESTS[@]}" || exit 1
+      timeout 120 npx tsx --test --test-concurrency="$WM_PREPUSH_TEST_CONCURRENCY" "${SEED_TESTS[@]}" || exit 1
     else
       echo "  No matching seed tests found, skipping."
     fi
   fi
   if [ "$RUN_SERVER" = true ]; then
     echo "Running server handler tests (server/ changed)..."
-    timeout 120 npx tsx --test "${SERVER_TESTS[@]}" || exit 1
+    timeout 120 npx tsx --test --test-concurrency="$WM_PREPUSH_TEST_CONCURRENCY" "${SERVER_TESTS[@]}" || exit 1
   fi
   if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ] \
     && [ "${#TESTS_CHANGED[@]}" -eq 0 ] && [ "${#DOM_TESTS_CHANGED[@]}" -eq 0 ]; then
@@ -662,9 +703,34 @@ if [ "$RUN_ALL" = true ] || path_matches '^(pro-test|public/pro)/|^convex/config
     echo "ERROR: product config generation failed"
     exit 1
   }
+  if [ -L pro-test/node_modules ]; then
+    echo "ERROR: pro-test/node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
+    exit 1
+  fi
   if [ ! -d pro-test/node_modules ]; then
     echo "  Installing pro-test deps..."
-    (cd pro-test && npm ci --cache "$npm_config_cache") || exit 1
+    (cd pro-test && npm ci --cache "$npm_config_cache" --prefer-offline) || exit 1
+  fi
+  # Point Vite's default cacheDir (pro-test/node_modules/.vite) at a
+  # lockfile-sharded directory under the shared git-common-dir. Do not
+  # edit pro-test/vite.config.ts here: that path trips this gate and
+  # forces a public/pro rebuild. The .vite link is a cache dir, not a
+  # node_modules symlink. Serialize concurrent writes with flock.
+  if [ -n "$PREPUSH_COMMON_DIR" ]; then
+    _lock_hash=$(sha256sum < pro-test/package-lock.json 2>/dev/null | cut -c1-12)
+    [ -n "$_lock_hash" ] || _lock_hash=nolock
+    _vite_cache="$PREPUSH_COMMON_DIR/wm-vite-cache/pro-test-${_lock_hash}"
+    mkdir -p "$_vite_cache"
+    if [ -d pro-test/node_modules ] && [ ! -e pro-test/node_modules/.vite ]; then
+      ln -s "$_vite_cache" pro-test/node_modules/.vite
+    fi
+    if command -v flock >/dev/null 2>&1; then
+      exec 9>"$PREPUSH_COMMON_DIR/wm-vite-cache/pro-test.build.lock"
+      if ! flock -w 180 9; then
+        echo "ERROR: could not lock shared pro-test vite cache"
+        exit 1
+      fi
+    fi
   fi
   (cd pro-test && npm run build >/dev/null) || {
     echo "ERROR: pro-test build failed"

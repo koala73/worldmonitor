@@ -1,4 +1,5 @@
-import { BillingDenialError, throwIfBillingDenial } from './billing-denial';
+import { BillingDenialError, RpcValidationError, throwIfBillingDenial } from './billing-denial';
+import { readBoundedResponseText } from './bounded-body';
 import { emitTelemetry } from './telemetry';
 import type {
   McpAuthContext,
@@ -167,40 +168,6 @@ function safeGatewayErrorCode(value: unknown, status: number): string {
   return SAFE_GATEWAY_ERROR_MESSAGES.get(normalized) ?? defaultSafeErrorCode(status);
 }
 
-async function readBoundedResponseText(
-  response: ToolFetchResponse,
-  maxBytes = 4096,
-): Promise<string> {
-  const reader = response.body?.getReader();
-  if (!reader) {
-    const text = typeof response.text === 'function'
-      ? await response.text().catch(() => '')
-      : '';
-    return text.slice(0, maxBytes);
-  }
-
-  const decoder = new TextDecoder();
-  let bytesRead = 0;
-  let text = '';
-  try {
-    while (bytesRead < maxBytes) {
-      const { done, value } = await reader.read();
-      if (done || !value) break;
-      const remaining = maxBytes - bytesRead;
-      const chunk = value.byteLength > remaining ? value.subarray(0, remaining) : value;
-      text += decoder.decode(chunk, { stream: bytesRead + chunk.byteLength < maxBytes });
-      bytesRead += chunk.byteLength;
-      if (chunk.byteLength < value.byteLength) break;
-    }
-    text += decoder.decode();
-    return text;
-  } catch {
-    return '';
-  } finally {
-    await reader.cancel().catch(() => {});
-  }
-}
-
 async function classifyFailure(
   response: ToolFetchResponse,
 ): Promise<{ errorCode: string; marker: DownstreamResponseMarker }> {
@@ -209,7 +176,7 @@ async function classifyFailure(
   }
 
   const type = contentType(response);
-  const detail = await readBoundedResponseText(response);
+  const detail = await readBoundedResponseText(response, 4096);
   if (!detail) {
     return {
       errorCode: defaultSafeErrorCode(response.status),
@@ -379,6 +346,14 @@ export function downstreamErrorTags(
       downstream_status: String(error.status),
       downstream_error_code: error.billingCode,
       downstream_response_marker: 'billing_verification',
+    };
+  }
+  if (error instanceof RpcValidationError) {
+    return {
+      downstream_operation: error.operation,
+      downstream_status: String(error.status),
+      downstream_error_code: 'rpc_validation',
+      downstream_response_marker: 'json_error',
     };
   }
   if (error instanceof ToolFetchError) {

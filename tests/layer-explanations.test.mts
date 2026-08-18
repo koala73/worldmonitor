@@ -260,14 +260,16 @@ describe('layer explanation metadata', () => {
     }
   });
 
-  test('weather explanation discloses NWS-only United States coverage', () => {
+
+  test('weather explanation discloses US + Canada (NWS, ECCC) coverage', () => {
     const weather = getLayerExplanation('weather');
 
-    assert.equal(LAYER_REGISTRY.weather.fallbackLabel, 'US Weather Alerts (NWS)');
+    assert.equal(LAYER_REGISTRY.weather.fallbackLabel, 'US + Canada Weather Alerts (NWS, ECCC)');
     assert.match(weather.source, /National Weather Service \(NWS\)/i);
+    assert.match(weather.source, /Environment and Climate Change Canada \(ECCC\)/i);
     assert.ok(
-      weather.limitations.some(limitation => /outside the United States/i.test(limitation)),
-      'weather limitations must state that official warnings outside the United States are absent',
+      weather.limitations.some(limitation => /outside the United States and Canada/i.test(limitation)),
+      'weather limitations must state that official warnings outside the United States and Canada are absent',
     );
     // Require the citations this card's claims actually rest on, without pinning the array
     // exactly — the v1 loop above already asserts every evidence path exists on disk, so a

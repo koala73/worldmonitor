@@ -16,8 +16,9 @@
  * - Risk-tagged national institutions that a theater pack added deliberately
  *   (e.g. Ukrinform, Suspilne) MAY be included; the UI keeps showing their
  *   provenance risk tags.
- * - EN-readable sources are preferred; purely locale-gated feeds (lang: pl,
- *   fr, ko, …) are left to the locale boost instead of presets.
+ * - EN-readable sources are preferred. Locale-gated feeds normally stay with
+ *   the locale boost, except when a country-specific validation explicitly
+ *   selects the theater preset as its opt-in discovery path (#6829/#6830).
  *
  * Names must resolve in the feed catalog (feeds.ts / INTEL_SOURCES); the
  * drift test asserts every name resolves in `listConfiguredFeedNames()`.
@@ -76,6 +77,10 @@ export const THEATER_PRESETS: readonly TheaterPreset[] = [
       'Irrawaddy',
       'Dawn',
       'Geo News',
+      'Amu TV',
+      'Pajhwok Afghan News',
+      'The Daily Star',
+      'Dhaka Tribune',
     ],
   },
   {
@@ -93,6 +98,15 @@ export const THEATER_PRESETS: readonly TheaterPreset[] = [
       'Daily Trust',
       'ThisDay',
       'MyJoyOnline',
+      'Studio Tamani',
+      'leFaso.net',
+      'ActuNiger',
+      'Aïr Info',
+      'Daily Nation',
+      'The Guardian Post',
+      'Tchadinfos',
+      'Alwihda Info',
+      'Radio Ndeke Luka',
     ],
   },
   {
@@ -128,6 +142,17 @@ export const THEATER_PRESETS: readonly TheaterPreset[] = [
       'Oman Observer',
       'Asharq Business',
       'Rudaw',
+      'Yemen Online',
+      "Sana'a Center",
+      'Syria Direct',
+      'Enab Baladi English',
+      '+972 Magazine',
+      'Naharnet Lebanon',
+      "L'Orient Today",
+      'Annahar',
+      'Libya Herald',
+      'Egypt Independent',
+      'Mada Masr',
     ],
   },
 ];

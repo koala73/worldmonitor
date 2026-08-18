@@ -1,146 +1,158 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import ts from 'typescript';
+
+import {
+  reconcileOverlayForTab,
+  type OverlayReconcileHandlers,
+} from '../src/app/mobile-overlay-reconcile.ts';
 
 const layout = readFileSync(new URL('../src/app/panel-layout.ts', import.meta.url), 'utf8');
-const handlers = readFileSync(new URL('../src/app/event-handlers.ts', import.meta.url), 'utf8');
-const mobileNav = readFileSync(new URL('../src/app/mobile-primary-nav.ts', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/styles/main.css', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-const search = readFileSync(new URL('../src/components/SearchModal.ts', import.meta.url), 'utf8');
-const popup = readFileSync(new URL('../src/components/MapPopup.ts', import.meta.url), 'utf8');
-const settings = readFileSync(new URL('../src/components/UnifiedSettings.ts', import.meta.url), 'utf8');
-const deepDive = readFileSync(new URL('../src/components/CountryDeepDivePanel.ts', import.meta.url), 'utf8');
 
-function loadReconcileHarness(overlayHistory: unknown): new () => {
-  setActive(tab: string): void;
-  reconcileOverlayForTab(tab: string): string | undefined | null;
-  activeCalls: string[];
-  ctx: { unifiedSettings: { hasPendingChanges(): boolean; close(): void } | null };
-} {
-  const signature = 'private reconcileOverlayForTab(';
-  const start = mobileNav.indexOf(signature);
-  assert.ok(start >= 0, 'mobile navigation must expose one reconciliation method');
-  const braceStart = mobileNav.indexOf('{', start);
-  let depth = 0;
-  let end = -1;
-  for (let index = braceStart; index < mobileNav.length; index += 1) {
-    if (mobileNav[index] === '{') depth += 1;
-    if (mobileNav[index] === '}') {
-      depth -= 1;
-      if (depth === 0) {
-        end = index + 1;
-        break;
-      }
-    }
-  }
-  assert.ok(end > braceStart, 'reconciliation method must have balanced braces');
-  const method = mobileNav.slice(start, end).replace(/^private\s+/, '');
-  const source = `class Harness {
-    activeCalls: string[] = [];
-    ctx: { unifiedSettings: { hasPendingChanges(): boolean; close(): void } | null } = { unifiedSettings: null };
-    setActive(tab: string): void { this.activeCalls.push(tab); }
-    ${method}
-  }`;
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.None },
-  }).outputText;
-  // eslint-disable-next-line no-new-func
-  return new Function('overlayHistory', `${compiled}\nreturn Harness;`)(overlayHistory);
+/**
+ * Records the effect sequence `reconcileOverlayForTab` performs. The ORDER is
+ * part of the contract — a dirty Settings overlay must be closed through its
+ * own handler before the tab bar moves — so the recorder keeps one flat log
+ * rather than per-effect counters.
+ */
+function recorder(initialTop: string | null) {
+  const effects: string[] = [];
+  let top = initialTop;
+  const handlers: OverlayReconcileHandlers = {
+    top: () => top as never,
+    dismiss: (id) => {
+      effects.push(`dismiss:${id}`);
+      top = null;
+    },
+    settingsHasPendingChanges: () => false,
+    closeSettings: () => effects.push('closeSettings'),
+    setActive: (tab) => effects.push(`setActive:${tab}`),
+  };
+  return {
+    handlers,
+    effects,
+    setTop(next: string | null) {
+      top = next;
+    },
+  };
 }
 
-describe('mobile P0 navigation contract (#5201)', () => {
-  it('renders the five primary destinations in a real bottom navigation landmark', () => {
+describe('mobile primary-tab overlay reconciliation', () => {
+  it('reports no overlay to reconcile when nothing is open', () => {
+    const r = recorder(null);
+    assert.equal(reconcileOverlayForTab('search', r.handlers), undefined);
+    assert.deepEqual(r.effects, []);
+  });
+
+  it('toggles Search closed when its own tab is re-tapped', () => {
+    const r = recorder('search');
+    assert.equal(reconcileOverlayForTab('search', r.handlers), null);
+    assert.deepEqual(r.effects, ['dismiss:search', 'setActive:today']);
+  });
+
+  it('treats the pending search overlay as the same family', () => {
+    const r = recorder('search-pending');
+    assert.equal(reconcileOverlayForTab('search', r.handlers), null);
+    assert.deepEqual(r.effects, ['dismiss:search-pending', 'setActive:today']);
+  });
+
+  it('toggles every More-family overlay closed when More is re-tapped', () => {
+    for (const overlay of ['menu', 'region', 'settings', 'settings-pending']) {
+      const r = recorder(overlay);
+      assert.equal(reconcileOverlayForTab('more', r.handlers), null, overlay);
+      assert.deepEqual(r.effects, [`dismiss:${overlay}`, 'setActive:today'], overlay);
+    }
+  });
+
+  it('dismisses the open overlay when navigating to a non-overlay tab', () => {
+    for (const tab of ['today', 'map', 'alerts']) {
+      const r = recorder('menu');
+      assert.equal(reconcileOverlayForTab(tab, r.handlers), undefined, tab);
+      assert.deepEqual(r.effects, ['dismiss:menu'], tab);
+    }
+  });
+
+  it('hands the open overlay back for in-place replacement across tab families', () => {
+    // Search open, More tapped: More replaces it in place, so it must stay
+    // registered — dismissing here would pop a history entry the replacement
+    // still needs.
+    const r = recorder('search');
+    assert.equal(reconcileOverlayForTab('more', r.handlers), 'search');
+    assert.deepEqual(r.effects, []);
+
+    const r2 = recorder('settings-pending');
+    assert.equal(reconcileOverlayForTab('search', r2.handlers), 'settings-pending');
+    assert.deepEqual(r2.effects, []);
+  });
+
+  it('closes a dirty Settings overlay through its own handler instead of replacing it', () => {
+    // close('replacement') would discard the draft without confirmation, so
+    // this path must route through UnifiedSettings.close() and return null so
+    // the caller opens nothing.
+    const r = recorder('settings');
+    r.handlers.settingsHasPendingChanges = () => true;
+
+    assert.equal(reconcileOverlayForTab('search', r.handlers), null);
+    assert.deepEqual(r.effects, ['closeSettings', 'setActive:more']);
+  });
+
+  it('never dismisses a dirty Settings overlay, on any tab', () => {
+    for (const tab of ['today', 'map', 'search', 'alerts', 'more']) {
+      const r = recorder('settings');
+      r.handlers.settingsHasPendingChanges = () => true;
+      reconcileOverlayForTab(tab, r.handlers);
+      assert.ok(
+        !r.effects.some((e) => e.startsWith('dismiss:')),
+        `tab ${tab} dismissed a dirty Settings overlay`,
+      );
+    }
+  });
+
+  it('only consults the pending-changes flag for Settings itself', () => {
+    // A stale flag from a previously-open Settings must not divert the menu or
+    // region overlays into the draft-protection branch.
+    const r = recorder('menu');
+    r.handlers.settingsHasPendingChanges = () => true;
+    assert.equal(reconcileOverlayForTab('more', r.handlers), null);
+    assert.deepEqual(r.effects, ['dismiss:menu', 'setActive:today']);
+  });
+});
+
+describe('mobile P0 navigation shell (#5201)', () => {
+  // The tab bar is markup and CSS with no runtime seam to call; the dashboard
+  // itself is exercised on mobile viewports by the Playwright suite.
+  it('renders the five primary destinations in a real navigation landmark', () => {
     assert.match(layout, /<nav class="mobile-tab-bar"[^>]*aria-label="Primary"/);
     for (const tab of ['today', 'map', 'search', 'alerts', 'more']) {
       assert.match(layout, new RegExp(`data-mobile-tab="${tab}"`));
     }
   });
 
-  it('replaces the mobile footer, hamburger, and search FAB without affecting desktop', () => {
+  it('retires the mobile footer, hamburger, and search FAB it replaces', () => {
     assert.doesNotMatch(layout, /id="searchMobileFab"/);
     assert.doesNotMatch(layout, /id="hamburgerBtn"/);
-    assert.match(css, /@media \(max-width: 768px\)[\s\S]*?\.site-footer\s*\{[^}]*display:\s*none/);
     assert.doesNotMatch(css, /\.hamburger-btn/);
     assert.doesNotMatch(css, /\.search-mobile-fab/);
-    assert.match(css, /\.mobile-tab-bar\s*\{/);
-    assert.match(css, /\.mobile-tab-bar\s*\{[^}]*position:\s*fixed[^}]*z-index:\s*10003/);
-    assert.match(css, /\.map-popup\.map-popup-sheet\s*\{[^}]*padding-bottom:\s*calc\(58px/);
-    assert.match(css, /\.region-bottom-sheet\s*\{[^}]*padding-bottom:\s*calc\(58px/);
-    assert.match(css, /\.search-overlay\.search-mobile \.search-sheet\s*\{[^}]*padding-bottom:\s*calc\(58px/);
   });
 
-  it('wires Today, Map, Search, Alerts, and More as distinct actions', () => {
-    assert.match(mobileNav, /private setupTabBar\(\): void/);
-    assert.match(mobileNav, /case 'today':/);
-    assert.match(mobileNav, /case 'map':/);
-    assert.match(mobileNav, /case 'search':/);
-    assert.match(mobileNav, /case 'alerts':/);
-    assert.match(mobileNav, /case 'more':/);
-    assert.match(mobileNav, /private alertScrollFrame: number \| null = null/);
-    assert.match(mobileNav, /this\.alertScrollFrame = requestAnimationFrame/);
-    assert.match(mobileNav, /cancelAnimationFrame\(this\.alertScrollFrame\)/);
+  it('keeps every bottom sheet clear of the fixed tab bar', () => {
+    // A sheet that ends under the tab bar buries its primary action.
+    for (const selector of [
+      /\.map-popup\.map-popup-sheet\s*\{[^}]*padding-bottom:\s*calc\(58px/,
+      /\.region-bottom-sheet\s*\{[^}]*padding-bottom:\s*calc\(58px/,
+      /\.search-overlay\.search-mobile \.search-sheet\s*\{[^}]*padding-bottom:\s*calc\(58px/,
+    ]) {
+      assert.match(css, selector);
+    }
+    assert.match(css, /\.mobile-tab-bar\s*\{[^}]*position:\s*fixed[^}]*z-index:\s*10003/);
   });
 
   it('defaults first-time mobile visitors to the collapsed-map Today state before hydration', () => {
+    // The inline shell script and the hydrated reader must agree, or the map
+    // expands then snaps shut on boot.
     assert.match(layout, /loadFromStorage<boolean>\('mobile-map-collapsed', true\)/);
     assert.match(shell, /localStorage\.getItem\('mobile-map-collapsed'\)!=='false'/);
-  });
-
-  it('provides an account mount inside More instead of hiding auth on mobile', () => {
-    assert.match(layout, /id="mobileAuthWidgetMount"/);
-    assert.match(mobileNav, /mobileAuthWidgetMount/);
-  });
-
-  it('routes every P0 overlay family through the shared browser-history manager', () => {
-    assert.match(mobileNav, /overlayHistory\.open\('menu'/);
-    assert.match(mobileNav, /overlayHistory\.replaceInPlace\(replaceOverlayId, 'region'/);
-    assert.match(search, /overlayHistory\.open\('search'/);
-    assert.match(popup, /overlayHistory\.openCancelable\('map-popup'/);
-    assert.match(settings, /overlayHistory\.open\('settings'/);
-    assert.match(deepDive, /overlayHistory\.open\('deep-dive'/);
-    assert.match(handlers, /history\.replaceState\(history\.state, '', shareUrl\)/);
-  });
-
-  it('executes one overlay reconciliation contract for every primary-tab transition', () => {
-    const calls: Array<{ method: string; id: string }> = [];
-    let top: string | null = 'search';
-    const overlayHistory = {
-      top: () => top,
-      dismiss: (id: string) => {
-        calls.push({ method: 'dismiss', id });
-        top = null;
-      },
-    };
-    const Harness = loadReconcileHarness(overlayHistory);
-    const harness = new Harness();
-
-    assert.equal(harness.reconcileOverlayForTab('search'), null, 're-tapping Search toggles it closed');
-    assert.deepEqual(calls, [{ method: 'dismiss', id: 'search' }]);
-    assert.deepEqual(harness.activeCalls, ['today']);
-
-    top = 'menu';
-    calls.length = 0;
-    assert.equal(harness.reconcileOverlayForTab('today'), undefined);
-    assert.deepEqual(calls, [{ method: 'dismiss', id: 'menu' }]);
-
-    top = 'search';
-    calls.length = 0;
-    assert.equal(harness.reconcileOverlayForTab('more'), 'search');
-    assert.deepEqual(calls, [], 'Search stays registered until More replaces it in place');
-
-    top = 'settings-pending';
-    assert.equal(harness.reconcileOverlayForTab('search'), 'settings-pending');
-
-    let dirtyCloseCalls = 0;
-    harness.ctx.unifiedSettings = {
-      hasPendingChanges: () => true,
-      close: () => { dirtyCloseCalls += 1; },
-    };
-    top = 'settings';
-    assert.equal(harness.reconcileOverlayForTab('search'), null, 'dirty Settings must block replacement');
-    assert.equal(dirtyCloseCalls, 1);
-    assert.deepEqual(harness.activeCalls.at(-1), 'more');
   });
 });

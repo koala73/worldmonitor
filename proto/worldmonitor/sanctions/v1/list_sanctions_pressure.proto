@@ -26,4 +26,8 @@ message ListSanctionsPressureResponse {
   int32 new_entry_count = 9;
   int32 vessel_count = 10;
   int32 aircraft_count = 11;
+  // Number of Canadian SEMA designations represented in this snapshot.
+  int32 sema_count = 12;
+  // Present when the SEMA source failed while other sanctions data remained available.
+  optional string sema_error = 13;
 }

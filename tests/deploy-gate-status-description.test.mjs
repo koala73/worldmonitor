@@ -47,6 +47,8 @@ function runGate(conclusions, {
   graphQlFailureKind = 'generic',
   previousConclusions,
   resetAvailable = true,
+  restFailures = 0,
+  restFailureKind = 'generic',
   statusFailures = 0,
   statusFailureKind = 'generic',
   sweepStatus,
@@ -56,6 +58,8 @@ function runGate(conclusions, {
   const fakeBin = join(tempDir, 'bin');
   const runsFile = join(tempDir, 'check-runs.json');
   const failuresFile = join(tempDir, 'graphql-failures');
+  const restFailuresFile = join(tempDir, 'rest-failures');
+  const restRunsFile = join(tempDir, 'rest-check-runs.json');
   const statusFailuresFile = join(tempDir, 'status-failures');
   const sweepFile = join(tempDir, 'sweep.json');
   const postedFile = join(tempDir, 'posted');
@@ -66,6 +70,7 @@ function runGate(conclusions, {
   try {
     mkdirSync(fakeBin);
     writeFileSync(failuresFile, String(graphQlFailures));
+    writeFileSync(restFailuresFile, String(restFailures));
     writeFileSync(statusFailuresFile, String(statusFailures));
     writeFileSync(postedFile, '');
     writeFileSync(postTargetsFile, '');
@@ -123,6 +128,20 @@ function runGate(conclusions, {
             },
           },
         },
+      }]),
+    );
+    const toRestRun = (run) => ({
+      name: run.name,
+      conclusion: run.conclusion,
+      id: run.databaseId,
+      started_at: run.startedAt,
+      completed_at: run.completedAt,
+    });
+    writeFileSync(
+      restRunsFile,
+      JSON.stringify([{
+        total_count: filler.length + requiredRuns.length,
+        check_runs: [...filler.map(toRestRun), ...requiredRuns.map(toRestRun)],
       }]),
     );
     const sweepNode = (sha, status) => ({
@@ -230,6 +249,32 @@ function runGate(conclusions, {
         '    fi',
         '    exit 0',
         '    ;;',
+        '  *"/check-runs"*)',
+        '    echo "rest-check-runs-page" >> "$FAKE_CALLS"',
+        '    rest_failures=$(cat "$FAKE_REST_FAILURES")',
+        '    if [ "$rest_failures" -gt 0 ]; then',
+        '      echo $((rest_failures - 1)) > "$FAKE_REST_FAILURES"',
+        '      if [ "$FAKE_REST_FAILURE_KIND" = "rate_limit" ]; then',
+        '        echo "gh: API rate limit exceeded for installation (HTTP 403)" >&2',
+        '      else',
+        '        echo "gh: forced REST check-runs failure (HTTP 503)" >&2',
+        '      fi',
+        '      exit 1',
+        '    fi',
+        '    paginate=0',
+        '    slurp=0',
+        '    for arg in "$@"; do',
+        '      [ "$arg" = "--paginate" ] && paginate=1',
+        '      [ "$arg" = "--slurp" ] && slurp=1',
+        '    done',
+        '    if [ "$paginate" = "1" ]; then',
+        '      [ "$slurp" = "1" ] || exit 96',
+        '      cat "$FAKE_REST_CHECK_RUNS"',
+        '    else',
+        '      jq -c \'[.[0]]\' "$FAKE_REST_CHECK_RUNS"',
+        '    fi',
+        '    exit 0',
+        '    ;;',
         '  *"actions/workflows/deploy-gate.yml/runs"*)',
         '    echo "rest-failed-runs-page" >> "$FAKE_CALLS"',
         '    printf \'[{"workflow_runs":[{"created_at":"%s","display_title":"Deploy Gate %s"}]}]\' "$FAKE_FAILED_RUN_CREATED_AT" "$FAKE_FAILED_RUN_SHA"',
@@ -300,6 +345,9 @@ function runGate(conclusions, {
         FAKE_FAILED_RUN_SHA: failedRunSha,
         FAKE_FAILURE_KIND: graphQlFailureKind,
         FAKE_FAILURES: failuresFile,
+        FAKE_REST_CHECK_RUNS: restRunsFile,
+        FAKE_REST_FAILURE_KIND: restFailureKind,
+        FAKE_REST_FAILURES: restFailuresFile,
         FAKE_POSTED: postedFile,
         FAKE_POST_TARGETS: postTargetsFile,
         FAKE_REJECTED: rejectedFile,
@@ -431,8 +479,22 @@ describe('deploy gate commit-status description', () => {
     assert.match(result.posted.at(-1).description, /unit/);
   });
 
-  it('leaves a named pending gate when the check read crashes, then self-heals on the next evaluation', () => {
-    const crashed = runGate(conclusionsFor('success'), { graphQlFailures: 1 });
+  it('falls back to REST check-runs when GraphQL is unavailable', () => {
+    const result = runGate(conclusionsFor('success'), { graphQlFailures: 1 });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.posted, [
+      { state: 'success', description: stamped('All required PR gates passed') },
+    ]);
+    assert.deepEqual(result.calls, [
+      'graphql-check-page',
+      'rest-check-runs-page',
+      'status:success',
+    ]);
+  });
+
+  it('leaves a named pending gate when GraphQL and REST check reads both crash, then self-heals on the next evaluation', () => {
+    const crashed = runGate(conclusionsFor('success'), { graphQlFailures: 1, restFailures: 1 });
 
     assert.notEqual(crashed.status, 0, 'the forced API failure must actually crash the evaluation');
     assert.deepEqual(crashed.posted, [
@@ -635,33 +697,56 @@ describe('deploy gate commit-status description', () => {
     ]);
   });
 
-  it('posts pending when a rate-limited check read still fails after one retry', () => {
+  it('falls back to REST after a persistent GraphQL rate limit', () => {
     const result = runGate(conclusionsFor('success'), {
       graphQlFailures: 2,
       graphQlFailureKind: 'rate_limit',
     });
 
-    assert.notEqual(result.status, 0, 'a persistent rate limit must fail the evaluation');
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.posted, [
+      { state: 'success', description: stamped('All required PR gates passed') },
+    ]);
+    assert.ok(result.calls.includes('rest-check-runs-page'));
+    assert.ok(result.calls.includes('status:success'));
+  });
+
+  it('posts pending when GraphQL reset is unavailable and REST also fails', () => {
+    const result = runGate(conclusionsFor('success'), {
+      graphQlFailures: 1,
+      graphQlFailureKind: 'rate_limit',
+      resetAvailable: false,
+      restFailures: 1,
+    });
+
+    assert.notEqual(result.status, 0, 'an unavailable reset plus REST failure must fail the evaluation');
+    assert.deepEqual(result.calls, [
+      'graphql-check-page',
+      'rate-limit:graphql',
+      'rest-check-runs-page',
+      'status:pending',
+    ]);
     assert.deepEqual(result.posted, [
       { state: 'pending', description: stamped('Deploy Gate could not evaluate; retry scheduled') },
     ]);
   });
 
-  it('posts pending when a rate-limit reset is unavailable', () => {
+  it('posts pending when GraphQL reset is unavailable unless REST answers', () => {
     const result = runGate(conclusionsFor('success'), {
       graphQlFailures: 1,
       graphQlFailureKind: 'rate_limit',
       resetAvailable: false,
     });
 
-    assert.notEqual(result.status, 0, 'an unavailable reset must fail the evaluation');
+    assert.equal(result.status, 0, result.stderr);
     assert.deepEqual(result.calls, [
       'graphql-check-page',
       'rate-limit:graphql',
-      'status:pending',
+      'rest-check-runs-page',
+      'status:success',
     ]);
     assert.deepEqual(result.posted, [
-      { state: 'pending', description: stamped('Deploy Gate could not evaluate; retry scheduled') },
+      { state: 'success', description: stamped('All required PR gates passed') },
     ]);
   });
 
