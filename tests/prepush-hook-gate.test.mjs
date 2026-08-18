@@ -122,11 +122,13 @@ function makeFixture({
   // RUN_ALL fires the CJS syntax check, which iterates `scripts/*.cjs`.
   if (scriptsCjs) writeFileSync(join(root, 'scripts', 'noop.cjs'), 'module.exports = {};\n');
 
-  // RUN_ALL also forces the pro-test bundle freshness check. Its `git diff
-  // --exit-code` lists these paths explicitly and git exits 128 on an unknown
-  // one, so they all have to exist and be tracked for the gate to reach its
-  // own verdict. An empty pro-test/node_modules skips the install branch
-  // (git does not track empty directories, so it stays invisible to `dirty`).
+  // RUN_ALL also forces the pro-test build + generated-config freshness check.
+  // Its `git diff --exit-code` lists these paths explicitly and git exits 128
+  // on an unknown one, so they all have to exist and be tracked for the gate to
+  // reach its own verdict. public/pro/ is deliberately absent: it is gitignored
+  // since #6898 and no longer part of that diff. An empty pro-test/node_modules
+  // skips the install branch (git does not track empty directories, so it stays
+  // invisible to `dirty`).
   if (proTestNodeModules) {
     mkdirSync(join(root, 'pro-test', 'node_modules'), { recursive: true });
   }
@@ -135,7 +137,6 @@ function makeFixture({
     'src/config/product-ids.generated.ts': 'export const PRODUCT_IDS = [];\n',
     'pro-test/src/generated/tiers.json': '[]\n',
     'pro-test/src/locales/en.json': '{}\n',
-    'public/pro/index.html': '<!doctype html>\n',
   })) {
     mkdirSync(join(root, dirname(path)), { recursive: true });
     writeFileSync(join(root, path), contents);
@@ -581,15 +582,18 @@ describe('pro-test freshness install prefers the shared npm cache (#6766)', () =
     assert.match(readlinkSync(viteCache), /wm-vite-cache\/pro-test-[0-9a-f]{12}$/);
   });
 
-  test('still fails when a committed public/pro/ byte is stale', () => {
+  // public/pro/ left this gate in #6898 (Vercel builds it), but the generated
+  // config pro-test compiles AGAINST is still committed and can still go stale.
+  // Teeth for the reduced diff list: dirty one of its surviving paths.
+  test('still fails when committed generated pro config is stale', () => {
     const fixture = makeFixture({
       branchFiles: { 'pro-test/src/stale.ts': 'export const n = 1;\n' },
     });
-    writeFileSync(join(fixture.root, 'public/pro/index.html'), '<!doctype html>\n<!-- stale -->\n');
+    writeFileSync(join(fixture.root, 'pro-test/src/generated/tiers.json'), '[{"stale":true}]\n');
 
     const { status, stdout } = fixture.run();
     assert.equal(status, 1, stdout);
-    assert.match(stdout, /product catalog, generated config, pro locales, or public\/pro\/ is stale/);
+    assert.match(stdout, /product catalog, generated config, or pro locales is stale/);
   });
 
   test('refuses a pro-test/node_modules symlink instead of installing through it', (t) => {

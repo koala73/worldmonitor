@@ -1,4 +1,5 @@
 import { describe, it } from 'node:test';
+import { guardProBuiltOutput, withoutUnbuiltProPaths } from './_lib/pro-built-output.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import {
@@ -155,6 +156,11 @@ function collectAcquisitionSurfaces() {
 
 const CURRENT_FACT_SURFACES = collectAcquisitionSurfaces();
 describe('public product facts generation contract', () => {
+  // Two cases below read the built public/pro/ pages, which `npm run build:pro`
+  // produces rather than git (#6898). They drop those paths in an unbuilt
+  // checkout; this makes CI fail instead when it says it built them.
+  guardProBuiltOutput();
+
   it('keeps the acquisition claim scan on the complete registered root set', () => {
     assertAcquisitionClaimRootClosure(ACQUISITION_CLAIM_ROOTS);
     assert.throws(
@@ -450,9 +456,9 @@ describe('public product facts generation contract', () => {
     const apiAnnual = displayPrice(plans.api_starter_annual.price);
     const businessMonthly = displayPrice(plans.api_business.price);
     // The Pro app reads the generated tier values asserted above; the welcome
-    // source and its committed SSR output also surface the monthly entry price.
+    // source and its built SSR output also surface the monthly entry price.
     // Do not require the prerender script to carry a second crawler-only copy.
-    for (const path of ['pro-test/welcome.html', 'public/pro/welcome.html']) {
+    for (const path of withoutUnbuiltProPaths(['pro-test/welcome.html', 'public/pro/welcome.html'])) {
       assert.match(read(path), new RegExp(`\\$${proMonthly.replace('.', '\\.')}[^\\d]`), `${path}: Pro monthly`);
     }
 
@@ -473,17 +479,17 @@ describe('public product facts generation contract', () => {
     assert.equal(summaryPlans['API Business'].price_usd_monthly, plans.api_business.price);
   });
 
-  it('publishes valid, available, canonical offers in source and committed HTML', () => {
+  it('publishes valid, available, canonical offers in source and built HTML', () => {
     const facts = readJson('shared/product-facts.generated.json');
     const pricingUrl = facts.product.pricingUrl;
     const plansByName = new Map(facts.plans.map((plan) => [plan.name, plan]));
-    for (const path of [
+    for (const path of withoutUnbuiltProPaths([
       'index.html',
       'pro-test/index.html',
       'pro-test/welcome.html',
       'public/pro/index.html',
       'public/pro/welcome.html',
-    ]) {
+    ])) {
       const application = applicationJsonLd(path);
       assert.ok(Array.isArray(application.offers) && application.offers.length >= 3);
       for (const offer of application.offers) {

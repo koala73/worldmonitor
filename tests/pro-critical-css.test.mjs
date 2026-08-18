@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -116,7 +117,11 @@ describe('pro critical CSS source contract', () => {
   });
 });
 
-describe('pro built HTML critical CSS contract', () => {
+// public/pro/ is built by `npm run build:pro`, not committed (#6898): skip when the
+// checkout has not built it, fail when WM_EXPECT_BUILT_OUTPUT=1 says CI did.
+describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutput() }, () => {
+  guardProBuiltOutput();
+
   for (const { relPath, label } of PRO_PAGES) {
     it(`${label} inlines critical CSS before the deferred stylesheet preload`, () => {
       const html = builtSrc(relPath);

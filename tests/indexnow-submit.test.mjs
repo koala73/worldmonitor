@@ -277,9 +277,10 @@ describe('IndexNow submission', () => {
       'scripts/build-sitemap.mjs',
       'middleware.ts',
       'src/config/variant-meta.ts',
-      // Every variant root is rewritten to the welcome page, so its sources and
-      // committed output change what the submitted root URLs serve.
-      'public/pro/welcome.html',
+      // Every variant root is rewritten to the welcome page, so its sources
+      // change what the submitted root URLs serve. public/pro/ is gitignored
+      // since #6898, so the built page can never appear in a commit diff.
+      'pro-test/welcome.html',
       'pro-test/src/welcome.ts',
       `public/${variantKeyPath}`,
     ];

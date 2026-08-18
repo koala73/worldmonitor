@@ -99,15 +99,16 @@ jobs:
               || grep -Fxq "public/${APEX_KEY_PATH}" <<< "$CHANGED_FILES"; then
               SUBMIT_APEX=true
             fi
-            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|blog-site/src/.*|pro-test/index\.html|pro-test/src/.*|public/blog/.*|public/pro/.*|public/sitemap\.xml|scripts/build-crawlable-corpus\.mjs|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
+            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|blog-site/src/.*|pro-test/index\.html|pro-test/src/.*|pro-test/welcome\.html|public/blog/.*|public/sitemap\.xml|scripts/build-crawlable-corpus\.mjs|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
               || grep -Fxq "public/${WWW_KEY_PATH}" <<< "$CHANGED_FILES"; then
               SUBMIT_WWW=true
             fi
             # Each variant batch submits the bare root as well as /dashboard, and
             # vercel.json rewrites every variant root to /pro/welcome.html — so
-            # the welcome page's sources and committed build output change what
-            # five submitted URLs serve.
-            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|middleware\.ts|pro-test/index\.html|pro-test/src/.*|public/pro/.*|public/sitemap\.xml|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|src/config/variant-dashboard-html\.ts|src/config/variant-meta\.ts|vercel\.json)$' <<< "$CHANGED_FILES"; then
+            # the welcome page's SOURCES change what five submitted URLs serve.
+            # public/pro/ itself is gitignored since #6898 and can never appear
+            # in a commit diff; pro-test/welcome.html is what moves instead.
+            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|middleware\.ts|pro-test/index\.html|pro-test/src/.*|pro-test/welcome\.html|public/sitemap\.xml|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|src/config/variant-dashboard-html\.ts|src/config/variant-meta\.ts|vercel\.json)$' <<< "$CHANGED_FILES"; then
               SUBMIT_VARIANTS=true
             fi
             for key_path in $VARIANT_KEY_PATHS; do

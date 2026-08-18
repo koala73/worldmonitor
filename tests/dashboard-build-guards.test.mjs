@@ -71,6 +71,7 @@ describe('built-output guard contract', () => {
   it('keeps the dashboard build immediately before the marker-enabled data test in CI', () => {
     const workflow = readFileSync(workflowPath, 'utf8').replaceAll('\r\n', '\n');
     const expectedSequence = [
+      '        run: npm run build:pro',
       '      - name: Build dashboard artifacts for built-output tests',
       '        run: VITE_VARIANT=full ./node_modules/.bin/vite build',
       '      - run: WM_EXPECT_BUILT_OUTPUT=1 npm run test:data',
@@ -78,7 +79,7 @@ describe('built-output guard contract', () => {
 
     assert.ok(
       workflow.includes(expectedSequence),
-      'the unit job must build dashboard artifacts immediately before running test:data with WM_EXPECT_BUILT_OUTPUT=1',
+      'the unit job must build /pro then dashboard artifacts immediately before running test:data with WM_EXPECT_BUILT_OUTPUT=1',
     );
     assert.equal(
       workflow.match(/WM_EXPECT_BUILT_OUTPUT=1 npm run test:data/g)?.length ?? 0,

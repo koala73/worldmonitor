@@ -27,6 +27,12 @@ RUN node scripts/generate-inventory-facts.mjs
 # Output is api/**/*.js alongside the source .ts files
 RUN node docker/build-handlers.mjs
 
+# public/pro/ is a build product, not committed bytes (#6898), and
+# docker/nginx.conf.template routes `location ^~ /pro` + `/pro/assets/` — so
+# unlike /blog this cannot be skipped or the image serves a 404 behind a live
+# route. build:pro installs pro-test's own lockfile.
+RUN npm run build:pro
+
 # Build the crawlable static corpus and Vite frontend (outputs to dist/)
 # Skip blog build — blog-site has its own deps not installed here
 RUN npm run build:crawlable-corpus && npm run build:sitemap && npx tsc && npx vite build

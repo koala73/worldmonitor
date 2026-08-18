@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseSupportedLanguages } from '../scripts/docs-stats.mjs';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -170,7 +171,11 @@ async function validateHreflangCluster(
   return failures;
 }
 
-describe('international SEO application-locale mode (#5666)', () => {
+// public/pro/ is built by `npm run build:pro`, not committed (#6898): skip when the
+// checkout has not built it, fail when WM_EXPECT_BUILT_OUTPUT=1 says CI did.
+describe('international SEO application-locale mode (#5666)', { skip: shouldSkipProBuiltOutput() }, () => {
+  guardProBuiltOutput();
+
   it('publishes only x-default and English at each self-canonical application URL', () => {
     for (const { path, canonical } of SOURCE_DOCUMENTS) {
       const document = parseDocument(read(path));

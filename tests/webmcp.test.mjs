@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 import {
   DashboardBindingError,
   buildWebMcpTools,
@@ -587,7 +588,11 @@ describe('webmcp.ts: promise registration lifecycle', () => {
 
 // Homepage WebMCP — the apex `/` serves the static pro-test welcome page,
 // not the dashboard SPA, so it carries its own zero-import registration.
-describe('homepage WebMCP registration', () => {
+// public/pro/ is built by `npm run build:pro`, not committed (#6898): skip when the
+// checkout has not built it, fail when WM_EXPECT_BUILT_OUTPUT=1 says CI did.
+describe('homepage WebMCP registration', { skip: shouldSkipProBuiltOutput() }, () => {
+  guardProBuiltOutput();
+
   const welcomeSrc = readFileSync(resolve(ROOT, 'pro-test/welcome.html'), 'utf-8');
   const welcomeBuilt = readFileSync(resolve(ROOT, 'public/pro/welcome.html'), 'utf-8');
   const scriptRe = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;

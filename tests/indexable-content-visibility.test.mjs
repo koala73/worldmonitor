@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+
+// The two suites below read the built public/pro/ pages, which `npm run
+// build:pro` produces rather than git (#6898): skip when unbuilt, fail when
+// WM_EXPECT_BUILT_OUTPUT=1 says CI built them. The dashboard suite reads the
+// committed index.html and stays unconditional.
+const skip = shouldSkipProBuiltOutput();
+guardProBuiltOutput();
 
 const PRODUCTION_HTML = [
   'index.html',
@@ -20,7 +28,7 @@ function visibleWelcomeRoot(html) {
   return html.slice(rootStart, noScriptStart);
 }
 
-test('production HTML contains no crawler-only prerender block or off-screen hide contract', () => {
+test('production HTML contains no crawler-only prerender block or off-screen hide contract', { skip }, () => {
   for (const path of PRODUCTION_HTML) {
     const html = read(path);
     assert.doesNotMatch(html, /id=["']seo-prerender["']/i, `${path} must not ship #seo-prerender`);
@@ -33,7 +41,7 @@ test('production HTML contains no crawler-only prerender block or off-screen hid
   }
 });
 
-test('apex HTML exposes one visible SSR content hierarchy and all primary reference links', () => {
+test('apex HTML exposes one visible SSR content hierarchy and all primary reference links', { skip }, () => {
   const root = visibleWelcomeRoot(read('public/pro/welcome.html'));
   assert.equal([...root.matchAll(/<h1\b/gi)].length, 1, 'the visible welcome root should contain one H1');
   const hiddenContentNodes = [...root.matchAll(/<[a-z][a-z0-9:-]*\b[^>]*\bstyle="([^"]*)"[^>]*>/gi)]

@@ -23,7 +23,7 @@ const BASELINE_PATH = join(ROOT, baselinePathFor(true));
 
 const REFRESH_HINT =
   'Run: ANTHROPIC_API_KEY=... node scripts/translate-locales.mjs --pro-test  ' +
-  '(then rebuild pro-test and commit public/pro/).';
+  '(the deploy rebuilds /pro itself since #6898 — commit only the locales).';
 
 // The locales below iterate LOCALES, which keeps zh-TW so the freshness gate
 // still covers it. The command in REFRESH_HINT no longer writes it: zh-TW is

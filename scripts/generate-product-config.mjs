@@ -172,7 +172,10 @@ if (syncedLocaleCount > 0) {
   console.log(`  ✓ refreshed pricing features in ${syncedLocaleCount} pro locale file(s)`);
 }
 
-console.log('\nDone. Remember to rebuild /pro: npm run build:pro');
+// The deploy rebuilds /pro itself since #6898, so this is no longer a "commit
+// the bundle too" instruction — but the built-output tests read public/pro/,
+// so a local rebuild is still what makes them run instead of skip.
+console.log('\nDone. Rebuild /pro to exercise its built-output tests: npm run build:pro');
 
 // ---------------------------------------------------------------------------
 // Helpers

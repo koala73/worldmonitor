@@ -680,13 +680,13 @@ else
   echo "No proto-related changes, skipping."
 fi
 
-echo "Running pro-test bundle freshness check..."
-# public/pro/ is NOT built by Vercel — the root build script only runs the
-# main app's vite build. The /pro marketing app under pro-test/ must be
-# rebuilt manually and its output committed to public/pro/. If source
-# changes ship without the rebuild, production /pro serves the old bundle
-# (see PR #3227 → #3228: source fix merged but deploy still broken because
-# public/pro/ was stale).
+echo "Running pro-test build + generated config freshness check..."
+# public/pro/ IS built by Vercel since #6898 (build:full chains build:pro), so
+# the committed-bytes staleness class this block was written for is gone. What
+# survives is still worth gating: the /pro app must BUILD at all — a broken
+# pro-test build now fails the deploy instead of shipping stale bytes — and the
+# generated config it compiles against (products.generated.ts, tiers.json, pro
+# locales) is still committed and can still go stale.
 #
 # Scope to the BRANCH delta ($CHANGED_PATHS, computed earlier from
 # `git diff origin/main...HEAD`), not the worktree, so unstaged local
@@ -694,11 +694,10 @@ echo "Running pro-test bundle freshness check..."
 # branches. RUN_ALL forces the check when the branch delta couldn't be
 # computed (matches the safety fallback used by the test runners above).
 #
-# Trigger on pro-test/, public/pro/, or the catalog/generator that feeds
-# pro-test/src/generated/tiers.json. Catalog-only pricing-copy changes are
-# otherwise able to ship stale /pro bundles because Vercel serves public/pro/
-# as committed bytes.
-if [ "$RUN_ALL" = true ] || path_matches '^(pro-test|public/pro)/|^convex/config/productCatalog\.ts$|^scripts/generate-product-config\.mjs$'; then
+# Trigger on pro-test/ or the catalog/generator that feeds
+# pro-test/src/generated/tiers.json. public/pro/ is gitignored since #6898 and
+# can never appear in a branch delta, so it is no longer a trigger path.
+if [ "$RUN_ALL" = true ] || path_matches '^pro-test/|^convex/config/productCatalog\.ts$|^scripts/generate-product-config\.mjs$'; then
   npx tsx scripts/generate-product-config.mjs >/dev/null || {
     echo "ERROR: product config generation failed"
     exit 1
@@ -713,9 +712,9 @@ if [ "$RUN_ALL" = true ] || path_matches '^(pro-test|public/pro)/|^convex/config
   fi
   # Point Vite's default cacheDir (pro-test/node_modules/.vite) at a
   # lockfile-sharded directory under the shared git-common-dir. Do not
-  # edit pro-test/vite.config.ts here: that path trips this gate and
-  # forces a public/pro rebuild. The .vite link is a cache dir, not a
-  # node_modules symlink. Serialize concurrent writes with flock.
+  # edit pro-test/vite.config.ts here: that path trips this gate. The
+  # .vite link is a cache dir, not a node_modules symlink. Serialize
+  # concurrent writes with flock.
   if [ -n "$PREPUSH_COMMON_DIR" ]; then
     _lock_hash=$(sha256sum < pro-test/package-lock.json 2>/dev/null | cut -c1-12)
     [ -n "$_lock_hash" ] || _lock_hash=nolock
@@ -742,33 +741,22 @@ if [ "$RUN_ALL" = true ] || path_matches '^(pro-test|public/pro)/|^convex/config
   # api/_product-fallback-prices.js and left it listed here, which blocked every
   # push touching pro-test/ or public/pro/ until it was noticed. Keep this list
   # in step with what scripts/generate-product-config.mjs actually writes.
-  if ! git diff --exit-code src/config/products.generated.ts src/config/product-ids.generated.ts pro-test/src/generated/tiers.json pro-test/src/locales/ public/pro/; then
+  if ! git diff --exit-code src/config/products.generated.ts src/config/product-ids.generated.ts pro-test/src/generated/tiers.json pro-test/src/locales/; then
     echo ""
     echo "============================================================"
-    echo "ERROR: product catalog, generated config, pro locales, or public/pro/ is stale."
-    echo "Vercel ships whatever is committed under public/pro/ —"
-    echo "it does NOT rebuild pro-test on deploy."
+    echo "ERROR: product catalog, generated config, or pro locales is stale."
+    echo "public/pro/ itself is built on deploy (#6898) and is not checked here,"
+    echo "but the generated config it compiles against is still committed."
     echo "Fix:"
     echo "  npx tsx scripts/generate-product-config.mjs"
-    echo "  cd pro-test && npm run build && cd .."
-    echo "  git add src/config/products.generated.ts src/config/product-ids.generated.ts pro-test/src/generated/tiers.json pro-test/src/locales/ public/pro/"
+    echo "  git add src/config/products.generated.ts src/config/product-ids.generated.ts pro-test/src/generated/tiers.json pro-test/src/locales/"
     echo "  git commit --amend --no-edit"
     echo "============================================================"
     exit 1
   fi
-  UNTRACKED=$(git ls-files --others --exclude-standard public/pro/)
-  if [ -n "$UNTRACKED" ]; then
-    echo ""
-    echo "============================================================"
-    echo "ERROR: Untracked files in public/pro/ after rebuild:"
-    echo "$UNTRACKED"
-    echo "Run: git add public/pro/ && git commit --amend --no-edit"
-    echo "============================================================"
-    exit 1
-  fi
-  echo "  pro-test bundle is up to date."
+  echo "  pro-test builds and its generated config is up to date."
 else
-  echo "  Skipped (no pro-test/, public/pro/, product catalog, or product-config generator changes in branch)."
+  echo "  Skipped (no pro-test/, product catalog, or product-config generator changes in branch)."
 fi
 
 echo "Running version sync check..."

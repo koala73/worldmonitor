@@ -13,6 +13,7 @@ function readFileSync(path, options) {
   return content;
 }
 import { fileURLToPath } from 'node:url';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 import {
   CONTENT_CORPUS_PREFIXES,
   discoverContentCorpusPages,
@@ -325,6 +326,18 @@ describe('crawlable content corpus deployment contracts', () => {
         script.indexOf('npm run build:sitemap') < script.indexOf('vite build'),
         scriptName + ' must update public/sitemap.xml before Vite copies public/ into dist/'
       );
+      // public/pro/ is a BUILD PRODUCT, not committed bytes (#6898). Vercel's
+      // build command is `npm run build:full`, so if that chain stops running
+      // build:pro the deploy ships a dist/ with no /pro at all -- a 404 on the
+      // pricing page rather than the stale-bundle class this replaced.
+      assert.ok(
+        script.includes('npm run build:pro'),
+        scriptName + ' must build pro-test -- public/pro/ is gitignored, so nothing else produces /pro'
+      );
+      assert.ok(
+        script.indexOf('npm run build:pro') < script.indexOf('vite build'),
+        scriptName + ' must build /pro before Vite copies public/ into dist/'
+      );
     }
 
     for (const [name, source] of [
@@ -340,6 +353,17 @@ describe('crawlable content corpus deployment contracts', () => {
       assert.ok(
         source.indexOf('npm run build:sitemap') < source.indexOf('npx vite build'),
         name + ' must update public/sitemap.xml before Vite copies public/ into dist/'
+      );
+      // Unlike /blog (deliberately skipped in the images), docker/nginx.conf.template
+      // routes `location ^~ /pro` and `/pro/assets/`, so a self-hosted image that
+      // never builds pro-test serves a 404 behind a live route.
+      assert.ok(
+        source.includes('npm run build:pro'),
+        name + ' must build pro-test -- nginx.conf.template routes /pro and public/pro/ is gitignored'
+      );
+      assert.ok(
+        source.indexOf('npm run build:pro') < source.indexOf('npx vite build'),
+        name + ' must build /pro before Vite copies public/ into dist/'
       );
       assert.ok(
         source.indexOf('node scripts/generate-inventory-facts.mjs') < source.indexOf('npx vite build'),
@@ -719,6 +743,10 @@ function readGeneratedWelcomeAsset(generatedWelcomeHtml) {
 }
 
 describe('welcome landing page routing', () => {
+  // Cases below read the prerendered public/pro/ pages, built by
+  // `npm run build:pro` rather than committed (#6898): they skip in an
+  // unbuilt checkout and this fails the suite when CI says it built them.
+  guardProBuiltOutput();
   // A `/` rewrite gated on a query condition (e.g. /?mode=agent →
   // /agent-view.json) never matches a plain navigation, so the app-root
   // welcome rewrite is the first `/` rule WITHOUT a query condition.
@@ -999,7 +1027,7 @@ describe('welcome landing page routing', () => {
     );
   });
 
-  it('pins welcome and dashboard SEO canonicals to their new routes', () => {
+  it('pins welcome and dashboard SEO canonicals to their new routes', { skip: shouldSkipProBuiltOutput() }, () => {
     const welcomeHtml = readFileSync(resolve(__dirname, '../pro-test/welcome.html'), 'utf-8');
     const generatedWelcomeHtml = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8');
     const dashboardHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
@@ -1029,7 +1057,7 @@ describe('welcome landing page routing', () => {
     );
   });
 
-  it('keeps welcome dashboard launch CTAs off the root welcome route', () => {
+  it('keeps welcome dashboard launch CTAs off the root welcome route', { skip: shouldSkipProBuiltOutput() }, () => {
     const welcomeSources = readWelcomeSources();
     const generatedWelcomeHtml = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8');
     const generatedWelcomeAsset = readGeneratedWelcomeAsset(generatedWelcomeHtml);
@@ -1098,7 +1126,7 @@ describe('welcome landing page routing', () => {
     );
   });
 
-  it('tags welcome dashboard CTAs with utm params, never an affiliate referral param', () => {
+  it('tags welcome dashboard CTAs with utm params, never an affiliate referral param', { skip: shouldSkipProBuiltOutput() }, () => {
     // `ref=` and `wm_referral=` on a dashboard URL are read by
     // src/services/referral-capture.ts as an AFFILIATE code: persisted for 7
     // days and forwarded to Dodo as `affonso_referral`. Internal welcome CTAs
@@ -1133,7 +1161,7 @@ describe('welcome landing page routing', () => {
     assert.doesNotMatch(
       readGeneratedWelcomeAsset(generatedWelcomeHtml),
       AFFILIATE_PARAM_IN_URL,
-      'generated welcome JS still ships affiliate referral CTAs — rebuild pro-test and commit public/pro/'
+      'generated welcome JS still ships affiliate referral CTAs — rebuild pro-test (npm run build:pro)'
     );
     assert.doesNotMatch(
       // React serializes `&` as `&amp;` in attribute values, so a second-position
@@ -1141,11 +1169,11 @@ describe('welcome landing page routing', () => {
       // bare `[?&]` character class.
       generatedWelcomeHtml.replace(/&amp;/g, '&'),
       AFFILIATE_PARAM_IN_URL,
-      'prerendered welcome HTML still ships affiliate referral CTAs — rebuild pro-test and commit public/pro/'
+      'prerendered welcome HTML still ships affiliate referral CTAs — rebuild pro-test (npm run build:pro)'
     );
   });
 
-  it('keeps every critical-CSS anchor rule bound to an anchor the prerender actually emits', () => {
+  it('keeps every critical-CSS anchor rule bound to an anchor the prerender actually emits', { skip: shouldSkipProBuiltOutput() }, () => {
     // The inline critical CSS styles the above-the-fold CTAs by attribute
     // selector before Tailwind loads. Those selectors key off values that live
     // in the components (an href query, an aria-label), so renaming one there
@@ -1284,6 +1312,10 @@ const getNginxHeaderValueFrom = (file, key) => {
 const getNginxHeaderValue = (key) => getNginxHeaderValueFrom('docker/nginx-security-headers.conf', key);
 
 describe('security header guardrails', () => {
+  // Cases below read the prerendered public/pro/ pages, built by
+  // `npm run build:pro` rather than committed (#6898): they skip in an
+  // unbuilt checkout and this fails the suite when CI says it built them.
+  guardProBuiltOutput();
   it('includes required security headers on catch-all route', () => {
     const required = [
       'X-Content-Type-Options',
@@ -1685,7 +1717,7 @@ describe('security header guardrails', () => {
     assert.ok(scriptSrc.includes("'self'"), 'CSP script-src must include self');
   });
 
-  it('CSP script-src hashes exactly match un-nonced inline scripts served under the global CSP', () => {
+  it('CSP script-src hashes exactly match un-nonced inline scripts served under the global CSP', { skip: shouldSkipProBuiltOutput() }, () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const scriptHashTokens = getCspDirectiveTokens(csp, 'script-src')
       .filter((token) => token.startsWith("'sha256-"));
@@ -1797,7 +1829,7 @@ describe('security header guardrails', () => {
     }
   });
 
-  it('HTML entry script tags carry the nonce trusted by the header CSP', () => {
+  it('HTML entry script tags carry the nonce trusted by the header CSP', { skip: shouldSkipProBuiltOutput() }, () => {
     const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
     const headerCsp = getHeaderValue('Content-Security-Policy');
     assert.equal(hasCspMeta(indexHtml), false, 'index.html must not ship a CSP meta tag');
