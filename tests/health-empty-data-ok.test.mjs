@@ -48,6 +48,8 @@ const AUDITED_PRESENT_PAYLOAD_KEYS = [
   // EMERGENCY ALERT layer, reading OK while the payload is gone is the worst
   // place in the fleet to be wrong.
   'canadaAlerts',
+  'canadaAlertsAbSource',
+  'canadaAlertsBcSource',
 ];
 
 function classifyMissing(name, meta) {

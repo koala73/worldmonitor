@@ -25,6 +25,42 @@
   "expiresAt": "2026-08-27",
   "acknowledged": [
     {
+      "name": "canadaAlerts",
+      "status": "EMPTY",
+      "issue": 6659,
+      "reason": "canadaAlerts now probes seed-meta:alerts:canada-union. The union key cannot exist until the first Canada bundle tick materializes it, so EMPTY is acknowledged only through that first Railway */5 tick.",
+      "expiresAt": "2026-08-19T12:05:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:alerts:canada-union",
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:05:00.000Z"
+      }
+    },
+    {
+      "name": "canadaAlertsAbSource",
+      "status": "EMPTY",
+      "issue": 6659,
+      "reason": "The Alberta sibling health row is new and cannot publish until its first Canada bundle tick runs. EMPTY is acknowledged only through that first Railway */5 tick; it must block immediately afterward.",
+      "expiresAt": "2026-08-19T12:05:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:alerts:alberta-aea",
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:05:00.000Z"
+      }
+    },
+    {
+      "name": "canadaAlertsBcSource",
+      "status": "EMPTY",
+      "issue": 6659,
+      "reason": "The B.C. source health row is new and cannot publish until its first Canada bundle tick runs. EMPTY is acknowledged only through that first Railway */5 tick; it must block immediately afterward.",
+      "expiresAt": "2026-08-19T12:05:00.000Z",
+      "cutover": {
+        "probeKey": "seed-meta:alerts:bc-emergency-info",
+        "activatedAt": "2026-08-19T12:00:00.000Z",
+        "firstScheduledRunAt": "2026-08-19T12:05:00.000Z"
+      }
+    },
+    {
       "name": "mineralProduction",
       "status": "EMPTY",
       "issue": 6439,

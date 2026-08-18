@@ -562,6 +562,7 @@ const HOST_ORIGINS = Object.freeze({
 // Provider-level overrides win when the host is a CDN, cloud, or shared
 // platform that would otherwise point at the wrong country.
 const PROVIDER_ORIGINS = Object.freeze({
+  'B.C. Evacuation Orders and Alerts': 'CA',
   'Ember electricity data': 'GB',
   'Mexico Energy Regulatory Commission (CRE)': 'MX',
   'Our World in Data': 'GB',

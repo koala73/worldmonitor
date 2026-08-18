@@ -605,9 +605,8 @@ describe('scheduled seed freshness monitor', () => {
       // merged and closed, four degraded sources were suppressed against a
       // closed PR with nobody owning them. Distinct issue numbers is the
       // cheapest offline proxy for "somebody actually filed these".
-      // #6806 previously owned two entries (one per 1-section sibling). The
-      // consolidation onto seed-bundle-static-ref-heavy collapsed them into one,
-      // so the repeat carve-out is no longer needed.
+      // #6659 is the allowed repeat: one first Railway tick owns the
+      // union probe move plus the Alberta and B.C. sibling rows.
       const issues = committed.acknowledged.map((entry) => entry.issue);
       assert.ok(
         !issues.includes(5771),
@@ -619,13 +618,11 @@ describe('scheduled seed freshness monitor', () => {
         names.push(entry.name);
         namesByIssue.set(entry.issue, names);
       }
-      // Empty on purpose. #6806 held the only carve-out while it owned one
-      // bundle-tick ack per 1-section sibling; consolidating those onto
-      // seed-bundle-static-ref-heavy collapsed them to a single entry, which
-      // restores the plain invariant that every acknowledgement owns its own
-      // tracking issue. Re-adding a carve-out means a change is suppressing two
-      // degradations behind one issue — justify that here or split the issue.
-      const allowedSharedIssues = new Map();
+      // #6659 is the allowed repeat: one first Railway tick owns the
+      // union probe move plus the Alberta and B.C. sibling rows.
+      const allowedSharedIssues = new Map([
+        [6659, ['canadaAlerts', 'canadaAlertsAbSource', 'canadaAlertsBcSource']],
+      ]);
       for (const [issue, names] of namesByIssue) {
         const allowed = allowedSharedIssues.get(issue);
         if (allowed) {
