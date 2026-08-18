@@ -275,33 +275,153 @@
     },
     "calibration": {
       "examples": [
-        { "opaqueExampleId": "cm_example_000001", "confidence": 0.51, "correct": false, "goldMateriality": "material", "goldDirection": "positive" },
-        { "opaqueExampleId": "cm_example_000002", "confidence": 0.54, "correct": true, "goldMateriality": "immaterial", "goldDirection": "negative" },
-        { "opaqueExampleId": "cm_example_000003", "confidence": 0.57, "correct": false, "goldMateriality": "material", "goldDirection": "mixed" },
-        { "opaqueExampleId": "cm_example_000004", "confidence": 0.6, "correct": true, "goldMateriality": "immaterial", "goldDirection": "positive" },
-        { "opaqueExampleId": "cm_example_000005", "confidence": 0.63, "correct": true, "goldMateriality": "material", "goldDirection": "negative" },
-        { "opaqueExampleId": "cm_example_000006", "confidence": 0.66, "correct": false, "goldMateriality": "immaterial", "goldDirection": "mixed" },
-        { "opaqueExampleId": "cm_example_000007", "confidence": 0.69, "correct": true, "goldMateriality": "material", "goldDirection": "positive" },
-        { "opaqueExampleId": "cm_example_000008", "confidence": 0.72, "correct": true, "goldMateriality": "immaterial", "goldDirection": "negative" },
-        { "opaqueExampleId": "cm_example_000009", "confidence": 0.75, "correct": false, "goldMateriality": "material", "goldDirection": "mixed" },
-        { "opaqueExampleId": "cm_example_000010", "confidence": 0.78, "correct": true, "goldMateriality": "immaterial", "goldDirection": "positive" },
-        { "opaqueExampleId": "cm_example_000011", "confidence": 0.8, "correct": true, "goldMateriality": "material", "goldDirection": "negative" },
-        { "opaqueExampleId": "cm_example_000012", "confidence": 0.82, "correct": true, "goldMateriality": "immaterial", "goldDirection": "mixed" },
-        { "opaqueExampleId": "cm_example_000013", "confidence": 0.84, "correct": false, "goldMateriality": "material", "goldDirection": "positive" },
-        { "opaqueExampleId": "cm_example_000014", "confidence": 0.86, "correct": true, "goldMateriality": "immaterial", "goldDirection": "negative" },
-        { "opaqueExampleId": "cm_example_000015", "confidence": 0.88, "correct": true, "goldMateriality": "material", "goldDirection": "mixed" },
-        { "opaqueExampleId": "cm_example_000016", "confidence": 0.9, "correct": true, "goldMateriality": "immaterial", "goldDirection": "positive" },
-        { "opaqueExampleId": "cm_example_000017", "confidence": 0.92, "correct": true, "goldMateriality": "material", "goldDirection": "negative" },
-        { "opaqueExampleId": "cm_example_000018", "confidence": 0.94, "correct": false, "goldMateriality": "immaterial", "goldDirection": "mixed" },
-        { "opaqueExampleId": "cm_example_000019", "confidence": 0.96, "correct": true, "goldMateriality": "material", "goldDirection": "positive" },
-        { "opaqueExampleId": "cm_example_000020", "confidence": 0.98, "correct": true, "goldMateriality": "immaterial", "goldDirection": "negative" }
+        {
+          "opaqueExampleId": "cm_example_000001",
+          "confidence": 0.51,
+          "correct": false,
+          "goldMateriality": "material",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000002",
+          "confidence": 0.54,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "negative"
+        },
+        {
+          "opaqueExampleId": "cm_example_000003",
+          "confidence": 0.57,
+          "correct": false,
+          "goldMateriality": "material",
+          "goldDirection": "mixed"
+        },
+        {
+          "opaqueExampleId": "cm_example_000004",
+          "confidence": 0.6,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000005",
+          "confidence": 0.63,
+          "correct": true,
+          "goldMateriality": "material",
+          "goldDirection": "negative"
+        },
+        {
+          "opaqueExampleId": "cm_example_000006",
+          "confidence": 0.66,
+          "correct": false,
+          "goldMateriality": "immaterial",
+          "goldDirection": "mixed"
+        },
+        {
+          "opaqueExampleId": "cm_example_000007",
+          "confidence": 0.69,
+          "correct": true,
+          "goldMateriality": "material",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000008",
+          "confidence": 0.72,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "negative"
+        },
+        {
+          "opaqueExampleId": "cm_example_000009",
+          "confidence": 0.75,
+          "correct": false,
+          "goldMateriality": "material",
+          "goldDirection": "mixed"
+        },
+        {
+          "opaqueExampleId": "cm_example_000010",
+          "confidence": 0.78,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000011",
+          "confidence": 0.8,
+          "correct": true,
+          "goldMateriality": "material",
+          "goldDirection": "negative"
+        },
+        {
+          "opaqueExampleId": "cm_example_000012",
+          "confidence": 0.82,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "mixed"
+        },
+        {
+          "opaqueExampleId": "cm_example_000013",
+          "confidence": 0.84,
+          "correct": false,
+          "goldMateriality": "material",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000014",
+          "confidence": 0.86,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "negative"
+        },
+        {
+          "opaqueExampleId": "cm_example_000015",
+          "confidence": 0.88,
+          "correct": true,
+          "goldMateriality": "material",
+          "goldDirection": "mixed"
+        },
+        {
+          "opaqueExampleId": "cm_example_000016",
+          "confidence": 0.9,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000017",
+          "confidence": 0.92,
+          "correct": true,
+          "goldMateriality": "material",
+          "goldDirection": "negative"
+        },
+        {
+          "opaqueExampleId": "cm_example_000018",
+          "confidence": 0.94,
+          "correct": false,
+          "goldMateriality": "immaterial",
+          "goldDirection": "mixed"
+        },
+        {
+          "opaqueExampleId": "cm_example_000019",
+          "confidence": 0.96,
+          "correct": true,
+          "goldMateriality": "material",
+          "goldDirection": "positive"
+        },
+        {
+          "opaqueExampleId": "cm_example_000020",
+          "confidence": 0.98,
+          "correct": true,
+          "goldMateriality": "immaterial",
+          "goldDirection": "negative"
+        }
       ],
       "expectedPointEstimate": 0.1925,
       "expectedUpperBound": 0.3395
     }
   },
   "stage0": {
-    "evaluatedAt": "2026-08-05T00:00:00.000Z",
+    "evaluatedAt": "2026-08-18T13:03:05.000Z",
     "decision": "stop",
     "reasons": [
       "base_rate_not_complete",
