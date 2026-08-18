@@ -214,8 +214,12 @@ export class SearchManager implements AppModule {
       resolveExecutableNewsPanel: (link) => this.resolveExecutableNewsPanel(link),
       saveToStorage,
       setTheme,
-      setTimeout,
-      clearTimeout,
+      // Wrap rather than pass the bare reference: `bindings.setTimeout(...)` calls
+      // it as a method, and Firefox's spec-compliant WebIDL brand check rejects a
+      // `this` that isn't Window ("'setTimeout' called on an object that does not
+      // implement interface Window"). Calling it unbound here keeps `this` correct.
+      setTimeout: (callback, delay) => setTimeout(callback, delay),
+      clearTimeout: (timer) => clearTimeout(timer),
     });
     this.webMcpSearch = new WebMcpSearchController({
       waitForIndexReady: () => this.waitForSearchIndexReady(),
