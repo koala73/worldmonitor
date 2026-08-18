@@ -2,8 +2,8 @@
  * Free-account MCP allowance (#6716) — MCP call-site only.
  *
  * Two fail-closed counters for authenticated callers whose Pro gate returned
- * `insufficient_tier` (confirmed free / non-Pro), NOT billing-verification
- * states:
+ * `free_account` (a confirmed free verdict), NOT generic insufficient-tier or
+ * billing-verification states:
  *
  *   1. Request windows/day — a new window opens after an idle gap (MCP has no
  *      task boundary; a desktop client holds one session across questions).
@@ -37,9 +37,6 @@ export type FreeAccountAllowanceRejected = {
 };
 
 export type FreeAccountAllowanceResult = FreeAccountAllowanceOk | FreeAccountAllowanceRejected;
-
-/** One pipeline element as returned by the Upstash REST helper. */
-type PipeElement = { result?: unknown; error?: unknown };
 
 function utcDayKey(nowMs: number): string {
   return new Date(nowMs).toISOString().slice(0, 10);
@@ -79,72 +76,81 @@ function dayTtlSeconds(nowMs: number): number {
 }
 
 function asFiniteNumber(raw: unknown): number | null {
+  if (typeof raw !== 'number' && typeof raw !== 'string') return null;
+  if (typeof raw === 'string' && raw.trim() === '') return null;
   const n = typeof raw === 'number' ? raw : Number(raw);
   return Number.isFinite(n) ? n : null;
 }
 
 /**
- * True when any element of a pipeline reply failed.
+ * One Redis-side reservation owns all three keys. Redis serializes scripts, so
+ * concurrent calls cannot observe a counter and later apply a stale rollback.
+ * Every rejection returns before the first write; every admission writes the
+ * counters, their end-of-day TTLs, and refreshed last activity together.
  *
- * The Upstash REST pipeline resolves as a whole even when an individual command
- * errors — the failure is reported per element. Inspecting only element 0 (the
- * INCR) let a failed EXPIRE through: the counter landed with NO TTL, so it never
- * reset at the UTC boundary and the caller stayed locked out past midnight.
+ * Result codes:
+ *   1  admitted
+ *   0  allowance exhausted
+ *  -1  stored state was malformed (fail closed)
  */
-function pipelineFailed(pipe: PipeElement[] | null, expected: number): boolean {
-  if (!pipe || !Array.isArray(pipe) || pipe.length < expected) return true;
-  return pipe.slice(0, expected).some((el) => el?.error !== undefined && el?.error !== null);
-}
+const RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT = `
+local function non_negative_integer(raw)
+  if raw == false or raw == nil then return 0 end
+  local value = tonumber(raw)
+  if value == nil or value < 0 or value ~= math.floor(value) then return nil end
+  return value
+end
 
-async function runPipeline(
-  pipeline: PipelineFn,
-  commands: Array<Array<string | number>>,
-): Promise<PipeElement[] | null> {
-  try {
-    const res = await pipeline(commands);
-    return Array.isArray(res) ? (res as PipeElement[]) : null;
-  } catch {
-    return null;
-  }
-}
+local calls_raw = redis.call('GET', KEYS[1])
+local requests_raw = redis.call('GET', KEYS[2])
+local last_raw = redis.call('GET', KEYS[3])
+local calls = non_negative_integer(calls_raw)
+local requests = non_negative_integer(requests_raw)
+local last = nil
+if last_raw ~= false and last_raw ~= nil then
+  last = non_negative_integer(last_raw)
+end
+local calls_missing = calls_raw == false or calls_raw == nil
+local requests_missing = requests_raw == false or requests_raw == nil
+local last_present = last_raw ~= false and last_raw ~= nil
+if calls == nil or requests == nil or (last_present and last == nil) then
+  return {-1}
+end
+if calls_missing ~= requests_missing or requests > calls or (last_present and calls == 0) then
+  return {-1}
+end
 
-/**
- * Clamp a counter that rollback failed to bring back down.
- *
- * Ports `reserveQuota`'s F4 protection (api/mcp/quota.ts). Both counters here
- * use INCR-then-best-effort-DECR, and a DECR lost to a Redis hiccup ratchets the
- * counter permanently upward — every later INCR then exceeds the limit and the
- * caller is locked out for the rest of the UTC day. That matters MORE here than
- * on the Pro path: the ceiling is 5, not 50+, so a couple of lost DECRs is the
- * whole allowance.
- */
-async function clampCounter(
-  pipeline: PipelineFn,
-  key: string,
-  limit: number,
-  observedCount: number,
-): Promise<void> {
-  if (observedCount <= limit + 1) return;
-  const probe = await runPipeline(pipeline, [['INCR', key], ['DECR', key]]);
-  const probeIncr = asFiniteNumber(probe?.[0]?.result);
-  if (probeIncr === null) return;
-  const postRollbackCount = probeIncr - 1;
-  if (postRollbackCount <= limit) return;
-  // DECR the overshoot away (bounded) rather than SET, so the key's existing TTL
-  // survives and the mock surface stays INCR/DECR/EXPIRE/GET/SET-only.
-  const decrs = Math.min(postRollbackCount - limit, 100);
-  await runPipeline(
-    pipeline,
-    Array.from({ length: decrs }, () => ['DECR', key]),
-  );
+local now_ms = tonumber(ARGV[1])
+local idle_gap_ms = tonumber(ARGV[2])
+local calls_limit = tonumber(ARGV[3])
+local requests_limit = tonumber(ARGV[4])
+local opens_window = last == nil or now_ms - last >= idle_gap_ms
+local activity_value = ARGV[1]
+if last ~= nil and last > now_ms then activity_value = last_raw end
+
+if calls >= calls_limit then return {0} end
+if opens_window and requests >= requests_limit then return {0} end
+
+calls = calls + 1
+if opens_window then requests = requests + 1 end
+redis.call('SET', KEYS[1], tostring(calls), 'EX', ARGV[5])
+if opens_window then
+  redis.call('SET', KEYS[2], tostring(requests), 'EX', ARGV[5])
+end
+redis.call('SET', KEYS[3], activity_value, 'PX', ARGV[2])
+return {1}
+`;
+
+function validLimit(value: number): boolean {
+  return Number.isSafeInteger(value) && value >= 0;
 }
 
 /**
  * Reserve one free-account MCP tool call.
  *
- * Ordering is load-bearing: call counter first (absolute ceiling), then idle-
- * gap request window. Both fail closed on Redis errors — including a per-element
- * error inside an otherwise-resolved pipeline.
+ * The single EVAL reply is the authorization decision. Redis/transport errors,
+ * malformed stored state, and malformed replies all fail closed before tool
+ * dispatch. A denial changes none of the three allowance keys.
  */
 export async function reserveFreeAccountAllowance(
   userId: string,
@@ -156,85 +162,54 @@ export async function reserveFreeAccountAllowance(
     idleGapMs?: number;
   },
 ): Promise<FreeAccountAllowanceResult> {
-  if (!userId || typeof userId !== 'string') {
+  if (!userId || typeof userId !== 'string' || !Number.isSafeInteger(nowMs) || nowMs < 0) {
     return { ok: false, reason: 'redis-unavailable' };
   }
 
   const callsLimit = opts?.callsPerDay ?? FREE_ACCOUNT_CALLS_PER_DAY;
   const requestsLimit = opts?.requestsPerDay ?? FREE_ACCOUNT_REQUESTS_PER_DAY;
   const idleGapMs = opts?.idleGapMs ?? FREE_ACCOUNT_IDLE_GAP_MS;
+  if (!validLimit(callsLimit) || !validLimit(requestsLimit) || !Number.isSafeInteger(idleGapMs) || idleGapMs < 1) {
+    return { ok: false, reason: 'redis-unavailable' };
+  }
   const callsKey = freeAccountCallsKey(userId, nowMs);
   const reqsKey = freeAccountRequestsKey(userId, nowMs);
   const lastKey = freeAccountLastActivityKey(userId, nowMs);
   const ttl = dayTtlSeconds(nowMs);
 
-  // --- Call ceiling -------------------------------------------------------
-  const callPipe = await runPipeline(pipeline, [
-    ['INCR', callsKey],
-    ['EXPIRE', callsKey, ttl],
-  ]);
-  if (pipelineFailed(callPipe, 2)) {
+  let response: Awaited<ReturnType<PipelineFn>> = null;
+  try {
+    response = await pipeline([[
+      'EVAL',
+      RESERVE_FREE_ACCOUNT_ALLOWANCE_SCRIPT,
+      3,
+      callsKey,
+      reqsKey,
+      lastKey,
+      nowMs,
+      idleGapMs,
+      callsLimit,
+      requestsLimit,
+      ttl,
+    ]]);
+  } catch {
+    response = null;
+  }
+
+  const entry = response?.[0];
+  if (
+    !response
+    || response.length !== 1
+    || !entry
+    || (entry.error !== undefined && entry.error !== null)
+    || !Array.isArray(entry.result)
+  ) {
     return { ok: false, reason: 'redis-unavailable' };
   }
-  const callCount = asFiniteNumber(callPipe?.[0]?.result);
-  if (callCount === null || callCount < 1) {
-    return { ok: false, reason: 'redis-unavailable' };
-  }
-
-  const rollbackCall = async (): Promise<void> => {
-    await runPipeline(pipeline, [['DECR', callsKey]]);
-  };
-
-  if (callCount > callsLimit) {
-    await rollbackCall();
-    await clampCounter(pipeline, callsKey, callsLimit, callCount);
-    return { ok: false, reason: 'allowance-exhausted' };
-  }
-
-  // --- Idle-gap request window --------------------------------------------
-  // ONE atomic claim, not a GET-now/SET-later pair. MCP clients fan tool calls
-  // out concurrently; with a read-modify-write every request in a burst read the
-  // same stale timestamp, each concluded it was opening a window, and a single
-  // user-visible burst spent 2-3 of the 3 daily windows. `SET NX EX` makes
-  // exactly one caller the window opener — the reply is 'OK' for the winner and
-  // null for everyone else.
-  const claim = await runPipeline(pipeline, [
-    ['SET', lastKey, String(nowMs), 'EX', String(Math.ceil(idleGapMs / 1000)), 'NX'],
-  ]);
-  if (pipelineFailed(claim, 1)) {
-    await rollbackCall();
-    return { ok: false, reason: 'redis-unavailable' };
-  }
-  const claimResult = claim?.[0]?.result;
-  const opensNewWindow = claimResult === 'OK' || claimResult === true;
-
-  if (opensNewWindow) {
-    const reqPipe = await runPipeline(pipeline, [
-      ['INCR', reqsKey],
-      ['EXPIRE', reqsKey, ttl],
-    ]);
-    if (pipelineFailed(reqPipe, 2)) {
-      await rollbackCall();
-      return { ok: false, reason: 'redis-unavailable' };
-    }
-    const requestCount = asFiniteNumber(reqPipe?.[0]?.result);
-    if (requestCount === null || requestCount < 1) {
-      await rollbackCall();
-      return { ok: false, reason: 'redis-unavailable' };
-    }
-    if (requestCount > requestsLimit) {
-      await runPipeline(pipeline, [['DECR', reqsKey]]);
-      await clampCounter(pipeline, reqsKey, requestsLimit, requestCount);
-      await rollbackCall();
-      return { ok: false, reason: 'allowance-exhausted' };
-    }
-  }
-
-  // No rollback handle is returned. Once this resolves ok the caller dispatches
-  // and the slot is charged for good (the GHSA-hcq5 posture `reserveQuota`
-  // states); a refund seam that no caller may legitimately use is a trap, not an
-  // affordance.
-  return { ok: true };
+  const status = asFiniteNumber(entry.result[0]);
+  if (status === 1) return { ok: true };
+  if (status === 0) return { ok: false, reason: 'allowance-exhausted' };
+  return { ok: false, reason: 'redis-unavailable' };
 }
 
 // Re-export constants for tests / catalog docs without a circular import into

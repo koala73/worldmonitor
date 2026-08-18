@@ -45,8 +45,9 @@ import { resolveClerkSession } from '../../server/_shared/auth-session';
 import {
   getEntitlements,
   isEntitlementBackendConfigured,
+  type CachedEntitlements,
 } from '../../server/_shared/entitlement-check';
-import { checkProMcpAccess, type ProMcpEntitlement } from '../../server/_shared/pro-mcp-gate';
+import { checkProMcpAccess } from '../../server/_shared/pro-mcp-gate';
 import { resolveDailyLimit, resolvePlanDrivenMcpAllowance } from '../mcp/quota';
 import {
   FREE_ACCOUNT_CALLS_PER_DAY,
@@ -68,16 +69,11 @@ export interface QuotaDeps {
    */
   redisGet: (key: string) => Promise<string | null>;
   /**
-   * Cached entitlement read for the plan allowance. Only `planKey` and
-   * `features.planLimits.mcpCallsPerDay` are consumed; null/throw fall back
-   * to the plan default via `resolveDailyLimit`.
+   * Cached entitlement read for both the plan allowance and the shared Pro MCP
+   * decision. Keep this as the complete cached shape so the compiler checks
+   * every field consumed by `checkProMcpAccess`.
    */
-  getEntitlements: (userId: string) => Promise<{
-    planKey?: string;
-    features?: {
-      planLimits?: { mcpCallsPerDay?: number | null };
-    };
-  } | null>;
+  getEntitlements: (userId: string) => Promise<CachedEntitlements | null>;
   /** Injectable for deterministic tests. */
   now: () => Date;
 }
@@ -133,7 +129,7 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   // must not be what this endpoint displays.
   let planDailyLimit: number | null | undefined;
   // #6716 F7: which METER applies decides which counter to read. A caller the
-  // Pro gate refuses with `insufficient_tier` is metered by
+  // Pro gate classifies as `free_account` is metered by
   // `reserveFreeAccountAllowance` against `mcp:free-acct:calls:*`, NOT by
   // `reserveQuota` against `dailyCounterKey`. Reading the Pro key for such a
   // caller reports a permanent `used: 0` — the display/enforcement drift this
@@ -143,9 +139,9 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   try {
     const ent = await deps.getEntitlements(userId);
     planDailyLimit = resolvePlanDrivenMcpAllowance(ent?.planKey, ent?.features?.planLimits?.mcpCallsPerDay);
-    onFreeAllowance = checkProMcpAccess(ent as ProMcpEntitlement | null, now.getTime(), {
+    onFreeAllowance = checkProMcpAccess(ent, now.getTime(), {
       backendConfigured: isEntitlementBackendConfigured(),
-    })?.kind === 'insufficient_tier';
+    })?.kind === 'free_account';
   } catch (err) {
     console.warn(
       '[mcp-quota] entitlement lookup failed:',

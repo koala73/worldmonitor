@@ -2,11 +2,8 @@
  * #6716 — free-account allowance meter.
  *
  * Split out of tests/mcp-paid-funnel.test.mjs because the meter needs a Redis
- * mock with real semantics (TTL-aware `SET NX EX`, per-element errors,
- * selectively failing commands) rather than the always-succeeds stub the
- * denial-copy assertions get by with. Every failure branch in
- * `reserveFreeAccountAllowance` is reachable from here; the previous harness
- * could only reach the first of four.
+ * mock with real atomic-script semantics, TTL expiry, and command failures
+ * rather than the always-succeeds stub the denial-copy assertions use.
  */
 import { describe, it, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
@@ -27,17 +24,12 @@ const NOON = Date.UTC(2026, 7, 17, 12, 0, 0);
 /**
  * Upstash-shaped pipeline over an in-memory store.
  *
- * Models the three behaviours the meter actually depends on:
- *   - `SET key val EX <s> NX` returns 'OK' for the winner and null when a live
- *     key already exists. This is the window claim; a mock that always returns
- *     'OK' would make the concurrency and idle-gap tests vacuous.
- *   - TTL expiry against a caller-supplied clock, so the idle-gap boundary is
- *     observable without sleeping.
- *   - Per-element `{error}` replies, which is how Upstash reports a partial
- *     pipeline failure — the shape that used to slip past the meter unnoticed.
+ * Implements the allowance EVAL contract as one indivisible operation. The
+ * mock reads all state before any write, applies no writes on denial/failure,
+ * and commits the three keys together on admission. JavaScript executes this
+ * synchronous section without yielding, matching Redis script serialization.
  *
- * `opts.failOn(cmd, key, callIndex)` returns 'throw' | 'error' | undefined so a
- * test can fail one specific command and leave the rest working.
+ * `opts.failOn(cmd, key, callIndex)` returns 'throw' | 'error' | undefined.
  */
 function memoryPipeline(store, opts = {}) {
   const ttls = opts.ttls ?? new Map();
@@ -55,45 +47,59 @@ function memoryPipeline(store, opts = {}) {
   };
 
   return async (ops) => {
-    const out = [];
-    for (const op of ops) {
-      const [cmd, key] = op;
-      const mode = opts.failOn?.(cmd, key, callIndex);
-      callIndex += 1;
-      if (mode === 'throw') throw new Error(`redis down: ${cmd}`);
-      if (mode === 'error') {
-        out.push({ error: `ERR simulated ${cmd} failure` });
-        continue;
-      }
-      if (cmd === 'INCR') {
-        const next = (live(key) ? Number(store.get(key)) || 0 : 0) + 1;
-        store.set(key, next);
-        out.push({ result: next });
-      } else if (cmd === 'DECR') {
-        const next = (live(key) ? Number(store.get(key)) || 0 : 0) - 1;
-        store.set(key, next);
-        out.push({ result: next });
-      } else if (cmd === 'GET') {
-        out.push({ result: live(key) ? store.get(key) : null });
-      } else if (cmd === 'SET') {
-        // [SET, key, value, 'EX', seconds, 'NX']
-        const nx = op.includes('NX');
-        if (nx && live(key)) {
-          out.push({ result: null });
-          continue;
-        }
-        const exIdx = op.indexOf('EX');
-        store.set(key, op[2]);
-        if (exIdx !== -1) ttls.set(key, clock.now + Number(op[exIdx + 1]) * 1000);
-        out.push({ result: 'OK' });
-      } else if (cmd === 'EXPIRE') {
-        ttls.set(key, clock.now + Number(op[2]) * 1000);
-        out.push({ result: 1 });
-      } else {
-        throw new Error(`unexpected ${cmd}`);
-      }
+    if (ops.length !== 1 || ops[0]?.[0] !== 'EVAL' || Number(ops[0]?.[2]) !== 3) {
+      throw new Error(`expected one three-key EVAL, got ${JSON.stringify(ops)}`);
     }
-    return out;
+    const op = ops[0];
+    const callsKey = op[3];
+    const requestsKey = op[4];
+    const lastKey = op[5];
+    const mode = opts.failOn?.('EVAL', callsKey, callIndex);
+    callIndex += 1;
+    if (mode === 'throw') throw new Error('redis down: EVAL');
+    if (mode === 'error') return [{ error: 'ERR simulated EVAL failure' }];
+
+    const nowMs = Number(op[6]);
+    const idleGapMs = Number(op[7]);
+    const callsLimit = Number(op[8]);
+    const requestsLimit = Number(op[9]);
+    const counterTtlSeconds = Number(op[10]);
+    const readInteger = (key, present) => {
+      if (!present) return 0;
+      const value = Number(store.get(key));
+      return Number.isInteger(value) && value >= 0 ? value : null;
+    };
+    const callsPresent = live(callsKey);
+    const requestsPresent = live(requestsKey);
+    const lastPresent = live(lastKey);
+    const calls = readInteger(callsKey, callsPresent);
+    const requests = readInteger(requestsKey, requestsPresent);
+    const last = lastPresent ? readInteger(lastKey, true) : null;
+    if (
+      calls === null
+      || requests === null
+      || (lastPresent && last === null)
+      || callsPresent !== requestsPresent
+      || requests > calls
+      || (lastPresent && calls === 0)
+    ) {
+      return [{ result: [-1] }];
+    }
+    const opensWindow = last === null || nowMs - last >= idleGapMs;
+    if (calls >= callsLimit || opensWindow && requests >= requestsLimit) {
+      return [{ result: [0] }];
+    }
+
+    const nextCalls = calls + 1;
+    const nextRequests = requests + (opensWindow ? 1 : 0);
+    const activityMs = last === null ? nowMs : Math.max(nowMs, last);
+    store.set(callsKey, nextCalls);
+    if (opensWindow) store.set(requestsKey, nextRequests);
+    store.set(lastKey, String(activityMs));
+    ttls.set(callsKey, clock.now + counterTtlSeconds * 1000);
+    if (opensWindow) ttls.set(requestsKey, clock.now + counterTtlSeconds * 1000);
+    ttls.set(lastKey, clock.now + idleGapMs);
+    return [{ result: [1] }];
   };
 }
 
@@ -150,12 +156,11 @@ describe('free-account allowance — ceilings', () => {
     const sixth = await reserveFreeAccountAllowance('u4', pipe, clock.now);
     assert.equal(sixth.ok, false);
     assert.equal(sixth.reason, 'allowance-exhausted');
-    // The rejected INCR must be rolled back, or the counter ratchets and the
-    // caller stays locked out past the point the limit alone would allow.
+    // A rejected atomic reservation must leave the accepted-call count intact.
     assert.equal(store.get(freeAccountCallsKey('u4', NOON)), FREE_ACCOUNT_CALLS_PER_DAY);
   });
 
-  it('enforces the three request-window ceiling and rolls the window counter back', async () => {
+  it('enforces the three request-window ceiling without publishing a denied window', async () => {
     const store = new Map();
     const clock = { now: NOON };
     const pipe = memoryPipeline(store, { clock });
@@ -170,33 +175,58 @@ describe('free-account allowance — ceilings', () => {
     assert.equal(store.get(freeAccountRequestsKey('u5', NOON)), FREE_ACCOUNT_REQUESTS_PER_DAY);
   });
 
-  it('clamps a counter that a lost DECR ratcheted above the limit', async () => {
-    // A best-effort rollback that never lands would otherwise leave the counter
-    // permanently over the ceiling — with a limit of 5, two lost DECRs is the
-    // whole day's allowance. quota.ts carries this same F4 clamp.
+  it('keeps an immediate retry denied after the fourth request window is rejected', async () => {
     const store = new Map();
     const clock = { now: NOON };
-    let decrFailsLeft = 1;
-    const pipe = memoryPipeline(store, {
-      clock,
-      failOn: (cmd) => {
-        if (cmd === 'DECR' && decrFailsLeft > 0) {
-          decrFailsLeft -= 1;
-          return 'error';
-        }
-        return undefined;
-      },
-    });
+    const pipe = memoryPipeline(store, { clock });
+    for (let i = 0; i < FREE_ACCOUNT_REQUESTS_PER_DAY; i += 1) {
+      clock.now = NOON + i * (FREE_ACCOUNT_IDLE_GAP_MS + 1);
+      assert.equal((await reserveFreeAccountAllowance('u5_retry', pipe, clock.now, { callsPerDay: 99 })).ok, true);
+    }
+    clock.now = NOON + FREE_ACCOUNT_REQUESTS_PER_DAY * (FREE_ACCOUNT_IDLE_GAP_MS + 1);
+    const [denied, concurrentFollower] = await Promise.all([
+      reserveFreeAccountAllowance('u5_retry', pipe, clock.now, { callsPerDay: 99 }),
+      reserveFreeAccountAllowance('u5_retry', pipe, clock.now, { callsPerDay: 99 }),
+    ]);
+    const immediateRetry = await reserveFreeAccountAllowance('u5_retry', pipe, clock.now + 1, { callsPerDay: 99 });
+    assert.deepEqual(denied, { ok: false, reason: 'allowance-exhausted' });
+    assert.deepEqual(concurrentFollower, { ok: false, reason: 'allowance-exhausted' });
+    assert.deepEqual(immediateRetry, { ok: false, reason: 'allowance-exhausted' });
+    assert.equal(store.get(freeAccountRequestsKey('u5_retry', NOON)), FREE_ACCOUNT_REQUESTS_PER_DAY);
+    assert.equal(store.has(freeAccountLastActivityKey('u5_retry', NOON)), false);
+  });
+
+  it('admits exactly five calls from a concurrent over-cap burst without weakening the stored cap', async () => {
+    const store = new Map();
+    const pipe = memoryPipeline(store, { clock: { now: NOON } });
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () => reserveFreeAccountAllowance(
+        'u_concurrent_cap',
+        pipe,
+        NOON,
+        { requestsPerDay: 99 },
+      )),
+    );
+    assert.equal(results.filter((result) => result.ok).length, FREE_ACCOUNT_CALLS_PER_DAY);
+    assert.equal(
+      store.get(freeAccountCallsKey('u_concurrent_cap', NOON)),
+      FREE_ACCOUNT_CALLS_PER_DAY,
+    );
+  });
+
+  it('does not mutate counters when a call is rejected at the hard ceiling', async () => {
+    const store = new Map();
+    const clock = { now: NOON };
+    const pipe = memoryPipeline(store, { clock });
     for (let i = 0; i < FREE_ACCOUNT_CALLS_PER_DAY; i += 1) {
       clock.now = NOON + i * 1000;
       assert.equal((await reserveFreeAccountAllowance('u6', pipe, clock.now)).ok, true);
     }
     const key = freeAccountCallsKey('u6', NOON);
-    // First rejection: the rollback DECR is swallowed, so the counter ratchets.
-    await reserveFreeAccountAllowance('u6', pipe, NOON + 10_000);
-    assert.ok(store.get(key) > FREE_ACCOUNT_CALLS_PER_DAY, 'precondition: counter ratcheted');
-    // Second rejection: rollback works and the clamp pulls it back to the limit.
-    await reserveFreeAccountAllowance('u6', pipe, NOON + 11_000);
+    assert.deepEqual(
+      await reserveFreeAccountAllowance('u6', pipe, NOON + 10_000),
+      { ok: false, reason: 'allowance-exhausted' },
+    );
     assert.equal(store.get(key), FREE_ACCOUNT_CALLS_PER_DAY);
   });
 });
@@ -220,6 +250,19 @@ describe('free-account allowance — idle-gap window boundary', () => {
     clock.now = NOON + FREE_ACCOUNT_IDLE_GAP_MS;
     await reserveFreeAccountAllowance('u8', pipe, clock.now);
     assert.equal(store.get(freeAccountRequestsKey('u8', NOON)), 2);
+  });
+
+  it('keeps continuous activity in one window across multiple idle-gap durations', async () => {
+    const store = new Map();
+    const clock = { now: NOON };
+    const pipe = memoryPipeline(store, { clock });
+    await reserveFreeAccountAllowance('u8_active', pipe, NOON, { callsPerDay: 99 });
+    clock.now = NOON + FREE_ACCOUNT_IDLE_GAP_MS - 1;
+    await reserveFreeAccountAllowance('u8_active', pipe, clock.now, { callsPerDay: 99 });
+    clock.now = NOON + 2 * (FREE_ACCOUNT_IDLE_GAP_MS - 1);
+    await reserveFreeAccountAllowance('u8_active', pipe, clock.now, { callsPerDay: 99 });
+    assert.equal(store.get(freeAccountRequestsKey('u8_active', NOON)), 1);
+    assert.equal(store.get(freeAccountLastActivityKey('u8_active', NOON)), String(clock.now));
   });
 
   it('a concurrent burst spends exactly one window, not one per call', async () => {
@@ -258,40 +301,58 @@ describe('free-account allowance — idle-gap window boundary', () => {
 });
 
 describe('free-account allowance — fails closed on every Redis failure', () => {
-  // The meter has four distinct pipeline round-trips. Each one must deny, and
-  // must not leave the call counter charged.
-  const stages = [
-    { name: 'calls INCR', match: (cmd) => cmd === 'INCR' },
-    { name: 'window claim SET', match: (cmd) => cmd === 'SET' },
-    { name: 'requests INCR', match: (cmd, key) => cmd === 'INCR' && key.includes(':reqs:') },
-    { name: 'calls EXPIRE', match: (cmd) => cmd === 'EXPIRE' },
-  ];
-
-  for (const stage of stages) {
-    for (const mode of ['throw', 'error']) {
-      it(`denies when the ${stage.name} ${mode === 'throw' ? 'throws' : 'reports a per-element error'}`, async () => {
-        const store = new Map();
-        const pipe = memoryPipeline(store, {
-          clock: { now: NOON },
-          failOn: (cmd, key) => (stage.match(cmd, key) ? mode : undefined),
-        });
-        const result = await reserveFreeAccountAllowance('u_fail', pipe, NOON);
-        assert.equal(result.ok, false);
-        assert.equal(result.reason, 'redis-unavailable');
+  for (const mode of ['throw', 'error']) {
+    it(`denies without state when the atomic command ${mode === 'throw' ? 'throws' : 'reports an error'}`, async () => {
+      const store = new Map();
+      const ttls = new Map();
+      const pipe = memoryPipeline(store, {
+        ttls,
+        clock: { now: NOON },
+        failOn: () => mode,
       });
-    }
+      const result = await reserveFreeAccountAllowance('u_fail', pipe, NOON);
+      assert.deepEqual(result, { ok: false, reason: 'redis-unavailable' });
+      assert.equal(store.size, 0);
+      assert.equal(ttls.size, 0);
+    });
   }
 
-  it('rolls the call back when a later stage fails', async () => {
+  it('does not consume a call or leave a counter without TTL on a command error', async () => {
     const store = new Map();
+    const ttls = new Map();
+    const callsKey = freeAccountCallsKey('u_expire', NOON);
     const pipe = memoryPipeline(store, {
+      ttls,
       clock: { now: NOON },
-      failOn: (cmd, key) => (cmd === 'INCR' && key.includes(':reqs:') ? 'error' : undefined),
+      failOn: () => 'error',
     });
-    const result = await reserveFreeAccountAllowance('u11', pipe, NOON);
-    assert.equal(result.ok, false);
-    // The call slot must not stay charged for a request that never dispatched.
-    assert.equal(store.get(freeAccountCallsKey('u11', NOON)), 0);
+    const result = await reserveFreeAccountAllowance('u_expire', pipe, NOON);
+    assert.deepEqual(result, { ok: false, reason: 'redis-unavailable' });
+    assert.equal(store.has(callsKey), false);
+    assert.equal(ttls.has(callsKey), false);
+  });
+
+  it('fails closed on a malformed atomic reply', async () => {
+    for (const result of [null, [], [null], ['']]) {
+      const response = await reserveFreeAccountAllowance(
+        'u_malformed_reply',
+        async () => [{ result }],
+        NOON,
+      );
+      assert.deepEqual(response, { ok: false, reason: 'redis-unavailable' });
+    }
+  });
+
+  it('fails closed without overwriting malformed stored state', async () => {
+    const callsKey = freeAccountCallsKey('u_malformed_state', NOON);
+    const store = new Map([[callsKey, 'not-a-counter']]);
+    const response = await reserveFreeAccountAllowance(
+      'u_malformed_state',
+      memoryPipeline(store),
+      NOON,
+    );
+    assert.deepEqual(response, { ok: false, reason: 'redis-unavailable' });
+    assert.equal(store.get(callsKey), 'not-a-counter');
   });
 
   it('denies an empty userId without touching Redis', async () => {
@@ -331,9 +392,11 @@ describe('free-account allowance — key construction', () => {
     const nearMidnight = Date.UTC(2026, 7, 17, 23, 59, 59);
     const pipe = memoryPipeline(store, { ttls, clock: { now: nearMidnight } });
     await reserveFreeAccountAllowance('u12', pipe, nearMidnight);
-    const expiry = ttls.get(freeAccountCallsKey('u12', nearMidnight));
-    assert.ok(expiry !== undefined, 'calls key must carry a TTL');
-    const ttlSeconds = (expiry - nearMidnight) / 1000;
+    const callsExpiry = ttls.get(freeAccountCallsKey('u12', nearMidnight));
+    const requestsExpiry = ttls.get(freeAccountRequestsKey('u12', nearMidnight));
+    assert.ok(callsExpiry !== undefined, 'calls key must carry a TTL');
+    assert.equal(requestsExpiry, callsExpiry, 'both counters must share the end-of-day TTL');
+    const ttlSeconds = (callsExpiry - nearMidnight) / 1000;
     // 1s to midnight + 1h slack, floored at 60s.
     assert.ok(ttlSeconds >= 60, `ttl ${ttlSeconds} must clear the 60s floor`);
     assert.ok(ttlSeconds <= 3602, `ttl ${ttlSeconds} must not linger past the slack window`);

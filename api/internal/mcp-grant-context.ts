@@ -119,16 +119,10 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
   const gate = checkProMcpAccess(ent, deps.now(), {
     backendConfigured: isEntitlementBackendConfigured(),
   });
-  // #6716: mirrors mcp-grant-mint — `insufficient_tier` renders the consent
-  // card, because the mint that immediately follows now accepts it and refusing
-  // here would strand a free account mid-flow on an error page.
-  //
-  // The probing concern this gate was written for still holds for anonymous
-  // callers: `resolveUserId` above already rejected them, so client metadata is
-  // still only visible to a Clerk-authenticated session. What changed is that
-  // the session no longer has to be a paying one — the same bar the consent
-  // card itself needs, since the user must see what they are approving.
-  if (gate && gate.kind !== 'insufficient_tier') return proMcpGateDenialResponse(gate);
+  // #6716: the allowance is a call-site-only decision. Keep the consent gate
+  // strict so a non-Pro account cannot progress into credential issuance or
+  // use this endpoint to disclose registered client metadata.
+  if (gate) return proMcpGateDenialResponse(gate);
 
   // F2 (U7+U8 review pass): if `mcp-grant:<n>` exists with a userId that
   // doesn't match the Clerk session's userId, the nonce has been claimed

@@ -131,11 +131,10 @@ describe('api/mcp — user API keys on /mcp (#4859) + pre-check hardening (#4860
 
     const gated = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
     assert.equal(gated.status, 200, 'gated tools run while free-account allowance remains');
-    // Pipeline mock shares one counter across keys: call INCR + new-window request INCR.
     assert.ok(pipe.count >= 1, 'free-account meter reserved at least the call ceiling slot');
     assert.ok(
-      pipe.ops.some((cmds) => cmds.some((c) => c[0] === 'INCR' && String(c[1]).includes('mcp:free-acct:calls:'))),
-      'call-ceiling key must be incremented',
+      pipe.ops.some((cmds) => cmds.some((c) => c[0] === 'EVAL' && String(c[3]).includes('mcp:free-acct:calls:'))),
+      'call-ceiling key must be reserved by the atomic allowance script',
     );
   });
 
@@ -156,7 +155,7 @@ describe('api/mcp — user API keys on /mcp (#4859) + pre-check hardening (#4860
   it('entitlement gate: free owner Redis failure → 503 fail-closed (no ungated dispatch)', async () => {
     const { deps } = makeUserKeyDeps({
       getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0 }),
-      pipelineOpts: { throwOnIncr: true },
+      pipelineOpts: { throwOnEval: true },
     });
     const gated = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
     assert.equal(gated.status, 503);

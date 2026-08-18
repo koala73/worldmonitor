@@ -16,7 +16,7 @@ import { applyJmespath } from './jmespath';
 import { reserveQuota } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenialReason } from './upgrade';
-import { TOOL_REGISTRY } from './registry/index';
+import { isQuotaExemptMetadataTool, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
 import {
@@ -291,7 +291,7 @@ export async function dispatchToolsCall(
   // the v1.5.0 compression's UX hedge, and (b) lock out Pro users at the
   // daily cap from even seeing tool definitions. Exempt by name; rate-
   // limiter (60/min) still applies as the abuse guard.
-  const isMetadataTool = p.name === 'describe_tool';
+  const isMetadataTool = isQuotaExemptMetadataTool(tool);
 
   // #6716 F1: the free-account allowance covers CACHE-BACKED tools only.
   // A tool with `_execute` fans out to server/gateway.ts, which runs its own

@@ -3200,6 +3200,9 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(body.id, 100);
     assert.equal(body.error?.code, -32001);
     assert.match(body.error.message, /revoked/i);
+    assert.equal(body.error?.data?.reason, 'no-account');
+    assert.match(body.error?.data?.nextStep ?? '', /sign in|connect|subscribe/i);
+    assert.match(body.error?.data?.upgradeUrl ?? '', /^https:\/\//);
     assert.equal(pipe.count, 0);
     assert.equal(pipe.ops.length, 0);
   });
@@ -3219,6 +3222,9 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(body.id, 6712);
     assert.equal(body.error?.code, -32001);
     assert.match(body.error?.message ?? '', /revoked/i);
+    assert.equal(body.error?.data?.reason, 'no-account');
+    assert.match(body.error?.data?.nextStep ?? '', /sign in|connect|subscribe/i);
+    assert.match(body.error?.data?.upgradeUrl ?? '', /^https:\/\//);
     assert.equal(validationCalls, 1, 'free-tool credential attribution must validate the Pro grant first');
     assert.equal(pipe.count, 0);
     assert.equal(pipe.ops.length, 0);
@@ -3241,6 +3247,9 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(body.id, 6714);
     assert.equal(body.error?.code, -32001);
     assert.match(body.error?.message ?? '', /revoked/i);
+    assert.equal(body.error?.data?.reason, 'no-account');
+    assert.match(body.error?.data?.nextStep ?? '', /sign in|connect|subscribe/i);
+    assert.match(body.error?.data?.upgradeUrl ?? '', /^https:\/\//);
     assert.equal(validationCalls, 1, 'public-method credential attribution must validate the Pro grant first');
     assert.equal(pipe.count, 0);
     assert.equal(pipe.ops.length, 0);
@@ -3293,6 +3302,9 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(res.status, 401);
     const body = await res.json();
     assert.equal(body.error?.code, -32001);
+    assert.equal(body.error?.data?.reason, 'no-account');
+    assert.match(body.error?.data?.nextStep ?? '', /sign in|connect|subscribe/i);
+    assert.match(body.error?.data?.upgradeUrl ?? '', /^https:\/\//);
   });
 
   it('getEntitlements null with the backend UNCONFIGURED → 503, never a free admission (#6716)', async () => {
@@ -3337,13 +3349,13 @@ describe('api/mcp.ts — U7 Pro-path', () => {
       { status: 200, headers: { 'Content-Type': 'application/json' } },
     );
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
-    assert.equal(res.status, 200, 'MCP call-site admits free-account allowance');
+    assert.equal(res.status, 200, `MCP call-site admits free-account allowance: ${await res.clone().text()}`);
     assert.ok(pipe.count >= 1, 'free-account meter reserved a slot');
   });
 
   it('error: free-account allowance exhausted → structured denial (#6716)', async () => {
     const { deps } = makeProDeps({
-      getEntitlements: async () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
+      getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0 }),
       pipelineOpts: { initialCount: 5 },
     });
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
@@ -3351,7 +3363,7 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     // same -32029/429 the Pro daily cap uses. It must NOT be -32001/401: the
     // error catalog documents that pair as "re-authenticate via OAuth", which
     // sends an RFC-9728 client into a loop it can never exit.
-    assert.equal(res.status, 429);
+    assert.equal(res.status, 429, await res.clone().text());
     const body = await res.json();
     assert.equal(body.error?.code, -32029);
     assert.equal(body.error?.data?.reason, 'allowance-exhausted');

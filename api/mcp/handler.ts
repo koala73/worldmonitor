@@ -19,10 +19,13 @@ import {
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
 import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
-import { TOOL_LIST_BYTES, TOOL_LIST_RESPONSE, TOOL_REGISTRY } from './registry/index';
+import { FREE_TIER_TOOL_NAMES, TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
 import {
+  ACCOUNT_RESOURCE_LIST_RESPONSE,
+  buildAccountAllowanceResourceResponse,
   buildPublicResourceResponse,
   buildResourceResponse,
+  isAccountResourceUri,
   isPublicResourceUri,
   RESOURCE_LIST_RESPONSE,
   RESOURCE_TEMPLATE_LIST_RESPONSE,
@@ -644,6 +647,7 @@ async function mcpHandlerInner(
     ? resourceReadUri
     : null;
   const isPublicResourceRead = typeof resourceReadUri === 'string' && isPublicResourceUri(resourceReadUri);
+  const isAccountResourceRead = typeof resourceReadUri === 'string' && isAccountResourceUri(resourceReadUri);
   const isAnonResourceRead = uiResourceReadUri !== null || isPublicResourceRead;
 
   // U7 (R7, R9): a `tools/call` naming a tool in the always-free subset is
@@ -655,7 +659,7 @@ async function mcpHandlerInner(
     ? ((body.params as { name?: unknown } | null)?.name)
     : undefined;
   const isFreeTierToolCall = typeof toolCallName === 'string'
-    && TOOL_REGISTRY.some((t) => t.name === toolCallName && t._freeTier === true);
+    && FREE_TIER_TOOL_NAMES.has(toolCallName);
 
   // Auth gate. `context` is null only on the anonymous discovery path; every
   // data/quota method below runs the full protected path and always sets it.
@@ -867,7 +871,15 @@ async function mcpHandlerInner(
       // data-bearing URI templates are surfaced separately via
       // resources/templates/list (a literal `{iso2}` URI can't resolve, so it
       // must not appear in a list an anonymous validator reads back).
-      return maybeStreamJsonRpcResponse(req, rpcOk(id, { resources: [...RESOURCE_LIST_RESPONSE, ...UI_RESOURCE_LIST_RESPONSE] }, corsHeaders));
+      return maybeStreamJsonRpcResponse(req, rpcOk(id, {
+        resources: [
+          ...RESOURCE_LIST_RESPONSE,
+          ...UI_RESOURCE_LIST_RESPONSE,
+          ...(context?.kind === 'pro' || context?.kind === 'user_key'
+            ? ACCOUNT_RESOURCE_LIST_RESPONSE
+            : []),
+        ],
+      }, corsHeaders));
     case 'resources/templates/list':
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { resourceTemplates: RESOURCE_TEMPLATE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':
@@ -882,6 +894,25 @@ async function mcpHandlerInner(
       // reader — no data, no dispatchToolsCall, no Pro reservation.
       if (isPublicResourceRead) {
         return maybeStreamJsonRpcResponse(req, await buildPublicResourceResponse(body, corsHeaders));
+      }
+      // Account allowance status is authenticated but quota-exempt. The gated
+      // branch above already resolved identity, durable token validity, and the
+      // entitlement/meter selection. Read the same Redis keys as enforcement;
+      // do not route through dispatchToolsCall, which would spend a call merely
+      // to ask how many calls remain.
+      if (isAccountResourceRead) {
+        if (!context) {
+          usage.phase = 'auth';
+          return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
+        }
+        return maybeStreamJsonRpcResponse(req, await buildAccountAllowanceResourceResponse(
+          context,
+          deps,
+          body,
+          corsHeaders,
+          mcpDailyLimit,
+          freeAccountAllowance,
+        ));
       }
       // A data-bearing TEMPLATE instantiation MUST consume the Pro daily quota
       // IDENTICALLY to a tools/call to the equivalent tool. Asymmetric auth

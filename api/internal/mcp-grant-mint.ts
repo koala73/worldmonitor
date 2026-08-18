@@ -264,19 +264,10 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
   const gate = checkProMcpAccess(ent, now, {
     backendConfigured: isEntitlementBackendConfigured(),
   });
-  // #6716: `insufficient_tier` no longer blocks the handshake. A signed-in
-  // non-subscriber is the free-account funnel's target — they must be able to
-  // CONNECT, after which every gated call is metered by
-  // `reserveFreeAccountAllowance` and restricted to cache-backed tools.
-  //
-  // This widens ISSUANCE only. `checkProMcpAccess` itself is unchanged, and
-  // `server/gateway.ts` / `server/_shared/premium-check.ts` still refuse a
-  // non-Pro principal, so the token buys nothing downstream.
-  //
-  // `billing_verification` still refuses: an unverifiable entitlement is not a
-  // free account, and minting during an entitlement outage would hand out
-  // credentials on a read we could not trust.
-  if (gate && gate.kind !== 'insufficient_tier') return proMcpGateDenialResponse(gate);
+  // #6716: free-account admission is deliberately limited to the MCP call
+  // site. OAuth grant issuance remains Pro-only, including confirmed free
+  // accounts, expired/disabled paid rows, and malformed entitlements.
+  if (gate) return proMcpGateDenialResponse(gate);
 
   // Mint the signed grant first (cheaper to fail before the Redis write).
   const exp = now + GRANT_TTL_MS;

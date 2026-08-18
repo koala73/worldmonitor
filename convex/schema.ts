@@ -1591,7 +1591,9 @@ export default defineSchema({
     createdAt: v.number(),
     lastUsedAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
-  }).index("by_userId", ["userId"]),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_userId_revokedAt_createdAt", ["userId", "revokedAt", "createdAt"]),
 
   // API Business domain-gated Pro-seat invites (#4634/#4635). One row per seat
   // invite issued by an active `api_business` owner to a same-corporate-domain

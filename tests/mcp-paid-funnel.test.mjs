@@ -84,9 +84,9 @@ describe('MCP upgrade attribution constants', () => {
 });
 
 describe('checkProMcpAccess landmine — other surfaces still refuse free', () => {
-  it('free entitlement is insufficient_tier (not null)', () => {
+  it('well-formed free entitlement has its own confirmed verdict', () => {
     const gate = checkProMcpAccess(FREE_ENT, Date.now());
-    assert.deepEqual(gate, { kind: 'insufficient_tier' });
+    assert.deepEqual(gate, { kind: 'free_account' });
   });
 
   it('lapsed billing status is billing_verification, not free allowance', () => {
@@ -133,4 +133,3 @@ describe('MCP call-site free-account reinterpretation', () => {
     assert.equal(body.error?.data?.upgradeUrl, MCP_UPGRADE_URL);
   });
 });
-

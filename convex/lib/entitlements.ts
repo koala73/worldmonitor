@@ -25,3 +25,21 @@ export const FREE_FEATURES: PlanFeatures = PRODUCT_CATALOG.free!.features;
 export function getFeaturesForPlan(planKey: string): PlanFeatures {
   return getEntitlementFeatures(planKey);
 }
+
+/** Merge stored per-user overrides with newly added catalog defaults. */
+export function mergeEntitlementFeatures(
+  planKey: string,
+  storedFeatures: Omit<PlanFeatures, "planLimits"> & {
+    planLimits?: Partial<NonNullable<PlanFeatures["planLimits"]>>;
+  },
+): PlanFeatures {
+  const catalogDefaults = getFeaturesForPlan(planKey);
+  return {
+    ...catalogDefaults,
+    ...storedFeatures,
+    planLimits: {
+      ...catalogDefaults.planLimits,
+      ...storedFeatures.planLimits,
+    } as PlanFeatures["planLimits"],
+  };
+}

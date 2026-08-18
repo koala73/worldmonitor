@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import { requireUserId, resolveUserId } from "./lib/auth";
+import { mergeEntitlementFeatures } from "./lib/entitlements";
 
 /**
  * Pro MCP token (non-key) identity rows.
@@ -29,9 +30,8 @@ const MAX_TOKENS_PER_USER = 5;
  *
  * Called from the edge at `/oauth/authorize-pro` after the cross-subdomain
  * Clerk grant has been validated. The caller passes the verified Clerk
- * `userId`. Issuance carries NO entitlement gate (#6716) — the token proves
- * identity, and every gated call re-derives the entitlement at the MCP call
- * site. See the long note in the handler before adding one back.
+ * `userId`. Verifies active Pro MCP entitlement defensively; the edge checks
+ * too, but this mutation is the authoritative row-insertion gate.
  *
  * Per-user 5-row cap with silent oldest rotation: if the user already has
  * 5 active rows we revoke the oldest (by createdAt) before inserting the
@@ -48,34 +48,22 @@ export const issueProMcpToken = internalMutation({
       throw new ConvexError("INVALID_USER_ID");
     }
 
-    // #6716 — NO entitlement gate here, deliberately.
-    //
-    // An MCP token is an IDENTITY credential, not an authorization grant. It
-    // used to be Pro-only (tier >= 1 AND mcpAccess === true AND validUntil in
-    // the future), which meant a signed-in non-subscriber could not connect an
-    // MCP client at all — so the free-account paid funnel had no door to walk
-    // through. Issuance is now open to any authenticated account.
-    //
-    // What did NOT change, and is what keeps this safe:
-    //   - `validateProMcpToken` (below) returns identity only — userId and
-    //     lastUsedAt. It has never carried an entitlement verdict.
-    //   - `api/mcp/auth.ts::checkMcpEntitlementGate` re-derives the entitlement
-    //     on EVERY gated call, and admits a non-subscriber only onto the metered
-    //     free allowance (5 calls + 3 idle-gap windows per UTC day).
-    //   - `api/mcp/dispatch.ts` restricts that allowance to cache-backed tools;
-    //     anything that fetches downstream answers -32002/403 upgrade-required.
-    //   - `server/_shared/pro-mcp-gate.ts::checkProMcpAccess` is UNCHANGED, and
-    //     `server/gateway.ts` + `server/_shared/premium-check.ts` still refuse a
-    //     non-Pro principal. Holding a token buys nothing at the gateway.
-    //   - A lapsed subscriber can now reconnect and receive the structured
-    //     -32002 "resubscribe" denial, instead of being unable to connect at all
-    //     and having to guess why.
-    //
-    // The abuse bound is the per-user cap immediately below (5 tokens, oldest
-    // silently rotated) plus Clerk signup, not the entitlement.
-    //
-    // If you are re-adding a gate here: the thing to gate is the CALL, not the
-    // credential. See `checkMcpEntitlementGate`.
+    const entitlement = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    const mergedFeatures = entitlement
+      ? mergeEntitlementFeatures(entitlement.planKey, entitlement.features)
+      : null;
+    if (
+      !entitlement
+      || !mergedFeatures
+      || entitlement.validUntil < Date.now()
+      || mergedFeatures.tier < 1
+      || mergedFeatures.mcpAccess !== true
+    ) {
+      throw new ConvexError("PRO_REQUIRED");
+    }
 
     // Enforce per-user cap with silent oldest rotation. Match the pattern
     // used by createApiKey at convex/apiKeys.ts:62 — count only non-revoked
@@ -89,23 +77,27 @@ export const issueProMcpToken = internalMutation({
     // ALL rows beyond `MAX_TOKENS_PER_USER - 1` (sorted by createdAt).
     // This makes the cap "eventually MAX" rather than "atomically MAX":
     // the next issue call's check trims any temporary overshoot.
-    const existing = await ctx.db
-      .query("mcpProTokens")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .collect();
-    const active = existing.filter((r) => !r.revokedAt);
-    if (active.length >= MAX_TOKENS_PER_USER) {
-      // Sort ascending by createdAt — oldest first.
-      active.sort((a, b) => a.createdAt - b.createdAt);
-      // Revoke all rows beyond `MAX - 1` so the table converges to MAX
-      // active rows after the upcoming insert. In the no-race case this
-      // is exactly one row (matching the prior behaviour); in a race
-      // where 6 actives slipped through, it's two rows.
+    // Read at most MAX+1 active rows per query. If an old race left more than
+    // that, continue in bounded batches instead of scanning revoked history or
+    // assuming six is the largest possible anomaly.
+    while (true) {
+      const active = await ctx.db
+        .query("mcpProTokens")
+        .withIndex("by_userId_revokedAt_createdAt", (q) => q
+          .eq("userId", args.userId)
+          .eq("revokedAt", undefined))
+        .order("asc")
+        .take(MAX_TOKENS_PER_USER + 1);
+      if (active.length < MAX_TOKENS_PER_USER) break;
+
+      // Leave MAX-1 active rows before insertion. A full batch may mean more
+      // active rows remain, so query again; a short batch was the whole set.
       const toRevoke = active.slice(0, active.length - (MAX_TOKENS_PER_USER - 1));
       const now = Date.now();
       for (const row of toRevoke) {
         await ctx.db.patch(row._id, { revokedAt: now });
       }
+      if (active.length < MAX_TOKENS_PER_USER + 1) break;
     }
 
     const tokenId = await ctx.db.insert("mcpProTokens", {

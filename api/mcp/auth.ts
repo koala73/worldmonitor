@@ -183,15 +183,16 @@ export function wwwAuthHeader(resourceMetadataUrl: string, errorParam = ''): str
 
 /**
  * JSON-RPC denial with machine-readable reason + upgrade URL (#6716).
- * HTTP 401 + WWW-Authenticate for auth-shaped denials; callers that need a
- * different status (e.g. lapsed at 403 via billing helper) use that path.
+ * Defaults to HTTP 401 + WWW-Authenticate for auth-shaped denials. Callers may
+ * select a terminal 403/-32002 denial; those responses deliberately omit the
+ * Bearer challenge so clients do not enter an OAuth retry loop.
  */
 export function mcpStructuredDenialResponse(
   reason: McpDenialReason,
   resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
   id: unknown = null,
-  opts?: { wwwAuthError?: string; message?: string },
+  opts?: { wwwAuthError?: string; message?: string; code?: number; status?: number },
 ): Response {
   const built = buildMcpStructuredDenial(reason);
   const { data } = built;
@@ -200,22 +201,25 @@ export function mcpStructuredDenialResponse(
   // readable `data`. Overriding the message never changes `data.reason`, so an
   // agent branching on the reason sees one vocabulary regardless of copy.
   const message = opts?.message ?? built.message;
-  const wwwAuth = opts?.wwwAuthError !== undefined
-    ? wwwAuthHeader(resourceMetadataUrl, opts.wwwAuthError)
-    : wwwAuthHeader(resourceMetadataUrl, reason === 'no-account' ? '' : 'invalid_token');
+  const status = opts?.status ?? 401;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...corsHeaders,
+  };
+  if (status === 401) {
+    headers['WWW-Authenticate'] = opts?.wwwAuthError !== undefined
+      ? wwwAuthHeader(resourceMetadataUrl, opts.wwwAuthError)
+      : wwwAuthHeader(resourceMetadataUrl, reason === 'no-account' ? '' : 'invalid_token');
+  }
   return new Response(
     JSON.stringify({
       jsonrpc: '2.0',
       id: id ?? null,
-      error: { code: -32001, message, data },
+      error: { code: opts?.code ?? -32001, message, data },
     }),
     {
-      status: 401,
-      headers: withMcpNoStore({
-        'Content-Type': 'application/json',
-        'WWW-Authenticate': wwwAuth,
-        ...corsHeaders,
-      }),
+      status,
+      headers: withMcpNoStore(headers),
     },
   );
 }
@@ -484,7 +488,7 @@ export async function runProPreChecks(
   const validation = await validateProMcpAuthorization(context, deps, resourceMetadataUrl, corsHeaders, ctx, id);
   if (!validation.ok) return validation;
 
-  return checkMcpEntitlementGate(context.userId, deps, corsHeaders, 'pro-entitlement-recheck', ctx, id);
+  return checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'pro-entitlement-recheck', ctx, id);
 }
 
 /**
@@ -532,10 +536,13 @@ export async function validateProMcpAuthorization(
     ? (validation.ok === 'valid' ? validation.userId : null)
     : validation?.userId ?? null;
   if (!validationUserId || validationUserId !== context.userId) {
-    return { ok: false, response: new Response(
-      JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32001, message: 'MCP authorization revoked. Re-authorize at https://worldmonitor.app/mcp-grant.' } }),
-      { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
-    ) };
+    return {
+      ok: false,
+      response: mcpStructuredDenialResponse('no-account', resourceMetadataUrl, corsHeaders, id, {
+        wwwAuthError: 'invalid_token',
+        message: 'MCP authorization revoked. Re-authorize at https://worldmonitor.app/mcp-grant.',
+      }),
+    };
   }
   return { ok: true };
 }
@@ -543,8 +550,10 @@ export async function validateProMcpAuthorization(
 /**
  * Shared mcpAccess entitlement gate for identity-resolved contexts (pro AND
  * user_key). Fail-closed per memory `entitlement-signal-server-outlier-sweep`.
- * Passes when the owner has an active tier>=1 + mcpAccess entitlement; rejects
- * with a 401 Response otherwise.
+ * Passes when the owner has an active tier>=1 + mcpAccess entitlement, or when
+ * the shared gate confirms eligibility for the metered free-account path.
+ * Authentication failures remain 401; terminal entitlement failures are 403;
+ * unverifiable entitlement reads are retryable 503 responses.
  *
  * A passing result also reports `mcpDailyLimit`, read straight off the
  * entitlement this call already fetched — but only for plan-driven plan
@@ -554,17 +563,15 @@ export async function validateProMcpAuthorization(
  * `planLimits` (legacy shape) or a non-plan-driven plan reports `undefined`,
  * which the quota layer resolves to the plan default — the entitlement is
  * NOT re-fetched to fill the gap.
- */
-/**
- * Every outcome here is now either admission or a NON-auth denial (the billing
- * envelope, or a retryable 503) — so this no longer renders a 401 and no longer
- * needs `resourceMetadataUrl`. `insufficient_tier` is admission with a metered
- * free allowance (#6716); a thrown or unverifiable entitlement is an
- * availability failure, not a billing verdict.
+ *
+ * Only `free_account` is admitted to the metered allowance. Other insufficient
+ * entitlement states remain auth denials; thrown or unverifiable reads remain
+ * retryable availability failures.
  */
 async function checkMcpEntitlementGate(
   userId: string,
   deps: McpHandlerDeps,
+  resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
   sentryStep: string,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
@@ -626,15 +633,26 @@ async function checkMcpEntitlementGate(
     // flattening pro-mcp-gate.ts forbids, and the shape of #5600.
     return unavailable();
   }
-  // insufficient_tier — MCP call-site ONLY reinterpretation (#6716).
-  // Do NOT fold this into checkProMcpAccess: that gate's other four callers
-  // (gateway, authorize-pro, grant-mint, grant-context) must still refuse.
-  // Admission here is eligibility; the idle-gap + call counters live in
-  // dispatch via reserveFreeAccountAllowance.
+  if (gate.kind === 'free_account') {
+    // MCP call-site ONLY reinterpretation (#6716). OAuth issuance and the
+    // gateway still refuse this verdict. Admission here is eligibility; the
+    // idle-gap + call counters live in dispatch.
+    return {
+      ok: true,
+      mcpDailyLimit: FREE_ACCOUNT_CALLS_PER_DAY,
+      freeAccountAllowance: true,
+    };
+  }
+
+  // A non-free insufficient entitlement (expired/disabled paid row or a
+  // malformed shape) must not inherit the free allowance.
   return {
-    ok: true,
-    mcpDailyLimit: FREE_ACCOUNT_CALLS_PER_DAY,
-    freeAccountAllowance: true,
+    ok: false,
+    response: mcpStructuredDenialResponse('upgrade-required', resourceMetadataUrl, corsHeaders, id, {
+      code: -32002,
+      status: 403,
+      message: 'Subscription not active.',
+    }),
   };
 }
 
@@ -648,15 +666,12 @@ async function checkMcpEntitlementGate(
 export async function runUserKeyPreChecks(
   context: Extract<McpAuthContext, { kind: 'user_key' }>,
   deps: McpHandlerDeps,
-  // Kept for signature parity with runProPreChecks and the kind-dispatched
-  // caller; the entitlement gate no longer renders a 401, so nothing here needs
-  // the resource-metadata URL (#6716).
-  _resourceMetadataUrl: string,
+  resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
 ): Promise<McpPreCheckResult> {
-  const gate = await checkMcpEntitlementGate(context.userId, deps, corsHeaders, 'user-key-entitlement', ctx, id);
+  const gate = await checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx, id);
   // KTD6: the entitlement verdict applies, the plan's MCP allowance does NOT —
   // except the free-account paid-funnel ceiling (#6716), which is not a plan
   // catalog allowance. user_key callers otherwise stay on the hardcoded daily

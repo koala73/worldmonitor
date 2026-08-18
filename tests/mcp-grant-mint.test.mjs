@@ -348,15 +348,8 @@ describe('mintGrantHandler', () => {
     assert.equal(json.error, 'INVALID_REDIRECT_URI');
   });
 
-  // #6716 — the handshake is open to any signed-in account.
-  //
-  // These five shapes all classify as `insufficient_tier`, and every one of them
-  // used to be a 403 upsell that stopped a non-subscriber from connecting MCP at
-  // all. The free-account funnel needs them to CONNECT: authorization is
-  // re-derived on every gated call (api/mcp/auth.ts::checkMcpEntitlementGate),
-  // which admits them only onto the metered free allowance over cache-backed
-  // tools. `billing_verification` shapes are covered separately below and still
-  // refuse — see the #5622 block.
+  // The free-account allowance is a call-site-only decision. None of the
+  // OAuth issuance gates may turn `insufficient_tier` into admission.
   const INSUFFICIENT_TIER_SHAPES = [
     ['a free-tier row', () => FREE_ENT],
     ['a Pro row whose validUntil has passed', () => EXPIRED_PRO_ENT],
@@ -369,13 +362,13 @@ describe('mintGrantHandler', () => {
   ];
 
   for (const [label, ent] of INSUFFICIENT_TIER_SHAPES) {
-    it(`mints for ${label} — the free funnel needs a door (#6716)`, async () => {
+    it(`refuses to mint for ${label} — free allowance is call-site only (#6716)`, async () => {
       const { deps } = makeMintDeps({ getEntitlements: async () => ent() });
       const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
-      assert.equal(res.status, 200, 'a signed-in account must be able to connect');
+      assert.equal(res.status, 403);
       const json = await res.json();
-      assert.ok(json.redirect, 'the handshake continues to authorize-pro');
-      assert.equal(json.error, undefined);
+      assert.equal(json.error, 'INSUFFICIENT_TIER');
+      assert.equal(json.redirect, undefined);
     });
   }
 
@@ -527,17 +520,8 @@ describe('grantContextHandler', () => {
     assert.equal(json.error, 'INVALID_REQUEST');
   });
 
-  // #6716 — the consent card renders for any signed-in account.
-  //
-  // This block used to assert the opposite: a non-Pro caller got a 403 and was
-  // shown NO client_name, so a tier-0 account could not probe which nonces or
-  // clients existed. Opening the free funnel changes that on purpose — a user
-  // cannot meaningfully approve a connection without seeing what they are
-  // approving, and the mint immediately after now accepts them.
-  //
-  // The probing bound that remains: `resolveUserId` rejects anonymous callers
-  // above, so client metadata is still only visible to a Clerk-authenticated
-  // session. What changed is that the session no longer has to be a paying one.
+  // The consent surface is also an OAuth issuance gate. It must refuse before
+  // revealing client metadata when the account does not have active Pro MCP.
   const CONTEXT_INSUFFICIENT_TIER_SHAPES = [
     ['a free-tier row', () => FREE_ENT],
     ['tier-1 with mcpAccess: false', () => PRO_ENT_NO_MCP_ACCESS],
@@ -548,13 +532,13 @@ describe('grantContextHandler', () => {
   ];
 
   for (const [label, ent] of CONTEXT_INSUFFICIENT_TIER_SHAPES) {
-    it(`renders the consent card for ${label} (#6716)`, async () => {
+    it(`refuses the consent card for ${label} (#6716)`, async () => {
       const { deps } = makeContextDeps({ getEntitlements: async () => ent() });
       const res = await grantContextHandler(makeGetReq('nonce_xyz'), deps);
-      assert.equal(res.status, 200);
+      assert.equal(res.status, 403);
       const json = await res.json();
-      assert.equal(json.error, undefined);
-      assert.ok(json.client_name, 'the user must see what they are approving');
+      assert.equal(json.error, 'INSUFFICIENT_TIER');
+      assert.equal(json.client_name, undefined);
     });
   }
 
@@ -607,17 +591,11 @@ describe('grantContextHandler', () => {
     assert.equal(json.redirect_host, undefined);
   });
 
-  it('#5619 + #6716: a CONFIRMED absent entitlement is a free account, and connects', async () => {
-    // #5619 established the distinction that still matters: a null reaching this
-    // gate means Convex ANSWERED and the user has no row, versus a null that
-    // means we never got to ask (covered by the retryable cases above). #6716
-    // changes only what the confirmed answer earns — a never-subscribed account
-    // is exactly the free funnel's target, so it connects and is metered per
-    // call rather than being turned away here.
+  it('#5619 + #6716: a CONFIRMED absent entitlement still cannot issue OAuth credentials', async () => {
     const { deps } = makeContextDeps({ getEntitlements: async () => null });
     const res = await grantContextHandler(makeGetReq('nonce_xyz'), deps);
-    assert.equal(res.status, 200);
-    // The retryable vocabulary stays reserved for states we could not verify.
+    assert.equal(res.status, 403);
+    assert.equal((await res.json()).error, 'INSUFFICIENT_TIER');
     assert.equal(res.headers.get('X-Billing-Verification'), null);
   });
 
@@ -817,15 +795,12 @@ describe('grant handshake billing-verification denials (#5622)', () => {
       assert.equal(res.headers.get('Retry-After'), null);
     });
 
-    it(`${label}: a CONFIRMED free row connects, and carries no verification header`, async () => {
-      // The #5622 contract this block defends is retryable-vs-terminal, and it
-      // is intact: only states we could not verify get X-Billing-Verification
-      // and a Retry-After. A confirmed free row is neither — since #6716 it is
-      // simply an account that may connect and be metered per call.
+    it(`${label}: a CONFIRMED free row is a terminal 403 without a verification header`, async () => {
       const { deps } = makeDeps({ getEntitlements: async () => FREE_ENT });
       const res = await invoke(deps);
 
-      assert.equal(res.status, 200);
+      assert.equal(res.status, 403);
+      assert.equal((await res.json()).error, 'INSUFFICIENT_TIER');
       assert.equal(res.headers.get('X-Billing-Verification'), null);
       assert.equal(res.headers.get('Retry-After'), null);
     });

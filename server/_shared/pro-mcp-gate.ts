@@ -65,12 +65,39 @@ export type ProMcpGateDenial =
    * them, that flattening is #5600.
    */
   | { kind: 'billing_verification'; denial: BillingVerificationDenial }
+  /** A verified no-row or well-formed tier-0 account eligible at the MCP call site. */
+  | { kind: 'free_account' }
   /**
-   * A confirmed answer that simply does not grant Pro MCP access: free tier, a
-   * plan without mcpAccess, an expired validUntil, or a fail-closed null. This
-   * is the honest upsell.
+   * A confirmed answer that does not grant Pro MCP access and is not eligible
+   * for the free-account allowance: a tiered plan without mcpAccess, an expired
+   * validUntil, or a malformed entitlement shape. This is the honest upsell.
    */
   | { kind: 'insufficient_tier' };
+
+/**
+ * Free-account eligibility is intentionally narrower than "not Pro".
+ *
+ * A configured entitlement backend returning no row is an authoritative free
+ * verdict. A stored row must be a complete, internally consistent tier-0
+ * shape. Expired/disabled paid rows, malformed values, and unconfigured lookup
+ * nulls are not free accounts and must remain fail-closed.
+ */
+function isConfirmedFreeMcpAccount(
+  entitlements: unknown,
+  opts?: { backendConfigured?: boolean },
+): boolean {
+  if (entitlements === null) return opts?.backendConfigured === true;
+  if (!entitlements || typeof entitlements !== 'object') return false;
+
+  const candidate = entitlements as {
+    features?: { tier?: unknown; mcpAccess?: unknown };
+    validUntil?: unknown;
+  };
+  return candidate.features?.tier === 0
+    && candidate.features.mcpAccess === false
+    && typeof candidate.validUntil === 'number'
+    && Number.isFinite(candidate.validUntil);
+}
 
 /**
  * Returns null when the caller may proceed, else the reason.
@@ -132,7 +159,9 @@ export function checkProMcpAccess(
       }
     : entitlements;
   const denial = classifyBillingVerification(billingInput);
-  return denial ? { kind: 'billing_verification', denial } : { kind: 'insufficient_tier' };
+  if (denial) return { kind: 'billing_verification', denial };
+  if (isConfirmedFreeMcpAccount(entitlements, opts)) return { kind: 'free_account' };
+  return { kind: 'insufficient_tier' };
 }
 
 // ---------------------------------------------------------------------------
@@ -169,7 +198,7 @@ const NO_STORE_JSON: Record<string, string> = {
  * whether they had clicked Authorize yet.
  */
 export function proMcpGateDenialResponse(gate: ProMcpGateDenial): Response {
-  if (gate.kind === 'insufficient_tier') {
+  if (gate.kind === 'insufficient_tier' || gate.kind === 'free_account') {
     return jsonError('INSUFFICIENT_TIER', 'A WorldMonitor Pro subscription is required.', 403, {});
   }
 
