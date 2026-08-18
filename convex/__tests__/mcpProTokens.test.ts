@@ -90,21 +90,44 @@ describe("issueProMcpToken", () => {
     expect(result.tokenId).toBeTruthy();
   });
 
-  test("rejects tier-0 (free) user with PRO_REQUIRED", async () => {
+  // #6716 — issuance carries no entitlement gate. An MCP token proves IDENTITY;
+  // `validateProMcpToken` returns only `{userId, lastUsedAt}` and has never
+  // carried a verdict, and `api/mcp/auth.ts::checkMcpEntitlementGate` re-derives
+  // the entitlement on every gated call. A non-subscriber therefore gets a
+  // credential and a metered free allowance over cache-backed tools, never
+  // silent Pro access — `checkProMcpAccess`, `server/gateway.ts` and
+  // `premium-check.ts` are all unchanged.
+  test("issues for a user with NO entitlement row — the free funnel's door (#6716)", async () => {
     const t = convexTest(schema, modules);
 
-    await expect(
-      t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: "user-free" }),
-    ).rejects.toThrow(/PRO_REQUIRED/);
+    const { tokenId } = await t.mutation(internal.mcpProTokens.issueProMcpToken, {
+      userId: "user-free",
+    });
+    expect(tokenId).toBeTruthy();
+    // Identity only — the row asserts nothing about entitlement.
+    const validated = await t.query(internal.mcpProTokens.validateProMcpToken, { tokenId });
+    expect(validated?.userId).toBe("user-free");
   });
 
-  test("rejects tier-1 user whose entitlement has lapsed", async () => {
+  test("issues for a lapsed subscriber so they can reconnect and be told why (#6716)", async () => {
+    // Previously a churned subscriber could not connect at all, so they never
+    // saw the reason. They now reach the structured -32002 resubscribe denial.
     const t = convexTest(schema, modules);
     await seedProEntitlement(t, "user-pro", { validUntil: PAST });
 
+    const { tokenId } = await t.mutation(internal.mcpProTokens.issueProMcpToken, {
+      userId: "user-pro",
+    });
+    expect(tokenId).toBeTruthy();
+  });
+
+  test("still rejects an empty userId", async () => {
+    // The one thing issuance does gate: it must bind to a real principal.
+    const t = convexTest(schema, modules);
+
     await expect(
-      t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: "user-pro" }),
-    ).rejects.toThrow(/PRO_REQUIRED/);
+      t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: "" }),
+    ).rejects.toThrow(/INVALID_USER_ID/);
   });
 
   test("F5 convergence: 6 actives (race-leftover) → next issue trims to MAX", async () => {
@@ -469,7 +492,7 @@ describe("HTTP route /api/internal-issue-pro-mcp-token", () => {
     expect(body.tokenId).toBeTruthy();
   });
 
-  test("tier-0 → 403 PRO_REQUIRED", async () => {
+  test("tier-0 → 200, a token is issued (#6716)", async () => {
     const t = convexTest(schema, modules);
 
     const res = await t.fetch("/api/internal-issue-pro-mcp-token", {
@@ -480,9 +503,24 @@ describe("HTTP route /api/internal-issue-pro-mcp-token", () => {
       },
       body: JSON.stringify({ userId: "user-free" }),
     });
-    expect(res.status).toBe(403);
-    const body = (await res.json()) as { error?: string };
-    expect(body.error).toBe("PRO_REQUIRED");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { tokenId?: string; error?: string };
+    expect(body.error).toBeUndefined();
+    expect(body.tokenId).toBeTruthy();
+  });
+
+  test("the route still refuses without the shared secret (#6716 widened entitlement, not auth)", async () => {
+    // Opening the entitlement gate must not be read as opening the ROUTE. This
+    // is a service-to-service endpoint and its caller authentication is
+    // untouched.
+    const t = convexTest(schema, modules);
+
+    const res = await t.fetch("/api/internal-issue-pro-mcp-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: "user-free" }),
+    });
+    expect(res.status).not.toBe(200);
   });
 });
 

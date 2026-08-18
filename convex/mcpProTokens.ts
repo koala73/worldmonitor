@@ -2,7 +2,6 @@ import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { TOUCH_DEBOUNCE_MS } from "./apiKeys";
 import { requireUserId, resolveUserId } from "./lib/auth";
-import { getFeaturesForPlan } from "./lib/entitlements";
 
 /**
  * Pro MCP token (non-key) identity rows.
@@ -30,8 +29,9 @@ const MAX_TOKENS_PER_USER = 5;
  *
  * Called from the edge at `/oauth/authorize-pro` after the cross-subdomain
  * Clerk grant has been validated. The caller passes the verified Clerk
- * `userId`. Verifies entitlement (tier ≥ 1, `validUntil >= now`) defensively
- * — the edge re-checks too, but the row insert is the authoritative gate.
+ * `userId`. Issuance carries NO entitlement gate (#6716) — the token proves
+ * identity, and every gated call re-derives the entitlement at the MCP call
+ * site. See the long note in the handler before adding one back.
  *
  * Per-user 5-row cap with silent oldest rotation: if the user already has
  * 5 active rows we revoke the oldest (by createdAt) before inserting the
@@ -48,35 +48,34 @@ export const issueProMcpToken = internalMutation({
       throw new ConvexError("INVALID_USER_ID");
     }
 
-    // Entitlement gate: Pro is the minimum (tier ≥ 1). API_STARTER+ (tier 2+)
-    // also passes, since Pro is the floor — the plan explicitly notes
-    // "Pro is the minimum, not exclusive."
+    // #6716 — NO entitlement gate here, deliberately.
     //
-    // Mirror downstream MCP-edge gate: BOTH tier ≥ 1 AND mcpAccess === true
-    // are required. Reviewer round-2 P2 — gating on tier alone allowed a
-    // tier-1 user without mcpAccess to mint a token that would then fail
-    // every tools/call at the gateway. PRE-FIELD legacy entitlement rows
-    // are handled by the read-time merge in convex/entitlements.ts; this
-    // direct ctx.db read of the row uses the catalog default explicitly.
-    const entitlement = await ctx.db
-      .query("entitlements")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .first();
-    const catalogDefaults = entitlement
-      ? getFeaturesForPlan(entitlement.planKey)
-      : null;
-    const mergedFeatures = entitlement && catalogDefaults
-      ? { ...catalogDefaults, ...entitlement.features }
-      : null;
-    if (
-      !entitlement ||
-      !mergedFeatures ||
-      entitlement.validUntil < Date.now() ||
-      mergedFeatures.tier < 1 ||
-      mergedFeatures.mcpAccess !== true
-    ) {
-      throw new ConvexError("PRO_REQUIRED");
-    }
+    // An MCP token is an IDENTITY credential, not an authorization grant. It
+    // used to be Pro-only (tier >= 1 AND mcpAccess === true AND validUntil in
+    // the future), which meant a signed-in non-subscriber could not connect an
+    // MCP client at all — so the free-account paid funnel had no door to walk
+    // through. Issuance is now open to any authenticated account.
+    //
+    // What did NOT change, and is what keeps this safe:
+    //   - `validateProMcpToken` (below) returns identity only — userId and
+    //     lastUsedAt. It has never carried an entitlement verdict.
+    //   - `api/mcp/auth.ts::checkMcpEntitlementGate` re-derives the entitlement
+    //     on EVERY gated call, and admits a non-subscriber only onto the metered
+    //     free allowance (5 calls + 3 idle-gap windows per UTC day).
+    //   - `api/mcp/dispatch.ts` restricts that allowance to cache-backed tools;
+    //     anything that fetches downstream answers -32002/403 upgrade-required.
+    //   - `server/_shared/pro-mcp-gate.ts::checkProMcpAccess` is UNCHANGED, and
+    //     `server/gateway.ts` + `server/_shared/premium-check.ts` still refuse a
+    //     non-Pro principal. Holding a token buys nothing at the gateway.
+    //   - A lapsed subscriber can now reconnect and receive the structured
+    //     -32002 "resubscribe" denial, instead of being unable to connect at all
+    //     and having to guess why.
+    //
+    // The abuse bound is the per-user cap immediately below (5 tokens, oldest
+    // silently rotated) plus Clerk signup, not the entitlement.
+    //
+    // If you are re-adding a gate here: the thing to gate is the CALL, not the
+    // credential. See `checkMcpEntitlementGate`.
 
     // Enforce per-user cap with silent oldest rotation. Match the pattern
     // used by createApiKey at convex/apiKeys.ts:62 — count only non-revoked

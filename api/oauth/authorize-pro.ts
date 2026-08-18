@@ -433,13 +433,16 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
   const gate = checkProMcpAccess(ent, deps.now(), {
     backendConfigured: isEntitlementBackendConfigured(),
   });
-  if (gate) {
-    if (gate.kind === 'billing_verification') return billingVerificationPage(gate.denial);
-    return htmlError(
-      'Pro Subscription Required',
-      'A WorldMonitor Pro subscription is required for this connection. Please subscribe and try again.',
-      403,
-    );
+  // #6716: `insufficient_tier` completes the authorization. This is the last of
+  // the three handshake gates; leaving it closed while grant-context and
+  // grant-mint opened would let a free account clear consent and mint a grant,
+  // then fail on the final redirect — strictly worse than refusing up front.
+  //
+  // Their token then meters against the free allowance on every gated call
+  // (cache-backed tools only). `billing_verification` still renders its own
+  // retryable page: a lapse or an unverifiable read is not a free account.
+  if (gate && gate.kind === 'billing_verification') {
+    return billingVerificationPage(gate.denial);
   }
 
   // ----- 8. Issue the Convex mcpProTokens row -----

@@ -355,24 +355,34 @@ describe('authorizeProHandler — forgery defense', () => {
 // ===========================================================================
 
 describe('authorizeProHandler — entitlement re-check', () => {
-  it('tier just lapsed (was 1 at mint, now 0) → HTML error; mcpProTokens row NOT issued', async () => {
+  // #6716 — a confirmed non-subscriber completes authorization.
+  //
+  // This is the LAST of the three handshake gates. grant-context and grant-mint
+  // now admit `insufficient_tier`, so leaving this one closed would let a free
+  // account clear consent and mint a grant and then fail on the final redirect —
+  // strictly worse than refusing up front. Their token meters against the free
+  // allowance on every gated call; it grants nothing at the gateway.
+  it('a free-tier row completes authorization and issues a token (#6716)', async () => {
     const grant = await makeGrantToken();
     const { deps, issueCalls } = await makeDeps({ getEntitlements: async () => FREE_ENT });
     const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
-    assert.equal(res.status, 403);
+    assert.notEqual(res.status, 403);
     assert.equal(res.headers.get('Cache-Control'), 'no-store');
-    assert.equal(issueCalls.length, 0, 'issueProMcpTokenForUser MUST NOT be called when tier check fails');
+    assert.equal(issueCalls.length, 1, 'the free funnel needs a credential to meter');
   });
 
-  it('subscription expired (validUntil < now) → HTML error; row NOT issued', async () => {
+  it('an expired Pro row (validUntil < now) may reconnect (#6716)', async () => {
+    // A churned subscriber previously could not reconnect at all, so they never
+    // saw WHY. They now connect and receive the structured -32002 "resubscribe"
+    // denial on their first gated call.
     const grant = await makeGrantToken();
     const { deps, issueCalls } = await makeDeps({ getEntitlements: async () => EXPIRED_PRO_ENT });
     const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
-    assert.equal(res.status, 403);
-    assert.equal(issueCalls.length, 0);
+    assert.notEqual(res.status, 403);
+    assert.equal(issueCalls.length, 1);
   });
 
-  it('getEntitlements returns null (Convex CONFIRMED no row) → HTML error; row NOT issued', async () => {
+  it('getEntitlements returns null (Convex CONFIRMED no row) → connects; row IS issued (#6716)', async () => {
     // Was named "Convex blip", but a blip has not produced a null since the
     // lookup-failure marker landed — it returns a verificationUnavailable row
     // and takes the retryable path asserted in the #5622 block below. A null
@@ -387,8 +397,11 @@ describe('authorizeProHandler — entitlement re-check', () => {
     try {
       const { deps, issueCalls } = await makeDeps({ getEntitlements: async () => null });
       const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
-      assert.equal(res.status, 403);
-      assert.equal(issueCalls.length, 0);
+      // #6716: a CONFIRMED no-row is a never-subscribed account — the funnel's
+      // target. The UNCONFIGURED half below still refuses, which is the
+      // distinction this test exists to keep separate.
+      assert.notEqual(res.status, 403);
+      assert.equal(issueCalls.length, 1);
     } finally {
       if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
       else process.env.CONVEX_SITE_URL = originalSiteUrl;
@@ -418,17 +431,23 @@ describe('authorizeProHandler — entitlement re-check', () => {
     }
   });
 
-  it('reviewer round-2 P2: tier-1 with mcpAccess: false → HTML error; row NOT issued', async () => {
+  // The round-2 P2 concern was that gating on TIER alone let a tier-1 user
+  // without mcpAccess mint a token and then fail every tools/call at the
+  // gateway. That mismatch is now impossible for the opposite reason: issuance
+  // no longer claims anything about entitlement, and the MCP call site derives
+  // the verdict per call. Both shapes below classify as `insufficient_tier`, so
+  // they connect and meter — they do not get silent Pro access.
+  it('tier-1 with mcpAccess: false connects onto the metered allowance (#6716)', async () => {
     const grant = await makeGrantToken();
     const { deps, issueCalls } = await makeDeps({
       getEntitlements: async () => PRO_ENT_NO_MCP_ACCESS,
     });
     const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
-    assert.equal(res.status, 403);
-    assert.equal(issueCalls.length, 0, 'gate must mirror MCP-edge mcpAccess check');
+    assert.notEqual(res.status, 403);
+    assert.equal(issueCalls.length, 1);
   });
 
-  it('reviewer round-2 P2: tier-1 with mcpAccess: undefined (legacy row) → HTML error', async () => {
+  it('tier-1 with mcpAccess undefined (legacy row) connects onto the metered allowance (#6716)', async () => {
     const grant = await makeGrantToken();
     const { deps, issueCalls } = await makeDeps({
       getEntitlements: async () => ({
@@ -437,8 +456,8 @@ describe('authorizeProHandler — entitlement re-check', () => {
       }),
     });
     const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
-    assert.equal(res.status, 403);
-    assert.equal(issueCalls.length, 0, 'undefined mcpAccess fails closed');
+    assert.notEqual(res.status, 403);
+    assert.equal(issueCalls.length, 1, 'undefined mcpAccess is still not Pro — it is metered');
   });
 });
 
@@ -545,14 +564,18 @@ describe('authorizeProHandler — billing-verification denials (#5622)', () => {
     assert.match(await res.text(), /Subscription Lapsed/);
   });
 
-  it('a CONFIRMED free row still gets the plain upsell with no verification header', async () => {
+  it('a CONFIRMED free row authorizes, and carries no verification header (#6716)', async () => {
+    // The #5622 contract under test here is retryable-vs-terminal, and it holds:
+    // X-Billing-Verification stays reserved for states we could not verify. A
+    // confirmed free row is a verified answer, and since #6716 the answer is
+    // "connect and meter" rather than "buy Pro".
     const grant = await makeGrantToken();
     const { deps } = await makeDeps({ getEntitlements: async () => FREE_ENT });
     const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
 
-    assert.equal(res.status, 403);
+    assert.notEqual(res.status, 403);
     assert.equal(res.headers.get('X-Billing-Verification'), null);
-    assert.match(await res.text(), /Pro Subscription Required/);
+    assert.equal(res.headers.get('Retry-After'), null);
   });
 
   it('a CURRENT Pro row carrying a renewal marker for a stronger plan still authorizes', async () => {
