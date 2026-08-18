@@ -17,9 +17,9 @@
  * `SearchSelectionDispatcher` bindings literal in `src/app/search-manager.ts`
  * (not a hand-copied snippet) and evaluates them against branded fakes that
  * throw the same TypeError Firefox does for any receiver other than
- * `undefined` (a bare/unqualified call) or `globalThis`. This fails against the
- * pre-fix shorthand form and passes only when the bindings avoid a bare
- * reference.
+ * `undefined` (a bare/unqualified call) or `globalThis`. It shadows both bare
+ * globals and `globalThis` so a direct `globalThis.setTimeout` property value
+ * fails the same way as the pre-fix shorthand form.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -79,42 +79,95 @@ const transpiledClearTimeoutProperty = ts.transpileModule(clearTimeoutPropertyTe
 }).outputText.trim().replace(/;$/, '');
 
 /**
- * Build the real bindings object from the extracted source, resolving any bare
- * `setTimeout`/`clearTimeout` reference to the branded fakes supplied here —
- * exactly like the shorthand property would resolve to the real global in
- * production.
+ * Build the real bindings object from the extracted source, resolving bare and
+ * `globalThis` timer references to the branded fakes supplied here.
  */
 function buildBindings(
   brandedSetTimeout: typeof setTimeout,
   brandedClearTimeout: typeof clearTimeout,
+  timerGlobal: {
+    setTimeout: typeof setTimeout;
+    clearTimeout: typeof clearTimeout;
+  } = {
+    setTimeout: brandedSetTimeout,
+    clearTimeout: brandedClearTimeout,
+  },
 ): { setTimeout: typeof setTimeout; clearTimeout: typeof clearTimeout } {
   // eslint-disable-next-line no-new-func
   const factory = new Function(
     'setTimeout',
     'clearTimeout',
+    'globalThis',
     `'use strict';\nreturn {\n${transpiledSetTimeoutProperty},\n${transpiledClearTimeoutProperty}\n};`,
-  ) as (st: typeof setTimeout, ct: typeof clearTimeout) => {
+  ) as (st: typeof setTimeout, ct: typeof clearTimeout, timerGlobal: {
+    setTimeout: typeof setTimeout;
+    clearTimeout: typeof clearTimeout;
+  }) => {
     setTimeout: typeof setTimeout;
     clearTimeout: typeof clearTimeout;
   };
-  return factory(brandedSetTimeout, brandedClearTimeout);
+  return factory(brandedSetTimeout, brandedClearTimeout, timerGlobal);
 }
 
-/** Mimics Firefox's WebIDL brand check: only a bare call or a call on the real global object is legal. */
-function brand<Args extends unknown[], R>(name: string, real: (...args: Args) => R) {
+/** Mimics Firefox's WebIDL brand check: only a bare call or a call on the global object is legal. */
+function brand<Args extends unknown[], R>(
+  name: string,
+  real: (...args: Args) => R,
+  allowedGlobal: object = globalThis,
+) {
   return function (this: unknown, ...args: Args): R {
-    if (this !== undefined && this !== globalThis) {
+    if (this !== undefined && this !== allowedGlobal) {
       throw new TypeError(`'${name}' called on an object that does not implement interface Window.`);
     }
     return real(...args);
   };
 }
 
+function createTimerQueue() {
+  let nextHandle = 0;
+  const callbacks = new Map<number, () => void>();
+  return {
+    setTimeout(callback: () => void, _delay: number): ReturnType<typeof setTimeout> {
+      const handle = ++nextHandle;
+      callbacks.set(handle, callback);
+      return handle as unknown as ReturnType<typeof setTimeout>;
+    },
+    clearTimeout(timer: ReturnType<typeof setTimeout>): void {
+      callbacks.delete(timer as unknown as number);
+    },
+    flush(): void {
+      const pending = [...callbacks.values()];
+      callbacks.clear();
+      for (const callback of pending) callback();
+    },
+  };
+}
+
 describe('SearchSelectionDispatcher timer bindings (WORLDMONITOR-ZV)', () => {
   it('does not pass a bare setTimeout/clearTimeout reference that breaks when called as a method', () => {
-    const brandedSetTimeout = brand('setTimeout', setTimeout) as unknown as typeof setTimeout;
-    const brandedClearTimeout = brand('clearTimeout', clearTimeout) as unknown as typeof clearTimeout;
-    const bindings = buildBindings(brandedSetTimeout, brandedClearTimeout);
+    const timers = createTimerQueue();
+    const timerGlobal = {} as {
+      setTimeout: typeof setTimeout;
+      clearTimeout: typeof clearTimeout;
+    };
+    const brandedSetTimeout = brand('setTimeout', timers.setTimeout, timerGlobal) as unknown as typeof setTimeout;
+    const brandedClearTimeout = brand('clearTimeout', timers.clearTimeout, timerGlobal) as unknown as typeof clearTimeout;
+    timerGlobal.setTimeout = brandedSetTimeout;
+    timerGlobal.clearTimeout = brandedClearTimeout;
+    const bindings = buildBindings(brandedSetTimeout, brandedClearTimeout, timerGlobal);
+
+    const directGlobalReferences = {
+      setTimeout: timerGlobal.setTimeout,
+      clearTimeout: timerGlobal.clearTimeout,
+    };
+    assert.throws(
+      () => directGlobalReferences.setTimeout(() => {}, 0),
+      /interface Window/,
+    );
+    assert.throws(
+      () => directGlobalReferences.clearTimeout(undefined as ReturnType<typeof setTimeout>),
+      /interface Window/,
+    );
 
     let fired = false;
     assert.doesNotThrow(() => {
@@ -124,9 +177,10 @@ describe('SearchSelectionDispatcher timer bindings (WORLDMONITOR-ZV)', () => {
         fired = true;
       }, 0);
       bindings.clearTimeout(handle);
+      timers.flush();
     }, /interface Window/);
 
-    assert.equal(fired, false, 'the timer scheduled above must have been cancelled, not fired');
+    assert.equal(fired, false, 'the timer scheduled above must have been cancelled before callbacks flush');
   });
 
   it('still schedules and fires a real timer through the bindings', async () => {
