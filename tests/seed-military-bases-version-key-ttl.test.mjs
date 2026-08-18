@@ -87,14 +87,16 @@ test('seedGeo arms and refreshes the self-healing TTL on every batch', async () 
   const batches = stub.calls.filter(c => c.path === '/pipeline');
   assert.equal(batches.length, 3, '1001 entries at BATCH_SIZE 500 must pipeline 3 times');
   for (const [i, batch] of batches.entries()) {
-    const expire = batch.body.at(-1);
-    assert.equal(
-      expire[0], 'EXPIRE',
-      `batch ${i + 1} must close by arming the TTL — piggybacked here so it arms from the `
-        + 'first GEOADD (EXPIRE on a missing key is a no-op) and refreshes while alive',
-    );
-    assert.equal(expire[1], 'military:bases:geo:V');
-    assert.equal(expire[2], String(VERSION_KEY_TTL_SECONDS));
+    const [op, script, keyCount, activeKey, versionKey, candidateVersion, ttl] = batch.body.at(-1);
+    assert.equal(op, 'EVAL', `batch ${i + 1} must close with an atomic staging-TTL guard`);
+    assert.match(script, /local active = redis\.call\('GET', KEYS\[1\]\)/);
+    assert.match(script, /active == ARGV\[1\]/);
+    assert.match(script, /redis\.call\('EXPIRE', KEYS\[2\], ARGV\[2\]\)/);
+    assert.equal(keyCount, '2');
+    assert.equal(activeKey, 'military:bases:active');
+    assert.equal(versionKey, 'military:bases:geo:V');
+    assert.equal(candidateVersion, 'V');
+    assert.equal(ttl, String(VERSION_KEY_TTL_SECONDS));
   }
 });
 
@@ -114,8 +116,87 @@ test('seedMeta arms and refreshes the self-healing TTL on every batch', async ()
   const batches = stub.calls.filter(c => c.path === '/pipeline');
   assert.equal(batches.length, 2);
   for (const [i, batch] of batches.entries()) {
-    assert.equal(batch.body.at(-1)[0], 'EXPIRE', `batch ${i + 1} must close by arming the TTL`);
-    assert.equal(batch.body.at(-1)[1], 'military:bases:meta:V');
+    const [op, script, keyCount, activeKey, versionKey, candidateVersion, ttl] = batch.body.at(-1);
+    assert.equal(op, 'EVAL', `batch ${i + 1} must close with an atomic staging-TTL guard`);
+    assert.match(script, /active == ARGV\[1\]/);
+    assert.equal(keyCount, '2');
+    assert.equal(activeKey, 'military:bases:active');
+    assert.equal(versionKey, 'military:bases:meta:V');
+    assert.equal(candidateVersion, 'V');
+    assert.equal(ttl, String(VERSION_KEY_TTL_SECONDS));
+  }
+});
+
+test('same-version overlap cannot re-arm active GEO or META keys after publish', async () => {
+  const candidateVersion = '1786244633231';
+  const cases = [
+    {
+      kind: 'geo',
+      key: `preview:sha:military:bases:geo:${candidateVersion}`,
+      entries: Array.from({ length: 501 }, (_, i) => ({
+        id: `base-${i}`,
+        lat: 1 + i / 1e6,
+        lon: 2 + i / 1e6,
+      })),
+      seed: seedGeo,
+    },
+    {
+      kind: 'meta',
+      key: `preview:sha:military:bases:meta:${candidateVersion}`,
+      entries: Array.from({ length: 501 }, (_, i) => ({ id: `base-${i}`, name: `Base ${i}` })),
+      seed: seedMeta,
+    },
+  ];
+
+  for (const { kind, key, entries, seed } of cases) {
+    let active = '1786000000000';
+    let ttl = null;
+    let pipelineNumber = 0;
+    const guardResults = [];
+    const stub = stubRedis((path, body) => {
+      assert.equal(path, '/pipeline');
+      pipelineNumber++;
+      const results = body.map(command => {
+        if (command[0] === 'EXPIRE') {
+          ttl = Number(command[2]);
+          return { result: 1 };
+        }
+        if (command[0] !== 'EVAL') return { result: 1 };
+
+        const [, , , activeKey, versionKey, version, requestedTtl] = command;
+        assert.equal(activeKey, 'preview:sha:military:bases:active');
+        assert.equal(versionKey, key);
+        assert.equal(version, candidateVersion);
+        if (active === version) {
+          guardResults.push(0);
+          return { result: 0 };
+        }
+        ttl = Number(requestedTtl);
+        guardResults.push(1);
+        return { result: 1 };
+      });
+
+      if (pipelineNumber === 1) {
+        // The other same-millisecond run publishes between our batches. Its
+        // EVAL PERSISTs this shared key before making the version active.
+        ttl = null;
+        active = candidateVersion;
+      }
+      return results;
+    });
+    try {
+      await seed(URL_BASE, TOKEN, key, entries);
+    } finally {
+      stub.restore();
+    }
+
+    assert.deepEqual(guardResults, [1, 0], `${kind} must skip the TTL after the shared version is active`);
+    assert.equal(ttl, null, `${kind} must remain persistent after the other run publishes it`);
+    assert.equal(
+      stub.calls.flatMap(({ body }) => body).some(command => command[0] === 'EXPIRE'),
+      false,
+      `${kind} must not use an unconditional staging EXPIRE`,
+    );
   }
 });
 

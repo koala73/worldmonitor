@@ -87,6 +87,14 @@ local armed = redis.call('EXPIRE', KEYS[2], ARGV[2])
 return {armed, 'armed', active or ''}
 `.trim();
 
+const ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT = `
+local active = redis.call('GET', KEYS[1])
+if active == ARGV[1] then
+  return 0
+end
+return redis.call('EXPIRE', KEYS[2], ARGV[2])
+`.trim();
+
 const BACKFILL_META_IF_ACTIVE_SCRIPT = `
 local current = redis.call('GET', KEYS[1])
 if current ~= ARGV[1] then
@@ -213,6 +221,27 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+function stagingTtlCommand(versionKey, kind) {
+  const marker = `military:bases:${kind}:`;
+  const markerIndex = versionKey.lastIndexOf(marker);
+  const candidateVersion = markerIndex === -1
+    ? ''
+    : versionKey.slice(markerIndex + marker.length);
+  if (!candidateVersion) {
+    throw new Error(`Cannot derive the ${kind} staging version from key "${versionKey}"`);
+  }
+  const prefix = versionKey.slice(0, markerIndex);
+  return [
+    'EVAL',
+    ARM_STAGING_KEY_TTL_IF_INACTIVE_SCRIPT,
+    '2',
+    `${prefix}military:bases:active`,
+    versionKey,
+    candidateVersion,
+    String(VERSION_KEY_TTL_SECONDS),
+  ];
+}
+
 export async function seedGeo(url, token, geoKey, entries) {
   let seeded = 0;
   const total = entries.length;
@@ -221,11 +250,11 @@ export async function seedGeo(url, token, geoKey, entries) {
     const batch = entries.slice(i, i + BATCH_SIZE);
     const commands = [
       ...batch.map(e => ['GEOADD', geoKey, String(e.lon), String(e.lat), e.id]),
-      // Refresh the self-healing TTL on every batch (#6845): the key exists
-      // from the first GEOADD on, and EXPIRE on a missing key is a no-op, so
-      // piggybacking it here arms the TTL as soon as there is anything to
-      // reap and keeps pushing the deadline out while the run is alive.
-      ['EXPIRE', geoKey, String(VERSION_KEY_TTL_SECONDS)],
+      // Refresh the self-healing TTL while this version is still staging.
+      // Same-millisecond runs can share version keys, so the active check and
+      // EXPIRE must be one Redis operation: once either run publishes this
+      // version, a slower batch must not restore the TTL that publish removed.
+      stagingTtlCommand(geoKey, 'geo'),
     ];
     await pipelineRequest(url, token, commands);
     seeded += batch.length;
@@ -250,7 +279,7 @@ export async function seedMeta(url, token, metaKey, entries) {
         delete meta.id;
         return ['HSET', metaKey, e.id, JSON.stringify(meta)];
       }),
-      ['EXPIRE', metaKey, String(VERSION_KEY_TTL_SECONDS)],
+      stagingTtlCommand(metaKey, 'meta'),
     ];
     await pipelineRequest(url, token, commands);
     seeded += batch.length;
