@@ -12,7 +12,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
-import { computeStats } from '../scripts/docs-stats.mjs';
+import { computeStats, withStatsRoot } from '../scripts/docs-stats.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -44,35 +44,42 @@ describe('docs-stats api endpoint inventory', () => {
   // dirHasFiles count agree and the test passes against BOTH. Stage the actual
   // condition -- an empty `api/[domain]/v1` leftover -- so reverting
   // dirHasFiles turns this red.
-  it('ignores an empty leftover api/ directory that a readdir-only count would include', () => {
-    const leftover = resolve(REPO_ROOT, 'api/[__docs_stats_probe__]');
-    const baseline = computeStats().apiEndpointEntries;
-    mkdirSync(resolve(leftover, 'v1'), { recursive: true });
-    try {
-      assert.equal(
-        computeStats().apiEndpointEntries,
-        baseline,
-        'an empty leftover directory must not count as an endpoint',
-      );
-    } finally {
-      rmSync(leftover, { recursive: true, force: true });
-    }
-    assert.equal(computeStats().apiEndpointEntries, baseline, 'probe directory must be cleaned up');
+  it('ignores an empty leftover api/ directory that a readdir-only count would include', async () => {
+    // #6702: the probe lives in a throwaway copy of the tree. Creating and
+    // deleting a directory inside the REAL repo raced any sibling test that
+    // scans it concurrently (docs-stats-plan-layer-entitlement runs the
+    // script end to end on the same checkout).
+    await withStatsRoot(async () => {
+      const baseline = computeStats().apiEndpointEntries;
+      mkdirSync('api/[__docs_stats_probe__]/v1', { recursive: true });
+      try {
+        assert.equal(
+          computeStats().apiEndpointEntries,
+          baseline,
+          'an empty leftover directory must not count as an endpoint',
+        );
+      } finally {
+        rmSync('api/[__docs_stats_probe__]', { recursive: true, force: true });
+      }
+      assert.equal(computeStats().apiEndpointEntries, baseline, 'probe directory must be cleaned up');
+    });
   });
 
-  it('still counts a leftover directory once it contains a real file', () => {
-    const populated = resolve(REPO_ROOT, 'api/[__docs_stats_probe2__]');
-    const baseline = computeStats().apiEndpointEntries;
-    mkdirSync(resolve(populated, 'v1'), { recursive: true });
-    try {
-      execFileSync('touch', [resolve(populated, 'v1/handler.js')]);
-      assert.equal(
-        computeStats().apiEndpointEntries,
-        baseline + 1,
-        'a directory with a real file nested inside is a genuine endpoint entry',
-      );
-    } finally {
-      rmSync(populated, { recursive: true, force: true });
-    }
+  it('still counts a leftover directory once it contains a real file', async () => {
+    // #6702: same sandbox isolation as the empty-probe test above.
+    await withStatsRoot(async (sandbox) => {
+      const baseline = computeStats().apiEndpointEntries;
+      mkdirSync('api/[__docs_stats_probe2__]/v1', { recursive: true });
+      try {
+        execFileSync('touch', [resolve(sandbox, 'api/[__docs_stats_probe2__]/v1/handler.js')]);
+        assert.equal(
+          computeStats().apiEndpointEntries,
+          baseline + 1,
+          'a directory with a real file nested inside is a genuine endpoint entry',
+        );
+      } finally {
+        rmSync('api/[__docs_stats_probe2__]', { recursive: true, force: true });
+      }
+    });
   });
 });

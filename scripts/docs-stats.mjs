@@ -20,12 +20,17 @@ import { dirname, join } from 'node:path';
 import { buildSourceAttributionStats } from './source-attribution.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const read = (p) => readFileSync(join(ROOT, p), 'utf8');
+// #6702: tests that stage probe trees redirect the module at a throwaway
+// copy (see withStatsRoot below) so a sibling test scanning the REAL repo
+// can never observe the probe. null means the real ROOT.
+let rootOverride = null;
+const rootOf = () => rootOverride ?? ROOT;
+const read = (p) => readFileSync(join(rootOf(), p), 'utf8');
 const dirsIn = (p) =>
-  readdirSync(join(ROOT, p), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
+  readdirSync(join(rootOf(), p), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name);
 const filesIn = (p) =>
-  readdirSync(join(ROOT, p), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
-const entriesIn = (p) => readdirSync(join(ROOT, p), { withFileTypes: true }).map((e) => e.name);
+  readdirSync(join(rootOf(), p), { withFileTypes: true }).filter((e) => e.isFile()).map((e) => e.name);
+const entriesIn = (p) => readdirSync(join(rootOf(), p), { withFileTypes: true }).map((e) => e.name);
 const parseJson = (p) => JSON.parse(read(p));
 
 function sorted(items) {
@@ -907,7 +912,7 @@ function makefileVar(text, name) {
 }
 
 function walk(rel, out = []) {
-  for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+  for (const e of readdirSync(join(rootOf(), rel), { withFileTypes: true })) {
     const child = `${rel}/${e.name}`;
     if (e.isDirectory()) walk(child, out);
     else out.push(child);
@@ -918,8 +923,41 @@ function walk(rel, out = []) {
 // Local leftovers (empty `api/[domain]/v1` after a dirty checkout) are not
 // endpoints. Git cannot track empty trees, so a readdir count that includes
 // them writes a stats.json CI cannot reproduce.
+// #6702: run a callback against a throwaway COPY of the repo tree. Probe
+// tests use this so they never mutate (or transiently create paths inside)
+// the real checkout a sibling test may be scanning concurrently.
+export async function withStatsRoot(fn) {
+  const { cpSync, mkdtempSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const sandbox = mkdtempSync(join(tmpdir(), 'wm-docs-stats-'));
+  const previous = rootOverride;
+  rootOverride = sandbox;
+  try {
+    // Full tree minus the heavy/vendor directories: computeStats reads a
+    // wide surface (api/, docs/, src/, shared/, data/...), and a missing
+    // file throws rather than counting as zero.
+    const entries = readdirSync(ROOT, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'target') {
+        continue;
+      }
+      try {
+        cpSync(join(ROOT, entry.name), join(sandbox, entry.name), { recursive: true });
+      } catch {
+        // A path that cannot be copied (platform link, transient state): the
+        // stat reports zero for whatever lived there, same as a repo
+        // without it.
+      }
+    }
+    return await fn(sandbox);
+  } finally {
+    rootOverride = previous;
+    rmSync(sandbox, { recursive: true, force: true });
+  }
+}
+
 function dirHasFiles(rel) {
-  for (const e of readdirSync(join(ROOT, rel), { withFileTypes: true })) {
+  for (const e of readdirSync(join(rootOf(), rel), { withFileTypes: true })) {
     if (e.name.startsWith('.')) continue;
     const child = `${rel}/${e.name}`;
     if (e.isFile()) return true;
@@ -961,7 +999,7 @@ function computeStats() {
   // ---- Root app directories used by AGENTS.md and CONTRIBUTING.md ----
   const componentTopLevelTsFiles = filesIn('src/components').filter((f) => f.endsWith('.ts')).length;
   const serviceTopLevelEntries = entriesIn('src/services').length;
-  const apiEndpointEntries = readdirSync(join(ROOT, 'api'), { withFileTypes: true }).filter((e) => {
+  const apiEndpointEntries = readdirSync(join(rootOf(), 'api'), { withFileTypes: true }).filter((e) => {
     const f = e.name;
     if (f.startsWith('_') || f.startsWith('.')) return false;
     if (/\.test\./.test(f) || /\.d\.ts$/.test(f) || /\.json$/.test(f)) return false;
@@ -1013,7 +1051,7 @@ function computeStats() {
   // several feed URLs, while a structured endpoint may never appear in the
   // curated-feed registry. The attribution checker owns manifest coverage;
   // docs-stats pins the public count surfaces to the same live number.
-  const sourceAttribution = buildSourceAttributionStats({ rootDir: ROOT });
+  const sourceAttribution = buildSourceAttributionStats({ rootDir: rootOf() });
 
   // ---- Operational source counts used by data-source and methodology docs ----
   const airportCount = (read('src/config/airports.ts').match(/\biata:\s*'/g) || []).length;
@@ -1225,7 +1263,7 @@ export function collectCurrentAcquisitionClaimFiles() {
   const files = new Set();
   const visit = (path) => {
     if (ACQUISITION_CLAIM_EXCLUDES.some((prefix) => path.startsWith(prefix))) return;
-    const absolute = join(ROOT, path);
+    const absolute = join(rootOf(), path);
     let stat;
     try {
       stat = statSync(absolute);
