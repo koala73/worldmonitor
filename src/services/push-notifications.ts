@@ -21,6 +21,7 @@
 //     device is a no-op from the user's perspective.
 
 import { getClerkToken, getCurrentClerkUser } from '@/services/clerk';
+import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { VAPID_PUBLIC_KEY, isWebPushConfigured, urlBase64ToUint8Array, arrayBufferToBase64 } from '@/config/push';
 
 export type PushPermission = 'default' | 'granted' | 'denied' | 'unsupported';
@@ -39,7 +40,10 @@ export type PushPermission = 'default' | 'granted' | 'denied' | 'unsupported';
  */
 export function isWebPushSupported(): boolean {
   if (typeof window === 'undefined') return false;
-  if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) return false;
+  // isDesktopRuntime(), not a raw globals sniff (#5912): "no web push" is a
+  // property of the desktop BUILD (native notifications own that surface),
+  // and the raw check reported "web" during desktop:dev early boot.
+  if (isDesktopRuntime()) return false;
   if (!('serviceWorker' in navigator)) return false;
   if (!('PushManager' in window)) return false;
   if (typeof Notification === 'undefined') return false;

@@ -3,11 +3,20 @@
 // can render without dragging maplibre+deck.gl into the entry bundle.
 // maplibre-using helpers live in `./basemap-styles.ts` and are loaded
 // lazily alongside MapContainer/DeckGLMap when the map panel mounts.
+// (desktop-runtime is dependency-free by design — see its header — so this
+// module stays entry-bundle-lean.)
+
+import { isDesktopRuntime } from '@/config/desktop-runtime';
 
 const R2_PROXY = import.meta.env.VITE_PMTILES_URL ?? '';
 const R2_PUBLIC = import.meta.env.VITE_PMTILES_URL_PUBLIC ?? '';
-const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
-export const R2_BASE = isTauri && R2_PUBLIC ? R2_PUBLIC : R2_PROXY;
+// isDesktopRuntime(), not a raw bridge-globals sniff (#5912): the desktop app has
+// no same-origin proxy, and that is a property of the desktop BUILD — under
+// `desktop:dev` early boot the bridge global is not attached yet, so a raw
+// check routed tiles at the proxy and broke them exactly when developing the
+// desktop shell.
+const isDesktop = typeof window !== 'undefined' && isDesktopRuntime();
+export const R2_BASE = isDesktop && R2_PUBLIC ? R2_PUBLIC : R2_PROXY;
 
 const hasTilesUrl = !!R2_BASE;
 

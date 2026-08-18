@@ -6,10 +6,10 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const runtimeSrc = readFileSync(resolve(__dirname, '../src/services/runtime.ts'), 'utf-8');
-// #5911 split the desktop detector (and its VITE_DESKTOP_RUNTIME read) into a
-// dependency-free leaf. The allow-list invariant follows the code: both halves
-// are asserted, so the split cannot be used to smuggle in a whole-env snapshot.
-const desktopRuntimeSrc = readFileSync(resolve(__dirname, '../src/services/desktop-runtime.ts'), 'utf-8');
+// The desktop detector (and its VITE_DESKTOP_RUNTIME read) lives in a
+// dependency-free config leaf. The allow-list invariant follows the canonical
+// implementation, so moving it cannot be used to smuggle in a whole-env snapshot.
+const desktopRuntimeSrc = readFileSync(resolve(__dirname, '../src/config/desktop-runtime.ts'), 'utf-8');
 const variantSrc = readFileSync(resolve(__dirname, '../src/config/variant.ts'), 'utf-8');
 
 describe('runtime env guards', () => {
@@ -55,6 +55,18 @@ describe('runtime env guards', () => {
     assert.ok(
       desktopRuntimeSrc.includes("const FORCE_DESKTOP_RUNTIME = ENV.VITE_DESKTOP_RUNTIME === '1'"),
       'Desktop runtime flag should read from the guarded ENV wrapper',
+    );
+    assert.ok(
+      desktopRuntimeSrc.includes('forceDesktopRuntime?: boolean'),
+      'RuntimeProbe must accept the build-time FORCE flag so detectDesktopRuntime and isDesktopRuntime share one predicate',
+    );
+    assert.ok(
+      desktopRuntimeSrc.includes('if (probe.forceDesktopRuntime)'),
+      'detectDesktopRuntime must honor forceDesktopRuntime',
+    );
+    assert.ok(
+      desktopRuntimeSrc.includes('forceDesktopRuntime: FORCE_DESKTOP_RUNTIME'),
+      'isDesktopRuntime must pass FORCE_DESKTOP_RUNTIME into detectDesktopRuntime',
     );
     // One owner for the flag: a second reader in runtime.ts would let the two
     // disagree about what "desktop" means.

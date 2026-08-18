@@ -44,6 +44,7 @@ const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/mcp-grant-consent.spec.ts',
   'e2e/dashboard-news-request-budget.spec.ts',
   'e2e/keyword-spike-flow.spec.ts',
+  'e2e/desktop-early-boot.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [

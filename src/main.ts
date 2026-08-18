@@ -1,6 +1,7 @@
 import './styles/base-layer.css';
 import './bootstrap/zod-csp';
 import { SITE_VARIANT } from '@/config/variant';
+import { isDesktopRuntime } from '@/services/desktop-runtime';
 import { installLcpAttributionDebug } from '@/bootstrap/lcp-attribution';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import { enqueueSentryCall, installPreInitErrorQueue, scheduleSentryInit } from '@/bootstrap/sentry-defer';
@@ -601,8 +602,11 @@ Object.defineProperty(window, 'beta', {
   },
 });
 
-// Suppress native WKWebView context menu in Tauri — allows custom JS context menus
-if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
+// Suppress native WKWebView context menu in Tauri — allows custom JS context
+// menus. isDesktopRuntime(), not a raw globals sniff (#5912): during
+// desktop:dev early boot the bridge globals are not attached yet, so the raw
+// check skipped this listener in the very webview it exists for.
+if (isDesktopRuntime()) {
   document.addEventListener('contextmenu', (e) => {
     const target = e.target as HTMLElement;
     // Allow native menu on text inputs/textareas for copy/paste
@@ -615,7 +619,10 @@ if ('__TAURI_INTERNALS__' in window || '__TAURI__' in window) {
 // property exists but reading it throws SecurityError (WORLDMONITOR-Y5), which
 // at module scope aborts every top-level statement below. Read it once, safely.
 const swContainer = readServiceWorkerContainer();
-if (!('__TAURI_INTERNALS__' in window) && !('__TAURI__' in window) && swContainer) {
+// !isDesktopRuntime(), not a raw globals sniff (#5912): the desktop app must
+// never install the web service worker, and the raw check let it slip in
+// during desktop:dev early boot (bridge globals not yet attached).
+if (!isDesktopRuntime() && swContainer) {
   installSwUpdateHandler({ version: __APP_VERSION__, swContainer });
 
   const SW_UPDATE_SUCCESS_INTERVAL_MS = 60 * 60 * 1000;

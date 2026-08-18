@@ -56,6 +56,22 @@ test.describe('desktop runtime routing guardrails', () => {
           locationHost: 'worldmonitor.app',
           locationOrigin: 'https://worldmonitor.app',
         }),
+        forceOnWeb: runtime.detectDesktopRuntime({
+          hasTauriGlobals: false,
+          userAgent: 'Mozilla/5.0',
+          locationProtocol: 'https:',
+          locationHost: 'worldmonitor.app',
+          locationOrigin: 'https://worldmonitor.app',
+          forceDesktopRuntime: true,
+        }),
+        forceOffWeb: runtime.detectDesktopRuntime({
+          hasTauriGlobals: false,
+          userAgent: 'Mozilla/5.0',
+          locationProtocol: 'https:',
+          locationHost: 'worldmonitor.app',
+          locationOrigin: 'https://worldmonitor.app',
+          forceDesktopRuntime: false,
+        }),
       };
     });
 
@@ -66,6 +82,8 @@ test.describe('desktop runtime routing guardrails', () => {
     expect(result.secureLocalhost).toBe(true);
     expect(result.insecureLocalhost).toBe(false);
     expect(result.webHost).toBe(false);
+    expect(result.forceOnWeb).toBe(true);
+    expect(result.forceOffWeb).toBe(false);
   });
 
   test('runtime fetch patch falls back to cloud for local failures', async ({ page }) => {

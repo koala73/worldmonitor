@@ -1,3 +1,5 @@
+import { isDesktopRuntime } from '@/config/desktop-runtime';
+
 /**
  * Every variant a user can switch to. One desktop binary ships and switches
  * between all of these in-app (#5908), so this list is also the set
@@ -31,8 +33,13 @@ function loadStoredVariant(): string | null {
 export const SITE_VARIANT: string = (() => {
   if (typeof window === 'undefined') return buildVariant;
 
-  const isTauri = '__TAURI_INTERNALS__' in window || '__TAURI__' in window;
-  if (isTauri) {
+  // isDesktopRuntime(), not a raw bridge-globals sniff (#5912): under
+  // `desktop:dev` early boot the bridge globals are not attached yet, and in
+  // VITE_DESKTOP_RUNTIME=1 browser builds they never are — a raw check made
+  // SITE_VARIANT resolve by hostname here while the variant switcher
+  // (event-handlers.ts) wrote the stored variant on isDesktopRuntime(),
+  // splitting the two halves of one feature.
+  if (isDesktopRuntime()) {
     const stored = loadStoredVariant();
     if (isSiteVariant(stored)) return stored;
     return buildVariant;
