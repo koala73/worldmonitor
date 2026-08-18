@@ -228,6 +228,22 @@ describe('source provenance defaults (#5390)', () => {
 
     assert.match(renderer.renderCorroboratingSourceRisk('Fars News'), />\?</);
   });
+
+  it('renders existing badge CSS on Telegram channel labels (#6600)', () => {
+    const idf = renderer.renderPrimarySourceProvenance('IDF Official');
+    assert.match(idf.riskBadge, /propaganda-badge high/);
+    assert.match(idf.riskBadge, /Official Government Source/);
+    assert.match(idf.tierBadge, /tier-badge tier-1/);
+    assert.doesNotMatch(idf.tierBadge, /Wire/);
+
+    const clash = renderer.renderPrimarySourceProvenance('Clash Report');
+    assert.match(clash.riskBadge, /propaganda-badge medium/);
+    assert.equal(clash.tierBadge, '', 'tier-3 OSINT aggregators do not get the T1/T2 star');
+
+    const dd = renderer.renderPrimarySourceProvenance('DD Geopolitics');
+    assert.match(dd.riskBadge, /propaganda-badge high/);
+    assert.equal(dd.tierBadge, '');
+  });
 });
 
 // Best-effort cleanup; ignore errors if concurrent tests hold the dir

@@ -32,8 +32,8 @@ const SOURCE_DOMAINS = [
     id: 'news',
     name: 'News & OSINT',
     anchor: 'news-%26-osint',
-    blurb: 'Tiered news feeds across every product variant, a curated Telegram OSINT lane, live TV, and webcam grids — every source disclosed and bias-tagged.',
-    providers: ['Reuters', 'BBC', 'AP', 'Al Jazeera', 'Bellingcat', 'ISW'],
+    blurb: 'Tiered news feeds across every product variant, a curated Telegram OSINT lane with public trust badges, live TV, and webcam grids — every source disclosed and bias-tagged.',
+    providers: ['Reuters', 'BBC', 'AP', 'Al Jazeera', 'Bellingcat', 'ISW', 'Telegram OSINT'],
   },
   {
     id: 'finance',

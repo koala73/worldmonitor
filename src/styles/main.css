@@ -23278,6 +23278,13 @@ body.map-width-resizing {
   overflow: hidden;
 }
 
+.telegram-intel-channel-wrapper .propaganda-badge,
+.telegram-intel-channel-wrapper .tier-badge {
+  flex-shrink: 0;
+  margin-left: 0;
+  margin-right: 0;
+}
+
 .telegram-intel-channel {
   font-size: calc(10px * var(--wm-panel-effective-scale, 1));
   color: var(--accent);

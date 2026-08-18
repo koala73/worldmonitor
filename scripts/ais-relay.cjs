@@ -3947,6 +3947,11 @@ async function seedClassifyForVariant(variant, seenTitles) {
         };
         // Relay gates: when RELAY_GATES_READY is set the relay enforces source tier and
         // recency checks that the client path previously handled.
+        // Explicit tier-4 keys only — unlisted names (including platform source
+        // "telegram") are NOT in this set even though getSourceTier() defaults
+        // them to 4. Telegram channel lookup must use the public display label
+        // from shared/telegram-channel-trust.ts (#6600). #6654 should do the
+        // same for X account labels rather than a generic "x" platform key.
         if (RELAY_GATES_READY) {
           if (RELAY_TIER4_SOURCES.has(meta.source ?? '')) continue;
           const ageMs = Date.now() - (meta.publishedAt ?? 0);

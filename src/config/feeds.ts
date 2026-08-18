@@ -28,6 +28,7 @@ export {
   hasReviewedSourceType,
   isStateAffiliatedSource,
 } from '../../shared/source-provenance';
+export { resolveTelegramSourceName } from '../../shared/telegram-channel-trust';
 export type {
   PropagandaRisk,
   SourceProvenanceState,
