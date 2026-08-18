@@ -26,7 +26,8 @@ export class PinnedWebcamsPanel extends Panel {
   }
 
   private render(): void {
-    while (this.content.firstChild) this.content.removeChild(this.content.firstChild);
+    // #6557: build all nodes first, then one atomic write through the
+    // sanctioned helper — replaces the manual clear + progressive appendChild.
     this.content.className = 'panel-content pinned-webcams-content';
 
     const active = getActiveWebcams();
@@ -86,7 +87,7 @@ export class PinnedWebcamsPanel extends Panel {
       grid.appendChild(slot);
     }
 
-    this.content.appendChild(grid);
+    const children: HTMLElement[] = [grid];
 
     if (allPinned.length > MAX_SLOTS) {
       const listSection = document.createElement('div');
@@ -127,9 +128,11 @@ export class PinnedWebcamsPanel extends Panel {
 
         listSection.appendChild(row);
       });
-
-      this.content.appendChild(listSection);
+      children.push(listSection);
     }
+
+    // #6557: one atomic write — grid plus the optional overflow list.
+    this.setContentNodes(...children);
   }
 
   public refresh(): void {

@@ -4,10 +4,10 @@
 // network/IO wrapper lives in ./run.mjs.
 //
 // The CLI is MCP-first. The MCP server (https://worldmonitor.app/mcp) is the
-// live, documented agent surface: `tools/list` is public, and `tools/call`
-// (used by the curated data commands) authenticates with a user API key. A
-// small REST escape hatch (`health`, `get <path>`) and an OpenAPI listing
-// (`list`) round it out for host-relative and self-hosted use.
+// live, documented agent surface: `tools/list` is public. `get_sources` is the
+// only data tool callable without a key; other `tools/call` operations use a
+// user API key. A small REST escape hatch (`health`, `get <path>`) and an
+// OpenAPI listing (`list`) round it out for host-relative and self-hosted use.
 
 export const VERSION = '0.1.3';
 
@@ -346,7 +346,7 @@ export const HELP = `worldmonitor — command-line client for the World Monitor 
 USAGE
   worldmonitor <command> [arguments] [--flags]
 
-DATA COMMANDS (MCP tools/call — need --api-key)
+DATA COMMANDS (MCP tools/call — need --api-key except call get_sources)
   world                    Live global situation brief
   country <ISO>            AI strategic brief for a country (ISO alpha-2)
   risk <ISO>               Country risk / resilience scores
@@ -361,7 +361,7 @@ DATA COMMANDS (MCP tools/call — need --api-key)
 
 MCP
   tools                    List every MCP tool (public — no key needed)
-  call <tool> [--arg val]  Call any MCP tool (--args '<json>' for typed args)
+  call <tool> [--arg val]  Call any MCP tool (get_sources needs no key)
   prompts | resources      List MCP prompt / resource templates
 
 REST

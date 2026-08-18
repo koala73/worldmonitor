@@ -45,7 +45,8 @@ function extractLayerRenderers(source) {
       const renderers = renderersMatch[1].match(/'(\w+)'/g)?.map(s => s.replace(/'/g, '')) ?? [];
       result[key] = renderers;
     } else {
-      result[key] = ['flat', 'globe'];
+      // Layers with no explicit `renderers:` inherit the def() factory default.
+      result[key] = ['svg', 'deck', 'globe'];
     }
   }
   return result;

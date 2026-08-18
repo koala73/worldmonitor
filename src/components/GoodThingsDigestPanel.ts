@@ -37,7 +37,8 @@ export class GoodThingsDigestPanel extends Panel {
     const top5 = items.slice(0, 5);
 
     if (top5.length === 0) {
-      setTrustedHtml(this.content, trustedHtml(`<p class="digest-placeholder">${escapeHtml(t('components.goodThingsDigest.noStories'))}</p>`, "legacy direct innerHTML migration"));
+      // #6557: a settled empty state is authoritative content.
+      this.setTrustedContent(trustedHtml(`<p class="digest-placeholder">${escapeHtml(t('components.goodThingsDigest.noStories'))}</p>`, "legacy direct innerHTML migration"));
       this.cardElements = [];
       return;
     }

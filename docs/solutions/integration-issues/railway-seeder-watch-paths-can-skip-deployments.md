@@ -411,9 +411,11 @@ left every genuinely-behind service reported — and all 53 remaining
 a path refusal.
 
 `Seed Freshness Monitor` keeps the gate-dependent ingestion acceptance. A
-missing, pending, or failed gate fails that workflow; it is never converted
-into a green skip. It deliberately does not run on an ingestion push because
-Railway may not have deployed or executed that revision yet.
+missing, pending, failed, or errored head gate is not a green skip and is not
+an ingestion failure: the job monitors the newest gated ancestor in the
+window, and fails closed only when none exists. It deliberately does not run
+on an ingestion push because Railway may not have deployed or executed that
+revision yet.
 
 `Railway Native Deploy Health` is a separate six-hourly workflow and has no
 dependency on the Seed Freshness gate. The gate and deployment drift share an

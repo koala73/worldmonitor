@@ -11,6 +11,7 @@ import {
   type OverlayCloseOrigin,
   type OverlayId,
 } from '@/utils/overlay-history';
+import { reconcileOverlayForTab } from '@/app/mobile-overlay-reconcile';
 
 type MobilePrimaryNavCallbacks = {
   openSearch(options: { replaceOverlayId?: OverlayId; historyPending: true }): void;
@@ -277,30 +278,13 @@ export class MobilePrimaryNav {
   }
 
   private reconcileOverlayForTab(tab: string): OverlayId | undefined | null {
-    const top = overlayHistory.top();
-    if (!top) return undefined;
-
-    const isSearchOverlay = top === 'search' || top === 'search-pending';
-    const isMoreOverlay = top === 'menu'
-      || top === 'region'
-      || top === 'settings'
-      || top === 'settings-pending';
-    if (top === 'settings' && this.ctx.unifiedSettings?.hasPendingChanges()) {
-      // Do not replace or dismiss a dirty Settings overlay: those paths call
-      // close('replacement') and would discard the draft without confirmation.
-      this.ctx.unifiedSettings.close();
-      this.setActive('more');
-      return null;
-    }
-    if ((tab === 'search' && isSearchOverlay) || (tab === 'more' && isMoreOverlay)) {
-      overlayHistory.dismiss(top);
-      this.setActive('today');
-      return null;
-    }
-
-    if (tab === 'search' || tab === 'more') return top;
-    overlayHistory.dismiss(top);
-    return undefined;
+    return reconcileOverlayForTab(tab, {
+      top: () => overlayHistory.top(),
+      dismiss: (id) => overlayHistory.dismiss(id),
+      settingsHasPendingChanges: () => this.ctx.unifiedSettings?.hasPendingChanges() ?? false,
+      closeSettings: () => this.ctx.unifiedSettings?.close(),
+      setActive: (nextTab) => this.setActive(nextTab),
+    });
   }
 
   private exitMap(): void {

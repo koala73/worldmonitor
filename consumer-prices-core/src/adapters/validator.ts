@@ -14,6 +14,34 @@
 import { parseSize } from '../normalizers/size.js';
 import type { BasketItem } from '../config/types.js';
 
+/**
+ * Base units that measure the product's CONTENT.
+ *
+ * `ct` is deliberately excluded: a count unit on either side proves nothing
+ * about content, because a count item routinely carries a packaging weight
+ * ("Fresh Eggs 10 Pack" listed as "660g") and a mass item can be listed by
+ * slice count.
+ */
+const CONTENT_MEASURE_UNITS = new Set(['g', 'ml']);
+
+/**
+ * Plausible density band for grocery goods, grams per millilitre. Water and
+ * most dairy sit near 1.0 and cooking oil near 0.92; the band is deliberately
+ * wide because it exists to answer "could this size describe the same product
+ * at all?", not to convert precisely.
+ *
+ * This is what makes a cross-dimension size decidable by MAGNITUDE rather than
+ * by the unit token. Judging on the token alone fails in both directions: `oz`
+ * maps to grams but US retail writes fluid ounces identically, so exempting
+ * the ounce family would re-admit a 128oz jug as the 48oz item (defect A
+ * again), while rejecting every mass-vs-volume mismatch would throw away a
+ * correct 1L oil bottle whose label reads "910 g".
+ */
+const DENSITY_G_PER_ML_MIN = 0.8;
+const DENSITY_G_PER_ML_MAX = 1.2;
+
+export type SizeWindowStatus = 'pass' | 'fail' | 'unit-mismatch' | 'unknown';
+
 export interface ValidatorInput {
   canonicalName: string;
   productName: string | undefined;
@@ -29,8 +57,10 @@ export interface ValidatorResult {
     tokenOverlap: number;
     negativeTokenHit: string | null;
     nonFoodIndicatorHit: string | null;
-    sizeWindow: 'pass' | 'fail' | 'unknown';
+    sizeWindow: SizeWindowStatus;
     extractedBaseQty: number | null;
+    /** Base unit the extracted size parsed to — disambiguates `extractedBaseQty`. */
+    extractedBaseUnit: string | null;
   };
 }
 
@@ -105,16 +135,39 @@ function findNonFoodIndicator(productName: string): string | null {
 function evaluateSizeWindow(
   sizeText: string | undefined,
   item: ValidatorInput['item'],
-): { status: 'pass' | 'fail' | 'unknown'; baseQty: number | null } {
-  if (item.minBaseQty == null && item.maxBaseQty == null) return { status: 'unknown', baseQty: null };
-  if (!sizeText) return { status: 'unknown', baseQty: null };
+): { status: SizeWindowStatus; baseQty: number | null; baseUnit: string | null } {
+  const noSize = { status: 'unknown' as const, baseQty: null, baseUnit: null };
+  if (item.minBaseQty == null && item.maxBaseQty == null) return noSize;
+  if (!sizeText) return noSize;
   const parsed = parseSize(sizeText);
-  if (!parsed) return { status: 'unknown', baseQty: null };
-  if (parsed.baseUnit !== item.baseUnit) return { status: 'unknown', baseQty: parsed.baseQuantity };
+  if (!parsed) return noSize;
+
   const min = item.minBaseQty ?? 0;
   const max = item.maxBaseQty ?? Number.POSITIVE_INFINITY;
+
+  if (parsed.baseUnit !== item.baseUnit) {
+    // A count unit on either side carries no content information at all.
+    if (!CONTENT_MEASURE_UNITS.has(item.baseUnit) || !CONTENT_MEASURE_UNITS.has(parsed.baseUnit)) {
+      return { status: 'unknown', baseQty: parsed.baseQuantity, baseUnit: parsed.baseUnit };
+    }
+    // Both sides measure content, in different dimensions. Convert across the
+    // density band and reject only when NO plausible density lands the product
+    // inside the window: a 160g tin is not 1.5L of water at any density, but a
+    // 910g label on a 1L oil bottle is the same product and must survive.
+    const [lo, hi] =
+      item.baseUnit === 'ml'
+        ? [parsed.baseQuantity / DENSITY_G_PER_ML_MAX, parsed.baseQuantity / DENSITY_G_PER_ML_MIN]
+        : [parsed.baseQuantity * DENSITY_G_PER_ML_MIN, parsed.baseQuantity * DENSITY_G_PER_ML_MAX];
+    const plausible = hi >= min && lo <= max;
+    return {
+      status: plausible ? 'unknown' : 'unit-mismatch',
+      baseQty: parsed.baseQuantity,
+      baseUnit: parsed.baseUnit,
+    };
+  }
+
   const q = parsed.baseQuantity;
-  return { status: q >= min && q <= max ? 'pass' : 'fail', baseQty: q };
+  return { status: q >= min && q <= max ? 'pass' : 'fail', baseQty: q, baseUnit: parsed.baseUnit };
 }
 
 export function validateSearchHit(input: ValidatorInput): ValidatorResult {
@@ -125,6 +178,7 @@ export function validateSearchHit(input: ValidatorInput): ValidatorResult {
     nonFoodIndicatorHit: null,
     sizeWindow: 'unknown',
     extractedBaseQty: null,
+    extractedBaseUnit: null,
   };
 
   if (!input.productName) {
@@ -148,12 +202,18 @@ export function validateSearchHit(input: ValidatorInput): ValidatorResult {
   const sizeEval = evaluateSizeWindow(input.sizeText, input.item);
   signals.sizeWindow = sizeEval.status;
   signals.extractedBaseQty = sizeEval.baseQty;
+  signals.extractedBaseUnit = sizeEval.baseUnit;
   if (sizeEval.status === 'fail') {
     reasons.push(`size-window-fail:${sizeEval.baseQty}${input.item.baseUnit ?? ''}`);
+  } else if (sizeEval.status === 'unit-mismatch') {
+    // Distinct from size-window-fail on purpose: the quantity is not merely
+    // outside the window, it measures a different dimension than the item.
+    reasons.push(`size-unit-mismatch:${sizeEval.baseQty}${sizeEval.baseUnit}-vs-${input.item.baseUnit ?? ''}`);
   }
 
   // Hard-reject conditions (any single one fails the hit):
-  const hardFail = Boolean(nonFood) || Boolean(negHit) || overlap < overlapFloor || sizeEval.status === 'fail';
+  const sizeRejects = sizeEval.status === 'fail' || sizeEval.status === 'unit-mismatch';
+  const hardFail = Boolean(nonFood) || Boolean(negHit) || overlap < overlapFloor || sizeRejects;
 
   // Score combines positive signals even when hard-failing, so candidate rows
   // retain their relative quality for later review.

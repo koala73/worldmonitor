@@ -3,7 +3,7 @@ title: "官方 SDK"
 description: "面向 Python、Ruby、Go 和 JavaScript 的零依赖 SDK —— 无需手写 HTTP 调用即可脚本化国家简报、风险评分、事件流与 MCP 工具，SDK 提供类型化响应、内置认证与自动重试，帮助开发者在数据管线、Notebook 与 agent 工作流中集成 World Monitor 情报能力。"
 ---
 
-World Monitor 在四个语言生态中提供官方客户端库。它们都是**零依赖**、MCP 优先的 [`worldmonitor` npm CLI](/zh/cli) 镜像：[MCP 服务器](/zh/mcp-overview)是实时且有文档的智能体接口（`tools/list` 公开；`tools/call` 需要用户 API 密钥），此外每个 SDK 都配有一个小型 REST 备用通道，用于主机相对路径和自托管场景。
+World Monitor 在四个语言生态中提供官方客户端库。它们都是**零依赖**、MCP 优先的 [`worldmonitor` npm CLI](/zh/cli) 镜像：[MCP 服务器](/zh/mcp-overview)是实时且有文档的智能体接口（`tools/list` 公开；`get_sources` 是唯一无需凭据且不消耗每日配额的数据工具；其他所有承载数据的 `tools/call` 都需要订阅 API 密钥），此外每个 SDK 都配有一个小型 REST 备用通道，用于主机相对路径和自托管场景。
 
 | 语言 | 软件包 | 安装 | 源码 |
 | --- | --- | --- | --- |
@@ -71,7 +71,7 @@ import run from 'worldmonitor/run';
 
 ## 获取密钥
 
-数据调用（`tools/call`）需要用户 API 密钥——在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 生成一个。有关密钥、OAuth 和浏览器会话的区别，请参见[身份验证](/zh/usage-auth)；各套餐的额度请参见[速率限制](/zh/usage-rate-limits)。
+`get_sources` 是唯一无需凭据且不消耗每日配额的 `tools/call` 数据工具；匿名调用使用独立的失败关闭上限：每个 IP 每分钟 10 次。其他所有数据工具都需要订阅 API 密钥——在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 生成一个。有关密钥、OAuth 和浏览器会话的区别，请参见[身份验证](/zh/usage-auth)；各套餐的额度请参见[速率限制](/zh/usage-rate-limits)。
 
 ## 发布（维护者）
 

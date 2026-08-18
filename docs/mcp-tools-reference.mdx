@@ -817,7 +817,9 @@ AI-classified geopolitical threat news summaries, GDELT intelligence signals, cr
 | `category` | string | Filter top news stories to one category (e.g. "conflict", "economy"; fallback is "general"). |
 | `country` | string | Filter top stories and travel advisories to one ISO 3166-1 alpha-2 country code (case-insensitive). |
 | `alerts_only` | boolean | Keep only top stories flagged as alerts. |
-| `limit` | number | Cap each list (top stories, signals, advisories) to at most this many items (default 30, pass 0 for no cap). |
+| `query` | string | Keep only top stories whose headline, primary source, or any clustered member headline contains this text (case-insensitive substring). This filters the LIVE news window only — it is not a historical index, so an event older than the current digest will not be found here. Use search_intel_history for that. |
+| `min_importance` | number | Keep only top stories whose effectiveImportanceScore is at least this value. 0 is honoured as a real floor rather than treated as absent; a story carrying no score is excluded when this is set, never treated as scoring zero. |
+| `limit` | number | Cap each list (top stories, signals, advisories) to at most this many items (default 30, pass 0 for no cap). Applied AFTER query and min_importance, so a capped list is drawn from the matches. |
 
 - **API endpoints:** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
@@ -851,7 +853,7 @@ Classify a supplied news headline or short text into a threat category and sever
 
 - **API endpoint:** `GET /api/intelligence/v1/classify-event`
 - **Kind:** bounded canonical-route proxy over an LLM classifier. This op was previously parity-excluded as `llm-passthrough`; the 24h per-title cache absorbs repeats and the classifier is capped at 50 output tokens.
-- **Quota:** standard — every call consumes the MCP daily reservation for OAuth (Pro) and dashboard-key contexts (50/UTC day). Environment API-key (`wm_…`) callers are not subject to that daily reservation; they remain bounded by the 60 requests/minute/key limiter, as with every other MCP tool.
+- **Quota:** standard — every call consumes the MCP daily reservation for OAuth and dashboard-issued `wm_…` key contexts (50/UTC day by default). Only legacy operator keys explicitly allowlisted by the deployment skip that daily reservation; every authenticated context remains bounded by the 60 requests/minute limiter.
 
 <CodeGroup>
 
@@ -910,6 +912,7 @@ Current topic clusters computed over the live headline digest with the same Jacc
 | `limit` | integer | Maximum clusters returned (1-25). Defaults to 10. |
 | `min_sources` | integer | Only return clusters carrying at least this many **distinct outlets** (1-10) — real corroboration, not one outlet filing twice. Defaults to 1. |
 | `category` | string (enum) | Restrict clustering to one full-digest category (`politics`, `us`, `europe`, `middleeast`, `tech`, `ai`, `finance`, `commodities`, `gov`, `africa`, `latam`, `asia`, `energy`, `thinktanks`, `crisis`, `layoffs`, `intel`). Echoed as `category` in the result (`null` when omitted). An unknown value yields `headlineCount: 0` and a `note` listing categories present in the current digest. |
+| `query` | string | Keep only clusters whose primary headline or any member headline contains this text (case-insensitive substring). Member headlines are matched too, because the primary is recency-picked — the searched term often sits on a sibling headline. Filters the LIVE digest window only, not a historical index. Applied before `limit`, so a capped list is drawn from the matches. |
 
 - **API endpoint:** `GET /api/news/v1/list-feed-digest`
 - **Kind:** deterministic local compute — clustering runs per call over the ~150-200 digest headlines (CDN/Redis-cached upstream, 15-min cadence).
@@ -932,7 +935,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_keyword_spikes`
 
-Trending keyword, CVE, and APT/FIN threat-group spikes versus baseline, using the same term-candidacy and spike-decision math as the dashboard's trending-keywords engine (minimum recent count, strict baseline multiplier, source-diversity gate). The tool queries the recent window and its pre-window baseline as separate cohorts, each capped at 800 stories, so a busy recent window cannot consume the baseline sample. `baseline_hours` reports the exact sampled pre-window duration, and `sample_truncated: true` means either cohort reached its cap. When no pre-window stories are available, the tool returns no spikes with an explicit `baseline unavailable` note and does not cache the result. Results are cached for 10 minutes per `(window_hours, min_count)` combination.
+Trending keyword, CVE, and APT/FIN threat-group spikes versus baseline, using the same term-candidacy and spike-decision math as the dashboard's trending-keywords engine (minimum recent count, strict baseline multiplier, source-diversity gate). Each spike includes `sourceNames` (curated publisher name, or the original feed label when unmapped) and up to three `sampleHeadlines` as `{title, source, link}` objects so an agent can attribute and follow the stories behind the count. `source` on a sample is every publisher that carried that collapsed title; `link` is the canonical `story:track:v1` URL and may not belong to a single named outlet. The tool queries the recent window and its pre-window baseline as separate cohorts, each capped at 800 stories, so a busy recent window cannot consume the baseline sample. `baseline_hours` reports the exact sampled pre-window duration, and `sample_truncated: true` means either cohort reached its cap. When no pre-window stories are available, the tool returns no spikes with an explicit `baseline unavailable` note and does not cache the result. Results are cached for 10 minutes per `(window_hours, min_count)` combination.
 
 **Parameters (tool-specific):**
 
@@ -1399,7 +1402,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_chokepoint_status`
 
-Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.
+Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.
 
 **Parameters (tool-specific):**
 
@@ -1837,7 +1840,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_natural_disasters`
 
-Recent earthquakes (USGS), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, and threat severity.
+Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, source, and threat severity.
 
 **Parameters (tool-specific):**
 
@@ -2144,6 +2147,35 @@ curl -s https://worldmonitor.app/mcp \
 </CodeGroup>
 
 ## Meta
+
+### `get_sources`
+
+WorldMonitor's live source inventory — what the data is drawn from and how far to trust it. Reads the committed attribution manifest and source-tier registry, so it is always current with the deployed build; no network call, no cache.
+
+Two **separate** populations, deliberately not merged:
+
+- **`providers`** — upstream hosts data is fetched from, keyed by host (`acleddata.com`), carrying `kind` (feed / structured / feed+structured / operational-status), attribution-review `status`, and `license`.
+- **`outlets`** — named news organisations, keyed by masthead (`Reuters`), carrying an editorial `tier` and the same `provenance` block the news tools attach to stories (propaganda risk, source type, whether each was declared or reviewed, state affiliation).
+
+A provider is a host; an outlet is a masthead. Only 3 of 536 active provider records share a key with the outlet table, so a single merged list would mean inventing attribution for the other 533.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `view` | string (enum) | `summary` (default) returns counts only and is small. `providers` and `outlets` enumerate. |
+| `kind` | string | `providers` view only — restrict to one kind. |
+| `tier` | integer 1-4 | `outlets` view only — restrict to one editorial tier. Outlets with no declared tier are never returned by this filter. |
+| `risk` | string (enum) | `outlets` view only — `low` / `medium` / `high` / `unknown`. |
+| `query` | string | Case-insensitive substring: host and provider in the providers view, outlet name in the outlets view. Applied before `limit`. |
+| `limit` | integer | Rows in an enumerated view. Defaults to 50, capped at 200. Ignored by `summary`. |
+
+- **`tier: null` means undeclared, never "tier 4."** WorldMonitor's internal tier helper defaults unknown names to 4; this tool does not, so a caller can distinguish a declared low-tier outlet from one that was never rated.
+- **Excluded manifest rows are reported, not dropped.** `summary.excludedProviderCount` counts local transports and development-only URLs kept out of the provider count.
+- **Truncation is visible.** Enumerated views return `matched` alongside `returned`; the full provider inventory does not fit one response.
+- **API endpoints:** none — committed-registry read, no upstream call.
+- **Kind:** deterministic local compute. No LLM, no freshness budget.
+- **Access: free.** This is the one tool callable with **no credentials at all**, so an agent can see what WorldMonitor covers before anyone signs up. It consumes no quota for any principal and carries `_meta["worldmonitor/access"]: "free"` in `tools/list`, which is how a client that reads schemas rather than prose can tell. Uncredentialed calls take their own per-IP ceiling, tighter than the discovery limit, and that ceiling fails closed — if it can't be reached, the call is refused rather than served. Every other tool still requires a subscription.
+
+---
 
 ### `describe_tool`
 

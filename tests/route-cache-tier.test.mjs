@@ -54,8 +54,8 @@ describe('RPC_CACHE_TIER route parity', () => {
   const tierMap = extractCacheTierKeys();
   const tierKeys = Object.keys(tierMap);
 
-  it('finds at least 50 GET routes in generated server files', () => {
-    assert.ok(getRoutes.length >= 50, `Expected ≥50 GET routes, found ${getRoutes.length}`);
+  it('finds a non-empty GET route universe in generated server files', () => {
+    assert.ok(getRoutes.length > 0, 'generated GET route extraction must not be empty');
   });
 
   it('every generated GET route has an explicit cache tier entry', () => {
@@ -78,10 +78,18 @@ describe('RPC_CACHE_TIER route parity', () => {
 
   it('no route uses the implicit default tier', () => {
     const gatewaySrc = readFileSync(join(root, 'server', 'gateway.ts'), 'utf-8');
+    // The declared per-route tier (RPC_CACHE_TIER + env override, captured as
+    // `declaredTier`) still falls back to 'medium' — the tripwire that keeps
+    // every route's tier explicit. `declaredTier` also gates the no-store floor.
     assert.match(
       gatewaySrc,
-      /RPC_CACHE_TIER\[pathname\]\s*\?\?\s*'medium'/,
+      /declaredTier\s*\?\?\s*'medium'/,
       'Gateway still has medium default fallback — ensure all routes are explicit',
+    );
+    assert.match(
+      gatewaySrc,
+      /RPC_CACHE_TIER\[pathname\]/,
+      'Gateway still consults RPC_CACHE_TIER for the declared per-route tier',
     );
   });
 

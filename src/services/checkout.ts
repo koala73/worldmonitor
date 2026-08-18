@@ -46,10 +46,13 @@ import { shouldSkipSentryForAction } from './checkout-sentry-policy';
 import { isEntitled, onEntitlementChange } from './entitlements';
 import {
   CLASSIC_AUTO_DISMISS_MS,
+  ENTITLEMENT_POLL_MS,
   EXTENDED_UNLOCK_TIMEOUT_MS,
+  LATE_ACTIVATION_GRACE_MS,
   maskEmail,
   type CheckoutSuccessBannerState,
 } from './checkout-banner-state';
+import { startEntitlementWait } from './checkout-entitlement-wait';
 import { isAffiliateCode, loadActiveReferral } from './referral-capture';
 import { trackCheckoutStart } from './analytics';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
@@ -1461,42 +1464,45 @@ export function showCheckoutSuccess(
     return;
   }
 
-  let resolved = false;
-  const timeoutHandle = setTimeout(() => {
-    if (resolved) return;
-    resolved = true;
-    unsubscribe();
-    stopEmailWatchers();
-    _currentBannerCleanup = null;
-    currentState = 'timeout';
-    setBannerText(banner, 'timeout', currentMaskedEmail);
-    enqueueSentryCall((s) => s.captureMessage('Checkout entitlement-activation timeout', {
-      level: 'warning',
-      tags: { component: 'dodo-checkout', action: 'entitlement-timeout' },
-    }));
-  }, EXTENDED_UNLOCK_TIMEOUT_MS);
-
-  const unsubscribe = onEntitlementChange(() => {
-    if (resolved) return;
-    if (!isEntitled()) return;
-    resolved = true;
-    clearTimeout(timeoutHandle);
-    unsubscribe();
-    stopEmailWatchers();
-    _currentBannerCleanup = null;
-    currentState = 'active';
-    setBannerText(banner, 'active', currentMaskedEmail);
-  });
+  // The wait settles on a change event, a poll, or a re-check at the deadline,
+  // and keeps watching for a bounded grace period afterwards — see
+  // `checkout-entitlement-wait.ts` for why one signal was not enough
+  // (WORLDMONITOR-PZ / #6760).
+  const stopWait = startEntitlementWait(
+    {
+      timeoutMs: EXTENDED_UNLOCK_TIMEOUT_MS,
+      pollMs: ENTITLEMENT_POLL_MS,
+      lateGraceMs: LATE_ACTIVATION_GRACE_MS,
+    },
+    {
+      isEntitled,
+      onEntitlementChange,
+      setTimeout: (handler, ms) => window.setTimeout(handler, ms),
+      clearTimeout: (id) => window.clearTimeout(id),
+      setInterval: (handler, ms) => window.setInterval(handler, ms),
+      clearInterval: (id) => window.clearInterval(id),
+      onState: (state) => {
+        stopEmailWatchers();
+        currentState = state;
+        setBannerText(banner, state, currentMaskedEmail);
+        // Only an `active` verdict is final. After a `timeout` the wait is
+        // still watching for a late activation, so the cleanup must stay
+        // registered or a re-entrant banner would orphan those watchers.
+        if (state === 'active') _currentBannerCleanup = null;
+      },
+      onTimeoutReport: () => {
+        enqueueSentryCall((s) => s.captureMessage('Checkout entitlement-activation timeout', {
+          level: 'warning',
+          tags: { component: 'dodo-checkout', action: 'entitlement-timeout' },
+        }));
+      },
+    },
+  );
 
   // Register cleanup so a re-entrant showCheckoutSuccess call (e.g. a
   // double-fire of `checkout.status=succeeded`) tears down this
-  // banner's listener + timer before mounting a replacement.
-  _currentBannerCleanup = () => {
-    if (resolved) return;
-    resolved = true;
-    clearTimeout(timeoutHandle);
-    unsubscribe();
-  };
+  // banner's watchers before mounting a replacement.
+  _currentBannerCleanup = stopWait;
 }
 
 function setBannerText(

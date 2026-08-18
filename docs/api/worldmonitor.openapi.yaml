@@ -25599,7 +25599,7 @@ paths:
             tags:
                 - SeismologyService
             summary: ListEarthquakes
-            description: ListEarthquakes retrieves recent earthquakes from the USGS GeoJSON feed.
+            description: ListEarthquakes retrieves recent earthquakes from USGS and Earthquakes Canada (NRCan).
             operationId: ListEarthquakes
             security: []
             parameters:
@@ -25667,14 +25667,14 @@ paths:
                         application/json:
                             example:
                                 "earthquakes":
-                                    - "concernLevel": "example"
+                                    - "category": "cs.AI"
+                                      "concernLevel": "example"
                                       "concernScore": 42.5
                                       "depthKm": 1.5
                                       "id": "example-id"
                                       "location":
                                           "latitude": 40.7128
                                           "longitude": -74.006
-                                      "magnitude": 1.5
                                 "pagination":
                                     "nextCursor": "next-page-token"
                                     "totalCount": 1
@@ -30767,11 +30767,11 @@ paths:
                                 "dataAvailable": true
                                 "fetchedAt": 1717200000000
                                 "fireDetections":
-                                    - "brightness": 1.5
+                                    - "agencyCode": "example"
+                                      "agencyFireId": "example-id"
+                                      "brightness": 1.5
                                       "confidence": "FIRE_CONFIDENCE_LOW"
                                       "dayNight": "example"
-                                      "detectedAt": 1717200000000
-                                      "frp": 1.5
                                       "id": "example-id"
                                 "pagination":
                                     "nextCursor": "next-page-token"
@@ -48885,6 +48885,13 @@ components:
                 aircraftCount:
                     type: integer
                     format: int32
+                semaCount:
+                    type: integer
+                    format: int32
+                    description: Number of Canadian SEMA designations represented in this snapshot.
+                semaError:
+                    type: string
+                    description: Present when the SEMA source failed while other sanctions data remained available.
             description: ListSanctionsPressureResponse contains normalized OFAC pressure summaries and recent entries.
         worldmonitor_sanctions_v1_SanctionsEntry:
             type: object
@@ -49217,7 +49224,7 @@ components:
                     description: |-
                         Minimum magnitude filter (e.g., 4.0 for significant quakes).
                          Accepted but currently ignored; no-op until this handler supports the parameter.
-            description: ListEarthquakesRequest specifies filters for retrieving earthquake data from USGS.
+            description: ListEarthquakesRequest specifies filters for retrieving earthquake data from USGS and Earthquakes Canada (NRCan).
         worldmonitor_seismology_v1_ListEarthquakesResponse:
             type: object
             properties:
@@ -49235,7 +49242,7 @@ components:
                     type: string
                     maxLength: 100
                     minLength: 1
-                    description: Unique USGS event identifier (e.g., "us7000abcd").
+                    description: 'Event identifier: USGS id (e.g. "us7000abcd") or namespaced NRCan id (e.g. "nrcan:20260813.0954001").'
                 place:
                     type: string
                     description: Human-readable place description (e.g., "10 km SW of Anchorage, Alaska").
@@ -49255,7 +49262,7 @@ components:
                     description: 'Time the earthquake occurred, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
                 sourceUrl:
                     type: string
-                    description: URL to the USGS event detail page.
+                    description: URL to the USGS or Earthquakes Canada event detail page.
                 nearTestSite:
                     type: boolean
                     description: True when epicenter is within 100 km of a known nuclear test site.
@@ -49269,9 +49276,15 @@ components:
                 concernLevel:
                     type: string
                     description: 'Human-readable concern level: "low" | "moderate" | "elevated" | "critical".'
+                source:
+                    type: string
+                    description: 'Reporting agency: "usgs" (USGS) or "nrcan" (Earthquakes Canada / NRCan).'
+                category:
+                    type: string
+                    description: NRCan event category when present (e.g. "known earthquake", "suspected industry-related"). Empty for USGS.
             required:
                 - id
-            description: Earthquake represents a seismic event from USGS GeoJSON feed.
+            description: Earthquake represents a seismic event from USGS and Earthquakes Canada (NRCan).
         worldmonitor_shipping_v2_RouteIntelligenceRequest:
             type: object
             properties:
@@ -52314,6 +52327,35 @@ components:
                     description: |-
                         Whether the thermal signature suggests a possible explosion rather than a fire
                          (FRP > 80 MW and brightness > 380 K).
+                source:
+                    type: string
+                    description: |-
+                        Producer of the row: "firms" for satellite detections, "cwfis" / "bcws" for
+                         agency-reported fires. Absent means FIRMS, for rows written before this field.
+                kind:
+                    type: string
+                    description: |-
+                        Agency fire classification, e.g. "wildfire", "prescribed", "outOfControl".
+                         Empty for satellite detections, which classify nothing.
+                emergency:
+                    type: boolean
+                    description: |-
+                        Whether the row should page. Prescribed burns are reported fires but are
+                         NOT emergencies, and must not be treated as such by a consumer.
+                agencyFireId:
+                    type: string
+                    description: Agency's own identifier for the fire, stable across ticks. Empty for FIRMS.
+                agencyCode:
+                    type: string
+                    description: Reporting agency code (e.g. "BC", "AB", "ON"). Empty for FIRMS.
+                fireSize:
+                    type: number
+                    format: double
+                    description: |-
+                        Reported fire size in HECTARES. 0 when unknown or not applicable — FIRMS
+                         detections report radiative power, not area. Named to match the key the
+                         seeder actually emits: a proto field the payload never populates is worse
+                         than no field, because consumers see it in the schema and get nothing.
             required:
                 - id
             description: FireDetection represents a satellite-detected active fire from NASA FIRMS.

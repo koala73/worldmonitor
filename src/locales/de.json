@@ -1017,7 +1017,7 @@
         "ucdpEvents": "Bewaffnete Konfliktereignisse",
         "displacementFlows": "Fluchtbewegungen",
         "climateAnomalies": "Klimaanomalien",
-        "weatherAlerts": "US-Wetterwarnungen (NWS)",
+        "weatherAlerts": "US- und Kanada-Wetterwarnungen (NWS, ECCC)",
         "strategicWaterways": "Engpässe",
         "economicCenters": "Wirtschaftszentren",
         "criticalMinerals": "Kritische Mineralien",
@@ -1107,7 +1107,7 @@
           "infraDatacenters": "KI-Rechencluster >=10.000 GPUs",
           "infraOutages": "Internetausfälle und Dienstunterbrechungen",
           "naturalEventsTech": "Erdbeben, Stürme, Brände (kann Rechenzentren beeinträchtigen)",
-          "weatherAlerts": "Unwetterwarnungen in den USA (NWS)",
+          "weatherAlerts": "Unwetterwarnungen in den USA und Kanada (NWS, ECCC)",
           "economicCenters": "Börsen & Zentralbanken",
           "countriesOverlay": "Ländernamen-Overlays",
           "financeExchanges": "Wichtige globale Börsen nach Marktebene",
@@ -1119,7 +1119,7 @@
           "financeOutages": "Internetstörungen, die sich auf den Marktbetrieb auswirken können",
           "financeCyberThreats": "Sicherheitsereignisse rund um die Finanzinfrastruktur",
           "macroWaterways": "Strategische Engpässe für die Rohstoffschifffahrt",
-          "weatherAlertsMarket": "Marktrelevante Unwetterereignisse in den USA (NWS)",
+          "weatherAlertsMarket": "Marktrelevante Unwetterereignisse in den USA und Kanada (NWS, ECCC)",
           "naturalEventsMacro": "Erdbeben, Brände, Überschwemmungen und andere natürliche Störungen",
           "timeRecent": "Zeitbasierte Daten auf die letzten Stunden filtern",
           "timeExtended": "Daten der letzten Woche, des letzten Monats oder aller Zeiten anzeigen",
@@ -2358,13 +2358,14 @@
     },
     "sanctionsPressure": {
       "title": "Sanktionen & Listungen",
-      "infoTooltip": "OFAC-Sanktionsdesignierungen aus der SDN und Consolidated Lists. Zeigt, welche Länder unter dem höchsten Designierungsdruck stehen, welche Programme dies vorantreiben, und was seit der letzten Aktualisierung neu hinzugekommen ist.",
+      "infoTooltip": "OFAC-SDN- und Consolidated Lists plus SEMA/JVCFOA-Listungen von Global Affairs Canada. Zeigt, welche Länder unter dem höchsten Designierungsdruck stehen, welche Programme dies vorantreiben, und was seit der letzten Aktualisierung neu hinzugekommen ist.",
       "loading": "Sanktionsdaten werden geladen...",
       "unavailable": "Sanktionsdaten nicht verfügbar.",
       "summary": {
         "new": "Neu",
         "vessels": "Schiffe",
-        "aircraft": "Flugzeuge"
+        "aircraft": "Flugzeuge",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Sanktionierte Länder",
@@ -2379,11 +2380,12 @@
       "footer": {
         "updated": "Aktualisiert {{time}}",
         "dataset": "Datensatz {{date}}",
-        "source": "Quelle: OFAC"
+        "source": "Quelle: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} neu",
-        "new": "neu"
+        "new": "neu",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} Listung",
       "designations_other": "{{count}} Listungen",
@@ -2820,6 +2822,7 @@
     "moreEvents": "weitere Ereignisse",
     "monitoring": "Überwachung",
     "viewUSGS": "Auf USGS ansehen",
+    "viewNRCan": "Auf Earthquakes Canada ansehen",
     "expired": "Abgelaufen",
     "timeAgo": {
       "s": "vor {{count}} s",

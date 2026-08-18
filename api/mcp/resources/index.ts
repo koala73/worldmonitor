@@ -220,7 +220,7 @@ export function isPublicResourceUri(uri: unknown): boolean {
 // Serves a concrete PUBLIC_RESOURCE_REGISTRY entry via its direct `read()`.
 // No auth context, no dispatchToolsCall, no Pro reservation — the content is
 // metadata-only (a freshness envelope), so this is safe to serve to an
-// anonymous caller, mirroring `prompts/list` / `describe_tool`. The handler
+// anonymous caller, mirroring `prompts/list`. The handler
 // only routes a request here when `isPublicResourceUri(uri)` is true, so the
 // `-32602` fallback below is a fail-explicit guard for a broken invariant.
 export async function buildPublicResourceResponse(

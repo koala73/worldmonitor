@@ -34,9 +34,10 @@ export class BreakthroughsTickerPanel extends Panel {
     wrapper.appendChild(track);
     this.tickerTrack = track;
 
-    // Clear loading state and append the ticker
-    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
-    this.content.appendChild(wrapper);
+    // Route through the sanctioned helper (#6557): clears the error state
+    // and cancels any pending debounced write alongside the replace, where
+    // the legacy direct-write path cleared only the DOM children.
+    this.setContentNodes(wrapper);
   }
 
   /**

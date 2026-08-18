@@ -517,6 +517,26 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(!suppress('enforce', 'connect-src', 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json', '', false));
     });
 
+    it('suppresses unpkg Leaflet CSS injection under style-src* (WORLDMONITOR-J0 round 4)', () => {
+      // The only blockedURI still live in J0 on 2026-08-16. Leaflet appears
+      // nowhere in the repo (MapLibre/deck.gl render every map), and the
+      // dashboard style-src ships no cross-origin host, so this is an
+      // extension/userscript injection. Both directive spellings, since older
+      // browsers report `style-src` rather than `style-src-elem`.
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', '', false));
+      assert.ok(suppress('enforce', 'style-src', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', '', false));
+    });
+
+    it('does NOT suppress unpkg outside style-src*, on http:, on a sibling host, or off a .css path', () => {
+      // unpkg is a general npm CDN, so the rule must stay narrow. Each negative
+      // pins one conjunct of the guard: drop any one and this test goes red.
+      assert.ok(!suppress('enforce', 'script-src', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'http://unpkg.com/leaflet@1.9.4/dist/leaflet.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://cdn.unpkg.com/leaflet@1.9.4/dist/leaflet.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://notunpkg.com/leaflet@1.9.4/dist/leaflet.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css.map', '', false));
+    });
+
     it('suppresses Google Fonts CSS injection under style-src* (WORLDMONITOR-J0 round 2)', () => {
       // Extensions/user-style themes inject <link> stylesheets for families we
       // never reference (DM Sans, Syne, Roboto). We self-host all fonts, so a

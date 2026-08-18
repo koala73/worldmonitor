@@ -699,7 +699,7 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
 .author-name {
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--text);
+  color: var(--wm-text);
   margin-bottom: 0.3rem;
 }
 
@@ -712,7 +712,7 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
 
 .author-desc {
   font-size: 0.82rem;
-  color: var(--text-dim);
+  color: var(--wm-muted);
   line-height: 1.5;
 }
 

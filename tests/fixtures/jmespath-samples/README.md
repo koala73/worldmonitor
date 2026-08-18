@@ -59,7 +59,7 @@ this feature.
 `executeTool()` reads cache via `readJsonFromUpstash` which calls
 `fetch()` directly, not `deps.redisPipeline`. Mocking `deps` doesn't
 intercept the cache reads, so we'd have to mock `globalThis.fetch`
-keyed by each tool's `_cacheKeys + _seedMetaKey` to get the cache path
+keyed by each tool's `_cacheKeys + _freshnessChecks[].key` to get the cache path
 to feed our fixtures. Calling `applyJmespath` directly on the
 already-assembled tool response is simpler AND uniquely correct for
 what we measure — the projection delta, not the cache-path overhead.
