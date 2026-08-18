@@ -25,10 +25,23 @@ import { runBundle, DAY } from './_bundle-runner.mjs';
 // far more often than any of these cadences needs, so a permanently failing
 // member can consume at most one lead slot in three.
 const SECTIONS = [
-  // Cheapest first in the canonical order: on the two days it does not lead it
-  // still fits behind either heavy (371s + 190s = 561s, 335s + 190s = 525s).
+  // Cheapest first in the canonical order. On the two days it does not lead it
+  // still fits behind either heavy, because BOTH are now bounded work: the
+  // chunked Arms sweep measures ~250s (250+190=440s) and Military-Bases ~335s
+  // (335+190=525s), against a 570s budget.
+  //
+  // This did NOT hold before the sweep. Arms-Suppliers ran 390.9s on 2026-08-18,
+  // leaving 179s against this section's 190s reservation, and the log read
+  // "needs 190s but only 178s left" — Mineral-Production deferred by ELEVEN
+  // seconds on the tick its acknowledgement expired.
   { label: 'Mineral-Production', script: 'seed-mineral-production.mjs', seedMetaKey: 'supply-chain:mineral-production', canonicalKey: 'supply-chain:mineral-production:v1', intervalMs: 60 * DAY, timeoutMs: 180_000 },
-  { label: 'Arms-Suppliers', script: 'seed-defense-industrial-suppliers.mjs', seedMetaKey: 'military:arms-suppliers-complete', canonicalKey: 'military:arms-suppliers:complete:v1', intervalMs: 10 * DAY, timeoutMs: 450_000 },
+  // 370s, not 450s, and 14 days, not 10 — both follow from the chunked sweep
+  // (#6806). The section now fetches ONE ~56-importer slice per tick (340s fetch
+  // deadline + publish), not the whole ~200-importer catalog, so it no longer
+  // needs a 450s reservation and no longer starves the members behind it. The
+  // wider interval gives the sweep horizon room: a sweep spans ~8 days and every
+  // row must read stale by the time the section is next due.
+  { label: 'Arms-Suppliers', script: 'seed-defense-industrial-suppliers.mjs', seedMetaKey: 'military:arms-suppliers-complete', canonicalKey: 'military:arms-suppliers:complete:v1', intervalMs: 14 * DAY, timeoutMs: 370_000 },
   // Missing canonicalKey is intentional (#6845); do not invent one here.
   { label: 'Military-Bases', script: 'seed-military-bases.mjs', seedMetaKey: 'military:bases', intervalMs: 30 * DAY, timeoutMs: 400_000 },
 ];
