@@ -94,6 +94,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'intermediate: per-country military-presence aggregate (own/foreign flights+vessels, AIS disruption buckets) read by server/worldmonitor/intelligence/v1/get-risk-scores.ts to feed the CII Security component; surfaces transitively via the country-risk score returned by get_country_risk. Not a queryable MCP slice on its own.'],
   ['alerts:canada:v1',
     'map-only Alberta + B.C. provincial alert union (canadaAlerts). #6610 and #6659 ship province seeders and DeckGL dots; no MCP tool. Do not fold into weather:alerts:v1 (NWS).'],
+  ['alerts:canada:alberta-aea:v1',
+    'intermediate: Alberta Emergency Alert snapshot materialized into alerts:canada:v1; the map consumes only the shared union.'],
   ['alerts:canada:bc-evacuation:v1',
     'intermediate: OGL-BC Evacuation Orders and Alerts snapshot materialized into alerts:canada:v1; the map consumes only the shared union.'],
   ['weather:hko-warnings:v1',

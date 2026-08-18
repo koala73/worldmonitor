@@ -20,6 +20,7 @@ import { unwrapEnvelope } from './_seed-envelope.js';
 import { redisPipeline, getRedisCredentials, readExistsFlags } from './_upstash-json.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
 import { BOOTSTRAP_CACHE_KEYS } from './_bootstrap-tier-keys.js';
+import { CANADA_ALERTS_CUTOVER_FALLBACK_KEYS } from './_canada-alerts-cutover.js';
 import {
   projectChinaDecisionGroupDiagnostics,
 } from './_china-decision-health.js';
@@ -298,12 +299,10 @@ const BOOTSTRAP_KEYS = {
   trafficAnomalies:    'cf:radar:traffic-anomalies:v1',
 };
 
-// Temporary #6659 cutover fallback. Public bootstrap serves this legacy
-// Alberta snapshot only while the Canada aggregate is cleanly absent. Include
-// it in the same health sweep so the existing canadaAlerts probe grades the
-// data clients actually receive, without adding another probe.
-const CANADA_ALERTS_CUTOVER_FALLBACK_KEY = 'alerts:alberta-aea:v1';
-
+// Temporary #6659 cutover fallback. Public bootstrap serves the Alberta
+// sibling first, then the abandoned legacy key, only while the Canada
+// aggregate is cleanly absent. Include both fallback keys in the same health
+// sweep so the canadaAlerts probe grades the data clients actually receive.
 const STANDALONE_KEYS = {
   chinaCoverage:      CHINA_COVERAGE_SUMMARY_KEY,
   // Control-plane heartbeat only. Convex owns every durable scan lease,
@@ -313,6 +312,7 @@ const STANDALONE_KEYS = {
   // data layer only), so it is standalone rather than bootstrap-tiered.
   chinaStockConnect:  'market:china:stock-connect:v1',
   hkoWarnings:        'weather:hko-warnings:v1',
+  canadaAlertsAbSource: 'alerts:canada:alberta-aea:v1',
   canadaAlertsBcSource: 'alerts:canada:bc-evacuation:v1',
   humanitarianSummary: 'conflict:humanitarian:v1',
   // #4920 completeness measurement (daily GH Actions publishers) — ops
@@ -740,8 +740,19 @@ const SEED_META = {
     },
   },
   canadaAlerts:     {
+    key: 'seed-meta:alerts:canada-union',
+    maxStaleMin: 45, // union rebuilds on the */15 Alberta tick; 45 = 3× interval
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: 'seed-meta:alerts:alberta-aea',
+      issue: 6659,
+      status: 'EMPTY',
+    },
+  },
+  canadaAlertsAbSource: {
     key: 'seed-meta:alerts:alberta-aea',
     maxStaleMin: 45, // seed-alberta-emergency-alert cron */15; 45 = 3× interval
+    cutover: { mode: 'expiring-ack', fromKey: null, issue: 6659, status: 'EMPTY' },
   },
   canadaAlertsBcSource: {
     key: 'seed-meta:alerts:bc-emergency-info',
@@ -1342,7 +1353,7 @@ function parseFredRatesRolloutUntil(results) {
 }
 
 const EMPTY_DATA_OK_KEYS = new Set([
-  'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts', 'canadaRoads', 'albertaRoads', 'torontoRoads', 'bcOpen511', 'canadaAlerts', 'canadaAlertsBcSource',
+  'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts', 'canadaRoads', 'albertaRoads', 'torontoRoads', 'bcOpen511', 'canadaAlerts', 'canadaAlertsAbSource', 'canadaAlertsBcSource',
   'earningsCalendar', 'econCalendar', 'cotPositioning',
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
   'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
@@ -1396,6 +1407,7 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
   // writes {alerts: []} when all configured sources are quiet. Reading
   // OK while an EMERGENCY ALERT payload has vanished is the worst failure in this set.
   'canadaAlerts',
+  'canadaAlertsAbSource',
   'canadaAlertsBcSource',
 ]);
 
@@ -1495,12 +1507,27 @@ function keyHasData(redisKey, len) {
 
 function applyCanadaAlertsDataPresenceFallback(keyStrens, keyErrors) {
   const primaryKey = BOOTSTRAP_KEYS.canadaAlerts;
-  if (keyErrors.has(primaryKey) || keyHasData(primaryKey, keyStrens.get(primaryKey) ?? 0)) return;
-  if (keyErrors.has(CANADA_ALERTS_CUTOVER_FALLBACK_KEY)) return;
-  const fallbackLength = keyStrens.get(CANADA_ALERTS_CUTOVER_FALLBACK_KEY) ?? 0;
-  if (keyHasData(CANADA_ALERTS_CUTOVER_FALLBACK_KEY, fallbackLength)) {
-    keyStrens.set(primaryKey, fallbackLength);
+  if (keyErrors.has(primaryKey) || keyHasData(primaryKey, keyStrens.get(primaryKey) ?? 0)) {
+    return false;
   }
+  for (const fallbackKey of CANADA_ALERTS_CUTOVER_FALLBACK_KEYS) {
+    if (keyErrors.has(fallbackKey)) continue;
+    const fallbackLength = keyStrens.get(fallbackKey) ?? 0;
+    if (keyHasData(fallbackKey, fallbackLength)) {
+      keyStrens.set(primaryKey, fallbackLength);
+      return true;
+    }
+  }
+  return false;
+}
+
+function applyCanadaAlertsSeedMetaFallback(keyMetaValues, keyMetaErrors, usedFallback) {
+  if (!usedFallback) return;
+  const unionMetaKey = SEED_META.canadaAlerts.key;
+  const albertaMetaKey = SEED_META.canadaAlertsAbSource.key;
+  if (keyMetaErrors.has(albertaMetaKey)) return;
+  const albertaMeta = keyMetaValues.get(albertaMetaKey);
+  if (albertaMeta != null) keyMetaValues.set(unionMetaKey, albertaMeta);
 }
 
 const TRADE_FLOW_DOMINANT_FAILURE_MODES = new Set([
@@ -2863,8 +2890,10 @@ export async function handleHealth(req, ctx, options = {}) {
   const allDataKeys = [
     ...Object.values(BOOTSTRAP_KEYS),
     ...Object.values(STANDALONE_KEYS),
-    CANADA_ALERTS_CUTOVER_FALLBACK_KEY,
   ];
+  for (const key of CANADA_ALERTS_CUTOVER_FALLBACK_KEYS) {
+    if (!allDataKeys.includes(key)) allDataKeys.push(key);
+  }
   const allMetaKeys = Object.values(SEED_META).map(s => s.key);
   const activationEntries = Object.entries(ACTIVATION_MARKERS);
   const fredRolloutCommands = fredRatesRolloutCommands(now);
@@ -2915,7 +2944,7 @@ export async function handleHealth(req, ctx, options = {}) {
     if (r?.error) keyErrors.set(allDataKeys[i], r.error);
     keyStrens.set(allDataKeys[i], r?.result ?? 0);
   }
-  applyCanadaAlertsDataPresenceFallback(keyStrens, keyErrors);
+  const usedCanadaAlertsFallback = applyCanadaAlertsDataPresenceFallback(keyStrens, keyErrors);
   // keyMetaValues: parsed seed-meta objects (GET, small payloads)
   // keyMetaErrors: per-command errors so a single GET failure surfaces as
   // REDIS_PARTIAL instead of silently degrading to STALE_SEED.
@@ -2926,6 +2955,7 @@ export async function handleHealth(req, ctx, options = {}) {
     if (r?.error) keyMetaErrors.set(allMetaKeys[i], r.error);
     keyMetaValues.set(allMetaKeys[i], r?.result ?? null);
   }
+  applyCanadaAlertsSeedMetaFallback(keyMetaValues, keyMetaErrors, usedCanadaAlertsFallback);
   // activationStates: health name -> whether its durable activation marker
   // exists. `readExistsFlags` is the one shared three-valued parser for all
   // three consumers (#6115): only an entry with an explicit result of 0 or 1
@@ -3159,8 +3189,9 @@ export const __testing__ = {
   // at module scope by design — this is the test-only escape hatch.
   BOOTSTRAP_KEYS,
   STANDALONE_KEYS,
-  CANADA_ALERTS_CUTOVER_FALLBACK_KEY,
+  CANADA_ALERTS_CUTOVER_FALLBACK_KEYS,
   applyCanadaAlertsDataPresenceFallback,
+  applyCanadaAlertsSeedMetaFallback,
   SEED_META,
   EMPTY_DATA_OK_KEYS,
   MISSING_DATA_IS_FAILURE_KEYS,

@@ -4,7 +4,8 @@ import { afterEach, beforeEach, test } from 'node:test';
 import handler from '../api/bootstrap.js';
 
 const PRIMARY_KEY = 'alerts:canada:v1';
-const FALLBACK_KEY = 'alerts:alberta-aea:v1';
+const SIBLING_KEY = 'alerts:canada:alberta-aea:v1';
+const LEGACY_KEY = 'alerts:alberta-aea:v1';
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
 
@@ -52,7 +53,8 @@ test('public canadaAlerts keeps the aggregate authoritative when both cutover ke
   const alberta = { alerts: [{ id: 'ab-alert', province: 'AB' }] };
   const calls = installRedis(new Map([
     [PRIMARY_KEY, aggregate],
-    [FALLBACK_KEY, alberta],
+    [SIBLING_KEY, alberta],
+    [LEGACY_KEY, alberta],
   ]));
 
   const response = await handler(makePublicFastRequest());
@@ -62,18 +64,51 @@ test('public canadaAlerts keeps the aggregate authoritative when both cutover ke
   assert.deepEqual(body.data.canadaAlerts, aggregate);
   assert.equal(calls.length, 1);
   assert.ok(calls[0].some(command => command[0] === 'GET' && command[1] === PRIMARY_KEY));
-  assert.ok(calls[0].some(command => command[0] === 'GET' && command[1] === FALLBACK_KEY));
+  assert.ok(calls[0].some(command => command[0] === 'GET' && command[1] === SIBLING_KEY));
+  assert.ok(calls[0].some(command => command[0] === 'GET' && command[1] === LEGACY_KEY));
 });
 
-test('public canadaAlerts uses the Alberta snapshot when the aggregate is missing', async () => {
-  const alberta = { alerts: [{ id: 'ab-alert', province: 'AB' }] };
-  const calls = installRedis(new Map([[FALLBACK_KEY, alberta]]));
+test('public canadaAlerts prefers the Alberta sibling when the aggregate is missing', async () => {
+  const sibling = { alerts: [{ id: 'ab-sibling', province: 'AB' }] };
+  const legacy = { alerts: [{ id: 'ab-legacy', province: 'AB' }] };
+  const calls = installRedis(new Map([
+    [SIBLING_KEY, sibling],
+    [LEGACY_KEY, legacy],
+  ]));
 
   const response = await handler(makePublicFastRequest());
   const body = await response.json();
 
   assert.equal(response.status, 200);
-  assert.deepEqual(body.data.canadaAlerts, alberta);
+  assert.deepEqual(body.data.canadaAlerts, sibling);
   assert.ok(!body.missing.includes('canadaAlerts'));
   assert.equal(calls.length, 1);
+});
+
+test('public canadaAlerts uses the abandoned legacy key when only it remains', async () => {
+  const legacy = { alerts: [{ id: 'ab-alert', province: 'AB' }] };
+  installRedis(new Map([[LEGACY_KEY, legacy]]));
+
+  const response = await handler(makePublicFastRequest());
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.data.canadaAlerts, legacy);
+  assert.ok(!body.missing.includes('canadaAlerts'));
+});
+
+test('public canadaAlerts does not resurrect Alberta data when the union is an empty payload', async () => {
+  const emptyUnion = { alerts: [] };
+  const alberta = { alerts: [{ id: 'ab-alert', province: 'AB' }] };
+  installRedis(new Map([
+    [PRIMARY_KEY, emptyUnion],
+    [SIBLING_KEY, alberta],
+    [LEGACY_KEY, alberta],
+  ]));
+
+  const response = await handler(makePublicFastRequest());
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.data.canadaAlerts, emptyUnion);
 });

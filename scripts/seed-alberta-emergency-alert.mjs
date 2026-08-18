@@ -18,6 +18,7 @@ import {
 } from './lib/alberta-emergency-alert.mjs';
 import {
   CANADA_ALERT_SOURCES,
+  CANADA_ALERTS_LEGACY_KEY,
   rebuildCanadaAlertsUnion,
 } from './lib/canada-alerts-union.mjs';
 
@@ -35,6 +36,10 @@ runSeed('alerts', 'alberta-aea', SOURCE.key, fetchAlbertaAea, {
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'alberta-aea-v1',
   declareRecords: declareAlbertaAeaRecords,
+  extraKeys: [{
+    key: CANADA_ALERTS_LEGACY_KEY,
+    transform: albertaAeaPublishTransform,
+  }],
   zeroIsValid: true,
   schemaVersion: 1,
   maxStaleMin: 45,

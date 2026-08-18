@@ -1,14 +1,17 @@
 /** Shared materialized union for the province-owned canadaAlerts feeds. */
 
 import {
+  extendExistingTtl,
   readSeedSnapshot,
   writeExtraKey,
   writeFreshnessMetadata,
 } from '../_seed-utils.mjs';
 
 export const CANADA_ALERTS_KEY = 'alerts:canada:v1';
+export const CANADA_ALERTS_LEGACY_KEY = 'alerts:alberta-aea:v1';
 export const CANADA_ALERTS_TTL_SECONDS = 5_400;
 export const CANADA_ALERTS_SOURCE_VERSION = 'canada-provincial-alerts-v1';
+export const CANADA_ALERTS_MAX_PUBLISHED = 200;
 
 export const CANADA_ALERT_SOURCES = Object.freeze([
   Object.freeze({
@@ -60,6 +63,9 @@ export function buildCanadaAlertsUnion(inputs, nowMs = Date.now()) {
     (SEVERITY_RANK[a.severity] ?? 9) - (SEVERITY_RANK[b.severity] ?? 9)
     || (b.updatedAt ?? 0) - (a.updatedAt ?? 0)
   ));
+  if (alerts.length > CANADA_ALERTS_MAX_PUBLISHED) {
+    alerts.length = CANADA_ALERTS_MAX_PUBLISHED;
+  }
   const degraded = missingSources.length > 0 || staleSources.length > 0 || degradedSources.length > 0;
   return {
     alerts,
@@ -83,6 +89,7 @@ export async function rebuildCanadaAlertsUnion({
   readSnapshot = readSeedSnapshot,
   writeKey = writeExtraKey,
   writeMeta = writeFreshnessMetadata,
+  extendTtl = extendExistingTtl,
 } = {}) {
   const inputs = await Promise.all(CANADA_ALERT_SOURCES.map(async (source) => {
     if (currentSource?.province === source.province) {
@@ -100,23 +107,43 @@ export async function rebuildCanadaAlertsUnion({
   }));
 
   const result = buildCanadaAlertsUnion(inputs, nowMs);
-  const envelopeMeta = {
-    fetchedAt: nowMs,
-    recordCount: result.alerts.length,
-    sourceVersion: CANADA_ALERTS_SOURCE_VERSION,
-    schemaVersion: 1,
-    state: result.alerts.length > 0 ? 'OK' : 'OK_ZERO',
-  };
-  await writeKey(
-    CANADA_ALERTS_KEY,
-    { alerts: result.alerts },
-    CANADA_ALERTS_TTL_SECONDS,
-    envelopeMeta,
-  );
+  const hasPeerGap = result.missingSources.length > 0 || result.staleSources.length > 0;
+  let preserved = false;
+  let publishedCount = result.alerts.length;
+
+  if (hasPeerGap) {
+    const existing = await readSnapshot(CANADA_ALERTS_KEY, { strict: true });
+    const existingAlerts = existing != null
+      && typeof existing === 'object'
+      && Array.isArray(existing.alerts)
+      ? existing.alerts
+      : [];
+    if (existingAlerts.length > 0) {
+      await extendTtl([CANADA_ALERTS_KEY], CANADA_ALERTS_TTL_SECONDS);
+      preserved = true;
+      publishedCount = existingAlerts.length;
+    }
+  }
+
+  if (!preserved) {
+    await writeKey(
+      CANADA_ALERTS_KEY,
+      { alerts: result.alerts },
+      CANADA_ALERTS_TTL_SECONDS,
+      {
+        fetchedAt: nowMs,
+        recordCount: publishedCount,
+        sourceVersion: CANADA_ALERTS_SOURCE_VERSION,
+        schemaVersion: 1,
+        state: publishedCount > 0 ? 'OK' : 'OK_ZERO',
+      },
+    );
+  }
+
   await writeMeta(
     'alerts',
     'canada-union',
-    result.alerts.length,
+    publishedCount,
     CANADA_ALERTS_SOURCE_VERSION,
     CANADA_ALERTS_TTL_SECONDS,
     undefined,
@@ -127,7 +154,8 @@ export async function rebuildCanadaAlertsUnion({
       missingSources: result.missingSources,
       staleSources: result.staleSources,
       degradedSources: result.degradedSources,
+      ...(preserved ? { preserved: true } : {}),
     },
   );
-  return result;
+  return { ...result, preserved };
 }

@@ -74,8 +74,23 @@ test('fails closed when the source system ID is absent or blank', () => {
       ...copy.features[0],
       properties: { ...copy.features[0].properties, EMRG_OAA_SYSID: sysId },
     }];
-    assert.deepEqual(parseBcEmergencyInfoGeoJson(copy), []);
+    assert.throws(
+      () => parseBcEmergencyInfoGeoJson(copy),
+      /missing EMRG_OAA_SYSID/,
+    );
   }
+});
+
+test('fails closed on an unknown ORDER_ALERT_STATUS instead of skipping the feature', () => {
+  const copy = structuredClone(fixture);
+  copy.features = [{
+    ...copy.features[0],
+    properties: { ...copy.features[0].properties, ORDER_ALERT_STATUS: 'Warning' },
+  }];
+  assert.throws(
+    () => parseBcEmergencyInfoGeoJson(copy),
+    /unknown ORDER_ALERT_STATUS: Warning/,
+  );
 });
 
 test('pins the official ArcGIS host and rejects redirects to lookalikes', () => {

@@ -26,6 +26,7 @@ import {
   resolveBootstrapRegistry,
 } from './_bootstrap-tier-keys.js';
 import { compactWildfireDashboardPayload } from './_wildfire-dashboard.js';
+import { CANADA_ALERTS_CUTOVER_FALLBACK_KEYS } from './_canada-alerts-cutover.js';
 import {
   BOOTSTRAP_R2_PROBE_CEILING_MS,
   readBootstrapTierObject,
@@ -46,18 +47,21 @@ const FAST_KEYS = new Set(bootstrapTierKeyNames('fast', { iranEventsEnabled: IRA
 const ON_DEMAND_KEYS = new Set(bootstrapTierKeyNames('on-demand', { iranEventsEnabled: IRAN_EVENTS_ENABLED }));
 
 // Temporary #6659 cutover fallback. Keep the new multi-province aggregate
-// authoritative, but let bootstrap clients use the prior Alberta snapshot until
-// alerts:canada:v1 has been published in every environment.
-const CANADA_ALERTS_CUTOVER_FALLBACK_KEY = 'alerts:alberta-aea:v1';
-
+// authoritative, but let bootstrap clients use the Alberta sibling first and
+// the abandoned legacy key second until alerts:canada:v1 has been published
+// in every environment.
 function bootstrapRedisReadKeys(keys) {
-  if (
-    keys.includes(BOOTSTRAP_CACHE_KEYS.canadaAlerts)
-    && !keys.includes(CANADA_ALERTS_CUTOVER_FALLBACK_KEY)
-  ) {
-    return [...keys, CANADA_ALERTS_CUTOVER_FALLBACK_KEY];
+  if (!keys.includes(BOOTSTRAP_CACHE_KEYS.canadaAlerts)) return keys;
+  const extra = CANADA_ALERTS_CUTOVER_FALLBACK_KEYS.filter((key) => !keys.includes(key));
+  return extra.length > 0 ? [...keys, ...extra] : keys;
+}
+
+function canadaAlertsCutoverFallbackValue(cached) {
+  for (const key of CANADA_ALERTS_CUTOVER_FALLBACK_KEYS) {
+    const fallback = cached.get(key);
+    if (fallback !== undefined) return fallback;
   }
-  return keys;
+  return undefined;
 }
 
 // No public/s-maxage: CF (in front of api.worldmonitor.app) ignores Vary: Origin and would
@@ -596,7 +600,7 @@ export default async function handler(req, ctx) {
   for (let i = 0; i < names.length; i++) {
     const val = keys[i] === BOOTSTRAP_CACHE_KEYS.canadaAlerts
       && !cached.has(BOOTSTRAP_CACHE_KEYS.canadaAlerts)
-      ? cached.get(CANADA_ALERTS_CUTOVER_FALLBACK_KEY)
+      ? canadaAlertsCutoverFallbackValue(cached)
       : cached.get(keys[i]);
     if (val !== undefined) {
       let responseValue = val;

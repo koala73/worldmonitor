@@ -20,6 +20,12 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const PAGE_SIZE = 200;
 const MAX_PAGES = 6;
 const MAX_ALERTS = 1_000;
+const INACTIVE_ORDER_ALERT_STATUSES = new Set(['', 'all clear']);
+const KNOWN_ACTIVE_ORDER_ALERT_STATUSES = new Set([
+  'alert',
+  'order',
+  'tactical evacuation',
+]);
 const SEVERITY_RANK = Object.freeze({ Extreme: 0, Severe: 1, Moderate: 2, Minor: 3 });
 
 const QUERY_FIELDS = [
@@ -100,16 +106,27 @@ function normalizeFeature(feature) {
   if (!feature || typeof feature !== 'object') return null;
   const properties = feature.properties;
   if (!properties || typeof properties !== 'object') return null;
-  const severity = mapBcAlertSeverity(properties.ORDER_ALERT_STATUS);
-  if (!severity) return null;
 
   const sysId = String(properties.EMRG_OAA_SYSID ?? '').trim();
-  if (!sysId) return null;
+  if (!sysId) {
+    throw new Error('bc-emergency-info: feature is missing EMRG_OAA_SYSID');
+  }
+
+  const status = String(properties.ORDER_ALERT_STATUS ?? '').trim();
+  const normalizedStatus = status.toLowerCase();
+  if (INACTIVE_ORDER_ALERT_STATUSES.has(normalizedStatus)) return null;
+  if (!KNOWN_ACTIVE_ORDER_ALERT_STATUSES.has(normalizedStatus)) {
+    throw new Error(`bc-emergency-info: unknown ORDER_ALERT_STATUS: ${status || '(empty)'}`);
+  }
+
+  const severity = mapBcAlertSeverity(status);
+  if (!severity) {
+    throw new Error(`bc-emergency-info: unknown ORDER_ALERT_STATUS: ${status || '(empty)'}`);
+  }
   const eventName = String(properties.EVENT_NAME || '').trim();
   const areaName = String(properties.ORDER_ALERT_NAME || '').trim();
   const eventType = String(properties.EVENT_TYPE || '').trim();
   const issuingAgency = String(properties.ISSUING_AGENCY || '').trim();
-  const status = String(properties.ORDER_ALERT_STATUS || '').trim();
   const coords = flattenPositions(feature.geometry?.coordinates);
   const centroid = centroidOf(coords);
   const updatedAt = finiteTimestamp(properties.DATE_MODIFIED);
