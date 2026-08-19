@@ -2814,7 +2814,47 @@ describe('agent readiness: auth.md walkthrough', () => {
     assert.equal(dashboardShadow('/auth.md'), undefined, '/auth.md must serve the real file, not the dashboard');
     assert.ok(SPA_HTML_CACHE_SOURCE.includes('|auth\\.md|'), 'HTML cache catch-all must keep excluding /auth.md');
   });
+});
 
+// orank "Markdown URL fallback": homepage /index.md already returns markdown,
+// but the scanner sampled GET /api/download as the content page and then
+// requested /api/download.md. That path used to hit api/[...notfound].ts as
+// JSON 404. Cloudflare Markdown for Agents cannot fill this gap — it converts
+// HTML only when Accept: text/markdown, and /api/download is a 302, not HTML.
+describe('agent readiness: /api/download.md URL twin', () => {
+  const downloadMdPath = resolve(__dirname, '../public/api/download.md');
+  const downloadMd = readFileSync(downloadMdPath, 'utf-8');
+
+  it('publishes heading-led markdown at public/api/download.md', () => {
+    assert.ok(existsSync(downloadMdPath), 'expected public/api/download.md (markdown twin of GET /api/download)');
+    assert.match(downloadMd, /^# /m, '/api/download.md must open with a heading so scanners accept a non-HTML body');
+    assert.match(downloadMd, /platform=windows-exe/);
+    assert.match(downloadMd, /platform=macos-arm64/);
+    assert.match(downloadMd, /platform=linux-appimage/);
+  });
+
+  it('serves /api/download.md as markdown with CORS and a self-canonical Link', () => {
+    assert.equal(getHeaderValueForSource('/api/download.md', 'Content-Type'), 'text/markdown; charset=utf-8');
+    assert.equal(getHeaderValueForSource('/api/download.md', 'Access-Control-Allow-Origin'), '*');
+    assert.equal(
+      getHeaderValueForSource('/api/download.md', 'Link'),
+      '<https://www.worldmonitor.app/api/download.md>; rel="canonical"'
+    );
+  });
+
+  it('is not rewritten to the dashboard shell', () => {
+    const dashboardShadow = (path) => vercelConfig.rewrites.find((r) =>
+      r.destination === DASHBOARD_HTML_DESTINATION && sourceToRegExp(r.source).test(path)
+    );
+    assert.equal(dashboardShadow('/api/download.md'), undefined, '/api/download.md must serve the static twin, not the dashboard');
+    assert.ok(
+      SPA_HTML_CACHE_SOURCE.startsWith('/((?!api|'),
+      '/api/* (including /api/download.md) must stay outside the HTML-cache catch-all'
+    );
+  });
+});
+
+describe('agent readiness: remaining markdown twins', () => {
   // pricing.md and support.md are advertised in api-catalog service-meta and
   // llms.txt (#4854/#4857), agents.md is the agent-discovery entry point
   // (#4952), so they get the same three-way pinning as auth.md:

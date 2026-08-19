@@ -38,6 +38,10 @@ const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRan
 //   keyless, advertised as service-meta in /.well-known/api-catalog). Agents
 //   evaluating the product are a primary audience; an agent-journey run (#4854)
 //   got 403 here and concluded the endpoint didn't exist.
+// - /api/download.md: static markdown twin of GET /api/download for
+//   markdown-URL-fallback crawlers. Same /api/* bot-gate problem as
+//   /api/llms.txt — without this bypass, orank/agent scanners that request
+//   the .md twin receive JSON 403 instead of text/markdown.
 const PUBLIC_API_PATHS = new Set([
   '/api/version',
   '/api/health',
@@ -45,6 +49,7 @@ const PUBLIC_API_PATHS = new Set([
   '/api/internal/brief-why-matters',
   '/api/llms.txt',
   '/api/product-catalog',
+  '/api/download.md',
 ]);
 
 const SOCIAL_IMAGE_UA =

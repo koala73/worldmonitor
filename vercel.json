@@ -192,6 +192,15 @@
       ]
     },
     {
+      "source": "/api/download.md",
+      "headers": [
+        { "key": "Content-Type", "value": "text/markdown; charset=utf-8" },
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Cache-Control", "value": "public, max-age=3600" },
+        { "key": "Link", "value": "<https://www.worldmonitor.app/api/download.md>; rel=\"canonical\"" }
+      ]
+    },
+    {
       "source": "/blog/rss.xml",
       "headers": [
         { "key": "Link", "value": "<https://www.worldmonitor.app/blog/rss.xml>; rel=\"canonical\"" },
