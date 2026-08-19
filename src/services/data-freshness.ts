@@ -96,7 +96,7 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   cyber_threats: { name: 'Cyber Threat IOCs', requiredForRisk: false, panelId: 'map' },
   // This branch widened the weather source to cover ECCC as well as NWS; main's
   // road entries below are untouched by that.
-  weather: { name: 'US + Canada Weather Alerts (NWS, ECCC)', requiredForRisk: false, panelId: 'weather' },
+  weather: { name: 'Severe Weather Alerts (NWS, ECCC, WMO SWIC)', requiredForRisk: false, panelId: 'weather' },
   // One entry per CANADA_ROAD_SOURCES descriptor. Five sources union onto the
   // canadaRoads layer, and recording them all as ontario_511 made an Alberta,
   // Toronto or BC outage read as an Ontario one — or vanish entirely.
@@ -565,7 +565,7 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   pizzint: 'PizzINT monitor unavailable—location/tension tracking degraded',
   outages: 'Internet disruptions may be unreported—outage monitoring offline',
   cyber_threats: 'Cyber IOC map points unavailable—malicious infrastructure visibility reduced',
-  weather: 'NWS and ECCC warnings may be missed—US and Canada weather alerts unavailable',
+  weather: 'Official weather warnings may be missed—NWS, ECCC, or WMO SWIC alerts unavailable',
   ontario_511: 'Ontario highway incidents may be missed—511 feed unavailable',
   alberta_511: 'Alberta highway incidents may be missed—511 feed unavailable',
   manitoba_511: 'Manitoba highway incidents may be missed—511 feed unavailable',

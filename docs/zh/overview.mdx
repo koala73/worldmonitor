@@ -69,7 +69,7 @@ World Monitor 发布了公开且可搜索的[数据源目录（英文）](https:
 | 选项 | 最适合 | 主要要求 |
 | --- | --- | --- |
 | 托管仪表盘 | 需要完整可视化产品的分析人员 | 现代浏览器。公开功能无需客户侧集成；付费功能需要相应的 World Monitor 账户或套餐。 |
-| [实时地图嵌入](/zh/embed-live-map) | 文章、门户和内部仪表盘 | 允许使用 HTTPS iframe 的页面。嵌入仅公开允许列表中的公共地图图层，不公开账户或高级功能状态。 |
+| [实时地图与面板嵌入](/zh/embed-live-map) | 文章、门户和合作方产品 | 允许 HTTPS iframe 或 script 标签的页面。公开实时地图无需密钥。其他白名单面板按嵌入账户的 API 密钥校验，而不是按页面访客校验。不会嵌入推文正文。 |
 | [REST API](/zh/api-reference) | 应用、数据管道和较高流量的批量读取 | OpenAPI 3.1 描述生成的服务合同和版本化 HTTP 路径。标准服务器到服务器访问通过 `X-WorldMonitor-Key` 发送 API 密钥。请在参考文档中检查当前路由状态，并查看[快速入门](/zh/usage-quickstart)、[身份验证](/zh/usage-auth)、[版本政策](/zh/api-versioning)和 [REST 速率限制](/zh/usage-rate-limits)。 |
 | [MCP 服务器](/zh/mcp-overview) | Claude、Cursor 和自定义 AI 智能体 | Streamable HTTP，提供实时工具目录、工作流提示、交互应用和可选 JMESPath 响应筛选。目录发现公开；数据调用需要 OAuth 2.1 或 World Monitor API 密钥。MCP 权益与计量和 REST API 套餐额度分别说明。 |
 | [官方 SDK](/zh/sdks) 与 [CLI](/zh/cli) | Python、Ruby、Go、JavaScript 应用或 Shell 自动化 | 对应语言运行时；数据调用需要 API 密钥。零依赖 SDK 和 npm CLI 支持托管及自托管基础 URL。 |

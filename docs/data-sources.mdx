@@ -12,6 +12,7 @@ Data flows one way: Railway seeders and edge functions fetch upstream sources on
 | Domain | What you get | Representative providers |
 |--------|--------------|--------------------------|
 | [Geopolitics & Conflict](#geopolitics-%26-conflict) | Conflict events, protests, displacement, travel advisories, rocket alerts, prediction markets | ACLED, UCDP, GDELT, UNHCR/OCHA, Polymarket |
+| [Demographics & Human Capital](#demographics-%26-human-capital) | Age structure, education capacity, researchers, and industrial workforce | UN WPP, UNESCO UIS, World Bank WDI, ILOSTAT |
 | [Military & Strategic](#military-%26-strategic) | Bases, live military flights, naval activity, satellites, GPS jamming | adsb.lol, Wingbits, CelesTrak, gpsjam.org |
 | [News & OSINT](#news-%26-osint) | Tiered news feeds, Telegram OSINT, live TV and webcams | Reuters, BBC, AP, Al Jazeera, and reviewed Telegram channels |
 | [Finance & Economics](#finance-%26-economics) | Markets, macro series, central banks, crypto, trade flows | FRED, ECB, BIS, Eurostat, World Bank, CoinGecko |
@@ -149,6 +150,29 @@ Polymarket geopolitical markets are queried using tag-based filters (Ukraine, Ir
 Once browser-direct succeeds, the system caches this state and skips fallback tiers on subsequent requests. Country-specific markets are fetched by mapping countries to Polymarket tags with name-variant matching (e.g., "Russia" matches titles containing "Russian", "Moscow", "Kremlin", "Putin").
 
 Markets are filtered to exclude sports and entertainment (100+ exclusion keywords), require meaningful price divergence from 50% or volume above $50K, and are ranked by trading volume. Each variant gets different tag sets — geopolitical focus queries politics/world/ukraine/middle-east tags, while tech focus queries ai/crypto/business tags.
+
+---
+
+## Demographics & Human Capital
+
+The country deep-dive demographics card reads the seeded
+`demographics:capability:v1` snapshot. It reports each numeric observation with
+its source year. The source pipeline does not compute a composite capability
+score.
+
+| Stage | Stored observations | Source and method | Licence and required credit |
+|---|---|---|---|
+| Age structure | Median age; old-age and total dependency ratios; current working-age population; current-release projection for working-age population ten years ahead | [UN World Population Prospects 2024](https://www.un.org/development/desa/pd/content/wpp2024-data-sources), medium variant, both sexes. Current-year values use indicators 67, 84, 86, and 70; the ten-year value also uses indicator 70. | [CC BY 3.0 IGO](https://population.un.org/wpp/about-the-data/data-sources/). Credit United Nations, Department of Economic and Social Affairs, Population Division (2024), *World Population Prospects 2024*. |
+| Education | Gross tertiary enrollment, researchers per million, and the share of tertiary graduates in engineering/manufacturing/construction, natural sciences/mathematics/statistics, and ICT | UNESCO Institute for Statistics indicators mirrored by the [World Bank WDI API](https://api.worldbank.org/). STEM share is emitted only when all three components have the same country and year. | World Bank WDI: [CC BY 4.0](https://datacatalog.worldbank.org/search/dataset/0037712/world-development-indicators). UNESCO UIS Data Browser: [CC BY-SA 4.0](https://databrowser.uis.unesco.org/terms-and-conditions). Credit `Source: UNESCO Institute for Statistics (UIS)`, the UIS URL, and the extraction date. |
+| Industrial workforce | Craft and related trades workers; plant and machine operators and assemblers; their same-year sum; manufacturing share of total employment | [ILOSTAT SDMX API](https://www.ilo.org/resources/ilostat/sdmx-tools). Occupation groups are ISCO-08 major groups 7 and 8. Employment counts convert the SDMX `UNIT_MULT` value to persons. The manufacturing share uses same-year modelled total and manufacturing employment. | [CC BY 4.0](https://www.ilo.org/rights-and-permissions) for ILOSTAT datasets and metadata published from 3 May 2023. Credit the International Labour Organization, the ILOSTAT dataset, and the extraction date. |
+
+The Railway static-reference bundle checks the three stages independently every
+20 days. The Redis value expires after 30 days. If one stage fails, the next
+snapshot retains only that stage from the previous value and keeps its original
+`fetchedAt`; fresh stages still advance. If all stages fail, the seeder does not
+publish. Health uses each stage's observation year, not only the fetch time. A
+ten-year WPP projection keeps its projection year on the metric but does not
+advance the WPP stage freshness clock beyond the current reference year.
 
 ---
 
@@ -337,7 +361,7 @@ The enabled channels in the default `full` Telegram channel set provide a raw, l
 | **Tier 2** | Established sources |
 | **Tier 3** | Specialist sources |
 
-The channel set intentionally includes official, state-affiliated, partisan, and belligerent-party channels — for example military, ministry, state-media, and faction-aligned sources alongside independent OSINT accounts. Telegram posts are ingested as raw OSINT leads, not endorsed truth. The Telegram channel config carries operational `tier`, `topic`, and `region` metadata for polling and filtering; unlike RSS feeds, Telegram channels do not currently carry the RSS `stateAffiliation` or propaganda-risk fields, so source-bias review must use the disclosed channel identity plus the operational tier rather than RSS-style affiliation tags.
+The channel set intentionally includes official, state-affiliated, partisan, and belligerent-party channels — for example military, ministry, state-media, and faction-aligned sources alongside independent OSINT accounts. Telegram posts are ingested as raw OSINT leads, not endorsed truth. Each enabled channel is registered under its display label in the additive `TELEGRAM_SOURCE_TIERS` overlay and `shared/source-provenance.ts`, with an honest mapping from the private operational `tier` (poll priority in `data/telegram-channels.json`) onto the public editorial scale. The server and browser merge that overlay with the canonical RSS tier JSON, so Telegram identity changes cannot leave stale tier keys in the RSS registry. Official military publishers are government sources with high state-affiliated risk; anonymous OSINT aggregators stay specialty or aggregator tier and do not inherit a wire-service rating. Trust badges on Telegram Intel items reuse the same propaganda/tier CSS as news clusters.
 
 **Architecture**: A GramJS MTProto client running on the Railway relay polls all channels sequentially on a 60-second cycle. Each channel has a 15-second timeout (GramJS `getEntity`/`getMessages` can hang indefinitely on FLOOD_WAIT or MTProto stalls), and the entire cycle has a 3-minute hard timeout. A stuck-poll guard force-clears the mutex after 3.5 minutes, and FLOOD_WAIT errors from Telegram's API stop the cycle early rather than propagating to every remaining channel.
 
@@ -370,7 +394,7 @@ Every RSS feed is assigned a source tier reflecting editorial reliability:
 | **Tier 3** | Specialized/niche outlets                  | Defense One, Breaking Defense, The War Zone |
 | **Tier 4** | Aggregators and blogs                      | Google News, individual analyst blogs       |
 
-Feeds also carry a **propaganda risk rating** and **state affiliation flag**. State-affiliated sources (RT, Xinhua, IRNA) are included for completeness but visually tagged so analysts can factor in editorial bias. Threat classification confidence is weighted by source tier — a Tier 1 breaking alert carries more weight than a Tier 4 blog post in the focal point detection algorithm.
+Feeds also carry a **propaganda risk rating** and **state affiliation flag**. State-affiliated sources (RT, Xinhua, IRNA) are included for completeness but visually tagged so analysts can factor in editorial bias. Those same inputs feed the per-headline [`credibilityScore`](/methodology/news-credibility) (0-100 source reliability, distinct from `importanceScore` newsworthiness). Threat classification confidence is weighted by source tier — a Tier 1 breaking alert carries more weight than a Tier 4 blog post in the focal point detection algorithm.
 
 **UA/RU EN default balance (#5950, epic #5948):** for the English full-variant path, `DEFAULT_ENABLED_SOURCES.europe` must keep **≥1 dedicated Ukrainian primary** (currently Kyiv Independent) and **≥1 independent Russian outlet** (currently Meduza and/or Moscow Times). Russian state media (TASS, RT, RT Russia) stays cataloged with high propaganda-risk tags for opt-in only — never default-on. Free-tier round-robin source-cap (`selectSourcesUnderCap`) treats `FREE_CAP_PROTECTED_SOURCES` as protected so the frontline balance set plus the Eastern-flank EN defaults (Daily Sabah and ERR News) are not stripped for unsigned EN users. The narrower `FRONTLINE_EUROPE_PROTECTED_SOURCES` remains the one-shot frontline migration contract. Additional Ukrainian institutional and frontline English sources are tracked under the P1 Ukraine depth pack (#5951), not jammed into the minimal default set.
 
@@ -430,6 +454,7 @@ Physical-economy fundamentals for the Energy and Commodity variants: storage, in
 - US crude oil inventories, fuel prices, and energy statistics (EIA)
 - IEA oil stock coverage and OECD inventory context
 - Gold — central-bank reserves (IMF), ETF flows (SPDR), and spot trend
+- SGE SHAU/SHAG physical benchmarks compared with seeded COMEX futures
 - CFTC Commitments of Traders positioning (reviewed US government data)
 - Global fuel-price tracking with national statistical sources (for example Malaysia's data.gov.my and Mexico's datos.gob.mx)
 - Commodity news network: precious metals, base metals, critical minerals, mining companies, and supply-chain feeds — see the [feed inventory](#server-side-feed-aggregation)
@@ -444,8 +469,17 @@ Physical-economy fundamentals for the Energy and Commodity variants: storage, in
 | U.S. EIA | Crude oil inventories, fuel prices, energy data | [eia.gov/opendata](https://www.eia.gov/opendata) |
 | USGS Mineral Commodity Summaries | Annual mine and refinery production by country (public domain) | [sciencebase.gov MCS 2026](https://doi.org/10.5066/P1WKQ63T) |
 | BGS World Mineral Production | Cross-check / fill where USGS lacks a world table (attribution required) | [bgs.ac.uk world mineral statistics](https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/) |
+| Shanghai Gold Exchange | SHAU gold and SHAG silver daily AM/PM benchmarks | [official benchmark data](https://en.sge.com.cn/data_BenchmarkPrice) |
 
 Licensing: USGS MCS data is U.S. public domain. BGS World Mineral Production requires attribution to the British Geological Survey; IEA critical-minerals datasets are not ingested because redistribution terms are stricter than USGS/BGS, so USGS-unpublished REE refining shares are omitted.
+
+The physical precious-metals comparison uses the latest valid SGE PM print and
+retains its own trade date through weekends and exchange holidays. SHAU is CNY
+per gram. SHAG is CNY per kilogram. The daily seed reads the existing COMEX
+`GC=F`/`SI=F` and `shared:fx-rates:v1` snapshots; it does not make a second
+COMEX or FX request. The conversion is `CNY per gram × CNY/USD × 31.1034768`.
+The stored payload includes both raw legs, their observation times, the FX
+input, and the derived USD-per-troy-ounce and percentage premiums.
 
 Deep dives: [Energy crisis panel](/panels/energy-crisis) · [Chokepoints methodology](/methodology/chokepoints) · [Pipelines methodology](/methodology/pipelines) · [Storage methodology](/methodology/storage)
 
@@ -517,7 +551,7 @@ Natural hazards and climate stress, merged from independent government and UN-co
 - NASA FIRMS satellite fire detection (VIIRS thermal hotspots)
 - Western Pacific tropical-cyclone observations (Hong Kong Observatory, Japan Meteorological Agency)
 - Climate anomaly detection over 15 conflict- and disaster-prone zones (Open-Meteo ERA5)
-- Weather alerts and severe conditions
+- Weather alerts and severe conditions (NWS + ECCC polygons, WMO SWIC official CAP points)
 - Radiation monitoring — see the [Radiation Watch panel](/panels/radiation-watch)
 
 **Key providers**
@@ -531,6 +565,9 @@ Natural hazards and climate stress, merged from independent government and UN-co
 | Hong Kong Observatory | Local tropical-cyclone warning signals | [data.weather.gov.hk](https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en) |
 | Japan Meteorological Agency | Western North Pacific tropical-cyclone observations | [jma.go.jp](https://www.jma.go.jp/bosai/map.html#contents=typhoon) |
 | Open-Meteo | ERA5 reanalysis climate data | [open-meteo.com](https://open-meteo.com) |
+| US National Weather Service | Official US weather alerts (polygon tier) | [api.weather.gov](https://api.weather.gov/alerts/active) |
+| Environment and Climate Change Canada | Official Canadian weather alerts (polygon tier) | [api.weather.gc.ca](https://api.weather.gc.ca) |
+| WMO Severe Weather Information Centre | Official CAP from WMO members, merged into `weather:alerts:v1` (point tier) | [severeweather.wmo.int](https://severeweather.wmo.int/json/wmo_all.json) |
 
 Deep dives: [Natural disasters](/natural-disasters) · [Disease alert methodology](/methodology/disease-alert-level) · [Thermal escalation panel](/panels/thermal-escalation)
 

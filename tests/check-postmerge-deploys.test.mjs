@@ -708,16 +708,17 @@ describe('post-merge deploy monitor — read-path resilience (#6479)', () => {
       for (const entry of failed) assert.equal(entry.state, 'ALARM');
     });
 
-    // UNKNOWN is not a softer OK. The module's whole direction-of-failure rule
-    // is that an unreadable record resolves AWAY from healthy.
-    it('keeps UNKNOWN non-healthy and still exits non-zero', () => {
+    // UNKNOWN is not a deploy verdict. Keep the warning visible, but do not
+    // fail the monitor when GitHub itself cannot serve the record.
+    it('reports UNKNOWN without failing the monitor', () => {
       const summary = summarizeResults([
         { workflow: 'convex-deploy.yml', displayName: 'Convex Deploy', state: 'UNKNOWN', verdict: 'READ_FAILED', detail: TLS_STDERR },
         { workflow: 'deploy-worker.yml', displayName: 'Deploy Worker', state: 'OK', verdict: 'DEPLOYED', detail: 'run 900 deployed' },
       ]);
-      assert.equal(summary.exitCode, 1, 'an unreadable record must not pass as healthy');
+      assert.equal(summary.exitCode, 0, 'an unreadable GitHub record must not panic the monitor');
       assert.equal(summary.alarms.length, 0, 'an unread record is not a failed deploy');
       assert.equal(summary.unknowns.length, 1);
+      assert.match(summary.lines.join('\n'), /could not be read|READ_FAILED/);
     });
 
     // The reporting half of the incident: the notification must name the

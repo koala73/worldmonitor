@@ -1260,15 +1260,18 @@
     },
     {
       "host": "api.worldbank.org",
-      "provider": "api.worldbank.org",
+      "provider": "World Bank Open Data",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit api.worldbank.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
+      "license": "World Development Indicators are licensed under CC BY 4.0. UNESCO UIS indicators mirrored through WDI also require the UIS attribution stated in the public source documentation.",
+      "attribution": "World Bank Open Data. For education indicators: UNESCO Institute for Statistics via World Bank WDI; include the UIS source URL and extraction date.",
+      "status": "reviewed",
       "references": [
         {
           "path": "scripts/_defense-industrial-source.mjs"
+        },
+        {
+          "path": "scripts/_demographics-capability-source.mjs"
         },
         {
           "path": "scripts/ais-relay.cjs"
@@ -3386,6 +3389,20 @@
       "references": [
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "en.sge.com.cn",
+      "provider": "en.sge.com.cn",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit en.sge.com.cn and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/seed-physical-premiums.mjs"
         }
       ]
     },
@@ -6955,6 +6972,20 @@
       ]
     },
     {
+      "host": "population.un.org",
+      "provider": "United Nations Population Division",
+      "kind": "structured",
+      "observed": true,
+      "license": "UN World Population Prospects 2024 is licensed under CC BY 3.0 IGO.",
+      "attribution": "United Nations, Department of Economic and Social Affairs, Population Division (2024). World Population Prospects 2024.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/_demographics-capability-source.mjs"
+        }
+      ]
+    },
+    {
       "host": "portfolio.hu",
       "provider": "portfolio.hu",
       "kind": "feed",
@@ -7786,6 +7817,20 @@
       ]
     },
     {
+      "host": "sdmx.ilo.org",
+      "provider": "ILOSTAT",
+      "kind": "structured",
+      "observed": true,
+      "license": "ILOSTAT datasets and metadata published from 3 May 2023 are licensed under CC BY 4.0.",
+      "attribution": "International Labour Organization, ILOSTAT database; include the dataset and extraction date.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/_demographics-capability-source.mjs"
+        }
+      ]
+    },
+    {
       "host": "sealevel.nasa.gov",
       "provider": "sealevel.nasa.gov",
       "kind": "structured",
@@ -7947,6 +7992,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
           "path": "src/config/feeds.ts"
         }
       ]
@@ -8016,6 +8064,20 @@
         },
         {
           "path": "scripts/seed-portwatch.mjs"
+        }
+      ]
+    },
+    {
+      "host": "severeweather.wmo.int",
+      "provider": "severeweather.wmo.int",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit severeweather.wmo.int and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/_weather-alert-select.mjs"
         }
       ]
     },
@@ -12059,9 +12121,6 @@
       "references": [
         {
           "path": "scripts/lib/provincial-511.mjs"
-        },
-        {
-          "path": "scripts/source-attribution.mjs"
         }
       ]
     },
@@ -12972,15 +13031,12 @@
     {
       "host": "www.sequoiacap.com",
       "provider": "www.sequoiacap.com",
-      "kind": "feed+structured",
+      "kind": "structured",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit www.sequoiacap.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
-        {
-          "path": "server/worldmonitor/news/v1/_feeds.ts"
-        },
         {
           "path": "src/config/variants/tech.ts"
         }
@@ -13667,6 +13723,9 @@
       "references": [
         {
           "path": "api/fwdstart.js"
+        },
+        {
+          "path": "src/embed/panels/fear-greed.ts"
         }
       ]
     },

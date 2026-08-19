@@ -46,6 +46,15 @@ http {
       add_header Cache-Control "private, no-cache, must-revalidate";
     }
 
+    location = /embed.js {
+      include /etc/nginx/security_headers.conf;
+      add_header Access-Control-Allow-Origin "*" always;
+      add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+      add_header Cross-Origin-Resource-Policy "cross-origin" always;
+      add_header Cache-Control "public, max-age=3600";
+      try_files /embed.js =404;
+    }
+
     location / {
       include /etc/nginx/security_headers.conf;
       try_files $uri $uri/ /dashboard.html;

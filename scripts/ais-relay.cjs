@@ -3459,15 +3459,17 @@ const RELAY_RECENCY_MS = 15 * 60 * 1000; // 15 min — matches client-side recen
 // Formula constants + computeImportanceScore mirror list-feed-digest.ts; parity
 // is enforced by tests/importance-score-parity.test.mjs.
 const RELAY_SOURCE_TIERS = requireShared('source-tiers.json');
+const {
+  createExplicitTierFourSourceSet,
+  shouldDropRelaySourceForTier,
+} = requireShared('source-tier-policy.cjs');
 
 function relayGetSourceTier(sourceName) {
   return RELAY_SOURCE_TIERS[sourceName] ?? 4;
 }
 
 // Derived from the tier map so the tier-4 gate and the tier map stay in lockstep.
-const RELAY_TIER4_SOURCES = new Set(
-  Object.entries(RELAY_SOURCE_TIERS).filter(([, t]) => t === 4).map(([s]) => s),
-);
+const RELAY_TIER4_SOURCES = createExplicitTierFourSourceSet(RELAY_SOURCE_TIERS);
 
 const RELAY_SCORE_WEIGHTS = { severity: 0.55, sourceTier: 0.2, corroboration: 0.15, recency: 0.1 };
 const RELAY_SEVERITY_SCORES = { critical: 100, high: 75, medium: 50, low: 25, info: 0 };
@@ -3947,8 +3949,13 @@ async function seedClassifyForVariant(variant, seenTitles) {
         };
         // Relay gates: when RELAY_GATES_READY is set the relay enforces source tier and
         // recency checks that the client path previously handled.
+        // Explicit tier-4 keys only — unlisted names (including platform source
+        // "telegram") are NOT in this set even though getSourceTier() defaults
+        // them to 4. Any future Telegram alert path must use the public display
+        // label from shared/telegram-channel-trust.ts (#6600). #6654 should do
+        // the same for X account labels rather than a generic "x" platform key.
+        if (shouldDropRelaySourceForTier(RELAY_GATES_READY, meta.source, RELAY_TIER4_SOURCES)) continue;
         if (RELAY_GATES_READY) {
-          if (RELAY_TIER4_SOURCES.has(meta.source ?? '')) continue;
           const ageMs = Date.now() - (meta.publishedAt ?? 0);
           if (meta.publishedAt && ageMs > RELAY_RECENCY_MS) continue;
         }
@@ -4916,9 +4923,9 @@ function startCableHealthWarmPingLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Weather Alerts Seed — NWS + ECCC → weather:alerts:v1 every 15 min
-// Path A (ECCC direct) down-payment on WMO SWIC (#6271). Same key, not a
-// second weather pipeline. Mapping/merge live in _weather-alert-select.mjs.
+// Weather Alerts Seed — NWS + ECCC + WMO SWIC → weather:alerts:v1 every 15 min
+// One key, one panel, one weather_alert event. Additional official CAP sources
+// are adapters on this pipeline (#6271), not a second weather product.
 // ─────────────────────────────────────────────────────────────
 const WEATHER_SEED_INTERVAL_MS = 15 * 60 * 1000; // 15 min
 const WEATHER_REDIS_KEY = 'weather:alerts:v1';
@@ -4934,17 +4941,19 @@ async function seedWeatherAlerts() {
       ECCC_MAX_BYTES,
       NWS_ALERTS_URL,
       NWS_HOST,
+      SWIC_MAX_BYTES,
       WEATHER_ALERTS_SOURCE_VERSION,
       fetchApprovedWeatherJson,
       fetchEcccAlertFeatures,
+      fetchSwicAlertCatalog,
       mergeAlertSources,
       rankEligibleAlerts,
       requireAlertFeatures,
       selectEcccAlerts,
-      // Used at the notification-publish step below. The ECCC rewrite of this
-      // block dropped it from the destructure while the call site stayed, which
-      // is a ReferenceError on every weather_alert publish.
+      selectSwicAlerts,
+      weatherAlertNotifyCountryCode,
       weatherAlertNotifyLocation,
+      weatherAlertNotifySource,
     } = (await weatherAlertSelectPromise) || (() => {
       throw new Error('weather alert select module unavailable');
     })();
@@ -4990,9 +4999,16 @@ async function seedWeatherAlerts() {
       return result.features;
     };
 
-    const [nwsResult, ecccResult] = await Promise.allSettled([
+    const fetchSwicCatalog = async () => fetchSwicAlertCatalog({
+      fetchFn: fetch,
+      userAgent: CHROME_UA,
+      maxBytes: SWIC_MAX_BYTES,
+    });
+
+    const [nwsResult, ecccResult, swicResult] = await Promise.allSettled([
       fetchNwsFeatures(),
       fetchEcccFeatures(),
+      fetchSwicCatalog(),
     ]);
     if (nwsResult.status === 'rejected') {
       console.warn(`[Weather] NWS fetch failed: ${nwsResult.reason?.message || nwsResult.reason}`);
@@ -5000,8 +5016,11 @@ async function seedWeatherAlerts() {
     if (ecccResult.status === 'rejected') {
       console.warn(`[Weather] ECCC fetch failed: ${ecccResult.reason?.message || ecccResult.reason}`);
     }
-    if (nwsResult.status === 'rejected' && ecccResult.status === 'rejected') {
-      console.warn('[Weather] Seed failed: both NWS and ECCC fetches failed');
+    if (swicResult.status === 'rejected') {
+      console.warn(`[Weather] SWIC fetch failed: ${swicResult.reason?.message || swicResult.reason}`);
+    }
+    if (nwsResult.status === 'rejected' && ecccResult.status === 'rejected' && swicResult.status === 'rejected') {
+      console.warn('[Weather] Seed failed: NWS, ECCC, and SWIC fetches all failed');
       return;
     }
 
@@ -5015,27 +5034,32 @@ async function seedWeatherAlerts() {
         })
       : [];
     const ecccAlerts = ecccResult.status === 'fulfilled' ? selectEcccAlerts(ecccResult.value) : [];
+    const swicAlerts = swicResult.status === 'fulfilled'
+      ? selectSwicAlerts(swicResult.value.items, swicResult.value.membersByMid)
+      : [];
 
-    // One source failing must not erase the other's coverage. The #6607 purge
-    // semantics — always overwrite so ended alerts clear — are only correct when
-    // BOTH sources actually answered. When one is down we carry its previous
-    // slice forward, so an NWS outage can no longer wipe every US alert off the
-    // map for the duration of the outage.
+    // One source failing must not erase the others. The #6607 purge semantics —
+    // always overwrite so ended alerts clear — are only correct for sources that
+    // actually answered. Carry last-good per source, keyed by `source`, so an
+    // NWS outage cannot wipe SWIC or ECCC off the live key.
     let carriedNws = [];
     let carriedEccc = [];
-    if (nwsResult.status === 'rejected' || ecccResult.status === 'rejected') {
+    let carriedSwic = [];
+    if (nwsResult.status === 'rejected' || ecccResult.status === 'rejected' || swicResult.status === 'rejected') {
       const prev = await envelopeRead(WEATHER_REDIS_KEY, () => null);
       const prevAlerts = Array.isArray(prev?.alerts) ? prev.alerts : [];
-      if (nwsResult.status === 'rejected') carriedNws = prevAlerts.filter((a) => a?.source !== 'eccc');
+      if (nwsResult.status === 'rejected') carriedNws = prevAlerts.filter((a) => a?.source === 'nws');
       if (ecccResult.status === 'rejected') carriedEccc = prevAlerts.filter((a) => a?.source === 'eccc');
-      if (carriedNws.length || carriedEccc.length) {
-        console.warn(`[Weather] carrying last-good forward (nws=${carriedNws.length} eccc=${carriedEccc.length})`);
+      if (swicResult.status === 'rejected') carriedSwic = prevAlerts.filter((a) => a?.source === 'swic');
+      if (carriedNws.length || carriedEccc.length || carriedSwic.length) {
+        console.warn(`[Weather] carrying last-good forward (nws=${carriedNws.length} eccc=${carriedEccc.length} swic=${carriedSwic.length})`);
       }
     }
 
     const alerts = mergeAlertSources({
       nws: nwsResult.status === 'fulfilled' ? nwsAlerts : carriedNws,
       eccc: ecccResult.status === 'fulfilled' ? ecccAlerts : carriedEccc,
+      swic: swicResult.status === 'fulfilled' ? swicAlerts : carriedSwic,
     });
 
     // Always write the merged active set (#6607 purge). Do not skip overwrite
@@ -5051,6 +5075,7 @@ async function seedWeatherAlerts() {
     const failedSources = [
       nwsResult.status === 'rejected' ? 'nws' : null,
       ecccResult.status === 'rejected' ? 'eccc' : null,
+      swicResult.status === 'rejected' ? 'swic' : null,
     ].filter(Boolean);
     const ok2 = await upstashSet('seed-meta:weather:alerts', {
       fetchedAt: Date.now(),
@@ -5058,12 +5083,12 @@ async function seedWeatherAlerts() {
       ...(failedSources.length > 0
         ? {
           sourceState: 'degraded',
-          errorCode: failedSources.includes('nws') ? 'NWS_SOURCE_FAILED' : 'ECCC_SOURCE_FAILED',
+          errorCode: 'WEATHER_ALERT_SOURCE_INCOMPLETE',
           failedSources,
         }
         : { sourceState: 'ok' }),
     }, 604800);
-    console.log(`[Weather] Seeded ${alerts.length} alerts (nws=${nwsAlerts.length} eccc=${ecccAlerts.length}, redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    console.log(`[Weather] Seeded ${alerts.length} alerts (nws=${nwsAlerts.length} eccc=${ecccAlerts.length} swic=${swicAlerts.length}, redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     const highSeverityAlerts = alerts.filter(a => a.severity === 'Extreme' || a.severity === 'Severe');
     // Pick up to 3 DISTINCT event families before publishing. The naive
     // `slice(0, 3)` would silently lose distinct families: if the first 3 raw
@@ -5080,7 +5105,7 @@ async function seedWeatherAlerts() {
       // identity from the alert so VTEC-less / ECCC alerts still deduplicate
       // against themselves.
       const familyKey = deriveWeatherCoalesceKey(a.vtec)
-        ?? `nws:fallback:${a.id || a.headline || a.event || ''}`;
+        ?? `${a.source || 'weather'}:${a.id || a.headline || a.event || ''}`;
       if (seenFamilyKeys.has(familyKey)) continue;
       seenFamilyKeys.add(familyKey);
       distinctFamilyAlerts.push(a);
@@ -5092,12 +5117,13 @@ async function seedWeatherAlerts() {
       // notification per user. Falls back to title-based dedup when VTEC is
       // absent (ECCC, rare advisory types, or missing parameters).
       const coalesceKey = deriveWeatherCoalesceKey(a.vtec);
+      const countryCode = weatherAlertNotifyCountryCode(a);
       publishNotificationEvent({
         eventType: 'weather_alert',
         payload: {
           title: a.headline || a.event || 'Weather alert',
-          source: a.source === 'eccc' ? 'ECCC' : 'NWS',
-          countryCode: a.countryCode || (a.source === 'eccc' ? 'CA' : 'US'),
+          source: weatherAlertNotifySource(a),
+          ...(countryCode ? { countryCode } : {}),
           ...(coalesceKey ? { coalesceKey } : {}),
           ...weatherAlertNotifyLocation(a),
         },

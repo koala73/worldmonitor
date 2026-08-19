@@ -209,6 +209,31 @@
       "soybeans": "Soybeans",
       "barley": "Barley",
       "palmOil": "Palm oil"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "STEM graduates",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh."
     }
   },
   "header": {
@@ -1019,7 +1044,7 @@
         "ucdpEvents": "Eventi UCDP",
         "displacementFlows": "Flussi di sfollamento",
         "climateAnomalies": "Anomalie climatiche",
-        "weatherAlerts": "Allerte meteo negli Stati Uniti e in Canada (NWS, ECCC)",
+        "weatherAlerts": "Allerte meteo severe (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Vie d’acqua strategiche",
         "economicCenters": "Centri economici",
         "criticalMinerals": "Minerali critici",
@@ -1109,7 +1134,7 @@
           "infraDatacenters": "Cluster di calcolo AI >=10.000 GPU",
           "infraOutages": "Blackout di Internet e interruzioni del servizio",
           "naturalEventsTech": "Terremoti, tempeste, incendi (possono interessare i data center)",
-          "weatherAlerts": "Allerte meteo severe negli Stati Uniti e in Canada (NWS, ECCC)",
+          "weatherAlerts": "Allerte meteo severe ufficiali dei servizi meteorologici nazionali (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Borse e banche centrali",
           "countriesOverlay": "Sovrapposizioni del nome del paese",
           "financeExchanges": "Principali borse globali per livello di mercato",
@@ -1121,7 +1146,7 @@
           "financeOutages": "Interruzioni di Internet che possono avere un impatto sulle operazioni di mercato",
           "financeCyberThreats": "Eventi di sicurezza relativi alle infrastrutture finanziarie",
           "macroWaterways": "Punti di strozzatura strategici per la spedizione delle merci",
-          "weatherAlertsMarket": "Eventi meteorologici gravi negli Stati Uniti e in Canada rilevanti per il mercato (NWS, ECCC)",
+          "weatherAlertsMarket": "Allerte meteo severe ufficiali rilevanti per il mercato (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Terremoti, incendi, inondazioni e altri disagi naturali",
           "timeRecent": "Filtra i dati basati sul tempo fino alle ultime ore",
           "timeExtended": "Mostra i dati della settimana, del mese o di tutti i tempi precedenti",
@@ -1914,7 +1939,17 @@
       "topTargets": "Paesi principali bersagliati"
     },
     "commodities": {
-      "infoTooltip": "<strong>Materie Prime</strong> Listino materie prime non energetiche negoziabili, focalizzato su metalli e materiali. I prezzi dell'energia si trovano in Complesso Energetico; gli indicatori di stress macro si trovano in Stress Macro."
+      "infoTooltip": "<strong>Materie Prime</strong> Listino materie prime non energetiche negoziabili, focalizzato su metalli e materiali. I prezzi dell'energia si trovano in Complesso Energetico; gli indicatori di stress macro si trovano in Stress Macro.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Cripto</strong> Prezzi in tempo reale, variazioni 24h e volume delle principali criptovalute. Dati forniti da CoinGecko."

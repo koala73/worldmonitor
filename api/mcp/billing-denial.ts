@@ -62,7 +62,13 @@ export type RpcValidationViolation = {
   description: string;
 };
 
-const MAX_VALIDATION_BODY_BYTES = 4096;
+// Generated proto 400 bodies can legitimately exceed 4 KB — a dozen fields
+// with localized descriptions already overflows, and truncation mid-JSON drops
+// the whole violation list into the generic fallback. 16 KB stays bounded
+// (larger or hostile bodies still truncate and never leak raw content); the
+// surviving projection stays capped independently by MAX_VALIDATION_VIOLATIONS
+// and the per-field length limits below.
+const MAX_VALIDATION_BODY_BYTES = 16384;
 const MAX_VALIDATION_VIOLATIONS = 8;
 const MAX_VIOLATION_FIELD_LEN = 64;
 const MAX_VIOLATION_DESCRIPTION_LEN = 200;

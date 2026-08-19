@@ -8,6 +8,10 @@ import {
   type TelegramItem,
   type TelegramFeedResponse,
 } from '@/services/telegram-intel';
+import {
+  getPrimarySourceProvenanceBadges,
+  resolveTelegramSourceName,
+} from './news/source-provenance';
 
 const LIVE_THRESHOLD_MS = 600_000;
 
@@ -104,10 +108,21 @@ export class TelegramIntelPanel extends Panel {
       .replace(/"/g, '&quot;');
     const textHtml = escaped.replace(/\n/g, '<br>');
 
+    const sourceName = resolveTelegramSourceName(item.channelTitle, item.channel);
+    const provenance = getPrimarySourceProvenanceBadges(sourceName);
+    const riskBadge = provenance.risk
+      ? h('span', { className: provenance.risk.className, title: provenance.risk.title }, provenance.risk.label)
+      : null;
+    const tierBadge = provenance.tier
+      ? h('span', { className: provenance.tier.className, title: provenance.tier.title }, provenance.tier.label)
+      : null;
+
     return h('div', { className: `telegram-intel-item ${isLive ? 'is-live' : ''}` },
       h('div', { className: 'telegram-intel-item-header' },
         h('div', { className: 'telegram-intel-channel-wrapper' },
           h('span', { className: 'telegram-intel-channel' }, item.channelTitle || item.channel),
+          riskBadge,
+          tierBadge,
           isLive ? h('span', { className: 'live-indicator' }, t('components.telegramIntel.live')) : null,
         ),
         h('div', { className: 'telegram-intel-meta' },

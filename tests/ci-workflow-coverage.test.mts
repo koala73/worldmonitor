@@ -35,15 +35,15 @@ const REQUIRED_PR_SCRIPTS = [
   'test:resilience-validation-smoke',
 ] as const;
 
-// Every spec the combined ci-smoke invocation must keep exercising. The three
-// specs used to be three separate workflow steps; now that one script carries
-// them, dropping a spec from its command line is the new way a guard can stop
-// being invoked while CI stays green — so the spec list is pinned here.
+// Every regression guard the combined ci-smoke invocation must keep exercising.
+// Dropping a spec from its command line is how a guard can stop being invoked
+// while CI stays green, so the required spec list is pinned here.
 const REQUIRED_CI_SMOKE_SPECS = [
   'e2e/variant-live-smoke.spec.ts',
   'e2e/mcp-grant-consent.spec.ts',
   'e2e/dashboard-news-request-budget.spec.ts',
   'e2e/keyword-spike-flow.spec.ts',
+  'e2e/breaking-news-banner-provenance.spec.ts',
 ] as const;
 
 const REQUIRED_TEST_JOBS = [
@@ -116,7 +116,6 @@ const REQUIRED_DESKTOP_CONFIG_INPUTS = [
 const REQUIRED_DESKTOP_RUST_INPUTS = [
   'src-tauri/sidecar/',
   'src-tauri/',
-  '.github/workflows/test.yml',
 ] as const;
 
 function escapeRegExp(value: string): string {
@@ -438,6 +437,19 @@ describe('CI workflow coverage', () => {
     for (const job of TIMEOUT_CAPPED_TEST_JOBS) {
       assert.match(testJobBlock(job), /\n {4}timeout-minutes: \d+\n/, `${job} must set timeout-minutes`);
     }
+  });
+
+  it('does not let a hung playwright install-deps eat the variant-smoke-full budget', () => {
+    const job = testJobBlock('variant-smoke-full');
+    assert.match(job, /\n {4}timeout-minutes: 30\n/);
+    assert.match(
+      job,
+      /id: playwright-install-deps[\s\S]*timeout-minutes: 8[\s\S]*continue-on-error: true[\s\S]*npx playwright install-deps chromium/,
+    );
+    assert.match(
+      job,
+      /steps\.playwright-install-deps\.outcome == 'failure'[\s\S]*pkill -9 apt-get[\s\S]*npx playwright install --with-deps chromium/,
+    );
   });
 
   // #6496: playwright.config.ts retained a trace, a video and a screenshot for
@@ -844,6 +856,62 @@ describe('CI workflow coverage', () => {
     }
   });
 
+  it('runs resilience-validation-smoke only when validation inputs change', () => {
+    const job = testJobBlock('resilience-validation-smoke');
+    assert.match(
+      job,
+      /\n {4}if: needs\.changes\.outputs\.validation == 'true'\n/,
+      'the smoke job is the validation-docs path; unit already runs the same files on code PRs',
+    );
+    assert.doesNotMatch(
+      job,
+      /outputs\.code == 'true'/,
+      'a second npm ci on every code PR re-runs tests already inside test:data',
+    );
+  });
+
+  it('path-filters Test jobs on push to main instead of compiling everything', () => {
+    const changes = testWorkflow.slice(testWorkflow.indexOf('id: diff'));
+    const pushGate = changes.slice(0, changes.indexOf('CODE=$('));
+    assert.match(
+      pushGate,
+      /compare\/\$\{BEFORE\}\.\.\.\$\{\{ github\.sha \}\}/,
+      'push to main must classify files from the compare API',
+    );
+    assert.match(
+      pushGate,
+      /No usable parent SHA; running every Test job/,
+      'a zero parent SHA must fail open',
+    );
+    assert.match(
+      pushGate,
+      /Compare listing is truncated at 300 files; running every Test job/,
+      'a truncated compare must fail open',
+    );
+    assert.match(pushGate, /emit_all_true/);
+    assert.ok(
+      pushGate.indexOf('compare/${BEFORE}') < pushGate.lastIndexOf('emit_all_true'),
+      'the compare must run; fail-open is only the truncated/error path',
+    );
+  });
+
+  it('does not rebuild Umami images for an unrelated Test workflow edit', () => {
+    const umamiFilter = shellAwkAssignmentBlock('UMAMI');
+    assert.equal(
+      evaluateAwkAssignmentBlock(umamiFilter, ['.github/workflows/test.yml']),
+      0,
+      'editing test.yml must not set umami=true — unit pins the job shape',
+    );
+    assert.ok(
+      evaluateAwkAssignmentBlock(umamiFilter, ['Dockerfile.umami']) > 0,
+      'Dockerfile.umami must still set umami=true',
+    );
+    assert.ok(
+      evaluateAwkAssignmentBlock(umamiFilter, ['scripts/umami-retention.sql']) > 0,
+      'the retention SQL must still set umami=true',
+    );
+  });
+
   it('routes the root Docker context policy into image build jobs', () => {
     for (const variable of ['DIGEST', 'UMAMI']) {
       const awkBlock = shellAwkAssignmentBlock(variable);
@@ -891,6 +959,21 @@ describe('CI workflow coverage', () => {
         `test.yml desktop_rust filter must cover ${input}`,
       );
     }
+    assert.equal(
+      evaluateAwkAssignmentBlock(desktopRustFilter, ['src-tauri/src/lib.rs']),
+      1,
+      'desktop-rust must compile when the Tauri crate changes',
+    );
+    assert.equal(
+      evaluateAwkAssignmentBlock(desktopRustFilter, ['src-tauri/sidecar/local-api-server.js']),
+      0,
+      'desktop-rust must skip sidecar-only changes (those ride the code filter)',
+    );
+    assert.equal(
+      evaluateAwkAssignmentBlock(desktopRustFilter, ['.github/workflows/test.yml']),
+      0,
+      'desktop-rust must not compile the Tauri crate for a Test workflow edit',
+    );
     assert.match(
       testJobBlock('desktop-config'),
       /if: needs\.changes\.outputs\.desktop_config == 'true'/,

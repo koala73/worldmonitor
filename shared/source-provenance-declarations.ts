@@ -593,7 +593,7 @@ export const CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS: Readonly<
   "The Defiant": { risk: 'unknown', type: 'unknown' },
   "The Diplomat": { risk: 'unknown', type: 'reviewed' },
   "The Guardian Post": { risk: 'reviewed', type: 'reviewed' },
-  "The Hacker News": { risk: 'unknown', type: 'unknown' },
+  "The Hacker News": { risk: 'reviewed', type: 'reviewed' },
   "The Hill": { risk: 'unknown', type: 'unknown' },
   "The Hindu": { risk: 'unknown', type: 'unknown' },
   "The Information": { risk: 'unknown', type: 'unknown' },

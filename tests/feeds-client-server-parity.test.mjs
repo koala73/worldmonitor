@@ -173,7 +173,6 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
     'CSIS',
     'South China Morning Post',
     'a16z Blog',
-    'Sequoia Blog',
     'EU Startups',
     'Tech in Asia',
     'SemiAnalysis',

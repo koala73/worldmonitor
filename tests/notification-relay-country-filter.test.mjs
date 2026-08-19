@@ -305,8 +305,13 @@ describe('ais-relay country-specific notification publishers — source-grep con
     );
     assert.match(
       aisRelaySrc,
-      /eventType:\s*'weather_alert'[\s\S]*?countryCode:\s*a\.countryCode/,
-      'weather notifications must stamp countryCode from the stored record',
+      /weatherAlertNotifyCountryCode\(a\)/,
+      'weather notifications must derive countryCode from the stored record (NWS/ECCC/SWIC)',
+    );
+    assert.match(
+      aisRelaySrc,
+      /eventType:\s*'weather_alert'[\s\S]{0,500}\.\.\.\(countryCode \? \{ countryCode \} : \{\}\)/,
+      'weather_alert payload must publish the derived countryCode, not a hardcoded US default',
     );
   });
 });

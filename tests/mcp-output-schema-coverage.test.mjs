@@ -140,7 +140,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     for (const field of [
       'uniqueSourceCount', 'sources', 'memberTitles', 'lastUpdated', 'sourceTier',
       'entityCorroboration', 'corroborationSourceCount',
-      'upstreamImportanceScore', 'effectiveImportanceScore',
+      'upstreamImportanceScore', 'effectiveImportanceScore', 'credibilityScore',
     ]) {
       assert.ok(newsStory[field], `news schema must declare ${field} (served by scripts/seed-insights.mjs)`);
     }

@@ -137,7 +137,10 @@ The registration is at `api/health.js:211` (data key) and `api/health.js:403`
   entry-level `expiresAt` bounded to the first scheduled cron window. The latter
   is only a temporary rollout bridge: at or after its expiry the still-live
   problem blocks again even if the baseline's root expiry is later. Never use an
-  unbounded acknowledgement to suppress a cutover fault.
+  unbounded acknowledgement to suppress a cutover fault. An intentionally
+  operator-gated producer may instead use a durable activation marker: absence
+  stays pending only until its first successful publish, then missing or stale
+  data becomes strict forever.
 - **Before calling a seeder fix "shipped", check its cron cadence.** If the next
   tick is far away, run a Railway-side manual backfill. This is not optional
   cleanup — it is the step that makes the fix real *and* proves it end-to-end.

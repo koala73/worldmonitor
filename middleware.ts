@@ -1,3 +1,4 @@
+import { agentNotFoundResponse, isKnownPublicPagePath } from './src/config/agent-not-found';
 import { getRootlessDocsDestination } from './src/config/docs-root-redirects';
 
 const BOT_UA =
@@ -181,6 +182,13 @@ export default function middleware(request: Request) {
       const canonicalUrl = new URL(docsDestination);
       canonicalUrl.search = url.search;
       return Response.redirect(canonicalUrl.toString(), 308);
+    }
+
+    // Real HTTP 404 + markdown body for unknown pages. A rewrite to a static
+    // markdown file would 200 (orank `agent-friendly-404` soft-404). Files with
+    // extensions skip this matcher and fall through to public/404.html.
+    if (!isKnownPublicPagePath(path)) {
+      return agentNotFoundResponse(path, request.method);
     }
   }
 

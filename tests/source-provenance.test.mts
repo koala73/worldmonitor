@@ -69,6 +69,10 @@ let renderer: {
     tierBadge: string;
   };
   renderCorroboratingSourceRisk: (sourceName: string) => string;
+  renderCredibilityBadge: (
+    sourceName: string,
+    item?: { credibilityScore?: number; corroborationCount?: number },
+  ) => string;
 };
 
 before(async () => {
@@ -227,6 +231,46 @@ describe('source provenance defaults (#5390)', () => {
     assert.match(reviewedWire.tierBadge, />★ Wire</);
 
     assert.match(renderer.renderCorroboratingSourceRisk('Fars News'), />\?</);
+  });
+
+  it('renders existing badge CSS on Telegram channel labels (#6600)', () => {
+    const idf = renderer.renderPrimarySourceProvenance('IDF Official');
+    assert.match(idf.riskBadge, /propaganda-badge high/);
+    assert.match(idf.riskBadge, /Official Government Source/);
+    assert.match(idf.tierBadge, /tier-badge tier-1/);
+    assert.doesNotMatch(idf.tierBadge, /Wire/);
+
+    const clash = renderer.renderPrimarySourceProvenance('Clash Report');
+    assert.match(clash.riskBadge, /propaganda-badge medium/);
+    assert.equal(clash.tierBadge, '', 'tier-3 OSINT aggregators do not get the T1/T2 star');
+
+    const dd = renderer.renderPrimarySourceProvenance('DD Geopolitics');
+    assert.match(dd.riskBadge, /propaganda-badge medium/);
+    assert.match(dd.riskBadge, />! Caution</);
+    assert.doesNotMatch(dd.riskBadge, /State Media/);
+    assert.equal(dd.tierBadge, '');
+  });
+});
+
+describe('renderCredibilityBadge (#6597)', () => {
+  it('renders a distinct CRED badge with a low band for high-propaganda sources', () => {
+    const html = renderer.renderCredibilityBadge('RT', { credibilityScore: 21 });
+    assert.ok(html.includes('CRED 21'));
+    assert.ok(html.includes('credibility-score-badge'));
+    assert.ok(html.includes('band-low'));
+    assert.ok(!html.includes('importance'));
+  });
+
+  it('renders a high band for wire-service scores', () => {
+    const html = renderer.renderCredibilityBadge('Reuters', { credibilityScore: 80 });
+    assert.ok(html.includes('CRED 80'));
+    assert.ok(html.includes('band-high'));
+  });
+
+  it('computes a low score for RT when the digest field is absent', () => {
+    const html = renderer.renderCredibilityBadge('RT');
+    assert.match(html, /CRED \d+/);
+    assert.ok(html.includes('band-low'));
   });
 });
 

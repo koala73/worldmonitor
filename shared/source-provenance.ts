@@ -1,6 +1,10 @@
 // Canonical source provenance registry shared by the browser UI and MCP tools.
 // Keep this module runtime-neutral so it remains safe in both runtimes.
 import { CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS } from './source-provenance-declarations';
+import {
+  TELEGRAM_SOURCE_PROPAGANDA_RISK,
+  TELEGRAM_SOURCE_TYPES,
+} from './telegram-channel-trust';
 
 // 'unknown' = not yet reviewed (default for unlisted sources — never invent a type)
 // 'other' remains available as an explicit classification when needed.
@@ -179,6 +183,10 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Dhaka Tribune': 'mainstream', 'Daily Nation': 'mainstream',
   'The Guardian Post': 'mainstream', 'Tchadinfos': 'mainstream',
   'Alwihda Info': 'mainstream', 'Radio Ndeke Luka': 'mainstream',
+
+  // Telegram channels (#6600). Additive keys keyed by channel display label.
+  // #6654 Track A should append X-account labels the same way — do not rename this spread.
+  ...TELEGRAM_SOURCE_TYPES,
 };
 
 export function getSourceType(sourceName: string): SourceType {
@@ -449,6 +457,10 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'RFE/RL Central Asia': { risk: 'medium', stateAffiliated: 'USA', note: 'US government-funded Central Asia desk (Radio Free Europe)' },
   'The Astana Times': { risk: 'medium', stateAffiliated: 'Kazakhstan', note: 'Kazakhstan government-funded English-language news' },
   'The Times of Central Asia': { risk: 'medium', note: 'Independent English-language Central Asia news outlet' },
+
+  // Telegram channels (#6600). Additive keys keyed by channel display label.
+  // #6654 Track A should append X-account labels the same way — do not rename this spread.
+  ...TELEGRAM_SOURCE_PROPAGANDA_RISK,
 };
 
 export function getSourcePropagandaRisk(sourceName: string): SourceRiskProfile {

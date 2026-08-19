@@ -598,6 +598,12 @@ export class InsightsPanel extends Panel {
         badges.push(`<span class="insight-badge alert">⚠ ${t('components.insights.alert')}</span>`);
       }
 
+      if (Number.isFinite(story.credibilityScore)) {
+        const cred = Math.round(story.credibilityScore as number);
+        const band = cred < 40 ? 'low' : cred < 70 ? 'medium' : 'high';
+        badges.push(`<span class="insight-badge credibility ${band}" title="Credibility ${cred}/100 — source reliability, not newsworthiness">CRED ${cred}</span>`);
+      }
+
       const VALID_THREAT_LEVELS = ['critical', 'high', 'elevated', 'moderate', 'medium', 'low', 'info'];
       if (story.threatLevel === 'critical' || story.threatLevel === 'high') {
         const safeThreat = VALID_THREAT_LEVELS.includes(story.threatLevel) ? story.threatLevel : 'moderate';

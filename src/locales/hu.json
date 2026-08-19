@@ -276,6 +276,31 @@
       "soybeans": "Soybeans",
       "barley": "Barley",
       "palmOil": "Palm oil"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "STEM graduates",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh."
     }
   },
   "header": {
@@ -1313,7 +1338,7 @@
         "ucdpEvents": "Fegyveres konfliktus események",
         "displacementFlows": "Kényszermigrációs áramlások",
         "climateAnomalies": "Éghajlati anomáliák",
-        "weatherAlerts": "Egyesült államokbeli és kanadai időjárási riasztások (NWS, ECCC)",
+        "weatherAlerts": "Súlyos időjárási riasztások (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Szűk átjárók",
         "economicCenters": "Gazdasági központok",
         "criticalMinerals": "Kritikus ásványok",
@@ -1394,7 +1419,7 @@
           "infraDatacenters": "AI számítási fürtök >=10 000 GPU-val",
           "infraOutages": "Internet leállások és szolgáltatáskiesések",
           "naturalEventsTech": "Földrengések, viharok, tüzek (adatközpontokat érinthetnek)",
-          "weatherAlerts": "Súlyos időjárási figyelmeztetések az Egyesült Államokban és Kanadában (NWS, ECCC)",
+          "weatherAlerts": "Nemzeti meteorológiai szolgálatok hivatalos súlyos időjárási riasztásai (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Értéktőzsdék és központi bankok",
           "countriesOverlay": "Ország név átfedések",
           "financeExchanges": "Fő globális tőzsdék piaci szint szerint",
@@ -1406,7 +1431,7 @@
           "financeOutages": "Internet-kiesések, amelyek hatással lehetnek a piaci működésre",
           "financeCyberThreats": "Biztonsági incidensek a pénzügyi infrastruktúra körül",
           "macroWaterways": "Stratégiai szűk keresztmetszetek az áruszállításhoz",
-          "weatherAlertsMarket": "Piaci jelentőségű súlyos időjárási események az Egyesült Államokban és Kanadában (NWS, ECCC)",
+          "weatherAlertsMarket": "Piaci jelentőségű hivatalos súlyos időjárási riasztások (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Földrengések, tüzek, árvizek és egyéb természeti katasztrófák",
           "timeRecent": "Időalapú adatok szűrése az utóbbi órákra",
           "timeExtended": "Adatok megjelenítése az elmúlt hétből, hónapból vagy minden időből",
@@ -1988,7 +2013,17 @@
       "infoTooltip": "<strong>Szektoros Hőtérkép</strong> Az S&P 500 szektor teljesítménye egy pillantásra. A szín intenzitása a napi változás mértékét tükrözi. Zöld = nyereség, Piros = veszteség."
     },
     "commodities": {
-      "infoTooltip": "<strong>Árucikkek</strong> Kereskedhető, nem energetikai árucikkek szalagja, amely fémekre és anyagokra összpontosít. Az energiaárak az Energy Complex-ben vannak; a makroökonómiai stresszindikátorok a Macro Stress-ben."
+      "infoTooltip": "<strong>Árucikkek</strong> Kereskedhető, nem energetikai árucikkek szalagja, amely fémekre és anyagokra összpontosít. Az energiaárak az Energy Complex-ben vannak; a makroökonómiai stresszindikátorok a Macro Stress-ben.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Kriptó</strong> Valós idejű árak, 24 órás változások és volumen a fő kriptovalutákra. Az adatokat a CoinGecko biztosítja."

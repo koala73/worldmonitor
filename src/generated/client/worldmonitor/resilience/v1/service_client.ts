@@ -88,6 +88,60 @@ export interface FoodStockRecord {
   source: string;
 }
 
+export interface GetDemographicsCapabilityRequest {
+  countryCode: string;
+}
+
+export interface GetDemographicsCapabilityResponse {
+  countryCode: string;
+  available: boolean;
+  fetchedAt: string;
+  stages: DemographicsCapabilityStage[];
+  ageStructure?: DemographicsAgeStructure;
+  education?: DemographicsEducation;
+  industrialWorkforce?: DemographicsIndustrialWorkforce;
+}
+
+export interface DemographicsCapabilityStage {
+  name: string;
+  status: string;
+  fetchedAt: string;
+  recordCount: number;
+  newestObservationYear: number;
+}
+
+export interface DemographicsAgeStructure {
+  available: boolean;
+  medianAgeYears?: CapabilityObservation;
+  oldAgeDependencyRatioPercent?: CapabilityObservation;
+  totalDependencyRatioPercent?: CapabilityObservation;
+  workingAgePopulationPeople?: CapabilityObservation;
+  workingAgePopulationProjected10yPeople?: CapabilityObservation;
+}
+
+export interface CapabilityObservation {
+  available: boolean;
+  value: number;
+  year: number;
+  source: string;
+  unit: string;
+}
+
+export interface DemographicsEducation {
+  available: boolean;
+  tertiaryEnrollmentGrossPercent?: CapabilityObservation;
+  stemGraduatesSharePercent?: CapabilityObservation;
+  researchersPerMillion?: CapabilityObservation;
+}
+
+export interface DemographicsIndustrialWorkforce {
+  available: boolean;
+  craftTradesEmploymentPeople?: CapabilityObservation;
+  plantMachineOperatorsEmploymentPeople?: CapabilityObservation;
+  trainedIndustrialWorkforcePeople?: CapabilityObservation;
+  manufacturingEmploymentSharePercent?: CapabilityObservation;
+}
+
 export interface GetResilienceRankingRequest {
 }
 
@@ -257,6 +311,31 @@ export class ResilienceServiceClient {
     }
 
     return await resp.json() as GetFoodStocksResponse;
+  }
+
+  async getDemographicsCapability(req: GetDemographicsCapabilityRequest, options?: ResilienceServiceCallOptions): Promise<GetDemographicsCapabilityResponse> {
+    let path = "/api/resilience/v1/get-demographics-capability";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("countryCode", String(req.countryCode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetDemographicsCapabilityResponse;
   }
 
   async getResilienceRanking(_req: GetResilienceRankingRequest, options?: ResilienceServiceCallOptions): Promise<GetResilienceRankingResponse> {

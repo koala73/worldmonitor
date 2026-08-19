@@ -48,6 +48,10 @@ describe('Dockerfile.relay — transitive-import closure', () => {
 
   it('copies the weather-alert helper that ais-relay loads dynamically', () => {
     assert.ok(copied.has('scripts/_weather-alert-select.mjs'));
+    assert.ok(
+      copied.has('scripts/shared/iso3-to-iso2.json'),
+      'iso3-to-iso2.json must be COPY\'d; _weather-alert-select.mjs reads it at import for SWIC member codes',
+    );
   });
 
   it('scanner catches both ESM imports and CJS require/createRequire', () => {

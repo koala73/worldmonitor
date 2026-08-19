@@ -115,7 +115,7 @@ npm run dev
 | CoinGecko | 加密货币价格 | 否 |
 | USGS | 地震数据 | 否 |
 | NASA EONET | 自然事件（风暴、火灾、火山、洪水） | 否 |
-| NWS + ECCC | 美国与加拿大天气警报 | 否 |
+| NWS + ECCC + WMO SWIC | 官方天气警报（全球 CAP + 美加多边形） | 否 |
 | FRED | 经济指标（美联储数据） | 否 |
 | EIA | 石油分析（价格、产量、库存） | 是（免费） |
 | USASpending.gov | 联邦政府合同和拨款 | 否 |
@@ -206,7 +206,7 @@ src/
 │   ├── rss.ts                # RSS parsing with circuit breakers
 │   ├── markets.ts            # Finnhub, Yahoo Finance, CoinGecko
 │   ├── earthquakes.ts        # USGS integration
-│   ├── weather.ts            # NWS + ECCC alerts
+│   ├── weather.ts            # NWS + ECCC + WMO SWIC alerts
 │   ├── fred.ts               # Federal Reserve data
 │   ├── oil-analytics.ts      # EIA oil prices, production, inventory
 │   ├── usa-spending.ts       # USASpending.gov contracts & awards
@@ -283,7 +283,7 @@ server/                       # Server-side handlers (bundled into Edge function
 
 - **地震**：[美国地质调查局](https://earthquake.usgs.gov/)，ANSS 综合目录
 - **自然事件**：[NASA EONET](https://eonet.gsfc.nasa.gov/) — 地球观测自然事件追踪器（风暴、野火、火山、洪水）
-- **天气警报**：[国家气象局](https://www.weather.gov/) 与 [ECCC](https://weather.gc.ca/) — 美国与加拿大官方警报
+- **天气警报**：[国家气象局](https://www.weather.gov/)、[ECCC](https://weather.gc.ca/) 与 [WMO SWIC](https://severeweather.wmo.int/) — 官方警报合并进同一 `weather:alerts:v1` 源
 
 ### 基础设施与交通
 

@@ -207,6 +207,31 @@
       "soybeans": "Soybeans",
       "barley": "Barley",
       "palmOil": "Palm oil"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "STEM graduates",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh."
     }
   },
   "header": {
@@ -1170,7 +1195,7 @@
         "ucdpEvents": "UCDP事件",
         "displacementFlows": "流離失所流向",
         "climateAnomalies": "氣候異常",
-        "weatherAlerts": "美國與加拿大天氣預警（NWS, ECCC）",
+        "weatherAlerts": "惡劣天氣預警（NWS、ECCC、WMO SWIC）",
         "strategicWaterways": "戰略水道",
         "economicCenters": "經濟中心",
         "criticalMinerals": "關鍵礦產",
@@ -1253,7 +1278,7 @@
           "infraDatacenters": "AI算力叢集 >=10,000 GPU",
           "infraOutages": "網際網路中斷和服務故障",
           "naturalEventsTech": "地震、風暴、火災（可能影響資料中心）",
-          "weatherAlerts": "美國與加拿大惡劣天氣預警（NWS, ECCC）",
+          "weatherAlerts": "各國氣象部門釋出的官方惡劣天氣預警（NWS、ECCC、WMO SWIC）",
           "economicCenters": "證券交易所和央行",
           "countriesOverlay": "國家名稱疊加層",
           "financeExchanges": "按市場層級劃分的全球主要交易所",
@@ -1265,7 +1290,7 @@
           "financeOutages": "可能影響市場運營的網際網路中斷",
           "financeCyberThreats": "金融基礎設施周邊的安全事件",
           "macroWaterways": "大宗商品航運的戰略咽喉要道",
-          "weatherAlertsMarket": "與市場相關的美國與加拿大惡劣天氣事件（NWS, ECCC）",
+          "weatherAlertsMarket": "與市場相關的官方惡劣天氣預警（NWS、ECCC、WMO SWIC）",
           "naturalEventsMacro": "地震、火災、洪水等自然災害",
           "timeRecent": "按近幾小時篩選時間資料",
           "timeExtended": "顯示過去一週、一個月或所有時間的資料",
@@ -1911,7 +1936,17 @@
       "topTargets": "主要目標國家"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."

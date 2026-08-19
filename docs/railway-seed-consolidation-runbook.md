@@ -538,18 +538,29 @@ container.
 
 The probe is strict on every run, but the workflow conclusion is
 transition-based. `scripts/update-seed-health-statuses.mjs` publishes one
-durable `ingestion/seed/<source>` commit status on the exact gated revision.
+durable `ingestion/seed/<source>` status on the historical operational anchor
+`b93afd05d0f4ea2c465e79fd064e87fc1f9fb2f3`. The exact gated revision remains
+the revision being observed, but it does not receive source-health statuses.
+This separation prevents a continuing data incident from making Railway read
+an unrelated deployable commit as a failed check suite.
 A new failure, a changed failure class, an expired acknowledgement, a probe
 transport error, or a malformed observation fails the workflow. The same
-unchanged incident on a later poll keeps its per-source status red but does not
-create another generic failed run. This preserves the alarm while separating
-"still broken" from "broke again".
+unchanged incident remains red on the anchor, appends no new status, and does
+not create another generic failed run. This preserves the alarm while
+separating "still broken" from "broke again".
 
 Recovery is not inferred from a merge, image build, or elapsed time. The
 publisher posts success only after the live compact-health observation stops
 reporting that source. The first run after this status lifecycle is activated
-can fail once to establish the durable status for incidents that already
-exist; later exact repeats are quiet.
+imports the newest trusted legacy projection before it initializes the anchor,
+so an incident that already exists does not become a false new alert. Later
+exact repeats are quiet. The publisher also proves that the anchor is an
+ancestor of the monitored revision before it writes any status.
+
+The acceptance context is the completion marker and is always written last. If
+GitHub accepts only part of a projection, the next poll overlays those trusted
+partial statuses on the last complete projection, repairs the anchor, and does
+not report an already-written source transition again.
 
 Read the separate six-hourly `Railway Native Deploy Health` workflow for
 production source, build, trigger, and deployment conclusions. A red Seed
@@ -565,7 +576,10 @@ run on an ingestion push because Railway may not have deployed or executed
 that revision yet. This is the operational acceptance gate for the "merged and
 green, but production data is still unhealthy" gap. A workflow failure means
 new operational information or an unreadable control plane; the durable source
-statuses remain the current incident inventory between transitions.
+statuses on the operational anchor remain the current incident inventory
+between transitions. A genuinely new or changed incident can still fail one
+scheduled run; persistent incident state cannot be copied onto later main
+commits.
 
 #### Deploy-drift check
 
@@ -973,8 +987,8 @@ All new services share these settings:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services (including the retired defense-patents producer) |
 | **Net savings** | 3 slots |
-| **Members** | Defense Industrial Base (10d), Submarine Cables (weekly), Defense Patents (weekly), Chokepoint Baselines (400d, runs rarely) |
-| **Wall-time budget** | `maxBundleMs: 570_000` in `scripts/seed-bundle-static-ref.mjs`. Since #6806 the four members reserve 470s in total (110 + 100 + 190 + 70), so **every due member is admissible on every tick** — there is no ordering, priority, or deferral question left in this bundle. Keep the total under 570s: adding a member that does not fit alongside the others reintroduces the starvation the split removed. |
+| **Members** | Defense Industrial Base (10d), Submarine Cables (weekly), Defense Patents (weekly), Chokepoint Baselines (400d, runs rarely), Demographics Capability (20d) |
+| **Wall-time budget** | `maxBundleMs: 570_000` in `scripts/seed-bundle-static-ref.mjs`. The five members reserve 545s in total, including the runner's 10s kill grace for each member (110 + 100 + 190 + 70 + 75). The runner starts every freshness gate concurrently; its heartbeat plus the slowest three-read gate have 20s of bounded preflight, leaving 5s for process overhead. Therefore **every due member is admissible on every tick**. Do not add another member without moving or reducing measured work; that would restore the starvation the split removed. |
 | **Required variable** | `USPTO_API_KEY=${{shared.USPTO_API_KEY}}` |
 
 Defense Patents is an intentional data-series migration, not a continuation of
@@ -998,6 +1012,13 @@ retries the portal instead of treating the partial pass as complete.
 Strict health-probe registration is a staged follow-up after the first Railway
 run publishes both seed-meta keys; the follow-up must cite real Railway
 pre-seed evidence under the health-probe cutover contract.
+
+Demographics Capability publishes `demographics:capability:v1` from three
+independently settled stages: UN WPP age structure, UNESCO UIS indicators via
+World Bank WDI, and ILOSTAT industrial workforce data. A failed stage retains
+only its prior section and its original fetch timestamp. The 20-day eligibility
+window keeps the 30-day data TTL alive while the observation-year content clock
+detects old source material.
 
 ### Bundle 3 heavy: seed-bundle-static-ref-heavy (planned, #6806)
 

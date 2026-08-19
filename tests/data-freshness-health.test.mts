@@ -22,7 +22,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe('health freshness ingestion', () => {
-  it('identifies the weather source and outage gap as US+Canada NWS/ECCC coverage', async () => {
+  it('identifies the weather source and outage gap as NWS/ECCC/WMO SWIC coverage', async () => {
     __resetHealthFreshnessForTests();
     await refreshDataFreshnessFromHealth({
       endpoint: '/api/health',
@@ -41,8 +41,8 @@ describe('health freshness ingestion', () => {
 
     const weatherGap = getIntelligenceGaps().find(gap => gap.source === 'weather');
 
-    assert.equal(dataFreshness.getSource('weather')?.name, 'US + Canada Weather Alerts (NWS, ECCC)');
-    assert.match(weatherGap?.message ?? '', /NWS and ECCC/);
+    assert.equal(dataFreshness.getSource('weather')?.name, 'Severe Weather Alerts (NWS, ECCC, WMO SWIC)');
+    assert.match(weatherGap?.message ?? '', /NWS, ECCC, or WMO SWIC/);
 
     // The two assertions above are satisfied by DataFreshnessTracker's constructor alone:
     // it pre-seeds every SOURCE_METADATA entry with `name` and status 'no_data', and

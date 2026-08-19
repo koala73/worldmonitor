@@ -240,6 +240,9 @@ export function clusterNewsCore(items, getSourceTier) {
       primaryTitle: primary.title,
       primarySource: primary.source,
       primaryLink: primary.link,
+      ...(Number.isFinite(primary.credibilityScore)
+        ? { credibilityScore: primary.credibilityScore }
+        : {}),
       sourceCount: cluster.length,
       uniquePublisherCount: countPublisherFamilies(cluster.map(i => i.source)),
       topSources,

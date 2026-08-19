@@ -165,19 +165,19 @@ Universal arguments:
 
 ### `get_market_data`
 
-Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache.
+Real-time equity quotes, commodity prices (including SGE physical-vs-COMEX gold and silver premiums), crypto prices, forex FX rates, sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache.
 
 **Parameters (tool-specific):**
 
 | Name | Type | Description |
 |------|------|-------------|
-| `symbols` | `array<string>` | Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, sector ETFs, and ETF-flow tickers. Omit for the full snapshot. |
+| `symbols` | `array<string>` | Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, physical-premium aliases (gold/XAU/GC=F, silver/XAG/SI=F), sector ETFs, and ETF-flow tickers. Omit for the full snapshot. |
 | `asset_class` | `array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment>` | Restrict the response to one or more asset classes. Omit for all. |
 | `limit` | number | Cap each per-class quote list (stocks/commodities/crypto/gulf/sectors/ETF flows) to at most this many items (default 30, pass 0 for no cap). |
 
-- **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
+- **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-physical-premiums`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget:** market and sector snapshots allow **30 min**; the daily physical-premium snapshot allows **72 hours** so one missed publish cycle or a market closure does not create a false stale alarm.
 - Sector `valuationCoverage` separates write age (`stale`) from completeness (`sourceStatus`: `ok`, `partial`, or `degraded`). `stale` describes the seed write, not the individual records — a freshly written payload can still contain older valuations. `valuationCount` and `expectedValuationCount` follow a `symbols` filter when one is supplied. `valuationCount` counts live and replayed records together; `currentValuationCount` gives the subset actually fetched this cycle and is omitted when every record is current. `staleValuationSymbols` lists symbols served from an older snapshot — those symbols **do** have values in `valuations`, and `lastGood.fetchedAt` gives their age (bounded by a 7-day snapshot TTL). `unavailableSymbols` lists symbols with no valuation published at all, and is disjoint from `staleValuationSymbols`. `lastGood` covers both whole records and borrowed return metrics, and includes that snapshot's timestamp. `sourceStatus` is `degraded` when no record is current, `partial` when some are stale or missing. `valuationDiagnostics` is bounded per-symbol route metadata across the `v7Quote`, `v7QuoteBatch`, and `quoteSummary` routes, showing independent direct/proxy outcomes, response classes, and missing fields; it never contains credentials.
 
 <CodeGroup>
@@ -557,6 +557,37 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_demographics_capability`
+
+Country age structure, education capacity, and industrial-workforce observations from UN WPP, World Bank/UNESCO UIS, and ILOSTAT. The three groups are independent: one source can be unavailable while the other groups remain usable.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | yes | ISO 3166-1 alpha-2 country code, for example `DE`. Case-insensitive. |
+
+- **API endpoint:** `GET /api/resilience/v1/get-demographics-capability`
+- **Kind:** subscription RPC proxy over the annual demographics seed.
+- **Freshness:** read each observation's `year`; it is the source observation year, not the seed run year. Stage metadata reports whether the current snapshot is `fresh`, retained a last-good stage, or is unavailable.
+
+Each observation returns `available`, `value`, `year`, `source`, and `unit`. Always check `available` before reading `value`: an unavailable proto3 number is serialized as zero. The combined trained-industrial-workforce observation is published only when the two underlying ILOSTAT occupation groups form a valid same-year cohort.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_demographics_capability","arguments":{"country_code":"DE"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_mineral_production`
 
 Country shares of mine and refinery production, plus HHI, from the annual USGS Mineral Commodity Summaries seed (BGS fills commodities MCS lacks, notably uranium). Use this for "who refines X" / "what does country Y produce". Deposit locations stay on `get_commodity_geo`.
@@ -823,7 +854,7 @@ AI-classified geopolitical threat news summaries, GDELT intelligence signals, cr
 
 - **API endpoints:** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Corroboration:** every top story carries `uniqueSourceCount`, `corroborationSourceCount`, `entityCorroboration`, `sourceTier`, the contributing outlet names in `sources`, and every clustered headline in `memberTitles`, alongside `lastUpdated`, `upstreamImportanceScore`, and `effectiveImportanceScore`.
+- **Corroboration:** every top story carries `uniqueSourceCount`, `corroborationSourceCount`, `entityCorroboration`, `sourceTier`, the contributing outlet names in `sources`, and every clustered headline in `memberTitles`, alongside `lastUpdated`, `upstreamImportanceScore`, `effectiveImportanceScore`, and `credibilityScore` (0-100 source reliability, distinct from importance; state-controlled media is capped at 40).
 - **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
 
 <CodeGroup>
@@ -903,7 +934,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_news_clusters`
 
-Current topic clusters computed over the live headline digest with the same Jaccard clustering (0.5 title-token similarity) the dashboard uses, so agents see the same story groupings as the UI. Each cluster reports its primary headline, member count, `distinctSourceCount` (the corroboration signal `min_sources` filters on), source names, top keywords (stop-word and generic-term filtered), aggregated threat level/category, and time span. Server-side primary selection is recency-based because digest items carry no per-source tier.
+Current topic clusters computed over the live headline digest with the same Jaccard clustering (0.5 title-token similarity) the dashboard uses, so agents see the same story groupings as the UI. Each cluster reports its primary headline, member count, `distinctSourceCount` (the corroboration signal `min_sources` filters on), source names, top keywords (stop-word and generic-term filtered), aggregated threat level/category, time span, and `credibilityScore` (0-100 source reliability for the primary outlet, distinct from importance). Server-side primary selection is recency-based because digest items carry no per-source tier.
 
 **Parameters (tool-specific):**
 
@@ -2155,9 +2186,9 @@ WorldMonitor's live source inventory — what the data is drawn from and how far
 Two **separate** populations, deliberately not merged:
 
 - **`providers`** — upstream hosts data is fetched from, keyed by host (`acleddata.com`), carrying `kind` (feed / structured / feed+structured / operational-status), attribution-review `status`, and `license`.
-- **`outlets`** — named news organisations, keyed by masthead (`Reuters`), carrying an editorial `tier` and the same `provenance` block the news tools attach to stories (propaganda risk, source type, whether each was declared or reviewed, state affiliation).
+- **`outlets`** — named public source identities (`Reuters`, `IDF Official`), carrying an editorial `tier` and the same `provenance` block the news tools attach to stories (propaganda risk, source type, whether each was declared or reviewed, state affiliation). Platform channels also carry `platformIdentities` with their stable platform and handle.
 
-A provider is a host; an outlet is a masthead. Only 3 of 536 active provider records share a key with the outlet table, so a single merged list would mean inventing attribution for the other 533.
+A provider is a host; an outlet is a public editorial source identity. Only 3 of 536 active provider records share a key with the outlet table, so a single merged list would mean inventing attribution for the other 533.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -2165,6 +2196,7 @@ A provider is a host; an outlet is a masthead. Only 3 of 536 active provider rec
 | `kind` | string | `providers` view only — restrict to one kind. |
 | `tier` | integer 1-4 | `outlets` view only — restrict to one editorial tier. Outlets with no declared tier are never returned by this filter. |
 | `risk` | string (enum) | `outlets` view only — `low` / `medium` / `high` / `unknown`. |
+| `platform` | string (enum) | `outlets` view only — restrict to sources configured on a platform such as `telegram`. |
 | `query` | string | Case-insensitive substring: host and provider in the providers view, outlet name in the outlets view. Applied before `limit`. |
 | `limit` | integer | Rows in an enumerated view. Defaults to 50, capped at 200. Ignored by `summary`. |
 

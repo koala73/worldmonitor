@@ -430,6 +430,29 @@ describe('ais-relay deriveWeatherCoalesceKey — VTEC parser', () => {
 });
 
 describe('ais-relay weather publisher — coalesceKey threading', () => {
+  it('carries last-good weather alerts by exact source during partial outages', () => {
+    assert.match(
+      aisRelaySrc,
+      /carriedNws\s*=\s*prevAlerts\.filter\(\(a\)\s*=>\s*a\?\.source\s*===\s*'nws'\)/,
+      'an NWS outage must not carry ECCC or SWIC alerts into the NWS slice',
+    );
+    assert.match(
+      aisRelaySrc,
+      /carriedEccc\s*=\s*prevAlerts\.filter\(\(a\)\s*=>\s*a\?\.source\s*===\s*'eccc'\)/,
+      'an ECCC outage must carry only ECCC alerts',
+    );
+    assert.match(
+      aisRelaySrc,
+      /carriedSwic\s*=\s*prevAlerts\.filter\(\(a\)\s*=>\s*a\?\.source\s*===\s*'swic'\)/,
+      'a SWIC outage must carry only SWIC alerts',
+    );
+    assert.doesNotMatch(
+      aisRelaySrc,
+      /carriedNws\s*=\s*prevAlerts\.filter\(\(a\)\s*=>\s*a\?\.source\s*!==\s*'eccc'\)/,
+      'the old broad NWS filter mixes third-party sources into the NWS slice',
+    );
+  });
+
   it('captures VTEC from properties.parameters.VTEC[0] in the alert mapping', () => {
     assert.match(
       weatherSelectSrc,
@@ -489,12 +512,19 @@ describe('ais-relay weather publisher — coalesceKey threading', () => {
       /for\s*\(const\s+a\s+of\s+highSeverityAlerts\.slice\(0,\s*3\)\)/,
       'publisher must NOT iterate highSeverityAlerts.slice(0, 3) directly — that loses distinct families',
     );
-    // Family-key fallback uses a stable per-alert identity (NWS feature.id, then
-    // headline/event) so VTEC-less alerts still dedupe against themselves.
+    // Family-key fallback uses source + a stable per-alert identity so VTEC-less
+    // NWS/ECCC/SWIC alerts still dedupe against themselves without colliding
+    // across authorities. A hardcoded `nws:fallback:` prefix would swallow SWIC
+    // rows into an NWS family when ids overlap.
     assert.match(
       aisRelaySrc,
-      /deriveWeatherCoalesceKey\(a\.vtec\)\s*\n?\s*\?\?\s*`nws:fallback:\$\{a\.id/,
-      'family-key fallback must include a stable per-alert identity (id || headline || event)',
+      /deriveWeatherCoalesceKey\(a\.vtec\)\s*\n?\s*\?\?\s*`\$\{a\.source \|\| 'weather'\}:\$\{a\.id/,
+      'family-key fallback must include source plus a stable per-alert identity (id || headline || event)',
+    );
+    assert.doesNotMatch(
+      aisRelaySrc,
+      /nws:fallback:/,
+      'family-key fallback must not hardcode an NWS prefix on the shared weather:alerts:v1 path',
     );
   });
 });

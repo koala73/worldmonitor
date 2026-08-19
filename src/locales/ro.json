@@ -209,6 +209,31 @@
       "soybeans": "Soybeans",
       "barley": "Barley",
       "palmOil": "Palm oil"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "STEM graduates",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh."
     }
   },
   "header": {
@@ -1172,7 +1197,7 @@
         "ucdpEvents": "Evenimente de conflict armat",
         "displacementFlows": "Fluxuri de deplasare",
         "climateAnomalies": "Anomalii climatice",
-        "weatherAlerts": "Alerte meteo pentru SUA și Canada (NWS, ECCC)",
+        "weatherAlerts": "Alerte de vreme severă (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Căi navigabile strategice",
         "economicCenters": "Centre Economice",
         "criticalMinerals": "Minerale critice",
@@ -1255,7 +1280,7 @@
           "infraDatacenters": "Clustere de calcul AI >=10.000 de GPU",
           "infraOutages": "Întreruperea internetului și întreruperile serviciului",
           "naturalEventsTech": "Cutremururi, furtuni, incendii (pot afecta centrele de date)",
-          "weatherAlerts": "Alerte de vreme severă în SUA și Canada (NWS, ECCC)",
+          "weatherAlerts": "Alerte oficiale de vreme severă de la serviciile meteorologice naționale (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Burse de valori și bănci centrale",
           "countriesOverlay": "Numele țării se suprapune",
           "financeExchanges": "Schimburile globale majore pe nivelul pieței",
@@ -1267,7 +1292,7 @@
           "financeOutages": "Întreruperi ale internetului care pot afecta operațiunile pieței",
           "financeCyberThreats": "Evenimente de securitate în jurul infrastructurii financiare",
           "macroWaterways": "Puncte de strangulare strategice pentru transportul mărfurilor",
-          "weatherAlertsMarket": "Evenimente meteorologice severe din SUA și Canada cu relevanță pentru piață (NWS, ECCC)",
+          "weatherAlertsMarket": "Alerte oficiale de vreme severă cu relevanță pentru piață (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Cutremurele, incendiile, inundațiile și alte perturbări naturale",
           "timeRecent": "Filtrați datele bazate pe timp la ultimele ore",
           "timeExtended": "Afișați datele din săptămâna trecută, din luna sau din toate timpurile",
@@ -1914,7 +1939,17 @@
       "topTargets": "Țări țintă principale"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."

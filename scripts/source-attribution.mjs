@@ -125,9 +125,27 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 const PROVIDER_OVERRIDES = {
   'api.adsb.lol': { provider: 'adsb.lol' },
   'api.airplanes.live': { provider: 'airplanes.live' },
+  'api.worldbank.org': {
+    provider: 'World Bank Open Data',
+    license: 'World Development Indicators are licensed under CC BY 4.0. UNESCO UIS indicators mirrored through WDI also require the UIS attribution stated in the public source documentation.',
+    attribution: 'World Bank Open Data. For education indicators: UNESCO Institute for Statistics via World Bank WDI; include the UIS source URL and extraction date.',
+    status: 'reviewed',
+  },
   'api.x.com': { provider: 'X API' },
   'atbackend.sipri.org': { provider: 'SIPRI Arms Transfers Database' },
   'opendata.adsb.fi': { provider: 'adsb.fi Open Data' },
+  'population.un.org': {
+    provider: 'United Nations Population Division',
+    license: 'UN World Population Prospects 2024 is licensed under CC BY 3.0 IGO.',
+    attribution: 'United Nations, Department of Economic and Social Affairs, Population Division (2024). World Population Prospects 2024.',
+    status: 'reviewed',
+  },
+  'sdmx.ilo.org': {
+    provider: 'ILOSTAT',
+    license: 'ILOSTAT datasets and metadata published from 3 May 2023 are licensed under CC BY 4.0.',
+    attribution: 'International Labour Organization, ILOSTAT database; include the dataset and extraction date.',
+    status: 'reviewed',
+  },
   'auth.opensky-network.org': { provider: 'opensky-network.org', identityGroup: 'opensky-network' },
   'opensky-network.org': { provider: 'opensky-network.org', identityGroup: 'opensky-network' },
   'customer-api.wingbits.com': { provider: 'wingbits.com', identityGroup: 'wingbits' },
@@ -744,13 +762,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'a107d6f8cae94db6d23544594bec285194d6eaed6b002a6f80b358c67d4ea26a',
-  reason: 'Add the Manitoba 511 identity for www.manitoba511.ca on the shared provincial vendor /api/v2/get adapter, while retaining the reviewed SaskAlert, B.C. Evacuation Orders and Alerts, and prior publisher identities.',
+  sha256: '91ca746b314f3c0abf3bd5e2ba36fbf5ddc0d230d01a2242f27deac347283488',
+  reason: 'Add the reviewed UN Population Division and ILOSTAT identities and replace the generic World Bank host identity with World Bank Open Data for the demographics capability stack, while retaining prior publisher identities.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issue #6622 Manitoba 511 events and alerts; OpenMB Information and Data Use License; https://www.manitoba511.ca/developers/doc; Issue #6659 SaskAlert public JSON ingest; PR #6447 (vendor-disclosed contribution; Parallel customer terms served from the endpoint via x-parallel-terms); B.C. Data Catalogue record 7efd46d0-b5d3-4dff-af80-d376c42aec33',
+  reviewReference: 'Issue #6437 source-rights qualification; UN WPP 2024 data-source notice; World Bank WDI catalogue licence; UNESCO UIS Data Browser terms; ILO rights and permissions; plus the prior Issue #6622, Issue #6659, and PR #6447 identity reviews.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
@@ -843,11 +861,23 @@ function read(rootDir, path) {
   return readFileSync(join(rootDir, path), 'utf8');
 }
 
+function readdirPresentSync(absoluteDir) {
+  try {
+    return readdirSync(absoluteDir, { withFileTypes: true });
+  } catch (error) {
+    // Parallel test:data can mkdir/rm empty leftover trees under api/ (see
+    // tests/docs-stats-api-endpoints.test.mts) while docs-stats --check walks
+    // SOURCE_ROOTS. A vanished directory is not an inventory finding.
+    if (error && (error.code === 'ENOENT' || error.code === 'ENOTDIR')) return [];
+    throw error;
+  }
+}
+
 function walkSourceFiles(rootDir) {
   const files = [];
   const visit = (relativeDir) => {
     const absoluteDir = join(rootDir, relativeDir);
-    for (const entry of readdirSync(absoluteDir, { withFileTypes: true })) {
+    for (const entry of readdirPresentSync(absoluteDir)) {
       const relativePath = join(relativeDir, entry.name).replaceAll('\\', '/');
       if (entry.isDirectory()) {
         if (['node_modules', '.git', 'generated', 'e2e', 'fixtures', '__fixtures__', 'test', 'tests'].includes(entry.name)) continue;

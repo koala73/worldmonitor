@@ -36,7 +36,7 @@ const digestResponse = {
     politics: {
       items: [
         { source: 'Reuters', title: 'Iran closes Strait of Hormuz to all tanker traffic', link: 'https://n/1', publishedAt: 1785405600000, isAlert: true, threat: { level: 'THREAT_LEVEL_CRITICAL', category: 'conflict', confidence: 0.9, source: 'llm' } },
-        { source: 'AP News', title: 'Iran closes Strait of Hormuz, tanker traffic halted', link: 'https://n/2', publishedAt: 1785405900000, isAlert: false, threat: { level: 'THREAT_LEVEL_HIGH', category: 'conflict', confidence: 0.8, source: 'keyword' } },
+        { source: 'AP News', title: 'Iran closes Strait of Hormuz, tanker traffic halted', link: 'https://n/2', publishedAt: 1785405900000, isAlert: false, credibilityScore: 73, threat: { level: 'THREAT_LEVEL_HIGH', category: 'conflict', confidence: 0.8, source: 'keyword' } },
       ],
     },
     tech: {
@@ -241,6 +241,8 @@ describe('#5697 NLP MCP tools', () => {
     const clusterSchema = byName.get('get_news_clusters')?.outputSchema.properties.clusters.items;
     assert.ok(clusterSchema.required.includes('primarySourceProvenance'));
     assert.ok(clusterSchema.required.includes('sourceProvenance'));
+    assert.ok(clusterSchema.required.includes('credibilityScore'));
+    assert.equal(clusterSchema.properties.credibilityScore.type, 'number');
     assert.equal(clusterSchema.properties.primarySourceProvenance.type, 'object');
     assert.equal(clusterSchema.properties.sourceProvenance.type, 'array');
     assert.equal(clusterSchema.properties.sourceProvenance.items.properties.source.type, 'string');
@@ -613,6 +615,11 @@ describe('#5697 NLP MCP tools', () => {
       assert.ok(hormuz.topKeywords.includes('hormuz'));
       assert.equal(hormuz.threatLevel, 'critical');
       assert.equal(hormuz.isAlert, true);
+      assert.equal(
+        hormuz.credibilityScore,
+        73,
+        'cluster must preserve the digest score for its primary headline',
+      );
       assert.ok(hormuz.firstSeen.endsWith('Z') && hormuz.lastUpdated.endsWith('Z'));
     });
 

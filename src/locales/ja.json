@@ -207,6 +207,31 @@
       "soybeans": "Soybeans",
       "barley": "Barley",
       "palmOil": "Palm oil"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "STEM graduates",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh."
     }
   },
   "header": {
@@ -1170,7 +1195,7 @@
         "ucdpEvents": "UCDPイベント",
         "displacementFlows": "避難民フロー",
         "climateAnomalies": "気候異常",
-        "weatherAlerts": "米国とカナダの気象警報（NWS, ECCC）",
+        "weatherAlerts": "重大気象警報（NWS、ECCC、WMO SWIC）",
         "strategicWaterways": "戦略的水路",
         "economicCenters": "経済中心地",
         "criticalMinerals": "重要鉱物",
@@ -1253,7 +1278,7 @@
           "infraDatacenters": "10,000 GPU以上のAIコンピュートクラスター",
           "infraOutages": "インターネット遮断・サービス障害",
           "naturalEventsTech": "地震、暴風雨、火災（データセンターに影響の可能性）",
-          "weatherAlerts": "米国とカナダの重大気象警報（NWS, ECCC）",
+          "weatherAlerts": "各国の気象機関による公式の重大気象警報（NWS、ECCC、WMO SWIC）",
           "economicCenters": "証券取引所・中央銀行",
           "countriesOverlay": "国名オーバーレイ",
           "financeExchanges": "市場ティア別の主要グローバル取引所",
@@ -1265,7 +1290,7 @@
           "financeOutages": "市場運営に影響しうるインターネット障害",
           "financeCyberThreats": "金融インフラ周辺のセキュリティイベント",
           "macroWaterways": "コモディティ海運の戦略的チョークポイント",
-          "weatherAlertsMarket": "市場に関連する米国とカナダの重大気象事象（NWS, ECCC）",
+          "weatherAlertsMarket": "市場に関連する公式の重大気象警報（NWS、ECCC、WMO SWIC）",
           "naturalEventsMacro": "地震、火災、洪水、その他の自然災害",
           "timeRecent": "時間ベースデータを直近の時間に絞り込み",
           "timeExtended": "過去1週間、1ヶ月、または全期間のデータを表示",
@@ -1911,7 +1936,17 @@
       "topTargets": "トップターゲット国"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."

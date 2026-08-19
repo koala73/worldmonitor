@@ -384,6 +384,9 @@
       "falling": "Falling",
       "stable": "Stable"
     },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce"
+    },
     "defenseIndustrial": {
       "title": "Defense Industrial Base",
       "expenditure": "Military spend",
