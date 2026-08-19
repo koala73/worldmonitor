@@ -222,3 +222,42 @@ Update prompts are dismissable per-version — dismissing v2.5.0 won't suppress 
 A version the updater cannot parse is reported as `version_unparsable` and never treated as "up to date" — silently concluding "no update" from an unreadable version is exactly how a single malformed release tag could stop every client updating (#5908).
 
 The `/api/version` endpoint reads the latest GitHub Release tag and caches the result for 1 hour, so version checks don't hit the GitHub API on every request.
+
+## Uninstall
+
+The repository ships uninstall scripts that remove the app, its data directories (config, caches, WebView storage, logs), and the OS keychain secrets vault for every installed variant (World, Tech, and Finance Monitor).
+
+**macOS / Linux:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/koala73/worldmonitor/main/scripts/uninstall-desktop.sh | bash
+```
+
+Or from a repository checkout: `bash scripts/uninstall-desktop.sh`
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/koala73/worldmonitor/main/scripts/uninstall-desktop.ps1 -OutFile uninstall-desktop.ps1
+powershell -ExecutionPolicy Bypass -File .\uninstall-desktop.ps1
+```
+
+On Windows the script runs the bundled NSIS/MSI uninstaller (the same one available in **Settings → Apps → Installed apps**) and then cleans up the app-data directories and Credential Manager entries the bundled uninstaller leaves behind.
+
+Both scripts list everything they found and ask for confirmation before removing anything. Options:
+
+| Option | Effect |
+|---|---|
+| `--variant <world\|tech\|finance\|all>` / `-Variant` | Uninstall a single variant (default: all) |
+| `--keep-data` / `-KeepData` | Keep app data, caches, and logs |
+| `--keep-secrets` / `-KeepSecrets` | Keep API keys stored in the OS keychain |
+| `--dry-run` / `-DryRun` | Preview what would be removed |
+| `--yes` / `-Yes` | Skip the confirmation prompt |
+
+The keychain secrets vault (service `world-monitor`, entry `secrets-vault`) is shared by all variants, so it is only removed when uninstalling all variants without `--keep-secrets`.
+
+**Manual uninstall** — if you prefer to remove things by hand:
+
+- **macOS**: drag the app from `/Applications` to the Trash, then delete `~/Library/Application Support/app.worldmonitor.desktop`, `~/Library/Caches/app.worldmonitor.desktop`, `~/Library/WebKit/app.worldmonitor.desktop`, `~/Library/Logs/app.worldmonitor.desktop`, and the `world-monitor` entry in Keychain Access (Tech and Finance variants use the `app.worldmonitor.tech.desktop` / `app.worldmonitor.finance.desktop` identifiers)
+- **Windows**: uninstall from **Settings → Apps**, then delete `%APPDATA%\app.worldmonitor.desktop` and `%LOCALAPPDATA%\app.worldmonitor.desktop`, and remove `world-monitor` entries in Credential Manager
+- **Linux**: delete the AppImage file plus `~/.config/app.worldmonitor.desktop`, `~/.local/share/app.worldmonitor.desktop`, and `~/.cache/app.worldmonitor.desktop`; if you integrated the AppImage into your launcher, also remove its `.desktop` entry from `~/.local/share/applications`
