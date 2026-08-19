@@ -331,11 +331,27 @@ export function extractBundleSections(rawBundleSrc) {
     const hasShorthandTimeout = /[{,]\s*timeoutMs\s*[,}]/.test(block);
     const hasSpread = /\.\.\./.test(block);
     if (timeoutMatches.length > 1 || hasShorthandTimeout || hasSpread) continue;
+    // Freshness-resolution keys, for gates that reason about which clock a
+    // section is due from (#6960). `has*` is separate from the literal because
+    // a section may declare the key as an identifier (`canonicalKey:
+    // CHINA_MACRO_CACHE_KEY`) — absent and declared-as-a-variable are different
+    // answers, and conflating them would let a gate skip a section it should
+    // have judged.
+    const literal = (name) =>
+      block.match(new RegExp(`(?<![\\w$])${name}:\\s*['"]([^'"]+)['"]`))?.[1] ?? null;
+    const declared = (name) => new RegExp(`(?<![\\w$])${name}:`).test(block);
     sections.push({
       label,
       script: scriptM[1],
       intervalMsExpr: intervalM[1].trim(),
       timeoutMsExpr: timeoutMatches.length === 1 ? timeoutMatches[0][1].trim() : null,
+      seedMetaKey: literal('seedMetaKey'),
+      canonicalKey: literal('canonicalKey'),
+      freshnessMetaKey: literal('freshnessMetaKey'),
+      completionMetaKey: literal('completionMetaKey'),
+      hasCanonicalKey: declared('canonicalKey'),
+      hasFreshnessMetaKey: declared('freshnessMetaKey'),
+      hasCompletionMetaKey: declared('completionMetaKey'),
     });
   }
   return sections;

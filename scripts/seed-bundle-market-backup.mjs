@@ -15,7 +15,7 @@ await runBundle('market-backup', [
   // through the edge hop.
   { label: 'China-Stock-Connect', script: 'seed-china-stock-connect.mjs', seedMetaKey: 'market:china-stock-connect', canonicalKey: 'market:china:stock-connect:v1', intervalMs: 60 * MIN, timeoutMs: 200_000 },
   { label: 'Gulf-Quotes', script: 'seed-gulf-quotes.mjs', seedMetaKey: 'market:gulf-quotes', canonicalKey: 'market:gulf-quotes:v1', intervalMs: 10 * MIN, timeoutMs: 120_000 },
-  { label: 'Token-Panels', script: 'seed-token-panels.mjs', seedMetaKey: 'market:token-panels', canonicalKey: 'market:defi-tokens:v1', intervalMs: 30 * MIN, timeoutMs: 120_000 },
+  { label: 'Token-Panels', script: 'seed-token-panels.mjs', seedMetaKey: 'market:token-panels', canonicalKey: 'market:defi-tokens:v1', completionMetaKey: 'seed-meta:market:token-panels', intervalMs: 30 * MIN, timeoutMs: 120_000 },
   // SPDR GLD publishes holdings once daily (~16:30 ET). 2h cadence = retries on Cloudflare blocks + catches late publish.
   { label: 'Gold-ETF-Flows', script: 'seed-gold-etf-flows.mjs', seedMetaKey: 'market:gold-etf-flows', canonicalKey: 'market:gold-etf-flows:v1', intervalMs: 120 * MIN, timeoutMs: 60_000 },
   // IMF IFS publishes monthly with ~2-3 month lag. Daily cadence is plenty.

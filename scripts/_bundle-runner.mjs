@@ -132,6 +132,19 @@ async function writeBundleHeartbeat(label) {
  * prior run and cannot attest a newer pre-publication heartbeat. Otherwise
  * prefer envelope-form data when `canonicalKey` is declared, then fall back to
  * the legacy `seed-meta:<key>` read.
+ *
+ * `completionMetaKey` applies the same rule to the canonical clock (#6960).
+ * runSeed publishes the canonical key BEFORE its extra-key loop and writes the
+ * canonical seed-meta AFTER it, so a CONTRACT VIOLATION exit inside that loop
+ * leaves an advanced canonical `fetchedAt` with no seed-meta write. Since the
+ * canonical envelope is the due-ness clock, the failed run would otherwise buy
+ * itself a full interval of silence. Declaring the canonical seed-meta as the
+ * completion attestation closes that: it is written last, so an older one
+ * belongs to a prior run.
+ *
+ * Only sections that declare it are affected. Most canonical-clock members
+ * publish no seed-meta at all, and requiring an attestation from them would
+ * mark them due on every tick — the #6806 failure this must not reintroduce.
  */
 export async function readSectionFreshness(section, readKey = readRedisKey) {
   if (section.freshnessMetaKey) {
@@ -156,7 +169,18 @@ export async function readSectionFreshness(section, readKey = readRedisKey) {
   if (section.canonicalKey) {
     const raw = await readKey(section.canonicalKey);
     const { _seed } = unwrapEnvelope(raw);
-    if (_seed?.fetchedAt) return { fetchedAt: _seed.fetchedAt };
+    if (_seed?.fetchedAt) {
+      if (!section.completionMetaKey) return { fetchedAt: _seed.fetchedAt };
+      const completionRaw = await readKey(section.completionMetaKey);
+      const completion = unwrapEnvelope(completionRaw).data;
+      // Absent is due, not fresh: the completion key outlives the canonical key
+      // by construction (writeFreshnessMetadata floors its TTL at max(7d,
+      // ttlSeconds) >= the canonical ttlSeconds), so it can only be missing
+      // because the run never reached the write.
+      if (!Number.isFinite(completion?.fetchedAt)) return null;
+      if (completion.fetchedAt < _seed.fetchedAt) return null;
+      return { fetchedAt: _seed.fetchedAt };
+    }
     // Version migrations can opt out of the legacy seed-meta fallback. A
     // fresh meta entry for the old version must never suppress the first
     // publish of a newly required canonical envelope.
@@ -353,6 +377,8 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs }) {
  *   freshnessMetaKey?: string, // authoritative explicit seed-meta key
  *   completionMetaKey?: string, // optional completed-run key paired with freshnessMetaKey
  *   canonicalKey?: string,   // PR 2+: reads envelope from the canonical data key
+ *   completionMetaKey?: string, // full key written LAST by the run; must not
+ *                               // predate the clock it attests (#6960)
  *   requireCanonical?: boolean, // do not fall back to legacy meta when canonical is absent
  *   intervalMs: number,
  *   timeoutMs?: number,

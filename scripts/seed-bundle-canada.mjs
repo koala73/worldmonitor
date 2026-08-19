@@ -54,7 +54,7 @@ const CANADA_SECTIONS = [
   { label: 'BC-Open511', script: 'seed-open511.mjs', seedMetaKey: 'seed-meta:infra:bc-open511', canonicalKey: 'infra:bc-open511:v1', intervalMs: 30 * MIN, timeoutMs: 120_000 },
   // Emergency alerts stay at 15 minutes: the payload is tiny and the whole point
   // of the layer is timeliness.
-  { label: 'Alberta-Emergency-Alert', script: 'seed-alberta-emergency-alert.mjs', seedMetaKey: 'seed-meta:alerts:alberta-aea', canonicalKey: 'alerts:canada:alberta-aea:v1', intervalMs: 15 * MIN, timeoutMs: 60_000 },
+  { label: 'Alberta-Emergency-Alert', script: 'seed-alberta-emergency-alert.mjs', seedMetaKey: 'seed-meta:alerts:alberta-aea', canonicalKey: 'alerts:canada:alberta-aea:v1', completionMetaKey: 'seed-meta:alerts:alberta-aea', intervalMs: 15 * MIN, timeoutMs: 60_000 },
   // OGL-BC GeoJSON evacuation Alert/Order polygons. The seeder writes a
   // province snapshot, then rebuilds the same canadaAlerts union as Alberta.
   { label: 'BC-Emergency-Info', script: 'seed-bc-emergency-info.mjs', seedMetaKey: 'seed-meta:alerts:bc-emergency-info', canonicalKey: 'alerts:canada:bc-evacuation:v1', intervalMs: 15 * MIN, timeoutMs: 60_000, dependsOn: ['Alberta-Emergency-Alert'] },

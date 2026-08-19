@@ -3,7 +3,7 @@ import { runBundle, MIN, HOUR } from './_bundle-runner.mjs';
 import { CHINA_DECISION_SIGNALS_KEY } from './seed-china-decision-signals.mjs';
 
 await runBundle('derived-signals', [
-  { label: 'Correlation', script: 'seed-correlation.mjs', seedMetaKey: 'correlation:cards', canonicalKey: 'correlation:cards-bootstrap:v1', intervalMs: 5 * MIN, timeoutMs: 60_000 },
+  { label: 'Correlation', script: 'seed-correlation.mjs', seedMetaKey: 'correlation:cards', canonicalKey: 'correlation:cards-bootstrap:v1', completionMetaKey: 'seed-meta:correlation:cards', intervalMs: 5 * MIN, timeoutMs: 60_000 },
   { label: 'Cross-Source-Signals', script: 'seed-cross-source-signals.mjs', seedMetaKey: 'intelligence:cross-source-signals', canonicalKey: 'intelligence:cross-source-signals:v1', intervalMs: 15 * MIN, timeoutMs: 120_000 },
   // Gate on the completion marker written only after the canonical archive,
   // compact bootstrap projection, and per-source health records all succeed.
