@@ -733,20 +733,18 @@ const SEED_META = {
   // case is therefore ~33d, not 30d — comfortably inside the 60d budget, and
   // the reason this is not sized any tighter.
   //
-  // No ACTIVATION_MARKERS entry, deliberately. This is a META-ONLY probe (no
-  // STANDALONE_KEYS entry), so an absent seed-meta is classified on the seed
-  // clock, not the data-presence branch — classifyKey returns STALE_SEED for
-  // "never published", and none of the three gates that read a marker can
-  // soften that. The pending-activation grace for a never-published deploy
-  // lives in /api/seed-health, which gates on military:bases:active: the
-  // pointer atomicSwitch writes in the SAME EVAL as seed-meta, so it is present
-  // exactly when the seeder has published at least once.
+  // This config uses the existing militaryBases standalone check. Its data key
+  // is the active-version pointer, while this seed-meta supplies the freshness
+  // clock and integrity floor for the version behind that pointer. The
+  // ON_DEMAND entry keeps an absent pointer soft here; /api/seed-health uses
+  // that same atomicSwitch pointer to distinguish a never-published deployment
+  // from a published corpus whose seed-meta was later lost.
   //
   // Pre-seed rather than an acknowledgement: the key is already seeded, and
   // classifyKey against the live value returns OK (14,730min of an 86,400min
   // budget; 125,380 records over the 100,000 floor). An expiring
   // acknowledgement here would declare a status the probe does not produce.
-  militaryBasesSeed: {
+  militaryBases: {
     key: 'seed-meta:military:bases',
     maxStaleMin: 86_400,
     minRecordCount: 100_000,
@@ -1320,12 +1318,9 @@ const ON_DEMAND_KEYS = new Set([
   // absence must be EMPTY/CRIT rather than on-demand.
   'macroSignals', 'chokepoints', 'minerals', 'giving',
   'cyberThreatsRpc', 'militaryBases', 'displacement',
-  // militaryBasesSeed is deliberately NOT listed here. On-demand softening only
-  // covers EMPTY / EMPTY_DATA / EMPTY_ON_DEMAND, and a meta-only probe with no
-  // STANDALONE_KEYS entry classifies an absent seed-meta as STALE_SEED — which
-  // this set cannot soften. Listing it read like protection while providing
-  // none; the never-published grace is carried by /api/seed-health, which gates
-  // on the military:bases:active pointer instead.
+  // militaryBases keeps the existing standalone pointer check. Its seed-meta
+  // supplies strict freshness and integrity verdicts once that pointer exists;
+  // an absent pointer remains the existing EMPTY_ON_DEMAND warning.
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
   // marketImplications removed 2026-05-01 — see policy block above. Homepage panel,

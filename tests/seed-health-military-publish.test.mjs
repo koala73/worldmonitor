@@ -15,6 +15,7 @@ process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
 process.env.WORLDMONITOR_VALID_KEYS = 'test-key';
 
 const { default: handler } = await import('../api/seed-health.js');
+const { __testing__: healthTesting } = await import('../api/health.js');
 
 const STALE_META_KEYS = new Set([
   'seed-meta:military-forecast-inputs',
@@ -122,7 +123,7 @@ test('military health registries keep early seed-health warning coverage', () =>
     // either surface — /api/health checked only the presence of the active
     // pointer. Both registries are pinned here so the alarm cannot silently
     // regress.
-    ['military:bases', 'militaryBasesSeed', 'seed-meta:military:bases'],
+    ['military:bases', 'militaryBases', 'seed-meta:military:bases'],
   ]) {
     const seedHealthMatch = seedHealthSource.match(
       new RegExp(`'${domain}':\\s*\\{\\s*key:\\s*'([^']+)',\\s*intervalMin:\\s*([0-9_]+)`),
@@ -143,6 +144,42 @@ test('military health registries keep early seed-health warning coverage', () =>
       `${domain} seed-health warning (${seedHealthBudget}min) must not lag /api/health alarm (${healthBudget}min)`,
     );
   }
+});
+
+function classifyMilitaryBases(meta, now = Date.parse('2026-08-19T12:00:00.000Z')) {
+  const name = 'militaryBases';
+  const dataKey = healthTesting.STANDALONE_KEYS[name];
+  const metaKey = healthTesting.SEED_META[name].key;
+  return healthTesting.classifyKey(name, dataKey, { allowOnDemand: true }, {
+    keyStrens: new Map([[dataKey, 16]]),
+    keyErrors: new Map(),
+    keyMetaValues: new Map([[metaKey, JSON.stringify(meta)]]),
+    keyMetaErrors: new Map(),
+    now,
+  });
+}
+
+test('api health reports stale military bases metadata through the active pointer', () => {
+  const now = Date.parse('2026-08-19T12:00:00.000Z');
+  const entry = classifyMilitaryBases({
+    fetchedAt: now - (60 * 24 * 60 + 1) * 60_000,
+    recordCount: 125_380,
+  }, now);
+
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.equal(entry.maxStaleMin, 86_400);
+});
+
+test('api health reports partial military bases metadata through the active pointer', () => {
+  const now = Date.parse('2026-08-19T12:00:00.000Z');
+  const entry = classifyMilitaryBases({
+    fetchedAt: now - 60_000,
+    recordCount: 99_999,
+  }, now);
+
+  assert.equal(entry.status, 'COVERAGE_PARTIAL');
+  assert.equal(entry.records, 99_999);
+  assert.equal(entry.minRecordCount, 100_000);
 });
 
 test('seed-health reports a missing late-stage write as degraded', async () => {
