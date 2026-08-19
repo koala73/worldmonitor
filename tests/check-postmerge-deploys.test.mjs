@@ -1,9 +1,8 @@
 // #6376 — a failing post-merge deploy must produce an alarm that does not
 // depend on someone opening the Actions tab. The deploy gate cannot require
 // push-only workflows, so the alarm is a scheduled monitor reading each
-// workflow's run history on main. Like check-railway-reconcile-age.mjs, every
-// case where the record is missing or unreadable resolves AWAY from healthy —
-// an unmatched case meaning HEALTHY is the exact shape of the defect.
+// workflow's run history on main. GitHub transport unreadability is a
+// warning, not a healthy pass; git/4xx/ENOENT still fail the job.
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
@@ -15,11 +14,15 @@ import {
   createRetryingGh,
   diffTouchesPath,
   diffTouchesPaths,
+  formatResultMark,
+  githubWarningAnnotations,
+  isGithubRecordUnreadability,
   isRetryableGhFailure,
   judgeWorkflow,
   readNewestRun,
   readRunJobs,
   summarizeResults,
+  writeUnknownVisibility,
 } from '../scripts/check-postmerge-deploys.mjs';
 
 const NOW = Date.parse('2026-08-10T12:00:00Z');
@@ -581,6 +584,31 @@ describe('post-merge deploy monitor — read-path resilience (#6479)', () => {
     });
   });
 
+  describe('classifies which throws are GitHub unreadability', () => {
+    it('treats transport, timeout, and 5xx as unreadability', () => {
+      assert.equal(isGithubRecordUnreadability(new Error(TLS_STDERR)), true);
+      const timedOut = new Error('gh api repos/x/actions/runs timed out');
+      timedOut.timedOut = true;
+      assert.equal(isGithubRecordUnreadability(timedOut), true);
+      assert.equal(isGithubRecordUnreadability(new Error('gh: Server Error (HTTP 503)')), true);
+    });
+
+    it('treats git, missing gh, and HTTP 4xx as proof failures', () => {
+      assert.equal(isGithubRecordUnreadability(new Error('git diff --name-only abc origin/main failed (128): not a tree')), false);
+      assert.equal(isGithubRecordUnreadability(new Error('the deployed baseline SHA is missing')), false);
+      const missing = new Error('spawn gh ENOENT');
+      missing.code = 'ENOENT';
+      assert.equal(isGithubRecordUnreadability(missing), false);
+      for (const status of [400, 401, 403, 404, 410, 422]) {
+        assert.equal(
+          isGithubRecordUnreadability(new Error(`gh: Not Found (HTTP ${status})`)),
+          false,
+          `HTTP ${status} is an answer`,
+        );
+      }
+    });
+  });
+
   describe('retries the read before giving up', () => {
     it('recovers from a transient failure without surfacing it', async () => {
       const calls = [];
@@ -719,6 +747,98 @@ describe('post-merge deploy monitor — read-path resilience (#6479)', () => {
       assert.equal(summary.alarms.length, 0, 'an unread record is not a failed deploy');
       assert.equal(summary.unknowns.length, 1);
       assert.match(summary.lines.join('\n'), /could not be read|READ_FAILED/);
+    });
+
+    it('fails the monitor for git and GitHub 4xx throws, not only for deploy ALARMs', () => {
+      const gitThrow = checkPostmergeDeploys({
+        repository: 'koala73/worldmonitor',
+        gh: ghFleet({}),
+        git: (args) => {
+          throw new Error(`git ${args.join(' ')} failed (128): not a tree`);
+        },
+        now: NOW,
+      });
+      const proofFailed = gitThrow.filter((entry) => entry.verdict === 'READ_UNPROVEN');
+      assert.ok(proofFailed.length >= 1, 'path-filtered workflows must ALARM when git cannot prove the trigger tree');
+      for (const entry of proofFailed) {
+        assert.equal(entry.state, 'ALARM');
+        assert.match(entry.detail, /not a tree/);
+      }
+      const gitSummary = summarizeResults(gitThrow);
+      assert.equal(gitSummary.exitCode, 1);
+      assert.match(gitSummary.lines.join('\n'), /could not prove|READ_UNPROVEN/);
+
+      const gh = ghFleet({ unreadable: 'convex-deploy.yml' });
+      const answered = checkPostmergeDeploys({
+        repository: 'koala73/worldmonitor',
+        gh: (args) => {
+          const joined = args.join(' ');
+          if (joined.includes('workflows/convex-deploy.yml/runs')) {
+            throw new Error('gh: Not Found (HTTP 404)');
+          }
+          return gh(args);
+        },
+        git: () => '',
+        now: NOW,
+      });
+      const convex = answered.find((entry) => entry.workflow === 'convex-deploy.yml');
+      assert.equal(convex.state, 'ALARM');
+      assert.equal(convex.verdict, 'READ_UNPROVEN');
+      assert.equal(summarizeResults(answered).exitCode, 1);
+    });
+
+    it('fails the monitor when gh itself is missing', () => {
+      const missing = new Error('spawn gh ENOENT');
+      missing.code = 'ENOENT';
+      const results = checkPostmergeDeploys({
+        repository: 'koala73/worldmonitor',
+        gh: () => { throw missing; },
+        git: () => '',
+        now: NOW,
+      });
+      assert.equal(results.length, MONITORED_WORKFLOWS.length);
+      for (const entry of results) {
+        assert.equal(entry.state, 'ALARM');
+        assert.equal(entry.verdict, 'READ_UNPROVEN');
+      }
+      assert.equal(summarizeResults(results).exitCode, 1);
+    });
+
+    it('emits Actions warning annotations for UNKNOWN without failing the job', () => {
+      const results = [
+        { workflow: 'convex-deploy.yml', displayName: 'Convex Deploy', state: 'UNKNOWN', verdict: 'READ_FAILED', detail: TLS_STDERR },
+        { workflow: 'deploy-worker.yml', displayName: 'Deploy Worker', state: 'OK', verdict: 'DEPLOYED', detail: 'run 900 deployed' },
+      ];
+      assert.equal(formatResultMark('UNKNOWN'), 'warn');
+      assert.equal(formatResultMark('ALARM'), 'ERROR');
+      const annotations = githubWarningAnnotations(results);
+      assert.equal(annotations.length, 1);
+      assert.match(annotations[0], /^::warning title=Post-merge deploy record unread::Convex Deploy/);
+      const stderr = [];
+      const files = new Map();
+      writeUnknownVisibility({
+        results,
+        summary: summarizeResults(results),
+        stderr: (line) => { stderr.push(line); },
+        env: { GITHUB_STEP_SUMMARY: '/tmp/postmerge-step-summary' },
+        appendFile: (path, text) => { files.set(path, `${files.get(path) ?? ''}${text}`); },
+      });
+      assert.equal(stderr.length, 1);
+      assert.match(stderr[0], /^::warning title=Post-merge deploy record unread::/);
+      assert.match(files.get('/tmp/postmerge-step-summary'), /could not be read|READ_FAILED/);
+    });
+
+    it('reports a fleet of UNKNOWN records without failing the monitor', () => {
+      const summary = summarizeResults(MONITORED_WORKFLOWS.map((workflow) => ({
+        workflow: workflow.file,
+        displayName: workflow.displayName,
+        state: 'UNKNOWN',
+        verdict: 'READ_FAILED',
+        detail: TLS_STDERR,
+      })));
+      assert.equal(summary.exitCode, 0, 'a GitHub outage must not look like a failed deploy');
+      assert.equal(summary.unknowns.length, MONITORED_WORKFLOWS.length);
+      assert.equal(githubWarningAnnotations(summary.unknowns).length, MONITORED_WORKFLOWS.length);
     });
 
     // The reporting half of the incident: the notification must name the
