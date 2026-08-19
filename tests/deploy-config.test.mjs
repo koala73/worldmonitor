@@ -391,10 +391,11 @@ describe('crawlable content corpus deployment contracts', () => {
       );
       // The ordering checks above only prove the STRING is chained. Without this,
       // build:pro could be rewritten to a no-op and every assertion here stays
-      // green while the deploy quietly stops producing /pro.
+      // green while the deploy quietly stops producing /pro. Accept either
+      // `cd pro-test && npm run build` or `npm --prefix pro-test run build`.
       assert.match(
         packageJson.scripts['build:pro'],
-        /cd pro-test\b[\s\S]*npm run build\b/,
+        /(?:cd pro-test\b[\s\S]*npm run build\b|npm --prefix pro-test run build\b)/,
         'build:pro must actually run pro-test\'s build, not just exist as a chained name'
       );
       assert.ok(
