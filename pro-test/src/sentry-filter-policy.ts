@@ -56,6 +56,13 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // rejection always belongs to an extension injected into the page
   // (WORLDMONITOR-ZX).
   /runtime\.sendMessage\(\)/,
+  // Zalo's in-app browser (Vietnam's dominant messaging app) injects a JS
+  // bridge that references `zaloJSV2` before the host app defines it. Same
+  // class as the `WeixinJSBridge` entry in the dashboard array: a named
+  // in-app-browser global. Our source contains no `zaloJSV2` identifier at
+  // all, so this can never come from our own bundle, minified or not
+  // (WORLDMONITOR-102).
+  /\bzaloJSV2\b/,
 ];
 
 /** Sentry's own hashed SDK chunk — infrastructure, never evidence of our code. */
@@ -72,6 +79,13 @@ const BARE_SYMBOL_MESSAGE = /^[a-zA-Z_$]+$/;
  */
 const MODULE_LOAD_FAILURE =
   /(?:Failed to fetch|error loading) dynamically imported module|Importing a module script failed|Importing binding name '[^']*' is not found/i;
+/**
+ * Runaway recursion, in every browser phrasing (Chrome/Safari "Maximum call
+ * stack size exceeded", Firefox "too much recursion"). Deliberately NOT in
+ * `MARKETING_IGNORE_ERRORS`: our own React bundle can absolutely recurse
+ * infinitely, and suppressing this by message alone would hide it.
+ */
+const STACK_OVERFLOW = /Maximum call stack size exceeded|too much recursion/i;
 
 /**
  * Stack-gated suppressors for messages that our own minified bundle COULD
@@ -110,6 +124,17 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // our own code — which rides a `/pro/assets/*.js` frame — still surfaces
   // (WORLDMONITOR-15).
   if (!hasFirstParty && MODULE_LOAD_FAILURE.test(msg)) return null;
+
+  // Injected-script recursion. The observed events (Chrome Mobile iOS) report
+  // frames on the prerendered document itself — `https://www.worldmonitor.app/`
+  // at lines that fall inside `<script type="application/ld+json">` blocks,
+  // which are inert data and cannot execute. The document therefore holds no
+  // executable inline JS at those offsets, so the recursion belongs to a script
+  // an in-app browser injected, not to us; our own code always rides a
+  // `/pro/assets/*.js` frame. Gated on `!hasFirstParty` so a genuine render
+  // loop in this bundle — the realistic first-party cause — still pages
+  // (WORLDMONITOR-103).
+  if (!hasFirstParty && STACK_OVERFLOW.test(msg)) return null;
 
   return event;
 }

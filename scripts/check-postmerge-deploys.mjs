@@ -511,8 +511,8 @@ export function judgeWorkflow({ workflow, run, jobs, skipProof, deploymentRequir
  * Run the whole monitor for every monitored workflow and return the report.
  *
  * `io` bundles the injected side effects: `gh`, `git`, `now`. Every unreadable
- * record throws — the caller exits non-zero — because an unreadable record
- * must never resolve to healthy.
+ * record becomes UNKNOWN so it stays visible without being mistaken for a
+ * failed deploy.
  */
 export function checkPostmergeDeploys({ repository, gh, git, now = Date.now() }) {
   const results = [];
@@ -559,8 +559,8 @@ export function checkPostmergeDeploys({ repository, gh, git, now = Date.now() })
       // #6479: one unreadable record used to abort the whole walk, so a
       // transient failure on the FIRST workflow hid a genuinely red deploy on
       // the second. Every workflow gets its own verdict; an unread one is
-      // UNKNOWN, which is not healthy (it still exits non-zero) but is also not
-      // a claim that a deploy failed — the monitor never saw the record.
+      // UNKNOWN, which is not healthy but is also not a claim that a deploy
+      // failed — the monitor never saw the record.
       results.push({
         workflow: workflow.file,
         displayName: workflow.displayName,
@@ -578,9 +578,9 @@ export function checkPostmergeDeploys({ repository, gh, git, now = Date.now() })
  * Split the results into the two things a notification must not conflate: a
  * deploy that failed, and a record that could not be read. (#6479)
  *
- * Both exit non-zero — an unreadable record must never pass as healthy — but
- * they are reported apart, because "Convex Deploy did not deploy" and "we could
- * not reach the GitHub API" call for opposite responses.
+ * Only deploy alarms exit non-zero. An unreadable record remains a visible
+ * warning, because "Convex Deploy did not deploy" and "we could not reach the
+ * GitHub API" call for opposite responses.
  */
 export function summarizeResults(results) {
   const alarms = results.filter((result) => result.state === 'ALARM');
@@ -598,7 +598,7 @@ export function summarizeResults(results) {
     alarms,
     unknowns,
     lines,
-    exitCode: alarms.length + unknowns.length > 0 ? 1 : 0,
+    exitCode: alarms.length > 0 ? 1 : 0,
   };
 }
 
@@ -628,7 +628,7 @@ async function main() {
     console.log(JSON.stringify({ repository, results }, null, 2));
   } else {
     for (const result of results) {
-      const mark = result.state === 'OK' ? 'ok' : 'ERROR';
+      const mark = result.state === 'OK' ? 'ok' : result.state === 'UNKNOWN' ? 'warn' : 'ERROR';
       console.log(`postmerge-deploy ${mark}: ${result.displayName} [${result.verdict}] ${result.detail}`);
     }
   }

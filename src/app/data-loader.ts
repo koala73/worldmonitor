@@ -3837,8 +3837,27 @@ export class DataLoaderManager implements AppModule {
     this.globalTenderFilters = {};
     const procurementPanel = this.ctx.panels['global-procurement'] as GlobalProcurementPanel | undefined;
     procurementPanel?.clear();
-    const { clearGlobalTenderCache } = await import('@/services/global-tenders');
-    clearGlobalTenderCache();
+    // The only call site is fire-and-forget — `void this.dataLoader
+    // .clearGlobalTenders()` in App.ts on the premium->free transition — so an
+    // unguarded rejection here does not degrade one panel, it lands as an
+    // unhandled rejection (WORLDMONITOR-100, reported by Sentry with mechanism
+    // `onunhandledrejection`).
+    //
+    // Swallowing does NOT weaken the "Pro data must not survive a downgrade"
+    // guarantee this method exists to enforce. Everything user-visible — the
+    // generation bump, the filter reset, the panel clear — already ran above,
+    // synchronously, before the import. And the cache this clears lives on the
+    // module's own `tenderBreaker` (`persistCache: false`, so in-memory only):
+    // if the import fails the module never evaluated in this page, so there is
+    // no breaker and no cached Pro data to clear; if it ever did evaluate, the
+    // specifier resolves from the module registry and cannot fail. A failure
+    // here therefore implies an empty cache, not an unclearable one.
+    try {
+      const { clearGlobalTenderCache } = await import('@/services/global-tenders');
+      clearGlobalTenderCache();
+    } catch (e) {
+      console.warn('[App] Global tender cache clear failed:', e);
+    }
   }
 
   async loadBisData(): Promise<void> {
