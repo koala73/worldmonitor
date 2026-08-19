@@ -9,9 +9,11 @@ import { load as loadYaml } from 'js-yaml';
 import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 // Guards the REST async-job pattern injected by
-// scripts/openapi-inject-async-jobs.mjs: RunScenario's success response is a
+// scripts/openapi-inject-async-jobs.mjs: RunScenario's live success response is a
 // 202 Accepted job envelope with a Location header pointing at the
-// GetScenarioStatus poll endpoint. The runtime honors the contract via the
+// GetScenarioStatus poll endpoint. A typed 200 with the same schema is retained
+// so ora.ai / orank `api-schema-analysis` (which credits only responses["200"])
+// still sees a fully documented operation. The runtime honors 202 via the
 // setSuccessStatusOverride gateway side-channel
 // (server/worldmonitor/scenario/v1/run-scenario.ts); this test keeps the
 // published spec in sync so agents (and the ora.ai / orank scanner, which
@@ -27,11 +29,26 @@ const POLL_PATH = '/api/scenario/v1/get-scenario-status';
 
 function assertAsyncJobContract(op, label) {
   assert.ok(op, `${label} operation missing`);
-  assert.equal(op.responses?.['200'], undefined, `${label} must not document a 200 success (202 is the success)`);
   const accepted = op.responses?.['202'];
   assert.ok(accepted, `${label} must document a 202 Accepted success`);
   assert.match(accepted.description ?? '', /[Pp]oll/, `${label} 202 description must explain polling`);
   assert.match(accepted.description ?? '', /jobId/, `${label} 202 description must name the job identifier`);
+
+  // Scanners that only credit responses["200"] still need a typed success
+  // schema. Keep 200 as the same job envelope; the live enqueue status is 202.
+  const ok = op.responses?.['200'];
+  assert.ok(ok, `${label} must retain a typed 200 alongside 202`);
+  assert.deepEqual(
+    ok.content?.['application/json']?.schema,
+    accepted.content?.['application/json']?.schema,
+    `${label} 200 and 202 must share the job-envelope schema`,
+  );
+  assert.match(ok.description ?? '', /202/, `${label} 200 description must state that live success is 202`);
+  assert.equal(
+    ok.headers?.Location,
+    undefined,
+    `${label} 200 must not carry Location — that poll pointer belongs on 202`,
+  );
 
   const location = accepted.headers?.Location;
   assert.ok(location, `${label} 202 must document the Location header`);

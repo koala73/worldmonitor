@@ -165,6 +165,16 @@ const WEBHOOKS_BLOCK = `webhooks:
                             "details":
                                 "trend": "rising"
             responses:
+                "200":
+                    description: |-
+                        Delivery acknowledged. Any 2xx acknowledges receipt; a non-2xx
+                        response or a timeout marks the delivery failed.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                additionalProperties: true
+                                description: Optional JSON acknowledgement body; an empty object is accepted.
                 "2XX":
                     description: |-
                         Any 2xx acknowledges receipt. A non-2xx response or a delivery

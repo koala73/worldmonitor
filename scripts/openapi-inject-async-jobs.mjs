@@ -9,11 +9,16 @@
  * with 202 Accepted plus a Location header pointing at the GetScenarioStatus
  * poll endpoint — restoring the legacy pre-sebuf contract. The sebuf
  * `protoc-gen-openapiv3` plugin has no per-RPC status-code annotation (it
- * emits a 200 for every success), so this post-generation step renames the
+ * emits a 200 for every success), so this post-generation step copies the
  * generated "200" success response to "202" and documents the Location
- * header across the per-service JSON + YAML specs and the bundle. Scanners
- * (e.g. ora.ai / orank `async-job-pattern`) that fall back to the published
- * spec for auth-gated routes then see the documented pattern.
+ * header across the per-service JSON + YAML specs and the bundle.
+ *
+ * The typed 200 is retained on purpose. ora.ai / orank `async-job-pattern`
+ * reads the 202 + Location poll contract, but `api-schema-analysis` (and
+ * `response-schema-coverage`) credit only responses["200"]. Deleting the 200
+ * made a fully typed spec read as "partially documented". Both codes share
+ * the job-envelope schema; 200's description states that the live enqueue
+ * status is 202.
  *
  * Wired into `make generate` (LAST, after the other OpenAPI injectors — the
  * examples injector stamps the success example while the response is still
@@ -42,6 +47,8 @@ const ASYNC_JOB_OPS = [
     method: 'post',
     description:
       'Accepted — scenario job enqueued. The body carries the job id (jobId), the initial status (always pending) and a poll URL (statusUrl); the Location header points at the same GetScenarioStatus endpoint. Poll it until status is done or failed.',
+    okDescription:
+      'Job envelope with the same schema as 202 Accepted. The live handler returns 202 on enqueue; poll GetScenarioStatus until status is done or failed.',
     locationDescription:
       'Relative URL of the job-status poll endpoint for this job (same value as the statusUrl body field).',
     locationExample:
@@ -69,13 +76,15 @@ function injectJson(spec) {
   for (const target of ASYNC_JOB_OPS) {
     const op = spec.paths?.[target.path]?.[target.method];
     if (!op || typeof op !== 'object' || !op.responses) continue;
-    // Rename the generated 200 success to 202 (content/example ride along).
-    // Both present never occurs in practice (regen emits 200-only, the
-    // committed tree is 202-only); if it ever does, the 200 is a stale
-    // duplicate of the same success payload.
-    if (op.responses['200']) {
-      if (!op.responses['202']) op.responses['202'] = op.responses['200'];
-      delete op.responses['200'];
+    // Keep a typed 200 (scanner-credited) and a 202 (the live enqueue
+    // status). Regen emits 200-only; the previously committed tree was
+    // 202-only. Copy whichever is missing from the one that exists.
+    if (op.responses['200'] && !op.responses['202']) {
+      op.responses['202'] = clone(op.responses['200']);
+      changed = true;
+    }
+    if (op.responses['202'] && !op.responses['200']) {
+      op.responses['200'] = clone(op.responses['202']);
       changed = true;
     }
     const accepted = op.responses['202'];
@@ -84,10 +93,24 @@ function injectJson(spec) {
       accepted.description = target.description;
       changed = true;
     }
+    const ok = op.responses['200'];
+    if (ok && typeof ok === 'object' && ok.description !== target.okDescription) {
+      ok.description = target.okDescription;
+      changed = true;
+    }
     const header = locationHeaderFor(target);
     accepted.headers ??= {};
     if (!eq(accepted.headers.Location, header)) {
       accepted.headers.Location = clone(header);
+      changed = true;
+    }
+    // 200 is the scanner-credited twin, not the live enqueue status. Keep
+    // its replay-marker headers (idempotency injector owns those) but do
+    // not copy Location onto it — that header belongs on 202.
+    if (ok && ok.headers && Object.prototype.hasOwnProperty.call(ok.headers, 'Location')) {
+      const headers = { ...ok.headers };
+      delete headers.Location;
+      ok.headers = headers;
       changed = true;
     }
   }
@@ -161,21 +184,34 @@ function injectYaml(text) {
       }
     }
     if (responsesIndex === -1) continue;
-    const responsesEnd = blockEndAtIndent(lines, responsesIndex, opEnd, 12);
+    let responsesEnd = blockEndAtIndent(lines, responsesIndex, opEnd, 12);
 
-    // 1. Rename the `"200":` status key line to `"202":` (children intact).
+    // 1. Ensure both a typed 200 (scanner-credited) and a 202 (live enqueue)
+    //    exist. Regen emits 200-only; the previously committed tree is
+    //    202-only. Copy whichever is missing from the one that exists.
     let acceptedIndex = -1;
+    let okIndex = -1;
     for (let j = responsesIndex + 1; j < responsesEnd; j++) {
-      if (/^ {16}"202":\s*$/.test(lines[j])) {
-        acceptedIndex = j;
-        break;
-      }
-      if (/^ {16}"200":\s*$/.test(lines[j])) {
-        lines[j] = lines[j].replace('"200":', '"202":');
-        acceptedIndex = j;
-        changed = true;
-        break;
-      }
+      if (/^ {16}"202":\s*$/.test(lines[j])) acceptedIndex = j;
+      if (/^ {16}"200":\s*$/.test(lines[j])) okIndex = j;
+    }
+    if (okIndex !== -1 && acceptedIndex === -1) {
+      const okEnd = blockEndAtIndent(lines, okIndex, responsesEnd, 16);
+      const copy = lines.slice(okIndex, okEnd);
+      copy[0] = copy[0].replace('"200":', '"202":');
+      lines.splice(okIndex, 0, ...copy);
+      acceptedIndex = okIndex;
+      okIndex += copy.length;
+      responsesEnd += copy.length;
+      changed = true;
+    } else if (acceptedIndex !== -1 && okIndex === -1) {
+      const acceptedEndForCopy = blockEndAtIndent(lines, acceptedIndex, responsesEnd, 16);
+      const copy = lines.slice(acceptedIndex, acceptedEndForCopy);
+      copy[0] = copy[0].replace('"202":', '"200":');
+      lines.splice(acceptedEndForCopy, 0, ...copy);
+      okIndex = acceptedEndForCopy;
+      responsesEnd += copy.length;
+      changed = true;
     }
     if (acceptedIndex === -1) continue;
     const acceptedEnd = blockEndAtIndent(lines, acceptedIndex, responsesEnd, 16);
@@ -214,28 +250,70 @@ function injectYaml(text) {
       const insertAt = descriptionIndex !== -1 ? descriptionIndex + 1 : acceptedIndex + 1;
       lines.splice(insertAt, 0, '                    headers:', ...locationLines);
       changed = true;
-      continue;
+    } else {
+      const headersEnd = blockEndAtIndent(lines, headersIndex, acceptedEnd, 20);
+      let locationIndex = -1;
+      for (let j = headersIndex + 1; j < headersEnd; j++) {
+        if (/^ {24}Location:\s*$/.test(lines[j])) {
+          locationIndex = j;
+          break;
+        }
+      }
+      if (locationIndex === -1) {
+        // Append after the existing entries — mirrors the sorted JSON key order
+        // (Idempotency-Key, Idempotent-Replayed, Location).
+        lines.splice(headersEnd, 0, ...locationLines);
+        changed = true;
+      } else {
+        // Location entry sub-block ends at the next 24-indent sibling entry or
+        // the end of the headers block.
+        let locationEnd = locationIndex + 1;
+        while (locationEnd < headersEnd && !/^ {0,24}\S/.test(lines[locationEnd])) locationEnd++;
+        const delta = replaceLinesIfDifferent(lines, locationIndex, locationEnd, locationLines);
+        if (delta !== 0) changed = true;
+      }
     }
-    const headersEnd = blockEndAtIndent(lines, headersIndex, acceptedEnd, 20);
-    let locationIndex = -1;
-    for (let j = headersIndex + 1; j < headersEnd; j++) {
-      if (/^ {24}Location:\s*$/.test(lines[j])) {
-        locationIndex = j;
+
+    // 4. Keep the retained 200 description honest: same schema, live status is 202.
+    const refreshedResponsesEnd = blockEndAtIndent(lines, responsesIndex, lines.length, 12);
+    let okStart = -1;
+    for (let j = responsesIndex + 1; j < refreshedResponsesEnd; j++) {
+      if (/^ {16}"200":\s*$/.test(lines[j])) {
+        okStart = j;
         break;
       }
     }
-    if (locationIndex === -1) {
-      // Append after the existing entries — mirrors the sorted JSON key order
-      // (Idempotency-Key, Idempotent-Replayed, Location).
-      lines.splice(headersEnd, 0, ...locationLines);
-      changed = true;
-    } else {
-      // Location entry sub-block ends at the next 24-indent sibling entry or
-      // the end of the headers block.
-      let locationEnd = locationIndex + 1;
-      while (locationEnd < headersEnd && !/^ {0,24}\S/.test(lines[locationEnd])) locationEnd++;
-      const delta = replaceLinesIfDifferent(lines, locationIndex, locationEnd, locationLines);
-      if (delta !== 0) changed = true;
+    if (okStart !== -1) {
+      const okEnd = blockEndAtIndent(lines, okStart, refreshedResponsesEnd, 16);
+      let okDescIndex = -1;
+      for (let j = okStart + 1; j < okEnd; j++) {
+        if (/^ {20}description: /.test(lines[j])) {
+          okDescIndex = j;
+          break;
+        }
+      }
+      if (okDescIndex !== -1) {
+        const okDescriptionLine = `                    description: ${target.okDescription}`;
+        if (lines[okDescIndex] !== okDescriptionLine) {
+          lines[okDescIndex] = okDescriptionLine;
+          changed = true;
+        }
+      }
+      // Location is the live 202 poll pointer. Drop it from the retained 200
+      // so the idempotency injector's 200 headers block stays byte-identical.
+      let okLocationIndex = -1;
+      for (let j = okStart + 1; j < okEnd; j++) {
+        if (/^ {24}Location:\s*$/.test(lines[j])) {
+          okLocationIndex = j;
+          break;
+        }
+      }
+      if (okLocationIndex !== -1) {
+        let okLocationEnd = okLocationIndex + 1;
+        while (okLocationEnd < okEnd && !/^ {0,24}\S/.test(lines[okLocationEnd])) okLocationEnd++;
+        lines.splice(okLocationIndex, okLocationEnd - okLocationIndex);
+        changed = true;
+      }
     }
   }
 
