@@ -101,6 +101,10 @@ import {
 import { timingSafeEqual } from './_shared/internal-auth';
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 import { validateGeneratedRequest } from './request-validator';
+import {
+  buildMarkdownTwinResponse,
+  isMarkdownTwinPath,
+} from '../api/_md-url-twin';
 
 export const serverOptions: ServerOptions = {
   onError: mapErrorToResponse,
@@ -738,6 +742,22 @@ export function createDomainGateway(
   const router = createRouter(routes);
 
   return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
+    const originalPathname = new URL(originalRequest.url).pathname;
+
+    // Vercel resolves versioned API paths such as
+    // `/api/forecast/v1/get-forecast-scorecard.md` to the more-specific
+    // `api/<domain>/v1/[rpc].ts` function before the root API catch-all. Handle
+    // markdown probes here, before auth and RPC dispatch, so every dynamic
+    // domain gateway follows the same site-wide `.md` twin contract without a
+    // broad rewrite that would shadow the real endpoints (#4724).
+    if (
+      originalPathname.startsWith('/api/') &&
+      isMarkdownTwinPath(originalPathname) &&
+      (originalRequest.method === 'GET' || originalRequest.method === 'HEAD')
+    ) {
+      return buildMarkdownTwinResponse(originalRequest, originalPathname);
+    }
+
     let request = stripClientUserIdHeader(originalRequest);
     const rawPathname = new URL(request.url).pathname;
     const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;

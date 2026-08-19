@@ -718,6 +718,50 @@ const SEED_META = {
   // snapshots age.
   militaryForecastInputs: { key: 'seed-meta:military-forecast-inputs', maxStaleMin: 30 },
   militarySurges:     { key: 'seed-meta:military-surges',      maxStaleMin: 30 },
+  // #6845 item 3: staleness was invisible — the bases corpus was monitored
+  // only through the presence of military:bases:active, which is a pointer, not
+  // a clock: it stayed green while the corpus behind it aged indefinitely.
+  //
+  // Cadence: Military-Bases runs on seed-bundle-static-ref-heavy, NOT
+  // seed-bundle-static-ref — #6806 split the three expensive members onto their
+  // own daily cron because they could not share leftover's 570s tick. The
+  // member's own intervalMs is unchanged at 30 * DAY, so 86_400min (60d) is
+  // still two intervals.
+  //
+  // The heavy bundle rotates its lead slot (dayIndex % 3), so a member that has
+  // become due waits at most ~3 days for a tick it can be admitted on. Worst
+  // case is therefore ~33d, not 30d — comfortably inside the 60d budget, and
+  // the reason this is not sized any tighter.
+  //
+  // This config uses the existing militaryBases standalone check. Its data key
+  // is the active-version pointer, while this seed-meta supplies the freshness
+  // clock and integrity floor for the version behind that pointer. The
+  // ON_DEMAND entry keeps an absent pointer soft here; /api/seed-health uses
+  // that same atomicSwitch pointer to distinguish a never-published deployment
+  // from a published corpus whose seed-meta was later lost.
+  //
+  // Pre-seed rather than an acknowledgement: the key is already seeded, and
+  // classifyKey against the live value returns OK (14,730min of an 86,400min
+  // budget; 125,380 records over the 100,000 floor). An expiring
+  // acknowledgement here would declare a status the probe does not produce.
+  militaryBases: {
+    key: 'seed-meta:military:bases',
+    maxStaleMin: 86_400,
+    minRecordCount: 100_000,
+    cutover: {
+      mode: 'preseed',
+      fromKey: null,
+      issue: 6845,
+      verifiedAt: '2026-08-19T08:33:42.000Z',
+      evidence: {
+        platform: 'railway',
+        service: 'seed-bundle-static-ref-heavy',
+        probeKey: 'seed-meta:military:bases',
+        compactHealthStatus: 'OK',
+        reference: 'https://github.com/koala73/worldmonitor/issues/6845#issuecomment-5339597917',
+      },
+    },
+  },
   militaryCii:      { key: 'seed-meta:intelligence:military-cii',  maxStaleMin: 45 }, // seed-military-cii cron ~10min; 45 = generous grace (relay-dependent; preserve-last-good runs still refresh meta)
   defensePatents:   { key: 'seed-meta:military:defense-patents',  maxStaleMin: 25200 },
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 240 }, // CelesTrak every 120min; 240min = absorbs one missed cycle
@@ -1274,6 +1318,9 @@ const ON_DEMAND_KEYS = new Set([
   // absence must be EMPTY/CRIT rather than on-demand.
   'macroSignals', 'chokepoints', 'minerals', 'giving',
   'cyberThreatsRpc', 'militaryBases', 'displacement',
+  // militaryBases keeps the existing standalone pointer check. Its seed-meta
+  // supplies strict freshness and integrity verdicts once that pointer exists;
+  // an absent pointer remains the existing EMPTY_ON_DEMAND warning.
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
   // marketImplications removed 2026-05-01 — see policy block above. Homepage panel,
