@@ -538,6 +538,13 @@ describe('post-merge deploy monitor — read-path resilience (#6479)', () => {
     + 'Get "https://api.github.com/repos/koala73/worldmonitor/actions/runs/30741257511/attempts/1/jobs": '
     + 'tls: failed to verify certificate: x509: certificate is not valid for any names, but wanted to match api.github.com';
 
+  function githubReadFailure(message, properties = {}) {
+    const error = new Error(message);
+    error.githubReadSource = 'github-api';
+    Object.assign(error, properties);
+    return error;
+  }
+
   describe('classifies which gh failures are worth retrying', () => {
     it('retries a transport error that never got an HTTP answer', () => {
       assert.equal(isRetryableGhFailure(new Error(TLS_STDERR)), true);
@@ -586,11 +593,10 @@ describe('post-merge deploy monitor — read-path resilience (#6479)', () => {
 
   describe('classifies which throws are GitHub unreadability', () => {
     it('treats transport, timeout, and 5xx as unreadability', () => {
-      assert.equal(isGithubRecordUnreadability(new Error(TLS_STDERR)), true);
-      const timedOut = new Error('gh api repos/x/actions/runs timed out');
-      timedOut.timedOut = true;
+      assert.equal(isGithubRecordUnreadability(githubReadFailure(TLS_STDERR)), true);
+      const timedOut = githubReadFailure('gh api repos/x/actions/runs timed out', { timedOut: true });
       assert.equal(isGithubRecordUnreadability(timedOut), true);
-      assert.equal(isGithubRecordUnreadability(new Error('gh: Server Error (HTTP 503)')), true);
+      assert.equal(isGithubRecordUnreadability(githubReadFailure('gh: Server Error (HTTP 503)')), true);
     });
 
     it('treats git, missing gh, and HTTP 4xx as proof failures', () => {
@@ -599,9 +605,9 @@ describe('post-merge deploy monitor — read-path resilience (#6479)', () => {
       const missing = new Error('spawn gh ENOENT');
       missing.code = 'ENOENT';
       assert.equal(isGithubRecordUnreadability(missing), false);
-      for (const status of [400, 401, 403, 404, 410, 422]) {
+      for (const status of [400, 401, 403, 404, 408, 410, 422, 429]) {
         assert.equal(
-          isGithubRecordUnreadability(new Error(`gh: Not Found (HTTP ${status})`)),
+          isGithubRecordUnreadability(githubReadFailure(`gh: Not Found (HTTP ${status})`)),
           false,
           `HTTP ${status} is an answer`,
         );
@@ -801,6 +807,60 @@ describe('post-merge deploy monitor — read-path resilience (#6479)', () => {
         assert.equal(entry.state, 'ALARM');
         assert.equal(entry.verdict, 'READ_UNPROVEN');
       }
+      assert.equal(summarizeResults(results).exitCode, 1);
+    });
+
+    it('fails closed for exhausted 4xx, parser, auth, and local proof errors', () => {
+      for (const status of [408, 429]) {
+        let calls = 0;
+        const results = checkPostmergeDeploys({
+          repository: 'koala73/worldmonitor',
+          gh: createRetryingGh({
+            gh: () => {
+              calls += 1;
+              throw new Error(`gh: transient response (HTTP ${status})`);
+            },
+            attempts: 1,
+            sleep: () => {},
+          }),
+          git: () => '',
+          now: NOW,
+        });
+        assert.equal(
+          calls,
+          MONITORED_WORKFLOWS.length * 2,
+          `HTTP ${status} must exhaust its retry budget before each workflow alarms`,
+        );
+        assert.ok(results.every((entry) => entry.state === 'ALARM' && entry.verdict === 'READ_UNPROVEN'));
+        assert.equal(summarizeResults(results).exitCode, 1);
+      }
+
+      for (const gh of [
+        () => '{not json',
+        () => JSON.stringify({ workflow_runs: {} }),
+        () => { throw new Error('gh auth login required'); },
+      ]) {
+        const results = checkPostmergeDeploys({
+          repository: 'koala73/worldmonitor',
+          gh,
+          git: () => '',
+          now: NOW,
+        });
+        assert.ok(results.every((entry) => entry.state === 'ALARM' && entry.verdict === 'READ_UNPROVEN'));
+        assert.equal(summarizeResults(results).exitCode, 1);
+      }
+
+      const gitProcessError = new Error('spawn git EACCES');
+      gitProcessError.code = 'EACCES';
+      const results = checkPostmergeDeploys({
+        repository: 'koala73/worldmonitor',
+        gh: ghFleet({}),
+        git: () => { throw gitProcessError; },
+        now: NOW,
+      });
+      const proofFailures = results.filter((entry) => entry.verdict === 'READ_UNPROVEN');
+      assert.ok(proofFailures.length > 0, 'a non-ENOENT git process failure must not become UNKNOWN');
+      assert.ok(proofFailures.every((entry) => entry.state === 'ALARM'));
       assert.equal(summarizeResults(results).exitCode, 1);
     });
 

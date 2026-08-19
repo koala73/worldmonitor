@@ -151,6 +151,30 @@ export function isRetryableGhFailure(error) {
   return true;
 }
 
+const GITHUB_READ_SOURCE = 'github-api';
+
+function markGithubReadFailure(error) {
+  const marked = error instanceof Error ? error : new Error(String(error));
+  marked.githubReadSource = GITHUB_READ_SOURCE;
+  return marked;
+}
+
+function isGithubReadFailure(error) {
+  return error instanceof Error && error.githubReadSource === GITHUB_READ_SOURCE;
+}
+
+function isProvenGithubTransportFailure(message) {
+  return /\b(?:tls|x509|eof)\b|certificate|dial tcp|lookup .*no such host|no such host|connection (?:reset|refused|closed|aborted)|network is unreachable|no route to host|context deadline exceeded|i\/o timeout|operation timed out|temporary failure in name resolution/i.test(message);
+}
+
+function readGithub(gh, args) {
+  try {
+    return gh(args);
+  } catch (error) {
+    throw markGithubReadFailure(error);
+  }
+}
+
 /**
  * After the retry budget, is this throw GitHub-record unreadability rather
  * than a local proof failure or a GitHub answer?
@@ -161,23 +185,16 @@ export function isRetryableGhFailure(error) {
  * burn the job) but they are still unreadability.
  */
 export function isGithubRecordUnreadability(error) {
-  if (!error) return false;
+  if (!isGithubReadFailure(error)) return false;
   if (error.code === 'ENOENT') return false;
-  const message = error instanceof Error ? error.message : String(error);
-  if (
-    message === 'the deployed baseline SHA is missing'
-    || message === 'the deploy trigger path list is missing'
-    || message.startsWith('git ')
-  ) {
-    return false;
-  }
+  const message = error.message;
   if (error.timedOut === true) return true;
   const status = message.match(/\(HTTP (\d{3})\)/);
   if (status) {
     const code = Number(status[1]);
-    return code === 408 || code === 429 || code >= 500;
+    return code >= 500;
   }
-  return true;
+  return isProvenGithubTransportFailure(message);
 }
 
 function sleepSync(ms) {
@@ -213,11 +230,11 @@ function runGh(args) {
   if (result.signal) {
     const error = new Error(`gh ${args.join(' ')} timed out`);
     error.timedOut = true;
-    throw error;
+    throw markGithubReadFailure(error);
   }
-  if (result.error) throw result.error;
+  if (result.error) throw markGithubReadFailure(result.error);
   if (result.status !== 0) {
-    throw new Error(`gh ${args.join(' ')} failed (${result.status}): ${String(result.stderr).trim()}`);
+    throw markGithubReadFailure(new Error(`gh ${args.join(' ')} failed (${result.status}): ${String(result.stderr).trim()}`));
   }
   return result.stdout;
 }
@@ -239,7 +256,7 @@ export function readNewestRun({ gh, repository, workflowFile, now, noRunWindowMs
     'branch=main',
     'per_page=100',
   ].join('&');
-  const payload = JSON.parse(gh([
+  const payload = JSON.parse(readGithub(gh, [
     'api',
     `repos/${repository}/actions/workflows/${workflowFile}/runs?${query}`,
   ]));
@@ -315,7 +332,7 @@ export function readNewestRun({ gh, repository, workflowFile, now, noRunWindowMs
  * (runs 31323075509 / 31323823825).
  */
 export function readRunJobs({ gh, repository, runId, runAttempt }) {
-  const payload = JSON.parse(gh([
+  const payload = JSON.parse(readGithub(gh, [
     'api',
     `repos/${repository}/actions/runs/${runId}/attempts/${runAttempt}/jobs`,
   ]));
