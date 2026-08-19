@@ -245,10 +245,7 @@ export function installDependencies({
 
   const result = spawnSync('npm', args, {
     cwd: rootDir,
-    env: {
-      ...process.env,
-      npm_config_cache: cacheDir,
-    },
+    env: createInstallEnvironment(process.env, cacheDir),
     stdio: 'inherit',
   });
 
@@ -257,6 +254,15 @@ export function installDependencies({
   }
 
   return result;
+}
+
+export function createInstallEnvironment(environment, cacheDir) {
+  return {
+    ...Object.fromEntries(
+      Object.entries(environment).filter(([key]) => key !== 'npm_config_allow_scripts'),
+    ),
+    npm_config_cache: cacheDir,
+  };
 }
 
 // Relative, so git resolves it against whichever worktree the hook runs from.
