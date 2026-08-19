@@ -119,18 +119,6 @@
         "activatedAt": "2026-08-18T12:00:00.000Z",
         "firstScheduledRunAt": "2026-08-19T04:00:00.000Z"
       }
-    },
-    {
-      "name": "militaryBasesSeed",
-      "status": "STALE_SEED",
-      "issue": 6845,
-      "reason": "New freshness probe for the military-bases corpus (#6845 item 3). seed-meta:military:bases has never been written: the corpus is published (military:bases:active points at version 1786244633231 from 2026-08-09) but the heartbeat is absent, which is exactly the blind spot this probe closes -- the pointer stayed green while the data behind it aged. Military-Bases leads seed-bundle-static-ref-heavy on the next rotation offset-2 tick; STALE_SEED after that run is a real problem.",
-      "expiresAt": "2026-08-19T04:00:00.000Z",
-      "cutover": {
-        "probeKey": "seed-meta:military:bases",
-        "activatedAt": "2026-08-18T12:00:00.000Z",
-        "firstScheduledRunAt": "2026-08-19T04:00:00.000Z"
-      }
     }
   ]
 }

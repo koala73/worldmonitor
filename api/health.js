@@ -733,18 +733,36 @@ const SEED_META = {
   // case is therefore ~33d, not 30d — comfortably inside the 60d budget, and
   // the reason this is not sized any tighter.
   //
-  // Gated by the active-version pointer via ACTIVATION_MARKERS so a deploy that
-  // has never seeded reads as pending instead of CRIT.
-  //
-  // status is STALE_SEED, not EMPTY: this is a META-ONLY probe (no
+  // No ACTIVATION_MARKERS entry, deliberately. This is a META-ONLY probe (no
   // STANDALONE_KEYS entry), so an absent seed-meta is classified on the seed
-  // clock rather than the data-presence branch. Measured against this file, not
-  // assumed — classifyKey returns STALE_SEED for "never published".
+  // clock, not the data-presence branch — classifyKey returns STALE_SEED for
+  // "never published", and none of the three gates that read a marker can
+  // soften that. The pending-activation grace for a never-published deploy
+  // lives in /api/seed-health, which gates on military:bases:active: the
+  // pointer atomicSwitch writes in the SAME EVAL as seed-meta, so it is present
+  // exactly when the seeder has published at least once.
+  //
+  // Pre-seed rather than an acknowledgement: the key is already seeded, and
+  // classifyKey against the live value returns OK (14,730min of an 86,400min
+  // budget; 125,380 records over the 100,000 floor). An expiring
+  // acknowledgement here would declare a status the probe does not produce.
   militaryBasesSeed: {
     key: 'seed-meta:military:bases',
     maxStaleMin: 86_400,
     minRecordCount: 100_000,
-    cutover: { mode: 'expiring-ack', fromKey: null, issue: 6845, status: 'STALE_SEED' },
+    cutover: {
+      mode: 'preseed',
+      fromKey: null,
+      issue: 6845,
+      verifiedAt: '2026-08-19T08:33:42.000Z',
+      evidence: {
+        platform: 'railway',
+        service: 'seed-bundle-static-ref-heavy',
+        probeKey: 'seed-meta:military:bases',
+        compactHealthStatus: 'OK',
+        reference: 'https://github.com/koala73/worldmonitor/issues/6845#issuecomment-5339597917',
+      },
+    },
   },
   militaryCii:      { key: 'seed-meta:intelligence:military-cii',  maxStaleMin: 45 }, // seed-military-cii cron ~10min; 45 = generous grace (relay-dependent; preserve-last-good runs still refresh meta)
   defensePatents:   { key: 'seed-meta:military:defense-patents',  maxStaleMin: 25200 },
@@ -1306,8 +1324,8 @@ const ON_DEMAND_KEYS = new Set([
   // covers EMPTY / EMPTY_DATA / EMPTY_ON_DEMAND, and a meta-only probe with no
   // STANDALONE_KEYS entry classifies an absent seed-meta as STALE_SEED — which
   // this set cannot soften. Listing it read like protection while providing
-  // none; the never-published case is carried by the expiring acknowledgement
-  // on the SEED_META entry instead, which expires and then alarms for real.
+  // none; the never-published grace is carried by /api/seed-health, which gates
+  // on the military:bases:active pointer instead.
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
   // marketImplications removed 2026-05-01 — see policy block above. Homepage panel,
@@ -1363,11 +1381,6 @@ const ON_DEMAND_KEYS = new Set([
 const ACTIVATION_MARKERS = {
   chinaCoverage: 'seed-activated:health:china-coverage',
   companyMonitoringWorker: 'seed-activated:company-monitoring:worker',
-  // Written by seed-military-bases.mjs after the first successful publish (or
-  // a successful restore from live data), so a deployment that has never
-  // seeded reads as pending rather than CRIT, and the first publish arms the
-  // militaryBasesSeed staleness alarm forever (#6845 item 3).
-  militaryBasesSeed: 'seed-activated:military:bases',
   // Written by scripts/seed-cbr-rates.mjs (CBR_ACTIVATION_KEY) in runSeed's
   // afterPublish hook, so it exists only once a real table has been published.
   cbrRates: 'seed-activated:economic:cbr-rates',

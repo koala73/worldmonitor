@@ -70,7 +70,13 @@ function installSeedHealthPipelineMock(
       // #4927: activation-gated entries add EXISTS probes on their
       // seed-activated:* markers; absent in this harness.
       if (op === 'EXISTS') {
-        assert.match(String(key), /^seed-activated:/, 'EXISTS is only used for activation markers');
+        // military:bases is the one activation key outside the seed-activated:*
+        // namespace: it gates on its active-version pointer (#6845).
+        assert.match(
+          String(key),
+          /^seed-activated:|^military:bases:active$/,
+          'EXISTS is only used for activation markers',
+        );
         return { result: 0 };
       }
       assert.equal(op, 'GET');

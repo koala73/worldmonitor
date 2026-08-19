@@ -50,9 +50,10 @@ function installSeedHealthPipelineMock({
     const commands = JSON.parse(init.body);
     const results = commands.map(([op, key]) => {
       if (op === 'EXISTS') {
-        // The bases activation gate is the seed-activated:* marker written by
-        // the seeder after its first successful publish.
-        if (key === 'seed-activated:military:bases') return { result: militaryBasesActive ? 1 : 0 };
+        // The bases activation gate is the active-version pointer. atomicSwitch
+        // writes it in the SAME EVAL as seed-meta, so it is present exactly
+        // when the seeder has published at least once.
+        if (key === 'military:bases:active') return { result: militaryBasesActive ? 1 : 0 };
         return { result: 0 };
       }
       assert.equal(op, 'GET');
@@ -177,9 +178,9 @@ test('military bases staleness is visible in seed-health once activated (#6845 i
 });
 
 test('a never-published bases corpus reads as pending-activation, not missing (#6845 item 3)', async () => {
-  // The activation marker is written only after a successful publish or a
-  // successful restore, so "never published" is marker AND seed-meta both
-  // absent. This must read as a healthy pending state, not a degraded one.
+  // atomicSwitch writes the pointer and seed-meta in one EVAL, so "never
+  // published" is pointer AND seed-meta both absent. That must read as a
+  // healthy pending state, not a degraded one.
   installSeedHealthPipelineMock({
     militaryBasesActive: false,
     missingMetaKeys: new Set([...MISSING_META_KEYS, 'seed-meta:military:bases']),
@@ -193,6 +194,27 @@ test('a never-published bases corpus reads as pending-activation, not missing (#
   assert.equal(response.status, 200);
   assert.equal(body.seeds['military:bases'].status, 'pending-activation');
   assert.equal(body.seeds['military:bases'].stale, false);
+});
+
+test('a published bases corpus whose seed-meta vanished alarms, not pends (#6806)', async () => {
+  // The counterweight to the pending-activation grace above, and the reason
+  // that gate reads the pointer rather than a separate seed-activated:* marker.
+  // atomicSwitch writes pointer and seed-meta together, so a live pointer with
+  // no seed-meta means the freshness marker was lost AFTER a real publish —
+  // exactly the #6806 case the repair path exists for. Softening it to a
+  // healthy pending state would rebuild the blind spot this item closed.
+  installSeedHealthPipelineMock({
+    militaryBasesActive: true,
+    missingMetaKeys: new Set([...MISSING_META_KEYS, 'seed-meta:military:bases']),
+  });
+
+  const response = await handler(new Request('https://api.worldmonitor.app/api/seed-health', {
+    headers: { 'X-WorldMonitor-Key': 'test-key' },
+  }));
+  const body = await response.json();
+
+  assert.equal(body.seeds['military:bases'].status, 'missing');
+  assert.equal(body.seeds['military:bases'].stale, true);
 });
 
 test('an activated but degenerate bases corpus alarms on integrity (#6845 item 3)', async () => {

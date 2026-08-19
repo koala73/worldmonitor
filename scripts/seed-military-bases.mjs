@@ -577,17 +577,6 @@ export async function backfillSeedMetaFromActiveVersion(url, token, prefix, opts
 }
 
 
-// #6845 item 3: /api/health and /api/seed-health gate the bases staleness
-// alarm on this one-way marker ("the seeder has successfully published at
-// least once"), per the repo's seed-activated:* convention. Written only
-// after a real publish or a successful restore from live data, so a fresh
-// deployment reads as pending-activation instead of CRIT, and the alarm arms
-// forever on first success.
-const ACTIVATION_MARKER_KEY = 'seed-activated:military:bases';
-async function writeActivationMarker(url, token, prefix) {
-  await commandRequest(url, token, ['SET', `${prefix}${ACTIVATION_MARKER_KEY}`, new Date().toISOString()]);
-}
-
 function isRedisTransportError(err) {
   if (!(err instanceof Error)) return false;
   const message = err.message;
@@ -635,7 +624,6 @@ export async function maybeRepairMissingSeedMeta(url, token, prefix, { force = f
   console.log('Restoring the freshness marker without reseeding...');
   try {
     const repaired = await backfillSeedMetaFromActiveVersion(url, token, prefix, { deep: false });
-    await writeActivationMarker(url, token, prefix);
     return { action: 'repaired', ...repaired };
   } catch (err) {
     if (isActiveVersionCasConflict(err) || isRedisTransportError(err)) throw err;
@@ -823,7 +811,6 @@ async function main() {
     durationMs,
     oldInfo?.oldVersion ?? null,
   );
-  await writeActivationMarker(redisUrl, redisToken, prefix);
 
   if (supersededInfo) {
     console.log(`\nScheduling cleanup of old version ${supersededInfo.oldVersion} in ${GRACE_PERIOD_MS / 1000}s...`);

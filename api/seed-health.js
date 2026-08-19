@@ -151,7 +151,7 @@ const SEED_DOMAINS = {
   // still alarms and forces the repair path to matter. minRecordCount floors
   // the corpus near the published 125,380 — the integrity half of the item: a
   // degenerate partial seed must not read as a healthy quiet cycle.
-  'military:bases':           { key: 'seed-meta:military:bases',           intervalMin: 43200, activationKey: 'seed-activated:military:bases', minRecordCount: 100_000 },
+  'military:bases':           { key: 'seed-meta:military:bases',           intervalMin: 43200, activationKey: 'military:bases:active', minRecordCount: 100_000 },
   'military:cross-strait-activity': { key: 'seed-meta:military:cross-strait-activity', intervalMin: 180 },
   'military:cross-strait-activity-bootstrap': { key: 'seed-meta:military:cross-strait-activity-bootstrap', intervalMin: 180 },
   'military:cross-strait-activity:complete': { key: 'seed-meta:military:cross-strait-activity:complete', intervalMin: 180 },
