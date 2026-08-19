@@ -150,6 +150,146 @@ function extractFeedNamesByCategory(filePath) {
   return out;
 }
 
+const stringArgument = (expression, index) => {
+  const argument = expression.arguments[index];
+  return ts.isStringLiteralLike(argument) ? argument.text : null;
+};
+
+/**
+ * Resolve a feed initializer to the upstream URL(s) it denotes. Locale-keyed
+ * URL objects can intentionally contain more than one URL; callers compare
+ * every returned member rather than silently choosing an English default.
+ */
+function extractUpstreamUrls(initializer) {
+  if (ts.isStringLiteralLike(initializer)) return [initializer.text];
+
+  if (ts.isObjectLiteralExpression(initializer)) {
+    return initializer.properties.flatMap(property => {
+      if (!ts.isPropertyAssignment(property)) return [];
+      return extractUpstreamUrls(property.initializer);
+    });
+  }
+
+  if (!ts.isCallExpression(initializer) || !ts.isIdentifier(initializer.expression)) return [];
+  const helper = initializer.expression.text;
+  if ((helper === 'rss' || helper === 'railwayRss') && initializer.arguments.length === 1) {
+    const upstream = stringArgument(initializer, 0);
+    return upstream === null ? [] : [upstream];
+  }
+  if (helper === 'gn' && initializer.arguments.length === 1) {
+    const query = stringArgument(initializer, 0);
+    return query === null
+      ? []
+      : [
+          `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`,
+        ];
+  }
+  if (helper === 'gnLocale' && initializer.arguments.length === 4) {
+    const [query, hl, gl, ceid] = [0, 1, 2, 3].map(index => stringArgument(initializer, index));
+    if ([query, hl, gl, ceid].some(value => value === null)) return [];
+    return [
+      `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=${hl}&gl=${gl}&ceid=${ceid}`,
+    ];
+  }
+  return [];
+}
+
+function canonicalizeUpstreamUrl(upstream) {
+  const url = new URL(upstream);
+  url.hash = '';
+  url.host = url.host.toLowerCase();
+  const parameters = [...url.searchParams.entries()].sort(([left], [right]) => left.localeCompare(right));
+  url.search = '';
+  for (const [name, value] of parameters) url.searchParams.append(name, value);
+  return url.toString();
+}
+
+function findVariableInitializer(filePath, variableName) {
+  const source = readFileSync(filePath, 'utf-8');
+  const ast = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  let initializer = null;
+  const visit = node => {
+    if (
+      initializer === null &&
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === variableName
+    ) {
+      initializer = node.initializer ?? null;
+    }
+    if (initializer === null) ts.forEachChild(node, visit);
+  };
+  visit(ast);
+  return initializer;
+}
+
+/**
+ * Extract the full-variant catalog with enough context to compare URLs.
+ *
+ * The routing test above intentionally ignores query differences, but a shared
+ * name whose sides point at different publishers is still two different feeds.
+ * Scope this strict comparison to FULL_FEEDS versus VARIANT_FEEDS.full; the
+ * variant-specific catalogs are not required to duplicate the full catalog.
+ */
+function extractFullFeedsByCategory(filePath, side) {
+  const initializer = findVariableInitializer(
+    filePath,
+    side === 'client' ? 'FULL_FEEDS' : 'VARIANT_FEEDS',
+  );
+  assert.ok(initializer, `Unable to locate the ${side} full-feed declaration in ${filePath}`);
+  const record = ts.isObjectLiteralExpression(initializer) ? initializer : null;
+  if (side === 'server') {
+    const fullVariant = record?.properties.find(
+      property => ts.isPropertyAssignment(property) && property.name.getText() === 'full',
+    );
+    assert.ok(ts.isPropertyAssignment(fullVariant), 'VARIANT_FEEDS must contain a full variant');
+    assert.ok(ts.isObjectLiteralExpression(fullVariant.initializer));
+    return extractFeedRecord(fullVariant.initializer, filePath);
+  }
+  assert.ok(record);
+  return extractFeedRecord(record, filePath);
+}
+
+function extractFeedRecord(record, filePath) {
+  const out = new Map();
+  for (const categoryProperty of record.properties) {
+    if (!ts.isPropertyAssignment(categoryProperty) || !ts.isArrayLiteralExpression(categoryProperty.initializer)) {
+      continue;
+    }
+    const category = categoryProperty.name.getText().replace(/^['"]|['"]$/g, '');
+    let parsedCount = 0;
+    for (const element of categoryProperty.initializer.elements) {
+      if (!ts.isObjectLiteralExpression(element)) continue;
+      const nameProperty = element.properties.find(property => {
+        return (
+          ts.isPropertyAssignment(property) &&
+          property.name.getText().replace(/^['"]|['"]$/g, '') === 'name' &&
+          ts.isStringLiteralLike(property.initializer)
+        );
+      });
+      const urlProperty = element.properties.find(property => {
+        return (
+          ts.isPropertyAssignment(property) &&
+          property.name.getText().replace(/^['"]|['"]$/g, '') === 'url'
+        );
+      });
+      if (!ts.isPropertyAssignment(nameProperty) || !ts.isPropertyAssignment(urlProperty)) continue;
+      const name = nameProperty.initializer.text;
+      const urls = extractUpstreamUrls(urlProperty.initializer).map(canonicalizeUpstreamUrl);
+      if (urls.length === 0) {
+        throw new Error(`Unable to resolve a URL for ${filePath} feed ${category}:${name}`);
+      }
+      const key = `${category}:${name}`;
+      const existing = out.get(key) ?? new Set();
+      for (const url of urls) existing.add(url);
+      out.set(key, existing);
+      parsedCount += 1;
+    }
+    assert.ok(parsedCount > 0, `No feeds parsed from ${filePath} category ${category}`);
+  }
+  return out;
+}
+
 describe('feed parity: client vs server (PR #3715 follow-up)', () => {
   const client = extractFeedRouting(CLIENT_PATH);
   const server = extractFeedRouting(SERVER_PATH);
@@ -168,8 +308,6 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
   // as feeds get reconciled — not grow.
   const KNOWN_DRIFTS = new Set([
     'The National',
-    'White House',
-    'Pentagon',
     'CSIS',
     'South China Morning Post',
     'a16z Blog',
@@ -278,6 +416,164 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
     assert.ok(
       !/name:\s*['"]Commodity Trade Mantra['"]/.test(src),
       `${SERVER_PATH} still has a 'Commodity Trade Mantra' entry — it has no client counterpart so its items get truncated-then-dropped`,
+    );
+  });
+
+  // Existing full-catalog differences are deliberate or grandfathered with a
+  // reason. New differences must either be aligned or get a new reviewed entry
+  // here; silently adding another exception in product code is not allowed.
+  const INTENTIONAL_URL_DIVERGENCES = new Map([
+    ['politics:AP News', 'The server digest adds a one-day Google News window.'],
+    ['politics:Reuters World', 'The server digest adds a one-day Google News window.'],
+    ['us:Reuters US', 'The server digest adds a one-day Google News window.'],
+    ['europe:ANSA', 'The server uses ANSA’s site-wide feed; the client uses its top-news feed.'],
+    ['europe:DW News', 'Locale variants intentionally select language-specific DW feeds.'],
+    ['europe:France 24', 'Locale variants intentionally select language-specific France 24 feeds.'],
+    ['europe:EuroNews', 'Locale variants intentionally select language-specific EuroNews feeds.'],
+    ['europe:Le Monde', 'Locale variants intentionally select language-specific Le Monde feeds.'],
+    ['europe:Meduza', 'Locale variants intentionally select language-specific Meduza feeds.'],
+    ['europe:Suspilne', 'Locale variants intentionally select language-specific Suspilne feeds.'],
+    ['europe:Ukrinform', 'Locale variants intentionally select language-specific Ukrinform feeds.'],
+    ['middleeast:Al Arabiya', 'Locale variants intentionally select language-specific Al Arabiya feeds.'],
+    ['middleeast:Al Jazeera', 'Locale variants intentionally select language-specific Al Jazeera feeds.'],
+    ['middleeast:Rudaw', 'The client requests the en edition explicitly; the server relies on the default edition.'],
+    ['middleeast:The National', 'Grandfathered direct-versus-Google-News drift tracked by the routing test.'],
+    ['finance:Reuters Business', 'The server digest adds a one-day Google News window.'],
+    ['gov:State Dept', 'The server digest narrows the query and adds a one-day window.'],
+    ['gov:Treasury', 'The server digest narrows the query and adds a one-day window.'],
+    ['gov:DOJ', 'The server digest narrows the query and adds a one-day window.'],
+    ['layoffs:Layoffs.fyi', 'The server adds broader terms and a three-day window.'],
+    ['thinktanks:CSIS', 'Grandfathered direct-versus-Google-News drift tracked by the routing test.'],
+    ['thinktanks:War on the Rocks', 'The two sides differ only by a documented trailing slash.'],
+    ['africa:Africanews', 'Locale variants intentionally select language-specific Africanews feeds.'],
+    ['asia:Asia News', 'The client uses a broad Asia query; the server targets AsiaNews.it.'],
+    ['asia:South China Morning Post', 'Grandfathered direct-versus-Google-News drift tracked by the routing test.'],
+    ['asia:The Hindu', 'The client uses the national feed; the server uses the site-wide feed.'],
+    ['asia:RFE/RL Central Asia', 'The client spells the phrase; the server URL-encodes a plus in the same phrase.'],
+    ['energy:Nuclear Energy', 'The server uses a narrower reactor-focused query.'],
+    ['energy:Reuters Energy', 'The server uses a narrower, more recent energy query.'],
+  ]);
+
+  it('REGRESSION (#6427): shared full-variant feeds resolve to the same upstream', () => {
+    const clientFullFeeds = extractFullFeedsByCategory(CLIENT_PATH, 'client');
+    const serverFullFeeds = extractFullFeedsByCategory(SERVER_PATH, 'server');
+    assert.ok(clientFullFeeds.size > 0);
+    assert.ok(serverFullFeeds.size > 0);
+
+    const differences = [];
+    const resolvedExceptions = [];
+    for (const [key, clientUrls] of clientFullFeeds) {
+      const serverUrls = serverFullFeeds.get(key);
+      if (!serverUrls) continue;
+      const isSame =
+        clientUrls.size === serverUrls.size && [...clientUrls].every(url => serverUrls.has(url));
+      if (isSame) {
+        if (INTENTIONAL_URL_DIVERGENCES.has(key)) resolvedExceptions.push(key);
+        continue;
+      }
+      if (INTENTIONAL_URL_DIVERGENCES.has(key)) continue;
+      differences.push(
+        `  - ${key}\n      client: ${[...clientUrls].join(', ')}\n      server: ${[...serverUrls].join(', ')}`,
+      );
+    }
+    assert.equal(
+      differences.length,
+      0,
+      'Shared feed names point at different upstreams. Align both sides, or add a reviewed reason to INTENTIONAL_URL_DIVERGENCES:\n' +
+        differences.join('\n'),
+    );
+    assert.equal(
+      resolvedExceptions.length,
+      0,
+      `URL-divergence exceptions are now aligned — remove them: ${resolvedExceptions.join(', ')}`,
+    );
+    const staleExceptions = [...INTENTIONAL_URL_DIVERGENCES.keys()].filter(
+      key => !clientFullFeeds.has(key) || !serverFullFeeds.has(key),
+    );
+    assert.equal(
+      staleExceptions.length,
+      0,
+      `URL-divergence exceptions no longer describe a shared feed — remove them: ${staleExceptions.join(', ')}`,
+    );
+  });
+
+  it('REGRESSION (#6427): new client-only full-variant feeds require a reviewed server decision', () => {
+    const clientFullFeeds = extractFullFeedsByCategory(CLIENT_PATH, 'client');
+    const serverFullFeeds = extractFullFeedsByCategory(SERVER_PATH, 'server');
+    const INTENTIONAL_CLIENT_ONLY = new Map([
+      ['europe:El País', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:El Mundo', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:BBC Mundo', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:Bild', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:Der Spiegel', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:Die Zeit', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:Corriere della Sera', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:Repubblica', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:NRC', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:De Telegraaf', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:Dagens Nyheter', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:Svenska Dagbladet', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:BBC Turkce', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:DW Turkish', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:BBC Russian', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:Novaya Gazeta Europe', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:TASS', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:RT', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['europe:RT Russia', 'Locale-specific client catalog entry; the full digest serves its English feed set.'],
+      ['middleeast:Fars News', 'Intentionally client-only regional source.'],
+      ['middleeast:IRNA', 'Intentionally client-only regional source.'],
+      ['middleeast:Mehr News', 'Intentionally client-only regional source.'],
+      ['middleeast:Asharq News', 'Intentionally client-only regional source.'],
+      ['gov:CDC', 'Intentionally client-only catalog source.'],
+      ['gov:FEMA', 'Intentionally client-only catalog source.'],
+      ['gov:DHS', 'Intentionally client-only catalog source.'],
+      ['thinktanks:RAND', 'Intentionally client-only catalog source.'],
+      ['thinktanks:Brookings', 'Intentionally client-only catalog source.'],
+      ['thinktanks:Carnegie', 'Intentionally client-only catalog source.'],
+      ['thinktanks:Responsible Statecraft', 'Intentionally client-only catalog source.'],
+      ['thinktanks:RUSI', 'Intentionally client-only catalog source.'],
+      ['thinktanks:FPRI', 'Intentionally client-only catalog source.'],
+      ['thinktanks:Jamestown', 'Intentionally client-only catalog source.'],
+      ['crisis:UNHCR', 'Intentionally client-only catalog source.'],
+      ['africa:BBC Afrique', 'Intentionally client-only catalog source.'],
+      ['latam:Latin America', 'Intentionally client-only catalog source.'],
+      ['latam:Reuters LatAm', 'Intentionally client-only catalog source.'],
+      ['latam:O Globo', 'Intentionally client-only catalog source.'],
+      ['latam:Folha de S.Paulo', 'Intentionally client-only catalog source.'],
+      ['latam:Brasil Paralelo', 'Intentionally client-only catalog source.'],
+      ['latam:El Tiempo', 'Intentionally client-only catalog source.'],
+      ['latam:La Silla Vacía', 'Intentionally client-only catalog source.'],
+      ['latam:Mexico News Daily', 'Intentionally client-only catalog source.'],
+      ['latam:Mexico Security', 'Intentionally client-only catalog source.'],
+      ['latam:AP Mexico', 'Intentionally client-only catalog source.'],
+      ['latam:France 24 LatAm', 'Intentionally client-only catalog source.'],
+      ['asia:Indian Express', 'Intentionally client-only catalog source.'],
+      ['asia:India News Network', 'Intentionally client-only catalog source.'],
+      ['asia:Thai PBS', 'Intentionally client-only catalog source.'],
+      ['asia:Tuoi Tre News', 'Intentionally client-only catalog source.'],
+      ['asia:Chosun Ilbo', 'Intentionally client-only catalog source.'],
+      ['asia:ABC News Australia', 'Intentionally client-only catalog source.'],
+      ['asia:Guardian Australia', 'Intentionally client-only catalog source.'],
+      ['energy:Mining & Resources', 'Intentionally client-only catalog source.'],
+    ]);
+    const unreviewed = [];
+    for (const key of clientFullFeeds.keys()) {
+      if (serverFullFeeds.has(key) || INTENTIONAL_CLIENT_ONLY.has(key)) continue;
+      unreviewed.push(key);
+    }
+    const staleClientOnly = [...INTENTIONAL_CLIENT_ONLY.keys()].filter(
+      key => !clientFullFeeds.has(key) || serverFullFeeds.has(key),
+    );
+    assert.equal(
+      unreviewed.length,
+      0,
+      'Client-only full-variant feeds are invisible to the server digest. Add the feed to both sides, or record a reviewed client-only decision:\n' +
+        unreviewed.map(key => `  - ${key}: ${INTENTIONAL_CLIENT_ONLY.get(key) ?? ''}`).join('\n'),
+    );
+    assert.equal(
+      staleClientOnly.length,
+      0,
+      `Client-only exceptions are no longer client-only — remove them: ${staleClientOnly.join(', ')}`,
     );
   });
 });
