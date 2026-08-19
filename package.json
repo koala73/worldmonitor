@@ -3,6 +3,11 @@
   "private": true,
   "version": "2.10.0",
   "license": "AGPL-3.0-only",
+  "allowScripts": {
+    "@bufbuild/buf": true,
+    "esbuild": true,
+    "sharp": true
+  },
   "type": "module",
   "scripts": {
     "lint": "biome lint ./src ./server ./api ./tests ./e2e ./scripts ./middleware.ts && npm run lint:safe-html",
@@ -54,7 +59,7 @@
     "dev:happy": "cross-env VITE_VARIANT=happy vite",
     "dev:commodity": "cross-env VITE_VARIANT=commodity vite",
     "dev:energy": "cross-env VITE_VARIANT=energy vite",
-    "postinstall": "npm run inventory:facts && cd blog-site && npm ci --prefer-offline",
+    "postinstall": "npm run inventory:facts && cross-env npm_config_allow_scripts= npm --prefix blog-site ci --prefer-offline",
     "prebuild:blog": "npm run product:facts",
     "build:blog": "npm run build:blog:raw",
     "build:blog:raw": "cd blog-site && npm run build && rm -rf ../public/blog && mkdir -p ../public/blog && cp -r dist/* ../public/blog/",

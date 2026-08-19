@@ -2,6 +2,9 @@
   "name": "blog-site",
   "type": "module",
   "version": "0.0.1",
+  "allowScripts": {
+    "esbuild": true
+  },
   "engines": {
     "node": ">=22.12.0"
   },
