@@ -14,7 +14,18 @@ import { getPublicCorsHeaders } from './_cors.js';
 
 export const MD_TWIN_LOOP_HEADER = 'x-wm-md-twin';
 const MAX_TWIN_CHARS = 80_000;
+const MAX_TWIN_BYTES = 80_000;
 const SIBLING_FETCH_TIMEOUT_MS = 8_000;
+const SIBLING_USER_AGENT = 'WorldMonitor-MarkdownTwin/1.0';
+const FORWARDED_RESPONSE_HEADERS = [
+  'allow',
+  'location',
+  'retry-after',
+  'www-authenticate',
+  'x-ratelimit-limit',
+  'x-ratelimit-remaining',
+  'x-ratelimit-reset',
+] as const;
 
 export function isMarkdownTwinPath(pathname: string): boolean {
   return (
@@ -144,6 +155,62 @@ function headingFromPath(pathname: string): string {
   return leaf.replace(/[-_]+/g, ' ');
 }
 
+async function readSiblingBody(response: Response): Promise<string> {
+  const declaredLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_TWIN_BYTES) {
+    try {
+      void response.body?.cancel('Sibling response exceeds the markdown twin byte limit').catch(() => {});
+    } catch {
+      // The declared size is already enough to reject the response.
+    }
+    throw new Error('Sibling response exceeds the markdown twin byte limit');
+  }
+
+  if (!response.body) return '';
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_TWIN_BYTES) {
+        try {
+          void reader.cancel('Sibling response exceeds the markdown twin byte limit').catch(() => {});
+        } catch {
+          // The stream may already be errored; the size failure is authoritative.
+        }
+        throw new Error('Sibling response exceeds the markdown twin byte limit');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(body);
+}
+
+function forwardedResponseHeaders(response: Response): Record<string, string> {
+  const headers: Record<string, string> = {};
+  for (const name of FORWARDED_RESPONSE_HEADERS) {
+    const value = response.headers.get(name);
+    if (value) headers[name] = value;
+  }
+  return headers;
+}
+
 export async function buildMarkdownTwinResponse(
   req: Request,
   markdownPath: string,
@@ -181,19 +248,14 @@ export async function buildMarkdownTwinResponse(
   siblingUrl.search = new URL(req.url).search;
 
   const outbound = new Headers();
-  const ua = req.headers.get('user-agent');
-  outbound.set('user-agent', ua && ua.length >= 10 ? ua : 'WorldMonitor-MarkdownTwin/1.0');
+  outbound.set('user-agent', SIBLING_USER_AGENT);
   outbound.set(MD_TWIN_LOOP_HEADER, '1');
   outbound.set('accept', 'text/html, application/json;q=0.9, text/plain;q=0.8, */*;q=0.1');
-  for (const headerName of ['authorization', 'x-worldmonitor-key', 'x-api-key', 'cookie']) {
-    const value = req.headers.get(headerName);
-    if (value) outbound.set(headerName, value);
-  }
 
   let siblingRes: Response;
   try {
     siblingRes = await fetchImpl(siblingUrl, {
-      method: 'GET',
+      method: req.method,
       headers: outbound,
       redirect: 'manual',
       signal: AbortSignal.timeout(SIBLING_FETCH_TIMEOUT_MS),
@@ -214,35 +276,57 @@ export async function buildMarkdownTwinResponse(
     });
   }
 
-  const contentType = siblingRes.headers.get('content-type') ?? '';
-  const raw = await siblingRes.text();
+  const isFailure = !siblingRes.ok;
+  const siblingStatus = isFailure ? siblingRes.status : 200;
+  const responseHeaders: Record<string, string> = {
+    ...(isFailure ? { 'Cache-Control': 'no-store' } : {}),
+    ...forwardedResponseHeaders(siblingRes),
+  };
+
+  if (req.method === 'HEAD') {
+    return new Response(null, {
+      status: siblingStatus,
+      headers: markdownHeaders(req, markdownPath, responseHeaders),
+    });
+  }
+
+  if (siblingStatus === 304) {
+    return new Response(null, {
+      status: siblingStatus,
+      headers: markdownHeaders(req, markdownPath, responseHeaders),
+    });
+  }
+
   const heading = headingFromPath(sibling);
   let markdown: string;
+  try {
+    const contentType = siblingRes.headers.get('content-type') ?? '';
+    const raw = await readSiblingBody(siblingRes);
 
-  if (/markdown|text\/plain/i.test(contentType) && /^# /m.test(raw)) {
-    markdown = raw.slice(0, MAX_TWIN_CHARS);
-  } else if (/json/i.test(contentType) || raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
-    markdown = jsonToMarkdown(raw, heading);
-  } else if (/html/i.test(contentType) || /<html|<body|<title/i.test(raw)) {
-    markdown = htmlToMarkdown(raw, heading);
-  } else if (raw.trim().length === 0) {
-    markdown = `# ${heading}\n`;
-  } else {
-    markdown = /^# /m.test(raw) ? raw.slice(0, MAX_TWIN_CHARS) : `# ${heading}\n\n${raw}`.slice(0, MAX_TWIN_CHARS);
+    if (/markdown|text\/plain/i.test(contentType) && /^# /m.test(raw)) {
+      markdown = raw.slice(0, MAX_TWIN_CHARS);
+    } else if (/json/i.test(contentType) || raw.trim().startsWith('{') || raw.trim().startsWith('[')) {
+      markdown = jsonToMarkdown(raw, heading);
+    } else if (/html/i.test(contentType) || /<html|<body|<title/i.test(raw)) {
+      markdown = htmlToMarkdown(raw, heading);
+    } else if (raw.trim().length === 0) {
+      markdown = `# ${heading}\n`;
+    } else {
+      markdown = /^# /m.test(raw) ? raw.slice(0, MAX_TWIN_CHARS) : `# ${heading}\n\n${raw}`.slice(0, MAX_TWIN_CHARS);
+    }
+
+    if (!/^# /m.test(markdown)) {
+      markdown = `# ${heading}\n\n${markdown}`;
+    }
+  } catch {
+    return new Response(`# ${heading}\n\nThe sibling page at \`${sibling}\` could not be read.\n`, {
+      status: 502,
+      headers: markdownHeaders(req, markdownPath, { 'Cache-Control': 'no-store' }),
+    });
   }
 
-  if (!/^# /m.test(markdown)) {
-    markdown = `# ${heading}\n\n${markdown}`;
-  }
-
-  const status = siblingRes.status === 404 || siblingRes.status === 410 ? siblingRes.status : 200;
-
-  return new Response(req.method === 'HEAD' ? null : markdown, {
-    status,
-    headers: markdownHeaders(
-      req,
-      markdownPath,
-      status >= 400 ? { 'Cache-Control': 'no-store' } : {},
-    ),
+  return new Response(markdown, {
+    status: siblingStatus,
+    headers: markdownHeaders(req, markdownPath, responseHeaders),
   });
 }
