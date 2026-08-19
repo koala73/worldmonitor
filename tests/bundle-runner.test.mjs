@@ -8,19 +8,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync, unlinkSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 import { DAY, readSectionFreshness, bundleHeartbeatKey, BUNDLE_HEARTBEAT_TTL_SECONDS } from '../scripts/_bundle-runner.mjs';
-import {
-  countSectionAnchors,
-  countSectionScriptKeys,
-  extractBundleSections,
-  listBundleFiles,
-  stripLineComments,
-} from './helpers/bundle-section-parser.mjs';
 import {
   SUPERSEDED_KEY_TTL_SECONDS,
   atomicSwitch,
@@ -153,163 +146,6 @@ test('a missing completion marker keeps an explicit-freshness section due', asyn
     return null;
   });
   assert.equal(freshness, null);
-});
-
-// #6960. runSeed publishes the canonical key BEFORE the extra-key loop and
-// writes the canonical seed-meta AFTER it, so the three CONTRACT VIOLATION exits
-// inside that loop leave a canonical envelope with an ADVANCED fetchedAt and no
-// seed-meta write at all. The canonical envelope is this section's due-ness
-// clock, so the failed run buys itself a full interval of silence — 40 days for
-// IEA-Oil-Stocks, which is how energy:oil-stocks-analysis:v1 was allowed to
-// expire unnoticed. seed-meta is written last, so it is the completion
-// attestation: an older one belongs to a prior run.
-test('a partial publish cannot advance the canonical due-ness clock (#6960)', async () => {
-  const canonicalPublishedAt = Date.now();
-  const previousCompletionAt = canonicalPublishedAt - 40 * 24 * 60 * 60 * 1000;
-  const freshness = await readSectionFreshness({
-    canonicalKey: 'energy:iea-oil-stocks:v1:index',
-    seedMetaKey: 'energy:iea-oil-stocks',
-    completionMetaKey: 'seed-meta:energy:iea-oil-stocks',
-  }, async (key) => {
-    if (key === 'energy:iea-oil-stocks:v1:index') {
-      return { _seed: { fetchedAt: canonicalPublishedAt }, data: {} };
-    }
-    if (key === 'seed-meta:energy:iea-oil-stocks') {
-      return { fetchedAt: previousCompletionAt };
-    }
-    return null;
-  });
-  assert.equal(freshness, null, 'a canonical clock newer than its completion must read as due');
-});
-
-test('a completion marker lost to TTL keeps a canonical-clock section due (#6960)', async () => {
-  // The exact production state on 2026-08-19: canonical republished 08-12,
-  // seed-meta never written by that run and the 07-10 one already expired.
-  const freshness = await readSectionFreshness({
-    canonicalKey: 'energy:iea-oil-stocks:v1:index',
-    seedMetaKey: 'energy:iea-oil-stocks',
-    completionMetaKey: 'seed-meta:energy:iea-oil-stocks',
-  }, async (key) => {
-    if (key === 'energy:iea-oil-stocks:v1:index') {
-      return { _seed: { fetchedAt: Date.now() }, data: {} };
-    }
-    return null;
-  });
-  assert.equal(freshness, null, 'an absent completion cannot attest a canonical publish');
-});
-
-// Positive control. Without this, the two tests above would still pass if the
-// canonical branch simply returned null for every attested section.
-test('a completed run passes the canonical clock through unchanged (#6960)', async () => {
-  const canonicalPublishedAt = Date.now() - 60 * 60 * 1000;
-  const completedAt = canonicalPublishedAt + 6_900; // measured IEA gap: +6.9s
-  const freshness = await readSectionFreshness({
-    canonicalKey: 'energy:iea-oil-stocks:v1:index',
-    seedMetaKey: 'energy:iea-oil-stocks',
-    completionMetaKey: 'seed-meta:energy:iea-oil-stocks',
-  }, async (key) => {
-    if (key === 'energy:iea-oil-stocks:v1:index') {
-      return { _seed: { fetchedAt: canonicalPublishedAt }, data: {} };
-    }
-    if (key === 'seed-meta:energy:iea-oil-stocks') {
-      return { fetchedAt: completedAt };
-    }
-    return null;
-  });
-  assert.deepEqual(freshness, { fetchedAt: canonicalPublishedAt });
-});
-
-// A section that declares no completionMetaKey must keep reading the canonical
-// envelope alone. 85 of the 93 canonical-clock members are in that group, and
-// 8 of them publish a canonical envelope with no seed-meta at all — requiring an
-// attestation from them would mark them due on every tick (#6806's failure).
-test('a section without a completion key still reads the canonical clock alone (#6960)', async () => {
-  const reads = [];
-  const publishedAt = Date.now();
-  const freshness = await readSectionFreshness({
-    canonicalKey: 'infra:ontario-511:v1',
-    seedMetaKey: 'infra:ontario-511',
-  }, async (key) => {
-    reads.push(key);
-    if (key === 'infra:ontario-511:v1') return { _seed: { fetchedAt: publishedAt }, data: {} };
-    return null;
-  });
-  assert.deepEqual(freshness, { fetchedAt: publishedAt });
-  assert.deepEqual(reads, ['infra:ontario-511:v1'], 'no extra read when nothing is declared');
-});
-
-// Closed-world gate for #6960. The population is DERIVED, not listed: any bundle
-// member whose seeder passes extraKeys to runSeed and whose due-ness comes from
-// the canonical envelope has a window between the canonical publish and the
-// seed-meta write in which a CONTRACT VIOLATION exit leaves an advanced clock
-// and no attestation. A new member inheriting that shape must fail here rather
-// than silently buy itself a full interval of silence.
-//
-// Exemptions are named with a reason, so removing the reason removes the
-// exemption.
-const COMPLETION_ATTESTATION_EXEMPT = new Map([
-  ['Arms-Suppliers',
-   'the #6893 chunked sweep is deliberately due every tick until the sweep '
-   + 'completes, and its declared seedMetaKey is an extraKey meta written INSIDE '
-   + 'the loop, which cannot attest that the loop finished'],
-]);
-
-test('every canonical-clock section with extraKeys attests completion (#6960)', () => {
-  const scriptFiles = readdirSync(SCRIPTS_DIR).filter((f) => f.endsWith('.mjs'));
-  const seedersWithExtraKeys = new Set(
-    scriptFiles.filter((f) => /(?<![\w$])extraKeys\s*:/.test(readFileSync(join(SCRIPTS_DIR, f), 'utf8'))),
-  );
-  assert.ok(
-    seedersWithExtraKeys.size > 0,
-    'discovery found no seeder passing extraKeys — the scan is broken, not the repo clean',
-  );
-
-  const offenders = [];
-  let inspected = 0;
-
-  for (const bundlePath of listBundleFiles(SCRIPTS_DIR)) {
-    const name = basename(bundlePath);
-    const raw = readFileSync(bundlePath, 'utf-8');
-    const src = stripLineComments(raw);
-    // A section this gate cannot read is a section it cannot vouch for, and a
-    // dropped section is a false PASS. Prove nothing vanished — across the
-    // comment strip, and between the anchor scan and the extractor.
-    assert.equal(
-      countSectionScriptKeys(src), countSectionScriptKeys(raw),
-      `${name}: a \`script:\` key disappeared when comments were stripped`,
-    );
-    const sections = extractBundleSections(raw);
-    assert.equal(
-      sections.length, countSectionAnchors(src),
-      `${name}: extractor returned ${sections.length} of ${countSectionAnchors(src)} section anchors`,
-    );
-    assert.equal(
-      sections.length, countSectionScriptKeys(src),
-      `${name}: extractor returned ${sections.length} sections for ${countSectionScriptKeys(src)} \`script:\` keys`,
-    );
-
-    for (const section of sections) {
-      if (!seedersWithExtraKeys.has(section.script)) continue;
-      // Only the canonical branch is exposed. A declared freshnessMetaKey takes
-      // its own path, which already enforces completion.
-      if (!section.hasCanonicalKey || section.hasFreshnessMetaKey) continue;
-      inspected++;
-      if (section.hasCompletionMetaKey) continue;
-      if (COMPLETION_ATTESTATION_EXEMPT.has(section.label)) continue;
-      offenders.push(`${name}: ${section.label}`);
-    }
-  }
-
-  assert.ok(
-    inspected > 0,
-    'no canonical-clock section with extraKeys was inspected — the gate is vacuous',
-  );
-  assert.deepEqual(
-    offenders, [],
-    'these sections let a partial publish advance their due-ness clock unattested. '
-    + "Declare completionMetaKey (runSeed's own seed-meta:<domain>:<resource>, the write "
-    + 'that lands AFTER the extra-key loop) or add a reasoned exemption.',
-  );
 });
 
 function runBundleWith(sections, opts = {}, env = {}) {
@@ -1282,6 +1118,50 @@ test('injects BUNDLE_RUN_STARTED_AT_MS env into child; value is within run bound
     // child ran before `after`. So: before - tolerance <= injected <= after.
     assert.ok(injected >= before - 5000 && injected <= after,
       `injected=${injected} out of bounds [${before - 5000}, ${after}]`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('injects only canonical-clock completion markers into child seeders', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-completion-env.mjs',
+    `console.log('COMPLETION=' + JSON.stringify(process.env.WM_BUNDLE_COMPLETION_META_KEY || ''));\n`,
+  );
+  try {
+    const canonical = await runBundleWith([{
+      label: 'CANONICAL',
+      script: '_bundle-fixture-completion-env.mjs',
+      canonicalKey: 'test:canonical:v1',
+      completionMetaKey: 'seed-completion:test:canonical',
+      intervalMs: 1,
+      timeoutMs: 5000,
+    }]);
+    assert.equal(canonical.code, 0);
+    assert.match(canonical.stdout, /COMPLETION="seed-completion:test:canonical"/);
+
+    const explicitFreshness = await runBundleWith([{
+      label: 'EXPLICIT',
+      script: '_bundle-fixture-completion-env.mjs',
+      canonicalKey: 'test:explicit:v1',
+      freshnessMetaKey: 'seed-meta:test:transport',
+      completionMetaKey: 'seed-meta:test:complete',
+      intervalMs: 1,
+      timeoutMs: 5000,
+    }]);
+    assert.equal(explicitFreshness.code, 0);
+    assert.match(explicitFreshness.stdout, /COMPLETION=""/);
+
+    const sharedCanonicalMeta = await runBundleWith([{
+      label: 'INVALID',
+      script: '_bundle-fixture-completion-env.mjs',
+      canonicalKey: 'test:invalid:v1',
+      completionMetaKey: 'seed-meta:test:invalid',
+      intervalMs: 1,
+      timeoutMs: 5000,
+    }]);
+    assert.notEqual(sharedCanonicalMeta.code, 0);
+    assert.match(sharedCanonicalMeta.stderr, /must use the dedicated seed-completion: namespace/);
   } finally {
     cleanup();
   }

@@ -34,7 +34,11 @@
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, loadEnvFile } from './_seed-utils.mjs';
+import {
+  BUNDLE_COMPLETION_META_KEY_ENV,
+  GRACEFUL_FETCH_FAILURE_EXIT_CODE,
+  loadEnvFile,
+} from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -134,13 +138,10 @@ async function writeBundleHeartbeat(label) {
  * the legacy `seed-meta:<key>` read.
  *
  * `completionMetaKey` applies the same rule to the canonical clock (#6960).
- * runSeed publishes the canonical key BEFORE its extra-key loop and writes the
- * canonical seed-meta AFTER it, so a CONTRACT VIOLATION exit inside that loop
- * leaves an advanced canonical `fetchedAt` with no seed-meta write. Since the
- * canonical envelope is the due-ness clock, the failed run would otherwise buy
- * itself a full interval of silence. Declaring the canonical seed-meta as the
- * completion attestation closes that: it is written last, so an older one
- * belongs to a prior run.
+ * The bundle passes a dedicated marker key to runSeed, which writes it only
+ * after the canonical envelope, every extra key, post-publish hooks, and
+ * freshness bookkeeping finish. Its fetchedAt must equal the canonical
+ * envelope timestamp, binding the proof to one exact run.
  *
  * Only sections that declare it are affected. Most canonical-clock members
  * publish no seed-meta at all, and requiring an attestation from them would
@@ -173,12 +174,11 @@ export async function readSectionFreshness(section, readKey = readRedisKey) {
       if (!section.completionMetaKey) return { fetchedAt: _seed.fetchedAt };
       const completionRaw = await readKey(section.completionMetaKey);
       const completion = unwrapEnvelope(completionRaw).data;
-      // Absent is due, not fresh: the completion key outlives the canonical key
-      // by construction (writeFreshnessMetadata floors its TTL at max(7d,
-      // ttlSeconds) >= the canonical ttlSeconds), so it can only be missing
-      // because the run never reached the write.
+      // Absent is due, not fresh: runSeed writes this marker with
+      // max(7d, ttlSeconds), so it cannot expire before the canonical key after
+      // a completed run. Missing means the run never reached the final write.
       if (!Number.isFinite(completion?.fetchedAt)) return null;
-      if (completion.fetchedAt < _seed.fetchedAt) return null;
+      if (completion.fetchedAt !== _seed.fetchedAt) return null;
       return { fetchedAt: _seed.fetchedAt };
     }
     // Version migrations can opt out of the legacy seed-meta fallback. A
@@ -281,7 +281,7 @@ function streamLines(stream, onLine) {
   stream.on('error', (err) => onLine(`<stdio error: ${err.message}>`));
 }
 
-function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs }) {
+function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs, completionMetaKey }) {
   return new Promise((resolve) => {
     const t0 = Date.now();
     // Capture the child's structured `seed_complete` event if emitted, so
@@ -300,6 +300,7 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs }) {
       env: {
         ...process.env,
         BUNDLE_RUN_STARTED_AT_MS: String(bundleStartedAtMs ?? Date.now()),
+        [BUNDLE_COMPLETION_META_KEY_ENV]: completionMetaKey || '',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -375,7 +376,6 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs }) {
  *   script: string,
  *   seedMetaKey?: string,    // legacy (pre-contract); reads `seed-meta:<key>`
  *   freshnessMetaKey?: string, // authoritative explicit seed-meta key
- *   completionMetaKey?: string, // optional completed-run key paired with freshnessMetaKey
  *   canonicalKey?: string,   // PR 2+: reads envelope from the canonical data key
  *   completionMetaKey?: string, // full key written LAST by the run; must not
  *                               // predate the clock it attests (#6960)
@@ -404,6 +404,19 @@ export function disabledMembersFromEnv(label, env = process.env) {
 }
 
 export async function runBundle(label, sections, opts = {}) {
+  for (const section of sections) {
+    if (
+      section.canonicalKey
+      && !section.freshnessMetaKey
+      && section.completionMetaKey
+      && !section.completionMetaKey.startsWith('seed-completion:')
+    ) {
+      throw new Error(
+        `[Bundle:${label}] section '${section.label}' canonical completionMetaKey must use `
+        + `the dedicated seed-completion: namespace, got '${section.completionMetaKey}'`,
+      );
+    }
+  }
   const missingEnvBySection = new Map();
   for (const section of sections) {
     if (section.requiredEnv == null) continue;
@@ -620,7 +633,12 @@ export async function runBundle(label, sections, opts = {}) {
       continue;
     }
 
-    const result = await spawnSeed(scriptPath, { timeoutMs: timeout, label: section.label, bundleStartedAtMs: t0 });
+    const result = await spawnSeed(scriptPath, {
+      timeoutMs: timeout,
+      label: section.label,
+      bundleStartedAtMs: t0,
+      completionMetaKey: section.freshnessMetaKey ? '' : section.completionMetaKey,
+    });
     if (result.ok) {
       console.log(`  [${section.label}] Done (${result.elapsed}s)`);
       // Bundle-level per-section summary — emitted from parent stdout so
