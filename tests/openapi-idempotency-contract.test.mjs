@@ -8,7 +8,6 @@ import { load as loadYaml } from 'js-yaml';
 
 import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 import { readIdempotencyExemptPaths } from '../scripts/lib/openapi-codegen.mjs';
-import { ASYNC_JOB_OPS } from '../scripts/openapi-inject-async-jobs.mjs';
 
 // Guards the Idempotency-Key header parameter injected by
 // scripts/openapi-inject-idempotency.mjs onto every POST (mutation) operation.
@@ -32,12 +31,6 @@ const IDEMPOTENCY_PATTERN = '^[\\x21-\\x7E]{1,255}$';
 // drift between the gateway and the two injectors, so it must not hold a third literal
 // that can drift alongside them.
 const IDEMPOTENCY_EXEMPT_PATHS = readIdempotencyExemptPaths();
-// Async-enqueue POSTs document TWO 2xx responses: the live 202 and the
-// scanner-credited 200 twin. Read the injector's own list rather than restating
-// the paths here — same reasoning as the exempt set above, a third literal
-// would drift silently.
-const ASYNC_ENQUEUE_PATHS = new Set(ASYNC_JOB_OPS.map((op) => op.path));
-
 function idempotencyParam(op) {
   return (op?.parameters ?? []).find(
     (p) => p && p.in === 'header' && String(p.name).toLowerCase() === 'idempotency-key',
@@ -89,7 +82,7 @@ function assertIdempotencyParam(param, label) {
   );
 }
 
-function assertIdempotencyResponses(op, label, path) {
+function assertIdempotencyResponses(op, label) {
   assert.ok(op.responses?.['400'], `${label} must document invalid Idempotency-Key 400`);
   assert.ok(op.responses?.['409'], `${label} must document in-flight Idempotency-Key 409`);
   assert.ok(op.responses?.['422'], `${label} must document reused Idempotency-Key 422`);
@@ -105,50 +98,22 @@ function assertIdempotencyResponses(op, label, path) {
     op.responses['422'].headers?.['Idempotency-Key'],
     `${label} 422 response must document echoed Idempotency-Key`,
   );
-  // Every 2xx success must document the replay markers, and the COUNT is
-  // pinned: exactly one, except async-enqueue POSTs which document the live 202
-  // plus the scanner-credited 200 twin. A bare `>= 1` would let any other POST
-  // quietly accumulate a second success response — the invariant this file is
-  // the only place in the repo to enforce.
+  // The 2xx success response must document the replay markers — the only
+  // observable signal for "was this a replay?". Async-enqueue POSTs use 202;
+  // every other generated success uses 200.
   const successEntries = Object.entries(op.responses ?? {}).filter(([code]) => /^2\d\d$/.test(code));
-  const expectedSuccesses = ASYNC_ENQUEUE_PATHS.has(path) ? 2 : 1;
+  assert.equal(successEntries.length, 1, `${label} must document exactly one 2xx success response`);
+  const [successCode, success] = successEntries[0];
+  const echoed = success.headers?.['Idempotency-Key'];
+  assert.ok(echoed, `${label} ${successCode} response must document the echoed Idempotency-Key header`);
+  assert.equal(echoed.schema?.type, 'string', `${label} ${successCode} Idempotency-Key must be a string header`);
+  const replayed = success.headers?.['Idempotent-Replayed'];
+  assert.ok(replayed, `${label} ${successCode} response must document the Idempotent-Replayed marker`);
   assert.equal(
-    successEntries.length,
-    expectedSuccesses,
-    `${label} must document exactly ${expectedSuccesses} 2xx success response(s), found ${successEntries.map(([c]) => c).join(',') || 'none'}`,
+    replayed.schema?.type,
+    'boolean',
+    `${label} ${successCode} Idempotent-Replayed must be a boolean header`,
   );
-  if (expectedSuccesses === 2) {
-    const codes = successEntries.map(([code]) => code).sort();
-    assert.deepEqual(codes, ['200', '202'], `${label} async-enqueue successes must be exactly 200 + 202`);
-    // The replay markers live on the 200 (the idempotency injector's only
-    // target) and are mirrored onto the 202 by the async-jobs injector. Pin
-    // them to each other: without this, a SUCCESS_HEADERS edit refreshes the
-    // 200 and leaves the live 202 documenting stale prose, and every --check
-    // gate still passes.
-    const { Location, ...acceptedShared } = op.responses['202'].headers ?? {};
-    assert.ok(Location, `${label} 202 must document the Location poll pointer`);
-    assert.deepEqual(
-      acceptedShared,
-      op.responses['200'].headers ?? {},
-      `${label} 200 and 202 must document identical replay-marker headers (202 adds only Location)`,
-    );
-  }
-  for (const [successCode, success] of successEntries) {
-    const echoed = success.headers?.['Idempotency-Key'];
-    assert.ok(echoed, `${label} ${successCode} response must document the echoed Idempotency-Key header`);
-    assert.equal(
-      echoed.schema?.type,
-      'string',
-      `${label} ${successCode} Idempotency-Key must be a string header`,
-    );
-    const replayed = success.headers?.['Idempotent-Replayed'];
-    assert.ok(replayed, `${label} ${successCode} response must document the Idempotent-Replayed marker`);
-    assert.equal(
-      replayed.schema?.type,
-      'boolean',
-      `${label} ${successCode} Idempotent-Replayed must be a boolean header`,
-    );
-  }
 }
 
 function assertApplicationIdempotencyOnly(op, label) {
@@ -175,7 +140,7 @@ function assertOperationIdempotency(path, op, label) {
     return;
   }
   assertIdempotencyParam(idempotencyParam(op), label);
-  assertIdempotencyResponses(op, label, path);
+  assertIdempotencyResponses(op, label);
   // Mirror assertion: a non-exempt POST advertises the header, so its 400 must say so.
   assert.match(
     op.responses?.['400']?.description ?? '',

@@ -14,28 +14,30 @@ import {
 
 // Guards ora.ai / orank `api-schema-analysis`: every published operation must
 // be self-describing — unique operationId, a description, typed parameters or
-// requestBody, and a typed responses["200"] schema. Scanners credit only the
-// inline 200 (not 202 / 2XX), so an always-202 enqueue or a webhook that only
-// documents 2XX reads as "partially documented".
+// requestBody, and a typed success schema. Most operations return 200; narrow
+// exemptions preserve truthful 202-only and body-agnostic 2XX contracts.
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 
-// Operations that legitimately have no 200 (a status the endpoint never
-// returns), keyed `METHOD /path`. Deliberately empty: RunScenario was the only
-// operation without a 200 and it now documents one. This exists so the next
-// genuinely 202/204-only endpoint has a declared escape hatch instead of being
-// pushed into fabricating a 200 the server never sends — add the identity here
-// WITH a comment naming the real success code.
-const NO_200_EXEMPT = new Set([]);
+// Operations that legitimately have no exact 200, keyed by operation kind,
+// method, and published path/name. Each exemption names the real success
+// response and its body contract so this gate verifies the truth instead of
+// simply skipping it.
+const NO_200_EXEMPT = new Map([
+  ['path POST /api/scenario/v1/run-scenario', { successCode: '202', body: 'typed-json' }],
+  ['webhook POST chokepoint.disruption', { successCode: '2XX', body: 'status-only' }],
+]);
 
 // A schema counts as typed only if it carries real information. A bare key
 // presence check is not enough: `{$ref: '#/components/schemas/Nope'}` names a
 // component that does not exist, and `{anyOf: []}` is a composition that
 // matches nothing — both would sail through a `Boolean(schema.$ref || ...)`
 // test while telling a client precisely nothing.
-function schemaIsTyped(schema, spec) {
+const JSON_SCHEMA_TYPES = new Set(['array', 'boolean', 'integer', 'null', 'number', 'object', 'string']);
+
+function schemaIsTyped(schema, spec, seenRefs = new Set()) {
   if (!schema || typeof schema !== 'object') return false;
   if (schema.$ref) {
     const ref = String(schema.$ref);
@@ -43,17 +45,29 @@ function schemaIsTyped(schema, spec) {
     // Only local component pointers are resolvable here; every $ref in
     // docs/api today is one, so an unrecognised shape is a red flag.
     if (!local) return false;
-    return Boolean(spec?.components?.schemas?.[local[1]]);
+    const name = local[1];
+    if (seenRefs.has(name)) return false;
+    const target = spec?.components?.schemas?.[name];
+    if (!target || typeof target !== 'object') return false;
+    return schemaIsTyped(target, spec, new Set([...seenRefs, name]));
   }
   for (const key of ['anyOf', 'oneOf', 'allOf']) {
     if (key in schema) {
       return Array.isArray(schema[key])
         && schema[key].length > 0
-        && schema[key].every((member) => schemaIsTyped(member, spec));
+        && schema[key].every((member) => schemaIsTyped(member, spec, seenRefs));
     }
   }
-  if (schema.properties) return true;
-  return Boolean(schema.type);
+  if ('properties' in schema) {
+    return schema.properties !== null
+      && typeof schema.properties === 'object'
+      && Object.keys(schema.properties).length > 0;
+  }
+  if (schema.type === 'array') return schemaIsTyped(schema.items, spec, seenRefs);
+  if (Array.isArray(schema.type)) {
+    return schema.type.length > 0 && schema.type.every((type) => JSON_SCHEMA_TYPES.has(type));
+  }
+  return JSON_SCHEMA_TYPES.has(schema.type);
 }
 
 function resolveParameter(param, spec) {
@@ -124,15 +138,32 @@ function assertSelfDescribing(spec, label) {
       issues.push(`${opLabel}: requestBody is untyped`);
     }
 
-    const identity = `${method.toUpperCase()} ${path}`;
+    const identity = `${kind} ${method.toUpperCase()} ${path}`;
+    const exemption = NO_200_EXEMPT.get(identity);
     const ok = operation.responses?.['200'];
     if (!ok) {
-      if (NO_200_EXEMPT.has(identity)) continue;
+      if (exemption) {
+        const declared = operation.responses?.[exemption.successCode];
+        if (!declared) {
+          issues.push(`${opLabel}: NO_200_EXEMPT expects responses["${exemption.successCode}"]`);
+          continue;
+        }
+        if (
+          exemption.body === 'typed-json'
+          && !schemaIsTyped(declared.content?.['application/json']?.schema, spec)
+        ) {
+          issues.push(`${opLabel}: responses["${exemption.successCode}"] has no typed application/json schema`);
+        }
+        if (exemption.body === 'status-only' && declared.content !== undefined) {
+          issues.push(`${opLabel}: responses["${exemption.successCode}"] must remain body-agnostic`);
+        }
+        continue;
+      }
       const other2xx = Object.keys(operation.responses ?? {}).filter((code) => /^2/.test(code));
       issues.push(`${opLabel}: missing responses["200"] (has ${other2xx.join(',') || 'no 2xx'})`);
       continue;
     }
-    if (NO_200_EXEMPT.has(identity)) {
+    if (exemption) {
       issues.push(`${opLabel}: documents a 200 but is listed in NO_200_EXEMPT — drop the exemption`);
     }
     if (!schemaIsTyped(ok.content?.['application/json']?.schema, spec)) {
@@ -148,7 +179,7 @@ function assertSelfDescribing(spec, label) {
 }
 
 describe('OpenAPI self-describing operations (orank api-schema-analysis)', () => {
-  it('gives every unified-bundle path and webhook a unique id, description, typed input, and typed 200', () => {
+  it('gives every unified-bundle path and webhook a unique id, description, typed input, and truthful success', () => {
     assertSelfDescribing(loadUnifiedOpenApiSpec(), 'worldmonitor.openapi.yaml');
   });
 
@@ -181,5 +212,44 @@ describe('OpenAPI self-describing operations (orank api-schema-analysis)', () =>
     for (const file of files) {
       assertSelfDescribing(loadYaml(readFileSync(resolve(apiDir, file), 'utf8')), file);
     }
+  });
+});
+
+describe('schemaIsTyped', () => {
+  it('rejects empty and malformed referenced component schemas', () => {
+    const spec = {
+      components: {
+        schemas: {
+          Empty: {},
+          EmptyProperties: { properties: {} },
+          ArrayWithoutItems: { type: 'array' },
+          InvalidType: { type: 'sometimes' },
+        },
+      },
+    };
+
+    for (const name of Object.keys(spec.components.schemas)) {
+      assert.equal(
+        schemaIsTyped({ $ref: `#/components/schemas/${name}` }, spec),
+        false,
+        `${name} must not count as typed`,
+      );
+    }
+  });
+
+  it('follows local reference chains and rejects pure reference cycles', () => {
+    const spec = {
+      components: {
+        schemas: {
+          Alias: { $ref: '#/components/schemas/Value' },
+          Value: { type: 'string' },
+          CycleA: { $ref: '#/components/schemas/CycleB' },
+          CycleB: { $ref: '#/components/schemas/CycleA' },
+        },
+      },
+    };
+
+    assert.equal(schemaIsTyped({ $ref: '#/components/schemas/Alias' }, spec), true);
+    assert.equal(schemaIsTyped({ $ref: '#/components/schemas/CycleA' }, spec), false);
   });
 });

@@ -70,25 +70,6 @@ paths:
                                 "statusUrl": "/api/scenario/v1/get-scenario-status?jobId=scenario%3A1717200000000%3Aabcd1234"
                             schema:
                                 $ref: '#/components/schemas/RunScenarioResponse'
-                "200":
-                    description: Job envelope with the same schema as 202 Accepted. The live handler returns 202 on enqueue; poll GetScenarioStatus until status is done or failed.
-                    headers:
-                        Idempotency-Key:
-                            schema:
-                                type: string
-                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
-                        Idempotent-Replayed:
-                            schema:
-                                type: boolean
-                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
-                    content:
-                        application/json:
-                            example:
-                                "jobId": "scenario:1717200000000:abcd1234"
-                                "status": "pending"
-                                "statusUrl": "/api/scenario/v1/get-scenario-status?jobId=scenario%3A1717200000000%3Aabcd1234"
-                            schema:
-                                $ref: '#/components/schemas/RunScenarioResponse'
                 "400":
                     description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
                     content:

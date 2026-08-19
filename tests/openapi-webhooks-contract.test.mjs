@@ -119,16 +119,16 @@ describe('OpenAPI webhooks contract', () => {
     assert.equal(result.changed, false, 'run `npm run gen:openapi:webhooks` — committed bundle is stale');
   });
 
-  it('documents a typed 200 acknowledgement plus the any-2xx contract', () => {
-    const ok = webhook.responses?.['200'];
-    assert.ok(ok, 'webhook must document responses["200"]');
+  it('documents a body-agnostic any-2xx acknowledgement', () => {
+    assert.equal(webhook.responses?.['200'], undefined, 'webhook must not invent an exact 200 response');
+    const acknowledgement = webhook.responses?.['2XX'];
+    assert.ok(acknowledgement, 'webhook must document the any-2xx acknowledgement');
     assert.equal(
-      ok.content?.['application/json']?.schema?.type,
-      'object',
-      'webhook 200 acknowledgement must be a typed JSON object',
+      acknowledgement.content,
+      undefined,
+      'acknowledgement must not require a response body or media type',
     );
-    assert.match(ok.description ?? '', /2xx/i, 'webhook 200 description must mention any-2xx ack');
-    assert.ok(webhook.responses?.['2XX'], 'webhook must keep the any-2xx acknowledgement');
+    assert.match(acknowledgement.description ?? '', /any 2xx/i);
   });
 
   it('webhooks live at the top level, not under paths (no phantom REST op)', () => {
