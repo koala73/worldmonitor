@@ -833,6 +833,13 @@ function collectorEventInit(signal?: AbortSignal): RequestInit {
   };
 }
 
+function collectorCriticalEventInit(): RequestInit {
+  return {
+    method: 'POST',
+    body: JSON.stringify({ type: 'event', payload: { name: 'checkout-start' } }),
+  };
+}
+
 function rejectWhenAborted(signal: AbortSignal | null | undefined): Promise<Response> {
   assert.ok(signal, 'the collector request must carry a timeout signal');
   return new Promise<Response>((_resolve, reject) => {
@@ -1274,7 +1281,11 @@ describe('collector latch release is module-owned (#6288)', () => {
     let calls = 0;
     window.fetch = (() => {
       calls += 1;
-      return calls === 1 ? parkForever() : Promise.resolve(collectorResponse(true, 200));
+      // Park the successor too. If the parked write's `.finally()` skips the
+      // epoch guard it will start a third fetch while call 2 still owns the
+      // slot. Resolving 200 from call 2 onward would hide that overlap:
+      // `extra` still returns 200 and overflow stays at 0.
+      return calls <= 2 ? parkForever() : Promise.resolve(collectorResponse(true, 200));
     }) as typeof window.fetch;
     installCollectorFetchGate();
 
@@ -1294,7 +1305,9 @@ describe('collector latch release is module-owned (#6288)', () => {
 
       now += LATCH_DEADLINE_MS;
       const extra = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void extra.catch(() => {});
       await drainPromiseHandlers(() => calls >= 2, 'the stale latch must release without a timer callback');
+      assert.equal(calls, 2, 'exactly one write is dispatched from the stale release, not the whole backlog');
 
       const parkedError = await parked.then(() => null, (reason: unknown) => reason);
       assert.equal((parkedError as Error | null)?.name, 'TimeoutError');
@@ -1303,8 +1316,23 @@ describe('collector latch release is module-owned (#6288)', () => {
         { kind: 'timeout', raced: true },
         'the withheld-timer pump must classify the abandoned write as raced',
       );
-      assert.equal((await extra).status, 200, 'the write that would have overflowed is delivered');
+      await drainPromiseHandlers();
+      assert.equal(
+        calls,
+        2,
+        'the parked write must not start a third fetch after the successor owns the slot',
+      );
+      assert.equal(
+        await Promise.race([extra.then(() => 'settled'), Promise.resolve('pending')]),
+        'pending',
+        'the wake-up write stays queued behind the successor, not overflowed',
+      );
       assert.equal(overflowWarnings.length, 0, 'a stale latch must not shed the enqueue that woke it');
+
+      const leftoverLatch = fakeTimers.timers.find((timer) => timer.delay === LATCH_DEADLINE_MS);
+      leftoverLatch?.callback();
+      await drainPromiseHandlers();
+      assert.equal(calls, 2, 'firing the withheld latch timer after expire must not start another fetch');
     } finally {
       Date.now = originalNow;
       console.warn = originalWarn;
@@ -1341,8 +1369,11 @@ describe('collector latch release is module-owned (#6288)', () => {
     try {
       const parked = window.fetch(UMAMI_SEND_URL, collectorEventInit());
       void parked.catch(() => {});
+      const queuedWrites: Promise<Response>[] = [];
       for (let index = 0; index < COLLECTOR_QUEUE_LIMIT; index += 1) {
-        void window.fetch(UMAMI_SEND_URL, collectorEventInit()).catch(() => {});
+        const queued = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+        void queued.catch(() => {});
+        queuedWrites.push(queued);
       }
       await drainPromiseHandlers();
       now += LATCH_DEADLINE_MS - 1;
@@ -1354,9 +1385,176 @@ describe('collector latch release is module-owned (#6288)', () => {
       );
       assert.equal(calls, 1, 'the in-flight slot must stay parked until the latch deadline');
       assert.equal(
+        await Promise.race([extra.then(() => 'settled'), Promise.resolve('pending')]),
+        'pending',
+        'the incoming write is admitted by evicting an older waiter, not overflowed itself',
+      );
+      const dropped = await queuedWrites[0]!.then(() => null, (reason: unknown) => reason);
+      assert.equal(
+        collectorFailureFromError(dropped)?.kind,
+        'queue-overflow',
+        'the oldest queued non-critical write is the overflow victim',
+      );
+      assert.equal(
         await Promise.race([parked.then(() => 'settled'), Promise.resolve('pending')]),
         'pending',
         'the parked write must not be force-expired before the latch deadline',
+      );
+    } finally {
+      Date.now = originalNow;
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('pumps a stale latch from wall-clock even when the queue is not full (#6947)', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', {
+      configurable: true,
+      value: () => new AbortController().signal,
+    });
+    const fakeTimers = installFakeTimers();
+    let now = 1_700_000_000_000;
+    const originalNow = Date.now;
+    Date.now = () => now;
+    const originalWarn = console.warn;
+    const overflowWarnings: Array<Record<string, unknown>> = [];
+    console.warn = (...args: unknown[]) => {
+      const detail = args[1];
+      if (detail && typeof detail === 'object' && (detail as { failureKind?: unknown }).failureKind === 'queue-overflow') {
+        overflowWarnings.push(detail as Record<string, unknown>);
+      }
+    };
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return calls <= 2 ? parkForever() : Promise.resolve(collectorResponse(true, 200));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const parked = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void parked.catch(() => {});
+      const queued = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void queued.catch(() => {});
+      await drainPromiseHandlers();
+      assert.equal(calls, 1, 'one waiter sits behind the parked write');
+
+      now += LATCH_DEADLINE_MS;
+      const extra = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void extra.catch(() => {});
+      await drainPromiseHandlers(() => calls >= 2, 'a later enqueue must pump a stale latch below the overflow bound');
+      assert.equal(calls, 2, 'the queued waiter is dispatched; extra stays behind it');
+      await drainPromiseHandlers();
+      assert.equal(calls, 2, 'the parked write must not start a third fetch after the successor owns the slot');
+      assert.equal(overflowWarnings.length, 0);
+      assert.equal(
+        await Promise.race([extra.then(() => 'settled'), Promise.resolve('pending')]),
+        'pending',
+      );
+    } finally {
+      Date.now = originalNow;
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('pumps a full queue from wall-clock on the compatibility path too (#6947)', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const fakeTimers = installFakeTimers();
+    let now = 1_700_000_000_000;
+    const originalNow = Date.now;
+    Date.now = () => now;
+    const originalWarn = console.warn;
+    const overflowWarnings: Array<Record<string, unknown>> = [];
+    console.warn = (...args: unknown[]) => {
+      const detail = args[1];
+      if (detail && typeof detail === 'object' && (detail as { failureKind?: unknown }).failureKind === 'queue-overflow') {
+        overflowWarnings.push(detail as Record<string, unknown>);
+      }
+    };
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return calls <= 2 ? parkForever() : Promise.resolve(collectorResponse(true, 200));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const parked = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void parked.catch(() => {});
+      for (let index = 0; index < COLLECTOR_QUEUE_LIMIT; index += 1) {
+        void window.fetch(UMAMI_SEND_URL, collectorEventInit()).catch(() => {});
+      }
+      await drainPromiseHandlers();
+      assert.equal(calls, 1, 'the queue is full behind one parked write');
+
+      now += LATCH_DEADLINE_MS;
+      const extra = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void extra.catch(() => {});
+      await drainPromiseHandlers(() => calls >= 2, 'the compatibility path must pump from wall-clock without a timer callback');
+      assert.equal(calls, 2, 'exactly one write is dispatched from the stale release');
+      const parkedError = await parked.then(() => null, (reason: unknown) => reason);
+      assert.deepEqual(
+        collectorFailureFromError(parkedError),
+        { kind: 'timeout', raced: true },
+      );
+      await drainPromiseHandlers();
+      assert.equal(calls, 2, 'the parked write must not start a third fetch after the successor owns the slot');
+      assert.equal(overflowWarnings.length, 0, 'a stale latch must not shed the enqueue that woke it');
+    } finally {
+      Date.now = originalNow;
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('admits a non-critical extra after pumping a stale all-critical queue (#6947)', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', {
+      configurable: true,
+      value: () => new AbortController().signal,
+    });
+    const fakeTimers = installFakeTimers();
+    let now = 1_700_000_000_000;
+    const originalNow = Date.now;
+    Date.now = () => now;
+    const originalWarn = console.warn;
+    const overflowWarnings: Array<Record<string, unknown>> = [];
+    console.warn = (...args: unknown[]) => {
+      const detail = args[1];
+      if (detail && typeof detail === 'object' && (detail as { failureKind?: unknown }).failureKind === 'queue-overflow') {
+        overflowWarnings.push(detail as Record<string, unknown>);
+      }
+    };
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return calls <= 2 ? parkForever() : Promise.resolve(collectorResponse(true, 200));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const parked = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void parked.catch(() => {});
+      for (let index = 0; index < COLLECTOR_QUEUE_LIMIT; index += 1) {
+        void window.fetch(UMAMI_SEND_URL, collectorCriticalEventInit()).catch(() => {});
+      }
+      await drainPromiseHandlers();
+      now += LATCH_DEADLINE_MS;
+      const extra = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void extra.catch(() => {});
+      await drainPromiseHandlers(() => calls >= 2, 'the stale latch must make room before the all-critical overflow branch');
+      assert.equal(calls, 2);
+      assert.equal(overflowWarnings.length, 0, 'drain-before-overflow must not reject the incoming non-critical write');
+      assert.equal(
+        await Promise.race([extra.then(() => 'settled'), Promise.resolve('pending')]),
+        'pending',
+        'the non-critical extra is queued behind the remaining critical waiters',
       );
     } finally {
       Date.now = originalNow;
