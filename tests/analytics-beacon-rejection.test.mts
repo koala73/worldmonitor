@@ -1022,13 +1022,16 @@ describe('collector request timeout compatibility (#6086)', () => {
         const queued = window.fetch(UMAMI_SEND_URL, collectorEventInit());
         await drainPromiseHandlers();
 
-        assert.equal(deadlines.length, 1, `${label}: the native path must request a collector deadline`);
-        assert.equal(deadlines[0]?.ms, 20_000, `${label}: the deadline must be the collector bound`);
+        const requestDeadlines = deadlines.filter((deadline) => deadline.ms === 20_000);
+        const latchDeadlines = deadlines.filter((deadline) => deadline.ms === LATCH_DEADLINE_MS);
+        assert.equal(requestDeadlines.length, 1, `${label}: the native path must request a collector deadline`);
+        assert.equal(latchDeadlines.length, 1, `${label}: the native path must retain a latch deadline`);
+        assert.equal(requestDeadlines[0]?.ms, 20_000, `${label}: the deadline must be the collector bound`);
         assert.equal(calls, 1, `${label}: the second write waits for the stalled request`);
 
         // Fire the DEADLINE, never the caller signal. If either native branch
         // substituted a non-timing signal, nothing aborts and both awaits hang.
-        deadlines[0]?.controller.abort(createNativeTimeoutError());
+        requestDeadlines[0]?.controller.abort(createNativeTimeoutError());
 
         await assert.rejects(stalled, { name: 'TimeoutError' });
         assert.equal((await queued).status, 200);
@@ -1224,20 +1227,63 @@ describe('collector latch release is module-owned (#6288)', () => {
       // Fire the request-side deadline exactly as production does. It reaches a
       // transport that threw the signal away, so nothing settles. This is the
       // boundary #6088 bought and no further.
-      assert.equal(requestDeadlines[0]?.ms, 20_000, 'the native path must still bind the request-side deadline');
-      requestDeadlines[0]?.controller.abort(createNativeTimeoutError());
+      const requestDeadline = requestDeadlines.find((deadline) => deadline.ms === 20_000);
+      assert.ok(requestDeadline, 'the native path must still bind the request-side deadline');
+      requestDeadline.controller.abort(createNativeTimeoutError());
       await drainPromiseHandlers();
       assert.equal(parkedSettled, false, 'the premise: the transport promise never settles');
       assert.equal(calls, 1, 'aborting a transport that discards the signal cannot drain the queue');
 
-      const latchDeadline = findLatchDeadline(fakeTimers.timers);
-      assert.ok(latchDeadline, 'the module must own a latch deadline the transport cannot withhold');
-      latchDeadline.callback();
+      const latchDeadline = requestDeadlines.find((deadline) => deadline.ms === LATCH_DEADLINE_MS);
+      assert.ok(latchDeadline, 'the module must own a native latch deadline the transport cannot withhold');
+      latchDeadline.controller.abort(createNativeTimeoutError());
 
       const error = await parked.then(() => null, (reason: unknown) => reason);
       assert.equal((error as Error | null)?.name, 'TimeoutError');
       await drainPromiseHandlers(() => calls === 2, 'the queued write reaches the network');
       assert.equal((await queued).status, 200, 'the write behind the park is delivered, not shed');
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('uses a native latch signal that hidden-tab timer throttling cannot withhold (#6947)', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    const deadlines: { ms: number; controller: AbortController }[] = [];
+    Object.defineProperty(AbortSignal, 'timeout', {
+      configurable: true,
+      value: (ms: number) => {
+        const controller = new AbortController();
+        deadlines.push({ ms, controller });
+        return controller.signal;
+      },
+    });
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return calls === 1 ? parkForever() : Promise.resolve(collectorResponse(true, 200));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const parked = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void parked.catch(() => {});
+      const queued = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      await drainPromiseHandlers();
+      assert.equal(calls, 1, 'the second write waits behind the parked request');
+
+      const latch = deadlines.find((deadline) => deadline.ms === LATCH_DEADLINE_MS);
+      assert.ok(latch, 'the native path must retain a 25s latch signal outside the fetch wrapper');
+      latch.controller.abort(createNativeTimeoutError());
+
+      await assert.rejects(parked, { name: 'TimeoutError' });
+      await drainPromiseHandlers(() => calls === 2, 'the queued write reaches the network');
+      assert.equal((await queued).status, 200);
     } finally {
       console.warn = originalWarn;
       fakeTimers.restore();

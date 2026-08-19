@@ -193,18 +193,16 @@ const REQUEST_TIMEOUT_MS = 20_000;
  *
  * The abort signal and the latch deadline must NOT expire on the same tick. A
  * transport that honors the abort still needs a moment to reject — in a browser
- * that rejection is queued as a task, and on the native path the platform's
- * `AbortSignal.timeout` timer is not ordered against this module's `setTimeout`
- * at all. Firing both at once would make the winner unspecified, so a perfectly
- * cooperative transport would intermittently be reclassified as `raced` and lose
- * the retry it is entitled to. The grace period buys determinism: the transport
- * always gets first refusal, and the module only steps in for a transport that
- * did not answer the abort at all.
+ * that rejection is queued as a task, and the request and latch timers remain
+ * independent clocks. Firing both at once would make the winner unspecified, so
+ * a perfectly cooperative transport would intermittently be reclassified as
+ * `raced` and lose the retry it is entitled to. The grace period buys
+ * determinism: the transport always gets first refusal, and the module only
+ * steps in for a transport that did not answer the abort at all.
  *
  * Sized well above the rejection itself because the two clocks can drift under
- * load: a long task, or a hidden tab under Chromium's intensive throttling
- * (setTimeout clamped to ~1/min after 5 minutes), can leave both timers due in
- * one wake-up. The extra latency lands ONLY on the already-anomalous stalled
+ * load: a long task, or a throttled fallback timer, can leave both timers due
+ * in one wake-up. The extra latency lands ONLY on the already-anomalous stalled
  * tail — a healthy write settles in milliseconds and never sees this timer — so
  * widening it costs nothing on the happy path and buys margin against a false
  * `raced`, which would cost a legitimate write both its retry and its durable
@@ -944,10 +942,8 @@ function withRequestAbort(
  * (`orig(new Request(url, { method, headers, body }))`, the standard shape for
  * RUM SDKs that re-time requests) silently drops `init.signal`, and one that
  * re-wraps the promise without forwarding rejection never settles at all. On
- * the native branch the entire deadline lives inside the `AbortSignal.timeout`
- * object such a wrapper discards, so that path — which carries essentially all
- * real traffic — had strictly LESS module-side protection than the
- * compatibility path.
+ * the native branch the request deadline lives inside the signal such a wrapper
+ * may discard, so the latch below retains its own signal instead.
  *
  * `deadline` is the half nobody else can withhold. Keep sending the abort too:
  * cancelling a well-behaved transport is still correct, and the race only stops
@@ -959,6 +955,30 @@ function withCollectorDeadline(
 ): TimeoutBoundInit {
   // First, because withManualAbort throws when AbortController is unavailable.
   const bound = withRequestAbort(init, timeoutMs);
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    // Keep the latch on the platform timer behind `AbortSignal.timeout`, not on
+    // a page `setTimeout`. Hidden tabs throttle page timers to roughly once a
+    // minute, so a 25s setTimeout latch can fail to pump even one queue slot
+    // inside a 60s health window (#6947). The fetch wrapper may discard the
+    // signal passed below; this retained signal still belongs to this module.
+    const latchSignal = AbortSignal.timeout(timeoutMs + LATCH_RELEASE_GRACE_MS);
+    let releaseLatch: (() => void) | undefined;
+    const deadline = new Promise<never>((_resolve, reject) => {
+      releaseLatch = () => reject(createTimeoutError(timeoutMs, true));
+      if (latchSignal.aborted) releaseLatch();
+      else latchSignal.addEventListener('abort', releaseLatch, { once: true });
+    });
+    void deadline.catch(() => {});
+    return {
+      init: bound.init,
+      deadline,
+      cleanup: () => {
+        if (releaseLatch) latchSignal.removeEventListener('abort', releaseLatch);
+        bound.cleanup();
+      },
+    };
+  }
+
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_resolve, reject) => {
     deadlineTimer = setTimeout(
