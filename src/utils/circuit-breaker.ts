@@ -69,6 +69,7 @@ export class CircuitBreaker<T> {
   private persistentLoadPromises = new Map<string, Promise<void>>();
   private lastDataState: BreakerDataState = { mode: 'unavailable', timestamp: null, offline: false };
   private backgroundRefreshPromises = new Map<string, Promise<StaleRefreshOutcome<T>>>();
+  private recoveryProbeInFlight = false;
   private maxCacheEntries: number;
   private persistentStaleCeilingMs: number;
 
@@ -92,12 +93,25 @@ export class CircuitBreaker<T> {
   }
 
   private isStateOnCooldown(): boolean {
-    if (Date.now() < this.state.cooldownUntil) return true;
-    if (this.state.cooldownUntil > 0) {
-      this.state.failures = 0;
-      this.state.cooldownUntil = 0;
-    }
-    return false;
+    return Date.now() < this.state.cooldownUntil;
+  }
+
+  /** Move an expired breaker into one bounded recovery probe.
+   *
+   *  Cooldown reads must stay side-effect-free; recovery is decided only when
+   *  execute() is ready to contact the upstream. Retaining one failure below
+   *  the threshold makes a failed probe reopen the breaker immediately.
+   */
+  private beginRecoveryProbeIfCooldownExpired(): boolean {
+    if (this.state.cooldownUntil === 0 || this.isStateOnCooldown()) return false;
+    this.state.cooldownUntil = 0;
+    this.state.failures = Math.max(0, this.maxFailures - 1);
+    this.recoveryProbeInFlight = true;
+    return true;
+  }
+
+  private finishRecoveryProbe(): void {
+    this.recoveryProbeInFlight = false;
   }
 
   private getPersistKey(cacheKey: string): string {
@@ -250,7 +264,14 @@ export class CircuitBreaker<T> {
     return null;
   }
 
+  /** Return fresh cache data only; expired entries require the explicit stale accessor below. */
   getCachedOrDefault(defaultValue: T, cacheKey?: string): T {
+    const resolvedKey = this.resolveCacheKey(cacheKey);
+    return this.getCached(resolvedKey) ?? defaultValue;
+  }
+
+  /** Return a cache entry even after its TTL, for explicit stale fallbacks. */
+  getCachedOrDefaultStale(defaultValue: T, cacheKey?: string): T {
     const resolvedKey = this.resolveCacheKey(cacheKey);
     return this.getCacheEntry(resolvedKey)?.data ?? defaultValue;
   }
@@ -396,15 +417,15 @@ export class CircuitBreaker<T> {
       cachedEntry = null;
     }
 
-    if (this.isStateOnCooldown()) {
+    if (this.isStateOnCooldown() || this.recoveryProbeInFlight) {
       console.log(`[${this.name}] Currently unavailable, ${this.getCooldownRemaining()}s remaining`);
-      if (cachedEntry !== null && this.isCacheEntryFresh(cachedEntry)) {
+      if (cachedEntry !== null) {
         this.lastDataState = { mode: 'cached', timestamp: cachedEntry.timestamp, offline };
         this.touchCacheKey(cacheKey);
         return cachedEntry.data as R;
       }
       this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
-      return (cachedEntry?.data ?? defaultValue) as R;
+      return defaultValue;
     }
 
     if (
@@ -423,6 +444,7 @@ export class CircuitBreaker<T> {
     // a fresh entry, preserving it as fallback while awaiting the refresh.
     // Skip SWR when cacheTtlMs === 0.
     if (cachedEntry !== null && this.cacheTtlMs > 0) {
+      const recoveryProbe = this.beginRecoveryProbeIfCooldownExpired();
       this.lastDataState = { mode: 'cached', timestamp: cachedEntry.timestamp, offline };
       this.touchCacheKey(cacheKey);
       // Fire-and-forget background refresh — guard against concurrent SWR fetches
@@ -462,6 +484,7 @@ export class CircuitBreaker<T> {
             return { kind: 'failed' };
           }
         })().finally(() => {
+          if (recoveryProbe) this.finishRecoveryProbe();
           this.backgroundRefreshPromises.delete(cacheKey);
         });
         this.backgroundRefreshPromises.set(cacheKey, refreshPromise);
@@ -486,6 +509,7 @@ export class CircuitBreaker<T> {
       return cachedEntry.data as R;
     }
 
+    const recoveryProbe = this.beginRecoveryProbeIfCooldownExpired();
     try {
       const result = await fn();
       const now = Date.now();
@@ -501,6 +525,8 @@ export class CircuitBreaker<T> {
       this.recordFailure(msg);
       this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
       return defaultValue;
+    } finally {
+      if (recoveryProbe) this.finishRecoveryProbe();
     }
   }
 }
