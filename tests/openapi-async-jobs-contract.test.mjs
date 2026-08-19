@@ -56,8 +56,9 @@ function assertAsyncJobContract(op, label) {
   assert.ok(String(location.example ?? '').startsWith(`${POLL_PATH}?jobId=`), `${label} Location example must target the poll endpoint`);
 
   // Injector composition: openapi-inject-idempotency.mjs stamps the
-  // replay-marker headers on the success response BEFORE the 200→202 rename;
-  // the async-jobs injector must merge Location in without clobbering them.
+  // replay-marker headers on the 200 BEFORE the async-jobs injector copies it
+  // to 202; the async-jobs injector must merge Location into the 202 (and keep
+  // it off the 200) without clobbering them.
   assert.ok(accepted.headers?.['Idempotent-Replayed'], `${label} 202 must keep the Idempotent-Replayed replay marker`);
   assert.ok(accepted.headers?.['Idempotency-Key'], `${label} 202 must keep the Idempotency-Key echo header`);
 

@@ -20,11 +20,11 @@
  * the job-envelope schema; 200's description states that the live enqueue
  * status is 202.
  *
- * Wired into `make generate` (LAST, after the other OpenAPI injectors — the
+ * Wired into `make generate` after the other response-shaping injectors — the
  * examples injector stamps the success example while the response is still
- * keyed "200"; the rename carries it along, and its standalone rerun matches
- * any 2xx so the committed "202" stays stable). Exposed as
- * `npm run gen:openapi:async-jobs`. Idempotent + byte-faithful (JSON
+ * keyed "200"; the copy in step 1 carries it along to "202", and its
+ * standalone rerun matches any 2xx so the committed "202" stays stable.
+ * Exposed as `npm run gen:openapi:async-jobs`. Idempotent + byte-faithful (JSON
  * re-serialized with the shared sorted, Go-escaped strategy; YAML via
  * surgical line edits). See the orank Access-layer work (#4698, #4728).
  */
@@ -201,7 +201,6 @@ function injectYaml(text) {
       copy[0] = copy[0].replace('"200":', '"202":');
       lines.splice(okIndex, 0, ...copy);
       acceptedIndex = okIndex;
-      okIndex += copy.length;
       responsesEnd += copy.length;
       changed = true;
     } else if (acceptedIndex !== -1 && okIndex === -1) {
@@ -209,10 +208,12 @@ function injectYaml(text) {
       const copy = lines.slice(acceptedIndex, acceptedEndForCopy);
       copy[0] = copy[0].replace('"202":', '"200":');
       lines.splice(acceptedEndForCopy, 0, ...copy);
-      okIndex = acceptedEndForCopy;
       responsesEnd += copy.length;
       changed = true;
     }
+    // okIndex is deliberately not maintained past this point — step 4 re-derives
+    // the 200 block's position itself (okStart) against a freshly recomputed end
+    // bound, so a value shifted by the splices above would be a stale trap.
     if (acceptedIndex === -1) continue;
     const acceptedEnd = blockEndAtIndent(lines, acceptedIndex, responsesEnd, 16);
 
