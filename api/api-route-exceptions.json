@@ -554,7 +554,14 @@
     {
       "path": "api/not-found.ts",
       "category": "ops-admin",
-      "reason": "Structured JSON 404 responder for unmatched /api/* paths (mounted by api/[...notfound].ts). Fixed-shape error envelope for agents/scanners in place of Vercel's native text/plain NOT_FOUND; not a product API.",
+      "reason": "Structured JSON 404 responder for unmatched /api/* paths (mounted by api/[...notfound].ts). Fixed-shape error envelope for agents/scanners in place of Vercel's native text/plain NOT_FOUND; unmatched GET/HEAD /api/*.md probes are answered as heading-led text/markdown twins instead. Not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/md-twin.ts",
+      "category": "non-json",
+      "reason": "Agent markdown URL-fallback generator. AfterFiles rewrite of unmatched /{page}.md (static files and /docs/* still win) returns heading-led text/markdown from the sibling page — not a JSON data API.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

@@ -105,8 +105,8 @@ describe('rootless Mintlify route canonicalization', () => {
     }
   });
 
-  it('does not intercept product routes, unknown routes, or non-read methods', () => {
-    for (const path of ['/pricing', '/changelog', '/country-intel', '/sandbox', '/sandbox/', '/sandbox/index.json']) {
+  it('does not intercept product routes or non-read methods', () => {
+    for (const path of ['/pricing', '/changelog', '/sandbox', '/sandbox/', '/sandbox/index.json']) {
       assert.equal(
         middleware(new Request(`https://www.worldmonitor.app${path}`, {
           headers: { host: 'www.worldmonitor.app', 'user-agent': 'Googlebot' },
@@ -122,6 +122,15 @@ describe('rootless Mintlify route canonicalization', () => {
       })),
       undefined
     );
+  });
+
+  it('lets the agent-friendly 404 handle unknown extensionless routes', () => {
+    const response = middleware(new Request('https://www.worldmonitor.app/country-intel', {
+      headers: { host: 'www.worldmonitor.app', 'user-agent': 'Googlebot' },
+    }));
+    assert.ok(response instanceof Response, '/country-intel is not a product route and must 404');
+    assert.equal(response.status, 404);
+    assert.match(response.headers.get('content-type') ?? '', /text\/markdown/);
   });
 
   it('matches future extensionless docs routes without intercepting static assets', () => {

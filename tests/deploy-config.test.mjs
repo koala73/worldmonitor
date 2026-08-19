@@ -40,7 +40,7 @@ const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dock
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
 const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
@@ -97,9 +97,10 @@ const getHeadersForSource = (sourcePath) => {
 };
 
 // Convert a vercel.json `source` (the path-to-regexp subset used in this file)
-// into a RegExp: literal segments, inline regex groups `(...)` kept raw, and
-// `:name*` catch-all params. Lets tests evaluate which rules match a concrete
-// URL instead of only asserting on a rule in isolation.
+// into a RegExp: literal segments, inline regex groups `(...)` kept raw,
+// `:name(regex)` custom matchers, and `:name*` catch-all params. Lets tests
+// evaluate which rules match a concrete URL instead of only asserting on a
+// rule in isolation.
 const sourceToRegExp = (source) => {
   let out = '';
   for (let i = 0; i < source.length; i++) {
@@ -119,7 +120,20 @@ const sourceToRegExp = (source) => {
     } else if (ch === ':') {
       let j = i + 1;
       while (j < source.length && /[A-Za-z0-9_]/.test(source[j])) j++;
-      if (source[j] === '*') {
+      if (source[j] === '(') {
+        // `:name(regex)` custom matcher — drop the name, keep the group.
+        let depth = 0;
+        let k = j;
+        for (; k < source.length; k++) {
+          if (source[k] === '(') depth++;
+          else if (source[k] === ')') {
+            depth--;
+            if (depth === 0) break;
+          }
+        }
+        out += source.slice(j, k + 1);
+        i = k;
+      } else if (source[j] === '*') {
         out = out.replace(/\/$/, '');
         out += '(?:/.*)?';
         i = j;
@@ -1303,13 +1317,14 @@ describe('deploy/API CORS guardrails', () => {
     ]);
     const apiCorsRules = vercelConfig.headers
       .filter((entry) => entry.source.startsWith('/api'))
+      .filter((entry) => !entry.source.endsWith('.md'))
       .filter((entry) => entry.headers?.some((header) => corsHeaderKeys.has(header.key.toLowerCase())))
       .map((entry) => entry.source);
 
     assert.deepEqual(
       apiCorsRules,
       [],
-      'API CORS must be emitted by handlers so credentialed requests get origin-specific ACAO plus ACAC=true.'
+      'JSON API CORS must be emitted by handlers so credentialed requests get origin-specific ACAO plus ACAC=true. Static /api/*.md twins are public agent documents and may set ACAO * in vercel.json.'
     );
   });
 });
@@ -2814,7 +2829,95 @@ describe('agent readiness: auth.md walkthrough', () => {
     assert.equal(dashboardShadow('/auth.md'), undefined, '/auth.md must serve the real file, not the dashboard');
     assert.ok(SPA_HTML_CACHE_SOURCE.includes('|auth\\.md|'), 'HTML cache catch-all must keep excluding /auth.md');
   });
+});
 
+// orank "Markdown URL fallback": homepage /index.md already returns markdown,
+// but the scanner sampled GET /api/download as the content page and then
+// requested /api/download.md. That path used to hit api/[...notfound].ts as
+// JSON 404. Cloudflare Markdown for Agents cannot fill this gap — it converts
+// HTML only when Accept: text/markdown, and /api/download is a 302, not HTML.
+describe('agent readiness: /api/download.md URL twin', () => {
+  const downloadMdPath = resolve(__dirname, '../public/api/download.md');
+  const downloadMd = readFileSync(downloadMdPath, 'utf-8');
+
+  it('publishes heading-led markdown at public/api/download.md', () => {
+    assert.ok(existsSync(downloadMdPath), 'expected public/api/download.md (markdown twin of GET /api/download)');
+    assert.match(downloadMd, /^# /m, '/api/download.md must open with a heading so scanners accept a non-HTML body');
+    assert.match(downloadMd, /platform=windows-exe/);
+    assert.match(downloadMd, /platform=macos-arm64/);
+    assert.match(downloadMd, /platform=linux-appimage/);
+  });
+
+  it('serves /api/download.md as markdown with CORS and a self-canonical Link', () => {
+    assert.equal(getHeaderValueForSource('/api/download.md', 'Content-Type'), 'text/markdown; charset=utf-8');
+    assert.equal(getHeaderValueForSource('/api/download.md', 'Access-Control-Allow-Origin'), '*');
+    assert.equal(
+      getHeaderValueForSource('/api/download.md', 'Link'),
+      '<https://www.worldmonitor.app/api/download.md>; rel="canonical"'
+    );
+  });
+
+  it('is not rewritten to the dashboard shell', () => {
+    const dashboardShadow = (path) => vercelConfig.rewrites.find((r) =>
+      r.destination === DASHBOARD_HTML_DESTINATION && sourceToRegExp(r.source).test(path)
+    );
+    assert.equal(dashboardShadow('/api/download.md'), undefined, '/api/download.md must serve the static twin, not the dashboard');
+    assert.ok(
+      SPA_HTML_CACHE_SOURCE.startsWith('/((?!api|'),
+      '/api/* (including /api/download.md) must stay outside the HTML-cache catch-all'
+    );
+  });
+});
+
+// orank "Markdown URL fallback" is site-wide (`/docs/auth` → `/docs/auth.md`),
+// not a single sampled URL. Static public/*.md files still win (afterFiles).
+// /docs/:match* stays first so Mintlify keeps /docs/*.md. /index.md stays
+// ahead of the generic fallback. /api/*.md is excluded from this rewrite so
+// the filesystem catch-all (api/[...notfound].ts) can emit markdown without
+// reintroducing a shadowing /api/:path* rewrite (#4724).
+describe('agent readiness: generic markdown URL-fallback rewrite', () => {
+  const mdTwinRewrite = vercelConfig.rewrites.find((r) =>
+    typeof r.destination === 'string' && r.destination.startsWith('/api/md-twin')
+  );
+  const rewriteIndex = (source) => vercelConfig.rewrites.findIndex((r) => r.source === source);
+
+  it('rewrites unmatched /{page}.md to /api/md-twin after docs and /index.md', () => {
+    assert.ok(mdTwinRewrite, 'expected a generic /{page}.md → /api/md-twin rewrite');
+    assert.match(mdTwinRewrite.source, /api\//, 'rewrite must exclude /api/*.md (handled by the not-found catch-all)');
+    assert.match(mdTwinRewrite.source, /:mdPath|:path/, 'rewrite must capture the sibling path as a Vercel :param');
+    assert.doesNotMatch(
+      mdTwinRewrite.source,
+      /\(\?</,
+      'PCRE named groups are not Vercel :params; destination :mdPath would fail deploy (invalid-route-destination-segment)',
+    );
+    const mdIdx = vercelConfig.rewrites.indexOf(mdTwinRewrite);
+    assert.ok(mdIdx > rewriteIndex('/docs/:match*'), '/docs/:match* must stay ahead of the generic .md fallback');
+    assert.ok(mdIdx > rewriteIndex('/index.md'), '/index.md → /home.md must stay ahead of the generic .md fallback');
+  });
+
+  it('does not reintroduce a shadowing /api/:path* → /api/not-found rewrite', () => {
+    const shadow = (vercelConfig.rewrites ?? []).find((r) =>
+      r.destination === '/api/not-found' && /^\/api\/(?::[^/]*\*|\(\.\*\))$/.test(r.source ?? '')
+    );
+    assert.equal(shadow, undefined, 'do not add /api/:path* → /api/not-found; it shadows [rpc].ts gateways (#4724)');
+  });
+
+  it('sends content-page .md twins to the generator, not the dashboard shell', () => {
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/dashboard.md' })?.destination, '/api/md-twin?path=:mdPath');
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/stocks/AAPL.md' })?.destination, '/api/md-twin?path=:mdPath');
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/docs/auth.md' })?.destination, 'https://worldmonitor.mintlify.dev/docs/:match*');
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/index.md' })?.destination, '/home.md');
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/api/health.md' }), null);
+  });
+
+  it('keeps HTML-cache catch-all from applying to generated .md twins', () => {
+    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|.*\\.md$'), 'HTML cache catch-all must exclude every *.md path');
+    assert.equal(sourceToRegExp(SPA_HTML_CACHE_SOURCE).test('/dashboard.md'), false);
+    assert.equal(sourceToRegExp(SPA_HTML_CACHE_SOURCE).test('/dashboard'), true);
+  });
+});
+
+describe('agent readiness: remaining markdown twins', () => {
   // pricing.md and support.md are advertised in api-catalog service-meta and
   // llms.txt (#4854/#4857), agents.md is the agent-discovery entry point
   // (#4952), so they get the same three-way pinning as auth.md:
