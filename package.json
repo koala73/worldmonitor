@@ -5,8 +5,16 @@
   "license": "AGPL-3.0-only",
   "allowScripts": {
     "@bufbuild/buf": true,
+    "@vaadin/vaadin-usage-statistics": false,
+    "browser-tabs-lock": false,
+    "bufferutil": false,
+    "core-js": false,
+    "es5-ext": false,
     "esbuild": true,
-    "sharp": true
+    "fsevents": false,
+    "protobufjs": false,
+    "sharp": true,
+    "utf-8-validate": false
   },
   "type": "module",
   "scripts": {
@@ -67,7 +75,7 @@
     "build:sitemap": "node scripts/build-sitemap.mjs",
     "build:sitemap:check": "npm run build:crawlable-corpus && node scripts/build-sitemap.mjs --check",
     "verify:sitemaps": "node scripts/verify-sitemaps.mjs",
-    "build:pro": "cd pro-test && npm ci --prefer-offline && npm run build",
+    "build:pro": "cross-env npm_config_allow_scripts= npm --prefix pro-test ci --prefer-offline && npm --prefix pro-test run build",
     "build:openapi": "node -e \"require('fs').cpSync('docs/api/worldmonitor.openapi.yaml', 'public/openapi.yaml')\" && node scripts/build-openapi-json.mjs",
     "gen:openapi:security": "node scripts/openapi-inject-security.mjs",
     "gen:openapi:examples": "node scripts/openapi-inject-examples.mjs",

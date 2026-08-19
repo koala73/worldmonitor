@@ -3,7 +3,8 @@
   "type": "module",
   "version": "0.0.1",
   "allowScripts": {
-    "esbuild": true
+    "esbuild": true,
+    "fsevents": false
   },
   "engines": {
     "node": ">=22.12.0"
