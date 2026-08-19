@@ -97,9 +97,10 @@ const getHeadersForSource = (sourcePath) => {
 };
 
 // Convert a vercel.json `source` (the path-to-regexp subset used in this file)
-// into a RegExp: literal segments, inline regex groups `(...)` kept raw, and
-// `:name*` catch-all params. Lets tests evaluate which rules match a concrete
-// URL instead of only asserting on a rule in isolation.
+// into a RegExp: literal segments, inline regex groups `(...)` kept raw,
+// `:name(regex)` custom matchers, and `:name*` catch-all params. Lets tests
+// evaluate which rules match a concrete URL instead of only asserting on a
+// rule in isolation.
 const sourceToRegExp = (source) => {
   let out = '';
   for (let i = 0; i < source.length; i++) {
@@ -119,7 +120,20 @@ const sourceToRegExp = (source) => {
     } else if (ch === ':') {
       let j = i + 1;
       while (j < source.length && /[A-Za-z0-9_]/.test(source[j])) j++;
-      if (source[j] === '*') {
+      if (source[j] === '(') {
+        // `:name(regex)` custom matcher — drop the name, keep the group.
+        let depth = 0;
+        let k = j;
+        for (; k < source.length; k++) {
+          if (source[k] === '(') depth++;
+          else if (source[k] === ')') {
+            depth--;
+            if (depth === 0) break;
+          }
+        }
+        out += source.slice(j, k + 1);
+        i = k;
+      } else if (source[j] === '*') {
         out = out.replace(/\/$/, '');
         out += '(?:/.*)?';
         i = j;
@@ -2870,7 +2884,12 @@ describe('agent readiness: generic markdown URL-fallback rewrite', () => {
   it('rewrites unmatched /{page}.md to /api/md-twin after docs and /index.md', () => {
     assert.ok(mdTwinRewrite, 'expected a generic /{page}.md → /api/md-twin rewrite');
     assert.match(mdTwinRewrite.source, /api\//, 'rewrite must exclude /api/*.md (handled by the not-found catch-all)');
-    assert.match(mdTwinRewrite.source, /mdPath|path/, 'rewrite must capture the sibling path');
+    assert.match(mdTwinRewrite.source, /:mdPath|:path/, 'rewrite must capture the sibling path as a Vercel :param');
+    assert.doesNotMatch(
+      mdTwinRewrite.source,
+      /\(\?</,
+      'PCRE named groups are not Vercel :params; destination :mdPath would fail deploy (invalid-route-destination-segment)',
+    );
     const mdIdx = vercelConfig.rewrites.indexOf(mdTwinRewrite);
     assert.ok(mdIdx > rewriteIndex('/docs/:match*'), '/docs/:match* must stay ahead of the generic .md fallback');
     assert.ok(mdIdx > rewriteIndex('/index.md'), '/index.md → /home.md must stay ahead of the generic .md fallback');
