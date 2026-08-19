@@ -7,6 +7,7 @@ World Monitor is a real-time global intelligence dashboard: curated news feeds, 
 ## Machine surfaces (use these)
 
 - **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP; issue `tools/list` for the live inventory. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
+- **WebMCP (visible browser tabs):** https://www.worldmonitor.app/docs/webmcp — experimental, page-local tools that operate the current homepage or dashboard UI in Chrome. WebMCP does not replace the hosted MCP server; use the server for remote, background, headless, or direct-data agents.
 - **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — Streamable HTTP, public (no auth); search-and-retrieval tools over the documentation. Use it for "how do I…" questions; use the product MCP above for live data.
 - **REST API:** base `https://api.worldmonitor.app` — OpenAPI spec: https://worldmonitor.app/openapi.yaml (JSON: /openapi.json) · API catalog: https://worldmonitor.app/.well-known/api-catalog
 - **NLWeb:** `POST https://www.worldmonitor.app/ask` (supports SSE) for natural-language questions; machine-readable dashboard view at `https://www.worldmonitor.app/?mode=agent`

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -27,6 +27,7 @@ const viteConfigSource = readFileSync(resolve(__dirname, '../vite.config.ts'), '
 const proViteConfigSource = readFileSync(resolve(__dirname, '../pro-test/vite.config.ts'), 'utf-8');
 const playwrightConfigSource = readFileSync(resolve(__dirname, '../playwright.config.ts'), 'utf-8');
 const embedE2eSource = readFileSync(resolve(__dirname, '../e2e/embed.spec.ts'), 'utf-8');
+const webMcpE2eSource = readFileSync(resolve(__dirname, '../e2e/webmcp.spec.ts'), 'utf-8');
 const testWorkflowSource = readFileSync(resolve(__dirname, '../.github/workflows/test.yml'), 'utf-8');
 const sitemapSource = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
 const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
@@ -80,6 +81,47 @@ const GLOBAL_CSP_EXTERNAL_SCRIPT_HTML_FILES = [
   'public/pro/welcome.html',
 ];
 const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
+const WEBMCP_PLAYWRIGHT_ENV_KEYS = [
+  'WM_REQUIRE_WEBMCP',
+  'WM_WEBMCP_PRODUCTION',
+  'WM_WEBMCP_PRODUCTION_URL',
+  'WM_WEBMCP_DEPLOYED_SHA',
+  'WM_WEBMCP_CHROME_CHANNEL',
+  'WM_WEBMCP_CHROME_EXECUTABLE_PATH',
+];
+
+function probePlaywrightWebMcpEnvironment(overrides = {}) {
+  const env = { ...process.env, NODE_NO_WARNINGS: '1' };
+  for (const key of WEBMCP_PLAYWRIGHT_ENV_KEYS) delete env[key];
+  Object.assign(env, overrides);
+
+  const probe = spawnSync(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      '--input-type=module',
+      '-e',
+      [
+        "const { default: config } = await import('./playwright.config.ts');",
+        "const chromium = config.projects?.find(({ name }) => name === 'chromium');",
+        'console.log(JSON.stringify({',
+        '  baseURL: config.use?.baseURL ?? null,',
+        '  hasWebServer: Boolean(config.webServer),',
+        '  launchArgs: chromium?.use?.launchOptions?.args ?? [],',
+        '  testMatch: config.testMatch ?? null,',
+        '}));',
+      ].join('\n'),
+    ],
+    {
+      cwd: resolve(__dirname, '..'),
+      encoding: 'utf8',
+      env,
+    },
+  );
+  assert.ifError(probe.error);
+  return probe;
+}
 
 const getCacheHeaderValue = (sourcePath) => {
   let value = null;
@@ -1512,13 +1554,193 @@ describe('security header guardrails', () => {
     );
   });
 
-  it('runs the strict WebMCP iframe probe in an enabled Chrome milestone', () => {
+  it('keeps local suites local unless the complete production-smoke environment is present', () => {
+    const deployedSha = 'a'.repeat(40);
+    const matrix = [
+      {
+        name: 'ordinary suite',
+        env: {},
+        expected: {
+          baseURL: 'http://127.0.0.1:4173',
+          hasWebServer: true,
+          testingFlag: false,
+          testMatch: null,
+        },
+      },
+      {
+        name: 'strict local WebMCP suite',
+        env: { WM_REQUIRE_WEBMCP: '1' },
+        expected: {
+          baseURL: 'http://127.0.0.1:4173',
+          hasWebServer: true,
+          testingFlag: true,
+          testMatch: null,
+        },
+      },
+      {
+        name: 'strict local WebMCP evidence with a deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        expected: {
+          baseURL: 'http://127.0.0.1:4173',
+          hasWebServer: true,
+          testingFlag: true,
+          testMatch: null,
+        },
+      },
+      {
+        name: 'bounded production smoke',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        expected: {
+          baseURL: 'https://www.worldmonitor.app',
+          hasWebServer: false,
+          testingFlag: false,
+          testMatch: '**/webmcp.spec.ts',
+        },
+      },
+    ];
+
+    for (const entry of matrix) {
+      const probe = probePlaywrightWebMcpEnvironment(entry.env);
+      assert.equal(
+        probe.status,
+        0,
+        `${entry.name} should load playwright.config.ts:\n${probe.stderr}`,
+      );
+      const resolved = JSON.parse(probe.stdout.trim());
+      assert.equal(resolved.baseURL, entry.expected.baseURL, `${entry.name} baseURL`);
+      assert.equal(resolved.hasWebServer, entry.expected.hasWebServer, `${entry.name} webServer`);
+      assert.equal(resolved.testMatch, entry.expected.testMatch, `${entry.name} testMatch`);
+      assert.equal(
+        resolved.launchArgs.includes('--enable-features=WebMCPTesting'),
+        entry.expected.testingFlag,
+        `${entry.name} testing flag`,
+      );
+    }
+  });
+
+  it('rejects every incomplete or inconsistent WebMCP evidence environment', () => {
+    const deployedSha = 'b'.repeat(40);
+    const matrix = [
+      {
+        name: 'URL without production mode',
+        env: { WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app' },
+        error: /WM_WEBMCP_PRODUCTION_URL requires WM_WEBMCP_PRODUCTION=1/,
+      },
+      {
+        name: 'local SHA without strict WebMCP mode',
+        env: { WM_WEBMCP_DEPLOYED_SHA: deployedSha },
+        error: /WM_WEBMCP_DEPLOYED_SHA requires WM_REQUIRE_WEBMCP=1 outside production mode/,
+      },
+      {
+        name: 'explicit local mode with a remote URL',
+        env: {
+          WM_WEBMCP_PRODUCTION: '0',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+        },
+        error: /WM_WEBMCP_PRODUCTION_URL requires WM_WEBMCP_PRODUCTION=1/,
+      },
+      {
+        name: 'strict local mode with a malformed deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_DEPLOYED_SHA: 'not-a-sha',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record an exact 40-character hexadecimal SHA/,
+      },
+      {
+        name: 'strict local mode with an empty deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_DEPLOYED_SHA: '',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record an exact 40-character hexadecimal SHA/,
+      },
+      {
+        name: 'strict local mode with a whitespace-only deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_DEPLOYED_SHA: '   ',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record an exact 40-character hexadecimal SHA/,
+      },
+      {
+        name: 'production mode without strict WebMCP mode',
+        env: {
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        error: /WM_WEBMCP_PRODUCTION=1 requires WM_REQUIRE_WEBMCP=1/,
+      },
+      {
+        name: 'production mode without a URL',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        error: /WM_WEBMCP_PRODUCTION_URL must be https:\/\/www\.worldmonitor\.app/,
+      },
+      {
+        name: 'production mode with a different URL',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://tech.worldmonitor.app',
+          WM_WEBMCP_DEPLOYED_SHA: deployedSha,
+        },
+        error: /WM_WEBMCP_PRODUCTION_URL must be https:\/\/www\.worldmonitor\.app/,
+      },
+      {
+        name: 'production mode without a deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record the exact 40-character SHA/,
+      },
+      {
+        name: 'production mode with a malformed deployed SHA',
+        env: {
+          WM_REQUIRE_WEBMCP: '1',
+          WM_WEBMCP_PRODUCTION: '1',
+          WM_WEBMCP_PRODUCTION_URL: 'https://www.worldmonitor.app',
+          WM_WEBMCP_DEPLOYED_SHA: 'not-a-sha',
+        },
+        error: /WM_WEBMCP_DEPLOYED_SHA must record the exact 40-character SHA/,
+      },
+    ];
+
+    for (const entry of matrix) {
+      const probe = probePlaywrightWebMcpEnvironment(entry.env);
+      assert.notEqual(probe.status, 0, `${entry.name} must fail closed`);
+      assert.match(`${probe.stdout}\n${probe.stderr}`, entry.error, entry.name);
+    }
+  });
+
+  it('runs strict WebMCP invocation and iframe probes in an enabled Chrome milestone', () => {
     const script = packageJson.scripts?.['test:e2e:webmcp'] ?? '';
+    const productionScript = packageJson.scripts?.['test:e2e:webmcp:production'] ?? '';
     const variantSmokeJob = testWorkflowSource.match(
       /\n  variant-smoke-full:\n[\s\S]*?(?=\n  [a-z][a-z0-9-]+:\n|$)/,
     )?.[0] ?? '';
     assert.match(script, /WM_REQUIRE_WEBMCP=1/);
-    assert.match(script, /playwright test e2e\/embed\.spec\.ts --project=chromium/);
+    assert.match(script, /e2e\/webmcp\.spec\.ts/);
+    assert.match(script, /e2e\/embed\.spec\.ts/);
+    assert.match(script, /--project=chromium/);
+    assert.match(productionScript, /WM_REQUIRE_WEBMCP=1/);
+    assert.match(productionScript, /WM_WEBMCP_PRODUCTION=1/);
+    assert.match(productionScript, /e2e\/webmcp\.spec\.ts/);
+    assert.match(productionScript, /--headed/);
     assert.ok(variantSmokeJob, 'Test workflow must define the full-variant smoke job');
     assert.match(
       variantSmokeJob,
@@ -1530,6 +1752,17 @@ describe('security header guardrails', () => {
     assert.match(playwrightConfigSource, /channel: webMcpChromeChannel/);
     assert.match(playwrightConfigSource, /executablePath: webMcpChromeExecutablePath/);
     assert.match(playwrightConfigSource, /--enable-features=WebMCPTesting/);
+    assert.match(playwrightConfigSource, /requireWebMcp && !webMcpProduction/);
+    assert.match(playwrightConfigSource, /https:\/\/www\.worldmonitor\.app/);
+    assert.match(playwrightConfigSource, /WM_WEBMCP_DEPLOYED_SHA/);
+    assert.match(webMcpE2eSource, /document\.modelContext/);
+    assert.match(webMcpE2eSource, /\.getTools\(\)/);
+    assert.match(webMcpE2eSource, /provider\.executeTool/);
+    assert.match(webMcpE2eSource, /new AbortController\(\)/);
+    assert.match(webMcpE2eSource, /page\.on\('pageerror'/);
+    assert.match(webMcpE2eSource, /window\.addEventListener\('unhandledrejection'/);
+    assert.match(webMcpE2eSource, /lateLeakWindowMs/);
+    assert.match(webMcpE2eSource, /headers\['origin-trial'\]/);
     assert.match(embedE2eSource, /WEBMCP_MIN_CHROME_MAJOR = 149/);
     assert.match(embedE2eSource, /WM_REQUIRE_WEBMCP requires Chrome/);
   });

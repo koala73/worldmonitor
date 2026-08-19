@@ -1,14 +1,15 @@
 # World Monitor Developer Portal
 
-Last updated: July 7, 2026
+Last updated: August 19, 2026
 
-The World Monitor Developer Portal is the single entry point for building on World Monitor — the real-time global-intelligence platform that correlates geopolitics, markets, commodities, shipping, aviation, infrastructure, cyber threats, weather, and live news as source-attributed structured JSON. Every developer surface below shares one authentication model and one tool inventory, so you can start with the MCP server and drop down to the REST API or an SDK without relearning anything.
+The World Monitor Developer Portal is the single entry point for building on World Monitor — the real-time global-intelligence platform that correlates geopolitics, markets, commodities, shipping, aviation, infrastructure, cyber threats, weather, and live news as source-attributed structured JSON. The hosted MCP, REST, CLI, and SDK surfaces share the platform authentication model and underlying data contracts, so you can start with the MCP server and drop down to the REST API or an SDK without relearning the platform. WebMCP is different: it reuses the current browser session and exposes a smaller, page-local inventory for the visible website UI.
 
 This page names and links every developer resource type. For the machine-readable companion, see [agents.md](https://worldmonitor.app/agents.md) and the [API llms.txt](https://worldmonitor.app/api/llms.txt).
 
 ## Developer Resources
 
 - **[World Monitor MCP Server](https://worldmonitor.app/mcp-server.md):** the recommended agent surface — `https://worldmonitor.app/mcp`, Streamable HTTP. Connect Claude, Cursor, and any MCP-compatible client to live intelligence data. Details: [mcp-server.md](https://worldmonitor.app/mcp-server.md) · [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) · Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
+- **[World Monitor WebMCP](https://www.worldmonitor.app/docs/webmcp):** experimental, page-local Chrome tools for a visible WorldMonitor homepage or dashboard. They operate existing UI and reuse browser auth/entitlement; they do not replace the hosted MCP server for remote, background, headless, or direct-data agents.
 - **[World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md):** the OpenAPI 3.1 contract for the REST API — [openapi.yaml](https://worldmonitor.app/openapi.yaml) · [openapi.json](https://worldmonitor.app/openapi.json). Details: [openapi.md](https://worldmonitor.app/openapi.md)
 - **World Monitor REST API:** base `https://api.worldmonitor.app` — the same tools and data as the MCP server, exposed as granular endpoints over plain HTTP. Machine-readable [API catalog (RFC 9727)](https://worldmonitor.app/.well-known/api-catalog) · human docs at [/docs/documentation](https://www.worldmonitor.app/docs/documentation)
 - **[World Monitor SDKs](https://worldmonitor.app/sdks.md):** official zero-dependency client libraries for Python, Ruby, Go, and JavaScript. Details: [sdks.md](https://worldmonitor.app/sdks.md) · [SDK guide](https://www.worldmonitor.app/docs/sdks)

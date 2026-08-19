@@ -9,6 +9,10 @@ WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https:
 **New here?** The [MCP Quickstart](/mcp-quickstart) is a five-minute path from zero to a real tool call in Claude Desktop. Come back to this page for auth modes, plans, OAuth setup, and the full tool catalog.
 </Tip>
 
+<Note>
+Looking for tools that operate the dashboard already open in a Chrome tab? See [WebMCP](/webmcp). WebMCP is page-local, experimental, and human-in-the-loop; it does **not** replace this persistent hosted MCP server or its data tools.
+</Note>
+
 <Info>
 **Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. Free-tier users see a `403 INSUFFICIENT_TIER` at the OAuth step.
 
@@ -544,6 +548,7 @@ Triage from the outside in: HTTP status → JSON-RPC code → soft envelope. The
 
 ## Related
 
+- [WebMCP](/webmcp) — experimental, tab-bound tools that operate the visible WorldMonitor website
 - [MCP Quickstart](/mcp-quickstart) — five-minute zero-to-first-call walkthrough
 - [JMESPath guide](/mcp-jmespath) — projection grammar + 12 worked examples
 - [MCP Tools Reference](/mcp-tools-reference) — per-tool parameters and `curl` examples

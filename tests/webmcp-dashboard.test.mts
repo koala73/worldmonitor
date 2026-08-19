@@ -216,6 +216,31 @@ describe('WebMCP live dashboard bindings', () => {
     await assert.rejects(wait, /Dashboard is no longer available/);
   });
 
+  it('keeps a pre-ready invocation pending until UI readiness resolves', async () => {
+    let resolveReady!: () => void;
+    const uiReady = new Promise<void>((resolve) => {
+      resolveReady = resolve;
+    });
+    const appDestroyed = new Promise<void>(() => {});
+    let settled = false;
+    const wait = waitForWebMcpUiReady(uiReady, appDestroyed, 10_000)
+      .then(() => { settled = true; });
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(settled, false);
+    resolveReady();
+    await wait;
+    assert.equal(settled, true);
+  });
+
+  it('rejects deterministically when UI readiness exceeds its bound', async () => {
+    const never = new Promise<void>(() => {});
+    await assert.rejects(
+      waitForWebMcpUiReady(never, never, 5, 'Test UI'),
+      /Test UI did not initialise within 5ms/,
+    );
+  });
+
   it('reuses the real applier and preserves its denial reason', async () => {
     const result = await applyWebMcpDashboardAction(
       makeContext(),

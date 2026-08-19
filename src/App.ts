@@ -2898,6 +2898,11 @@ export class App {
     this.latestSearchMilitary = [];
     this.latestSearchAdsbUpdatedAt = 0;
     this.resolveAppDestroyed();
+    // Unregister agent entry points before the rest of teardown. In particular,
+    // init-failure cleanup may run on a partially initialised App; even if a
+    // later module cleanup throws, no WebMCP tool may retain this dead instance.
+    this.webMcpController?.abort();
+    this.webMcpController = null;
     this.tierPreferenceHandoff.clear();
     this.pendingPreferenceHandoffGeneration = undefined;
     this.viewportHydrationReady = false;
@@ -2952,11 +2957,6 @@ export class App {
     disconnectAisStream();
     stopFlightHistoryCleanup();
     stopLoadedVesselHistoryCleanup();
-    // Unregister every WebMCP tool so a same-document re-init (tests,
-    // HMR, SPA harness) doesn't leave the browser with stale bindings
-    // pointing at a disposed App.
-    this.webMcpController?.abort();
-    this.webMcpController = null;
   }
 
   private async initFindingsBadge(): Promise<void> {
