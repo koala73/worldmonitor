@@ -111,6 +111,7 @@ import {
 import { STARTUP_HUBS, ACCELERATORS, TECH_HQS, CLOUD_REGIONS } from '@/config/tech-geo';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { UNDERSEA_CABLES, NUCLEAR_FACILITIES, ECONOMIC_CENTERS, SPACEPORTS, CRITICAL_MINERALS, SANCTIONED_COUNTRIES_ALPHA2 } from '@/config/geo-map';
+import { CINEMA_HUBS, type CinemaHub } from '@/config/cinema-geo';
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment, type TradeRouteStatus } from '@/config/trade-routes';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
@@ -234,7 +235,10 @@ interface TechEventMarker {
 
 // View presets with longitude, latitude, zoom
 const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; zoom: number }> = {
-  global: { longitude: 0, latitude: 20, zoom: 1.5 },
+  // India variant opens centred on the subcontinent; every other variant keeps the world view.
+  global: SITE_VARIANT === 'india'
+    ? { longitude: 80, latitude: 21, zoom: 3.4 }
+    : { longitude: 0, latitude: 20, zoom: 1.5 },
   america: { longitude: -95, latitude: 38, zoom: 3 },
   mena: { longitude: 45, latitude: 28, zoom: 3.5 },
   eu: { longitude: 15, latitude: 50, zoom: 3.5 },
@@ -1972,6 +1976,12 @@ export class DeckGLMap {
       layers.push(this.createSpaceportsLayer());
     }
 
+    // Cinema hubs (festivals, studios, production hubs) — cinema variant. Static
+    // data, shown at every zoom so it's visible on the default view.
+    if (mapLayers.cinemaHubs) {
+      layers.push(this.createCinemaHubsLayer());
+    }
+
     // Hotspots layer (all hotspots including high/breaking, with pulse + ghost)
     if (mapLayers.hotspots) {
       layers.push(...this.createHotspotsLayers());
@@ -3042,6 +3052,25 @@ export class DeckGLMap {
       getFillColor: [200, 100, 255, 200] as [number, number, number, number], // Purple
       radiusMinPixels: 5,
       radiusMaxPixels: 12,
+      pickable: true,
+    });
+  }
+
+  private createCinemaHubsLayer(): ScatterplotLayer<CinemaHub> {
+    return new ScatterplotLayer<CinemaHub>({
+      id: 'cinema-hubs-layer',
+      data: CINEMA_HUBS,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 9000,
+      getFillColor: (d) => (
+        d.kind === 'festival'
+          ? [244, 63, 94, 210]
+          : d.kind === 'studio'
+            ? [250, 204, 21, 210]
+            : [56, 189, 248, 205]
+      ) as [number, number, number, number],
+      radiusMinPixels: 5,
+      radiusMaxPixels: 14,
       pickable: true,
     });
   }
@@ -4797,6 +4826,8 @@ export class DeckGLMap {
     const text = (value: unknown): string => escapeHtml(String(value ?? ''));
 
     switch (layerId) {
+      case 'cinema-hubs-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.city)}, ${text(obj.country)} · ${text(obj.kind)}</div>` };
       case 'hotspots-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${text(obj.subtext)}</div>` };
       case 'earthquakes-layer':

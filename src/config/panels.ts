@@ -1160,7 +1160,18 @@ function getVariantPanelConfigs(variant: string): Record<string, PanelConfig> | 
 }
 
 /** All panels from all variants — canonical cross-variant registry. */
+// Cinema / entertainment variant panels. These keys double as feed categories
+// (see CINEMA_FEEDS in feeds.ts) so each renders as a news panel.
+const CINEMA_PANELS: Record<string, PanelConfig> = {
+  entertainment:      { name: 'Entertainment', enabled: true, priority: 1 },
+  'india-cinema':     { name: 'Indian Cinema', enabled: true, priority: 1 },
+  boxoffice:          { name: 'Box Office', enabled: true, priority: 1 },
+  'ott-streaming':    { name: 'OTT & Streaming', enabled: true, priority: 1 },
+  'festivals-awards': { name: 'Festivals & Awards', enabled: true, priority: 1 },
+};
+
 export const ALL_PANELS: Record<string, PanelConfig> = {
+  ...CINEMA_PANELS,
   ...HAPPY_PANELS,
   ...COMMODITY_PANELS,
   ...ENERGY_PANELS,
@@ -1177,6 +1188,10 @@ export const VARIANT_DEFAULTS: Record<string, string[]> = {
   commodity: Object.keys(VARIANT_PANEL_CONFIGS.commodity),
   energy:    Object.keys(VARIANT_PANEL_CONFIGS.energy),
   happy:     Object.keys(VARIANT_PANEL_CONFIGS.happy),
+  // India desk reuses the full geopolitical panel set (labels overridden below).
+  india:     Object.keys(VARIANT_PANEL_CONFIGS.full),
+  // Cinema desk: entertainment news panels + the shared shell panels.
+  cinema:    ['map', 'live-news', 'entertainment', 'india-cinema', 'boxoffice', 'ott-streaming', 'festivals-awards', 'insights', 'monitors'],
 };
 
 /**
@@ -1206,6 +1221,17 @@ export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<stri
   },
   happy: {
     map:         { name: 'World Map' },
+  },
+  india: {
+    map:         { name: 'South Asia Map' },
+    'live-news': { name: 'South Asia Headlines' },
+    insights:    { name: 'AI Regional Insights' },
+    asia:        { name: 'India & South Asia' },
+  },
+  cinema: {
+    map:         { name: 'Cinema Map' },
+    'live-news': { name: 'Entertainment Headlines' },
+    insights:    { name: 'AI Cinema Insights' },
   },
 };
 
@@ -1442,7 +1468,20 @@ export const DEFAULT_PANELS: Record<string, PanelConfig> = Object.fromEntries(
   )
 );
 
-export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
+// Cinema variant: geopolitical layers off, the static Cinema Hubs layer on.
+const CINEMA_MAP_LAYERS: MapLayers = {
+  ...FULL_MAP_LAYERS,
+  conflicts: false, bases: false, nuclear: false, hotspots: false,
+  sanctions: false, waterways: false, outages: false, iranAttacks: false,
+  weather: false,
+  cinemaHubs: true,
+};
+
+export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'cinema'
+  ? CINEMA_MAP_LAYERS
+  : SITE_VARIANT === 'india'
+  ? FULL_MAP_LAYERS
+  : SITE_VARIANT === 'happy'
   ? HAPPY_MAP_LAYERS
   : SITE_VARIANT === 'tech'
     ? TECH_MAP_LAYERS
@@ -1454,7 +1493,11 @@ export const DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
           ? ENERGY_MAP_LAYERS
           : FULL_MAP_LAYERS;
 
-export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'happy'
+export const MOBILE_DEFAULT_MAP_LAYERS = SITE_VARIANT === 'cinema'
+  ? CINEMA_MAP_LAYERS
+  : SITE_VARIANT === 'india'
+  ? FULL_MOBILE_MAP_LAYERS
+  : SITE_VARIANT === 'happy'
   ? HAPPY_MOBILE_MAP_LAYERS
   : SITE_VARIANT === 'tech'
     ? TECH_MOBILE_MAP_LAYERS

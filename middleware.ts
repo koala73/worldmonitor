@@ -122,6 +122,20 @@ const VARIANT_OG: Record<string, { name: string; title: string; description: str
     image: 'https://energy.worldmonitor.app/favico/energy/og-image.png',
     url: 'https://energy.worldmonitor.app/dashboard',
   },
+  india: {
+    name: 'India Monitor',
+    title: 'India Monitor - Real-Time South Asia Intelligence Dashboard',
+    description: 'Real-time intelligence dashboard focused on India and South Asia — regional geopolitics, borders, markets, energy, disasters, and OSINT in one view.',
+    image: 'https://www.worldmonitor.app/favico/og-image.png',
+    url: 'https://www.worldmonitor.app/dashboard',
+  },
+  cinema: {
+    name: 'Cinema Monitor',
+    title: 'Cinema Monitor - Real-Time Film & Entertainment Intelligence',
+    description: 'Real-time cinema and entertainment dashboard — global film news, box office, OTT/streaming, festivals and awards, and studio/festival hubs, with an India lens.',
+    image: 'https://www.worldmonitor.app/favico/og-image.png',
+    url: 'https://www.worldmonitor.app/dashboard',
+  },
 };
 
 const ALLOWED_HOSTS = new Set([
