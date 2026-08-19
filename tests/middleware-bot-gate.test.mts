@@ -304,6 +304,36 @@ describe('middleware /api/download.md — markdown-URL-fallback crawlers reach t
   });
 });
 
+// The protocol is site-wide `/{page}` → `/{page}.md`, not one sampled URL.
+// GET/HEAD /api/**/*.md must pass the bot gate; POST must not inherit that bypass.
+describe('middleware /api/*.md — site-wide markdown URL-fallback twins bypass the bot gate', () => {
+  const CRAWLER_UAS = [
+    { label: 'ClaudeBot', ua: 'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)' },
+    { label: 'python-requests', ua: 'python-requests/2.31' },
+    { label: 'empty UA', ua: '' },
+  ];
+
+  for (const path of ['/api/health.md', '/api/v1/foo.md', '/api/download.md']) {
+    for (const { label, ua } of CRAWLER_UAS) {
+      it(`passes ${label} through to GET ${path}`, () => {
+        const res = call(path, ua);
+        assert.equal(res, undefined, `${path} must pass through the bot gate for markdown-fallback crawlers`);
+      });
+    }
+  }
+
+  it('still 403s a crawler on POST /api/health.md (bypass is GET/HEAD only)', () => {
+    const url = 'https://www.worldmonitor.app/api/health.md';
+    const req = new Request(url, {
+      method: 'POST',
+      headers: { 'user-agent': 'CCBot/2.0 (https://commoncrawl.org/faq/)' },
+    });
+    const res = middleware(req);
+    assert.ok(res instanceof Response);
+    assert.equal(res.status, 403);
+  });
+});
+
 // ── /api/product-catalog public-pricing bypass ──────────────────────────────
 // The keyless read-only pricing catalog is advertised as service-meta in
 // /.well-known/api-catalog; agents evaluating the product are its primary

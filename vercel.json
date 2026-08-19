@@ -66,6 +66,7 @@
     { "source": "/", "has": [{ "type": "query", "key": "mode", "value": "agent" }], "destination": "/agent-view.json" },
     { "source": "/", "has": [{ "type": "host", "value": "^(?:www\\.)?worldmonitor\\.app$" }], "destination": "/pro/welcome.html" },
     { "source": "/index.md", "destination": "/home.md" },
+    { "source": "/((?!api/)(?<mdPath>.+)).md", "destination": "/api/md-twin?path=:mdPath" },
     { "source": "/pro", "destination": "/pro/index.html" },
     { "source": "/mcp", "destination": "/api/mcp" },
     { "source": "/a2a", "destination": "/api/a2a" },
@@ -635,7 +636,7 @@
       ]
     },
     {
-      "source": "/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)",
+      "source": "/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)",
       "headers": [
         { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" }
       ]

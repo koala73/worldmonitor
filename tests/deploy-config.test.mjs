@@ -40,7 +40,7 @@ const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dock
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
 const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
@@ -1303,13 +1303,14 @@ describe('deploy/API CORS guardrails', () => {
     ]);
     const apiCorsRules = vercelConfig.headers
       .filter((entry) => entry.source.startsWith('/api'))
+      .filter((entry) => !entry.source.endsWith('.md'))
       .filter((entry) => entry.headers?.some((header) => corsHeaderKeys.has(header.key.toLowerCase())))
       .map((entry) => entry.source);
 
     assert.deepEqual(
       apiCorsRules,
       [],
-      'API CORS must be emitted by handlers so credentialed requests get origin-specific ACAO plus ACAC=true.'
+      'JSON API CORS must be emitted by handlers so credentialed requests get origin-specific ACAO plus ACAC=true. Static /api/*.md twins are public agent documents and may set ACAO * in vercel.json.'
     );
   });
 });
@@ -2851,6 +2852,49 @@ describe('agent readiness: /api/download.md URL twin', () => {
       SPA_HTML_CACHE_SOURCE.startsWith('/((?!api|'),
       '/api/* (including /api/download.md) must stay outside the HTML-cache catch-all'
     );
+  });
+});
+
+// orank "Markdown URL fallback" is site-wide (`/docs/auth` → `/docs/auth.md`),
+// not a single sampled URL. Static public/*.md files still win (afterFiles).
+// /docs/:match* stays first so Mintlify keeps /docs/*.md. /index.md stays
+// ahead of the generic fallback. /api/*.md is excluded from this rewrite so
+// the filesystem catch-all (api/[...notfound].ts) can emit markdown without
+// reintroducing a shadowing /api/:path* rewrite (#4724).
+describe('agent readiness: generic markdown URL-fallback rewrite', () => {
+  const mdTwinRewrite = vercelConfig.rewrites.find((r) =>
+    typeof r.destination === 'string' && r.destination.startsWith('/api/md-twin')
+  );
+  const rewriteIndex = (source) => vercelConfig.rewrites.findIndex((r) => r.source === source);
+
+  it('rewrites unmatched /{page}.md to /api/md-twin after docs and /index.md', () => {
+    assert.ok(mdTwinRewrite, 'expected a generic /{page}.md → /api/md-twin rewrite');
+    assert.match(mdTwinRewrite.source, /api\//, 'rewrite must exclude /api/*.md (handled by the not-found catch-all)');
+    assert.match(mdTwinRewrite.source, /mdPath|path/, 'rewrite must capture the sibling path');
+    const mdIdx = vercelConfig.rewrites.indexOf(mdTwinRewrite);
+    assert.ok(mdIdx > rewriteIndex('/docs/:match*'), '/docs/:match* must stay ahead of the generic .md fallback');
+    assert.ok(mdIdx > rewriteIndex('/index.md'), '/index.md → /home.md must stay ahead of the generic .md fallback');
+  });
+
+  it('does not reintroduce a shadowing /api/:path* → /api/not-found rewrite', () => {
+    const shadow = (vercelConfig.rewrites ?? []).find((r) =>
+      r.destination === '/api/not-found' && /^\/api\/(?::[^/]*\*|\(\.\*\))$/.test(r.source ?? '')
+    );
+    assert.equal(shadow, undefined, 'do not add /api/:path* → /api/not-found; it shadows [rpc].ts gateways (#4724)');
+  });
+
+  it('sends content-page .md twins to the generator, not the dashboard shell', () => {
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/dashboard.md' })?.destination, '/api/md-twin?path=:mdPath');
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/stocks/AAPL.md' })?.destination, '/api/md-twin?path=:mdPath');
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/docs/auth.md' })?.destination, 'https://worldmonitor.mintlify.dev/docs/:match*');
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/index.md' })?.destination, '/home.md');
+    assert.equal(firstRewriteFor({ host: 'www.worldmonitor.app', path: '/api/health.md' }), null);
+  });
+
+  it('keeps HTML-cache catch-all from applying to generated .md twins', () => {
+    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|.*\\.md$'), 'HTML cache catch-all must exclude every *.md path');
+    assert.equal(sourceToRegExp(SPA_HTML_CACHE_SOURCE).test('/dashboard.md'), false);
+    assert.equal(sourceToRegExp(SPA_HTML_CACHE_SOURCE).test('/dashboard'), true);
   });
 });
 
