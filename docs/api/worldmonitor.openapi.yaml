@@ -31297,13 +31297,14 @@ webhooks:
                 "200":
                     description: |-
                         Delivery acknowledged. Any 2xx acknowledges receipt; a non-2xx
-                        response or a timeout marks the delivery failed.
+                        response or a timeout marks the delivery failed. No response body
+                        is required — the delivery worker reads only the status code.
                     content:
                         application/json:
                             schema:
                                 type: object
                                 additionalProperties: true
-                                description: Optional JSON acknowledgement body; an empty object is accepted.
+                                description: Acknowledgement body, if the subscriber sends one. The delivery worker never reads it, so an empty object, an empty body, or a bodyless 204 are all equally valid acks; this schema types the response for spec consumers rather than imposing a requirement.
                 "2XX":
                     description: |-
                         Any 2xx acknowledges receipt. A non-2xx response or a delivery

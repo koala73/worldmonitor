@@ -20,6 +20,14 @@
  * the job-envelope schema; 200's description states that the live enqueue
  * status is 202.
  *
+ * Header ownership between the pair: openapi-inject-idempotency.mjs stamps the
+ * replay markers (Idempotency-Key, Idempotent-Replayed) on responses["200"]
+ * ONLY. So this injector treats the 200's header block as the single source of
+ * truth and REBUILDS the 202's from it on every run (adding Location, which is
+ * the 202's alone). Without that, a later SUCCESS_HEADERS edit would refresh
+ * the 200 — the status no client ever receives — and strand the live 202 with
+ * stale prose while every --check gate stayed green.
+ *
  * Wired into `make generate` after the other response-shaping injectors — the
  * examples injector stamps the success example while the response is still
  * keyed "200"; the copy in step 1 carries it along to "202", and its
@@ -41,7 +49,7 @@ const CHECK = process.argv.includes('--check');
 // Async-enqueue operations. `locationExample` must mirror the curated
 // statusUrl body example in openapi-inject-examples.mjs (the contract test
 // asserts they agree).
-const ASYNC_JOB_OPS = [
+export const ASYNC_JOB_OPS = [
   {
     path: '/api/scenario/v1/run-scenario',
     method: 'post',
@@ -71,7 +79,7 @@ function locationHeaderFor(target) {
 // ── Per-service JSON ────────────────────────────────────────────────────────
 // Object-key order is irrelevant (the shared serializer sorts recursively);
 // only membership + values matter for byte-faithful output.
-function injectJson(spec) {
+export function injectJson(spec) {
   let changed = false;
   for (const target of ASYNC_JOB_OPS) {
     const op = spec.paths?.[target.path]?.[target.method];
@@ -98,20 +106,32 @@ function injectJson(spec) {
       ok.description = target.okDescription;
       changed = true;
     }
+    // The 200's header block is the single source of truth for the shared
+    // replay markers (openapi-inject-idempotency.mjs stamps them there and
+    // nowhere else). Rebuild BOTH blocks from it every run: the 200 loses
+    // Location (that pointer is the live 202's alone), the 202 is the same
+    // markers plus Location. Doing this unconditionally — not just when one
+    // code is missing — is what keeps a later SUCCESS_HEADERS edit from
+    // refreshing the dead 200 and stranding the live 202.
     const header = locationHeaderFor(target);
-    accepted.headers ??= {};
-    if (!eq(accepted.headers.Location, header)) {
-      accepted.headers.Location = clone(header);
-      changed = true;
-    }
-    // 200 is the scanner-credited twin, not the live enqueue status. Keep
-    // its replay-marker headers (idempotency injector owns those) but do
-    // not copy Location onto it — that header belongs on 202.
-    if (ok && ok.headers && Object.prototype.hasOwnProperty.call(ok.headers, 'Location')) {
-      const headers = { ...ok.headers };
-      delete headers.Location;
-      ok.headers = headers;
-      changed = true;
+    if (ok && typeof ok === 'object') {
+      const shared = { ...(ok.headers ?? {}) };
+      delete shared.Location;
+      if (!eq(ok.headers ?? {}, shared)) {
+        ok.headers = shared;
+        changed = true;
+      }
+      const acceptedHeaders = { ...clone(shared), Location: clone(header) };
+      if (!eq(accepted.headers ?? {}, acceptedHeaders)) {
+        accepted.headers = acceptedHeaders;
+        changed = true;
+      }
+    } else {
+      accepted.headers ??= {};
+      if (!eq(accepted.headers.Location, header)) {
+        accepted.headers.Location = clone(header);
+        changed = true;
+      }
     }
   }
   return changed;
@@ -122,11 +142,11 @@ function injectJson(spec) {
 // keys at 16, response children (`description:`, `headers:`, `content:`) at
 // 20, header entries at 24 — matching the generator's output and the sibling
 // injectors (schema first, then description, like the idempotency 409/422
-// blocks). The success headers block is SHARED with
-// openapi-inject-idempotency.mjs, which stamps the replay-marker headers
-// (Idempotency-Key, Idempotent-Replayed) onto the success response earlier in
-// the chain — so this injector only ever merges its Location ENTRY into the
-// block, never replaces the block.
+// blocks). openapi-inject-idempotency.mjs stamps the replay-marker headers
+// (Idempotency-Key, Idempotent-Replayed) onto the 200 earlier in the chain and
+// touches no other status code, so the 200's block is the source of truth: this
+// injector rebuilds the 202's block from it (plus Location) rather than merging
+// a lone Location entry, which is what keeps the two from drifting apart.
 function yamlLocationEntry(target) {
   return [
     '                        Location:',
@@ -145,16 +165,60 @@ function blockEndAtIndent(lines, start, end, indent) {
   return i;
 }
 
+// Reports whether it spliced, SEPARATELY from the line delta. Inferring "did
+// anything change?" from the delta silently drops equal-line-count edits: a
+// same-length replacement is a real rewrite that returns delta 0, so a caller
+// gating on `delta !== 0` would leave the file unwritten AND report --check
+// green. openapi-inject-idempotency.mjs carries the same contract.
 function replaceLinesIfDifferent(lines, start, blockEnd, replacement) {
   const current = lines.slice(start, blockEnd);
   if (current.length === replacement.length && current.every((line, idx) => line === replacement[idx])) {
-    return 0;
+    return { delta: 0, replaced: false };
   }
   lines.splice(start, blockEnd - start, ...replacement);
-  return replacement.length - (blockEnd - start);
+  return { delta: replacement.length - (blockEnd - start), replaced: true };
 }
 
-function injectYaml(text) {
+// Response-block locators. Every step re-derives its own indices against a
+// freshly recomputed end bound, so a splice in one step can never leave a
+// later step reading a stale offset.
+function findResponseBlock(lines, responsesIndex, code) {
+  const end = blockEndAtIndent(lines, responsesIndex, lines.length, 12);
+  const key = new RegExp(`^ {16}"${code}":\\s*$`);
+  for (let j = responsesIndex + 1; j < end; j++) {
+    if (key.test(lines[j])) return { start: j, end: blockEndAtIndent(lines, j, end, 16) };
+  }
+  return null;
+}
+
+function findHeadersBlock(lines, block) {
+  for (let j = block.start + 1; j < block.end; j++) {
+    if (/^ {20}headers:\s*$/.test(lines[j])) {
+      return { start: j, end: blockEndAtIndent(lines, j, block.end, 20) };
+    }
+  }
+  return null;
+}
+
+// The 24-indent header entries of a `headers:` block (name line + its
+// children), excluding Location — the caller re-adds that where it belongs.
+function sharedHeaderEntries(lines, headers) {
+  const out = [];
+  let j = headers.start + 1;
+  while (j < headers.end) {
+    if (!/^ {24}\S/.test(lines[j])) {
+      j++;
+      continue;
+    }
+    let k = j + 1;
+    while (k < headers.end && !/^ {0,24}\S/.test(lines[k])) k++;
+    if (!/^ {24}Location:\s*$/.test(lines[j])) out.push(...lines.slice(j, k));
+    j = k;
+  }
+  return out;
+}
+
+export function injectYaml(text) {
   const lines = text.split('\n');
   let changed = false;
 
@@ -211,110 +275,95 @@ function injectYaml(text) {
       responsesEnd += copy.length;
       changed = true;
     }
-    // okIndex is deliberately not maintained past this point — step 4 re-derives
-    // the 200 block's position itself (okStart) against a freshly recomputed end
-    // bound, so a value shifted by the splices above would be a stale trap.
+    // okIndex/acceptedIndex are deliberately not maintained past this point —
+    // every step below re-locates its own block via findResponseBlock against a
+    // freshly recomputed end bound, so a value shifted by the splices above
+    // would be a stale trap rather than a shortcut.
     if (acceptedIndex === -1) continue;
-    const acceptedEnd = blockEndAtIndent(lines, acceptedIndex, responsesEnd, 16);
-
-    // 2. Replace the success description (single-line, first 20-indent
-    //    `description:` child of the 202 block).
-    let descriptionIndex = -1;
-    for (let j = acceptedIndex + 1; j < acceptedEnd; j++) {
-      if (/^ {20}description: /.test(lines[j])) {
-        descriptionIndex = j;
-        break;
-      }
-    }
-    if (descriptionIndex !== -1) {
-      const descriptionLine = `                    description: ${target.description}`;
-      if (lines[descriptionIndex] !== descriptionLine) {
-        lines[descriptionIndex] = descriptionLine;
-        changed = true;
-      }
-    }
-
-    // 3. Merge the Location entry into the 202 headers block (see the
-    //    shared-ownership note above yamlLocationEntry). When the block is
-    //    missing entirely (no idempotency headers — cannot happen in the
-    //    canonical chain, where every POST gets them), create it after the
-    //    description line, before `content:`.
     const locationLines = yamlLocationEntry(target);
-    let headersIndex = -1;
-    for (let j = acceptedIndex + 1; j < acceptedEnd; j++) {
-      if (/^ {20}headers:\s*$/.test(lines[j])) {
-        headersIndex = j;
-        break;
-      }
-    }
-    if (headersIndex === -1) {
-      const insertAt = descriptionIndex !== -1 ? descriptionIndex + 1 : acceptedIndex + 1;
-      lines.splice(insertAt, 0, '                    headers:', ...locationLines);
-      changed = true;
-    } else {
-      const headersEnd = blockEndAtIndent(lines, headersIndex, acceptedEnd, 20);
-      let locationIndex = -1;
-      for (let j = headersIndex + 1; j < headersEnd; j++) {
-        if (/^ {24}Location:\s*$/.test(lines[j])) {
-          locationIndex = j;
-          break;
-        }
-      }
-      if (locationIndex === -1) {
-        // Append after the existing entries — mirrors the sorted JSON key order
-        // (Idempotency-Key, Idempotent-Replayed, Location).
-        lines.splice(headersEnd, 0, ...locationLines);
-        changed = true;
-      } else {
-        // Location entry sub-block ends at the next 24-indent sibling entry or
-        // the end of the headers block.
-        let locationEnd = locationIndex + 1;
-        while (locationEnd < headersEnd && !/^ {0,24}\S/.test(lines[locationEnd])) locationEnd++;
-        const delta = replaceLinesIfDifferent(lines, locationIndex, locationEnd, locationLines);
-        if (delta !== 0) changed = true;
-      }
-    }
 
-    // 4. Keep the retained 200 description honest: same schema, live status is 202.
-    const refreshedResponsesEnd = blockEndAtIndent(lines, responsesIndex, lines.length, 12);
-    let okStart = -1;
-    for (let j = responsesIndex + 1; j < refreshedResponsesEnd; j++) {
-      if (/^ {16}"200":\s*$/.test(lines[j])) {
-        okStart = j;
-        break;
-      }
-    }
-    if (okStart !== -1) {
-      const okEnd = blockEndAtIndent(lines, okStart, refreshedResponsesEnd, 16);
-      let okDescIndex = -1;
-      for (let j = okStart + 1; j < okEnd; j++) {
-        if (/^ {20}description: /.test(lines[j])) {
-          okDescIndex = j;
-          break;
-        }
-      }
-      if (okDescIndex !== -1) {
-        const okDescriptionLine = `                    description: ${target.okDescription}`;
-        if (lines[okDescIndex] !== okDescriptionLine) {
-          lines[okDescIndex] = okDescriptionLine;
+    // Each step below re-locates its own block. Steps 2 and 3 rewrite lines in
+    // place (no length change), step 4 can splice — so ordering between them is
+    // irrelevant and no step inherits another's offsets.
+
+    // 2. The 202 (live enqueue) description.
+    const acceptedForDesc = findResponseBlock(lines, responsesIndex, '202');
+    if (acceptedForDesc) {
+      for (let j = acceptedForDesc.start + 1; j < acceptedForDesc.end; j++) {
+        if (!/^ {20}description: /.test(lines[j])) continue;
+        const descriptionLine = `                    description: ${target.description}`;
+        if (lines[j] !== descriptionLine) {
+          lines[j] = descriptionLine;
           changed = true;
         }
+        break;
       }
-      // Location is the live 202 poll pointer. Drop it from the retained 200
-      // so the idempotency injector's 200 headers block stays byte-identical.
-      let okLocationIndex = -1;
-      for (let j = okStart + 1; j < okEnd; j++) {
-        if (/^ {24}Location:\s*$/.test(lines[j])) {
-          okLocationIndex = j;
-          break;
+    }
+
+    // 3. The retained 200's description: same schema, live status is 202.
+    const okForDesc = findResponseBlock(lines, responsesIndex, '200');
+    if (okForDesc) {
+      for (let j = okForDesc.start + 1; j < okForDesc.end; j++) {
+        if (!/^ {20}description: /.test(lines[j])) continue;
+        const okDescriptionLine = `                    description: ${target.okDescription}`;
+        if (lines[j] !== okDescriptionLine) {
+          lines[j] = okDescriptionLine;
+          changed = true;
         }
+        break;
       }
-      if (okLocationIndex !== -1) {
-        let okLocationEnd = okLocationIndex + 1;
-        while (okLocationEnd < okEnd && !/^ {0,24}\S/.test(lines[okLocationEnd])) okLocationEnd++;
-        lines.splice(okLocationIndex, okLocationEnd - okLocationIndex);
-        changed = true;
+    }
+
+    // 4. Reconcile the header blocks from the 200 (the source of truth — see
+    //    the ownership note above yamlLocationEntry). The 200 keeps the shared
+    //    replay markers minus Location; the 202 is those same markers plus it.
+    const okBlock = findResponseBlock(lines, responsesIndex, '200');
+    const acceptedBlock = findResponseBlock(lines, responsesIndex, '202');
+    if (!okBlock || !acceptedBlock) continue;
+
+    const okHeaders = findHeadersBlock(lines, okBlock);
+    const shared = okHeaders ? sharedHeaderEntries(lines, okHeaders) : [];
+    const wantedAccepted = ['                    headers:', ...shared, ...locationLines];
+
+    // `shared` is captured before either rewrite, and both rewrites re-locate
+    // their own block, so this is correct in either order; doing the later
+    // block first simply avoids a redundant re-scan.
+    const okFirst = okBlock.start < acceptedBlock.start;
+    const rewriteOk = () => {
+      const block = findResponseBlock(lines, responsesIndex, '200');
+      const headers = block && findHeadersBlock(lines, block);
+      if (!headers) return;
+      const wanted = ['                    headers:', ...shared];
+      const { replaced } = replaceLinesIfDifferent(lines, headers.start, headers.end, wanted);
+      if (replaced) changed = true;
+    };
+    const rewriteAccepted = () => {
+      const block = findResponseBlock(lines, responsesIndex, '202');
+      if (!block) return;
+      const headers = findHeadersBlock(lines, block);
+      if (headers) {
+        const { replaced } = replaceLinesIfDifferent(lines, headers.start, headers.end, wantedAccepted);
+        if (replaced) changed = true;
+        return;
       }
+      // No headers block at all (no idempotency markers — cannot happen in the
+      // canonical chain, where every POST gets them). Create it after the
+      // description line, before `content:`.
+      let insertAt = block.start + 1;
+      for (let j = block.start + 1; j < block.end; j++) {
+        if (/^ {20}description: /.test(lines[j])) insertAt = j + 1;
+        if (/^ {20}content:\s*$/.test(lines[j])) break;
+      }
+      lines.splice(insertAt, 0, ...wantedAccepted);
+      changed = true;
+    };
+
+    if (okFirst) {
+      rewriteAccepted();
+      rewriteOk();
+    } else {
+      rewriteOk();
+      rewriteAccepted();
     }
   }
 
@@ -322,40 +371,48 @@ function injectYaml(text) {
 }
 
 // ── Run ──────────────────────────────────────────────────────────────────────
-const jsonFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
-const yamlFiles = readdirSync(apiDir)
-  .filter((f) => /Service\.openapi\.yaml$/.test(f) || f === 'worldmonitor.openapi.yaml')
-  .sort();
-let wouldChange = 0;
-const touched = [];
+// Only run the CLI (read/write/log/exit) when invoked directly — importing this
+// module for ASYNC_JOB_OPS / injectJson / injectYaml (the contract tests do)
+// must be side-effect-free. Mirrors openapi-inject-webhooks.mjs.
+const isEntryPoint =
+  process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
-for (const file of jsonFiles) {
-  const path = resolve(apiDir, file);
-  const spec = JSON.parse(readFileSync(path, 'utf8'));
-  if (injectJson(spec)) {
-    wouldChange++;
-    touched.push(file);
-    if (!CHECK) writeFileSync(path, serialize(spec));
-  }
-}
+if (isEntryPoint) {
+  const jsonFiles = readdirSync(apiDir).filter((f) => /Service\.openapi\.json$/.test(f)).sort();
+  const yamlFiles = readdirSync(apiDir)
+    .filter((f) => /Service\.openapi\.yaml$/.test(f) || f === 'worldmonitor.openapi.yaml')
+    .sort();
+  let wouldChange = 0;
+  const touched = [];
 
-for (const file of yamlFiles) {
-  const path = resolve(apiDir, file);
-  const result = injectYaml(readFileSync(path, 'utf8'));
-  if (result.changed) {
-    wouldChange++;
-    touched.push(file);
-    if (!CHECK) writeFileSync(path, result.text);
+  for (const file of jsonFiles) {
+    const path = resolve(apiDir, file);
+    const spec = JSON.parse(readFileSync(path, 'utf8'));
+    if (injectJson(spec)) {
+      wouldChange++;
+      touched.push(file);
+      if (!CHECK) writeFileSync(path, serialize(spec));
+    }
   }
-}
 
-if (CHECK) {
-  if (wouldChange > 0) {
-    console.error(`✗ ${wouldChange} OpenAPI artifact(s) missing the async-job 202 contract: ${touched.join(', ')}`);
-    console.error('  Run: npm run gen:openapi:async-jobs');
-    process.exit(1);
+  for (const file of yamlFiles) {
+    const path = resolve(apiDir, file);
+    const result = injectYaml(readFileSync(path, 'utf8'));
+    if (result.changed) {
+      wouldChange++;
+      touched.push(file);
+      if (!CHECK) writeFileSync(path, result.text);
+    }
   }
-  console.log('✓ async-job 202 + Location contract in sync across async-enqueue operations');
-} else {
-  console.log(`openapi-inject-async-jobs: updated ${wouldChange} artifact(s)`);
+
+  if (CHECK) {
+    if (wouldChange > 0) {
+      console.error(`✗ ${wouldChange} OpenAPI artifact(s) missing the async-job 202 contract: ${touched.join(', ')}`);
+      console.error('  Run: npm run gen:openapi:async-jobs');
+      process.exit(1);
+    }
+    console.log('✓ async-job 202 + Location contract in sync across async-enqueue operations');
+  } else {
+    console.log(`openapi-inject-async-jobs: updated ${wouldChange} artifact(s)`);
+  }
 }

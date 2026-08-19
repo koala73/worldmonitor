@@ -5,7 +5,12 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
-import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+import {
+  loadUnifiedOpenApiSpec,
+  loadYamlSpecCached,
+  openApiOperationIds,
+  serviceOpenApiOperationIds,
+} from './_lib/openapi-spec-cache.mjs';
 
 // Guards ora.ai / orank `api-schema-analysis`: every published operation must
 // be self-describing — unique operationId, a description, typed parameters or
@@ -17,16 +22,38 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 
-function schemaIsTyped(schema) {
+// Operations that legitimately have no 200 (a status the endpoint never
+// returns), keyed `METHOD /path`. Deliberately empty: RunScenario was the only
+// operation without a 200 and it now documents one. This exists so the next
+// genuinely 202/204-only endpoint has a declared escape hatch instead of being
+// pushed into fabricating a 200 the server never sends — add the identity here
+// WITH a comment naming the real success code.
+const NO_200_EXEMPT = new Set([]);
+
+// A schema counts as typed only if it carries real information. A bare key
+// presence check is not enough: `{$ref: '#/components/schemas/Nope'}` names a
+// component that does not exist, and `{anyOf: []}` is a composition that
+// matches nothing — both would sail through a `Boolean(schema.$ref || ...)`
+// test while telling a client precisely nothing.
+function schemaIsTyped(schema, spec) {
   if (!schema || typeof schema !== 'object') return false;
-  return Boolean(
-    schema.type
-    || schema.$ref
-    || schema.anyOf
-    || schema.oneOf
-    || schema.allOf
-    || schema.properties,
-  );
+  if (schema.$ref) {
+    const ref = String(schema.$ref);
+    const local = /^#\/components\/schemas\/(.+)$/u.exec(ref);
+    // Only local component pointers are resolvable here; every $ref in
+    // docs/api today is one, so an unrecognised shape is a red flag.
+    if (!local) return false;
+    return Boolean(spec?.components?.schemas?.[local[1]]);
+  }
+  for (const key of ['anyOf', 'oneOf', 'allOf']) {
+    if (key in schema) {
+      return Array.isArray(schema[key])
+        && schema[key].length > 0
+        && schema[key].every((member) => schemaIsTyped(member, spec));
+    }
+  }
+  if (schema.properties) return true;
+  return Boolean(schema.type);
 }
 
 function resolveParameter(param, spec) {
@@ -55,7 +82,14 @@ function collectOperations(spec) {
 
 function assertSelfDescribing(spec, label) {
   const operations = collectOperations(spec);
-  assert.ok(operations.length > 0, `${label}: expected published operations`);
+  // Per-KIND floors, not one floor over the union. `paths` and `webhooks` land
+  // in the same array, so a single `operations.length > 0` is satisfied by the
+  // lone injected webhook — this gate stayed green with all 218 REST paths
+  // deleted. A path floor is what makes a wiped-out bundle red.
+  assert.ok(
+    operations.some((op) => op.kind === 'path'),
+    `${label}: expected published REST path operations`,
+  );
 
   const issues = [];
   const ids = new Map();
@@ -70,30 +104,38 @@ function assertSelfDescribing(spec, label) {
     }
 
     const parameters = (operation.parameters ?? []).map((param) => resolveParameter(param, spec));
+    let typedParameters = 0;
     for (const [index, param] of parameters.entries()) {
       if (!param) {
         issues.push(`${opLabel}: parameters[${index}] is a dangling $ref`);
         continue;
       }
-      if (!schemaIsTyped(param.schema)) {
-        issues.push(`${opLabel}: parameter ${param.name ?? index} is untyped`);
-      }
+      if (schemaIsTyped(param.schema, spec)) typedParameters++;
+      else issues.push(`${opLabel}: parameter ${param.name ?? index} is untyped`);
     }
 
+    // Count only TYPED parameters toward "has typed input" — otherwise a lone
+    // untyped parameter satisfies the typed-input clause and the operation
+    // reads as self-describing on the strength of the very thing that is not.
     const requestSchema = operation.requestBody?.content?.['application/json']?.schema;
-    const typedInput = parameters.length > 0 || schemaIsTyped(requestSchema);
+    const typedInput = typedParameters > 0 || schemaIsTyped(requestSchema, spec);
     if (!typedInput) issues.push(`${opLabel}: no typed parameters or requestBody`);
-    if (operation.requestBody && !schemaIsTyped(requestSchema)) {
+    if (operation.requestBody && !schemaIsTyped(requestSchema, spec)) {
       issues.push(`${opLabel}: requestBody is untyped`);
     }
 
+    const identity = `${method.toUpperCase()} ${path}`;
     const ok = operation.responses?.['200'];
     if (!ok) {
+      if (NO_200_EXEMPT.has(identity)) continue;
       const other2xx = Object.keys(operation.responses ?? {}).filter((code) => /^2/.test(code));
       issues.push(`${opLabel}: missing responses["200"] (has ${other2xx.join(',') || 'no 2xx'})`);
       continue;
     }
-    if (!schemaIsTyped(ok.content?.['application/json']?.schema)) {
+    if (NO_200_EXEMPT.has(identity)) {
+      issues.push(`${opLabel}: documents a 200 but is listed in NO_200_EXEMPT — drop the exemption`);
+    }
+    if (!schemaIsTyped(ok.content?.['application/json']?.schema, spec)) {
       issues.push(`${opLabel}: responses["200"] has no typed application/json schema`);
     }
   }
@@ -108,6 +150,21 @@ function assertSelfDescribing(spec, label) {
 describe('OpenAPI self-describing operations (orank api-schema-analysis)', () => {
   it('gives every unified-bundle path and webhook a unique id, description, typed input, and typed 200', () => {
     assertSelfDescribing(loadUnifiedOpenApiSpec(), 'worldmonitor.openapi.yaml');
+  });
+
+  // A per-kind floor catches a wiped bundle; only a parity check catches a
+  // PARTIAL one. Anchor the bundle's population to the per-service specs (the
+  // source the bundler builds it from) so losing one service's routes is red
+  // here rather than relying on a neighbouring suite to notice.
+  it('publishes exactly the per-service operation population in the bundle', () => {
+    const files = readdirSync(apiDir).filter((file) => /Service\.openapi\.yaml$/.test(file)).sort();
+    assert.ok(files.length > 0, 'expected per-service YAML specs');
+    const specsByFile = files.map((file) => [file, loadYamlSpecCached(resolve(apiDir, file))]);
+    const expected = serviceOpenApiOperationIds(specsByFile)
+      .map((id) => id.replace(/^[^:]+::/u, ''))
+      .sort();
+    const actual = openApiOperationIds(loadUnifiedOpenApiSpec()).sort();
+    assert.deepEqual(actual, expected, 'bundle operations must equal the union of the per-service specs');
   });
 
   it('gives every per-service JSON spec the same self-describing contract', () => {

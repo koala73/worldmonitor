@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
 import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+import { injectJson, injectYaml } from '../scripts/openapi-inject-async-jobs.mjs';
 
 // Guards the REST async-job pattern injected by
 // scripts/openapi-inject-async-jobs.mjs: RunScenario's live success response is a
@@ -62,6 +63,17 @@ function assertAsyncJobContract(op, label) {
   assert.ok(accepted.headers?.['Idempotent-Replayed'], `${label} 202 must keep the Idempotent-Replayed replay marker`);
   assert.ok(accepted.headers?.['Idempotency-Key'], `${label} 202 must keep the Idempotency-Key echo header`);
 
+  // The two success responses must carry byte-identical replay markers; only
+  // Location distinguishes them. The idempotency injector stamps the 200 alone,
+  // so without this the live 202 can drift to stale prose while --check is green.
+  const { Location: acceptedLocation, ...acceptedShared } = accepted.headers ?? {};
+  assert.ok(acceptedLocation, `${label} 202 must document Location`);
+  assert.deepEqual(
+    acceptedShared,
+    ok.headers ?? {},
+    `${label} 200 and 202 must share identical replay-marker headers (202 adds only Location)`,
+  );
+
   // The success example is an honest job envelope: pending + a poll URL that
   // mirrors the Location header example (two injectors share the literal —
   // openapi-inject-examples.mjs curates the body, openapi-inject-async-jobs.mjs
@@ -113,5 +125,70 @@ describe('OpenAPI async-job pattern contract (RunScenario 202)', () => {
       cwd: root,
       stdio: 'pipe',
     });
+  });
+});
+
+// The --check test above only ever sees the committed tree, where BOTH codes
+// are present — so it exercises neither copy direction. These drive the
+// injector from each single-key starting state directly: a fresh `make
+// generate` emits 200-only, and the pre-#6956 committed tree was 202-only.
+describe('async-jobs injector restores the missing twin', () => {
+  const jsonPath = resolve(apiDir, 'ScenarioService.openapi.json');
+  const yamlPath = resolve(apiDir, 'ScenarioService.openapi.yaml');
+  const committedJson = () => JSON.parse(readFileSync(jsonPath, 'utf8'));
+
+  for (const drop of ['200', '202']) {
+    const keep = drop === '200' ? '202' : '200';
+
+    it(`JSON: rebuilds ${drop} from a ${keep}-only operation and is then a fixed point`, () => {
+      const spec = committedJson();
+      const expected = spec.paths[RUN_PATH].post.responses;
+      const mutated = committedJson();
+      delete mutated.paths[RUN_PATH].post.responses[drop];
+
+      assert.equal(injectJson(mutated), true, `dropping ${drop} must make the injector report a change`);
+      assert.deepEqual(
+        mutated.paths[RUN_PATH].post.responses,
+        expected,
+        `restored ${drop} must reproduce the committed responses exactly`,
+      );
+      assert.equal(injectJson(mutated), false, 'a second pass must be a no-op');
+    });
+
+    it(`YAML: rebuilds ${drop} from a ${keep}-only operation and is then a fixed point`, () => {
+      const committed = readFileSync(yamlPath, 'utf8');
+      const lines = committed.split('\n');
+      // Delete the `"<drop>":` status block from the run-scenario responses.
+      const start = lines.findIndex((line, i) => new RegExp(`^ {16}"${drop}":\\s*$`).test(line)
+        && lines.slice(0, i).some((l) => l.startsWith(`    ${RUN_PATH}:`)));
+      assert.ok(start > 0, `expected a "${drop}" block in the committed YAML`);
+      let end = start + 1;
+      while (end < lines.length && !/^ {0,16}\S/.test(lines[end])) end++;
+      const mutated = [...lines.slice(0, start), ...lines.slice(end)].join('\n');
+      assert.notEqual(mutated, committed, 'the fixture must actually differ from the committed file');
+
+      const restored = injectYaml(mutated);
+      assert.equal(restored.changed, true, `dropping ${drop} must make the injector report a change`);
+      assert.equal(restored.text, committed, `restored ${drop} must reproduce the committed YAML byte-for-byte`);
+      assert.equal(injectYaml(restored.text).changed, false, 'a second pass must be a no-op');
+    });
+  }
+
+  it('re-syncs the 202 replay headers when the 200 (their owner) is edited', () => {
+    // The regression the header-parity assertion guards: openapi-inject-
+    // idempotency.mjs stamps SUCCESS_HEADERS on the 200 only, so the injector
+    // must carry an edit across to the live 202 rather than let it strand.
+    const spec = committedJson();
+    const op = spec.paths[RUN_PATH].post;
+    op.responses['200'].headers['Idempotency-Key'].description = 'REWORDED by a later SUCCESS_HEADERS edit.';
+
+    assert.equal(injectJson(spec), true, 'a 200 header edit must propagate');
+    assert.equal(
+      op.responses['202'].headers['Idempotency-Key'].description,
+      'REWORDED by a later SUCCESS_HEADERS edit.',
+      'the live 202 must inherit the 200 header edit, not keep stale prose',
+    );
+    assert.ok(op.responses['202'].headers.Location, '202 must keep its Location pointer');
+    assert.equal(op.responses['200'].headers.Location, undefined, '200 must never carry Location');
   });
 });
