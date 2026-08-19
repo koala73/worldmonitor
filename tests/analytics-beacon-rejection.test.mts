@@ -1022,16 +1022,13 @@ describe('collector request timeout compatibility (#6086)', () => {
         const queued = window.fetch(UMAMI_SEND_URL, collectorEventInit());
         await drainPromiseHandlers();
 
-        const requestDeadlines = deadlines.filter((deadline) => deadline.ms === 20_000);
-        const latchDeadlines = deadlines.filter((deadline) => deadline.ms === LATCH_DEADLINE_MS);
-        assert.equal(requestDeadlines.length, 1, `${label}: the native path must request a collector deadline`);
-        assert.equal(latchDeadlines.length, 1, `${label}: the native path must retain a latch deadline`);
-        assert.equal(requestDeadlines[0]?.ms, 20_000, `${label}: the deadline must be the collector bound`);
+        assert.equal(deadlines.length, 1, `${label}: the native path must request a collector deadline`);
+        assert.equal(deadlines[0]?.ms, 20_000, `${label}: the deadline must be the collector bound`);
         assert.equal(calls, 1, `${label}: the second write waits for the stalled request`);
 
         // Fire the DEADLINE, never the caller signal. If either native branch
         // substituted a non-timing signal, nothing aborts and both awaits hang.
-        requestDeadlines[0]?.controller.abort(createNativeTimeoutError());
+        deadlines[0]?.controller.abort(createNativeTimeoutError());
 
         await assert.rejects(stalled, { name: 'TimeoutError' });
         assert.equal((await queued).status, 200);
@@ -1227,16 +1224,15 @@ describe('collector latch release is module-owned (#6288)', () => {
       // Fire the request-side deadline exactly as production does. It reaches a
       // transport that threw the signal away, so nothing settles. This is the
       // boundary #6088 bought and no further.
-      const requestDeadline = requestDeadlines.find((deadline) => deadline.ms === 20_000);
-      assert.ok(requestDeadline, 'the native path must still bind the request-side deadline');
-      requestDeadline.controller.abort(createNativeTimeoutError());
+      assert.equal(requestDeadlines[0]?.ms, 20_000, 'the native path must still bind the request-side deadline');
+      requestDeadlines[0]?.controller.abort(createNativeTimeoutError());
       await drainPromiseHandlers();
       assert.equal(parkedSettled, false, 'the premise: the transport promise never settles');
       assert.equal(calls, 1, 'aborting a transport that discards the signal cannot drain the queue');
 
-      const latchDeadline = requestDeadlines.find((deadline) => deadline.ms === LATCH_DEADLINE_MS);
-      assert.ok(latchDeadline, 'the module must own a native latch deadline the transport cannot withhold');
-      latchDeadline.controller.abort(createNativeTimeoutError());
+      const latchDeadline = findLatchDeadline(fakeTimers.timers);
+      assert.ok(latchDeadline, 'the module must own a latch deadline the transport cannot withhold');
+      latchDeadline.callback();
 
       const error = await parked.then(() => null, (reason: unknown) => reason);
       assert.equal((error as Error | null)?.name, 'TimeoutError');
@@ -1249,20 +1245,32 @@ describe('collector latch release is module-owned (#6288)', () => {
     }
   });
 
-  it('uses a native latch signal that hidden-tab timer throttling cannot withhold (#6947)', { timeout: 10_000 }, async () => {
+  // #6947: Chromium intensive throttling can withhold a 25s setTimeout (and
+  // AbortSignal.timeout, which uses the same scheduler) across an entire 60s
+  // health window. The overflow enqueue is itself a JS turn — Date.now still
+  // advances — so the latch must pump from wall-clock on enqueue, not from a
+  // timer callback the page never receives.
+  it('pumps a full queue from wall-clock on enqueue when the latch timer is withheld (#6947)', { timeout: 10_000 }, async () => {
     const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
-    const deadlines: { ms: number; controller: AbortController }[] = [];
     Object.defineProperty(AbortSignal, 'timeout', {
       configurable: true,
-      value: (ms: number) => {
-        const controller = new AbortController();
-        deadlines.push({ ms, controller });
-        return controller.signal;
-      },
+      // Never auto-fire: a real AbortSignal.timeout would hold the process for 20s
+      // and is not the latch under test. The request-side abort is discarded by
+      // parkForever the same way a rebuilding wrapper discards it in production.
+      value: () => new AbortController().signal,
     });
     const fakeTimers = installFakeTimers();
+    let now = 1_700_000_000_000;
+    const originalNow = Date.now;
+    Date.now = () => now;
     const originalWarn = console.warn;
-    console.warn = () => {};
+    const overflowWarnings: Array<Record<string, unknown>> = [];
+    console.warn = (...args: unknown[]) => {
+      const detail = args[1];
+      if (detail && typeof detail === 'object' && (detail as { failureKind?: unknown }).failureKind === 'queue-overflow') {
+        overflowWarnings.push(detail as Record<string, unknown>);
+      }
+    };
     let calls = 0;
     window.fetch = (() => {
       calls += 1;
@@ -1273,18 +1281,85 @@ describe('collector latch release is module-owned (#6288)', () => {
     try {
       const parked = window.fetch(UMAMI_SEND_URL, collectorEventInit());
       void parked.catch(() => {});
-      const queued = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      for (let index = 0; index < COLLECTOR_QUEUE_LIMIT; index += 1) {
+        void window.fetch(UMAMI_SEND_URL, collectorEventInit()).catch(() => {});
+      }
       await drainPromiseHandlers();
-      assert.equal(calls, 1, 'the second write waits behind the parked request');
+      assert.equal(calls, 1, 'the queue is full behind one parked write');
+      assert.equal(overflowWarnings.length, 0, 'filling exactly to the bound must not overflow');
+      assert.ok(
+        fakeTimers.timers.some((timer) => timer.delay === LATCH_DEADLINE_MS && !timer.cancelled),
+        'a latch timer exists, and this test deliberately never fires it',
+      );
 
-      const latch = deadlines.find((deadline) => deadline.ms === LATCH_DEADLINE_MS);
-      assert.ok(latch, 'the native path must retain a 25s latch signal outside the fetch wrapper');
-      latch.controller.abort(createNativeTimeoutError());
+      now += LATCH_DEADLINE_MS;
+      const extra = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      await drainPromiseHandlers(() => calls >= 2, 'the stale latch must release without a timer callback');
 
-      await assert.rejects(parked, { name: 'TimeoutError' });
-      await drainPromiseHandlers(() => calls === 2, 'the queued write reaches the network');
-      assert.equal((await queued).status, 200);
+      const parkedError = await parked.then(() => null, (reason: unknown) => reason);
+      assert.equal((parkedError as Error | null)?.name, 'TimeoutError');
+      assert.deepEqual(
+        collectorFailureFromError(parkedError),
+        { kind: 'timeout', raced: true },
+        'the withheld-timer pump must classify the abandoned write as raced',
+      );
+      assert.equal((await extra).status, 200, 'the write that would have overflowed is delivered');
+      assert.equal(overflowWarnings.length, 0, 'a stale latch must not shed the enqueue that woke it');
     } finally {
+      Date.now = originalNow;
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('does not release a fresh in-flight slot just because the queue is full (#6947)', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', {
+      configurable: true,
+      value: () => new AbortController().signal,
+    });
+    const fakeTimers = installFakeTimers();
+    let now = 1_700_000_000_000;
+    const originalNow = Date.now;
+    Date.now = () => now;
+    const originalWarn = console.warn;
+    const overflowWarnings: Array<Record<string, unknown>> = [];
+    console.warn = (...args: unknown[]) => {
+      const detail = args[1];
+      if (detail && typeof detail === 'object' && (detail as { failureKind?: unknown }).failureKind === 'queue-overflow') {
+        overflowWarnings.push(detail as Record<string, unknown>);
+      }
+    };
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return calls === 1 ? parkForever() : Promise.resolve(collectorResponse(true, 200));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const parked = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void parked.catch(() => {});
+      for (let index = 0; index < COLLECTOR_QUEUE_LIMIT; index += 1) {
+        void window.fetch(UMAMI_SEND_URL, collectorEventInit()).catch(() => {});
+      }
+      await drainPromiseHandlers();
+      now += LATCH_DEADLINE_MS - 1;
+      const extra = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void extra.catch(() => {});
+      await drainPromiseHandlers(
+        () => overflowWarnings.length > 0,
+        'a write that arrives before the latch deadline must still overflow',
+      );
+      assert.equal(calls, 1, 'the in-flight slot must stay parked until the latch deadline');
+      assert.equal(
+        await Promise.race([parked.then(() => 'settled'), Promise.resolve('pending')]),
+        'pending',
+        'the parked write must not be force-expired before the latch deadline',
+      );
+    } finally {
+      Date.now = originalNow;
       console.warn = originalWarn;
       fakeTimers.restore();
       if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);

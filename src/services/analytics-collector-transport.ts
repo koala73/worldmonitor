@@ -83,7 +83,9 @@ export type CollectorFailure = {
    *    aggregate's verdict, and carries its own Sentry fingerprint segment.
    *    Not gold-plating — this fix REMOVES `queue-overflow`, the parked page's
    *    only other symptom, so without these the population goes dark exactly
-   *    when the bug is fixed (#6288).
+   *    when the bug is fixed (#6288). Hidden-tab timer throttling can still
+   *    withhold the latch callback; enqueue force-expires a stale slot from
+   *    wall-clock before overflowing (#6947).
    */
   raced?: boolean;
 };
@@ -193,23 +195,35 @@ const REQUEST_TIMEOUT_MS = 20_000;
  *
  * The abort signal and the latch deadline must NOT expire on the same tick. A
  * transport that honors the abort still needs a moment to reject — in a browser
- * that rejection is queued as a task, and the request and latch timers remain
- * independent clocks. Firing both at once would make the winner unspecified, so
- * a perfectly cooperative transport would intermittently be reclassified as
- * `raced` and lose the retry it is entitled to. The grace period buys
- * determinism: the transport always gets first refusal, and the module only
- * steps in for a transport that did not answer the abort at all.
+ * that rejection is queued as a task, and on the native path the platform's
+ * `AbortSignal.timeout` timer is not ordered against this module's `setTimeout`
+ * at all. Firing both at once would make the winner unspecified, so a perfectly
+ * cooperative transport would intermittently be reclassified as `raced` and lose
+ * the retry it is entitled to. The grace period buys determinism: the transport
+ * always gets first refusal, and the module only steps in for a transport that
+ * did not answer the abort at all.
  *
  * Sized well above the rejection itself because the two clocks can drift under
- * load: a long task, or a throttled fallback timer, can leave both timers due
- * in one wake-up. The extra latency lands ONLY on the already-anomalous stalled
+ * load: a long task, or a hidden tab under Chromium's intensive throttling
+ * (setTimeout clamped to ~1/min after 5 minutes), can leave both timers due in
+ * one wake-up. The extra latency lands ONLY on the already-anomalous stalled
  * tail — a healthy write settles in milliseconds and never sees this timer — so
  * widening it costs nothing on the happy path and buys margin against a false
  * `raced`, which would cost a legitimate write both its retry and its durable
  * marker. It is a hedge, not a guarantee: see the known limitation in the
  * `raced` docblock.
+ *
+ * The timer is not the only release path. Hidden-tab throttling can withhold
+ * this callback across a whole 60s health window (#6947). Enqueue compares
+ * `Date.now()` against `collectorInFlightStartedAt` and force-expires a stale
+ * latch before applying `COLLECTOR_QUEUE_LIMIT`, so a queue that is already
+ * full still pumps when JS next runs.
  */
 const LATCH_RELEASE_GRACE_MS = 5_000;
+
+function collectorLatchDeadlineMs(): number {
+  return REQUEST_TIMEOUT_MS + LATCH_RELEASE_GRACE_MS;
+}
 
 /**
  * Statuses safe to retry for an APPEND-ONLY event.
@@ -297,6 +311,15 @@ let collectorHealthReporter: CollectorHealthReporter = (report) =>
 
 const collectorRequestQueue: CollectorRequest[] = [];
 let collectorRequestInFlight = false;
+/** Wall-clock start of the current in-flight write; 0 when the slot is free. */
+let collectorInFlightStartedAt = 0;
+/**
+ * Bumped when a stale in-flight write is force-expired from enqueue. The parked
+ * request's `.finally()` must not clear a slot the next write already owns.
+ */
+let collectorInFlightEpoch = 0;
+/** Rejects the current in-flight latch deadline. Cleared on settle or reset. */
+let expireCollectorInFlightLatch: (() => void) | undefined;
 let collectorFetchOriginal: typeof window.fetch | null = null;
 let collectorFetchWrapper: typeof window.fetch | null = null;
 let collectorUnloadFlush: (() => void) | null = null;
@@ -863,6 +886,12 @@ type TimeoutBoundInit = AbortBoundInit & {
    * serialized slot never depends on the callee honoring `init.signal`.
    */
   deadline: Promise<never>;
+  /**
+   * Force-reject `deadline` without waiting for the timer. Used when enqueue
+   * observes that wall-clock has already passed the latch bound (#6947).
+   * No-op after `cleanup()`.
+   */
+  expire: () => void;
 };
 
 /**
@@ -942,8 +971,10 @@ function withRequestAbort(
  * (`orig(new Request(url, { method, headers, body }))`, the standard shape for
  * RUM SDKs that re-time requests) silently drops `init.signal`, and one that
  * re-wraps the promise without forwarding rejection never settles at all. On
- * the native branch the request deadline lives inside the signal such a wrapper
- * may discard, so the latch below retains its own signal instead.
+ * the native branch the entire deadline lives inside the `AbortSignal.timeout`
+ * object such a wrapper discards, so that path — which carries essentially all
+ * real traffic — had strictly LESS module-side protection than the
+ * compatibility path.
  *
  * `deadline` is the half nobody else can withhold. Keep sending the abort too:
  * cancelling a well-behaved transport is still correct, and the race only stops
@@ -955,36 +986,14 @@ function withCollectorDeadline(
 ): TimeoutBoundInit {
   // First, because withManualAbort throws when AbortController is unavailable.
   const bound = withRequestAbort(init, timeoutMs);
-  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-    // Keep the latch on the platform timer behind `AbortSignal.timeout`, not on
-    // a page `setTimeout`. Hidden tabs throttle page timers to roughly once a
-    // minute, so a 25s setTimeout latch can fail to pump even one queue slot
-    // inside a 60s health window (#6947). The fetch wrapper may discard the
-    // signal passed below; this retained signal still belongs to this module.
-    const latchSignal = AbortSignal.timeout(timeoutMs + LATCH_RELEASE_GRACE_MS);
-    let releaseLatch: (() => void) | undefined;
-    const deadline = new Promise<never>((_resolve, reject) => {
-      releaseLatch = () => reject(createTimeoutError(timeoutMs, true));
-      if (latchSignal.aborted) releaseLatch();
-      else latchSignal.addEventListener('abort', releaseLatch, { once: true });
-    });
-    void deadline.catch(() => {});
-    return {
-      init: bound.init,
-      deadline,
-      cleanup: () => {
-        if (releaseLatch) latchSignal.removeEventListener('abort', releaseLatch);
-        bound.cleanup();
-      },
-    };
-  }
-
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  let fireDeadline: (() => void) | undefined;
   const deadline = new Promise<never>((_resolve, reject) => {
-    deadlineTimer = setTimeout(
-      () => reject(createTimeoutError(timeoutMs, true)),
-      timeoutMs + LATCH_RELEASE_GRACE_MS,
-    );
+    fireDeadline = () => {
+      fireDeadline = undefined;
+      reject(createTimeoutError(timeoutMs, true));
+    };
+    deadlineTimer = setTimeout(fireDeadline, timeoutMs + LATCH_RELEASE_GRACE_MS);
   });
   // The transport wins the race in every healthy case, and the loser of a
   // Promise.race is still rejected. Keep that from surfacing as an unhandled
@@ -993,7 +1002,11 @@ function withCollectorDeadline(
   return {
     init: bound.init,
     deadline,
+    expire: () => {
+      fireDeadline?.();
+    },
     cleanup: () => {
+      fireDeadline = undefined;
       clearTimeout(deadlineTimer);
       bound.cleanup();
     },
@@ -1013,6 +1026,7 @@ async function runCollectorRequest(request: CollectorRequest, generation: number
     collectorDispatchDepth += 1;
     try {
       timeoutBoundInit = withCollectorDeadline(request.init);
+      expireCollectorInFlightLatch = () => timeoutBoundInit?.expire();
       deadline = timeoutBoundInit.deadline;
       responsePromise = request.originalFetch(request.input, timeoutBoundInit.init);
     } finally {
@@ -1087,16 +1101,32 @@ async function runCollectorRequest(request: CollectorRequest, generation: number
   }
 }
 
+function releaseStaleCollectorLatch(now = Date.now()): boolean {
+  if (!collectorRequestInFlight) return false;
+  if (now - collectorInFlightStartedAt < collectorLatchDeadlineMs()) return false;
+  const expire = expireCollectorInFlightLatch;
+  expireCollectorInFlightLatch = undefined;
+  collectorInFlightEpoch += 1;
+  collectorRequestInFlight = false;
+  expire?.();
+  return true;
+}
+
 function drainCollectorRequestQueue(): void {
+  releaseStaleCollectorLatch();
   if (collectorRequestInFlight || collectorRequestQueue.length === 0) return;
   const request = collectorRequestQueue.shift();
   if (!request) return;
 
   collectorRequestInFlight = true;
+  collectorInFlightStartedAt = Date.now();
   const generation = collectorTransportGeneration;
+  const epoch = collectorInFlightEpoch;
   void runCollectorRequest(request, generation).finally(() => {
     if (generation !== collectorTransportGeneration) return;
+    if (epoch !== collectorInFlightEpoch) return;
     collectorRequestInFlight = false;
+    expireCollectorInFlightLatch = undefined;
     drainCollectorRequestQueue();
   });
 }
@@ -1167,6 +1197,12 @@ function enqueueCollectorRequest(
   };
   const transport = transportDeferred.promise;
   const delivery = deliveryDeferred.promise;
+
+  // Pump a stale latch BEFORE the overflow check. A full queue whose in-flight
+  // write has already exceeded the wall-clock bound must make room for this
+  // enqueue rather than shedding it (#6947). Drain is a no-op when the slot is
+  // still within its deadline.
+  drainCollectorRequestQueue();
 
   if (collectorRequestQueue.length >= COLLECTOR_QUEUE_LIMIT) {
     const dropIndex = collectorRequestQueue.findIndex((candidate) => !candidate.critical);
@@ -1275,6 +1311,9 @@ export function observeCollectorDelivery<T>(
 
 export function resetCollectorTransportForTesting(): void {
   collectorTransportGeneration += 1;
+  collectorInFlightEpoch += 1;
+  collectorInFlightStartedAt = 0;
+  expireCollectorInFlightLatch = undefined;
   for (const request of collectorRequestQueue.splice(0, collectorRequestQueue.length)) {
     const error = new Error('Umami collector transport reset');
     request.reject(error);
