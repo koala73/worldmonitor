@@ -82,8 +82,110 @@ test('concurrent callers wait for the same recovery probe', async () => {
   }, 0);
 
   assert.equal(await probe, 7);
-  assert.equal(await blockedCaller, 0);
+  assert.equal(await blockedCaller, 7, 'a caller arriving during a recovery probe must await that probe result');
   assert.equal(extraCalls, 0, 'a caller arriving during a recovery probe must not bypass half-open state');
+});
+
+test('joining an in-flight SWR after cooldown expiry does not latch the recovery probe', async () => {
+  clearAllCircuitBreakers();
+  const breaker = createCircuitBreaker<number>({
+    name: 'state-contract-swr-join',
+    maxFailures: 2,
+    cooldownMs: 40,
+    cacheTtlMs: 5,
+    persistCache: false,
+  });
+
+  await breaker.execute(async () => 1, 0, { cacheKey: 'A' });
+  await sleep(10);
+
+  let releaseA: () => void = () => {};
+  const holdA = new Promise<void>((resolve) => {
+    releaseA = resolve;
+  });
+  let aCalls = 0;
+  const staleReturn = breaker.execute(async () => {
+    aCalls += 1;
+    await holdA;
+    return 2;
+  }, 0, { cacheKey: 'A' });
+  assert.equal(await staleReturn, 1);
+  assert.equal(aCalls, 1);
+
+  breaker.recordFailure('b1');
+  breaker.recordFailure('b2');
+  assert.equal(breaker.isOnCooldown(), true);
+  await sleep(50);
+  assert.equal(breaker.isOnCooldown(), false);
+
+  const joined = await breaker.execute(async () => 3, 0, { cacheKey: 'A' });
+  assert.equal(joined, 1, 'joining the in-flight SWR must still serve the stale cache');
+
+  releaseA();
+  await sleep(20);
+
+  let laterCalls = 0;
+  const later = await breaker.execute(async () => {
+    laterCalls += 1;
+    return 4;
+  }, 0, { cacheKey: 'B' });
+  assert.equal(later, 4);
+  assert.equal(
+    laterCalls,
+    1,
+    'after the joined SWR settles, other keys must still be able to contact upstream',
+  );
+});
+
+test('a hung recovery probe times out, reopens cooldown, and unblocks later callers', async () => {
+  clearAllCircuitBreakers();
+  const breaker = createCircuitBreaker<number>({
+    name: 'state-contract-probe-timeout',
+    maxFailures: 2,
+    cooldownMs: 20,
+    persistCache: false,
+    recoveryProbeTimeoutMs: 25,
+  });
+
+  breaker.recordFailure('first');
+  breaker.recordFailure('second');
+  await sleep(30);
+
+  let releaseHung: () => void = () => {};
+  const hung = new Promise<void>((resolve) => {
+    releaseHung = resolve;
+  });
+  let hungCalls = 0;
+  const probe = breaker.execute(async () => {
+    hungCalls += 1;
+    await hung;
+    return 1;
+  }, 0);
+
+  assert.equal(await probe, 0);
+  assert.equal(hungCalls, 1);
+  assert.equal(
+    breaker.isOnCooldown(),
+    true,
+    'a timed-out recovery probe must restore cooldown immediately',
+  );
+
+  await sleep(30);
+  let laterCalls = 0;
+  const later = await breaker.execute(async () => {
+    laterCalls += 1;
+    return 2;
+  }, 0);
+  assert.equal(later, 2);
+  assert.equal(laterCalls, 1, 'timeout must clear the probe flag so a later execute can fetch');
+
+  releaseHung();
+  await sleep(10);
+  assert.equal(
+    breaker.getCached(),
+    2,
+    'a late hung-probe success must not overwrite the later live fetch',
+  );
 });
 
 test('stale fallback returned during cooldown is reported as cached data', async () => {
