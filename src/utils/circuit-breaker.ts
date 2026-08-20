@@ -14,6 +14,10 @@ type StaleRefreshOutcome<T> =
   | { kind: 'not-cacheable' }
   | { kind: 'failed' };
 
+type RecoveryProbeOutcome<T> =
+  | { kind: 'success'; data: T }
+  | { kind: 'failed' };
+
 export type BreakerDataMode = 'live' | 'cached' | 'unavailable';
 
 export interface BreakerDataState {
@@ -41,6 +45,9 @@ export interface CircuitBreakerOptions<T = unknown> {
    *  Persistent entries older than this are discarded during hydration.
    *  Useful for time-sensitive data (e.g. risk scores → 1h). */
   persistentStaleCeilingMs?: number;
+  /** Bound for a half-open recovery probe. Default 30s. A timed-out probe
+   *  reopens cooldown and ignores a late `fn()` settlement. */
+  recoveryProbeTimeoutMs?: number;
 }
 
 const DEFAULT_MAX_FAILURES = 2;
@@ -49,6 +56,7 @@ const DEFAULT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 const PERSISTENT_STALE_CEILING_MS = 24 * 60 * 60 * 1000; // 24h — discard persistent entries older than this
 const DEFAULT_CACHE_KEY = '__default__';
 const DEFAULT_MAX_CACHE_ENTRIES = 256;
+const DEFAULT_RECOVERY_PROBE_TIMEOUT_MS = 30_000;
 
 function isDesktopOfflineMode(): boolean {
   if (typeof window === 'undefined') return false;
@@ -69,8 +77,12 @@ export class CircuitBreaker<T> {
   private persistentLoadPromises = new Map<string, Promise<void>>();
   private lastDataState: BreakerDataState = { mode: 'unavailable', timestamp: null, offline: false };
   private backgroundRefreshPromises = new Map<string, Promise<StaleRefreshOutcome<T>>>();
+  private recoveryProbeInFlight = false;
+  private recoveryProbePromise: Promise<RecoveryProbeOutcome<T>> | null = null;
+  private recoveryProbeGeneration = 0;
   private maxCacheEntries: number;
   private persistentStaleCeilingMs: number;
+  private recoveryProbeTimeoutMs: number;
 
   constructor(options: CircuitBreakerOptions<T>) {
     this.name = options.name;
@@ -84,6 +96,10 @@ export class CircuitBreaker<T> {
     this.maxCacheEntries = options.maxCacheEntries ?? DEFAULT_MAX_CACHE_ENTRIES;
     const rawCeiling = options.persistentStaleCeilingMs ?? PERSISTENT_STALE_CEILING_MS;
     this.persistentStaleCeilingMs = Number.isFinite(rawCeiling) && rawCeiling >= 0 ? rawCeiling : PERSISTENT_STALE_CEILING_MS;
+    const rawProbeTimeout = options.recoveryProbeTimeoutMs ?? DEFAULT_RECOVERY_PROBE_TIMEOUT_MS;
+    this.recoveryProbeTimeoutMs = Number.isFinite(rawProbeTimeout) && rawProbeTimeout > 0
+      ? rawProbeTimeout
+      : DEFAULT_RECOVERY_PROBE_TIMEOUT_MS;
   }
 
   private resolveCacheKey(cacheKey?: string): string {
@@ -92,12 +108,55 @@ export class CircuitBreaker<T> {
   }
 
   private isStateOnCooldown(): boolean {
-    if (Date.now() < this.state.cooldownUntil) return true;
-    if (this.state.cooldownUntil > 0) {
-      this.state.failures = 0;
-      this.state.cooldownUntil = 0;
+    return Date.now() < this.state.cooldownUntil;
+  }
+
+  /** Move an expired breaker into one bounded recovery probe.
+   *
+   *  Cooldown reads must stay side-effect-free; recovery is decided only when
+   *  execute() is ready to start a new upstream call. Retaining one failure
+   *  below the threshold makes a failed probe reopen the breaker immediately.
+   *  Call this only when creating that call — never when joining an in-flight
+   *  SWR — so the matching finally always owns the flag.
+   */
+  private beginRecoveryProbeIfCooldownExpired(): boolean {
+    if (this.state.cooldownUntil === 0 || this.isStateOnCooldown() || this.recoveryProbeInFlight) {
+      return false;
     }
-    return false;
+    this.state.cooldownUntil = 0;
+    this.state.failures = Math.max(0, this.maxFailures - 1);
+    this.recoveryProbeGeneration += 1;
+    this.recoveryProbeInFlight = true;
+    return true;
+  }
+
+  private isCurrentRecoveryProbe(generation: number): boolean {
+    return this.recoveryProbeInFlight && this.recoveryProbeGeneration === generation;
+  }
+
+  private finishRecoveryProbe(): void {
+    this.recoveryProbeInFlight = false;
+    this.recoveryProbePromise = null;
+    this.recoveryProbeGeneration += 1;
+  }
+
+  private runWithTimeout<R>(fn: () => Promise<R>, timeoutMs: number): Promise<R> {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return fn();
+    return new Promise<R>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error(`[${this.name}] Recovery probe timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+      fn().then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error: unknown) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
   }
 
   private getPersistKey(cacheKey: string): string {
@@ -250,7 +309,14 @@ export class CircuitBreaker<T> {
     return null;
   }
 
+  /** Return fresh cache data only; expired entries require the explicit stale accessor below. */
   getCachedOrDefault(defaultValue: T, cacheKey?: string): T {
+    const resolvedKey = this.resolveCacheKey(cacheKey);
+    return this.getCached(resolvedKey) ?? defaultValue;
+  }
+
+  /** Return a cache entry even after its TTL, for explicit stale fallbacks. */
+  getCachedOrDefaultStale(defaultValue: T, cacheKey?: string): T {
     const resolvedKey = this.resolveCacheKey(cacheKey);
     return this.getCacheEntry(resolvedKey)?.data ?? defaultValue;
   }
@@ -264,6 +330,7 @@ export class CircuitBreaker<T> {
     this.state.cooldownUntil = 0;
     this.state.lastError = undefined;
     this.lastDataState = { mode: 'live', timestamp, offline: false };
+    this.finishRecoveryProbe();
   }
 
   private writeCacheEntry(data: T, cacheKey: string, timestamp: number): void {
@@ -298,6 +365,7 @@ export class CircuitBreaker<T> {
     this.backgroundRefreshPromises.clear();
     this.persistentLoadPromises.clear();
     this.persistentLoadedKeys.clear();
+    this.finishRecoveryProbe();
     if (this.persistEnabled) {
       this.deleteAllPersistentCache();
     }
@@ -315,6 +383,7 @@ export class CircuitBreaker<T> {
     this.backgroundRefreshPromises.clear();
     this.persistentLoadPromises.clear();
     this.persistentLoadedKeys.clear();
+    this.finishRecoveryProbe();
   }
 
   recordFailure(error?: string): void {
@@ -398,13 +467,28 @@ export class CircuitBreaker<T> {
 
     if (this.isStateOnCooldown()) {
       console.log(`[${this.name}] Currently unavailable, ${this.getCooldownRemaining()}s remaining`);
-      if (cachedEntry !== null && this.isCacheEntryFresh(cachedEntry)) {
+      if (cachedEntry !== null) {
         this.lastDataState = { mode: 'cached', timestamp: cachedEntry.timestamp, offline };
         this.touchCacheKey(cacheKey);
         return cachedEntry.data as R;
       }
       this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
-      return (cachedEntry?.data ?? defaultValue) as R;
+      return defaultValue;
+    }
+
+    if (this.recoveryProbeInFlight) {
+      if (cachedEntry !== null) {
+        this.lastDataState = { mode: 'cached', timestamp: cachedEntry.timestamp, offline };
+        this.touchCacheKey(cacheKey);
+        return cachedEntry.data as R;
+      }
+      const pending = this.recoveryProbePromise;
+      if (pending) {
+        const outcome = await pending;
+        if (outcome.kind === 'success') return outcome.data as R;
+        this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
+        return defaultValue;
+      }
     }
 
     if (
@@ -430,9 +514,16 @@ export class CircuitBreaker<T> {
       // spawn a parallel request.
       let refreshPromise = this.backgroundRefreshPromises.get(cacheKey);
       if (!refreshPromise) {
+        const recoveryProbe = this.beginRecoveryProbeIfCooldownExpired();
+        const probeGeneration = this.recoveryProbeGeneration;
         refreshPromise = (async (): Promise<StaleRefreshOutcome<T>> => {
           try {
-            const result = await fn();
+            const result = recoveryProbe
+              ? await this.runWithTimeout(fn, this.recoveryProbeTimeoutMs)
+              : await fn();
+            if (recoveryProbe && !this.isCurrentRecoveryProbe(probeGeneration)) {
+              return { kind: 'failed' };
+            }
             const now = Date.now();
             this.markSuccess(now);
             if (shouldCache(result)) {
@@ -457,14 +548,25 @@ export class CircuitBreaker<T> {
             return { kind: 'not-cacheable' };
           } catch (e) {
             if (options.ignoreError?.(e)) return { kind: 'failed' };
+            if (recoveryProbe && !this.isCurrentRecoveryProbe(probeGeneration)) {
+              return { kind: 'failed' };
+            }
             console.warn(`[${this.name}] Background refresh failed:`, e);
             this.recordFailure(String(e));
             return { kind: 'failed' };
           }
         })().finally(() => {
+          if (recoveryProbe) this.finishRecoveryProbe();
           this.backgroundRefreshPromises.delete(cacheKey);
         });
         this.backgroundRefreshPromises.set(cacheKey, refreshPromise);
+        if (recoveryProbe) {
+          this.recoveryProbePromise = refreshPromise.then((outcome) => (
+            outcome.kind === 'cacheable'
+              ? { kind: 'success', data: outcome.data }
+              : { kind: 'failed' }
+          ));
+        }
       }
 
       if (forceRefresh || staleRefreshMode === 'await') {
@@ -486,22 +588,40 @@ export class CircuitBreaker<T> {
       return cachedEntry.data as R;
     }
 
-    try {
-      const result = await fn();
-      const now = Date.now();
-      this.markSuccess(now);
-      if (shouldCache(result)) {
-        this.writeCacheEntry(result, cacheKey, now);
+    const recoveryProbe = this.beginRecoveryProbeIfCooldownExpired();
+    const probeGeneration = this.recoveryProbeGeneration;
+    const liveWork = (async (): Promise<RecoveryProbeOutcome<T>> => {
+      try {
+        const result = recoveryProbe
+          ? await this.runWithTimeout(fn, this.recoveryProbeTimeoutMs)
+          : await fn();
+        if (recoveryProbe && !this.isCurrentRecoveryProbe(probeGeneration)) {
+          return { kind: 'failed' };
+        }
+        const now = Date.now();
+        this.markSuccess(now);
+        if (shouldCache(result)) {
+          this.writeCacheEntry(result, cacheKey, now);
+        }
+        return { kind: 'success', data: result };
+      } catch (e) {
+        if (options.ignoreError?.(e)) throw e;
+        if (recoveryProbe && !this.isCurrentRecoveryProbe(probeGeneration)) {
+          return { kind: 'failed' };
+        }
+        const msg = String(e);
+        console.error(`[${this.name}] Failed:`, msg);
+        this.recordFailure(msg);
+        this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
+        return { kind: 'failed' };
+      } finally {
+        if (recoveryProbe) this.finishRecoveryProbe();
       }
-      return result;
-    } catch (e) {
-      if (options.ignoreError?.(e)) throw e;
-      const msg = String(e);
-      console.error(`[${this.name}] Failed:`, msg);
-      this.recordFailure(msg);
-      this.lastDataState = { mode: 'unavailable', timestamp: null, offline };
-      return defaultValue;
-    }
+    })();
+    if (recoveryProbe) this.recoveryProbePromise = liveWork;
+    const liveOutcome = await liveWork;
+    if (liveOutcome.kind === 'success') return liveOutcome.data as R;
+    return defaultValue;
   }
 }
 
