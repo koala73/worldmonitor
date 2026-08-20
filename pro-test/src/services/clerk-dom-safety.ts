@@ -191,7 +191,7 @@ export function installDetachedNodeGuards(
   const originalInsertBefore = proto.insertBefore;
 
   proto.removeChild = function (this: unknown, child: Node): Node {
-    if (child.parentNode !== this) {
+    if (child != null && child.parentNode !== this) {
       onRecovered?.('removeChild');
       return child;
     }
@@ -201,7 +201,9 @@ export function installDetachedNodeGuards(
   proto.insertBefore = function (this: unknown, node: Node, child: Node | null): Node {
     if (child !== null && child.parentNode !== this) {
       onRecovered?.('insertBefore');
-      return node;
+      // insertBefore(node, null) appends. Dropping the call would leave
+      // React's fiber mounted with no host node.
+      return originalInsertBefore.call(this, node, null);
     }
     return originalInsertBefore.call(this, node, child);
   };

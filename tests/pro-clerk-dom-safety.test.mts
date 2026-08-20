@@ -226,6 +226,25 @@ describe('detached node host-config guard', () => {
       stop();
     }
   });
+
+  it('still inserts when the insertBefore reference was already detached', () => {
+    const window = browserWindow();
+    const proto = window.Node.prototype;
+    const parent = window.document.createElement('div');
+    const staleRef = window.document.createTextNode('old');
+    const next = window.document.createElement('span');
+    parent.appendChild(staleRef);
+    window.document.body.appendChild(staleRef);
+    const stop = installDetachedNodeGuards(proto);
+    try {
+      const inserted = parent.insertBefore(next, staleRef);
+      assert.equal(inserted, next);
+      assert.equal(next.parentNode, parent);
+      assert.equal(parent.contains(next), true);
+    } finally {
+      stop();
+    }
+  });
 });
 
 describe('React root translator isolation', () => {
