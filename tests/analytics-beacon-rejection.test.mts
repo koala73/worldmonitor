@@ -1141,6 +1141,56 @@ function parkForever(): Promise<Response> {
 }
 
 /**
+ * Page-lifecycle stub for #6968: the gate listens on `window` for pagehide and
+ * on `document` for visibilitychange, and it reads `document.visibilityState`
+ * on every drain. Tests that only stub `window.addEventListener` never see the
+ * visibility half.
+ */
+function stubPageLifecycle(initialVisibility = 'visible'): {
+  setVisibility(state: string): void;
+  firePageHide(): void;
+  fireVisibilityChange(): void;
+  restore(): void;
+} {
+  let visibilityState = initialVisibility;
+  const windowListeners: Record<string, Array<() => void>> = {};
+  const documentListeners: Record<string, Array<() => void>> = {};
+  const windowRecord = globalThis.window as Record<string, unknown>;
+  const savedAdd = windowRecord.addEventListener;
+  const savedRemove = windowRecord.removeEventListener;
+  const documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  windowRecord.addEventListener = (type: string, handler: () => void) => {
+    (windowListeners[type] ??= []).push(handler);
+  };
+  windowRecord.removeEventListener = () => {};
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: {
+      get visibilityState() { return visibilityState; },
+      addEventListener(type: string, handler: () => void) {
+        (documentListeners[type] ??= []).push(handler);
+      },
+      removeEventListener() {},
+    },
+  });
+  return {
+    setVisibility(state: string) { visibilityState = state; },
+    firePageHide() {
+      for (const handler of windowListeners.pagehide ?? []) handler();
+    },
+    fireVisibilityChange() {
+      for (const handler of documentListeners.visibilitychange ?? []) handler();
+    },
+    restore() {
+      windowRecord.addEventListener = savedAdd;
+      windowRecord.removeEventListener = savedRemove;
+      if (documentDescriptor) Object.defineProperty(globalThis, 'document', documentDescriptor);
+      else delete (globalThis as { document?: unknown }).document;
+    },
+  };
+}
+
+/**
  * The module-owned latch deadline, pinned to its exact delay.
  *
  * NOT "any timer later than the request bound": a deadline pushed far enough
@@ -1341,18 +1391,10 @@ describe('collector latch release is module-owned (#6288)', () => {
   // already excludes 500/502/503/504 for.
   it('classifies a raced-out write distinctly from an honored abort', { timeout: 10_000 }, async () => {
     const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
-    const documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
     const originalNow = Date.now;
     let now = 1_000;
     Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
-    Object.defineProperty(globalThis, 'document', {
-      configurable: true,
-      value: {
-        visibilityState: 'hidden',
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      },
-    });
+    const lifecycle = stubPageLifecycle('visible');
     Date.now = () => now;
     const fakeTimers = installFakeTimers();
     const originalWarn = console.warn;
@@ -1394,21 +1436,181 @@ describe('collector latch release is module-owned (#6288)', () => {
       assert.equal(diagnostics[0]?.failureKind, 'timeout', 'and it stays a timeout, not a new kind');
       assert.equal(
         diagnostics[0]?.visibilityAtSend,
-        'hidden',
-        'a hidden-tab send is the WebKit-suspension discriminator #6968 needs',
+        'visible',
+        'a foreground send is the remaining parked-wrapper population after #6968 holds hidden tabs',
       );
       assert.equal(
         diagnostics[0]?.elapsedAtDeadlineMs,
         25_000,
         'the payload must say how long the browser left the request unsettled',
       );
+      assert.equal(
+        diagnostics[0]?.racedCount,
+        1,
+        'WORLDMONITOR-ZF must be judged against this page\'s write count, not as a raw daily total',
+      );
+      assert.equal(diagnostics[0]?.writeCount, 1);
+      assert.equal(diagnostics[0]?.racedRate, 1);
     } finally {
       Date.now = originalNow;
       console.warn = originalWarn;
       fakeTimers.restore();
+      lifecycle.restore();
       if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
-      if (documentDescriptor) Object.defineProperty(globalThis, 'document', documentDescriptor);
-      else delete (globalThis as { document?: unknown }).document;
+    }
+  });
+
+  // #6968: WebKit freezes an in-flight fetch when the tab is backgrounded. The
+  // previous visibilitychange→hidden path treated a tab switch as unload and
+  // flushed the backlog into that freeze; 20s later the latch marked every
+  // write `raced` and closed both recovery doors. Holding until the tab is
+  // visible again (and only flushing on actual pagehide) is what removes the
+  // 71% Apple skew without sendBeacon's receiptless conversion hole.
+  it('holds serialized writes while the tab is hidden and drains them when it returns', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    const lifecycle = stubPageLifecycle('hidden');
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return Promise.resolve(collectorResponse(true, 200, RECEIPT_BODY));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const held = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      await drainPromiseHandlers();
+      assert.equal(calls, 0, 'a hidden tab must not start a fetch WebKit will freeze');
+      assert.equal(
+        fakeTimers.timers.filter((timer) => timer.delay === LATCH_DEADLINE_MS && !timer.cancelled).length,
+        0,
+        'holding must not arm a latch against a write that has not been dispatched',
+      );
+
+      lifecycle.setVisibility('visible');
+      lifecycle.fireVisibilityChange();
+      await drainPromiseHandlers(() => calls === 1, 'becoming visible drains the held write');
+      assert.equal((await held).status, 200);
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      lifecycle.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('still flushes a hidden backlog on pagehide so keepalive can finish the navigation', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    const lifecycle = stubPageLifecycle('hidden');
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return Promise.resolve(collectorResponse(true, 200, RECEIPT_BODY));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const flushed = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      await drainPromiseHandlers();
+      assert.equal(calls, 0, 'hidden drain stays parked until unload');
+
+      lifecycle.firePageHide();
+      await drainPromiseHandlers(() => calls === 1, 'pagehide dispatches the held backlog');
+      assert.equal((await flushed).status, 200);
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      lifecycle.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('pauses an in-flight latch while hidden and resumes it when the tab is visible again', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    const lifecycle = stubPageLifecycle('visible');
+    window.fetch = (() => parkForever()) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const parked = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void parked.catch(() => {});
+      await drainPromiseHandlers();
+      const armed = findLatchDeadline(fakeTimers.timers);
+      assert.ok(armed, 'a visible send still owns a latch');
+
+      lifecycle.setVisibility('hidden');
+      lifecycle.fireVisibilityChange();
+      assert.equal(armed.cancelled, true, 'backgrounding must not race-out a frozen WebKit fetch');
+
+      armed.callback();
+      await drainPromiseHandlers();
+      let settled = false;
+      void parked.then(() => { settled = true; }, () => { settled = true; });
+      await drainPromiseHandlers();
+      assert.equal(settled, false, 'firing the paused timer is a no-op');
+
+      lifecycle.setVisibility('visible');
+      lifecycle.fireVisibilityChange();
+      const resumed = fakeTimers.timers.find(
+        (timer) => !timer.cancelled && timer.delay > 20_000 && timer !== armed,
+      );
+      assert.ok(resumed, 'becoming visible re-arms the remaining latch');
+      resumed.callback();
+      await assert.rejects(parked, { name: 'TimeoutError' });
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      lifecycle.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('reports hidden visibility and the write-count rate on a pagehide flush that still races', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    const diagnostics: Array<Record<string, unknown>> = [];
+    console.warn = (...args: unknown[]) => {
+      const detail = args[1];
+      if (detail && typeof detail === 'object') diagnostics.push(detail as Record<string, unknown>);
+    };
+    const lifecycle = stubPageLifecycle('hidden');
+    window.fetch = (() => parkForever()) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const flushed = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void flushed.catch(() => {});
+      await drainPromiseHandlers();
+      lifecycle.firePageHide();
+      await drainPromiseHandlers();
+      const latchDeadline = findLatchDeadline(fakeTimers.timers);
+      assert.ok(latchDeadline, 'an unload flush is still bounded');
+      latchDeadline.callback();
+      await assert.rejects(flushed, { name: 'TimeoutError' });
+      await drainPromiseHandlers(() => diagnostics.length > 0, 'the raced unload flush is reported');
+      assert.equal(diagnostics[0]?.visibilityAtSend, 'hidden');
+      assert.equal(diagnostics[0]?.raced, true);
+      assert.equal(diagnostics[0]?.racedCount, 1);
+      assert.equal(diagnostics[0]?.writeCount, 1);
+      assert.equal(diagnostics[0]?.racedRate, 1);
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      lifecycle.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
     }
   });
 
@@ -1667,10 +1869,10 @@ describe('collector latch release is module-owned (#6288)', () => {
 
   // `flushCollectorQueueForUnload` dispatches the WHOLE backlog at once, outside
   // the single-slot serialization, so those writes never pass through the latch
-  // that the deadline normally guards. visibilitychange fires this on a tab
-  // switch too — and that page can come back — so "the page is going away
-  // anyway" does not cover it: an unbounded flushed write would hang forever on
-  // a live page, holding whatever the wrapper retains.
+  // that the deadline normally guards. visibilitychange no longer flushes — a
+  // tab switch that comes back is held instead (#6968) — but pagehide still
+  // does, including bfcache, so an unbounded flushed write would hang forever
+  // on a live page, holding whatever the wrapper retains.
   it('bounds every write the unload flush dispatches, not just the queued one', { timeout: 10_000 }, async () => {
     const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
     Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });

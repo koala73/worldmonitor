@@ -29,9 +29,33 @@ health signal: a healthy deployment can still return HTTP 500 from `POST
   image/digest and the bounded production log query to the issue.
 - During normal queue draining, browser writes are serialized through one
   in-flight transport slot. `pagehide` deliberately dispatches queued writes
-  concurrently so keepalive delivery gets a chance to finish. The client does
-  not blindly retry append-only conversion events after an ambiguous 5xx;
-  identity snapshots may use their idempotent retry policy.
+  concurrently so keepalive delivery gets a chance to finish. A tab that is
+  only hidden (`visibilitychange` → `hidden`, including iOS/Safari backgrounding)
+  does **not** flush: WebKit freezes in-flight `fetch`, and treating that as
+  unload produced the WORLDMONITOR-ZF `timeout+raced` population (~27/day, 71%
+  Apple). Hidden tabs hold the serialized queue and pause the module-owned latch
+  until the page is visible again. The client does not blindly retry append-only
+  conversion events after an ambiguous 5xx; identity snapshots may use their
+  idempotent retry policy.
+
+### Raced-timeout retry / replay (#6968)
+
+A `raced` failure means the transport ignored our abort and the request may
+still commit. That is the same "committed, then we stopped listening" ambiguity
+that already forbids retrying a 500 or a gateway status:
+
+| Door | Append-only event (conversion) | Identity snapshot |
+|---|---|---|
+| In-page retry (`isRetryableCollectorFailure` / `isRetryableIdentityFailure`) | closed | open (idempotent overwrite) |
+| Durable checkout-marker replay (`isDurableMarkerResolved`) | closed (marker settles) | n/a |
+
+`sendBeacon` is not a recovery path for conversions: it has no receipt, so a
+successful beacon cannot clear a durable marker and a failed one cannot prove
+the write never landed. Hidden-tab **hold** is the recovery: those writes never
+become `raced`. Remaining `raced` events are parked wrappers on a visible tab
+and stay unreplayable. Each Sentry payload carries `visibilityAtSend`,
+`elapsedAtDeadlineMs`, `racedCount`, and `writeCount` so ZF is judged as a rate
+against that page's writes, not as a raw daily count.
 
 ## Patched runtime image
 
