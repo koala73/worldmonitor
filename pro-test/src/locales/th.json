@@ -423,10 +423,7 @@
     "axisPersonal": "ส่วนบุคคล",
     "axisPersonalNote": "การใช้งานส่วนตัว",
     "axisCommercial": "เชิงพาณิชย์",
-    "axisCommercialNote": "งาน ทีม และผลิตภัณฑ์",
-    "legalConsent": "การสมัครสมาชิกแสดงว่าคุณยอมรับ {{eula}} และ {{privacy}}",
-    "legalConsentEula": "ข้อตกลงใบอนุญาต",
-    "legalConsentPrivacy": "นโยบายความเป็นส่วนตัว"
+    "axisCommercialNote": "งาน ทีม และผลิตภัณฑ์"
   },
   "welcome": {
     "meta": {

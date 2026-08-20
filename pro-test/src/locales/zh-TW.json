@@ -423,10 +423,7 @@
     "axisPersonal": "個人\t",
     "axisPersonalNote": "個人使用\t",
     "axisCommercial": "商業\t",
-    "axisCommercialNote": "工作、團隊和產品\t",
-    "legalConsent": "訂閱即表示您同意{{eula}}和{{privacy}}。",
-    "legalConsentEula": "許可協議",
-    "legalConsentPrivacy": "隱私政策"
+    "axisCommercialNote": "工作、團隊和產品\t"
   },
   "welcome": {
     "meta": {

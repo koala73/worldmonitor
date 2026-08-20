@@ -23,7 +23,7 @@
 
 import type { Clerk } from '@clerk/clerk-js';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { PRIVACY_PATH, TERMS_PATH, absoluteLegalUrl } from '../../shared/legal';
+import { EULA_PATH, PRIVACY_PATH, absoluteLegalUrl } from '../../shared/legal';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 
 type ClerkInstance = Clerk;
@@ -76,7 +76,10 @@ function getAppearance() {
   // account is shown the documents rather than only bound by a browsewrap.
   // Absolute because the desktop WebView origin has no /docs (#5911).
   const layout = {
-    termsPageUrl: absoluteLegalUrl(TERMS_PATH, WEB_APP_ORIGIN),
+    // The EULA, not the Terms: sign-up should show the document that states
+    // what the account is licensed to do (#6983). Clerk exposes one "terms"
+    // slot; the EULA links the Terms from its section 2.
+    termsPageUrl: absoluteLegalUrl(EULA_PATH, WEB_APP_ORIGIN),
     privacyPageUrl: absoluteLegalUrl(PRIVACY_PATH, WEB_APP_ORIGIN),
   };
 

@@ -423,10 +423,7 @@
     "axisPersonal": "Персонално",
     "axisPersonalNote": "индивидуално използване",
     "axisCommercial": "Търговско",
-    "axisCommercialNote": "работа, екипи и продукти",
-    "legalConsent": "С абонамента се съгласявате с {{eula}} и {{privacy}}.",
-    "legalConsentEula": "Лицензионно споразумение",
-    "legalConsentPrivacy": "Политика за поверителност"
+    "axisCommercialNote": "работа, екипи и продукти"
   },
   "welcome": {
     "meta": {

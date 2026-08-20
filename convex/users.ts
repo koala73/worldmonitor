@@ -187,6 +187,7 @@ export const ensureRecord = mutation({
       firstSeenAt: now,
       lastSeenAt: now,
       termsAcceptedAt: now,
+      termsFirstAcceptedAt: now,
       termsVersion: TERMS_VERSION,
     });
     return { ok: true as const, action: "inserted" as const };
@@ -200,8 +201,8 @@ export const ensureRecord = mutation({
  * from a validated Clerk bearer token, never from a request body. The version
  * is read from `shared/legal.ts` here rather than accepted as an argument, so a
  * caller cannot record a version that was never in effect — and because both
- * ship from the same deploy, the value always names an archived snapshot under
- * `docs/legal/` (locked by tests/terms-version-archive.test.mts).
+ * ship from the same deploy, the value always names text that git history can
+ * resolve (locked by tests/legal-version.test.mts).
  *
  * Inserts when no row exists. That is not a corner case: `pro-test` has no
  * Convex client, so a buyer who signs in on the /pro pricing page and checks
@@ -241,6 +242,7 @@ export const recordTermsAcceptance = internalMutation({
         firstSeenAt: now,
         lastSeenAt: now,
         termsAcceptedAt: now,
+        termsFirstAcceptedAt: now,
         termsVersion: TERMS_VERSION,
       });
       return { ok: true as const, action: "inserted" as const };
@@ -254,6 +256,10 @@ export const recordTermsAcceptance = internalMutation({
     // meaning "as of the last write" rather than drifting behind one (#6335).
     await ctx.db.patch(existing._id, {
       termsAcceptedAt: now,
+      // Preserved across every later version. A row written before this field
+      // existed has no first-acceptance date to keep, so it adopts the one
+      // acceptance we can prove: the one being recorded now.
+      termsFirstAcceptedAt: existing.termsFirstAcceptedAt ?? existing.termsAcceptedAt ?? now,
       termsVersion: TERMS_VERSION,
       lastSeenAt: now,
     });

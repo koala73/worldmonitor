@@ -423,10 +423,7 @@
     "axisPersonal": "Personnel",
     "axisPersonalNote": "usage personnel",
     "axisCommercial": "Commercial",
-    "axisCommercialNote": "travail, équipes et produits",
-    "legalConsent": "En vous abonnant, vous acceptez les {{eula}} et la {{privacy}}.",
-    "legalConsentEula": "Contrat de Licence",
-    "legalConsentPrivacy": "Politique de Confidentialité"
+    "axisCommercialNote": "travail, équipes et produits"
   },
   "welcome": {
     "meta": {

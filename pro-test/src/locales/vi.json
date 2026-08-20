@@ -423,10 +423,7 @@
     "axisPersonal": "Cá nhân",
     "axisPersonalNote": "sử dụng cá nhân",
     "axisCommercial": "Thương mại",
-    "axisCommercialNote": "công việc, nhóm & sản phẩm",
-    "legalConsent": "Bằng cách đăng ký, bạn đồng ý với {{eula}} và {{privacy}}.",
-    "legalConsentEula": "Thỏa thuận Cấp phép",
-    "legalConsentPrivacy": "Chính sách Quyền riêng tư"
+    "axisCommercialNote": "công việc, nhóm & sản phẩm"
   },
   "welcome": {
     "meta": {

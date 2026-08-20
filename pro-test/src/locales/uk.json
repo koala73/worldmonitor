@@ -103,10 +103,7 @@
         ],
         "cta": "Contact Sales"
       }
-    },
-    "legalConsent": "Підписуючись, ви погоджуєтесь з {{eula}} та {{privacy}}.",
-    "legalConsentEula": "Ліцензійна угода",
-    "legalConsentPrivacy": "Політика приватності"
+    }
   },
   "meta": {
     "title": "World Monitor Pro | AI Intelligence & MCP",

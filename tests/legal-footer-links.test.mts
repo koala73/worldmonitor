@@ -21,6 +21,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  EULA_PATH,
   LEGAL_FOOTER_LINKS,
   TERMS_PATH,
   PRIVACY_PATH,
@@ -43,10 +44,10 @@ function footerOf(html: string, label: string): string {
   return match[0];
 }
 
-const REQUIRED = [TERMS_PATH, PRIVACY_PATH, LICENSE_PATH, TRADEMARK_PATH];
+const REQUIRED = [EULA_PATH, TERMS_PATH, PRIVACY_PATH, LICENSE_PATH, TRADEMARK_PATH];
 
 describe('legal links are reachable in one click', () => {
-  it('the shared cluster is the four documents a buyer is bound by', () => {
+  it('the shared cluster is every document a buyer is bound by', () => {
     assert.deepEqual(
       LEGAL_FOOTER_LINKS.map(link => link.path),
       REQUIRED,

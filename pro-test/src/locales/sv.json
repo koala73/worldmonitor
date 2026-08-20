@@ -423,10 +423,7 @@
     "axisPersonal": "Personlig",
     "axisPersonalNote": "individuell användning",
     "axisCommercial": "Kommersiell",
-    "axisCommercialNote": "arbete, team & produkter",
-    "legalConsent": "Genom att prenumerera godkänner du {{eula}} och {{privacy}}.",
-    "legalConsentEula": "Licensavtal",
-    "legalConsentPrivacy": "Integritetspolicy"
+    "axisCommercialNote": "arbete, team & produkter"
   },
   "welcome": {
     "meta": {

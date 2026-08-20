@@ -22,8 +22,8 @@ import { fileURLToPath } from 'node:url';
 
 import {
   CHECKOUT_CONSENT_TEXT,
+  EULA_PATH,
   PRIVACY_PATH,
-  TERMS_PATH,
 } from '../shared/legal.ts';
 import { checkoutConsentHtml } from '../src/utils/legal-links.ts';
 
@@ -78,16 +78,16 @@ const checkoutCallers = walk(SRC)
   .map(abs => relative(ROOT, abs).split('\\').join('/'));
 
 describe('checkout consent copy', () => {
-  it('names both documents and reads as an agreement', () => {
+  it('names the licence and the privacy policy, and reads as an agreement', () => {
     assert.equal(
       CHECKOUT_CONSENT_TEXT,
-      'By subscribing you agree to the Terms of Service and Privacy Policy.',
+      'By subscribing you agree to the License Agreement and Privacy Policy.',
     );
   });
 
   it('the dashboard renderer links both documents absolutely', () => {
     const html = checkoutConsentHtml(ORIGIN);
-    assert.ok(html.includes(`href="${ORIGIN}${TERMS_PATH}"`), html);
+    assert.ok(html.includes(`href="${ORIGIN}${EULA_PATH}"`), html);
     assert.ok(html.includes(`href="${ORIGIN}${PRIVACY_PATH}"`), html);
   });
 
@@ -147,21 +147,21 @@ describe('/pro presents the Terms before payment', () => {
 
   it('the /pro consent component links both documents', () => {
     const source = read('pro-test/src/components/CheckoutConsent.tsx');
-    assert.match(source, /href=\{TERMS_PATH\}/);
+    assert.match(source, /href=\{EULA_PATH\}/);
     assert.match(source, /href=\{PRIVACY_PATH\}/);
   });
 });
 
-describe('sign-up presents the Terms too', () => {
+describe('sign-up presents the licence too', () => {
   for (const file of [
     'src/services/clerk.ts',
     'pro-test/src/services/clerk.ts',
   ]) {
-    it(`${file} passes Clerk the Terms and Privacy page URLs`, () => {
+    it(`${file} passes Clerk the licence and Privacy page URLs`, () => {
       const source = read(file);
       assert.match(source, /termsPageUrl:/, `${file} must set appearance.layout.termsPageUrl`);
       assert.match(source, /privacyPageUrl:/, `${file} must set appearance.layout.privacyPageUrl`);
-      assert.match(source, /TERMS_PATH/, `${file} must use the shared TERMS_PATH constant`);
+      assert.match(source, /EULA_PATH/, `${file} must use the shared EULA_PATH constant`);
     });
   }
 });

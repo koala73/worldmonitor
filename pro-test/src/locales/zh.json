@@ -423,10 +423,7 @@
     "axisPersonal": "个人\t",
     "axisPersonalNote": "个人使用\t",
     "axisCommercial": "商业\t",
-    "axisCommercialNote": "工作、团队和产品\t",
-    "legalConsent": "订阅即表示您同意{{eula}}和{{privacy}}。",
-    "legalConsentEula": "许可协议",
-    "legalConsentPrivacy": "隐私政策"
+    "axisCommercialNote": "工作、团队和产品\t"
   },
   "welcome": {
     "meta": {

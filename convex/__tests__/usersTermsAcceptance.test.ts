@@ -250,3 +250,75 @@ describe("checkout start records assent through the shared funnel", () => {
     expect(row).toBeNull();
   });
 });
+
+describe("users:recordTermsAcceptance — first acceptance survives a version bump (#6983)", () => {
+  test("sign-up stamps both timestamps to the same instant", async () => {
+    const t = convexTest(schema, modules);
+    await t.withIdentity(USER).mutation(api.users.ensureRecord, {
+      localeTag: "en-US",
+      localePrimary: "en",
+    });
+
+    const row = await rowFor(t, USER.subject);
+    expect(row?.termsFirstAcceptedAt).toBe(row?.termsAcceptedAt);
+    expect(row?.termsFirstAcceptedAt).toBeGreaterThan(0);
+  });
+
+  test("a new version moves termsAcceptedAt but never termsFirstAcceptedAt", async () => {
+    const t = convexTest(schema, modules);
+    await t.withIdentity(USER).mutation(api.users.ensureRecord, {
+      localeTag: "en-US",
+      localePrimary: "en",
+    });
+    const original = await rowFor(t, USER.subject);
+
+    // Simulate the deploy that bumps TERMS_VERSION: the stored version is now
+    // stale, so the next checkout re-stamps. This is exactly what #6983's
+    // 2026-07-27 → 2026-08-20 bump does to every existing acceptance.
+    await t.run(async (ctx) => {
+      const row = await ctx.db
+        .query("users")
+        .withIndex("by_userId", (q) => q.eq("userId", USER.subject))
+        .unique();
+      await ctx.db.patch(row!._id, { termsVersion: "1999-01-01" });
+    });
+
+    await t.mutation(internal.users.recordTermsAcceptance, { userId: USER.subject });
+
+    const bumped = await rowFor(t, USER.subject);
+    expect(bumped?.termsVersion).not.toBe("1999-01-01");
+    expect(bumped?.termsFirstAcceptedAt).toBe(original?.termsFirstAcceptedAt);
+    expect(bumped?.termsAcceptedAt).toBeGreaterThanOrEqual(original?.termsAcceptedAt ?? 0);
+  });
+
+  test("a row written before the field existed adopts the acceptance we can prove", async () => {
+    const t = convexTest(schema, modules);
+    const legacyAcceptedAt = 1_750_000_000_000;
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        userId: USER.subject,
+        firstSeenAt: legacyAcceptedAt,
+        lastSeenAt: legacyAcceptedAt,
+        termsAcceptedAt: legacyAcceptedAt,
+        termsVersion: "2026-07-27",
+      });
+    });
+
+    await t.mutation(internal.users.recordTermsAcceptance, { userId: USER.subject });
+
+    const row = await rowFor(t, USER.subject);
+    expect(row?.termsFirstAcceptedAt).toBe(legacyAcceptedAt);
+  });
+
+  test("checkout by a user with no row stamps both", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.users.recordTermsAcceptance, {
+      userId: "user-never-ensured",
+      email: "buyer@example.com",
+    });
+
+    const row = await rowFor(t, "user-never-ensured");
+    expect(row?.termsFirstAcceptedAt).toBe(row?.termsAcceptedAt);
+  });
+});

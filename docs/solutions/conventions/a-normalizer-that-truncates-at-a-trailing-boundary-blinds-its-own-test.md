@@ -31,6 +31,11 @@ tags:
 
 ## Context
 
+> **Update (#6983, 2026-08-20):** the archive pages this entry describes were replaced by git history plus a
+> content digest per document (`shared/legal.ts` → `LEGAL_DOCUMENT_DIGESTS`, `tests/legal-version.test.mts`).
+> The lesson below is why that successor test ships two positive controls — one proving a new clause changes the
+> digest, one proving an editorial note does not. The normalizer moved; the trap it can fall into did not.
+
 #6976 needed `users.termsVersion` to resolve to real text, so `tests/terms-version-archive.test.mts` compares the archived snapshot `docs/legal/terms-2026-07-27.mdx` against the live `docs/terms.mdx` clause for clause. Any substantive edit to the Terms should fail until it is paired with a new date and a new archive file.
 
 Two things legitimately differ between the two documents and had to be excluded before comparing: the archive's `<Note>` banner, and the `## Previous versions` index that the live page grows with each release (an archived snapshot must not list itself). The first draft excluded the index the obvious way:

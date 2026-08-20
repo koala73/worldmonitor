@@ -423,10 +423,7 @@
     "axisPersonal": "個人用",
     "axisPersonalNote": "個人で使用",
     "axisCommercial": "商用",
-    "axisCommercialNote": "仕事、チーム、製品向け",
-    "legalConsent": "サブスクリプションに登録することで、{{eula}}および{{privacy}}に同意するものとします。",
-    "legalConsentEula": "ライセンス契約",
-    "legalConsentPrivacy": "プライバシーポリシー"
+    "axisCommercialNote": "仕事、チーム、製品向け"
   },
   "welcome": {
     "meta": {

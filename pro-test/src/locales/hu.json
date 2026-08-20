@@ -423,10 +423,7 @@
     "axisPersonal": "Személyes",
     "axisPersonalNote": "egyéni használat",
     "axisCommercial": "Kereskedelmi",
-    "axisCommercialNote": "munka, csapatok és termékek",
-    "legalConsent": "Az előfizetéssel elfogadod az {{eula}} és az {{privacy}} feltételeit.",
-    "legalConsentEula": "Licencszerződés",
-    "legalConsentPrivacy": "Adatvédelmi szabályzat"
+    "axisCommercialNote": "munka, csapatok és termékek"
   },
   "welcome": {
     "meta": {

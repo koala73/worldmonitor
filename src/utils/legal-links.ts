@@ -24,10 +24,10 @@ import {
   CHECKOUT_CONSENT_CONJUNCTION,
   CHECKOUT_CONSENT_LEAD,
   CHECKOUT_CONSENT_PRIVACY_LABEL,
-  CHECKOUT_CONSENT_TERMS_LABEL,
+  CHECKOUT_CONSENT_LICENSE_LABEL,
+  EULA_PATH,
   LEGAL_FOOTER_LINKS,
   PRIVACY_PATH,
-  TERMS_PATH,
   absoluteLegalUrl,
 } from '../../shared/legal';
 
@@ -56,9 +56,9 @@ export function legalLinksHtml(origin: string): string {
  * one FAQ answer was the only path before this.
  */
 export function checkoutConsentHtml(origin: string): string {
-  const terms = anchor(
-    absoluteLegalUrl(TERMS_PATH, origin),
-    CHECKOUT_CONSENT_TERMS_LABEL,
+  const license = anchor(
+    absoluteLegalUrl(EULA_PATH, origin),
+    CHECKOUT_CONSENT_LICENSE_LABEL,
     'checkout-consent-link',
   );
   const privacy = anchor(
@@ -66,7 +66,7 @@ export function checkoutConsentHtml(origin: string): string {
     CHECKOUT_CONSENT_PRIVACY_LABEL,
     'checkout-consent-link',
   );
-  return `<p class="checkout-consent">${escapeHtml(CHECKOUT_CONSENT_LEAD)} ${terms}`
+  return `<p class="checkout-consent">${escapeHtml(CHECKOUT_CONSENT_LEAD)} ${license}`
     + ` ${escapeHtml(CHECKOUT_CONSENT_CONJUNCTION)} ${privacy}.</p>`;
 }
 
@@ -80,7 +80,7 @@ export function createCheckoutConsentElement(origin: string): HTMLParagraphEleme
   const p = document.createElement('p');
   p.className = 'checkout-consent';
   p.append(`${CHECKOUT_CONSENT_LEAD} `);
-  p.append(consentAnchor(absoluteLegalUrl(TERMS_PATH, origin), CHECKOUT_CONSENT_TERMS_LABEL));
+  p.append(consentAnchor(absoluteLegalUrl(EULA_PATH, origin), CHECKOUT_CONSENT_LICENSE_LABEL));
   p.append(` ${CHECKOUT_CONSENT_CONJUNCTION} `);
   p.append(consentAnchor(absoluteLegalUrl(PRIVACY_PATH, origin), CHECKOUT_CONSENT_PRIVACY_LABEL));
   p.append('.');

@@ -17,7 +17,7 @@ import {
   legalLinksHtml,
   LEGAL_LINK_ATTR,
 } from '@/utils/legal-links';
-import { CHECKOUT_CONSENT_TEXT, PRIVACY_PATH, TERMS_PATH } from '../../shared/legal';
+import { CHECKOUT_CONSENT_TEXT, EULA_PATH, PRIVACY_PATH, TERMS_PATH } from '../../shared/legal';
 
 const ORIGIN = 'https://worldmonitor.app';
 
@@ -40,7 +40,7 @@ describe('checkout consent renderers agree', () => {
   });
 
   it('render the same destinations, in the same order', () => {
-    const expected = [`${ORIGIN}${TERMS_PATH}`, `${ORIGIN}${PRIVACY_PATH}`];
+    const expected = [`${ORIGIN}${EULA_PATH}`, `${ORIGIN}${PRIVACY_PATH}`];
     expect(hrefs(parse(checkoutConsentHtml(ORIGIN)))).toEqual(expected);
     expect(hrefs(createCheckoutConsentElement(ORIGIN))).toEqual(expected);
   });
@@ -57,13 +57,16 @@ describe('checkout consent renderers agree', () => {
     }
   });
 
-  it('the legal row and the consent line share the Terms destination', () => {
+  it('the legal row and the consent line agree on where each document lives', () => {
     // One typo'd path in one of the two builders is the failure this catches:
     // the footer would still work while the pre-payment link 404s, or vice versa.
+    // The consent line links the EULA (#6983); the footer row carries both, so
+    // the shared destination to pin is the licence the consent line names.
     const row = parse(legalLinksHtml(ORIGIN));
     const consent = createCheckoutConsentElement(ORIGIN);
+    expect(hrefs(row)).toContain(`${ORIGIN}${EULA_PATH}`);
     expect(hrefs(row)).toContain(`${ORIGIN}${TERMS_PATH}`);
-    expect(hrefs(consent)).toContain(`${ORIGIN}${TERMS_PATH}`);
+    expect(hrefs(consent)).toContain(`${ORIGIN}${EULA_PATH}`);
   });
 
   it('escape a hostile origin instead of breaking out of the href', () => {

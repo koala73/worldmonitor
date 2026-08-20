@@ -423,10 +423,7 @@
     "axisPersonal": "Персональный",
     "axisPersonalNote": "для личного использования",
     "axisCommercial": "Коммерческий",
-    "axisCommercialNote": "работа, команды и продукты",
-    "legalConsent": "Подписываясь, вы согласны с {{eula}} и {{privacy}}.",
-    "legalConsentEula": "Лицензионное соглашение",
-    "legalConsentPrivacy": "Политика конфиденциальности"
+    "axisCommercialNote": "работа, команды и продукты"
   },
   "welcome": {
     "meta": {

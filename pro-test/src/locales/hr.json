@@ -423,10 +423,7 @@
     "axisPersonal": "Osobno",
     "axisPersonalNote": "individualna upotreba",
     "axisCommercial": "Komercijalno",
-    "axisCommercialNote": "rad, timovi i proizvodi",
-    "legalConsent": "Pretplatom se slažete sa {{eula}} i {{privacy}}.",
-    "legalConsentEula": "Licencni ugovor",
-    "legalConsentPrivacy": "Politika privatnosti"
+    "axisCommercialNote": "rad, timovi i proizvodi"
   },
   "welcome": {
     "meta": {

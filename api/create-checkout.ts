@@ -24,11 +24,6 @@ import { validateBearerToken } from '../server/auth-session';
 // From the canonical shared module, not via api/mcp/upgrade — the checkout edge
 // function has no reason to depend on the MCP transport tree (#6716).
 import { normalizeCheckoutAttributionSource } from '../shared/mcp-attribution';
-// Stamped server-side, never taken from the request body: the /pro bundle that
-// renders the consent line and this edge function ship from the same commit, so
-// the deployed constant IS the version the buyer was shown. A client-supplied
-// version would be a client asserting what it agreed to (#6976).
-import { CURRENT_LEGAL_VERSION } from '../shared/legal-documents';
 
 const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
@@ -191,7 +186,6 @@ export default async function handler(
         referralCode: body.referralCode,
         attributionSource,
         bypassPendingGuard: body.bypassPendingGuard,
-        legalVersion: CURRENT_LEGAL_VERSION,
       }),
       signal: AbortSignal.timeout(15_000),
     });

@@ -932,7 +932,13 @@ export default defineSchema({
     // never shown an assent surface, and claiming otherwise would be worse than
     // an empty column. They fill in on their next checkout.
     termsAcceptedAt: v.optional(v.number()),
-    termsVersion: v.optional(v.string()), // ISO date, e.g. "2026-07-27"
+    termsVersion: v.optional(v.string()), // ISO date, e.g. "2026-08-20"
+    // Set once, never overwritten (#6983). `termsAcceptedAt` moves to the
+    // newest acceptance, so without this the date of the acceptance that
+    // actually formed the agreement is destroyed by the first version bump —
+    // and it cannot be reconstructed afterwards. The bump in #6983
+    // (2026-07-27 → 2026-08-20) is the first one that would have done it.
+    termsFirstAcceptedAt: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
     .index("by_normalizedEmail", ["normalizedEmail"])

@@ -1,10 +1,10 @@
 import {
   CHECKOUT_CONSENT_CONJUNCTION,
   CHECKOUT_CONSENT_LEAD,
+  CHECKOUT_CONSENT_LICENSE_LABEL,
   CHECKOUT_CONSENT_PRIVACY_LABEL,
-  CHECKOUT_CONSENT_TERMS_LABEL,
+  EULA_PATH,
   PRIVACY_PATH,
-  TERMS_PATH,
 } from '../../../shared/legal';
 
 /**
@@ -18,13 +18,17 @@ import {
  * scope, the liability cap, the Dubai venue — are exactly the ones struck first
  * when assent is absent.
  *
+ * Links the EULA rather than the Terms (#6983): the licence is the document
+ * carrying those plan scopes and restrictions, and its section 2 links the
+ * Terms in turn.
+ *
  * Root-relative paths: /pro is served from the same origin as /docs.
  */
 export const CheckoutConsent = () => (
   <p className="mb-2.5 text-[10px] leading-relaxed text-wm-muted/80 text-center font-mono">
     {CHECKOUT_CONSENT_LEAD}{' '}
-    <a href={TERMS_PATH} className="underline hover:text-wm-text transition-colors">
-      {CHECKOUT_CONSENT_TERMS_LABEL}
+    <a href={EULA_PATH} className="underline hover:text-wm-text transition-colors">
+      {CHECKOUT_CONSENT_LICENSE_LABEL}
     </a>{' '}
     {CHECKOUT_CONSENT_CONJUNCTION}{' '}
     <a href={PRIVACY_PATH} className="underline hover:text-wm-text transition-colors">

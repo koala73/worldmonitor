@@ -423,10 +423,7 @@
     "axisPersonal": "Personal",
     "axisPersonalNote": "utilizare individuală",
     "axisCommercial": "Comercial",
-    "axisCommercialNote": "de lucru, echipe și produse",
-    "legalConsent": "Prin abonare, sunteți de acord cu {{eula}} și {{privacy}}.",
-    "legalConsentEula": "Acord de Licență",
-    "legalConsentPrivacy": "Politica de Confidențialitate"
+    "axisCommercialNote": "de lucru, echipe și produse"
   },
   "welcome": {
     "meta": {
