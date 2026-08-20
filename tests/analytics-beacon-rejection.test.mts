@@ -1577,6 +1577,76 @@ describe('collector latch release is module-owned (#6288)', () => {
     }
   });
 
+  it('does not drain on pageshow while the document is still hidden', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    const lifecycle = stubPageLifecycle('hidden');
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return Promise.resolve(collectorResponse(true, 200, RECEIPT_BODY));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const held = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      await drainPromiseHandlers();
+      lifecycle.firePageHide(true);
+      lifecycle.firePageShow();
+      await drainPromiseHandlers();
+      assert.equal(calls, 0, 'pageshow must not drain while visibilityState is still hidden');
+
+      lifecycle.setVisibility('visible');
+      lifecycle.firePageShow();
+      await drainPromiseHandlers(() => calls === 1, 'a later visible pageshow drains');
+      assert.equal((await held).status, 200);
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      lifecycle.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('holds serialized writes while the document is prerendered', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    const lifecycle = stubPageLifecycle('prerender');
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return Promise.resolve(collectorResponse(true, 200, RECEIPT_BODY));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const held = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      await drainPromiseHandlers();
+      assert.equal(calls, 0, 'prerender drain stays parked');
+      assert.equal(
+        findLatchDeadline(fakeTimers.timers),
+        undefined,
+        'holding must not arm a latch against a write that has not been dispatched',
+      );
+
+      lifecycle.setVisibility('visible');
+      lifecycle.fireVisibilityChange();
+      await drainPromiseHandlers(() => calls === 1, 'leaving prerender drains the held write');
+      assert.equal((await held).status, 200);
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      lifecycle.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
   it('pauses an in-flight latch while hidden and resumes it when the tab is visible again', { timeout: 10_000 }, async () => {
     const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
     Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
@@ -1615,6 +1685,51 @@ describe('collector latch release is module-owned (#6288)', () => {
           && timer.delay <= LATCH_DEADLINE_MS && timer.delay > 20_000,
       );
       assert.ok(resumed, 'becoming visible re-arms the remaining latch');
+      resumed.callback();
+      await assert.rejects(parked, { name: 'TimeoutError' });
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      lifecycle.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('pauses an in-flight latch on a persisted pagehide without a prior visibilitychange', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    const lifecycle = stubPageLifecycle('visible');
+    window.fetch = (() => parkForever()) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const parked = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void parked.catch(() => {});
+      await drainPromiseHandlers();
+      const armed = findLatchDeadline(fakeTimers.timers);
+      assert.ok(armed, 'a visible send still owns a latch');
+
+      lifecycle.setVisibility('hidden');
+      lifecycle.firePageHide(true);
+      assert.equal(armed.cancelled, true, 'bfcache pagehide must pause the in-flight latch');
+
+      armed.callback();
+      await drainPromiseHandlers();
+      let settled = false;
+      void parked.then(() => { settled = true; }, () => { settled = true; });
+      await drainPromiseHandlers();
+      assert.equal(settled, false, 'firing the paused timer is a no-op');
+
+      lifecycle.setVisibility('visible');
+      lifecycle.firePageShow();
+      const resumed = fakeTimers.timers.find(
+        (timer) => !timer.cancelled && timer !== armed
+          && timer.delay <= LATCH_DEADLINE_MS && timer.delay > 20_000,
+      );
+      assert.ok(resumed, 'pageshow after bfcache must re-arm the remaining latch');
       resumed.callback();
       await assert.rejects(parked, { name: 'TimeoutError' });
     } finally {
@@ -1682,19 +1797,20 @@ describe('collector latch release is module-owned (#6288)', () => {
       const armed = findLatchDeadline(fakeTimers.timers);
       assert.ok(armed, 'a visible send still owns a latch');
 
-      now += LATCH_DEADLINE_MS;
+      now += LATCH_DEADLINE_MS - 100;
       lifecycle.setVisibility('hidden');
       lifecycle.fireVisibilityChange();
       assert.equal(armed.cancelled, true);
 
       lifecycle.setVisibility('visible');
       lifecycle.fireVisibilityChange();
-      // The request-side abort timer is still armed at 20s; the latch is the
-      // 5s settle-grace. Do not pick the first leftover timer.
+      // Remaining is a near-zero sliver (< LATCH_RELEASE_GRACE_MS), so resume
+      // re-arms with the 5s settle-grace. The request-side abort timer is
+      // still armed at 20s; do not pick the first leftover timer.
       const resumed = fakeTimers.timers.find(
         (timer) => !timer.cancelled && timer.delay === LATCH_RELEASE_GRACE_MS,
       );
-      assert.ok(resumed, 'returning visible must re-arm even after remaining hit 0');
+      assert.ok(resumed, 'returning visible must re-arm a near-zero remaining latch with settle grace');
       resumed.callback();
       const error = await parked.then(
         () => { throw new Error('expected raced timeout'); },
@@ -1736,6 +1852,7 @@ describe('collector latch release is module-owned (#6288)', () => {
       await assert.rejects(flushed, { name: 'TimeoutError' });
       await drainPromiseHandlers(() => diagnostics.length > 0, 'the raced unload flush is reported');
       assert.equal(diagnostics[0]?.visibilityAtSend, 'hidden');
+      assert.equal(diagnostics[0]?.visibilityAtDeadline, 'hidden');
       assert.equal(diagnostics[0]?.raced, true);
       assert.equal(diagnostics[0]?.racedCount, 1);
       assert.equal(diagnostics[0]?.writeCount, 1);

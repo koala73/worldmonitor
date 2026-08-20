@@ -1052,10 +1052,11 @@ function withCollectorDeadline(
   const resume = (): void => {
     if (!paused || settled) return;
     paused = false;
-    // Hidden time can exhaust remainingMs. Firing at 0 on the first visible
-    // tick would race a fetch that is only now unfreezing. Give the transport
-    // the same grace the latch already uses against abort/latch collision.
-    if (remainingMs === 0) remainingMs = LATCH_RELEASE_GRACE_MS;
+    // Hidden time can exhaust remainingMs, or leave a 1ms–Nms sliver. Firing
+    // that sliver on the first visible tick would race a fetch that is only
+    // now unfreezing. Give the transport the same grace the latch already
+    // uses against abort/latch collision.
+    if (remainingMs < LATCH_RELEASE_GRACE_MS) remainingMs = LATCH_RELEASE_GRACE_MS;
     arm();
   };
 
