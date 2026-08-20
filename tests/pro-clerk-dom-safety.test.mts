@@ -349,29 +349,49 @@ describe('detached node host-config guard', () => {
     return { removeChild: originalRemoveChild, insertBefore: originalInsertBefore };
   }
 
-  it('swallows only stale removeChild/insertBefore and keeps matching operations', () => {
+  it('recovers a stale removeChild only inside a Clerk-owned protected root', () => {
     const proto = throwingProto();
     const recovered: string[] = [];
     const window = browserWindow();
     const parent = window.document.createElement('div');
+    parent.setAttribute('role', 'dialog');
+    const clerkStep = window.document.createElement('span');
+    clerkStep.setAttribute('data-localization-key', 'signUp.emailCode.formSubtitle');
+    parent.appendChild(clerkStep);
     const matchingChild = window.document.createTextNode('matching');
     const orphan = window.document.createTextNode('translator-font');
     const unrelatedParent = window.document.createElement('div');
     parent.appendChild(matchingChild);
     unrelatedParent.appendChild(orphan);
-    protectReactRootFromTranslators(parent);
+    window.document.body.appendChild(parent);
+    const stopProtection = protectClerkDomFromTranslators(window.document);
     const stop = installDetachedNodeGuards(proto, (operation) => recovered.push(operation));
     try {
       assert.equal(proto.removeChild.call(parent, matchingChild), matchingChild);
       assert.equal(proto.removeChild.call(parent, orphan), orphan);
       assert.deepEqual(recovered, ['removeChild']);
+    } finally {
+      stop();
+      stopProtection();
+    }
+  });
 
-      const next = window.document.createElement('span');
-      const staleRef = window.document.createTextNode('moved');
-      unrelatedParent.appendChild(staleRef);
-      assert.equal(proto.insertBefore.call(parent, next, matchingChild), next);
-      assert.equal(proto.insertBefore.call(parent, next, staleRef), next);
-      assert.deepEqual(recovered, ['removeChild', 'insertBefore']);
+  it('does not hide stale removeChild failures in the application React root', () => {
+    const proto = throwingProto();
+    const recovered: string[] = [];
+    const window = browserWindow();
+    const appRoot = window.document.createElement('div');
+    const otherRoot = window.document.createElement('div');
+    const movedChild = window.document.createTextNode('moved');
+    otherRoot.appendChild(movedChild);
+    protectReactRootFromTranslators(appRoot);
+    const stop = installDetachedNodeGuards(proto, (operation) => recovered.push(operation));
+    try {
+      assert.throws(
+        () => proto.removeChild.call(appRoot, movedChild),
+        /node to be removed is not a child/i,
+      );
+      assert.deepEqual(recovered, []);
     } finally {
       stop();
     }
@@ -393,6 +413,7 @@ describe('detached node host-config guard', () => {
     const window = browserWindow();
     const proto = window.Node.prototype;
     const parent = window.document.createElement('div');
+    parent.setAttribute('role', 'dialog');
     const child = window.document.createTextNode('Sign up');
     parent.appendChild(child);
     const stop = installDetachedNodeGuards(proto);
@@ -405,23 +426,46 @@ describe('detached node host-config guard', () => {
     }
   });
 
-  it('still inserts when the insertBefore reference was already detached', () => {
+  it('never appends after a stale insertBefore reference in a Clerk-owned root', () => {
     const window = browserWindow();
     const proto = window.Node.prototype;
     const parent = window.document.createElement('div');
+    const clerkStep = window.document.createElement('span');
+    clerkStep.setAttribute('data-localization-key', 'signUp.emailCode.formSubtitle');
+    const first = window.document.createElement('span');
+    first.textContent = 'first';
+    const last = window.document.createElement('span');
+    last.textContent = 'last';
     const staleRef = window.document.createTextNode('old');
     const next = window.document.createElement('span');
-    protectReactRootFromTranslators(parent);
+    next.textContent = 'next';
+    parent.append(clerkStep, first, staleRef, last);
+    window.document.body.appendChild(parent);
+    const stopProtection = protectClerkDomFromTranslators(window.document);
     parent.appendChild(staleRef);
     window.document.body.appendChild(staleRef);
     const stop = installDetachedNodeGuards(proto);
     try {
-      const inserted = parent.insertBefore(next, staleRef);
-      assert.equal(inserted, next);
-      assert.equal(next.parentNode, parent);
-      assert.equal(parent.contains(next), true);
+      assert.throws(
+        () => parent.insertBefore(next, staleRef),
+        /node before which the new node is to be inserted is not a child/i,
+      );
+      assert.equal(next.parentNode, null);
+      assert.deepEqual(
+        [...parent.children].map((element) => element.textContent),
+        ['', 'first', 'last'],
+      );
+
+      // The failed mutation leaves the tree usable and preserves the caller's
+      // intended position on the next valid update.
+      parent.insertBefore(next, last);
+      assert.deepEqual(
+        [...parent.children].map((element) => element.textContent),
+        ['', 'first', 'next', 'last'],
+      );
     } finally {
       stop();
+      stopProtection();
     }
   });
 

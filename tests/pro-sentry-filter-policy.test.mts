@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   MARKETING_IGNORE_ERRORS,
   marketingBeforeSend,
+  sanitizeMarketingRequestUrl,
   type PolicyEvent,
 } from '../pro-test/src/sentry-filter-policy.ts';
 
@@ -79,6 +80,35 @@ describe('marketing ignoreErrors', () => {
       false,
     );
     assert.equal(isIgnored('Error', 'Dodo checkout session could not be created'), false);
+  });
+});
+
+describe('marketing Sentry request URL privacy', () => {
+  it('removes query strings and unsafe auth fragments from production event URLs', () => {
+    assert.equal(
+      sanitizeMarketingRequestUrl(
+        'https://www.worldmonitor.app/pro?wm_referral=private#access_token=private',
+      ),
+      'https://www.worldmonitor.app/pro',
+    );
+  });
+
+  it('retains only approved public marketing routes and section hashes', () => {
+    assert.equal(
+      sanitizeMarketingRequestUrl(
+        'https://www.worldmonitor.app/pro/?checkout_session=private#pricing',
+      ),
+      'https://www.worldmonitor.app/pro#pricing',
+    );
+    assert.equal(
+      sanitizeMarketingRequestUrl('https://www.worldmonitor.app/?ref=private#enterprise-contact'),
+      'https://www.worldmonitor.app/#enterprise-contact',
+    );
+    assert.equal(
+      sanitizeMarketingRequestUrl('https://www.worldmonitor.app/dashboard?token=private'),
+      undefined,
+    );
+    assert.equal(sanitizeMarketingRequestUrl('not a URL?token=private'), undefined);
   });
 });
 
@@ -214,6 +244,7 @@ describe('policy wiring', () => {
       source,
       /beforeSend:\s*\(event\)\s*=>\s*\{\s*const filteredEvent = marketingBeforeSend\(event\);/,
     );
+    assert.match(source, /sanitizeMarketingRequestUrl\(filteredEvent\.request\.url\)/);
   });
 
   it('does not copy the dashboard array wholesale', () => {

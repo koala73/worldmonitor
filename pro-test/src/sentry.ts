@@ -1,7 +1,11 @@
 import * as Sentry from '@sentry/react';
 
 import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
-import { MARKETING_IGNORE_ERRORS, marketingBeforeSend } from './sentry-filter-policy';
+import {
+  MARKETING_IGNORE_ERRORS,
+  marketingBeforeSend,
+  sanitizeMarketingRequestUrl,
+} from './sentry-filter-policy';
 import { currentLanguageBase } from './i18n';
 import { collectRemoveChildEvidence, decorateRemoveChildEvent } from './services/clerk-dom-safety';
 
@@ -29,6 +33,10 @@ export function initSentry(): void {
     beforeSend: (event) => {
       const filteredEvent = marketingBeforeSend(event);
       if (!filteredEvent) return null;
+      if (filteredEvent.request?.url) {
+        const safeRequestUrl = sanitizeMarketingRequestUrl(filteredEvent.request.url);
+        filteredEvent.request.url = safeRequestUrl;
+      }
       return decorateRemoveChildEvent(filteredEvent, collectRemoveChildEvidence({
         document,
         location,

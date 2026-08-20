@@ -38,6 +38,31 @@ export interface PolicyEvent {
   exception?: { values?: PolicyException[] };
 }
 
+const SAFE_MARKETING_PATH = /^\/(?:pro\/?)?$/;
+const SAFE_MARKETING_HASH = /^#(?:pricing|tiers|api|enterprise|enterprise-contact)$/i;
+const MAX_MARKETING_ORIGIN_LENGTH = 200;
+
+/**
+ * Strip attribution, checkout, and auth-handoff data from the browser URL that
+ * Sentry's default HttpContext integration attaches to every event. Only this
+ * bundle's public routes and named in-page sections are useful for diagnosis.
+ */
+export function sanitizeMarketingRequestUrl(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    if ((url.protocol !== 'https:' && url.protocol !== 'http:') ||
+        url.origin.length > MAX_MARKETING_ORIGIN_LENGTH ||
+        !SAFE_MARKETING_PATH.test(url.pathname)) {
+      return undefined;
+    }
+    const pathname = url.pathname === '/pro/' ? '/pro' : url.pathname;
+    const safeHash = SAFE_MARKETING_HASH.test(url.hash) ? url.hash : '';
+    return `${url.origin}${pathname}${safeHash}`;
+  } catch {
+    return undefined;
+  }
+}
+
 export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   /ResizeObserver loop/,
   /^TypeError: Load failed/,

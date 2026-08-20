@@ -52,7 +52,6 @@ const DETACHED_NODE_GUARD = Symbol.for('wm.detached-node-guards');
 
 type GuardedHost = DetachedNodeHost & { [DETACHED_NODE_GUARD]?: () => void };
 
-const REACT_TRANSLATOR_PROTECTED_ROOTS = new WeakSet<Node>();
 const CLERK_TRANSLATOR_PROTECTED_ROOTS = new WeakSet<Node>();
 const CLERK_PROTECTION_BY_DOCUMENT = new WeakMap<Document, () => void>();
 
@@ -201,16 +200,12 @@ export function protectClerkDomFromTranslators(doc: Document = document): () => 
  *  boundary around `<App />` cannot catch that throw. */
 export function protectReactRootFromTranslators(root: Element): void {
   root.setAttribute('translate', 'no');
-  REACT_TRANSLATOR_PROTECTED_ROOTS.add(root);
 }
 
-function isInsideTranslatorProtectedRoot(node: unknown): boolean {
+function isInsideClerkTranslatorProtectedRoot(node: unknown): boolean {
   let current = node as Node | null;
   while (current) {
-    if (
-      REACT_TRANSLATOR_PROTECTED_ROOTS.has(current) ||
-      CLERK_TRANSLATOR_PROTECTED_ROOTS.has(current)
-    ) {
+    if (CLERK_TRANSLATOR_PROTECTED_ROOTS.has(current)) {
       return true;
     }
     current = current.parentNode;
@@ -219,9 +214,11 @@ function isInsideTranslatorProtectedRoot(node: unknown): boolean {
 }
 
 /**
- * Recover when a translator or extension already detached the node React is
- * trying to remove or use as an insertBefore reference. The matching
- * parent/child path still reaches the browser implementation.
+ * Recover only when a node was already detached from a Clerk-owned protected
+ * subtree. The application React root relies on its error boundary instead:
+ * swallowing every stale mutation there would hide first-party lifecycle bugs.
+ * insertBefore always keeps native behavior because appending after a stale
+ * reference silently corrupts DOM order.
  */
 export function installDetachedNodeGuards(
   proto: DetachedNodeHost = Node.prototype as unknown as DetachedNodeHost,
@@ -232,29 +229,17 @@ export function installDetachedNodeGuards(
   if (installed) return installed;
 
   const originalRemoveChild = proto.removeChild;
-  const originalInsertBefore = proto.insertBefore;
 
   proto.removeChild = function (this: unknown, child: Node): Node {
-    if (child != null && child.parentNode !== this && isInsideTranslatorProtectedRoot(this)) {
+    if (child != null && child.parentNode !== this && isInsideClerkTranslatorProtectedRoot(this)) {
       onRecovered?.('removeChild');
       return child;
     }
     return originalRemoveChild.call(this, child);
   };
 
-  proto.insertBefore = function (this: unknown, node: Node, child: Node | null): Node {
-    if (child !== null && child.parentNode !== this && isInsideTranslatorProtectedRoot(this)) {
-      onRecovered?.('insertBefore');
-      // insertBefore(node, null) appends. Dropping the call would leave
-      // React's fiber mounted with no host node.
-      return originalInsertBefore.call(this, node, null);
-    }
-    return originalInsertBefore.call(this, node, child);
-  };
-
   const uninstall = (): void => {
     proto.removeChild = originalRemoveChild;
-    proto.insertBefore = originalInsertBefore;
     delete guarded[DETACHED_NODE_GUARD];
   };
   guarded[DETACHED_NODE_GUARD] = uninstall;
