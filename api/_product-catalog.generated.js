@@ -41,7 +41,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 500,
-      "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, 10 custom dashboards (vs 3), MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh, Personal license"
+      "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, 10 custom dashboards (vs 3), MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh, Personal license, 1 named user"
     },
     {
       "planKey": "pro_annual",
@@ -71,7 +71,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 2500,
-      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Priority support, Commercial license included"
+      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Priority support, Commercial license included, 1 named user — not a shared login"
     },
     {
       "planKey": "pro_business_annual",
@@ -252,7 +252,8 @@ export const TIER_CONFIG = {
       "Priority data refresh"
     ],
     "highlightFeatures": [
-      "Personal license"
+      "Personal license",
+      "1 named user"
     ],
     "planLimits": {
       "apiRequestsPerDay": 0,
@@ -276,7 +277,8 @@ export const TIER_CONFIG = {
       "Priority support"
     ],
     "highlightFeatures": [
-      "Commercial license included"
+      "Commercial license included",
+      "1 named user — not a shared login"
     ],
     "planLimits": {
       "apiRequestsPerDay": 0,

@@ -15,7 +15,7 @@
     "axisPersonal": "Binafsi",
     "axisPersonalNote": "matumizi ya mtu binafsi",
     "axisCommercial": "Biashara",
-    "axisCommercialNote": "kazi, timu na bidhaa",
+    "axisCommercialNote": "kazi, wateja na bidhaa",
     "promoCodeNote": "Una nambari ya zabuni? Ingiza kwa wakati wa kumaliza ununuzi.",
     "cta": {
       "checkoutDefault": "Anza",
@@ -46,7 +46,8 @@
           "Muonyajaji wa data wa haraka"
         ],
         "highlightFeatures": [
-          "Leseni ya binafsi"
+          "Leseni ya binafsi",
+          "Mtumiaji 1 anayeitwa"
         ]
       },
       "proBusiness": {
@@ -60,7 +61,8 @@
           "Msaada wa haraka"
         ],
         "highlightFeatures": [
-          "Leseni ya biashara iliyojumuishwa"
+          "Leseni ya biashara iliyojumuishwa",
+          "Mtumiaji 1 anayeitwa — si login iliyoshirikiwa"
         ]
       },
       "api": {

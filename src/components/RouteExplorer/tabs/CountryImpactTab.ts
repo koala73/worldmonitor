@@ -184,7 +184,7 @@ export class CountryImpactTab {
       const drill = () => this.opts.onDrillSideways?.(hs2);
       row.addEventListener('click', drill);
       row.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); drill(); }
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); drill(); }
       });
     });
   }

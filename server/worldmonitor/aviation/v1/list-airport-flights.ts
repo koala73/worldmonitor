@@ -9,17 +9,22 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
-import { getRelayBaseUrl, getRelayHeaders } from './_shared';
-import { aviationStackBudgetMonth, reserveAviationStackCalls } from './_avstack-budget';
+import { getRelayBaseUrl, getRelayHeaders, IATA_RE, requireLiveAviationAccess } from './_shared';
+import { aviationStackBudgetCycle, reserveAviationStackCalls } from './_avstack-budget';
 
-const CACHE_TTL = 300;
+// 15min. Held at 300s until Aug 2026, when a scraper polling every ~5.7min
+// converted this endpoint to a ~100% cache-miss rate: 504 of 504 requests on a
+// single day went upstream because each poll landed just after the 300s key
+// expired. Any TTL at or below a caller's polling interval buys nothing — it
+// only guarantees the paid call. 900s breaks that resonance for any poller
+// faster than 15min, and departure boards do not move meaningfully inside it.
+const CACHE_TTL = 900;
 // Always fetch a full page upstream and cache it once per airport+direction,
 // then slice to the caller's requested limit in memory. Threading req.limit
 // into the cache key (and the upstream query) meant limit 30 vs 31 vs 50 were
 // separate PAID AviationStack calls for identical data — a cache-key explosion
 // that multiplied spend. The page covers any limit ≤ 100.
 const UPSTREAM_PAGE = 100;
-const IATA_RE = /^[A-Z]{3}$/;
 
 interface AVSFlight {
     flight?: { iata?: string; icao?: string; codeshared?: { flight_iata?: string; airline_iata?: string }[] };
@@ -107,6 +112,9 @@ export async function listAirportFlights(
     ctx: ServerContext,
     req: ListAirportFlightsRequest,
 ): Promise<ListAirportFlightsResponse> {
+    // Metered route — gate before anything else. See requireLiveAviationAccess.
+    await requireLiveAviationAccess(ctx.request);
+
     const airport = req.airport?.toUpperCase() || 'IST';
     const direction = req.direction || 'FLIGHT_DIRECTION_BOTH';
     const limit = Math.min(req.limit || 30, 100);
@@ -120,7 +128,7 @@ export async function listAirportFlights(
 
     // Cache key is limit-independent (see UPSTREAM_PAGE) — one upstream call
     // serves every limit for this airport+direction.
-    const cacheKey = `aviation:flights:${airport}:${direction}:v2:${aviationStackBudgetMonth()}`;
+    const cacheKey = `aviation:flights:${airport}:${direction}:v2:${aviationStackBudgetCycle()}`;
     let unavailableSource = 'unavailable';
 
     try {

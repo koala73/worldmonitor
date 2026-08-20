@@ -358,7 +358,8 @@
           "优先数据刷新\t"
         ],
         "highlightFeatures": [
-          "个人许可证\t"
+          "个人许可证\t",
+          "1 个指定用户"
         ]
       },
       "api": {
@@ -412,7 +413,8 @@
           "优先支持\t"
         ],
         "highlightFeatures": [
-          "包含商业许可证\t"
+          "包含商业许可证\t",
+          "1 个指定用户 — 不是共享登录"
         ]
       }
     },
@@ -423,7 +425,7 @@
     "axisPersonal": "个人\t",
     "axisPersonalNote": "个人使用\t",
     "axisCommercial": "商业\t",
-    "axisCommercialNote": "工作、团队和产品\t"
+    "axisCommercialNote": "工作、客户与产品"
   },
   "welcome": {
     "meta": {

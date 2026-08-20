@@ -34,6 +34,7 @@
   },
   "bundle": {
     "active": true,
+    "licenseFile": "../LICENSE",
     "targets": [
       "app",
       "dmg",
@@ -57,7 +58,8 @@
       "sidecar/package.json",
       "sidecar/node",
       "../data",
-      "../src/config"
+      "../src/config",
+      "notices"
     ],
     "windows": {
       "digestAlgorithm": "sha256",

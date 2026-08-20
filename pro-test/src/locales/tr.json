@@ -358,7 +358,8 @@
           "Öncelikli veri yenileme"
         ],
         "highlightFeatures": [
-          "Kişisel lisans"
+          "Kişisel lisans",
+          "1 adlandırılmış kullanıcı"
         ]
       },
       "api": {
@@ -412,7 +413,8 @@
           "Öncelikli destek"
         ],
         "highlightFeatures": [
-          "Ticari lisans dahil"
+          "Ticari lisans dahil",
+          "1 adlandırılmış kullanıcı — paylaşılan oturum değil"
         ]
       }
     },
@@ -423,7 +425,7 @@
     "axisPersonal": "Kişisel",
     "axisPersonalNote": "bireysel kullanım",
     "axisCommercial": "Ticari",
-    "axisCommercialNote": "iş, takımlar ve ürünler"
+    "axisCommercialNote": "iş, müşteriler ve ürünler"
   },
   "welcome": {
     "meta": {

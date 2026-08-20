@@ -358,7 +358,8 @@
           "優先資料重新整理\t"
         ],
         "highlightFeatures": [
-          "個人許可證\t"
+          "個人許可證\t",
+          "1 個指定使用者"
         ]
       },
       "api": {
@@ -412,7 +413,8 @@
           "優先支援\t"
         ],
         "highlightFeatures": [
-          "包含商業許可證\t"
+          "包含商業許可證\t",
+          "1 個指定使用者 — 不是共享登入"
         ]
       }
     },
@@ -423,7 +425,7 @@
     "axisPersonal": "個人\t",
     "axisPersonalNote": "個人使用\t",
     "axisCommercial": "商業\t",
-    "axisCommercialNote": "工作、團隊和產品\t"
+    "axisCommercialNote": "工作、客戶與產品"
   },
   "welcome": {
     "meta": {

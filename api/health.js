@@ -575,7 +575,17 @@ const SEED_META = {
   stablecoinMarkets:{ key: 'seed-meta:market:stablecoins',      maxStaleMin: 60 },
   naturalEvents:    { key: 'seed-meta:natural:events',          maxStaleMin: 540 }, // 3h Railway climate bundle; 3x cadence preserves a full missed run.
   hkoWarnings:      { key: 'seed-meta:weather:hko-warnings',    maxStaleMin: 540 }, // successful HKO responses publish a snapshot even when no tropical-cyclone warning is active.
-  flightDelays:     { key: 'seed-meta:aviation:faa',            maxStaleMin: 90 }, // CACHE_TTL=7200s; matches notamClosures from same cron
+  // #6987: moved off seed-meta:aviation:faa, which carries the FAA-ONLY alert
+  // count. This probe's data key is the combined page-load aggregate, so a quiet
+  // FAA window published recordCount=0 while 115 alerts were still being served
+  // and classifyKey read that zero as EMPTY_DATA. seed-aviation now publishes a
+  // meta from the aggregate's own payload, so the probe counts the population it
+  // actually serves — and an aggregate that is genuinely empty still alarms.
+  flightDelays:     {
+    key: 'seed-meta:aviation:delays-bootstrap',
+    maxStaleMin: 90, // CACHE_TTL=7200s; matches notamClosures from same cron
+    cutover: { mode: 'expiring-ack', fromKey: 'seed-meta:aviation:faa', issue: 6987, status: 'STALE_SEED' },
+  },
   notamClosures:    { key: 'seed-meta:aviation:notam',          maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
   predictionMarkets: {
     key: 'seed-meta:prediction:markets',
@@ -718,6 +728,50 @@ const SEED_META = {
   // snapshots age.
   militaryForecastInputs: { key: 'seed-meta:military-forecast-inputs', maxStaleMin: 30 },
   militarySurges:     { key: 'seed-meta:military-surges',      maxStaleMin: 30 },
+  // #6845 item 3: staleness was invisible — the bases corpus was monitored
+  // only through the presence of military:bases:active, which is a pointer, not
+  // a clock: it stayed green while the corpus behind it aged indefinitely.
+  //
+  // Cadence: Military-Bases runs on seed-bundle-static-ref-heavy, NOT
+  // seed-bundle-static-ref — #6806 split the three expensive members onto their
+  // own daily cron because they could not share leftover's 570s tick. The
+  // member's own intervalMs is unchanged at 30 * DAY, so 86_400min (60d) is
+  // still two intervals.
+  //
+  // The heavy bundle rotates its lead slot (dayIndex % 3), so a member that has
+  // become due waits at most ~3 days for a tick it can be admitted on. Worst
+  // case is therefore ~33d, not 30d — comfortably inside the 60d budget, and
+  // the reason this is not sized any tighter.
+  //
+  // This config uses the existing militaryBases standalone check. Its data key
+  // is the active-version pointer, while this seed-meta supplies the freshness
+  // clock and integrity floor for the version behind that pointer. The
+  // ON_DEMAND entry keeps an absent pointer soft here; /api/seed-health uses
+  // that same atomicSwitch pointer to distinguish a never-published deployment
+  // from a published corpus whose seed-meta was later lost.
+  //
+  // Pre-seed rather than an acknowledgement: the key is already seeded, and
+  // classifyKey against the live value returns OK (14,730min of an 86,400min
+  // budget; 125,380 records over the 100,000 floor). An expiring
+  // acknowledgement here would declare a status the probe does not produce.
+  militaryBases: {
+    key: 'seed-meta:military:bases',
+    maxStaleMin: 86_400,
+    minRecordCount: 100_000,
+    cutover: {
+      mode: 'preseed',
+      fromKey: null,
+      issue: 6845,
+      verifiedAt: '2026-08-19T08:33:42.000Z',
+      evidence: {
+        platform: 'railway',
+        service: 'seed-bundle-static-ref-heavy',
+        probeKey: 'seed-meta:military:bases',
+        compactHealthStatus: 'OK',
+        reference: 'https://github.com/koala73/worldmonitor/issues/6845#issuecomment-5339597917',
+      },
+    },
+  },
   militaryCii:      { key: 'seed-meta:intelligence:military-cii',  maxStaleMin: 45 }, // seed-military-cii cron ~10min; 45 = generous grace (relay-dependent; preserve-last-good runs still refresh meta)
   defensePatents:   { key: 'seed-meta:military:defense-patents',  maxStaleMin: 25200 },
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 240 }, // CelesTrak every 120min; 240min = absorbs one missed cycle
@@ -828,7 +882,36 @@ const SEED_META = {
   progressData:     { key: 'seed-meta:economic:worldbank-progress:v1',     maxStaleMin: 10080 },
   renewableEnergy:  { key: 'seed-meta:economic:worldbank-renewable:v1',    maxStaleMin: 10080 },
   intlDelays:       { key: 'seed-meta:aviation:intl',           maxStaleMin: 90 },
-  // faaDelays shares seed-meta key with flightDelays — no duplicate entry needed here
+  // #6987: faaDelays used to have no entry here, on the grounds that it "shares
+  // flightDelays's meta key". That sharing WAS the bug — it leaked FAA's
+  // allowed-empty count into the aggregate probe, which is not allowed to be
+  // empty. Now that flightDelays reads the aggregate's own meta, the FAA sidecar
+  // gets an explicit entry rather than an implicit one (ported from #6988).
+  //
+  // faaDelays stays in EMPTY_DATA_OK_KEYS, so a quiet FAA window remains a VALID
+  // state; this entry adds the staleness coverage it never had, which is the
+  // half that was genuinely missing.
+  faaDelays:        {
+    key: 'seed-meta:aviation:faa',
+    maxStaleMin: 90,
+    // Pre-seed, not an acknowledgement: the key itself has existed for a long
+    // time (it was registered under flightDelays), so classifyKey against the
+    // live value already returns OK. recordCount=0 is VALID here because
+    // faaDelays is in EMPTY_DATA_OK_KEYS.
+    cutover: {
+      mode: 'preseed',
+      fromKey: null,
+      issue: 6987,
+      verifiedAt: '2026-08-20T10:36:00.000Z',
+      evidence: {
+        platform: 'railway',
+        service: 'seed-aviation',
+        probeKey: 'seed-meta:aviation:faa',
+        compactHealthStatus: 'OK',
+        reference: 'https://github.com/koala73/worldmonitor/issues/6987#issuecomment-5354967398',
+      },
+    },
+  },
   theaterPosture:   { key: 'seed-meta:theater-posture',         maxStaleMin: 60 },
   correlationCards: { key: 'seed-meta:correlation:cards',       maxStaleMin: 30 }, // 5min cron (seed-bundle-derived-signals); 30min = 6× interval. Was 15 (3× = gold-standard floor) — overnight UptimeRobot flips when bundle jitter spaced two consecutive runs ~9-10min apart, producing 15-19min gaps that tripped STALE_SEED briefly. See WM 2026-05-10 health:failure-log.
   portwatch:           { key: 'seed-meta:supply_chain:portwatch',            maxStaleMin: 720 },
@@ -1274,6 +1357,9 @@ const ON_DEMAND_KEYS = new Set([
   // absence must be EMPTY/CRIT rather than on-demand.
   'macroSignals', 'chokepoints', 'minerals', 'giving',
   'cyberThreatsRpc', 'militaryBases', 'displacement',
+  // militaryBases keeps the existing standalone pointer check. Its seed-meta
+  // supplies strict freshness and integrity verdicts once that pointer exists;
+  // an absent pointer remains the existing EMPTY_ON_DEMAND warning.
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
   // marketImplications removed 2026-05-01 — see policy block above. Homepage panel,

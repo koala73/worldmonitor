@@ -3,6 +3,7 @@ import type { AirportDelayAlert as ProtoAlert, AirportOpsSummary as ProtoOpsSumm
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { AviationServiceClient } from '@/services/generated-rpc-clients';
+import { premiumFetch } from '@/services/premium-fetch';
 
 // ---- Consumer-friendly display types ----
 
@@ -320,7 +321,11 @@ function toDisplayDatePrice(p: ProtoDatePriceEntry): DatePrice {
 
 // ---- Client + circuit breakers ----
 
-const client = new AviationServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+// premiumFetch, not raw fetch: the three AviationStack-metered routes are in
+// PREMIUM_RPC_PATHS, and only premiumFetch attaches the Clerk Bearer for them.
+// Injection is path-gated inside premiumFetch, so the free aviation methods on
+// this same client (delays, ops summary, news, tracking) are unaffected.
+const client = new AviationServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 const breakerDelays = createCircuitBreaker<AirportDelayAlert[]>({ name: 'Flight Delays v2', cacheTtlMs: 2 * 60 * 60 * 1000, persistCache: true });
 const breakerOps = createCircuitBreaker<AirportOpsSummary[]>({ name: 'Airport Ops', cacheTtlMs: 6 * 60 * 1000, persistCache: true });

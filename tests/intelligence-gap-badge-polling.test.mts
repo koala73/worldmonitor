@@ -43,4 +43,12 @@ describe('IntelligenceGapBadge teardown', () => {
     const destroyBody = src.slice(src.indexOf('public destroy(): void'));
     assert.match(destroyBody, /this\.dismissFindingsModal\(\);/, 'destroy() must dismiss the findings modal');
   });
+
+  it('focus trap dismisses the findings modal on Escape', () => {
+    assert.match(
+      src,
+      /createFocusTrap\(overlay,\s*\{\s*onEscape:\s*\(\)\s*=>\s*this\.dismissFindingsModal\(\)/,
+      'findings modal trap must own Escape so stacked RouteExplorer capture does not win',
+    );
+  });
 });

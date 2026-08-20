@@ -895,7 +895,10 @@ export default defineSchema({
     .index("by_normalized_email", ["normalizedEmail"]),
 
   // Canonical per-Clerk-user record. Populated on first authenticated session
-  // by client → `users:ensureRecord` (see convex/users.ts). Distinct from
+  // by client → `users:ensureRecord` (see convex/users.ts), and server-side at
+  // checkout start by `users:recordTermsAcceptance` — which INSERTS when no row
+  // exists, because a /pro buyer may never have run ensureRecord (pro-test has
+  // no Convex client). Distinct from
   // `customers` (which is paid-only, populated by Dodo subscription webhook):
   // `users` covers EVERY Clerk-authenticated user, free or paid. Holds
   // operational properties used for product personalization and broadcast
@@ -918,6 +921,24 @@ export default defineSchema({
     country: v.optional(v.string()), // ISO 3166-1 alpha-2; CLIENT-REPORTED — see warning above
     firstSeenAt: v.number(),
     lastSeenAt: v.number(),
+    // Terms-of-service assent (#6976). Written at the two moments the user is
+    // actually shown the documents: account creation, and checkout start (the
+    // assent line sits immediately above every CTA). Both write the version
+    // read from `shared/legal.ts` server-side, so no client can record a
+    // version that was never in effect, and every recorded version resolves to
+    // an archived snapshot under docs/legal/.
+    //
+    // OPTIONAL, and deliberately not backfilled: users who predate #6976 were
+    // never shown an assent surface, and claiming otherwise would be worse than
+    // an empty column. They fill in on their next checkout.
+    termsAcceptedAt: v.optional(v.number()),
+    termsVersion: v.optional(v.string()), // ISO date, e.g. "2026-08-20"
+    // Set once, never overwritten (#6983). `termsAcceptedAt` moves to the
+    // newest acceptance, so without this the date of the acceptance that
+    // actually formed the agreement is destroyed by the first version bump —
+    // and it cannot be reconstructed afterwards. The bump in #6983
+    // (2026-07-27 → 2026-08-20) is the first one that would have done it.
+    termsFirstAcceptedAt: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
     .index("by_normalizedEmail", ["normalizedEmail"])

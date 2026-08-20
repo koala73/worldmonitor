@@ -135,3 +135,10 @@ tmp/
 docs/plans/
 docs/brainstorms/
 playground-pricing.html
+
+# Generated at build time by scripts/generate-third-party-notices.mjs (3MB+).
+# Ships inside the desktop bundle; never committed. The directory itself IS
+# committed (.gitkeep) because tauri-build resolves bundle.resources paths at
+# compile time — `cargo test` fails on a resource path that does not exist.
+src-tauri/notices/*
+!src-tauri/notices/.gitkeep

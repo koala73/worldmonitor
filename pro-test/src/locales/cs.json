@@ -358,7 +358,8 @@
           "Prioritní aktualizace dat"
         ],
         "highlightFeatures": [
-          "Osobní licence"
+          "Osobní licence",
+          "1 pojmenovaný uživatel"
         ]
       },
       "api": {
@@ -412,7 +413,8 @@
           "Prioritní podpora"
         ],
         "highlightFeatures": [
-          "Komerční licence v ceně"
+          "Komerční licence v ceně",
+          "1 pojmenovaný uživatel — ne sdílené přihlášení"
         ]
       }
     },
@@ -423,7 +425,7 @@
     "axisPersonal": "Osobní",
     "axisPersonalNote": "individuální použití",
     "axisCommercial": "Komerční",
-    "axisCommercialNote": "práce, týmy a produkty"
+    "axisCommercialNote": "práce, klienti a produkty"
   },
   "welcome": {
     "meta": {

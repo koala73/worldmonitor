@@ -128,6 +128,8 @@ export function resolveInsightsSynthesis(options = {}) {
   return {
     composed,
     parsedSynthesis,
+    // What the gate rejected, when it said so. Null for every non-gate stage.
+    failureDetail: composeResult?.rejectionDetail ?? null,
     failureCode: classifyInsightsSynthesisFailure({
       hasBriefCluster,
       synthesisResult,

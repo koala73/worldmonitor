@@ -325,8 +325,16 @@
   {
     "entry": "scripts/seed-bundle-static-ref-heavy.mjs",
     "deployMode": "nixpacks-root-scripts",
-    "lifecycle": "planned",
     "service": "seed-bundle-static-ref-heavy",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "CLOUDFLARE_R2_ACCOUNT_ID",
+      [
+        "CLOUDFLARE_R2_TOKEN",
+        "CLOUDFLARE_API_TOKEN"
+      ]
+    ],
     "watchPatterns": [
       "scripts/_bundle-runner.mjs",
       "scripts/_defense-industrial-source.mjs",

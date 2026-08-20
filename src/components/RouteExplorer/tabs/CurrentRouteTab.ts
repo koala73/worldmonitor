@@ -117,7 +117,7 @@ export class CurrentRouteTab {
       const select = () => this.opts.onChokepointSelect?.(cpId);
       row.addEventListener('click', select);
       row.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); select(); }
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(); }
       });
     });
   }

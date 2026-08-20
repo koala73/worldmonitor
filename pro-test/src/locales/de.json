@@ -358,7 +358,8 @@
           "Prioritäts-Datenaktualisierung"
         ],
         "highlightFeatures": [
-          "Persönliche Lizenz"
+          "Persönliche Lizenz",
+          "1 benannter Benutzer"
         ]
       },
       "api": {
@@ -412,7 +413,8 @@
           "Prioritäts-Support"
         ],
         "highlightFeatures": [
-          "Kommerziell Lizenz enthalten"
+          "Kommerziell Lizenz enthalten",
+          "1 benannter Benutzer – keine gemeinsame Anmeldung"
         ]
       }
     },
@@ -423,7 +425,7 @@
     "axisPersonal": "Persönlich",
     "axisPersonalNote": "Individuelle Nutzung",
     "axisCommercial": "Kommerziell",
-    "axisCommercialNote": "Arbeit, Teams & Produkte"
+    "axisCommercialNote": "Arbeit, Kunden & Produkte"
   },
   "welcome": {
     "meta": {

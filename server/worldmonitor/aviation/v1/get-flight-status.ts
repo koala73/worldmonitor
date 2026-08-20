@@ -6,8 +6,8 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
-import { getRelayBaseUrl, getRelayHeaders } from './_shared';
-import { aviationStackBudgetMonth, reserveAviationStackCalls } from './_avstack-budget';
+import { getRelayBaseUrl, getRelayHeaders, requireLiveAviationAccess } from './_shared';
+import { aviationStackBudgetCycle, reserveAviationStackCalls } from './_avstack-budget';
 
 const CACHE_TTL = 120; // 2 minutes
 
@@ -57,11 +57,14 @@ export async function getFlightStatus(
     req: GetFlightStatusRequest,
 ): Promise<GetFlightStatusResponse> {
     // Normalize: strip leading zeros from numeric suffix (EK03 → EK3, BA002 → BA2)
+    // Metered route — gate before anything else. See requireLiveAviationAccess.
+    await requireLiveAviationAccess(ctx.request);
+
     const flightNumber = (req.flightNumber?.toUpperCase().replace(/\s/g, '') || '')
         .replace(/^([A-Z]{2,3})0+(\d+)$/, '$1$2');
     const date = req.date || new Date().toISOString().slice(0, 10);
     const origin = req.origin?.toUpperCase() || '';
-    const cacheKey = `aviation:status:${flightNumber}:${date}:${origin}:v1:${aviationStackBudgetMonth()}`;
+    const cacheKey = `aviation:status:${flightNumber}:${date}:${origin}:v1:${aviationStackBudgetCycle()}`;
     const now = Date.now();
 
     if (!flightNumber || flightNumber.length > 10) {

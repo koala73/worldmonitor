@@ -2,6 +2,8 @@ import { type AuthSession, getAuthState, subscribeAuthState } from '@/services/a
 import { PanelGateReason, getPanelGateReason } from '@/services/panel-gating';
 import { getResilienceScore, type ResilienceDomain, type ResilienceScoreResponse } from '@/services/resilience';
 import { h, replaceChildren } from '@/utils/dom-utils';
+import { createCheckoutConsentElement } from '@/utils/legal-links';
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import {
   type DimensionConfidence,
   LOCKED_PREVIEW,
@@ -223,6 +225,12 @@ export class ResilienceWidget {
       { className: 'cdp-card-body resilience-widget__locked' },
       preview,
       h('div', { className: 'panel-locked-desc resilience-widget__gate-desc' }, description),
+      // Assent above the CTA (#6976) — only on the upgrade branch. The
+      // ANONYMOUS branch opens Clerk sign-in, which carries its own Terms and
+      // Privacy links via the appearance layout options.
+      ...(gateReason === PanelGateReason.ANONYMOUS
+        ? []
+        : [createCheckoutConsentElement(WEB_APP_ORIGIN)]),
       button,
     );
   }

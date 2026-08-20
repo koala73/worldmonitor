@@ -15,7 +15,7 @@
     "axisPersonal": "Personal",
     "axisPersonalNote": "individual use",
     "axisCommercial": "Commercial",
-    "axisCommercialNote": "work, teams & products",
+    "axisCommercialNote": "کار، کلاینت‌ها و محصولات",
     "promoCodeNote": "Have a promo code? Enter it during checkout.",
     "cta": {
       "checkoutDefault": "Get Started",
@@ -46,7 +46,8 @@
           "Priority data refresh"
         ],
         "highlightFeatures": [
-          "Personal license"
+          "Personal license",
+          "۱ کاربر نام‌برده‌شده"
         ]
       },
       "proBusiness": {
@@ -60,7 +61,8 @@
           "Priority support"
         ],
         "highlightFeatures": [
-          "Commercial license included"
+          "Commercial license included",
+          "۱ کاربر نام‌برده‌شده — نه ورود اشتراکی"
         ]
       },
       "api": {

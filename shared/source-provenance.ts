@@ -181,6 +181,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Libya Herald': 'mainstream', 'Egypt Independent': 'mainstream',
   'Mada Masr': 'mainstream', 'The Daily Star': 'mainstream',
   'Dhaka Tribune': 'mainstream', 'Daily Nation': 'mainstream',
+  'Times of India': 'mainstream',
   'The Guardian Post': 'mainstream', 'Tchadinfos': 'mainstream',
   'Alwihda Info': 'mainstream', 'Radio Ndeke Luka': 'mainstream',
 
@@ -434,6 +435,7 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'BBC Middle East': { risk: 'low', note: 'Public broadcaster, editorial independence charter' },
   'Guardian World': { risk: 'low', knownBiases: ['Center-left'], note: 'Scott Trust ownership, no shareholders' },
   'Financial Times': { risk: 'low', note: 'Business focus, Nikkei-owned' },
+  'Times of India': { risk: 'low', note: 'Major Indian national newspaper with an established editorial newsroom' },
   'Fox Business': { risk: 'low', note: 'Commercial U.S. business-news publisher' },
   'Business Insider': { risk: 'low', note: 'Commercial business-news publisher with editorial standards' },
   'Wired': { risk: 'low', note: 'Technology publication with editorial standards' },

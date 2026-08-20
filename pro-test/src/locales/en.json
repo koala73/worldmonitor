@@ -15,7 +15,7 @@
     "axisPersonal": "Personal",
     "axisPersonalNote": "individual use",
     "axisCommercial": "Commercial",
-    "axisCommercialNote": "work, teams & products",
+    "axisCommercialNote": "work, clients & products",
     "promoCodeNote": "Have a promo code? Enter it during checkout.",
     "cta": {
       "checkoutDefault": "Get Started",
@@ -46,7 +46,8 @@
           "Priority data refresh"
         ],
         "highlightFeatures": [
-          "Personal license"
+          "Personal license",
+          "1 named user"
         ]
       },
       "proBusiness": {
@@ -60,7 +61,8 @@
           "Priority support"
         ],
         "highlightFeatures": [
-          "Commercial license included"
+          "Commercial license included",
+          "1 named user — not a shared login"
         ]
       },
       "api": {

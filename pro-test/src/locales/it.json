@@ -358,7 +358,8 @@
           "Aggiornamento dati prioritario"
         ],
         "highlightFeatures": [
-          "Licenza personale"
+          "Licenza personale",
+          "1 utente nominato"
         ]
       },
       "api": {
@@ -412,7 +413,8 @@
           "Supporto prioritario"
         ],
         "highlightFeatures": [
-          "Licenza commerciale inclusa"
+          "Licenza commerciale inclusa",
+          "1 utente nominato — non un accesso condiviso"
         ]
       }
     },
@@ -423,7 +425,7 @@
     "axisPersonal": "Personale",
     "axisPersonalNote": "uso individuale",
     "axisCommercial": "Commerciale",
-    "axisCommercialNote": "lavoro, team e prodotti"
+    "axisCommercialNote": "lavoro, clienti e prodotti"
   },
   "welcome": {
     "meta": {

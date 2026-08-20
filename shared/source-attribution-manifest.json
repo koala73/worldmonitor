@@ -9187,6 +9187,23 @@
       ]
     },
     {
+      "host": "timesofindia.indiatimes.com",
+      "provider": "Times of India",
+      "kind": "feed",
+      "observed": true,
+      "license": "Licensed publisher content; redistribution governed by the World Monitor agreement",
+      "attribution": "Credit Times of India and link to the original item.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
       "host": "tools.cdc.gov",
       "provider": "tools.cdc.gov",
       "kind": "structured",

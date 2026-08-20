@@ -253,10 +253,12 @@
               {
                 "group": "Legal",
                 "pages": [
+                  "eula",
+                  "terms",
+                  "dpa",
                   "license",
                   "trademark-policy",
-                  "privacy",
-                  "terms"
+                  "privacy"
                 ]
               }
             ]
@@ -721,10 +723,12 @@
               {
                 "group": "法律",
                 "pages": [
+                  "zh/eula",
+                  "zh/terms",
+                  "zh/dpa",
                   "zh/license",
                   "zh/trademark-policy",
-                  "zh/privacy",
-                  "zh/terms"
+                  "zh/privacy"
                 ]
               }
             ]

@@ -3,6 +3,7 @@ import type {
     SearchFlightPricesRequest,
     SearchFlightPricesResponse,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
+import { requireLiveAviationAccess } from './_shared';
 import { generateDemoPrices } from './_providers/demo_prices';
 import { searchPricesTravelpayouts } from './_providers/travelpayouts_data';
 
@@ -31,9 +32,14 @@ function emptyDegraded(
 }
 
 export async function searchFlightPrices(
-    _ctx: ServerContext,
+    ctx: ServerContext,
     req: SearchFlightPricesRequest,
 ): Promise<SearchFlightPricesResponse> {
+    // Metered route — TRAVELPAYOUTS_API_TOKEN is billed per search, and this
+    // was the fourth metered aviation route the same scraper was spending on
+    // (1,607 of 1,842 anonymous requests over 7 days). Gate before anything else.
+    await requireLiveAviationAccess(ctx.request);
+
     const origin = (req.origin || 'IST').toUpperCase();
     const destination = (req.destination || 'LHR').toUpperCase();
     const depDate = req.departureDate || new Date().toISOString().slice(0, 10);

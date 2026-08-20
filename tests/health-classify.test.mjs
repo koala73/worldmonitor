@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 
 import { __testing__ } from '../api/health.js';
 import { BUNDLE_HEARTBEAT_TTL_SECONDS, bundleHeartbeatKey } from '../scripts/_bundle-runner.mjs';
+import { BOOTSTRAP_KEY as AVIATION_BOOTSTRAP_KEY, BOOTSTRAP_META_KEY as AVIATION_BOOTSTRAP_META_KEY } from '../scripts/seed-aviation.mjs';
 
 const {
   classifyKey,
@@ -27,6 +28,7 @@ const {
   SEED_META,
   ON_DEMAND_KEYS,
   ZERO_RECORD_DATA_OK_KEYS,
+  EMPTY_DATA_OK_KEYS,
 } = __testing__;
 
 const NOW = 1_700_000_000_000;
@@ -2011,4 +2013,94 @@ test('overall: crit above ~3% of total → UNHEALTHY / 200', () => {
   // 5/150 = 0.033 > 0.03
   assert.deepEqual(computeOverall(5, 0, 150), { status: 'UNHEALTHY', http: 200 });
   assert.deepEqual(computeOverall(20, 2, 150), { status: 'UNHEALTHY', http: 200 });
+});
+
+// #6987. flightDelays serves the combined page-load aggregate but read its
+// record count from seed-meta:aviation:faa, which carries the FAA-ONLY count
+// (seed-aviation.mjs writes it as faa.alerts.length). On 2026-08-20 a quiet FAA
+// window published recordCount=0 while the aggregate still served 115 alerts --
+// 14 of them FAA-sourced -- and classifyKey read that zero as EMPTY_DATA,
+// blocking the seed-freshness monitor with a healthy panel.
+const classifyFlightDelays = (over = {}, strlen = 57_608) => classifyKey(
+  'flightDelays',
+  BOOTSTRAP_KEYS.flightDelays,
+  { allowOnDemand: false },
+  makeCtx({
+    strens: { [BOOTSTRAP_KEYS.flightDelays]: strlen },
+    metaValues: { [SEED_META.flightDelays.key]: seedMeta(over) },
+  }),
+);
+
+test('#6987 — a quiet FAA window does not empty the aggregate flightDelays serves', () => {
+  // The exact production shape: aggregate full, FAA contributing nothing.
+  assert.equal(classifyFlightDelays({ recordCount: 115 }).status, 'OK');
+});
+
+test('#6987 — an aggregate that is genuinely empty still alarms', () => {
+  // The counterweight. Fixing the false alarm must not blind the probe: this is
+  // the state the EMPTY_DATA verdict exists for, and it must survive.
+  assert.equal(classifyFlightDelays({ recordCount: 0 }).status, 'EMPTY_DATA');
+});
+
+test('#6987 — flightDelays counts its own data key, not a contributing source', () => {
+  // The regression itself, asserted structurally so it cannot creep back via a
+  // key swap that the two behavioural tests above would still pass.
+  assert.notEqual(
+    SEED_META.flightDelays.key,
+    'seed-meta:aviation:faa',
+    'seed-meta:aviation:faa counts FAA alerts only — strictly smaller than the aggregate served',
+  );
+  // writeSeedMeta derives `seed-meta:<dataKey without :vN>`; pinning health to
+  // that derivation is what keeps the count and the payload the same population.
+  assert.equal(
+    SEED_META.flightDelays.key,
+    `seed-meta:${BOOTSTRAP_KEYS.flightDelays.replace(/:v\d+$/, '')}`,
+  );
+});
+
+test('#6987 — health and seed-aviation agree on the aggregate meta key', () => {
+  // Cross-file, against the seeder's REAL exported constants rather than a
+  // regex over its source: if the producer renames the key it writes, or health
+  // repoints, this fails instead of both sides drifting quietly.
+  assert.equal(BOOTSTRAP_KEYS.flightDelays, AVIATION_BOOTSTRAP_KEY);
+  assert.equal(SEED_META.flightDelays.key, AVIATION_BOOTSTRAP_META_KEY);
+});
+
+// The other half of #6987. faaDelays had no SEED_META entry at all, on the
+// grounds that it "shares flightDelays's meta key" — the sharing that caused the
+// bug. It now has an explicit one (ported from #6988), which must ADD staleness
+// coverage without withdrawing the quiet-window allowance that makes an empty
+// FAA feed a valid state rather than a fault.
+const classifyFaaDelays = (over = {}) => classifyKey(
+  'faaDelays',
+  STANDALONE_KEYS.faaDelays,
+  { allowOnDemand: false },
+  makeCtx({
+    strens: { [STANDALONE_KEYS.faaDelays]: 13 }, // {"alerts":[]}
+    metaValues: { [SEED_META.faaDelays.key]: seedMeta(over) },
+  }),
+);
+
+test('#6987 — a quiet FAA window stays valid for the sidecar probe', () => {
+  assert.ok(
+    EMPTY_DATA_OK_KEYS.has('faaDelays'),
+    'an empty FAA feed is a normal state; withdrawing that turns quiet nights into alarms',
+  );
+  assert.equal(classifyFaaDelays({ recordCount: 0 }).status, 'OK');
+});
+
+test('#6987 — the sidecar probe gains the staleness coverage it never had', () => {
+  // The point of giving faaDelays its own entry: allowed-to-be-empty must not
+  // also mean allowed-to-stop. 200min against maxStaleMin 90.
+  assert.equal(
+    classifyFaaDelays({ recordCount: 0, fetchedAt: NOW - 200 * ONE_MIN_MS }).status,
+    'STALE_SEED',
+  );
+});
+
+test('#6987 — the two aviation probes no longer share a meta key', () => {
+  // The regression in one line: sharing let FAA's allowed-empty count decide the
+  // aggregate probe, which is not allowed to be empty.
+  assert.notEqual(SEED_META.flightDelays.key, SEED_META.faaDelays.key);
+  assert.equal(SEED_META.faaDelays.key, 'seed-meta:aviation:faa');
 });

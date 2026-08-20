@@ -611,6 +611,7 @@ export const CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS: Readonly<
   "The Verge AI": { risk: 'unknown', type: 'reviewed' },
   "The War Zone": { risk: 'unknown', type: 'reviewed' },
   "ThisDay": { risk: 'unknown', type: 'unknown' },
+  "Times of India": { risk: 'reviewed', type: 'reviewed' },
   "Tom's Hardware": { risk: 'unknown', type: 'unknown' },
   "Toronto Star": { risk: 'reviewed', type: 'reviewed' },
   "Trade & Tariffs": { risk: 'unknown', type: 'unknown' },

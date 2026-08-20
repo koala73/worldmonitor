@@ -72,6 +72,7 @@ import {
 } from './_shared/api-key-rate-limit';
 import {
   DIRECT_LLM_DAILY_QUOTA_LIMIT,
+  DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT,
   DIRECT_LLM_GATEWAY_QUOTA_PATHS,
   resolveActiveDirectLlmLimit,
   reserveDirectLlmQuota,
@@ -101,6 +102,10 @@ import {
 import { timingSafeEqual } from './_shared/internal-auth';
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 import { validateGeneratedRequest } from './request-validator';
+import {
+  buildMarkdownTwinResponse,
+  isMarkdownTwinPath,
+} from '../api/_md-url-twin';
 
 export const serverOptions: ServerOptions = {
   onError: mapErrorToResponse,
@@ -626,6 +631,8 @@ const GATEWAY_DIRECT_LLM_QUOTA_METHODS: Record<string, string> = {
   '/api/news/v1/summarize-article': 'POST',
 };
 
+const COUNTRY_INTEL_BRIEF_PATH = '/api/intelligence/v1/get-country-intel-brief';
+
 async function shouldReserveGatewayDirectLlmQuota(request: Request, pathname: string): Promise<boolean> {
   if (!DIRECT_LLM_GATEWAY_QUOTA_PATHS.has(pathname)) return false;
   if (GATEWAY_DIRECT_LLM_QUOTA_METHODS[pathname] !== request.method) return false;
@@ -738,6 +745,22 @@ export function createDomainGateway(
   const router = createRouter(routes);
 
   return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
+    const originalPathname = new URL(originalRequest.url).pathname;
+
+    // Vercel resolves versioned API paths such as
+    // `/api/forecast/v1/get-forecast-scorecard.md` to the more-specific
+    // `api/<domain>/v1/[rpc].ts` function before the root API catch-all. Handle
+    // markdown probes here, before auth and RPC dispatch, so every dynamic
+    // domain gateway follows the same site-wide `.md` twin contract without a
+    // broad rewrite that would shadow the real endpoints (#4724).
+    if (
+      originalPathname.startsWith('/api/') &&
+      isMarkdownTwinPath(originalPathname) &&
+      (originalRequest.method === 'GET' || originalRequest.method === 'HEAD')
+    ) {
+      return buildMarkdownTwinResponse(originalRequest, originalPathname);
+    }
+
     let request = stripClientUserIdHeader(originalRequest);
     const rawPathname = new URL(request.url).pathname;
     const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
@@ -1166,6 +1189,15 @@ export function createDomainGateway(
     const relayWarmPingVerified = await isRelayWarmPingRequest(request, pathname);
     const requiresDirectLlmQuota = !internalMcpVerified && await shouldReserveGatewayDirectLlmQuota(request, pathname);
     const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && !seedRefreshVerified && !relayWarmPingVerified && getRequiredTier(pathname) !== null;
+    // Docker self-hosting has no Clerk/Convex entitlement backend. Its browser
+    // still obtains and presents a server-signed anonymous session, so that
+    // proof remains the gateway authentication boundary on this one route.
+    // Cloud deployments do not set LOCAL_API_MODE=docker, and every other
+    // premium route retains forceKey + entitlement enforcement below.
+    const isDockerSelfHostCountryBrief =
+      request.method === 'GET' &&
+      pathname === COUNTRY_INTEL_BRIEF_PATH &&
+      process.env.LOCAL_API_MODE === 'docker';
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
     const isProFreshCacheRpc = PRO_FRESH_CACHE_RPC_PATHS.has(pathname);
     const needsProFreshnessResolution =
@@ -1205,7 +1237,8 @@ export function createDomainGateway(
     let keyCheck: { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user'; credential?: string } = internalMcpVerified || isPublicNoAuthRpc || seedRefreshVerified || relayWarmPingVerified
       ? { valid: true, required: false }
       : ((await validateApiKey(request, {
-          forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
+          forceKey: ((isTierGated && !sessionUserId) || needsLegacyProBearerGate)
+            && !isDockerSelfHostCountryBrief,
         })) as { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user'; credential?: string });
 
     // User-owned API keys (wm_ prefix): when the static WORLDMONITOR_VALID_KEYS
@@ -1220,6 +1253,11 @@ export function createDomainGateway(
       request.headers.get('X-WorldMonitor-Key') ??
       request.headers.get('X-Api-Key') ??
       '';
+    const dockerSelfHostSessionAuthorized =
+      isDockerSelfHostCountryBrief &&
+      keyCheck.valid &&
+      !keyCheck.required &&
+      keyCheck.kind === 'session';
     if (keyCheck.required && !keyCheck.valid && wmKey.startsWith('wm_')) {
       // Unknown wm_ credentials require a Convex-backed hash lookup before we
       // know the account principal. Bound that unattributed work by IP first:
@@ -1513,7 +1551,13 @@ export function createDomainGateway(
       && Boolean(enterpriseCredential)
       && !isUserApiKey
       && keyCheck.kind === 'enterprise';
-    if (!isEnterpriseAuth && !internalMcpVerified && !seedRefreshVerified && !relayWarmPingVerified) {
+    if (
+      !dockerSelfHostSessionAuthorized &&
+      !isEnterpriseAuth &&
+      !internalMcpVerified &&
+      !seedRefreshVerified &&
+      !relayWarmPingVerified
+    ) {
       const entitlementCheck = await checkEntitlementDetailed(sessionUserId, pathname, corsHeaders, {
         clerkRole: sessionRole,
       });
@@ -1872,7 +1916,15 @@ export function createDomainGateway(
     }
 
     if (requiresDirectLlmQuota && !isEnterpriseAuth) {
-      if (!sessionUserId) {
+      // The Docker principal is deliberately derived from nginx's trusted
+      // X-Real-IP value (docker/nginx.conf stamps $remote_addr), not from the
+      // freely mintable token: rotating sessions must not reset spend.
+      // Hashing keeps the raw address out of Redis keys.
+      const dockerQuotaUserId = dockerSelfHostSessionAuthorized
+        ? `docker:${hashKeySync(deriveIp(request) ?? 'unknown')}`
+        : null;
+      const quotaUserId = sessionUserId ?? dockerQuotaUserId;
+      if (!quotaUserId) {
         emitRequest(401, 'auth_401', null);
         return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders);
       }
@@ -1882,9 +1934,11 @@ export function createDomainGateway(
       // Business/API plans still receive their catalog-specific dashboard-AI
       // allowance.
       const ent = quotaEntitlements ?? (
-        userKeyEntitlement !== undefined
-          ? userKeyEntitlement
-          : await getEntitlements(sessionUserId)
+        sessionUserId
+          ? userKeyEntitlement !== undefined
+            ? userKeyEntitlement
+            : await getEntitlements(sessionUserId)
+          : null
       );
       if (ent) recordUsageEntitlement(ent);
       // resolveActiveDirectLlmLimit — NOT the raw catalog read — decides this.
@@ -1892,14 +1946,16 @@ export function createDomainGateway(
       // row, or a verification outage) must land on the unverified floor, never
       // on the paid default: this endpoint spends real provider budget, and
       // two of the DIRECT_LLM_GATEWAY_QUOTA_PATHS carry no tier gate at all.
-      directLlmDailyLimit = resolveActiveDirectLlmLimit(ent);
+      directLlmDailyLimit = sessionUserId
+        ? resolveActiveDirectLlmLimit(ent)
+        : DIRECT_LLM_UNVERIFIED_DAILY_QUOTA_LIMIT;
 
       // Enterprise subscription rows carry an explicit null allowance. Do not
       // hit Redis for those unlimited callers; static enterprise keys already
       // bypass this block above.
       if (directLlmDailyLimit !== null) {
         const reservation = await reserveDirectLlmQuota({
-          userId: sessionUserId,
+          userId: quotaUserId,
           limit: directLlmDailyLimit,
           pipeline: (cmds) => runRedisPipeline(cmds, true),
         });

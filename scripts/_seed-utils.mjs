@@ -1968,6 +1968,10 @@ export function raceFetchDeadline(promise, ms, label) {
   return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
 }
 
+// Set by _bundle-runner for canonical-clock members that need proof that every
+// publish side effect completed. Standalone seed runs leave it unset.
+export const BUNDLE_COMPLETION_META_KEY_ENV = 'WM_BUNDLE_COMPLETION_META_KEY';
+
 export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}) {
   const {
     validateFn,
@@ -1998,6 +2002,32 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     fetchPhaseTimeoutMs,   // hard ceiling on the fetch phase; defaults to lockTtlMs + margin (#4786)
   } = opts;
   const contractMode = typeof declareRecords === 'function';
+  if (extraKeys && !Array.isArray(extraKeys)) {
+    console.error(`  CONTRACT VIOLATION: ${domain}:${resource} extraKeys must be an array`);
+    process.exit(1);
+  }
+  if (afterPublish && typeof afterPublish !== 'function') {
+    console.error(`  CONTRACT VIOLATION: ${domain}:${resource} afterPublish must be a function`);
+    process.exit(1);
+  }
+  if (afterFreshness && typeof afterFreshness !== 'function') {
+    console.error(`  CONTRACT VIOLATION: ${domain}:${resource} afterFreshness must be a function`);
+    process.exit(1);
+  }
+  const bundleCompletionMetaKey = String(process.env[BUNDLE_COMPLETION_META_KEY_ENV] ?? '').trim();
+  if (bundleCompletionMetaKey) {
+    if (!contractMode) {
+      console.error(`  CONTRACT VIOLATION: ${domain}:${resource} bundle completion attestation requires contract mode`);
+      process.exit(1);
+    }
+    if (!bundleCompletionMetaKey.startsWith('seed-completion:')) {
+      console.error(
+        `  CONTRACT VIOLATION: ${domain}:${resource} bundle completion key must use the dedicated `
+        + `seed-completion: namespace, got ${bundleCompletionMetaKey}`,
+      );
+      process.exit(1);
+    }
+  }
   if (contractMode) {
     // Soft-warn (PR 2) on other mandatory contract fields; PR 3 hard-aborts.
     const missing = [];
@@ -2577,6 +2607,28 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         runId,
         freshnessMeta: meta,
       });
+    }
+
+    // This is the final required Redis write for an attested bundle member.
+    // It deliberately does not run on fetch failure, contract retry, or
+    // validation-skip paths. Bind it to the canonical envelope timestamp so a
+    // marker from any other run cannot attest this publish.
+    if (bundleCompletionMetaKey) {
+      if (meta == null) {
+        throw new Error(`${domain}:${resource} freshness metadata write failed before completion attestation`);
+      }
+      if (!Number.isFinite(envelopeMeta?.fetchedAt)) {
+        throw new Error(`${domain}:${resource} canonical envelope timestamp missing before completion attestation`);
+      }
+      await writeExtraKey(
+        bundleCompletionMetaKey,
+        {
+          fetchedAt: envelopeMeta.fetchedAt,
+          completedAt: Date.now(),
+          runId,
+        },
+        Math.max(7 * 24 * 60 * 60, ttlSeconds || 0),
+      );
     }
 
     const durationMs = Date.now() - startMs;

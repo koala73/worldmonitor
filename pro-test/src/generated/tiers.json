@@ -40,7 +40,8 @@
       "Priority data refresh"
     ],
     "highlightFeatures": [
-      "Personal license"
+      "Personal license",
+      "1 named user"
     ],
     "planLimits": {
       "apiRequestsPerDay": 0,
@@ -68,7 +69,8 @@
       "Priority support"
     ],
     "highlightFeatures": [
-      "Commercial license included"
+      "Commercial license included",
+      "1 named user — not a shared login"
     ],
     "planLimits": {
       "apiRequestsPerDay": 0,

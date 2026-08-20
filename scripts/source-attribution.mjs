@@ -172,6 +172,7 @@ const PROVIDER_OVERRIDES = {
   'coinbase.com': licensedPublisherFeed('Coinbase'),
   'binance.com': licensedPublisherFeed('Binance'),
   'jin10.com': licensedPublisherFeed('Jin10'),
+  'timesofindia.indiatimes.com': licensedPublisherFeed('Times of India'),
   'yemenonline.info': publisherMetadataFeed('Yemen Online'),
   'sanaacenter.org': publisherMetadataFeed("Sana'a Center"),
   'syriadirect.org': publisherMetadataFeed('Syria Direct'),
@@ -762,13 +763,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '91ca746b314f3c0abf3bd5e2ba36fbf5ddc0d230d01a2242f27deac347283488',
-  reason: 'Add the reviewed UN Population Division and ILOSTAT identities and replace the generic World Bank host identity with World Bank Open Data for the demographics capability stack, while retaining prior publisher identities.',
+  sha256: '84220f3a304feaf4f1338aae90e6f5036d78ee723d1aa69c87acabd1425d0736',
+  reason: 'Add the reviewed Times of India publisher identity for its licensed India RSS feed while retaining prior provider identities.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issue #6437 source-rights qualification; UN WPP 2024 data-source notice; World Bank WDI catalogue licence; UNESCO UIS Data Browser terms; ILO rights and permissions; plus the prior Issue #6622, Issue #6659, and PR #6447 identity reviews.',
+  reviewReference: 'Issue #7001 licensed publisher source-rights qualification; plus the prior Issue #6437, Issue #6622, Issue #6659, and PR #6447 identity reviews.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {

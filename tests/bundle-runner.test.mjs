@@ -1123,6 +1123,50 @@ test('injects BUNDLE_RUN_STARTED_AT_MS env into child; value is within run bound
   }
 });
 
+test('injects only canonical-clock completion markers into child seeders', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-completion-env.mjs',
+    `console.log('COMPLETION=' + JSON.stringify(process.env.WM_BUNDLE_COMPLETION_META_KEY || ''));\n`,
+  );
+  try {
+    const canonical = await runBundleWith([{
+      label: 'CANONICAL',
+      script: '_bundle-fixture-completion-env.mjs',
+      canonicalKey: 'test:canonical:v1',
+      completionMetaKey: 'seed-completion:test:canonical',
+      intervalMs: 1,
+      timeoutMs: 5000,
+    }]);
+    assert.equal(canonical.code, 0);
+    assert.match(canonical.stdout, /COMPLETION="seed-completion:test:canonical"/);
+
+    const explicitFreshness = await runBundleWith([{
+      label: 'EXPLICIT',
+      script: '_bundle-fixture-completion-env.mjs',
+      canonicalKey: 'test:explicit:v1',
+      freshnessMetaKey: 'seed-meta:test:transport',
+      completionMetaKey: 'seed-meta:test:complete',
+      intervalMs: 1,
+      timeoutMs: 5000,
+    }]);
+    assert.equal(explicitFreshness.code, 0);
+    assert.match(explicitFreshness.stdout, /COMPLETION=""/);
+
+    const sharedCanonicalMeta = await runBundleWith([{
+      label: 'INVALID',
+      script: '_bundle-fixture-completion-env.mjs',
+      canonicalKey: 'test:invalid:v1',
+      completionMetaKey: 'seed-meta:test:invalid',
+      intervalMs: 1,
+      timeoutMs: 5000,
+    }]);
+    assert.notEqual(sharedCanonicalMeta.code, 0);
+    assert.match(sharedCanonicalMeta.stderr, /must use the dedicated seed-completion: namespace/);
+  } finally {
+    cleanup();
+  }
+});
+
 test('sibling sections share the same BUNDLE_RUN_STARTED_AT_MS (one-shot per bundle)', async () => {
   const cleanupA = writeFixture(
     '_bundle-fixture-env-a.mjs',

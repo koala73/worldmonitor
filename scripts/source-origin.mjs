@@ -384,6 +384,7 @@ const HOST_ORIGINS = Object.freeze({
   'thesentry.org': 'US',
   'thinkglobalhealth.github.io': 'US',
   'timesca.com': null,
+  'timesofindia.indiatimes.com': 'IN',
   'trumpstruth.org': 'US',
   'unchainedcrypto.com': 'US',
   'vancouversun.com': 'CA',

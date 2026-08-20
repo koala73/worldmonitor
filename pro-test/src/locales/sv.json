@@ -358,7 +358,8 @@
           "Prioriterad datauppdatering"
         ],
         "highlightFeatures": [
-          "Personlig licens"
+          "Personlig licens",
+          "1 namngiven användare"
         ]
       },
       "api": {
@@ -412,7 +413,8 @@
           "Prioriterad support"
         ],
         "highlightFeatures": [
-          "Kommersiell licens inkluderad"
+          "Kommersiell licens inkluderad",
+          "1 namngiven användare — inte en delad inloggning"
         ]
       }
     },
@@ -423,7 +425,7 @@
     "axisPersonal": "Personlig",
     "axisPersonalNote": "individuell användning",
     "axisCommercial": "Kommersiell",
-    "axisCommercialNote": "arbete, team & produkter"
+    "axisCommercialNote": "arbete, klienter och produkter"
   },
   "welcome": {
     "meta": {
