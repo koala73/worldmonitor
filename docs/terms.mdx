@@ -3,7 +3,7 @@ title: "World Monitor terms of service and acceptable use"
 description: "Terms governing World Monitor: acceptable use, intelligence-data disclaimer, API and MCP usage, subscriptions and billing, warranties, indemnities, liability limits, termination, and governing law."
 ---
 
-{/* REVIEW — hardened 20 August 2026 against a full external review of the previous text. Implemented: refund trigger on discontinued paid features, beta carve-out, sanctions/export bullet, the compliance carve-out to the individual-decisions prohibition, high-risk-use prohibition, quota freeze for the paid period, a separate free-tier section with its own cap, taxes, failed-payment ladder, named refund exceptions, a limited performance warranty with an exclusive remedy, a two-way indemnity with carve-outs, liability carve-outs, suspension and termination with cure periods, confidentiality with a benchmarking permission, lightweight compliance verification, a change-notice commitment tied to billing periods, and a General section. STILL OPEN and deliberately not invented here: (1) the registered legal entity, its licence number and registered address — the party is still described, not named; (2) which Dubai forum (DIFC Courts vs onshore Dubai Courts) — DIFC needs an express opt-in and must match where the entity is licensed; (3) the dashboard seat counts included with API Starter and API Business; (4) any advance renewal-reminder commitment — no such email is implemented today, only the payment-failure dunning ladder, so none is promised; (5) a legal-notices address distinct from support@. NOT legal advice — a legal review is still recommended, particularly for the warranty, indemnity and forum clauses. */}
+{/* REVIEW — 20 August 2026. Hardened against a full external review, then TRIMMED on the owner's decision: these Terms cover the self-serve plans only (Pro, Pro Business, API Starter, API Business). The reviewer's warranty, company indemnity, mutual confidentiality, annual-audit and guaranteed-cure clauses are Master Services Agreement concessions — the reference ToU template grants none of them — and click-wrapping them would hand negotiated-deal protections to a $99/month buyer for nothing. They are now named as Enterprise inventory instead, and tests/terms-eula-coherence.test.mts fails if any of them creeps back into self-serve. Kept: the discontinuation refund, beta carve-out, free-tier section with its own USD 100 cap, quota freeze, sanctions/export bullet, the compliance carve-out to the individual-decisions prohibition, high-risk prohibition, AI-transparency line, taxes, failed-payment ladder, liability carve-outs, usage verification (telemetry, no premises audit), and a General section. STILL OPEN and deliberately not invented: (1) the registered legal entity, its licence number and registered address; (2) which Dubai forum (DIFC vs onshore) — DIFC needs an express opt-in and must match where the entity is licensed; (3) dashboard seat counts on the organization plans; (4) any advance renewal-reminder commitment — only the payment-failure dunning ladder exists, so none is promised; (5) a legal-notices address distinct from support@; (6) whether to add a dispute-resolution/arbitration clause, which the reference ToU template treats as its headline and we still lack. NOT legal advice — a legal review is still recommended. */}
 
 _Last updated: 20 August 2026_
 
@@ -35,7 +35,7 @@ Features labelled **beta, preview, or experimental** are excluded from that comm
 
 The basic dashboard, the public corpus pages, the credential-free `get_sources` tool, and the free-account allowance are provided **as-is and as-available, without warranty, indemnity, or any service commitment**, and may be modified, limited, or withdrawn at any time without notice.
 
-Only these sections apply to free and anonymous access: this section, Acceptable use, Intelligence disclaimer, Intellectual property, Third-party sources and links, Disclaimer of warranties, Limitation of liability, Governing law, and General. The warranty, indemnity, notice, cure, and refund commitments elsewhere in these Terms apply only to paid plans.
+Only these sections apply to free and anonymous access: this section, Acceptable use, Intelligence disclaimer, Intellectual property, Third-party sources and links, Disclaimer of warranties, Limitation of liability, Governing law, and General. The billing, refund, and notice commitments elsewhere in these Terms apply only to paid plans.
 
 **Our total liability for free and anonymous access will not exceed USD 100 in aggregate.**
 
@@ -115,37 +115,19 @@ Paid plans are sold and processed by **Dodo Payments**, which acts as the mercha
 
 **Price and plan changes** take effect at your next renewal, with at least 30 days' notice — see Changes to these Terms below.
 
-**Refunds.** Fees are non-refundable, except: (a) where we discontinue or materially degrade a paid feature (The Service, above); (b) as the remedy for a breach of the performance warranty (Warranties, below); (c) as an alternative remedy under our IP indemnity (Indemnities, below); (d) where you object to a material change to these Terms (Changes to these Terms, below); and (e) where required by applicable consumer-protection law.
-
-## Warranties
-
-**During your paid subscription term, the Service will perform substantially in accordance with our published documentation.**
-
-We do not warrant that the Service will meet your requirements, that it will be uninterrupted or error-free, or that any Output will be accurate, complete, or timely — the Intelligence disclaimer above is not limited or qualified by this section.
-
-**If we breach that warranty**, tell us promptly and with enough detail to reproduce the problem. We will use commercially reasonable efforts to correct it within 30 days, or within 30 days give you a correction plan you reasonably accept. If neither happens, you may terminate the affected subscription and we will refund the pro-rata portion of prepaid fees for the remainder of the term. **This is your sole and exclusive remedy for breach of this warranty.**
-
-This warranty does not apply where the problem is caused by your systems, your network or internet service, or a modification of the Service not made by us. It does not apply to free access or to beta features.
-
-Each party warrants that it has the authority to enter into these Terms.
+**Refunds.** Fees are non-refundable, except: (a) where we discontinue or materially degrade a paid feature (The Service, above); (b) where you object to a material change to these Terms (Changes to these Terms, below); and (c) where required by applicable consumer-protection law.
 
 ## Disclaimer of warranties
 
-Except for the warranty above, and to the maximum extent permitted by law, the Service is provided "as is" and "as available" without warranties of any kind, whether express or implied, including merchantability, fitness for a particular purpose, non-infringement, and uninterrupted or error-free operation. This applies in full to free and anonymous access, beta features, third-party source data, and all Outputs.
+To the maximum extent permitted by law, the Service is provided "as is" and "as available" without warranties of any kind, whether express or implied, including merchantability, fitness for a particular purpose, non-infringement, and uninterrupted or error-free operation. This applies in full to free and anonymous access, beta features, third-party source data, and all Outputs.
 
-## Indemnities
-
-**We defend you.** We will defend you against a third-party claim that the Service, or the R1 and R2 Outputs defined in [EULA §5](/eula), infringes that party's patent, copyright, or trademark, and we will indemnify you against damages and reasonable costs finally awarded or agreed in settlement.
-
-If such a claim arises, at our option and expense we will: procure the right for you to continue using the Service; modify or replace it so it is no longer infringing while performing equivalently; or, if neither is commercially practicable, terminate the affected subscription and refund prepaid fees pro-rata.
-
-**We do not defend you** where the claim arises from: a modification you made; combination with anything not supplied by us, where the claim would not have arisen without that combination; your continued use after we tell you to stop; use outside your plan's scope; Your Content; or **R3 and R4 Source Content** — third-party expression carries its source's risk, not ours.
+## Indemnification
 
 **You defend us.** You will defend us against third-party claims arising from your misuse of the Service, your breach of these Terms or the EULA, or Your Content, and indemnify us against damages and reasonable costs finally awarded or agreed in settlement.
 
-**Both directions work the same way.** The party seeking indemnity must notify the other in writing within 30 days of learning of the claim, give the other sole control of the defence, and provide reasonable cooperation at the indemnifying party's expense. Neither party will agree a settlement that imposes an obligation on the other without its consent.
+We will notify you of the claim, and we may take control of the defence at your expense. You will cooperate with that defence and will not settle a claim in a way that binds us without our consent.
 
-Our total liability under the indemnity we give will not exceed **two times the fees you paid us in the twelve months before the claim**.
+**We do not give an indemnity under these Terms.** An indemnity from us — covering third-party infringement claims against the Service and its Outputs — is part of an Enterprise agreement; see [Enterprise terms](#enterprise-terms).
 
 ## Limitation of liability
 
@@ -155,15 +137,13 @@ To the maximum extent permitted by law, neither party will be liable for any ind
 
 **These caps do not apply to:** death or personal injury caused by negligence; fraud or wilful misconduct; your obligation to pay fees; your breach of the license scope in the EULA or infringement of our intellectual property; or either party's indemnity obligations, which are capped separately as stated above.
 
-**Your liability to us** is capped on the same basis, except for the exclusions listed immediately above.
-
 Nothing here limits liability that cannot be limited under the law that applies to you.
 
 ## Suspension and termination
 
 **We may suspend** your access for non-payment, for breach of these Terms or the EULA, for a security risk, where the law or a regulator requires it, or where a data source demands it.
 
-**Notice and cure.** For a breach that is not urgent, we will give you written notice and **10 days to put it right** before suspending. We suspend immediately only for a security risk, a legal requirement, abuse, or a source provider's demand — and we tell you why at the time.
+**How we normally do it.** For a breach that is not urgent, we will tell you what is wrong and give you a reasonable chance to put it right before suspending. We suspend immediately for a security risk, a legal requirement, abuse, or a source provider's demand. Either way we tell you why. A guaranteed cure period is an Enterprise term.
 
 **Termination.** Either party may terminate for a material breach the other has not cured within 30 days of written notice. You may stop at any time by cancelling.
 
@@ -171,21 +151,11 @@ Nothing here limits liability that cannot be limited under the law that applies 
 
 **Surviving these Terms:** the intelligence disclaimer, intellectual property, warranties disclaimer, indemnities, limitation of liability, confidentiality, governing law, and this section.
 
-## Confidentiality
+## Verifying usage
 
-Each party may receive information the other marks as confidential or that is obviously confidential from the circumstances — including our API keys, credentials, and non-public documentation, and your non-public business information. Each party will protect the other's confidential information with at least reasonable care and use it only to perform these Terms.
+We may check usage telemetry from your account against the plan you bought. If it shows use beyond your plan — more named users, or a use the plan does not cover — we will tell you, and you will either bring the use within scope or pay the difference at list price for the period concerned.
 
-This does not apply to information that is already public, becomes public without a breach, was already known to the recipient, is independently developed without using the other's information, or is rightfully received from a third party. Where disclosure is legally compelled, the recipient will give prior notice if it is lawful to do so.
-
-On termination, each party will return or destroy the other's confidential information on request, except for copies kept in routine backups or where the law requires retention.
-
-**You may publish benchmarks and reviews.** Nothing here prevents you from publishing performance measurements, test results, or an honest review of the Service. We would rather be measured than protected from measurement.
-
-## Compliance verification
-
-No more than once in any 12-month period, and on 15 days' written notice, you will confirm the number of Licensed Users under your plan and describe, in general terms, the systems in which Outputs are used. We may use usage telemetry from your account for the same purpose.
-
-If that confirmation shows use beyond your plan, you will purchase the shortfall at list price for the period concerned. There is no audit of your premises, no penalty multiple, and no further obligation.
+There is no audit of your premises and no penalty multiple.
 
 ## Intellectual property
 
@@ -210,6 +180,23 @@ The Service incorporates data and links from third parties. We do not control an
 Non-material changes, and changes required by law, may take effect sooner. For free and anonymous access, changes take effect when published.
 
 Every change is published here with a new "Last updated" date. **A signed order form is not changed by an update to this page during its term.**
+
+## Enterprise terms
+
+These Terms cover the self-serve plans — Pro, Pro Business, API Starter, and API Business. They are deliberately lean, and there are protections they do not give.
+
+The following are available under an **Enterprise agreement and order form**, and are not part of any self-serve plan:
+
+- a **performance warranty** with a correction-or-refund remedy;
+- an **indemnity from us** against third-party infringement claims covering the Service and its Outputs;
+- a **mutual confidentiality agreement**;
+- a **service-level commitment** with uptime targets and service credits;
+- a **data processing agreement**;
+- a **negotiated liability cap**, and a different governing law or venue;
+- guaranteed **notice and cure periods** before suspension;
+- seats, volumes, redistribution rights, white-labelling, and deployment options beyond the published plans.
+
+If you need any of these, talk to us at [enterprise@worldmonitor.app](mailto:enterprise@worldmonitor.app) before you buy — they are priced into the Enterprise tier rather than bundled into the self-serve ones.
 
 ## Governing law
 

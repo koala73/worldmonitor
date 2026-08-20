@@ -129,21 +129,15 @@ describe('the free tier is governed on its own terms', () => {
   });
 });
 
-describe('the paid commitments the review asked for exist', () => {
+describe('the self-serve Terms keep what protects a buyer and us', () => {
   const required: Array<[string, RegExp]> = [
     ['a refund trigger when a paid feature is withdrawn', /refund the unused portion of prepaid fees/i],
     ['a beta carve-out', /beta, preview, or experimental/i],
     ['a sanctions and export-control restriction', /sanctions or export-control law/i],
     ['a high-risk-use prohibition', /high-risk system/i],
-    ['a performance warranty', /perform substantially in accordance with our published documentation/i],
-    ['an exclusive remedy for that warranty', /sole and exclusive remedy/i],
-    ['an IP indemnity we give', /We will defend you against a third-party claim/i],
-    ['indemnity carve-outs', /R3 and R4 Source Content/i],
+    ['the indemnity we receive', /You will defend us against third-party claims/i],
     ['liability carve-outs', /These caps do not apply to/i],
-    ['a cure period before suspension', /10 days to put it right/i],
-    ['mutual confidentiality', /## Confidentiality/],
-    ['an express permission to benchmark', /publish benchmarks and reviews/i],
-    ['compliance verification without an audit right', /no audit of your premises/i],
+    ['usage verification without an audit right', /no audit of your premises/i],
     ['taxes', /exclusive of VAT/i],
     ['failed-payment handling', /If a payment fails/i],
     ['entire agreement', /Entire agreement/i],
@@ -158,4 +152,65 @@ describe('the paid commitments the review asked for exist', () => {
       assert.match(terms, pattern);
     });
   }
+});
+
+/**
+ * The self-serve / Enterprise line.
+ *
+ * A first pass at this review implemented the reviewer's warranty, company
+ * indemnity, confidentiality and audit clauses directly into the click-through
+ * Terms. Those are Master Services Agreement concessions — the reference ToU
+ * template grants none of them — and click-wrapping them hands negotiated-deal
+ * protections to a $99/month self-serve buyer for nothing.
+ *
+ * They are Enterprise inventory instead. This is the guard that keeps them
+ * there: adding a warranty or an indemnity back into the self-serve Terms
+ * fails, and so does quietly dropping the section that tells a buyer those
+ * protections exist and where.
+ */
+describe('Enterprise protections are not bundled into self-serve', () => {
+  const NOT_IN_SELF_SERVE: Array<[string, RegExp]> = [
+    ['a performance warranty', /perform substantially in accordance with our published documentation/i],
+    ['an exclusive warranty remedy', /sole and exclusive remedy/i],
+    ['an indemnity from us', /We will defend you against a third-party claim/i],
+    ['a mutual confidentiality agreement', /^## Confidentiality/m],
+    ['a guaranteed cure period', /\b10 days to put it right\b/i],
+    ['a cap on the customer\'s own liability', /Your liability to us.{0,40}capped/i],
+  ];
+
+  for (const [what, pattern] of NOT_IN_SELF_SERVE) {
+    it(`the Terms do not grant ${what}`, () => {
+      assert.doesNotMatch(
+        terms,
+        pattern,
+        `${what} is an Enterprise term — granting it in click-through Terms gives it away with every self-serve plan`,
+      );
+    });
+  }
+
+  it('the Terms name what Enterprise adds, rather than leaving a silent gap', () => {
+    const section = terms.slice(terms.indexOf('## Enterprise terms'));
+    assert.ok(section.length > 0, 'the Terms must have an Enterprise terms section');
+    for (const offer of [
+      /performance warranty/i,
+      /indemnity from us/i,
+      /confidentiality/i,
+      /service-level commitment/i,
+      /data processing agreement/i,
+      /negotiated liability cap/i,
+    ]) {
+      assert.match(section, offer, `Enterprise terms must name ${offer} as something the tier adds`);
+    }
+    assert.match(section, /Pro, Pro Business, API Starter, and API Business/, 'name the plans these Terms actually cover');
+  });
+
+  it('the EULA points at the same line', () => {
+    assert.match(eula, /are not part of any self-serve plan/i);
+    assert.match(eula, /performance warranty/i);
+  });
+
+  it('the disclaimer is unqualified again, now that no warranty sits above it', () => {
+    assert.doesNotMatch(terms, /Except for the warranty above/i);
+    assert.match(terms, /the Service is provided "as is" and "as available"/i);
+  });
 });
