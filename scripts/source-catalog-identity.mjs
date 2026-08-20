@@ -10,6 +10,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import ts from 'typescript';
+
 import {
   publisherFamilyFor,
   publisherNameForFamily,
@@ -33,16 +35,6 @@ const FEEDBURNER_TRANSPORT_HOSTS = Object.freeze(new Set([
   'feeds.feedburner.com',
   'feedburner.com',
 ]));
-
-const NAME_RE = /name:\s*(?:'((?:[^'\\]|\\.)*)'|"([^"]+)")/;
-const RSS_URL_RE = /(?:rss|railwayRss)\(\s*'([^']+)'\s*\)/g;
-const DIRECT_URL_RE = /url:\s*'((?:https?:)[^']+)'/g;
-const GN_RE = /\bgn\(\s*'((?:[^'\\]|\\.)*)'\s*\)/g;
-const GN_LOCALE_RE = /\bgnLocale\(\s*'((?:[^'\\]|\\.)*)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*\)/g;
-
-function unescapeName(value) {
-  return String(value || '').replace(/\\'/g, "'");
-}
 
 function googleNewsUrl(query, hl = 'en-US', gl = 'US', ceid = 'US:en') {
   return `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=${hl}&gl=${gl}&ceid=${ceid}`;
@@ -101,37 +93,89 @@ function pushUrl(urls, raw) {
   urls.push(raw);
 }
 
-function parseFeedDeclarationSource(source) {
-  const declarations = [];
-  let currentName = null;
-  for (const rawLine of source.split('\n')) {
-    const line = rawLine.trim();
-    if (line.startsWith('//')) continue;
-    if (line.includes('name:')) {
-      const nameMatch = line.match(NAME_RE);
-      if (nameMatch) currentName = unescapeName(nameMatch[1] || nameMatch[2]);
-    }
-    if (!currentName) continue;
-    if (!line.includes('rss') && !line.includes('url:') && !line.includes('gn(') && !line.includes('gnLocale')) continue;
+function propertyNameText(name) {
+  if (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) return name.text;
+  return '';
+}
 
-    const urls = [];
-    RSS_URL_RE.lastIndex = 0;
-    for (const match of line.matchAll(RSS_URL_RE)) pushUrl(urls, match[1]);
-    DIRECT_URL_RE.lastIndex = 0;
-    for (const match of line.matchAll(DIRECT_URL_RE)) pushUrl(urls, match[1]);
-    GN_RE.lastIndex = 0;
-    for (const match of line.matchAll(GN_RE)) {
-      pushUrl(urls, googleNewsUrl(unescapeName(match[1])));
+function propertyAssignment(object, name) {
+  return object.properties.find((property) => (
+    ts.isPropertyAssignment(property)
+    && propertyNameText(property.name) === name
+  ));
+}
+
+function stringLiteralText(node) {
+  let current = node;
+  while (
+    ts.isParenthesizedExpression(current)
+    || ts.isAsExpression(current)
+    || ts.isTypeAssertionExpression(current)
+    || ts.isSatisfiesExpression(current)
+  ) {
+    current = current.expression;
+  }
+  return ts.isStringLiteralLike(current) ? current.text : null;
+}
+
+function collectFeedUrls(node, urls) {
+  if (ts.isStringLiteralLike(node)) {
+    if (/^https?:\/\//i.test(node.text)) pushUrl(urls, node.text);
+    return;
+  }
+
+  if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+    const helper = node.expression.text;
+    const args = node.arguments.map(stringLiteralText);
+    if (helper === 'rss' || helper === 'railwayRss') {
+      pushUrl(urls, args[0]);
+      return;
     }
-    GN_LOCALE_RE.lastIndex = 0;
-    for (const match of line.matchAll(GN_LOCALE_RE)) {
-      pushUrl(urls, googleNewsUrl(unescapeName(match[1]), match[2], match[3], match[4]));
+    if (helper === 'gn') {
+      if (args[0] !== null) pushUrl(urls, googleNewsUrl(args[0]));
+      return;
     }
-    if (urls.length === 0) continue;
-    for (const url of urls) {
-      declarations.push(classifyFeedDeclaration(currentName, url));
+    if (helper === 'gnLocale') {
+      if (args.slice(0, 4).every((value) => value !== null)) {
+        pushUrl(urls, googleNewsUrl(args[0], args[1], args[2], args[3]));
+      }
+      return;
     }
   }
+
+  ts.forEachChild(node, (child) => collectFeedUrls(child, urls));
+}
+
+function parseFeedDeclarationSource(source, fileName) {
+  const sourceFile = ts.createSourceFile(
+    fileName,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const parseErrors = sourceFile.parseDiagnostics || [];
+  if (parseErrors.length > 0) {
+    const detail = ts.flattenDiagnosticMessageText(parseErrors[0].messageText, ' ');
+    throw new Error(`Cannot parse feed declarations in ${fileName}: ${detail}`);
+  }
+
+  const declarations = [];
+  const visit = (node) => {
+    if (ts.isObjectLiteralExpression(node)) {
+      const nameProperty = propertyAssignment(node, 'name');
+      const urlProperty = propertyAssignment(node, 'url');
+      const name = nameProperty ? stringLiteralText(nameProperty.initializer) : null;
+      if (name && urlProperty) {
+        const urls = [];
+        collectFeedUrls(urlProperty.initializer, urls);
+        for (const url of urls) declarations.push(classifyFeedDeclaration(name, url));
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+
   return declarations;
 }
 
@@ -175,7 +219,7 @@ export function scanNamedFeedDeclarations(rootDir = ROOT) {
       if (error?.code === 'ENOENT') continue;
       throw error;
     }
-    for (const declaration of parseFeedDeclarationSource(source)) {
+    for (const declaration of parseFeedDeclarationSource(source, relativePath)) {
       const key = `${declaration.name}\0${declaration.url}`;
       if (seen.has(key)) continue;
       seen.add(key);

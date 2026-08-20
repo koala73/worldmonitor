@@ -23,6 +23,7 @@ import {
 import { buildSourceCatalog, renderSourcesIndex } from './crawlable-sources-page.mjs';
 import {
   attachCoverageToCatalog,
+  FEED_DECLARATION_FILES,
   loadSourceGeography,
   scanNamedFeedDeclarations,
 } from './source-catalog-identity.mjs';
@@ -52,6 +53,12 @@ const SOURCE_ATTRIBUTION_MANIFEST_PATH = 'shared/source-attribution-manifest.jso
 const SOURCE_PAGE_RENDERER_PATH = 'scripts/crawlable-sources-page.mjs';
 const SOURCE_ORIGIN_PATH = 'scripts/source-origin.mjs';
 const SHARED_PAGE_TEMPLATE_PATH = 'scripts/build-crawlable-corpus.mjs';
+export const SOURCE_CATALOG_LASTMOD_PATHS = Object.freeze([
+  'scripts/source-catalog-identity.mjs',
+  'shared/source-geography.json',
+  'shared/publisher-families.js',
+  ...FEED_DECLARATION_FILES,
+]);
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
@@ -236,6 +243,7 @@ export function sourcePageLastmod({
   manifestLastmod,
   rendererLastmod,
   originLastmod,
+  catalogInputLastmods = [],
   sharedTemplateLastmod,
   generatorContentVersion = CORPUS_GENERATOR_CONTENT_VERSION,
   pageContentVersion = SOURCES_PAGE_CONTENT_VERSION,
@@ -244,6 +252,7 @@ export function sourcePageLastmod({
     manifestLastmod,
     rendererLastmod,
     originLastmod,
+    ...catalogInputLastmods,
     sharedTemplateLastmod,
     generatorContentVersion,
     pageContentVersion,
@@ -871,6 +880,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     manifestLastmod: gitFileLastmod(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH),
     rendererLastmod: gitFileLastmod(rootDir, SOURCE_PAGE_RENDERER_PATH),
     originLastmod: gitFileLastmod(rootDir, SOURCE_ORIGIN_PATH),
+    catalogInputLastmods: SOURCE_CATALOG_LASTMOD_PATHS.map((path) => gitFileLastmod(rootDir, path)),
     sharedTemplateLastmod: gitFileLastmod(rootDir, SHARED_PAGE_TEMPLATE_PATH),
   });
 
@@ -891,6 +901,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       sourceAttributionManifest: SOURCE_ATTRIBUTION_MANIFEST_PATH,
       sourcePageRenderer: SOURCE_PAGE_RENDERER_PATH,
       sourceOrigin: SOURCE_ORIGIN_PATH,
+      sourceCatalogInputs: [...SOURCE_CATALOG_LASTMOD_PATHS],
       sharedPageTemplate: SHARED_PAGE_TEMPLATE_PATH,
     },
     lastmod: {

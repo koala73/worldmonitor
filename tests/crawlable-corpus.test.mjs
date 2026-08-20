@@ -15,6 +15,7 @@ import {
   GENERATED_DIRS,
   gitFileLastmod,
   loadCorpusData,
+  SOURCE_CATALOG_LASTMOD_PATHS,
   sourcePageLastmod,
 } from '../scripts/build-crawlable-corpus.mjs';
 import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
@@ -425,6 +426,33 @@ describe('crawlable corpus generator', () => {
     });
     assert.equal(baseline, '2026-08-12');
     assert.equal(afterTemplateChange, '2026-08-13');
+  });
+
+  it('advances the sources lastmod for every catalog identity input', () => {
+    assert.deepEqual(SOURCE_CATALOG_LASTMOD_PATHS, [
+      'scripts/source-catalog-identity.mjs',
+      'shared/source-geography.json',
+      'shared/publisher-families.js',
+      'src/config/feeds.ts',
+      'server/worldmonitor/news/v1/_feeds.ts',
+    ]);
+    for (let index = 0; index < SOURCE_CATALOG_LASTMOD_PATHS.length; index += 1) {
+      const catalogInputLastmods = SOURCE_CATALOG_LASTMOD_PATHS.map(() => '2026-08-10');
+      catalogInputLastmods[index] = '2026-08-13';
+      assert.equal(
+        sourcePageLastmod({
+          manifestLastmod: '2026-08-10',
+          rendererLastmod: '2026-08-11',
+          originLastmod: '2026-08-09',
+          catalogInputLastmods,
+          sharedTemplateLastmod: '2026-08-12',
+          generatorContentVersion: '2026-08-09',
+          pageContentVersion: '2026-08-08',
+        }),
+        '2026-08-13',
+        `${SOURCE_CATALOG_LASTMOD_PATHS[index]} must advance the sources lastmod`,
+      );
+    }
   });
 
   // #6492 added public/sources/ to GENERATED_DIRS and not to .gitignore, so
@@ -1039,6 +1067,7 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.crisisRegistry, 'shared/crawlable-crises.json');
     assert.equal(data.sources.sourcePageRenderer, 'scripts/crawlable-sources-page.mjs');
     assert.equal(data.sources.sourceOrigin, 'scripts/source-origin.mjs');
+    assert.deepEqual(data.sources.sourceCatalogInputs, SOURCE_CATALOG_LASTMOD_PATHS);
     assert.equal(data.sources.sharedPageTemplate, 'scripts/build-crawlable-corpus.mjs');
     assert.equal(data.resilience.capturedAt, '2026-05-28');
     assert.equal(data.lastmod.countries, '2026-08-12');
@@ -1049,9 +1078,10 @@ describe('crawlable corpus generator', () => {
         manifestLastmod: gitFileLastmod(repoRoot, data.sources.sourceAttributionManifest),
         rendererLastmod: gitFileLastmod(repoRoot, data.sources.sourcePageRenderer),
         originLastmod: gitFileLastmod(repoRoot, data.sources.sourceOrigin),
+        catalogInputLastmods: data.sources.sourceCatalogInputs.map((path) => gitFileLastmod(repoRoot, path)),
         sharedTemplateLastmod: gitFileLastmod(repoRoot, data.sources.sharedPageTemplate),
       }),
-      'source-page lastmod must include manifest, renderer, origin, and shared-template changes',
+      'source-page lastmod must include manifest, renderer, origin, catalog-input, and shared-template changes',
     );
     assert.equal(data.crises.length, 4);
     assert.ok(data.crises.some((crisis) => crisis.slug === 'ukraine-war' && crisis.coverage.some((country) => country.code === 'UA')));

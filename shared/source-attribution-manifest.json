@@ -3866,7 +3866,7 @@
     },
     {
       "host": "feeds.bbci.co.uk",
-      "provider": "feeds.bbci.co.uk",
+      "provider": "BBC",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
@@ -10460,7 +10460,7 @@
     },
     {
       "host": "www.bbc.com",
-      "provider": "www.bbc.com",
+      "provider": "BBC",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",

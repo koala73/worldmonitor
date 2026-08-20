@@ -12,7 +12,7 @@ The inventory is **generated, not hand-written**: `scripts/source-attribution.mj
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **749 active source hosts** representing **744 active providers** (**318 structured/API**, **463 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **749 active source hosts** representing **743 active providers** (**318 structured/API**, **463 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -105,6 +105,8 @@ This generated inventory covers **749 active source hosts** representing **744 a
 | Bank of Canada (www.bankofcanada.ca) | structured — scripts/lib/boc-valet.mjs |
 | Barchart (www.barchart.com) | structured — scripts/seed-fear-greed.mjs, scripts/seed-market-breadth.mjs |
 | basemaps.cartocdn.com (basemaps.cartocdn.com) | structured — src/config/basemap-styles.ts |
+| BBC (feeds.bbci.co.uk) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
+| BBC (www.bbc.com) | feed — src/config/feeds.ts |
 | BC Open511 (api.open511.gov.bc.ca) | structured — scripts/lib/open511.mjs |
 | BC Wildfire Service (OpenMaps) (openmaps.gov.bc.ca) | structured — scripts/wildfire/bc-fire-points.mjs |
 | bcovlive-a.akamaihd.net (bcovlive-a.akamaihd.net) | feed — src/components/LiveNewsPanel.ts |
@@ -248,7 +250,6 @@ This generated inventory covers **749 active source hosts** representing **744 a
 | feed.infoq.com (feed.infoq.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
 | feeds.abcnews.com (feeds.abcnews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | feeds.arstechnica.com (feeds.arstechnica.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
-| feeds.bbci.co.uk (feeds.bbci.co.uk) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | feeds.content.dowjones.io (feeds.content.dowjones.io) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | feeds.elpais.com (feeds.elpais.com) | feed — src/config/feeds.ts |
 | feeds.feedburner.com (feeds.feedburner.com) | feed+structured (syndication transport) — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
@@ -684,7 +685,6 @@ This generated inventory covers **749 active source hosts** representing **744 a
 | www.australianmining.com.au (www.australianmining.com.au) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | www.aviationpros.com (www.aviationpros.com) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
 | www.aviationweek.com (www.aviationweek.com) | structured — scripts/seed-aviation.mjs, server/worldmonitor/aviation/v1/list-aviation-news.ts |
-| www.bbc.com (www.bbc.com) | feed — src/config/feeds.ts |
 | www.bild.de (www.bild.de) | feed — src/config/feeds.ts |
 | www.bing.com (www.bing.com) | structured — scripts/seo-indexnow-submit.mjs |
 | www.brasilparalelo.com.br (www.brasilparalelo.com.br) | feed — src/config/feeds.ts |

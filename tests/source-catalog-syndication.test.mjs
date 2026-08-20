@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,6 +55,32 @@ test('FeedBurner declarations require an explicit publisher identity', () => {
     ]),
     ['FeedBurner URL https://feeds.feedburner.com/ndtvnews-top-stories requires an explicit publisher identity'],
   );
+});
+
+test('multiline feed declarations retain their publisher identity', () => {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'source-catalog-identity-'));
+  try {
+    const configDir = join(fixtureRoot, 'src/config');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'feeds.ts'), `
+      const rss = (url: string) => url;
+      // { name: 'Ignored', url: rss('https://feeds.feedburner.com/ignored') }
+      export const feeds = [{
+        name: 'Fast Company',
+        url: rss(
+          'https://feeds.feedburner.com/fastcompany/headlines',
+        ),
+      }];
+    `);
+
+    const declarations = scanNamedFeedDeclarations(fixtureRoot);
+    assert.equal(declarations.length, 1);
+    assert.equal(declarations[0].name, 'Fast Company');
+    assert.equal(declarations[0].publisher, 'Fast Company');
+    assert.equal(declarations[0].url, 'https://feeds.feedburner.com/fastcompany/headlines');
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  }
 });
 
 test('Google News site queries keep the publisher; aggregation invents none', () => {
@@ -145,10 +173,17 @@ test('catalog cards distinguish origin from coverage for BBC, NDTV, and Reuters'
   assert.ok(ndtv.coveredCountries.includes('IN'));
   assert.ok(ndtv.hosts.includes('feeds.feedburner.com') || ndtv.transportHosts.includes('feeds.feedburner.com'));
 
-  const bbc = byName.get('BBC');
+  const bbcRows = catalog.filter((row) => row.provider === 'BBC');
+  assert.equal(bbcRows.length, 1, 'BBC must render exactly one logical publisher card');
+  const [bbc] = bbcRows;
   assert.ok(bbc, 'BBC Hindi must remain under BBC');
   assert.equal(bbc.originCountry, 'GB');
   assert.ok(bbc.coveredCountries.includes('IN'), 'BBC Hindi must declare India coverage');
+  assert.deepEqual(
+    bbc.hosts,
+    ['feeds.bbci.co.uk', 'www.bbc.com'],
+    'BBC feed and language-edition hosts must collapse into one publisher card',
+  );
 
   const reuters = byName.get('Reuters');
   assert.ok(reuters, 'site-scoped Reuters queries must keep the Reuters identity');
