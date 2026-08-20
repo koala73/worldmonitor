@@ -1146,8 +1146,8 @@ function parkForever(): Promise<Response> {
  * on every drain. Tests that only stub `window.addEventListener` never see the
  * visibility half.
  */
-function stubPageLifecycle(initialVisibility = 'visible'): {
-  setVisibility(state: string): void;
+function stubPageLifecycle(initialVisibility: DocumentVisibilityState | 'unknown' = 'visible'): {
+  setVisibility(state: DocumentVisibilityState | 'unknown'): void;
   firePageHide(): void;
   fireVisibilityChange(): void;
   restore(): void;
@@ -1562,13 +1562,61 @@ describe('collector latch release is module-owned (#6288)', () => {
 
       lifecycle.setVisibility('visible');
       lifecycle.fireVisibilityChange();
+      // Date.now is not faked, so remainingMs after an immediate pause is
+      // slightly under LATCH_DEADLINE_MS. Pin the upper bound and keep the
+      // floor so a missing re-arm cannot pass as some other long timer.
       const resumed = fakeTimers.timers.find(
-        (timer) => !timer.cancelled && timer.delay > 20_000 && timer !== armed,
+        (timer) => !timer.cancelled && timer !== armed
+          && timer.delay <= LATCH_DEADLINE_MS && timer.delay > 20_000,
       );
       assert.ok(resumed, 'becoming visible re-arms the remaining latch');
       resumed.callback();
       await assert.rejects(parked, { name: 'TimeoutError' });
     } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      lifecycle.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('gives an exhausted hidden latch a settle-grace when the tab returns', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    const lifecycle = stubPageLifecycle('visible');
+    const savedNow = Date.now;
+    let now = savedNow();
+    Date.now = () => now;
+    window.fetch = (() => parkForever()) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const parked = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void parked.catch(() => {});
+      await drainPromiseHandlers();
+      const armed = findLatchDeadline(fakeTimers.timers);
+      assert.ok(armed, 'a visible send still owns a latch');
+
+      now += LATCH_DEADLINE_MS;
+      lifecycle.setVisibility('hidden');
+      lifecycle.fireVisibilityChange();
+      assert.equal(armed.cancelled, true);
+
+      lifecycle.setVisibility('visible');
+      lifecycle.fireVisibilityChange();
+      // The request-side abort timer is still armed at 20s; the latch is the
+      // 5s settle-grace. Do not pick the first leftover timer.
+      const resumed = fakeTimers.timers.find(
+        (timer) => !timer.cancelled && timer.delay === 5_000,
+      );
+      assert.ok(resumed, 'returning visible must re-arm even after remaining hit 0');
+      resumed.callback();
+      await assert.rejects(parked, { name: 'TimeoutError' });
+    } finally {
+      Date.now = savedNow;
       console.warn = originalWarn;
       fakeTimers.restore();
       lifecycle.restore();
@@ -1606,6 +1654,7 @@ describe('collector latch release is module-owned (#6288)', () => {
       assert.equal(diagnostics[0]?.racedCount, 1);
       assert.equal(diagnostics[0]?.writeCount, 1);
       assert.equal(diagnostics[0]?.racedRate, 1);
+      assert.equal(getCollectorHealthForTesting().raced, 1);
     } finally {
       console.warn = originalWarn;
       fakeTimers.restore();

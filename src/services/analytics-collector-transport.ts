@@ -248,7 +248,7 @@ type CollectorRequest = {
   requestType: CollectorRequestType;
   eventName?: string;
   critical: boolean;
-  visibilityAtSend?: string;
+  visibilityAtSend?: CollectorVisibilitySnapshot;
   sentAt?: number;
   resolve: (response: Response) => void;
   reject: (error: unknown) => void;
@@ -307,7 +307,8 @@ let collectorRequestInFlight = false;
 let collectorFetchOriginal: typeof window.fetch | null = null;
 let collectorFetchWrapper: typeof window.fetch | null = null;
 let collectorUnloadFlush: (() => void) | null = null;
-let collectorVisibilityFlush: (() => void) | null = null;
+let collectorVisibilityChangeHandler: (() => void) | null = null;
+let collectorPageActive = true;
 let collectorTransportGeneration = 0;
 type CollectorHealthCounters = {
   writes: number;
@@ -673,7 +674,9 @@ function reportCompletedCollectorHealthWindow(): void {
   }
 }
 
-function collectorVisibilityState(): string {
+type CollectorVisibilitySnapshot = DocumentVisibilityState | 'unknown';
+
+function collectorVisibilityState(): CollectorVisibilitySnapshot {
   try {
     if (typeof document === 'undefined' || typeof document.visibilityState !== 'string') {
       return 'unknown';
@@ -1047,6 +1050,10 @@ function withCollectorDeadline(
   const resume = (): void => {
     if (!paused || settled) return;
     paused = false;
+    // Hidden time can exhaust remainingMs. Firing at 0 on the first visible
+    // tick would race a fetch that is only now unfreezing. Give the transport
+    // the same grace the latch already uses against abort/latch collision.
+    if (remainingMs === 0) remainingMs = LATCH_RELEASE_GRACE_MS;
     arm();
   };
 
@@ -1170,7 +1177,7 @@ async function runCollectorRequest(request: CollectorRequest, generation: number
 
 function drainCollectorRequestQueue(): void {
   if (collectorRequestInFlight || collectorRequestQueue.length === 0) return;
-  if (!isCollectorPageActive()) return;
+  if (!collectorPageActive) return;
   const request = collectorRequestQueue.shift();
   if (!request) return;
 
@@ -1304,6 +1311,7 @@ export function installCollectorFetchGate(): boolean {
   }
   collectorFetchOriginal = originalFetch;
   collectorFetchWrapper = wrappedFetch;
+  collectorPageActive = isCollectorPageActive();
 
   // pagehide ALWAYS flushes — the page is leaving whatever visibilityState says.
   // visibilitychange to hidden used to flush too, as a Safari-friendly unload
@@ -1316,15 +1324,17 @@ export function installCollectorFetchGate(): boolean {
     flushCollectorQueueForUnload();
   };
   const onVisibilityChange = (): void => {
-    if (isCollectorPageActive()) {
-      resumeCollectorLatchDeadlines();
+    const wasActive = collectorPageActive;
+    collectorPageActive = isCollectorPageActive();
+    if (collectorPageActive) {
+      if (!wasActive) resumeCollectorLatchDeadlines();
       drainCollectorRequestQueue();
       return;
     }
-    pauseCollectorLatchDeadlines();
+    if (wasActive) pauseCollectorLatchDeadlines();
   };
   collectorUnloadFlush = onPageHide;
-  collectorVisibilityFlush = onVisibilityChange;
+  collectorVisibilityChangeHandler = onVisibilityChange;
   try {
     window.addEventListener('pagehide', onPageHide);
     if (typeof document !== 'undefined') {
@@ -1385,15 +1395,16 @@ export function resetCollectorTransportForTesting(): void {
   if (typeof window !== 'undefined' && collectorUnloadFlush) {
     try {
       window.removeEventListener('pagehide', collectorUnloadFlush);
-      if (typeof document !== 'undefined' && collectorVisibilityFlush) {
-        document.removeEventListener('visibilitychange', collectorVisibilityFlush);
+      if (typeof document !== 'undefined' && collectorVisibilityChangeHandler) {
+        document.removeEventListener('visibilitychange', collectorVisibilityChangeHandler);
       }
     } catch {
       // Listener teardown is best-effort.
     }
   }
   collectorUnloadFlush = null;
-  collectorVisibilityFlush = null;
+  collectorVisibilityChangeHandler = null;
+  collectorPageActive = true;
   collectorFetchOriginal = null;
   collectorFetchWrapper = null;
   pausableCollectorDeadlines.clear();
