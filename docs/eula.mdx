@@ -3,7 +3,7 @@ title: "World Monitor End User License Agreement (EULA)"
 description: "One license for every way you use World Monitor — web dashboard, desktop apps, API, MCP server, SDKs, embeds and alerts: what each plan grants, what you may do with the outputs, retention and redistribution rights, and the restrictions that apply to all of them."
 ---
 
-{/* REVIEW — canonical license instrument; docs/terms.mdx points here for plan scope. Decided 20 August 2026: (1) the R1-R4 output-rights schedule ships as drafted (#6635) — counsel review on the EU sui generis database right still to come, and it may narrow R3; (2) the AI-training restriction in section 8.5 stands and training rights are sellable at Enterprise; (3) governing law and the liability cap stay as the Terms state them, with an explicit enterprise carve-out in section 2 (#6639); (4) the party is "World Monitor, based in the United Arab Emirates" — no registered entity yet, and the first order form will need one. Still open: no DPA (#6638), and the pricing bullet at convex/config/productCatalog.ts:465 still sells unqualified "redistribution rights" without the class model. NOT legal advice; a legal review is still recommended. */}
+{/* REVIEW — canonical license instrument; docs/terms.mdx points here for plan scope. Decided 20 August 2026: (1) the R1-R4 output-rights schedule ships as drafted (#6635) — counsel review on the EU sui generis database right still to come, and it may narrow R3; (2) the AI-training restriction in section 8.5 stands and training rights are sellable at Enterprise; (3) governing law and the liability cap stay as the Terms state them, with an explicit enterprise carve-out in section 2 (#6639); (4) the party is "World Monitor, based in the United Arab Emirates" — no registered entity yet, and the first order form will need one. Hardened 20 August 2026 alongside the Terms review: the API Business seats are Pro Business seats (a Personal licence cannot cover company work), section 8.9 carries an express compliance/journalism/research carve-out, section 10 now says to delete cached R4, section 6.3 freezes quotas for the paid period so a pricing-page edit cannot narrow licence scope, section 9 no longer claims ownership of facts it says in section 5 are unowned, and section 11 matches the Terms on change notice. Still open: no DPA (#6638), and the pricing bullet at convex/config/productCatalog.ts still sells unqualified "redistribution rights" without the class model. NOT legal advice; a legal review is still recommended. */}
 
 _Last updated: 20 August 2026_
 
@@ -69,11 +69,11 @@ The right plan depends on **who uses the Service and who receives its Outputs** 
 
 | Plan license | What it covers | What it does not cover |
 | --- | --- | --- |
-| **Free / anonymous** | The basic dashboard, the public corpus pages, and the credential-free `get_sources` tool, for personal evaluation and research. Signed-in free accounts also receive a small daily allowance of cached-data MCP calls. | Any organizational, client, or product use; programmatic access beyond the published free allowance; redistribution of any kind. |
+| **Free / anonymous** | The basic dashboard, the public corpus pages, and the credential-free `get_sources` tool, for personal evaluation and research. Signed-in free accounts also receive a small daily allowance of cached-data MCP calls. Provided as-is under [Free and anonymous access](/terms) in the Terms, which limits which sections apply and caps our liability at USD 100. | Any organizational, client, or product use; programmatic access beyond the published free allowance; redistribution of any kind. |
 | **Personal license (Pro)** | One named subscriber using World Monitor for their own research, learning, investing, and personal decision-making, across the dashboard, desktop apps, and the included MCP allowance. | Use on behalf of an employer, business, client, or other organization; shared accounts; client deliverables; internal or customer-facing products; redistribution. |
 | **Commercial license (Pro Business)** | One named subscriber using the dashboard, desktop apps, exports, and included MCP / SDK allowance for company or client work — analysis, reports, presentations, and internal tools used in that Licensed User's workflow. Reports and analysis may be shared with colleagues or clients as part of that work. | Shared login access; organization-wide programmatic deployments; customer-facing data products; live feeds; bulk or standalone data redistribution. |
 | **Commercial license — for your organization (API Starter)** | Your Organization using the API, MCP server, and SDKs in its own internal systems, dashboards, automations, research, and reporting. Employees and contractors may use the resulting internal tools and Outputs for that organization. | Making World Monitor data or API functionality available to customers or other third parties; customer-facing products; resale; external feeds; bulk or standalone data redistribution. |
-| **Commercial license — for your customers (API Business)** | Everything in API Starter, plus displaying, embedding, or delivering Outputs to your customers as part of Your Organization's own product or service. The five included Pro seats are for named users at the same organization and may not be shared. | Reselling API keys or access to the Service; offering World Monitor data as a standalone database or substantially similar feed; enabling bulk extraction that substitutes for the Service; white-labeling or uses that require custom rights unless we agree in writing. |
+| **Commercial license — for your customers (API Business)** | Everything in API Starter, plus displaying, embedding, or delivering Outputs to your customers as part of Your Organization's own product or service. The five included Pro Business seats are for named users at the same organization and may not be shared — a Personal (Pro) licence could not cover their company work. | Reselling API keys or access to the Service; offering World Monitor data as a standalone database or substantially similar feed; enabling bulk extraction that substitutes for the Service; white-labeling or uses that require custom rights unless we agree in writing. |
 | **Enterprise** | The rights stated in the applicable order form — additional seats, higher-volume distribution, white-labeling, dedicated deployments, on-premises use, and **model-training or dataset rights** over the Outputs. | Any use outside the signed order form and this Agreement. |
 
 Examples:
@@ -136,7 +136,7 @@ It follows that:
 
 - API keys and MCP credentials are issued to a subscriber and are **confidential**. You are responsible for all usage attributed to them. Do not publish them, embed them in client-side code you distribute, or hand them to another organization.
 - You may hold separate keys per environment or service within the licensed organization. You may not use one organization's key to serve another.
-- Published rate limits, daily quotas, and plan allowances are part of the license, not merely a technical ceiling. Circumventing them — key rotation to reset quotas, distributed request pools, scraping the front end to avoid metered endpoints — is a breach of this Agreement, not just of a limit.
+- The rate limits, quotas, and plan allowances published for your plan when you purchased or last renewed apply for the remainder of that billing period; changes take effect at your next renewal. They are part of the license, not merely a technical ceiling. Circumventing them — key rotation to reset quotas, distributed request pools, scraping the front end to avoid metered endpoints — is a breach of this Agreement, not just of a limit.
 - We may throttle, suspend, or revoke access to protect the Service or to stop abuse, and will tell you why when we do.
 - MCP and agent access is licensed exactly like human access. See section 4.2.
 
@@ -168,13 +168,15 @@ Across every surface and every plan, you may not:
 6. **Remove or alter notices** — copyright, license, attribution, source citations, timestamps, or provenance markers.
 7. **Misrepresent affiliation** with, endorsement by, or certification from World Monitor.
 8. **Reverse-engineer the hosted Service** — its models, ranking, scoring, or infrastructure — to build a competing service. This does not apply to the source code, which the AGPL expressly permits you to study and modify.
-9. **Use the Service unlawfully or against a person** — to harm, harass, surveil, profile, or endanger any individual, or to make decisions about an individual that affect their rights.
+9. **Use the Service unlawfully or against a person** — to harm, harass, surveil, profile, or endanger any individual, or to make decisions about an individual that affect their rights. **This does not prohibit** sanctions screening, know-your-customer and other regulatory compliance checks, corporate due diligence, academic research, or journalism, in each case conducted lawfully and consistently with the terms of the underlying source. We publish sanctions lists and other public-interest data so they can be used for exactly those purposes.
 10. **Rely on the Service where errors cause harm.** Outputs are aggregated from third-party sources with automated and AI analysis layered on top. They may be delayed, incomplete, wrong, or misattributed, and AI-generated briefings and forecasts can be confidently wrong. Do not use the Service as the sole basis for trading, travel, security, medical, or life-safety decisions without independent verification. The full disclaimer is in the [Terms of Service](/terms).
 11. **Breach sanctions or export controls.** You may not use the Service, or make it available, where doing so would breach applicable sanctions or export-control law, or in favor of a restricted party under it.
 
 ## 9. Ownership
 
-We own the Service: the platform, the data pipeline, the models and scoring methods, our compilations and databases, the Derived Facts we compute, and all associated intellectual property, subject to the source-code licenses in [License](/license). Third-party data belongs to its sources.
+We own the Service: the platform, the data pipeline, the models and scoring methods, our compilations and databases, and all associated intellectual property, subject to the source-code licenses in [License](/license). Third-party data belongs to its sources.
+
+**On facts.** Individual facts are not protected by copyright and we do not claim to own them — section 5 says so and means it. What we own is the *selection, compilation and arrangement* of them, the methodology that produces the Derived Facts, and the databases they live in. Your rights in any Output are contractual under this Agreement, not a transfer of ownership in the underlying fact.
 
 You own Your Content and the reports, presentations, and analysis you create within your plan's scope.
 
@@ -191,13 +193,14 @@ We may suspend or terminate access for non-payment, for a breach of this Agreeme
 - you may **keep and continue to use** reports, analysis, and R1/R2 Outputs lawfully created or retrieved during the Term, under the same class rules;
 - you must **stop fetching, refreshing, distributing to new recipients, and operating integrations** that depend on an active entitlement;
 - you must stop distributing R3 Outputs, and delete cached R3 Source Content once its 30-day window closes;
+- you must **delete cached R4 Source Content** — it is internal-use-only for the term of your plan, and the term has ended;
 - Credentials are revoked.
 
 Sections 2, 5 (for Outputs already retrieved), 7, 8, 9, this section, and the incorporated liability terms survive termination.
 
 ## 11. Changes to this Agreement
 
-We may update this Agreement as the Service evolves. Material changes are published here with a new "Last updated" date, and continued use after they take effect is acceptance. A signed order form is not changed by an update to this page during its term.
+We may update this Agreement as the Service evolves. **For paid subscribers, material changes take effect at the start of your next billing period**, with at least 30 days' notice by email and in the product; if you object, cancel before they take effect and we will refund the pro-rata portion of prepaid fees. Non-material changes, changes required by law, and changes affecting only free or anonymous access take effect when published. Every change is published here with a new "Last updated" date. A signed order form is not changed by an update to this page during its term.
 
 ## 12. Previous versions
 

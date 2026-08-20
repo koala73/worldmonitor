@@ -63,8 +63,8 @@ export const LEGAL_FOOTER_LINKS: ReadonlyArray<{ label: string; path: string }> 
  * whitespace collapsed, so editorial notes do not force a version bump.
  */
 export const LEGAL_DOCUMENT_DIGESTS: Readonly<Record<string, string>> = {
-  'docs/eula.mdx': '336e8ec75665575064cac9b8f082cc1862f7fed91d436328898670da3e4bc6fa',
-  'docs/terms.mdx': '2f51303594dba758f125c704f322760bb980848eb14c835ed33404bb5d5fcb79',
+  'docs/eula.mdx': 'fa9b5228c9a8a4ad57110a04a277df85589e8c3eb327ec5eff7644358516b51c',
+  'docs/terms.mdx': 'dd6aa061d9b49f8a870c52496ad5088a22f40bef23dd1f3613accfde91175b57',
   'docs/privacy.mdx': '108e6580e3e3d6ec69b9e70dbe58e1fb5d70c1be155a5cc948f9c464c329750c',
 };
 

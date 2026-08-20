@@ -34,7 +34,7 @@ const SEAT_STATEMENT = /\b(\d+)\s+(named users?|licensed users?|Pro licenses?|se
 const SEATED_TIERS = [
   { planKey: 'pro_monthly', localeKey: 'pro', seats: 1, eula: /Personal license \(Pro\)[\s\S]*?One named subscriber/ },
   { planKey: 'pro_business_monthly', localeKey: 'proBusiness', seats: 1, eula: /Commercial license \(Pro Business\)[\s\S]*?One named subscriber/ },
-  { planKey: 'api_business', localeKey: 'apiBusiness', seats: 5, eula: /five included Pro seats/ },
+  { planKey: 'api_business', localeKey: 'apiBusiness', seats: 5, eula: /five included Pro Business seats/ },
 ];
 
 function catalogCopy(planKey: string): string {
