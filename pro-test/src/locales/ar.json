@@ -423,7 +423,10 @@
     "axisPersonal": "شخصي",
     "axisPersonalNote": "للاستخدام الفردي",
     "axisCommercial": "تجاري",
-    "axisCommercialNote": "العمل والفريق والمنتجات"
+    "axisCommercialNote": "العمل والفريق والمنتجات",
+    "legalConsent": "بالاشتراك، فإنك توافق على {{eula}} و{{privacy}}.",
+    "legalConsentEula": "اتفاقية الترخيص",
+    "legalConsentPrivacy": "سياسة الخصوصية"
   },
   "welcome": {
     "meta": {

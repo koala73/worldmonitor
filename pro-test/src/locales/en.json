@@ -17,6 +17,9 @@
     "axisCommercial": "Commercial",
     "axisCommercialNote": "work, teams & products",
     "promoCodeNote": "Have a promo code? Enter it during checkout.",
+    "legalConsent": "By subscribing you agree to the {{eula}} and the {{privacy}}.",
+    "legalConsentEula": "License Agreement",
+    "legalConsentPrivacy": "Privacy Policy",
     "cta": {
       "checkoutDefault": "Get Started",
       "learnMore": "Learn More"

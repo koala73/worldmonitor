@@ -423,7 +423,10 @@
     "axisPersonal": "Persoonlijk",
     "axisPersonalNote": "individueel gebruik",
     "axisCommercial": "Commercieel",
-    "axisCommercialNote": "werk, teams & producten"
+    "axisCommercialNote": "werk, teams & producten",
+    "legalConsent": "Door u in te schrijven gaat u akkoord met de {{eula}} en het {{privacy}}.",
+    "legalConsentEula": "Licentieovereenkomst",
+    "legalConsentPrivacy": "Privacybeleid"
   },
   "welcome": {
     "meta": {

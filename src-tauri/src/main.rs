@@ -967,10 +967,22 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         &[&settings_item, &separator, &quit_item],
     )?;
 
+    // The About box is the only place a packaged build states its licence
+    // (#6977). Both fields are set because the platforms disagree about which
+    // one they render: muda ignores `license` on macOS and `credits` on
+    // Windows and Linux, so each has to carry the licence itself for the
+    // platform that shows it. `credits` also points at the notices file the
+    // build generates into resources/, which carries the verbatim MIT/BSD/
+    // Apache texts a binary distribution has to travel with.
     let about_metadata = AboutMetadata {
         name: Some("World Monitor".into()),
         version: Some(env!("CARGO_PKG_VERSION").into()),
-        copyright: Some("\u{00a9} 2025 Elie Habib".into()),
+        copyright: Some("\u{00a9} 2024-2026 Elie Habib".into()),
+        license: Some("AGPL-3.0-only".into()),
+        credits: Some(
+            "Licensed under AGPL-3.0-only.\nThird-party notices: resources/THIRD-PARTY-NOTICES.md\nSource: https://github.com/koala73/worldmonitor"
+                .into(),
+        ),
         website: Some("https://worldmonitor.app".into()),
         website_label: Some("worldmonitor.app".into()),
         ..Default::default()

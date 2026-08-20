@@ -252,16 +252,11 @@
               {
                 "group": "Legal",
                 "pages": [
+                  "eula",
+                  "terms",
                   "license",
                   "trademark-policy",
-                  "privacy",
-                  "terms",
-                  {
-                    "group": "Terms archive",
-                    "pages": [
-                      "legal/terms-2026-07-27"
-                    ]
-                  }
+                  "privacy"
                 ]
               }
             ]
@@ -725,16 +720,11 @@
               {
                 "group": "法律",
                 "pages": [
+                  "zh/eula",
+                  "zh/terms",
                   "zh/license",
                   "zh/trademark-policy",
-                  "zh/privacy",
-                  "zh/terms",
-                  {
-                    "group": "条款历史版本",
-                    "pages": [
-                      "zh/legal/terms-2026-07-27"
-                    ]
-                  }
+                  "zh/privacy"
                 ]
               }
             ]

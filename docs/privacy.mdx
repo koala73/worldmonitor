@@ -3,11 +3,11 @@ title: "World Monitor privacy policy and data handling"
 description: "How World Monitor handles personal data: what we collect, subprocessors, AI query processing, cookies, retention, and GDPR and CCPA access and deletion rights."
 ---
 
-{/* REVIEW — operator based in Dubai, UAE; effective date 10 July 2026. Still optional: (1) name the specific registered legal entity if one exists; (2) a dedicated privacy@ inbox vs support@; (3) confirm the subprocessor list matches production. NOT legal advice — a legal review is still recommended. */}
+{/* REVIEW — operator based in the UAE (party naming decided 20 August 2026: "World Monitor", country only); effective date 20 August 2026 (DebugBear RUM and the self-hosted Umami collector disclosed, #6978/#5388). Still optional: (1) a dedicated privacy@ inbox vs support@; (2) PIPEDA coverage and a DPA are still open (#6638). NOT legal advice — a legal review is still recommended. */}
 
-_Last updated: 10 July 2026_
+_Last updated: 20 August 2026_
 
-This Privacy Policy explains how World Monitor, based in Dubai, United Arab Emirates ("World Monitor", "we", "us"), handles information when you use the World Monitor dashboard, website, API, MCP server, and apps (the "Service").
+This Privacy Policy explains how World Monitor, based in the United Arab Emirates ("World Monitor", "we", "us"), handles information when you use the World Monitor dashboard, website, API, MCP server, and apps (the "Service").
 
 This page is written in plain language and is not legal advice.
 
@@ -27,7 +27,8 @@ This page is written in plain language and is not legal advice.
 **Usage and diagnostics.** To keep the Service reliable we collect:
 
 - **Error and crash diagnostics** via Sentry (e.g. error messages, stack traces, browser and device type).
-- **Aggregate, privacy-oriented analytics** via Vercel Web Analytics and Cloudflare — used to understand traffic patterns. These are designed to avoid cross-site tracking, and where configured are cookieless.
+- **Aggregate, privacy-oriented analytics** via Vercel Web Analytics, Cloudflare, and our self-hosted Umami instance (`abacus.worldmonitor.app`) — used to understand traffic patterns. These are designed to avoid cross-site tracking, and where configured are cookieless.
+- **Page-performance monitoring (RUM)** via DebugBear on a 10% sample of page loads. It receives the page path, viewport and device pixel ratio, navigation and web-vitals timings, and the user agent, along with the IP address inherent in any web request. It is used to find slow and unstable pages, not to identify or track you.
 - **Server and request logs** via Axiom and our hosting/CDN providers (Vercel, Cloudflare), including IP address, user agent, and request metadata, retained for security and debugging.
 
 **Content you submit to AI features.** When you use AI briefings, analysis, forecasts, or the research assistant, the text of your query and the relevant context are sent to our AI providers (Anthropic and, via OpenRouter, other model providers) to generate a response. Do not submit sensitive personal data into AI prompts.
@@ -42,7 +43,7 @@ This page is written in plain language and is not legal advice.
 
 ## Subprocessors
 
-We share personal data only with service providers that process it on our behalf to run the Service:
+We share personal data only with service providers that process it on our behalf to run the Service. The table also names the one analytics collector we host ourselves, so it can be reconciled against anything you see in a network log:
 
 | Provider | Purpose |
 |----------|---------|
@@ -51,6 +52,8 @@ We share personal data only with service providers that process it on our behalf
 | Convex | Application database (accounts, entitlements, alerts, preferences) |
 | Dodo Payments | Payment processing and subscription billing (merchant of record) |
 | Sentry | Error and crash monitoring |
+| DebugBear | Real-user page-performance monitoring (10% sample) |
+| Umami (self-hosted, `abacus.worldmonitor.app`) | Product analytics on our own infrastructure — no third party receives this data |
 | Vercel | Application hosting and web analytics |
 | Cloudflare | Content delivery, edge security, and web analytics |
 | Axiom | Application logging and observability |

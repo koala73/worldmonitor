@@ -103,7 +103,10 @@
         ],
         "cta": "Wasiliana na Bora"
       }
-    }
+    },
+    "legalConsent": "Kwa kujiandikisha unakubali {{eula}} na {{privacy}}.",
+    "legalConsentEula": "Hati ya Leseni",
+    "legalConsentPrivacy": "Sera ya Faragha"
   },
   "meta": {
     "title": "World Monitor Pro | Uchambuzi AI & MCP",

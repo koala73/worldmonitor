@@ -1352,7 +1352,7 @@ const EnterprisePage = () => (
             <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>
           </div>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
           <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>
           <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
           <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
@@ -1360,6 +1360,9 @@ const EnterprisePage = () => (
           <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
           <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discord</a>
           <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
+          <a href="https://www.worldmonitor.app/docs/eula" className="hover:text-wm-text transition-colors">License agreement</a>
+          <a href="https://www.worldmonitor.app/docs/terms" className="hover:text-wm-text transition-colors">Terms</a>
+          <a href="https://www.worldmonitor.app/docs/privacy" className="hover:text-wm-text transition-colors">Privacy</a>
         </div>
         <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
       </div>

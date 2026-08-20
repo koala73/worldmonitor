@@ -5,9 +5,9 @@ description: "World Monitor 如何处理个人数据的完整说明：我们收�
 
 {/* REVIEW — operator based in Dubai, UAE; effective date 10 July 2026. Still optional: (1) name the specific registered legal entity if one exists; (2) a dedicated privacy@ inbox vs support@; (3) confirm the subprocessor list matches production. NOT legal advice — a legal review is still recommended. */}
 
-_最后更新：2026 年 7 月 10 日_
+_最后更新：2026 年 8 月 20 日_
 
-本隐私政策说明总部位于阿拉伯联合酋长国迪拜的 World Monitor（“World Monitor”、“我们”）在您使用 World Monitor 仪表盘、网站、API、MCP 服务器和应用（“服务”）时如何处理信息。
+本隐私政策说明总部位于阿拉伯联合酋长国的 World Monitor（“World Monitor”、“我们”）在您使用 World Monitor 仪表盘、网站、API、MCP 服务器和应用（“服务”）时如何处理信息。
 
 本页面以通俗语言撰写，不构成法律意见。
 
@@ -27,7 +27,8 @@ _最后更新：2026 年 7 月 10 日_
 **使用与诊断信息。** 为保持服务可靠，我们收集：
 
 - **错误和崩溃诊断信息**，通过 Sentry 收集（例如错误消息、堆栈跟踪、浏览器和设备类型）。
-- **聚合的、注重隐私的分析数据**，通过 Vercel Web Analytics 和 Cloudflare 收集——用于了解流量模式。它们的设计旨在避免跨站跟踪，并在相应配置下不使用 Cookie。
+- **聚合的、注重隐私的分析数据**，通过 Vercel Web Analytics、Cloudflare 以及我们自托管的 Umami 实例（`abacus.worldmonitor.app`）收集——用于了解流量模式。它们的设计旨在避免跨站跟踪，并在相应配置下不使用 Cookie。
+- **页面性能监测（RUM）**，通过 DebugBear 按 10% 的页面加载抽样收集。它接收页面路径、视口与设备像素比、导航与网页核心指标计时、用户代理，以及任何网络请求都必然包含的 IP 地址。用途是发现缓慢和不稳定的页面，而非识别或追踪你。
 - **服务器和请求日志**，通过 Axiom 及我们的托管/CDN 提供商（Vercel、Cloudflare）收集，包括 IP 地址、用户代理和请求元数据，为安全和调试目的而保留。
 
 **您提交给 AI 功能的内容。** 当您使用 AI 简报、分析、预测或研究助手时，您的查询文本和相关上下文会被发送给我们的 AI 提供商（Anthropic，以及通过 OpenRouter 接入的其他模型提供商）以生成响应。请勿在 AI 提示词中提交敏感个人数据。
@@ -42,7 +43,7 @@ _最后更新：2026 年 7 月 10 日_
 
 ## 子处理方
 
-我们仅与代表我们处理数据以运营服务的服务提供商共享个人数据：
+我们仅与代表我们处理数据以运营服务的服务提供商共享个人数据。下表同时列出了我们自行托管的那一个分析采集器，以便你把网络请求日志中看到的内容与本表逐一对应：
 
 | 提供商 | 用途 |
 |----------|---------|
@@ -51,6 +52,8 @@ _最后更新：2026 年 7 月 10 日_
 | Convex | 应用数据库（账户、权益、警报、偏好） |
 | Dodo Payments | 支付处理和订阅计费（登记商户） |
 | Sentry | 错误和崩溃监控 |
+| DebugBear | 真实用户页面性能监测（10% 抽样） |
+| Umami（自托管，`abacus.worldmonitor.app`） | 运行在我们自有基础设施上的产品分析 —— 没有第三方接收这些数据 |
 | Vercel | 应用托管和网页分析 |
 | Cloudflare | 内容分发、边缘安全和网页分析 |
 | Axiom | 应用日志和可观测性 |

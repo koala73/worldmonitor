@@ -423,7 +423,10 @@
     "axisPersonal": "व्यक्तिगत",
     "axisPersonalNote": "व्यक्तिगत उपयोग",
     "axisCommercial": "व्यावसायिक",
-    "axisCommercialNote": "कार्य, टीमें और उत्पाद"
+    "axisCommercialNote": "कार्य, टीमें और उत्पाद",
+    "legalConsent": "सदस्यता लेने से आप {{eula}} और {{privacy}} से सहमत होते हैं।",
+    "legalConsentEula": "लाइसेंस समझौता",
+    "legalConsentPrivacy": "गोपनीयता नीति"
   },
   "welcome": {
     "meta": {

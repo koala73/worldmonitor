@@ -103,7 +103,10 @@
         ],
         "cta": "Contact Sales"
       }
-    }
+    },
+    "legalConsent": "با اشتراک‌گذاری، شما با {{eula}} و {{privacy}} موافقت می‌کنید.",
+    "legalConsentEula": "توافق‌نامه مجوز",
+    "legalConsentPrivacy": "سیاست حریم‌خصوصی"
   },
   "meta": {
     "title": "World Monitor Pro | هوش مصنوعی و MCP",

@@ -423,7 +423,10 @@
     "axisPersonal": "Osobní",
     "axisPersonalNote": "individuální použití",
     "axisCommercial": "Komerční",
-    "axisCommercialNote": "práce, týmy a produkty"
+    "axisCommercialNote": "práce, týmy a produkty",
+    "legalConsent": "Přihlášením se souhlasíte s {{eula}} a {{privacy}}.",
+    "legalConsentEula": "Licenční smlouva",
+    "legalConsentPrivacy": "Zásady ochrany osobních údajů"
   },
   "welcome": {
     "meta": {

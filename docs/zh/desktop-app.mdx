@@ -3,6 +3,12 @@ title: "桌面应用"
 description: "World Monitor Tauri 桌面应用架构深度详解：涵盖 Rust sidecar 进程管理、系统密钥链安全存储、云端 API 回退策略、离线缓存机制、自动更新流程，以及 Windows、macOS、Linux 的多平台构建、代码签名与公证发布流水线的完整实现细节。"
 ---
 
+## 许可
+
+桌面应用由 World Monitor 源代码构建，**其二进制文件依据 AGPL-3.0-only 授权给你** —— 你可以按 AGPL 的条款运行、研究、修改和再分发它。源代码：[github.com/koala73/worldmonitor](https://github.com/koala73/worldmonitor)。每个打包版本都会在其 resources 目录中附带构建时生成的 `THIRD-PARTY-NOTICES.md`，其中收录了它所包含的 npm 包与 Rust crate 的原文声明；随附的 Node.js 运行时在同一目录中携带自己的 `LICENSE`。
+
+完全使用你自己的 API 密钥与本地来源运行本应用，无需从我们这里获得任何套餐。一旦它获取 World Monitor 数据 —— 云端回退、授权校验或我们的 API —— 该用途即受[最终用户许可协议](/zh/eula)管辖；该协议把桌面端与网页端视为同一份许可，而非两份。
+
 ## 概览
 
 ### 桌面应用（Tauri）

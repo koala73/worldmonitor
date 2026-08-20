@@ -423,7 +423,10 @@
     "axisPersonal": "Προσωπικό",
     "axisPersonalNote": "ατομική χρήση",
     "axisCommercial": "Εμπορική",
-    "axisCommercialNote": "εργασία, ομάδες και προϊόντα"
+    "axisCommercialNote": "εργασία, ομάδες και προϊόντα",
+    "legalConsent": "Με την εγγραφή σας συμφωνείτε με το {{eula}} και την {{privacy}}.",
+    "legalConsentEula": "Σύμβαση Άδειας Χρήσης",
+    "legalConsentPrivacy": "Πολιτική Απορρήτου"
   },
   "welcome": {
     "meta": {

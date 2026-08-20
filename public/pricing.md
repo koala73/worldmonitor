@@ -16,7 +16,7 @@ Live tier/price/product-ID data (JSON): `GET https://www.worldmonitor.app/api/pr
 
 World Monitor attribution is optional in reports, presentations and derived analysis permitted by your plan. If you choose to credit us, "Source: World Monitor" or "via World Monitor" is sufficient. Source-specific notices supplied with an output still apply.
 
-These subscription licenses cover the hosted Service and its outputs. They are separate from the AGPL-3.0-only platform source-code license and the MIT licenses on the official thin clients. Full scope, examples and restrictions: https://worldmonitor.app/docs/terms#subscription-license-scope
+These subscription licenses cover the hosted Service and its outputs. They are separate from the AGPL-3.0-only platform source-code license and the MIT licenses on the official thin clients. Full scope, examples, output-retention classes and restrictions, covering the dashboard, desktop apps, API, MCP server, SDKs, embeds and alerts: https://worldmonitor.app/docs/eula
 
 ## Free
 

@@ -1476,6 +1476,7 @@ http.route({
       referralCode?: string;
       attributionSource?: string;
       bypassPendingGuard?: boolean;
+      legalVersion?: string;
     }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
@@ -1489,6 +1490,28 @@ http.route({
         JSON.stringify({ error: "MISSING_FIELDS", required: ["userId", "productId"] }),
         { status: 400, headers: { "Content-Type": "application/json" } },
       );
+    }
+
+    // Clickwrap record (#6976). The buyer clicked a checkout CTA on a page that
+    // renders the consent line for this version; the edge stamped the version
+    // from its own deploy. Recorded before the checkout call and deliberately
+    // non-fatal: a failure here must not block a purchase, and the next
+    // checkout attempt records it again (the mutation is idempotent by
+    // version).
+    if (body.legalVersion) {
+      try {
+        await ctx.runMutation(internal.users.internalRecordLegalAcceptance, {
+          userId: body.userId,
+          version: body.legalVersion,
+          via: "checkout",
+        });
+      } catch (err) {
+        // sentry-coverage-ok: re-throwing would fail a paid checkout over a
+        // bookkeeping write. The console.error reaches Convex logs (and Axiom
+        // from there), and the next checkout attempt records it again — the
+        // mutation is idempotent by version.
+        console.error("[relay/create-checkout] legal acceptance not recorded:", err);
+      }
     }
 
     try {

@@ -423,7 +423,10 @@
     "axisPersonal": "Kişisel",
     "axisPersonalNote": "bireysel kullanım",
     "axisCommercial": "Ticari",
-    "axisCommercialNote": "iş, takımlar ve ürünler"
+    "axisCommercialNote": "iş, takımlar ve ürünler",
+    "legalConsent": "Abone olarak {{eula}} ve {{privacy}} koşullarını kabul etmiş olursunuz.",
+    "legalConsentEula": "Lisans Sözleşmesi",
+    "legalConsentPrivacy": "Gizlilik Politikası"
   },
   "welcome": {
     "meta": {
