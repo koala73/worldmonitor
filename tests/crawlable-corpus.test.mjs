@@ -925,7 +925,10 @@ describe('crawlable corpus generator', () => {
       const ndtvCard = window.document.querySelector('.provider-card[data-provider="NDTV"]');
       assert.ok(bbcCard && !bbcCard.hidden, 'BBC Hindi must remain visible under India coverage');
       assert.ok(ndtvCard && !ndtvCard.hidden, 'NDTV must remain visible under India coverage');
-      coverageSelect.value = 'all';
+      const catalogSize = window.document.querySelectorAll('.provider-card').length;
+      resetButton.click();
+      assert.equal(coverageSelect.value, 'all', 'reset must clear the coverage filter');
+      assert.equal(visibleProviderCount(), catalogSize, 'reset from coverage must show the full catalog');
       const countryOriginSelect = window.document.getElementById('source-country');
       countryOriginSelect.value = 'in';
       countryOriginSelect.dispatchEvent(new window.Event('change'));

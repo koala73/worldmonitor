@@ -23,6 +23,7 @@ import {
   sourceAttributionLedgerStats,
 } from '../scripts/source-attribution.mjs';
 import { buildSourceCatalog } from '../scripts/crawlable-sources-page.mjs';
+import { rawCatalogProviderNames } from './helpers/raw-catalog-providers.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -121,6 +122,10 @@ test('logical FeedBurner publishers are counted once and carry India coverage fo
   assert.deepEqual(ndtv.feedLabels, ['NDTV', 'NDTV India']);
   assert.equal(ndtv.originCountry, 'IN');
   assert.deepEqual(ndtv.coveredCountries, ['IN']);
+  const fastCompany = providers.find((entry) => entry.provider === 'Fast Company');
+  assert.ok(fastCompany, 'Fast Company must become a logical provider');
+  assert.deepEqual(fastCompany.transportHosts, ['feeds.feedburner.com']);
+  assert.deepEqual(fastCompany.coveredCountries, []);
   assert.ok(!providers.some((entry) => entry.provider === 'India News Network'));
   assert.ok(!providers.some((entry) => /feedburner/i.test(entry.provider)));
 });
@@ -141,13 +146,13 @@ test('the committed inventory keeps transport hosts in the ledger but not the pr
 
   const stats = sourceAttributionLedgerStats(manifest, { observedHosts: inventory.length });
   const identities = catalogProviderIdentities(manifest);
+  const oracle = rawCatalogProviderNames(manifest);
+  assert.deepEqual([...identities].sort(), [...oracle].sort());
   assert.equal(stats.providerCount, identities.size);
   assert.ok(!identities.has('feeds.feedburner.com'));
   assert.ok(!identities.has('news.google.com'));
   assert.ok(identities.has('NDTV'));
-  assert.ok(
-    [...identities].some((provider) => provider === 'reuters.com' || provider === 'Reuters'),
-  );
+  assert.ok(identities.has('reuters.com') || identities.has('Reuters'));
 });
 
 test('catalog cards distinguish origin from coverage for BBC, NDTV, and Reuters', () => {
@@ -171,7 +176,8 @@ test('catalog cards distinguish origin from coverage for BBC, NDTV, and Reuters'
   assert.ok(ndtv, 'NDTV must appear as its own catalog provider');
   assert.equal(ndtv.originCountry, 'IN');
   assert.ok(ndtv.coveredCountries.includes('IN'));
-  assert.ok(ndtv.hosts.includes('feeds.feedburner.com') || ndtv.transportHosts.includes('feeds.feedburner.com'));
+  assert.ok(ndtv.hosts.includes('feeds.feedburner.com'));
+  assert.deepEqual(ndtv.transportHosts, ['feeds.feedburner.com']);
 
   const bbcRows = catalog.filter((row) => row.provider === 'BBC');
   assert.equal(bbcRows.length, 1, 'BBC must render exactly one logical publisher card');
@@ -190,4 +196,19 @@ test('catalog cards distinguish origin from coverage for BBC, NDTV, and Reuters'
   assert.equal(reuters.originCountry, 'GB');
   assert.ok(reuters.coveredCountries.includes('IN'), 'India-focused Reuters routes must declare India coverage');
   assert.ok(reuters.hosts.includes('reuters.com'));
+});
+
+test('www catalog hosts inherit geography from stripped editorial hosts', () => {
+  const catalog = attachCoverageToCatalog(
+    [{
+      provider: 'www.thehindu.com',
+      displayName: 'Unrelated Display Name',
+      hosts: ['www.thehindu.com'],
+      coveredCountries: [],
+      transportHosts: [],
+    }],
+    [classifyFeedDeclaration('The Hindu', 'https://www.thehindu.com/news/national/feeder/default.rss')],
+    new Map([['The Hindu', ['IN']]]),
+  );
+  assert.deepEqual(catalog[0].coveredCountries, ['IN']);
 });

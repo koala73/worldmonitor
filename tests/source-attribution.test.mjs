@@ -22,6 +22,7 @@ import {
 } from '../scripts/source-attribution.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { catalogProviderIdentities } from '../scripts/source-catalog-identity.mjs';
 import { rawCatalogProviderNames, rawManifestActiveEntries } from './helpers/raw-catalog-providers.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -115,6 +116,11 @@ test('source inventory has complete metadata and matches the generated catalog',
   assert.ok(activeEntries.length > 0, 'the active source oracle must not be empty');
   assert.deepEqual(observedManifestHosts, inventoryHosts, 'raw manifest membership must match the source scan exactly');
   assert.equal(stats.activeHosts, activeEntries.length, 'production stats must match the independent active-host oracle');
+  assert.deepEqual(
+    [...catalogProviderIdentities(manifest)].sort(),
+    [...rawCatalogProviderNames(manifest)].sort(),
+    'production identities must match the independent provider oracle membership',
+  );
   assert.equal(
     stats.providerCount,
     rawCatalogProviderNames(manifest).size,
@@ -540,6 +546,43 @@ test('ledger stats reject intrinsic manifest failures before counting', () => {
   assert.ok(errors.some((error) => error.includes('duplicate manifest entry')));
   assert.ok(errors.some((error) => error.includes('incomplete logical attribution metadata')));
   assert.throws(() => sourceAttributionLedgerStats(malformed), /invalid manifest/);
+});
+
+test('ledger stats reject unknown roles and incomplete logical providers', () => {
+  const manifest = loadManifest(rootDir);
+  const withUnknownRole = {
+    ...manifest,
+    entries: [
+      ...manifest.entries,
+      {
+        host: 'role-invalid.example',
+        provider: 'role-invalid.example',
+        license: 'Provider terms',
+        attribution: 'Credit role-invalid.example.',
+        observed: true,
+        kind: 'structured',
+        status: 'reviewed',
+        role: 'publisher',
+        references: [{ path: 'scripts/invalid-role.mjs' }],
+      },
+    ],
+  };
+  const roleErrors = validateSourceAttributionLedger(withUnknownRole);
+  assert.ok(roleErrors.some((error) => error.includes('role must be "transport"')));
+  assert.throws(() => sourceAttributionLedgerStats(withUnknownRole), /invalid manifest/);
+
+  const withBrokenLogical = {
+    ...manifest,
+    logicalProviders: [
+      ...(manifest.logicalProviders || []),
+      { provider: 'Broken Logical' },
+      { provider: 'Broken Logical', feedLabels: ['Broken Logical'], transportHosts: ['feeds.feedburner.com'] },
+    ],
+  };
+  const logicalErrors = validateSourceAttributionLedger(withBrokenLogical);
+  assert.ok(logicalErrors.some((error) => error.includes('needs feedLabels')));
+  assert.ok(logicalErrors.some((error) => error.includes('duplicate logical provider')));
+  assert.throws(() => sourceAttributionLedgerStats(withBrokenLogical), /invalid manifest/);
 });
 
 test('the committed manifest is a fixpoint of its own generator', () => {

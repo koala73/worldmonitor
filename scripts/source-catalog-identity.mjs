@@ -57,6 +57,10 @@ export function uniqueSorted(values) {
   return [...new Set(list.filter(Boolean))].sort((left, right) => left.localeCompare(right));
 }
 
+export function catalogHostKey(host) {
+  return String(host || '').replace(/^www\./i, '').toLowerCase();
+}
+
 export function hostFromFeedUrl(raw) {
   try {
     return new URL(raw).hostname.replace(/^www\./, '').toLowerCase();
@@ -347,8 +351,9 @@ export function attachCoverageToCatalog(catalog, declarations, geography) {
     addAll(coverageByPublisher, declaration.publisher, coverage);
     addAll(transportsByPublisher, declaration.publisher, declaration.transportHosts);
     for (const host of declaration.editorialHosts) {
-      addAll(coverageByHost, host, coverage);
-      addAll(transportsByHost, host, declaration.transportHosts);
+      const hostKey = catalogHostKey(host);
+      addAll(coverageByHost, hostKey, coverage);
+      addAll(transportsByHost, hostKey, declaration.transportHosts);
     }
   }
 
@@ -360,8 +365,9 @@ export function attachCoverageToCatalog(catalog, declarations, geography) {
     for (const value of transportsByPublisher.get(provider.provider) || []) transports.add(value);
     for (const value of transportsByPublisher.get(provider.displayName) || []) transports.add(value);
     for (const host of provider.hosts || []) {
-      for (const value of coverageByHost.get(host) || []) covered.add(value);
-      for (const value of transportsByHost.get(host) || []) transports.add(value);
+      const hostKey = catalogHostKey(host);
+      for (const value of coverageByHost.get(hostKey) || []) covered.add(value);
+      for (const value of transportsByHost.get(hostKey) || []) transports.add(value);
     }
     return {
       ...provider,
