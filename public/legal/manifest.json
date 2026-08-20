@@ -1,0 +1,20 @@
+{
+  "version": "2026-08-20",
+  "documents": [
+    {
+      "source": "docs/eula.mdx",
+      "pdf": "/legal/eula.pdf",
+      "sourceDigest": "336e8ec75665575064cac9b8f082cc1862f7fed91d436328898670da3e4bc6fa"
+    },
+    {
+      "source": "docs/terms.mdx",
+      "pdf": "/legal/terms.pdf",
+      "sourceDigest": "2f51303594dba758f125c704f322760bb980848eb14c835ed33404bb5d5fcb79"
+    },
+    {
+      "source": "docs/privacy.mdx",
+      "pdf": "/legal/privacy.pdf",
+      "sourceDigest": "108e6580e3e3d6ec69b9e70dbe58e1fb5d70c1be155a5cc948f9c464c329750c"
+    }
+  ]
+}
