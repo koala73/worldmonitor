@@ -177,47 +177,122 @@ describe('China official policy adapters (#5576)', () => {
     );
   });
 
-  it('parses hostile markup without superlinear rescans', () => {
-    // Scaling, not wall-clock: an absolute millisecond ceiling measures the
-    // runner's load as much as the parser and flakes on a busy CI box while
-    // passing in isolation.
-    //
-    // The size step is 4x, not 2x, on purpose. A 2x step puts linear (~2x) and
-    // quadratic (~4x) close enough together that GC noise can straddle the
-    // gate — the larger input allocates proportionally more string, so
-    // collection cost rides along with the measurement and best-of-N does not
-    // remove it (GC is allocation-driven, not scheduler-driven). At 4x the
-    // bands are ~4x versus ~16x, so an 8x gate sits far from both.
-    const timeAtSize = (repeat: number): number => {
-      const openers = '<div class="content">'.repeat(repeat);
-      const closers = '</div>'.repeat(repeat);
-      const nested = `<body>${openers}正文内容足够长且必须保留${closers}</body>`;
-      const unbalanced = `${'<div>'.repeat(repeat)}${'</span>'.repeat(repeat)}`;
-      const script = '<script '.repeat(repeat);
-      const anchors = '<a >'.repeat(repeat);
+  // Scaling, not wall-clock: an absolute millisecond ceiling measures the
+  // runner's load as much as the parser and flakes on a busy CI box while
+  // passing in isolation.
+  //
+  // The size step is 4x, not 2x, on purpose. A 2x step puts linear (~2x) and
+  // quadratic (~4x) close enough together that GC noise can straddle the
+  // gate — the larger input allocates proportionally more string, so
+  // collection cost rides along with the measurement and best-of-N does not
+  // remove it (GC is allocation-driven, not scheduler-driven). At 4x the
+  // bands are ~4x versus ~16x, so an 8x gate sits far from both.
+  interface HostileMarkup {
+    script: string;
+    anchors: string;
+    nested: string;
+    unbalanced: string;
+  }
 
-      // Inputs are built once, outside the timed region: allocating them is
-      // linear bookkeeping, not parser work, and including it would flatter a
-      // superlinear parser at large sizes.
-      let best = Number.POSITIVE_INFINITY;
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        const startedAt = performance.now();
-        __testing__.stripHtml(script);
-        parseAgencyListing('CAC', anchors);
-        parsePolicyDocumentHtml(nested);
-        parsePolicyDocumentHtml(unbalanced);
-        best = Math.min(best, performance.now() - startedAt);
-      }
-      return best;
+  const buildHostileMarkup = (repeat: number): HostileMarkup => ({
+    script: '<script '.repeat(repeat),
+    anchors: '<a >'.repeat(repeat),
+    nested: `<body>${'<div class="content">'.repeat(repeat)}正文内容足够长且必须保留${'</div>'.repeat(repeat)}</body>`,
+    unbalanced: `${'<div>'.repeat(repeat)}${'</span>'.repeat(repeat)}`,
+  });
+
+  const SCALING_ATTEMPTS = 3;
+  const scalingCeilingMs = (base: number): number => base * 8 + 2;
+
+  // #6985: best-of-N *inside* one size only absorbs a stall that lands inside
+  // that size. The gate is a ratio between two sizes, and measuring them as two
+  // contiguous blocks makes a stall correlate across all N samples of whichever
+  // block it overlaps — a ~20ms scheduling gap covers a whole block, which is
+  // what test:data's 16-way concurrency produces. Interleaving spreads each
+  // size's samples across the full window, so the same gap has to recur on
+  // every attempt of the larger size to survive the Math.min.
+  //
+  // Math.min per size, and not the minimum of the per-attempt ratios: timing
+  // noise is one-sided (a measurement can only be slower than the work), so the
+  // fastest sample of each size is the best estimate of its true cost, whereas
+  // the smallest ratio preferentially selects the attempt whose *denominator*
+  // was stalled. See the PR for the measurement that rules the ratio form out.
+  const measureScaling = (
+    parse: (markup: HostileMarkup) => void,
+    baseRepeat: number,
+  ): { base: number; quadrupled: number; ratio: number; marginMs: number } => {
+    // Inputs are built once, outside the timed region: allocating them is
+    // linear bookkeeping, not parser work, and including it would flatter a
+    // superlinear parser at large sizes.
+    const baseMarkup = buildHostileMarkup(baseRepeat);
+    const quadrupledMarkup = buildHostileMarkup(baseRepeat * 4);
+    const timeOnce = (markup: HostileMarkup): number => {
+      const startedAt = performance.now();
+      parse(markup);
+      return performance.now() - startedAt;
     };
 
-    const base = timeAtSize(4_000);
-    const quadrupled = timeAtSize(16_000);
-    const ratio = quadrupled / base;
+    let base = Number.POSITIVE_INFINITY;
+    let quadrupled = Number.POSITIVE_INFINITY;
+    for (let attempt = 0; attempt < SCALING_ATTEMPTS; attempt += 1) {
+      base = Math.min(base, timeOnce(baseMarkup));
+      quadrupled = Math.min(quadrupled, timeOnce(quadrupledMarkup));
+    }
+    return {
+      base,
+      quadrupled,
+      ratio: quadrupled / base,
+      marginMs: quadrupled - scalingCeilingMs(base),
+    };
+  };
+
+  const scalingDetail = (scaling: ReturnType<typeof measureScaling>): string =>
+    `${scaling.ratio.toFixed(1)}x — linear is ~4x, catastrophic backtracking ~16x ` +
+    `(${scaling.base.toFixed(1)}ms → ${scaling.quadrupled.toFixed(1)}ms, ` +
+    `${scaling.marginMs.toFixed(1)}ms against the ceiling)`;
+
+  it('parses hostile markup without superlinear rescans', () => {
+    const scaling = measureScaling((markup) => {
+      __testing__.stripHtml(markup.script);
+      parseAgencyListing('CAC', markup.anchors);
+      parsePolicyDocumentHtml(markup.nested);
+      parsePolicyDocumentHtml(markup.unbalanced);
+    }, 4_000);
 
     assert.ok(
-      quadrupled <= base * 8 + 2,
-      `quadrupling the input scaled cost ${ratio.toFixed(1)}x — linear is ~4x, catastrophic backtracking ~16x (${base.toFixed(1)}ms → ${quadrupled.toFixed(1)}ms)`,
+      scaling.marginMs <= 0,
+      `quadrupling the input scaled cost ${scalingDetail(scaling)}`,
+    );
+  });
+
+  it('keeps its teeth: a genuinely quadratic scan still trips the gate', () => {
+    // Positive control for the guard above (#6985). A quieter measurement is
+    // only progress if it can still fail, and this control has already earned
+    // its place: it refuted a candidate form of the fix above that took the
+    // minimum of the per-attempt ratios, by letting a genuinely quadratic scan
+    // through at 7.7x.
+    //
+    // It walks the same hostile input with the unbounded prefix rescan that
+    // parsePolicyHtmlFields' closing-tag unwind
+    // (scripts/china-policy/adapters.mjs) degenerates into once the open-tag
+    // count stops bounding it — the regression this suite exists to catch. It
+    // runs at a smaller base size because a quadratic scan at 16k would
+    // dominate the file's runtime.
+    let scanned = 0;
+    const scaling = measureScaling((markup) => {
+      const text = markup.unbalanced;
+      for (let index = 0; index < text.length; index += 1) {
+        if (text[index] !== '<') continue;
+        for (let prefix = 0; prefix < index; prefix += 1) {
+          if (text[prefix] === '<') scanned += 1;
+        }
+      }
+    }, 250);
+
+    assert.ok(scanned > 0, 'the control must actually scan the hostile input');
+    assert.ok(
+      scaling.marginMs > 0,
+      `the quadratic control must trip the gate, but scaled only ${scalingDetail(scaling)}`,
     );
   });
 
