@@ -25,7 +25,7 @@ import {
   PRIVACY_PATH,
   TERMS_PATH,
 } from '../shared/legal.ts';
-import { checkoutConsentHtml } from '../src/components/legal-links.ts';
+import { checkoutConsentHtml } from '../src/utils/legal-links.ts';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const SRC = join(ROOT, 'src');

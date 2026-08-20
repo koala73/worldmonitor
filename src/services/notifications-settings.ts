@@ -1,7 +1,7 @@
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { openExternalUrl } from '@/services/external-navigation';
 import { escapeHtml } from '@/utils/sanitize';
-import { checkoutConsentHtml } from '@/components/legal-links';
+import { checkoutConsentHtml } from '@/utils/legal-links';
 import { renderSVG } from 'uqr';
 import {
   getChannelsData,

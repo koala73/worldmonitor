@@ -2,7 +2,7 @@ import { type AuthSession, getAuthState, subscribeAuthState } from '@/services/a
 import { PanelGateReason, getPanelGateReason } from '@/services/panel-gating';
 import { getResilienceScore, type ResilienceDomain, type ResilienceScoreResponse } from '@/services/resilience';
 import { h, replaceChildren } from '@/utils/dom-utils';
-import { createCheckoutConsentElement } from '@/components/legal-links';
+import { createCheckoutConsentElement } from '@/utils/legal-links';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import {
   type DimensionConfidence,

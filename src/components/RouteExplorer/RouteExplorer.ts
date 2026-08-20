@@ -7,7 +7,7 @@
  */
 
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
-import { checkoutConsentHtml } from '@/components/legal-links';
+import { checkoutConsentHtml } from '@/utils/legal-links';
 import { openExternalUrl } from '@/services/external-navigation';
 import { CountryPicker } from './CountryPicker';
 import { Hs2Picker } from './Hs2Picker';

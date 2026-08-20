@@ -24,7 +24,7 @@ import {
   LICENSE_PATH,
   TRADEMARK_PATH,
 } from '../shared/legal.ts';
-import { legalLinksHtml } from '../src/components/legal-links.ts';
+import { legalLinksHtml } from '../src/utils/legal-links.ts';
 // @ts-expect-error — JS helper, no declaration file
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 

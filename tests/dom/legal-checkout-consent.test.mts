@@ -16,7 +16,7 @@ import {
   createCheckoutConsentElement,
   legalLinksHtml,
   LEGAL_LINK_ATTR,
-} from '@/components/legal-links';
+} from '@/utils/legal-links';
 import { CHECKOUT_CONSENT_TEXT, PRIVACY_PATH, TERMS_PATH } from '../../shared/legal';
 
 const ORIGIN = 'https://worldmonitor.app';

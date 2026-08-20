@@ -26008,7 +26008,7 @@ body.map-width-resizing {
 /* -- Legal links + pre-payment assent (#6976) -- */
 /* The dashboard had no path to the Terms at all, and every upgrade CTA jumped
    straight to Dodo's hosted checkout, where Dodo (merchant of record) shows its
-   terms and never ours. Both surfaces are built by src/components/legal-links.ts. */
+   terms and never ours. Both surfaces are built by src/utils/legal-links.ts. */
 
 .legal-links-row {
   display: flex;

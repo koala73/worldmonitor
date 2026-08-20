@@ -6,9 +6,12 @@
  * shows *its* terms and never ours. Both gaps are fixed from here so the
  * sentence and the destinations exist once, not once per surface.
  *
- * Deliberately dependency-light (one import, `escapeHtml`): the file is
- * reachable from the `tsx --test` unit profile, unlike the gate components that
- * pull in `@/services/i18n` and its `import.meta.glob`.
+ * Lives in `utils/`, not `components/`, because `services/notifications-settings`
+ * renders a gate too and a services → components import is a backward edge
+ * (`npm run lint:boundaries`). Deliberately dependency-light (one import,
+ * `escapeHtml`), which also keeps it reachable from the `tsx --test` unit
+ * profile, unlike the gate components that pull in `@/services/i18n` and its
+ * `import.meta.glob`.
  *
  * Links are ABSOLUTE against the web origin. The docs live on worldmonitor.app
  * while the desktop build runs from a Tauri WebView origin, where a
@@ -16,7 +19,7 @@
  * `data-legal-link` lets a host attach the `openExternalUrl` handoff that
  * desktop needs (#5911) without this module importing the runtime.
  */
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml } from './sanitize';
 import {
   CHECKOUT_CONSENT_CONJUNCTION,
   CHECKOUT_CONSENT_LEAD,

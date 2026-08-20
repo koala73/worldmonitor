@@ -9,7 +9,7 @@ import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
 import { openExternalUrl } from '@/services/external-navigation';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
-import { createCheckoutConsentElement } from '@/components/legal-links';
+import { createCheckoutConsentElement } from '@/utils/legal-links';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
 import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
