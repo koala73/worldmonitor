@@ -291,32 +291,30 @@ jobs:
         # builds are never inputs.
         run: node scripts/check-edge-function-bundles.mjs --caller=ci
       - name: Sidecar handler bundles build (#5902)
-        # The desktop sidecar loads esbuild-bundled api/{domain}/v1/[rpc].js
-        # handlers whose import graph spans src/ and server/ (via the @/
-        # alias) — before this step, that build ran only inside release
-        # builds, so a bundle-breaking change surfaced months later. The
-        # count assertion guards the vacuous-pass case: the build script
-        # exits 0 when its glob finds zero entry points, so "green" must
-        # also mean "every discovered domain actually produced a bundle".
+        # The desktop sidecar loads esbuild-bundled [rpc].js handlers whose
+        # import graph spans src/ and server/ (via the @/ alias) — before this
+        # step, that build ran only inside release builds, so a bundle-breaking
+        # change surfaced months later. The count assertion guards the
+        # vacuous-pass case: the build script exits 0 when discovery finds zero
+        # entry points, so "green" must also mean every discovered handler
+        # actually produced a bundle.
         run: |
           node scripts/build-sidecar-sebuf.mjs
           node scripts/build-sidecar-handlers.mjs
-          node -e '
-            const { readdirSync, existsSync } = require("node:fs");
-            const domains = readdirSync("api", { withFileTypes: true })
-              .filter((d) => d.isDirectory() && !["[domain]", "[[...path]]"].includes(d.name))
-              .filter((d) => existsSync(`api/${d.name}/v1/[rpc].ts`))
-              .map((d) => d.name);
-            const missing = domains.filter((d) => !existsSync(`api/${d}/v1/[rpc].js`));
-            if (domains.length === 0) {
-              console.error("::error::sidecar handler build found ZERO api/{domain}/v1/[rpc].ts entry points — the discovery glob is broken (vacuous pass)");
+          node --input-type=module -e '
+            import { existsSync } from "node:fs";
+            import { discoverSidecarHandlerEntries } from "./scripts/build-sidecar-handlers.mjs";
+            const entries = await discoverSidecarHandlerEntries();
+            const missing = entries.filter(({ entryPoint }) => !existsSync(entryPoint.replace(/\.ts$/, ".js")));
+            if (entries.length === 0) {
+              console.error("::error::sidecar handler build found ZERO [rpc].ts entry points — discovery is broken (vacuous pass)");
               process.exit(1);
             }
             if (missing.length > 0) {
-              console.error(`::error::sidecar handler build produced no bundle for: ${missing.join(", ")}`);
+              console.error(`::error::sidecar handler build produced no bundle for: ${missing.map(({ relativePath }) => relativePath).join(", ")}`);
               process.exit(1);
             }
-            console.log(`sidecar handler bundles ok: ${domains.length} domains`);
+            console.log(`sidecar handler bundles ok: ${entries.length} handlers`);
           '
       - name: Desktop build env parity (#5905)
         # Twin of the desktop-config leg: here it fires when src/ gains a new
