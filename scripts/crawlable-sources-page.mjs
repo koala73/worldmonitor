@@ -9,7 +9,10 @@ import {
   sourceOriginFilterValue,
   sourceOriginLabel,
 } from './source-origin.mjs';
-import { isSyndicationTransportHost } from './source-catalog-identity.mjs';
+import {
+  isSyndicationTransportEntry,
+  uniqueSorted,
+} from './source-catalog-identity.mjs';
 
 // Hand-authored marketing copy for the /sources/ catalog page. Domains and
 // their docs anchors mirror docs/data-sources.mdx section headings; the
@@ -627,13 +630,6 @@ function sourceDomainIdForEntries(entries) {
   }
   return match[0];
 }
-function uniqueCatalogValues(values) {
-  return [...new Set((values || []).filter(Boolean))].sort((left, right) => left.localeCompare(right));
-}
-
-function isTransportCatalogEntry(entry) {
-  return entry?.role === 'transport' || isSyndicationTransportHost(entry?.host);
-}
 
 export function buildSourceCatalog(entries, { logicalProviders = [] } = {}) {
   if (!Array.isArray(entries) || entries.length === 0) {
@@ -641,21 +637,21 @@ export function buildSourceCatalog(entries, { logicalProviders = [] } = {}) {
   }
   const entriesByProvider = new Map();
   for (const entry of entries) {
-    if (isTransportCatalogEntry(entry)) continue;
+    if (isSyndicationTransportEntry(entry)) continue;
     const providerEntries = entriesByProvider.get(entry.provider) || [];
     providerEntries.push(entry);
     entriesByProvider.set(entry.provider, providerEntries);
   }
 
   const catalog = [...entriesByProvider.entries()].map(([provider, providerEntries]) => {
-    const hosts = uniqueCatalogValues(providerEntries.map((entry) => entry.host));
+    const hosts = uniqueSorted(providerEntries.map((entry) => entry.host));
     return {
       provider,
       displayName: sourceProviderDisplayName(provider, hosts),
       domainId: sourceDomainIdForEntries(providerEntries),
       originCountry: resolveSourceOrigin({ provider, hosts }),
       hosts,
-      kinds: uniqueCatalogValues(providerEntries.flatMap((entry) => String(entry.kind || '').split('+'))),
+      kinds: uniqueSorted(providerEntries.flatMap((entry) => String(entry.kind || '').split('+'))),
       coveredCountries: [],
       transportHosts: [],
     };
@@ -663,7 +659,7 @@ export function buildSourceCatalog(entries, { logicalProviders = [] } = {}) {
 
   for (const logical of logicalProviders) {
     if (!logical?.provider || entriesByProvider.has(logical.provider)) continue;
-    const hosts = uniqueCatalogValues([
+    const hosts = uniqueSorted([
       ...(logical.editorialHosts || []),
       ...(logical.transportHosts || []),
     ]);
@@ -677,8 +673,8 @@ export function buildSourceCatalog(entries, { logicalProviders = [] } = {}) {
       }),
       hosts,
       kinds: ['feed'],
-      coveredCountries: uniqueCatalogValues(logical.coveredCountries),
-      transportHosts: uniqueCatalogValues(logical.transportHosts),
+      coveredCountries: uniqueSorted(logical.coveredCountries),
+      transportHosts: uniqueSorted(logical.transportHosts),
     });
   }
 

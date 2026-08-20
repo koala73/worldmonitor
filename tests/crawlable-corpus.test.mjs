@@ -20,6 +20,7 @@ import {
 import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
 import { buildSourceCatalog, sourceProviderDisplayName } from '../scripts/crawlable-sources-page.mjs';
 import { resolveSourceOrigin, sourceOriginLabel } from '../scripts/source-origin.mjs';
+import { rawCatalogProviderNames, rawManifestActiveEntries } from './helpers/raw-catalog-providers.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -46,33 +47,6 @@ const SOURCE_DOMAIN_IDS = new Set([
   'china',
   'technology',
 ]);
-
-// This raw-field oracle intentionally does not import the production active
-// predicate from scripts/source-attribution.mjs.
-function rawManifestActiveEntries(manifest) {
-  assert.ok(Array.isArray(manifest?.entries), 'the attribution manifest must contain an entries array');
-  return manifest.entries.filter(
-    (entry) => entry?.observed === true && (entry.status === 'reviewed' || entry.status === 'terms-review'),
-  );
-}
-
-const SYNDICATION_TRANSPORT_HOSTS = new Set([
-  'feeds.feedburner.com',
-  'feedburner.com',
-  'news.google.com',
-]);
-
-function rawCatalogProviderNames(manifest) {
-  const names = new Set(
-    rawManifestActiveEntries(manifest)
-      .filter((entry) => entry.role !== 'transport' && !SYNDICATION_TRANSPORT_HOSTS.has(entry.host))
-      .map((entry) => entry.provider),
-  );
-  for (const logical of manifest.logicalProviders || []) {
-    if (typeof logical?.provider === 'string' && logical.provider) names.add(logical.provider);
-  }
-  return names;
-}
 
 describe('sources catalog domain assignment', () => {
   it('rejects an empty active-provider catalog', () => {

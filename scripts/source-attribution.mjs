@@ -22,7 +22,8 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   buildLogicalProviders,
   catalogProviderIdentities,
-  isSyndicationTransportHost,
+  FEED_DECLARATION_FILES,
+  isSyndicationTransportEntry,
   loadSourceGeography,
   scanNamedFeedDeclarations,
   validateFeedBurnerPublisherIdentity,
@@ -50,12 +51,11 @@ const LOGICAL_KIND_RE = /^(?:candidate|structured|feed|operational-status)(?:\+(
 const SOURCE_ROOTS = ['scripts', 'server', 'api', 'src'];
 const SOURCE_EXTENSIONS = new Set(['.cjs', '.js', '.mjs', '.ts', '.tsx']);
 const FEED_FILES = new Set([
-  'src/config/feeds.ts',
+  ...FEED_DECLARATION_FILES,
   // LiveNewsPanel owns optional native-video HLS feeds. They are observed for
   // completeness, but their playback transport is excluded from the data
   // provider count below.
   'src/components/LiveNewsPanel.ts',
-  'server/worldmonitor/news/v1/_feeds.ts',
 ]);
 const PRESENTATION_ONLY_FILES = new Set(['src/components/LiveNewsPanel.ts']);
 const STATUS_FILE = 'server/worldmonitor/infrastructure/v1/list-service-statuses.ts';
@@ -1152,7 +1152,7 @@ function retirementRequiredMessage(host) {
 export function buildManifest(
   inventory,
   previous = { entries: [], logicalEntries: [], logicalProviders: [] },
-  { retireHosts = [], rootDir = null } = {},
+  { retireHosts = [], rootDir = null, declarations = null, geography = null } = {},
 ) {
   const previousByHost = new Map((previous.entries || []).map((entry) => [entry.host, entry]));
   const entries = inventory.map((observed) => mergeEntry(observed, previousByHost.get(observed.host)));
@@ -1204,9 +1204,11 @@ export function buildManifest(
     .filter((entry) => !observedHosts.has(entry.host))
     .filter((entry, index, all) => all.findIndex((candidate) => candidate.provider === entry.provider && candidate.host === entry.host) === index)
     .sort((a, b) => a.provider.localeCompare(b.provider));
-  const logicalProviders = rootDir
-    ? buildLogicalProviders(scanNamedFeedDeclarations(rootDir), loadSourceGeography(rootDir))
-    : [...(previous.logicalProviders || [])];
+  const logicalProviders = declarations
+    ? buildLogicalProviders(declarations, geography || new Map())
+    : (rootDir
+      ? buildLogicalProviders(scanNamedFeedDeclarations(rootDir), loadSourceGeography(rootDir))
+      : [...(previous.logicalProviders || [])]);
   return {
     version: 1,
     entries: entries.sort((a, b) => a.host.localeCompare(b.host)),
@@ -1544,7 +1546,7 @@ export function renderAttributionSection(inventory, manifest) {
       : references.map((reference) => reference.path).join(', ');
     const surface = entry.observed === false
       ? 'Excluded / candidate'
-      : (entry.role === 'transport' || isSyndicationTransportHost(entry.host)
+      : (isSyndicationTransportEntry(entry)
         ? `${entry.kind} (syndication transport)`
         : entry.kind);
     const sourceRef = refs || (entry.observed === false ? 'No current fetch observed' : 'Manifest-only review row');
@@ -1621,13 +1623,18 @@ export function checkSourceAttribution(rootDir = ROOT) {
   const previous = loadManifest(rootDir);
   const errors = validateManifest(inventory, previous);
   if (errors.length) return { errors };
-  const identityErrors = validateFeedBurnerPublisherIdentity(scanNamedFeedDeclarations(rootDir));
+  const declarations = scanNamedFeedDeclarations(rootDir);
+  const identityErrors = validateFeedBurnerPublisherIdentity(declarations);
   if (identityErrors.length) return { errors: identityErrors };
   // Compare the committed manifest against a rebuild, not against itself. The
   // per-row validation above covers observed hosts; this catches the rest —
   // retired rows, logical entries, and formatting — so --check and --write can
   // no longer disagree about what the committed artifact should contain.
-  const rebuilt = serializeManifest(buildManifest(inventory, previous, { rootDir }));
+  const rebuilt = serializeManifest(buildManifest(inventory, previous, {
+    rootDir,
+    declarations,
+    geography: loadSourceGeography(rootDir),
+  }));
   if (readFileSync(manifestPath, 'utf8') !== rebuilt) {
     return { errors: [`${MANIFEST_PATH} is out of date; ${REGENERATE_HINT}`] };
   }
@@ -1674,7 +1681,17 @@ export function runSourceAttribution({
     try {
       const inventory = scanUpstreamHosts(rootDir);
       const previous = loadManifest(rootDir);
-      const manifest = buildManifest(inventory, previous, { retireHosts, rootDir });
+      const declarations = scanNamedFeedDeclarations(rootDir);
+      const identityErrors = validateFeedBurnerPublisherIdentity(declarations);
+      if (identityErrors.length) {
+        throw new Error(identityErrors.join('; '));
+      }
+      const manifest = buildManifest(inventory, previous, {
+        retireHosts,
+        rootDir,
+        declarations,
+        geography: loadSourceGeography(rootDir),
+      });
       // Render and count before writing anything. Both throw on a manifest row
       // that no longer validates, and a row retired by an earlier run is now kept
       // rather than dropped — so writing first would leave the manifest rewritten,

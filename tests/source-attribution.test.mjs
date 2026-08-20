@@ -22,36 +22,9 @@ import {
 } from '../scripts/source-attribution.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { rawCatalogProviderNames, rawManifestActiveEntries } from './helpers/raw-catalog-providers.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-// Deliberately independent of the production active-entry predicate. Keep this
-// oracle expressed only in raw manifest fields so a predicate mutation cannot
-// change both the implementation and the expected membership.
-function rawManifestActiveEntries(manifest) {
-  assert.ok(Array.isArray(manifest?.entries), 'the attribution manifest must contain an entries array');
-  return manifest.entries.filter(
-    (entry) => entry?.observed === true && (entry.status === 'reviewed' || entry.status === 'terms-review'),
-  );
-}
-
-const SYNDICATION_TRANSPORT_HOSTS = new Set([
-  'feeds.feedburner.com',
-  'feedburner.com',
-  'news.google.com',
-]);
-
-function rawCatalogProviderNames(manifest) {
-  const names = new Set(
-    rawManifestActiveEntries(manifest)
-      .filter((entry) => entry.role !== 'transport' && !SYNDICATION_TRANSPORT_HOSTS.has(entry.host))
-      .map((entry) => entry.provider),
-  );
-  for (const logical of manifest.logicalProviders || []) {
-    if (typeof logical?.provider === 'string' && logical.provider) names.add(logical.provider);
-  }
-  return names;
-}
 
 /**
  * Build a throwaway checkout whose committed artifacts the generator itself

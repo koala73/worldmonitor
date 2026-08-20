@@ -6,7 +6,7 @@
  * providers. Named feed declarations supply the publisher identity, origin,
  * and coverage geography that the catalog UI shows.
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,6 +29,11 @@ export const FEED_DECLARATION_FILES = Object.freeze([
   'server/worldmonitor/news/v1/_feeds.ts',
 ]);
 
+const FEEDBURNER_TRANSPORT_HOSTS = Object.freeze(new Set([
+  'feeds.feedburner.com',
+  'feedburner.com',
+]));
+
 const NAME_RE = /name:\s*(?:'((?:[^'\\]|\\.)*)'|"([^"]+)")/;
 const RSS_URL_RE = /(?:rss|railwayRss)\(\s*'([^']+)'\s*\)/g;
 const DIRECT_URL_RE = /url:\s*'((?:https?:)[^']+)'/g;
@@ -45,6 +50,19 @@ function googleNewsUrl(query, hl = 'en-US', gl = 'US', ceid = 'US:en') {
 
 export function isSyndicationTransportHost(host) {
   return SYNDICATION_TRANSPORT_HOSTS.has(String(host || '').toLowerCase());
+}
+
+export function hasFeedBurnerTransport(declaration) {
+  return (declaration?.transportHosts || []).some((host) => FEEDBURNER_TRANSPORT_HOSTS.has(host));
+}
+
+export function isSyndicationTransportEntry(entry) {
+  return entry?.role === 'transport' || isSyndicationTransportHost(entry?.host);
+}
+
+export function uniqueSorted(values) {
+  const list = values instanceof Set ? [...values] : [...(values || [])];
+  return [...new Set(list.filter(Boolean))].sort((left, right) => left.localeCompare(right));
 }
 
 export function hostFromFeedUrl(raw) {
@@ -89,8 +107,12 @@ function parseFeedDeclarationSource(source) {
   for (const rawLine of source.split('\n')) {
     const line = rawLine.trim();
     if (line.startsWith('//')) continue;
-    const nameMatch = line.match(NAME_RE);
-    if (nameMatch) currentName = unescapeName(nameMatch[1] || nameMatch[2]);
+    if (line.includes('name:')) {
+      const nameMatch = line.match(NAME_RE);
+      if (nameMatch) currentName = unescapeName(nameMatch[1] || nameMatch[2]);
+    }
+    if (!currentName) continue;
+    if (!line.includes('rss') && !line.includes('url:') && !line.includes('gn(') && !line.includes('gnLocale')) continue;
 
     const urls = [];
     RSS_URL_RE.lastIndex = 0;
@@ -105,7 +127,7 @@ function parseFeedDeclarationSource(source) {
     for (const match of line.matchAll(GN_LOCALE_RE)) {
       pushUrl(urls, googleNewsUrl(unescapeName(match[1]), match[2], match[3], match[4]));
     }
-    if (!currentName || urls.length === 0) continue;
+    if (urls.length === 0) continue;
     for (const url of urls) {
       declarations.push(classifyFeedDeclaration(currentName, url));
     }
@@ -114,15 +136,17 @@ function parseFeedDeclarationSource(source) {
 }
 
 export function classifyFeedDeclaration(name, url) {
-  const host = hostFromFeedUrl(url);
-  let query = '';
-  if (host === 'news.google.com') {
-    try {
-      query = new URL(url).searchParams.get('q') || '';
-    } catch {
-      query = '';
-    }
+  let parsed = null;
+  let host = '';
+  try {
+    parsed = new URL(url);
+    host = parsed.hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    host = hostFromFeedUrl(url);
   }
+  const query = host === 'news.google.com'
+    ? (parsed?.searchParams.get('q') || '')
+    : '';
   const siteHosts = host === 'news.google.com' ? googleNewsSiteHosts(query) : [];
   const transportHosts = isSyndicationTransportHost(host) ? [host] : [];
   const editorialHosts = [
@@ -144,8 +168,14 @@ export function scanNamedFeedDeclarations(rootDir = ROOT) {
   const seen = new Set();
   for (const relativePath of FEED_DECLARATION_FILES) {
     const path = join(rootDir, relativePath);
-    if (!existsSync(path)) continue;
-    for (const declaration of parseFeedDeclarationSource(readFileSync(path, 'utf8'))) {
+    let source;
+    try {
+      source = readFileSync(path, 'utf8');
+    } catch (error) {
+      if (error?.code === 'ENOENT') continue;
+      throw error;
+    }
+    for (const declaration of parseFeedDeclarationSource(source)) {
       const key = `${declaration.name}\0${declaration.url}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -157,8 +187,14 @@ export function scanNamedFeedDeclarations(rootDir = ROOT) {
 
 export function loadSourceGeography(rootDir = ROOT) {
   const path = join(rootDir, 'shared/source-geography.json');
-  if (!existsSync(path)) return new Map();
-  const doc = JSON.parse(readFileSync(path, 'utf8'));
+  let source;
+  try {
+    source = readFileSync(path, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return new Map();
+    throw error;
+  }
+  const doc = JSON.parse(source);
   return new Map(
     Object.entries(doc)
       .filter(([key]) => !key.startsWith('_'))
@@ -173,16 +209,13 @@ export function coverageCountriesForLabels(labels, geography) {
       if (code) countries.add(code);
     }
   }
-  return [...countries].sort();
+  return uniqueSorted(countries);
 }
 
 export function validateFeedBurnerPublisherIdentity(declarations) {
   const errors = [];
   for (const declaration of declarations) {
-    if (!declaration.transportHosts.includes('feeds.feedburner.com')
-      && !declaration.transportHosts.includes('feedburner.com')) {
-      continue;
-    }
+    if (!hasFeedBurnerTransport(declaration)) continue;
     if (!declaration.name || !declaration.publisher) {
       errors.push(
         `FeedBurner URL ${declaration.url} requires an explicit publisher identity`,
@@ -190,10 +223,6 @@ export function validateFeedBurnerPublisherIdentity(declarations) {
     }
   }
   return errors;
-}
-
-function uniqueSorted(values) {
-  return [...new Set(values.filter(Boolean))].sort((left, right) => left.localeCompare(right));
 }
 
 /**
@@ -204,10 +233,7 @@ export function buildLogicalProviders(declarations, geography = new Map()) {
   const byPublisher = new Map();
   for (const declaration of declarations) {
     if (declaration.editorialHosts.length > 0) continue;
-    if (!declaration.transportHosts.includes('feeds.feedburner.com')
-      && !declaration.transportHosts.includes('feedburner.com')) {
-      continue;
-    }
+    if (!hasFeedBurnerTransport(declaration)) continue;
     const publisher = declaration.publisher || declaration.name;
     const current = byPublisher.get(publisher) || {
       provider: publisher,
@@ -244,8 +270,7 @@ export function buildLogicalProviders(declarations, geography = new Map()) {
 export function isCatalogProviderEntry(entry) {
   if (!entry || entry.observed !== true) return false;
   if (entry.status !== 'reviewed' && entry.status !== 'terms-review') return false;
-  if (entry.role === 'transport') return false;
-  return !isSyndicationTransportHost(entry.host);
+  return !isSyndicationTransportEntry(entry);
 }
 
 export function catalogProviderIdentities(manifest) {
@@ -296,8 +321,8 @@ export function attachCoverageToCatalog(catalog, declarations, geography) {
     }
     return {
       ...provider,
-      coveredCountries: [...covered].sort(),
-      transportHosts: [...transports].sort(),
+      coveredCountries: uniqueSorted(covered),
+      transportHosts: uniqueSorted(transports),
     };
   });
 }
