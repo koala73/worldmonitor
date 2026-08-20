@@ -210,7 +210,10 @@ describe('policy wiring', () => {
     const source = readFileSync(resolve(root, 'pro-test/src/sentry.ts'), 'utf8');
     assert.match(source, /from '\.\/sentry-filter-policy'/);
     assert.match(source, /ignoreErrors:\s*MARKETING_IGNORE_ERRORS/);
-    assert.match(source, /beforeSend:\s*\(event\)\s*=>\s*marketingBeforeSend\(event\)/);
+    assert.match(
+      source,
+      /beforeSend:\s*\(event\)\s*=>\s*\{\s*const filteredEvent = marketingBeforeSend\(event\);/,
+    );
   });
 
   it('does not copy the dashboard array wholesale', () => {

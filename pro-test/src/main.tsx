@@ -1,6 +1,7 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App, { renderTurnstileWidgets } from './App.tsx';
+import { ProDomErrorBoundary } from './ProDomErrorBoundary.tsx';
 import { ensureTurnstileScript } from './turnstile';
 import { initI18n } from './i18n';
 import { initSentry } from './sentry';
@@ -18,7 +19,9 @@ initDebugBearRum();
 initI18n().then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <App />
+      <ProDomErrorBoundary>
+        <App />
+      </ProDomErrorBoundary>
     </StrictMode>,
   );
 

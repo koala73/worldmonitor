@@ -2,6 +2,8 @@ import * as Sentry from '@sentry/react';
 
 import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
 import { MARKETING_IGNORE_ERRORS, marketingBeforeSend } from './sentry-filter-policy';
+import { currentLanguageBase } from './i18n';
+import { collectRemoveChildEvidence, decorateRemoveChildEvent } from './services/clerk-dom-safety';
 
 /**
  * Shared Sentry bootstrap for both marketing entries (/pro and root welcome).
@@ -13,6 +15,7 @@ import { MARKETING_IGNORE_ERRORS, marketingBeforeSend } from './sentry-filter-po
  */
 export function initSentry(): void {
   const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
+  const servedLanguage = document.documentElement.getAttribute('lang') ?? 'en';
 
   Sentry.init({
     dsn: sentryDsn || undefined,
@@ -23,6 +26,15 @@ export function initSentry(): void {
     allowUrls: SENTRY_ALLOW_URLS,
     tracesSampleRate: 0.1,
     ignoreErrors: MARKETING_IGNORE_ERRORS,
-    beforeSend: (event) => marketingBeforeSend(event),
+    beforeSend: (event) => {
+      const filteredEvent = marketingBeforeSend(event);
+      if (!filteredEvent) return null;
+      return decorateRemoveChildEvent(filteredEvent, collectRemoveChildEvidence({
+        document,
+        location,
+        servedLanguage,
+        applicationLanguage: currentLanguageBase(),
+      }));
+    },
   });
 }

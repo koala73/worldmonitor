@@ -1,4 +1,5 @@
 import type { Clerk } from '@clerk/clerk-js';
+import { protectClerkDomFromTranslators } from './clerk-dom-safety';
 
 export type LoadedClerk = InstanceType<typeof Clerk>;
 
@@ -78,6 +79,7 @@ async function loadClerk(): Promise<LoadedClerk> {
   const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
   if (!key) throw new Error('VITE_CLERK_PUBLISHABLE_KEY not set');
   const instance = new C(key);
+  protectClerkDomFromTranslators();
   await instance.load({
     appearance: {
       variables: {

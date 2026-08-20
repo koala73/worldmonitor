@@ -282,7 +282,7 @@ function ClerkUserButton({ user }: { user: UserResource | null }): ReactElement 
   }, [user]);
 
   return (
-    <div ref={ref} className="flex h-8 w-8 items-center justify-center">
+    <div ref={ref} translate="no" className="flex h-8 w-8 items-center justify-center">
       {!user && (
         <span
           className="block h-8 w-8 rounded-full border border-wm-border bg-wm-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
