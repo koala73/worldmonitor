@@ -26005,6 +26005,47 @@ body.map-width-resizing {
 
 .upgrade-pro-cta:hover { opacity: 0.85; }
 
+/* -- Legal links + pre-payment assent (#6976) -- */
+/* The dashboard had no path to the Terms at all, and every upgrade CTA jumped
+   straight to Dodo's hosted checkout, where Dodo (merchant of record) shows its
+   terms and never ours. Both surfaces are built by src/components/legal-links.ts. */
+
+.legal-links-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 14px;
+  padding: 10px 16px 12px;
+  border-top: 1px solid var(--border-color, #30363d);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.legal-links-item {
+  color: var(--text-dim);
+  text-decoration: none;
+}
+
+.legal-links-item:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+.checkout-consent {
+  margin: 0 0 8px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.checkout-consent-link {
+  color: var(--text-dim);
+  text-decoration: underline;
+}
+
+.checkout-consent-link:hover {
+  color: var(--text);
+}
+
 .upgrade-pro-status-line {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);

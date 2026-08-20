@@ -53,6 +53,7 @@ import {
   type ApiPlanLimitNotice,
 } from '@/services/api-plan-limit-notices';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { legalLinksHtml, LEGAL_LINK_ATTR } from '@/components/legal-links';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   overlayHistory,
@@ -114,6 +115,7 @@ export class UnifiedSettings {
   private focusTrap: FocusTrap;
   private config: UnifiedSettingsConfig;
   private activeTab: TabId = 'settings';
+  private legalLinkHandoffAttached = false;
   private activeSourceRegion = 'all';
   private sourceFilter = '';
   private activePanelCategory = 'all';
@@ -842,6 +844,7 @@ export class UnifiedSettings {
           ${this.renderMcpClientsContent()}
         </div>
         ` : ''}
+        ${legalLinksHtml(WEB_APP_ORIGIN)}
       </div>
     `, "legacy direct innerHTML migration"));
 
@@ -864,6 +867,8 @@ export class UnifiedSettings {
       });
     }
 
+    this.attachLegalLinkHandoff();
+
     this.renderPanelCategoryPills();
     this.renderPanelsTab();
     this.renderRegionPills();
@@ -883,6 +888,28 @@ export class UnifiedSettings {
         this.startMcpQuotaPolling();
       }
     }
+  }
+
+  /**
+   * Desktop hands legal links to the OS browser (#5911 precedent). A plain
+   * `target="_blank"` anchor inside the Tauri WebView opens another WebView
+   * window with no chrome, which is how a user ends up stranded on the Terms
+   * with no way back. Delegated on the overlay so it covers the legal row AND
+   * every checkout-consent line rendered inside a tab panel, including the ones
+   * re-rendered after this handler is attached.
+   */
+  private attachLegalLinkHandoff(): void {
+    if (!this.config.isDesktopApp || this.legalLinkHandoffAttached) return;
+    // The overlay element outlives every re-render, so an unguarded attach
+    // would stack one listener per render and open N windows on one click.
+    this.legalLinkHandoffAttached = true;
+    this.overlay.addEventListener('click', (e) => {
+      const link = (e.target as HTMLElement | null)?.closest?.(`a[${LEGAL_LINK_ATTR}]`);
+      const href = link instanceof HTMLAnchorElement ? link.href : '';
+      if (!href) return;
+      e.preventDefault();
+      void openExternalUrl(href);
+    });
   }
 
   private switchTab(tab: TabId): void {
