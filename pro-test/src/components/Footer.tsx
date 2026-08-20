@@ -1,4 +1,5 @@
 import { DASHBOARD_PATH } from '../routes';
+import { LegalFooterNav } from './LegalFooterNav';
 
 export const Footer = () => (
   <footer className="border-t border-wm-border bg-[#020202] pt-8 pb-12 px-6 text-center">
@@ -26,5 +27,6 @@ export const Footer = () => (
       </div>
       <span className="text-[10px] opacity-40 mt-4 md:mt-0" suppressHydrationWarning>&copy; {new Date().getFullYear()} WorldMonitor</span>
     </div>
+    <LegalFooterNav />
   </footer>
 );

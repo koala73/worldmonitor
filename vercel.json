@@ -51,6 +51,8 @@
     { "source": "/terms", "destination": "/docs/terms", "permanent": false },
     { "source": "/terms-of-service", "destination": "/docs/terms", "permanent": false },
     { "source": "/tos", "destination": "/docs/terms", "permanent": false },
+    { "source": "/eula", "destination": "/docs/eula", "permanent": false },
+    { "source": "/end-user-license-agreement", "destination": "/docs/eula", "permanent": false },
     { "source": "/legal", "destination": "/docs/terms", "permanent": false },
     { "source": "/dashboard/", "destination": "/dashboard", "permanent": true },
     { "source": "/story/", "destination": "/story", "permanent": true },

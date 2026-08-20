@@ -487,7 +487,7 @@ describe('webmcp.ts: native tool execution and telemetry', () => {
     assert.deepEqual(denied, {
       ok: false,
       status: 'denied',
-      reason: 'invalid_or_expired_key',
+      reason: 'malformed_arguments',
     });
     assert.deepEqual(openCalls, []);
     assert.deepEqual(events.at(-1), {
@@ -647,7 +647,7 @@ describe('webmcp.ts: native tool execution and telemetry', () => {
     assert.deepEqual(await open.execute({ resultKey: 'fabricated-result-key' }), {
       ok: false,
       status: 'denied',
-      reason: 'invalid_or_expired_key',
+      reason: 'malformed_arguments',
     });
     assert.equal(bindingCalls, reasons.length + 1);
   });

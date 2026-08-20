@@ -12,6 +12,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const PROJECT_LICENSE_DOCS = [
   'README.md',
   'docs/license.mdx',
+  'docs/eula.mdx',
   'docs/trademark-policy.mdx',
   'docs/documentation.mdx',
   'docs/getting-started.mdx',
@@ -93,27 +94,84 @@ describe('project license docs', () => {
     );
   });
 
-  it('defines each hosted-service plan license without conflating it with the code license', () => {
+  const PLAN_LABELS = [
+    'Personal license (Pro)',
+    'Commercial license (Pro Business)',
+    'Commercial license — for your organization (API Starter)',
+    'Commercial license — for your customers (API Business)',
+  ];
+
+  it('defines each hosted-service plan license in the EULA without conflating it with the code license', () => {
+    const eula = readFileSync(join(root, 'docs/eula.mdx'), 'utf8');
+
+    for (const label of PLAN_LABELS) {
+      assert.match(eula, new RegExp(label.replace(/[()]/g, '\\$&'), 'i'));
+    }
+    assert.match(eula, /customer-facing product/i);
+    assert.match(eula, /standalone database or substantially similar feed/i);
+    assert.match(
+      eula,
+      /Nothing in this Agreement removes, narrows, or adds conditions to any right the AGPL or MIT licenses grant you in that code/i,
+      'the EULA must state that it does not narrow the source-code licenses',
+    );
+  });
+
+  it('keeps the Terms pointing at the EULA instead of re-deciding plan scope', () => {
     const terms = readFileSync(join(root, 'docs/terms.mdx'), 'utf8');
 
-    for (const label of [
-      'Personal license (Pro)',
-      'Commercial license (Pro Business)',
-      'Commercial license — for your organization (API Starter)',
-      'Commercial license — for your customers (API Business)',
-    ]) {
+    assert.match(terms, /\[End User License Agreement\]\(\/eula\)/, 'Terms must link the EULA');
+    assert.match(terms, /\/eula#41-plan-license-scopes/, 'Terms must deep-link the plan scopes in the EULA');
+    for (const label of PLAN_LABELS) {
       assert.match(terms, new RegExp(label.replace(/[()]/g, '\\$&'), 'i'));
     }
-    assert.match(terms, /customer-facing product/i);
-    assert.match(terms, /standalone database or substantially similar feed/i);
     assert.match(terms, /source code remains subject to AGPL-3\.0-only/i);
     assert.match(terms, /official thin client packages remain subject to MIT/i);
+
+    // The Terms may summarise the plans, never restate the normative table —
+    // two tables drift, and the EULA is the one that controls.
+    assert.equal(
+      /\|\s*Plan license\s*\|/i.test(terms),
+      false,
+      'the plan-scope table belongs in docs/eula.mdx only',
+    );
+  });
+
+  it('licenses every access surface in one agreement, not one per surface', () => {
+    const eula = readFileSync(join(root, 'docs/eula.mdx'), 'utf8');
+
+    for (const surface of [
+      /web dashboard/i,
+      /desktop applications?/i,
+      /REST API/i,
+      /MCP server/i,
+      /SDKs? and CLI/i,
+      /embeds? and widgets/i,
+      /alerts, webhooks/i,
+    ]) {
+      assert.match(eula, surface, `EULA must cover ${surface}`);
+    }
+
+    assert.match(
+      eula,
+      /The application binary is licensed to you under AGPL-3\.0-only, not under this Agreement/i,
+      'the desktop section must not claim EULA authority over the AGPL binary',
+    );
+    assert.match(
+      eula,
+      /the same license, not two/i,
+      'desktop and web must be stated as one license',
+    );
+
+    for (const cls of [/R1 — Derived facts and scores/i, /R2 — Structured events/i, /R3 — Headline and snippet/i, /R4 — Full source content/i]) {
+      assert.match(eula, cls, `EULA output-rights schedule must define ${cls}`);
+    }
+    assert.match(eula, /Retention and caching are granted, not merely tolerated/i);
   });
 
   it('keeps hosted-service attribution guidance consistent across legal and pricing docs', () => {
     const documents = [
       {
-        relativePath: 'docs/terms.mdx',
+        relativePath: 'docs/eula.mdx',
         sourceNoticePattern: /must still preserve any source-specific citation/i,
       },
       {

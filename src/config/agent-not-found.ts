@@ -42,6 +42,8 @@ export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
   '/developers',
   '/docs',
   '/embed',
+  '/end-user-license-agreement',
+  '/eula',
   '/favico',
   '/help',
   '/legal',
