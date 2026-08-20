@@ -1341,7 +1341,19 @@ describe('collector latch release is module-owned (#6288)', () => {
   // already excludes 500/502/503/504 for.
   it('classifies a raced-out write distinctly from an honored abort', { timeout: 10_000 }, async () => {
     const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    const documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
+    const originalNow = Date.now;
+    let now = 1_000;
     Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    Object.defineProperty(globalThis, 'document', {
+      configurable: true,
+      value: {
+        visibilityState: 'hidden',
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      },
+    });
+    Date.now = () => now;
     const fakeTimers = installFakeTimers();
     const originalWarn = console.warn;
     // This object is the SAME one that rides into Sentry as `extra`, so
@@ -1362,6 +1374,7 @@ describe('collector latch release is module-owned (#6288)', () => {
 
       const latchDeadline = findLatchDeadline(fakeTimers.timers);
       assert.ok(latchDeadline, 'the module must own a latch deadline');
+      now = 26_000;
       latchDeadline.callback();
 
       const error = await parked.then(() => null, (reason: unknown) => reason);
@@ -1379,10 +1392,23 @@ describe('collector latch release is module-owned (#6288)', () => {
         + 'needs to know whether the request is still on the wire',
       );
       assert.equal(diagnostics[0]?.failureKind, 'timeout', 'and it stays a timeout, not a new kind');
+      assert.equal(
+        diagnostics[0]?.visibilityAtSend,
+        'hidden',
+        'a hidden-tab send is the WebKit-suspension discriminator #6968 needs',
+      );
+      assert.equal(
+        diagnostics[0]?.elapsedAtDeadlineMs,
+        25_000,
+        'the payload must say how long the browser left the request unsettled',
+      );
     } finally {
+      Date.now = originalNow;
       console.warn = originalWarn;
       fakeTimers.restore();
       if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+      if (documentDescriptor) Object.defineProperty(globalThis, 'document', documentDescriptor);
+      else delete (globalThis as { document?: unknown }).document;
     }
   });
 

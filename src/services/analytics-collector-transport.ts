@@ -245,6 +245,8 @@ type CollectorRequest = {
   requestType: CollectorRequestType;
   eventName?: string;
   critical: boolean;
+  visibilityAtSend?: string;
+  sentAt?: number;
   resolve: (response: Response) => void;
   reject: (error: unknown) => void;
   resolveDelivery: (response: Response) => void;
@@ -664,6 +666,17 @@ function reportCompletedCollectorHealthWindow(): void {
   }
 }
 
+function collectorVisibilityAtSend(): string {
+  try {
+    if (typeof document === 'undefined' || typeof document.visibilityState !== 'string') {
+      return 'unknown';
+    }
+    return document.visibilityState;
+  } catch {
+    return 'unknown';
+  }
+}
+
 function emitCollectorFailureToSentry(
   request: CollectorRequest,
   failure: CollectorFailure,
@@ -777,6 +790,10 @@ function recordCollectorOutcome(request: CollectorRequest, failure: CollectorFai
     // WHY a receiptless 200 happened — otherwise a developer reading devtools
     // during a bot-filtered write starts debugging a write path that is fine.
     botFiltered: failure.botFiltered ?? false,
+    visibilityAtSend: request.visibilityAtSend ?? 'unknown',
+    elapsedAtDeadlineMs: failure.kind === 'timeout' && request.sentAt !== undefined
+      ? Math.max(0, Date.now() - request.sentAt)
+      : null,
     // True means the request is STILL OUTSTANDING — the queue was released
     // without it, so this page is behind a fetch wrapper that ignores aborts.
     raced: failure.raced ?? false,
@@ -992,6 +1009,8 @@ async function runCollectorRequest(request: CollectorRequest, generation: number
     let deadline: Promise<never>;
     collectorDispatchDepth += 1;
     try {
+      request.sentAt = Date.now();
+      request.visibilityAtSend = collectorVisibilityAtSend();
       timeoutBoundInit = withCollectorDeadline(request.init);
       deadline = timeoutBoundInit.deadline;
       responsePromise = request.originalFetch(request.input, timeoutBoundInit.init);
