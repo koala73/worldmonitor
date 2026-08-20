@@ -10,8 +10,6 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import ts from 'typescript';
-
 import {
   publisherFamilyFor,
   publisherNameForFamily,
@@ -97,89 +95,240 @@ function pushUrl(urls, raw) {
   urls.push(raw);
 }
 
-function propertyNameText(name) {
-  if (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) return name.text;
-  return '';
+function sourceParseError(fileName, message) {
+  return new Error(`Cannot parse feed declarations in ${fileName}: ${message}`);
 }
 
-function propertyAssignment(object, name) {
-  return object.properties.find((property) => (
-    ts.isPropertyAssignment(property)
-    && propertyNameText(property.name) === name
-  ));
-}
+function readQuotedString(source, start, fileName) {
+  const quote = source[start];
+  let index = start + 1;
+  let value = '';
+  const escapes = {
+    b: '\b',
+    f: '\f',
+    n: '\n',
+    r: '\r',
+    t: '\t',
+    v: '\v',
+    0: '\0',
+  };
 
-function stringLiteralText(node) {
-  let current = node;
-  while (
-    ts.isParenthesizedExpression(current)
-    || ts.isAsExpression(current)
-    || ts.isTypeAssertionExpression(current)
-    || ts.isSatisfiesExpression(current)
-  ) {
-    current = current.expression;
-  }
-  return ts.isStringLiteralLike(current) ? current.text : null;
-}
-
-function collectFeedUrls(node, urls) {
-  if (ts.isStringLiteralLike(node)) {
-    if (/^https?:\/\//i.test(node.text)) pushUrl(urls, node.text);
-    return;
-  }
-
-  if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-    const helper = node.expression.text;
-    const args = node.arguments.map(stringLiteralText);
-    if (helper === 'rss' || helper === 'railwayRss') {
-      pushUrl(urls, args[0]);
-      return;
+  while (index < source.length) {
+    const char = source[index++];
+    if (char === quote) return { next: index, value };
+    if (char === '\n' || char === '\r') {
+      throw sourceParseError(fileName, 'unterminated string literal');
     }
-    if (helper === 'gn') {
-      if (args[0] !== null) pushUrl(urls, googleNewsUrl(args[0]));
-      return;
+    if (char !== '\\') {
+      value += char;
+      continue;
     }
-    if (helper === 'gnLocale') {
-      if (args.slice(0, 4).every((value) => value !== null)) {
-        pushUrl(urls, googleNewsUrl(args[0], args[1], args[2], args[3]));
+
+    if (index >= source.length) throw sourceParseError(fileName, 'unterminated string escape');
+    const escaped = source[index++];
+    if (escaped === '\n') continue;
+    if (escaped === '\r') {
+      if (source[index] === '\n') index += 1;
+      continue;
+    }
+    if (escaped === 'x') {
+      const hex = source.slice(index, index + 2);
+      if (!/^[0-9a-f]{2}$/i.test(hex)) throw sourceParseError(fileName, 'invalid hexadecimal string escape');
+      value += String.fromCodePoint(Number.parseInt(hex, 16));
+      index += 2;
+      continue;
+    }
+    if (escaped === 'u') {
+      const braced = source[index] === '{';
+      const close = braced ? source.indexOf('}', index + 1) : index + 4;
+      const hex = braced ? source.slice(index + 1, close) : source.slice(index, close);
+      if (close < 0 || !/^[0-9a-f]{1,6}$/i.test(hex)) {
+        throw sourceParseError(fileName, 'invalid Unicode string escape');
       }
-      return;
+      const codePoint = Number.parseInt(hex, 16);
+      if (codePoint > 0x10ffff) throw sourceParseError(fileName, 'Unicode string escape is out of range');
+      value += String.fromCodePoint(codePoint);
+      index = braced ? close + 1 : close;
+      continue;
     }
+    value += escapes[escaped] ?? escaped;
   }
 
-  ts.forEachChild(node, (child) => collectFeedUrls(child, urls));
+  throw sourceParseError(fileName, 'unterminated string literal');
+}
+
+function skipTemplateLiteral(source, start, fileName) {
+  let index = start + 1;
+  while (index < source.length) {
+    const char = source[index++];
+    if (char === '`') return index;
+    if (char === '\\') index += 1;
+  }
+  throw sourceParseError(fileName, 'unterminated template literal');
+}
+
+function tokenizeFeedSource(source, fileName) {
+  const tokens = [];
+  let index = 0;
+  while (index < source.length) {
+    const char = source[index];
+    if (/\s/.test(char)) {
+      index += 1;
+      continue;
+    }
+    if (char === '/' && source[index + 1] === '/') {
+      const newline = source.indexOf('\n', index + 2);
+      index = newline < 0 ? source.length : newline + 1;
+      continue;
+    }
+    if (char === '/' && source[index + 1] === '*') {
+      const close = source.indexOf('*/', index + 2);
+      if (close < 0) throw sourceParseError(fileName, 'unterminated block comment');
+      index = close + 2;
+      continue;
+    }
+    if (char === '\'' || char === '"') {
+      const literal = readQuotedString(source, index, fileName);
+      tokens.push({ type: 'string', value: literal.value });
+      index = literal.next;
+      continue;
+    }
+    if (char === '`') {
+      index = skipTemplateLiteral(source, index, fileName);
+      tokens.push({ type: 'template', value: '' });
+      continue;
+    }
+    if (/[A-Za-z_$]/.test(char)) {
+      let end = index + 1;
+      while (end < source.length && /[A-Za-z0-9_$]/.test(source[end])) end += 1;
+      tokens.push({ type: 'identifier', value: source.slice(index, end) });
+      index = end;
+      continue;
+    }
+    tokens.push({ type: 'punctuation', value: char });
+    index += 1;
+  }
+  return tokens;
+}
+
+function delimiterPairs(tokens, fileName) {
+  const pairs = new Map();
+  const stack = [];
+  const closes = { ')': '(', ']': '[', '}': '{' };
+  for (let index = 0; index < tokens.length; index += 1) {
+    const value = tokens[index].value;
+    if (value === '(' || value === '[' || value === '{') {
+      stack.push({ index, value });
+    } else if (value in closes) {
+      const open = stack.pop();
+      if (!open || open.value !== closes[value]) {
+        throw sourceParseError(fileName, `unmatched ${value}`);
+      }
+      pairs.set(open.index, index);
+    }
+  }
+  if (stack.length > 0) throw sourceParseError(fileName, `unmatched ${stack.at(-1).value}`);
+  return pairs;
+}
+
+function propertyValueRange(tokens, objectStart, objectEnd, name) {
+  const stack = [];
+  let propertyStart = true;
+  for (let index = objectStart + 1; index < objectEnd; index += 1) {
+    const token = tokens[index];
+    const value = token.value;
+    if (value === '(' || value === '[' || value === '{') {
+      stack.push(value);
+      propertyStart = false;
+      continue;
+    }
+    if (value === ')' || value === ']' || value === '}') {
+      stack.pop();
+      continue;
+    }
+    if (stack.length > 0) continue;
+    if (value === ',') {
+      propertyStart = true;
+      continue;
+    }
+    if (!propertyStart) continue;
+    propertyStart = false;
+    if ((token.type === 'identifier' || token.type === 'string') && value === name && tokens[index + 1]?.value === ':') {
+      const start = index + 2;
+      const nested = [];
+      let end = start;
+      for (; end < objectEnd; end += 1) {
+        const current = tokens[end].value;
+        if (current === '(' || current === '[' || current === '{') nested.push(current);
+        else if (current === ')' || current === ']' || current === '}') nested.pop();
+        else if (current === ',' && nested.length === 0) break;
+      }
+      return { end, start };
+    }
+  }
+  return null;
+}
+
+function stringLiteralInRange(tokens, start, end, pairs) {
+  while (tokens[start]?.value === '(' && pairs.get(start) === end - 1) {
+    start += 1;
+    end -= 1;
+  }
+  return tokens[start]?.type === 'string' ? tokens[start].value : null;
+}
+
+function callArguments(tokens, open, close) {
+  const ranges = [];
+  const stack = [];
+  let start = open + 1;
+  for (let index = start; index < close; index += 1) {
+    const value = tokens[index].value;
+    if (value === '(' || value === '[' || value === '{') stack.push(value);
+    else if (value === ')' || value === ']' || value === '}') stack.pop();
+    else if (value === ',' && stack.length === 0) {
+      ranges.push({ end: index, start });
+      start = index + 1;
+    }
+  }
+  if (start < close) ranges.push({ end: close, start });
+  return ranges;
+}
+
+function collectFeedUrls(tokens, start, end, pairs, urls) {
+  for (let index = start; index < end; index += 1) {
+    const token = tokens[index];
+    if (token.type === 'string' && /^https?:\/\//i.test(token.value)) pushUrl(urls, token.value);
+    if (token.type !== 'identifier' || !['rss', 'railwayRss', 'gn', 'gnLocale'].includes(token.value)) continue;
+    const open = index + 1;
+    const close = pairs.get(open);
+    if (tokens[open]?.value !== '(' || close === undefined || close >= end) continue;
+    const args = callArguments(tokens, open, close)
+      .map((range) => stringLiteralInRange(tokens, range.start, range.end, pairs));
+    if (token.value === 'rss' || token.value === 'railwayRss') pushUrl(urls, args[0]);
+    else if (token.value === 'gn' && args[0] !== null) pushUrl(urls, googleNewsUrl(args[0]));
+    else if (token.value === 'gnLocale' && args.slice(0, 4).every((value) => value !== null)) {
+      pushUrl(urls, googleNewsUrl(args[0], args[1], args[2], args[3]));
+    }
+    index = close;
+  }
 }
 
 function parseFeedDeclarationSource(source, fileName) {
-  const sourceFile = ts.createSourceFile(
-    fileName,
-    source,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
-  const parseErrors = sourceFile.parseDiagnostics || [];
-  if (parseErrors.length > 0) {
-    const detail = ts.flattenDiagnosticMessageText(parseErrors[0].messageText, ' ');
-    throw new Error(`Cannot parse feed declarations in ${fileName}: ${detail}`);
-  }
-
+  const tokens = tokenizeFeedSource(source, fileName);
+  const pairs = delimiterPairs(tokens, fileName);
   const declarations = [];
-  const visit = (node) => {
-    if (ts.isObjectLiteralExpression(node)) {
-      const nameProperty = propertyAssignment(node, 'name');
-      const urlProperty = propertyAssignment(node, 'url');
-      const name = nameProperty ? stringLiteralText(nameProperty.initializer) : null;
-      if (name && urlProperty) {
-        const urls = [];
-        collectFeedUrls(urlProperty.initializer, urls);
-        for (const url of urls) declarations.push(classifyFeedDeclaration(name, url));
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sourceFile);
-
+  for (let objectStart = 0; objectStart < tokens.length; objectStart += 1) {
+    if (tokens[objectStart].value !== '{') continue;
+    const objectEnd = pairs.get(objectStart);
+    const nameRange = propertyValueRange(tokens, objectStart, objectEnd, 'name');
+    const urlRange = propertyValueRange(tokens, objectStart, objectEnd, 'url');
+    if (!nameRange || !urlRange) continue;
+    const name = stringLiteralInRange(tokens, nameRange.start, nameRange.end, pairs);
+    if (!name) continue;
+    const urls = [];
+    collectFeedUrls(tokens, urlRange.start, urlRange.end, pairs, urls);
+    for (const url of urls) declarations.push(classifyFeedDeclaration(name, url));
+  }
   return declarations;
 }
 

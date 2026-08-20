@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import test from 'node:test';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   attachCoverageToCatalog,
@@ -79,6 +80,48 @@ test('multiline feed declarations retain their publisher identity', () => {
     assert.equal(declarations[0].name, 'Fast Company');
     assert.equal(declarations[0].publisher, 'Fast Company');
     assert.equal(declarations[0].url, 'https://feeds.feedburner.com/fastcompany/headlines');
+  } finally {
+    rmSync(fixtureRoot, { recursive: true, force: true });
+  }
+});
+
+test('feed declaration parsing works in the dependency-free docs-stats checkout', () => {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), 'source-catalog-bare-node-'));
+  try {
+    for (const relativePath of [
+      'scripts/source-catalog-identity.mjs',
+      'scripts/source-origin.mjs',
+      'shared/publisher-families.js',
+    ]) {
+      const destination = join(fixtureRoot, relativePath);
+      mkdirSync(dirname(destination), { recursive: true });
+      copyFileSync(join(rootDir, relativePath), destination);
+    }
+    const configDir = join(fixtureRoot, 'src/config');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(fixtureRoot, 'package.json'), '{"type":"module"}\n');
+    writeFileSync(join(configDir, 'feeds.ts'), `
+      export const feeds = [{
+        name: 'Fast Company',
+        url: rss('https://feeds.feedburner.com/fastcompany/headlines'),
+      }];
+    `);
+
+    const moduleUrl = pathToFileURL(join(fixtureRoot, 'scripts/source-catalog-identity.mjs')).href;
+    const probe = `
+      import { scanNamedFeedDeclarations } from ${JSON.stringify(moduleUrl)};
+      const declarations = scanNamedFeedDeclarations(${JSON.stringify(fixtureRoot)});
+      console.log(JSON.stringify(declarations.map(({ name, url }) => ({ name, url }))));
+    `;
+    const result = spawnSync(process.execPath, ['--input-type=module', '--eval', probe], {
+      cwd: fixtureRoot,
+      encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), [{
+      name: 'Fast Company',
+      url: 'https://feeds.feedburner.com/fastcompany/headlines',
+    }]);
   } finally {
     rmSync(fixtureRoot, { recursive: true, force: true });
   }
