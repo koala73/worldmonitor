@@ -63,9 +63,9 @@ export const LEGAL_FOOTER_LINKS: ReadonlyArray<{ label: string; path: string }> 
  * whitespace collapsed, so editorial notes do not force a version bump.
  */
 export const LEGAL_DOCUMENT_DIGESTS: Readonly<Record<string, string>> = {
-  'docs/eula.mdx': '96616b3efd8ed5730793dd53a927c0235ccf3032a9ec8838c7e0220f211cb9c6',
-  'docs/terms.mdx': '8dc9210c3c4be829edc9a69dd3aea528386d56050fe2f5a06e9fb44738a3d20c',
-  'docs/privacy.mdx': '108e6580e3e3d6ec69b9e70dbe58e1fb5d70c1be155a5cc948f9c464c329750c',
+  'docs/eula.mdx': '88f4cc28449e3c17f7ec81736b54701ec175b18997c2717f9fe10c256ad97ef9',
+  'docs/terms.mdx': 'dff3724f7cfa83cc44552d7626f6a71b011e90961c2cf8cdfc1e9dc85d6a84b2',
+  'docs/privacy.mdx': '00759cc6936fc237ca69e1e49a78e6decc6b3dda5b11cda880d6b7cd9d5ba4f6',
 };
 
 /** Where the text behind any recorded version can be read back. */

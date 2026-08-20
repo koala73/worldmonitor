@@ -28,6 +28,42 @@ const visible = (mdx: string) =>
 const eula = visible(read('docs/eula.mdx'));
 const terms = visible(read('docs/terms.mdx'));
 
+/**
+ * One counterparty, named the same way everywhere.
+ *
+ * The review's first P0 was that no document named a legal entity — you cannot
+ * sign, serve notice on, or sue a description. Now that the party is
+ * "World Monitor FZ LLC", the failure mode moves: one document gets updated and
+ * the others keep describing an unnamed operator, so a buyer's counsel finds
+ * two different counterparties across the agreement they are accepting.
+ */
+describe('every document names the same legal entity', () => {
+  const LEGAL_NAME = /World Monitor FZ LLC/;
+
+  for (const [label, path] of [
+    ['Terms', 'docs/terms.mdx'],
+    ['EULA', 'docs/eula.mdx'],
+    ['Privacy Policy', 'docs/privacy.mdx'],
+    ['Terms (zh)', 'docs/zh/terms.mdx'],
+    ['EULA (zh)', 'docs/zh/eula.mdx'],
+    ['Privacy Policy (zh)', 'docs/zh/privacy.mdx'],
+  ]) {
+    it(`${label} names the entity`, () => {
+      assert.match(visible(read(path)), LEGAL_NAME, `${path} must name the contracting party, not describe it`);
+    });
+  }
+
+  it('no document still describes the party without naming it', () => {
+    for (const path of ['docs/terms.mdx', 'docs/eula.mdx', 'docs/privacy.mdx']) {
+      assert.doesNotMatch(
+        visible(read(path)),
+        /World Monitor, based in the United Arab Emirates/,
+        `${path} still carries the pre-entity wording`,
+      );
+    }
+  });
+});
+
 describe('the compliance carve-out exists wherever the prohibition does', () => {
   // We publish OFAC SDN data and live aircraft tracking. Sanctions screening is
   // a rights-affecting decision about a named individual, so a flat prohibition
