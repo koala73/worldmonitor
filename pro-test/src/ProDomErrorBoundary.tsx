@@ -30,6 +30,7 @@ export class ProDomErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
+    if (!isRemoveChildError(error)) return;
     Sentry.captureException(error, {
       tags: { surface: 'pro-marketing', component: 'pro-dom-error-boundary' },
       extra: { componentStack: info.componentStack },

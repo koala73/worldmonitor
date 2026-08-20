@@ -1,11 +1,16 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
+import * as Sentry from '@sentry/react';
 import App, { renderTurnstileWidgets } from './App.tsx';
 import { ProDomErrorBoundary } from './ProDomErrorBoundary.tsx';
 import { ensureTurnstileScript } from './turnstile';
 import { initI18n } from './i18n';
 import { initSentry } from './sentry';
 import { initDebugBearRum } from './debugbear-rum';
+import {
+  installDetachedNodeGuards,
+  protectReactRootFromTranslators,
+} from './services/clerk-dom-safety';
 import { trackContentHandoff } from './services/checkout';
 import { captureContentAttributionFromUrl } from '../../shared/content-attribution';
 import './index.css';
@@ -16,8 +21,20 @@ if (capturedContentAttribution) trackContentHandoff();
 initSentry();
 initDebugBearRum();
 
+const rootElement = document.getElementById('root')!;
+protectReactRootFromTranslators(rootElement);
+let recoveredDetachedNode = false;
+installDetachedNodeGuards(undefined, (operation) => {
+  if (recoveredDetachedNode) return;
+  recoveredDetachedNode = true;
+  Sentry.captureMessage('pro.removeChild.recovered', {
+    level: 'info',
+    tags: { surface: 'pro-marketing', recoveredOperation: operation },
+  });
+});
+
 initI18n().then(() => {
-  createRoot(document.getElementById('root')!).render(
+  createRoot(rootElement).render(
     <StrictMode>
       <ProDomErrorBoundary>
         <App />

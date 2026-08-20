@@ -34,6 +34,8 @@ export function initSentry(): void {
         location,
         servedLanguage,
         applicationLanguage: currentLanguageBase(),
+        browserLanguage: navigator.language,
+        browserLanguages: [...navigator.languages],
       }));
     },
   });
