@@ -317,12 +317,23 @@ test('registers the province seeder in the Canada bundle without touching roads 
   assert.match(union, /alerts:canada:saskalert:v1/);
   assert.match(seeder, /publishTransform: saskAlertPublishTransform/);
   assert.match(seeder, /CANADA_ALERT_UNION_REBUILD_FAILED/);
+  // Both sibling acks were pruned on 2026-08-20 once the probes published, so
+  // assert the pairing directionally: #6659 was allowed to own four rows only
+  // because they share ONE first-Railway-tick anchor, and re-adding one sibling
+  // without the other would quietly break that justification.
   const baseline = JSON.parse(readFileSync(join(root, 'scripts/seed-freshness-baseline.json'), 'utf8'));
   const sk = baseline.acknowledged.find((entry) => entry.name === 'canadaAlertsSkSource');
   const ab = baseline.acknowledged.find((entry) => entry.name === 'canadaAlertsAbSource');
-  assert.equal(sk.status, 'STALE_SEED');
-  assert.equal(sk.expiresAt, ab.expiresAt);
-  assert.equal(sk.cutover.firstScheduledRunAt, ab.cutover.firstScheduledRunAt);
+  assert.equal(
+    Boolean(sk),
+    Boolean(ab),
+    'the SaskAlert and Alberta sibling acknowledgements live and die together',
+  );
+  if (sk && ab) {
+    assert.equal(sk.status, 'STALE_SEED');
+    assert.equal(sk.expiresAt, ab.expiresAt);
+    assert.equal(sk.cutover.firstScheduledRunAt, ab.cutover.firstScheduledRunAt);
+  }
 });
 
 test('parses the live feed and CAP shapes used by the fixtures', () => {

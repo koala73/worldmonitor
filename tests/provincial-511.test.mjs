@@ -794,14 +794,31 @@ test('Manitoba partial poll must not replace last-good or flip health green', as
   );
 });
 
-test('manitobaRoads EMPTY cutover is acknowledged until the first Canada bundle tick', () => {
+test('manitobaRoads publishes, so its cutover acknowledgement is gone and the probe wiring is what stays pinned', () => {
+  // The #6622 ack was pruned on 2026-08-20: the live monitor reported
+  // manitobaRoads:EMPTY as "no longer reported", and the entry had already
+  // passed its own expiresAt. Asserting ABSENCE is what stops it being
+  // reinstated — an acknowledgement that outlives its problem silently absorbs
+  // the NEXT outage of the same probe.
   const baseline = JSON.parse(readFileSync(new URL('../scripts/seed-freshness-baseline.json', import.meta.url), 'utf8'));
-  const ack = baseline.acknowledged.find((row) => row.name === 'manitobaRoads');
-  assert.ok(ack, 'new manitobaRoads probe needs an expiring acknowledgement until first Railway tick');
-  assert.equal(ack.status, 'EMPTY');
-  assert.equal(ack.issue, 6622);
-  assert.equal(ack.cutover?.probeKey, 'seed-meta:infra:manitoba-511');
-  assert.equal(ack.expiresAt, ack.cutover?.firstScheduledRunAt);
+  assert.equal(
+    baseline.acknowledged.some((row) => row.name === 'manitobaRoads'),
+    false,
+    'manitobaRoads publishes; do not suppress a future recurrence',
+  );
+
+  // What the ack was pinning as a side effect, and the only reason its
+  // probeKey was ever worth asserting: health must watch the exact seed-meta
+  // key the seeder writes. runSeed derives `seed-meta:${domain}:${resource}`,
+  // and the colon-vs-hyphen slip (#6623) points a probe at a key nothing ever
+  // writes — which reads as a permanently EMPTY source, the very state the ack
+  // was suppressing. Without this the removal takes the check with it.
+  const seeder = readFileSync(new URL('../scripts/seed-provincial-511.mjs', import.meta.url), 'utf8');
+  const health = readFileSync(new URL('../api/health.js', import.meta.url), 'utf8');
+  assert.match(seeder, /MANITOBA_META_KEY = 'seed-meta:infra:manitoba-511'/);
+  assert.match(seeder, /MANITOBA_KEY = 'infra:manitoba-511:v1'/);
+  assert.match(health, /manitobaRoads:\s*\{\s*\n\s*key: 'seed-meta:infra:manitoba-511'/);
+  assert.match(health, /manitobaRoads:\s+'infra:manitoba-511:v1'/);
 });
 
 test('seeder fixtures and adapter never embed a Manitoba credential', () => {
