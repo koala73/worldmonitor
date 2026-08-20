@@ -216,6 +216,10 @@ describe('Enterprise protections are not bundled into self-serve', () => {
     ['a mutual confidentiality agreement', /^## Confidentiality/m],
     ['a guaranteed cure period', /\b10 days to put it right\b/i],
     ['a cap on the customer\'s own liability', /Your liability to us.{0,40}capped/i],
+    // Decided, not omitted: arbitration and class-action waivers are Enterprise
+    // terms. The reference ToU template makes its arbitration clause the
+    // headline, so the absence here has to be deliberate and stay deliberate.
+    ['an arbitration or class-action waiver', /\b(binding arbitration|class action waiver|class-action waiver|jury trial)\b/i],
   ];
 
   for (const [what, pattern] of NOT_IN_SELF_SERVE) {
@@ -238,6 +242,7 @@ describe('Enterprise protections are not bundled into self-serve', () => {
       /service-level commitment/i,
       /data processing agreement/i,
       /negotiated liability cap/i,
+      /dispute-resolution procedure/i,
     ]) {
       assert.match(section, offer, `Enterprise terms must name ${offer} as something the tier adds`);
     }
