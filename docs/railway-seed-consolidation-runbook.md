@@ -1020,24 +1020,24 @@ only its prior section and its original fetch timestamp. The 20-day eligibility
 window keeps the 30-day data TTL alive while the observation-year content clock
 detects old source material.
 
-### Bundle 3 heavy: seed-bundle-static-ref-heavy (planned, #6806)
+### Bundle 3 heavy: seed-bundle-static-ref-heavy (live, #6806)
 
 Arms-Suppliers (460s worst case) and Military-Bases (410s) cannot share a 570s
 tick — Railway kills a cron container at 10 minutes, so that ceiling is not
 negotiable. They CAN share a bundle: the runner defers whichever loses the tick
 to the next daily fire, and at 10-day and 30-day cadences a one-day deferral
 costs nothing. One service carries all three heavy members instead of three
-1-section services, because Railway caps a project at 100 and the fleet is at 81.
+1-section services, because Railway caps a project at 100 and the fleet is at 82.
 
 | Setting | Value |
 |---|---|
 | **Service name** | `seed-bundle-static-ref-heavy` |
 | **Start command** | `node scripts/seed-bundle-static-ref-heavy.mjs` |
 | **Cron schedule** | `0 4 * * *` (daily 04:00 UTC, staggered off leftover's 03:00) |
-| **Lifecycle** | `planned` until provisioned |
-| **Members** | Mineral-Production (180s / 60d), Arms-Suppliers (450s / 10d), Military-Bases (400s / 30d) |
+| **Lifecycle** | active — service `6285c37b-1327-46f1-bfd0-7454612764fb`, provisioned 2026-08-19, first tick published `bundle:heartbeat:static-ref-heavy` at 2026-08-20T04:01:04Z |
+| **Members** | Mineral-Production (180s / 60d), Arms-Suppliers (370s / 14d), Military-Bases (400s / 30d) |
 | **Wall-time budget** | `maxBundleMs: 570_000` |
-| **Required variable** | none (`USPTO_API_KEY` stays on leftover; R2 vars are project-level, confirm at provision) |
+| **Required variable** | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `CLOUDFLARE_R2_ACCOUNT_ID` and one of `CLOUDFLARE_R2_TOKEN` / `CLOUDFLARE_API_TOKEN`. `USPTO_API_KEY` stays on leftover. The R2 pair is NOT optional here: `scripts/data/military-bases-final.json` is gitignored and the service has no volume, so without it Military-Bases falls back to the published version and exits non-zero once that is past its 30-day interval (#6845). |
 | **Heartbeat** | `bundle:heartbeat:static-ref-heavy` |
 
 **The lead slot rotates by day and that is load-bearing.** A member that never
@@ -1055,10 +1055,19 @@ device for the same reason.
 Start commands in this table keep the `scripts/` prefix so they match the other
 bundle rows and the registry-coverage grep. Railway's actual start command is
 `node seed-bundle-static-ref-heavy.mjs` because `deployMode:
-nixpacks-root-scripts` sets `rootDirectory` to `scripts/`. Clone
-`seed-bundle-static-ref`; do not reuse service id
+nixpacks-root-scripts` sets `rootDirectory` to `scripts/`. It was cloned from
+`seed-bundle-static-ref` and carries its own service id
+`6285c37b-1327-46f1-bfd0-7454612764fb`, not leftover's
 `4dd3934d-e5f7-4af8-b34b-c1796226800b`. The 04:00 stagger is intentional — a
 400s job at 03:00 would contend Redis / R2 / upstreams with leftover.
+
+Provisioning a repository-backed service is only half the job: it must also be
+enrolled in `scripts/railway-native-autodeploy-fleet.json` and lose its
+`lifecycle: planned` row, or `Railway Native Deploy Health` fails closed with
+`unexpected repository service(s)` and stops checking the whole fleet. Set
+`source.checkSuites` to `false` at the same time — a clone inherits Railway's
+`true` default, and wait-for-CI reads the head commit's entire check suite, so
+any red check anywhere strands this service's builds.
 
 ### Bundle 4: seed-bundle-resilience
 

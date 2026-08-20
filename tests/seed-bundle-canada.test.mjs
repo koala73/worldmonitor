@@ -87,19 +87,33 @@ test('Manitoba cutover acknowledgement reaches the first eligible Provincial-511
   assert.equal(service?.cronSchedule, '*/5 * * * *');
   const cronIntervalMs = 5 * MIN;
 
-  const manitoba = ACCEPTANCE_BASELINE.acknowledged.find((entry) => entry.name === 'manitobaRoads');
-  assert.ok(manitoba, 'manitobaRoads stays acknowledged until its first eligible bundle admission');
-  const activatedAt = Date.parse(manitoba.cutover?.activatedAt);
-  const firstScheduledRunAt = Date.parse(manitoba.cutover?.firstScheduledRunAt);
+  // The ack itself is gone — manitobaRoads publishes and #6622 was pruned on
+  // 2026-08-20. The ARITHMETIC it encoded is not gone, and it is the part worth
+  // keeping: a cutover window for this member must clear the runner's
+  // 0.8-interval freshness gate, so it spans the */5 ticks the gate skips.
+  // Pinned unconditionally against the live interval, ratio and cron so it
+  // still fails when any of the three moves — a bare `if (ack)` guard here
+  // would be an assertion that can no longer run.
   const firstEligibleDelayMs = Math.ceil((intervalMs * freshnessRatio) / cronIntervalMs) * cronIntervalMs;
-
   assert.equal(
-    firstScheduledRunAt,
-    activatedAt + firstEligibleDelayMs,
-    'the cutover must include */5 ticks skipped by the runner\'s 0.8-interval freshness gate',
+    firstEligibleDelayMs,
+    15 * MIN,
+    'the first eligible Provincial-511 admission must still be three */5 ticks out',
   );
-  assert.equal(Date.parse(manitoba.expiresAt), firstScheduledRunAt);
-  assert.equal(manitoba.cutover?.firstScheduledRunAt, '2026-08-19T12:15:00.000Z');
+
+  // Directional: no ack is required now, but one added later must span exactly
+  // that window rather than expiring on the activation tick.
+  const manitoba = ACCEPTANCE_BASELINE.acknowledged.find((entry) => entry.name === 'manitobaRoads');
+  if (manitoba) {
+    const activatedAt = Date.parse(manitoba.cutover?.activatedAt);
+    const firstScheduledRunAt = Date.parse(manitoba.cutover?.firstScheduledRunAt);
+    assert.equal(
+      firstScheduledRunAt,
+      activatedAt + firstEligibleDelayMs,
+      'the cutover must include */5 ticks skipped by the runner\'s 0.8-interval freshness gate',
+    );
+    assert.equal(Date.parse(manitoba.expiresAt), firstScheduledRunAt);
+  }
 });
 
 test('seed-meta keys follow runSeed(domain, resource), not the canonical key', () => {
