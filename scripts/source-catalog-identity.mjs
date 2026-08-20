@@ -287,7 +287,9 @@ export function attachCoverageToCatalog(catalog, declarations, geography) {
     const covered = new Set(provider.coveredCountries || []);
     const transports = new Set(provider.transportHosts || []);
     for (const value of coverageByPublisher.get(provider.provider) || []) covered.add(value);
+    for (const value of coverageByPublisher.get(provider.displayName) || []) covered.add(value);
     for (const value of transportsByPublisher.get(provider.provider) || []) transports.add(value);
+    for (const value of transportsByPublisher.get(provider.displayName) || []) transports.add(value);
     for (const host of provider.hosts || []) {
       for (const value of coverageByHost.get(host) || []) covered.add(value);
       for (const value of transportsByHost.get(host) || []) transports.add(value);

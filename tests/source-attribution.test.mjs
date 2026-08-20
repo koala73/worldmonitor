@@ -326,7 +326,12 @@ test('the independent raw-manifest oracle catches an active-predicate mutation',
   try {
     writeFileSync(
       mutantPath,
-      source.replace(originalPredicate, "return entry?.observed === true && entry.status === 'excluded';"),
+      source
+        .replace(
+          "from './source-catalog-identity.mjs'",
+          `from ${JSON.stringify(pathToFileURL(join(rootDir, 'scripts/source-catalog-identity.mjs')).href)}`,
+        )
+        .replace(originalPredicate, "return entry?.observed === true && entry.status === 'excluded';"),
     );
     const mutant = await import(`${pathToFileURL(mutantPath).href}?test=${Date.now()}`);
     const manifest = loadManifest(rootDir);
