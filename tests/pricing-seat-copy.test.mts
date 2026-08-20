@@ -34,7 +34,7 @@ const SEAT_STATEMENT = /\b(\d+)\s+(named users?|licensed users?|Pro licenses?|se
 const SEATED_TIERS = [
   { planKey: 'pro_monthly', localeKey: 'pro', seats: 1, eula: /Personal license \(Pro\)[\s\S]*?One named subscriber/ },
   { planKey: 'pro_business_monthly', localeKey: 'proBusiness', seats: 1, eula: /Commercial license \(Pro Business\)[\s\S]*?One named subscriber/ },
-  { planKey: 'api_business', localeKey: 'apiBusiness', seats: 5, eula: /five included Pro Business seats/ },
+  { planKey: 'api_business', localeKey: 'apiBusiness', seats: 5, eula: /five included seats give named users at the same organization/ },
 ];
 
 function catalogCopy(planKey: string): string {
@@ -46,7 +46,9 @@ function catalogCopy(planKey: string): string {
 }
 
 describe('a seated plan says how many seats it has', () => {
-  const eula = read('docs/eula.mdx');
+  // Comments stripped: a REVIEW note is not a term, and matching one is how a
+// guard passes against a document that does not say what it claims.
+const eula = read('docs/eula.mdx').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
   const en = JSON.parse(read('pro-test/src/locales/en.json'));
 
   for (const { planKey, localeKey, seats, eula: eulaPattern } of SEATED_TIERS) {
@@ -75,6 +77,35 @@ describe('a seated plan says how many seats it has', () => {
       assert.equal(Number(match[1]), seats, `${localeKey} card states ${match[1]} seats, licence says ${seats}`);
     });
   }
+
+  it('the licence describes the seats we actually sell, not ones we do not', () => {
+    // A review recommended renaming API Business's bundled seats to "Pro
+    // Business seats" because a Personal licence cannot cover company work.
+    // Implementing that in the EULA alone described a product nobody sells —
+    // the catalog and every card say "5 Pro licenses included". The licence
+    // resolves the scope wrinkle instead: bundled seats carry the plan's
+    // commercial scope. This fails if the legal text drifts back to inventing
+    // a SKU.
+    const catalogText = read('convex/config/productCatalog.ts');
+    assert.match(catalogText, /"5 Pro licenses included"/, 'the shipped bundle is Pro licences');
+    assert.doesNotMatch(
+      eula,
+      /Pro Business seats/,
+      'the EULA names a seat product the catalog does not sell',
+    );
+    assert.match(
+      eula,
+      /commercial scope rather than the Personal licence/i,
+      'the EULA must resolve the scope of the bundled seats without inventing a SKU',
+    );
+  });
+
+  it('API Starter is stated as having no dashboard seat', () => {
+    // The most common pre-sales question, and it has a real answer: none.
+    // Leaving it unstated is what made it a question.
+    assert.match(eula, /includes no World Monitor dashboard seat/i);
+    assert.match(read('docs/terms.mdx'), /API Starter is an API plan: it includes \*\*no dashboard seat\*\*/i);
+  });
 
   it('no single-seat tier is sold under plural-user copy', () => {
     // "teams" over a column whose first card is one seat is the invitation
