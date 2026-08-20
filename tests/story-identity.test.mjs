@@ -464,6 +464,116 @@ describe('cross-cycle canonical adoption (#4924 external review P1)', () => {
   });
 });
 
+describe('adopt-existing-track canonical (#4925 item 1)', () => {
+  it('REGRESSION: a backdated hostile wording cannot seize a live story identity', async () => {
+    // The genuine story, seen first. Its canonical anchors a story:track row
+    // whose firstSeen the digest HSETNXd at that moment.
+    const genuine = { title: 'Iran threatens to close Strait of Hormuz', source: 'Reuters', publishedAt: 5_000 };
+    const genuineIdentity = [...(await assignStoryIdentity([genuine], normalizeBasic, sha256HexNode)).values()][0];
+    const genuineHash = genuineIdentity.titleHash;
+
+    // The hostile feed backdates INSIDE the freshness window, so it wins the
+    // publishedAt comparison that picks the batch-derived canonical, and it
+    // publishes two wordings so its own alias rows out-number the genuine
+    // story's single one.
+    const hostileA = { title: 'Iran threatens to close the Strait of Hormuz soon', source: 'Farm A', publishedAt: 1_000 };
+    const hostileB = { title: 'Iran threatens to close Strait of Hormuz shortly', source: 'Farm B', publishedAt: 2_000 };
+    const batch = await assignStoryIdentity([genuine, hostileA, hostileB], normalizeBasic, sha256HexNode);
+    const clustered = batch.get(genuine);
+    assert.equal(clustered.titleHash, batch.get(hostileA).titleHash, 'all three wordings must land in one cluster');
+    assert.equal(clustered.titleHash, batch.get(hostileB).titleHash, 'all three wordings must land in one cluster');
+    const hostileHashA = await sha256HexNode(normalizeBasic(hostileA.title));
+    const hostileHashB = await sha256HexNode(normalizeBasic(hostileB.title));
+    assert.equal(clustered.titleHash, hostileHashA, 'backdating does win the batch-derived default');
+
+    // The alias vote is most-common-wins, so two hostile wordings out-vote the
+    // genuine story and absorb its track: phase re-fires, counts reset.
+    const hostileCanonical = 'hostile-canonical-hash';
+    const aliasMap = new Map([
+      [genuineHash, genuineHash],
+      [hostileHashA, hostileCanonical],
+      [hostileHashB, hostileCanonical],
+    ]);
+    assert.equal(
+      adoptExistingCanonical(clustered.memberTitleHashes, clustered.titleHash, aliasMap),
+      hostileCanonical,
+      'alias-only adoption hands the cluster to the hostile canonical',
+    );
+
+    // firstSeen is not publisher-controlled: the digest HSETNXs it when it
+    // first observes the hash. The genuine story was seen first, so its track
+    // is older and the cluster keeps its identity.
+    const trackFirstSeen = new Map([
+      [genuineHash, 1_000_000],
+      [hostileHashA, 9_000_000],
+      [hostileHashB, 9_000_001],
+    ]);
+    assert.equal(
+      adoptExistingCanonical(clustered.memberTitleHashes, clustered.titleHash, aliasMap, trackFirstSeen),
+      genuineHash,
+      'the oldest live story:track row must win over both the backdated default and the alias vote',
+    );
+  });
+
+  it('precedence: oldest live track, then most-common alias, then the batch default', () => {
+    const members = ['m1', 'm2', 'm3'];
+    const aliasMap = new Map([['m1', 'alias-target'], ['m2', 'alias-target'], ['m3', 'other']]);
+
+    // 1. A live track outranks the alias vote even when the alias vote is
+    //    unanimous, because only firstSeen is beyond a feed's reach.
+    assert.equal(
+      adoptExistingCanonical(members, 'default', aliasMap, new Map([['m3', 500]])),
+      'm3',
+    );
+    // 2. No track row -> the #4924 alias vote is unchanged.
+    assert.equal(adoptExistingCanonical(members, 'default', aliasMap, new Map()), 'alias-target');
+    // 3. Neither -> the batch-derived canonical, as before.
+    assert.equal(adoptExistingCanonical(members, 'default', new Map(), new Map()), 'default');
+    // 4. Omitting the argument entirely keeps the pre-#4925 behaviour, so the
+    //    17 existing three-argument call sites are unaffected.
+    assert.equal(adoptExistingCanonical(members, 'default', aliasMap), 'alias-target');
+  });
+
+  it('track adoption is deterministic and ignores unusable stamps', () => {
+    const members = ['m1', 'm2', 'm3'];
+    assert.equal(
+      adoptExistingCanonical(members, 'default', new Map(), new Map([['m1', 900], ['m2', 100], ['m3', 400]])),
+      'm2',
+      'oldest firstSeen wins',
+    );
+    assert.equal(
+      adoptExistingCanonical(members, 'default', new Map(), new Map([['m3', 100], ['m1', 100]])),
+      'm1',
+      'equal firstSeen ties break to the lexicographically smallest hash',
+    );
+    assert.equal(
+      adoptExistingCanonical(members, 'default', new Map(), { m2: 250 }),
+      'm2',
+      'a plain object is accepted, matching the alias parameter',
+    );
+    for (const unusable of [Number.NaN, Infinity, null, undefined, '100']) {
+      assert.equal(
+        adoptExistingCanonical(members, 'default', new Map(), new Map([['m1', unusable]])),
+        'default',
+        `an unusable firstSeen (${String(unusable)}) must not anchor the story`,
+      );
+    }
+  });
+
+  it('a canonical absent from the batch still needs the alias vote', () => {
+    // Rule 1 reads story:track rows keyed by MEMBER hashes. A canonical that
+    // dropped out of the batch is not a member, so it has no row to find here
+    // — which is exactly the #4924 case the alias vote exists for. The two
+    // rules cover different gaps; neither replaces the other.
+    const members = ['m1', 'm2'];
+    const aliasMap = new Map([['m1', 'absent-canonical'], ['m2', 'absent-canonical']]);
+    assert.equal(
+      adoptExistingCanonical(members, 'default', aliasMap, new Map([['nobody', 1]])),
+      'absent-canonical',
+    );
+  });
+});
+
 describe('story key TTL ordering (#4924 external review P2)', () => {
   it('EXPIRE for sources/peak keys is queued with the per-member creating writes, never before them', () => {
     const src = readFileSync(
@@ -480,7 +590,36 @@ describe('story key TTL ordering (#4924 external review P2)', () => {
     assert.ok(memberBlock.includes("['EXPIRE', sourcesKey") && memberBlock.includes("['EXPIRE', peakKey"),
       'both EXPIREs must follow the creating SADD/ZADD in the per-member block');
     assert.match(src, /STORY_ALIAS_KEY\(memberHash\), hash, 'EX', ttl/, 'alias rows persisted with story TTL');
-    assert.match(src, /adoptExistingCanonical\(identity\.memberTitleHashes, identity\.titleHash, aliasTargetByHash\)/,
-      'digest must adopt live canonicals before assigning hashes');
+    assert.match(
+      src,
+      /adoptExistingCanonical\(\s*identity\.memberTitleHashes,\s*identity\.titleHash,\s*aliasTargetByHash,\s*trackFirstSeenByHash,\s*\)/,
+      'digest must adopt live canonicals from alias targets AND story:track first-seen stamps (#4925 item 1) before assigning hashes',
+    );
+    // #4925 item 1: a member hash's alias row and its track row must be read
+    // in the SAME pipeline call, or a cluster can decide from two Redis states
+    // observed at different moments.
+    assert.match(
+      src,
+      /runRedisPipeline\(\[\s*\.\.\.chunk\.map\(\(h\) => \['GET', STORY_ALIAS_KEY\(h\)\]\),\s*\.\.\.chunk\.map\(\(h\) => \['HMGET', STORY_TRACK_KEY\(h\), 'firstSeen', 'lastSeen'\]\),\s*\]\)/,
+      'alias and story:track reads for a hash must share one pipeline call',
+    );
+    // ...and that call must stay bounded: two commands per hash means the hash
+    // budget is half the command budget STORY_BATCH_SIZE is sized against.
+    const adoptionBatch = src.match(/const ADOPTION_BATCH_SIZE = (\d+);/);
+    assert.ok(adoptionBatch, 'canonical adoption must declare a chunk size');
+    assert.ok(
+      Number(adoptionBatch[1]) * 2 <= 1000,
+      `ADOPTION_BATCH_SIZE ${adoptionBatch[1]} issues ${Number(adoptionBatch[1]) * 2} commands per call, over the 1000-command budget STORY_BATCH_SIZE is sized against`,
+    );
+    assert.match(
+      src,
+      /offset \+= ADOPTION_BATCH_SIZE/,
+      'the adoption read must stride by ADOPTION_BATCH_SIZE, not read every hash in one call',
+    );
+    assert.match(
+      src,
+      /if \(lastSeen < freshnessCutoff\) continue;/,
+      'a track outside the digest freshness floor must not be adopted — it is ageing out and the story would re-fork',
+    );
   });
 });

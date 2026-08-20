@@ -1194,6 +1194,9 @@ export async function listFeedDigest(
 }
 
 const STORY_BATCH_SIZE = 80; // keeps each pipeline call well under Upstash's 1000-command cap
+// #4925 item 1: canonical adoption reads two commands per member hash
+// (alias GET + track HMGET), so the hash budget is half the command budget.
+const ADOPTION_BATCH_SIZE = 400;
 
 /**
  * Build the HSET field list for a story:track:v1 row.
@@ -1493,27 +1496,68 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // #4924 review P1: adopt a LIVE canonical before assigning hashes.
     // Alias rows (memberHash -> canonicalHash, story-track TTL) written by
     // previous cycles let a cluster keep its story identity when the
-    // member that anchored the canonical drops out of the batch. One
-    // batched read for all member hashes; failures degrade to
-    // batch-derived canonicals (pre-adoption behavior).
+    // member that anchored the canonical drops out of the batch.
+    //
+    // #4925 item 1: the alias vote is most-common-wins, and how many member
+    // hashes point at a canonical is something a determined feed can move —
+    // publish several wordings, they alias to your canonical, out-vote the
+    // genuine story and absorb its track (phase re-fires, counts reset).
+    // story:track.firstSeen cannot be moved that way: the digest HSETNXs it
+    // at first observation, so it is server-side state, unlike publishedAt,
+    // which decides the batch-derived default and is publisher-controlled.
+    // Read it alongside the alias row and prefer the oldest live track.
+    // A failed read degrades to batch-derived canonicals (pre-adoption
+    // behavior).
     const allMemberHashes = new Set<string>();
     for (const identity of identityByItem.values()) {
       for (const h of identity.memberTitleHashes ?? []) allMemberHashes.add(h);
     }
     const aliasTargetByHash = new Map<string, string>();
-    if (allMemberHashes.size > 0) {
-      const aliasHashes = [...allMemberHashes];
-      const aliasResults = await runRedisPipeline(aliasHashes.map((h) => ['GET', STORY_ALIAS_KEY(h)]));
-      for (let i = 0; i < aliasHashes.length; i++) {
-        const target = aliasResults[i]?.result;
-        if (typeof target === 'string' && target.length > 0) aliasTargetByHash.set(aliasHashes[i]!, target);
+    const trackFirstSeenByHash = new Map<string, number>();
+    const memberHashes = [...allMemberHashes];
+    // Chunked because this read now carries two commands per member hash, and
+    // a full batch runs to four figures of hashes — the alias read was already
+    // unchunked at one command each, which STORY_BATCH_SIZE's own comment says
+    // is the wrong side of Upstash's 1000-command cap. Both reads for a given
+    // hash stay in the SAME call, so a cluster never decides from an alias row
+    // and a track row observed in different states. A chunk that fails yields
+    // no adoption data for its own hashes only; those clusters fall back to
+    // the batch-derived canonical exactly as they did before adoption existed.
+    for (let offset = 0; offset < memberHashes.length; offset += ADOPTION_BATCH_SIZE) {
+      const chunk = memberHashes.slice(offset, offset + ADOPTION_BATCH_SIZE);
+      const adoptionResults = await runRedisPipeline([
+        ...chunk.map((h) => ['GET', STORY_ALIAS_KEY(h)]),
+        ...chunk.map((h) => ['HMGET', STORY_TRACK_KEY(h), 'firstSeen', 'lastSeen']),
+      ]);
+      for (let i = 0; i < chunk.length; i++) {
+        const target = adoptionResults[i]?.result;
+        if (typeof target === 'string' && target.length > 0) aliasTargetByHash.set(chunk[i]!, target);
+      }
+      for (let i = 0; i < chunk.length; i++) {
+        const row = adoptionResults[chunk.length + i]?.result;
+        if (!Array.isArray(row)) continue;
+        const firstSeen = Number(row[0]);
+        const lastSeen = Number(row[1]);
+        if (!Number.isFinite(firstSeen) || !Number.isFinite(lastSeen)) continue;
+        // A track the digest has not seen inside its own freshness floor is
+        // not a live story identity — adopting it would anchor on a row that
+        // is ageing out, and the story would re-fork on a later cycle. Same
+        // cutoff the items themselves are held to, so there is no second
+        // freshness knob to tune.
+        if (lastSeen < freshnessCutoff) continue;
+        trackFirstSeenByHash.set(chunk[i]!, firstSeen);
       }
     }
 
     await Promise.all(allItems.map(async (item) => {
       const identity = identityByItem.get(item);
       if (identity) {
-        item.titleHash = adoptExistingCanonical(identity.memberTitleHashes, identity.titleHash, aliasTargetByHash);
+        item.titleHash = adoptExistingCanonical(
+          identity.memberTitleHashes,
+          identity.titleHash,
+          aliasTargetByHash,
+          trackFirstSeenByHash,
+        );
         item.corroborationCount = identity.corroborationCount;
       } else {
         // Defensive: assignStoryIdentity covers every input by

@@ -53,9 +53,11 @@ export function deduplicateHeadlines(headlines) {
  * list-feed-digest.ts). The id changes only when the oldest member ages
  * out of the 96h window — the same orphaning every wording variant
  * suffered under exact hashing, so worst case equals old behavior.
- * (Residual, tracked as follow-up: a hostile feed can still backdate its
- * publishedAt within the freshness window to claim the canonical —
- * requires the cross-cycle adopt-existing-track hardening.)
+ * publishedAt is publisher-controlled, so a hostile feed can backdate
+ * inside the freshness window to win this comparison (#4925 item 1). That
+ * is why the batch-derived canonical is only a DEFAULT: the caller passes
+ * it through adoptExistingCanonical, which prefers server-side Redis state
+ * a feed cannot fake.
  *
  * Items whose normalized title is EMPTY (emoji/punctuation-only) get a
  * per-item sentinel identity instead of sharing sha256("") — under exact
@@ -133,18 +135,62 @@ export async function assignStoryIdentity(items, normalizeTitle, sha256Hex) {
 }
 
 /**
- * Pure canonical-adoption rule (#4924 review P1). Given a cluster's member
- * exact-title hashes, the batch-derived default canonical hash, and a map of
- * live alias rows (memberHash -> canonical hash written in a previous
- * cycle, same TTL as story tracks), return the hash the cluster should
- * track under: the live canonical most of its members already point at —
- * so a story keeps its identity when the original canonical member drops
- * out of the batch. Deterministic: most-common target wins, ties break to
- * the lexicographically smallest hash. No live alias -> default.
+ * Pure canonical-adoption rule (#4924 review P1, extended by #4925 item 1).
+ * Given a cluster's member exact-title hashes, the batch-derived default
+ * canonical hash, a map of live alias rows (memberHash -> canonical hash
+ * written in a previous cycle, same TTL as story tracks) and a map of live
+ * story:track first-seen stamps, return the hash the cluster should track
+ * under. Three rules, in order:
+ *
+ *   1. The OLDEST member hash that already anchors a live story:track row.
+ *      firstSeen is HSETNX'd by the digest at first observation, so it is
+ *      server-side state a feed cannot fake — unlike publishedAt, which
+ *      decides the batch-derived default and is publisher-controlled. This
+ *      is what stops a feed that backdates inside the freshness window from
+ *      seizing a live story's identity, and what stops an attacker who can
+ *      place several member hashes in the cluster from out-voting the
+ *      genuine story under rule 2 (#4925 item 1).
+ *   2. Otherwise the live canonical most of the members already point at,
+ *      so a story keeps its identity when the original canonical member
+ *      drops out of the batch (#4924). Rule 1 cannot cover this case: a
+ *      canonical absent from the batch is not one of the member hashes, so
+ *      it has no track row to find here.
+ *   3. Otherwise the batch-derived default.
+ *
+ * Deterministic throughout: oldest firstSeen wins, then most-common alias
+ * target wins, and both tie-break to the lexicographically smallest hash.
+ *
+ * Stays pure — the caller owns the Redis reads and decides which track rows
+ * count as live.
  */
-export function adoptExistingCanonical(memberTitleHashes, defaultHash, aliasTargetByHash) {
+export function adoptExistingCanonical(
+  memberTitleHashes,
+  defaultHash,
+  aliasTargetByHash,
+  trackFirstSeenByHash,
+) {
+  const members = Array.isArray(memberTitleHashes) ? memberTitleHashes : [];
+
+  let oldestHash = null;
+  let oldestFirstSeen = Infinity;
+  for (const memberHash of members) {
+    const firstSeen = trackFirstSeenByHash instanceof Map
+      ? trackFirstSeenByHash.get(memberHash)
+      : trackFirstSeenByHash?.[memberHash];
+    if (typeof firstSeen !== 'number' || !Number.isFinite(firstSeen)) continue;
+    if (
+      oldestHash === null
+      || firstSeen < oldestFirstSeen
+      || (firstSeen === oldestFirstSeen && memberHash < oldestHash)
+    ) {
+      oldestHash = memberHash;
+      oldestFirstSeen = firstSeen;
+    }
+  }
+  if (oldestHash !== null) return oldestHash;
+
   const counts = new Map();
-  for (const memberHash of Array.isArray(memberTitleHashes) ? memberTitleHashes : []) {
+  for (const memberHash of members) {
     const target = aliasTargetByHash instanceof Map
       ? aliasTargetByHash.get(memberHash)
       : aliasTargetByHash?.[memberHash];
