@@ -4,17 +4,22 @@
     {
       "source": "docs/eula.mdx",
       "pdf": "/legal/eula.pdf",
-      "sourceDigest": "716292cb9b933977557b4067eea3b067a84e996b49e6f65543f9946a0b1a634d"
+      "sourceDigest": "a626f74b5a8fa2733049242b8df6100f72a2c41f9bb97e5a817bfbda1b4df89b"
     },
     {
       "source": "docs/terms.mdx",
       "pdf": "/legal/terms.pdf",
-      "sourceDigest": "d0990cf1a220fe134f576867db29cbcdd49b4902f826987a28a972028b431c4a"
+      "sourceDigest": "f58a52b92ff51cdf5ace441e4c45420ad06bea5474113337009c7ab7b7c17f73"
+    },
+    {
+      "source": "docs/dpa.mdx",
+      "pdf": "/legal/dpa.pdf",
+      "sourceDigest": "d0b0d5d1a9583700ea09a6dc733cc1efa479aca802ad3a79bc0618c7c4537be1"
     },
     {
       "source": "docs/privacy.mdx",
       "pdf": "/legal/privacy.pdf",
-      "sourceDigest": "00759cc6936fc237ca69e1e49a78e6decc6b3dda5b11cda880d6b7cd9d5ba4f6"
+      "sourceDigest": "33c599b5ad2b9431374639fa843784d17289954f1f921746178467793696e020"
     }
   ]
 }
