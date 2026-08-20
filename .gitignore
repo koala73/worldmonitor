@@ -85,6 +85,7 @@ api/[[][[].*.js
 
 # Compiled sidecar domain handler bundles (built by scripts/build-sidecar-handlers.mjs)
 api/*/v1/\[rpc\].js
+api/v*/*/\[rpc\].js
 .claudedocs/
 
 # Large generated data files (reproduced by scripts/)
