@@ -9,7 +9,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
-import { getRelayBaseUrl, getRelayHeaders, IATA_RE } from './_shared';
+import { getRelayBaseUrl, getRelayHeaders, IATA_RE, requireLiveAviationAccess } from './_shared';
 import { aviationStackBudgetCycle, reserveAviationStackCalls } from './_avstack-budget';
 
 // 15min. Held at 300s until Aug 2026, when a scraper polling every ~5.7min
@@ -112,6 +112,9 @@ export async function listAirportFlights(
     ctx: ServerContext,
     req: ListAirportFlightsRequest,
 ): Promise<ListAirportFlightsResponse> {
+    // Metered route — gate before anything else. See requireLiveAviationAccess.
+    await requireLiveAviationAccess(ctx.request);
+
     const airport = req.airport?.toUpperCase() || 'IST';
     const direction = req.direction || 'FLIGHT_DIRECTION_BOTH';
     const limit = Math.min(req.limit || 30, 100);

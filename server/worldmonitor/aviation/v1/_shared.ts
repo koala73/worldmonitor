@@ -12,12 +12,48 @@ import {
   FAA_AIRPORTS,
   DELAY_SEVERITY_THRESHOLDS,
 } from '../../../../src/config/airports';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { CHROME_UA } from '../../../_shared/constants';
 import { incrementProviderCounter } from './_counters';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import { requirePremiumRpcAccess } from '../../../_shared/premium-check';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
 export { parseStringArray } from '../../../_shared/parse-string-array';
+
+// ---------- Live (metered) aviation access ----------
+
+export const LIVE_AVIATION_PRO_MESSAGE =
+  'PRO subscription or API key required for live flight data';
+
+/**
+ * Gate for the AviationStack-metered routes: list-airport-flights,
+ * get-carrier-ops, get-flight-status.
+ *
+ * These three are the ONLY aviation surfaces that spend money per request —
+ * each cache miss buys an AviationStack call, and get-carrier-ops buys one per
+ * airport. They were anonymous, which is what made them free to abuse: in
+ * August 2026 a single scripted client took ~1,000 paid calls/day, ~43% of
+ * total spend, from an account already over its 50,000/cycle plan.
+ *
+ * Edge heuristics could not stop it. A Cloudflare rule blocking bot-like user
+ * agents missed a client rotating six real browser UAs, and an IP rule at
+ * Vercel could not match because Cloudflare fronts the domain and Vercel only
+ * ever sees a proxy address. Identity is checkable where the request is
+ * served; intent is not checkable at the edge.
+ *
+ * Deliberately NOT applied to the rest of the aviation surface. list-airport-
+ * delays and get-airport-ops-summary read `aviation:delays:intl:v3`, which the
+ * cron seeder already paid for — serving it to one more anonymous visitor
+ * costs nothing, so the map's airport-delay layer stays free and signup-free.
+ *
+ * Call FIRST in each handler, before the cache key is built and before any
+ * Redis read, so a denied request costs nothing and cannot probe which airport
+ * codes or flight numbers are valid.
+ */
+export async function requireLiveAviationAccess(request: Request): Promise<void> {
+  await requirePremiumRpcAccess(request, ApiError, LIVE_AVIATION_PRO_MESSAGE);
+}
 
 // ---------- Constants ----------
 
