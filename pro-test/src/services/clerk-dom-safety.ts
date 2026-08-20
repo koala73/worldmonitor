@@ -44,7 +44,7 @@ export interface RemoveChildPolicyEvent extends EventContext {
   exception?: { values?: Array<{ name?: string; type?: string; value?: string }> };
 }
 
-const REMOVE_CHILD_ERROR = /removeChild/i;
+const DETACHED_REMOVE_CHILD_MESSAGE = /the node to be removed is not a child of this node/i;
 const CLERK_LOCALIZATION_SELECTOR = '[data-localization-key]';
 const TRANSLATOR_HTML_CLASS = /^(?:translated|goog-te|skiptranslate)/i;
 const SAFE_PRO_ROUTE_HASH = /^#(?:pricing|tiers|api|enterprise|enterprise-contact)$/i;
@@ -52,12 +52,15 @@ const DETACHED_NODE_GUARD = Symbol.for('wm.detached-node-guards');
 
 type GuardedHost = DetachedNodeHost & { [DETACHED_NODE_GUARD]?: () => void };
 
+const REACT_TRANSLATOR_PROTECTED_ROOTS = new WeakSet<Node>();
+const CLERK_TRANSLATOR_PROTECTED_ROOTS = new WeakSet<Node>();
+const CLERK_PROTECTION_BY_DOCUMENT = new WeakMap<Document, () => void>();
+
 export function isRemoveChildError(error: RemoveChildErrorShape | undefined | null): boolean {
   if (!error) return false;
   const name = error.name ?? error.type ?? '';
   const message = error.message ?? '';
-  return REMOVE_CHILD_ERROR.test(message) ||
-    (name === 'NotFoundError' && /node to be removed is not a child/i.test(message));
+  return name === 'NotFoundError' && DETACHED_REMOVE_CHILD_MESSAGE.test(message);
 }
 
 function bounded(value: string, maxLength = 120): string {
@@ -137,6 +140,16 @@ function containsClerkUi(element: Element): boolean {
     Boolean(element.querySelector(CLERK_LOCALIZATION_SELECTOR));
 }
 
+function clerkProtectionRoot(element: Element): Element {
+  return element.closest('[role="dialog"]') ?? element;
+}
+
+function protectClerkRoot(root: Element, protectedRoots: Set<Element>): void {
+  root.setAttribute('translate', 'no');
+  CLERK_TRANSLATOR_PROTECTED_ROOTS.add(root);
+  protectedRoots.add(root);
+}
+
 /**
  * Browser translators replace React-owned text nodes with `<font>` nodes.
  * Clerk already owns those modal subtrees, and its UI is intentionally loaded
@@ -144,26 +157,42 @@ function containsClerkUi(element: Element): boolean {
  * as untranslatable leaves the surrounding localized marketing copy alone.
  */
 export function protectClerkDomFromTranslators(doc: Document = document): () => void {
+  const installed = CLERK_PROTECTION_BY_DOCUMENT.get(doc);
+  if (installed) return installed;
+
+  const protectedRoots = new Set<Element>();
   for (const element of [...doc.querySelectorAll(CLERK_LOCALIZATION_SELECTOR)]) {
-    element.setAttribute('translate', 'no');
+    protectClerkRoot(clerkProtectionRoot(element), protectedRoots);
   }
 
   const MutationObserverConstructor = doc.defaultView?.MutationObserver;
-  if (!MutationObserverConstructor) return () => {};
+  let observer: MutationObserver | undefined;
 
-  const observer = new MutationObserverConstructor((records) => {
-    for (const record of records) {
-      for (const node of record.addedNodes) {
-        // Avoid a cross-realm `instanceof` check: tests supply Happy DOM's
-        // Element implementation, while production supplies the browser's.
-        if (node.nodeType === 1 && containsClerkUi(node as Element)) {
-          (node as Element).setAttribute('translate', 'no');
+  if (MutationObserverConstructor) {
+    observer = new MutationObserverConstructor((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          // Avoid a cross-realm `instanceof` check: tests supply Happy DOM's
+          // Element implementation, while production supplies the browser's.
+          if (node.nodeType === 1 && containsClerkUi(node as Element)) {
+            protectClerkRoot(clerkProtectionRoot(node as Element), protectedRoots);
+          }
         }
       }
+    });
+    observer.observe(doc.documentElement, { childList: true, subtree: true });
+  }
+
+  const stop = (): void => {
+    observer?.disconnect();
+    for (const root of protectedRoots) CLERK_TRANSLATOR_PROTECTED_ROOTS.delete(root);
+    protectedRoots.clear();
+    if (CLERK_PROTECTION_BY_DOCUMENT.get(doc) === stop) {
+      CLERK_PROTECTION_BY_DOCUMENT.delete(doc);
     }
-  });
-  observer.observe(doc.documentElement, { childList: true, subtree: true });
-  return () => observer.disconnect();
+  };
+  CLERK_PROTECTION_BY_DOCUMENT.set(doc, stop);
+  return stop;
 }
 
 /** The React-owned mount is already localized in-app. Browser translators
@@ -172,6 +201,21 @@ export function protectClerkDomFromTranslators(doc: Document = document): () => 
  *  boundary around `<App />` cannot catch that throw. */
 export function protectReactRootFromTranslators(root: Element): void {
   root.setAttribute('translate', 'no');
+  REACT_TRANSLATOR_PROTECTED_ROOTS.add(root);
+}
+
+function isInsideTranslatorProtectedRoot(node: unknown): boolean {
+  let current = node as Node | null;
+  while (current) {
+    if (
+      REACT_TRANSLATOR_PROTECTED_ROOTS.has(current) ||
+      CLERK_TRANSLATOR_PROTECTED_ROOTS.has(current)
+    ) {
+      return true;
+    }
+    current = current.parentNode;
+  }
+  return false;
 }
 
 /**
@@ -191,7 +235,7 @@ export function installDetachedNodeGuards(
   const originalInsertBefore = proto.insertBefore;
 
   proto.removeChild = function (this: unknown, child: Node): Node {
-    if (child != null && child.parentNode !== this) {
+    if (child != null && child.parentNode !== this && isInsideTranslatorProtectedRoot(this)) {
       onRecovered?.('removeChild');
       return child;
     }
@@ -199,7 +243,7 @@ export function installDetachedNodeGuards(
   };
 
   proto.insertBefore = function (this: unknown, node: Node, child: Node | null): Node {
-    if (child !== null && child.parentNode !== this) {
+    if (child !== null && child.parentNode !== this && isInsideTranslatorProtectedRoot(this)) {
       onRecovered?.('insertBefore');
       // insertBefore(node, null) appends. Dropping the call would leave
       // React's fiber mounted with no host node.

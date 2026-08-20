@@ -79,30 +79,35 @@ async function loadClerk(): Promise<LoadedClerk> {
   const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
   if (!key) throw new Error('VITE_CLERK_PUBLISHABLE_KEY not set');
   const instance = new C(key);
-  protectClerkDomFromTranslators();
-  await instance.load({
-    appearance: {
-      variables: {
-        colorBackground: '#0f0f0f',
-        colorInputBackground: '#141414',
-        colorInputText: '#e8e8e8',
-        colorText: '#e8e8e8',
-        colorTextSecondary: '#aaaaaa',
-        colorPrimary: '#44ff88',
-        colorNeutral: '#e8e8e8',
-        colorDanger: '#ff4444',
-        borderRadius: '4px',
-        fontFamily: MONO_FONT,
-        fontFamilyButtons: MONO_FONT,
+  const stopTranslatorProtection = protectClerkDomFromTranslators();
+  try {
+    await instance.load({
+      appearance: {
+        variables: {
+          colorBackground: '#0f0f0f',
+          colorInputBackground: '#141414',
+          colorInputText: '#e8e8e8',
+          colorText: '#e8e8e8',
+          colorTextSecondary: '#aaaaaa',
+          colorPrimary: '#44ff88',
+          colorNeutral: '#e8e8e8',
+          colorDanger: '#ff4444',
+          borderRadius: '4px',
+          fontFamily: MONO_FONT,
+          fontFamilyButtons: MONO_FONT,
+        },
+        elements: {
+          card: { backgroundColor: '#111111', border: '1px solid #2a2a2a', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' },
+          formButtonPrimary: { color: '#000000', fontWeight: '600' },
+          footerActionLink: { color: '#44ff88' },
+          socialButtonsBlockButton: { borderColor: '#2a2a2a', color: '#e8e8e8', backgroundColor: '#141414' },
+        },
       },
-      elements: {
-        card: { backgroundColor: '#111111', border: '1px solid #2a2a2a', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' },
-        formButtonPrimary: { color: '#000000', fontWeight: '600' },
-        footerActionLink: { color: '#44ff88' },
-        socialButtonsBlockButton: { borderColor: '#2a2a2a', color: '#e8e8e8', backgroundColor: '#141414' },
-      },
-    },
-  });
+    });
+  } catch (error) {
+    stopTranslatorProtection();
+    throw error;
+  }
 
   // Only publish the instance after load() succeeds, so a failed load does not
   // wedge ensureClerk()'s retry path.

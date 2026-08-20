@@ -4,10 +4,11 @@ import * as Sentry from '@sentry/react';
 import App, { renderTurnstileWidgets } from './App.tsx';
 import { ProDomErrorBoundary } from './ProDomErrorBoundary.tsx';
 import { ensureTurnstileScript } from './turnstile';
-import { initI18n } from './i18n';
+import { currentLanguageBase, initI18n } from './i18n';
 import { initSentry } from './sentry';
 import { initDebugBearRum } from './debugbear-rum';
 import {
+  collectRemoveChildEvidence,
   installDetachedNodeGuards,
   protectReactRootFromTranslators,
 } from './services/clerk-dom-safety';
@@ -22,6 +23,7 @@ initSentry();
 initDebugBearRum();
 
 const rootElement = document.getElementById('root')!;
+const servedLanguage = document.documentElement.getAttribute('lang') ?? 'en';
 protectReactRootFromTranslators(rootElement);
 let recoveredDetachedNode = false;
 installDetachedNodeGuards(undefined, (operation) => {
@@ -30,6 +32,16 @@ installDetachedNodeGuards(undefined, (operation) => {
   Sentry.captureMessage('pro.removeChild.recovered', {
     level: 'info',
     tags: { surface: 'pro-marketing', recoveredOperation: operation },
+    extra: {
+      removeChildDomEvidence: collectRemoveChildEvidence({
+        document,
+        location,
+        servedLanguage,
+        applicationLanguage: currentLanguageBase(),
+        browserLanguage: navigator.language,
+        browserLanguages: [...navigator.languages],
+      }),
+    },
   });
 });
 

@@ -24,13 +24,13 @@ export class ProDomErrorBoundary extends Component<
   state: ProDomErrorBoundaryState = { failed: false };
   declare props: ProDomErrorBoundaryProps;
 
-  static getDerivedStateFromError(error: Error): ProDomErrorBoundaryState | null {
-    if (!isRemoveChildError(error)) return null;
+  static getDerivedStateFromError(error: Error): ProDomErrorBoundaryState {
+    if (!isRemoveChildError(error)) throw error;
     return { failed: true };
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    if (!isRemoveChildError(error)) return;
+    if (!isRemoveChildError(error)) throw error;
     Sentry.captureException(error, {
       tags: { surface: 'pro-marketing', component: 'pro-dom-error-boundary' },
       extra: { componentStack: info.componentStack },
