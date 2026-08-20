@@ -9,8 +9,11 @@ import {
   AGENT_NOT_FOUND_INDEXES,
   AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES,
   AGENT_NOT_FOUND_STATUS,
+  HUMAN_NOT_FOUND_CONTENT_TYPE,
   buildAgentNotFoundMarkdown,
+  buildHumanNotFoundHtml,
   isKnownPublicPagePath,
+  prefersAgentNotFound,
 } from '../src/config/agent-not-found.ts';
 import { CONTENT_CORPUS_PREFIXES } from '../scripts/discover-content-corpus-pages.mjs';
 
@@ -24,12 +27,23 @@ const vercelConfig = JSON.parse(
 const CHROME_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+const CHROME_ACCEPT =
+  'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8';
+const CURL_UA = 'curl/8.4.0';
 
-function call(path: string, method = 'GET'): Response | void {
+function call(
+  path: string,
+  init: { method?: string; ua?: string; accept?: string } = {},
+): Response | void {
+  const headers: Record<string, string> = {
+    host: 'www.worldmonitor.app',
+    'user-agent': init.ua ?? CURL_UA,
+  };
+  if (init.accept !== undefined) headers.accept = init.accept;
   return middleware(
     new Request(`https://www.worldmonitor.app${path}`, {
-      method,
-      headers: { host: 'www.worldmonitor.app', 'user-agent': CHROME_UA },
+      method: init.method ?? 'GET',
+      headers,
     }),
   ) as Response | void;
 }
@@ -44,9 +58,24 @@ function examplePathFromSource(source: string): string | null {
   return path.length > 1 ? path.replace(/\/+$/, '') : path;
 }
 
+describe('prefersAgentNotFound (content negotiation)', () => {
+  it('treats browser Accept: text/html as a human 404', () => {
+    assert.equal(prefersAgentNotFound(CHROME_ACCEPT), false);
+    assert.equal(prefersAgentNotFound('text/html'), false);
+  });
+
+  it('treats curl */*, missing Accept, and text/markdown as agent 404s', () => {
+    assert.equal(prefersAgentNotFound('*/*'), true);
+    assert.equal(prefersAgentNotFound(null), true);
+    assert.equal(prefersAgentNotFound(''), true);
+    assert.equal(prefersAgentNotFound('text/markdown'), true);
+    assert.equal(prefersAgentNotFound('text/html;q=0.8, text/markdown'), true);
+  });
+});
+
 describe('agent-friendly 404s (orank agent-friendly-404)', () => {
   it('returns HTTP 404 markdown that points agents at sitemap, llms.txt, and docs', async () => {
-    const res = call('/some-path-that-does-not-exist');
+    const res = call('/some-path-that-does-not-exist', { accept: '*/*' });
     assert.ok(res instanceof Response, 'unknown paths must not fall through as a soft-404');
     assert.equal(res.status, AGENT_NOT_FOUND_STATUS);
     assert.equal(res.headers.get('content-type'), AGENT_NOT_FOUND_CONTENT_TYPE);
@@ -59,24 +88,59 @@ describe('agent-friendly 404s (orank agent-friendly-404)', () => {
     assert.ok(body.includes(AGENT_NOT_FOUND_INDEXES.docs));
   });
 
-  it('answers HEAD with 404 and no body', async () => {
-    const res = call('/this-is-not-a-page', 'HEAD');
+  it('answers agent HEAD with 404 markdown and no body', async () => {
+    const res = call('/this-is-not-a-page', { method: 'HEAD', accept: '*/*' });
     assert.ok(res instanceof Response);
     assert.equal(res.status, AGENT_NOT_FOUND_STATUS);
     assert.equal(res.headers.get('content-type'), AGENT_NOT_FOUND_CONTENT_TYPE);
     assert.equal(await res.text(), '');
   });
 
+  it('serves browsers an HTML 404 instead of the agent markdown body', async () => {
+    const res = call('/some-path-that-does-not-exist', {
+      ua: CHROME_UA,
+      accept: CHROME_ACCEPT,
+    });
+    assert.ok(res instanceof Response, 'humans must still get a real HTTP 404, not a soft-404 SPA');
+    assert.equal(res.status, AGENT_NOT_FOUND_STATUS);
+    assert.equal(res.headers.get('content-type'), HUMAN_NOT_FOUND_CONTENT_TYPE);
+    const body = await res.text();
+    assert.match(body, /<!DOCTYPE html>/i);
+    assert.match(body, /<html/i);
+    assert.match(body, /Page not found/i);
+    assert.doesNotMatch(body, /^# Not found/m);
+    assert.ok(body.includes('/dashboard'));
+    assert.ok(body.includes(AGENT_NOT_FOUND_INDEXES.docs.replace('https://www.worldmonitor.app', '')));
+  });
+
+  it('answers browser HEAD with 404 HTML and no body', async () => {
+    const res = call('/this-is-not-a-page', {
+      method: 'HEAD',
+      ua: CHROME_UA,
+      accept: CHROME_ACCEPT,
+    });
+    assert.ok(res instanceof Response);
+    assert.equal(res.status, AGENT_NOT_FOUND_STATUS);
+    assert.equal(res.headers.get('content-type'), HUMAN_NOT_FOUND_CONTENT_TYPE);
+    assert.equal(await res.text(), '');
+  });
+
+  it('HTML-escapes a hostile path in the human 404 body', () => {
+    const body = buildHumanNotFoundHtml('/<script>alert(1)</script>');
+    assert.ok(body.includes('&lt;script&gt;'));
+    assert.doesNotMatch(body, /<script>alert\(1\)<\/script>/);
+  });
+
   it('does not intercept known product routes or mutating methods', () => {
     for (const path of ['/', '/dashboard', '/stocks/AAPL', '/story', '/pro', '/docs/mcp', '/countries/united-states']) {
-      assert.equal(call(path), undefined, `${path} must keep its vercel.json route`);
+      assert.equal(call(path, { accept: '*/*' }), undefined, `${path} must keep its vercel.json route`);
     }
-    assert.equal(call('/some-path-that-does-not-exist', 'POST'), undefined);
+    assert.equal(call('/some-path-that-does-not-exist', { method: 'POST', accept: '*/*' }), undefined);
   });
 
   it('404s leaked SPA guesses that used to soft-404 the dashboard (#6575, #6836)', async () => {
     for (const path of ['/country-intel', '/security', '/trust']) {
-      const res = call(path);
+      const res = call(path, { accept: '*/*' });
       assert.ok(res instanceof Response, `${path} must 404`);
       assert.equal(res.status, 404);
     }
@@ -113,12 +177,14 @@ describe('agent-friendly 404s (orank agent-friendly-404)', () => {
     );
   });
 
-  it('keeps public/404.html in sync with the middleware markdown indexes', () => {
+  it('keeps public/404.html as the human HTML filesystem 404', () => {
     const html = readFileSync(resolve(import.meta.dirname, '../public/404.html'), 'utf8');
-    assert.ok(html.startsWith('# Not found'), 'Vercel filesystem 404s must also be heading-led markdown');
-    assert.ok(html.includes(AGENT_NOT_FOUND_INDEXES.llmsTxt));
-    assert.ok(html.includes(AGENT_NOT_FOUND_INDEXES.sitemap));
-    assert.ok(html.includes(AGENT_NOT_FOUND_INDEXES.docs));
+    assert.equal(html, buildHumanNotFoundHtml());
+    assert.match(html, /<!DOCTYPE html>/i, 'Vercel filesystem 404s must be a human HTML page');
+    assert.match(html, /Page not found/i);
+    assert.ok(html.includes('/dashboard'));
+    assert.ok(html.includes('/docs/documentation'));
+    assert.doesNotMatch(html, /^# Not found/m);
     assert.equal(
       buildAgentNotFoundMarkdown('/missing').includes(AGENT_NOT_FOUND_INDEXES.llmsTxt),
       true,
