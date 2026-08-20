@@ -3866,7 +3866,7 @@
     },
     {
       "host": "feeds.bbci.co.uk",
-      "provider": "feeds.bbci.co.uk",
+      "provider": "BBC",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
@@ -3930,7 +3930,8 @@
         {
           "path": "src/config/variants/tech.ts"
         }
-      ]
+      ],
+      "role": "transport"
     },
     {
       "host": "feeds.finra.org",
@@ -6232,6 +6233,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "scripts/source-catalog-identity.mjs"
+        },
+        {
           "path": "scripts/validate-rss-feeds.mjs"
         },
         {
@@ -6249,7 +6253,8 @@
         {
           "path": "src/config/variants/tech.ts"
         }
-      ]
+      ],
+      "role": "transport"
     },
     {
       "host": "news.mit.edu",
@@ -10455,7 +10460,7 @@
     },
     {
       "host": "www.bbc.com",
-      "provider": "www.bbc.com",
+      "provider": "BBC",
       "kind": "feed",
       "observed": true,
       "license": "Provider terms for this feed publisher; verify before redistribution",
@@ -14311,6 +14316,47 @@
       "license": "Not applicable: no live fetch is present in this checkout",
       "attribution": "Excluded from the live-provider count: issue audit named Digitraffic, but no current source call was found.",
       "status": "excluded"
+    }
+  ],
+  "logicalProviders": [
+    {
+      "provider": "Fast Company",
+      "feedLabels": [
+        "Fast Company"
+      ],
+      "transportHosts": [
+        "feeds.feedburner.com"
+      ],
+      "editorialHosts": [],
+      "originCountry": "US",
+      "coveredCountries": []
+    },
+    {
+      "provider": "NDTV",
+      "feedLabels": [
+        "NDTV",
+        "NDTV India"
+      ],
+      "transportHosts": [
+        "feeds.feedburner.com"
+      ],
+      "editorialHosts": [],
+      "originCountry": "IN",
+      "coveredCountries": [
+        "IN"
+      ]
+    },
+    {
+      "provider": "The Hacker News",
+      "feedLabels": [
+        "The Hacker News"
+      ],
+      "transportHosts": [
+        "feeds.feedburner.com"
+      ],
+      "editorialHosts": [],
+      "originCountry": "IN",
+      "coveredCountries": []
     }
   ]
 }

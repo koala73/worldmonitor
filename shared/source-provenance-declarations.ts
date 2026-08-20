@@ -503,6 +503,7 @@ export const CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS: Readonly<
   "Reuters Commodities": { risk: 'unknown', type: 'unknown' },
   "Reuters Crypto": { risk: 'unknown', type: 'unknown' },
   "Reuters Energy": { risk: 'unknown', type: 'unknown' },
+  "Reuters India": { risk: 'unknown', type: 'unknown' },
   "Reuters LatAm": { risk: 'unknown', type: 'unknown' },
   "Reuters Markets": { risk: 'unknown', type: 'unknown' },
   "Reuters US": { risk: 'unknown', type: 'unknown' },

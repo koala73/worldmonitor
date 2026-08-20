@@ -285,6 +285,7 @@ describe('publisher-families resolution', () => {
       'Reuters Asia',
       'Reuters Energy',
       'Reuters Commodities',
+      'Reuters India',
     ];
     assert.equal(countPublisherFamilies(reutersLabels), 1);
     assert.equal(publisherNameForFamily(publisherFamilyFor('Reuters US')), 'Reuters');
