@@ -10,8 +10,16 @@
  *
  * Run after any deliberate change to a legal page, together with the date and
  * TERMS_VERSION bump:
- *   node scripts/legal-digests.mjs           # rewrite the digests
- *   node scripts/legal-digests.mjs --check   # fail if any digest is stale
+ *   node scripts/legal-digests.mjs             # rewrite the digests
+ *   node scripts/legal-digests.mjs --check     # fail if any digest is stale
+ *   node scripts/legal-digests.mjs --same-day  # republish under today's version
+ *
+ * `--same-day` exists because the version IS the publication date, so a second
+ * change on the same day republishes under a version that was already live.
+ * Anyone who accepted the earlier text that day has a record pointing at
+ * wording that later moved. That is sometimes the right call — a correction
+ * hours after publication, before real acceptance volume — but it must be a
+ * decision, not a side effect of re-running this script.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -21,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const LEGAL_TS = join(ROOT, 'shared', 'legal.ts');
 const CHECK = process.argv.includes('--check');
+const SAME_DAY = process.argv.includes('--same-day');
 
 /**
  * The body a reader is bound by: frontmatter (title/description metadata) and
@@ -41,6 +50,11 @@ export function normalizeLegalBody(mdx) {
 
 export function digestLegalDocument(absolutePath) {
   return createHash('sha256').update(normalizeLegalBody(readFileSync(absolutePath, 'utf8')), 'utf8').digest('hex');
+}
+
+/** The version those digests are recorded against. */
+export function currentVersion(source = readFileSync(LEGAL_TS, 'utf8')) {
+  return source.match(/TERMS_VERSION = '([^']+)'/)?.[1] ?? '(unknown)';
 }
 
 /** The doc paths declared in shared/legal.ts, in source order. */
@@ -70,6 +84,22 @@ function main() {
     }
     console.log(`Legal digests OK — ${declared.length} documents unchanged.`);
     return;
+  }
+
+  // A digest that was already recorded and has now moved means the published
+  // text changed. If the version did not change with it, the new text is going
+  // out under a version that is already in acceptance records.
+  const republished = stale.filter((entry) => entry.digest.length > 0);
+  if (republished.length > 0 && !SAME_DAY) {
+    console.error(
+      `These documents changed but the version did not:\n${republished
+        .map((entry) => `  ${entry.path}`)
+        .join('\n')}\n\n` +
+        `Anyone who accepted version ${currentVersion(source)} already has a record pointing at the\n` +
+        'earlier wording. Either bump the "_Last updated:_" date and TERMS_VERSION, or, if this is a\n' +
+        'same-day correction you accept, re-run with --same-day.',
+    );
+    process.exit(1);
   }
 
   let updated = source;

@@ -103,3 +103,75 @@ describe('privacy policy discloses every live collector', () => {
     );
   });
 });
+
+/**
+ * Server-side subprocessors, by the integration that proves each one is live.
+ *
+ * The browser-collector sweep above cannot see these: Upstash, Railway and
+ * Mintlify never touch the page, they process personal data behind us — an IP
+ * inside a rate-limit key, the analytics database, the docs origin that serves
+ * this very page. All three were missing from a table that claims to be
+ * complete (#6978), which is why the anchor is a code fact rather than a name.
+ *
+ * Each entry pairs a provider with a grep that is true only while the
+ * integration exists, so the table has to change in both directions: adopt the
+ * provider and it must be disclosed; drop it and the stale row must go.
+ */
+const SERVER_SUBPROCESSORS = [
+  {
+    name: /Upstash/,
+    proof: 'server/_shared/rate-limit.ts',
+    pattern: /@upstash\/ratelimit/,
+    why: 'rate-limit keys are derived from the client IP',
+  },
+  {
+    name: /Railway/,
+    proof: 'scripts/railway-services.json',
+    pattern: /"service":\s*"umami"/,
+    why: 'hosts the analytics service and notification delivery',
+  },
+  {
+    name: /Mintlify/,
+    proof: 'vercel.json',
+    pattern: /worldmonitor\.mintlify\.dev/,
+    why: 'serves worldmonitor.app/docs, including the privacy policy itself',
+  },
+];
+
+describe('privacy policy discloses the subprocessors behind the page', () => {
+  const policy = visibleBody(read('docs/privacy.mdx'));
+  const zhPolicy = visibleBody(read('docs/zh/privacy.mdx'));
+  const subprocessorTable = policy.slice(policy.indexOf('| Provider |'));
+
+  for (const { name, proof, pattern, why } of SERVER_SUBPROCESSORS) {
+    it(`${proof} still proves the integration this row describes`, () => {
+      // Guards the guard: if the proof stops matching, the row below is being
+      // asserted against nothing and the pairing has to be re-derived.
+      assert.match(read(proof), pattern, `${proof} no longer shows the integration — re-check whether the disclosure is still accurate`);
+    });
+
+    it(`the table names it (${why})`, () => {
+      assert.match(subprocessorTable, name, `docs/privacy.mdx must disclose the provider matched by ${name}`);
+      assert.match(zhPolicy, name, `docs/zh/privacy.mdx must disclose the provider matched by ${name}`);
+    });
+  }
+
+  it('names alert destinations as recipients, not as subprocessors', () => {
+    // Telegram/Slack/Discord receive alert content because a user pointed them
+    // there. Listing them as subprocessors would be wrong in the other
+    // direction, so the policy has to say which they are.
+    for (const [label, text] of [['en', policy], ['zh', zhPolicy]]) {
+      assert.match(text, /Telegram/, `${label} policy must account for the Telegram channel`);
+      assert.match(text, /Slack/, `${label} policy must account for the Slack channel`);
+      assert.match(text, /Discord/, `${label} policy must account for the Discord channel`);
+    }
+    const channelTypes = read('convex/schema.ts');
+    for (const channel of ['telegram', 'slack', 'discord', 'webhook', 'web_push', 'email']) {
+      assert.match(
+        channelTypes,
+        new RegExp(`v\\.literal\\("${channel}"\\)`),
+        `notificationChannels no longer ships ${channel} — the policy section describing it is stale`,
+      );
+    }
+  });
+});
