@@ -1,6 +1,7 @@
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { openExternalUrl } from '@/services/external-navigation';
 import { escapeHtml } from '@/utils/sanitize';
+import { checkoutConsentHtml } from '@/components/legal-links';
 import { renderSVG } from 'uqr';
 import {
   getChannelsData,
@@ -187,6 +188,9 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
   } else {
     html += `<div class="wm-pref-group-content wm-notif-tab-content">`;
     html += `<div class="ai-flow-toggle-desc">Get real-time intelligence alerts delivered to Telegram, Slack, Discord, and Email with configurable sensitivity, quiet hours, and digest scheduling.</div>`;
+    // Assent above the CTA (#6976) — this button starts checkout for a signed-in
+    // free user, so the Terms are presented before the jump to Dodo.
+    html += checkoutConsentHtml(WEB_APP_ORIGIN);
     html += `<button type="button" class="panel-locked-cta" id="usNotifUpgradeBtn">Upgrade to Pro</button>`;
     html += `</div>`;
   }

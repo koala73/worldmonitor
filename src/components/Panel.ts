@@ -9,6 +9,8 @@ import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
 import { openExternalUrl } from '@/services/external-navigation';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
+import { createCheckoutConsentElement } from '@/components/legal-links';
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
 import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
 import {
@@ -982,6 +984,12 @@ export class Panel {
       lockedChildren.push(featureList);
     }
 
+    // Assent immediately above the CTA (#6976). This button jumps straight to
+    // Dodo's hosted checkout, where Dodo (merchant of record) shows its terms
+    // and never ours — so ours are presented here, before the jump. The desktop
+    // branch below opens the /pro pricing page in the OS browser instead, and
+    // that page carries its own assent line above every tier CTA.
+    if (!isDesktopRuntime()) lockedChildren.push(createCheckoutConsentElement(WEB_APP_ORIGIN));
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
     if (isDesktopRuntime()) {
       ctaBtn.addEventListener('click', () => {

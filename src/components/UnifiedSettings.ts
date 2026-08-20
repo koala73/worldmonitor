@@ -53,7 +53,7 @@ import {
   type ApiPlanLimitNotice,
 } from '@/services/api-plan-limit-notices';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
-import { legalLinksHtml, LEGAL_LINK_ATTR } from '@/components/legal-links';
+import { checkoutConsentHtml, legalLinksHtml, LEGAL_LINK_ATTR } from '@/components/legal-links';
 import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   overlayHistory,
@@ -1078,6 +1078,7 @@ export class UnifiedSettings {
       <div class="upgrade-pro-section" data-billing-state="free">
         <div class="upgrade-pro-title">WorldMonitor Free</div>
         <div class="upgrade-pro-desc">Your current plan is Free. Upgrade for all panels, AI analysis, and priority data refresh.</div>
+        ${checkoutConsentHtml(WEB_APP_ORIGIN)}
         <button class="upgrade-pro-cta">Upgrade to Pro</button>
       </div>
     `;
@@ -1544,6 +1545,7 @@ export class UnifiedSettings {
                 </div>
               </div>
               <div class="api-plan-limit-notice-actions">
+                ${notice.ctaKind === 'checkout' ? checkoutConsentHtml(WEB_APP_ORIGIN) : ''}
                 ${cta ? `<button class="btn btn-primary api-plan-limit-notice-cta" data-plan-limit-cta="${escapeHtml(notice._id)}">${escapeHtml(cta)}</button>` : ''}
                 <button class="btn btn-ghost api-plan-limit-notice-ack" data-plan-limit-ack="${escapeHtml(notice._id)}">Dismiss</button>
               </div>
@@ -1677,6 +1679,7 @@ export class UnifiedSettings {
         <div class="panel-locked-state">
           <div class="panel-locked-icon">${upgradeIcon}</div>
           <div class="panel-locked-desc">Create and manage API keys to access WorldMonitor data programmatically.</div>
+          ${checkoutConsentHtml(WEB_APP_ORIGIN)}
           <button class="panel-locked-cta api-keys-gate-btn">Upgrade to API Starter</button>
         </div>`;
     }

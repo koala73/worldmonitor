@@ -23,6 +23,8 @@
 
 import type { Clerk } from '@clerk/clerk-js';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
+import { PRIVACY_PATH, TERMS_PATH, absoluteLegalUrl } from '../../shared/legal';
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
 
 type ClerkInstance = Clerk;
 type ClerkSession = NonNullable<ClerkInstance['session']>;
@@ -68,8 +70,19 @@ function getAppearance() {
   // resolve near-black (e.g. invisible OTP digits on the dark card). The
   // legacy names stay for clerk-js's own legacy components. Unknown keys
   // are ignored by either parser, so the union is safe.
+
+  // Sign-up carries the same assent as checkout (#6976): with these set, Clerk
+  // renders Terms/Privacy links in the auth card footer, so a user creating an
+  // account is shown the documents rather than only bound by a browsewrap.
+  // Absolute because the desktop WebView origin has no /docs (#5911).
+  const layout = {
+    termsPageUrl: absoluteLegalUrl(TERMS_PATH, WEB_APP_ORIGIN),
+    privacyPageUrl: absoluteLegalUrl(PRIVACY_PATH, WEB_APP_ORIGIN),
+  };
+
   return isDark
     ? {
+        layout,
         variables: {
           colorBackground: '#0f0f0f',
           colorInputBackground: '#141414',
@@ -105,6 +118,7 @@ function getAppearance() {
         },
       }
     : {
+        layout,
         variables: {
           colorBackground: '#ffffff',
           colorInputBackground: '#f8f9fa',

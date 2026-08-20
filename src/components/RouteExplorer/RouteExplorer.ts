@@ -7,6 +7,7 @@
  */
 
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { checkoutConsentHtml } from '@/components/legal-links';
 import { openExternalUrl } from '@/services/external-navigation';
 import { CountryPicker } from './CountryPicker';
 import { Hs2Picker } from './Hs2Picker';
@@ -349,6 +350,7 @@ export class RouteExplorer {
       setTrustedHtml(this.contentEl, trustedHtml('<div class="re-content__gate">' +
         '<h3>Unlock route intelligence</h3>' +
         '<ul><li>Current route with chokepoint risk</li><li>Ranked bypass alternatives</li><li>Overland corridor options</li></ul>' +
+        checkoutConsentHtml(WEB_APP_ORIGIN) +
         '<button class="re-content__upgrade" type="button">Upgrade to PRO</button>' +
         '</div>', "legacy direct innerHTML migration"));
       const btn = this.contentEl.querySelector<HTMLButtonElement>('.re-content__upgrade');

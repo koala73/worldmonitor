@@ -26280,6 +26280,15 @@ body.map-width-resizing {
   flex: 0 0 auto;
 }
 
+/* The checkout-consent line (#6976) is a full-width row inside the action
+   column so the assent reads above the CTA it belongs to, rather than becoming
+   a third column in the notice's space-between row. */
+.api-plan-limit-notice-actions .checkout-consent {
+  flex: 1 0 100%;
+  margin: 0 0 2px;
+  text-align: right;
+}
+
 .api-plan-limit-notice-actions .btn {
   font-size: calc(12px * var(--wm-panel-effective-scale, 1));
   padding: 5px 10px;
