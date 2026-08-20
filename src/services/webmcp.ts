@@ -71,6 +71,7 @@ export interface DashboardSearchResponse {
 }
 
 export type DashboardSearchOpenReason =
+  | 'malformed_arguments'
   | 'invalid_or_expired_key'
   | 'search_state_changed'
   | 'result_no_longer_available'
@@ -161,6 +162,7 @@ const DASHBOARD_SEARCH_SCOPES = new Set<DashboardSearchScope>([
   'all', 'signals', 'map', 'panels', 'actions',
 ]);
 const DASHBOARD_SEARCH_OPEN_REASONS = new Set<DashboardSearchOpenReason>([
+  'malformed_arguments',
   'invalid_or_expired_key',
   'search_state_changed',
   'result_no_longer_available',
@@ -679,7 +681,7 @@ export function buildWebMcpTools(
           return boundSearchOpenResult({
             ok: false,
             status: 'denied',
-            reason: 'invalid_or_expired_key',
+            reason: 'malformed_arguments',
           });
         }
         const resultKey = typeof args.resultKey === 'string' ? args.resultKey : '';
@@ -687,7 +689,7 @@ export function buildWebMcpTools(
           return boundSearchOpenResult({
             ok: false,
             status: 'denied',
-            reason: 'invalid_or_expired_key',
+            reason: 'malformed_arguments',
           });
         }
         return boundSearchOpenResult(await app.openSearchResult(resultKey));
