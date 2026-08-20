@@ -19,6 +19,14 @@ import { createHash } from 'node:crypto';
 import { dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
+import {
+  buildLogicalProviders,
+  catalogProviderIdentities,
+  isSyndicationTransportHost,
+  loadSourceGeography,
+  scanNamedFeedDeclarations,
+  validateFeedBurnerPublisherIdentity,
+} from './source-catalog-identity.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MANIFEST_PATH = 'shared/source-attribution-manifest.json';
@@ -755,6 +763,8 @@ const PROVIDER_OVERRIDES = {
     attribution: 'VIA Rail Canada; unofficial live train JSON at tsimobile.viarail.ca. Not the Developer Resources GTFS feed; OGL does not apply to this host. Best-effort only.',
     status: 'terms-review',
   },
+  'feeds.feedburner.com': { role: 'transport' },
+  'news.google.com': { role: 'transport' },
 };
 
 // Provider display identities change rarely and affect attribution, catalog
@@ -1090,19 +1100,22 @@ function overrideFor(observed) {
 function mergeEntry(observed, previous) {
   const override = overrideFor(observed);
   const base = previous ? clearStaleExclusion(previous, observed, override) : defaultEntry(observed);
-  return {
-    ...base,
+  const { role: _ignoredRole, ...baseRest } = base;
+  const merged = {
+    ...baseRest,
     ...override,
     host: observed.host,
     kind: observed.kinds.join('+'),
     observed: true,
     references: observed.references,
   };
+  if (!override.role) delete merged.role;
+  return merged;
 }
 
 export function loadManifest(rootDir = ROOT) {
   const path = join(rootDir, MANIFEST_PATH);
-  if (!existsSync(path)) return { version: 1, entries: [], logicalEntries: [] };
+  if (!existsSync(path)) return { version: 1, entries: [], logicalEntries: [], logicalProviders: [] };
   const raw = readFileSync(path, 'utf8');
   let manifest;
   try {
@@ -1120,10 +1133,14 @@ export function loadManifest(rootDir = ROOT) {
   if (manifest.logicalEntries !== undefined && !Array.isArray(manifest.logicalEntries)) {
     throw new Error(`source-attribution: invalid manifest (${MANIFEST_PATH} logicalEntries must be an array)`);
   }
+  if (manifest.logicalProviders !== undefined && !Array.isArray(manifest.logicalProviders)) {
+    throw new Error(`source-attribution: invalid manifest (${MANIFEST_PATH} logicalProviders must be an array)`);
+  }
   return {
     version: manifest.version || 1,
     entries: manifest.entries,
     logicalEntries: manifest.logicalEntries || [],
+    logicalProviders: manifest.logicalProviders || [],
   };
 }
 
@@ -1133,8 +1150,8 @@ function retirementRequiredMessage(host) {
 
 export function buildManifest(
   inventory,
-  previous = { entries: [], logicalEntries: [] },
-  { retireHosts = [] } = {},
+  previous = { entries: [], logicalEntries: [], logicalProviders: [] },
+  { retireHosts = [], rootDir = null } = {},
 ) {
   const previousByHost = new Map((previous.entries || []).map((entry) => [entry.host, entry]));
   const entries = inventory.map((observed) => mergeEntry(observed, previousByHost.get(observed.host)));
@@ -1186,7 +1203,15 @@ export function buildManifest(
     .filter((entry) => !observedHosts.has(entry.host))
     .filter((entry, index, all) => all.findIndex((candidate) => candidate.provider === entry.provider && candidate.host === entry.host) === index)
     .sort((a, b) => a.provider.localeCompare(b.provider));
-  return { version: 1, entries: entries.sort((a, b) => a.host.localeCompare(b.host)), logicalEntries };
+  const logicalProviders = rootDir
+    ? buildLogicalProviders(scanNamedFeedDeclarations(rootDir), loadSourceGeography(rootDir))
+    : [...(previous.logicalProviders || [])];
+  return {
+    version: 1,
+    entries: entries.sort((a, b) => a.host.localeCompare(b.host)),
+    logicalEntries,
+    logicalProviders,
+  };
 }
 
 /**
@@ -1203,6 +1228,9 @@ export function validateSourceAttributionLedger(manifest) {
   }
   if (manifest.logicalEntries !== undefined && !Array.isArray(manifest.logicalEntries)) {
     errors.push('source-attribution manifest logicalEntries must be an array');
+  }
+  if (manifest.logicalProviders !== undefined && !Array.isArray(manifest.logicalProviders)) {
+    errors.push('source-attribution manifest logicalProviders must be an array');
   }
   const manifestEntries = Array.isArray(manifest.entries) ? manifest.entries : [];
   const manifestByHost = new Map();
@@ -1222,6 +1250,9 @@ export function validateSourceAttributionLedger(manifest) {
     const reviewedProvider = PROVIDER_OVERRIDES[entry.host]?.provider;
     if (typeof entry.provider === 'string' && entry.provider !== entry.host && entry.provider !== reviewedProvider) {
       errors.push(`custom provider identity for ${label} must be declared in PROVIDER_OVERRIDES`);
+    }
+    if (entry.role !== undefined && entry.role !== 'transport') {
+      errors.push(`manifest entry ${label} role must be "transport" when present`);
     }
     if (entry.references !== undefined && !Array.isArray(entry.references)) {
       errors.push(`manifest entry ${label} references must be an array`);
@@ -1269,6 +1300,37 @@ export function validateSourceAttributionLedger(manifest) {
     if (typeof entry.status !== 'string' || !MANIFEST_STATUSES.has(entry.status)) errors.push(`invalid logical attribution status for ${label}`);
     if (typeof entry.provider !== 'string' || !entry.provider.trim() || typeof entry.license !== 'string' || !entry.license.trim() || typeof entry.attribution !== 'string' || !entry.attribution.trim()) {
       errors.push(`incomplete logical attribution metadata for ${label}`);
+    }
+  }
+  const logicalProviders = Array.isArray(manifest.logicalProviders) ? manifest.logicalProviders : [];
+  const seenLogicalProviders = new Set();
+  for (const entry of logicalProviders) {
+    const label = entry?.provider || '(unknown logical provider)';
+    if (!entry || typeof entry !== 'object') {
+      errors.push(`logical provider ${label} must be an object`);
+      continue;
+    }
+    if (typeof entry.provider !== 'string' || !entry.provider.trim()) {
+      errors.push(`logical provider ${label} needs a provider identity`);
+    } else if (seenLogicalProviders.has(entry.provider)) {
+      errors.push(`duplicate logical provider ${entry.provider}`);
+    } else {
+      seenLogicalProviders.add(entry.provider);
+    }
+    if (!Array.isArray(entry.feedLabels) || entry.feedLabels.length === 0) {
+      errors.push(`logical provider ${label} needs feedLabels`);
+    }
+    if (!Array.isArray(entry.transportHosts) || entry.transportHosts.length === 0) {
+      errors.push(`logical provider ${label} needs transportHosts`);
+    }
+    if (!Array.isArray(entry.editorialHosts)) {
+      errors.push(`logical provider ${label} editorialHosts must be an array`);
+    }
+    if (entry.originCountry != null && (typeof entry.originCountry !== 'string' || !entry.originCountry.trim())) {
+      errors.push(`logical provider ${label} originCountry must be an ISO2 code or null`);
+    }
+    if (!Array.isArray(entry.coveredCountries)) {
+      errors.push(`logical provider ${label} coveredCountries must be an array`);
     }
   }
   errors.push(...validateProviderIdentityGroups({ ...manifest, entries: manifestEntries }));
@@ -1452,7 +1514,7 @@ export function sourceAttributionLedgerStats(manifest, { observedHosts } = {}) {
     structuredHosts: structured.length,
     feedHosts: feeds.length,
     operationalStatusHosts: status.length,
-    providerCount: new Set(active.map((entry) => entry.provider)).size,
+    providerCount: catalogProviderIdentities(manifest).size,
     observedHosts: observedHosts ?? manifest.entries.filter((entry) => entry.observed === true).length,
     reviewNeeded: active.filter((entry) => entry.status === 'terms-review').length,
   };
@@ -1479,7 +1541,11 @@ export function renderAttributionSection(inventory, manifest) {
     const refs = references.length > REFERENCE_DISPLAY_LIMIT
       ? `${references.slice(0, REFERENCE_DISPLAY_LIMIT).map((reference) => reference.path).join(', ')}, +${references.length - REFERENCE_DISPLAY_LIMIT} more`
       : references.map((reference) => reference.path).join(', ');
-    const surface = entry.observed === false ? 'Excluded / candidate' : entry.kind;
+    const surface = entry.observed === false
+      ? 'Excluded / candidate'
+      : (entry.role === 'transport' || isSyndicationTransportHost(entry.host)
+        ? `${entry.kind} (syndication transport)`
+        : entry.kind);
     const sourceRef = refs || (entry.observed === false ? 'No current fetch observed' : 'Manifest-only review row');
     return `| ${markdownCell(entry.provider)} (${markdownCell(entry.host)}) | ${markdownCell(surface)} — ${markdownCell(sourceRef)} |`;
   });
@@ -1487,7 +1553,7 @@ export function renderAttributionSection(inventory, manifest) {
     '## Observed Source Inventory',
     '',
     BEGIN_MARKER,
-    `This generated inventory covers **${stats.activeHosts} active source hosts** representing **${stats.providerCount} active providers** (**${stats.structuredHosts} structured/API**, **${stats.feedHosts} feed**, and **${stats.operationalStatusHosts} operational-status** hosts). It is derived from source declarations in \`scripts/\`, \`server/\`, \`api/\`, and \`src/\`. Each row shows the configured provider identity and where the source is referenced.`,
+    `This generated inventory covers **${stats.activeHosts} active source hosts** representing **${stats.providerCount} active providers** (**${stats.structuredHosts} structured/API**, **${stats.feedHosts} feed**, and **${stats.operationalStatusHosts} operational-status** hosts). It is derived from source declarations in \`scripts/\`, \`server/\`, \`api/\`, and \`src/\`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.`,
     '',
     '| Provider | Observed surface |',
     '| --- | --- |',
@@ -1554,11 +1620,13 @@ export function checkSourceAttribution(rootDir = ROOT) {
   const previous = loadManifest(rootDir);
   const errors = validateManifest(inventory, previous);
   if (errors.length) return { errors };
+  const identityErrors = validateFeedBurnerPublisherIdentity(scanNamedFeedDeclarations(rootDir));
+  if (identityErrors.length) return { errors: identityErrors };
   // Compare the committed manifest against a rebuild, not against itself. The
   // per-row validation above covers observed hosts; this catches the rest —
   // retired rows, logical entries, and formatting — so --check and --write can
   // no longer disagree about what the committed artifact should contain.
-  const rebuilt = serializeManifest(buildManifest(inventory, previous));
+  const rebuilt = serializeManifest(buildManifest(inventory, previous, { rootDir }));
   if (readFileSync(manifestPath, 'utf8') !== rebuilt) {
     return { errors: [`${MANIFEST_PATH} is out of date; ${REGENERATE_HINT}`] };
   }
@@ -1605,7 +1673,7 @@ export function runSourceAttribution({
     try {
       const inventory = scanUpstreamHosts(rootDir);
       const previous = loadManifest(rootDir);
-      const manifest = buildManifest(inventory, previous, { retireHosts });
+      const manifest = buildManifest(inventory, previous, { retireHosts, rootDir });
       // Render and count before writing anything. Both throw on a manifest row
       // that no longer validates, and a row retired by an earlier run is now kept
       // rather than dropped — so writing first would leave the manifest rewritten,

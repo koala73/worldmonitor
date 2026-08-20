@@ -22,6 +22,11 @@ import {
 } from './build-use-cases.mjs';
 import { buildSourceCatalog, renderSourcesIndex } from './crawlable-sources-page.mjs';
 import {
+  attachCoverageToCatalog,
+  loadSourceGeography,
+  scanNamedFeedDeclarations,
+} from './source-catalog-identity.mjs';
+import {
   activeSourceAttributionEntries,
   scanUpstreamHosts,
   sourceAttributionStats,
@@ -53,7 +58,7 @@ const SHARED_PAGE_TEMPLATE_PATH = 'scripts/build-crawlable-corpus.mjs';
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-12';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-07-28';
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-07-28';
-const SOURCES_PAGE_CONTENT_VERSION = '2026-08-16';
+const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-05';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
@@ -852,7 +857,13 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const sourceInventory = scanUpstreamHosts(rootDir);
   const sourceStats = sourceAttributionStats(sourceInventory, attributionManifest);
   const activeSourceEntries = activeSourceAttributionEntries(attributionManifest);
-  const sourceCatalog = buildSourceCatalog(activeSourceEntries);
+  const sourceCatalog = attachCoverageToCatalog(
+    buildSourceCatalog(activeSourceEntries, {
+      logicalProviders: attributionManifest.logicalProviders || [],
+    }),
+    scanNamedFeedDeclarations(rootDir),
+    loadSourceGeography(rootDir),
+  );
   if (sourceCatalog.length !== sourceStats.providerCount) {
     throw new Error('Source catalog provider count drifted from the attribution manifest');
   }

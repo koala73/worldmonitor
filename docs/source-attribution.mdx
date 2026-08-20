@@ -5,12 +5,14 @@ description: "Machine-generated inventory of every source host World Monitor use
 
 This page is the provenance companion to [Data Sources](/data-sources). That page explains **what** World Monitor covers and **which** providers power each domain. This page lists every source host observed in the source tree, its surface type, and where it is referenced.
 
+A host is the observed transport. The public [source catalog](https://worldmonitor.app/sources) groups related hosts under the logical publisher and separately records country of origin versus countries covered. Syndication transports such as FeedBurner and Google News stay in this host ledger; they are not catalog publishers.
+
 The inventory is **generated, not hand-written**: `scripts/source-attribution.mjs` scans source declarations in `scripts/`, `server/`, `api/`, and `src/`, and joins them against the committed manifest (`shared/source-attribution-manifest.json`). A host that appears in code but not in the manifest fails CI, so this disclosure cannot silently drift from the configured source inventory.
 
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **748 active source hosts** representing **742 active providers** (**318 structured/API**, **462 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced.
+This generated inventory covers **748 active source hosts** representing **743 active providers** (**318 structured/API**, **462 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -249,7 +251,7 @@ This generated inventory covers **748 active source hosts** representing **742 a
 | feeds.bbci.co.uk (feeds.bbci.co.uk) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | feeds.content.dowjones.io (feeds.content.dowjones.io) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | feeds.elpais.com (feeds.elpais.com) | feed — src/config/feeds.ts |
-| feeds.feedburner.com (feeds.feedburner.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
+| feeds.feedburner.com (feeds.feedburner.com) | feed+structured (syndication transport) — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
 | feeds.folha.uol.com.br (feeds.folha.uol.com.br) | feed — src/config/feeds.ts |
 | feeds.megaphone.fm (feeds.megaphone.fm) | feed — src/config/feeds.ts |
 | feeds.nbcnews.com (feeds.nbcnews.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
@@ -405,7 +407,7 @@ This generated inventory covers **748 active source hosts** representing **742 a
 | news.cgtn.com (news.cgtn.com) | feed — src/components/LiveNewsPanel.ts |
 | news.crunchbase.com (news.crunchbase.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
 | news.err.ee (news.err.ee) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
-| news.google.com (news.google.com) | feed+structured — scripts/validate-rss-feeds.mjs, server/worldmonitor/market/v1/stock-news-search.ts, server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, +2 more |
+| news.google.com (news.google.com) | feed+structured (syndication transport) — scripts/source-catalog-identity.mjs, scripts/validate-rss-feeds.mjs, server/worldmonitor/market/v1/stock-news-search.ts, server/worldmonitor/news/v1/_feeds.ts, +3 more |
 | news.mit.edu (news.mit.edu) | feed+structured — src/config/feeds.ts, src/config/variants/tech.ts |
 | news.mongabay.com (news.mongabay.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | news.tuoitre.vn (news.tuoitre.vn) | feed — src/config/feeds.ts |

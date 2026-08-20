@@ -56,6 +56,24 @@ function rawManifestActiveEntries(manifest) {
   );
 }
 
+const SYNDICATION_TRANSPORT_HOSTS = new Set([
+  'feeds.feedburner.com',
+  'feedburner.com',
+  'news.google.com',
+]);
+
+function rawCatalogProviderNames(manifest) {
+  const names = new Set(
+    rawManifestActiveEntries(manifest)
+      .filter((entry) => entry.role !== 'transport' && !SYNDICATION_TRANSPORT_HOSTS.has(entry.host))
+      .map((entry) => entry.provider),
+  );
+  for (const logical of manifest.logicalProviders || []) {
+    if (typeof logical?.provider === 'string' && logical.provider) names.add(logical.provider);
+  }
+  return names;
+}
+
 describe('sources catalog domain assignment', () => {
   it('rejects an empty active-provider catalog', () => {
     assert.throws(() => buildSourceCatalog([]), /Source catalog cannot be empty/);
@@ -738,7 +756,7 @@ describe('crawlable corpus generator', () => {
         readFileSync(join(repoRoot, 'shared/source-attribution-manifest.json'), 'utf8'),
       );
       const activeAttributionEntries = rawManifestActiveEntries(attributionManifest);
-      const activeProviderNames = new Set(activeAttributionEntries.map((entry) => entry.provider));
+      const activeProviderNames = rawCatalogProviderNames(attributionManifest);
       assert.ok(
         sourcesPage.includes(`<strong>${activeAttributionEntries.length}</strong>`),
         'sources page must render the tracked active-host count',
@@ -750,6 +768,9 @@ describe('crawlable corpus generator', () => {
       );
       assert.match(sourcesPage, /id="source-search"/);
       assert.match(sourcesPage, /id="source-country"/);
+      assert.match(sourcesPage, /id="source-coverage"/);
+      assert.match(sourcesPage, />Country of origin</);
+      assert.match(sourcesPage, />Country covered</);
       assert.match(sourcesPage, /data-source-catalog/);
       assert.match(sourcesPage, /data-source-filter="all"/);
       const renderedProviders = [...sourcesPage.matchAll(/data-provider="([^"]+)"/g)]
@@ -789,10 +810,30 @@ describe('crawlable corpus generator', () => {
         /data-provider="PAP"[\s\S]*?pap\.pl/,
         'sources page must list PAP under its own host',
       );
+      assert.doesNotMatch(
+        sourcesPage,
+        /data-provider="news\.google\.com"|<h3>Google News<\/h3>/,
+        'sources page must not list Google News as a publisher',
+      );
+      assert.doesNotMatch(
+        sourcesPage,
+        /FeedBurner-hosted publishers|<h3>FeedBurner/,
+        'sources page must not list FeedBurner as a publisher',
+      );
       assert.match(
         sourcesPage,
-        /data-provider="news\.google\.com"[\s\S]*?<h3>Google News<\/h3>[\s\S]*?news\.google\.com/,
-        'sources page must list Google News as its own provider',
+        /data-provider="NDTV"[\s\S]*?Origin: India[\s\S]*?Covers: India/,
+        'NDTV must appear as an Indian publisher with India coverage',
+      );
+      assert.match(
+        sourcesPage,
+        /<h3>BBC<\/h3>[\s\S]*?Origin: United Kingdom[\s\S]*?Covers:[^<]*India/,
+        'BBC Hindi must keep BBC origin while declaring India coverage',
+      );
+      assert.match(
+        sourcesPage,
+        /<h3>Reuters<\/h3>[\s\S]*?Origin: United Kingdom[\s\S]*?Covers:[^<]*India/,
+        'India-focused Reuters routes must stay Reuters with India coverage',
       );
       assert.doesNotMatch(
         sourcesPage,
@@ -809,6 +850,9 @@ describe('crawlable corpus generator', () => {
         .map((match) => match[1]);
       assert.equal(renderedCountries.length, activeProviderNames.size);
       assert.ok(renderedCountries.every((country) => /^[a-z]{2}$|^intl$/.test(country)));
+      const renderedCoverage = [...sourcesPage.matchAll(/data-source-coverage="([^"]*)"/g)]
+        .map((match) => match[1]);
+      assert.equal(renderedCoverage.length, activeProviderNames.size);
       assert.doesNotMatch(
         sourcesPage,
         /audited upstream|audited &amp; attributed/i,
@@ -863,8 +907,28 @@ describe('crawlable corpus generator', () => {
       assert.ok(visibleProviderCount() > 0, 'Hungary must have at least one classified source');
       assert.equal(
         window.document.querySelector('.provider-card[data-provider="24.hu"] .provider-country')?.textContent,
-        'Hungary',
+        'Origin: Hungary',
       );
+      resetButton.click();
+      const coverageSelect = window.document.getElementById('source-coverage');
+      coverageSelect.value = 'in';
+      coverageSelect.dispatchEvent(new window.Event('change'));
+      const indiaCoverageCount = [...window.document.querySelectorAll('.provider-card')].filter((card) => (
+        !card.hidden && (card.dataset.sourceCoverage || '').split(' ').includes('in')
+      )).length;
+      assert.equal(visibleProviderCount(), indiaCoverageCount, 'coverage selection must filter the complete catalog');
+      assert.ok(indiaCoverageCount > 0, 'India coverage must include at least one provider');
+      const bbcCard = [...window.document.querySelectorAll('.provider-card')]
+        .find((card) => card.querySelector('h3')?.textContent === 'BBC');
+      const ndtvCard = window.document.querySelector('.provider-card[data-provider="NDTV"]');
+      assert.ok(bbcCard && !bbcCard.hidden, 'BBC Hindi must remain visible under India coverage');
+      assert.ok(ndtvCard && !ndtvCard.hidden, 'NDTV must remain visible under India coverage');
+      coverageSelect.value = 'all';
+      const countryOriginSelect = window.document.getElementById('source-country');
+      countryOriginSelect.value = 'in';
+      countryOriginSelect.dispatchEvent(new window.Event('change'));
+      assert.ok(ndtvCard && !ndtvCard.hidden, 'NDTV origin is India');
+      assert.ok(bbcCard?.hidden, 'BBC origin stays United Kingdom when filtering India origin');
       resetButton.click();
       const searchInput = window.document.getElementById('source-search');
       searchInput.value = 'Hyperliquid';

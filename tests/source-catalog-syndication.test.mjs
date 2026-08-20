@@ -1,0 +1,158 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import {
+  attachCoverageToCatalog,
+  buildLogicalProviders,
+  catalogProviderIdentities,
+  classifyFeedDeclaration,
+  isCatalogProviderEntry,
+  isSyndicationTransportHost,
+  loadSourceGeography,
+  logicalPublisherName,
+  scanNamedFeedDeclarations,
+  validateFeedBurnerPublisherIdentity,
+} from '../scripts/source-catalog-identity.mjs';
+import {
+  loadManifest,
+  scanUpstreamHosts,
+  sourceAttributionLedgerStats,
+} from '../scripts/source-attribution.mjs';
+import { buildSourceCatalog } from '../scripts/crawlable-sources-page.mjs';
+
+const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+test('FeedBurner and Google News are syndication transports, not publisher hosts', () => {
+  assert.equal(isSyndicationTransportHost('feeds.feedburner.com'), true);
+  assert.equal(isSyndicationTransportHost('news.google.com'), true);
+  assert.equal(isSyndicationTransportHost('reuters.com'), false);
+  assert.equal(isSyndicationTransportHost('feeds.bbci.co.uk'), false);
+});
+
+test('NDTV and NDTV India collapse to the NDTV publisher family', () => {
+  assert.equal(logicalPublisherName('NDTV'), 'NDTV');
+  assert.equal(logicalPublisherName('NDTV India'), 'NDTV');
+  assert.equal(logicalPublisherName('BBC Hindi'), 'BBC');
+  assert.equal(logicalPublisherName('Reuters India'), 'Reuters');
+  assert.equal(logicalPublisherName('India News Network'), 'India News Network');
+});
+
+test('FeedBurner declarations require an explicit publisher identity', () => {
+  const named = classifyFeedDeclaration(
+    'NDTV',
+    'https://feeds.feedburner.com/ndtvnews-top-stories',
+  );
+  assert.equal(named.publisher, 'NDTV');
+  assert.deepEqual(named.transportHosts, ['feeds.feedburner.com']);
+  assert.deepEqual(named.editorialHosts, []);
+  assert.deepEqual(
+    validateFeedBurnerPublisherIdentity([
+      { ...named, name: '', publisher: '' },
+    ]),
+    ['FeedBurner URL https://feeds.feedburner.com/ndtvnews-top-stories requires an explicit publisher identity'],
+  );
+});
+
+test('Google News site queries keep the publisher; aggregation invents none', () => {
+  const reuters = classifyFeedDeclaration(
+    'Reuters India',
+    'https://news.google.com/rss/search?q=site:reuters.com+India&hl=en-US&gl=US&ceid=US:en',
+  );
+  assert.equal(reuters.publisher, 'Reuters');
+  assert.deepEqual(reuters.editorialHosts, ['reuters.com']);
+  assert.deepEqual(reuters.transportHosts, ['news.google.com']);
+
+  const aggregation = classifyFeedDeclaration(
+    'India News Network',
+    'https://news.google.com/rss/search?q=India+diplomacy+foreign+policy+news&hl=en&gl=US&ceid=US:en',
+  );
+  assert.equal(aggregation.publisher, 'India News Network');
+  assert.deepEqual(aggregation.editorialHosts, []);
+  assert.deepEqual(aggregation.transportHosts, ['news.google.com']);
+});
+
+test('logical FeedBurner publishers are counted once and carry India coverage for NDTV', () => {
+  const geography = new Map([
+    ['NDTV', ['IN']],
+    ['NDTV India', ['IN']],
+    ['Fast Company', []],
+  ]);
+  const providers = buildLogicalProviders([
+    classifyFeedDeclaration('NDTV', 'https://feeds.feedburner.com/ndtvnews-top-stories'),
+    classifyFeedDeclaration('NDTV India', 'https://feeds.feedburner.com/ndtvkhabar-latest'),
+    classifyFeedDeclaration('Fast Company', 'https://feeds.feedburner.com/fastcompany/headlines'),
+    classifyFeedDeclaration(
+      'India News Network',
+      'https://news.google.com/rss/search?q=India+diplomacy&hl=en&gl=US&ceid=US:en',
+    ),
+  ], geography);
+  const ndtv = providers.find((entry) => entry.provider === 'NDTV');
+  assert.ok(ndtv, 'NDTV must become a logical provider');
+  assert.deepEqual(ndtv.feedLabels, ['NDTV', 'NDTV India']);
+  assert.equal(ndtv.originCountry, 'IN');
+  assert.deepEqual(ndtv.coveredCountries, ['IN']);
+  assert.ok(!providers.some((entry) => entry.provider === 'India News Network'));
+  assert.ok(!providers.some((entry) => /feedburner/i.test(entry.provider)));
+});
+
+test('the committed inventory keeps transport hosts in the ledger but not the provider count', () => {
+  const inventory = scanUpstreamHosts(rootDir);
+  const manifest = loadManifest(rootDir);
+  const byHost = new Map(inventory.map((entry) => [entry.host, entry]));
+  assert.ok(byHost.get('feeds.feedburner.com'), 'FeedBurner remains an observed transport host');
+  assert.ok(byHost.get('news.google.com'), 'Google News remains an observed transport host');
+
+  const feedburner = manifest.entries.find((entry) => entry.host === 'feeds.feedburner.com');
+  const googleNews = manifest.entries.find((entry) => entry.host === 'news.google.com');
+  assert.equal(feedburner?.role, 'transport');
+  assert.equal(googleNews?.role, 'transport');
+  assert.equal(isCatalogProviderEntry(feedburner), false);
+  assert.equal(isCatalogProviderEntry(googleNews), false);
+
+  const stats = sourceAttributionLedgerStats(manifest, { observedHosts: inventory.length });
+  const identities = catalogProviderIdentities(manifest);
+  assert.equal(stats.providerCount, identities.size);
+  assert.ok(!identities.has('feeds.feedburner.com'));
+  assert.ok(!identities.has('news.google.com'));
+  assert.ok(identities.has('NDTV'));
+  assert.ok(
+    [...identities].some((provider) => provider === 'reuters.com' || provider === 'Reuters'),
+  );
+});
+
+test('catalog cards distinguish origin from coverage for BBC, NDTV, and Reuters', () => {
+  const manifest = loadManifest(rootDir);
+  const declarations = scanNamedFeedDeclarations(rootDir);
+  const geography = loadSourceGeography(rootDir);
+  const catalog = attachCoverageToCatalog(
+    buildSourceCatalog(
+      manifest.entries.filter(isCatalogProviderEntry),
+      { logicalProviders: manifest.logicalProviders || [] },
+    ),
+    declarations,
+    geography,
+  );
+  const byName = new Map(catalog.map((row) => [row.displayName, row]));
+
+  assert.ok(!catalog.some((row) => row.displayName === 'Google News'));
+  assert.ok(!catalog.some((row) => /FeedBurner/i.test(row.displayName)));
+
+  const ndtv = byName.get('NDTV');
+  assert.ok(ndtv, 'NDTV must appear as its own catalog provider');
+  assert.equal(ndtv.originCountry, 'IN');
+  assert.ok(ndtv.coveredCountries.includes('IN'));
+  assert.ok(ndtv.hosts.includes('feeds.feedburner.com') || ndtv.transportHosts.includes('feeds.feedburner.com'));
+
+  const bbc = byName.get('BBC');
+  assert.ok(bbc, 'BBC Hindi must remain under BBC');
+  assert.equal(bbc.originCountry, 'GB');
+  assert.ok(bbc.coveredCountries.includes('IN'), 'BBC Hindi must declare India coverage');
+
+  const reuters = byName.get('Reuters');
+  assert.ok(reuters, 'site-scoped Reuters queries must keep the Reuters identity');
+  assert.equal(reuters.originCountry, 'GB');
+  assert.ok(reuters.coveredCountries.includes('IN'), 'India-focused Reuters routes must declare India coverage');
+  assert.ok(reuters.hosts.includes('reuters.com'));
+});

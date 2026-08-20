@@ -135,6 +135,7 @@ const PUBLISHER_FAMILY_DATA = {
       "Reuters Commodities",
       "Reuters Crypto",
       "Reuters Energy",
+      "Reuters India",
       "Reuters LatAm",
       "Reuters Markets",
       "Reuters US",

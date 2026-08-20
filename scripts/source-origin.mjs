@@ -1,9 +1,10 @@
 // Publisher-origin country for the public /sources/ catalog.
 //
-// A source's country is where the feed comes from — the publisher's home
-// country or the government that issues it — not the set of countries it
-// reports on. International organizations and global platforms are classified
-// as null and shown as "International".
+// A source's origin country is where the publisher or issuing government
+// lives — not the set of countries it reports on. Coverage geography is
+// attached separately from named feed declarations. International
+// organizations and global platforms are classified as null and shown as
+// "International".
 //
 // Closed world: every catalog provider must resolve. Government suffixes and
 // real ccTLDs infer automatically. Generic or vanity TLDs need an explicit
@@ -565,8 +566,11 @@ const HOST_ORIGINS = Object.freeze({
 const PROVIDER_ORIGINS = Object.freeze({
   'B.C. Evacuation Orders and Alerts': 'CA',
   'Ember electricity data': 'GB',
+  'Fast Company': 'US',
   'Mexico Energy Regulatory Commission (CRE)': 'MX',
+  NDTV: 'IN',
   'Our World in Data': 'GB',
+  'The Hacker News': 'IN',
   'World Health Organization (WHO)': null,
 });
 
@@ -681,6 +685,18 @@ export function catalogCountryOptions(sourceCatalog) {
     options.unshift({ code: INTERNATIONAL_FILTER, name: 'International' });
   }
   return options;
+}
+
+export function catalogCoverageCountryOptions(sourceCatalog) {
+  const codes = new Set();
+  for (const provider of sourceCatalog) {
+    for (const code of provider.coveredCountries || []) {
+      if (code) codes.add(code);
+    }
+  }
+  return [...codes]
+    .map((code) => ({ code: sourceOriginFilterValue(code), name: sourceOriginLabel(code) }))
+    .sort((left, right) => left.name.localeCompare(right.name, 'en', { sensitivity: 'base' }));
 }
 
 export function assertKnownOriginCode(code, label) {

@@ -35,6 +35,24 @@ function rawManifestActiveEntries(manifest) {
   );
 }
 
+const SYNDICATION_TRANSPORT_HOSTS = new Set([
+  'feeds.feedburner.com',
+  'feedburner.com',
+  'news.google.com',
+]);
+
+function rawCatalogProviderNames(manifest) {
+  const names = new Set(
+    rawManifestActiveEntries(manifest)
+      .filter((entry) => entry.role !== 'transport' && !SYNDICATION_TRANSPORT_HOSTS.has(entry.host))
+      .map((entry) => entry.provider),
+  );
+  for (const logical of manifest.logicalProviders || []) {
+    if (typeof logical?.provider === 'string' && logical.provider) names.add(logical.provider);
+  }
+  return names;
+}
+
 /**
  * Build a throwaway checkout whose committed artifacts the generator itself
  * produced, so every `--check` failure below is caused by the one mutation the
@@ -126,7 +144,7 @@ test('source inventory has complete metadata and matches the generated catalog',
   assert.equal(stats.activeHosts, activeEntries.length, 'production stats must match the independent active-host oracle');
   assert.equal(
     stats.providerCount,
-    new Set(activeEntries.map((entry) => entry.provider)).size,
+    rawCatalogProviderNames(manifest).size,
     'production stats must match the independent provider oracle',
   );
   assert.equal(stats.observedHosts, inventory.length, 'observed stats must derive from the source scan');
