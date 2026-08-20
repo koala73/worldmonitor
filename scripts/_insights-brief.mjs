@@ -356,7 +356,17 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   const validatorMode = opts.validatorMode === 'shadow' ? 'shadow' : 'enforce';
   const sanitize = typeof opts.sanitizeTitle === 'function' ? opts.sanitizeTitle : (t) => t;
   const sourceFromStory = typeof opts.sourceFromStory === 'function' ? opts.sourceFromStory : () => null;
-  const reject = (rejection) => ({ brief: null, rejection });
+  // `detail` carries WHAT tripped the gate, not just which gate. Both
+  // validators already return the offending token sequence; discarding it left
+  // production able to say only that the lead was rejected, never why — while
+  // the sibling summary gate two hundred lines away has always logged
+  // `invented "talks" not in headline` (seed-insights.mjs). Same field, same
+  // use.
+  const reject = (rejection, detail = null) => ({
+    brief: null,
+    rejection,
+    rejectionDetail: Array.isArray(detail) && detail.length > 0 ? detail.join(' ') : null,
+  });
 
   if (!Array.isArray(topStories) || topStories.length === 0) return reject(BRIEF_REJECTIONS.NO_TOP_STORIES);
   // Editorial gate: same bar the legacy pickBriefCluster enforced. The caller
@@ -444,8 +454,12 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
     const sentenceValidation = validateNoHallucinatedProperNouns(attributed, scopedGround);
     const factValidation = validateNoHallucinatedFacts(attributed, scopedGround);
     if (validatorMode === 'enforce') {
-      if (!sentenceValidation.ok) return reject(BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
-      if (!factValidation.ok) return reject(BRIEF_REJECTIONS.LEAD_NUMERIC_FACT);
+      if (!sentenceValidation.ok) {
+        return reject(BRIEF_REJECTIONS.LEAD_PROPER_NOUN, sentenceValidation.hallucinated);
+      }
+      if (!factValidation.ok) {
+        return reject(BRIEF_REJECTIONS.LEAD_NUMERIC_FACT, factValidation.hallucinated);
+      }
     }
   }
   if (!checkLeadGrounding({ lead: leadCheck.text }, groundingStories, topStories.length)) {
@@ -494,5 +508,6 @@ export function composeSynthesizedBriefResult(rawText, topStories, opts = {}) {
   return {
     brief: { lead: leadCheck.text, lines, sources, hallucinatedLines, strippedCitations, sourceAttributions },
     rejection: null,
+    rejectionDetail: null,
   };
 }

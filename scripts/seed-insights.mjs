@@ -478,7 +478,27 @@ async function callLLM(headline, options = {}) {
   let firstFaulted = null;
   const rejectedResult = () => firstRejected ?? firstFaulted;
 
-  for (const provider of LLM_PROVIDERS) {
+  // A gate rejection is not evidence that the PROVIDER is unhealthy — it says
+  // this SAMPLE was unusable. Advancing on it demotes the chain to a weaker
+  // model, which is less likely to produce a grounded lead than a second sample
+  // from the stronger one, so the strictness of an editorial gate was buying
+  // worse published prose.
+  //
+  // Measured on seed-insights 2026-08-20 before this change: of 9 gate
+  // rejections, the fallback rescued 2 and the other 7 reached the
+  // single-headline brief anyway, while 5 of 14 shipped briefs came from
+  // google/gemma-4-26b-a4b-it:free rather than deepseek-v4-flash. So the
+  // demotion mostly did not save the run, and when it did it shipped the weaker
+  // writer.
+  //
+  // Resample the SAME provider once, then fall through to the rest of the chain
+  // exactly as before. Transport failures still advance immediately — withRetry
+  // already covers transient ones, and a provider that is genuinely down should
+  // not be asked twice.
+  const queue = [...LLM_PROVIDERS];
+  const resampled = new Set();
+  while (queue.length > 0) {
+    const provider = queue.shift();
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
 
@@ -571,6 +591,15 @@ async function callLLM(headline, options = {}) {
           record(false, { ...usage, model: json.model || model, reason: 'validate_reject' });
           if (faulted) { if (!firstFaulted) firstFaulted = candidate; }
           else if (!firstRejected) firstRejected = candidate;
+          // One resample before demoting (see the queue comment above). A
+          // FAULTED acceptor is excluded deliberately: that fault is in our own
+          // gate, not in the sample, so a second identical call would throw
+          // identically and only burn budget.
+          if (!faulted && !resampled.has(provider.name)) {
+            resampled.add(provider.name);
+            queue.unshift(provider);
+            console.warn(`  ${provider.name}: resampling once before falling back to a weaker model`);
+          }
           continue;
         }
       }
@@ -848,11 +877,12 @@ async function fetchInsights() {
         userPrompt: synthesisUserPrompt(topStories),
         maxTokens: 900,
         // A model whose output trips the editorial gates must not strand the
-        // run — keep the chain moving to one that passes.
+        // run. callLLM resamples this model once before demoting to a weaker
+        // one, so a single unusable sample no longer costs the better writer.
         accept: composeFromText,
       })
     : null;
-  const { composed, failureCode } = resolveInsightsSynthesis({
+  const { composed, failureCode, failureDetail } = resolveInsightsSynthesis({
     synthesisResult,
     topStories,
     ...synthesisComposerOptions,
@@ -884,7 +914,8 @@ async function fetchInsights() {
     console.log(`  Brief synthesized (top-${topStories.length}) via ${briefProvider} (${briefModel})`);
   } else {
     console.warn(
-      `  [brief_synthesis] rejected (${synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER}) — `
+      `  [brief_synthesis] rejected (${synthesisFailureCode || INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER})`
+      + `${failureDetail ? ` on "${failureDetail}"` : ''} — `
       + 'falling back to single-headline brief',
     );
     const legacy = await generateLegacySingleHeadlineBrief(topStories, {

@@ -319,7 +319,47 @@ describe('seed-insights callLLM output acceptance (#6001)', () => {
     assert.ok(result, 'an accepted provider result must be returned');
     assert.equal(result.provider, 'groq');
     assert.equal(result.text, LONG_BRIEF);
-    assert.equal(seen.length, 4, 'paid, fixed free, backup, and Groq providers must be attempted');
+
+    // #6001's guarantee, unchanged: a gate rejection must not strand the run on
+    // the primary — the chain still reaches a provider that composes.
+    assert.ok(
+      seen.some((url) => url.includes('groq')),
+      'the chain must still advance past a provider whose output the gates reject',
+    );
+
+    // Added later: it advances only AFTER resampling the same provider once. A
+    // gate rejection says the SAMPLE was unusable, not that the provider is
+    // unhealthy, and demoting on the first one shipped the weaker writer —
+    // measured on 2026-08-20, 5 of 14 published briefs came from the free model
+    // while only 2 of 9 demotions actually rescued the run.
+    //
+    // Asserted as a SHAPE, not a count: each rejecting provider is sampled
+    // twice consecutively, the accepting one exactly once. A bare length check
+    // would pass just as happily if the retries landed on the wrong provider.
+    const providerOf = (url) => (url.includes('groq') ? 'groq' : 'openrouter');
+    const attempts = seen.map(providerOf);
+    assert.equal(attempts.at(-1), 'groq', 'the accepting provider ends the walk');
+    assert.equal(
+      attempts.filter((p) => p === 'groq').length,
+      1,
+      'a provider that passes on its first sample is never resampled',
+    );
+    assert.equal(
+      attempts.filter((p) => p === 'openrouter').length,
+      6,
+      'each of the three rejecting openrouter providers is sampled exactly twice',
+    );
+    assert.equal(seen.length, 7);
+
+    // The resample must be the SAME endpoint, back to back — a retry that
+    // silently moved to the next model would satisfy the counts above.
+    const rejecting = seen.slice(0, 6);
+    for (let i = 0; i < rejecting.length; i += 2) {
+      assert.equal(
+        rejecting[i], rejecting[i + 1],
+        `resample ${i / 2 + 1} must re-ask the same provider, not the next one`,
+      );
+    }
   });
 
   it('returns the last attempt when every provider is rejected, so the failure stays classifiable', async () => {

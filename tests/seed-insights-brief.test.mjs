@@ -580,6 +580,29 @@ describe('composeSynthesizedBriefResult names which gate rejected (#5947)', () =
     assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
   });
 
+  it('names the proper noun it rejected, not just the gate', () => {
+    // Production could say a lead was rejected but never WHAT tripped it, so
+    // deciding whether a rejection was a real hallucination or a grounding
+    // false-positive meant guessing. The validator has always returned the
+    // offending sequence; the gate discarded it. The sibling summary gate has
+    // logged `invented "talks" not in headline` since #6109 — same field.
+    const out = compose('Bloomberg reported apple prices rose sharply in Chile last quarter [1].');
+    assert.equal(out.rejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+    assert.equal(
+      out.rejectionDetail,
+      'bloomberg',
+      'the rejection must carry the offending sequence so the log can name it',
+    );
+  });
+
+  it('carries no detail when the brief is accepted', () => {
+    // Shape stability: a caller reading rejectionDetail must not have to guard
+    // against it being stale from a previous compose.
+    const out = compose('According to Reuters, apple prices rose sharply in Chile last quarter [1].');
+    assert.equal(out.rejection, null);
+    assert.equal(out.rejectionDetail, null);
+  });
+
   it('still rejects a corroborating source the prompt never showed', () => {
     // The fixture's `sources` carries 'AP News', but synthesisUserPrompt renders
     // only primarySource plus a publisher COUNT. Grounding the rest of the
