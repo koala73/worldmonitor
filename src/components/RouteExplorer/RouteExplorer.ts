@@ -595,12 +595,26 @@ export class RouteExplorer {
     return false;
   }
 
+  /**
+   * AviationCommandBar and the findings modal mount on `document.body` with
+   * aria-modal=true while Route Explorer is still open. The Explorer capture
+   * listener is registered first, so without this check Escape (and the
+   * number/letter shortcuts) steal keys from the stacked dialog.
+   */
+  private isStackedModalFocused(): boolean {
+    const el = document.activeElement;
+    if (!(el instanceof Element) || !this.root) return false;
+    const modal = el.closest('[aria-modal="true"]');
+    return modal !== null && !this.root.contains(modal);
+  }
+
   private blurActiveInput(): void {
     (document.activeElement as HTMLElement | null)?.blur();
   }
 
   private handleGlobalKeydown = (e: KeyboardEvent): void => {
     if (!this.isOpen || !this.root) return;
+    if (this.isStackedModalFocused()) return;
 
     if (e.key === 'Escape') {
       if (this.helpOverlay) {

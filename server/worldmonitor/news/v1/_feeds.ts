@@ -402,6 +402,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Pajhwok Afghan News', url: gn('site:pajhwok.com Afghanistan when:7d') },
       { name: 'The Daily Star', url: gn('site:thedailystar.net when:14d') },
       { name: 'Dhaka Tribune', url: gn('site:dhakatribune.com when:14d') },
+      { name: 'Times of India', url: 'https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms', lang: 'en' },
     ],
     energy: [
       { name: 'Oil & Gas', url: gn('(oil price OR OPEC OR "natural gas" OR pipeline OR LNG) when:2d') },

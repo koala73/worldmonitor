@@ -27,6 +27,8 @@ export const TERMS_VERSION = '2026-08-20';
 export const EULA_PATH = '/docs/eula';
 export const TERMS_PATH = '/docs/terms';
 export const PRIVACY_PATH = '/docs/privacy';
+/** Data Processing Addendum — entered separately by customers who need one. */
+export const DPA_PATH = '/docs/dpa';
 export const LICENSE_PATH = '/docs/license';
 export const TRADEMARK_PATH = '/docs/trademark-policy';
 
@@ -49,8 +51,12 @@ export const LEGAL_FOOTER_LINKS: ReadonlyArray<{ label: string; path: string }> 
 ];
 
 /**
- * Every legal document a stamped version covers, with the SHA-256 of its
- * normalized body.
+ * Every published legal document, with the SHA-256 of its normalized body.
+ *
+ * All four share one version. Three of them — the EULA, the Terms and the
+ * Privacy Policy — are what a checkout acceptance records. The DPA is entered
+ * separately by customers who need one, and is versioned with them so a
+ * customer holding a countersigned copy can tell which text it matches.
  *
  * This is what replaces dated archive pages (owner decision, 2026-08-20: git
  * history is the archive). A history link alone cannot catch the failure that
@@ -63,9 +69,10 @@ export const LEGAL_FOOTER_LINKS: ReadonlyArray<{ label: string; path: string }> 
  * whitespace collapsed, so editorial notes do not force a version bump.
  */
 export const LEGAL_DOCUMENT_DIGESTS: Readonly<Record<string, string>> = {
-  'docs/eula.mdx': '336e8ec75665575064cac9b8f082cc1862f7fed91d436328898670da3e4bc6fa',
-  'docs/terms.mdx': '2f51303594dba758f125c704f322760bb980848eb14c835ed33404bb5d5fcb79',
-  'docs/privacy.mdx': '108e6580e3e3d6ec69b9e70dbe58e1fb5d70c1be155a5cc948f9c464c329750c',
+  'docs/eula.mdx': 'a626f74b5a8fa2733049242b8df6100f72a2c41f9bb97e5a817bfbda1b4df89b',
+  'docs/terms.mdx': 'f58a52b92ff51cdf5ace441e4c45420ad06bea5474113337009c7ab7b7c17f73',
+  'docs/dpa.mdx': 'd0b0d5d1a9583700ea09a6dc733cc1efa479aca802ad3a79bc0618c7c4537be1',
+  'docs/privacy.mdx': '33c599b5ad2b9431374639fa843784d17289954f1f921746178467793696e020',
 };
 
 /** Where the text behind any recorded version can be read back. */

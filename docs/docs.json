@@ -254,6 +254,7 @@
                 "pages": [
                   "eula",
                   "terms",
+                  "dpa",
                   "license",
                   "trademark-policy",
                   "privacy"
@@ -722,6 +723,7 @@
                 "pages": [
                   "zh/eula",
                   "zh/terms",
+                  "zh/dpa",
                   "zh/license",
                   "zh/trademark-policy",
                   "zh/privacy"

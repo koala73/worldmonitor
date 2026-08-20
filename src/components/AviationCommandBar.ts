@@ -2,6 +2,7 @@ import { fetchFlightStatus, fetchAirportOpsSummary, fetchFlightPrices, fetchAvia
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { MONITORED_AIRPORTS } from '@/config/airports';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 
 
 // ---- Intent types ----
@@ -290,6 +291,7 @@ const MAX_HISTORY = 20;
 
 export class AviationCommandBar {
     private overlay: HTMLElement | null = null;
+    private focusTrap: FocusTrap | null = null;
     private boundKeydown: (e: KeyboardEvent) => void;
 
     constructor() {
@@ -315,6 +317,9 @@ export class AviationCommandBar {
 
         this.overlay = document.createElement('div');
         this.overlay.id = 'aviation-cmd-overlay';
+        this.overlay.setAttribute('role', 'dialog');
+        this.overlay.setAttribute('aria-modal', 'true');
+        this.overlay.setAttribute('aria-label', 'Aviation Command');
         setTrustedHtml(this.overlay, trustedHtml(`
       <div id="aviation-cmd-box">
         <div id="aviation-cmd-header">
@@ -329,6 +334,11 @@ export class AviationCommandBar {
       </div>`, "legacy direct innerHTML migration"));
 
         document.body.appendChild(this.overlay);
+        this.focusTrap = createFocusTrap(this.overlay, {
+            onEscape: () => this.close(),
+            initialFocus: () => this.overlay?.querySelector<HTMLInputElement>('#aviation-cmd-input') ?? null,
+        });
+        this.focusTrap.activate();
 
         this.overlay.addEventListener('click', (e) => {
             if (e.target === this.overlay) { this.close(); return; }
@@ -364,6 +374,8 @@ export class AviationCommandBar {
     }
 
     private close(): void {
+        this.focusTrap?.deactivate();
+        this.focusTrap = null;
         this.overlay?.remove();
         this.overlay = null;
     }

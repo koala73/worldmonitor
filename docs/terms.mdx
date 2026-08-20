@@ -1,39 +1,72 @@
 ---
 title: "World Monitor terms of service and acceptable use"
-description: "Terms governing World Monitor: acceptable use, intelligence-data disclaimer, API and MCP usage, subscriptions and billing, IP, and liability limits."
+description: "Terms governing World Monitor: acceptable use, intelligence-data disclaimer, API and MCP usage, subscriptions and billing, warranties, indemnities, liability limits, termination, and governing law."
 ---
 
-{/* REVIEW — governing law set to the UAE (Dubai venue, with a mandatory-consumer-law carve-out); refunds deferred to Dodo Payments + consumer law (no separate policy configured in Dodo); effective date 20 August 2026, when the plan license scopes moved into the EULA (/eula) and this page kept the service-operations half. Party is named as "World Monitor, based in the United Arab Emirates" by decision on 20 August 2026 — no registered entity to name yet; the first enterprise order form will need one (#6639). NOT legal advice — a legal review is still recommended. */}
+{/* REVIEW — 20 August 2026. These Terms cover the SELF-SERVE plans only: Pro, Pro Business, API Starter, API Business. Hardened against a full external review, then deliberately trimmed. The reviewer's warranty, company indemnity, mutual confidentiality, annual-audit and guaranteed-cure clauses are Master Services Agreement concessions — the reference ToU template grants none of them — so they sit outside the self-serve plans. The Enterprise and negotiated terms section names what a negotiated agreement CAN cover and states plainly that none of it is included in or claimable under a self-serve plan and that listing it commits us to nothing — availability, not entitlement, since none of those documents exists yet. tests/terms-eula-coherence.test.mts guards both halves: those protections must not creep back into click-through, and the section must not drift into promising them. Also deliberately absent, by decision and not by omission: a dispute-resolution/arbitration clause (Enterprise only), a DIFC opt-in (World Monitor FZ LLC is a Dubai free-zone company outside the DIFC; onshore Dubai Courts are the default and that is the settled position), and a registered-address/licence-number block (needed for a signature block on an Enterprise order form, not for click-through Terms). Kept: the discontinuation refund, beta carve-out, free-tier section whose USD 100 cap is scoped to the mixed case, quota freeze, sanctions/export bullet, the compliance carve-out to the individual-decisions prohibition, high-risk prohibition, AI-transparency line, taxes, failed-payment ladder, liability carve-outs, usage verification, and a General section. Seat counts state what the plans ship: API Starter none, API Business five, everything else one. NOT legal advice — a legal review is still recommended. */}
 
 _Last updated: 20 August 2026_
 
 **Download:** [PDF](https://www.worldmonitor.app/legal/terms.pdf) · [Markdown](https://www.worldmonitor.app/docs/terms.md)
 
-These Terms of Service ("Terms") govern your use of the World Monitor dashboard, website, desktop apps, API, MCP server, and SDKs (the "Service"), operated by World Monitor, based in the United Arab Emirates ("we", "us"). By using the Service, you agree to these Terms. If you do not agree, do not use the Service.
+These Terms of Service ("Terms") govern your use of the World Monitor dashboard, website, desktop apps, API, MCP server, and SDKs (the "Service"), operated by **World Monitor FZ LLC, a free zone limited liability company registered in Dubai, United Arab Emirates** ("World Monitor", "we", "us").
 
-**These Terms travel with the [End User License Agreement](/eula).** The EULA is the license — what each plan lets you do, on every surface, and what you may keep and pass on. These Terms are how the Service is operated and sold: accounts, acceptable use, the intelligence disclaimer, billing, warranties, liability, and governing law. Where the two overlap, the EULA controls on license scope and these Terms control on everything else.
+**These Terms travel with the [End User License Agreement](/eula).** The EULA is the license — what each plan lets you do, on every surface, and what you may keep and pass on. These Terms are how the Service is operated and sold: accounts, acceptable use, the intelligence disclaimer, billing, warranties, liability, termination, and governing law. Where the two overlap, the EULA controls on license scope and these Terms control on everything else.
 
 This page is written in plain language and is not legal advice.
 
+## Accepting these Terms
+
+You accept these Terms by creating an account, subscribing to a plan, installing or launching a desktop application, or sending a request to the API or MCP server. If you do not agree, do not use the Service.
+
+By accepting, you confirm that you are of the legal age to enter a contract where you live, and that if you are accepting on behalf of an organization you are authorized to bind it. "You" then means that organization.
+
+These Terms are written in English. Translations are provided for convenience; **the English text governs** and is the version any recorded acceptance refers to.
+
 ## The Service
 
-World Monitor aggregates and presents real-time global intelligence from many third-party and open sources, with automated and AI-generated analysis layered on top. The basic dashboard is available without an account. Additional features are available on paid Pro plans.
+World Monitor aggregates and presents real-time global intelligence from many third-party and open sources, with automated and AI-generated analysis layered on top. The basic dashboard is available without an account. Additional features are available on paid plans.
 
-We may change, suspend, or discontinue any part of the Service at any time.
+We may change, suspend, or discontinue any part of the Service at any time. **If we discontinue, or materially and permanently degrade, a feature that was part of a paid plan when you purchased it**, we will give at least 30 days' notice and, at your election, refund the unused portion of prepaid fees for the remainder of the current billing period.
+
+Features labelled **beta, preview, or experimental** are excluded from that commitment and from the warranty below. They are provided as-is and may be changed or withdrawn at any time without notice or refund.
+
+## Free and anonymous access
+
+The basic dashboard, the public corpus pages, the credential-free `get_sources` tool, and the free-account allowance are provided **as-is and as-available, without warranty, indemnity, or any service commitment**, and may be modified, limited, or withdrawn at any time without notice.
+
+Only these sections apply to free and anonymous access: this section, Acceptable use, Intelligence disclaimer, Intellectual property, Third-party sources and links, Disclaimer of warranties, Limitation of liability, Governing law, and General. The billing, refund, and notice commitments elsewhere in these Terms apply only to paid plans.
+
+**Claims arising from free or anonymous access are capped at USD 100 in aggregate — including where you also hold a paid plan.** Paying for one thing does not raise the ceiling on a failure of something we give away. For a user who pays nothing this matches the general cap below; the point of stating it here is the mixed case.
 
 ## Accounts
 
-Some features require an account, provided through our authentication providers. You are responsible for keeping your credentials and any API keys secure and for all activity under your account. Notify us promptly of any unauthorized use.
+Some features require an account, provided through our authentication providers. Accounts are for people old enough to consent to data processing where they live; the Service is not directed to children (see the [Privacy Policy](/privacy)). If you process personal data through the Service as a controller, the [Data Processing Addendum](/dpa) applies and needs no signature.
+
+You are responsible for keeping your credentials and API keys secure, for giving accurate registration information, and for all activity under your account. Notify us at [support@worldmonitor.app](mailto:support@worldmonitor.app) promptly if you suspect a credential has been exposed. On reasonable suspicion of compromise we may suspend the account or require credential rotation, and we will tell you why when we do.
+
+An account belongs to one named individual. Seat rules, and what counts as sharing, are in [EULA §4.2](/eula).
 
 ## Acceptable use
 
+**[EULA §8](/eula) is the operative list of restrictions.** This section summarizes it; where the two differ, the EULA controls.
+
 You agree not to:
 
-- use the Service unlawfully, or to harm, harass, surveil, or endanger any person;
-- exceed published rate limits, or circumvent quotas, authentication, or access controls;
-- scrape, resell, or redistribute the data or Service except as expressly permitted by your plan, these Terms, and the source licenses;
+- use the Service unlawfully, or to harm, harass, surveil, profile, or endanger any person, or to make decisions about an individual that affect their rights (but see the carve-out below);
+- **use the Service in a high-risk system** — one where failure or inaccuracy could result in death, serious injury, or severe physical or environmental damage. Where you build any system on the Service, you are responsible for its safety, redundancy, and human review;
+- exceed published rate limits, or circumvent quotas, authentication, entitlement checks, or access controls, including by scraping a rendered page to avoid a metered endpoint;
+- scrape, resell, or redistribute the data or Service except as expressly permitted by your plan, the EULA, and the source licenses;
+- **use Outputs to train, fine-tune, distill, or benchmark a competing model or dataset** without our written permission. Using Outputs inside your own AI workflows is expressly allowed, and model-training rights are available under an Enterprise order form;
 - disrupt, overload, or attempt to gain unauthorized access to the Service or its infrastructure;
-- misrepresent affiliation with or endorsement by World Monitor (see the [Trademark Policy](/trademark-policy)).
+- misrepresent affiliation with or endorsement by World Monitor (see the [Trademark Policy](/trademark-policy));
+- **use the Service in breach of applicable sanctions or export-control law**, or make it available to a restricted party under that law.
+
+**What these restrictions do not prohibit.** Nothing in this section or in EULA §8.9 prohibits sanctions screening, know-your-customer and other regulatory compliance checks, corporate due diligence, academic research, or journalism, in each case conducted lawfully and consistently with the terms of the underlying source. The Service publishes sanctions lists and other public-interest data precisely so they can be used for those purposes.
+
+**Automated access is your access.** An agent, script, or MCP client acting for you consumes your license at your plan's scope. Automating does not widen what you are licensed to do.
+
+**What happens on breach.** Our normal course is warning, then throttling, then suspension, then termination, as described under Suspension and termination below.
 
 ## Intelligence disclaimer
 
@@ -41,13 +74,20 @@ You agree not to:
 
 - is provided **"as is" and "as available"**, without warranty of accuracy, completeness, timeliness, or fitness for any purpose;
 - may be delayed, incomplete, wrong, or misattributed, and may reflect the errors of its underlying sources;
+- is **generated by predictive models and is not reviewed or verified by a person before it reaches you**;
 - is **not** professional advice — not financial, investment, legal, security, medical, or safety advice.
 
-**Do not rely on the Service for decisions where errors could cause loss or harm** — including trading, travel, security, or life-safety decisions — without independently verifying the information. AI-generated briefings and forecasts are probabilistic and can be confidently wrong. You are solely responsible for how you use the information.
+**Do not rely on the Service for decisions where errors could cause loss or harm** — including trading, travel, security, or life-safety decisions — without independently verifying the information. AI-generated briefings and forecasts are probabilistic and can be confidently wrong. You are solely responsible for how you use the information, and high-risk deployments are prohibited outright under Acceptable use.
 
 ## API, MCP, and programmatic access
 
-Programmatic use through the REST API and MCP server is subject to these Terms, the [API documentation](https://www.worldmonitor.app/docs), and any plan-specific rate limits and quotas. Keep your API keys confidential; you are responsible for usage attributed to your keys. We may throttle, suspend, or revoke access for abuse or to protect the Service.
+Programmatic use through the REST API and MCP server is subject to these Terms, the [EULA](/eula), the [API documentation](https://www.worldmonitor.app/docs), and your plan's rate limits and quotas.
+
+**Your quotas are fixed for the period you paid for.** The rate limits, quotas, and plan allowances published for your plan when you purchased or last renewed apply for the remainder of that billing period. Changes take effect at your next renewal.
+
+Keep your API keys confidential; you are responsible for usage attributed to them. If a key is exposed, tell us and we will rotate it — usage before you tell us remains yours.
+
+We may throttle, suspend, or revoke access to protect the Service or to stop abuse. **We will tell you why, and restore access once the cause is resolved.**
 
 ## Subscription license scope
 
@@ -57,43 +97,129 @@ Paid plans grant a limited, non-exclusive right to use the hosted Service and it
 
 The plans, and the scope each one grants, are the **Personal license (Pro)**, the **Commercial license (Pro Business)**, the **Commercial license — for your organization (API Starter)**, the **Commercial license — for your customers (API Business)**, and **Enterprise**. In short: a Personal license is one person working for themselves; Pro Business adds company and client work for that one named user; API Starter covers an organization's internal systems; API Business adds delivering outputs to that organization's customers inside a **customer-facing product**; Enterprise is whatever the order form says. No plan below Enterprise permits offering World Monitor data as a **standalone database or substantially similar feed**. The [EULA](/eula#41-plan-license-scopes) defines each scope, what it excludes, what you may retain and redistribute, and the rules that apply to every plan.
 
+**Dashboard seats.** API Starter is an API plan: it includes **no dashboard seat**, and dashboard access is a separate Pro or Pro Business subscription. API Business includes **five dashboard seats** for named users at the same organization, carrying that plan's commercial scope. Everything else is one named user per subscription. Additional seats are available on request.
+
 If your use expands beyond the scope of your plan, you must upgrade or obtain written permission before that expanded use begins.
 
 These subscription licenses apply to the hosted Service and its outputs. The World Monitor **source code remains subject to AGPL-3.0-only**, and the **official thin client packages remain subject to MIT**; see the [License](/license). A subscription does not grant the right to incorporate AGPL-covered World Monitor code into a proprietary product or keep a covered modified deployment private, and the EULA does not narrow any right those licenses give you in the code.
 
 ## Subscriptions and billing
 
-Paid plans are sold and processed by Dodo Payments, which acts as the merchant of record; payments and any refunds are handled by Dodo Payments, and by subscribing you also agree to its terms. Subscriptions renew automatically until you cancel. You can cancel at any time — cancellation stops future renewals and takes effect at the end of the current billing period. We do not provide refunds for partial billing periods except where required by applicable consumer-protection law. Prices and plan features may change with notice for future billing periods.
+Paid plans are sold and processed by **Dodo Payments**, which acts as the merchant of record; payments and any refunds are handled by Dodo Payments, and by subscribing you also agree to [its terms](https://dodopayments.com/terms-of-use). Subscriptions renew automatically until you cancel.
+
+**Taxes.** Fees are exclusive of VAT, sales tax, and other duties, which you pay in addition, other than taxes on our income. If you must withhold tax, you bear it, so that we receive the full stated fee.
+
+**Cancelling.** Cancel from the billing portal at any time. Cancellation stops future renewals, your access continues to the end of the period already paid for, and no further charges are taken.
+
+**If a payment fails**, we retry and email you at the address on the account. Access continues during that retry window; if payment is still not made, the subscription is suspended and then returns to the free tier. We do not terminate a paid account for a failed payment without that sequence.
+
+**Price and plan changes** take effect at your next renewal, with at least 30 days' notice — see Changes to these Terms below.
+
+**Refunds.** Fees are non-refundable, except: (a) where we discontinue or materially degrade a paid feature (The Service, above); (b) where you object to a material change to these Terms (Changes to these Terms, below); and (c) where required by applicable consumer-protection law.
+
+## Disclaimer of warranties
+
+To the maximum extent permitted by law, the Service is provided "as is" and "as available" without warranties of any kind, whether express or implied, including merchantability, fitness for a particular purpose, non-infringement, and uninterrupted or error-free operation. This applies in full to free and anonymous access, beta features, third-party source data, and all Outputs.
+
+## Indemnification
+
+**You defend us.** You will defend us against third-party claims arising from your misuse of the Service, your breach of these Terms or the EULA, or Your Content, and indemnify us against damages and reasonable costs finally awarded or agreed in settlement.
+
+We will notify you of the claim, and we may take control of the defence at your expense. You will cooperate with that defence and will not settle a claim in a way that binds us without our consent.
+
+**We do not give an indemnity under these Terms.** An indemnity from us is one of the matters a negotiated agreement can cover; see [Enterprise and negotiated terms](#enterprise-and-negotiated-terms).
+
+## Limitation of liability
+
+To the maximum extent permitted by law, neither party will be liable for any indirect, incidental, special, consequential, or punitive damages, or for any loss of profits, data, or goodwill, arising from the Service — even if advised of the possibility.
+
+**Our total liability for all claims in aggregate**, not per claim, will not exceed the greater of the fees you paid us for the Service in the twelve months before the claim, or **USD 100**. Claims arising from free or anonymous access are capped at USD 100 whatever you pay for a plan — see Free and anonymous access above.
+
+**These caps do not apply to:** death or personal injury caused by negligence; fraud or wilful misconduct; your obligation to pay fees; your breach of the license scope in the EULA or infringement of our intellectual property; or either party's indemnity obligations, which are capped separately as stated above.
+
+Nothing here limits liability that cannot be limited under the law that applies to you.
+
+## Suspension and termination
+
+**We may suspend** your access for non-payment, for breach of these Terms or the EULA, for a security risk, where the law or a regulator requires it, or where a data source demands it.
+
+**How we normally do it.** For a breach that is not urgent, we will tell you what is wrong and give you a reasonable chance to put it right before suspending. We suspend immediately for a security risk, a legal requirement, abuse, or a source provider's demand. Either way we tell you why. A guaranteed cure period is one of the matters a negotiated agreement can cover.
+
+**Termination.** Either party may terminate for a material breach the other has not cured within 30 days of written notice. You may stop at any time by cancelling.
+
+**When your plan ends**, [EULA §10](/eula) governs what you keep: reports, analysis and R1/R2 Outputs already retrieved stay yours under the same class rules; you must stop fetching, refreshing, distributing to new recipients, and operating integrations that need an active entitlement; you must stop distributing R3 Outputs and delete cached R3 Source Content once its 30-day window closes; **and you must delete cached R4 Source Content, which is internal-use-only for the term of your plan.** Credentials are revoked.
+
+**Surviving these Terms:** the intelligence disclaimer, intellectual property, warranties disclaimer, indemnities, limitation of liability, confidentiality, governing law, and this section.
+
+## Verifying usage
+
+We may check usage telemetry from your account against the plan you bought. If it shows use beyond your plan — more named users, or a use the plan does not cover — we will tell you, and you will either bring the use within scope or pay the difference at list price for the period concerned.
+
+There is no audit of your premises and no penalty multiple.
 
 ## Intellectual property
 
-The World Monitor platform source code is licensed under AGPL-3.0-only, with certain client packages under MIT — see the [License](/license). Your rights in the Service and its outputs are set out in the [End User License Agreement](/eula). The World Monitor name, logo, and branding are **not** covered by the code license; see the [Trademark Policy](/trademark-policy). Underlying data belongs to its respective sources and is subject to their licenses and terms.
+The World Monitor platform source code is licensed under AGPL-3.0-only, with certain client packages under MIT — see the [License](/license). Your rights in the Service and its Outputs are contractual and are set out in the [End User License Agreement](/eula); they are not a transfer of ownership.
+
+**On facts and compilations:** individual facts are not protected by copyright, and we do not claim to own them. What we do own is our selection, compilation, and arrangement of them, our scoring and forecasting methodology, our databases, and the software that produces them. [EULA §5](/eula) is what tells you which Outputs you may redistribute, and on what terms.
+
+The World Monitor name, logo, and branding are **not** covered by the code license; see the [Trademark Policy](/trademark-policy), which no plan overrides. Underlying data belongs to its respective sources and is subject to their licenses and terms.
 
 ## Third-party sources and links
 
 The Service incorporates data and links from third parties. We do not control and are not responsible for third-party sources, their accuracy, or their availability, and inclusion does not imply endorsement.
 
-## Disclaimer of warranties
+**If a source withdraws or changes its terms**, that is not a breach of these Terms by us and does not by itself entitle you to a refund. Where the loss of a source materially and permanently degrades a feature of your paid plan, the discontinuation commitment in The Service applies.
 
-The Service is provided "as is" and "as available" without warranties of any kind, whether express or implied, including merchantability, fitness for a particular purpose, non-infringement, and uninterrupted or error-free operation, to the maximum extent permitted by law.
-
-## Limitation of liability
-
-To the maximum extent permitted by law, World Monitor and its operator will not be liable for any indirect, incidental, special, consequential, or punitive damages, or for any loss of profits, data, or goodwill, arising from your use of or inability to use the Service — even if advised of the possibility. Our total liability for any claim relating to the Service will not exceed the amount you paid us for the Service in the twelve months before the claim, or USD 100 if you paid nothing.
-
-## Indemnification
-
-You agree to indemnify and hold harmless World Monitor and its operator from claims and expenses arising out of your misuse of the Service or violation of these Terms.
+**R3 clearance.** [EULA §5](/eula) makes headline-and-snippet (R3) rights available per source on request. We will answer a written request within 10 working days, and we publish the cleared-source position in the [source attribution ledger](/source-attribution) as sources are reviewed.
 
 ## Changes to these Terms
 
-We may update these Terms as the Service evolves. Material changes will be reflected here with a new "Last updated" date. Continued use after changes take effect constitutes acceptance.
+**For paid subscribers, material changes take effect at the start of your next billing period**, and we will give at least 30 days' notice by email to the address on your account and in the product. If you object, cancel before they take effect and we will refund the pro-rata portion of prepaid fees for the remainder of your term.
+
+Non-material changes, and changes required by law, may take effect sooner. For free and anonymous access, changes take effect when published.
+
+Every change is published here with a new "Last updated" date. **A signed order form is not changed by an update to this page during its term.**
+
+## Enterprise and negotiated terms
+
+These Terms, the [EULA](/eula), the [Privacy Policy](/privacy) and, where you process personal data, the [Data Processing Addendum](/dpa) are the whole of the agreement for the self-serve plans — Free, Pro, Pro Business, API Starter, and API Business.
+
+Larger volumes, rights the published plans do not grant, and terms written for your organization are handled in a **separate signed agreement**. Depending on what we agree, that can cover matters these Terms do not — for example a performance warranty, an indemnity from us, confidentiality undertakings, a service-level commitment, a data processing agreement, a negotiated liability cap, a different governing law or venue, or an agreed dispute-resolution procedure.
+
+**None of that is included in, or claimable under, any self-serve plan**, and nothing in this section commits us to agree to any of it. It describes what a negotiated agreement can address, not what you are entitled to. Where a signed agreement does address something, it controls for that customer and changes nothing here for anyone else.
+
+Talk to us at [enterprise@worldmonitor.app](mailto:enterprise@worldmonitor.app).
 
 ## Governing law
 
-These Terms are governed by the laws of the United Arab Emirates, without regard to conflict-of-laws principles, and the courts of Dubai, United Arab Emirates will have jurisdiction over any dispute arising out of or relating to these Terms or the Service. Nothing in this section removes any protection you have under the mandatory consumer-protection laws of your country of residence, including any right you may have to bring proceedings in your local courts.
+These Terms are governed by the laws of the United Arab Emirates, without regard to conflict-of-laws principles. World Monitor FZ LLC is registered in a Dubai free zone, and the courts of Dubai, United Arab Emirates will have jurisdiction over any dispute arising out of or relating to these Terms or the Service. Nothing in this section removes any protection you have under the mandatory consumer-protection laws of your country of residence, including any right you may have to bring proceedings in your local courts.
+
+**Before starting proceedings**, each party will try to resolve the dispute informally: write to the other describing the issue, and give 30 days of good-faith discussion, escalated to a senior contact on each side. This does not prevent either party from seeking urgent injunctive relief.
 
 This is our standing position for self-serve plans. **Enterprise customers may negotiate a different governing law and venue in a signed order form**, along with a negotiated liability cap and any service-level commitment; where an order form states them, it controls over this section and the [End User License Agreement](/eula) records that precedence.
+
+## General
+
+**Entire agreement.** These Terms, the EULA, the Privacy Policy, the Trademark Policy, and any order form are the entire agreement between us about the Service. If they conflict, the order in [EULA §2](/eula) controls: a signed order form, then the EULA, then these Terms, then plan descriptions, pricing pages, and documentation.
+
+**Severability.** If any provision is held unenforceable, it is modified to the minimum extent needed to make it enforceable, or severed, and the rest continues in force.
+
+**Assignment.** You may not assign these Terms without our written consent, except to a successor in a merger or a sale of substantially all your assets, on 30 days' notice. We may assign to an affiliate or to a successor in a merger, acquisition, or sale of substantially all our assets.
+
+**Notices.** We give notice to the email address on your account, and it is treated as received the day after it is sent. You give legal notice to World Monitor FZ LLC at [support@worldmonitor.app](mailto:support@worldmonitor.app), and it is treated as received when we acknowledge it or on the second working day after sending, whichever is earlier.
+
+**Force majeure.** Neither party is liable for a delay or failure caused by something outside its reasonable control, including a source outage, an infrastructure-provider failure, an act of government, or a network failure. This does not excuse an obligation to pay.
+
+**No waiver.** A failure or delay in enforcing a right does not waive it.
+
+**No third-party beneficiaries**, except that our affiliates, operator, and personnel may rely on the limitation of liability and the indemnities.
+
+**No agency.** Nothing here creates a partnership, agency, employment, or joint venture.
+
+**Headings** are for convenience and do not affect interpretation.
+
+**Publicity.** We may identify you as a customer by name and logo in a customer list. Tell us and we will stop.
 
 ## Previous versions
 

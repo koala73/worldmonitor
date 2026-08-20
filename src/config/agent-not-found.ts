@@ -38,6 +38,8 @@ export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
   '/countries',
   '/crises',
   '/dashboard',
+  '/data-processing-agreement',
+  '/dpa',
   '/data',
   '/developers',
   '/docs',

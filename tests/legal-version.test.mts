@@ -44,8 +44,22 @@ function readLastUpdatedIso(mdx: string, label: string): string {
 const documents = Object.keys(LEGAL_DOCUMENT_DIGESTS);
 
 describe('legal version ↔ published text', () => {
-  it('covers the documents a stamped version is taken to include', () => {
-    assert.deepEqual(documents, ['docs/eula.mdx', 'docs/terms.mdx', 'docs/privacy.mdx']);
+  it('covers every published legal document', () => {
+    assert.deepEqual(documents, ['docs/eula.mdx', 'docs/terms.mdx', 'docs/dpa.mdx', 'docs/privacy.mdx']);
+  });
+
+  it('the checkout acceptance set is the three a buyer actually accepts', () => {
+    // All four share a version so a countersigned DPA can be matched to the
+    // text it was signed against. Only three are recorded by a checkout
+    // acceptance — the DPA is entered separately by customers who need it, and
+    // claiming a buyer accepted it at a Subscribe button would be false.
+    const accepted = documents.filter((doc) => doc !== 'docs/dpa.mdx');
+    assert.deepEqual(accepted, ['docs/eula.mdx', 'docs/terms.mdx', 'docs/privacy.mdx']);
+    assert.match(
+      readFileSync(join(ROOT, 'docs/dpa.mdx'), 'utf8'),
+      /You do not need to sign anything for this DPA to apply/i,
+      'a DPA that needs a signature nobody can obtain is the blocker this replaced',
+    );
   });
 
   it('TERMS_VERSION is an ISO date', () => {

@@ -283,6 +283,7 @@
       .skeleton-line.w75{width:75%}.skeleton-line.w60{width:60%}.skeleton-line.w50{width:50%}.skeleton-line.w85{width:85%}.skeleton-line.w40{width:40%}
 
       @keyframes skel-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
+      @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
 
       /* ---------- skeleton shell (light theme) ---------- */
       [data-theme="light"] .skeleton-shell{background:#f8f9fa}

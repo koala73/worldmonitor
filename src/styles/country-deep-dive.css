@@ -1887,3 +1887,9 @@
   color: var(--accent, #60a5fa);
   font-variant-numeric: tabular-nums;
 }
+
+/* Focus ring — base rule declares outline: none with only a border swap (#6573). */
+.cdp-product-search:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+}

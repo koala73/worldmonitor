@@ -20,6 +20,14 @@ export interface RouteCardOptions {
   option: BypassCorridorOption;
   index: number;
   isActive: boolean;
+  /**
+   * Opt into a single tab stop for the listbox. Inactive options then use
+   * tabindex=-1 so ArrowUp/ArrowDown (handled by the parent) move selection.
+   * Leave unset for listboxes that have no arrow-key manager (LandTab).
+   */
+  roving?: boolean;
+  /** Which option is the listbox tab stop when `roving` is set. Defaults to `isActive`. */
+  tabStop?: boolean;
   onSelect: (option: BypassCorridorOption) => void;
 }
 
@@ -31,7 +39,8 @@ export function renderRouteCard(opts: RouteCardOptions): HTMLDivElement {
   card.className = `re-route-card ${statusCls} ${isActive ? 're-route-card--active' : ''}`;
   card.setAttribute('role', 'option');
   card.setAttribute('aria-selected', isActive ? 'true' : 'false');
-  card.setAttribute('tabindex', '0');
+  const isTabStop = opts.tabStop ?? isActive;
+  card.setAttribute('tabindex', opts.roving && !isTabStop ? '-1' : '0');
   card.dataset.idx = String(index);
   card.dataset.corridorId = o.id;
 

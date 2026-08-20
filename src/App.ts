@@ -2393,6 +2393,9 @@ export class App {
       this.primeVisiblePanelData(),
     ]);
     markLcpDebug('wm:data:initial-fanout-complete');
+    if (import.meta.env.VITE_E2E === '1') {
+      document.documentElement.dataset.wmInitialDataReady = 'true';
+    }
     const countryGeometryReady = this.preloadCountryGeometryForPostLcpWork();
 
     // If bootstrap was served from cache but live data just loaded, promote the status indicator

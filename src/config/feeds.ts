@@ -545,6 +545,10 @@ export const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Pajhwok Afghan News', url: rss('https://news.google.com/rss/search?q=site%3Apajhwok.com%20Afghanistan%20when%3A7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'The Daily Star', url: rss('https://news.google.com/rss/search?q=site%3Athedailystar.net%20when%3A14d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Dhaka Tribune', url: rss('https://news.google.com/rss/search?q=site%3Adhakatribune.com%20when%3A14d&hl=en-US&gl=US&ceid=US:en') },
+    // New opt-in feeds stay at the end of the category. The free source cap
+    // consumes declaration order, so inserting earlier can evict an existing
+    // source from persisted free-user selections.
+    { name: 'Times of India', url: rss('https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms'), lang: 'en' },
   ],
   energy: [
     { name: 'Oil & Gas', url: rss('https://news.google.com/rss/search?q=(oil+price+OR+OPEC+OR+"natural+gas"+OR+pipeline+OR+LNG)+when:2d&hl=en-US&gl=US&ceid=US:en') },

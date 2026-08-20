@@ -35,6 +35,7 @@ const ENV_KEYS = [
   'AVIATIONSTACK_REQUEST_BUDGET',
   'UPSTASH_REDIS_REST_TOKEN',
   'UPSTASH_REDIS_REST_URL',
+  'WORLDMONITOR_VALID_KEYS',
   'WS_RELAY_URL',
 ] as const;
 
@@ -50,6 +51,7 @@ beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_TOKEN = 'redis-token';
   process.env.WS_RELAY_URL = 'https://relay.test';
   process.env.AVIATIONSTACK_MONTHLY_BUDGET = '0';
+  process.env.WORLDMONITOR_VALID_KEYS = 'test-key';
 });
 
 afterEach(() => {
@@ -103,8 +105,16 @@ function installFetchMock() {
   return positiveWrites;
 }
 
+// These routes require identity (see requireLiveAviationAccess); this suite is
+// about TTL, so it authenticates and lets the auth suite own the gate.
 function ctxFor(path: string) {
-  return { request: new Request(`https://worldmonitor.app${path}`), pathParams: {}, headers: {} };
+  return {
+    request: new Request(`https://worldmonitor.app${path}`, {
+      headers: { 'X-WorldMonitor-Key': 'test-key' },
+    }),
+    pathParams: {},
+    headers: {},
+  };
 }
 
 function assertOutlastsPolling(write: PositiveWrite | undefined, label: string) {
