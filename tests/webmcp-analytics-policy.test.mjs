@@ -239,7 +239,10 @@ describe('WebMCP analytics privacy policy', () => {
     await assert.rejects(
       tools.find(({ name }) => name === 'openCountryBrief').execute({ iso2: 'USA' }),
     );
-    await assert.rejects(tools.find(({ name }) => name === 'openSearch').execute({}));
+    await assert.rejects(
+      tools.find(({ name }) => name === 'openSearch').execute({}),
+      (error) => error.name === 'AbortError',
+    );
     await assert.rejects(tools.find(({ name }) => name === 'get_dashboard_context').execute({}));
     await tools.find(({ name }) => name === 'open_dashboard_panel')
       .execute({ panelId: 'premium' });
@@ -247,6 +250,8 @@ describe('WebMCP analytics privacy policy', () => {
       .execute({ panelId: 'missing' });
     await tools.find(({ name }) => name === 'open_search_result')
       .execute({ resultKey: `sr_${'b'.repeat(32)}` });
+    await tools.find(({ name }) => name === 'open_search_result')
+      .execute({ resultKey: `sr_${'c'.repeat(32)}`, extra: true });
     await assert.rejects(
       tools.find(({ name }) => name === 'search_dashboard').execute({ query: 'safe' }),
     );
@@ -259,6 +264,7 @@ describe('WebMCP analytics privacy policy', () => {
       ['denied', 'entitlement'],
       ['denied', 'unavailable'],
       ['denied', 'stale'],
+      ['denied', 'validation'],
       ['failure', 'internal'],
     ]);
     assert.deepEqual(

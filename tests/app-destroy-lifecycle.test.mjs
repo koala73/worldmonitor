@@ -55,6 +55,11 @@ describe('App.destroy lifecycle cleanup contract', () => {
       abortRegisteredTools > wakePendingTools && abortRegisteredTools < destroyModules,
       'destroy() must unregister WebMCP before partial module cleanup can throw',
     );
+    assert.match(
+      destroyBody,
+      /try \{[\s\S]*Destroy all modules in reverse order[\s\S]*\} finally \{[\s\S]*this\.state\.map\?\.destroy\(\);[\s\S]*disconnectAisStream\(\);/,
+      'destroy() must still clean up the map and AIS stream if a module destructor throws',
+    );
   });
 
   it('observes descendant scroll containers in capture phase and removes the matching listener', () => {

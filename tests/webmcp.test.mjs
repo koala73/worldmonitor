@@ -119,6 +119,41 @@ describe('webmcp.ts: current API contract', () => {
     }
   });
 
+  it('wires SPA tools by name instead of inventory index', () => {
+    assert.doesNotMatch(src, /WEBMCP_SPA_TOOL_NAMES\[\d+\]/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openCountryBrief/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openSearch/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.getDashboardContext/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openDashboardPanel/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.setMapView/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.setMapLayers/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.searchDashboard/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openSearchResult/);
+  });
+
+  it('classifies structured denials by exact reason codes', () => {
+    assert.match(src, /malformed_arguments/);
+    assert.doesNotMatch(src, /reason\.includes\(/);
+    assert.match(src, /VALIDATION_DENIAL_REASONS/);
+    assert.match(src, /ENTITLEMENT_DENIAL_REASONS/);
+    assert.match(src, /STALE_DENIAL_REASONS/);
+  });
+
+  it('preserves host AbortError identity through invocation logging', async () => {
+    const tools = buildWebMcpTools(createBindings({
+      openSearch: async () => {
+        throw new DOMException('cancelled by host', 'AbortError');
+      },
+    }), () => {});
+
+    await assert.rejects(
+      tools.find((tool) => tool.name === 'openSearch').execute({}),
+      (error) => error.name === 'AbortError'
+        && error.message === 'cancelled by host'
+        && error.constructor.name === 'DOMException',
+    );
+  });
+
   it('uses the official ambient WebMCP declarations', () => {
     const pkg = JSON.parse(readFileSync(resolve(ROOT, 'package.json'), 'utf-8'));
     const tsconfig = JSON.parse(readFileSync(resolve(ROOT, 'tsconfig.json'), 'utf-8'));
@@ -147,6 +182,13 @@ describe('webmcp.ts: current API contract', () => {
         }
       }
     }
+  });
+
+  it('documents that open_dashboard_panel does not enable a disabled panel', () => {
+    const tool = buildWebMcpTools(createBindings(), () => {})
+      .find((candidate) => candidate.name === 'open_dashboard_panel');
+    assert.match(tool.description, /panel_disabled/);
+    assert.match(tool.description, /does not enable/i);
   });
 
   it('advertises mutually exclusive named-view and coordinate inputs', () => {
@@ -482,7 +524,7 @@ describe('webmcp.ts: native tool execution and telemetry', () => {
     assert.deepEqual(openCalls, []);
     assert.deepEqual(events.at(-1), {
       event: 'webmcp-tool-invoked',
-      data: { tool: 'open_search_result', outcome: 'denied', reason: 'stale' },
+      data: { tool: 'open_search_result', outcome: 'denied', reason: 'validation' },
     });
   });
 

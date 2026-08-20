@@ -28,6 +28,7 @@
 
 import { trackPrivacyRestricted, type UmamiEvent } from './analytics';
 import {
+  WEBMCP_SPA_TOOL,
   WEBMCP_SPA_TOOL_NAMES,
   WEBMCP_TOOL_BUDGETS,
   type WebMcpSpaToolName,
@@ -243,18 +244,31 @@ function reportWebMcpEvent(
   }
 }
 
+function errorName(error: unknown): string {
+  try {
+    return error && typeof error === 'object' && 'name' in error
+      ? String((error as { name?: unknown }).name ?? '')
+      : '';
+  } catch {
+    return '';
+  }
+}
+
 function withInvocationLogging(
   name: WebMcpSpaToolName,
-  fn: WebMCP.ToolExecuteCallback<Record<string, unknown>>,
+  fn: (
+    input: Record<string, unknown>,
+    extra?: { signal?: AbortSignal },
+  ) => Promise<unknown> | unknown,
   trackEvent: WebMcpAnalytics,
   successMetadata?: (
     args: Record<string, unknown>,
     result: unknown,
   ) => Record<string, unknown>,
 ): WebMCP.ToolExecuteCallback<Record<string, unknown>> {
-  return async (args) => {
+  return async (args, extra?: { signal?: AbortSignal }) => {
     try {
-      const result = await fn(args);
+      const result = await fn(args, extra);
       enforceOutputBudget(result);
       const invocation = classifyInvocationResult(result);
       reportWebMcpEvent(trackEvent, 'webmcp-tool-invoked', {
@@ -271,6 +285,7 @@ function withInvocationLogging(
         reason,
       });
       if (error instanceof SafeWebMcpError) throw error;
+      if (errorName(error) === 'AbortError') throw error;
       if (error instanceof DashboardBindingError) {
         throw new SafeWebMcpError(
           `Dashboard unavailable: ${boundedText(error.message, 160)} Reason: ${error.reason}.`,
@@ -301,16 +316,28 @@ function structuredResultReasons(result: Record<string, unknown>): string[] {
   return reasons;
 }
 
+const VALIDATION_DENIAL_REASONS = new Set([
+  'malformed_arguments',
+  'invalid_action',
+  'not_dashboard_control',
+]);
+const ENTITLEMENT_DENIAL_REASONS = new Set([
+  'panel_not_entitled',
+  'layer_not_entitled',
+]);
+const STALE_DENIAL_REASONS = new Set([
+  'invalid_or_expired_key',
+  'search_state_changed',
+  'result_no_longer_available',
+  'result_no_longer_executable',
+]);
+
 function classifyStructuredDenial(result: Record<string, unknown>): WebMcpInvocationReason {
   if (result.status === 'invalid') return 'validation';
   const reasons = structuredResultReasons(result);
-  if (reasons.some((reason) => reason.includes('entitled'))) return 'entitlement';
-  if (reasons.some((reason) => (
-    reason.includes('expired')
-    || reason.includes('search_state_changed')
-    || reason.includes('no_longer')
-    || reason.includes('stale')
-  ))) return 'stale';
+  if (reasons.some((reason) => VALIDATION_DENIAL_REASONS.has(reason))) return 'validation';
+  if (reasons.some((reason) => ENTITLEMENT_DENIAL_REASONS.has(reason))) return 'entitlement';
+  if (reasons.some((reason) => STALE_DENIAL_REASONS.has(reason))) return 'stale';
   return 'unavailable';
 }
 
@@ -325,16 +352,6 @@ function classifyInvocationResult(result: unknown): {
     }
   }
   return { outcome: 'success', reason: 'completed' };
-}
-
-function errorName(error: unknown): string {
-  try {
-    return error && typeof error === 'object' && 'name' in error
-      ? String((error as { name?: unknown }).name ?? '')
-      : '';
-  } catch {
-    return '';
-  }
 }
 
 function classifyInvocationError(error: unknown): WebMcpInvocationReason {
@@ -514,9 +531,9 @@ export function buildWebMcpTools(
   app: WebMcpAppBindings,
   trackEvent: WebMcpAnalytics = trackPrivacyRestricted,
 ): DashboardWebMcpTool[] {
-  return [
+  const tools: DashboardWebMcpTool[] = [
     {
-      name: WEBMCP_SPA_TOOL_NAMES[0],
+      name: WEBMCP_SPA_TOOL.openCountryBrief,
       title: 'Open Country Brief',
       description:
         'Open the intelligence brief panel for a country by ISO 3166-1 alpha-2 code (e.g. "DE", "IR"). Routes the user to the country deep-dive view; the brief itself is fetched by the same path a click would take.',
@@ -533,7 +550,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL_NAMES[0], async (args) => {
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openCountryBrief, async (args) => {
         const iso2 = typeof args.iso2 === 'string' ? args.iso2.toUpperCase() : '';
         if (!ISO2.test(iso2)) {
           throw new SafeWebMcpError(
@@ -547,7 +564,7 @@ export function buildWebMcpTools(
       }, trackEvent),
     },
     {
-      name: WEBMCP_SPA_TOOL_NAMES[1],
+      name: WEBMCP_SPA_TOOL.openSearch,
       title: 'Open Search',
       description:
         'Open the global search command palette so the user can find countries, signals, alerts, and other entities tracked by World Monitor.',
@@ -557,13 +574,13 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL_NAMES[1], async () => {
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openSearch, async () => {
         await app.openSearch();
         return 'Opened search palette.';
       }, trackEvent),
     },
     {
-      name: WEBMCP_SPA_TOOL_NAMES[2],
+      name: WEBMCP_SPA_TOOL.getDashboardContext,
       title: 'Get Dashboard Context',
       description:
         'Read a bounded snapshot of the visible dashboard: active variant, map view, center, zoom, time range, enabled layers, and mounted or enabled panel IDs.',
@@ -573,15 +590,15 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL_NAMES[2], async () => (
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.getDashboardContext, async () => (
         boundDashboardContext(await app.getDashboardContext())
       ), trackEvent),
     },
     {
-      name: WEBMCP_SPA_TOOL_NAMES[3],
+      name: WEBMCP_SPA_TOOL.openDashboardPanel,
       title: 'Open Dashboard Panel',
       description:
-        'Open and scroll to an already-live dashboard panel through the same entitlement-aware control path used by World Monitor.',
+        'Open and scroll to an already-live, currently enabled dashboard panel through the same entitlement-aware control path used by World Monitor. Disabled panels return panel_disabled. A person can enable them from dashboard search or settings; this tool does not enable panels itself.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -597,7 +614,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL_NAMES[3], async (args) => (
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openDashboardPanel, async (args) => (
         applyDashboardAction({
           type: 'open_panel',
           panelId: args.panelId,
@@ -605,7 +622,7 @@ export function buildWebMcpTools(
       ), trackEvent),
     },
     {
-      name: WEBMCP_SPA_TOOL_NAMES[4],
+      name: WEBMCP_SPA_TOOL.setMapView,
       title: 'Set Map View',
       description:
         'Move the visible map to a named world region or a bounded latitude/longitude pair, with an optional zoom level.',
@@ -656,7 +673,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL_NAMES[4], async (args) => (
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setMapView, async (args) => (
         applyDashboardAction({
           type: 'set_view',
           view: args.view,
@@ -667,7 +684,7 @@ export function buildWebMcpTools(
       ), trackEvent),
     },
     {
-      name: WEBMCP_SPA_TOOL_NAMES[5],
+      name: WEBMCP_SPA_TOOL.setMapLayers,
       title: 'Set Map Layers',
       description:
         'Enable or disable explicit visible map layers through World Monitor’s variant, renderer, and entitlement-aware control path.',
@@ -692,7 +709,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL_NAMES[5], async (args) => (
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setMapLayers, async (args) => (
         applyDashboardAction({
           type: 'set_layers',
           layers: args.layers,
@@ -700,7 +717,7 @@ export function buildWebMcpTools(
       ), trackEvent),
     },
     {
-      name: WEBMCP_SPA_TOOL_NAMES[6],
+      name: WEBMCP_SPA_TOOL.searchDashboard,
       title: 'Search Dashboard',
       description:
         'Search the current World Monitor country, signal, map, panel, finance, and action indexes without opening the command palette or changing the dashboard.',
@@ -731,7 +748,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL_NAMES[6], async (args) => {
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.searchDashboard, async (args) => {
         if (!hasOnlyOwnKeys(args, ['query', 'scope', 'limit'])) {
           throw new SafeWebMcpError(
             'search_dashboard accepts only query, scope, and limit.',
@@ -782,7 +799,7 @@ export function buildWebMcpTools(
       }),
     },
     {
-      name: WEBMCP_SPA_TOOL_NAMES[7],
+      name: WEBMCP_SPA_TOOL.openSearchResult,
       title: 'Open Search Result',
       description:
         'Open one result previously issued by search_dashboard after rechecking that it is still live, allowed, compatible, and entitled.',
@@ -799,7 +816,7 @@ export function buildWebMcpTools(
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false },
-      execute: withInvocationLogging(WEBMCP_SPA_TOOL_NAMES[7], async (args) => {
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openSearchResult, async (args) => {
         if (!hasOnlyOwnKeys(args, ['resultKey'])) {
           return boundSearchOpenResult({
             ok: false,
@@ -819,6 +836,13 @@ export function buildWebMcpTools(
       }, trackEvent),
     },
   ];
+  const registered = new Set(tools.map((tool) => tool.name));
+  for (const name of WEBMCP_SPA_TOOL_NAMES) {
+    if (!registered.has(name)) {
+      throw new Error(`WebMCP SPA inventory is missing ${name}.`);
+    }
+  }
+  return tools;
 }
 
 function registrationFailureReason(error: unknown): RegistrationFailureReason | 'aborted' {

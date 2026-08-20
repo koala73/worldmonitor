@@ -167,13 +167,14 @@ test.describe('top-level WebMCP dashboard contract', () => {
     });
 
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
-    await expect.poll(async () => page.evaluate(async () => {
+    const cancelTool = productionSmoke ? 'get_dashboard_context' : 'set_map_view';
+    await expect.poll(async () => page.evaluate(async (toolName) => {
       const provider = document.modelContext;
       if (!provider) return false;
-      return (await provider.getTools()).some((tool) => tool.name === 'set_map_view');
-    }), { timeout: 60_000 }).toBe(true);
+      return (await provider.getTools()).some((tool) => tool.name === toolName);
+    }, cancelTool), { timeout: 60_000 }).toBe(true);
 
-    const cancellation = await page.evaluate(async () => {
+    const cancellation = await page.evaluate(async (useReadOnly) => {
       type ExecutableModelContext = WebMCP.ModelContext & {
         executeTool(
           tool: WebMCP.RegisteredTool,
@@ -182,28 +183,57 @@ test.describe('top-level WebMCP dashboard contract', () => {
         ): Promise<unknown>;
       };
 
+      const parseOutput = (value: unknown): unknown => {
+        if (typeof value !== 'string') return value;
+        try {
+          return JSON.parse(value);
+        } catch {
+          return value;
+        }
+      };
+
       const provider = document.modelContext as ExecutableModelContext;
-      const tool = (await provider.getTools()).find(({ name }) => name === 'set_map_view');
-      if (!tool) throw new Error('set_map_view was not discovered.');
+      const tools = await provider.getTools();
+      const byName = new Map(tools.map((tool) => [tool.name, tool]));
+      const contextTool = byName.get('get_dashboard_context');
+      const cancelName = useReadOnly ? 'get_dashboard_context' : 'set_map_view';
+      const tool = byName.get(cancelName);
+      if (!contextTool || !tool) throw new Error(`${cancelName} was not discovered.`);
+
+      const before = parseOutput(await provider.executeTool(contextTool, '{}')) as {
+        map?: { view?: string; zoom?: number };
+      };
       const controller = new AbortController();
       const execution = provider.executeTool(
         tool,
-        JSON.stringify({ view: 'eu', zoom: 4 }),
+        useReadOnly ? '{}' : JSON.stringify({ view: 'eu', zoom: 4 }),
         { signal: controller.signal },
       );
       controller.abort();
+      let rejected = false;
+      let name = '';
       try {
         await execution;
-        return { rejected: false, name: '' };
       } catch (error) {
-        return {
-          rejected: true,
-          name: error && typeof error === 'object' && 'name' in error
-            ? String(error.name)
-            : 'unknown',
-        };
+        rejected = true;
+        name = error && typeof error === 'object' && 'name' in error
+          ? String(error.name)
+          : 'unknown';
       }
-    });
+      const after = useReadOnly
+        ? null
+        : parseOutput(await provider.executeTool(contextTool, '{}')) as {
+          map?: { view?: string; zoom?: number };
+        };
+      return {
+        rejected,
+        name,
+        beforeMap: { view: before.map?.view ?? null, zoom: before.map?.zoom ?? null },
+        afterMap: after
+          ? { view: after.map?.view ?? null, zoom: after.map?.zoom ?? null }
+          : null,
+      };
+    }, productionSmoke);
 
     await expect(page.locator('#panelsGrid')).toBeVisible({ timeout: 30_000 });
     // Cancellation can settle the caller before work queued by the provider or
@@ -221,7 +251,7 @@ test.describe('top-level WebMCP dashboard contract', () => {
       body: JSON.stringify({
         target: page.url(),
         deployedSha,
-        tool: 'set_map_view',
+        tool: cancelTool,
         terminal: cancellation,
         visibleDashboard: true,
         lateLeakWindowMs,
@@ -231,7 +261,14 @@ test.describe('top-level WebMCP dashboard contract', () => {
       contentType: 'application/json',
     });
 
-    expect(cancellation).toEqual({ rejected: true, name: 'AbortError' });
+    expect(cancellation.rejected).toBe(true);
+    expect(cancellation.name).toBe('AbortError');
+    if (!productionSmoke) {
+      expect(
+        cancellation.afterMap,
+        'cancelled set_map_view must leave the visible map unchanged',
+      ).toEqual(cancellation.beforeMap);
+    }
     expect(pageErrors, 'cancelled execution must not leak a pageerror').toEqual([]);
     expect(
       unhandledRejections,
