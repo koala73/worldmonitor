@@ -39,8 +39,18 @@ const originalFetch: FetchFn | undefined = globalThis.fetch;
 const originalToken = process.env.TRAVELPAYOUTS_API_TOKEN;
 const originalDemo = process.env.AVIATION_DEMO_PRICES;
 
+// search-flight-prices is metered (TravelPayouts, billed per search) and now
+// requires identity — see requireLiveAviationAccess. This suite is about the
+// fail-closed behaviour AFTER the gate, so it authenticates;
+// tests/aviation-live-routes-require-auth.test.mts owns the gate itself.
+const TEST_API_KEY = 'test-enterprise-key';
+const originalValidKeys = process.env.WORLDMONITOR_VALID_KEYS;
+process.env.WORLDMONITOR_VALID_KEYS = TEST_API_KEY;
+
 const CTX: ServerContext = {
-  request: new Request('https://example.com/'),
+  request: new Request('https://example.com/', {
+    headers: { 'X-WorldMonitor-Key': TEST_API_KEY },
+  }),
   pathParams: {},
   headers: {},
 };
@@ -78,6 +88,8 @@ after(() => {
   else process.env.TRAVELPAYOUTS_API_TOKEN = originalToken;
   if (originalDemo == null) delete process.env.AVIATION_DEMO_PRICES;
   else process.env.AVIATION_DEMO_PRICES = originalDemo;
+  if (originalValidKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
+  else process.env.WORLDMONITOR_VALID_KEYS = originalValidKeys;
 });
 
 describe('searchFlightPrices — fail-closed default (#3756)', () => {
