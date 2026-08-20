@@ -1269,14 +1269,16 @@ describe('welcome landing page routing', () => {
     // `[~|^$*]?` covers every CSS attribute operator, so a rule rewritten with
     // one we do not model fails loudly below instead of dropping out of the
     // scanned set.
-    const selectors = [...prerenderSource.matchAll(/(main|nav) a\[([a-zA-Z-]+)([~|^$*]?)="([^"]+)"\]/g)];
+    // `nav` matches with or without the header marker so an un-scoped rule is
+    // still scanned here; the required list below is what fails on it.
+    const selectors = [...prerenderSource.matchAll(/(main|nav(?:\[data-wm-nav\])?) a\[([a-zA-Z-]+)([~|^$*]?)="([^"]+)"\]/g)];
     const scanned = new Set(selectors.map(([, region, attribute, operator, value]) => `${region} a[${attribute}${operator}="${value}"]`));
     // Named, not counted: a floor equal to the post-deletion count is green
     // when the rule it exists to protect is deleted outright.
     for (const required of [
       'main a[data-umami-event-target="welcome-hero"]',
       'main a[href*="moments"]',
-      'nav a[aria-label*="Launch"]',
+      'nav[data-wm-nav] a[aria-label*="Launch"]',
     ]) {
       assert.ok(scanned.has(required), `critical CSS must still style the welcome CTA via ${required}`);
     }
@@ -1286,7 +1288,16 @@ describe('welcome landing page routing', () => {
         operator === '' || operator === '*',
         `critical CSS selector a[${attribute}${operator}="${value}"] uses an attribute operator this guard does not model — teach it the operator or it silently stops checking that rule`
       );
-      const matched = (anchorsByRegion.get(region) ?? []).some((tag) => {
+      // `nav[data-wm-nav]` is the header nav's marker (see prerender.mjs); the
+      // anchor pool is keyed by the landmark element, so map it back. Asserted
+      // rather than defaulted: an unknown region silently reports every rule in
+      // it as dead, which reads as a broken CTA instead of a broken guard.
+      const anchorRegion = region.startsWith('nav') ? 'nav' : region;
+      assert.ok(
+        anchorsByRegion.has(anchorRegion),
+        `critical CSS region "${region}" has no anchor pool — teach this guard the region or it stops checking every rule inside it`
+      );
+      const matched = anchorsByRegion.get(anchorRegion).some((tag) => {
         const actual = tag.match(new RegExp(`\\b${attribute}="([^"]*)"`))?.[1];
         if (actual === undefined) return false;
         return operator === '*' ? actual.includes(value) : actual === value;
@@ -1296,6 +1307,87 @@ describe('welcome landing page routing', () => {
         `critical CSS selector ${region} a[${attribute}${operator}="${value}"] matches no prerendered <${region}> anchor — the rule is dead and its CTA paints unstyled`
       );
     }
+  });
+
+  it('scopes every nav critical-CSS rule to the primary header nav, not to every <nav> on the page', { skip: shouldSkipProBuiltOutput() }, async () => {
+    // The inline critical CSS is UNLAYERED, so a bare `nav` type selector beats
+    // every Tailwind utility on EVERY nav landmark the page renders — including
+    // ones added later, in the footer, by someone who never opened this file.
+    // The legal footer nav (#6982) landed under `nav{position:fixed;top:0;
+    // z-index:50}` and painted itself across the header, over the Launch CTA.
+    const { Window } = await import('happy-dom');
+    const prerenderSource = readFileSync(resolve(__dirname, '../pro-test/prerender.mjs'), 'utf-8')
+      .replace(/^[ \t]*\/\/.*$/gm, '');
+    const criticalCssArray = prerenderSource.match(/const CRITICAL_CSS = \[([\s\S]*?)\n\]\.join\(''\);/)?.[1];
+    assert.ok(criticalCssArray, 'could not find the CRITICAL_CSS array in prerender.mjs — teach this guard its new shape');
+    const criticalCss = [...criticalCssArray.matchAll(/'((?:[^'\\]|\\.)*)'/g)]
+      .map(([, literal]) => literal.replace(/\\'/g, "'"))
+      .join('');
+
+    // Leaf rules only: an `@media (...)` prelude can never complete this match
+    // (its body opens another `{`), so a media block contributes the rules
+    // inside it and nothing else.
+    const navSelectors = [...criticalCss.matchAll(/([^{}]+)\{[^{}]*\}/g)]
+      .flatMap(([, selectorList]) => selectorList.split(',').map((one) => one.trim()))
+      .filter((selector) => /^nav\b/.test(selector));
+
+    // Only the nav landmarks are parsed: every selector above is rooted at
+    // `nav`, so nothing outside one can match, and parsing the whole 130KB
+    // prerendered page instead costs ~10s of suite time. <nav> does not nest,
+    // so the non-greedy sweep takes each landmark whole.
+    const navMarkup = readFileSync(resolve(__dirname, '../public/pro/welcome.html'), 'utf-8')
+      .match(/<nav\b[\s\S]*?<\/nav>/g) ?? [];
+    assert.ok(
+      navMarkup.length > 1,
+      'positive control: the prerendered welcome page must render a second <nav> (the legal footer row) or the containment check below proves nothing'
+    );
+    const window = new Window({
+      url: 'https://www.worldmonitor.app/',
+      settings: {
+        disableJavaScriptEvaluation: true,
+        disableJavaScriptFileLoading: true,
+        disableCSSFileLoading: true,
+      },
+    });
+    window.document.write(`<!doctype html><html><body>${navMarkup.join('')}</body></html>`);
+    const { document } = window;
+
+    // Two positive controls, because "nothing over-matched" is green on a page
+    // that renders one nav, and green again if the rules were deleted outright.
+    const headerPin = navSelectors.filter((selector) => criticalCss.includes(`${selector}{position:fixed`));
+    assert.equal(
+      headerPin.length,
+      1,
+      `positive control: exactly one nav critical-CSS rule must still pin the header before Tailwind loads (found ${headerPin.length})`
+    );
+    const pinned = [...document.querySelectorAll(headerPin[0])];
+    assert.equal(
+      pinned.length,
+      1,
+      `critical CSS "${headerPin[0]}" pins ${pinned.length} elements — it must pin the header nav and nothing else`
+    );
+    const header = pinned[0];
+
+    // A `nav`-rooted selector can only reach a nav landmark or its descendants,
+    // so the other landmarks and their subtrees are the complete population at
+    // risk — and testing that population beats re-querying the whole document
+    // once per selector, which costs seconds per query at this page size.
+    const outsideHeader = [...document.querySelectorAll('nav')]
+      .filter((nav) => nav !== header && !header.contains(nav))
+      .flatMap((nav) => [nav, ...nav.querySelectorAll('*')]);
+
+    for (const selector of navSelectors) {
+      for (const element of outsideHeader) {
+        assert.ok(
+          !element.matches(selector),
+          `critical CSS selector "${selector}" also matches <${element.tagName.toLowerCase()} `
+          + `${element.getAttribute('aria-label') ?? element.className}> outside the header nav — `
+          + 'these rules are unlayered, so scope them to the header marker instead of the bare `nav` element'
+        );
+      }
+    }
+
+    await window.happyDOM.close();
   });
 
   it('redirects signed-in welcome visitors to /dashboard client-side without loading the Clerk SDK', () => {

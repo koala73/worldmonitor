@@ -312,7 +312,7 @@ const Navbar = () => {
   // visitor who hasn't paid.
   const showGoToDashboard = isLoaded && signedIn && !!user && isChecked && isPro;
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
+    <nav data-wm-nav="primary" className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <Logo />
         <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
@@ -1156,7 +1156,7 @@ const FAQ = () => {
 /* ─── Enterprise Page (dedicated /pro/#enterprise) ─── */
 const EnterprisePage = () => (
   <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
-    <nav className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
+    <nav data-wm-nav="primary" className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
         <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }}><Logo /></a>
         <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
