@@ -853,6 +853,8 @@ describe('crawlable corpus generator', () => {
       );
       resetButton.click();
       const countrySelect = window.document.getElementById('source-country');
+      const countryNote = window.document.getElementById('source-country-note');
+      assert.equal(countryNote.hidden, true, 'country coverage note must stay hidden without a country filter');
       countrySelect.value = 'hu';
       countrySelect.dispatchEvent(new window.Event('change'));
       assert.equal(
@@ -865,7 +867,29 @@ describe('crawlable corpus generator', () => {
         window.document.querySelector('.provider-card[data-provider="24.hu"] .provider-country')?.textContent,
         'Hungary',
       );
+      assert.equal(countryNote.hidden, false, 'country selection must show the coverage clarification');
+      assert.equal(
+        countryNote.textContent,
+        'This list shows monitored sources based in the selected country or region. Sources based elsewhere also cover it.',
+      );
+      for (const country of ['us', 'eu']) {
+        countrySelect.value = country;
+        countrySelect.dispatchEvent(new window.Event('change'));
+        assert.equal(countryNote.hidden, false, `${country} selection must show the coverage clarification`);
+        assert.equal(
+          countryNote.textContent,
+          'This list shows monitored sources based in the selected country or region. Sources based elsewhere also cover it.',
+        );
+      }
+      countrySelect.value = 'intl';
+      countrySelect.dispatchEvent(new window.Event('change'));
+      assert.equal(countryNote.hidden, true, 'international selection must hide the coverage clarification');
+      assert.equal(countryNote.textContent, '', 'international selection must clear the coverage clarification');
+      countrySelect.value = 'eu';
+      countrySelect.dispatchEvent(new window.Event('change'));
       resetButton.click();
+      assert.equal(countryNote.hidden, true, 'reset must hide the country coverage clarification');
+      assert.equal(countryNote.textContent, '', 'reset must clear the country coverage clarification');
       const searchInput = window.document.getElementById('source-search');
       searchInput.value = 'Hyperliquid';
       searchInput.dispatchEvent(new window.Event('input'));
