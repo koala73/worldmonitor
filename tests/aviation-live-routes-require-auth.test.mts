@@ -21,6 +21,7 @@ import { getCarrierOps } from '../server/worldmonitor/aviation/v1/get-carrier-op
 import { getFlightStatus } from '../server/worldmonitor/aviation/v1/get-flight-status.ts';
 import { listAirportDelays } from '../server/worldmonitor/aviation/v1/list-airport-delays.ts';
 import { getAirportOpsSummary } from '../server/worldmonitor/aviation/v1/get-airport-ops-summary.ts';
+import { searchFlightPrices } from '../server/worldmonitor/aviation/v1/search-flight-prices.ts';
 
 const ENV_KEYS = [
   'AVIATIONSTACK_MONTHLY_BUDGET',
@@ -115,6 +116,19 @@ const METERED = [
   },
 ];
 
+// TravelPayouts rather than AviationStack, but billed per search all the same,
+// and the same scraper was taking 1,607 of its 1,842 anonymous requests.
+const METERED_NON_AVSTACK = [
+  {
+    name: 'search-flight-prices',
+    call: (c: ReturnType<typeof ctx>) =>
+      searchFlightPrices(c, {
+        origin: 'IST', destination: 'LHR', departureDate: '2026-09-01',
+        returnDate: '', adults: 1, cabin: 'CABIN_CLASS_ECONOMY', nonstopOnly: false,
+      } as never),
+  },
+];
+
 describe('metered aviation routes require identity', () => {
   for (const route of METERED) {
     it(`${route.name} rejects an anonymous caller and buys nothing`, async () => {
@@ -145,6 +159,35 @@ describe('metered aviation routes require identity', () => {
       assert.equal(response.source, 'aviationstack',
         `${route.name} must keep working for authenticated callers`);
       assert.ok(relayUrls.length > 0, `${route.name} should have reached upstream for an authorized caller`);
+    });
+  }
+});
+
+describe('metered non-AviationStack routes require identity too', () => {
+  for (const route of METERED_NON_AVSTACK) {
+    it(`${route.name} rejects an anonymous caller and buys nothing`, async () => {
+      const relayUrls = installFetchMock();
+
+      await assert.rejects(
+        () => route.call(anon()),
+        (err: unknown) => {
+          const status = (err as { statusCode?: number; status?: number }).statusCode
+            ?? (err as { status?: number }).status;
+          assert.equal(status, 403, `${route.name} should deny with 403, got ${status}`);
+          return true;
+        },
+        `${route.name} must reject anonymous callers`,
+      );
+      assert.equal(relayUrls.length, 0, `${route.name} must not reach upstream for a denied request`);
+    });
+
+    // This route answers from TravelPayouts (or its demo fallback), not
+    // AviationStack, so the contract here is simply that an authorized caller
+    // gets past the gate rather than any particular `source` value.
+    it(`${route.name} lets an API-key caller through the gate`, async () => {
+      installFetchMock();
+      const response = await route.call(withKey());
+      assert.ok(response, `${route.name} must keep serving authenticated callers`);
     });
   }
 });

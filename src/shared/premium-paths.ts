@@ -80,4 +80,7 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/aviation/v1/list-airport-flights',
   '/api/aviation/v1/get-carrier-ops',
   '/api/aviation/v1/get-flight-status',
+  // TravelPayouts, billed per search — a different provider from the three
+  // above but the same exposure, and the same scraper was spending on it.
+  '/api/aviation/v1/search-flight-prices',
 ]);

@@ -310,8 +310,12 @@ paths:
             tags:
                 - AviationService
             summary: ListAirportFlights
-            description: ListAirportFlights returns recent arrivals and departures with direction and limit filters, source attribution, flight status, carrier details, and update time.
+            description: ListAirportFlights returns recent arrivals and departures with direction and limit filters, source attribution, flight status, carrier details, and update time. PRO-gated. Requires an active Pro subscription.
             operationId: ListAirportFlights
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: airport
                   in: query
@@ -379,7 +383,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: Pro subscription required.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -452,8 +456,12 @@ paths:
             tags:
                 - AviationService
             summary: GetCarrierOps
-            description: GetCarrierOps returns delay and cancellation metrics grouped by carrier.
+            description: GetCarrierOps returns delay and cancellation metrics grouped by carrier. PRO-gated. Requires an active Pro subscription.
             operationId: GetCarrierOps
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: airports
                   in: query
@@ -517,7 +525,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: Pro subscription required.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -590,8 +598,12 @@ paths:
             tags:
                 - AviationService
             summary: GetFlightStatus
-            description: GetFlightStatus looks up the current status of a specific flight.
+            description: GetFlightStatus looks up the current status of a specific flight. PRO-gated. Requires an active Pro subscription.
             operationId: GetFlightStatus
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: flight_number
                   in: query
@@ -653,7 +665,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: Pro subscription required.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -1013,8 +1025,12 @@ paths:
             tags:
                 - AviationService
             summary: SearchFlightPrices
-            description: SearchFlightPrices searches for flight price offers on a route.
+            description: SearchFlightPrices searches for flight price offers on a route. PRO-gated. Requires an active Pro subscription.
             operationId: SearchFlightPrices
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: origin
                   in: query
@@ -1129,7 +1145,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: Pro subscription required.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
