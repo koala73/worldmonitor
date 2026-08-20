@@ -25,7 +25,11 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const OUTPUT = join(ROOT, 'THIRD-PARTY-NOTICES.md');
+// Written into src-tauri/notices/, which is a committed directory with
+// gitignored contents (like src-tauri/sidecar/node). tauri-build resolves
+// bundle.resources at compile time, so a path that only exists after a build
+// fails `cargo test` in a fresh checkout.
+const OUTPUT = join(ROOT, 'src-tauri', 'notices', 'THIRD-PARTY-NOTICES.md');
 const CHECK = process.argv.includes('--check');
 
 const LICENSE_FILE_RE = /^(LICENSE|LICENCE|COPYING|NOTICE)(\..*)?$/i;
@@ -156,7 +160,7 @@ const content = render();
 
 if (CHECK) {
   if (!existsSync(OUTPUT)) {
-    console.error('THIRD-PARTY-NOTICES.md is missing. Run: node scripts/generate-third-party-notices.mjs');
+    console.error('src-tauri/notices/THIRD-PARTY-NOTICES.md is missing. Run: node scripts/generate-third-party-notices.mjs');
     process.exit(1);
   }
   const existing = readFileSync(OUTPUT, 'utf8');

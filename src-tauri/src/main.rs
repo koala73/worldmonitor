@@ -980,7 +980,7 @@ fn build_app_menu(handle: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         copyright: Some("\u{00a9} 2024-2026 Elie Habib".into()),
         license: Some("AGPL-3.0-only".into()),
         credits: Some(
-            "Licensed under AGPL-3.0-only.\nThird-party notices: resources/THIRD-PARTY-NOTICES.md\nSource: https://github.com/koala73/worldmonitor"
+            "Licensed under AGPL-3.0-only.\nThird-party notices: resources/notices/THIRD-PARTY-NOTICES.md\nSource: https://github.com/koala73/worldmonitor"
                 .into(),
         ),
         website: Some("https://worldmonitor.app".into()),

@@ -21,7 +21,7 @@ import { describe, it } from 'node:test';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (relativePath) => readFileSync(join(root, relativePath), 'utf8');
 
-const NOTICES_RESOURCE = '../THIRD-PARTY-NOTICES.md';
+const NOTICES_RESOURCE = 'notices';
 
 describe('desktop bundle ships its licence', () => {
   const tauriConfig = JSON.parse(read('src-tauri/tauri.conf.json'));
@@ -89,7 +89,7 @@ describe('third-party notices generator', () => {
     });
     assert.match(out, /Wrote /);
 
-    const notices = read('THIRD-PARTY-NOTICES.md');
+    const notices = read('src-tauri/notices/THIRD-PARTY-NOTICES.md');
     const entries = [...notices.matchAll(/^### (.+)$/gm)];
     assert.ok(entries.length > 100, `expected the production tree, got ${entries.length} entries`);
     assert.match(notices, /^License: /m, 'each entry must state its licence');
@@ -98,10 +98,10 @@ describe('third-party notices generator', () => {
   });
 
   it('--check fails on a notices file that is missing packages', () => {
-    const target = join(root, 'THIRD-PARTY-NOTICES.md');
+    const target = join(root, 'src-tauri/notices/THIRD-PARTY-NOTICES.md');
     const backupDir = mkdtempSync(join(tmpdir(), 'wm-notices-'));
     const backup = join(backupDir, 'notices.md');
-    writeFileSync(backup, read('THIRD-PARTY-NOTICES.md'));
+    writeFileSync(backup, read('src-tauri/notices/THIRD-PARTY-NOTICES.md'));
 
     try {
       writeFileSync(target, '# Third-party notices\n\n## npm packages\n\n0 packages.\n');

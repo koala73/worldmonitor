@@ -59,7 +59,7 @@
       "sidecar/node",
       "../data",
       "../src/config",
-      "../THIRD-PARTY-NOTICES.md"
+      "notices"
     ],
     "windows": {
       "digestAlgorithm": "sha256",
