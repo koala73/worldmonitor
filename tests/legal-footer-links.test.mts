@@ -1,8 +1,11 @@
 /**
  * The Terms are a browsewrap ("By using the Service, you agree to these
  * Terms") and a browsewrap is only as good as its link. #6976 found no Terms
- * or Privacy link in either production footer — the /pro welcome footer, the
- * /pro pricing footer — and none in the dashboard at all.
+ * or Privacy link in either production footer — the shared one on the welcome
+ * and /pro pages, and the separate one the Enterprise page hand-rolls — and
+ * none in the dashboard at all. (The issue calls the App.tsx footer "the /pro
+ * pricing-page footer"; /pro actually renders the shared `<Footer />`, and that
+ * second footer belongs to the `#enterprise` route. Both are covered.)
  *
  * This suite reads the PRERENDERED pages, not the JSX: `public/pro/*.html` is
  * what a buyer and a crawler actually receive, so a link that a refactor drops
@@ -65,24 +68,28 @@ describe('legal links are reachable in one click', () => {
 
   /**
    * Only welcome.html is prerendered — `pro-test/prerender.mjs` renders
-   * index.html with empty content, so the pricing footer exists only after
+   * index.html with empty content, so the Enterprise footer exists only after
    * hydration and no built artifact can be read for it. Rather than assert a
    * second hand-written row by regex, both footers render the SAME component,
    * whose anchors the prerender case above proves for real. What is left to
-   * check here is only that the pricing footer still mounts it.
+   * check here is only that this footer still mounts it.
+   *
+   * /pro itself needs no separate case: it renders the shared `<Footer />`,
+   * the same component welcome.html prerenders. Verified in a browser at
+   * /pro/#pricing, /pro/#enterprise, and /pro/welcome.html.
    */
-  it('the /pro pricing footer mounts the same legal nav', () => {
+  it('the Enterprise page footer mounts the same legal nav', () => {
     const app = read('pro-test/src/App.tsx');
     const footer = footerOf(app, 'pro-test/src/App.tsx');
     assert.match(
       footer,
       /<LegalFooterNav\s*\/>/,
-      'the /pro pricing footer must render <LegalFooterNav />, not a copy of the links',
+      'the Enterprise footer must render <LegalFooterNav />, not a copy of the links',
     );
     assert.match(app, /import \{ LegalFooterNav \}/);
   });
 
-  it('the welcome footer mounts the same legal nav', () => {
+  it('the shared footer (welcome + /pro) mounts the same legal nav', () => {
     const footer = footerOf(read('pro-test/src/components/Footer.tsx'), 'Footer.tsx');
     assert.match(footer, /<LegalFooterNav\s*\/>/);
   });

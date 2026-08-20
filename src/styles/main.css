@@ -26018,6 +26018,15 @@ body.map-width-resizing {
   padding: 10px 16px 12px;
   border-top: 1px solid var(--border-color, #30363d);
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  /* Sticky to the bottom of the scrolling modal: the Settings tab is long
+     enough that a row parked at the end of the scroll would be several
+     screens down, which is not "one click from the dashboard". -20px cancels
+     .modal's own bottom padding so it pins flush to the edge. */
+  position: sticky;
+  bottom: -20px;
+  z-index: 1;
+  margin-top: 8px;
+  background: var(--surface);
 }
 
 .legal-links-item {
