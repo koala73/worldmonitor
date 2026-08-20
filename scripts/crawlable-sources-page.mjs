@@ -813,6 +813,7 @@ ${domainCards}
           <button type="button" class="reset-filter" data-source-filter="all">Reset</button>
         </div>
         <div class="catalog-meta"><p id="source-results" aria-live="polite">${sourceStats.providerCount} providers shown</p><a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">Open the host-by-host ledger <span aria-hidden="true">↗</span></a></div>
+        <p class="catalog-country-note" id="source-country-note" aria-live="polite" hidden></p>
         <div class="provider-grid" id="source-catalog" data-source-catalog>
 ${providerCards}
         </div>
@@ -908,6 +909,7 @@ ${providerCards}
       .catalog-meta { padding: 15px 2px; display: flex; justify-content: space-between; gap: 20px; align-items: center; }
       .catalog-meta p { margin: 0; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; text-transform: uppercase; }
       .catalog-meta a { font-size: 12px; }
+      .catalog-country-note { max-width: 75ch; margin: 0 2px 15px; color: var(--muted); font-size: 13px; line-height: 1.6; }
       .provider-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-left: 1px solid var(--line); border-top: 1px solid var(--line); }
       .provider-card { min-width: 0; min-height: 180px; padding: 18px; display: flex; flex-direction: column; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(9,13,11,.48); }
       .provider-card:hover { background: var(--panel-2); }
@@ -949,6 +951,7 @@ ${providerCards}
       }));
       const filterButtons = [...document.querySelectorAll('[data-source-filter]')];
       const results = document.getElementById('source-results');
+      const countryNote = document.getElementById('source-country-note');
       const noResults = document.getElementById('source-no-results');
       const applyFilters = () => {
         const query = search.value.trim().toLowerCase();
@@ -964,6 +967,12 @@ ${providerCards}
           if (!card.hidden) visible += 1;
         }
         results.textContent = visible + (visible === 1 ? ' provider shown' : ' providers shown');
+        const showCountryNote = country.value !== 'all' && country.value !== 'intl';
+        const nextCountryNote = showCountryNote
+          ? 'This list shows monitored sources based in the selected country or region. Sources based elsewhere also cover it.'
+          : '';
+        if (countryNote.textContent !== nextCountryNote) countryNote.textContent = nextCountryNote;
+        if (countryNote.hidden === showCountryNote) countryNote.hidden = !showCountryNote;
         noResults.hidden = visible !== 0;
         for (const button of filterButtons) {
           const selected = button.dataset.sourceFilter !== 'all' && button.dataset.sourceFilter === domain.value;
