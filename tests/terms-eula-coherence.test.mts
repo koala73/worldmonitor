@@ -232,26 +232,36 @@ describe('Enterprise protections are not bundled into self-serve', () => {
     });
   }
 
-  it('the Terms name what Enterprise adds, rather than leaving a silent gap', () => {
-    const section = terms.slice(terms.indexOf('## Enterprise terms'));
-    assert.ok(section.length > 0, 'the Terms must have an Enterprise terms section');
-    for (const offer of [
-      /performance warranty/i,
-      /indemnity from us/i,
-      /confidentiality/i,
-      /service-level commitment/i,
-      /data processing agreement/i,
-      /negotiated liability cap/i,
-      /dispute-resolution procedure/i,
-    ]) {
-      assert.match(section, offer, `Enterprise terms must name ${offer} as something the tier adds`);
-    }
-    assert.match(section, /Pro, Pro Business, API Starter, and API Business/, 'name the plans these Terms actually cover');
+  it('the negotiated-terms section offers, and does not commit', () => {
+    // An earlier draft listed a warranty, an indemnity, an NDA, an SLA and a
+    // DPA as things Enterprise "adds" — entitlement grammar for documents that
+    // do not exist yet, and this guard was enforcing that we keep saying it.
+    // Naming what a negotiated agreement CAN cover is fine; promising it is not.
+    const section = terms.slice(terms.indexOf('## Enterprise and negotiated terms'));
+    assert.ok(section.length > 0, 'the Terms must say which plans they cover and where the rest goes');
+
+    assert.match(section, /Free, Pro, Pro Business, API Starter, and API Business/, 'name the plans these Terms cover');
+    assert.match(section, /separate signed agreement/i);
+    assert.match(
+      section,
+      /None of that is included in, or claimable under, any self-serve plan/i,
+      'a self-serve buyer must not be able to claim a negotiated protection',
+    );
+    assert.match(
+      section,
+      /nothing in this section commits us to agree to any of it/i,
+      'listing what a negotiated agreement can cover must not become a promise to provide it',
+    );
   });
 
-  it('the EULA points at the same line', () => {
-    assert.match(eula, /are not part of any self-serve plan/i);
-    assert.match(eula, /performance warranty/i);
+  it('the EULA draws the same line, in the same grammar', () => {
+    assert.match(eula, /a signed order form can differ from this/i);
+    assert.match(eula, /not part of any self-serve plan/i);
+    assert.match(
+      eula,
+      /nothing here commits us to any particular terms/i,
+      'the EULA must offer negotiation without promising an outcome',
+    );
   });
 
   it('the disclaimer is unqualified again, now that no warranty sits above it', () => {
