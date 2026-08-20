@@ -9,8 +9,8 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
-import { getRelayBaseUrl, getRelayHeaders } from './_shared';
-import { aviationStackBudgetMonth, reserveAviationStackCalls } from './_avstack-budget';
+import { getRelayBaseUrl, getRelayHeaders, IATA_RE } from './_shared';
+import { aviationStackBudgetCycle, reserveAviationStackCalls } from './_avstack-budget';
 
 // 15min. Held at 300s until Aug 2026, when a scraper polling every ~5.7min
 // converted this endpoint to a ~100% cache-miss rate: 504 of 504 requests on a
@@ -25,7 +25,6 @@ const CACHE_TTL = 900;
 // separate PAID AviationStack calls for identical data — a cache-key explosion
 // that multiplied spend. The page covers any limit ≤ 100.
 const UPSTREAM_PAGE = 100;
-const IATA_RE = /^[A-Z]{3}$/;
 
 interface AVSFlight {
     flight?: { iata?: string; icao?: string; codeshared?: { flight_iata?: string; airline_iata?: string }[] };
@@ -126,7 +125,7 @@ export async function listAirportFlights(
 
     // Cache key is limit-independent (see UPSTREAM_PAGE) — one upstream call
     // serves every limit for this airport+direction.
-    const cacheKey = `aviation:flights:${airport}:${direction}:v2:${aviationStackBudgetMonth()}`;
+    const cacheKey = `aviation:flights:${airport}:${direction}:v2:${aviationStackBudgetCycle()}`;
     let unavailableSource = 'unavailable';
 
     try {

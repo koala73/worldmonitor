@@ -7,7 +7,7 @@ import type {
 import { cachedFetchJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
-import { aviationStackBudgetMonth, reserveAviationStackCalls } from './_avstack-budget';
+import { aviationStackBudgetCycle, reserveAviationStackCalls } from './_avstack-budget';
 
 const CACHE_TTL = 120; // 2 minutes
 
@@ -61,7 +61,7 @@ export async function getFlightStatus(
         .replace(/^([A-Z]{2,3})0+(\d+)$/, '$1$2');
     const date = req.date || new Date().toISOString().slice(0, 10);
     const origin = req.origin?.toUpperCase() || '';
-    const cacheKey = `aviation:status:${flightNumber}:${date}:${origin}:v1:${aviationStackBudgetMonth()}`;
+    const cacheKey = `aviation:status:${flightNumber}:${date}:${origin}:v1:${aviationStackBudgetCycle()}`;
     const now = Date.now();
 
     if (!flightNumber || flightNumber.length > 10) {
