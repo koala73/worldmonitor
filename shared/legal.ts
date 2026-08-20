@@ -64,7 +64,7 @@ export const LEGAL_FOOTER_LINKS: ReadonlyArray<{ label: string; path: string }> 
  */
 export const LEGAL_DOCUMENT_DIGESTS: Readonly<Record<string, string>> = {
   'docs/eula.mdx': '96616b3efd8ed5730793dd53a927c0235ccf3032a9ec8838c7e0220f211cb9c6',
-  'docs/terms.mdx': '6509d392463650f263fddbe1bd97bfe40f37865138000f0f4597acf1ba4f8831',
+  'docs/terms.mdx': '8dc9210c3c4be829edc9a69dd3aea528386d56050fe2f5a06e9fb44738a3d20c',
   'docs/privacy.mdx': '108e6580e3e3d6ec69b9e70dbe58e1fb5d70c1be155a5cc948f9c464c329750c',
 };
 

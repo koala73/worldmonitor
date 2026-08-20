@@ -115,7 +115,11 @@ describe('a change to a paid subscription is noticed the same way in both', () =
 describe('the free tier is governed on its own terms', () => {
   it('the Terms carve it into a section with its own cap', () => {
     assert.match(terms, /## Free and anonymous access/);
-    assert.match(terms, /free and anonymous access will not exceed USD 100/i);
+    // The cap only does work in the mixed case: a paying customer whose claim
+    // arises from a free surface. For a user who pays nothing the general cap
+    // already resolves to USD 100, so a clause that does not say "including
+    // where you also hold a paid plan" is pure restatement.
+    assert.match(terms, /capped at USD 100 in aggregate — including where you also hold a paid plan/i);
     assert.match(
       terms,
       /Only these sections apply to free and anonymous access/i,
