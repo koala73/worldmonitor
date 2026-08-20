@@ -255,7 +255,13 @@
                   "license",
                   "trademark-policy",
                   "privacy",
-                  "terms"
+                  "terms",
+                  {
+                    "group": "Terms archive",
+                    "pages": [
+                      "legal/terms-2026-07-27"
+                    ]
+                  }
                 ]
               }
             ]
@@ -722,7 +728,13 @@
                   "zh/license",
                   "zh/trademark-policy",
                   "zh/privacy",
-                  "zh/terms"
+                  "zh/terms",
+                  {
+                    "group": "条款历史版本",
+                    "pages": [
+                      "zh/legal/terms-2026-07-27"
+                    ]
+                  }
                 ]
               }
             ]
