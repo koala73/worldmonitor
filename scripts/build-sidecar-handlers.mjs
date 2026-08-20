@@ -39,7 +39,7 @@ export async function discoverSidecarHandlerEntries(apiRoot = apiDir) {
     if (VERSION_DIRECTORY.test(topDir.name)) {
       const domains = await readdir(topPath, { withFileTypes: true });
       for (const domain of domains) {
-        if (!domain.isDirectory()) continue;
+        if (!domain.isDirectory() || SKIP_DIRS.has(domain.name)) continue;
         const tsFile = path.join(topPath, domain.name, '[rpc].ts');
         if (existsSync(tsFile)) {
           entries.push({ entryPoint: tsFile, relativePath: relativeApiPath(apiRoot, tsFile) });

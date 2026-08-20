@@ -29,6 +29,7 @@ test('handler discovery excludes non-RPC routes in version-major families', asyn
   const files = [
     'market/v1/[rpc].ts',
     'v2/shipping/[rpc].ts',
+    'v2/[domain]/[rpc].ts',
     'v2/shipping/webhooks/[subscriberId].ts',
     'v3/not-a-domain/[rpc].js',
   ];
