@@ -265,9 +265,14 @@ async function _createCheckoutSession(
         email: user.email,
       });
     } catch (err) {
+      // sentry-coverage-ok: structured console.error is forwarded by Convex
+      // auto-Sentry, so on-call still sees a customer who bought without an
+      // assent record. Re-throwing is the wrong trade here — same reasoning as
+      // the pending-payment guard above: losing a paid conversion to an audit
+      // write is strictly worse than the missing row.
+      const msg = err instanceof Error ? err.message : String(err);
       console.error(
-        `[checkout] terms acceptance not recorded user=${user.userId}:`,
-        (err as Error)?.message ?? err,
+        `[checkout] terms acceptance not recorded user=${user.userId}: ${msg}`,
       );
     }
   }
