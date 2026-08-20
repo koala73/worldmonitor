@@ -324,24 +324,26 @@ All real-time data sources feed into a central signal aggregator that builds a u
 
 ### Cross-Stream Correlation Engine
 
-Beyond aggregating signals by geography, the system detects meaningful correlations *across* data streams — identifying patterns that no single source would reveal. 14 signal types are continuously evaluated:
+Beyond aggregating signals by geography, the system detects meaningful correlations *across* data streams — identifying patterns that no single source would reveal. The correlation engine emits 11 signal types. The `SignalType` union declares 14; the three remaining rows are reserved names with no detector behind them, marked **Not emitted**:
 
 | Signal Type               | Detection Logic                                                                 | Why It Matters                                           |
 | ------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `prediction_leads_news`   | Polymarket probability shifts >5% before matching news headlines appear        | Prediction markets as early-warning indicators           |
-| `news_leads_markets`      | News velocity spike precedes equity/crypto price move by 15–60 min             | Informational advantage detection                        |
+| `news_leads_markets`      | **Not emitted** — no detector constructs it                                     | Reserved name; produces nothing today                    |
 | `silent_divergence`       | Significant market movement with no corresponding news volume                   | Potential insider activity or unreported events           |
 | `velocity_spike`          | News cluster sources-per-hour exceeds 6+ from Tier 1–2 outlets                | Breaking story detection                                 |
 | `keyword_spike`           | Trending term exceeds 3× its 7-day baseline                                   | Emerging narrative detection                             |
 | `convergence`             | 3+ signal types co-locate in same 1°×1° geographic cell                        | Multi-domain crisis indicator                            |
 | `triangulation`           | Same entity appears across news + military tracking + market signals           | High-confidence focal point identification               |
-| `flow_drop`               | ETF flow estimates reverse direction while price continues                     | Smart money divergence                                   |
+| `flow_drop`               | Headlines carry both a pipeline keyword and a flow-disruption keyword           | Physical commodity supply constraint                     |
 | `flow_price_divergence`   | Commodity prices move opposite to shipping flow indicators                     | Supply chain disruption signal                           |
 | `geo_convergence`         | Geographic convergence alert from the spatial binning system                   | Regional crisis acceleration                             |
 | `explained_market_move`   | Market price change has a matching news cluster with causal keywords           | Attributable market reaction                             |
-| `hotspot_escalation`      | Hotspot escalation score exceeds threshold                                     | Conflict zone intensification                            |
-| `sector_cascade`          | Multiple companies in same sector move in same direction simultaneously        | Sector-wide event detection                              |
+| `hotspot_escalation`      | **Not emitted** — `shouldEmitSignal()` exists but has no caller                 | Reserved name; produces nothing today                    |
+| `sector_cascade`          | **Not emitted** — no detector constructs it                                     | Reserved name; produces nothing today                    |
 | `military_surge`          | Theater posture assessment detects unusual force concentration                 | Military escalation warning                              |
+
+`news_leads_markets`, `sector_cascade` and `hotspot_escalation` are declared in the `SignalType` union, but no code path constructs a signal with those types: they are never evaluated, never deduplicated and never surfaced. Their reserved names in the union — and the labels, emoji and locale strings that exist for them — do not make them active producers. `hotspot_escalation` has a complete decision function, `shouldEmitSignal()` in `src/services/hotspot-escalation.ts`, that nothing calls; its two-hour cooldown is never armed because `markSignalEmitted()` is never called either.
 
 Each signal carries a severity (low/medium/high), geographic coordinates, a human-readable summary, and the raw data that triggered it. Signals are deduplicated per-type with configurable cooldown windows (30 minutes to 6 hours) to prevent alert fatigue. The correlation output feeds into the AI Insights panel, where the narrative synthesis engine weaves detected correlations into a structured intelligence brief.
 

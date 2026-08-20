@@ -265,3 +265,34 @@ test('public data-source docs disclose Telegram source-bias metadata', () => {
   assert.match(dataSourcesDoc, /cannot leave stale tier keys in the RSS registry/);
   assert.match(dataSourcesDoc, /anonymous OSINT aggregators stay specialty or aggregator tier/);
 });
+test('public algorithms docs describe flow_drop the way the detector actually works', () => {
+  // #6422: the cross-stream table described `flow_drop` as "ETF flow estimates
+  // reverse direction while price continues - Smart money divergence". The
+  // detector reads no ETF data and no price series at all: detectPipelineFlowDrops
+  // lowercases a cluster's headlines and requires a PIPELINE_KEYWORDS hit and a
+  // FLOW_DROP_KEYWORDS hit within the same cluster. Two other surfaces already
+  // described it correctly - docs/signal-intelligence.mdx and the SIGNAL_CONTEXT
+  // copy in src/utils/analysis-constants.ts - which is what makes the algorithms
+  // row an outlier rather than a difference of emphasis.
+  const detector = readRepo('src/services/analysis-core.ts');
+  assert.match(detector, /const hasPipeline = titles\.some\(title => includesKeyword\(title, PIPELINE_KEYWORDS\)\)/);
+  assert.match(detector, /const hasFlowDrop = titles\.some\(title => includesKeyword\(title, FLOW_DROP_KEYWORDS\)\)/);
+  assert.doesNotMatch(detector, /ETF/);
+
+  for (const path of ['docs/algorithms.mdx', 'docs/zh/algorithms.mdx'] as const) {
+    const row = readRepo(path)
+      .split('\n')
+      .find((line) => line.startsWith('| `flow_drop`'));
+    assert.ok(row, `${path} must keep a signal table row for flow_drop`);
+    assert.doesNotMatch(
+      row,
+      /ETF/,
+      `${path} still describes flow_drop as an ETF-flow signal; detectPipelineFlowDrops reads none`,
+    );
+  }
+
+  assert.match(
+    readRepo('docs/algorithms.mdx'),
+    /\| `flow_drop`\s+\| Headlines carry both a pipeline keyword and a flow-disruption keyword/,
+  );
+});
