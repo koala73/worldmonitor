@@ -1148,18 +1148,20 @@ function parkForever(): Promise<Response> {
  */
 function stubPageLifecycle(initialVisibility: DocumentVisibilityState | 'unknown' = 'visible'): {
   setVisibility(state: DocumentVisibilityState | 'unknown'): void;
-  firePageHide(): void;
+  firePageHide(persisted?: boolean): void;
+  firePageShow(): void;
   fireVisibilityChange(): void;
   restore(): void;
 } {
   let visibilityState = initialVisibility;
-  const windowListeners: Record<string, Array<() => void>> = {};
+  type WindowLifecycleHandler = (event?: { persisted?: boolean }) => void;
+  const windowListeners: Record<string, Array<WindowLifecycleHandler>> = {};
   const documentListeners: Record<string, Array<() => void>> = {};
   const windowRecord = globalThis.window as Record<string, unknown>;
   const savedAdd = windowRecord.addEventListener;
   const savedRemove = windowRecord.removeEventListener;
   const documentDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'document');
-  windowRecord.addEventListener = (type: string, handler: () => void) => {
+  windowRecord.addEventListener = (type: string, handler: WindowLifecycleHandler) => {
     (windowListeners[type] ??= []).push(handler);
   };
   windowRecord.removeEventListener = () => {};
@@ -1174,9 +1176,12 @@ function stubPageLifecycle(initialVisibility: DocumentVisibilityState | 'unknown
     },
   });
   return {
-    setVisibility(state: string) { visibilityState = state; },
-    firePageHide() {
-      for (const handler of windowListeners.pagehide ?? []) handler();
+    setVisibility(state: DocumentVisibilityState | 'unknown') { visibilityState = state; },
+    firePageHide(persisted = false) {
+      for (const handler of windowListeners.pagehide ?? []) handler({ persisted });
+    },
+    firePageShow() {
+      for (const handler of windowListeners.pageshow ?? []) handler();
     },
     fireVisibilityChange() {
       for (const handler of documentListeners.visibilitychange ?? []) handler();
@@ -1200,6 +1205,7 @@ function stubPageLifecycle(initialVisibility: DocumentVisibilityState | 'unknown
  * turns these tests red instead of quietly widening the bound.
  */
 const LATCH_DEADLINE_MS = 25_000;
+const LATCH_RELEASE_GRACE_MS = 5_000;
 
 function findLatchDeadline(timers: ScheduledTimer[]): ScheduledTimer | undefined {
   // `!cancelled` matters once a test issues more than one write: earlier
@@ -1490,6 +1496,10 @@ describe('collector latch release is module-owned (#6288)', () => {
         'holding must not arm a latch against a write that has not been dispatched',
       );
 
+      lifecycle.fireVisibilityChange();
+      await drainPromiseHandlers();
+      assert.equal(calls, 0, 'duplicate hidden visibilitychange must not dispatch');
+
       lifecycle.setVisibility('visible');
       lifecycle.fireVisibilityChange();
       await drainPromiseHandlers(() => calls === 1, 'becoming visible drains the held write');
@@ -1524,6 +1534,41 @@ describe('collector latch release is module-owned (#6288)', () => {
       lifecycle.firePageHide();
       await drainPromiseHandlers(() => calls === 1, 'pagehide dispatches the held backlog');
       assert.equal((await flushed).status, 200);
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      lifecycle.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
+  it('keeps a persisted pagehide in bfcache hold and drains on pageshow', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    const lifecycle = stubPageLifecycle('hidden');
+    let calls = 0;
+    window.fetch = (() => {
+      calls += 1;
+      return Promise.resolve(collectorResponse(true, 200, RECEIPT_BODY));
+    }) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const held = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      await drainPromiseHandlers();
+      assert.equal(calls, 0, 'hidden drain stays parked');
+
+      lifecycle.firePageHide(true);
+      await drainPromiseHandlers();
+      assert.equal(calls, 0, 'bfcache pagehide must not flush into a freeze');
+
+      lifecycle.setVisibility('visible');
+      lifecycle.firePageShow();
+      await drainPromiseHandlers(() => calls === 1, 'pageshow must resync the page-active cache');
+      assert.equal((await held).status, 200);
     } finally {
       console.warn = originalWarn;
       fakeTimers.restore();
@@ -1580,6 +1625,43 @@ describe('collector latch release is module-owned (#6288)', () => {
     }
   });
 
+  it('re-arms a paused in-flight latch when a real pagehide flushes', { timeout: 10_000 }, async () => {
+    const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+    Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
+    const fakeTimers = installFakeTimers();
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    const lifecycle = stubPageLifecycle('visible');
+    window.fetch = (() => parkForever()) as typeof window.fetch;
+    installCollectorFetchGate();
+
+    try {
+      const parked = window.fetch(UMAMI_SEND_URL, collectorEventInit());
+      void parked.catch(() => {});
+      await drainPromiseHandlers();
+      const armed = findLatchDeadline(fakeTimers.timers);
+      assert.ok(armed, 'a visible send still owns a latch');
+
+      lifecycle.setVisibility('hidden');
+      lifecycle.fireVisibilityChange();
+      assert.equal(armed.cancelled, true);
+
+      lifecycle.firePageHide(false);
+      const resumed = fakeTimers.timers.find(
+        (timer) => !timer.cancelled && timer !== armed
+          && timer.delay <= LATCH_DEADLINE_MS && timer.delay > 20_000,
+      );
+      assert.ok(resumed, 'real pagehide must resume the paused in-flight latch');
+      resumed.callback();
+      await assert.rejects(parked, { name: 'TimeoutError' });
+    } finally {
+      console.warn = originalWarn;
+      fakeTimers.restore();
+      lifecycle.restore();
+      if (timeoutDescriptor) Object.defineProperty(AbortSignal, 'timeout', timeoutDescriptor);
+    }
+  });
+
   it('gives an exhausted hidden latch a settle-grace when the tab returns', { timeout: 10_000 }, async () => {
     const timeoutDescriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
     Object.defineProperty(AbortSignal, 'timeout', { configurable: true, value: undefined });
@@ -1610,11 +1692,15 @@ describe('collector latch release is module-owned (#6288)', () => {
       // The request-side abort timer is still armed at 20s; the latch is the
       // 5s settle-grace. Do not pick the first leftover timer.
       const resumed = fakeTimers.timers.find(
-        (timer) => !timer.cancelled && timer.delay === 5_000,
+        (timer) => !timer.cancelled && timer.delay === LATCH_RELEASE_GRACE_MS,
       );
       assert.ok(resumed, 'returning visible must re-arm even after remaining hit 0');
       resumed.callback();
-      await assert.rejects(parked, { name: 'TimeoutError' });
+      const error = await parked.then(
+        () => { throw new Error('expected raced timeout'); },
+        (reason: unknown) => reason,
+      );
+      assert.deepEqual(collectorFailureFromError(error), { kind: 'timeout', raced: true });
     } finally {
       Date.now = savedNow;
       console.warn = originalWarn;

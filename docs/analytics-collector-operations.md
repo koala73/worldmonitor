@@ -28,15 +28,17 @@ health signal: a healthy deployment can still return HTTP 500 from `POST
   `12/12` accepted writes and zero `P2002` failures. Attach the exact deployed
   image/digest and the bounded production log query to the issue.
 - During normal queue draining, browser writes are serialized through one
-  in-flight transport slot. `pagehide` deliberately dispatches queued writes
-  concurrently so keepalive delivery gets a chance to finish. A tab that is
-  only hidden (`visibilitychange` → `hidden`, including iOS/Safari backgrounding)
-  does **not** flush: WebKit freezes in-flight `fetch`, and treating that as
-  unload produced the WORLDMONITOR-ZF `timeout+raced` population (~27/day, 71%
-  Apple). Hidden tabs hold the serialized queue and pause the module-owned latch
-  until the page is visible again. The client does not blindly retry append-only
-  conversion events after an ambiguous 5xx; identity snapshots may use their
-  idempotent retry policy.
+  in-flight transport slot. `pagehide` with `persisted === false` (a real
+  navigation) dispatches queued writes concurrently so keepalive delivery gets
+  a chance to finish. `pagehide` with `persisted === true` is bfcache freeze,
+  not unload: keep the hold. A tab that is only hidden (`visibilitychange` →
+  `hidden`, including iOS/Safari backgrounding) does **not** flush: WebKit
+  freezes in-flight `fetch`, and treating that as unload produced the
+  WORLDMONITOR-ZF `timeout+raced` population (~27/day, 71% Apple). Hidden tabs
+  hold the serialized queue and pause the module-owned latch until the page is
+  visible again (`visibilitychange` or `pageshow`). The client does not blindly
+  retry append-only conversion events after an ambiguous 5xx; identity snapshots
+  may use their idempotent retry policy.
 
 ### Raced-timeout retry / replay (#6968)
 

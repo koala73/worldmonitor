@@ -306,8 +306,9 @@ const collectorRequestQueue: CollectorRequest[] = [];
 let collectorRequestInFlight = false;
 let collectorFetchOriginal: typeof window.fetch | null = null;
 let collectorFetchWrapper: typeof window.fetch | null = null;
-let collectorUnloadFlush: (() => void) | null = null;
+let collectorUnloadFlush: ((event?: Event) => void) | null = null;
 let collectorVisibilityChangeHandler: (() => void) | null = null;
+let collectorPageShowHandler: (() => void) | null = null;
 let collectorPageActive = true;
 let collectorTransportGeneration = 0;
 type CollectorHealthCounters = {
@@ -694,7 +695,8 @@ function collectorVisibilityState(): CollectorVisibilitySnapshot {
  * signal, so it stays active. Treating `hidden`/`prerender` as inactive is the
  * #6968 fix: WebKit freezes in-flight `fetch` on a backgrounded tab, and the
  * previous visibilitychange→hidden flush handed the whole backlog to that
- * freeze. `pagehide` still bypasses this and dispatches concurrently.
+ * freeze. `pagehide` with `persisted === false` still bypasses this and
+ * dispatches concurrently; a persisted pagehide (bfcache) keeps the hold.
  */
 function isCollectorPageActive(): boolean {
   const visibility = collectorVisibilityState();
@@ -1313,13 +1315,22 @@ export function installCollectorFetchGate(): boolean {
   collectorFetchWrapper = wrappedFetch;
   collectorPageActive = isCollectorPageActive();
 
-  // pagehide ALWAYS flushes — the page is leaving whatever visibilityState says.
-  // visibilitychange to hidden used to flush too, as a Safari-friendly unload
-  // analogue. That is the #6968 Apple-skew population: WebKit freezes those
-  // concurrent fetches, the latch fires, and both recovery doors close. Hold
-  // the serialized queue and pause in-flight latches until the tab is visible
-  // again; only a real pagehide may dispatch the backlog concurrently.
-  const onPageHide = (): void => {
+  // pagehide flushes only for a real navigation. `event.persisted` means the
+  // page is entering bfcache — the same freeze as visibilitychange→hidden —
+  // so we keep the hold. visibilitychange→hidden used to flush too, as a
+  // Safari-friendly unload analogue. That is the #6968 Apple-skew population:
+  // WebKit freezes those concurrent fetches, the latch fires, and both
+  // recovery doors close. Hold the serialized queue and pause in-flight
+  // latches until the page is visible again.
+  const onPageHide = (event?: Event): void => {
+    const persisted = Boolean(
+      event && 'persisted' in event && (event as PageTransitionEvent).persisted,
+    );
+    if (persisted) {
+      collectorPageActive = false;
+      pauseCollectorLatchDeadlines();
+      return;
+    }
     resumeCollectorLatchDeadlines();
     flushCollectorQueueForUnload();
   };
@@ -1333,10 +1344,20 @@ export function installCollectorFetchGate(): boolean {
     }
     if (wasActive) pauseCollectorLatchDeadlines();
   };
+  const onPageShow = (): void => {
+    const wasActive = collectorPageActive;
+    collectorPageActive = isCollectorPageActive();
+    if (collectorPageActive) {
+      if (!wasActive) resumeCollectorLatchDeadlines();
+      drainCollectorRequestQueue();
+    }
+  };
   collectorUnloadFlush = onPageHide;
   collectorVisibilityChangeHandler = onVisibilityChange;
+  collectorPageShowHandler = onPageShow;
   try {
     window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
     if (typeof document !== 'undefined') {
       document.addEventListener('visibilitychange', onVisibilityChange);
     }
@@ -1395,6 +1416,9 @@ export function resetCollectorTransportForTesting(): void {
   if (typeof window !== 'undefined' && collectorUnloadFlush) {
     try {
       window.removeEventListener('pagehide', collectorUnloadFlush);
+      if (collectorPageShowHandler) {
+        window.removeEventListener('pageshow', collectorPageShowHandler);
+      }
       if (typeof document !== 'undefined' && collectorVisibilityChangeHandler) {
         document.removeEventListener('visibilitychange', collectorVisibilityChangeHandler);
       }
@@ -1404,6 +1428,7 @@ export function resetCollectorTransportForTesting(): void {
   }
   collectorUnloadFlush = null;
   collectorVisibilityChangeHandler = null;
+  collectorPageShowHandler = null;
   collectorPageActive = true;
   collectorFetchOriginal = null;
   collectorFetchWrapper = null;
