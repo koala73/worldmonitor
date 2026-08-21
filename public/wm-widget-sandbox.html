@@ -36,8 +36,11 @@
     try {
       var url = new URL(origin);
       var isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-      if ((url.protocol === 'http:' || url.protocol === 'https:') && isLocalhost) {
-        return true;
+      // http allowed only when sandbox itself is served over http (local dev via vite). In production (https) http localhost is not trusted.
+      if (isLocalhost) {
+        if (url.protocol === 'https:') return true;
+        if (url.protocol === 'http:' && window.location.protocol === 'http:') return true;
+        return false;
       }
       if (url.protocol !== 'https:') {
         return false;
