@@ -119,11 +119,19 @@ describe('X news-account public trust registries (#6654)', () => {
     assert.match(healthSrc, /issue: 6654/);
     assert.match(relaySrc, /intelligence:x-feed:v1/);
     assert.match(relaySrc, /seed-meta:intelligence:x-feed:v1/);
+    // The EMPTY acknowledgement was scoped to the deploy window before the
+    // first ais-relay poll. That poll has happened — production has served
+    // seed-meta:intelligence:x-feed:v1 since generation 1 — so the entry is
+    // spent and is removed rather than left to lapse. An ack only suppresses
+    // an exact name:status match, so it never covered the SEED_ERROR the
+    // unpollable accounts were actually producing; keeping it past its window
+    // would have added an expired entry that reds the scheduled monitor while
+    // still passing the PR gate.
     const baseline = JSON.parse(readFileSync(join(__dirname, '../scripts/seed-freshness-baseline.json'), 'utf8'));
-    const ack = baseline.acknowledged.find((row) => row.name === 'xFeed');
-    assert.ok(ack, 'xFeed needs an expiring EMPTY acknowledgement until the first ais-relay poll');
-    assert.equal(ack.status, 'EMPTY');
-    assert.equal(ack.issue, 6654);
-    assert.equal(ack.cutover.probeKey, 'seed-meta:intelligence:x-feed:v1');
+    assert.equal(
+      baseline.acknowledged.find((row) => row.name === 'xFeed'),
+      undefined,
+      'the xFeed cutover ack is spent — the producer is live, so EMPTY is now a real fault',
+    );
   });
 });

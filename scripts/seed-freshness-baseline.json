@@ -35,18 +35,6 @@
         "activatedAt": "2026-08-20T10:00:00.000Z",
         "firstScheduledRunAt": "2026-08-21T00:00:00.000Z"
       }
-    },
-    {
-      "name": "xFeed",
-      "status": "EMPTY",
-      "issue": 6654,
-      "reason": "New ais-relay producer for curated X news-account monitoring. seed-meta:intelligence:x-feed:v1 cannot exist until X_BEARER_TOKEN is copied onto the ais-relay Railway service (it currently lives only on company-monitoring-worker) and the 15-minute poll loop publishes once. EMPTY after that first scheduled poll is a missing secret or a dead loop, not a deploy window.",
-      "expiresAt": "2026-08-21T13:15:00.000Z",
-      "cutover": {
-        "probeKey": "seed-meta:intelligence:x-feed:v1",
-        "activatedAt": "2026-08-20T13:15:00.000Z",
-        "firstScheduledRunAt": "2026-08-21T13:15:00.000Z"
-      }
     }
   ]
 }
