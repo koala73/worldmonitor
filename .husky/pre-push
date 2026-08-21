@@ -80,19 +80,17 @@ if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; the
     BASE_REF="$PR_BASE_REF"
   fi
   BASE_REF="${BASE_REF:-main}"
-  # Refresh the remote-tracking ref before trusting it. A stacked branch's
-  # base may not be fetched locally at all yet, and even origin/main can be
-  # stale in a long-lived worktree — either way, counting against a stale
-  # ref reintroduces the exact false-positive this guard is meant to avoid.
-  # A failed fetch (offline, network hiccup) is not fatal: fall through to
-  # whatever's already cached locally, same as before this change.
-  git fetch origin "$BASE_REF" --quiet 2>/dev/null || true
-  if ! git rev-parse --verify -q "origin/$BASE_REF" >/dev/null; then
-    echo "  Base ref 'origin/$BASE_REF' not resolvable, falling back to origin/main."
-    BASE_REF="main"
-    git fetch origin "$BASE_REF" --quiet 2>/dev/null || true
-  fi
-  COMMIT_COUNT=$(git rev-list --count "origin/$BASE_REF..HEAD" 2>/dev/null || echo 0)
+  # Lazy ahead-count (#6764): count against the CACHED remote-tracking ref
+  # and fetch only to disprove a suspected violation or resolve a base that
+  # was never fetched — a fetch can only shrink the count, so a cached pass
+  # is a real pass. Decision + fixtures live in scripts/prepush-attest.sh
+  # (`base-guard`), where tests/prepush-attest.test.mjs executes them against
+  # real git fixtures instead of grepping this hook.
+  GUARD_OUT=$(bash scripts/prepush-attest.sh base-guard "$BASE_REF" 20) || true
+  BASE_REF=$(printf '%s' "$GUARD_OUT" | cut -f1)
+  BASE_REF="${BASE_REF:-main}"
+  COMMIT_COUNT=$(printf '%s' "$GUARD_OUT" | cut -f2)
+  COMMIT_COUNT="${COMMIT_COUNT:-0}"
   if [ "$COMMIT_COUNT" -gt 20 ]; then
     echo ""
     echo "============================================================"

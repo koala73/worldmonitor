@@ -30,6 +30,7 @@
 #   bash scripts/prepush-attest.sh dirty                     # NUL list of offenders
 #   bash scripts/prepush-attest.sh cache-read   <file> <tree> <diff-resolved>
 #   bash scripts/prepush-attest.sh cache-write  <file> <tree> <diff-resolved> <attestable>
+#   bash scripts/prepush-attest.sh base-guard   <base-ref> [limit]  # "<base>\t<count>" on stdout
 #
 # Exit codes are three-valued on purpose. A gate that answers "no" and a gate
 # that could not run must never collapse into the same status as "yes":
@@ -41,9 +42,9 @@
 
 mode="${1:-}"
 case "$mode" in
-  changed | changed-live | drift | dirty | cache-read | cache-write) ;;
+  changed | changed-live | drift | dirty | cache-read | cache-write | base-guard) ;;
   *)
-    echo "usage: $0 <changed|changed-live|drift|dirty|cache-read|cache-write> [args]" >&2
+    echo "usage: $0 <changed|changed-live|drift|dirty|cache-read|cache-write|base-guard> [args]" >&2
     exit 2
     ;;
 esac
@@ -149,6 +150,63 @@ case "$mode" in
       found=1
     done
     [ "$found" -eq 0 ] || exit 3
+    ;;
+
+  base-guard)
+    # Branch-contamination ahead-count with a LAZY fetch (#6764). The hook
+    # used to `git fetch` unconditionally before counting — 2s warm, 72s cold,
+    # on every push — to protect a guard that almost never fires. Fetching can
+    # only move origin/<base> FORWARD, so `rev-list --count origin/<base>..HEAD`
+    # can only stay equal or SHRINK after a fetch. Therefore:
+    #
+    #   cached count <= limit  ->  post-fetch count <= limit. Same verdict,
+    #                              skip the network entirely.
+    #   cached count >  limit  ->  possibly a stale-ref false positive; fetch
+    #                              to DISPROVE the violation, then recount.
+    #   origin/<base> missing  ->  must fetch (first push of a stacked branch).
+    #
+    # Prints "<resolved-base>\t<count>". Exit 0 = within limit, 3 = violation
+    # confirmed against a freshly fetched ref. A failed fetch (offline) is not
+    # fatal: fall through to whatever is cached, as the hook always has.
+    base="${2:-}"
+    limit="${3:-20}"
+    [ -n "$base" ] || usage_error "<base-ref> [limit]"
+
+    fetch_base() {
+      # Bounded and tag-free: an unbounded fetch inside a hook is how a push
+      # hangs past its caller's budget.
+      if command -v timeout >/dev/null 2>&1; then
+        timeout 120 git fetch --no-tags origin "$1" --quiet 2>/dev/null || true
+      else
+        git fetch --no-tags origin "$1" --quiet 2>/dev/null || true
+      fi
+    }
+
+    count_ahead() {
+      git rev-list --count "origin/$1..HEAD" 2>/dev/null || echo 0
+    }
+
+    need_fetch=false
+    count=0
+    if ! git rev-parse --verify -q "origin/$base" >/dev/null; then
+      need_fetch=true
+    else
+      count=$(count_ahead "$base")
+      [ "$count" -gt "$limit" ] && need_fetch=true
+    fi
+
+    if [ "$need_fetch" = true ]; then
+      fetch_base "$base"
+      if ! git rev-parse --verify -q "origin/$base" >/dev/null; then
+        echo "base-guard: 'origin/$base' not resolvable, falling back to origin/main" >&2
+        base="main"
+        fetch_base "$base"
+      fi
+      count=$(count_ahead "$base")
+    fi
+
+    printf '%s\t%s\n' "$base" "$count"
+    [ "$count" -le "$limit" ] || exit 3
     ;;
 
   cache-read)
