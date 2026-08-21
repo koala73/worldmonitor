@@ -945,6 +945,15 @@ async function xSubjectsForClaim(
           provider: "x",
           state: "authority_lost",
         });
+        // A company that held a binding and lost it reads as quiet without
+        // this — reinstate the unresolved coverage state (#7044).
+        if (company.coverageState !== "identity_unresolved") {
+          await ctx.db.patch(company._id, {
+            coverageState: "identity_unresolved",
+            snapshotGeneration: company.snapshotGeneration + 1,
+            updatedAt: now,
+          });
+        }
       }
       const claimValue = (claim: Doc<"companyMonitoringClaims">) => ({
         claimId: claim.claimId,
@@ -1607,6 +1616,37 @@ function xReceipt(payload: XIngestion) {
   };
 }
 
+/**
+ * Patch a company's coverageState for identity resolution outcomes (#7044).
+ *
+ * `identity_unresolved` marks a company whose independent identity binding does
+ * not exist (resolution failed or a held binding demoted), so it can never be
+ * rendered as a quiet result. Clearing (undefined) means resolved-and-scanned:
+ * observationState carries the result from there. Every change advances the
+ * company row's own snapshotGeneration — that is the freshness signal
+ * company-scoped reads compare against, so a coverage flip without the bump
+ * would stay invisible to snapshot-gated consumers.
+ */
+async function patchCompanyCoverageForIdentity(
+  ctx: MutationCtx,
+  ownerAccountId: string,
+  companyId: string,
+  coverageState: "identity_unresolved" | undefined,
+  now: number,
+): Promise<void> {
+  const company = await ctx.db
+    .query("companyMonitoringCompanies")
+    .withIndex("by_account_companyId", (q) =>
+      q.eq("ownerAccountId", ownerAccountId).eq("companyId", companyId))
+    .unique();
+  if (!company) return;
+  if (company.coverageState === coverageState) return;
+  await ctx.db.patch(company._id, {
+    coverageState,
+    snapshotGeneration: company.snapshotGeneration + 1,
+    updatedAt: now,
+  });
+}
 async function applyXIdentities(
   ctx: MutationCtx,
   work: Work,
@@ -1675,6 +1715,16 @@ async function applyXIdentities(
     };
     if (existing) await ctx.db.replace(existing._id, row);
     else await ctx.db.insert("companyMonitoringXIdentities", row);
+    // Coverage follows the identity outcome (#7044): an authoritative binding
+    // resolves the company (clears any prior identity_unresolved); a demoted
+    // row means resolution failed, which is exactly the unresolved state.
+    await patchCompanyCoverageForIdentity(
+      ctx,
+      work.ownerAccountId,
+      observation.companyId,
+      state === "authoritative" ? undefined : "identity_unresolved",
+      now,
+    );
   }
 }
 
