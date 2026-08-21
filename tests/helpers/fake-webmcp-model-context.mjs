@@ -8,6 +8,10 @@ function registrationErrorFor(option, tool) {
   return option?.[tool.name] ?? null;
 }
 
+function scheduleAsyncTargetAbort(deliver) {
+  setTimeout(deliver, 0);
+}
+
 /**
  * Small behavioral model of the public WebMCP registry surface used by tests.
  * It intentionally models only registerTool/getTools/executeTool and abort
@@ -18,17 +22,23 @@ export class FakeWebMcpModelContext {
   #pending = new Map();
   #deferredToolNames;
   #registrationFailure;
+  #scheduleTargetExecutionAbort;
+  #supportsTargetExecutionSignal;
 
   constructor({
     deferredToolNames = [],
     deferAllRegistrations = false,
     registrationFailure = null,
+    scheduleTargetExecutionAbort = scheduleAsyncTargetAbort,
+    supportsTargetExecutionSignal = false,
   } = {}) {
     this.#deferredToolNames = deferAllRegistrations
       ? null
       : new Set(deferredToolNames);
     this.deferAllRegistrations = deferAllRegistrations;
     this.#registrationFailure = registrationFailure;
+    this.#scheduleTargetExecutionAbort = scheduleTargetExecutionAbort;
+    this.#supportsTargetExecutionSignal = supportsTargetExecutionSignal;
     this.registrationCalls = [];
     this.executionCalls = [];
   }
@@ -147,18 +157,39 @@ export class FakeWebMcpModelContext {
 
     const signal = options.signal;
     if (signal?.aborted) throw domException('AbortError', 'Tool execution was aborted.');
-    this.executionCalls.push({ name, args, signal });
+    // A target-side controller intentionally has different identity from the
+    // executeTool caller's signal, like a browser crossing the registry
+    // boundary. Older hosts call the registered callback with one argument.
+    const targetController = this.#supportsTargetExecutionSignal
+      ? new AbortController()
+      : null;
+    const targetSignal = targetController?.signal;
+    this.executionCalls.push({ name, args, signal, targetSignal });
 
     let abortListener;
     const aborted = signal
       ? new Promise((_, reject) => {
-          abortListener = () => reject(domException('AbortError', 'Tool execution was aborted.'));
+          abortListener = () => {
+            reject(domException('AbortError', 'Tool execution was aborted.'));
+            if (targetController && !targetController.signal.aborted) {
+              const reason = signal.reason;
+              // Chromium rejects the caller before CancelRemote reaches the
+              // page callback. Keep that transport hop asynchronous so tests
+              // cannot assume the target signal flips with the caller signal.
+              this.#scheduleTargetExecutionAbort(() => {
+                if (!targetController.signal.aborted) targetController.abort(reason);
+              });
+            }
+          };
           signal.addEventListener('abort', abortListener, { once: true });
         })
       : new Promise(() => {});
     try {
+      const callbackResult = targetController
+        ? entry.tool.execute(args, { signal: targetController.signal })
+        : entry.tool.execute(args);
       return await Promise.race([
-        Promise.resolve(entry.tool.execute(args, { signal })),
+        Promise.resolve(callbackResult),
         aborted,
       ]);
     } finally {

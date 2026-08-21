@@ -25,22 +25,25 @@ WebMCP 不是 MCP 传输、MCP Apps 扩展、发现服务器或嵌入机制。�
 
 ### 生产 Origin Trial
 
-WorldMonitor 为以下精确生产源的顶层 `/`、`/dashboard` 和 `/dashboard.html` 路由注册 Origin Trial：
+WorldMonitor 为规范生产源的 `/`、`/dashboard` 和 `/dashboard.html` 注册 Origin Trial：
 
 - `https://www.worldmonitor.app`
+
+以下专用生产源只为 `/dashboard` 和 `/dashboard.html` 注册 Origin Trial：
+
 - `https://tech.worldmonitor.app`
 - `https://finance.worldmonitor.app`
 - `https://commodity.worldmonitor.app`
 - `https://happy.worldmonitor.app`
 - `https://energy.worldmonitor.app`
 
-专用源的根路由会进入该源的仪表板。`/?mode=agent` 是独立的机器可读 JSON 接口，不是 WebMCP 路由。预览部署和文档路由未注册。
+专用源的根路由会永久重定向到该源已注册的 `/dashboard`；重定向响应本身不是 WebMCP 文档。`/?mode=agent` 是独立的机器可读 JSON 接口，不是 WebMCP 路由。预览部署和文档路由未注册。
 
 Origin Trial 令牌有时限。发布检查必须验证实际部署的响应头，不得假设先前提交的令牌仍被浏览器接受。
 
 ### 本地开发
 
-使用 Chrome 149 或更高版本：
+如需发现工具和使用只读仪表板工具，请使用 Chrome 149 或更高版本：
 
 1. 打开 `chrome://flags/#enable-webmcp-testing`。
 2. 将 **WebMCP for testing** 设为 **Enabled**。
@@ -53,6 +56,8 @@ Boolean(document.modelContext?.registerTool)
 ```
 
 本地开发由该 flag 代替 Origin Trial 注册。WorldMonitor 仍会发送 API 所需的源隔离与权限策略响应头。
+
+Chrome 149–151 可能已经暴露 `registerTool()`，也会取消调用方的 `executeTool()` Promise，却不会把调用级 `AbortSignal` 传给页面中已注册的回调。在这些版本中，WorldMonitor 仍允许使用只读仪表板工具，但会修改仪表板的工具会在进入应用绑定前安全拒绝。完整的修改能力要求浏览器回调采用当前的 `execute(input, { signal })` 形式。该安全边界可防止看似已取消的操作稍后继续修改 UI。
 
 <Note>
 如果浏览器没有当前 API，包括未暴露 WebMCP 的 Tauri 桌面 WebView，WorldMonitor 会安全地不执行任何操作。它不会安装浏览器 polyfill，也不会退回旧草案 API。
@@ -74,6 +79,8 @@ Boolean(document.modelContext?.registerTool)
 ### 仪表板命令式工具
 
 六个仪表板变体都注册相同的八个命令式工具。登录和权益变化不会改变注册集合；每次调用都会重新检查实时状态。
+
+注册成功并不表示较旧浏览器能够安全执行修改。如果浏览器没有提供目标侧调用信号，会修改可见 UI 的工具会以不可用状态拒绝，且不会修改仪表板；只读仪表板工具仍可使用。
 
 | 工具 | 输入 schema | 可见结果 |
 |---|---|---|
@@ -167,6 +174,10 @@ try {
 }
 ```
 
+该协作式目标侧取消证明要求浏览器把调用信号传给已注册回调。若浏览器仍使用单参数回调，会修改仪表板的工具会在执行前拒绝；只读调用的调用方取消后，页面内部工作仍可能完成。
+
+取消会停止尚未到达同步 UI 提交点的工作。如果视口转换在信号到达前已经发出，WorldMonitor 不会回滚该转换；此时会跳过后续 URL 同步和成功遥测，避免取消流程覆盖用户之后的操作。
+
 如需可视化流程，请安装 Chrome 官方 [Model Context Tool Inspector](https://chromewebstore.google.com/detail/model-context-tool-inspec/gbpdfapgefenggkahomfgkhfehlcenpd)。用它确认发现、描述、schema、有效与无效参数、输出、错误、取消以及相应可见 UI 变化。[Chrome DevTools 149](https://developer.chrome.com/blog/new-in-devtools-149) 也提供实验性 WebMCP Application 面板检查器；它是另一个实验，需要同时启用 `chrome://flags/#enable-webmcp-testing` 和 `chrome://flags/#devtools-webmcp-support`。
 
 <Warning>
@@ -204,7 +215,7 @@ WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
 npm run test:e2e:webmcp:production
 ```
 
-该套件断言 `Origin-Trial`、`Origin-Agent-Cluster` 和 `Permissions-Policy` 响应头、工具清单与 schema、一次免费上下文调用、一次不可用面板拒绝及取消，并写出 JSON 证据产物。请把这些产物与发布证据一起保存。其门禁有意只接受规范目标 `https://www.worldmonitor.app`。对于其他已注册源，应手动检查响应头，并使用 `getTools()` 或 Inspector 验证清单和行为；只有另行评审并添加专用冒烟目标后，才可自动化测试这些源。
+该套件断言 `Origin-Trial`、`Origin-Agent-Cluster` 和 `Permissions-Policy` 响应头、工具清单与 schema、发现后立即开始并在 UI 就绪后完成的调用、协作式取消或被测浏览器明确的修改安全拒绝边界、全部六个仪表板清单、专用源根路由重定向，以及跨源嵌入拒绝。若浏览器支持目标侧信号，套件还会证明不可用面板拒绝路径。本地严格套件会另行证明可见修改，而不会更改生产状态。生产套件会在 `test-results/` 下写出持久的 `webmcp-smoke.json`、`webmcp-cancellation.json` 和 `webmcp-production-matrix.json`；请把这些文件与发布证据一起保存。其基础目标门禁仍只接受规范的 `https://www.worldmonitor.app`，其他已评审源由固定绝对 URL 的矩阵检查。
 
 还要确认 `/embed` 与 `/embed.html` 返回 `tools=()`，且 `/?mode=agent`、预览部署、文档和嵌入页面没有获得顶层清单。部署控制平面的 SHA 检查、响应头、清单、UI 行为和终态结果应视为独立断言；仅有部署成功或注册日志不等于验收通过。
 

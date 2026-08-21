@@ -352,12 +352,6 @@
       "headers": [{ "key": "Origin-Trial", "value": "AvX+9z5/NaXZjkWanZp92G2Xti3FZb5rz59z6IuZUqEJZShDwA1S+BGqk+wwz05McGrrSvKfjLAUMro9UayHhAYAAABUeyJvcmlnaW4iOiJodHRwczovL3d3dy53b3JsZG1vbml0b3IuYXBwOjQ0MyIsImZlYXR1cmUiOiJXZWJNQ1AiLCJleHBpcnkiOjE3OTQ4NzM2MDB9" }]
     },
     {
-      "source": "/",
-      "has": [{ "type": "host", "value": "^finance\\.worldmonitor\\.app$" }],
-      "missing": [{ "type": "query", "key": "mode", "value": "agent" }],
-      "headers": [{ "key": "Origin-Trial", "value": "ArsARsSgUU/XqF2xZSKtk7nyWjQm1d01071HOnHIN6s7Z359Lnp6MK18vWm2XKx5njTp21JDYvGrJJC/uudNaAgAAABYeyJvcmlnaW4iOiJodHRwczovL2ZpbmFuY2Uud29ybGRtb25pdG9yLmFwcDo0NDMiLCJmZWF0dXJlIjoiV2ViTUNQIiwiZXhwaXJ5IjoxNzk0ODczNjAwfQ==" }]
-    },
-    {
       "source": "/dashboard",
       "has": [{ "type": "host", "value": "^finance\\.worldmonitor\\.app$" }],
       "headers": [{ "key": "Origin-Trial", "value": "ArsARsSgUU/XqF2xZSKtk7nyWjQm1d01071HOnHIN6s7Z359Lnp6MK18vWm2XKx5njTp21JDYvGrJJC/uudNaAgAAABYeyJvcmlnaW4iOiJodHRwczovL2ZpbmFuY2Uud29ybGRtb25pdG9yLmFwcDo0NDMiLCJmZWF0dXJlIjoiV2ViTUNQIiwiZXhwaXJ5IjoxNzk0ODczNjAwfQ==" }]
@@ -366,12 +360,6 @@
       "source": "/dashboard.html",
       "has": [{ "type": "host", "value": "^finance\\.worldmonitor\\.app$" }],
       "headers": [{ "key": "Origin-Trial", "value": "ArsARsSgUU/XqF2xZSKtk7nyWjQm1d01071HOnHIN6s7Z359Lnp6MK18vWm2XKx5njTp21JDYvGrJJC/uudNaAgAAABYeyJvcmlnaW4iOiJodHRwczovL2ZpbmFuY2Uud29ybGRtb25pdG9yLmFwcDo0NDMiLCJmZWF0dXJlIjoiV2ViTUNQIiwiZXhwaXJ5IjoxNzk0ODczNjAwfQ==" }]
-    },
-    {
-      "source": "/",
-      "has": [{ "type": "host", "value": "^tech\\.worldmonitor\\.app$" }],
-      "missing": [{ "type": "query", "key": "mode", "value": "agent" }],
-      "headers": [{ "key": "Origin-Trial", "value": "AhRJ28wGuD3AX2QfG1GkmwKJoFQpwWguWFnD8eRp5VOw+zJBCJOALLSKtJLvUsXycJK1IWf4Gpm4oNLwhieJagYAAABVeyJvcmlnaW4iOiJodHRwczovL3RlY2gud29ybGRtb25pdG9yLmFwcDo0NDMiLCJmZWF0dXJlIjoiV2ViTUNQIiwiZXhwaXJ5IjoxNzk0ODczNjAwfQ==" }]
     },
     {
       "source": "/dashboard",
@@ -384,12 +372,6 @@
       "headers": [{ "key": "Origin-Trial", "value": "AhRJ28wGuD3AX2QfG1GkmwKJoFQpwWguWFnD8eRp5VOw+zJBCJOALLSKtJLvUsXycJK1IWf4Gpm4oNLwhieJagYAAABVeyJvcmlnaW4iOiJodHRwczovL3RlY2gud29ybGRtb25pdG9yLmFwcDo0NDMiLCJmZWF0dXJlIjoiV2ViTUNQIiwiZXhwaXJ5IjoxNzk0ODczNjAwfQ==" }]
     },
     {
-      "source": "/",
-      "has": [{ "type": "host", "value": "^commodity\\.worldmonitor\\.app$" }],
-      "missing": [{ "type": "query", "key": "mode", "value": "agent" }],
-      "headers": [{ "key": "Origin-Trial", "value": "AkcGQ0ow8FhN4AtrIURO/voZmZ5N3NS0ZiPAAciL2mZk0OzGIushg/9cdF/O+GnWcqxIW8vm5AGHbsCqLuJsdggAAABaeyJvcmlnaW4iOiJodHRwczovL2NvbW1vZGl0eS53b3JsZG1vbml0b3IuYXBwOjQ0MyIsImZlYXR1cmUiOiJXZWJNQ1AiLCJleHBpcnkiOjE3OTQ4NzM2MDB9" }]
-    },
-    {
       "source": "/dashboard",
       "has": [{ "type": "host", "value": "^commodity\\.worldmonitor\\.app$" }],
       "headers": [{ "key": "Origin-Trial", "value": "AkcGQ0ow8FhN4AtrIURO/voZmZ5N3NS0ZiPAAciL2mZk0OzGIushg/9cdF/O+GnWcqxIW8vm5AGHbsCqLuJsdggAAABaeyJvcmlnaW4iOiJodHRwczovL2NvbW1vZGl0eS53b3JsZG1vbml0b3IuYXBwOjQ0MyIsImZlYXR1cmUiOiJXZWJNQ1AiLCJleHBpcnkiOjE3OTQ4NzM2MDB9" }]
@@ -400,12 +382,6 @@
       "headers": [{ "key": "Origin-Trial", "value": "AkcGQ0ow8FhN4AtrIURO/voZmZ5N3NS0ZiPAAciL2mZk0OzGIushg/9cdF/O+GnWcqxIW8vm5AGHbsCqLuJsdggAAABaeyJvcmlnaW4iOiJodHRwczovL2NvbW1vZGl0eS53b3JsZG1vbml0b3IuYXBwOjQ0MyIsImZlYXR1cmUiOiJXZWJNQ1AiLCJleHBpcnkiOjE3OTQ4NzM2MDB9" }]
     },
     {
-      "source": "/",
-      "has": [{ "type": "host", "value": "^happy\\.worldmonitor\\.app$" }],
-      "missing": [{ "type": "query", "key": "mode", "value": "agent" }],
-      "headers": [{ "key": "Origin-Trial", "value": "Avr8waMKX4DQQyR+5WhZ49/7uUcPM8QEiScsLh0VASOYvRdfClfhVNvLHb4SJgkQ/ghBaHrP+XI26/NxfbLmLgoAAABWeyJvcmlnaW4iOiJodHRwczovL2hhcHB5LndvcmxkbW9uaXRvci5hcHA6NDQzIiwiZmVhdHVyZSI6IldlYk1DUCIsImV4cGlyeSI6MTc5NDg3MzYwMH0=" }]
-    },
-    {
       "source": "/dashboard",
       "has": [{ "type": "host", "value": "^happy\\.worldmonitor\\.app$" }],
       "headers": [{ "key": "Origin-Trial", "value": "Avr8waMKX4DQQyR+5WhZ49/7uUcPM8QEiScsLh0VASOYvRdfClfhVNvLHb4SJgkQ/ghBaHrP+XI26/NxfbLmLgoAAABWeyJvcmlnaW4iOiJodHRwczovL2hhcHB5LndvcmxkbW9uaXRvci5hcHA6NDQzIiwiZmVhdHVyZSI6IldlYk1DUCIsImV4cGlyeSI6MTc5NDg3MzYwMH0=" }]
@@ -414,12 +390,6 @@
       "source": "/dashboard.html",
       "has": [{ "type": "host", "value": "^happy\\.worldmonitor\\.app$" }],
       "headers": [{ "key": "Origin-Trial", "value": "Avr8waMKX4DQQyR+5WhZ49/7uUcPM8QEiScsLh0VASOYvRdfClfhVNvLHb4SJgkQ/ghBaHrP+XI26/NxfbLmLgoAAABWeyJvcmlnaW4iOiJodHRwczovL2hhcHB5LndvcmxkbW9uaXRvci5hcHA6NDQzIiwiZmVhdHVyZSI6IldlYk1DUCIsImV4cGlyeSI6MTc5NDg3MzYwMH0=" }]
-    },
-    {
-      "source": "/",
-      "has": [{ "type": "host", "value": "^energy\\.worldmonitor\\.app$" }],
-      "missing": [{ "type": "query", "key": "mode", "value": "agent" }],
-      "headers": [{ "key": "Origin-Trial", "value": "AqiFXm04IbEu9A6lyFLqcak7kRZSMdS4tvOKu4wVwM7JJCgiYKnl0qljSIOi4qkT9rtm21mPNVB/Jg9c4irnggQAAABXeyJvcmlnaW4iOiJodHRwczovL2VuZXJneS53b3JsZG1vbml0b3IuYXBwOjQ0MyIsImZlYXR1cmUiOiJXZWJNQ1AiLCJleHBpcnkiOjE3OTQ4NzM2MDB9" }]
     },
     {
       "source": "/dashboard",

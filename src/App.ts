@@ -159,9 +159,16 @@ import { describeWmSessionDegradation, WM_SESSION_DEGRADED_FALLBACK_COPY } from 
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
-import { DashboardBindingError, registerWebMcpTools } from '@/services/webmcp';
+import {
+  DashboardBindingError,
+  raceWebMcpAbort,
+  registerWebMcpTools,
+  throwIfWebMcpAborted,
+  type WebMcpExecutionOptions,
+} from '@/services/webmcp';
 import {
   getWebMcpDashboardContext,
+  WEBMCP_UI_READY_TIMEOUT_MS,
   waitForWebMcpUiReady,
 } from '@/app/webmcp-dashboard';
 import { runDashboardActionBinding } from '@/app/dashboard-action-binding';
@@ -293,10 +300,9 @@ export class App {
   private unsubFreeTier: (() => void) | null = null;
   private unsubEntitlementPremiumLoaders: (() => void) | null = null;
   // Resolves once Phase-4 UI modules have initialised so WebMCP bindings can
-  // await readiness before touching nullable UI targets. Avoids the startup
-  // race where an agent
-  // discovers a tool via early registerTool and invokes it before the
-  // target panel exists.
+  // await readiness before dispatching into UI managers. Avoids the startup
+  // race where an agent discovers a tool via early registerTool and invokes it
+  // before the manager that owns its target is ready.
   private uiReady!: Promise<void>;
   private resolveUiReady!: () => void;
   private appDestroyed!: Promise<void>;
@@ -1567,32 +1573,12 @@ export class App {
         }
 
         const manager = new SearchManager(this.state, {
-          openCountryBriefByCode: (code, country, options) => {
-            return new Promise<boolean>((resolve) => {
-              let acknowledged = false;
-              const finish = (opened: boolean): void => {
-                if (acknowledged) return;
-                acknowledged = true;
-                resolve(opened);
-              };
-              void this.countryIntel.openCountryBriefByCode(code, country, {
-                trackAnalytics: options?.trackDetailedAnalytics !== false,
-                onPresented: () => {
-                  const page = this.state.countryBriefPage;
-                  finish(page?.isVisible() === true && page.getCode() === code);
-                },
-              }).then(() => {
-                // A superseded, destroyed, or failed open can settle without
-                // ever presenting the requested page.
-                finish(false);
-              }).catch((err) => {
-                console.error('[CountryBrief] Failed to open country brief:', err);
-                this.state.map?.setRenderPaused(false);
-                showToast('Country brief failed to open. Please try again.');
-                finish(false);
-              });
-            });
-          },
+          openCountryBriefByCode: (code, country, options) => (
+            this.openCountryBriefWithAcknowledgement(code, country, {
+              trackAnalytics: options?.trackDetailedAnalytics !== false,
+              signal: options?.signal,
+            })
+          ),
           enablePanel: (panelId, options) => this.eventHandlers.enablePanelById(panelId, {
             trackAnalytics: options?.trackDetailedAnalytics !== false,
           }),
@@ -1618,6 +1604,81 @@ export class App {
     return this.searchManagerLoad;
   }
 
+  private openCountryBriefWithAcknowledgement(
+    code: string,
+    country: string,
+    options: { trackAnalytics: boolean; signal?: AbortSignal },
+  ): Promise<boolean> {
+    return new Promise<boolean>((resolve, reject) => {
+      let acknowledged = false;
+      const cleanup = (): void => {
+        options.signal?.removeEventListener('abort', handleAbort);
+      };
+      const finish = (opened: boolean): void => {
+        if (acknowledged) return;
+        acknowledged = true;
+        cleanup();
+        resolve(opened);
+      };
+      const fail = (error: unknown): void => {
+        if (acknowledged) return;
+        acknowledged = true;
+        cleanup();
+        if (
+          options.signal?.aborted
+          || (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError')
+        ) {
+          reject(error);
+          return;
+        }
+        console.error('[CountryBrief] Failed to open country brief:', error);
+        this.state.map?.setRenderPaused(false);
+        showToast('Country brief failed to open. Please try again.');
+        resolve(false);
+      };
+      const handleAbort = (): void => {
+        try {
+          throwIfWebMcpAborted(options.signal);
+        } catch (error) {
+          fail(error);
+        }
+      };
+
+      try {
+        throwIfWebMcpAborted(options.signal);
+      } catch (error) {
+        fail(error);
+        return;
+      }
+      options.signal?.addEventListener('abort', handleAbort, { once: true });
+      void this.countryIntel.openCountryBriefByCode(code, country, {
+        trackAnalytics: options.trackAnalytics,
+        signal: options.signal,
+        onPresented: () => {
+          const page = this.state.countryBriefPage;
+          finish(page?.isVisible() === true && page.getCode() === code);
+        },
+      }).then(() => {
+        // A superseded, destroyed, or failed open can settle without ever
+        // presenting the requested page.
+        finish(false);
+      }).catch(fail);
+    });
+  }
+
+  private async openWebMcpCountryBrief(
+    code: string,
+    country: string,
+    execution?: WebMcpExecutionOptions,
+  ): Promise<boolean> {
+    await this.waitForUiReady(execution?.signal);
+    throwIfWebMcpAborted(execution?.signal);
+    return this.openCountryBriefWithAcknowledgement(code, country, {
+      trackAnalytics: false,
+      signal: execution?.signal,
+    });
+  }
+
   private updateSearchIndexIfReady(): void {
     this.searchManager?.updateSearchIndex();
   }
@@ -1635,7 +1696,13 @@ export class App {
     this.searchManager?.updateFlightSource(adsb, military, this.latestSearchAdsbUpdatedAt);
   }
 
-  private async openSearch(options: { toggle?: boolean; throwOnFailure?: boolean; replaceOverlayId?: OverlayId; historyPending?: boolean } = {}): Promise<void> {
+  private async openSearch(options: {
+    toggle?: boolean;
+    throwOnFailure?: boolean;
+    replaceOverlayId?: OverlayId;
+    historyPending?: boolean;
+    signal?: AbortSignal;
+  } = {}): Promise<boolean> {
     // Concurrency model: each press registers its intent, then claims a
     // monotonic epoch. After the lazy load resolves, only the latest epoch acts
     // — superseded presses bail. This yields one deterministic modal.open() for
@@ -1651,13 +1718,20 @@ export class App {
         })
       : null;
     try {
-      await this.waitForUiReady();
-      if (pendingGate && !pendingGate.isCurrent()) return;
+      await this.waitForUiReady(options.signal);
+      throwIfWebMcpAborted(options.signal);
+      // A fresh palette intent (human Cmd+K/button or agent open_search)
+      // supersedes any older open_search_result presentation before we decide
+      // whether to toggle, lazy-load, or open the modal. This cancellation is
+      // intentionally limited to agent selection work; it does not clear the
+      // palette's query/debounce state or unrelated human actions.
+      this.searchManager?.cancelPendingProgrammaticSelection();
+      if (pendingGate && !pendingGate.isCurrent()) return false;
 
       const existingModal = this.state.searchModal;
       if (options.toggle && existingModal?.isOpen()) {
         existingModal.close();
-        return;
+        return false;
       }
 
       const togglingBeforeLoad = Boolean(options.toggle) && !this.searchManager;
@@ -1666,25 +1740,30 @@ export class App {
       }
 
       epoch = ++this.openSearchEpoch;
-      const manager = await this.ensureSearchManager();
-      if (this.openSearchEpoch !== epoch) return;
-      if (pendingGate && !pendingGate.isCurrent()) return;
+      const manager = await raceWebMcpAbort(this.ensureSearchManager(), options.signal);
+      throwIfWebMcpAborted(options.signal);
+      if (this.openSearchEpoch !== epoch) return false;
+      if (pendingGate && !pendingGate.isCurrent()) return false;
 
       const wantOpen = togglingBeforeLoad ? this.searchToggleDesiredOpen : true;
-      if (!wantOpen) return;
+      if (!wantOpen) return false;
 
       manager.updateSearchIndex();
       const modal = this.state.searchModal;
       if (!modal) throw new Error('Search modal is not initialised');
+      throwIfWebMcpAborted(options.signal);
       modal.open(pendingGate ? pendingId : options.replaceOverlayId);
+      return modal.isOpen();
     } catch (error) {
       const actionWasCancelled = pendingGate !== null && !pendingGate.isCurrent();
-      if (!this.state.isDestroyed && !actionWasCancelled) {
+      const invocationWasCancelled = options.signal?.aborted === true;
+      if (!this.state.isDestroyed && !actionWasCancelled && !invocationWasCancelled) {
         console.warn('[search] Failed to load search manager:', error);
         if (!options.throwOnFailure) showToast('Search failed to load. Please try again.');
       }
       pendingGate?.cancel();
-      if (options.throwOnFailure) throw error;
+      if (options.throwOnFailure || options.signal?.aborted) throw error;
+      return false;
     } finally {
       // Reset the toggle accumulator once the latest press settles.
       if (this.openSearchEpoch === epoch) this.searchToggleDesiredOpen = false;
@@ -1781,35 +1860,33 @@ export class App {
     // WebMCP — register synchronously before any init awaits so agent
     // scanners (isitagentready.com, in-browser agents) find the tools on
     // their first probe. No-op in browsers without document.modelContext.
-    // Bindings await `this.uiReady` (resolves after Phase-4 UI init) so
-    // a tool invoked during the startup window waits for the target
-    // panel to exist instead of throwing. A 10s timeout keeps a genuinely
-    // broken state from hanging the caller. Store the returned controller
+    // Bindings await `this.uiReady` (resolves after Phase-4 UI init) so a tool
+    // invoked during startup waits for managers that can lazily create their
+    // targets. A bounded startup timeout keeps a genuinely broken state from
+    // hanging the caller. Store the returned controller
     // so destroy() can unregister every tool on teardown.
     this.webMcpController = registerWebMcpTools({
-      openCountryBriefByCode: async (code, country) => {
-        await this.waitForUiReady();
-        if (!this.state.countryBriefPage) {
-          throw new Error('Country brief panel is not initialised');
-        }
-        await this.countryIntel.openCountryBriefByCode(code, country);
-      },
+      openCountryBriefByCode: (code, country, execution) => (
+        this.openWebMcpCountryBrief(code, country, execution)
+      ),
       resolveCountryName: (code) => CountryIntelManager.resolveCountryName(code),
-      openSearch: async () => {
+      openSearch: async (execution) => {
         // openSearch() awaits UI readiness internally and throws on failure when
         // throwOnFailure is set, so the agent receives a real success/failure.
         // (Re-checking searchModal here would spuriously throw if a concurrent
         // Cmd+K closed it between open and the check — #4403 review ADV-4.)
-        await this.openSearch({ throwOnFailure: true });
+        return this.openSearch({ throwOnFailure: true, signal: execution?.signal });
       },
-      getDashboardContext: async () => {
-        await this.waitForDashboardReady();
+      getDashboardContext: async (execution) => {
+        await this.waitForDashboardReady(true, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
         return getWebMcpDashboardContext(this.state, SITE_VARIANT);
       },
-      applyDashboardAction: async (action) => {
+      applyDashboardAction: async (action, execution) => {
         return runDashboardActionBinding(this.state, action, {
-          waitForUiReady: () => this.waitForDashboardReady(false),
-          waitForMapReady: () => this.waitForDashboardReady(),
+          waitForUiReady: () => this.waitForDashboardReady(false, execution?.signal),
+          waitForMapReady: () => this.waitForDashboardReady(true, execution?.signal),
+          signal: execution?.signal,
           applierOptions: {
             getPanelConfig: (panelId) => getEffectivePanelConfig(panelId, SITE_VARIANT),
             isPanelAllowed: (panelId, config) => (
@@ -1826,14 +1903,19 @@ export class App {
           syncUrlStateNow: () => this.eventHandlers.syncUrlStateNow(),
         });
       },
-      searchDashboard: async (query, scope, limit) => {
-        await this.waitForDashboardReady(false);
+      searchDashboard: async (query, scope, limit, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
         if (this.state.isDestroyed) {
           throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
         }
         let manager: SearchManager;
         try {
-          manager = await this.ensureSearchManager();
+          manager = await raceWebMcpAbort(
+            this.ensureSearchManager(),
+            execution?.signal,
+          );
+          throwIfWebMcpAborted(execution?.signal);
         } catch (error) {
           if (this.state.isDestroyed) {
             throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
@@ -1843,9 +1925,16 @@ export class App {
         if (this.state.isDestroyed) {
           throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
         }
-        return manager.searchDashboard(query, scope, limit);
+        const result = await manager.searchDashboard(
+          query,
+          scope,
+          limit,
+          execution?.signal,
+        );
+        throwIfWebMcpAborted(execution?.signal);
+        return result;
       },
-      openSearchResult: async (resultKey) => {
+      openSearchResult: async (resultKey, execution) => {
         // A capability can only exist after search_dashboard initialized the
         // manager. Deny fabricated first-use keys without loading the lazy
         // search chunk or demanding a map renderer.
@@ -1853,8 +1942,13 @@ export class App {
         if (!manager) {
           return { ok: false, status: 'denied', reason: 'invalid_or_expired_key' } as const;
         }
-        await this.waitForUiReady();
-        return manager.openSearchResult(resultKey, () => this.waitForDashboardReady());
+        await this.waitForUiReady(execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        return manager.openSearchResult(
+          resultKey,
+          () => this.waitForDashboardReady(true, execution?.signal),
+          execution?.signal,
+        );
       },
     });
 
@@ -2327,6 +2421,7 @@ export class App {
     await this.countryIntel.init();
     // Unblock any WebMCP tool invocations that arrived during startup.
     this.resolveUiReady();
+    markLcpDebug('wm:boot:webmcp-ui-ready');
 
     // Phase 5: Event listeners + URL sync
     this.eventHandlers.init();
@@ -3080,13 +3175,19 @@ export class App {
   // state so a tool invoked during startup waits rather than throwing;
   // the timeout guards against a genuinely broken init path hanging the
   // agent forever.
-  private async waitForUiReady(timeoutMs = 10_000): Promise<void> {
-    await waitForWebMcpUiReady(this.uiReady, this.appDestroyed, timeoutMs);
+  private async waitForUiReady(
+    signal?: AbortSignal,
+    timeoutMs = WEBMCP_UI_READY_TIMEOUT_MS,
+  ): Promise<void> {
+    await waitForWebMcpUiReady(this.uiReady, this.appDestroyed, timeoutMs, 'UI', signal);
   }
 
-  private async waitForDashboardReady(requireMapRenderer = true): Promise<void> {
+  private async waitForDashboardReady(
+    requireMapRenderer = true,
+    signal?: AbortSignal,
+  ): Promise<void> {
     try {
-      await this.waitForUiReady();
+      await this.waitForUiReady(signal);
       if (!requireMapRenderer) return;
       const map = this.state.map;
       if (map) {
@@ -3095,9 +3196,11 @@ export class App {
           this.appDestroyed,
           15_000,
           'Map renderer',
+          signal,
         );
       }
     } catch (error) {
+      throwIfWebMcpAborted(signal);
       // A dashboard binding that loses the readiness/destroy race must reach
       // the narrow context/applier seam so it can return its closed
       // app_destroyed reason. Genuine readiness timeouts still reject.

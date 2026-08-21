@@ -4,6 +4,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import {
+  raceWebMcpAbort,
+  throwIfWebMcpAborted,
+} from '../src/services/webmcp.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const appSrc = readFileSync(resolve(__dirname, '../src/App.ts'), 'utf-8');
@@ -47,7 +51,13 @@ function extractOpenSearch() {
   }).outputText;
   // Module-level references inside the method are injected as recording doubles.
   // eslint-disable-next-line no-new-func
-  return new Function('showToast', 'overlayHistory', `${js}\nreturn __OpenSearchHarness;`);
+  return new Function(
+    'showToast',
+    'overlayHistory',
+    'raceWebMcpAbort',
+    'throwIfWebMcpAborted',
+    `${js}\nreturn __OpenSearchHarness;`,
+  );
 }
 
 const toastMessages = [];
@@ -79,7 +89,12 @@ const historyDouble = {
     this.current = null;
   },
 };
-const Harness = extractOpenSearch()((msg) => toastMessages.push(msg), historyDouble);
+const Harness = extractOpenSearch()(
+  (msg) => toastMessages.push(msg),
+  historyDouble,
+  raceWebMcpAbort,
+  throwIfWebMcpAborted,
+);
 
 function makeInstance({ failLoad = false } = {}) {
   const inst = new Harness();
@@ -89,7 +104,16 @@ function makeInstance({ failLoad = false } = {}) {
     close() { this._open = false; this.closes++; },
     isOpen() { return this._open; },
   };
-  const manager = { updateSearchIndex() { manager.indexBuilds++; }, indexBuilds: 0 };
+  const manager = {
+    indexBuilds: 0,
+    cancelCalls: 0,
+    onCancel: null,
+    updateSearchIndex() { manager.indexBuilds++; },
+    cancelPendingProgrammaticSelection() {
+      manager.cancelCalls++;
+      manager.onCancel?.();
+    },
+  };
   let resolveGate, rejectGate;
   const gate = new Promise((res, rej) => { resolveGate = res; rejectGate = rej; });
   inst.openSearchEpoch = 0;
@@ -178,6 +202,19 @@ describe('App.openSearch lazy-load state machine (#4403)', () => {
     assert.equal(toastMessages.length, 0, 'agent path should not show a user toast');
   });
 
+  it('cancels a WebMCP open while the search chunk is loading without a late modal', async () => {
+    const h = makeInstance();
+    const controller = new AbortController();
+    const pending = h.inst.openSearch({ throwOnFailure: true, signal: controller.signal });
+    controller.abort();
+
+    await assert.rejects(pending, (error) => error === controller.signal.reason);
+    await h.resolveLoad();
+    await Promise.resolve();
+    assert.equal(h.modal.opens, 0);
+    assert.deepEqual(toastMessages, []);
+  });
+
   it('closes an already-open modal on toggle (loaded)', async () => {
     const h = makeInstance();
     const p = h.inst.openSearch({ toggle: true });
@@ -186,6 +223,32 @@ describe('App.openSearch lazy-load state machine (#4403)', () => {
     assert.equal(h.modal.opens, 1);
     await h.inst.openSearch({ toggle: true }); // second toggle, now loaded + open
     assert.equal(h.modal.closes, 1, 'toggle on an open modal closes it');
+  });
+
+  it('denies an older deferred result before reopening the human palette', async () => {
+    const h = makeInstance();
+    const load = h.inst.openSearch({});
+    await h.resolveLoad();
+    await load;
+    h.modal._open = false;
+
+    let resolveAgent;
+    const pendingAgent = new Promise((resolve) => { resolveAgent = resolve; });
+    h.manager.onCancel = () => resolveAgent({
+      ok: false,
+      status: 'denied',
+      reason: 'result_no_longer_executable',
+    });
+
+    assert.equal(await h.inst.openSearch({}), true);
+    assert.deepEqual(await pendingAgent, {
+      ok: false,
+      status: 'denied',
+      reason: 'result_no_longer_executable',
+    });
+    assert.equal(h.manager.cancelCalls, 1);
+    assert.equal(h.modal.isOpen(), true, 'the newer palette intent must remain open');
+    assert.equal(h.modal.closes, 0, 'the superseded agent must not close the palette later');
   });
 
   it('records replacement context and passes the pending marker to SearchModal', async () => {
